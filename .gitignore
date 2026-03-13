@@ -1,0 +1,41 @@
+.cursor/
+.cursor-server/
+.tmp-alltrue/
+.claude/
+.cache/
+.config/
+.local/
+.npm/
+.vscode/
+.ssh/
+.bash_history
+.bashrc
+.bash_logout
+.profile
+.Xauthority
+.face
+.face.icon
+.cursorrules
+
+# Logs and runtime files
+*.log
+access.log
+error.log
+
+# Environment and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies / build artifacts
+backend/vendor/
+backend/vendor.bak/
+frontend/node_modules/
+frontend/dist/
+
+# Local data volumes
+data/
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db

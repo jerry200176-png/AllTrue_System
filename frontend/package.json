@@ -1,0 +1,24 @@
+{
+  "name": "alltrue-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "npm run build && node scripts/copy-to-backend.cjs",
+    "deploy:pack": "npm run build && node scripts/pack-deploy.cjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-arm64-gnu": "^4.0.0"
+  }
+}
