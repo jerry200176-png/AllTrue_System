@@ -13,6 +13,7 @@ class StudentSignIn extends Model
         'StudentClassID',
         'StudentID',
         'TeacherID',
+        'RecordedByUserID',
         'GradeID',
         'SubjectID',
         'Get1byID',
@@ -26,5 +27,28 @@ class StudentSignIn extends Model
         'PersonType',
         'CampusID',
         'SessionDeducted',
+        'VoidedAt',
+        'VoidedByUserID',
+        'VoidReason',
     ];
+
+    protected $casts = [
+        'SessionDeducted' => 'boolean',
+        'VoidedAt'        => 'datetime',
+    ];
+
+    public function scopeActive($query)
+    {
+        return $query->whereNull('VoidedAt');
+    }
+
+    public function scopeVoided($query)
+    {
+        return $query->whereNotNull('VoidedAt');
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->VoidedAt !== null;
+    }
 }

@@ -74,6 +74,7 @@ class PendingSwipeController extends Controller
         }
 
         return DB::transaction(function () use ($pendingSwipe, $data) {
+            $authUser = request()->attributes->get('auth_user');
             $studentClass = StudentClass::findOrFail($data['StudentClassID']);
             if ((int) $studentClass->StudentID !== (int) $pendingSwipe->StudentID) {
                 return response()->json(['message' => 'Class does not match student'], 422);
@@ -109,6 +110,7 @@ class PendingSwipeController extends Controller
                 'StudentClassID' => $studentClass->ID,
                 'StudentID' => $pendingSwipe->StudentID,
                 'TeacherID' => $studentClass->TeacherID,
+                'RecordedByUserID' => !empty($authUser?->id) ? (int) $authUser->id : null,
                 'GradeID' => $studentClass->GradeID,
                 'SubjectID' => $studentClass->SubjectID,
                 'Get1byID' => $studentClass->by1,

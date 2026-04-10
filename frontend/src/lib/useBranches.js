@@ -20,8 +20,48 @@ const API_BASE = '/api/v1';
  * `id` is the integer campus ID used by the backend.
  * `code` is the short string identifier (e.g. 'daan').
  */
-const DEFAULT_BRANCHES = [{ id: 1, name: '大安分校', code: 'daan' }];
+const DEFAULT_BRANCHES = [
+    { id: 1,  name: '內湖分校',     code: 'neihu' },
+    { id: 2,  name: '東湖分校',     code: 'donghu' },
+    { id: 3,  name: '大直分校',     code: 'dazhi' },
+    { id: 4,  name: '汐止分校',     code: 'xizhi' },
+    { id: 5,  name: '新店校區',     code: 'xindian_qu' },
+    { id: 6,  name: '麗山校區',     code: 'lishan' },
+    { id: 7,  name: '蘆洲分校',     code: 'luzhou' },
+    { id: 8,  name: '敦南分校',     code: 'dunnan' },
+    { id: 9,  name: '新店分校',     code: 'xindian' },
+    { id: 10, name: '桃園分校',     code: 'taoyuan' },
+    { id: 11, name: '新莊分校',     code: 'xinzhuang' },
+    { id: 12, name: '石牌分校',     code: 'campus_12' },
+    { id: 13, name: '新莊中平分校', code: 'xinzhuang_zhongping' },
+    { id: 14, name: '三重分校',     code: 'sanchong' },
+    { id: 15, name: '大安分校',     code: 'daan' },
+    { id: 16, name: '木柵分校',     code: 'muzha' },
+    { id: 17, name: '興隆分校',     code: 'xinglong' },
+    { id: 18, name: '新竹分校',     code: 'hsinchu' },
+    { id: 19, name: '天母分校',     code: 'tianmu' },
+    { id: 20, name: '中壢分校',     code: 'zhongli' },
+];
 export const branches = ref([...DEFAULT_BRANCHES]);
+
+function mergeWithDefaults(list) {
+    const merged = new Map();
+    for (const item of list) {
+        if (!item || (!item.code && !item.name)) continue;
+        const key = item.code || item.name;
+        const id = Number(item.id);
+        merged.set(key, {
+            id: Number.isFinite(id) ? id : null,
+            name: item.name || key,
+            code: item.code || '',
+        });
+    }
+    for (const item of DEFAULT_BRANCHES) {
+        const key = item.code || item.name;
+        if (!merged.has(key)) merged.set(key, item);
+    }
+    return Array.from(merged.values());
+}
 
 let _loaded = false;
 let _loading = null;
@@ -48,13 +88,17 @@ export async function loadBranches() {
             }
         };
         try {
-            let data = await tryFetch('/branches.json');
-            if (!data) data = await tryFetch(`${API_BASE}/branches`);
-            if (data) branches.value = data;
+            // Prefer live API to avoid stale static branches.json.
+            let data = await tryFetch(`${API_BASE}/branches`);
+            if (!data) data = await tryFetch('/branches.json');
+            if (data) {
+                branches.value = mergeWithDefaults(data);
+                _loaded = true; // only lock cache on success
+            }
+            // on failure: leave _loaded = false so next call can retry
         } catch (err) {
             console.warn('[useBranches]', err?.message || err);
         }
-        _loaded = true;
         _loading = null;
         return branches.value;
     })();

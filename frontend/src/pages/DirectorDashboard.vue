@@ -8,38 +8,20 @@
     </div>
 
     <template v-else>
-    <!-- System Guide -->
-    <HelpGuide
-      title="📖 系統操作總說明 — 第一次使用請先閱讀"
-      :defaultOpen="true"
-      :items="[
-        '<strong>總覽儀表板</strong>：繳費提醒、今日排課、待審核評量、本月堂數。',
-        '<strong>智慧排課</strong>：週課表 / 老師視角，點空白時段新增、點色塊編輯，可篩選老師。',
-        '<strong>學生管理</strong>：新增學生、課程與加購堂數；點學生列展開課程明細。',
-        '<strong>老師管理</strong>：正式/待審核分頁、核准、編輯主分校與跨校支援；依所選分校篩選老師。',
-        '<strong>課程管理</strong>：所有學生課程總覽、篩選、補登舊資料。',
-        '<strong>科目數統計</strong>：依學生課程計算各老師科目數與佔比，可切換月份。',
-        '<strong>出缺勤管理</strong>：手動登記到/離班，處理未識別刷卡。',
-        '<strong>學習評量表</strong>：新增與審核學生學習評量。',
-        '<strong>家長入口</strong>：家長以學生代號+手機登入查詢堂數與紀錄。',
-        '<strong>主任審核</strong>（僅超級管理員）：審核主任自行申請的帳號，通過/拒絕。'
-      ]"
-      tip="左側可切換分校（主任僅見所屬分校）；每頁頂端有「💡 使用說明」可展開查看。"
-    />
-
     <div class="dashboard-container">
-      <div class="card summary-stats">
+      <div class="card summary-stats" data-guide="director-summary">
         <h3>{{ branchName }} — 總覽 (Overview)</h3>
         <div class="stats-grid">
           <div class="stat-item danger-glow">
             <div class="stat-icon">⚠️</div>
-            <label>繳費提醒</label>
+            <label>未繳費提醒</label>
             <div class="value red">{{ lowBalanceStudents.length }}</div>
           </div>
           <div class="stat-item">
             <div class="stat-icon">📊</div>
-            <label>今日排課</label>
+            <label>今日課程</label>
             <div class="value">{{ todaySchedules.length }}</div>
+            <div class="value-sub">待到班：{{ pendingAttendanceCount }}</div>
           </div>
           <div class="stat-item">
             <div class="stat-icon">📝</div>
@@ -48,8 +30,9 @@
           </div>
           <div class="stat-item">
             <div class="stat-icon">📊</div>
-            <label>本月總堂數</label>
-            <div class="value">{{ totalSessionsThisMonth }}</div>
+            <label>本月總科目數（含輔導）</label>
+            <div class="value">{{ monthlySubjectCountWith }}</div>
+            <div class="value-sub">不含輔導：{{ monthlySubjectCountWithout }}</div>
           </div>
         </div>
       </div>
@@ -59,8 +42,8 @@
         <div class="column">
           <h3>1. 繳費通知與排課</h3>
 
-          <div class="section-box">
-            <h4>⚠️ 繳費提醒（剩餘堂數 ≤ 2）</h4>
+          <div class="section-box" data-guide="director-alerts">
+            <h4>⚠️ 未繳費提醒（已繳費不通知）</h4>
             <div v-if="lowBalanceStudents.length === 0" class="empty-text">無</div>
             <div v-for="s in lowBalanceStudents" :key="s.id" class="alert-item">
               <span>{{ s.name }}</span>
@@ -70,36 +53,43 @@
           </div>
 
           <div class="section-box">
-            <h4>💳 繳費通知</h4>
-            <div v-if="unpaidCourses.length === 0" class="empty-text">無</div>
-            <div v-for="c in unpaidCourses" :key="c.id" class="alert-item">
-              <span>{{ c.student_name }} — {{ c.subject }}</span>
-              <span class="badge-orange">未繳費</span>
+            <h4>🔔 通知中心摘要</h4>
+            <div class="summary-row">
+              <span>未讀通知</span>
+              <span class="badge-orange">{{ unreadNotificationCount }}</span>
+            </div>
+            <div v-if="notificationSummary.length === 0" class="empty-text">目前無未讀通知</div>
+            <div v-for="n in notificationSummary" :key="n.id" class="alert-item">
+              <span>{{ n.title }}</span>
+              <span class="badge-blue">{{ n.typeLabel }}</span>
+            </div>
+            <div class="summary-actions">
+              <button class="primary xs" @click="goToNotifications">前往通知中心</button>
             </div>
           </div>
 
           <div class="section-box">
-            <h4>📅 今日排課 (Today)</h4>
+            <h4>📅 今日課表與到班處理</h4>
+            <p class="hint">這裡顯示今天所有課程；「到班」代表已報到，「請假」代表該堂取消。</p>
             <div v-if="todaySchedules.length === 0" class="empty-text">無課程</div>
             <div v-for="schedule in todaySchedules" :key="schedule.id" class="mini-task-card">
               <div class="row">
                 <strong>{{ formatTime(schedule.start_time) }}</strong>
-                <span>{{ schedule.student?.name }}</span>
-                <span class="tag">{{ schedule.subject }}</span>
+                <span>{{ schedule.student_name || schedule.student?.name || '—' }}</span>
+                <span class="tag">{{ schedule.subject || schedule.subject_name || '課程' }}</span>
               </div>
               <div class="row right" v-if="schedule.status === 'scheduled'">
-                <button class="primary xs" @click="markAttended(schedule)">到班</button>
-                <button class="danger xs" @click="markCancelled(schedule)">請假</button>
+                <button class="primary xs" @click="goToAttendance">前往出缺勤處理</button>
               </div>
               <div class="row right" v-else>
-                <span class="status-text">{{ schedule.status }}</span>
+                <span class="status-text">{{ formatScheduleStatus(schedule.status) }}</span>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Center: Evaluation Review -->
-        <div class="column">
+        <div class="column" data-guide="director-pending-evals">
           <h3>2. 待審核學習評量</h3>
           <p class="hint">核准後老師科目數自動累計。</p>
           <div v-if="pendingEvaluations.length === 0" class="empty-text">無待審核評量</div>
@@ -122,25 +112,31 @@
         </div>
 
         <!-- Right: Teacher Stats -->
-        <div class="column">
+        <div class="column" data-guide="director-teacher-stats">
           <h3>3. 老師科目數統計 (Stats)</h3>
           <p class="hint">本月累計（詳細請至「科目數統計」頁面）</p>
           <table class="simple-table">
             <thead>
               <tr>
                 <th>老師</th>
-                <th>科目</th>
-                <th>堂數</th>
+                <th>含輔導科目數</th>
+                <th>不含輔導科目數</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="stat in teacherStats" :key="stat.id">
                 <td>{{ stat.name }}</td>
-                <td>{{ stat.subject }}</td>
-                <td><strong>{{ stat.count }}</strong></td>
+                <td><strong>{{ stat.subjectCountWith }}</strong></td>
+                <td><strong>{{ stat.subjectCountWithout }}</strong></td>
               </tr>
             </tbody>
           </table>
+
+          <div v-if="levelBreakdownTotals.length > 0" class="level-chips">
+            <span v-for="lb in levelBreakdownTotals" :key="'lv-'+lb.level" class="level-chip">
+              {{ lb.levelLabel }}：{{ lb.totalHours }}h / {{ lb.unitsWith }} 科目數
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -152,17 +148,24 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 import { getBranchName } from '../lib/useBranches';
-import HelpGuide from '../components/HelpGuide.vue';
+import { getSubjectLabel as getSubjectText } from '../lib/constants';
 
 const props = defineProps({
   branchId: [String, Number]
 });
+const emit = defineEmits(['navigate']);
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
 const teacherStats = ref([]);
+const subjectTotals = ref({
+  subjectCountWith: 0,
+  subjectCountWithout: 0,
+});
+const levelBreakdownTotals = ref([]);
 const lowBalanceStudents = ref([]);
-const unpaidCourses = ref([]);
+const unreadNotificationCount = ref(0);
+const notificationSummary = ref([]);
 
 const branchName = computed(() => {
   return getBranchName(props.branchId);
@@ -172,25 +175,44 @@ const pendingAttendanceCount = computed(() => {
   return todaySchedules.value.filter(s => s.status === 'scheduled').length;
 });
 
-const totalSessionsThisMonth = computed(() => {
-  return teacherStats.value.reduce((acc, curr) => acc + curr.count, 0);
-});
+const monthlySubjectCountWith = computed(() => Number(subjectTotals.value.subjectCountWith || 0).toFixed(2));
+const monthlySubjectCountWithout = computed(() => Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2));
 
 const formatTime = (timeStr) => {
   // start_time is already a simple "HH:MM" string
   return timeStr || '--:--';
 };
 
+const formatScheduleStatus = (status) => {
+  const map = {
+    scheduled: '待到班',
+    attended: '已到班',
+    completed: '已下課',
+    cancelled: '已取消',
+    leave: '已請假',
+  };
+  return map[String(status || '').toLowerCase()] || String(status || '—');
+};
+
+const localTodayYmd = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 const loadData = async () => {
   if (!props.branchId) return;
 
-  // Load low balance and unpaid alerts directly from the AlertController backend
+  // Load unpaid tuition alerts directly from the AlertController backend
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
 
   try {
-    const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition`, {
+    const alertsParams = new URLSearchParams({ branch_id: String(props.branchId) });
+    const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams.toString()}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/json',
@@ -201,65 +223,94 @@ const loadData = async () => {
       const alertsJson = await alertsResp.json();
       // AlertController returns a plain array; support both array and { low_balance: [...] }
       const alertList = Array.isArray(alertsJson) ? alertsJson : (alertsJson.low_balance || []);
-      lowBalanceStudents.value = alertList.filter(c => c.student_name).map(c => ({
-        id: c.id || c.class_id,
-        student_id: c.student_id || null,
-        raw_name: c.student_name,
-        name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
-        remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0
-      }));
+      const currentBranchId = Number(props.branchId) || 0;
+      lowBalanceStudents.value = alertList
+        .filter(c => {
+          if (!c.student_name) return false;
+          // Defensive frontend guard: keep current-branch data only.
+          const campusId = Number(c.campus_id ?? c.CampusID ?? 0);
+          return !currentBranchId || !campusId || campusId === currentBranchId;
+        })
+        .map(c => ({
+          id: c.id || c.class_id,
+          student_id: c.student_id || null,
+          raw_name: c.student_name,
+          name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
+          remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0
+        }));
     }
   } catch (err) {
     console.error('Failed to load alerts:', err);
   }
 
-  // Find unpaid courses
-  const { data: unpaidData } = await supabase
-    .from('student-classes')
-    .select('*, student:students(name)')
-    .eq('branch_id', props.branchId)
-    .eq('payment_status', 'unpaid');
+  await loadNotificationSummary(token, baseUrl);
 
-  unpaidCourses.value = (unpaidData || [])
-    .filter(c => c.status !== 'inactive')
-    .map(c => ({
-      id: c.id,
-      student_name: c.student?.name || c.student_name || '?',
-      subject: getSubjectLabel(c.subject)
-    }));
+  // Today's schedules: use ClassSession as source of truth (no time-gating).
+  // If API fails, fallback to legacy schedules table.
+  const today = localTodayYmd();
+  try {
+    const params = new URLSearchParams({
+      branch_id: String(props.branchId),
+      start: today,
+      end: today,
+      per_page: '500',
+    });
+    const res = await fetch(`${baseUrl}/v1/class-sessions?${params.toString()}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json',
+      }
+    });
+    if (res.ok) {
+      const json = await res.json().catch(() => ({}));
+      const rows = Array.isArray(json?.data) ? json.data : [];
+      todaySchedules.value = rows
+        .map((row) => ({
+          id: Number(row?.id || 0),
+          class_session_id: Number(row?.id || 0),
+          student_class_id: Number(row?.student_class_id || 0),
+          student_name: row?.student_name || '',
+          teacher_name: row?.teacher_name || '',
+          start_time: String(row?.start_time || '').slice(0, 5),
+          end_time: String(row?.end_time || '').slice(0, 5),
+          status: String(row?.status || '').toLowerCase(),
+          subject: row?.subject || '',
+          subject_name: row?.subject_name || '',
+        }))
+        .filter((s) => s.id > 0 && !['cancelled', 'leave'].includes(s.status))
+        .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+    } else {
+      todaySchedules.value = [];
+    }
+  } catch (_) {
+    const todayDow = new Date().getDay() || 7; // 1=Mon..7=Sun
+    const { data: dateSchedules } = await supabase
+      .from('schedules')
+      .select('*')
+      .eq('branch_id', props.branchId)
+      .eq('schedule_date', today);
 
-  // Today's schedules: filter by schedule_date or day_of_week
-  const today = new Date().toISOString().split('T')[0];
-  const todayDow = new Date().getDay() || 7; // 1=Mon..7=Sun
+    const { data: dowSchedules } = await supabase
+      .from('schedules')
+      .select('*')
+      .eq('branch_id', props.branchId)
+      .eq('day_of_week', todayDow)
+      .is('schedule_date', null);
 
-  // Try schedule_date first, then fall back to day_of_week
-  const { data: dateSchedules } = await supabase
-    .from('schedules')
-    .select('*')
-    .eq('branch_id', props.branchId)
-    .eq('schedule_date', today);
-
-  const { data: dowSchedules } = await supabase
-    .from('schedules')
-    .select('*')
-    .eq('branch_id', props.branchId)
-    .eq('day_of_week', todayDow)
-    .is('schedule_date', null);
-
-  const allTodaySchedules = [...(dateSchedules || []), ...(dowSchedules || [])];
-  // Deduplicate by id and filter only active statuses
-  const seenIds = new Set();
-  todaySchedules.value = allTodaySchedules
-    .filter(s => {
-      if (seenIds.has(s.id)) return false;
-      seenIds.add(s.id);
-      return s.status === 'scheduled' || s.status === 'attended';
-    })
-    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+    const allTodaySchedules = [...(dateSchedules || []), ...(dowSchedules || [])];
+    const seenIds = new Set();
+    todaySchedules.value = allTodaySchedules
+      .filter(s => {
+        if (seenIds.has(s.id)) return false;
+        seenIds.add(s.id);
+        return !['cancelled', 'leave'].includes(String(s.status || '').toLowerCase());
+      })
+      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+  }
 
   // Pending evaluations from learning-records API
   try {
-    const pendingRes = await fetch(`${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending&per_page=50&sort=session_date`, {
+    const pendingRes = await fetch(`${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending&only_due=1&per_page=50&sort=session_date`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });
     if (pendingRes.ok) {
@@ -273,13 +324,59 @@ const loadData = async () => {
   calculateTeacherStats();
 };
 
+const notificationTypeLabel = (type) => {
+  const map = {
+    tuition: '繳費',
+    learning_review: '評量',
+    pending_swipe: '刷卡',
+  };
+  return map[type] || '通知';
+};
+
+const loadNotificationSummary = async (token, baseUrl) => {
+  try {
+    const params = new URLSearchParams({
+      branch_id: String(props.branchId),
+      read: 'unread',
+      per_page: '3',
+    });
+    const res = await fetch(`${baseUrl}/v1/notifications?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    });
+    if (!res.ok) {
+      unreadNotificationCount.value = 0;
+      notificationSummary.value = [];
+      return;
+    }
+    const json = await res.json();
+    unreadNotificationCount.value = Number(json.unread_count || 0);
+    notificationSummary.value = (json.data || []).map((item) => ({
+      id: item.id,
+      title: item.Title || '通知',
+      typeLabel: notificationTypeLabel(item.Type),
+    }));
+  } catch (err) {
+    console.error('Failed to load notification summary:', err);
+    unreadNotificationCount.value = 0;
+    notificationSummary.value = [];
+  }
+};
+
+const goToNotifications = () => {
+  emit('navigate', { target: 'notifications' });
+};
+
+const goToAttendance = () => {
+  emit('navigate', { target: 'attendance' });
+};
+
 const getSubjectLabel = (val) => {
   const map = {
-    '1': '國文', '2': '英文', '3': '數學', '4': '自然', '5': '社會',
+    '1': '國文', '2': '英文', '3': '數學', '4': '理化', '5': '社會',
     'Chinese': '國文', 'English': '英文', 'Math': '數學',
-    'Science': '自然', 'Social': '社會'
+    'Science': '理化', 'Physics': '物理', 'Chemistry': '化學', 'Biology': '生物', 'Social': '社會'
   };
-  return map[val] || val;
+  return map[val] || getSubjectText(val);
 };
 
 const calculateTeacherStats = async () => {
@@ -293,7 +390,12 @@ const calculateTeacherStats = async () => {
     const token = session?.access_token || '';
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
 
-    const params = new URLSearchParams({ start: startDate, end: endDate });
+    const params = new URLSearchParams({
+      start: startDate,
+      end: endDate,
+      branch_id: String(props.branchId),
+      include_level: '1',
+    });
     const res = await fetch(`${baseUrl}/v1/finance/subject-units?${params}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -301,30 +403,38 @@ const calculateTeacherStats = async () => {
       }
     });
 
-    if (!res.ok) return;
+    if (!res.ok) {
+      teacherStats.value = [];
+      subjectTotals.value = { subjectCountWith: 0, subjectCountWithout: 0 };
+      return;
+    }
     const json = await res.json();
 
-    // Map to dashboard summary format (teacher name + subject count)
+    subjectTotals.value = {
+      subjectCountWith: Number(json?.totals?.subject_count_with || 0),
+      subjectCountWithout: Number(json?.totals?.subject_count_without || 0),
+    };
+
     teacherStats.value = (json.teachers || []).map(t => ({
       id: t.teacher_id,
       name: t.teacher_name,
-      subject: `科目數: ${t.subject_count_with}`,
-      count: t.total_hours,
+      subjectCountWith: Number(t.subject_count_with || 0).toFixed(2),
+      subjectCountWithout: Number(t.subject_count_without || 0).toFixed(2),
+      totalHours: Number(t.total_hours || 0),
+    })).sort((a, b) => Number(b.subjectCountWith) - Number(a.subjectCountWith));
+
+    levelBreakdownTotals.value = (json.level_breakdown_totals || []).map(lb => ({
+      level: lb.level,
+      levelLabel: lb.level_label,
+      totalHours: lb.total_hours,
+      unitsWith: lb.subject_count_with,
     }));
   } catch (e) {
     console.error('Failed to load teacher stats:', e);
+    teacherStats.value = [];
+    subjectTotals.value = { subjectCountWith: 0, subjectCountWithout: 0 };
+    levelBreakdownTotals.value = [];
   }
-};
-
-const markAttended = async (schedule) => {
-  const { error } = await supabase.from('schedules').update({ status: 'attended' }).eq('id', schedule.id);
-  if (!error) loadData();
-};
-
-const markCancelled = async (schedule) => {
-  if (!confirm('確定取消?')) return;
-  const { error } = await supabase.from('schedules').update({ status: 'cancelled' }).eq('id', schedule.id);
-  if (!error) loadData();
 };
 
 const approveEvaluation = async (evalItem) => {
@@ -460,6 +570,12 @@ onMounted(loadData);
   color: var(--danger);
 }
 
+.value-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-light);
+}
+
 .dashboard-columns {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -505,6 +621,30 @@ onMounted(loadData);
   padding: 10px 8px;
   border-bottom: 1px solid #F5F5F5;
   font-size: 14px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0 8px 0;
+  color: var(--text-light);
+  font-size: 13px;
+}
+
+.summary-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.badge-blue {
+  background: #e3f2fd;
+  color: #1565c0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
 }
 
 .mini-task-card {
@@ -599,5 +739,59 @@ onMounted(loadData);
 }
 .copy-btn:hover {
   background: #bbdefb;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dashboard-columns .column:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 768px) {
+  .summary-stats .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .dashboard-columns {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-columns .column:last-child {
+    grid-column: auto;
+  }
+  .column {
+    max-height: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-stats .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .stat-item {
+    padding: 12px;
+  }
+  .column {
+    padding: 14px;
+  }
+}
+
+.level-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.level-chip {
+  display: inline-block;
+  background: #f5f3ff;
+  color: #6d28d9;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #ddd6fe;
 }
 </style>

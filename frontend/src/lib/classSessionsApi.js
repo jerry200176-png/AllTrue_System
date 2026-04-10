@@ -1,0 +1,81 @@
+export function normalizeClassSessionsPayload(json) {
+  const items = Array.isArray(json?.data)
+    ? json.data
+    : (Array.isArray(json) ? json : []);
+
+  const byClass = {};
+  for (const raw of items) {
+    const item = {
+      id: Number(raw?.id || 0),
+      student_class_id: Number(raw?.student_class_id || raw?.StudentClassID || 0),
+      student_id: Number(raw?.student_id || raw?.StudentID || 0),
+      teacher_id: Number(raw?.teacher_id || raw?.TeacherID || 0),
+      branch_id: Number(raw?.branch_id || raw?.CampusID || 0),
+      session_date: String(raw?.session_date || raw?.SessionDate || '').slice(0, 10),
+      start_time: String(raw?.start_time || raw?.StartTime || '').slice(0, 5),
+      end_time: String(raw?.end_time || raw?.EndTime || '').slice(0, 5),
+      status: String(raw?.status || raw?.Status || ''),
+      learning_record_id: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
+      learning_record_status: String(raw?.learning_record_status || 'missing'),
+      attendance_sign_in_at: raw?.attendance_sign_in_at || null,
+      attendance_memo: String(raw?.attendance_memo || ''),
+      recorded_by_name: String(raw?.recorded_by_name || ''),
+      student_name: raw?.student_name || '',
+      teacher_name: raw?.teacher_name || '',
+    };
+
+    if (!item.id || !item.student_class_id || !item.session_date) continue;
+    const key = String(item.student_class_id);
+    if (!byClass[key]) byClass[key] = [];
+    byClass[key].push(item);
+  }
+
+  Object.keys(byClass).forEach((key) => {
+    byClass[key].sort((a, b) => {
+      if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
+      if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
+      return a.id - b.id;
+    });
+  });
+
+  return { items, byClass };
+}
+
+export async function fetchClassSessions({
+  token,
+  branchId,
+  studentClassId,
+  studentClassIds,
+  teacherId,
+  studentId,
+  start,
+  end,
+  perPage = 2000,
+} = {}) {
+  const params = new URLSearchParams();
+  if (branchId) params.set('branch_id', String(branchId));
+  if (studentClassId) params.set('student_class_id', String(studentClassId));
+  if (Array.isArray(studentClassIds) && studentClassIds.length) {
+    params.set('student_class_ids', studentClassIds.map((id) => Number(id)).filter((id) => id > 0).join(','));
+  }
+  if (teacherId) params.set('teacher_id', String(teacherId));
+  if (studentId) params.set('student_id', String(studentId));
+  if (start) params.set('start', String(start));
+  if (end) params.set('end', String(end));
+  params.set('per_page', String(perPage));
+
+  const res = await fetch(`/api/v1/class-sessions?${params.toString()}`, {
+    headers: {
+      'Accept': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`class-sessions fetch failed (${res.status})`);
+  }
+
+  const json = await res.json().catch(() => ({}));
+  return normalizeClassSessionsPayload(json);
+}
+

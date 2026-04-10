@@ -21,6 +21,11 @@ class BackfillController extends Controller
      */
     public function registerSubjectUnits(Request $request)
     {
+        return response()->json([
+            'message' => 'Legacy subject-units backfill endpoint retired. Use POST /api/v1/class-sessions/batch.',
+            'code' => 'legacy_subject_units_backfill_retired',
+        ], 410);
+
         $data = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
@@ -62,7 +67,7 @@ class BackfillController extends Controller
         } elseif (!empty($data['courses'])) {
             $subjectMap = [
                 'Chinese' => '國文', 'English' => '英文', 'Math' => '數學',
-                'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '自然', 'Social' => '社會',
+                'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '理化', 'Biology' => '生物', 'Social' => '社會',
             ];
             foreach ($data['courses'] as $c) {
                 $daysToUse = isset($c['days_of_week']) && is_array($c['days_of_week']) && count($c['days_of_week']) > 0
@@ -131,7 +136,9 @@ class BackfillController extends Controller
                                 'CreatedByUserID' => $approvedBy,
                                 'Content' => '補登／納入科目數',
                                 'Subject' => $subjectName,
-                                'SessionDate' => $sessionDate,
+                                'SessionDate' => $session->SessionDate,
+                                'StartTime' => $session->StartTime,
+                                'EndTime' => $session->EndTime,
                                 'Status' => 'approved',
                                 'ApprovedBy' => $approvedBy,
                                 'ApprovedAt' => now(),

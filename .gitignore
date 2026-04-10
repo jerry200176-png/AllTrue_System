@@ -8,6 +8,7 @@
 .npm/
 .vscode/
 .ssh/
+.gitconfig
 .bash_history
 .bashrc
 .bash_logout
@@ -32,6 +33,8 @@ backend/vendor/
 backend/vendor.bak/
 frontend/node_modules/
 frontend/dist/
+frontend/dist_build/
+backend/public/assets/
 
 # Local data volumes
 data/
@@ -39,3 +42,12 @@ data/
 # OS/editor artifacts
 .DS_Store
 Thumbs.db
+
+# Test/runtime cache files
+backend/.phpunit.result.cache
+backend/storage/framework/testing/
+backend/storage/framework/views/*.php
+
+# Local machine artifacts
+*.exe
+.claude.json

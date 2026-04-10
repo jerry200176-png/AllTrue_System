@@ -17,45 +17,107 @@ class AttendanceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = StudentSignIn::query();
+        $query = DB::table('StudentSingIn as si')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
+            ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
+            ->leftJoin('Teacher as t', 't.id', '=', 'si.TeacherID')
+            ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
+            ->leftJoin('Campus as c', 'c.id', '=', 'si.CampusID')
+            ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
+            ->leftJoin('Teacher as sct', 'sct.id', '=', 'sc.TeacherID')
+            ->leftJoin('User as scu', 'scu.id', '=', 'sc.TeacherID')
+            ->select([
+                'si.*',
+                'st.name as student_name',
+                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                'st.CampusID as student_campus_id',
+                'c.name as campus_name',
+                'sub.Subject_Name as subject_name',
+                DB::raw("COALESCE(sct.T_Name, scu.Name, '') as course_teacher_name"),
+                'sc.ClassType as class_type',
+            ]);
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $selectedCampusId = null;
+
+        if ($request->filled('branch_id')) {
+            $bid = (int) $request->input('branch_id');
+            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($bid, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $selectedCampusId = $bid;
+        }
 
         if ($role === 'teacher') {
             $teacherId = $request->attributes->get('auth_teacher_id');
             if (!$teacherId) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            $query->where('TeacherID', $teacherId);
+            $query->where('si.TeacherID', $teacherId);
         }
 
         // Use the CampusID stored on the attendance record itself (snapshot at
         // sign-in time) instead of the student's current CampusID. This ensures
         // records stay with the correct branch even after a student transfers.
-        if (!empty($campusIds)) {
+        if ($selectedCampusId !== null) {
+            $query->where(function ($q) use ($selectedCampusId) {
+                $q->where('si.CampusID', $selectedCampusId)
+                  ->orWhere(function ($q2) use ($selectedCampusId) {
+                      // Fallback for legacy records that don't have CampusID set
+                      $q2->whereNull('si.CampusID')
+                         ->whereIn('si.StudentID', Student::where('CampusID', $selectedCampusId)->pluck('id'));
+                  });
+            });
+        } elseif (!empty($campusIds)) {
             $query->where(function ($q) use ($campusIds) {
-                $q->whereIn('CampusID', $campusIds)
+                $q->whereIn('si.CampusID', $campusIds)
                   ->orWhere(function ($q2) use ($campusIds) {
                       // Fallback for legacy records that don't have CampusID set
-                      $q2->whereNull('CampusID')
-                         ->whereIn('StudentID', Student::whereIn('CampusID', $campusIds)->pluck('id'));
+                      $q2->whereNull('si.CampusID')
+                         ->whereIn('si.StudentID', Student::whereIn('CampusID', $campusIds)->pluck('id'));
                   });
             });
         }
 
         if ($request->filled('student_id')) {
-            $query->where('StudentID', $request->input('student_id'));
+            $query->where('si.StudentID', $request->input('student_id'));
         }
 
         if ($request->filled('student_class_id')) {
-            $query->where('StudentClassID', $request->input('student_class_id'));
+            $query->where('si.StudentClassID', $request->input('student_class_id'));
         }
 
         if ($request->filled('date')) {
-            $query->whereDate('SignInDT', $request->input('date'));
+            $query->whereDate('si.SignInDT', $request->input('date'));
         }
 
-        $records = $query->orderBy('id', 'desc')->paginate(20);
+        $records = $query->orderByDesc('si.id')->paginate((int) ($request->input('per_page', 20)));
+        $statusLabelMap = [
+            'present' => '到班',
+            'late' => '遲到',
+            'excused' => '請假',
+            'absent' => '缺席',
+            'leave' => '離班',
+        ];
+
+        $records->getCollection()->transform(function ($row) use ($statusLabelMap) {
+            $personType = strtolower((string) ($row->PersonType ?? 'student'));
+            $isTeacher = $personType === 'teacher';
+            $personName = $isTeacher
+                ? ($row->teacher_name ?: ($row->student_name ?: '—'))
+                : ($row->student_name ?: ($row->teacher_name ?: '—'));
+
+            $row->person_name = $personName;
+            $row->person_type_label = $isTeacher ? '老師' : '學生';
+            $row->status_label = $statusLabelMap[$row->Status] ?? $row->Status;
+            if (empty($row->campus_name) && !empty($row->student_campus_id)) {
+                $row->campus_name = '分校 #' . $row->student_campus_id;
+            }
+            $row->subject_name = $row->subject_name ?? '';
+            $row->course_teacher_name = $row->course_teacher_name ?? '';
+            $row->class_type = $row->class_type ?? '';
+            return $row;
+        });
 
         return response()->json($records);
     }
@@ -105,21 +167,29 @@ class AttendanceController extends Controller
                 ->all();
         }
 
-        $list = $sessions->map(function (ClassSession $cs) use ($subjectNames) {
+        $teacherIds = $sessions->pluck('studentClass.TeacherID')->filter()->unique()->values();
+        $teacherNames = [];
+        if ($teacherIds->isNotEmpty()) {
+            $teacherNames = DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id')->all();
+        }
+
+        $list = $sessions->map(function (ClassSession $cs) use ($subjectNames, $teacherNames) {
             $sc = $cs->studentClass;
             $student = $sc ? $sc->student : null;
             $subjectId = $sc ? ($sc->SubjectID ?? 0) : 0;
+            $teacherId = $sc ? (int) ($sc->TeacherID ?? 0) : 0;
             return [
                 'id' => $cs->id,
                 'class_session_id' => $cs->id,
                 'student_class_id' => $cs->StudentClassID,
                 'student_id' => $sc ? (int) $sc->StudentID : null,
-                'teacher_id' => $sc ? (int) $sc->TeacherID : null,
+                'teacher_id' => $teacherId,
                 'session_date' => $cs->SessionDate ? Carbon::parse($cs->SessionDate)->toDateString() : null,
                 'start_time' => $cs->StartTime,
                 'end_time' => $cs->EndTime,
                 'student_name' => $student ? $student->name : '—',
                 'subject_name' => $subjectNames[$subjectId] ?? '—',
+                'teacher_name' => $teacherNames[$teacherId] ?? '—',
             ];
         })->values()->all();
 
@@ -128,7 +198,7 @@ class AttendanceController extends Controller
 
     /**
      * 手動點名：依「該節」登記出缺勤。可帶 ClassSessionID 或 StudentClassID + SessionDate + StartTime + EndTime 唯一對應一節。
-     * 僅該節結束後才可點名；點名成功且狀態為 present/late 時觸發扣堂。
+     * 預設僅該節結束後才可點名；老師可用 mark_mode=arrival 在到班時即點名核課。
      */
     public function store(Request $request)
     {
@@ -145,6 +215,7 @@ class AttendanceController extends Controller
             'Hours' => 'nullable|integer',
             'Memo' => 'nullable|string|max:512',
             'Status' => 'nullable|in:present,absent,late,excused',
+            'mark_mode' => 'nullable|in:arrival,ended',
         ]);
 
         return DB::transaction(function () use ($data) {
@@ -154,10 +225,14 @@ class AttendanceController extends Controller
             }
 
             $role = request()->attributes->get('auth_role');
+            $authUser = request()->attributes->get('auth_user');
+            $recordedByUserId = (int) ($authUser->id ?? 0);
             $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
+            $authTeacherId = 0;
             if ($role === 'teacher') {
-                $teacherId = request()->attributes->get('auth_teacher_id');
-                if (!$teacherId || (int) $studentClass->TeacherID !== (int) $teacherId) {
+                $teacherId = (int) (request()->attributes->get('auth_teacher_id') ?? 0);
+                $authTeacherId = $teacherId;
+                if ($teacherId <= 0 || (int) $studentClass->TeacherID !== $teacherId) {
                     return response()->json(['message' => 'Forbidden'], 403);
                 }
             }
@@ -188,9 +263,12 @@ class AttendanceController extends Controller
                 ]);
             }
 
-            // 該節結束後才能點名
+            $markMode = (string) ($data['mark_mode'] ?? 'ended');
+            $allowArrivalRoles = ['teacher', 'director', 'admin', 'super_admin'];
+            $allowArrivalMark = in_array((string) $role, $allowArrivalRoles, true) && $markMode === 'arrival';
+            // 預設規則：該節結束後才能點名；老師在 arrival 模式可到班即核課
             $sessionEnd = Carbon::parse($classSession->SessionDate . ' ' . $classSession->EndTime);
-            if ($sessionEnd->gt(now())) {
+            if (!$allowArrivalMark && $sessionEnd->gt(now())) {
                 return response()->json(['message' => '該節尚未結束，無法點名'], 422);
             }
 
@@ -204,6 +282,11 @@ class AttendanceController extends Controller
             [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
 
             $status = $data['Status'] ?? 'present';
+            $effectiveTeacherId = (int) ($data['TeacherID'] ?? $studentClass->TeacherID);
+            if ($authTeacherId > 0) {
+                // 老師端一律以登入教師身分寫入，避免 payload 偽造
+                $effectiveTeacherId = $authTeacherId;
+            }
 
             // Snapshot the student's current CampusID so the record stays
             // correctly attributed even if the student later transfers.
@@ -212,7 +295,8 @@ class AttendanceController extends Controller
             $signIn = StudentSignIn::create([
                 'StudentClassID' => $studentClass->ID,
                 'StudentID' => $data['StudentID'],
-                'TeacherID' => $data['TeacherID'] ?? $studentClass->TeacherID,
+                'TeacherID' => $effectiveTeacherId,
+                'RecordedByUserID' => $recordedByUserId > 0 ? $recordedByUserId : null,
                 'GradeID' => $studentClass->GradeID,
                 'SubjectID' => $studentClass->SubjectID,
                 'Get1byID' => $studentClass->by1,
@@ -235,7 +319,24 @@ class AttendanceController extends Controller
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
             }
 
-            return response()->json($signIn, 201);
+            $payload = $signIn->toArray();
+            $payload['mark_mode'] = $allowArrivalMark ? 'arrival' : 'ended';
+            $payload['person_name'] = $student->name ?? '';
+            $payload['person_type_label'] = '學生';
+            $payload['status_label'] = match ($status) {
+                'present' => '到班',
+                'late' => '遲到',
+                'excused' => '請假',
+                'absent' => '缺席',
+                'leave' => '離班',
+                default => (string) $status,
+            };
+            $payload['campus_name'] = null;
+            if (!empty($student->CampusID)) {
+                $payload['campus_name'] = optional(Campus::find((int) $student->CampusID))->name;
+            }
+            $payload['recorded_by_name'] = $recordedByUserId > 0 ? ($authUser->Name ?? '') : '';
+            return response()->json($payload, 201);
         });
     }
 
@@ -303,6 +404,7 @@ class AttendanceController extends Controller
                     'StudentClassID' => $studentClass->ID,
                     'StudentID' => $student->id,
                     'TeacherID' => $studentClass->TeacherID,
+                    'RecordedByUserID' => null,
                     'GradeID' => $studentClass->GradeID,
                     'SubjectID' => $studentClass->SubjectID,
                     'Get1byID' => $studentClass->by1,
@@ -315,9 +417,16 @@ class AttendanceController extends Controller
                     'Status' => $status,
                     'CampusID' => $campusId,
                     'PersonType' => 'student',
+                    'SessionDeducted' => false,
                 ]);
 
                 $this->applyAttendanceEffects($matchedSession, $status);
+
+                // Swipe is also a valid attendance source; keep deduction
+                // behavior consistent with manual attendance.
+                if (in_array($status, ['present', 'late'], true) && !$signIn->SessionDeducted) {
+                    SessionDeductionService::deductOnAttendance($studentClass, $signIn);
+                }
 
                 return response()->json($signIn, 201);
             });

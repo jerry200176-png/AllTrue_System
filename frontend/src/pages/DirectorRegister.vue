@@ -24,8 +24,8 @@
           <input v-model="form.name" type="text" placeholder="您的姓名" required />
         </div>
         <div class="form-group">
-          <label>Email（登入帳號）</label>
-          <input v-model="form.email" type="email" placeholder="email@example.com" required />
+          <label>登入帳號</label>
+          <input v-model="form.account" type="text" placeholder="例如：director001" required />
         </div>
         <div class="form-group">
           <label>密碼</label>
@@ -51,11 +51,21 @@ const emit = defineEmits(['switch-mode']);
 const branches = ref([]);
 const branchesLoading = ref(true);
 const branchesError = ref('');
+const FALLBACK_BRANCHES = [
+  { id: 1, name: '興隆分校', code: 'xinglong' },
+  { id: 2, name: '新店分校', code: 'xindian' },
+  { id: 3, name: '大安分校', code: 'daan' },
+  { id: 4, name: '木柵分校', code: 'muzha' },
+  { id: 5, name: '東湖分校', code: 'donghu' },
+  { id: 6, name: '大直分校', code: 'dazhi' },
+  { id: 7, name: '汐止分校', code: 'xizhi' },
+  { id: 8, name: '內湖分校', code: 'neihu' },
+];
 
 const form = reactive({
   campus_id: '',
   name: '',
-  email: '',
+  account: '',
   password: '',
 });
 
@@ -67,21 +77,21 @@ onMounted(async () => {
     const text = await res.text();
     if (!res.ok) {
       branchesError.value = '無法載入分校列表，請稍後再試';
-      branches.value = [{ id: 1, name: '大安分校', code: 'daan' }];
+      branches.value = FALLBACK_BRANCHES;
     } else {
       try {
         const data = JSON.parse(text);
-        branches.value = Array.isArray(data) ? data : [{ id: 1, name: '大安分校', code: 'daan' }];
+        branches.value = Array.isArray(data) ? data : FALLBACK_BRANCHES;
         if (!form.campus_id && branches.value.length > 0) {
           form.campus_id = branches.value[0].id;
         }
       } catch {
-        branches.value = [{ id: 1, name: '大安分校', code: 'daan' }];
+        branches.value = FALLBACK_BRANCHES;
       }
     }
   } catch (e) {
     branchesError.value = '網路連線異常，請檢查後重試';
-    branches.value = [{ id: 1, name: '大安分校', code: 'daan' }];
+    branches.value = FALLBACK_BRANCHES;
   } finally {
     branchesLoading.value = false;
   }
@@ -93,7 +103,7 @@ const success = ref(false);
 
 async function submit() {
   error.value = '';
-  if (!form.name || !form.email || !form.password || !form.campus_id) {
+  if (!form.name || !form.account || !form.password || !form.campus_id) {
     error.value = '請填寫所有欄位';
     return;
   }
@@ -108,7 +118,7 @@ async function submit() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: form.name,
-        email: form.email,
+        account: form.account,
         password: form.password,
         campus_id: Number(form.campus_id),
       }),

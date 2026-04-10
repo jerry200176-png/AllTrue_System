@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+GetRFID.py — 樹莓派 + RC522（SPI），以 IRQ 等待感應後讀取 UID，呼叫 AllTrue swipe-rfid API，
+並依回傳的 student.TelegramID / TelegramID1 / TelegramID2 發送 Telegram 訊息。
+
+硬體與函式庫參考：pi-rc522（Raspberry Pi SPI RFID RC522）
+https://github.com/ondryaso/pi-rc522
+
+接線（BOARD 腳位編號，與專案 README 一致）：
+  SDA→24, SCK→23, MOSI→19, MISO→21, IRQ→18, GND→GND, RST→22, 3.3V→3.3V
+
+環境變數（建議用 systemd EnvironmentFile 或 export）：
+  SWIPE_RFID_URL   預設 https://YOUR_HOST/api/v1/swipe-rfid
+  BRANCH_CODE      預設 daan（大安分校 Campus.code）
+  CAMPUS_TOKEN     必填：資料庫 Campus.Token（Authorization Bearer）
+
+範例：
+  export SWIPE_RFID_URL="https://daan.example.com/api/v1/swipe-rfid"
+  export BRANCH_CODE="daan"
+  export CAMPUS_TOKEN="<大安分校的 Token>"
+  python3 GetRFID.py
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from typing import Any, Optional
+
+import requests
+
+try:
+    from pirc522 import RFID
+except ImportError:
+    print("請安裝 pi-rc522：pip install pi-rc522", file=sys.stderr)
+    sys.exit(1)
+
+# ── 設定（可改環境變數）────────────────────────────────────────────
+# 可填完整 URL 或僅基底網址（自動補 /api/v1/swipe-rfid）
+_RAW_API = os.environ.get("SWIPE_RFID_URL", "https://localhost").strip().rstrip("/")
+if "/api/v1/swipe-rfid" in _RAW_API or _RAW_API.endswith("swipe-rfid"):
+    SWIPE_RFID_URL = _RAW_API
+else:
+    SWIPE_RFID_URL = _RAW_API + "/api/v1/swipe-rfid"
+
+BRANCH_CODE = os.environ.get("BRANCH_CODE", "daan")
+CAMPUS_TOKEN = os.environ.get("CAMPUS_TOKEN", "").strip()
+
+# IRQ：BOARD 物理腳位 18（對應 RC522 的 IRQ，見 pi-rc522 README）
+PIN_IRQ_BOARD = int(os.environ.get("RC522_PIN_IRQ", "18"))
+# RST：預設 BOARD 22；若改線請設 RC522_PIN_RST
+PIN_RST_BOARD = int(os.environ.get("RC522_PIN_RST", "22"))
+
+# 防連抖：同一張卡兩次成功上傳的最短間隔（秒）
+DEBOUNCE_SEC = float(os.environ.get("RFID_DEBOUNCE_SEC", "2.0"))
+
+# SPI：預設 bus=0, device=0（CE0）；若接 CE1 則 device=1
+SPI_BUS = int(os.environ.get("RC522_SPI_BUS", "0"))
+SPI_DEVICE = int(os.environ.get("RC522_SPI_DEVICE", "0"))
+
+TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+def uid_bytes_to_hex(uid: list) -> str:
+    """將 anticoll() 回傳轉成十六進位字串（大寫、無分隔符）。
+    anticoll 成功時通常為 5 bytes：4 bytes UID + 1 byte XOR 校驗，只取前 4 bytes。
+    """
+    if not uid:
+        return ""
+    raw = [int(x) & 0xFF for x in uid]
+    if len(raw) >= 5:
+        raw = raw[:4]
+    return "".join(f"{b:02X}" for b in raw)
+
+
+def post_swipe(branch_code: str, rfid_hex: str, bearer: str) -> tuple[int, dict[str, Any]]:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {bearer}",
+    }
+    body = {"branch_code": branch_code, "rfid": rfid_hex}
+    r = requests.post(SWIPE_RFID_URL, headers=headers, json=body, timeout=30)
+    try:
+        data = r.json()
+    except Exception:
+        data = {"_raw": r.text[:500]}
+    return r.status_code, data
+
+
+def send_telegram(bot_token: str, chat_id: Any, text: str) -> bool:
+    if not bot_token or chat_id is None:
+        return False
+    s = str(chat_id).strip()
+    if not s:
+        return False
+    url = TELEGRAM_API.format(token=bot_token)
+    try:
+        resp = requests.post(
+            url,
+            json={"chat_id": s, "text": text},
+            timeout=15,
+        )
+        return resp.ok
+    except requests.RequestException:
+        return False
+
+
+def notify_student_telegram(payload: dict[str, Any], rfid_hex: str) -> None:
+    """依 API 回傳的 student Telegram 欄位與 campus.TelegramToken 發送訊息。"""
+    if payload.get("type") != "student" or not payload.get("ok"):
+        return
+    campus = payload.get("campus") or {}
+    bot_token = campus.get("TelegramToken") or ""
+    if not bot_token:
+        print("[Telegram] 回應無 campus.TelegramToken，略過發送")
+        return
+    student = payload.get("student") or {}
+    name = student.get("name") or ""
+    action = payload.get("action") or ""
+    action_label = "到班" if action == "sign_in" else "離班" if action == "sign_out" else action
+    text = f"[{BRANCH_CODE}] {name or '學生'} {action_label}\nRFID: {rfid_hex}"
+    for key in ("TelegramID", "TelegramID1", "TelegramID2"):
+        cid = student.get(key)
+        if send_telegram(bot_token, cid, text):
+            print(f"[Telegram] 已傳送至 {key}={cid}")
+        elif cid:
+            print(f"[Telegram] 傳送失敗 {key}={cid}")
+
+
+def main() -> None:
+    if not CAMPUS_TOKEN:
+        print(
+            "請設定環境變數 CAMPUS_TOKEN（大安分校範例：資料庫 Campus 表中該分校的 Token）",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"API: {SWIPE_RFID_URL}")
+    print(f"分校: {BRANCH_CODE} | IRQ BOARD pin: {PIN_IRQ_BOARD} | RST BOARD pin: {PIN_RST_BOARD}")
+
+    # pirc522 會於建構時設定 GPIO、並在 IRQ 腳位註冊 FALLING 邊緣（見 irq_callback / wait_for_tag）
+    try:
+        import RPi.GPIO as GPIO  # noqa: F401 — pi-rc522 依賴；若缺代表非樹莓派環境
+    except ImportError:
+        print("請在樹莓派上安裝 RPi.GPIO：pip install RPi.GPIO", file=sys.stderr)
+        sys.exit(1)
+
+    rdr = RFID(
+        bus=SPI_BUS,
+        device=SPI_DEVICE,
+        pin_rst=PIN_RST_BOARD,
+        pin_irq=PIN_IRQ_BOARD,
+        pin_mode=GPIO.BOARD,
+    )
+
+    last_uid_hex: Optional[str] = None
+    last_ok_time = 0.0
+
+    try:
+        while True:
+            # wait_for_tag() 內部依 IRQ 等待卡片事件（pi-rc522 實作）
+            rdr.wait_for_tag()
+            (err, _tag_type) = rdr.request()
+            if err:
+                continue
+            (err, uid) = rdr.anticoll()
+            if err or not uid:
+                continue
+            rfid_hex = uid_bytes_to_hex(uid)
+            now = time.time()
+            if rfid_hex == last_uid_hex and (now - last_ok_time) < DEBOUNCE_SEC:
+                continue
+            print(f"[RFID] 讀取 UID: {rfid_hex}")
+
+            status, body = post_swipe(BRANCH_CODE, rfid_hex, CAMPUS_TOKEN)
+            print(f"[API] HTTP {status} {json.dumps(body, ensure_ascii=False)[:800]}")
+
+            if status == 401:
+                print("[API] 401：請檢查 CAMPUS_TOKEN 是否與該分校 Campus.Token 一致")
+            elif status in (200, 201) and body.get("ok"):
+                last_uid_hex = rfid_hex
+                last_ok_time = now
+                notify_student_telegram(body, rfid_hex)
+            # 未知卡仍可能回 404 + campus.TelegramToken；可依需求在此也發管理員通知
+
+            try:
+                rdr.stop_crypto()
+            except Exception:
+                pass
+
+    except KeyboardInterrupt:
+        print("\n結束")
+    finally:
+        rdr.cleanup()
+
+
+if __name__ == "__main__":
+    main()

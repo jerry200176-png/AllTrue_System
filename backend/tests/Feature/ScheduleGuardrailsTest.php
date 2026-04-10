@@ -1,0 +1,422 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AuthToken;
+use App\Models\Student;
+use App\Models\User;
+use App\Models\UserCampus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+class ScheduleGuardrailsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_one_on_two_third_student_is_blocked_on_same_slot(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-a@example.com');
+
+        $studentA = $this->createStudent(1, '學生A');
+        $studentB = $this->createStudent(1, '學生B');
+        $studentC = $this->createStudent(1, '學生C');
+
+        $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '16:00',
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentB->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '16:00',
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentC->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '16:00',
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+        ])->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
+    public function test_existing_one_on_one_blocks_new_one_on_two_on_same_slot(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-b@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-b@example.com');
+
+        $studentA = $this->createStudent(1, '學生D');
+        $studentB = $this->createStudent(1, '學生E');
+
+        $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_one',
+            'start_time' => '17:00',
+            'first_class_date' => '2026-03-31',
+            'days_of_week' => [2],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentB->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '17:00',
+            'first_class_date' => '2026-03-31',
+            'days_of_week' => [2],
+        ])->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
+    public function test_room_capacity_three_allows_only_two_students_same_slot(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-c@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-c@example.com');
+
+        $roomId = DB::table('rooms')->insertGetId([
+            'campus_id' => 1,
+            'name' => '301教室',
+            'capacity' => 3,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $studentA = $this->createStudent(1, '學生F');
+        $studentB = $this->createStudent(1, '學生G');
+        $studentC = $this->createStudent(1, '學生H');
+
+        $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'room_id' => $roomId,
+            'start_time' => '18:00',
+            'first_class_date' => '2026-04-01',
+            'days_of_week' => [3],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentB->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'room_id' => $roomId,
+            'start_time' => '18:00',
+            'first_class_date' => '2026-04-01',
+            'days_of_week' => [3],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentC->id, $teacherId, [
+            'class_type' => 'one_on_three',
+            'room_id' => $roomId,
+            'start_time' => '18:00',
+            'first_class_date' => '2026-04-01',
+            'days_of_week' => [3],
+        ])->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'room_capacity');
+    }
+
+    public function test_schedule_reschedule_target_is_blocked_when_teacher_already_full(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-d@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-d@example.com');
+
+        $studentA = $this->createStudent(1, '學生I');
+        $studentB = $this->createStudent(1, '學生J');
+        $studentC = $this->createStudent(1, '學生K');
+
+        $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '16:00',
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+        ])->assertCreated();
+
+        $this->createCourseViaApi($token, $studentB->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '16:00',
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+        ])->assertCreated();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentC->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-06',
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity')
+            ->assertJsonStructure([
+                'conflicts' => [
+                    [
+                        'overlap_summary',
+                        'overlap_details',
+                    ],
+                ],
+            ]);
+    }
+
+    public function test_stale_scheduled_overrides_do_not_double_count_when_class_session_exists(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-e@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-e@example.com');
+
+        $studentA = $this->createStudent(1, '學生L');
+        $studentB = $this->createStudent(1, '學生M');
+
+        $courseRes = $this->createCourseViaApi($token, $studentA->id, $teacherId, [
+            'class_type' => 'one_on_two',
+            'start_time' => '18:00',
+            'first_class_date' => '2026-04-07',
+            'days_of_week' => [2],
+        ])->assertCreated();
+
+        $courseId = (int) ($courseRes->json('ID') ?? $courseRes->json('id') ?? 0);
+        if ($courseId <= 0) {
+            $courseId = (int) (DB::table('StudentClass')
+                ->where('StudentID', $studentA->id)
+                ->where('TeacherID', $teacherId)
+                ->max('ID') ?? 0);
+        }
+        $this->assertTrue($courseId > 0, 'Course ID should be available for stale override test.');
+
+        // Simulate stale scheduled overrides left from prior adjustments.
+        DB::table('schedules')->insert([
+            [
+                'student_id' => $studentA->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'day_of_week' => 2,
+                'start_time' => '16:00',
+                'end_time' => '18:00',
+                'duration_hours' => 2,
+                'class_type' => 'one_on_two',
+                'status' => 'scheduled',
+                'type' => 'normal',
+                'deduction' => 1,
+                'branch_id' => 1,
+                'schedule_date' => '2026-04-07',
+                'student_course_id' => $courseId,
+                'original_schedule_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'student_id' => $studentA->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'day_of_week' => 2,
+                'start_time' => '16:30',
+                'end_time' => '18:30',
+                'duration_hours' => 2,
+                'class_type' => 'one_on_two',
+                'status' => 'scheduled',
+                'type' => 'normal',
+                'deduction' => 1,
+                'branch_id' => 1,
+                'schedule_date' => '2026-04-07',
+                'student_course_id' => $courseId,
+                'original_schedule_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentB->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-07',
+        ]);
+
+        $res->assertCreated();
+    }
+
+    public function test_duplicate_schedules_of_same_student_count_as_one_for_capacity(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-f@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-f@example.com');
+
+        $studentA = $this->createStudent(1, '學生N');
+        $studentB = $this->createStudent(1, '學生O');
+
+        DB::table('schedules')->insert([
+            [
+                'student_id' => $studentA->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'day_of_week' => 3,
+                'start_time' => '16:00',
+                'end_time' => '18:00',
+                'duration_hours' => 2,
+                'class_type' => 'one_on_two',
+                'status' => 'scheduled',
+                'type' => 'normal',
+                'deduction' => 1,
+                'branch_id' => 1,
+                'schedule_date' => '2026-04-08',
+                'student_course_id' => null,
+                'original_schedule_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'student_id' => $studentA->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'day_of_week' => 3,
+                'start_time' => '16:30',
+                'end_time' => '18:30',
+                'duration_hours' => 2,
+                'class_type' => 'one_on_two',
+                'status' => 'scheduled',
+                'type' => 'normal',
+                'deduction' => 1,
+                'branch_id' => 1,
+                'schedule_date' => '2026-04-08',
+                'student_course_id' => null,
+                'original_schedule_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentB->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 3,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-08',
+        ]);
+
+        $res->assertCreated();
+    }
+
+    /**
+     * @param  array<int>  $campusIds
+     */
+    private function createDirectorToken(array $campusIds, string $loginName): string
+    {
+        $user = User::create([
+            'LoginName' => $loginName,
+            'Name' => '主任測試',
+            'PSW' => 'secret',
+            'type' => 'A',
+            'phone' => '0912345678',
+            'MustChangePassword' => false,
+        ]);
+
+        foreach ($campusIds as $campusId) {
+            UserCampus::create([
+                'CampusID' => $campusId,
+                'UserID' => $user->id,
+                'Admin' => 1,
+                'Approved' => 1,
+            ]);
+        }
+
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $user->id,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
+    }
+
+    private function createTeacher(int $campusId, string $loginName): int
+    {
+        $teacher = User::create([
+            'LoginName' => $loginName,
+            'Name' => '老師測試',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0922000000',
+            'MustChangePassword' => false,
+        ]);
+
+        UserCampus::create([
+            'CampusID' => $campusId,
+            'UserID' => $teacher->id,
+            'Admin' => 0,
+            'Approved' => 1,
+        ]);
+
+        return (int) $teacher->id;
+    }
+
+    private function createStudent(int $campusId, string $name): Student
+    {
+        return Student::create([
+            'name' => $name,
+            'CampusID' => $campusId,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createCourseViaApi(string $token, int $studentId, int $teacherId, array $overrides = []): \Illuminate\Testing\TestResponse
+    {
+        $payload = array_merge([
+            'student_id' => $studentId,
+            'subject' => 'Math',
+            'teacher_id' => $teacherId,
+            'class_type' => 'one_on_one',
+            'rate_per_30min' => 500,
+            'duration_hours' => 2,
+            'payment_type' => 'session',
+            'sessions_purchased' => 8,
+            'sessions_used' => 0,
+            'remaining_sessions' => 8,
+            'first_class_date' => '2026-03-30',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+            'Memo' => '測試課程',
+        ], $overrides);
+
+        return $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/student-classes', $payload);
+    }
+}

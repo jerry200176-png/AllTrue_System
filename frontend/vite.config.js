@@ -1,9 +1,14 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
+const buildTimeIso = new Date().toISOString();
+
 export default defineConfig({
   base: './',
   cacheDir: './.vite_cache',
+  define: {
+    __APP_BUILD_TIME__: JSON.stringify(buildTimeIso),
+  },
   plugins: [vue()],
   build: {
     outDir: 'dist_build',

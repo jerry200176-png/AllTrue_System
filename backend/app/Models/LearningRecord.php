@@ -12,16 +12,34 @@ class LearningRecord extends Model
     protected $fillable = [
         'StudentClassID', 'ClassSessionID', 'TeacherID', 'CreatedByUserID',
         'Content', 'AttachmentUrl', 'Status', 'ApprovedBy', 'ApprovedAt',
-        'ExcludeFromSubjectCount', 'ReviewNote', 'Subject',
+        'SessionDeducted', 'ExcludeFromSubjectCount', 'ReviewNote', 'Subject',
         'SessionDate', 'StartTime', 'EndTime',
         'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework',
         'Performance', 'Comment',
+        'VoidedAt', 'VoidedByUserID', 'VoidReason',
     ];
 
     protected $casts = [
+        'SessionDeducted'        => 'boolean',
         'ExcludeFromSubjectCount' => 'boolean',
-        'ApprovedAt' => 'datetime',
+        'ApprovedAt'             => 'datetime',
+        'VoidedAt'               => 'datetime',
     ];
+
+    public function scopeActive($query)
+    {
+        return $query->whereNull('VoidedAt');
+    }
+
+    public function scopeVoided($query)
+    {
+        return $query->whereNotNull('VoidedAt');
+    }
+
+    public function isVoided(): bool
+    {
+        return $this->VoidedAt !== null;
+    }
 
     public function studentClass()
     {

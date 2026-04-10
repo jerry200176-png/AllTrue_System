@@ -13,7 +13,8 @@ class TempRfid extends Model
     protected $table = 'TempRfid';
     public $timestamps = false;
 
-    protected $fillable = ['CampusID', 'RFID'];
+    /** @var list<string> created_at 需可寫入：swipe 更新 RFID 時一併刷新，供 5 分鐘效期計算 */
+    protected $fillable = ['CampusID', 'RFID', 'created_at'];
 
     public const VALID_MINUTES = 5;
 }

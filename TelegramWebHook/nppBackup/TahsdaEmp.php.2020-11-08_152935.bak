@@ -1,0 +1,111 @@
+<?php 
+
+$TOKEN = "1352098426:AAGO_fGiMgbsLdEZzKPRonPzTvGF4xN7JTA";
+$API_URL = "https://api.telegram.org/bot$TOKEN/";  #網址最後的斜線不可刪除
+//$API_URL = "https://api.telegram.org/bot$TOKEN/sendMessage";  
+
+$content = file_get_contents("php://input");
+$date = new DateTime();
+error_log("Input ".$content."\n", 3, "Log/TahsdaEmpWebHook".$date->format('Ymd').".log");
+//error_log("Input ".$content."\n", 3, "TahsdaWebHook".$date->format('Y-m-d_H:i:s').".log");
+
+$update = json_decode($content, true);
+$chatID = $update["message"]["chat"]["id"];
+$MessageText = $update["message"]["text"];
+
+$inlineQuery = isset($update["inline_query"]) ? $update["inline_query"] : ""; 
+
+$inline_button = array();
+switch ($MessageText) {
+	case '/start':
+		$PutMessage = json_decode(CheckTelegramID ($chatID));
+//		array_push($inline_button, array("text"=>"臺安官網","url"=>"https://www.tahsda.org.tw"));
+//		array_push($inline_button, array("text"=>"身分驗證","callback_data"=>'/InputPID'));
+//		$inline_keyboard = [$inline_button];
+		if ($PutMessage["Status"] != 0) {
+			$parameters["text"] = $PutMessage;
+		}
+		break;
+	case '/InputPID':
+		array_push($inline_button, array("text"=>"臺安官網","url"=>"https://www.tahsda.org.tw"));
+		array_push($inline_button, array("text"=>"身分驗證","callback_data"=>'/InputPID'));
+		$inline_keyboard = [$inline_button];
+		$parameters["text"] = '請輸入您的身份證字號';
+		break;
+	
+}	
+//print_r($inline_keyboard);
+//$inline_button1 = array("text"=>"臺安官網","url"=>"https://www.tahsda.org.tw");
+//$inline_button2 = array("text"=>"test","callback_data"=>'/test');
+//$inline_keyboard = [[$inline_button1,$inline_button2]];
+//print_r($inline_keyboard);
+//$keyboard=array("inline_keyboard"=>$inline_keyboard);
+//$replyMarkup = json_encode($keyboard);
+//$parameters["reply_markup"] = $replyMarkup;
+
+$parameters["method"] = 'sendMessage';
+$parameters["chat_id"] = $chatID;
+
+$handle = curl_init($API_URL);
+curl_setopt($handle, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($handle, CURLOPT_CONNECTTIMEOUT, 5);
+curl_setopt($handle, CURLOPT_TIMEOUT, 60);
+curl_setopt($handle, CURLOPT_POST, true);
+curl_setopt($handle, CURLOPT_POSTFIELDS, json_encode($parameters));
+//curl_setopt($handle, CURLOPT_POSTFIELDS, ($Params));
+curl_setopt($handle, CURLOPT_HTTPHEADER, array("Content-Type: application/json"));
+
+$response = curl_exec($handle);
+error_log("response ".$response."\n", 3, "Log/TahsdaEmpWebHook".$date->format('Ymd').".log");
+echo $response;
+ 
+ 
+function CheckTelegramID ($TelegramID) {
+	
+	$ch = curl_init();
+	$toURL = "https://phpsrv.tahsda.org.tw/WebService/Telegram_Bot/CheckTelegramID.php";
+	$post = array(
+		"TelegramID"=>$TelegramID
+	);
+	$options = array(
+		CURLOPT_URL=>$toURL,
+		CURLOPT_HEADER=>0,
+		CURLOPT_VERBOSE=>0,
+		CURLOPT_RETURNTRANSFER=>true,
+		CURLOPT_POST=>true,
+		CURLOPT_POSTFIELDS=>http_build_query($post),	
+		CURLOPT_SSL_VERIFYHOST=>0,	
+		CURLOPT_SSL_VERIFYPEER=>0
+	);
+
+	curl_setopt_array($ch, $options);
+	$output = curl_exec($ch);
+	curl_close($ch);
+//	echo strlen($output)."<br>";
+//	echo $output; 
+	return $output;  
+	var_dump(json_decode($output));
+	var_dump(json_decode($output, true));
+	// echo json_last_error(); 
+	// echo json_last_error_msg();
+}	
+/* 
+ 
+define('BOT_TOKEN', '1375677975:AAG3hDowFKhe-qKf6yb7r5hRDFQtP1k4zqQ');
+define('API_URL', 'https://api.telegram.org/bot'.BOT_TOKEN.'/');
+ 
+// read incoming info and grab the chatID
+$content = file_get_contents("php://input");
+$update = json_decode($content, true);
+$chatID = $update["message"]["chat"]["id"];
+$got_message = $update["message"]["text"];
+
+// compose reply
+$reply =  $got_message;
+  
+// send reply
+$sendto = API_URL."sendmessage?chat_id=".$chatID."&text=".$reply;
+error_log($sendto."\n", 3, "WebHook.log");
+file_get_contents($sendto);
+*/
+?>

@@ -1,0 +1,14 @@
+<?php
+
+$ch = curl_init();
+$data = '{"update_id":185733251,"message":{"message_id":50,"from":{"id":999289055,"is_bot":false,"first_name":"Jerry","last_name":"Jeng","language_code":"zh-hant"},"chat":{"id":999289055,"first_name":"Jerry","last_name":"Jeng","type":"private"},"date":1603959522,"text":"test"}}';
+$data = '{"events":[{"type":"message","replyToken":"3d491daa137c4e33b1c3727c820b5b7d","source":{"groupId":"Cd0b772a366fe040cb85026efbaca8363","userId":"U9a8d1fe19cdf7704532f7dacca97cd51","type":"group"},"timestamp":1550020243644,"message":{"type":"text","id":"9346404643781","text":"246 診間 pacs  正常了 123"}}],"destination":"U4a98927318562bafe740ce6fc9d929e4"}';
+curl_setopt($ch, CURLOPT_URL, 'http://www.tahsda.org.tw/TelegramWebHook/');
+curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-type: application/json;charset=\"utf-8\""));
+curl_setopt($ch, CURLOPT_POST, 1);
+curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+curl_setopt($ch, CURLOPT_HEADER,0);
+curl_exec($ch);
+curl_close($ch);
+
+?>

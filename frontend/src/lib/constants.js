@@ -5,9 +5,13 @@
  */
 export const BRANCHES_LEGACY = [
     { id: 'daan', name: '大安分校 (Daan)' },
+    { id: 'dazhi', name: '大直分校 (Dazhi)' },
+    { id: 'donghu', name: '東湖分校 (Donghu)' },
     { id: 'muzha', name: '木柵分校 (Muzha)' },
+    { id: 'neihu', name: '內湖分校 (Neihu)' },
     { id: 'xinglong', name: '興隆分校 (Xinglong)' },
-    { id: 'xindian', name: '新店分校 (Xindian)' }
+    { id: 'xindian', name: '新店分校 (Xindian)' },
+    { id: 'xizhi', name: '汐止分校 (Xizhi)' },
 ];
 
 export const GRADES = [
@@ -26,11 +30,92 @@ export const GRADES = [
 ];
 
 export const SUBJECTS = [
-    { value: 'Chinese', label: '國文 (Chinese)' },
-    { value: 'English', label: '英文 (English)' },
-    { value: 'Math', label: '數學 (Math)' },
-    { value: 'Physics', label: '物理 (Physics)' },
-    { value: 'Chemistry', label: '化學 (Chemistry)' },
-    { value: 'Science', label: '自然 (Science)' },
-    { value: 'Social', label: '社會 (Social)' }
+    { value: 'Chinese', label: '國文' },
+    { value: 'English', label: '英文' },
+    { value: 'Math', label: '數學' },
+    { value: 'Science', label: '理化' },
+    { value: 'Chemistry', label: '化學' },
+    { value: 'Physics', label: '物理' },
+    { value: 'Biology', label: '生物' },
+    { value: 'Social', label: '社會' }
 ];
+
+const GRADE_TO_LEVEL = {
+    P1: 'elementary', P2: 'elementary', P3: 'elementary',
+    P4: 'elementary', P5: 'elementary', P6: 'elementary',
+    J1: 'junior', J2: 'junior', J3: 'junior',
+    H1: 'high', H2: 'high', H3: 'high',
+};
+
+const GRADE_ID_TO_LEVEL = {
+    1: 'elementary', 2: 'elementary', 3: 'elementary',
+    4: 'elementary', 5: 'elementary', 6: 'elementary',
+    7: 'junior', 8: 'junior', 9: 'junior',
+    10: 'high', 11: 'high', 12: 'high',
+};
+
+const LEVEL_LABELS = { elementary: '國小', junior: '國中', high: '高中' };
+
+const SUBJECT_NAME_MAP = {
+    Chinese: '國文', 國文: '國文',
+    English: '英文', 英文: '英文',
+    Math: '數學', Mathematics: '數學', 數學: '數學',
+    Social: '社會', 社會: '社會',
+    Science: '理化', 理化: '理化', 自然: '理化',
+    Physics: '物理', 物理: '物理',
+    Chemistry: '化學', 化學: '化學',
+    Biology: '生物', 生物: '生物',
+};
+
+export function getSubjectLabel(value) {
+    return SUBJECT_NAME_MAP[value] || value || '';
+}
+
+export function resolveGradeLevel(grade) {
+    if (!grade) return null;
+    if (GRADE_TO_LEVEL[grade]) return GRADE_TO_LEVEL[grade];
+    const num = Number(grade);
+    if (Number.isFinite(num) && GRADE_ID_TO_LEVEL[num]) return GRADE_ID_TO_LEVEL[num];
+    return null;
+}
+
+/**
+ * Check teacher scope against subject + student grade.
+ * Returns a warning string or null.
+ * @param {object} teacher - teacher object with subject_level_scopes[]
+ * @param {string} subjectValue - e.g. 'Math'
+ * @param {string|number|null} studentGrade - e.g. 'P3' or 7
+ * @param {object[]} subjectsList - subjects list with {id, name/Subject_Name}
+ */
+export function checkTeacherScope(teacher, subjectValue, studentGrade, subjectsList = []) {
+    if (!teacher || !subjectValue) return null;
+    const scopes = Array.isArray(teacher.subject_level_scopes) ? teacher.subject_level_scopes : [];
+    if (scopes.length === 0) return null;
+
+    const subjectEntry = subjectsList.find(
+        (s) => s.value === subjectValue || s.id === subjectValue
+    );
+    const subjectId = subjectEntry?.id ?? null;
+    if (!subjectId) return null;
+
+    const level = resolveGradeLevel(studentGrade);
+    const hasSubject = scopes.some((s) => Number(s.subject_id) === Number(subjectId));
+    const teacherName = teacher.username || teacher.name || teacher.Name || '';
+    const subjectLabel = SUBJECT_NAME_MAP[subjectValue] || subjectValue;
+    const levelLabel = level ? (LEVEL_LABELS[level] || level) : null;
+
+    if (!hasSubject) {
+        return `${teacherName} 的授課設定中沒有「${subjectLabel}」科目`;
+    }
+
+    if (level) {
+        const hasMatch = scopes.some(
+            (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
+        );
+        if (!hasMatch) {
+            return `${teacherName} 可教「${subjectLabel}」但未包含「${levelLabel}」學段`;
+        }
+    }
+
+    return null;
+}

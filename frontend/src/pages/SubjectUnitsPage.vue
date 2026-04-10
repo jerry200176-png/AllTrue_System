@@ -1,23 +1,27 @@
 <template>
   <div>
-    <HelpGuide
-      title="科目數統計 — 使用說明"
-      :items="[
-        '科目數依<strong>學生課程</strong>自動計算：一對一×1.5、一對二×0.75、一對三×0.5、輔導×0.5。',
-        '各老師總上課時數 ÷ 8 = 科目數；可切換月份查看不同時期。',
-        '資料來源為學生管理中的課程與排課，未建立課程前此頁會顯示尚無資料。'
-      ]"
-      tip="請先在學生管理中為學生建立課程並排課，統計資料才會產生。"
-    />
-
     <!-- Month Filter -->
-    <div class="card" style="margin-bottom: 20px;">
+    <div class="card" style="margin-bottom: 20px;" data-guide="subject-units-header">
       <div class="header-actions">
         <h2>📐 科目數統計</h2>
-        <div class="month-selector">
+        <div class="header-controls">
+          <div class="branch-selector">
+            <label>分校</label>
+            <select v-model="selectedBranchId" @change="loadData">
+              <option
+                v-for="b in branchOptions"
+                :key="b.id"
+                :value="b.id"
+              >
+                {{ b.name }}
+              </option>
+            </select>
+          </div>
+          <div class="month-selector">
           <button class="ghost small" @click="changeMonth(-1)">◀</button>
           <span class="month-label">{{ monthLabel }}</span>
           <button class="ghost small" @click="changeMonth(1)">▶</button>
+          </div>
         </div>
       </div>
     </div>
@@ -33,7 +37,7 @@
     </div>
 
     <!-- Summary Cards -->
-    <div v-if="teacherList.length > 0" class="summary-cards">
+    <div v-if="teacherList.length > 0" class="summary-cards" data-guide="subject-units-summary">
       <div class="summary-card">
         <div class="summary-label">總上課時數</div>
         <div class="summary-value">{{ totals.totalHours }}</div>
@@ -54,7 +58,7 @@
     </div>
 
     <!-- Teacher Breakdown Table -->
-    <div v-if="teacherList.length > 0" class="card">
+    <div v-if="teacherList.length > 0" class="card" data-guide="subject-units-table">
       <h3>👨‍🏫 老師科目數明細</h3>
       <table>
         <thead>
@@ -103,24 +107,97 @@
         </tfoot>
       </table>
     </div>
+
+    <!-- Level Breakdown -->
+    <div v-if="levelBreakdownTotals.length > 0" class="card" style="margin-top: 20px;">
+      <div class="level-breakdown-header" @click="showLevelBreakdown = !showLevelBreakdown">
+        <h3>📊 學段分解（國小/國中/高中）</h3>
+        <button class="ghost small">{{ showLevelBreakdown ? '收合 ▲' : '展開 ▼' }}</button>
+      </div>
+
+      <div v-if="showLevelBreakdown">
+        <div class="level-summary-cards">
+          <div v-for="lb in levelBreakdownTotals" :key="'lvl-total-'+lb.level" class="summary-card level-card">
+            <div class="summary-label">{{ lb.levelLabel }}</div>
+            <div class="summary-value" style="font-size: 24px;">{{ lb.totalHours }}h</div>
+            <div class="summary-sub">
+              科目數（含輔導）: {{ lb.unitsWith }} ｜ 科目數（不含）: {{ lb.unitsWithout }}
+            </div>
+          </div>
+        </div>
+
+        <table style="margin-top: 12px;">
+          <thead>
+            <tr>
+              <th>老師</th>
+              <th v-for="lb in levelBreakdownTotals" :key="'lvl-th-h-'+lb.level">{{ lb.levelLabel }} 時數</th>
+              <th v-for="lb in levelBreakdownTotals" :key="'lvl-th-u-'+lb.level">{{ lb.levelLabel }} 科目數</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="t in teacherList" :key="'lvl-'+t.name">
+              <td><strong>{{ t.name }}</strong></td>
+              <td v-for="lb in levelBreakdownTotals" :key="'lvl-h-'+t.name+'-'+lb.level">
+                {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).totalHours || 0 }}
+              </td>
+              <td v-for="lb in levelBreakdownTotals" :key="'lvl-u-'+t.name+'-'+lb.level" style="font-weight: 600; color: var(--primary);">
+                {{ (t.levelBreakdown.find(x => x.level === lb.level) || {}).unitsWith || 0 }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { supabase } from '../supabase';
-import HelpGuide from '../components/HelpGuide.vue';
+import { branches, loadBranches } from '../lib/useBranches';
 
-const props = defineProps({ branchId: [String, Number] });
+const props = defineProps({
+  branchId: [String, Number],
+  userRole: {
+    type: String,
+    default: '',
+  },
+});
 
 const loading = ref(true);
 const teacherList = ref([]);
+const levelBreakdownTotals = ref([]);
+const showLevelBreakdown = ref(false);
 const totals = ref({
   oneOnOneHours: 0, oneOnTwoHours: 0, oneOnThreeHours: 0, tutoringHours: 0,
   totalHours: 0, totalUnitsWithTutoring: 0, totalUnitsWithoutTutoring: 0,
   subjectCountWith: '0.00', subjectCountWithout: '0.00'
 });
 const currentDate = ref(new Date());
+const selectedBranchId = ref(props.branchId ? Number(props.branchId) : null);
+const sessionCampusIds = computed(() => {
+  try {
+    const raw = localStorage.getItem('alltrue_session') || '{}';
+    const sess = JSON.parse(raw);
+    const ids = Array.isArray(sess?.user?.campuses) ? sess.user.campuses : [];
+    return ids.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+  } catch (_) {
+    return [];
+  }
+});
+const branchOptions = computed(() =>
+  (branches.value || [])
+    .filter((b) => {
+      const bid = Number(b?.id);
+      if (!Number.isFinite(bid)) return false;
+      if (props.userRole !== 'teacher') return true;
+      // Teacher can only switch between assigned campuses (home + support campuses)
+      if (sessionCampusIds.value.length === 0) return false;
+      return sessionCampusIds.value.includes(bid);
+    })
+    .filter((b) => Number.isFinite(Number(b?.id)))
+    .map((b) => ({ id: Number(b.id), name: b.name || `分校 #${b.id}` }))
+);
 
 const monthLabel = computed(() => {
   const d = currentDate.value;
@@ -152,9 +229,9 @@ const loadData = async () => {
     const token = session?.access_token || '';
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
 
-    const params = new URLSearchParams({ start: startDate, end: endDate });
-    if (props.branchId) {
-      params.set('branch_id', String(props.branchId));
+    const params = new URLSearchParams({ start: startDate, end: endDate, include_level: '1' });
+    if (selectedBranchId.value) {
+      params.set('branch_id', String(selectedBranchId.value));
     }
     const res = await fetch(`${baseUrl}/v1/finance/subject-units?${params}`, {
       headers: {
@@ -181,6 +258,25 @@ const loadData = async () => {
       unitsWith: t.subject_count_with,
       unitsWithout: t.subject_count_without,
       pct: t.share_pct,
+      levelBreakdown: (t.level_breakdown || []).map(lb => ({
+        level: lb.level,
+        levelLabel: lb.level_label,
+        totalHours: lb.total_hours,
+        unitsWith: lb.subject_count_with,
+        unitsWithout: lb.subject_count_without,
+      })),
+    }));
+
+    levelBreakdownTotals.value = (json.level_breakdown_totals || []).map(lb => ({
+      level: lb.level,
+      levelLabel: lb.level_label,
+      oneOnOneHours: lb.one_on_one_hours,
+      oneOnTwoHours: lb.one_on_two_hours,
+      oneOnThreeHours: lb.one_on_three_hours,
+      tutoringHours: lb.tutoring_hours,
+      totalHours: lb.total_hours,
+      unitsWith: lb.subject_count_with,
+      unitsWithout: lb.subject_count_without,
     }));
 
     const t = json.totals || {};
@@ -203,8 +299,27 @@ const loadData = async () => {
   }
 };
 
-watch(() => props.branchId, loadData);
-onMounted(loadData);
+watch(() => props.branchId, (val) => {
+  const next = val ? Number(val) : null;
+  if (next && next !== selectedBranchId.value) {
+    selectedBranchId.value = next;
+  }
+  loadData();
+});
+
+onMounted(async () => {
+  await loadBranches();
+  if (!selectedBranchId.value && branchOptions.value.length > 0) {
+    selectedBranchId.value = branchOptions.value[0].id;
+  }
+  if (
+    selectedBranchId.value &&
+    !branchOptions.value.some((b) => b.id === Number(selectedBranchId.value))
+  ) {
+    selectedBranchId.value = branchOptions.value.length ? branchOptions.value[0].id : null;
+  }
+  loadData();
+});
 </script>
 
 <style scoped>
@@ -212,6 +327,35 @@ onMounted(loadData);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.branch-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.branch-selector label {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+.branch-selector select {
+  min-width: 130px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
 }
 
 .month-selector {
@@ -314,5 +458,25 @@ table tfoot td {
   background: #FAFAFA;
   font-weight: 600;
   border-top: 2px solid var(--border);
+}
+
+.level-breakdown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.level-breakdown-header h3 {
+  margin: 0;
+}
+
+.level-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.level-card {
+  border-left-color: #8b5cf6;
 }
 </style>

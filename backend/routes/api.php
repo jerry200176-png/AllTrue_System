@@ -23,7 +23,11 @@ use App\Http\Controllers\TempRfidController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
+use App\Http\Controllers\ClassSessionController;
+use App\Http\Controllers\EnrollmentController;
 
 
 Route::get('/fix-db', function () {
@@ -79,17 +83,60 @@ Route::post('/debug-log', function (\Illuminate\Http\Request $req) {
 });
 
 Route::prefix('v1')->group(function () {
+    $normalizeSubjectName = function ($name) {
+        $raw = trim((string) $name);
+        if ($raw === '') return '';
+        $k = mb_strtolower(str_replace([' ', '_', '-'], '', $raw));
+        return match ($k) {
+            'chinese', '國文' => '國文',
+            'english', '英文' => '英文',
+            'math', 'mathematics', '數學' => '數學',
+            'social', '社會' => '社會',
+            'science', '理化' => '理化',
+            'physics', '物理' => '物理',
+            'chemistry', '化學' => '化學',
+            'biology', '生物' => '生物',
+            default => $raw,
+        };
+    };
+    $canonicalSubjects = ['國文', '英文', '數學', '社會', '理化', '物理', '化學', '生物'];
+
     // ── Auth (public) ───────────────────────────────────────────────
     Route::post('auth/login', [AuthController::class, 'login']);
+    Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store']);
 
-    // ── LINE Webhook (public, verified by signature) ────────────────────
-    Route::post('line/webhook', [LineWebhookController::class, 'handle']);
+    // ── LINE Webhook per-campus (public, verified by campus channel secret) ──
+    Route::post('line/webhook/{campusId}', [LineWebhookController::class, 'handle'])->where('campusId', '[0-9]+');
 
     // ── Parent Portal: LINE-based login ─────────────────────────────────
     Route::post('parent/login-line', [ParentPortalController::class, 'loginWithLine']);
 
     // ── Public Branch Data (No auth required) ───────────────────────
     Route::get('branches', [CampusController::class, 'listPublic']);
+    Route::get('subjects-public', function () use ($normalizeSubjectName, $canonicalSubjects) {
+        if (!\Illuminate\Support\Facades\Schema::hasTable('Subject')) {
+            return response()->json([]);
+        }
+        $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
+        $existingNormalized = $rows->map(fn ($r) => $normalizeSubjectName($r->Subject_Name))->filter()->unique()->values()->all();
+        $missing = array_values(array_diff($canonicalSubjects, $existingNormalized));
+        if (!empty($missing)) {
+            $insertRows = array_map(fn ($name) => [
+                'School_id' => 1,
+                'Grade_no' => 0,
+                'Subject_Name' => $name,
+            ], $missing);
+            \Illuminate\Support\Facades\DB::table('Subject')->insert($insertRows);
+            $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
+        }
+
+        return response()->json($rows
+            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $normalizeSubjectName($r->Subject_Name)])
+            ->filter(fn ($r) => $r['name'] !== '')
+            ->sortBy('name')
+            ->values()
+        );
+    });
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe']);
@@ -101,18 +148,24 @@ Route::prefix('v1')->group(function () {
     // ── Current user profile (any authenticated user: director, teacher, super_admin) ──
     Route::get('me', [AuthController::class, 'me']);
     Route::put('me', [AuthController::class, 'updateMe']);
+    Route::post('me/avatar', [AuthController::class, 'uploadAvatar']);
+    Route::get('me/notification-preferences', [AuthController::class, 'notificationPreferences']);
+    Route::put('me/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
+    Route::get('me/security', [AuthController::class, 'security']);
 
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');
 
     // ── Super Admin only: 清空課程／學生／老師（保留 super_admin）────────────────
-    Route::post('admin/reset-data', ResetDataController::class)->middleware(['role:director']);
+    Route::post('admin/reset-data', ResetDataController::class)->middleware(['role:director', 'require_password_change']);
 
-    Route::middleware(['role:director', 'require_campus'])->group(function () {
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('students', [StudentController::class, 'index']);
         Route::post('students', [StudentController::class, 'store']);
+        Route::post('students/bulk-delete', [StudentController::class, 'bulkDestroy']);
         Route::get('students/{student}', [StudentController::class, 'show']);
         Route::put('students/{student}', [StudentController::class, 'update']);
+        Route::delete('students/{student}', [StudentController::class, 'destroy']);
         Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard']);
 
         Route::post('students/import', [ImportController::class, 'students']);
@@ -120,6 +173,7 @@ Route::prefix('v1')->group(function () {
 
         Route::post('student-classes/import', [ImportController::class, 'studentClasses']);
         Route::get('student-classes/export', [ExportController::class, 'studentClasses']);
+        Route::post('enrollments', [EnrollmentController::class, 'store']);
 
         Route::get('invoices', [BillingController::class, 'index']);
         Route::post('invoices', [BillingController::class, 'store']);
@@ -127,6 +181,8 @@ Route::prefix('v1')->group(function () {
         Route::get('invoices/export', [ExportController::class, 'invoices']);
 
         Route::post('learning-records/{learningRecord}/approve', [LearningRecordController::class, 'approve']);
+        Route::patch('learning-records/{learningRecord}/teacher', [LearningRecordController::class, 'updateTeacher']);
+        Route::post('learning-records/{learningRecord}/rollback-approval', [LearningRecordController::class, 'rollbackApproval']);
         Route::post('learning-records/{learningRecord}/request-changes', [LearningRecordController::class, 'requestChanges']);
         Route::post('learning-records/{learningRecord}/reject', [LearningRecordController::class, 'reject']);
         Route::post('learning-records/backdoor-approve', [LearningRecordController::class, 'backdoorApprove']);
@@ -143,6 +199,11 @@ Route::prefix('v1')->group(function () {
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
+        Route::get('notifications', [NotificationController::class, 'index']);
+        Route::post('notifications/sync', [NotificationController::class, 'sync']);
+        Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
+        Route::post('notifications/{notificationId}/read', [NotificationController::class, 'markRead']);
+        Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
@@ -154,15 +215,18 @@ Route::prefix('v1')->group(function () {
         Route::delete('pending-swipes/{pendingSwipe}', [PendingSwipeController::class, 'destroy']);
 
         Route::get('campuses', [CampusController::class, 'index']);
+        Route::get('directors', [DirectorAccountController::class, 'index']);
         Route::get('directors/pending', [DirectorAccountController::class, 'pending']);
         Route::post('directors/{id}/approve', [DirectorAccountController::class, 'approve']);
         Route::post('directors/{id}/reject', [DirectorAccountController::class, 'reject']);
+        Route::post('directors/{id}/reset-password', [DirectorAccountController::class, 'resetPassword']);
+        Route::delete('directors/{id}', [DirectorAccountController::class, 'destroy'])->whereNumber('id');
         Route::get('api-clients', [ApiClientController::class, 'index']);
         Route::post('api-clients', [ApiClientController::class, 'store']);
         Route::post('api-clients/{apiClient}/revoke', [ApiClientController::class, 'revoke']);
     });
 
-    Route::middleware(['role:director,teacher', 'require_campus'])->group(function () {
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () use ($normalizeSubjectName, $canonicalSubjects) {
         Route::get('students', [StudentController::class, 'index']);
         Route::get('students/{student}', [StudentController::class, 'show']);
         Route::get('profiles', [ProfileController::class, 'index']);
@@ -173,12 +237,28 @@ Route::prefix('v1')->group(function () {
         });
 
         // Subjects list (for teacher manage subject dropdown, course form, etc.)
-        Route::get('subjects', function () {
+        Route::get('subjects', function () use ($normalizeSubjectName, $canonicalSubjects) {
             if (!\Illuminate\Support\Facades\Schema::hasTable('Subject')) {
                 return response()->json([]);
             }
-            $rows = \Illuminate\Support\Facades\DB::table('Subject')->orderBy('Subject_Name')->get(['id', 'Subject_Name']);
-            return response()->json($rows->map(fn ($r) => ['id' => (int) $r->id, 'name' => $r->Subject_Name]));
+            $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
+            $existingNormalized = $rows->map(fn ($r) => $normalizeSubjectName($r->Subject_Name))->filter()->unique()->values()->all();
+            $missing = array_values(array_diff($canonicalSubjects, $existingNormalized));
+            if (!empty($missing)) {
+                $insertRows = array_map(fn ($name) => [
+                    'School_id' => 1,
+                    'Grade_no' => 0,
+                    'Subject_Name' => $name,
+                ], $missing);
+                \Illuminate\Support\Facades\DB::table('Subject')->insert($insertRows);
+                $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
+            }
+            return response()->json($rows
+                ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $normalizeSubjectName($r->Subject_Name)])
+                ->filter(fn ($r) => $r['name'] !== '')
+                ->sortBy('name')
+                ->values()
+            );
         });
 
         Route::get('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
@@ -189,19 +269,29 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
+        Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
+        Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
+        Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
 
         Route::get('attendance', [AttendanceController::class, 'index']);
         Route::get('attendance/ended-sessions', [AttendanceController::class, 'endedSessions']);
         Route::post('attendance', [AttendanceController::class, 'store']);
+        Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
 
         Route::get('learning-records', [LearningRecordController::class, 'index']);
         Route::post('learning-records', [LearningRecordController::class, 'store']);
+        Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy']);
+        Route::get('class-sessions', [ClassSessionController::class, 'index']);
+        Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
+        Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
 
         Route::get('schedules', [\App\Http\Controllers\ScheduleController::class, 'index']);
         Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store']);
+        Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
+        Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave']);
         Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
         Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
 
@@ -216,10 +306,13 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Teacher Management (Profiles) ────────────────────────────────
-    Route::middleware(['role:director', 'require_campus'])->group(function () {
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('profiles', [ProfileController::class, 'index']);
         Route::post('profiles', [ProfileController::class, 'store']);
+        Route::post('profiles/bulk-teachers', [ProfileController::class, 'bulkTeachers']);
+        Route::post('profiles/{id}/reset-password', [ProfileController::class, 'resetPassword']);
         Route::put('profiles/{id}', [ProfileController::class, 'update']);
+        Route::delete('profiles/{id}', [ProfileController::class, 'destroy']);
 
         Route::get('teacher_branches', [TeacherBranchController::class, 'index']);
         Route::post('teacher_branches', [TeacherBranchController::class, 'store']);
@@ -228,10 +321,13 @@ Route::prefix('v1')->group(function () {
 
     Route::post('parent/login', [ParentPortalController::class, 'login']);
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
+    Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
 
     // ── Director: payment message for LINE copy ──────────────────────────
-    Route::middleware(['role:director'])->group(function () {
+    Route::middleware(['role:director', 'require_password_change'])->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
+        Route::get('line/status', [LineWebhookController::class, 'status']);
+        Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
     });
 });

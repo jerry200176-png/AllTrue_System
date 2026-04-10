@@ -1,0 +1,6 @@
+# Raspberry Pi：RC522 + 呼叫後端 API
+# pip install -r requirements-rfid.txt
+# 2.3.0 起 RFID() 支援 speed、antenna_gain（與 GetRFID.py 一致）
+pi-rc522>=2.3.0
+requests>=2.28.0
+# RPi.GPIO 僅在樹莓派上安裝：pip install RPi.GPIO

@@ -7,13 +7,22 @@ use App\Models\LearningRecord;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\UserCampus;
+use App\Services\SessionDeductionService;
+use App\Services\ScheduleGuardService;
+use App\Services\TeacherScopeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class StudentClassController extends Controller
 {
+    public function __construct(private ScheduleGuardService $scheduleGuardService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = StudentClass::query()->with(['student', 'room.campus']);
@@ -55,6 +64,17 @@ class StudentClassController extends Controller
             $query->where('TeacherID', $request->input('teacher_id'));
         }
 
+        if ($request->filled('status')) {
+            $statusVal = $request->input('status');
+            if ($statusVal === 'inactive') {
+                $query->where('Stop', 1);
+            } elseif ($statusVal === 'active') {
+                $query->where(function ($q) {
+                    $q->where('Stop', 0)->orWhereNull('Stop');
+                });
+            }
+        }
+
         $perPage = min((int) $request->input('per_page', 20), 1000);
         $classes = $query->orderBy('ID', 'desc')->paginate($perPage);
 
@@ -72,8 +92,41 @@ class StudentClassController extends Controller
             ->whereIn('type', ['T', 'U'])
             ->pluck('Name', 'id')
             ->toArray();
+        $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
+        $approvedRecordCounts = [];
+        $deductedAttendanceCounts = [];
+        $ledgerNetCounts = [];
+        if (!empty($classIds)) {
+            $approvedRecordCounts = LearningRecord::query()
+                ->whereIn('StudentClassID', $classIds)
+                ->whereNull('VoidedAt')
+                ->where('Status', 'approved')
+                ->select('StudentClassID', DB::raw('COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as aggregate_count'))
+                ->groupBy('StudentClassID')
+                ->pluck('aggregate_count', 'StudentClassID')
+                ->map(fn ($value) => (int) $value)
+                ->toArray();
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames) {
+            $deductedAttendanceCounts = StudentSignIn::query()
+                ->whereIn('StudentClassID', $classIds)
+                ->whereNull('VoidedAt')
+                ->where('SessionDeducted', true)
+                ->select('StudentClassID', DB::raw('COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as aggregate_count'))
+                ->groupBy('StudentClassID')
+                ->pluck('aggregate_count', 'StudentClassID')
+                ->map(fn ($value) => (int) $value)
+                ->toArray();
+
+            $ledgerNetCounts = \App\Models\SessionDeductionLedger::query()
+                ->whereIn('student_class_id', $classIds)
+                ->selectRaw("student_class_id, SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE 0 END) - SUM(CASE WHEN event_type = 'reverse' THEN 1 ELSE 0 END) as net")
+                ->groupBy('student_class_id')
+                ->pluck('net', 'student_class_id')
+                ->map(fn ($v) => max(0, (int) $v))
+                ->toArray();
+        }
+
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $approvedRecordCounts, $deductedAttendanceCounts, $ledgerNetCounts) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -101,16 +154,16 @@ class StudentClassController extends Controller
                 '自然' => 'Science',
                 '社會' => 'Social',
                 '國語' => 'Chinese',
-                '物理' => 'Science',
-                '化學' => 'Science',
+                '物理' => 'Physics',
+                '化學' => 'Chemistry',
                 '理化' => 'Science',
-                '生物' => 'Science',
+                '生物' => 'Biology',
                 '地科' => 'Science',
             ];
             $class->subject = $reverseSubjectMap[$class->subject_name] ?? 'Math';
             $class->class_type = $class->ClassType ?? 'one_on_one';
             $class->rate_per_30min = $class->Rate ?? 0;
-            $class->duration_hours = $class->SessionDuration ? (int) round($class->SessionDuration / 60) : 2;
+            $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
             // 固定排課多日（如 一四）：從 week + week1..week6 彙總成 days_of_week（寫入時第一日在 week，其餘在 week1..week6）
             $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
             $daysOfWeek = [];
@@ -126,6 +179,32 @@ class StudentClassController extends Controller
             }
             $class->days_of_week = $daysOfWeek;
             $class->day_of_week = (int) ($daysOfWeek[0] ?? $class->week ?? 0);
+            $dayTimeSlots = [];
+            $timeFields = ['time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6'];
+            $durationFields = [null, 'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6'];
+            $globalDurHours = $class->duration_hours;
+            foreach ($weekFields as $index => $wf) {
+                $day = (int) ($class->{$wf} ?? 0);
+                if ($day < 1 || $day > 7) {
+                    continue;
+                }
+                $timeField = $timeFields[$index] ?? 'time';
+                $rawTime = (string) ($class->{$timeField} ?? $class->time ?? '');
+                $start = $rawTime ? substr($rawTime, 0, 5) : '';
+                if ($start === '') {
+                    continue;
+                }
+                $durField = $durationFields[$index] ?? null;
+                $perDayMin = $durField ? (int) ($class->{$durField} ?? 0) : 0;
+                $dayTimeSlots[$day] = [
+                    'day' => $day,
+                    'start_time' => $start,
+                    'duration_hours' => $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours,
+                ];
+            }
+            ksort($dayTimeSlots);
+            $class->day_time_slots = array_values($dayTimeSlots);
+            $class->rate_unit = $class->rate_unit ?? 'session';
 
             // Build the 'weeks' array for frontend (week-of-month: 第1週..第5週)
             $weeks = [];
@@ -134,10 +213,30 @@ class StudentClassController extends Controller
             }
             $class->weeks = $weeks;
 
-            $class->start_time = $class->time ? substr($class->time, 0, 5) : '';
-            $class->end_time = $class->start_time ? date('H:i', strtotime($class->start_time . ' +2 hours')) : null;
+            $class->start_time = !empty($class->day_time_slots)
+                ? (string) ($class->day_time_slots[0]['start_time'] ?? '')
+                : ($class->time ? substr($class->time, 0, 5) : '');
+            $durationSecs = (int) round($class->duration_hours * 3600);
+            $class->end_time = $class->start_time ? date('H:i', strtotime($class->start_time) + $durationSecs) : null;
             $class->payment_type = ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly';
             $class->sessions_purchased = (int) ($class->SessionCount ?? 0);
+            $rawUsedSessions = max(0, (int) ($class->UsedSessions ?? 0));
+            $approvedCount = (int) ($approvedRecordCounts[$class->ID] ?? 0);
+            $deductedAttendanceCount = (int) ($deductedAttendanceCounts[$class->ID] ?? 0);
+            $ledgerNet = (int) ($ledgerNetCounts[$class->ID] ?? 0);
+
+            // Ledger is the source of truth when populated; fall back to
+            // flag-based max for courses that haven't been seeded yet.
+            $observedUsedSessions = $ledgerNet > 0
+                ? $ledgerNet
+                : max($approvedCount, $rawUsedSessions, $deductedAttendanceCount);
+
+            if ($class->sessions_purchased > 0) {
+                $observedUsedSessions = min($class->sessions_purchased, $observedUsedSessions);
+                $class->UsedSessions = $observedUsedSessions;
+                $class->RemainingSessions = max(0, $class->sessions_purchased - $observedUsedSessions);
+            }
+            $class->sessions_used = (int) ($class->UsedSessions ?? 0);
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
             $class->payment_status = empty($class->Paid) ? 'unpaid' : 'paid';
             $class->status = empty($class->Stop) ? 'active' : 'inactive';
@@ -185,8 +284,12 @@ class StudentClassController extends Controller
                     ->whereIn('student_course_id', $courseIds)
                     ->select('student_course_id', 'schedule_date', 'status')
                     ->get();
+                $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
+                    ->select('StudentClassID', 'SessionDate', 'Status')
+                    ->get();
                 $leaveByClass = [];
                 $scheduledByClass = [];
+                $sessionDatesByClass = [];
                 foreach ($schedulesBody as $row) {
                     $id = (string) $row->student_course_id;
                     $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
@@ -205,6 +308,21 @@ class StudentClassController extends Controller
                         $leaveByClass[$id][$d] = true;
                     }
                 }
+                foreach ($classSessionsBody as $row) {
+                    $id = (string) $row->StudentClassID;
+                    $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
+                    if (!$d) {
+                        continue;
+                    }
+                    $status = strtolower((string) ($row->Status ?? ''));
+                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                        continue;
+                    }
+                    if (!isset($sessionDatesByClass[$id])) {
+                        $sessionDatesByClass[$id] = [];
+                    }
+                    $sessionDatesByClass[$id][$d] = true;
+                }
                 foreach ($bodyCourses as $c) {
                     $cid = $c['id'] ?? null;
                     $startDate = isset($c['first_class_date']) ? Carbon::parse($c['first_class_date'])->toDateString() : null;
@@ -212,6 +330,12 @@ class StudentClassController extends Controller
                     $daysOfWeek = isset($c['days_of_week']) && is_array($c['days_of_week'])
                         ? array_values(array_unique(array_map('intval', array_filter($c['days_of_week'], function ($d) { return $d >= 1 && $d <= 7; }))))
                         : [];
+                    if ($cid !== null && isset($sessionDatesByClass[(string) $cid])) {
+                        $list = array_keys($sessionDatesByClass[(string) $cid]);
+                        sort($list);
+                        $result[(string) $cid] = $list;
+                        continue;
+                    }
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
                         $leaveSet = $leaveByClass[$cid] ?? [];
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
@@ -258,7 +382,7 @@ class StudentClassController extends Controller
                 ->get();
 
             $sessions = ClassSession::whereIn('StudentClassID', $classIds)
-                ->select('StudentClassID', 'SessionDate')
+                ->select('StudentClassID', 'SessionDate', 'Status')
                 ->get();
 
             $leaveByClass = [];
@@ -305,6 +429,27 @@ class StudentClassController extends Controller
                 }
 
                 if ($isSessionMode && $startDate && !empty($daysOfWeek)) {
+                    $actualSessionSet = [];
+                    foreach ($sessions as $row) {
+                        if ((int) $row->StudentClassID !== $id) {
+                            continue;
+                        }
+                        $status = strtolower((string) ($row->Status ?? ''));
+                        if (in_array($status, ['cancelled', 'leave'], true)) {
+                            continue;
+                        }
+                        $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
+                        if ($d) {
+                            $actualSessionSet[$d] = true;
+                        }
+                    }
+                    if (!empty($actualSessionSet)) {
+                        $list = array_keys($actualSessionSet);
+                        sort($list);
+                        $result[(string) $id] = $list;
+                        continue;
+                    }
+
                     $n = (int) $class->SessionCount;
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
@@ -408,6 +553,11 @@ class StudentClassController extends Controller
 
     public function store(Request $request)
     {
+        return response()->json([
+            'message' => 'Legacy scheduling endpoint retired. Use POST /api/v1/class-sessions/batch.',
+            'code' => 'legacy_schedule_endpoint_retired',
+        ], 410);
+
         $mapped = $this->mapFrontendPayload($request);
         $request->replace(array_merge($request->all(), $mapped));
 
@@ -433,7 +583,7 @@ class StudentClassController extends Controller
             'LearnTimeID' => 'nullable|integer',
             'RoomID' => 'nullable|string|max:32',
             'room_id' => 'nullable|integer|exists:rooms,id',
-            'settlement_day' => 'nullable|integer|min:1|max:28',
+            'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:0',
             'ScheduleMode' => 'required|in:date,count',
             'SessionCount' => 'nullable|integer',
@@ -443,13 +593,14 @@ class StudentClassController extends Controller
             'ScheduleSlots' => 'nullable|array',
             'ScheduleSlots.*.weekday' => 'required_with:ScheduleSlots|integer|min:0|max:6',
             'ScheduleSlots.*.time' => 'required_with:ScheduleSlots|date_format:H:i',
+            'skip_auto_sessions' => 'nullable|boolean',
         ]);
 
         if ($data['ScheduleMode'] === 'date') {
-            if (empty($data['settlement_day']) || (int) $data['settlement_day'] < 1 || (int) $data['settlement_day'] > 28) {
+            if (empty($data['settlement_day']) || (int) $data['settlement_day'] < 1 || (int) $data['settlement_day'] > 31) {
                 return response()->json([
-                    'message' => '月結制度必須填寫結算日（每月 1–28 號）',
-                    'errors' => ['settlement_day' => ['月結時結算日為必填，且須為 1–28。']],
+                    'message' => '月結制度必須填寫結算日（每月 1–31 號）',
+                    'errors' => ['settlement_day' => ['月結時結算日為必填，且須為 1–31。']],
                 ], 422);
             }
         }
@@ -463,10 +614,9 @@ class StudentClassController extends Controller
             }
         }
 
+        $studentCampusId = (int) (Student::where('id', $data['StudentID'])->value('CampusID') ?? 0);
         if (!empty($campusIds)) {
-            $allowed = Student::whereIn('CampusID', $campusIds)
-                ->where('id', $data['StudentID'])
-                ->exists();
+            $allowed = $studentCampusId > 0 && in_array($studentCampusId, $campusIds, true);
             if (!$allowed) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
@@ -508,6 +658,7 @@ class StudentClassController extends Controller
         }
 
         $scheduleSlots = $data['ScheduleSlots'] ?? [];
+        $skipAutoSessions = (bool) ($data['skip_auto_sessions'] ?? false);
 
         if (!isset($data['Period'])) {
             $data['Period'] = 4;
@@ -525,10 +676,10 @@ class StudentClassController extends Controller
             $data['RemainingSessions'] = $data['SessionCount'] ?? null;
         }
 
-        return DB::transaction(function () use ($data, $scheduleSlots) {
+        return DB::transaction(function () use ($data, $scheduleSlots, $skipAutoSessions, $studentCampusId) {
             $createData = $this->mapScheduleSlots($data, $scheduleSlots);
             // Remove fields that may not exist as DB columns
-            unset($createData['ScheduleSlots']);
+            unset($createData['ScheduleSlots'], $createData['skip_auto_sessions']);
 
             try {
                 $studentClass = StudentClass::create($createData);
@@ -563,7 +714,7 @@ class StudentClassController extends Controller
             $sessionDuration = $data['SessionDuration'] ?? 120;
             $sessions = [];
 
-            if ($data['ScheduleMode'] === 'date') {
+            if (!$skipAutoSessions && $data['ScheduleMode'] === 'date') {
                 if (!empty($scheduleSlots) && !empty($data['EndDate'])) {
                     $sessions = $this->buildSessionsFromWeeklySchedule(
                         $studentClass->ID,
@@ -575,7 +726,7 @@ class StudentClassController extends Controller
                 }
             }
 
-            if ($data['ScheduleMode'] === 'count') {
+            if (!$skipAutoSessions && $data['ScheduleMode'] === 'count') {
                 if (!empty($scheduleSlots) && !empty($data['SessionCount'])) {
                     $sessions = $this->buildSessionsForCount(
                         $studentClass->ID,
@@ -589,7 +740,13 @@ class StudentClassController extends Controller
 
             // ── Server-side conflict detection ──────────────────────────
             if (!empty($sessions)) {
-                $conflicts = $this->detectTeacherConflicts((int) $data['TeacherID'], $sessions);
+                $conflicts = $this->detectTeacherConflicts(
+                    (int) ($data['TeacherID'] ?? 0),
+                    $sessions,
+                    (string) ($data['ClassType'] ?? 'one_on_one'),
+                    !empty($data['room_id']) ? (int) $data['room_id'] : null,
+                    $studentCampusId
+                );
                 if (!empty($conflicts)) {
                     // Abort the transaction - rollback is automatic
                     throw new \Illuminate\Validation\ValidationException(
@@ -618,9 +775,9 @@ class StudentClassController extends Controller
                             'CreatedByUserID' => null,
                             'Content' => '',
                             'Subject' => $subjectName,
-                            'SessionDate' => $sess['SessionDate'],
-                            'StartTime' => $sess['StartTime'] ?? '00:00:00',
-                            'EndTime' => $sess['EndTime'] ?? '00:00:00',
+                            'SessionDate' => $classSession->SessionDate,
+                            'StartTime' => $classSession->StartTime,
+                            'EndTime' => $classSession->EndTime,
                             'Status' => 'pending',
                         ]);
                     }
@@ -635,6 +792,7 @@ class StudentClassController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $previousStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
 
         if (!empty($campusIds)) {
             $allowed = Student::whereIn('CampusID', $campusIds)
@@ -646,6 +804,7 @@ class StudentClassController extends Controller
         }
 
         $mapped = $this->mapFrontendPayload($request);
+        $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
         unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['RoomID'], $mapped['by1']);
@@ -658,8 +817,30 @@ class StudentClassController extends Controller
         }
 
         $studentClass->update($mapped);
+        $studentClass->refresh();
 
-        return response()->json($studentClass);
+        $sessionSync = $this->maybeRebuildSessionsAfterUpdate(
+            $studentClass,
+            $previousStartDate,
+            $mapped,
+            $scheduleSlotsForRebuild,
+            (bool) $request->boolean('force_rebuild_if_mismatch', false)
+        );
+
+        $payload = $studentClass->toArray();
+        $payload['session_sync'] = $sessionSync;
+
+        $gradeId = (int) ($studentClass->GradeID ?? Student::where('id', $studentClass->StudentID)->value('ClassID') ?? 0);
+        $scopeResult = TeacherScopeService::check(
+            (int) $studentClass->TeacherID,
+            (int) $studentClass->SubjectID,
+            $gradeId ?: null
+        );
+        if (!empty($scopeResult['warnings'])) {
+            $payload['scope_warning'] = implode(' ', $scopeResult['warnings']);
+        }
+
+        return response()->json($payload);
     }
 
     /**
@@ -669,6 +850,11 @@ class StudentClassController extends Controller
      */
     public function sync(Request $request)
     {
+        return response()->json([
+            'message' => 'Legacy schedule sync retired. Use POST /api/v1/class-sessions/batch with explicit dates.',
+            'code' => 'legacy_schedule_sync_retired',
+        ], 410);
+
         $courses = $request->input('courses', []);
         if (!is_array($courses) || empty($courses)) {
             return response()->json(['synced' => 0]);
@@ -694,7 +880,7 @@ class StudentClassController extends Controller
 
         $subjectMap = [
             'Chinese' => '國文', 'English' => '英文', 'Math' => '數學',
-            'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '自然', 'Social' => '社會',
+            'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '理化', 'Biology' => '生物', 'Social' => '社會',
         ];
 
         $synced = 0;
@@ -862,8 +1048,7 @@ class StudentClassController extends Controller
                             'Status' => $sessionDate <= $today ? 'completed' : 'scheduled',
                         ]);
                         if ($sessionDate <= $today && $teacherId) {
-                            $lrExists = LearningRecord::where('StudentClassID', (int) $id)
-                                ->where('SessionDate', $sessionDate)
+                            $lrExists = LearningRecord::where('ClassSessionID', $cs->id)
                                 ->exists();
                             if (!$lrExists) {
                                 LearningRecord::create([
@@ -872,9 +1057,9 @@ class StudentClassController extends Controller
                                     'TeacherID' => (int) $teacherId,
                                     'Subject' => $subjectName,
                                     'Content' => '',
-                                    'SessionDate' => $sessionDate,
-                                    'StartTime' => $sTime,
-                                    'EndTime' => $eTime,
+                                    'SessionDate' => $cs->SessionDate,
+                                    'StartTime' => $cs->StartTime,
+                                    'EndTime' => $cs->EndTime,
                                     'Status' => 'pending',
                                 ]);
                             }
@@ -908,6 +1093,384 @@ class StudentClassController extends Controller
         return response()->json(['message' => '已確認繳費', 'class_id' => $studentClass->ID]);
     }
 
+    /**
+     * 新增堂數批次（不併入舊課程）。
+     * POST /api/v1/student-classes/{studentClass}/purchase-batch
+     */
+    public function purchaseBatch(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'sessions' => 'required|integer|min:1|max:500',
+            'start_date' => 'required|date',
+            'mode' => 'nullable|in:new_purchase',
+        ]);
+
+        $mode = (string) ($data['mode'] ?? 'new_purchase');
+        if ($mode !== 'new_purchase') {
+            return response()->json([
+                'message' => '僅支援新增購買批次（new_purchase）',
+                'errors' => [
+                    'mode' => ['目前僅支援 new_purchase，舊有 split 模式已停用。'],
+                ],
+            ], 422);
+        }
+
+        $sessions = (int) $data['sessions'];
+        $startDate = Carbon::parse($data['start_date'])->toDateString();
+
+        return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode) {
+            $rate = (float) ($studentClass->Rate ?? 0);
+            $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
+            $globalDur = (int) ($studentClass->SessionDuration ?? 120);
+
+            $totalHours = 0;
+            $charge = 0;
+            if ($rateUnit === 'hour') {
+                $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+                $durSum = 0;
+                $slotCount = max(1, count($slots));
+                foreach ($slots as $slot) {
+                    $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
+                }
+                $avgDur = $durSum / $slotCount;
+                $totalHours = (int) round(($sessions * $avgDur) / 60);
+                $charge = (int) round($rate * $totalHours);
+            } else {
+                $totalHours = (int) ($studentClass->SessionDuration ? round(($sessions * $globalDur) / 60) : ($studentClass->TotalHours ?? 0));
+                $charge = (int) round($rate * $sessions);
+            }
+
+            $newPayload = [
+                'StudentID' => (int) $studentClass->StudentID,
+                'GradeID' => (int) ($studentClass->GradeID ?? 1),
+                'SubjectID' => (int) ($studentClass->SubjectID ?? 1),
+                'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
+                'by1' => (int) ($studentClass->by1 ?? 1),
+                'Period' => (int) ($studentClass->Period ?? 4),
+                'StartDate' => $startDate,
+                'EndDate' => null,
+                'week' => $studentClass->week,
+                'time' => $studentClass->time,
+                'week1' => $studentClass->week1,
+                'time1' => $studentClass->time1,
+                'week2' => $studentClass->week2,
+                'time2' => $studentClass->time2,
+                'week3' => $studentClass->week3,
+                'time3' => $studentClass->time3,
+                'week4' => $studentClass->week4,
+                'time4' => $studentClass->time4,
+                'week5' => $studentClass->week5,
+                'time5' => $studentClass->time5,
+                'week6' => $studentClass->week6,
+                'time6' => $studentClass->time6,
+                'duration1' => $studentClass->duration1,
+                'duration2' => $studentClass->duration2,
+                'duration3' => $studentClass->duration3,
+                'duration4' => $studentClass->duration4,
+                'duration5' => $studentClass->duration5,
+                'duration6' => $studentClass->duration6,
+                'TotalHours' => $totalHours,
+                'Memo' => $studentClass->Memo,
+                'Charge' => $charge,
+                'Pay' => 0,
+                'PayDate' => null,
+                'Paid' => 0,
+                'Disconunt' => $studentClass->Disconunt,
+                'Rate' => $rate,
+                'rate_unit' => $rateUnit,
+                'LearnTimeID' => $studentClass->LearnTimeID,
+                'RoomID' => $studentClass->RoomID,
+                'room_id' => $studentClass->room_id,
+                'settlement_day' => $studentClass->settlement_day,
+                'monthly_sessions' => $studentClass->monthly_sessions,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => $sessions,
+                'SessionDuration' => $globalDur,
+                'RemainingSessions' => $sessions,
+                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'UsedSessions' => 0,
+            ];
+
+            $newCourse = $this->createStudentClassRecordResilient($newPayload);
+            return response()->json([
+                'message' => '已新增購買批次',
+                'mode' => $mode,
+                'source_course' => [
+                    'id' => (int) $studentClass->ID,
+                    'session_count' => (int) ($studentClass->SessionCount ?? 0),
+                    'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+                    'paid' => (int) ($studentClass->Paid ?? 0),
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'session_count' => (int) ($newCourse->SessionCount ?? 0),
+                    'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
+                    'paid' => (int) ($newCourse->Paid ?? 0),
+                    'start_date' => $this->normalizeDateString($newCourse->StartDate),
+                ],
+            ], 201);
+        });
+    }
+
+    /**
+     * 課程管理加課／補登（不增加總堂數）。
+     * POST /api/v1/student-classes/{studentClass}/add-session
+     */
+    public function addSession(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'session_date' => 'required|date',
+            'start_time' => 'nullable|date_format:H:i',
+            'duration_minutes' => 'nullable|integer|min:30|max:480',
+            'end_time' => 'nullable|date_format:H:i',
+            'teacher_id' => 'nullable|integer',
+            'note' => 'nullable|string|max:255',
+            'auto_approve' => 'nullable|boolean',
+        ]);
+
+        $sessionDate = Carbon::parse($data['session_date'])->toDateString();
+        $startTime = $this->normalizeSessionTime($data['start_time'] ?? null, $studentClass->time ?: '16:00');
+
+        $globalDur = (int) ($studentClass->SessionDuration ?? 120);
+        $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+        $perDayDur = $this->resolvePerDayDuration($studentClass, $isoDow);
+        $durationMinutes = (int) ($data['duration_minutes'] ?? ($perDayDur ?: $globalDur));
+        if (!empty($data['end_time'])) {
+            $endTime = $this->normalizeSessionTime($data['end_time'], '18:00');
+            $durationMinutes = Carbon::createFromFormat('H:i:s', $startTime)
+                ->diffInMinutes(Carbon::createFromFormat('H:i:s', $endTime), false);
+            if ($durationMinutes <= 0) {
+                $durationMinutes += 24 * 60;
+            }
+            $durationMinutes = max(30, $durationMinutes);
+        } else {
+            $endTime = Carbon::createFromFormat('H:i:s', $startTime)->addMinutes(max(30, $durationMinutes))->format('H:i:s');
+        }
+
+        $now = Carbon::now();
+        $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+        $autoApprove = array_key_exists('auto_approve', $data) ? (bool) $data['auto_approve'] : $isEnded;
+        $teacherId = (int) ($data['teacher_id'] ?? $studentClass->TeacherID ?? 0);
+        $note = trim((string) ($data['note'] ?? ''));
+
+        return DB::transaction(function () use (
+            $studentClass,
+            $sessionDate,
+            $startTime,
+            $endTime,
+            $isEnded,
+            $autoApprove,
+            $teacherId,
+            $note
+        ) {
+            $authUser = request()->attributes->get('auth_user');
+            $authUserId = is_object($authUser) ? (int) ($authUser->id ?? 0) : 0;
+            $hasLearningRecordSessionDeducted = Schema::hasColumn('LearningRecord', 'SessionDeducted');
+            $classId = (int) $studentClass->ID;
+            $isSessionMode = ((string) ($studentClass->ScheduleMode ?? 'count') === 'count')
+                || ((int) ($studentClass->SessionCount ?? 0) > 0);
+            $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
+            $movedFromDate = null;
+            $todayYmd = Carbon::now()->toDateString();
+            $nowTime = Carbon::now()->format('H:i:s');
+
+            $approvedSessionIds = LearningRecord::where('StudentClassID', $classId)
+                ->where('Status', 'approved')
+                ->whereNotNull('ClassSessionID')
+                ->pluck('ClassSessionID')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+            $signInSessionIds = StudentSignIn::where('StudentClassID', $classId)
+                ->whereNotNull('ClassSessionID')
+                ->pluck('ClassSessionID')
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+            $lockedSessionIdMap = [];
+            foreach (array_merge($approvedSessionIds, $signInSessionIds) as $sid) {
+                $lockedSessionIdMap[(int) $sid] = true;
+            }
+
+            $existing = ClassSession::where('StudentClassID', $classId)
+                ->whereDate('SessionDate', $sessionDate)
+                ->where('StartTime', $startTime)
+                ->first();
+
+            if ($existing) {
+                if (isset($lockedSessionIdMap[(int) $existing->id])) {
+                    return response()->json([
+                        'message' => '該堂已有出缺勤或核准評量，無法重覆補登',
+                    ], 409);
+                }
+                $classSession = $existing;
+                $classSession->EndTime = $endTime;
+                $classSession->Status = $isEnded ? 'completed' : 'scheduled';
+                if ($note !== '') {
+                    $classSession->Note = $note;
+                }
+                $classSession->save();
+            } else {
+                $movableQuery = ClassSession::where('StudentClassID', $classId)
+                    ->where('Status', 'scheduled')
+                    ->where(function ($q) use ($todayYmd, $nowTime) {
+                        $q->whereDate('SessionDate', '>', $todayYmd)
+                            ->orWhere(function ($q2) use ($todayYmd, $nowTime) {
+                                $q2->whereDate('SessionDate', $todayYmd)
+                                    ->where('EndTime', '>', $nowTime);
+                            });
+                    });
+                if (!empty($lockedSessionIdMap)) {
+                    $movableQuery->whereNotIn('id', array_keys($lockedSessionIdMap));
+                }
+                $movableSession = $movableQuery
+                    ->orderBy('SessionDate', 'desc')
+                    ->orderBy('StartTime', 'desc')
+                    ->first();
+
+                if ($isSessionMode && $movableSession) {
+                    $movedFromDate = $this->normalizeDateString($movableSession->SessionDate);
+                    $classSession = $movableSession;
+                    $classSession->SessionDate = $sessionDate;
+                    $classSession->StartTime = $startTime;
+                    $classSession->EndTime = $endTime;
+                    $classSession->Status = $isEnded ? 'completed' : 'scheduled';
+                    if ($note !== '') {
+                        $classSession->Note = $note;
+                    } else {
+                        $suffix = $movedFromDate ? ("系統調整堂次（原 {$movedFromDate}）") : '系統調整堂次';
+                        $baseNote = trim((string) ($classSession->Note ?? ''));
+                        $classSession->Note = $baseNote === '' ? $suffix : ($baseNote . '; ' . $suffix);
+                    }
+                    $classSession->save();
+                } else {
+                    $activeSessionCount = (int) ClassSession::where('StudentClassID', $classId)
+                        ->where('Status', '!=', 'cancelled')
+                        ->count();
+                    if ($isSessionMode && $sessionCount > 0 && $activeSessionCount >= $sessionCount) {
+                        return response()->json([
+                            'message' => '此課程堂次已排滿，若不增加總堂數請先調課或請假。',
+                        ], 409);
+                    }
+
+                    $classSession = ClassSession::create([
+                        'StudentClassID' => $classId,
+                        'SessionDate' => $sessionDate,
+                        'StartTime' => $startTime,
+                        'EndTime' => $endTime,
+                        'Status' => $isEnded ? 'completed' : 'scheduled',
+                        'Note' => $note !== '' ? $note : ($isEnded ? '系統補登加課' : '系統加課'),
+                    ]);
+                }
+            }
+
+            $record = LearningRecord::where('ClassSessionID', (int) $classSession->id)->first();
+            $approved = false;
+            $deducted = false;
+
+            if ($autoApprove && $isEnded) {
+                $record = $record ?: LearningRecord::create([
+                    'StudentClassID' => (int) $studentClass->ID,
+                    'ClassSessionID' => (int) $classSession->id,
+                    'TeacherID' => $teacherId,
+                    'CreatedByUserID' => $authUserId > 0 ? $authUserId : null,
+                    'Content' => '（系統補登加課）',
+                    'Subject' => DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
+                        ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
+                        ?? '評量',
+                    'SessionDate' => $sessionDate,
+                    'StartTime' => $startTime,
+                    'EndTime' => $endTime,
+                    'Status' => 'approved',
+                    'ApprovedBy' => $authUserId > 0 ? $authUserId : null,
+                    'ApprovedAt' => now(),
+                ]);
+
+                if ($record->Status !== 'approved') {
+                    $record->Status = 'approved';
+                    if ($authUserId > 0) {
+                        $record->ApprovedBy = $authUserId;
+                    }
+                    $record->ApprovedAt = now();
+                }
+                $record->TeacherID = $teacherId ?: $record->TeacherID;
+                $record->SessionDate = $sessionDate;
+                $record->StartTime = $startTime;
+                $record->EndTime = $endTime;
+                $record->save();
+                $approved = true;
+
+                $alreadyDeducted = $hasLearningRecordSessionDeducted && (bool) ($record->SessionDeducted ?? false);
+                if (!$alreadyDeducted && SessionDeductionService::deductOnAttendance($studentClass, null, (int) $classSession->id)) {
+                    if ($hasLearningRecordSessionDeducted) {
+                        $record->SessionDeducted = true;
+                        $record->save();
+                    }
+                    $deducted = true;
+                }
+            } elseif ($isEnded) {
+                if (!$record) {
+                    LearningRecord::create([
+                        'StudentClassID' => (int) $studentClass->ID,
+                        'ClassSessionID' => (int) $classSession->id,
+                        'TeacherID' => $teacherId,
+                        'Content' => '',
+                        'Subject' => DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
+                            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
+                            ?? '評量',
+                        'SessionDate' => $sessionDate,
+                        'StartTime' => $startTime,
+                        'EndTime' => $endTime,
+                        'Status' => 'pending',
+                    ]);
+                } else {
+                    $record->TeacherID = $teacherId ?: $record->TeacherID;
+                    $record->SessionDate = $sessionDate;
+                    $record->StartTime = $startTime;
+                    $record->EndTime = $endTime;
+                    $record->save();
+                }
+            } elseif ($record && (string) ($record->Status ?? '') !== 'approved') {
+                $record->TeacherID = $teacherId ?: $record->TeacherID;
+                $record->SessionDate = $sessionDate;
+                $record->StartTime = $startTime;
+                $record->EndTime = $endTime;
+                $record->save();
+            }
+
+            return response()->json([
+                'message' => $approved
+                    ? '已補登加課並扣堂'
+                    : ($isEnded ? '已補登堂次，待老師填寫評量' : '已調整加課堂次'),
+                'student_class_id' => (int) $studentClass->ID,
+                'class_session_id' => (int) $classSession->id,
+                'session_date' => $sessionDate,
+                'start_time' => substr($startTime, 0, 5),
+                'end_time' => substr($endTime, 0, 5),
+                'auto_approved' => $approved,
+                'deducted' => $deducted,
+                'moved_from_date' => $movedFromDate,
+                'no_total_increase' => $movedFromDate !== null || !$isSessionMode,
+            ], 201);
+        });
+    }
+
     public function destroy(StudentClass $studentClass)
     {
         $role = request()->attributes->get('auth_role');
@@ -933,6 +1496,58 @@ class StudentClassController extends Controller
         });
     }
 
+    private function authorizeStudentClassAccess(StudentClass $studentClass)
+    {
+        $role = request()->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
+
+        if ($role === 'teacher') {
+            $teacherId = request()->attributes->get('auth_teacher_id');
+            if (!$teacherId || (int) $studentClass->TeacherID !== (int) $teacherId) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        if (!empty($campusIds)) {
+            $allowed = Student::whereIn('CampusID', $campusIds)
+                ->where('id', $studentClass->StudentID)
+                ->exists();
+            if (!$allowed) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function createStudentClassRecordResilient(array $payload): StudentClass
+    {
+        $attempts = 0;
+        while ($attempts < 8) {
+            try {
+                return StudentClass::create($payload);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if (!str_contains($e->getMessage(), 'Unknown column')) {
+                    throw $e;
+                }
+                if (!preg_match("/Unknown column '([^']+)'/", $e->getMessage(), $m)) {
+                    throw $e;
+                }
+                $badColumn = $m[1] ?? null;
+                if (!$badColumn || !array_key_exists($badColumn, $payload)) {
+                    throw $e;
+                }
+                unset($payload[$badColumn]);
+                $attempts++;
+            }
+        }
+
+        return StudentClass::create($payload);
+    }
+
     private function mapFrontendPayload(Request $request): array
     {
         $input = $request->json()->all();
@@ -951,7 +1566,8 @@ class StudentClassController extends Controller
             'Math' => '數學',
             'Physics' => '物理',
             'Chemistry' => '化學',
-            'Science' => '自然',
+            'Science' => '理化',
+            'Biology' => '生物',
             'Social' => '社會'
         ];
         $frontendSubject = $input['subject'] ?? 'Math';
@@ -966,6 +1582,7 @@ class StudentClassController extends Controller
         if (isset($input['class_type'])) $mappedData['ClassType'] = $input['class_type'];
         if (isset($input['payment_type'])) $mappedData['ScheduleMode'] = ($input['payment_type'] === 'session') ? 'count' : 'date';
         if (isset($input['rate_per_30min'])) $mappedData['Rate'] = $input['rate_per_30min'];
+        if (isset($input['rate_unit'])) $mappedData['rate_unit'] = $input['rate_unit'];
         if (isset($input['duration_hours'])) $mappedData['SessionDuration'] = (int) round((float) $input['duration_hours'] * 60);
         if (isset($input['sessions_purchased'])) $mappedData['SessionCount'] = $input['sessions_purchased'];
         if (isset($input['remaining_sessions'])) $mappedData['RemainingSessions'] = $input['remaining_sessions'];
@@ -1000,55 +1617,619 @@ class StudentClassController extends Controller
             $mappedData['StartDate'] = $input['first_class_date'];
         }
 
-        // Handle days_of_week for both create and update (so 課程管理 編輯儲存 會更新 week1..week6)
-        $daysOfWeek = $input['days_of_week'] ?? null;
-        if (is_array($daysOfWeek) && !empty($daysOfWeek)) {
-            for ($i = 1; $i <= 6; $i++) {
-                $mappedData["week{$i}"] = null;
+        // Handle days + time slots for both create and update.
+        $dayTimeSlots = $this->normalizeDayTimeSlotsInput($input['day_time_slots'] ?? []);
+        if (empty($dayTimeSlots)) {
+            $startTime = $input['start_time'] ?? null;
+            $daysOfWeek = $input['days_of_week'] ?? null;
+            if ($startTime && is_array($daysOfWeek) && !empty($daysOfWeek)) {
+                $dayTimeSlots = array_map(fn ($d) => [
+                    'day' => (int) $d,
+                    'start_time' => substr((string) $startTime, 0, 5),
+                ], $daysOfWeek);
+            } elseif (isset($input['day_of_week']) && $startTime) {
+                $dayTimeSlots = [[
+                    'day' => (int) $input['day_of_week'],
+                    'start_time' => substr((string) $startTime, 0, 5),
+                ]];
             }
-            foreach ($daysOfWeek as $idx => $dow) {
-                if ($idx < 6) {
-                    $mappedData['week' . ($idx + 1)] = (int) $dow;
-                }
-            }
-            $mappedData['week'] = (int) $daysOfWeek[0];
-        } elseif (isset($input['day_of_week']) && ($request->isMethod('post') || $request->isMethod('put'))) {
-            $dow = (int) $input['day_of_week'];
-            $mappedData['week'] = $dow;
-            for ($i = 1; $i <= 6; $i++) {
-                $mappedData["week{$i}"] = null;
-            }
-            if ($dow > 0) {
-                $mappedData['week1'] = $dow;
-                $mappedData['week2'] = $dow;
-                $mappedData['week3'] = $dow;
-                $mappedData['week4'] = $dow;
-                $mappedData['week5'] = $dow;
-            }
+            $dayTimeSlots = $this->normalizeDayTimeSlotsInput($dayTimeSlots);
         }
 
-        // Build ScheduleSlots from days_of_week or day_of_week
-        $startTime = $input['start_time'] ?? null;
-        $daysOfWeek = $input['days_of_week'] ?? null;
-        if ($startTime && is_array($daysOfWeek) && !empty($daysOfWeek)) {
-            $mappedData['ScheduleSlots'] = array_map(fn($d) => [
-                'weekday' => (int) $d,
-                'time' => $startTime,
-            ], $daysOfWeek);
-            $mappedData['week'] = (int) $daysOfWeek[0];
-            $mappedData['time'] = substr($startTime, 0, 5) . ':00';
-        } elseif (isset($input['day_of_week']) && $startTime) {
-            $mappedData['ScheduleSlots'] = [
-                [
-                    'weekday' => (int) $input['day_of_week'],
-                    'time' => $startTime,
-                ]
-            ];
-            $mappedData['week'] = (int) $input['day_of_week'];
-            $mappedData['time'] = substr($startTime, 0, 5) . ':00';
+        if (!empty($dayTimeSlots)) {
+            for ($i = 1; $i <= 6; $i++) {
+                $mappedData["week{$i}"] = null;
+                $mappedData["time{$i}"] = null;
+                $mappedData["duration{$i}"] = null;
+            }
+            foreach ($dayTimeSlots as $idx => $slot) {
+                if ($idx >= 6) break;
+                $mappedData['week' . ($idx + 1)] = (int) $slot['day'];
+                $mappedData['time' . ($idx + 1)] = substr((string) $slot['start_time'], 0, 5) . ':00';
+                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
+                    $mappedData['duration' . ($idx + 1)] = (int) $slot['duration_minutes'];
+                }
+            }
+            $primary = $dayTimeSlots[0];
+            $mappedData['week'] = (int) $primary['day'];
+            $mappedData['time'] = substr((string) $primary['start_time'], 0, 5) . ':00';
+            $mappedData['ScheduleSlots'] = array_map(fn ($slot) => [
+                'weekday' => (int) $slot['day'],
+                'time' => substr((string) $slot['start_time'], 0, 5),
+                'duration_minutes' => !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : null,
+            ], $dayTimeSlots);
         }
 
         return $mappedData;
+    }
+
+    /**
+     * @param  mixed  $rawSlots
+     * @return array<int, array{day:int,start_time:string,duration_minutes?:int|null}>
+     */
+    private function normalizeDayTimeSlotsInput($rawSlots): array
+    {
+        if (!is_array($rawSlots)) {
+            return [];
+        }
+        $byDay = [];
+        foreach ($rawSlots as $slot) {
+            if (!is_array($slot)) {
+                continue;
+            }
+            $day = (int) ($slot['day'] ?? 0);
+            $startTime = trim((string) ($slot['start_time'] ?? ''));
+            if ($day < 1 || $day > 7 || $startTime === '') {
+                continue;
+            }
+            $durMin = isset($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30
+                ? (int) $slot['duration_minutes']
+                : null;
+            $byDay[$day] = [
+                'day' => $day,
+                'start_time' => substr($startTime, 0, 5),
+                'duration_minutes' => $durMin,
+            ];
+        }
+        ksort($byDay);
+        return array_values($byDay);
+    }
+
+    /**
+     * Rebuild upcoming class sessions when first class date is edited and no immutable history exists.
+     *
+     * @param  array<string, mixed>  $mapped
+     * @param  array<int, array<string, mixed>>  $scheduleSlots
+     * @return array<string, mixed>
+     */
+    private function maybeRebuildSessionsAfterUpdate(
+        StudentClass $studentClass,
+        ?string $previousStartDate,
+        array $mapped,
+        array $scheduleSlots = [],
+        bool $forceRebuildIfMismatch = false
+    ): array {
+        $scheduleFields = [
+            'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6',
+            'time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6',
+            'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
+            'SessionDuration',
+        ];
+        $scheduleUpdated = false;
+        foreach ($scheduleFields as $field) {
+            if (array_key_exists($field, $mapped)) {
+                $scheduleUpdated = true;
+                break;
+            }
+        }
+
+        if (!array_key_exists('StartDate', $mapped)) {
+            if (!$scheduleUpdated) {
+                return ['rebuilt' => false, 'reason' => 'start_date_not_updated'];
+            }
+
+            $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+            if (empty($slots)) {
+                return ['rebuilt' => false, 'reason' => 'schedule_slots_missing'];
+            }
+
+            $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+            $classId = (int) $studentClass->ID;
+
+            // If immutable history exists, do a safe partial sync (times only).
+            if ($this->hasImmutableSessionHistory($classId)) {
+                $updatedCount = $this->syncFutureScheduledSessionTimes(
+                    $classId,
+                    $slots,
+                    $durationMinutes
+                );
+
+                return [
+                    'rebuilt' => false,
+                    'reason' => 'history_exists',
+                    'updated_future_sessions' => $updatedCount,
+                ];
+            }
+
+            $startDate = $this->normalizeDateString($studentClass->StartDate ?? null) ?: Carbon::today()->toDateString();
+            $scheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
+            $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
+            $sessions = [];
+
+            if ($scheduleMode === 'date') {
+                $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+                if (!$endDate) {
+                    return ['rebuilt' => false, 'reason' => 'end_date_missing'];
+                }
+                if ($endDate < $startDate) {
+                    $endDate = $startDate;
+                    $studentClass->EndDate = $endDate;
+                    $studentClass->save();
+                }
+                $sessions = $this->buildSessionsFromWeeklySchedule(
+                    $classId,
+                    $startDate,
+                    $endDate,
+                    $slots,
+                    $durationMinutes
+                );
+                if ($sessionCount > 0 && count($sessions) > $sessionCount) {
+                    $sessions = array_slice($sessions, 0, $sessionCount);
+                }
+            } else {
+                if ($sessionCount <= 0) {
+                    return ['rebuilt' => false, 'reason' => 'session_count_missing'];
+                }
+                $sessions = $this->buildSessionsForCount(
+                    $classId,
+                    $startDate,
+                    $sessionCount,
+                    $slots,
+                    $durationMinutes
+                );
+            }
+
+            $sessionIds = ClassSession::where('StudentClassID', $classId)->pluck('id')->all();
+            if (!empty($sessionIds)) {
+                LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
+            }
+            LearningRecord::where('StudentClassID', $classId)
+                ->whereNull('ClassSessionID')
+                ->delete();
+            ClassSession::where('StudentClassID', $classId)->delete();
+
+            $createdSessions = 0;
+            $createdPendingRecords = 0;
+            $now = Carbon::now();
+            $teacherId = (int) ($studentClass->TeacherID ?? 0);
+            $subjectName = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
+                ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
+                ?? '評量';
+            foreach ($sessions as $session) {
+                $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
+                $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+                if (!$sessionDate) {
+                    continue;
+                }
+                $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+                $session['Status'] = $isEnded ? 'completed' : 'scheduled';
+                if ($isEnded && empty($session['Note'])) {
+                    $session['Note'] = '系統重建堂次（固定星期調整）';
+                }
+
+                $classSession = ClassSession::create($session);
+                $createdSessions++;
+
+                if ($isEnded) {
+                    LearningRecord::create([
+                        'StudentClassID' => $classId,
+                        'ClassSessionID' => (int) $classSession->id,
+                        'TeacherID' => $teacherId,
+                        'Content' => '',
+                        'Subject' => $subjectName,
+                        'SessionDate' => $classSession->SessionDate,
+                        'StartTime' => $classSession->StartTime,
+                        'EndTime' => $classSession->EndTime,
+                        'Status' => 'pending',
+                    ]);
+                    $createdPendingRecords++;
+                }
+            }
+
+            if ($sessionCount > 0) {
+                $approvedCount = LearningRecord::where('StudentClassID', $classId)
+                    ->where('Status', 'approved')
+                    ->count();
+                $remaining = max(0, $sessionCount - $approvedCount);
+                $studentClass->UsedSessions = $approvedCount;
+                $studentClass->RemainingSessions = $remaining;
+                $studentClass->Stop = $remaining <= 0 ? 1 : 0;
+                $studentClass->save();
+            }
+
+            return [
+                'rebuilt' => true,
+                'reason' => 'schedule_changed',
+                'created_sessions' => $createdSessions,
+                'created_pending_records' => $createdPendingRecords,
+            ];
+        }
+
+        $newStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
+        if (!$newStartDate) {
+            return ['rebuilt' => false, 'reason' => 'start_date_unchanged'];
+        }
+        $startDateChanged = $newStartDate !== $previousStartDate;
+        if (!$startDateChanged) {
+            if (
+                !$forceRebuildIfMismatch
+                || !$this->hasSessionStartDateMismatch((int) $studentClass->ID, $newStartDate)
+            ) {
+                return ['rebuilt' => false, 'reason' => 'start_date_unchanged'];
+            }
+        }
+
+        if ($this->hasImmutableSessionHistory((int) $studentClass->ID)) {
+            return ['rebuilt' => false, 'reason' => 'history_exists'];
+        }
+
+        $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $scheduleSlots);
+        if (empty($slots)) {
+            return ['rebuilt' => false, 'reason' => 'schedule_slots_missing'];
+        }
+
+        $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
+        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        $scheduleMode = (string) ($studentClass->ScheduleMode ?? 'count');
+
+        if ($scheduleMode === 'count' && $sessionCount <= 0) {
+            return ['rebuilt' => false, 'reason' => 'session_count_missing'];
+        }
+
+        $sessions = [];
+        if ($scheduleMode === 'date') {
+            $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+            if (!$endDate) {
+                return ['rebuilt' => false, 'reason' => 'end_date_missing'];
+            }
+            if ($endDate < $newStartDate) {
+                $endDate = $newStartDate;
+                $studentClass->EndDate = $endDate;
+                $studentClass->save();
+            }
+            $sessions = $this->buildSessionsFromWeeklySchedule(
+                (int) $studentClass->ID,
+                $newStartDate,
+                $endDate,
+                $slots,
+                $durationMinutes
+            );
+            if ($sessionCount > 0 && count($sessions) > $sessionCount) {
+                $sessions = array_slice($sessions, 0, $sessionCount);
+            }
+        } else {
+            $sessions = $this->buildSessionsForCount(
+                (int) $studentClass->ID,
+                $newStartDate,
+                $sessionCount,
+                $slots,
+                $durationMinutes
+            );
+        }
+
+        $sessionIds = ClassSession::where('StudentClassID', (int) $studentClass->ID)->pluck('id')->all();
+        if (!empty($sessionIds)) {
+            LearningRecord::whereIn('ClassSessionID', $sessionIds)->delete();
+        }
+        LearningRecord::where('StudentClassID', (int) $studentClass->ID)
+            ->whereNull('ClassSessionID')
+            ->delete();
+        ClassSession::where('StudentClassID', (int) $studentClass->ID)->delete();
+
+        $createdSessions = 0;
+        $createdPendingRecords = 0;
+        $now = Carbon::now();
+        $teacherId = (int) ($studentClass->TeacherID ?? 0);
+        $subjectName = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name')
+            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $studentClass->SubjectID)->value('Val')
+            ?? '評量';
+
+        foreach ($sessions as $session) {
+            $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+            if (!$sessionDate) {
+                continue;
+            }
+
+            $isEnded = $this->sessionEndedByEndTime($sessionDate, $endTime, $now);
+            $session['Status'] = $isEnded ? 'completed' : 'scheduled';
+            if ($isEnded && empty($session['Note'])) {
+                $session['Note'] = '系統重建堂次（開課日調整）';
+            }
+
+            $classSession = ClassSession::create($session);
+            $createdSessions++;
+
+            if ($isEnded) {
+                LearningRecord::create([
+                    'StudentClassID' => (int) $studentClass->ID,
+                    'ClassSessionID' => (int) $classSession->id,
+                    'TeacherID' => $teacherId,
+                    'Content' => '',
+                    'Subject' => $subjectName,
+                    'SessionDate' => $classSession->SessionDate,
+                    'StartTime' => $classSession->StartTime,
+                    'EndTime' => $classSession->EndTime,
+                    'Status' => 'pending',
+                ]);
+                $createdPendingRecords++;
+            }
+        }
+
+        if ($sessionCount > 0) {
+            $approvedCount = LearningRecord::where('StudentClassID', (int) $studentClass->ID)
+                ->where('Status', 'approved')
+                ->count();
+            $remaining = max(0, $sessionCount - $approvedCount);
+            $studentClass->UsedSessions = $approvedCount;
+            $studentClass->RemainingSessions = $remaining;
+            $studentClass->Stop = $remaining <= 0 ? 1 : 0;
+            $studentClass->save();
+        }
+
+        return [
+            'rebuilt' => true,
+            'reason' => $startDateChanged ? 'start_date_changed' : 'start_date_aligned',
+            'new_start_date' => $newStartDate,
+            'created_sessions' => $createdSessions,
+            'created_pending_records' => $createdPendingRecords,
+        ];
+    }
+
+    /**
+     * Sync only future scheduled sessions' times by weekday mapping.
+     * Keeps historical/locked sessions untouched.
+     *
+     * @param  array<int, array{weekday:int,time:string}>  $slots
+     */
+    private function syncFutureScheduledSessionTimes(int $studentClassId, array $slots, int $durationMinutes): int
+    {
+        if ($studentClassId <= 0 || empty($slots)) {
+            return 0;
+        }
+
+        $timeByIsoWeekday = [];
+        $durByIsoWeekday = [];
+        foreach ($slots as $slot) {
+            $weekday = (int) ($slot['weekday'] ?? 0);
+            $time = (string) ($slot['time'] ?? '');
+            if ($weekday < 1 || $weekday > 7 || $time === '') {
+                continue;
+            }
+            $timeByIsoWeekday[$weekday] = substr($time, 0, 5);
+            if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
+                $durByIsoWeekday[$weekday] = (int) $slot['duration_minutes'];
+            }
+        }
+        if (empty($timeByIsoWeekday)) {
+            return 0;
+        }
+
+        $lockedBySessionId = LearningRecord::where('StudentClassID', $studentClassId)
+            ->where('Status', 'approved')
+            ->whereNotNull('ClassSessionID')
+            ->pluck('ClassSessionID')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->flip()
+            ->all();
+        $signInLocked = StudentSignIn::where('StudentClassID', $studentClassId)
+            ->whereNotNull('ClassSessionID')
+            ->pluck('ClassSessionID')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->all();
+        foreach ($signInLocked as $sid) {
+            $lockedBySessionId[(int) $sid] = true;
+        }
+
+        $today = Carbon::today()->toDateString();
+        $sessions = ClassSession::where('StudentClassID', $studentClassId)
+            ->where('Status', 'scheduled')
+            ->whereDate('SessionDate', '>=', $today)
+            ->get();
+
+        $updated = 0;
+        foreach ($sessions as $session) {
+            if (isset($lockedBySessionId[(int) $session->id])) {
+                continue;
+            }
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            if (!$date) {
+                continue;
+            }
+            $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+            $newStart = $timeByIsoWeekday[$isoDow] ?? null;
+            if (!$newStart) {
+                continue;
+            }
+
+            $newStartFull = $this->normalizeSessionTime($newStart, '16:00:00');
+            $slotDur = $durByIsoWeekday[$isoDow] ?? $durationMinutes;
+            $newEndFull = Carbon::createFromFormat('H:i:s', $newStartFull)
+                ->addMinutes(max(30, $slotDur))
+                ->format('H:i:s');
+
+            if (
+                (string) $session->StartTime !== $newStartFull
+                || (string) $session->EndTime !== $newEndFull
+            ) {
+                $session->StartTime = $newStartFull;
+                $session->EndTime = $newEndFull;
+                $session->save();
+                $updated++;
+            }
+        }
+
+        return $updated;
+    }
+
+    private function hasSessionStartDateMismatch(int $studentClassId, string $startDate): bool
+    {
+        if ($studentClassId <= 0 || $startDate === '') {
+            return false;
+        }
+        $firstActive = ClassSession::where('StudentClassID', $studentClassId)
+            ->where('Status', '!=', 'cancelled')
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('StartTime', 'asc')
+            ->first();
+        if (!$firstActive) {
+            return false;
+        }
+        $firstDate = $this->normalizeDateString($firstActive->SessionDate ?? null);
+        return $firstDate !== null && $firstDate !== $startDate;
+    }
+
+    private function hasImmutableSessionHistory(int $studentClassId): bool
+    {
+        if ($studentClassId <= 0) {
+            return false;
+        }
+
+        if (StudentSignIn::where('StudentClassID', $studentClassId)->exists()) {
+            return true;
+        }
+
+        if (LearningRecord::where('StudentClassID', $studentClassId)->where('Status', 'approved')->exists()) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $providedSlots
+     * @return array<int, array{weekday:int,time:string}>
+     */
+    private function resolveScheduleSlotsForRebuild(StudentClass $studentClass, array $providedSlots = []): array
+    {
+        $slots = [];
+
+        if (!empty($providedSlots)) {
+            foreach ($providedSlots as $slot) {
+                $weekday = (int) ($slot['weekday'] ?? 0);
+                if ($weekday < 1 || $weekday > 7) {
+                    continue;
+                }
+                $time = $this->normalizeSessionTime($slot['time'] ?? null, '16:00');
+                $entry = [
+                    'weekday' => $weekday,
+                    'time' => substr($time, 0, 5),
+                ];
+                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
+                    $entry['duration_minutes'] = (int) $slot['duration_minutes'];
+                }
+                $slots[] = $entry;
+            }
+        }
+
+        if (empty($slots)) {
+            $candidates = [
+                ['week', 'time', 'duration1'],
+                ['week1', 'time1', 'duration1'],
+                ['week2', 'time2', 'duration2'],
+                ['week3', 'time3', 'duration3'],
+                ['week4', 'time4', 'duration4'],
+                ['week5', 'time5', 'duration5'],
+                ['week6', 'time6', 'duration6'],
+            ];
+            $seenWeekdays = [];
+            foreach ($candidates as [$weekField, $timeField, $durField]) {
+                $weekday = (int) ($studentClass->{$weekField} ?? 0);
+                if ($weekday < 1 || $weekday > 7) {
+                    continue;
+                }
+                if (isset($seenWeekdays[$weekday])) {
+                    continue;
+                }
+                $seenWeekdays[$weekday] = true;
+                $time = $this->normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
+                $entry = [
+                    'weekday' => $weekday,
+                    'time' => substr($time, 0, 5),
+                ];
+                $perDayDur = (int) ($studentClass->{$durField} ?? 0);
+                if ($perDayDur >= 30) {
+                    $entry['duration_minutes'] = $perDayDur;
+                }
+                $slots[] = $entry;
+            }
+        }
+
+        usort($slots, fn ($a, $b) => ($a['weekday'] <=> $b['weekday']));
+
+        return $slots;
+    }
+
+    private function normalizeDateString($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Look up the per-day duration stored in duration1-6 by matching the ISO weekday.
+     * Returns the duration in minutes, or 0 if not set.
+     */
+    private function resolvePerDayDuration(StudentClass $sc, int $isoWeekday): int
+    {
+        $candidates = [
+            ['week1', 'duration1'], ['week2', 'duration2'], ['week3', 'duration3'],
+            ['week4', 'duration4'], ['week5', 'duration5'], ['week6', 'duration6'],
+        ];
+        foreach ($candidates as [$wf, $df]) {
+            if ((int) ($sc->{$wf} ?? 0) === $isoWeekday) {
+                $dur = (int) ($sc->{$df} ?? 0);
+                return $dur >= 30 ? $dur : 0;
+            }
+        }
+        return 0;
+    }
+
+    private function normalizeSessionTime($value, string $fallback = '16:00:00'): string
+    {
+        $raw = trim((string) ($value ?? ''));
+        if ($raw === '') {
+            $raw = $fallback;
+        }
+        try {
+            if (preg_match('/^\d{1,2}:\d{2}$/', $raw)) {
+                return Carbon::createFromFormat('H:i', $raw)->format('H:i:s');
+            }
+            if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $raw)) {
+                return Carbon::createFromFormat('H:i:s', $raw)->format('H:i:s');
+            }
+            return Carbon::parse($raw)->format('H:i:s');
+        } catch (\Throwable $e) {
+            try {
+                return Carbon::parse($fallback)->format('H:i:s');
+            } catch (\Throwable $ignore) {
+                return '16:00:00';
+            }
+        }
+    }
+
+    private function sessionEndedByEndTime(string $sessionDate, string $endTime, ?Carbon $now = null): bool
+    {
+        $now = $now ?: Carbon::now();
+        $sessionEndAt = Carbon::parse($sessionDate . ' ' . $endTime);
+        return $sessionEndAt->lte($now);
     }
 
     private function mapScheduleSlots(array $data, array $slots): array
@@ -1070,65 +2251,61 @@ class StudentClassController extends Controller
     }
 
     /**
-     * Detect scheduling conflicts for a teacher against proposed new sessions.
+     * Detect scheduling conflicts for a teacher against proposed sessions.
      *
-     * Uses a pessimistic lock (FOR UPDATE) on existing ClassSession rows via
-     * the teacher's active StudentClass records to prevent concurrent inserts
-     * from creating overlapping bookings.
-     *
-     * @return array List of conflict descriptions (empty = no conflicts)
+     * @return array<int, array<string, mixed>>
      */
-    private function detectTeacherConflicts(int $teacherId, array $proposedSessions): array
+    private function detectTeacherConflicts(
+        int $teacherId,
+        array $proposedSessions,
+        string $newClassType = 'one_on_one',
+        ?int $roomId = null,
+        int $branchId = 0
+    ): array
     {
-        if (empty($proposedSessions)) {
+        if ($teacherId <= 0 || $branchId <= 0 || empty($proposedSessions)) {
             return [];
         }
-
-        // Collect all unique dates from proposed sessions
-        $dates = array_unique(array_column($proposedSessions, 'SessionDate'));
-
-        // Get all active StudentClass IDs for this teacher (locked to prevent concurrent inserts)
-        $teacherClassIds = StudentClass::where('TeacherID', $teacherId)
-            ->where('Stop', 0)
-            ->lockForUpdate()
-            ->pluck('ID')
-            ->all();
-
-        if (empty($teacherClassIds)) {
-            return [];
-        }
-
-        // Get existing sessions on the same dates for this teacher's classes
-        $existingSessions = ClassSession::whereIn('StudentClassID', $teacherClassIds)
-            ->whereIn('SessionDate', $dates)
-            ->whereNotIn('Status', ['cancelled'])
-            ->lockForUpdate()
-            ->get();
 
         $conflicts = [];
-
+        $seen = [];
         foreach ($proposedSessions as $proposed) {
-            $pStart = Carbon::parse($proposed['SessionDate'] . ' ' . $proposed['StartTime']);
-            $pEnd = Carbon::parse($proposed['SessionDate'] . ' ' . $proposed['EndTime']);
+            $date = isset($proposed['SessionDate']) ? Carbon::parse($proposed['SessionDate'])->toDateString() : null;
+            $start = isset($proposed['StartTime']) ? substr((string) $proposed['StartTime'], 0, 5) : null;
+            $end = isset($proposed['EndTime']) ? substr((string) $proposed['EndTime'], 0, 5) : null;
+            if (!$date || !$start || !$end) {
+                continue;
+            }
 
-            foreach ($existingSessions as $existing) {
-                if ($existing->SessionDate !== $proposed['SessionDate']) {
+            $slotConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
+                'teacher_id' => $teacherId,
+                'class_type' => $newClassType,
+                'room_id' => $roomId,
+                'branch_id' => $branchId,
+                'schedule_date' => $date,
+                'start_time' => $start,
+                'end_time' => $end,
+            ]);
+            if (empty($slotConflicts)) {
+                continue;
+            }
+
+            foreach ($slotConflicts as $conflict) {
+                $key = implode('|', [
+                    (string) ($conflict['type'] ?? ''),
+                    $date,
+                    $start,
+                    $end,
+                    (string) ($conflict['room_id'] ?? ''),
+                ]);
+                if (isset($seen[$key])) {
                     continue;
                 }
-
-                $eStart = Carbon::parse($existing->SessionDate . ' ' . $existing->StartTime);
-                $eEnd = Carbon::parse($existing->SessionDate . ' ' . $existing->EndTime);
-
-                // Check time overlap: two intervals overlap if start < other_end AND end > other_start
-                if ($pStart->lt($eEnd) && $pEnd->gt($eStart)) {
-                    $conflicts[] = [
-                        'date' => $proposed['SessionDate'],
-                        'proposed_time' => $proposed['StartTime'] . '-' . $proposed['EndTime'],
-                        'existing_time' => $existing->StartTime . '-' . $existing->EndTime,
-                        'existing_session_id' => $existing->id,
-                    ];
-                    break; // One conflict per proposed session is enough
-                }
+                $seen[$key] = true;
+                $conflicts[] = array_merge([
+                    'date' => $date,
+                    'proposed_time' => $start . '-' . $end,
+                ], $conflict);
             }
         }
 
@@ -1150,7 +2327,8 @@ class StudentClassController extends Controller
             foreach ($slots as $slot) {
                 if ((int) $date->dayOfWeek === (int) $slot['weekday']) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
-                    $endTime = $startTime->copy()->addMinutes($durationMinutes);
+                    $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
+                    $endTime = $startTime->copy()->addMinutes($slotDur);
 
                     $sessions[] = [
                         'StudentClassID' => $studentClassId,
@@ -1190,14 +2368,19 @@ class StudentClassController extends Controller
         $firstTime = $firstSlot['time'] ?? '16:00';
         $slotWeekdays = array_values(array_unique(array_column($slots, 'weekday')));
         $timeByWeekday = [];
+        $durByWeekday = [];
         foreach ($slots as $s) {
             $timeByWeekday[(int) $s['weekday']] = $s['time'] ?? $firstTime;
+            if (!empty($s['duration_minutes']) && (int) $s['duration_minutes'] >= 30) {
+                $durByWeekday[(int) $s['weekday']] = (int) $s['duration_minutes'];
+            }
         }
 
-        // 第 1 堂：首堂日（可為任意星期，例如 2/9 週二）
         $firstDate = Carbon::parse($startDate)->startOfDay();
+        $firstIsoDow = (int) $firstDate->dayOfWeekIso;
+        $firstDur = $durByWeekday[$firstIsoDow] ?? $durationMinutes;
         $startTime = Carbon::parse($firstDate->toDateString() . ' ' . $firstTime);
-        $endTime = $startTime->copy()->addMinutes($durationMinutes);
+        $endTime = $startTime->copy()->addMinutes($firstDur);
         $sessions[] = [
             'StudentClassID' => $studentClassId,
             'SessionDate' => $startTime->toDateString(),
@@ -1209,16 +2392,16 @@ class StudentClassController extends Controller
             'updated_at' => now(),
         ];
 
-        // 第 2～N 堂：從首堂日隔天起，只取星期在 slotWeekdays 的日期
         $date = Carbon::parse($startDate)->addDay()->startOfDay();
         $needed = $sessionCount - 1;
         while (count($sessions) < $sessionCount && $needed > 0) {
-            $dow = (int) $date->dayOfWeek; // 0=Sun, 1=Mon, ...
-            $isoDow = $dow === 0 ? 7 : $dow; // 1=Mon .. 7=Sun for slots
+            $dow = (int) $date->dayOfWeek;
+            $isoDow = $dow === 0 ? 7 : $dow;
             if (in_array($isoDow, $slotWeekdays, true)) {
                 $time = $timeByWeekday[$isoDow] ?? $firstTime;
+                $slotDur = $durByWeekday[$isoDow] ?? $durationMinutes;
                 $start = Carbon::parse($date->toDateString() . ' ' . $time);
-                $end = $start->copy()->addMinutes($durationMinutes);
+                $end = $start->copy()->addMinutes($slotDur);
                 $sessions[] = [
                     'StudentClassID' => $studentClassId,
                     'SessionDate' => $start->toDateString(),
@@ -1235,5 +2418,52 @@ class StudentClassController extends Controller
         }
 
         return $sessions;
+    }
+
+    /**
+     * Toggle pause/resume for a student course.
+     * Pause: sets Stop=1 and cancels future scheduled sessions.
+     * Resume: sets Stop=0.
+     */
+    public function togglePause(Request $request, StudentClass $studentClass)
+    {
+        $sc = $studentClass;
+
+        $action = $request->input('action', 'pause');
+        $today = Carbon::today()->toDateString();
+
+        DB::beginTransaction();
+        try {
+            if ($action === 'pause') {
+                $sc->Stop = 1;
+                $sc->save();
+
+                $cancelled = ClassSession::where('StudentClassID', $sc->ID)
+                    ->where('SessionDate', '>=', $today)
+                    ->where('Status', 'scheduled')
+                    ->update([
+                        'Status' => 'cancelled',
+                        'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' [暫停取消]')"),
+                        'updated_at' => now(),
+                    ]);
+
+                DB::commit();
+                return response()->json([
+                    'message' => "課程已暫停，已取消 {$cancelled} 堂未來排課。",
+                    'cancelled_count' => $cancelled,
+                ]);
+            } else {
+                $sc->Stop = 0;
+                $sc->save();
+
+                DB::commit();
+                return response()->json([
+                    'message' => '課程已恢復，可重新排課。',
+                ]);
+            }
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => '操作失敗：' . $e->getMessage()], 500);
+        }
     }
 }

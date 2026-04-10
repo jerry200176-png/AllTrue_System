@@ -6,6 +6,7 @@ use App\Models\Student;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class StudentController extends Controller
 {
@@ -164,6 +165,204 @@ class StudentController extends Controller
         $student->save();
 
         return response()->json($this->transformStudent($student));
+    }
+
+    private function purgeStudentRecords(int $studentId): array
+    {
+        $deleted = [
+            'StudentClass' => 0,
+            'ClassSession' => 0,
+            'LearningRecord' => 0,
+            'StudentSingIn' => 0,
+            'schedules' => 0,
+            'Invoice' => 0,
+            'InvoiceItem' => 0,
+            'Payment' => 0,
+            'ParentSession' => 0,
+            'Student' => 0,
+        ];
+
+        static $tableExists = null;
+        if ($tableExists === null) {
+            $tableExists = [];
+            foreach (['StudentClass', 'ClassSession', 'LearningRecord', 'StudentSingIn', 'schedules', 'Invoice', 'InvoiceItem', 'Payment', 'ParentSession', 'Student'] as $table) {
+                $tableExists[$table] = Schema::hasTable($table);
+            }
+        }
+
+        DB::transaction(function () use ($studentId, &$deleted, $tableExists) {
+            $studentClassIds = [];
+            if ($tableExists['StudentClass']) {
+                $studentClassIds = DB::table('StudentClass')
+                    ->where('StudentID', $studentId)
+                    ->pluck('ID')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+            }
+
+            if ($tableExists['LearningRecord'] && !empty($studentClassIds)) {
+                $deleted['LearningRecord'] = DB::table('LearningRecord')
+                    ->whereIn('StudentClassID', $studentClassIds)
+                    ->delete();
+            }
+
+            if ($tableExists['ClassSession'] && !empty($studentClassIds)) {
+                $deleted['ClassSession'] = DB::table('ClassSession')
+                    ->whereIn('StudentClassID', $studentClassIds)
+                    ->delete();
+            }
+
+            if ($tableExists['StudentSingIn']) {
+                $deleted['StudentSingIn'] = DB::table('StudentSingIn')
+                    ->where(function ($q) use ($studentId, $studentClassIds) {
+                        $q->where('StudentID', $studentId);
+                        if (!empty($studentClassIds)) {
+                            $q->orWhereIn('StudentClassID', $studentClassIds);
+                        }
+                    })
+                    ->delete();
+            }
+
+            if ($tableExists['schedules']) {
+                $deleted['schedules'] = DB::table('schedules')
+                    ->where(function ($q) use ($studentId, $studentClassIds) {
+                        $q->where('student_id', $studentId);
+                        if (!empty($studentClassIds)) {
+                            $q->orWhereIn('student_course_id', $studentClassIds);
+                        }
+                    })
+                    ->delete();
+            }
+
+            $invoiceIds = [];
+            if ($tableExists['Invoice']) {
+                $invoiceQuery = DB::table('Invoice')->where('StudentID', $studentId);
+                if (!empty($studentClassIds)) {
+                    $invoiceQuery->orWhereIn('StudentClassID', $studentClassIds);
+                }
+                $invoiceIds = $invoiceQuery->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+                if (!empty($invoiceIds) && $tableExists['Payment']) {
+                    $deleted['Payment'] = DB::table('Payment')
+                        ->whereIn('InvoiceID', $invoiceIds)
+                        ->delete();
+                }
+
+                if (!empty($invoiceIds) && $tableExists['InvoiceItem']) {
+                    $deleted['InvoiceItem'] = DB::table('InvoiceItem')
+                        ->whereIn('InvoiceID', $invoiceIds)
+                        ->delete();
+                }
+
+                if (!empty($invoiceIds)) {
+                    $deleted['Invoice'] = DB::table('Invoice')
+                        ->whereIn('id', $invoiceIds)
+                        ->delete();
+                }
+            }
+
+            if ($tableExists['StudentClass'] && !empty($studentClassIds)) {
+                $deleted['StudentClass'] = DB::table('StudentClass')
+                    ->whereIn('ID', $studentClassIds)
+                    ->delete();
+            }
+
+            if ($tableExists['ParentSession']) {
+                $deleted['ParentSession'] = DB::table('ParentSession')
+                    ->where('StudentID', $studentId)
+                    ->delete();
+            }
+
+            if ($tableExists['Student']) {
+                $deleted['Student'] = DB::table('Student')
+                    ->where('id', $studentId)
+                    ->delete();
+            }
+        });
+
+        return $deleted;
+    }
+
+    public function destroy(Request $request, Student $student)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $deleted = $this->purgeStudentRecords((int) $student->id);
+
+        return response()->json([
+            'message' => '學生已刪除',
+            'deleted' => $deleted,
+        ]);
+    }
+
+    public function bulkDestroy(Request $request)
+    {
+        $data = $request->validate([
+            'student_ids' => ['required', 'array', 'min:1', 'max:200'],
+            'student_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+        ]);
+
+        $studentIds = collect($data['student_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($studentIds->isEmpty()) {
+            return response()->json(['message' => '沒有可刪除的學生 ID'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        $query = Student::query()->whereIn('id', $studentIds->all());
+        if ($role !== 'super_admin') {
+            if (empty($campusIds)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $query->whereIn('CampusID', $campusIds);
+        }
+
+        $students = $query->get(['id']);
+        $foundIds = $students->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $invalidIds = array_values(array_diff($studentIds->all(), $foundIds));
+        if (!empty($invalidIds)) {
+            return response()->json([
+                'message' => '部分學生不存在或無權限刪除',
+                'invalid_ids' => $invalidIds,
+            ], 403);
+        }
+
+        $deletedTotals = [
+            'StudentClass' => 0,
+            'ClassSession' => 0,
+            'LearningRecord' => 0,
+            'StudentSingIn' => 0,
+            'schedules' => 0,
+            'Invoice' => 0,
+            'InvoiceItem' => 0,
+            'Payment' => 0,
+            'ParentSession' => 0,
+            'Student' => 0,
+        ];
+
+        foreach ($foundIds as $studentId) {
+            $deleted = $this->purgeStudentRecords((int) $studentId);
+            foreach ($deleted as $table => $count) {
+                $deletedTotals[$table] += (int) $count;
+            }
+        }
+
+        return response()->json([
+            'message' => '已批量刪除學生',
+            'deleted_students' => count($foundIds),
+            'deleted' => $deletedTotals,
+        ]);
     }
 
     public function bindCard(Request $request, Student $student)

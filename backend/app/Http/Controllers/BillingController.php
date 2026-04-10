@@ -23,7 +23,7 @@ class BillingController extends Controller
             $query->where('Status', $request->input('status'));
         }
 
-        $invoices = $query->orderBy('id', 'desc')->paginate(20);
+        $invoices = $query->with(['items', 'items.studentClass'])->orderBy('id', 'desc')->paginate(20);
 
         return response()->json($invoices);
     }
@@ -40,6 +40,7 @@ class BillingController extends Controller
             'Items' => 'nullable|array',
             'Items.*.Description' => 'required_with:Items|string|max:255',
             'Items.*.Amount' => 'required_with:Items|integer|min:0',
+            'Items.*.StudentClassID' => 'nullable|integer',
             'Items.*.PeriodStart' => 'nullable|date',
             'Items.*.PeriodEnd' => 'nullable|date',
             'MonthlySplit' => 'nullable|boolean',
@@ -72,6 +73,7 @@ class BillingController extends Controller
             foreach ($items as $item) {
                 InvoiceItem::create([
                     'InvoiceID' => $invoice->id,
+                    'StudentClassID' => $item['StudentClassID'] ?? $data['StudentClassID'] ?? null,
                     'Description' => $item['Description'],
                     'Amount' => $item['Amount'],
                     'PeriodStart' => $item['PeriodStart'] ?? null,
