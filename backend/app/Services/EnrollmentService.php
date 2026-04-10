@@ -297,16 +297,12 @@ class EnrollmentService
             $monthlySessions = !$isSessionMode ? (int) ($data['monthly_sessions'] ?? $plannedSessions) : null;
             $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $plannedSessions);
 
-            $hasPerDayDuration = false;
-            foreach ($dayTimeSlotMap as $slot) {
-                if (!empty($slot['duration_minutes'])) {
-                    $hasPerDayDuration = true;
-                    break;
-                }
-            }
+            // Pricing contract:
+            // - price_per_session is per class session by default (session mode)
+            // - only explicit rate_unit=hour enables hourly pricing
             $rateUnit = (!empty($data['rate_unit']) && $data['rate_unit'] === 'hour')
                 ? 'hour'
-                : ($hasPerDayDuration ? 'hour' : 'session');
+                : 'session';
 
             $totalHours = 0;
             $charge = 0;

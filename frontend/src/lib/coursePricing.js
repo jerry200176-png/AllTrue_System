@@ -53,9 +53,18 @@ export const getRateLabel = (course) => {
 
 export const getCourseTotalFee = (course) => {
   if (!course) return 0;
+  const paymentType = String(course?.payment_type || '').toLowerCase();
+  const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+
+  // AllTrue pricing contract:
+  // session payment mode always treats Rate as per-session fee.
+  if (paymentType === 'session') {
+    const perSession = getPerSessionFee(course);
+    return perSession * purchased;
+  }
+
   const rateUnit = getRateUnit(course);
   const rate = toNumber(course.rate_per_30min ?? course.Rate) ?? 0;
-  const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
 
   if (rateUnit === 'hour' && rate > 0) {
     const slots = Array.isArray(course.day_time_slots) ? course.day_time_slots : [];
