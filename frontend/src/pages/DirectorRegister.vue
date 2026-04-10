@@ -44,6 +44,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
+import { officialBranchesFromApi } from '../lib/useBranches';
 
 const emit = defineEmits(['switch-mode']);
 
@@ -81,7 +82,7 @@ onMounted(async () => {
     } else {
       try {
         const data = JSON.parse(text);
-        branches.value = Array.isArray(data) ? data : FALLBACK_BRANCHES;
+        branches.value = Array.isArray(data) ? officialBranchesFromApi(data) : FALLBACK_BRANCHES;
         if (!form.campus_id && branches.value.length > 0) {
           form.campus_id = branches.value[0].id;
         }
