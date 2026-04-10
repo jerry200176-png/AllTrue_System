@@ -28,15 +28,9 @@ class AlertController extends Controller
         $studentIds = empty($campusIds) ? null : Student::whereIn('CampusID', $campusIds)->pluck('id');
 
         $query = StudentClass::where('Stop', 0)
-            ->where(function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('ScheduleMode', 'count')
-                          ->where(function ($r) {
-                              $r->where('RemainingSessions', '<=', 2)
-                                ->orWhere('Paid', 0);
-                          });
-                });
-            });
+            ->where('ScheduleMode', 'count')
+            // Tuition alert list should only include unpaid classes.
+            ->where('Paid', 0);
 
         if ($studentIds !== null) {
             $query->whereIn('StudentID', $studentIds);

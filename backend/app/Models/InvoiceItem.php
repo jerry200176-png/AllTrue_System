@@ -10,9 +10,15 @@ class InvoiceItem extends Model
 
     protected $fillable = [
         'InvoiceID',
+        'StudentClassID',
         'Description',
         'Amount',
         'PeriodStart',
         'PeriodEnd',
     ];
+
+    public function studentClass()
+    {
+        return $this->belongsTo(StudentClass::class, 'StudentClassID', 'ID');
+    }
 }

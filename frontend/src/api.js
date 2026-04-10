@@ -16,11 +16,12 @@ export async function parentLogin(credentials) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '登入失敗');
-  return { token: data.token, student: data.student };
+  return { token: data.token, student: data.student, students: data.students || null };
 }
 
-export async function getParentDashboard(token) {
-  const res = await fetch(`${API_BASE}/parent/dashboard`, {
+export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10 } = {}) {
+  const params = new URLSearchParams({ lr_page: lrPage, lr_per_page: lrPerPage });
+  const res = await fetch(`${API_BASE}/parent/dashboard?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json().catch(() => ({}));
@@ -36,7 +37,18 @@ export async function parentLoginLine(lineUserId) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || 'LINE 登入失敗');
-  return { token: data.token, student: data.student };
+  return { token: data.token, student: data.student, students: data.students || null };
+}
+
+export async function parentSwitchStudent(token, studentId) {
+  const res = await fetch(`${API_BASE}/parent/switch-student`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ student_id: studentId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '切換學生失敗');
+  return data;
 }
 
 export async function parentRequestLeave(token, sessionId) {

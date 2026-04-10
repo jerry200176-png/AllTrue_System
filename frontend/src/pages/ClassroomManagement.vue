@@ -1,23 +1,14 @@
 <template>
   <div>
-    <HelpGuide
-      title="教室管理 — 使用說明"
-      :items="[
-        '左側切換分校後，此頁只顯示<strong>該分校</strong>下的教室。',
-        '可新增教室（名稱、容量、備註、啟用狀態），編輯或停用/啟用、刪除。',
-        '新增課程時可選擇「分校＋教室」作為上課地點。'
-      ]"
-      tip="教室名稱建議簡短易識別，例如「教室1」「201」。"
-    />
     <div class="card">
-      <div class="header-actions">
+      <div class="header-actions" data-guide="classroom-header">
         <h2>教室管理</h2>
         <p class="ref-hint">管理當前分校的教室，供排課時選擇地點</p>
         <button class="primary" @click="openAdd">+ 新增教室</button>
       </div>
 
       <div v-if="loading" class="hint">載入中...</div>
-      <table v-else-if="rooms.length" class="room-table">
+      <table v-else-if="rooms.length" class="room-table" data-guide="classroom-table">
         <thead>
           <tr>
             <th>教室名稱</th>

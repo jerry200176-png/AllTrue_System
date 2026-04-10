@@ -1,34 +1,55 @@
 <template>
   <div>
-    <HelpGuide
-      title="學生管理 — 使用說明"
-      :items="[
-        '點擊學生列可<strong>展開/收合</strong>該學生的課程明細（科目、老師、類型、費率、排課時段）。',
-        '「+ 新增學生」建立新生；展開學生後「+ 新增課程」可為該生加課程；「加購堂數」可追加購買堂數。',
-        '剩餘堂數顯示<strong>紅色</strong>表示即將或已用完，請提醒家長繳費。',
-        '「匯入 CSV」可批次匯入舊生，格式：姓名,手機,年級（依系統提示欄位）。'
-      ]"
-      tip="課程建立後會同步至智慧排課與科目數統計；修改課程後請至排課頁確認時段。"
-    />
     <div class="card">
-      <div class="header-actions">
-        <div>
-          <h2>🎓 學生管理</h2>
-          <p class="hint">點擊學生可展開課程明細</p>
+      <div class="header-actions" data-guide="students-header">
+        <div class="header-title-area">
+          <h2>
+            <span class="material-symbols-outlined header-icon">school</span>
+            學生管理
+          </h2>
+          <div class="header-stats">
+            <span class="stat-badge">
+              <span class="material-symbols-outlined" style="font-size:15px;">groups</span>
+              本分校 <strong>{{ branchStudentTotal }}</strong> 人
+            </span>
+            <span class="stat-badge stat-badge-light">目前列表 {{ displayStudents.length }} 人</span>
+          </div>
         </div>
         <div class="header-buttons">
           <label class="button-outline">
-            📥 匯入 CSV
+            <span class="material-symbols-outlined btn-icon">upload_file</span>
+            匯入 CSV
             <input type="file" @change="importStudents" accept=".csv" style="display: none;" />
           </label>
-          <button class="primary" @click="openAddStudent">+ 新增學生</button>
+          <button class="primary" @click="openAddStudent">
+            <span class="material-symbols-outlined btn-icon">add</span>
+            新增學生
+          </button>
         </div>
       </div>
 
-      <div class="grid filter-bar">
-        <div>
+      <!-- Bulk Action Toolbar (appears when students selected) -->
+      <div v-if="hasSelectedStudents" class="bulk-toolbar">
+        <span class="bulk-count">
+          <span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>
+          已選 {{ selectedStudentCount }} 位
+        </span>
+        <div class="bulk-btns">
+          <button class="small ghost" @click="clearSelectedStudents">清除勾選</button>
+          <button class="small danger" @click="deleteSelectedStudents">
+            <span class="material-symbols-outlined btn-icon">delete</span>
+            批量刪除
+          </button>
+        </div>
+      </div>
+
+      <div class="grid filter-bar" data-guide="students-filters">
+        <div class="filter-search">
           <label>搜尋姓名</label>
-          <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+          <div class="search-input-wrap">
+            <span class="material-symbols-outlined search-icon">search</span>
+            <input v-model="filters.name" placeholder="輸入姓名..." @input="debouncedLoad" />
+          </div>
         </div>
         <div>
           <label>年級</label>
@@ -47,15 +68,31 @@
             <option value="transferred">已轉校</option>
           </select>
         </div>
-        <div style="display: flex; align-items: flex-end;">
-          <button class="small ghost" @click="showGradePromotion = true" style="white-space: nowrap;">🎓 年級升級</button>
+        <div class="filter-toggles">
+          <button class="small ghost" @click="showGradePromotion = true" style="white-space: nowrap;">
+            <span class="material-symbols-outlined btn-icon">school</span>
+            年級升級
+          </button>
+          <button class="small" :class="showHistoricalCourses ? 'primary' : 'ghost'" @click="toggleHistoricalCourses">
+            {{ showHistoricalCourses ? '隱藏已結業/歷史課程' : '顯示已結業/歷史課程' }}
+          </button>
         </div>
       </div>
 
       <!-- Student Table -->
-      <table v-if="students.length">
+      <div v-if="displayStudents.length" class="table-scroll-wrap">
+      <table data-guide="students-table">
         <thead>
           <tr>
+            <th class="student-select-head">
+              <input
+                class="student-select-checkbox"
+                type="checkbox"
+                :checked="allVisibleSelected"
+                :indeterminate.prop="hasSelectedStudents && !allVisibleSelected"
+                @change="toggleSelectAllStudents($event.target.checked)"
+              />
+            </th>
             <th style="width: 30px;"></th>
             <th>姓名</th>
             <th>年級</th>
@@ -66,27 +103,51 @@
             <th>操作</th>
           </tr>
         </thead>
-        <tbody v-for="student in students" :key="student.id">
+        <tbody v-for="student in displayStudents" :key="student.id">
           <!-- Student Row -->
           <tr
             class="student-row"
-            :class="{ expanded: expandedId === student.id }"
+            :class="[{ expanded: expandedId === student.id }, 'status-' + (student.status || 'active')]"
             @click="toggleExpand(student)"
           >
-            <td class="expand-icon">{{ expandedId === student.id ? '▼' : '▶' }}</td>
+            <td class="student-select-cell" @click.stop>
+              <input
+                class="student-select-checkbox"
+                type="checkbox"
+                :disabled="!getLaravelStudentId(student)"
+                :checked="isStudentSelected(student)"
+                @change="toggleStudentSelection(student, $event.target.checked)"
+              />
+            </td>
+            <td class="expand-icon">
+              <span class="material-symbols-outlined expand-chevron" :class="{ rotated: expandedId === student.id }">expand_more</span>
+            </td>
             <td>
-              <strong>{{ student.name }}</strong>
-              <span v-if="student.notes" class="note-icon" :title="student.notes">📝</span>
-              <span v-if="student.status && student.status !== 'active'" :class="['student-status-badge', student.status]">
-                {{ studentStatusLabel(student.status) }}
-              </span>
+              <div class="student-name-cell">
+                <div class="student-avatar-mini" :class="student.status || 'active'">{{ (student.name || '?')[0] }}</div>
+                <div>
+                  <strong>{{ student.name }}</strong>
+                  <span v-if="student.notes" class="note-icon" :title="student.notes">
+                    <span class="material-symbols-outlined" style="font-size:14px;">sticky_note_2</span>
+                  </span>
+                  <span v-if="student.status && student.status !== 'active'" :class="['student-status-badge', student.status]">
+                    {{ studentStatusLabel(student.status) }}
+                  </span>
+                </div>
+              </div>
             </td>
             <td>{{ getGradeLabel(student.grade) }}</td>
             <td>{{ student.school || '—' }}</td>
             <td>{{ student.parent_name || '—' }}</td>
             <td @click.stop>
-              <span v-if="student.rfid" class="rfid-tag">{{ student.rfid }}</span>
-              <button class="small ghost" @click="editStudent(student)">{{ student.rfid ? '重新綁定' : '綁定' }}</button>
+              <span v-if="student.rfid" class="rfid-tag">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">contactless</span>
+                {{ student.rfid }}
+              </span>
+              <span v-else class="rfid-unbound">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;color:#bdbdbd;">contactless</span>
+                未綁定
+              </span>
             </td>
             <td>
               <div class="subject-tags" v-if="getStudentCourses(student.id).length > 0">
@@ -101,22 +162,33 @@
               </div>
               <span class="hint" v-else>尚未設定</span>
             </td>
-            <td @click.stop>
-              <button class="small ghost" @click="editStudent(student)">✏️ 編輯</button>
+            <td @click.stop class="action-cell">
+              <button class="small ghost icon-btn" @click="editStudent(student)" title="編輯">
+                <span class="material-symbols-outlined">edit</span>
+              </button>
+              <button class="small danger icon-btn" @click="deleteStudent(student)" title="刪除">
+                <span class="material-symbols-outlined">delete</span>
+              </button>
             </td>
           </tr>
 
           <!-- Expanded Course Detail -->
           <tr v-if="expandedId === student.id" class="course-detail-row">
-            <td colspan="9">
+            <td colspan="10">
               <div class="course-panel">
                 <div class="course-panel-header">
-                  <h4>📚 {{ student.name }} 的課程安排</h4>
-                  <button class="primary small" @click="openAddCourse(student)">+ 新增課程</button>
+                  <h4>
+                    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">menu_book</span>
+                    {{ student.name }} 的課程安排
+                  </h4>
+                  <button class="primary small" @click="openAddCourse(student)">
+                    <span class="material-symbols-outlined btn-icon">add</span>
+                    新增課程
+                  </button>
                 </div>
 
                 <div v-if="getStudentCourses(student.id).length === 0" class="empty-text">
-                  尚未建立課程，請點擊「+ 新增課程」開始設定
+                  {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
                 </div>
 
                 <table v-else class="course-inner-table">
@@ -126,7 +198,7 @@
                       <th>老師</th>
                       <th>類型</th>
                       <th>剩餘 / 已購</th>
-                      <th>一堂課（2h）</th>
+                      <th>一堂課費用</th>
                       <th>時長</th>
                       <th>排課時段</th>
                       <th>地點</th>
@@ -143,21 +215,29 @@
                         </span>
                       </td>
                       <td>
-                        <span v-if="course.payment_type === 'session'" :class="{ 'text-red': course.remaining_sessions <= 2 }">
-                          <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
-                        </span>
+                        <div v-if="course.payment_type === 'session'" class="sessions-cell">
+                          <div class="mini-progress">
+                            <div class="mini-progress-fill" :style="{
+                              width: Math.min(100, Math.round(((course.used_sessions || 0) / Math.max(course.sessions_purchased || 1, 1)) * 100)) + '%',
+                              background: (course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32'
+                            }"></div>
+                          </div>
+                          <span :class="{ 'text-red': course.remaining_sessions <= 2 }">
+                            <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
+                          </span>
+                        </div>
                         <span v-else class="hint">
                           月結<span v-if="course.settlement_day">（每月{{ course.settlement_day }}號）</span>
                         </span>
                       </td>
-                      <td style="font-weight: 600;">${{ ratePer2hDisplay(course) }}</td>
+                      <td style="font-weight: 600;">${{ sessionFeeDisplay(course) }}</td>
                       <td>{{ course.duration_hours }} 小時</td>
                       <td>
-                        <span v-if="course.day_of_week">
-                          {{ dayLabel(course.day_of_week) }} {{ course.start_time }}~{{ course.end_time }}
+                        <span v-if="course.days_of_week && course.days_of_week.length">
+                          {{ scheduleDisplay(course) }}
                         </span>
-                        <span v-else-if="course.days_of_week && course.days_of_week.length">
-                          {{ course.days_of_week.map(d => dayLabel(d)).join(' ') }} {{ course.start_time }}~{{ course.end_time }}
+                        <span v-else-if="course.day_of_week">
+                          {{ dayLabel(course.day_of_week) }} {{ scheduleTimeRange(course) }}
                         </span>
                         <span v-else class="hint">未排定</span>
                       </td>
@@ -169,11 +249,13 @@
                       </td>
                       <td>
                         <button
-                          :class="['small', course.payment_status === 'paid' ? 'ghost' : 'primary']"
-                          @click="togglePaymentStatus(course)"
+                          :class="['small', paymentStatusButtonClass(course)]"
+                          title="點擊切換繳費狀態"
+                          :disabled="isPaymentStatusPending(course.id)"
+                          @click="togglePaymentStatus(course, student.name)"
                           style="font-size: 11px;"
                         >
-                          {{ course.payment_status === 'paid' ? '已繳費' : '未繳費' }}
+                          {{ paymentStatusButtonLabel(course) }}
                         </button>
                         <button class="small ghost" @click="openAddSessionsForCourse(course)">加購</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
@@ -187,8 +269,9 @@
           </tr>
         </tbody>
       </table>
+      </div>
       <div v-else class="empty-text">
-        目前無學生資料，請點擊「+ 新增學生」或匯入 CSV
+        {{ showHistoricalCourses ? '目前無學生資料，請點擊「+ 新增學生」或匯入 CSV' : '目前沒有進行中的學生/課程，可切換「顯示已結業/歷史課程」查看歷史資料' }}
       </div>
     </div>
 
@@ -260,131 +343,20 @@
       </div>
     </div>
 
-    <!-- Add/Edit Course Modal -->
-    <div v-if="showCourseModal" class="modal-overlay" @click.self="closeCourseModal">
+    <!-- Edit Course Modal -->
+    <div v-if="showCourseModal && editingCourseId" class="modal-overlay" @click.self="closeCourseModal">
       <div class="modal" style="width: 520px;">
-        <h3>{{ editingCourseId ? '編輯課程' : '為 ' + selectedStudent?.name + ' 新增課程' }}</h3>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label>科目</label>
-            <select v-model="courseForm.subject">
-              <option v-for="s in SUBJECTS" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>老師</label>
-            <select v-model="courseForm.teacher_id">
-              <option value="">請選擇</option>
-              <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>開課日 <span class="required">*</span></label>
-            <input v-model="courseForm.first_class_date" type="date" />
-          </div>
-          <div class="form-group">
-            <label>上課類型</label>
-            <select v-model="courseForm.class_type">
-              <option value="one_on_one">一對一</option>
-              <option value="one_on_two">一對二</option>
-              <option value="one_on_three">一對三</option>
-              <option value="tutoring">輔導</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>一堂課（2小時）費用 ($)</label>
-            <input v-model.number="ratePer2hCourse" type="number" placeholder="2000" min="0" step="100" />
-          </div>
-          <div class="form-group">
-            <label>上課時長（小時）</label>
-            <select v-model.number="courseForm.duration_hours">
-              <option :value="1">1 小時</option>
-              <option :value="1.5">1.5 小時</option>
-              <option :value="2">2 小時</option>
-              <option :value="2.5">2.5 小時</option>
-              <option :value="3">3 小時</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>繳費方式</label>
-            <select v-model="courseForm.payment_type">
-              <option value="session">堂數制</option>
-              <option value="monthly">月結</option>
-            </select>
-          </div>
-          <div class="form-group" v-if="courseForm.payment_type === 'session'">
-            <label>購買堂數</label>
-            <input v-model.number="courseForm.sessions_purchased" type="number" placeholder="8" />
-          </div>
-          <template v-if="courseForm.payment_type === 'monthly'">
-            <div class="form-group">
-              <label>結算日（每月幾號） <span class="required">*</span></label>
-              <select v-model.number="courseForm.settlement_day">
-                <option :value="null">請選擇</option>
-                <option v-for="d in settlementDayOptions" :key="d" :value="d">每月 {{ d }} 號</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>每月堂數（選填）</label>
-              <input v-model.number="courseForm.monthly_sessions" type="number" placeholder="依學生個案" min="0" />
-            </div>
-          </template>
-          <div class="form-group" v-if="editingCourseId" style="grid-column: span 2;">
-            <label>固定排課（星期幾）</label>
-            <select v-model.number="courseForm.day_of_week">
-              <option :value="0">未排定</option>
-              <option :value="1">星期一</option>
-              <option :value="2">星期二</option>
-              <option :value="3">星期三</option>
-              <option :value="4">星期四</option>
-              <option :value="5">星期五</option>
-              <option :value="6">星期六</option>
-              <option :value="7">星期日</option>
-            </select>
-          </div>
-          <div class="form-group" v-else style="grid-column: span 2;">
-            <label>固定排課日（可選多天）</label>
-            <div class="day-checkbox-group">
-              <label v-for="d in dayOptions" :key="d.value" :class="['day-chip', { selected: courseForm.days_of_week.includes(d.value) }]">
-                <input type="checkbox" :value="d.value" v-model="courseForm.days_of_week" style="display: none;" />
-                {{ d.label }}
-              </label>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>開始時間</label>
-            <select v-model="courseForm.start_time">
-              <option v-for="t in TIME_OPTIONS_30" :key="t" :value="t">{{ t }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="text-secondary">結束時間</label>
-            <p class="computed-end-time">{{ computeEndTime(courseForm.start_time, courseForm.duration_hours) || '—' }}</p>
-          </div>
-          <div class="form-group" style="grid-column: span 2;">
-            <label>上課地點（教室）</label>
-            <select v-model="courseForm.room_id">
-              <option :value="null">請選擇教室</option>
-              <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}{{ r.memo ? ' — ' + r.memo : '' }}</option>
-            </select>
-          </div>
-          <div class="form-group" style="grid-column: span 2;">
-            <label>備註（選填）</label>
-            <textarea v-model="courseForm.memo" rows="2" placeholder="課程或地點補充說明" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; resize:vertical;"></textarea>
-          </div>
-        </div>
-
-        <!-- Cost Preview -->
-        <div class="cost-preview" v-if="ratePer2hCourse && courseForm.duration_hours">
-          <div class="cost-preview-label">預估一堂課費用（依時長）</div>
-          <div class="cost-preview-value">
-            ${{ (Math.round((ratePer2hCourse / 4) * courseForm.duration_hours * 2)).toLocaleString() }}
-          </div>
-          <div class="cost-preview-formula">
-            2h = ${{ ratePer2hCourse }}；{{ courseForm.duration_hours }}h = ${{ (ratePer2hCourse * courseForm.duration_hours / 2).toLocaleString() }}
-          </div>
-        </div>
+        <h3>編輯課程</h3>
+        <CourseEditForm
+          v-model="courseForm"
+          :teachers="teachers"
+          :rooms="rooms"
+          :subjects="SUBJECTS"
+          :day-options="dayOptions"
+          :time-options="TIME_OPTIONS_30"
+          :settlement-day-options="settlementDayOptions"
+          :student-grade="selectedStudent?.grade || selectedStudent?.ClassID || null"
+        />
 
         <div class="actions">
           <button class="ghost" @click="closeCourseModal">取消</button>
@@ -393,7 +365,31 @@
       </div>
     </div>
 
-    <!-- Add Sessions Modal (per-course) -->
+    <UniversalClassScheduler
+      v-if="showCourseModal && !editingCourseId"
+      title="新增排課（統一排課介面）"
+      submit-label="建立課程並寫入堂次"
+      :branch-id="props.branchId"
+      :students="schedulerStudents"
+      :teachers="teachers"
+      :rooms="rooms"
+      :initial-student-id="selectedStudentSchedulerId"
+      mode="create"
+      @cancel="closeCourseModal"
+      @success="handleUniversalSchedulerSuccess"
+    />
+
+    <EnrollmentWizard
+      v-if="showEnrollmentWizard"
+      :branch-id="props.branchId"
+      :students="schedulerStudents"
+      :teachers="teachers"
+      :rooms="rooms"
+      @cancel="showEnrollmentWizard = false"
+      @success="handleEnrollmentSuccess"
+    />
+
+    <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" @click.self="showSessionsModal = false">
       <div class="modal">
         <h3>💰 加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
@@ -402,19 +398,25 @@
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
         </div>
         <div class="form-group">
-          <label>目前剩餘</label>
+          <label>目前剩餘（此課程）</label>
           <p style="font-size: 20px; font-weight: 700; color: var(--primary);">{{ selectedCourse?.remaining_sessions ?? 0 }} 堂</p>
         </div>
         <div class="form-group">
           <label>加購堂數</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
+        <div class="form-group">
+          <label>新批次開始日期</label>
+          <input v-model="addSessionStartDate" type="date" />
+        </div>
         <p class="hint" v-if="addSessionCount > 0">
-          加購後將變為 <strong>{{ (selectedCourse?.remaining_sessions ?? 0) + addSessionCount }}</strong> 堂
+          將新增一筆 <strong>{{ addSessionCount }}</strong> 堂的未繳課程批次（不再併入原課程）
         </p>
         <div class="actions">
           <button class="ghost" @click="showSessionsModal = false">取消</button>
-          <button class="primary" @click="submitAddSessions">確認加購</button>
+          <button class="primary" @click="submitAddSessions">
+            確認加購
+          </button>
         </div>
       </div>
     </div>
@@ -458,17 +460,23 @@
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
-import { GRADES, SUBJECTS } from '../lib/constants';
-import HelpGuide from '../components/HelpGuide.vue';
+import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { getPerSessionFee } from '../lib/coursePricing';
+import CourseEditForm from '../components/CourseEditForm.vue';
+import EnrollmentWizard from '../components/EnrollmentWizard.vue';
+import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 
 // --- State ---
 const students = ref([]);
+const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
 const teachers = ref([]);
 const expandedId = ref(null);
 const filters = ref({ name: '', grade: '', status: 'active' });
+const selectedStudentIds = ref([]);
+const showHistoricalCourses = ref(false);
 
 // Student modal
 const showStudentModal = ref(false);
@@ -477,9 +485,16 @@ const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_n
 
 // Course modal
 const showCourseModal = ref(false);
+const showEnrollmentWizard = ref(false);
 const editingCourseId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const selectedStudent = ref(null);
+const isLaravelCourse = (course) => (
+  course?.data_source === 'laravel'
+  || course?.branch_name != null
+  || course?.room_name != null
+  || course?.settlement_day != null
+);
 const courseForm = ref({
   subject: 'Math',
   teacher_id: '',
@@ -492,6 +507,7 @@ const courseForm = ref({
   monthly_sessions: null,
   day_of_week: 0,
   days_of_week: [],
+  day_time_slots: [],
   start_time: '16:00',
   end_time: '18:00',
   first_class_date: '',
@@ -499,12 +515,23 @@ const courseForm = ref({
   memo: ''
 });
 const rooms = ref([]);
+const schedulerStudents = computed(() => (
+  (students.value || []).map((s) => ({
+    id: Number(s?._laravelId ?? s?.id ?? 0) || Number(s?.id ?? 0),
+    name: s?.name || `#${s?.id ?? ''}`,
+  })).filter((s) => Number.isFinite(s.id) && s.id > 0)
+));
+const selectedStudentSchedulerId = computed(() => {
+  const raw = selectedStudent.value?._laravelId ?? selectedStudent.value?.id ?? '';
+  const id = Number(raw);
+  return Number.isFinite(id) && id > 0 ? id : '';
+});
 
 const dayOptions = [
   { value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' },
   { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' }
 ];
-const settlementDayOptions = Array.from({ length: 28 }, (_, i) => i + 1);
+const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const TIME_OPTIONS_30 = (() => {
   const opts = [];
   for (let h = 7; h <= 22; h++) {
@@ -537,20 +564,29 @@ const showGradePromotion = ref(false);
 // Sessions modal
 const showSessionsModal = ref(false);
 const addSessionCount = ref(8);
+const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const selectedCourse = ref(null);
+const pendingPaymentStatusIds = ref(new Set());
+
+const isPaymentStatusPending = (courseId) => pendingPaymentStatusIds.value.has(String(courseId));
+const setPaymentStatusPending = (courseId, pending) => {
+  const next = new Set(pendingPaymentStatusIds.value);
+  const key = String(courseId);
+  if (pending) next.add(key);
+  else next.delete(key);
+  pendingPaymentStatusIds.value = next;
+};
+const paymentStatusButtonClass = (course) => {
+  return course?.payment_status === 'paid' ? 'ghost' : 'primary';
+};
+const paymentStatusButtonLabel = (course) => {
+  return course?.payment_status === 'paid' ? '已繳費' : '未繳費';
+};
 
 // --- Helpers ---
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
-const getSubjectLabel = (val) => SUBJECTS.find(s => s.value === val)?.label || val;
-const ratePer2hDisplay = (c) => ((c && c.rate_per_30min != null) ? c.rate_per_30min * 4 : 0);
-const ratePer2hCourse = computed({
-  get: () => (courseForm.value?.rate_per_30min ?? 0) * 4,
-  set: (v) => { if (courseForm.value) courseForm.value.rate_per_30min = Math.max(0, Math.round((Number(v) || 0) / 4)); }
-});
-function syncRatePer2hBeforeSubmitCourse() {
-  const v = ratePer2hCourse.value;
-  if (courseForm.value && v >= 0) courseForm.value.rate_per_30min = Math.round(v / 4) || 0;
-}
+const getSubjectLabel = (val) => getSubjectText(val);
+const sessionFeeDisplay = (c) => getPerSessionFee(c);
 const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
   return map[type] || type;
@@ -559,10 +595,116 @@ const dayLabel = (d) => {
   const days = ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'];
   return days[d] || '';
 };
+const scheduleTimeRange = (course) => {
+  const start = course?.start_time;
+  if (!start) return '';
+  const end = computeEndTime(start, Number(course?.duration_hours) || 2) || course?.end_time;
+  return `${start}~${end}`;
+};
+const scheduleDisplay = (course) => {
+  const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
+  const globalDur = Number(course?.duration_hours) || 2;
+  if (slots.length > 0) {
+    const normalized = slots
+      .map((slot) => ({
+        day: Number(slot?.day || 0),
+        start: String(slot?.start_time || '').slice(0, 5),
+        dur: Number(slot?.duration_hours || 0) || globalDur,
+      }))
+      .filter((slot) => slot.day >= 1 && slot.day <= 7 && slot.start)
+      .sort((a, b) => a.day - b.day);
+    if (normalized.length > 0) {
+      const allSameDur = new Set(normalized.map((s) => s.dur)).size <= 1;
+      return normalized
+        .map((slot) => {
+          const end = computeEndTime(slot.start, slot.dur) || course?.end_time || '';
+          const durSuffix = !allSameDur ? ` ${slot.dur}h` : '';
+          return `${dayLabel(slot.day)} ${slot.start}~${end}${durSuffix}`;
+        })
+        .join('、');
+    }
+  }
+  const daysText = (course?.days_of_week || []).map((d) => dayLabel(d)).join(' ');
+  const range = scheduleTimeRange(course);
+  return `${daysText} ${range}`.trim();
+};
 
-const getStudentCourses = (id) => studentCourses.value[id] || [];
-const getStudentCourseCount = (id) => (studentCourses.value[id] || []).length;
+const parseCourseNumber = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+const getCourseRemainingSessions = (course) => (
+  parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
+);
+const isCourseSettled = (course) => {
+  const paymentStatus = String(course?.payment_status || '').toLowerCase();
+  if (paymentStatus === 'paid') return true;
+  const paid = parseCourseNumber(course?.Paid ?? course?.paid);
+  const charge = parseCourseNumber(course?.Charge ?? course?.charge ?? course?.Pay ?? course?.pay);
+  if (paid != null && charge != null) return paid >= charge && charge > 0;
+  if (paid != null) return paid > 0;
+  return false;
+};
+const isHistoricalCourse = (course) => {
+  const remaining = getCourseRemainingSessions(course);
+  if (remaining == null) return false;
+  return remaining <= 0 && isCourseSettled(course);
+};
+const getStudentAllCourses = (id) => studentCourses.value[id] || [];
+const getStudentCourses = (id) => {
+  const all = getStudentAllCourses(id);
+  if (showHistoricalCourses.value) return all;
+  return all.filter((course) => !isHistoricalCourse(course));
+};
+const getStudentCourseCount = (id) => getStudentCourses(id).length;
 const studentStatusLabel = (s) => ({ active: '在學中', graduated: '已畢業', paused: '暫停中', transferred: '已轉校' }[s] || s);
+const getLaravelStudentId = (student) => {
+  const id = Number(student?._laravelId ?? student?.id ?? 0);
+  return Number.isFinite(id) && id > 0 ? id : null;
+};
+const displayStudents = computed(() => {
+  if (showHistoricalCourses.value) return students.value;
+  return students.value.filter((student) => {
+    const allCourses = getStudentAllCourses(student.id);
+    if (allCourses.length === 0) return true;
+    return allCourses.some((course) => !isHistoricalCourse(course));
+  });
+});
+const visibleStudentLaravelIds = computed(() => displayStudents.value.map(getLaravelStudentId).filter(id => id != null));
+const selectedStudentCount = computed(() => selectedStudentIds.value.length);
+const hasSelectedStudents = computed(() => selectedStudentCount.value > 0);
+const allVisibleSelected = computed(() =>
+  visibleStudentLaravelIds.value.length > 0
+  && visibleStudentLaravelIds.value.every(id => selectedStudentIds.value.includes(id))
+);
+const isStudentSelected = (student) => {
+  const id = getLaravelStudentId(student);
+  return id != null && selectedStudentIds.value.includes(id);
+};
+const toggleStudentSelection = (student, checked) => {
+  const id = getLaravelStudentId(student);
+  if (!id) return;
+  if (checked) {
+    if (!selectedStudentIds.value.includes(id)) {
+      selectedStudentIds.value = [...selectedStudentIds.value, id];
+    }
+    return;
+  }
+  selectedStudentIds.value = selectedStudentIds.value.filter(v => v !== id);
+};
+const toggleSelectAllStudents = (checked) => {
+  selectedStudentIds.value = checked ? [...visibleStudentLaravelIds.value] : [];
+};
+const clearSelectedStudents = () => {
+  selectedStudentIds.value = [];
+};
+const toggleHistoricalCourses = () => {
+  showHistoricalCourses.value = !showHistoricalCourses.value;
+};
+const syncSelectedStudentIdsWithCurrentList = () => {
+  const visible = new Set(visibleStudentLaravelIds.value);
+  selectedStudentIds.value = selectedStudentIds.value.filter(id => visible.has(id));
+};
 
 // Grade promotion logic
 const GRADE_ORDER = ['P1','P2','P3','P4','P5','P6','J1','J2','J3','H1','H2','H3'];
@@ -599,8 +741,50 @@ const executeGradePromotion = async () => {
 };
 
 // --- Data Loading ---
+const loadBranchStudentTotal = async () => {
+  const branchId = Number(props.branchId);
+  if (!branchId) {
+    branchStudentTotal.value = 0;
+    return;
+  }
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (token) {
+      const res = await fetch(`/api/v1/students?branch_id=${branchId}&per_page=1`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const total = Number(json?.total);
+        if (!Number.isNaN(total) && Number(props.branchId) === branchId) {
+          branchStudentTotal.value = total;
+          return;
+        }
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const { data } = await supabase.from('students').select('*').eq('branch_id', branchId);
+    if (Number(props.branchId) === branchId) {
+      branchStudentTotal.value = Array.isArray(data) ? data.length : 0;
+    }
+  } catch (_) {
+    if (Number(props.branchId) === branchId) {
+      branchStudentTotal.value = 0;
+    }
+  }
+};
+
 const loadStudents = async () => {
-  if (!props.branchId) return;
+  if (!props.branchId) {
+    branchStudentTotal.value = 0;
+    selectedStudentIds.value = [];
+    return;
+  }
+  loadBranchStudentTotal();
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -625,6 +809,7 @@ const loadStudents = async () => {
           rfid: s.rfid ?? s.RFID ?? '',
           _laravelId: s.id
         }));
+        syncSelectedStudentIdsWithCurrentList();
         return;
       }
     }
@@ -667,6 +852,7 @@ const loadStudents = async () => {
     }
   } catch (_) {}
   students.value = list;
+  syncSelectedStudentIdsWithCurrentList();
 };
 
 const loadTeachers = async () => {
@@ -674,12 +860,44 @@ const loadTeachers = async () => {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) { teachers.value = []; return; }
-    const res = await fetch('/api/v1/teachers?per_page=all', {
+    const branch = Number(props.branchId || 0);
+    const params = new URLSearchParams({ per_page: 'all' });
+    if (branch > 0) params.set('branch_id', String(branch));
+    const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
       headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
     });
     const data = await res.json().catch(() => ({}));
     const list = Array.isArray(data) ? data : (data?.data ?? []);
-    teachers.value = list.map(t => ({ id: t.id, username: t.username }));
+    const normalized = list
+      .map((t) => {
+        const id = Number(t?.id ?? 0);
+        if (!Number.isFinite(id) || id <= 0) return null;
+        const branchIds = Array.isArray(t?.branch_ids)
+          ? t.branch_ids.map((idValue) => Number(idValue)).filter((idValue) => Number.isFinite(idValue) && idValue > 0)
+          : [];
+        const displayName = String(
+          t?.name
+          || t?.Name
+          || t?.T_Name
+          || t?.username
+          || t?.LoginName
+          || ''
+        ).trim();
+        return {
+          id,
+          name: displayName,
+          Name: displayName,
+          T_Name: t?.T_Name || '',
+          username: t?.username || '',
+          LoginName: t?.LoginName || '',
+          branch_ids: branchIds,
+          branch_id: Number(t?.branch_id || 0) || null,
+        };
+      })
+      .filter(Boolean);
+    teachers.value = branch > 0
+      ? normalized.filter((t) => (t.branch_ids || []).includes(branch) || Number(t.branch_id || 0) === branch)
+      : normalized;
   } catch (_) {
     teachers.value = [];
   }
@@ -707,6 +925,7 @@ const loadStudentCourses = async (studentId) => {
           teacher_id: c.teacher_id,
           teacher_name: c.teacher_name,
           class_type: c.class_type,
+          payment_status: c.payment_status || 'unpaid',
           rate_per_30min: c.rate_per_30min,
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
@@ -715,6 +934,7 @@ const loadStudentCourses = async (studentId) => {
           start_time: c.start_time,
           end_time: c.end_time,
           days_of_week: c.days_of_week,
+          day_time_slots: c.day_time_slots,
           day_of_week: c.day_of_week,
           first_class_date: c.first_class_date,
           branch_id: c.branch_id,
@@ -723,7 +943,8 @@ const loadStudentCourses = async (studentId) => {
           room_id: c.room_id,
           settlement_day: c.settlement_day,
           monthly_sessions: c.monthly_sessions,
-          memo: c.Memo
+          memo: c.memo ?? c.Memo,
+          data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
         return;
@@ -737,13 +958,77 @@ const loadStudentCourses = async (studentId) => {
 
   const courses = (data || []).map(c => ({
     ...c,
-    teacher_name: c.teacher?.username || ''
+    payment_status: c.payment_status || 'unpaid',
+    teacher_name: c.teacher?.username || '',
+    data_source: 'supabase'
   }));
   studentCourses.value = { ...studentCourses.value, [studentId]: courses };
 };
 
 const loadAllStudentCourses = async () => {
-  if (!props.branchId) return;
+  if (!props.branchId) {
+    studentCourses.value = {};
+    return;
+  }
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (token) {
+      const params = new URLSearchParams({
+        branch_id: String(props.branchId),
+        per_page: '1000'
+      });
+      const res = await fetch(`/api/v1/student-classes?${params}`, {
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const list = json?.data ?? json;
+        const arr = Array.isArray(list) ? list : (list?.data ?? []);
+        const map = {};
+        arr.forEach((c) => {
+          const sid = Number(c?.student_id ?? c?.StudentID ?? 0);
+          if (!Number.isFinite(sid) || sid <= 0) return;
+          if (!map[sid]) map[sid] = [];
+          map[sid].push({
+            id: c.id,
+            student_id: sid,
+            subject: c.subject,
+            teacher_id: c.teacher_id,
+            teacher_name: c.teacher_name || '',
+            class_type: c.class_type,
+            payment_status: c.payment_status || (Number(c?.Paid || 0) > 0 ? 'paid' : 'unpaid'),
+            rate_per_30min: c.rate_per_30min,
+            duration_hours: c.duration_hours,
+            payment_type: c.payment_type,
+            sessions_purchased: c.sessions_purchased,
+            remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
+            start_time: c.start_time,
+            end_time: c.end_time,
+            days_of_week: c.days_of_week,
+            day_time_slots: c.day_time_slots,
+            day_of_week: c.day_of_week,
+            first_class_date: c.first_class_date,
+            branch_id: c.branch_id,
+            branch_name: c.branch_name,
+            room_name: c.room_name,
+            room_id: c.room_id,
+            settlement_day: c.settlement_day,
+            monthly_sessions: c.monthly_sessions,
+            memo: c.memo ?? c.Memo,
+            Paid: c.Paid,
+            Charge: c.Charge,
+            Pay: c.Pay,
+            data_source: 'laravel'
+          });
+        });
+        studentCourses.value = map;
+        return;
+      }
+    }
+  } catch (_) {}
+
   const { data } = await supabase
     .from('student-classes')
     .select('*, teacher:profiles(username)')
@@ -753,7 +1038,7 @@ const loadAllStudentCourses = async () => {
   (data || []).forEach(c => {
     const sid = c.student_id;
     if (!map[sid]) map[sid] = [];
-    map[sid].push({ ...c, teacher_name: c.teacher?.username || '' });
+    map[sid].push({ ...c, teacher_name: c.teacher?.username || '', data_source: 'supabase' });
   });
   studentCourses.value = map;
 };
@@ -777,6 +1062,15 @@ const openAddStudent = () => {
   showStudentModal.value = true;
 };
 
+const openEnrollmentWizard = async () => {
+  if (!props.branchId) {
+    alert('請先在上方選擇分校');
+    return;
+  }
+  await loadRoomsForBranch();
+  showEnrollmentWizard.value = true;
+};
+
 const editStudent = (student) => {
   editingStudentId.value = student.id;
   studentForm.value = {
@@ -798,6 +1092,96 @@ const closeStudentModal = () => {
   editingStudentId.value = null;
 };
 
+const deleteSelectedStudents = async () => {
+  const ids = selectedStudentIds.value.map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0);
+  if (ids.length === 0) {
+    alert('請先勾選要刪除的學生');
+    return;
+  }
+
+  if (!confirm(`確定要批量刪除 ${ids.length} 位學生嗎？\n\n系統會一併刪除相關課程、排課、評量與帳務資料。`)) return;
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      alert('請重新登入後再試');
+      return;
+    }
+
+    const res = await fetch('/api/v1/students/bulk-delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ student_ids: ids })
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const invalidIds = Array.isArray(json?.invalid_ids) ? json.invalid_ids : [];
+      const detail = invalidIds.length > 0 ? `\n無法刪除 ID：${invalidIds.join(', ')}` : '';
+      alert((json?.message || '批量刪除失敗') + detail);
+      return;
+    }
+
+    expandedId.value = null;
+    clearSelectedStudents();
+    await loadStudents();
+    await loadAllStudentCourses();
+    alert(json?.message || `已批量刪除 ${ids.length} 位學生`);
+  } catch (e) {
+    alert('批量刪除失敗：' + (e?.message || '請稍後再試'));
+  }
+};
+
+const deleteStudent = async (student) => {
+  const name = student?.name || '此學生';
+  if (!confirm(`確定要刪除「${name}」嗎？\n\n系統會一併刪除該學生相關課程、排課、評量與帳務資料。`)) return;
+
+  const laravelId = student?._laravelId ?? student?.id;
+  if (!laravelId) {
+    alert('刪除失敗：找不到學生 ID');
+    return;
+  }
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      alert('請重新登入後再試');
+      return;
+    }
+
+    const res = await fetch(`/api/v1/students/${laravelId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = json?.message || '刪除失敗';
+      alert(msg);
+      return;
+    }
+
+    if (expandedId.value === student.id) {
+      expandedId.value = null;
+    }
+    selectedStudentIds.value = selectedStudentIds.value.filter(id => id !== Number(laravelId));
+    await loadStudents();
+    await loadAllStudentCourses();
+    alert(`已刪除 ${name}`);
+  } catch (e) {
+    alert('刪除失敗：' + (e?.message || '請稍後再試'));
+  }
+};
+
 const bindRfidFromTemp = async () => {
   if (!props.branchId) { alert('請先選擇分校'); return; }
   try {
@@ -807,7 +1191,11 @@ const bindRfidFromTemp = async () => {
     const res = await fetch(`/api/v1/temp-rfid?campus_id=${props.branchId}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(`取得暫存 RFID 失敗（HTTP ${res.status}）${json?.message ? '：' + json.message : ''}`);
+      return;
+    }
     if (json?.data?.rfid) {
       studentForm.value.rfid = json.data.rfid;
     } else {
@@ -902,7 +1290,7 @@ const submitStudent = async () => {
       if (payload.rfid) body.rfid = payload.rfid;
       const res = await fetch('/api/v1/students', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(body)
       });
       if (res.ok) {
@@ -912,7 +1300,11 @@ const submitStudent = async () => {
         return;
       }
       const err = await res.json().catch(() => ({}));
-      const msg = err?.message || (err?.errors ? Object.values(err.errors || {}).flat().join(' ') : null) || '新增學生失敗，請稍後再試';
+      const details = err?.errors ? Object.values(err.errors || {}).flat().join(' ') : '';
+      const generic = String(err?.message || '').trim();
+      const msg = (details && (!generic || generic === 'The given data was invalid.' || generic === 'The given data was invalid'))
+        ? details
+        : (generic || details || '新增學生失敗，請稍後再試');
       alert(msg);
       return;
     } catch (e) {
@@ -955,7 +1347,7 @@ const openAddCourse = (student) => {
     subject: 'Math', teacher_id: '', class_type: 'one_on_one',
     rate_per_30min: 500, duration_hours: 2, payment_type: 'session',
     sessions_purchased: 8, settlement_day: null, monthly_sessions: null,
-    day_of_week: 0, days_of_week: [], start_time: '16:00', end_time: '18:00',
+    day_of_week: 0, days_of_week: [], day_time_slots: [], start_time: '16:00', end_time: '18:00',
     first_class_date: today, room_id: null, memo: ''
   };
   loadRoomsForBranch();
@@ -965,7 +1357,7 @@ const openAddCourse = (student) => {
 const editCourse = (course) => {
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   editingCourseId.value = course.id;
-  editingCourseFromLaravel.value = !!(course.branch_name != null || course.room_name != null);
+  editingCourseFromLaravel.value = isLaravelCourse(course);
   courseForm.value = {
     subject: course.subject,
     teacher_id: course.teacher_id || '',
@@ -978,6 +1370,16 @@ const editCourse = (course) => {
     monthly_sessions: course.monthly_sessions ?? null,
     day_of_week: course.day_of_week || 0,
     days_of_week: Array.isArray(course.days_of_week) ? course.days_of_week : (course.day_of_week ? [course.day_of_week] : []),
+    rate_unit: course.rate_unit || 'session',
+    day_time_slots: Array.isArray(course.day_time_slots) && course.day_time_slots.length
+      ? course.day_time_slots.map((slot) => ({
+        day: Number(slot?.day || 0),
+        start_time: normalizeTo30Min(slot?.start_time || course.start_time || '16:00'),
+        duration_hours: Number(slot?.duration_hours || 0) || course.duration_hours || 2,
+      })).filter((slot) => slot.day >= 1 && slot.day <= 7)
+      : (Array.isArray(course.days_of_week) ? course.days_of_week : (course.day_of_week ? [course.day_of_week] : []))
+        .map((day) => ({ day: Number(day), start_time: normalizeTo30Min(course.start_time || '16:00'), duration_hours: course.duration_hours || 2 }))
+        .filter((slot) => slot.day >= 1 && slot.day <= 7),
     start_time: normalizeTo30Min(course.start_time || '16:00'),
     end_time: course.end_time || '18:00',
     first_class_date: course.first_class_date || '',
@@ -994,8 +1396,50 @@ const closeCourseModal = () => {
   editingCourseFromLaravel.value = false;
 };
 
+const handleUniversalSchedulerSuccess = async () => {
+  const sid = selectedStudent.value?.id;
+  closeCourseModal();
+  if (sid != null) {
+    await loadStudentCourses(sid);
+  }
+  await loadAllStudentCourses();
+};
+
+const handleEnrollmentSuccess = async () => {
+  showEnrollmentWizard.value = false;
+  await loadStudents();
+  await loadAllStudentCourses();
+};
+
+const parseApiErrorMessage = (err, fallback = '操作失敗') => {
+  const firstConflict = Array.isArray(err?.conflicts) ? err.conflicts[0] : null;
+  if (firstConflict?.type === 'teacher_capacity') {
+    const current = Number(firstConflict.current_students ?? 0);
+    const allowed = Number(firstConflict.allowed_students ?? 0);
+    const start = String(firstConflict.start_time || '');
+    const end = String(firstConflict.end_time || '');
+    const timeLabel = start && end ? `（${start}~${end}）` : '';
+    return `老師在此時段${timeLabel}已達可排學生上限（目前 ${current} 位／上限 ${allowed} 位），請改時段、老師或課型。`;
+  }
+  if (firstConflict?.type === 'room_capacity') {
+    const roomName = firstConflict.room_name || `#${firstConflict.room_id || ''}`;
+    const current = Number(firstConflict.current_students ?? 0);
+    const allowed = Number(firstConflict.allowed_students ?? 0);
+    const start = String(firstConflict.start_time || '');
+    const end = String(firstConflict.end_time || '');
+    const timeLabel = start && end ? `（${start}~${end}）` : '';
+    return `教室「${roomName}」在此時段${timeLabel}已滿（可容納學生 ${allowed} 位、目前 ${current} 位），請換教室或時段。`;
+  }
+
+  const details = err?.errors ? Object.values(err.errors || {}).flat().join(' ') : '';
+  const generic = String(err?.message || '').trim();
+  if (details && (!generic || generic === 'The given data was invalid.' || generic === 'The given data was invalid')) {
+    return details;
+  }
+  return generic || details || fallback;
+};
+
 const submitCourse = async () => {
-  syncRatePer2hBeforeSubmitCourse();
   const form = courseForm.value;
   const student = selectedStudent.value;
   const laravelStudentId = student._laravelId ?? student.id;
@@ -1005,8 +1449,8 @@ const submitCourse = async () => {
       alert('請選擇開課日');
       return;
     }
-    if (form.payment_type === 'monthly' && (form.settlement_day == null || form.settlement_day < 1 || form.settlement_day > 28)) {
-      alert('月結制度請選擇結算日（每月 1–28 號）');
+    if (form.payment_type === 'monthly' && (form.settlement_day == null || form.settlement_day < 1 || form.settlement_day > 31)) {
+      alert('月結制度請選擇結算日（每月 1–31 號）');
       return;
     }
     if (!form.days_of_week || form.days_of_week.length === 0) {
@@ -1030,12 +1474,20 @@ const submitCourse = async () => {
         teacher_id: form.teacher_id,
         class_type: form.class_type,
         rate_per_30min: form.rate_per_30min,
+        rate_unit: form.rate_unit || 'session',
         duration_hours: form.duration_hours,
         payment_type: form.payment_type,
         sessions_purchased: form.payment_type === 'session' ? (form.sessions_purchased || 8) : 0,
         first_class_date: form.first_class_date,
         days_of_week: form.days_of_week,
         start_time: form.start_time,
+        day_time_slots: (form.day_time_slots || [])
+          .map((slot) => ({
+            day: Number(slot?.day || 0),
+            start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
+            duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
+          }))
+          .filter((slot) => slot.day >= 1 && slot.day <= 7),
         room_id: form.room_id || null,
         settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
         monthly_sessions: form.payment_type === 'monthly' ? (form.monthly_sessions || null) : null,
@@ -1044,13 +1496,12 @@ const submitCourse = async () => {
       const res = await fetch('/api/v1/student-classes', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(body)
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        const msg = err?.message || (err?.errors ? Object.values(err.errors || {}).flat().join(' ') : null) || '新增課程失敗';
-        alert(msg);
+        alert(parseApiErrorMessage(err, '新增課程失敗'));
         return;
       }
       const created = await res.json();
@@ -1068,36 +1519,80 @@ const submitCourse = async () => {
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
-      if (token) {
-        const body = {
-          subject: form.subject,
-          teacher_id: form.teacher_id || null,
-          class_type: form.class_type,
-          rate_per_30min: form.rate_per_30min,
-          duration_hours: form.duration_hours,
-          payment_type: form.payment_type,
-          sessions_purchased: form.sessions_purchased,
-          days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
-          start_time: form.start_time,
-          end_time: computeEndTime(form.start_time, form.duration_hours),
-          room_id: form.room_id || null,
-          settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
-          monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
-          Memo: form.memo || null
-        };
-        const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify(body)
-        });
-        if (res.ok) {
-          closeCourseModal();
-          await loadStudentCourses(student.id);
-          await loadAllStudentCourses();
-          return;
-        }
+      if (!token) {
+        alert('請重新登入後再試');
+        return;
       }
+      const body = {
+        subject: form.subject,
+        teacher_id: form.teacher_id || null,
+        class_type: form.class_type,
+        rate_per_30min: form.rate_per_30min,
+        rate_unit: form.rate_unit || 'session',
+        duration_hours: form.duration_hours,
+        payment_type: form.payment_type,
+        sessions_purchased: form.sessions_purchased,
+        days_of_week: form.days_of_week?.length ? form.days_of_week : (form.day_of_week ? [form.day_of_week] : []),
+        start_time: form.start_time,
+        day_time_slots: (form.day_time_slots || [])
+          .map((slot) => ({
+            day: Number(slot?.day || 0),
+            start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
+            duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
+          }))
+          .filter((slot) => slot.day >= 1 && slot.day <= 7),
+        end_time: computeEndTime(form.start_time, form.duration_hours),
+        first_class_date: form.first_class_date || null,
+        force_rebuild_if_mismatch: true,
+        room_id: form.room_id || null,
+        settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
+        monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
+        Memo: form.memo || null
+      };
+      const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        const sync = payload?.session_sync || {};
+        let successMsg = '課程已更新。';
+        if (sync?.rebuilt) {
+          successMsg += ` 已重排 ${Number(sync.created_sessions || 0)} 堂。`;
+          if (sync?.reason === 'start_date_changed' || sync?.reason === 'start_date_aligned') {
+            successMsg += '（依開課日調整）';
+          } else if (sync?.reason === 'schedule_changed') {
+            successMsg += '（依固定星期/時段調整）';
+          }
+          if (sync?.reason === 'start_date_aligned') {
+            successMsg += '（堂次首日已與開課日重新對齊）';
+          }
+        } else if (sync?.reason === 'future_schedule_times_synced') {
+          successMsg += ` 已同步 ${Number(sync.updated_future_sessions || 0)} 堂未來課程時段。`;
+        } else if (sync?.reason === 'history_exists') {
+          successMsg += ' 本課已有出缺勤/核准紀錄，為保留歷史資料未重排堂次。';
+          if (Number(sync?.updated_future_sessions || 0) > 0) {
+            successMsg += ` 已同步 ${Number(sync.updated_future_sessions || 0)} 堂未來課程時段。`;
+          }
+        } else if (sync?.reason === 'start_date_unchanged') {
+          successMsg += ' 開課日未變更，故未重排堂次。';
+        } else if (sync?.reason === 'start_date_not_updated') {
+          successMsg += ' 本次未更新開課日，故未重排堂次。';
+        }
+        if (payload?.scope_warning) {
+          successMsg += `\n\n⚠️ 學段提示：${payload.scope_warning}`;
+        }
+        closeCourseModal();
+        alert(successMsg);
+        await loadAllStudentCourses();
+        await loadStudentCourses(student.id);
+        return;
+      }
+      const err = await res.json().catch(() => ({}));
+      alert(parseApiErrorMessage(err, '更新課程失敗'));
+      return;
     } catch (_) {}
   }
   const base = {
@@ -1111,32 +1606,43 @@ const submitCourse = async () => {
     payment_type: form.payment_type,
     sessions_purchased: form.sessions_purchased,
     start_time: form.start_time,
-    end_time: computeEndTime(form.start_time, form.duration_hours)
+    end_time: computeEndTime(form.start_time, form.duration_hours),
+    first_class_date: form.first_class_date || null
   };
   base.day_of_week = form.day_of_week;
-  await supabase.from('student-classes').update(base).eq('id', editingCourseId.value);
+  const { error } = await supabase
+    .from('student-classes')
+    .update(base)
+    .eq('id', editingCourseId.value);
+  if (error) {
+    alert('更新課程失敗：' + (error?.message || '請稍後再試'));
+    return;
+  }
   closeCourseModal();
+  alert('課程已更新。');
   await loadAllStudentCourses();
 };
 
 const deleteCourse = async (course) => {
   if (!confirm('確定刪除此課程設定？')) return;
-  if (course.branch_name != null || course.room_name != null) {
+  if (isLaravelCourse(course)) {
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
-      if (token) {
-        const res = await fetch(`/api/v1/student-classes/${course.id}`, {
-          method: 'DELETE',
-          credentials: 'include',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const sid = selectedStudent.value?.id ?? Object.keys(studentCourses.value).find(sid => (studentCourses.value[sid] || []).some(c => c.id === course.id));
-          if (sid) await loadStudentCourses(sid);
-          await loadAllStudentCourses();
-          return;
-        }
+      if (!token) {
+        alert('請重新登入後再試');
+        return;
+      }
+      const res = await fetch(`/api/v1/student-classes/${course.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const sid = selectedStudent.value?.id ?? Object.keys(studentCourses.value).find(sid => (studentCourses.value[sid] || []).some(c => c.id === course.id));
+        if (sid) await loadStudentCourses(sid);
+        await loadAllStudentCourses();
+        return;
       }
     } catch (_) {}
   }
@@ -1149,80 +1655,241 @@ const openAddSessionsForCourse = (course) => {
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   selectedCourse.value = course;
   addSessionCount.value = 8;
+  addSessionStartDate.value = new Date().toISOString().slice(0, 10);
   showSessionsModal.value = true;
 };
 
 const submitAddSessions = async () => {
-  if (addSessionCount.value <= 0 || !selectedCourse.value) return;
-  const newRemaining = (selectedCourse.value.remaining_sessions ?? 0) + addSessionCount.value;
-  const newPurchased = (selectedCourse.value.sessions_purchased ?? 0) + addSessionCount.value;
-  await supabase.from('student-classes').update({
-    remaining_sessions: newRemaining,
-    sessions_purchased: newPurchased
-  }).eq('id', selectedCourse.value.id);
-  showSessionsModal.value = false;
-  await loadAllStudentCourses();
+  if (!selectedCourse.value) return;
+  if (addSessionCount.value <= 0) {
+    alert('請輸入正確堂數');
+    return;
+  }
+  if (!addSessionStartDate.value) {
+    alert('請選擇新批次開始日期');
+    return;
+  }
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      alert('請重新登入後再試');
+      return;
+    }
+
+    const res = await fetch(`/api/v1/student-classes/${selectedCourse.value.id}/purchase-batch`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        sessions: Number(addSessionCount.value),
+        start_date: addSessionStartDate.value
+      })
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+      const msg = details || json?.message || '操作失敗';
+      alert(msg);
+      return;
+    }
+
+    showSessionsModal.value = false;
+    await loadAllStudentCourses();
+    if (selectedStudent.value?.id) {
+      await loadStudentCourses(selectedStudent.value.id);
+    }
+  } catch (e) {
+    alert('操作失敗：' + (e?.message || '請稍後再試'));
+  }
 };
 
 // --- Toggle Payment Status ---
-const togglePaymentStatus = async (course) => {
+const togglePaymentStatus = async (course, studentName = '') => {
+  const courseId = course?.id;
+  if (!courseId || isPaymentStatusPending(courseId)) return;
   const newStatus = course.payment_status === 'paid' ? 'unpaid' : 'paid';
-  await supabase.from('student-classes').update({ payment_status: newStatus }).eq('id', course.id);
-  await loadAllStudentCourses();
+  const fromLabel = course.payment_status === 'paid' ? '已繳費' : '未繳費';
+  const toLabel = newStatus === 'paid' ? '已繳費' : '未繳費';
+  const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
+  const targetLabel = studentName || '此學生';
+  const confirmText = `確定將「${targetLabel}」${subjectLabel ? `的${subjectLabel}課程` : '課程'}由「${fromLabel}」改為「${toLabel}」嗎？`;
+  if (!confirm(confirmText)) return;
+
+  setPaymentStatusPending(courseId, true);
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    let apiOk = false;
+    if (token) {
+      const res = await fetch(`/api/v1/student-classes/${courseId}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ payment_status: newStatus })
+      });
+      if (res.ok) {
+        apiOk = true;
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        console.warn('Payment status API error:', res.status, errBody);
+      }
+    }
+
+    // Also update Supabase to keep both in sync
+    await supabase
+      .from('student-classes')
+      .update({ payment_status: newStatus })
+      .eq('id', courseId);
+
+    if (!apiOk && !token) {
+      throw new Error('無法取得登入狀態，請重新登入');
+    }
+
+    course.payment_status = newStatus;
+  } catch (e) {
+    alert('更新繳費狀態失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    setPaymentStatusPending(courseId, false);
+  }
 };
 
 // --- CSV Import ---
 const importStudents = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const rows = e.target.result.split('\n');
-    const newStudents = [];
-    for (const row of rows) {
-      const r = row.trim();
-      if (!r) continue;
-      const cols = r.split(',');
-      if (cols[0] === 'Name' || cols[0] === '姓名') continue;
-      if (cols.length >= 1) {
-        newStudents.push({
-          branch_id: props.branchId,
-          name: cols[0].trim(),
-          phone: cols[1]?.trim() || '',
-          grade: cols[2]?.trim() || 'J1',
-          remaining_lessons: 0
-        });
-      }
+  if (!props.branchId) {
+    alert('請先在左下角切換分校，再進行匯入');
+    event.target.value = '';
+    return;
+  }
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      alert('請重新登入後再試');
+      return;
     }
-    if (newStudents.length > 0) {
-      const { error } = await supabase.from('students').insert(newStudents);
-      if (error) alert('匯入失敗: ' + error.message);
-      else { alert(`成功匯入 ${newStudents.length} 筆`); loadStudents(); }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('branch_id', String(props.branchId));
+
+    const res = await fetch('/api/v1/students/import', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const msg = json?.message || json?.error || '匯入失敗';
+      alert(typeof msg === 'string' ? msg : '匯入失敗');
+      return;
     }
-  };
-  reader.readAsText(file);
+
+    const result = json?.result || {};
+    const created = Number(result?.created || 0);
+    const updated = Number(result?.updated || 0);
+    const skipped = Number(result?.skipped || 0);
+    const errors = Array.isArray(result?.errors) ? result.errors : [];
+    const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+    const lowConfidence = Number(result?.low_confidence_matches || 0);
+
+    const lines = [
+      '匯入完成',
+      `新增：${created} 筆`,
+      `更新：${updated} 筆`,
+      `略過：${skipped} 筆`,
+      `低信心比對（無手機）：${lowConfidence} 筆`,
+    ];
+
+    if (warnings.length > 0) {
+      lines.push('', `警告（前 ${Math.min(3, warnings.length)} 筆）：`);
+      warnings.slice(0, 3).forEach(w => lines.push(`- ${w}`));
+    }
+    if (errors.length > 0) {
+      lines.push('', `錯誤（前 ${Math.min(3, errors.length)} 筆）：`);
+      errors.slice(0, 3).forEach(err => lines.push(`- ${err}`));
+    }
+
+    alert(lines.join('\n'));
+    await loadStudents();
+  } catch (e) {
+    alert('匯入失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    event.target.value = '';
+  }
 };
 
 watch(() => props.branchId, () => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
+watch(displayStudents, () => {
+  syncSelectedStudentIdsWithCurrentList();
+  if (expandedId.value != null && !displayStudents.value.some((s) => s.id === expandedId.value)) {
+    expandedId.value = null;
+  }
+});
 onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
 </script>
 
 <style scoped>
 .text-secondary { color: var(--text-light); font-size: 0.9rem; }
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
+
+/* ═══ Header ═══ */
 .header-actions {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 20px;
 }
-
+.header-title-area h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.header-icon {
+  font-size: 26px;
+  color: var(--primary);
+}
+.header-stats {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: #FFF3E0;
+  color: #E65100;
+  font-weight: 600;
+}
+.stat-badge-light {
+  background: #f5f5f5;
+  color: #78909c;
+  font-weight: 500;
+}
 .header-buttons {
   display: flex;
   gap: 8px;
   align-items: center;
 }
-
 .button-outline {
   border: 1px solid var(--border);
   padding: 8px 14px;
@@ -1232,52 +1899,154 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   font-size: 13px;
   display: flex;
   align-items: center;
+  gap: 4px;
   transition: var(--transition);
 }
-
 .button-outline:hover {
   background: var(--bg);
   border-color: var(--accent);
 }
+.btn-icon {
+  font-size: 18px;
+  vertical-align: middle;
+}
 
+/* ═══ Bulk Action Toolbar ═══ */
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  background: #E3F2FD;
+  border: 1px solid #90CAF9;
+  border-radius: 8px;
+  animation: slideDown 0.2s ease;
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.bulk-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1565c0;
+}
+.bulk-btns {
+  display: flex;
+  gap: 6px;
+}
+
+/* ═══ Filter Bar ═══ */
 .filter-bar {
   margin-bottom: 20px;
   background: #FAFAFA;
   padding: 16px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--border);
 }
-
-.student-row {
-  cursor: pointer;
-  transition: var(--transition);
+.filter-search { position: relative; }
+.search-input-wrap { position: relative; }
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  color: #bdbdbd;
+  pointer-events: none;
+}
+.search-input-wrap input { padding-left: 36px; }
+.filter-toggles {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
 }
 
+/* ═══ Student Row ═══ */
+.student-select-head,
+.student-select-cell {
+  width: 44px;
+  text-align: center;
+}
+.student-select-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.student-row {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
 .student-row:hover td {
   background: #FFF8E1 !important;
 }
-
 .student-row.expanded td {
   background: #FFF3E0;
   border-bottom-color: var(--accent);
 }
 
-.expand-icon {
-  font-size: 10px;
-  color: var(--text-light);
-  text-align: center;
+/* Status left border on student rows */
+.student-row td:first-child {
+  border-left: 3px solid transparent;
 }
+.student-row.status-active td:first-child { border-left-color: #43a047; }
+.student-row.status-graduated td:first-child { border-left-color: #1565c0; }
+.student-row.status-paused td:first-child { border-left-color: #e65100; }
+.student-row.status-transferred td:first-child { border-left-color: #7b1fa2; }
+
+/* Expand icon */
+.expand-icon {
+  text-align: center;
+  width: 30px;
+}
+.expand-chevron {
+  font-size: 20px;
+  color: #90a4ae;
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+.expand-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+/* Student name cell with avatar */
+.student-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.student-avatar-mini {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #43a047, #66bb6a);
+}
+.student-avatar-mini.graduated { background: linear-gradient(135deg, #1565c0, #42a5f5); }
+.student-avatar-mini.paused { background: linear-gradient(135deg, #e65100, #ff9800); }
+.student-avatar-mini.transferred { background: linear-gradient(135deg, #7b1fa2, #ab47bc); }
 
 .text-red {
   color: var(--danger) !important;
 }
 
+/* Subject pills */
 .subject-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
 }
-
 .subject-pill {
   display: inline-flex;
   align-items: center;
@@ -1289,20 +2058,18 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   color: #2E7D32;
   white-space: nowrap;
 }
-
 .subject-pill strong {
   font-weight: 800;
 }
-
 .subject-pill.low {
   background: #FFEBEE;
   color: #C62828;
 }
 
 .note-icon {
-  font-size: 12px;
   margin-left: 4px;
   cursor: help;
+  color: #ffab00;
 }
 
 .student-status-badge {
@@ -1317,12 +2084,64 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
 .student-status-badge.paused { background: #FFF3E0; color: #E65100; }
 .student-status-badge.transferred { background: #F3E5F5; color: #6A1B9A; }
 
+/* RFID */
+.rfid-tag {
+  font-size: 0.8em;
+  font-family: monospace;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.rfid-unbound {
+  font-size: 0.8em;
+  color: #bdbdbd;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* Action buttons */
+.action-cell {
+  display: flex;
+  gap: 4px;
+}
+.icon-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px !important;
+  min-width: 30px;
+}
+.icon-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* ═══ Mini Progress Bar (in course table) ═══ */
+.sessions-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mini-progress {
+  height: 4px;
+  background: #e8e8e8;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 80px;
+}
+.mini-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ═══ Day Chips ═══ */
 .day-checkbox-group {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
-
 .day-chip {
   display: flex;
   align-items: center;
@@ -1339,67 +2158,61 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   transition: all 0.2s;
   user-select: none;
 }
-
 .day-chip:hover {
   border-color: #FF9800;
   background: #FFF3E0;
 }
-
 .day-chip.selected {
   border-color: #E65100;
   background: #FF9800;
   color: #fff;
 }
 
-/* Course Detail Panel */
+/* ═══ Course Detail Panel ═══ */
 .course-detail-row td {
   padding: 0 !important;
   background: #FAFAFA !important;
 }
-
 .course-panel {
   padding: 20px 24px;
   border-left: 3px solid var(--accent);
   margin: 0;
 }
-
 .course-panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
-
 .course-panel-header h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 15px;
   font-weight: 700;
   color: var(--primary);
   margin: 0;
 }
-
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
-
 .course-inner-table th {
   background: #F0F0F0;
   font-size: 11px;
   padding: 8px;
 }
-
 .course-inner-table td {
   padding: 10px 8px;
   border-bottom: 1px solid #EEEEEE;
 }
-
 .status-tag.one_on_one { background: #FFF3E0; color: #E65100; }
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
 
-/* Form Section */
+/* ═══ Form Section ═══ */
 .form-section-title {
   font-size: 13px;
   font-weight: 700;
@@ -1408,11 +2221,9 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   padding-bottom: 4px;
   border-bottom: 1px solid var(--border);
 }
-
 .form-section-title:first-of-type {
   margin-top: 0;
 }
-
 .rfid-bind-row {
   display: flex;
   gap: 8px;
@@ -1429,18 +2240,11 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   color: #333;
   cursor: default;
 }
-
-.rfid-tag {
-  font-size: 0.8em;
-  font-family: monospace;
-  color: var(--primary);
-}
-
 .required {
   color: var(--danger);
 }
 
-/* Cost Preview */
+/* ═══ Cost Preview ═══ */
 .cost-preview {
   background: linear-gradient(135deg, #FFF8E1, #FFECB3);
   border: 1px solid #FFE082;
@@ -1449,22 +2253,65 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   text-align: center;
   margin-top: 16px;
 }
-
 .cost-preview-label {
   font-size: 12px;
   color: #5D4037;
   font-weight: 600;
 }
-
 .cost-preview-value {
   font-size: 28px;
   font-weight: 800;
   color: var(--primary);
   margin: 4px 0;
 }
-
 .cost-preview-formula {
   font-size: 12px;
   color: var(--text-light);
+}
+
+/* ═══ Table Scroll ═══ */
+.table-scroll-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll-wrap > table {
+  min-width: 700px;
+}
+
+/* ═══ Mobile Responsive ═══ */
+@media (max-width: 768px) {
+  .header-actions {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .header-buttons {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .header-buttons > * {
+    flex: 1;
+    justify-content: center;
+    min-width: 0;
+    text-align: center;
+  }
+  .filter-bar {
+    padding: 12px;
+  }
+  .filter-toggles {
+    flex-wrap: wrap;
+  }
+  .bulk-toolbar {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .bulk-btns {
+    justify-content: flex-end;
+  }
+
+  /* Icon-only action buttons on mobile */
+  .action-cell button span:not(.material-symbols-outlined) {
+    display: none;
+  }
 }
 </style>

@@ -4,15 +4,42 @@ namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\LearningRecordTeacherChange;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
+use App\Models\UserCampus;
+use App\Services\SessionDeductionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 class LearningRecordController extends Controller
 {
+    private function hasLearningRecordSessionDeductedColumn(): bool
+    {
+        static $hasColumn = null;
+        if ($hasColumn === null) {
+            $hasColumn = Schema::hasColumn('LearningRecord', 'SessionDeducted');
+        }
+        return $hasColumn;
+    }
+
+    private function hydrateRecordForResponse(LearningRecord $record): LearningRecord
+    {
+        $record->loadMissing('studentClass.student');
+        $record->student_name = $record->studentClass->student->name ?? '—';
+        $record->student_id = $record->studentClass->student->id ?? null;
+        $record->student_class_label = $record->studentClass->Subject ?? $record->Subject;
+        $teacherName = DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
+            ?? DB::table('User')->where('id', $record->TeacherID)->value('Name');
+        $record->teacher_name = $teacherName ?? '未指派';
+        return $record;
+    }
+
     public function index(Request $request)
     {
         $query = LearningRecord::query();
@@ -25,6 +52,14 @@ class LearningRecordController extends Controller
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
             $query->where('TeacherID', $teacherId);
+            // Teacher view should only show records that still map to existing classes.
+            // Otherwise historical orphan rows render as "Unknown" and confuse schedule/review flow.
+            $teacherClassIds = StudentClass::where('TeacherID', $teacherId)->pluck('ID');
+            if ($teacherClassIds->isEmpty()) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('StudentClassID', $teacherClassIds);
+            }
         }
 
         if ($role !== 'teacher' && ($request->filled('branch_id') || $request->filled('campus_id'))) {
@@ -84,6 +119,20 @@ class LearningRecordController extends Controller
             }
         }
 
+        if ($request->filled('start_date')) {
+            $query->where('SessionDate', '>=', $request->input('start_date'));
+        }
+        if ($request->filled('end_date')) {
+            $query->where('SessionDate', '<=', $request->input('end_date'));
+        }
+
+        // Optional: only return records whose class session has already ended.
+        // Useful for dashboard "pending review" cards to avoid future classes.
+        if ($request->boolean('only_due', false)) {
+            $now = Carbon::now()->format('Y-m-d H:i:s');
+            $query->whereRaw("CONCAT(SessionDate, ' ', COALESCE(EndTime, '23:59:59')) <= ?", [$now]);
+        }
+
         $perPage = min((int) $request->input('per_page', 20), 200);
         $records = $query->with('studentClass.student')
             ->orderBy('SessionDate', 'desc')
@@ -91,12 +140,12 @@ class LearningRecordController extends Controller
             ->paginate($perPage);
 
         $records->getCollection()->transform(function ($record) {
-            $record->student_name = $record->studentClass->student->name ?? 'Unknown';
+            $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $record->student_class_label = $record->studentClass->Subject ?? $record->Subject;
             $teacherName = \Illuminate\Support\Facades\DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
                 ?? \Illuminate\Support\Facades\DB::table('User')->where('id', $record->TeacherID)->value('Name');
-            $record->teacher_name = $teacherName ?? 'Unknown';
+            $record->teacher_name = $teacherName ?? '未指派';
             return $record;
         });
 
@@ -185,6 +234,14 @@ class LearningRecordController extends Controller
                 $classSessionId = $classSession->id;
             }
 
+            $timeGateResponse = $this->validateSessionEndedForWrite(
+                $classSession->SessionDate ?? ($data['SessionDate'] ?? null),
+                $classSession->EndTime ?? ($data['EndTime'] ?? null)
+            );
+            if ($timeGateResponse) {
+                return $timeGateResponse;
+            }
+
             $existing = LearningRecord::where('ClassSessionID', $classSessionId)->first();
             if ($existing) {
                 return response()->json(['message' => 'Learning record already exists'], 409);
@@ -192,6 +249,9 @@ class LearningRecordController extends Controller
 
             $authUser = request()->attributes->get('auth_user');
             $content = $data['Content'] ?? ($data['Progress'] ?? '') ?: '（評量表）';
+            $sessionDate = $this->normalizeDateValue($classSession->SessionDate) ?? ($data['SessionDate'] ?? null);
+            $startTime = $this->normalizeTimeValue($classSession->StartTime) ?? ($data['StartTime'] ?? null);
+            $endTime = $this->normalizeTimeValue($classSession->EndTime) ?? ($data['EndTime'] ?? null);
 
             $record = LearningRecord::create([
                 'StudentClassID' => $studentClass->ID,
@@ -201,9 +261,10 @@ class LearningRecordController extends Controller
                 'Content' => $content,
                 'AttachmentUrl' => $data['AttachmentUrl'] ?? null,
                 'Subject' => $data['Subject'] ?? null,
-                'SessionDate' => isset($data['SessionDate']) ? $data['SessionDate'] : null,
-                'StartTime' => $data['StartTime'] ?? null,
-                'EndTime' => $data['EndTime'] ?? null,
+                // Keep LearningRecord strictly bound to ClassSession date/time.
+                'SessionDate' => $sessionDate,
+                'StartTime' => $startTime,
+                'EndTime' => $endTime,
                 'HomeworkStatus' => $data['HomeworkStatus'] ?? null,
                 'QuizScore' => $data['QuizScore'] ?? null,
                 'Progress' => $data['Progress'] ?? null,
@@ -213,7 +274,7 @@ class LearningRecordController extends Controller
                 'Status' => 'pending',
             ]);
 
-            return response()->json($record, 201);
+            return response()->json($this->hydrateRecordForResponse($record), 201);
         });
     }
 
@@ -253,17 +314,41 @@ class LearningRecordController extends Controller
 
         $isDirector = in_array($role, ['director', 'super_admin', 'admin'], true);
 
-        if (!$isDirector && !in_array($learningRecord->Status, ['rejected', 'changes_requested'], true)) {
-            return response()->json(['message' => 'Record is not editable'], 409);
+        if (!$isDirector) {
+            $isOwner = $role === 'teacher' &&
+                (int) ($request->attributes->get('auth_teacher_id')) === (int) $learningRecord->TeacherID;
+            $editableStatuses = $isOwner
+                ? ['pending', 'rejected', 'changes_requested']
+                : ['rejected', 'changes_requested'];
+            if (!in_array($learningRecord->Status, $editableStatuses, true)) {
+                return response()->json(['message' => 'Record is not editable'], 409);
+            }
+        }
+
+        $boundSession = null;
+        $boundSessionId = (int) ($learningRecord->ClassSessionID ?? 0);
+        if ($boundSessionId > 0) {
+            $boundSession = ClassSession::find($boundSessionId);
+        }
+        $timeGateResponse = $this->validateSessionEndedForWrite(
+            $boundSession->SessionDate ?? $learningRecord->SessionDate ?? ($data['SessionDate'] ?? null),
+            $boundSession->EndTime ?? $learningRecord->EndTime ?? ($data['EndTime'] ?? null)
+        );
+        if ($timeGateResponse) {
+            return $timeGateResponse;
         }
 
         $learningRecord->Content = $data['Content'] ?? $learningRecord->Content;
         $learningRecord->AttachmentUrl = $data['AttachmentUrl'] ?? null;
-        foreach (['Subject', 'SessionDate', 'StartTime', 'EndTime', 'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework', 'Performance', 'Comment'] as $key) {
+        // SessionDate/StartTime/EndTime are derived from ClassSession and are intentionally
+        // not writable from payload anymore (kept only as compatibility mirror columns).
+        foreach (['Subject', 'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework', 'Performance', 'Comment'] as $key) {
             if (array_key_exists($key, $data)) {
                 $learningRecord->$key = $data[$key];
             }
         }
+
+        $this->syncRecordWithClassSession($learningRecord);
 
         if ($isDirector && $learningRecord->Status === 'approved') {
             // Director editing an approved record keeps it approved
@@ -275,7 +360,85 @@ class LearningRecordController extends Controller
         }
         $learningRecord->save();
 
-        return response()->json($learningRecord);
+        return response()->json($this->hydrateRecordForResponse($learningRecord));
+    }
+
+    public function updateTeacher(Request $request, LearningRecord $learningRecord)
+    {
+        $data = $request->validate([
+            'TeacherID' => 'required|integer|exists:User,id',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $studentClass = StudentClass::find($learningRecord->StudentClassID);
+        $student = $studentClass ? Student::find($studentClass->StudentID) : null;
+        $targetCampusId = (int) ($student->CampusID ?? 0);
+        if ($targetCampusId <= 0) {
+            return response()->json(['message' => 'Student campus not found'], 422);
+        }
+
+        if (!empty($campusIds) && !in_array($targetCampusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $newTeacherId = (int) $data['TeacherID'];
+        $oldTeacherId = (int) ($learningRecord->TeacherID ?? 0);
+        if ($newTeacherId === $oldTeacherId) {
+            return response()->json([
+                'message' => '授課老師未變更',
+                'errors' => [
+                    'TeacherID' => ['請選擇不同的授課老師。'],
+                ],
+            ], 422);
+        }
+
+        $teacherHasCampus = UserCampus::where('UserID', $newTeacherId)
+            ->where('CampusID', $targetCampusId)
+            ->exists();
+        if (!$teacherHasCampus) {
+            return response()->json([
+                'message' => 'Teacher is not assigned to the target campus.',
+                'errors' => [
+                    'TeacherID' => ['所選老師未綁定此分校。'],
+                ],
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data) {
+            $learningRecord->TeacherID = $newTeacherId;
+            $learningRecord->save();
+
+            if ((string) $learningRecord->Status === 'approved') {
+                if ($oldTeacherId > 0) {
+                    User::where('id', $oldTeacherId)
+                        ->where('TeachingSessionCount', '>', 0)
+                        ->decrement('TeachingSessionCount');
+                }
+                User::where('id', $newTeacherId)->increment('TeachingSessionCount');
+            }
+
+            $authUser = $request->attributes->get('auth_user');
+            $changedBy = (int) ($authUser->id ?? 0);
+            if ($changedBy <= 0) {
+                $changedBy = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            }
+
+            LearningRecordTeacherChange::create([
+                'learning_record_id' => (int) $learningRecord->id,
+                'old_teacher_id' => $oldTeacherId > 0 ? $oldTeacherId : null,
+                'new_teacher_id' => $newTeacherId,
+                'changed_by' => $changedBy,
+                'reason' => $data['reason'] ?? null,
+            ]);
+
+            return response()->json($this->hydrateRecordForResponse($learningRecord->fresh()));
+        });
     }
 
     public function destroy(Request $request, LearningRecord $learningRecord)
@@ -295,6 +458,7 @@ class LearningRecordController extends Controller
         ]);
 
         return DB::transaction(function () use ($learningRecord, $data) {
+            $studentClass = StudentClass::find($learningRecord->StudentClassID);
             if ($learningRecord->Status === 'approved') {
                 return response()->json(['message' => 'Already approved'], 409);
             }
@@ -309,9 +473,55 @@ class LearningRecordController extends Controller
             $learningRecord->ReviewNote = null;
             $learningRecord->save();
 
-            // 堂數扣除已改為刷卡簽到時觸發，核准評量僅更新老師業績
+            // 核准評量時也可扣堂；若已扣過（例如先點名/刷卡），則只標記不重複扣。
+            $recordAlreadyDeducted = $this->hasLearningRecordSessionDeductedColumn() && (bool) ($learningRecord->SessionDeducted ?? false);
+            if (!$recordAlreadyDeducted && $this->deductSessionForApprovedRecord($learningRecord)) {
+                if ($this->hasLearningRecordSessionDeductedColumn()) {
+                    $learningRecord->SessionDeducted = true;
+                    $learningRecord->save();
+                }
+                if ($studentClass) {
+                    SessionDeductionService::syncCounters($studentClass);
+                }
+            }
+
             // 給授課老師加一堂課 (業績+1)
             User::where('id', $learningRecord->TeacherID)->increment('TeachingSessionCount');
+
+            return response()->json($learningRecord);
+        });
+    }
+
+    public function rollbackApproval(Request $request, LearningRecord $learningRecord)
+    {
+        $data = $request->validate([
+            'DirectorID' => 'nullable|integer',
+            'ReviewNote' => 'nullable|string|max:255',
+        ]);
+
+        return DB::transaction(function () use ($learningRecord, $data) {
+            $studentClass = StudentClass::find($learningRecord->StudentClassID);
+            if ($learningRecord->Status !== 'approved') {
+                return response()->json(['message' => 'Only approved records can be rolled back'], 409);
+            }
+
+            $learningRecord->Status = 'pending';
+            $learningRecord->ReviewNote = $data['ReviewNote'] ?? null;
+            $learningRecord->ApprovedBy = null;
+            $learningRecord->ApprovedAt = null;
+            if ($this->hasLearningRecordSessionDeductedColumn()) {
+                $learningRecord->SessionDeducted = false;
+            }
+            $learningRecord->save();
+
+            // Roll back previously-added approved session count.
+            User::where('id', $learningRecord->TeacherID)
+                ->where('TeachingSessionCount', '>', 0)
+                ->decrement('TeachingSessionCount');
+
+            if ($studentClass) {
+                SessionDeductionService::syncCounters($studentClass);
+            }
 
             return response()->json($learningRecord);
         });
@@ -364,7 +574,13 @@ class LearningRecordController extends Controller
                 $learningRecord->ApprovedAt = now();
                 $learningRecord->ReviewNote = null;
                 $learningRecord->save();
-                // 堂數扣除已改為刷卡簽到時觸發
+
+                // 核准評量時也可扣堂；若已扣過則只標記不重複扣。
+                if (!$learningRecord->SessionDeducted && $this->deductSessionForApprovedRecord($learningRecord)) {
+                    $learningRecord->SessionDeducted = true;
+                    $learningRecord->save();
+                }
+
                 User::where('id', $learningRecord->TeacherID)->increment('TeachingSessionCount');
                 $approved++;
             }
@@ -391,29 +607,70 @@ class LearningRecordController extends Controller
                 return response()->json(['message' => '找不到學生課程'], 422);
             }
 
-            $classSession = ClassSession::create([
-                'StudentClassID' => $studentClass->ID,
-                'SessionDate' => $data['SessionDate'],
-                'StartTime' => '00:00',
-                'EndTime' => '00:00',
-                'Status' => 'completed',
-            ]);
+            $expectedDateSet = $this->buildBackfillExpectedDateSet($studentClass);
+            $classSession = $this->findEffectiveClassSessionForDate($studentClass->ID, $data['SessionDate']);
+            if (!$classSession) {
+                if (!$this->canBackfillCreateClassSession($data['SessionDate'], $expectedDateSet)) {
+                    return response()->json([
+                        'message' => '該日期沒有可補登的上課堂次（可能為請假/停課），未建立評量表',
+                    ], 422);
+                }
+                $slot = $this->resolveBackfillSlotForDate($studentClass, $data['SessionDate']);
+                $classSession = ClassSession::create([
+                    'StudentClassID' => $studentClass->ID,
+                    'SessionDate' => $data['SessionDate'],
+                    'StartTime' => $slot['start'],
+                    'EndTime' => $slot['end'],
+                    'Status' => $data['SessionDate'] <= now()->toDateString() ? 'completed' : 'scheduled',
+                    'Note' => 'auto-created by backfill',
+                ]);
+            }
 
-            $record = LearningRecord::create([
+            $existing = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+            if ($existing) {
+                if ($existing->Status !== 'approved') {
+                    $existing->Status = 'approved';
+                    $existing->ApprovedBy = $data['DirectorID'];
+                    $existing->ApprovedAt = now();
+                    $existing->TeacherID = (int) ($data['TeacherID'] ?? $existing->TeacherID);
+                    $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
+                    $existing->save();
+                } else {
+                    $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
+                }
+
+                if (!$existing->SessionDeducted && $this->deductSessionForApprovedRecord($existing)) {
+                    $existing->SessionDeducted = true;
+                    $existing->save();
+                }
+
+                return response()->json($existing, 201);
+            }
+
+            $recordPayload = [
                 'StudentClassID' => $studentClass->ID,
                 'ClassSessionID' => $classSession->id,
                 'TeacherID' => $data['TeacherID'],
                 'CreatedByUserID' => $data['DirectorID'],
                 'Content' => '（系統補登/扣除堂數）',
                 'Subject' => $studentClass->Subject ?? '系統扣堂',
-                'SessionDate' => $data['SessionDate'],
+                'SessionDate' => $this->normalizeDateValue($classSession->SessionDate),
+                'StartTime' => $this->normalizeTimeValue($classSession->StartTime),
+                'EndTime' => $this->normalizeTimeValue($classSession->EndTime),
                 'Status' => 'approved',
                 'ApprovedBy' => $data['DirectorID'],
                 'ApprovedAt' => now(),
-                'ExcludeFromSubjectCount' => 1, // 補登空白評量(單一課程) 不算入老師科目數
-            ]);
+            ];
+            // Some deployments may not have this optional column yet.
+            if (\Illuminate\Support\Facades\Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) {
+                $recordPayload['ExcludeFromSubjectCount'] = 1; // 補登空白評量(單一課程) 不算入老師科目數
+            }
+            $record = LearningRecord::create($recordPayload);
 
-            // 補登單筆：堂數扣除已改為刷卡簽到時觸發，此處不再扣堂
+            if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
+                $record->SessionDeducted = true;
+                $record->save();
+            }
 
             return response()->json($record, 201);
         });
@@ -425,6 +682,11 @@ class LearningRecordController extends Controller
      */
     public function bulkBackdoorApprove(Request $request)
     {
+        return response()->json([
+            'message' => 'Legacy bulk backfill endpoint retired. Use POST /api/v1/class-sessions/batch.',
+            'code' => 'legacy_bulk_backfill_retired',
+        ], 410);
+
         $data = $request->validate([
             'StudentClassID' => 'required|integer',
             'TeacherID' => 'required|integer',
@@ -433,10 +695,14 @@ class LearningRecordController extends Controller
             'session_dates.*' => 'required|date',
             'teacher_per_date' => 'nullable|array',
             'teacher_per_date.*' => 'integer',
+            'auto_project_future' => 'nullable|boolean',
         ]);
 
         $sessionDates = array_values(array_unique($data['session_dates']));
         $teacherPerDate = $data['teacher_per_date'] ?? [];
+        $autoProjectFuture = array_key_exists('auto_project_future', $data)
+            ? (bool) $data['auto_project_future']
+            : true;
         if (count($sessionDates) > 200) {
             return response()->json(['message' => '單次補登最多 200 堂'], 422);
         }
@@ -457,76 +723,137 @@ class LearningRecordController extends Controller
 
         $created = 0;
         $approved = 0;
-        return DB::transaction(function () use ($data, $studentClass, $subjectName, $sessionDates, $teacherPerDate, &$created, &$approved) {
+        $projectedFutureDates = [];
+        $skippedDates = [];
+        $projectionAnchorDate = null;
+        $expectedDateSet = $this->buildBackfillExpectedDateSet($studentClass);
+        return DB::transaction(function () use (
+            $data,
+            $studentClass,
+            $subjectName,
+            $sessionDates,
+            $teacherPerDate,
+            $autoProjectFuture,
+            &$created,
+            &$approved,
+            &$projectedFutureDates,
+            &$skippedDates,
+            &$projectionAnchorDate,
+            $expectedDateSet
+        ) {
+            $today = now()->toDateString();
             foreach ($sessionDates as $sessionDate) {
                 $teacherId = isset($teacherPerDate[$sessionDate]) ? (int) $teacherPerDate[$sessionDate] : (int) $data['TeacherID'];
-                $classSession = ClassSession::where('StudentClassID', $studentClass->ID)
-                    ->where('SessionDate', $sessionDate)
-                    ->first();
-
-                if ($classSession) {
-                    $record = LearningRecord::where('ClassSessionID', $classSession->id)->first();
-                    if ($record) {
-                        if ($record->Status === 'approved') {
-                            continue;
-                        }
-                        $record->Status = 'approved';
-                        $record->ApprovedBy = $data['DirectorID'];
-                        $record->ApprovedAt = now();
-                        if ($teacherId && $record->TeacherID != $teacherId) {
-                            $record->TeacherID = $teacherId;
-                        }
-                        $record->save();
-                        $approved++;
+                if ($projectionAnchorDate === null || strcmp($sessionDate, $projectionAnchorDate) > 0) {
+                    $projectionAnchorDate = $sessionDate;
+                }
+                $classSession = $this->findEffectiveClassSessionForDate($studentClass->ID, $sessionDate);
+                if (!$classSession) {
+                    if (!$this->canBackfillCreateClassSession($sessionDate, $expectedDateSet)) {
+                        $skippedDates[] = $sessionDate;
                         continue;
                     }
-                    LearningRecord::create([
+
+                    $slot = $this->resolveBackfillSlotForDate($studentClass, $sessionDate);
+                    $classSession = ClassSession::create([
                         'StudentClassID' => $studentClass->ID,
-                        'ClassSessionID' => $classSession->id,
-                        'TeacherID' => $teacherId,
-                        'CreatedByUserID' => $data['DirectorID'],
-                        'Content' => '（系統補登）',
-                        'Subject' => $subjectName,
                         'SessionDate' => $sessionDate,
-                        'Status' => 'approved',
-                        'ApprovedBy' => $data['DirectorID'],
-                        'ApprovedAt' => now(),
+                        'StartTime' => $slot['start'],
+                        'EndTime' => $slot['end'],
+                        'Status' => $sessionDate <= $today ? 'completed' : 'scheduled',
+                        'Note' => 'auto-created by backfill',
                     ]);
-                    $created++;
+                }
+                $effectiveDate = $this->normalizeDateValue($classSession->SessionDate) ?: $sessionDate;
+                if ($projectionAnchorDate === null || strcmp($effectiveDate, $projectionAnchorDate) > 0) {
+                    $projectionAnchorDate = $effectiveDate;
+                }
+
+                $record = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+                if ($record) {
+                    if ($record->Status === 'approved') {
+                        $this->syncRecordWithClassSession($record, $classSession, $teacherId);
+                        if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
+                            $record->SessionDeducted = true;
+                            $record->save();
+                        }
+                        continue;
+                    }
+                    $record->Status = 'approved';
+                    $record->ApprovedBy = $data['DirectorID'];
+                    $record->ApprovedAt = now();
+                    if ($teacherId && $record->TeacherID != $teacherId) {
+                        $record->TeacherID = $teacherId;
+                    }
+                    $this->syncRecordWithClassSession($record, $classSession, $teacherId);
+                    $record->save();
+                if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
+                    $record->SessionDeducted = true;
+                    $record->save();
+                }
+                    $approved++;
                     continue;
                 }
 
-                $classSession = ClassSession::create([
-                    'StudentClassID' => $studentClass->ID,
-                    'SessionDate' => $sessionDate,
-                    'StartTime' => '00:00',
-                    'EndTime' => '00:00',
-                    'Status' => 'completed',
-                ]);
-                LearningRecord::create([
+                $record = LearningRecord::create([
                     'StudentClassID' => $studentClass->ID,
                     'ClassSessionID' => $classSession->id,
                     'TeacherID' => $teacherId,
                     'CreatedByUserID' => $data['DirectorID'],
                     'Content' => '（系統補登）',
                     'Subject' => $subjectName,
-                    'SessionDate' => $sessionDate,
+                    'SessionDate' => $this->normalizeDateValue($classSession->SessionDate),
+                    'StartTime' => $this->normalizeTimeValue($classSession->StartTime),
+                    'EndTime' => $this->normalizeTimeValue($classSession->EndTime),
                     'Status' => 'approved',
                     'ApprovedBy' => $data['DirectorID'],
                     'ApprovedAt' => now(),
                 ]);
+                if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
+                    $record->SessionDeducted = true;
+                    $record->save();
+                }
                 $created++;
             }
+
+            if ($autoProjectFuture) {
+                $studentClass->refresh();
+                $remainingToProject = $this->resolveRemainingSessionsForProjection($studentClass);
+                if ($remainingToProject > 0) {
+                    $projectedFutureDates = $this->projectFutureClassSessions(
+                        $studentClass,
+                        $remainingToProject,
+                        $projectionAnchorDate
+                    );
+                }
+            }
+
             $total = $created + $approved;
             if ($total > 0) {
                 $parts = [];
                 if ($created > 0) $parts[] = "新增 {$created} 筆";
                 if ($approved > 0) $parts[] = "核准待審 {$approved} 筆";
-                $message = '已補登 ' . $total . ' 筆';
+                if (count($skippedDates) > 0) $parts[] = '略過無課堂 ' . count($skippedDates) . ' 筆';
+                if (count($projectedFutureDates) > 0) $parts[] = '推算未來 ' . count($projectedFutureDates) . ' 堂';
+                $message = '已完成：' . implode('、', $parts);
             } else {
-                $message = '所選日期皆已為已核准紀錄，未變更';
+                if (count($projectedFutureDates) > 0) {
+                    $message = '歷史補登無異動，已推算未來 ' . count($projectedFutureDates) . ' 堂';
+                } elseif (count($skippedDates) > 0) {
+                    $message = '所選日期皆無可補登課堂（請假/停課），未建立評量';
+                } else {
+                    $message = '所選日期皆已為已核准紀錄，未變更';
+                }
             }
-            return response()->json(['message' => $message, 'created' => $created, 'approved' => $approved], 201);
+            return response()->json([
+                'message' => $message,
+                'created' => $created,
+                'approved' => $approved,
+                'skipped_missing_session_count' => count($skippedDates),
+                'skipped_missing_session_dates' => array_values($skippedDates),
+                'projected_future_count' => count($projectedFutureDates),
+                'projected_future_dates' => array_values($projectedFutureDates),
+            ], 201);
         });
     }
 
@@ -574,7 +901,11 @@ class LearningRecordController extends Controller
             if ($startTime) $session->StartTime = $startTime;
             if ($endTime)   $session->EndTime   = $endTime;
             $session->save();
-            LearningRecord::where('ClassSessionID', $session->id)->update(['SessionDate' => $newDate]);
+            LearningRecord::where('ClassSessionID', $session->id)->update([
+                'SessionDate' => $session->SessionDate,
+                'StartTime' => $session->StartTime,
+                'EndTime' => $session->EndTime,
+            ]);
             return response()->json(['message' => '已同步更新評量表日期', 'session_id' => $session->id], 200);
         }
 
@@ -583,7 +914,14 @@ class LearningRecordController extends Controller
             ->where('SessionDate', $newDate)
             ->first();
         if ($existing) {
-            if ($startTime) { $existing->StartTime = $startTime; $existing->save(); }
+            if ($startTime) { $existing->StartTime = $startTime; }
+            if ($endTime) { $existing->EndTime = $endTime; }
+            $existing->save();
+            LearningRecord::where('ClassSessionID', $existing->id)->update([
+                'SessionDate' => $existing->SessionDate,
+                'StartTime' => $existing->StartTime,
+                'EndTime' => $existing->EndTime,
+            ]);
             return response()->json(['message' => '該日期已有課堂紀錄', 'session_id' => $existing->id], 200);
         }
 
@@ -660,7 +998,7 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $today = Carbon::today()->toDateString();
+        $now = Carbon::now()->format('Y-m-d H:i:s');
 
         $studentIds = Student::where('CampusID', $branchId)->pluck('id');
         if ($studentIds->isEmpty()) {
@@ -675,13 +1013,18 @@ class LearningRecordController extends Controller
 
         foreach ($classes as $sc) {
             $sessions = ClassSession::where('StudentClassID', $sc->ID)
-                ->where('SessionDate', '<=', $today)
                 ->whereNotIn('Status', ['cancelled'])
+                ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(EndTime, '23:59:59')) <= ?", [$now])
                 ->get();
 
             foreach ($sessions as $cs) {
-                $exists = LearningRecord::where('ClassSessionID', $cs->id)->exists();
-                if ($exists) continue;
+                $existing = LearningRecord::where('ClassSessionID', $cs->id)->first();
+                if ($existing) {
+                    // Self-heal legacy drift: if record date/time no longer matches ClassSession,
+                    // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
+                    $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
+                    continue;
+                }
 
                 $subjectName = DB::table('Subject')->where('id', $sc->SubjectID)->value('Subject_Name')
                     ?? DB::table('BaseData')->where('Name', '課程')->where('id', $sc->SubjectID)->value('Val')
@@ -703,6 +1046,547 @@ class LearningRecordController extends Controller
         }
 
         return response()->json(['created' => $created]);
+    }
+
+    private function syncRecordWithClassSession(
+        LearningRecord $record,
+        ?ClassSession $classSession = null,
+        ?int $fallbackTeacherId = null
+    ): void {
+        $sessionId = (int) ($record->ClassSessionID ?? 0);
+        if ($sessionId <= 0) {
+            return;
+        }
+
+        $classSession = $classSession ?: ClassSession::find($sessionId);
+        if (!$classSession) {
+            return;
+        }
+
+        $targetDate = $this->normalizeDateValue($classSession->SessionDate);
+        $targetStart = $this->normalizeTimeValue($classSession->StartTime);
+        $targetEnd = $this->normalizeTimeValue($classSession->EndTime);
+        $recordDate = $this->normalizeDateValue($record->SessionDate);
+        $recordStart = $this->normalizeTimeValue($record->StartTime);
+        $recordEnd = $this->normalizeTimeValue($record->EndTime);
+
+        $dirty = false;
+
+        if ((int) $record->StudentClassID !== (int) $classSession->StudentClassID) {
+            $record->StudentClassID = (int) $classSession->StudentClassID;
+            $dirty = true;
+        }
+        if ($targetDate !== $recordDate) {
+            $record->SessionDate = $targetDate;
+            $dirty = true;
+        }
+        if ($targetStart !== $recordStart) {
+            $record->StartTime = $targetStart;
+            $dirty = true;
+        }
+        if ($targetEnd !== $recordEnd) {
+            $record->EndTime = $targetEnd;
+            $dirty = true;
+        }
+        if (!empty($fallbackTeacherId) && (int) $record->TeacherID <= 0) {
+            $record->TeacherID = (int) $fallbackTeacherId;
+            $dirty = true;
+        }
+
+        if ($dirty) {
+            $record->save();
+        }
+    }
+
+    private function findEffectiveClassSessionForDate(int $studentClassId, string $sessionDate): ?ClassSession
+    {
+        return ClassSession::where('StudentClassID', $studentClassId)
+            ->where('SessionDate', $sessionDate)
+            ->whereNotIn('Status', ['leave', 'cancelled'])
+            ->orderBy('id', 'desc')
+            ->first();
+    }
+
+    private function validateSessionEndedForWrite($sessionDate, $endTime): ?\Illuminate\Http\JsonResponse
+    {
+        $date = $this->normalizeDateValue($sessionDate);
+        $time = $this->normalizeProjectionTime($endTime);
+        if (!$date || !$time) {
+            return null;
+        }
+
+        try {
+            $timezone = config('app.timezone', 'Asia/Taipei');
+            $sessionEndAt = Carbon::createFromFormat('Y-m-d H:i:s', "{$date} {$time}", $timezone);
+            if (now($timezone)->lessThanOrEqualTo($sessionEndAt)) {
+                return response()->json([
+                    'message' => '課程尚未結束，課程結束後開放填寫評量表',
+                    'session_end_at' => $sessionEndAt->toDateTimeString(),
+                ], 422);
+            }
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, bool>
+     */
+    private function buildBackfillExpectedDateSet(StudentClass $studentClass): array
+    {
+        $startDate = $this->normalizeDateValue($studentClass->StartDate ?? null);
+        $sessionCount = max(0, (int) ($studentClass->SessionCount ?? 0));
+        $daysOfWeek = $this->resolveStudentClassWeekdays($studentClass);
+        if (!$startDate || $sessionCount <= 0 || empty($daysOfWeek)) {
+            return [];
+        }
+
+        $leaveSet = [];
+        $scheduledSet = [];
+        $exceptions = Schedule::whereNotNull('student_course_id')
+            ->where('student_course_id', (int) $studentClass->ID)
+            ->select('schedule_date', 'status')
+            ->get();
+        foreach ($exceptions as $row) {
+            $date = $this->normalizeDateValue($row->schedule_date ?? null);
+            if (!$date) {
+                continue;
+            }
+            if ((string) $row->status === 'scheduled') {
+                $scheduledSet[$date] = true;
+            } else {
+                $leaveSet[$date] = true;
+            }
+        }
+
+        $dates = $this->computeEffectiveSessionDatesForBackfill(
+            $startDate,
+            $sessionCount,
+            $daysOfWeek,
+            $leaveSet,
+            $scheduledSet
+        );
+
+        return collect($dates)->mapWithKeys(fn ($d) => [(string) $d => true])->all();
+    }
+
+    /**
+     * @param array<string, bool> $expectedDateSet
+     */
+    private function canBackfillCreateClassSession(string $sessionDate, array $expectedDateSet): bool
+    {
+        $normalized = $this->normalizeDateValue($sessionDate);
+        if (!$normalized) {
+            return false;
+        }
+        if (empty($expectedDateSet)) {
+            return true;
+        }
+        return isset($expectedDateSet[$normalized]);
+    }
+
+    /**
+     * @return array{start:string,end:string}
+     */
+    private function resolveBackfillSlotForDate(StudentClass $studentClass, string $sessionDate): array
+    {
+        $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+        $pairs = [
+            ['week', 'time'],
+            ['week1', 'time1'],
+            ['week2', 'time2'],
+            ['week3', 'time3'],
+            ['week4', 'time4'],
+            ['week5', 'time5'],
+            ['week6', 'time6'],
+        ];
+
+        $start = null;
+        foreach ($pairs as [$weekField, $timeField]) {
+            $dow = (int) ($studentClass->{$weekField} ?? 0);
+            if ($dow !== $isoDow) {
+                continue;
+            }
+            $start = $this->normalizeProjectionTime($studentClass->{$timeField} ?? null);
+            if ($start) {
+                break;
+            }
+        }
+        if (!$start) {
+            $start = $this->normalizeProjectionTime($studentClass->time ?? null)
+                ?? $this->normalizeProjectionTime($studentClass->time1 ?? null)
+                ?? '16:00:00';
+        }
+
+        $durationMinutes = $this->resolveBackfillDurationMinutes($studentClass);
+        $end = Carbon::createFromFormat('H:i:s', $start)
+            ->addMinutes($durationMinutes)
+            ->format('H:i:s');
+
+        return ['start' => $start, 'end' => $end];
+    }
+
+    private function resolveBackfillDurationMinutes(StudentClass $studentClass): int
+    {
+        $sessionDuration = (int) ($studentClass->SessionDuration ?? 0);
+        if ($sessionDuration > 0) {
+            if ($sessionDuration <= 8) {
+                return $sessionDuration * 60;
+            }
+            if ($sessionDuration <= 12 * 60) {
+                return $sessionDuration;
+            }
+        }
+
+        $learnTimeId = (int) ($studentClass->LearnTimeID ?? 0);
+        if ($learnTimeId > 0 && $learnTimeId <= 8) {
+            return $learnTimeId * 60;
+        }
+
+        return 120;
+    }
+
+    /**
+     * @param array<int> $daysOfWeek
+     * @param array<string, bool> $leaveSet
+     * @param array<string, bool> $scheduledSet
+     * @return array<int, string>
+     */
+    private function computeEffectiveSessionDatesForBackfill(
+        string $startDate,
+        int $sessionCount,
+        array $daysOfWeek,
+        array $leaveSet,
+        array $scheduledSet
+    ): array {
+        $list = [];
+        if ($sessionCount <= 0 || empty($daysOfWeek)) {
+            return $list;
+        }
+
+        $cursor = Carbon::parse($startDate . ' 12:00:00');
+        $end = $cursor->copy()->addYears(2);
+        while ($cursor->lte($end) && count($list) < $sessionCount) {
+            $ymd = $cursor->toDateString();
+            $dow = (int) $cursor->dayOfWeekIso;
+            $isRegular = in_array($dow, $daysOfWeek, true);
+            $isLeave = isset($leaveSet[$ymd]);
+            $isScheduledExtra = isset($scheduledSet[$ymd]);
+
+            if ($isRegular && !$isLeave) {
+                $list[] = $ymd;
+            } elseif ($isScheduledExtra && !$isRegular) {
+                $list[] = $ymd;
+            }
+
+            $cursor->addDay();
+        }
+
+        return array_slice($list, 0, $sessionCount);
+    }
+
+    private function resolveRemainingSessionsForProjection(StudentClass $studentClass): int
+    {
+        $sessionCount = (int) ($studentClass->SessionCount ?? 0);
+        $remainingSessions = $studentClass->RemainingSessions !== null
+            ? max(0, (int) $studentClass->RemainingSessions)
+            : null;
+        $usedSessions = max(0, (int) ($studentClass->UsedSessions ?? 0));
+
+        // 堂數制優先以「總堂數 - 已使用/已核准」推導，避免舊資料 RemainingSessions 過時導致多推算。
+        if ($sessionCount > 0) {
+            $approvedCount = LearningRecord::where('StudentClassID', $studentClass->ID)
+                ->where('Status', 'approved')
+                ->count();
+            $derivedRemaining = max(0, $sessionCount - max($approvedCount, $usedSessions));
+
+            if ($remainingSessions === null) {
+                return $derivedRemaining;
+            }
+
+            return min($remainingSessions, $derivedRemaining);
+        }
+
+        return $remainingSessions ?? 0;
+    }
+
+    /**
+     * 推算剩餘堂數的未來日期：
+     * 起點 = 最後一筆 ClassSession 日期之後
+     * 規則 = 僅依固定星期幾往未來排，不回補歷史空檔
+     */
+    private function projectFutureClassSessions(StudentClass $studentClass, int $count, ?string $anchorDate = null): array
+    {
+        if ($count <= 0) {
+            return [];
+        }
+
+        $lastSession = ClassSession::where('StudentClassID', $studentClass->ID)
+            ->orderBy('SessionDate', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $weekdays = $this->resolveStudentClassWeekdays($studentClass);
+        $effectiveAnchor = null;
+        if ($lastSession && !empty($lastSession->SessionDate)) {
+            $effectiveAnchor = Carbon::parse($lastSession->SessionDate)->toDateString();
+        }
+        $normalizedAnchor = $anchorDate ? $this->normalizeDateValue($anchorDate) : null;
+        if ($normalizedAnchor && ($effectiveAnchor === null || strcmp($normalizedAnchor, $effectiveAnchor) > 0)) {
+            $effectiveAnchor = $normalizedAnchor;
+        }
+        if (!$effectiveAnchor) {
+            return [];
+        }
+
+        if (empty($weekdays)) {
+            $weekdays = [(int) Carbon::parse($effectiveAnchor)->dayOfWeekIso];
+        }
+
+        $fallbackStart = $this->normalizeProjectionTime(
+            $studentClass->time1 ?? $studentClass->time ?? '16:00'
+        ) ?? '16:00:00';
+        $fallbackSeedSession = $lastSession ?: new ClassSession([
+            'StudentClassID' => $studentClass->ID,
+            'SessionDate' => $effectiveAnchor,
+            'StartTime' => $fallbackStart,
+            'EndTime' => null,
+        ]);
+        $slots = $this->resolveProjectionSlotsByWeekday($studentClass, $weekdays, $fallbackSeedSession);
+        $fallbackSlot = reset($slots) ?: ['start' => $fallbackStart, 'end' => '18:00:00'];
+
+        $existingDates = ClassSession::where('StudentClassID', $studentClass->ID)
+            ->pluck('SessionDate')
+            ->filter()
+            ->map(fn ($d) => (string) $d)
+            ->flip()
+            ->all();
+
+        $cursor = Carbon::parse($effectiveAnchor)->startOfDay()->addDay();
+        $projected = [];
+        $guard = 0;
+        $guardMax = 4000;
+
+        while (count($projected) < $count && $guard < $guardMax) {
+            $guard++;
+            $isoDow = (int) $cursor->dayOfWeekIso;
+            if (!in_array($isoDow, $weekdays, true)) {
+                $cursor->addDay();
+                continue;
+            }
+
+            $date = $cursor->toDateString();
+            if (isset($existingDates[$date])) {
+                $cursor->addDay();
+                continue;
+            }
+
+            $slot = $slots[$isoDow] ?? $fallbackSlot;
+            ClassSession::create([
+                'StudentClassID' => $studentClass->ID,
+                'SessionDate' => $date,
+                'StartTime' => $slot['start'],
+                'EndTime' => $slot['end'],
+                'Status' => 'scheduled',
+                'Note' => 'auto-projected by backfill',
+            ]);
+
+            $existingDates[$date] = true;
+            $projected[] = $date;
+            $cursor->addDay();
+        }
+
+        return $projected;
+    }
+
+    /**
+     * @return array<int>
+     */
+    private function resolveStudentClassWeekdays(StudentClass $studentClass): array
+    {
+        $weekdays = [];
+        foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
+            $dow = (int) ($studentClass->{$field} ?? 0);
+            if ($dow >= 1 && $dow <= 7) {
+                $weekdays[$dow] = $dow;
+            }
+        }
+        ksort($weekdays);
+        return array_values($weekdays);
+    }
+
+    /**
+     * @param array<int> $weekdays
+     * @return array<int, array{start:string,end:string}>
+     */
+    private function resolveProjectionSlotsByWeekday(
+        StudentClass $studentClass,
+        array $weekdays,
+        ClassSession $fallbackSession
+    ): array {
+        $durationMinutes = $this->resolveProjectionDurationMinutes($studentClass, $fallbackSession);
+        $fallbackStart = $this->normalizeProjectionTime($fallbackSession->StartTime) ?? '16:00:00';
+        $fallbackEnd = $this->normalizeProjectionTime($fallbackSession->EndTime)
+            ?? Carbon::createFromFormat('H:i:s', $fallbackStart)->addMinutes($durationMinutes)->format('H:i:s');
+
+        $slots = [];
+        foreach ($weekdays as $dow) {
+            $slots[$dow] = ['start' => $fallbackStart, 'end' => $fallbackEnd];
+        }
+
+        $pairs = [
+            ['week', 'time'],
+            ['week1', 'time1'],
+            ['week2', 'time2'],
+            ['week3', 'time3'],
+            ['week4', 'time4'],
+            ['week5', 'time5'],
+            ['week6', 'time6'],
+        ];
+
+        foreach ($pairs as [$weekField, $timeField]) {
+            $dow = (int) ($studentClass->{$weekField} ?? 0);
+            if ($dow < 1 || $dow > 7 || !isset($slots[$dow])) {
+                continue;
+            }
+
+            $start = $this->normalizeProjectionTime($studentClass->{$timeField} ?? null)
+                ?? $this->normalizeProjectionTime($studentClass->time ?? null)
+                ?? $fallbackStart;
+
+            $end = Carbon::createFromFormat('H:i:s', $start)
+                ->addMinutes($durationMinutes)
+                ->format('H:i:s');
+
+            $slots[$dow] = ['start' => $start, 'end' => $end];
+        }
+
+        return $slots;
+    }
+
+    private function resolveProjectionDurationMinutes(StudentClass $studentClass, ClassSession $fallbackSession): int
+    {
+        $fallbackStart = $this->normalizeProjectionTime($fallbackSession->StartTime);
+        $fallbackEnd = $this->normalizeProjectionTime($fallbackSession->EndTime);
+        if ($fallbackStart && $fallbackEnd) {
+            try {
+                $start = Carbon::createFromFormat('H:i:s', $fallbackStart);
+                $end = Carbon::createFromFormat('H:i:s', $fallbackEnd);
+                if ($end->lessThanOrEqualTo($start)) {
+                    $end->addDay();
+                }
+                $diff = (int) $start->diffInMinutes($end);
+                if ($diff > 0 && $diff <= 12 * 60) {
+                    return $diff;
+                }
+            } catch (\Throwable $e) {
+                // ignore and continue fallback rules
+            }
+        }
+
+        $sessionDuration = (int) ($studentClass->SessionDuration ?? 0);
+        if ($sessionDuration > 0) {
+            if ($sessionDuration <= 8) {
+                return $sessionDuration * 60;
+            }
+            if ($sessionDuration <= 12 * 60) {
+                return $sessionDuration;
+            }
+        }
+
+        $learnTimeId = (int) ($studentClass->LearnTimeID ?? 0);
+        if ($learnTimeId > 0 && $learnTimeId <= 8) {
+            return $learnTimeId * 60;
+        }
+
+        return 120;
+    }
+
+    private function normalizeProjectionTime($value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $str = trim((string) $value);
+        if ($str === '') {
+            return null;
+        }
+        if (preg_match('/^\d{1,2}:\d{2}$/', $str)) {
+            [$h, $m] = explode(':', $str);
+            return sprintf('%02d:%02d:00', (int) $h, (int) $m);
+        }
+        if (preg_match('/^\d{1,2}:\d{2}:\d{2}$/', $str)) {
+            [$h, $m, $s] = explode(':', $str);
+            return sprintf(
+                '%02d:%02d:%02d',
+                (int) $h,
+                (int) $m,
+                (int) $s
+            );
+        }
+        try {
+            return Carbon::parse($str)->format('H:i:s');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function normalizeDateValue($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private function normalizeTimeValue($value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $str = trim((string) $value);
+        if ($str === '') {
+            return null;
+        }
+        return substr($str, 0, 5);
+    }
+
+    private function deductSessionForApprovedRecord(LearningRecord $learningRecord): bool
+    {
+        $studentClass = StudentClass::find($learningRecord->StudentClassID);
+        if (!$studentClass) {
+            return false;
+        }
+
+        $classSessionId = (int) ($learningRecord->ClassSessionID ?? 0);
+        if ($classSessionId > 0) {
+            $alreadyDeducted = StudentSignIn::where('ClassSessionID', $classSessionId)
+                ->where('SessionDeducted', true)
+                ->exists();
+            if ($alreadyDeducted) {
+                SessionDeductionService::syncCounters($studentClass);
+                return true;
+            }
+        }
+
+        $signIn = null;
+        if ($classSessionId > 0) {
+            $signIn = StudentSignIn::where('ClassSessionID', $classSessionId)
+                ->orderBy('id', 'desc')
+                ->first();
+        }
+
+        return SessionDeductionService::deductOnAttendance(
+            $studentClass,
+            $signIn,
+            $classSessionId > 0 ? $classSessionId : null
+        );
     }
 
 }

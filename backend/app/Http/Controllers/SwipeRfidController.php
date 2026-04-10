@@ -10,6 +10,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Teacher;
 use App\Models\TeacherSignIn;
+use App\Models\UserCampus;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -88,17 +89,36 @@ class SwipeRfidController extends Controller
                 return $this->handleStudentSwipe($student, $campus, $swipeAt);
             }
 
-            $teacher = Teacher::where('RFID', $rfid)->where('CampusID', $campusId)->where('Enable', 1)->first();
-            // #region agent log
-            $log('teacher lookup', ['found'=>!!$teacher,'teacherId'=>$teacher?->id]);
-            // #endregion
+            // 老師主分校在 Teacher.CampusID，但主任變更分校時可能只更新了 UserCampus，
+            // 導致僅以 CampusID 比對會漏掉已綁 RFID 的老師。
+            $teacher = Teacher::where('RFID', $rfid)->where('Enable', 1)->first();
+            $matchedUserCampus = false;
             if ($teacher) {
+                $matchedUserCampus = UserCampus::where('UserID', $teacher->id)
+                    ->where('CampusID', $campusId)
+                    ->exists();
+            }
+            $teacherInCampus = $teacher && (
+                (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus
+            );
+            // #region agent log
+            $log('teacher lookup', [
+                'found' => (bool) $teacherInCampus,
+                'teacherId' => $teacher?->id,
+                'teacherCampusId' => $teacher?->CampusID,
+                'swipeCampusId' => $campusId,
+                'matchedUserCampus' => $matchedUserCampus,
+            ]);
+            // #endregion
+            if ($teacherInCampus) {
                 return $this->handleTeacherSwipe($teacher, $campus, $swipeAt);
             }
 
+            // 每分校僅一筆：更新 RFID 時必須刷新 created_at，否則效期仍沿用舊時間，
+            // TempRfidController 會誤判過期並刪除，導致後台「綁定卡片」顯示暫無刷卡資料。
             TempRfid::updateOrCreate(
                 ['CampusID' => $campusId],
-                ['RFID' => $rfid]
+                ['RFID' => $rfid, 'created_at' => now()]
             );
 
             return response()->json([
@@ -154,6 +174,7 @@ class SwipeRfidController extends Controller
                 'StudentClassID'  => $studentClass?->ID,
                 'StudentID'        => $student->id,
                 'TeacherID'       => $studentClass?->TeacherID,
+                'RecordedByUserID' => null,
                 'GradeID'         => $studentClass?->GradeID,
                 'SubjectID'      => $studentClass?->SubjectID,
                 'Get1byID'       => $studentClass?->by1,

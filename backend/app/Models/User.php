@@ -17,8 +17,17 @@ class User extends Model
         'employment_type',
         'status',
         'phone',
+        'AvatarUrl',
         'TeachingSessionCount',
+        'MustChangePassword',
+        'PasswordChangedAt',
+        'PasswordSetByUserID',
     ];
 
     protected $hidden = ['PSW'];
+
+    protected $casts = [
+        'MustChangePassword' => 'boolean',
+        'PasswordChangedAt' => 'datetime',
+    ];
 }

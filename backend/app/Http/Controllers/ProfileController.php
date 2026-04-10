@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\TeacherScopeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -91,7 +93,34 @@ class ProfileController extends Controller
 
         // Filter by status
         if ($request->filled('status')) {
-            $query->where('User.status', $request->input('status'));
+            $status = (string) $request->input('status');
+            if ($status === 'pending') {
+                $query->whereExists(function ($sub) use ($request) {
+                    $sub->select(DB::raw(1))
+                        ->from('UserCampus')
+                        ->whereColumn('UserCampus.UserID', 'User.id')
+                        ->where('UserCampus.Approved', false);
+                    if ($request->filled('branch_id')) {
+                        $sub->where('UserCampus.CampusID', (int) $request->input('branch_id'));
+                    }
+                });
+            } elseif ($status === 'active') {
+                $query->whereExists(function ($sub) use ($request) {
+                    $sub->select(DB::raw(1))
+                        ->from('UserCampus')
+                        ->whereColumn('UserCampus.UserID', 'User.id')
+                        ->where(function ($sq) {
+                            $sq->where('UserCampus.Approved', true)->orWhereNull('UserCampus.Approved');
+                        });
+                    if ($request->filled('branch_id')) {
+                        $sub->where('UserCampus.CampusID', (int) $request->input('branch_id'));
+                    }
+                })->where(function ($sq) {
+                    $sq->whereNull('User.status')->orWhere('User.status', '!=', 'suspended');
+                });
+            } else {
+                $query->where('User.status', $status);
+            }
         }
 
         // Filter by teachable subject (teacher_subjects)
@@ -124,7 +153,7 @@ class ProfileController extends Controller
             $teacherIds = $userCollection->where('type', 'T')->pluck('id')->all();
             $extras = [];
             foreach ($userIds as $uid) {
-                $extras[$uid] = ['phone' => '', 'line_id' => '', 'rfid' => '', 'subject_ids' => [], 'subject_names' => []];
+                $extras[$uid] = ['phone' => '', 'line_id' => '', 'rfid' => '', 'subject_ids' => [], 'subject_names' => [], 'subject_level_scopes' => [], 'has_teacher_profile' => false];
             }
             if (empty($teacherIds)) {
                 return $extras;
@@ -138,14 +167,17 @@ class ProfileController extends Controller
             $subjectNames = empty($allSubjectIds)
                 ? []
                 : DB::table('Subject')->whereIn('id', $allSubjectIds)->pluck('Subject_Name', 'id')->all();
+            $allScopes = TeacherScopeService::getScopesForTeachers($teacherIds);
             foreach ($teacherIds as $tid) {
                 $t = $teachers->get($tid);
+                $extras[$tid]['has_teacher_profile'] = $t !== null;
                 $extras[$tid]['phone'] = $t->Phone ?? $userPhones[$tid] ?? '';
                 $extras[$tid]['line_id'] = $t->LineID ?? '';
                 $extras[$tid]['rfid'] = $t->RFID ?? '';
                 $ids = $tsRows->get($tid, collect())->pluck('subject_id')->all();
                 $extras[$tid]['subject_ids'] = array_map('intval', $ids);
                 $extras[$tid]['subject_names'] = array_values(array_map(fn($id) => $subjectNames[$id] ?? (string) $id, $ids));
+                $extras[$tid]['subject_level_scopes'] = $allScopes[$tid] ?? [];
             }
             return $extras;
         };
@@ -159,10 +191,18 @@ class ProfileController extends Controller
             $out = [
                 'id'              => $user->id,
                 'username'        => $user->Name,
+                'account'         => $user->LoginName,
+                'email'           => $user->LoginName,
                 'role'            => match ($user->type) { 'S' => 'super_admin', 'T' => 'teacher', default => 'director' },
                 'branch_id'       => $allCampusRowsForSingle->get($user->id, collect())->isNotEmpty() ? (int) $allCampusRowsForSingle->get($user->id)->first()->CampusID : null,
                 'branch_ids'      => $allCampusRowsForSingle->get($user->id, collect())->pluck('CampusID')->map(fn($id) => (int)$id)->values()->all(),
-                'status'          => $user->status ?? 'active',
+                'status'          => $this->resolveUserStatus(
+                    $user->type,
+                    $user->status,
+                    $teacherExtras[$user->id]['has_teacher_profile'] ?? true,
+                    $allCampusRowsForSingle->get($user->id, collect()),
+                    $request->filled('branch_id') ? (int) $request->input('branch_id') : null
+                ),
                 'employment_type' => $user->employment_type ?? 'full_time',
                 'phone'           => $user->phone,
                 'teaching_session_count' => $user->TeachingSessionCount ?? 0,
@@ -173,6 +213,7 @@ class ProfileController extends Controller
                 $out['rfid'] = $teacherExtras[$user->id]['rfid'] ?? '';
                 $out['subject_ids'] = $teacherExtras[$user->id]['subject_ids'] ?? [];
                 $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
+                $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
             }
             return response()->json($out);
         }
@@ -180,7 +221,14 @@ class ProfileController extends Controller
         $countBeforeGet = $query->count();
 
         // Fallback: when listing teachers with branch_id and result is empty, return all teachers visible to this director (ignore branch filter) so list is not empty
-        if ($perPage === 'all' && $countBeforeGet === 0 && $request->filled('branch_id') && $request->input('role') === 'teacher' && !empty($campusIds)) {
+        if (
+            $perPage === 'all'
+            && $countBeforeGet === 0
+            && $request->filled('branch_id')
+            && $request->input('role') === 'teacher'
+            && !$request->boolean('strict_branch')
+            && !empty($campusIds)
+        ) {
             $fallbackQuery = User::query()->where('type', 'T');
             $fallbackQuery->where(function ($q) use ($campusIds) {
                 $q->whereIn('id', function ($sub) use ($campusIds) {
@@ -216,15 +264,23 @@ class ProfileController extends Controller
         if ($perPage === 'all') {
             $users = $query->get();
             $teacherExtras = $buildTeacherExtras($users);
-            $users->transform(function ($user) use ($allCampusRows, $teacherExtras) {
+            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $request) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
                     'username'        => $user->Name,
+                    'account'         => $user->LoginName,
+                    'email'           => $user->LoginName,
                     'role'            => match ($user->type) { 'S' => 'super_admin', 'T' => 'teacher', default => 'director' },
                     'branch_id'       => $campusRows->isNotEmpty() ? (int) $campusRows->first()->CampusID : null,
                     'branch_ids'      => $campusRows->pluck('CampusID')->map(fn($id) => (int)$id)->values()->all(),
-                    'status'          => $user->status ?? 'active',
+                    'status'          => $this->resolveUserStatus(
+                        $user->type,
+                        $user->status,
+                        $teacherExtras[$user->id]['has_teacher_profile'] ?? true,
+                        $campusRows,
+                        $request->filled('branch_id') ? (int) $request->input('branch_id') : null
+                    ),
                     'employment_type' => $user->employment_type ?? 'full_time',
                     'phone'           => $user->phone,
                     'teaching_session_count' => $user->TeachingSessionCount ?? 0,
@@ -235,21 +291,30 @@ class ProfileController extends Controller
                     $out['rfid'] = $teacherExtras[$user->id]['rfid'] ?? '';
                     $out['subject_ids'] = $teacherExtras[$user->id]['subject_ids'] ?? [];
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
+                    $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
                 return $out;
             });
         } else {
             $users = $query->paginate(min((int) ($perPage ?? 50), 200));
             $teacherExtras = $buildTeacherExtras($users->getCollection());
-            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras) {
+            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $request) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
                     'username'        => $user->Name,
+                    'account'         => $user->LoginName,
+                    'email'           => $user->LoginName,
                     'role'            => match ($user->type) { 'S' => 'super_admin', 'T' => 'teacher', default => 'director' },
                     'branch_id'       => $campusRows->isNotEmpty() ? (int) $campusRows->first()->CampusID : null,
                     'branch_ids'      => $campusRows->pluck('CampusID')->map(fn($id) => (int)$id)->values()->all(),
-                    'status'          => $user->status ?? 'active',
+                    'status'          => $this->resolveUserStatus(
+                        $user->type,
+                        $user->status,
+                        $teacherExtras[$user->id]['has_teacher_profile'] ?? true,
+                        $campusRows,
+                        $request->filled('branch_id') ? (int) $request->input('branch_id') : null
+                    ),
                     'employment_type' => $user->employment_type ?? 'full_time',
                     'phone'           => $user->phone,
                     'teaching_session_count' => $user->TeachingSessionCount ?? 0,
@@ -260,6 +325,7 @@ class ProfileController extends Controller
                     $out['rfid'] = $teacherExtras[$user->id]['rfid'] ?? '';
                     $out['subject_ids'] = $teacherExtras[$user->id]['subject_ids'] ?? [];
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
+                    $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
                 return $out;
             });
@@ -281,12 +347,14 @@ class ProfileController extends Controller
             $names = DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')->all();
             $subjectNames = array_values(array_map(fn($id) => $names[$id] ?? (string) $id, $subjectIds));
         }
+        $scopes = TeacherScopeService::getScopesForTeachers([$userId]);
         return [
-            'phone'        => $teacher->Phone ?? $user->phone ?? '',
-            'line_id'      => $teacher->LineID ?? '',
-            'rfid'         => $teacher->RFID ?? '',
-            'subject_ids'   => array_map('intval', $subjectIds),
-            'subject_names' => $subjectNames,
+            'phone'                => $teacher->Phone ?? $user->phone ?? '',
+            'line_id'              => $teacher->LineID ?? '',
+            'rfid'                 => $teacher->RFID ?? '',
+            'subject_ids'          => array_map('intval', $subjectIds),
+            'subject_names'        => $subjectNames,
+            'subject_level_scopes' => $scopes[$userId] ?? [],
         ];
     }
 
@@ -294,7 +362,8 @@ class ProfileController extends Controller
     {
         $data = $request->validate([
             'name'           => 'required|string|max:64',
-            'email'          => 'required|string|max:128',
+            'account'        => 'nullable|string|max:128|required_without:email',
+            'email'          => 'nullable|string|max:128|required_without:account',
             'password'       => 'required|string|min:4|max:128',
             'role'           => 'nullable|string|in:teacher,director',
             'campus_id'      => 'nullable|integer',
@@ -306,11 +375,17 @@ class ProfileController extends Controller
             'line_id'        => 'nullable|string|max:128',
             'subject_ids'    => 'nullable|array',
             'subject_ids.*'  => 'integer',
+            'subject_level_scopes'             => 'nullable|array',
+            'subject_level_scopes.*.subject_id' => 'required_with:subject_level_scopes|integer',
+            'subject_level_scopes.*.level'      => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
         ]);
-
-        $exists = User::where('LoginName', $data['email'])->exists();
-        if ($exists) {
-            return response()->json(['message' => '此帳號已存在'], 409);
+        $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
+        if ($loginName === '') {
+            return response()->json(['message' => '帳號不可空白'], 422);
+        }
+        $normalizedPhone = preg_replace('/\D+/', '', (string) ($data['phone'] ?? ''));
+        if ($normalizedPhone === '') {
+            $normalizedPhone = null;
         }
 
         $type = match ($data['role'] ?? 'teacher') {
@@ -318,13 +393,24 @@ class ProfileController extends Controller
             default    => 'T',
         };
 
+        $blockedTypes = $type === 'T'
+            ? ['T', 'S', 'A', 'U']
+            : ['D', 'S', 'A', 'U'];
+
+        $existsConflict = User::where('LoginName', $loginName)
+            ->whereIn('type', $blockedTypes)
+            ->exists();
+        if ($existsConflict) {
+            return response()->json(['message' => '此帳號已存在'], 409);
+        }
+
         $user = User::create([
-            'LoginName' => $data['email'],
+            'LoginName' => $loginName,
             'Name'      => $data['name'],
             'PSW'       => password_hash($data['password'], PASSWORD_DEFAULT),
             'type'      => $type,
             'status'   => $data['status'] ?? 'active',
-            'phone'    => $data['phone'] ?? null,
+            'phone'    => $normalizedPhone,
         ]);
 
         $campusId = $data['campus_id'] ?? $data['branch_id'] ?? null;
@@ -360,7 +446,7 @@ class ProfileController extends Controller
                 'Enable'     => 1,
                 'MDT'        => now(),
                 'TelegramID' => '',
-                'Phone'      => $data['phone'] ?? '',
+                'Phone'      => $normalizedPhone,
                 'LineID'     => $data['line_id'] ?? '',
             ]);
         }
@@ -373,14 +459,334 @@ class ProfileController extends Controller
             }
         }
 
+        if ($type === 'T' && array_key_exists('subject_level_scopes', $data)) {
+            TeacherScopeService::replaceScopes($user->id, (array) ($data['subject_level_scopes'] ?? []));
+        }
+
         $user->username = $user->Name;
         return response()->json($user, 201);
+    }
+
+    public function bulkTeachers(Request $request)
+    {
+        $data = $request->validate([
+            'default_branch_id' => 'nullable|integer',
+            'teachers' => 'required|array|min:1|max:300',
+            'teachers.*.name' => 'required|string|max:64',
+            'teachers.*.account' => 'nullable|string|max:128',
+            'teachers.*.email' => 'nullable|string|max:128',
+            'teachers.*.branch_id' => 'nullable|integer',
+            'teachers.*.multi_branches' => 'nullable|array',
+            'teachers.*.multi_branches.*' => 'integer',
+            'teachers.*.phone' => 'nullable|string|max:32',
+            'teachers.*.line_id' => 'nullable|string|max:128',
+            'teachers.*.subject_ids' => 'nullable|array',
+            'teachers.*.subject_ids.*' => 'integer',
+            'teachers.*.status' => 'nullable|string|in:active,pending,suspended',
+        ]);
+
+        $authUser = $request->attributes->get('auth_user');
+        $authCampusIds = array_values(array_unique(array_map('intval', (array) ($request->attributes->get('auth_campus_ids', [])))));
+        $enforceCampusScope = !empty($authCampusIds);
+
+        $teachers = $data['teachers'] ?? [];
+        $defaultBranchId = isset($data['default_branch_id'])
+            ? (int) $data['default_branch_id']
+            : ($authCampusIds[0] ?? null);
+
+        $branchIdsForValidation = [];
+        if (!empty($defaultBranchId)) {
+            $branchIdsForValidation[] = (int) $defaultBranchId;
+        }
+        foreach ($teachers as $row) {
+            if (!empty($row['branch_id'])) {
+                $branchIdsForValidation[] = (int) $row['branch_id'];
+            }
+            foreach ((array) ($row['multi_branches'] ?? []) as $branchId) {
+                if (!empty($branchId)) {
+                    $branchIdsForValidation[] = (int) $branchId;
+                }
+            }
+        }
+
+        $branchIdsForValidation = array_values(array_unique(array_filter($branchIdsForValidation)));
+        $existingCampusLookup = [];
+        if (!empty($branchIdsForValidation)) {
+            $existingCampusIds = Campus::query()
+                ->whereIn('id', $branchIdsForValidation)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $existingCampusLookup = array_fill_keys($existingCampusIds, true);
+        }
+
+        $created = [];
+        $failed = [];
+
+        foreach ($teachers as $index => $row) {
+            $rowNumber = $index + 1;
+            $loginName = trim((string) ($row['account'] ?? $row['email'] ?? ''));
+            $name = trim((string) ($row['name'] ?? ''));
+            $branchId = isset($row['branch_id']) ? (int) $row['branch_id'] : $defaultBranchId;
+
+            if ($loginName === '') {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => '',
+                    'error' => '帳號不可空白',
+                ];
+                continue;
+            }
+
+            if ($branchId === null || $branchId <= 0) {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => $loginName,
+                    'error' => '請提供有效主分校',
+                ];
+                continue;
+            }
+
+            if (!isset($existingCampusLookup[$branchId])) {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => $loginName,
+                    'error' => '主分校不存在',
+                ];
+                continue;
+            }
+
+            if ($enforceCampusScope && !in_array($branchId, $authCampusIds, true)) {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => $loginName,
+                    'error' => '主分校不在可操作範圍',
+                ];
+                continue;
+            }
+
+            $multiBranches = array_values(array_unique(array_map('intval', (array) ($row['multi_branches'] ?? []))));
+            $multiBranches = array_values(array_filter($multiBranches, fn ($id) => $id > 0 && $id !== $branchId));
+
+            $invalidMultiBranch = null;
+            foreach ($multiBranches as $branch) {
+                if (!isset($existingCampusLookup[$branch])) {
+                    $invalidMultiBranch = '跨校分校不存在';
+                    break;
+                }
+                if ($enforceCampusScope && !in_array($branch, $authCampusIds, true)) {
+                    $invalidMultiBranch = '跨校分校不在可操作範圍';
+                    break;
+                }
+            }
+            if ($invalidMultiBranch !== null) {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => $loginName,
+                    'error' => $invalidMultiBranch,
+                ];
+                continue;
+            }
+
+            $status = $row['status'] ?? 'active';
+            $subjectIds = array_values(array_unique(array_filter(array_map('intval', (array) ($row['subject_ids'] ?? [])))));
+            $normalizedPhone = preg_replace('/\D+/', '', (string) ($row['phone'] ?? ''));
+            $normalizedPhone = $normalizedPhone === '' ? null : $normalizedPhone;
+            $lineId = trim((string) ($row['line_id'] ?? ''));
+            $initialPassword = $this->generateInitialPassword();
+
+            try {
+                $user = DB::transaction(function () use ($authUser, $branchId, $initialPassword, $lineId, $loginName, $multiBranches, $name, $normalizedPhone, $status, $subjectIds) {
+                    $existsConflict = User::query()
+                        ->where('LoginName', $loginName)
+                        ->whereIn('type', ['T', 'S', 'A', 'U'])
+                        ->exists();
+
+                    if ($existsConflict) {
+                        throw new \RuntimeException('此帳號已存在');
+                    }
+
+                    $attributes = [
+                        'LoginName' => $loginName,
+                        'Name' => $name,
+                        'PSW' => password_hash($initialPassword, PASSWORD_DEFAULT),
+                        'type' => 'T',
+                        'status' => $status,
+                        'phone' => $normalizedPhone,
+                    ];
+
+                    if (Schema::hasColumn('User', 'MustChangePassword')) {
+                        $attributes['MustChangePassword'] = true;
+                    }
+                    if (Schema::hasColumn('User', 'PasswordChangedAt')) {
+                        $attributes['PasswordChangedAt'] = null;
+                    }
+                    if (Schema::hasColumn('User', 'PasswordSetByUserID')) {
+                        $attributes['PasswordSetByUserID'] = $authUser?->id;
+                    }
+
+                    $user = User::create($attributes);
+
+                    $approvedAttr = Schema::hasColumn('UserCampus', 'Approved') ? ['Approved' => true] : [];
+                    UserCampus::firstOrCreate(
+                        ['UserID' => $user->id, 'CampusID' => $branchId],
+                        $approvedAttr
+                    );
+
+                    foreach ($multiBranches as $multiBranchId) {
+                        UserCampus::firstOrCreate(
+                            ['UserID' => $user->id, 'CampusID' => $multiBranchId],
+                            $approvedAttr
+                        );
+                    }
+
+                    if (!DB::table('Teacher')->where('id', $user->id)->exists()) {
+                        DB::table('Teacher')->insert([
+                            'id' => $user->id,
+                            'T_Name' => $user->Name,
+                            'CampusID' => $branchId,
+                            'Enable' => 1,
+                            'MDT' => now(),
+                            'TelegramID' => '',
+                            'Phone' => $normalizedPhone,
+                            'LineID' => $lineId,
+                        ]);
+                    }
+
+                    if (Schema::hasTable('teacher_branches')) {
+                        $allBranches = array_values(array_unique(array_merge([$branchId], $multiBranches)));
+                        foreach ($allBranches as $branch) {
+                            DB::table('teacher_branches')->insertOrIgnore([
+                                'teacher_id' => $user->id,
+                                'branch_id' => $branch,
+                            ]);
+                        }
+                    }
+
+                    if (!empty($subjectIds) && Schema::hasTable('teacher_subjects')) {
+                        foreach ($subjectIds as $subjectId) {
+                            DB::table('teacher_subjects')->insertOrIgnore([
+                                'teacher_id' => $user->id,
+                                'subject_id' => $subjectId,
+                            ]);
+                        }
+                    }
+
+                    return $user;
+                });
+
+                $created[] = [
+                    'row' => $rowNumber,
+                    'user_id' => (int) $user->id,
+                    'name' => $name,
+                    'account' => $loginName,
+                    'branch_id' => $branchId,
+                    'initial_password' => $initialPassword,
+                    'must_change_password' => true,
+                ];
+            } catch (\Throwable $e) {
+                $failed[] = [
+                    'row' => $rowNumber,
+                    'account' => $loginName,
+                    'error' => $e->getMessage() ?: '建立失敗',
+                ];
+            }
+        }
+
+        $response = [
+            'message' => '批次建立完成',
+            'created' => $created,
+            'failed' => $failed,
+            'summary' => [
+                'total' => count($teachers),
+                'created' => count($created),
+                'failed' => count($failed),
+            ],
+        ];
+
+        $statusCode = count($created) > 0 ? 201 : 422;
+        return response()->json($response, $statusCode);
     }
 
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        $input = $request->all();
+        $input = $request->validate([
+            'username'        => 'nullable|string|max:64',
+            'name'            => 'nullable|string|max:64',
+            'account'         => 'nullable|string|max:128',
+            'email'           => 'nullable|string|max:128',
+            'password'        => 'nullable|string|min:4|max:128',
+            'employment_type' => 'nullable|string|max:32',
+            'status'          => 'nullable|string|in:active,pending,suspended',
+            'phone'           => 'nullable|string|max:32',
+            'line_id'         => 'nullable|string|max:128',
+            'rfid'            => 'nullable|string|max:128',
+            'branch_id'       => 'nullable|integer',
+            'multi_branches'  => 'nullable|array',
+            'multi_branches.*'=> 'integer',
+            'subject_ids'     => 'nullable|array',
+            'subject_ids.*'   => 'integer',
+            'subject_level_scopes'              => 'nullable|array',
+            'subject_level_scopes.*.subject_id' => 'required_with:subject_level_scopes|integer',
+            'subject_level_scopes.*.level'      => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
+        ]);
+
+        $newLoginName = trim((string) ($input['account'] ?? $input['email'] ?? ''));
+        if ($newLoginName !== '') {
+            $exists = User::where('LoginName', $newLoginName)
+                ->where('id', '!=', $user->id)
+                ->whereIn('type', $this->conflictingTypesForLoginName((string) $user->type))
+                ->exists();
+            if ($exists) {
+                return response()->json(['message' => '此帳號已存在'], 409);
+            }
+            $user->LoginName = $newLoginName;
+        }
+
+        $statusApprovalBranchId = null;
+        if (
+            $user->type === 'T'
+            && array_key_exists('status', $input)
+            && Schema::hasColumn('UserCampus', 'Approved')
+        ) {
+            if (array_key_exists('branch_id', $input) && !empty($input['branch_id'])) {
+                $statusApprovalBranchId = (int) $input['branch_id'];
+            } else {
+                $authCampusIds = array_values(array_unique(array_map(
+                    'intval',
+                    (array) ($request->attributes->get('auth_campus_ids', []))
+                )));
+                if (!empty($authCampusIds)) {
+                    $statusApprovalBranchId = (int) $authCampusIds[0];
+                } else {
+                    $teacherCampusIds = DB::table('UserCampus')
+                        ->where('UserID', $user->id)
+                        ->pluck('CampusID')
+                        ->map(fn ($id) => (int) $id)
+                        ->unique()
+                        ->values();
+                    if ($teacherCampusIds->count() === 1) {
+                        $statusApprovalBranchId = (int) $teacherCampusIds->first();
+                    }
+                }
+                if ($statusApprovalBranchId !== null) {
+                    $input['branch_id'] = $statusApprovalBranchId;
+                }
+            }
+
+            if ($statusApprovalBranchId === null) {
+                return response()->json(['message' => '變更老師審核狀態時必須提供 branch_id（且需可判定目標分校）'], 422);
+            }
+
+            $hasCampusRelation = DB::table('UserCampus')
+                ->where('UserID', $user->id)
+                ->where('CampusID', $statusApprovalBranchId)
+                ->exists();
+            if (!$hasCampusRelation) {
+                return response()->json(['message' => '此老師不屬於指定分校，無法變更該分校審核狀態'], 422);
+            }
+        }
 
         if (!empty($input['username'])) {
             $user->Name = $input['username'];
@@ -403,8 +809,14 @@ class ProfileController extends Controller
         if (isset($input['status']) && Schema::hasColumn('User', 'status')) {
             $user->status = $input['status'];
         }
-        if (array_key_exists('phone', $input) && Schema::hasColumn('User', 'phone')) {
-            $user->phone = ($input['phone'] !== null && $input['phone'] !== '') ? $input['phone'] : 0;
+        $hasPhoneInput = array_key_exists('phone', $input);
+        $normalizedPhone = null;
+        if ($hasPhoneInput) {
+            $digits = preg_replace('/\D+/', '', (string) ($input['phone'] ?? ''));
+            $normalizedPhone = $digits !== '' ? $digits : null;
+        }
+        if ($hasPhoneInput && Schema::hasColumn('User', 'phone')) {
+            $user->phone = $normalizedPhone;
         }
         $user->save();
 
@@ -420,6 +832,10 @@ class ProfileController extends Controller
                 DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $existing->CampusID)->update($updateData);
             } else {
                 UserCampus::create(array_merge(['UserID' => $user->id, 'CampusID' => (int) $input['branch_id']], $approvedAttr));
+            }
+            // 與 swipe-rfid 一致：Teacher.CampusID 需與主任設定的主分校同步，否則只會更新 UserCampus 時刷卡找不到老師。
+            if ($user->type === 'T' && Schema::hasTable('Teacher')) {
+                DB::table('Teacher')->where('id', $user->id)->update(['CampusID' => (int) $input['branch_id']]);
             }
         }
 
@@ -441,9 +857,35 @@ class ProfileController extends Controller
         }
 
         if ($user->type === 'T') {
+            if (array_key_exists('status', $input) && Schema::hasColumn('UserCampus', 'Approved')) {
+                $targetCampusId = $statusApprovalBranchId ?? (isset($input['branch_id']) ? (int) $input['branch_id'] : null);
+                $approvalValue = $input['status'] === 'pending' ? false : true;
+                $approvalQuery = DB::table('UserCampus')->where('UserID', $user->id);
+                if ($targetCampusId !== null) {
+                    $approvalQuery->where('CampusID', $targetCampusId);
+                }
+                $approvalQuery->update(['Approved' => $approvalValue]);
+            }
+
+            $teacherExists = Schema::hasTable('Teacher')
+                ? DB::table('Teacher')->where('id', $user->id)->exists()
+                : false;
+            if (!$teacherExists && Schema::hasTable('Teacher')) {
+                $primaryCampusId = (int) (UserCampus::where('UserID', $user->id)->value('CampusID') ?? 0);
+                DB::table('Teacher')->insert([
+                    'id'         => $user->id,
+                    'T_Name'     => $user->Name,
+                    'CampusID'   => $primaryCampusId,
+                    'Enable'     => 1,
+                    'MDT'        => now(),
+                    'TelegramID' => '',
+                    'Phone'      => $normalizedPhone,
+                    'LineID'     => $input['line_id'] ?? '',
+                ]);
+            }
             $teacherUpdates = [];
-            if (array_key_exists('phone', $input)) {
-                $teacherUpdates['Phone'] = $input['phone'] ?? '';
+            if ($hasPhoneInput) {
+                $teacherUpdates['Phone'] = $normalizedPhone;
             }
             if (array_key_exists('line_id', $input)) {
                 $teacherUpdates['LineID'] = $input['line_id'] ?? '';
@@ -461,12 +903,17 @@ class ProfileController extends Controller
                     DB::table('teacher_subjects')->insertOrIgnore(['teacher_id' => $user->id, 'subject_id' => (int) $sid]);
                 }
             }
+            if (array_key_exists('subject_level_scopes', $input)) {
+                TeacherScopeService::replaceScopes($user->id, (array) ($input['subject_level_scopes'] ?? []));
+            }
         }
 
         $campusRows = DB::table('UserCampus')->where('UserID', $user->id)->get();
         $out = [
             'id'              => $user->id,
             'username'        => $user->Name,
+            'account'         => $user->LoginName,
+            'email'           => $user->LoginName,
             'role'            => match ($user->type) { 'S' => 'super_admin', 'T' => 'teacher', default => 'director' },
             'branch_id'       => $campusRows->isNotEmpty() ? (int) $campusRows->first()->CampusID : null,
             'status'          => $user->status ?? 'active',
@@ -480,7 +927,221 @@ class ProfileController extends Controller
             $out['rfid'] = $extra['rfid'] ?? '';
             $out['subject_ids'] = $extra['subject_ids'] ?? [];
             $out['subject_names'] = $extra['subject_names'] ?? [];
+            $out['subject_level_scopes'] = $extra['subject_level_scopes'] ?? [];
         }
         return response()->json($out);
+    }
+
+    public function resetPassword(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+        if ((string) $user->type !== 'T') {
+            return response()->json(['message' => '僅支援重設老師密碼'], 422);
+        }
+
+        if (!$this->canManageTeacher($request, (int) $user->id)) {
+            return response()->json(['message' => '無權限操作此老師帳號'], 403);
+        }
+
+        $temporaryPassword = $this->generateInitialPassword();
+        $user->PSW = password_hash($temporaryPassword, PASSWORD_DEFAULT);
+        if (Schema::hasColumn('User', 'MustChangePassword')) {
+            $user->MustChangePassword = true;
+        }
+        if (Schema::hasColumn('User', 'PasswordChangedAt')) {
+            $user->PasswordChangedAt = null;
+        }
+        if (Schema::hasColumn('User', 'PasswordSetByUserID')) {
+            $operator = $request->attributes->get('auth_user');
+            $user->PasswordSetByUserID = $operator?->id;
+        }
+        $user->save();
+
+        return response()->json([
+            'message' => '密碼已重設',
+            'id' => (int) $user->id,
+            'username' => $user->Name,
+            'account' => $user->LoginName,
+            'temporary_password' => $temporaryPassword,
+            'must_change_password' => true,
+        ]);
+    }
+
+    public function destroy(Request $request, $id)
+    {
+        $user = User::findOrFail($id);
+        if ((string) $user->type !== 'T') {
+            return response()->json(['message' => '僅支援刪除老師資料'], 422);
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        if ($authUser && (int) $authUser->id === (int) $user->id) {
+            return response()->json(['message' => '不可刪除目前登入的帳號'], 422);
+        }
+
+        if (!$this->canManageTeacher($request, (int) $user->id)) {
+            return response()->json(['message' => '無權限操作此老師帳號'], 403);
+        }
+
+        $dependencyCounts = $this->getTeacherDependencyCounts((int) $user->id);
+        $hasDependencies = array_sum($dependencyCounts) > 0;
+        if ($hasDependencies) {
+            return response()->json([
+                'message' => '此老師已有授課或歷史資料，請先改為停用狀態',
+                'dependency_counts' => $dependencyCounts,
+            ], 409);
+        }
+
+        DB::transaction(function () use ($user) {
+            if (Schema::hasTable('teacher_subjects')) {
+                DB::table('teacher_subjects')->where('teacher_id', $user->id)->delete();
+            }
+            if (Schema::hasTable('teacher_branches')) {
+                DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
+            }
+            if (Schema::hasTable('Teacher')) {
+                DB::table('Teacher')->where('id', $user->id)->delete();
+            }
+
+            DB::table('UserCampus')->where('UserID', $user->id)->delete();
+
+            if (Schema::hasTable('auth_tokens')) {
+                DB::table('auth_tokens')->where('user_id', $user->id)->delete();
+            }
+            if (Schema::hasTable('user_login_activities')) {
+                DB::table('user_login_activities')->where('user_id', $user->id)->delete();
+            }
+            if (Schema::hasTable('user_notification_preferences')) {
+                DB::table('user_notification_preferences')->where('user_id', $user->id)->delete();
+            }
+            if (Schema::hasTable('password_reset_requests')) {
+                DB::table('password_reset_requests')->where('user_id', $user->id)->delete();
+            }
+
+            $user->delete();
+        });
+
+        return response()->json([
+            'message' => '老師資料已刪除',
+            'id' => (int) $user->id,
+            'username' => $user->Name,
+            'account' => $user->LoginName,
+        ]);
+    }
+
+    private function generateInitialPassword(): string
+    {
+        // Avoid ambiguous characters for easier manual typing.
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+        $password = '';
+        $length = 12;
+        for ($i = 0; $i < $length; $i++) {
+            $password .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        return $password;
+    }
+
+    private function getTeacherDependencyCounts(int $teacherUserId): array
+    {
+        $targets = [
+            'StudentClass' => 'TeacherID',
+            'LearningRecord' => 'TeacherID',
+            'StudentSingIn' => 'TeacherID',
+            'TeacherSingIn' => 'TeacherID',
+            'schedules' => 'teacher_id',
+        ];
+
+        $counts = [];
+        foreach ($targets as $table => $column) {
+            if (!Schema::hasTable($table) || !Schema::hasColumn($table, $column)) {
+                $counts[$table] = 0;
+                continue;
+            }
+            $counts[$table] = (int) DB::table($table)->where($column, $teacherUserId)->count();
+        }
+
+        return $counts;
+    }
+
+    private function canManageTeacher(Request $request, int $teacherUserId): bool
+    {
+        $role = (string) ($request->attributes->get('auth_role') ?? '');
+        if ($role === 'super_admin') {
+            return true;
+        }
+
+        $campusIds = array_values(array_unique(array_map(
+            'intval',
+            (array) ($request->attributes->get('auth_campus_ids', []))
+        )));
+        if (empty($campusIds)) {
+            return false;
+        }
+
+        $hasUserCampus = DB::table('UserCampus')
+            ->where('UserID', $teacherUserId)
+            ->whereIn('CampusID', $campusIds)
+            ->exists();
+        if ($hasUserCampus) {
+            return true;
+        }
+
+        if (Schema::hasTable('teacher_branches')) {
+            $hasTeacherBranch = DB::table('teacher_branches')
+                ->where('teacher_id', $teacherUserId)
+                ->whereIn('branch_id', $campusIds)
+                ->exists();
+            if ($hasTeacherBranch) {
+                return true;
+            }
+        }
+
+        if (Schema::hasTable('Teacher')) {
+            return DB::table('Teacher')
+                ->where('id', $teacherUserId)
+                ->whereIn('CampusID', $campusIds)
+                ->exists();
+        }
+
+        return false;
+    }
+
+    private function conflictingTypesForLoginName(string $type): array
+    {
+        return match ($type) {
+            'T' => ['T', 'S', 'A', 'U'],
+            'D' => ['D', 'S', 'A', 'U'],
+            default => ['T', 'D', 'S', 'A', 'U'],
+        };
+    }
+
+    private function resolveUserStatus(string $type, $statusValue, bool $hasTeacherProfile, $campusRows = null, ?int $branchId = null): string
+    {
+        $status = trim((string) ($statusValue ?? ''));
+
+        if ($type === 'T' && $campusRows instanceof \Illuminate\Support\Collection) {
+            $relevantRows = $branchId
+                ? $campusRows->where('CampusID', $branchId)
+                : $campusRows;
+            $hasPendingApproval = $relevantRows->contains(function ($row) {
+                return isset($row->Approved) && (int) $row->Approved === 0;
+            });
+            if ($hasPendingApproval) {
+                return 'pending';
+            }
+        }
+
+        // Explicit status from DB should be respected first.
+        if ($status !== '') {
+            return $status;
+        }
+
+        // Teacher self-register accounts may exist before Teacher profile is created.
+        if ($type === 'T' && !$hasTeacherProfile) {
+            return 'pending';
+        }
+
+        return 'active';
     }
 }

@@ -26,6 +26,7 @@ class Kernel extends HttpKernel
         'role'           => \App\Http\Middleware\RequireRole::class,
         'api_key'        => \App\Http\Middleware\ApiKeyAuth::class,
         'require_campus' => \App\Http\Middleware\RequireCampus::class,
+        'require_password_change' => \App\Http\Middleware\RequirePasswordChange::class,
     ];
 }
 

@@ -19,6 +19,8 @@ class StudentClass extends Model
         'Rate', 'LearnTimeID', 'RoomID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop',
         'ScheduleMode', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
+        'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
+        'rate_unit',
     ];
 
     public function student()

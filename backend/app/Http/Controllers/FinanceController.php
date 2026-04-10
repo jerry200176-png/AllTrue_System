@@ -202,14 +202,23 @@ class FinanceController extends Controller
         if ($request->filled('end')) {
             $query->where('SessionDate', '<=', $request->input('end'));
         }
-
         $records = $query->get();
 
         // Teacher name lookup (User table + Teacher table)
         $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
         $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
 
+        $includeLevel = $request->boolean('include_level', false);
+        $gradeIdLevelMap = [
+            1 => 'elementary', 2 => 'elementary', 3 => 'elementary',
+            4 => 'elementary', 5 => 'elementary', 6 => 'elementary',
+            7 => 'junior', 8 => 'junior', 9 => 'junior',
+            10 => 'high', 11 => 'high', 12 => 'high',
+        ];
+        $levelLabels = ['elementary' => '國小', 'junior' => '國中', 'high' => '高中'];
+
         $buckets = []; // tid => [ one_on_one, one_on_two, one_on_three, tutoring ]
+        $levelBuckets = []; // tid => level => [one_on_one, one_on_two, one_on_three, tutoring]
 
         foreach ($records as $r) {
             $tid = $r->TeacherID;
@@ -221,6 +230,18 @@ class FinanceController extends Controller
             $key       = in_array($classType, ['one_on_one', 'one_on_two', 'one_on_three', 'tutoring'])
                          ? $classType : 'one_on_one';
             $buckets[$tid][$key] += $hours;
+
+            if ($includeLevel) {
+                $gradeId = (int) ($r->studentClass->GradeID ?? 0);
+                $level = $gradeIdLevelMap[$gradeId] ?? 'unknown';
+                if (!isset($levelBuckets[$tid])) {
+                    $levelBuckets[$tid] = [];
+                }
+                if (!isset($levelBuckets[$tid][$level])) {
+                    $levelBuckets[$tid][$level] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
+                }
+                $levelBuckets[$tid][$level][$key] += $hours;
+            }
         }
 
         $grandTotals = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0, 'total' => 0];
@@ -271,7 +292,7 @@ class FinanceController extends Controller
 
         usort($result, fn($a, $b) => $b['total_hours'] <=> $a['total_hours']);
 
-        return response()->json([
+        $response = [
             'teachers' => $result,
             'totals'   => [
                 'one_on_one_hours'           => round($grandTotals['one_on_one'],   2),
@@ -284,7 +305,70 @@ class FinanceController extends Controller
                 'subject_count_with'         => round($grandWeightedWith    / 8,    2),
                 'subject_count_without'      => round($grandWeightedWithout / 8,    2),
             ],
-        ]);
+        ];
+
+        if ($includeLevel) {
+            $levelBreakdownByTeacher = [];
+            $levelTotals = [];
+            foreach ($levelBuckets as $tid => $levels) {
+                foreach ($levels as $level => $bkt) {
+                    $o1 = round($bkt['one_on_one'], 2);
+                    $o2 = round($bkt['one_on_two'], 2);
+                    $o3 = round($bkt['one_on_three'], 2);
+                    $tt = round($bkt['tutoring'], 2);
+                    $total = $o1 + $o2 + $o3 + $tt;
+                    $wWith = $o1 * 1.5 + $o2 * 0.75 + $o3 * 0.5 + $tt * 0.5;
+                    $wWithout = $o1 * 1.5 + $o2 * 0.75 + $o3 * 0.5;
+
+                    $entry = [
+                        'level' => $level,
+                        'level_label' => $levelLabels[$level] ?? $level,
+                        'one_on_one_hours' => $o1,
+                        'one_on_two_hours' => $o2,
+                        'one_on_three_hours' => $o3,
+                        'tutoring_hours' => $tt,
+                        'total_hours' => round($total, 2),
+                        'subject_count_with' => round($wWith / 8, 2),
+                        'subject_count_without' => round($wWithout / 8, 2),
+                    ];
+                    $levelBreakdownByTeacher[$tid][] = $entry;
+
+                    if (!isset($levelTotals[$level])) {
+                        $levelTotals[$level] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0, 'total' => 0, 'w_with' => 0, 'w_without' => 0];
+                    }
+                    $levelTotals[$level]['one_on_one'] += $o1;
+                    $levelTotals[$level]['one_on_two'] += $o2;
+                    $levelTotals[$level]['one_on_three'] += $o3;
+                    $levelTotals[$level]['tutoring'] += $tt;
+                    $levelTotals[$level]['total'] += $total;
+                    $levelTotals[$level]['w_with'] += $wWith;
+                    $levelTotals[$level]['w_without'] += $wWithout;
+                }
+            }
+
+            foreach ($response['teachers'] as &$teacher) {
+                $teacher['level_breakdown'] = $levelBreakdownByTeacher[$teacher['teacher_id']] ?? [];
+            }
+            unset($teacher);
+
+            $formattedLevelTotals = [];
+            foreach ($levelTotals as $level => $lt) {
+                $formattedLevelTotals[] = [
+                    'level' => $level,
+                    'level_label' => $levelLabels[$level] ?? $level,
+                    'one_on_one_hours' => round($lt['one_on_one'], 2),
+                    'one_on_two_hours' => round($lt['one_on_two'], 2),
+                    'one_on_three_hours' => round($lt['one_on_three'], 2),
+                    'tutoring_hours' => round($lt['tutoring'], 2),
+                    'total_hours' => round($lt['total'], 2),
+                    'subject_count_with' => round($lt['w_with'] / 8, 2),
+                    'subject_count_without' => round($lt['w_without'] / 8, 2),
+                ];
+            }
+            $response['level_breakdown_totals'] = $formattedLevelTotals;
+        }
+
+        return response()->json($response);
     }
 
     /**

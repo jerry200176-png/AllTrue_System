@@ -1,15 +1,5 @@
 <template>
   <div>
-    <HelpGuide
-      title="費率參考表 — 操作說明"
-      :items="[
-        '此為<strong>預設參考費率</strong>，新增學生課程時系統會自動帶入此費率',
-        '實際收費以學生管理中的個別課程設定為準',
-        '可依年級和科目設定不同的預設費率（一堂課 2 小時），新增課程時會自動帶入。',
-        '點擊「+ 新增費率」設定新的科目/年級組合費率'
-      ]"
-      tip="修改此處不會影響已建立的學生課程費率。"
-    />
     <div class="card">
       <div class="header-actions">
         <div>
@@ -25,7 +15,7 @@
             <th>年級</th>
             <th>科目</th>
             <th>上課類型</th>
-            <th>一堂課（2h）預設費率</th>
+            <th>一堂課預設費率</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -77,7 +67,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>一堂課（2小時）預設費率 ($)</label>
+          <label>一堂課預設費率 ($)</label>
           <input v-model.number="ratePer2hInput" type="number" placeholder="2000" min="0" step="100" />
         </div>
 
@@ -93,8 +83,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { supabase } from '../supabase';
-import { GRADES, SUBJECTS } from '../lib/constants';
-import HelpGuide from '../components/HelpGuide.vue';
+import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 
 const rates = ref([]);
 const showModal = ref(false);
@@ -113,7 +102,7 @@ function ratePer2hToStore() {
 }
 
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
-const getSubjectLabel = (val) => SUBJECTS.find(s => s.value === val)?.label || val;
+const getSubjectLabel = (val) => getSubjectText(val);
 const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
   return map[type] || type;
@@ -141,7 +130,7 @@ const closeModal = () => {
 const submit = async () => {
   ratePer2hToStore();
   const rate2h = (form.value?.rate_per_30min ?? 0) * 4;
-  if (rate2h <= 0) { alert('請輸入費率（一堂課 2 小時金額）'); return; }
+  if (rate2h <= 0) { alert('請輸入預設一堂課費用'); return; }
   const payload = { ...form.value };
   if (editingId.value) {
     await supabase.from('default_rates').update(payload).eq('id', editingId.value);

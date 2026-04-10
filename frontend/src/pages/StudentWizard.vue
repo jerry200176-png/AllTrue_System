@@ -1,14 +1,5 @@
 <template>
   <div>
-    <HelpGuide
-      title="新生報名 — 操作說明"
-      :items="[
-        '填入學生姓名、年級、分校、手機、就讀學校等基本資料',
-        '點擊「建立學生檔案」即可完成報名',
-        '建立完成後，學生會出現在「學生管理」列表中'
-      ]"
-      tip="報名完成後請到「智慧排課」為新生安排第一堂課。"
-    />
   <div class="card">
     <h2>✨ 新生報名</h2>
     <div class="grid">
@@ -46,7 +37,6 @@
 import { ref } from 'vue';
 import { supabase } from '../supabase';
 import { BRANCHES, GRADES } from '../lib/constants';
-import HelpGuide from '../components/HelpGuide.vue';
 
 const props = defineProps({
     branchId: String

@@ -127,6 +127,34 @@ class ResetDataAndDirectorFlowTest extends TestCase
     /**
      * @test
      */
+    public function super_admin_can_delete_approved_director(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $superAdmin = UserFactory::new()->superAdmin()->create();
+        $director = UserFactory::new()->director()->create([
+            'LoginName' => 'delete.me@example.com',
+        ]);
+
+        UserCampusFactory::new()->create([
+            'UserID' => $director->id,
+            'CampusID' => $campus->id,
+            'Admin' => 1,
+            'Approved' => true,
+        ]);
+
+        $response = $this->deleteJson("/api/v1/directors/{$director->id}", [], [
+            'X-User-Id' => (string) $superAdmin->id,
+        ]);
+
+        $response->assertOk()->assertJsonFragment(['message' => '主任帳號已刪除']);
+
+        $this->assertDatabaseMissing('User', ['id' => $director->id]);
+        $this->assertDatabaseMissing('UserCampus', ['UserID' => $director->id]);
+    }
+
+    /**
+     * @test
+     */
     public function it_allows_director_to_create_student_and_list_it(): void
     {
         $campus = CampusFactory::new()->create();
