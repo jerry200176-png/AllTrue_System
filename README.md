@@ -32,6 +32,11 @@ AllTrue 是一套補習班教務與營運整合系統，目標是把「學生、
 - `docs/`：操作與維運文件、SOP、事故紀錄
 - `scripts/`：部署與工具腳本
 
+## 近期重點更新
+
+- 聊天系統與 Bug 回報系統已加入（詳見 `docs/CHAT_BUG_SYSTEM.md`）
+- 近期變更紀錄請看 `docs/CHANGELOG.md`
+
 ## 協作分支與同步
 
 - GitHub 協作主分支：`jerry-sync-main`
@@ -45,8 +50,22 @@ AllTrue 是一套補習班教務與營運整合系統，目標是把「學生、
 
 ## 新加入協作者先看
 
-1. `AI_QUICKSTART.md`（AI/工程師快速理解專案）
-2. `docs/GITHUB_SYNC_WORKFLOW.md`（GitHub 協作流程）
-3. `docs/OPERATIONS_RUNBOOK.md`（SOP + 避坑）
-4. `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`（歷史事故）
+1. **`CONTRIBUTING.md`** — 人類與 AI 共用入口（含 Cursor / Claude Code / Copilot 對應檔案）
+2. `AI_QUICKSTART.md`（AI/工程師快速理解專案）
+3. `docs/AI_REGRESSION_LESSONS.md`（**防再犯**：已發生過的產品／實作缺口）
+4. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任「繳費提醒」API 規則）
+5. `docs/GITHUB_SYNC_WORKFLOW.md`（GitHub 協作流程）
+6. `docs/OPERATIONS_RUNBOOK.md`（SOP + 避坑）
+7. `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`（歷史事故）
+8. `docs/CHANGELOG.md`、`docs/CHAT_BUG_SYSTEM.md`（新功能與權限交接）
+
+### 用 AI 寫程式時（工具對照）
+
+| 情境 | 請讓 AI 先讀 |
+|------|----------------|
+| **Claude Code** | 根目錄 `CLAUDE.md`（內含必讀鏈結） |
+| **GitHub Copilot** 或只在網頁上用 AI | `.github/copilot-instructions.md` |
+| **Cursor** | `AGENTS.md` + `.cursorrules`（專案已設定） |
+
+以上皆要求讀 **`docs/AI_REGRESSION_LESSONS.md`**，與 `CONTRIBUTING.md` 說明一致。
 
