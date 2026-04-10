@@ -218,6 +218,52 @@ class EnrollmentApiTest extends TestCase
         $this->assertEquals(3, (int) $sc->TotalHours);
     }
 
+    public function test_enrollment_defaults_to_session_pricing_without_explicit_rate_unit(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-enrollment-default-rate@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-enrollment-default-rate@example.com');
+
+        $tue = now()->addDays(1);
+        while ((int) $tue->dayOfWeekIso !== 2) { $tue->addDay(); }
+        $thu = $tue->copy()->addDays(2);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/enrollments', [
+            'branch_id' => 1,
+            'student' => [
+                'name' => '預設堂費測試',
+                'grade' => 'J2',
+            ],
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'confirmed_dates' => [],
+            'future_dates' => [$tue->toDateString(), $thu->toDateString()],
+            'days_of_week' => [2, 4],
+            'day_time_slots' => [
+                ['day' => 2, 'start_time' => '16:00', 'duration_minutes' => 120],
+                ['day' => 4, 'start_time' => '16:00', 'duration_minutes' => 60],
+            ],
+            'start_time' => '16:00',
+            'duration_minutes' => 120,
+            // no rate_unit on purpose: should stay session pricing
+            'price_per_session' => 600,
+            'payment_type' => 'session',
+            'total_classes' => 2,
+            'mode' => 'enrollment',
+        ]);
+
+        $response->assertCreated();
+        $studentClassId = (int) ($response->json('student_class_id') ?? 0);
+        $this->assertTrue($studentClassId > 0);
+
+        $sc = \App\Models\StudentClass::find($studentClassId);
+        $this->assertEquals('session', $sc->rate_unit);
+        $this->assertEquals(1200, (int) $sc->Charge);
+    }
+
     /**
      * @param  array<int>  $campusIds
      */
