@@ -268,7 +268,13 @@
 <script setup>
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from './supabase';
-import { branches, loadBranches, loadBranchesForDirector, getDefaultBranchId } from './lib/useBranches';
+import {
+  branches,
+  loadBranches,
+  loadBranchesForDirector,
+  getDefaultBranchId,
+  resolveSavedBranchChoice,
+} from './lib/useBranches';
 import { usePageGuideTour } from './lib/usePageGuideTour';
 import logoUrl from './assets/logo.png';
 
@@ -703,11 +709,12 @@ async function ensureDirectorBranches() {
     if (list.length > 0) {
         branches.value = list;
         const savedBranch = localStorage.getItem('app_branch');
-        if (savedBranch) {
-            const savedInt = parseInt(savedBranch, 10);
-            const matchById = list.find(b => b.id === savedInt);
-            const matchByCode = list.find(b => b.code === savedBranch);
-            currentBranch.value = matchById ? matchById.id : (matchByCode ? matchByCode.id : list[0].id);
+        const resolved = resolveSavedBranchChoice(savedBranch, list);
+        if (resolved != null) {
+            currentBranch.value = resolved;
+            if (savedBranch != null && String(resolved) !== String(savedBranch).trim()) {
+                localStorage.setItem('app_branch', String(resolved));
+            }
         } else {
             currentBranch.value = list[0].id;
         }
@@ -721,11 +728,12 @@ onMounted(async () => {
 
     // Restore saved branch or use first branch as default
     const savedBranch = localStorage.getItem('app_branch');
-    if (savedBranch) {
-        const savedInt = parseInt(savedBranch, 10);
-        const matchById = branches.value.find(b => b.id === savedInt);
-        const matchByCode = branches.value.find(b => b.code === savedBranch);
-        currentBranch.value = matchById ? matchById.id : (matchByCode ? matchByCode.id : getDefaultBranchId());
+    const resolved = resolveSavedBranchChoice(savedBranch, branches.value);
+    if (resolved != null) {
+        currentBranch.value = resolved;
+        if (savedBranch != null && String(resolved) !== String(savedBranch).trim()) {
+            localStorage.setItem('app_branch', String(resolved));
+        }
     } else {
         currentBranch.value = getDefaultBranchId();
     }
