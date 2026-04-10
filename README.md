@@ -1,47 +1,43 @@
-# AllTrue System (Admin Workspace)
+# AllTrue 補習班管理系統
 
-This repository is the active admin workspace for the AllTrue system.
+AllTrue 是一套給補習班使用的管理系統，目標是把「學生、課程、排課、點名、繳費、學習評量、家長通知」整合在同一個平台，降低人工行政成本。
 
-## Collaboration Branch
+## 專案在做什麼
 
-- Current collaboration default branch on GitHub: `jerry-sync-main`
-- Local daily branch in this workspace: `main` (tracking `origin/jerry-sync-main`)
+- **學生管理**：建立學生資料、課程主約、加購堂數、課程歷程管理
+- **排課管理**：固定週期排課、調課、補課、請假、教室與老師時段協調
+- **出缺勤**：櫃台點名、RFID 刷卡、缺勤補登、出勤紀錄查詢
+- **財務管理**：課程收費、剩餘堂數、帳單與繳費狀態追蹤
+- **學習評量**：老師填寫評量、主任審核、學習進度留存
+- **家長入口**：家長可查課程、評量、繳費與通知訊息
 
-## Daily Sync (Fast)
+## 角色與使用情境
 
-From `/home/admin`:
+- **主任 / 行政**：建立學生與課程、統整排課、追蹤繳費、審核學習評量、查看營運總覽
+- **老師**：查看個人課表、填寫學習評量、處理上課與補課紀錄
+- **櫃台**：處理到班點名、RFID 綁定、缺勤補登與家長通知
+- **家長**：查詢孩子課程進度、評量內容與繳費狀態
+
+## 技術架構
+
+- **前端**：Vue 3 + Vite
+- **後端**：Laravel 8 (PHP)
+- **資料庫**：MySQL（實務主用）/ PostgreSQL（Docker 場景）
+- **部署**：前端 build 後同步到 `backend/public`，由 Apache/Nginx 提供服務
+
+## 協作與同步（GitHub）
+
+- GitHub 協作主分支：`jerry-sync-main`
+- 本機工作分支：`main`（追蹤 `origin/jerry-sync-main`）
+
+快速同步（commit + push 一次完成）：
 
 ```bash
-./scripts/git-sync.sh "feat: your update message"
+./scripts/git-sync.sh "feat: 這次改動內容"
 ```
 
-This command will:
-- stage all changes
-- create a commit
-- push to the current branch on GitHub
+## 文件索引
 
-If no message is provided, it uses a timestamped default message.
-
-## Recommended Team Workflow
-
-1. Update local:
-   ```bash
-   git checkout main
-   git pull
-   ```
-2. Create feature branch:
-   ```bash
-   git checkout -b feature/your-topic
-   ```
-3. Develop and sync:
-   ```bash
-   ./scripts/git-sync.sh "feat: your-topic"
-   ```
-4. Open PR into `jerry-sync-main`.
-
-## Recovery / Incident SOP
-
-See:
-- `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`
-- `docs/GITHUB_SYNC_WORKFLOW.md`
+- GitHub 協作流程：`docs/GITHUB_SYNC_WORKFLOW.md`
+- 事故與復原紀錄：`docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`
 
