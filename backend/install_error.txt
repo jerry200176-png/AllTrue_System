@@ -1,0 +1,51 @@
+Installing dependencies from lock file (including require-dev)
+Verifying lock file contents can be installed on current platform.
+Your lock file does not contain a compatible set of packages. Please run composer update.
+
+  Problem 1
+    - brick/math is locked to version 0.14.8 and an update of this package was not requested.
+    - brick/math 0.14.8 requires php ^8.2 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 2
+    - carbonphp/carbon-doctrine-types is locked to version 3.2.0 and an update of this package was not requested.
+    - carbonphp/carbon-doctrine-types 3.2.0 requires php ^8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 3
+    - dragonmantank/cron-expression is locked to version v3.6.0 and an update of this package was not requested.
+    - dragonmantank/cron-expression v3.6.0 requires php ^8.2|^8.3|^8.4|^8.5 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 4
+    - nette/schema is locked to version v1.3.4 and an update of this package was not requested.
+    - nette/schema v1.3.4 requires php 8.1 - 8.5 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 5
+    - nette/utils is locked to version v4.1.2 and an update of this package was not requested.
+    - nette/utils v4.1.2 requires php 8.2 - 8.5 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 6
+    - ramsey/collection is locked to version 2.1.1 and an update of this package was not requested.
+    - ramsey/collection 2.1.1 requires php ^8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 7
+    - symfony/css-selector is locked to version v8.0.0 and an update of this package was not requested.
+    - symfony/css-selector v8.0.0 requires php >=8.4 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 8
+    - symfony/deprecation-contracts is locked to version v3.6.0 and an update of this package was not requested.
+    - symfony/deprecation-contracts v3.6.0 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 9
+    - symfony/event-dispatcher is locked to version v6.4.32 and an update of this package was not requested.
+    - symfony/event-dispatcher v6.4.32 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 10
+    - symfony/event-dispatcher-contracts is locked to version v3.6.0 and an update of this package was not requested.
+    - symfony/event-dispatcher-contracts v3.6.0 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 11
+    - symfony/service-contracts is locked to version v3.6.1 and an update of this package was not requested.
+    - symfony/service-contracts v3.6.1 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 12
+    - symfony/string is locked to version v6.4.30 and an update of this package was not requested.
+    - symfony/string v6.4.30 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 13
+    - symfony/translation is locked to version v6.4.32 and an update of this package was not requested.
+    - symfony/translation v6.4.32 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 14
+    - symfony/translation-contracts is locked to version v3.6.1 and an update of this package was not requested.
+    - symfony/translation-contracts v3.6.1 requires php >=8.1 -> your php version (8.0.30) does not satisfy that requirement.
+  Problem 15
+    - ramsey/uuid is locked to version 4.9.2 and an update of this package was not requested.
+    - brick/math 0.14.8 requires php ^8.2 -> your php version (8.0.30) does not satisfy that requirement.
+    - ramsey/uuid 4.9.2 requires brick/math ^0.8.16 || ^0.9 || ^0.10 || ^0.11 || ^0.12 || ^0.13 || ^0.14 -> satisfiable by brick/math[0.14.8].
+
