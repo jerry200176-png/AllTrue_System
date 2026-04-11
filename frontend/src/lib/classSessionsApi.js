@@ -17,6 +17,7 @@ export function normalizeClassSessionsPayload(json) {
       status: String(raw?.status || raw?.Status || ''),
       learning_record_id: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
       learning_record_status: String(raw?.learning_record_status || 'missing'),
+      learning_record_teacher_id: raw?.learning_record_teacher_id != null ? Number(raw.learning_record_teacher_id) : null,
       attendance_sign_in_at: raw?.attendance_sign_in_at || null,
       attendance_memo: String(raw?.attendance_memo || ''),
       recorded_by_name: String(raw?.recorded_by_name || ''),
@@ -41,16 +42,11 @@ export function normalizeClassSessionsPayload(json) {
   return { items, byClass };
 }
 
-export async function fetchClassSessions({
-  token,
-  branchId,
-  studentClassId,
-  studentClassIds,
-  teacherId,
-  studentId,
-  start,
-  end,
-  perPage = 2000,
+const CHUNK_SIZE = 60;
+
+async function fetchClassSessionsSingle({
+  token, branchId, studentClassId, studentClassIds,
+  teacherId, studentId, start, end, perPage = 2000,
 } = {}) {
   const params = new URLSearchParams();
   if (branchId) params.set('branch_id', String(branchId));
@@ -77,5 +73,41 @@ export async function fetchClassSessions({
 
   const json = await res.json().catch(() => ({}));
   return normalizeClassSessionsPayload(json);
+}
+
+export async function fetchClassSessions(opts = {}) {
+  const ids = Array.isArray(opts.studentClassIds) ? opts.studentClassIds.map(Number).filter((id) => id > 0) : [];
+
+  if (ids.length <= CHUNK_SIZE) {
+    return fetchClassSessionsSingle(opts);
+  }
+
+  const merged = { items: [], byClass: {} };
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+    chunks.push(ids.slice(i, i + CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(
+    chunks.map((chunk) => fetchClassSessionsSingle({ ...opts, studentClassIds: chunk }))
+  );
+
+  for (const result of results) {
+    merged.items.push(...result.items);
+    for (const [key, rows] of Object.entries(result.byClass)) {
+      if (!merged.byClass[key]) merged.byClass[key] = [];
+      merged.byClass[key].push(...rows);
+    }
+  }
+
+  for (const key of Object.keys(merged.byClass)) {
+    merged.byClass[key].sort((a, b) => {
+      if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
+      if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
+      return a.id - b.id;
+    });
+  }
+
+  return merged;
 }
 

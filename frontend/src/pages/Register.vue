@@ -39,6 +39,21 @@
             </select>
         </div>
 
+        <div class="form-group" v-if="otherBranches.length > 0">
+          <label>跨校支援（可複選）</label>
+          <p class="field-hint">可勾選預設分校以外、您也能支援上課的其他分校；與帳號審核一併由主任確認。</p>
+          <div class="chip-wrap">
+            <label
+              v-for="b in otherBranches"
+              :key="'mb-' + b.id"
+              :class="['chip', { selected: form.multi_branch_ids.includes(b.id) }]"
+            >
+              <input type="checkbox" :value="b.id" v-model="form.multi_branch_ids" />
+              <span>{{ b.name }}</span>
+            </label>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>可授課科目 (Subjects)</label>
           <div class="chip-wrap">
@@ -95,7 +110,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, nextTick } from 'vue';
+import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, loadBranches } from '../lib/useBranches';
 
@@ -107,6 +122,7 @@ const form = ref({
     password: '',
     confirmPassword: '',
     branch_id: null,
+    multi_branch_ids: [],
     phone: '',
     subject_ids: [],
     subject_level_scopes: [],
@@ -120,6 +136,19 @@ const LEVEL_OPTIONS = [
 ];
 const selectedSubjects = computed(() =>
   subjects.value.filter((s) => form.value.subject_ids.includes(s.id))
+);
+
+const otherBranches = computed(() =>
+  BRANCHES.value.filter((b) => Number(b.id) !== Number(form.value.branch_id))
+);
+
+watch(
+  () => form.value.branch_id,
+  (nid) => {
+    if (nid == null || nid === '') return;
+    const n = Number(nid);
+    form.value.multi_branch_ids = form.value.multi_branch_ids.filter((id) => Number(id) !== n);
+  }
 );
 
 function hasScope(subjectId, level) {
@@ -204,6 +233,9 @@ const handleRegister = async () => {
                     name: form.value.username,
                     role: 'teacher',
                     branch_id: form.value.branch_id,
+                    multi_branches: (form.value.multi_branch_ids || [])
+                      .map((id) => Number(id))
+                      .filter((id) => Number.isFinite(id) && id > 0),
                     phone: form.value.phone || '',
                     subject_ids: (form.value.subject_ids || [])
                       .map((id) => Number(id))
@@ -278,6 +310,14 @@ h2 {
   margin-bottom: 6px;
   font-weight: bold;
   color: #333;
+}
+
+.field-hint {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: normal;
+  line-height: 1.4;
 }
 
 .form-group input, .form-group select {

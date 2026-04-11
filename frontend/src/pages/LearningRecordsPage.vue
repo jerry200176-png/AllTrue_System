@@ -7,10 +7,66 @@
         <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="!isTeacher" class="ghost" @click="openBulkBackfill">一鍵補登</button>
         <button class="ghost" @click="openExportModal">匯出評量圖</button>
-        <button class="primary" @click="openModal()">+ 新增評量</button>
+        <button v-if="isTeacher" class="primary" @click="focusTeacherSchedule">從課表填寫</button>
       </div>
+    </div>
+
+    <!-- Teacher quick-filter tabs -->
+    <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
+      <div class="lr-tabs-row">
+        <button :class="['lr-tab', { active: teacherFilterTab === 'all' }]" @click="teacherFilterTab = 'all'">
+          全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
+        </button>
+        <button :class="['lr-tab', { active: teacherFilterTab === 'pending' }]" @click="teacherFilterTab = 'pending'">
+          待審核
+        </button>
+        <button :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]" @click="teacherFilterTab = 'changes_requested'">
+          需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
+        </button>
+        <button :class="['lr-tab', { active: teacherFilterTab === 'approved' }]" @click="teacherFilterTab = 'approved'">
+          已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
+        </button>
+      </div>
+      <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
+    </div>
+
+    <!-- Director review queue tabs -->
+    <div v-if="isDirectorRole" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
+      <div class="lr-tabs-row">
+        <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; selectedRecordIds = new Set()">
+          待審佇列 <span v-if="pendingCount > 0" class="lr-tab-count warn">{{ pendingCount }}</span>
+        </button>
+        <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; selectedRecordIds = new Set()">
+          需修改追蹤 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
+        </button>
+        <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; selectedRecordIds = new Set()">
+          已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
+        </button>
+        <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; selectedRecordIds = new Set()">
+          已退回
+        </button>
+        <button :class="['lr-tab', { active: reviewTab === 'all' }]" @click="reviewTab = 'all'; selectedRecordIds = new Set()">
+          全部
+        </button>
+      </div>
+
+      <!-- Batch action bar -->
+      <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
+        <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
+        <button class="primary xs" :disabled="batchOperating" @click="batchApproveSelected">批次核准</button>
+        <button class="ghost xs" :disabled="batchOperating" @click="batchRequestChangesSelected">批次需修改</button>
+        <button class="danger xs" :disabled="batchOperating" @click="batchRejectSelected">批次退回</button>
+        <button class="ghost xs" @click="selectedRecordIds = new Set()">取消選取</button>
+      </div>
+    </div>
+
+    <div v-if="!isTeacher && !isDirectorRole" class="card lr-teacher-entry" data-guide="learning-teacher-login-entry">
+      <div class="lr-teacher-entry__text">
+        <h3>老師填寫入口</h3>
+        <p>評量與課程綁定，老師登入後可直接從課表點堂次填寫，不需手動輸入學生、老師與時段。</p>
+      </div>
+      <button class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
     </div>
 
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
@@ -49,7 +105,7 @@
             :disabled="!ev.recordId && ev.fillLocked"
             :title="!ev.recordId && ev.fillLocked ? ev.fillLockReason : ''"
             @click="openFromScheduleMaybe(ev)"
-          >{{ ev.recordId ? '看評量' : (ev.fillLocked ? '未開放' : '填評量') }}</button>
+          >{{ scheduleActionLabel(ev) }}</button>
         </div>
       </div>
 
@@ -69,7 +125,7 @@
             v-for="ev in day.events"
             :key="ev.key"
             class="ts-event ts-event-sm"
-            :class="{ locked: !ev.recordId && ev.fillLocked }"
+            :class="{ locked: !ev.recordId && ev.fillLocked, substituted: ev.isSubstituted }"
             @click="openFromScheduleMaybe(ev)"
           >
             <div class="ts-time">{{ ev.timeRange }}</div>
@@ -80,7 +136,7 @@
                 <span :class="['ts-status-chip', `status-${ev.formStatus}`]">{{ ev.formStatusLabel }}</span>
               </div>
             </div>
-            <span class="ts-fill-hint">{{ ev.recordId ? '看評量' : (ev.fillLocked ? '未開放' : '填評量') }}</span>
+            <span class="ts-fill-hint">{{ scheduleActionLabel(ev) }}</span>
           </div>
         </div>
       </div>
@@ -174,16 +230,16 @@
 
     <!-- ===== Records Grouped By Student ===== -->
     <div class="card lr-table-card" data-guide="learning-table">
-      <div v-if="groupedRecordsByStudent.length === 0" class="empty-text" style="padding: 24px;">
-        尚無評量資料
+      <div v-if="filteredGroupedRecords.length === 0" class="empty-text" style="padding: 24px;">
+        {{ isDirectorRole && reviewTab === 'pending' ? '目前沒有待審評量 🎉' : '尚無評量資料' }}
       </div>
 
       <div v-else class="lr-groups">
         <details
-          v-for="(group, groupIndex) in groupedRecordsByStudent"
+          v-for="(group, groupIndex) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
-          :open="groupIndex === 0"
+          :open="groupIndex === 0 || filteredGroupedRecords.length <= 5"
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">
@@ -198,6 +254,9 @@
             <table>
               <thead>
                 <tr>
+                  <th v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
+                    <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
+                  </th>
                   <th>日期</th>
                   <th>學生 / 班級</th>
                   <th>科目</th>
@@ -208,6 +267,14 @@
               </thead>
               <tbody>
                 <tr v-for="record in group.records" :key="record.id" class="lr-table-row" @click="viewRecord(record)">
+                  <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
+                    <input
+                      v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
+                      type="checkbox"
+                      :checked="selectedRecordIds.has(record.id)"
+                      @change="toggleRecordSelection(record.id)"
+                    >
+                  </td>
                   <td>
                     <span class="lr-date">{{ record.SessionDate }}</span>
                     <span class="lr-time">{{ record.StartTime }}</span>
@@ -226,11 +293,12 @@
                     </span>
                   </td>
                   <td class="lr-actions" @click.stop>
-                    <button class="ghost xs" @click="viewRecord(record)">檢視</button>
-                    <button v-if="canEdit(record)" class="ghost xs" @click="editRecord(record)">編輯</button>
+                    <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                    <button v-if="!isTeacher && canEdit(record)" class="ghost xs" @click="editRecord(record)">編輯</button>
                     <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
-                    <span v-if="showTimeLockHint(record)" class="lr-lock-hint">課程結束後開放填寫</span>
+                    <span v-if="showTimeLockHint(record)" class="lr-lock-hint">上課開始後開放填寫</span>
                     <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
+                    <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
                     <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
                     <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
                     <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
@@ -275,7 +343,14 @@
               </div>
               <div class="form-group" style="grid-column: 1 / -1;">
                 <label>調整原因</label>
-                <textarea v-model="teacherChangeForm.reason" rows="3" placeholder="例如：3/18 由王老師代課"></textarea>
+                <textarea v-model="teacherChangeForm.reason" rows="3" placeholder="例如：轉由陳老師接手授課"></textarea>
+              </div>
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <small style="color: #888;">預設僅代課此堂，不影響後續排課</small>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 4px;">
+                  <input type="checkbox" v-model="teacherChangeForm.update_class" style="width: auto;">
+                  同時更換此課程的授課老師（影響後續所有堂次）
+                </label>
               </div>
             </div>
           </div>
@@ -305,17 +380,25 @@
             <div class="lr-form-section-title">基本資訊</div>
             <div class="lr-form-grid">
               <div class="form-group">
-                <label>選擇學生 <span class="lr-required">*</span></label>
+                <label>{{ isTeacher ? '學生' : '選擇學生' }} <span class="lr-required">*</span></label>
+                <template v-if="isTeacher">
+                  <div class="lr-readonly-field">{{ currentStudentName }}</div>
+                </template>
                 <SearchableSelect
+                  v-else
                   v-model="form.StudentID"
                   :options="studentOptions"
                   :disabled="isReadOnly || isEditing"
                   placeholder="搜尋並選擇學生..."
                 />
               </div>
-              <div class="form-group" v-if="!isTeacher">
+              <div class="form-group">
                 <label>授課老師 <span class="lr-required">*</span></label>
+                <template v-if="isTeacher">
+                  <div class="lr-readonly-field">{{ currentTeacherName }}</div>
+                </template>
                 <SearchableSelect
+                  v-else
                   v-model="form.TeacherID"
                   :options="teacherOptions"
                   :disabled="isReadOnly"
@@ -324,25 +407,29 @@
               </div>
               <div class="form-group">
                 <label>授課科目 <span class="lr-required">*</span></label>
-                <select v-model="form.Subject" :disabled="isReadOnly">
+                <div v-if="isTeacher" class="lr-readonly-field">{{ form.Subject || '—' }}</div>
+                <select v-else v-model="form.Subject" :disabled="isReadOnly">
                   <option value="">請選擇科目</option>
                   <option v-for="s in subjectList" :key="s" :value="s">{{ s }}</option>
                 </select>
               </div>
               <div class="form-group">
                 <label>上課日期 <span class="lr-required">*</span></label>
-                <input v-model="form.SessionDate" type="date" :disabled="isReadOnly || isSessionDateLocked">
+                <div v-if="isTeacher" class="lr-readonly-field">{{ form.SessionDate || '—' }}</div>
+                <input v-else v-model="form.SessionDate" type="date" :disabled="isReadOnly || isSessionDateLocked">
               </div>
               <template v-if="isSessionTimeLocked">
                 <div class="form-group">
-                  <label>開始時間</label>
+                  <label>開始時間 <span class="lr-lock-badge"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-1px">lock</span> 已帶入</span></label>
                   <div class="lr-readonly-time" :title="formatTimeForDisplay(form.StartTime)">
+                    <span class="material-symbols-outlined" style="font-size:15px;color:#FB8C00;flex-shrink:0">schedule</span>
                     {{ formatTimeForDisplay(form.StartTime) }}
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>結束時間</label>
+                  <label>結束時間 <span class="lr-lock-badge"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-1px">lock</span> 已帶入</span></label>
                   <div class="lr-readonly-time" :title="formatTimeForDisplay(form.EndTime)">
+                    <span class="material-symbols-outlined" style="font-size:15px;color:#FB8C00;flex-shrink:0">schedule</span>
                     {{ formatTimeForDisplay(form.EndTime) }}
                   </div>
                 </div>
@@ -350,22 +437,17 @@
               <template v-else>
                 <div class="form-group">
                   <label>開始時間</label>
-                  <select v-model="form.StartTime" @change="onStartTimeChange" :disabled="isReadOnly">
-                    <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                  <input type="time" v-model="form.StartTime" @change="onStartTimeChange" :disabled="isReadOnly">
                 </div>
                 <div class="form-group">
                   <label>結束時間</label>
-                  <select v-model="form.EndTime" :disabled="isReadOnly">
-                    <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
-                  </select>
+                  <input type="time" v-model="form.EndTime" :disabled="isReadOnly">
                 </div>
               </template>
-              <div v-if="isSessionTimeLocked" class="form-group" style="grid-column: 1 / -1;">
-                <p class="lr-time-lock-note" style="margin-top: 0;">
-                  上課時間已依課程／排課堂次帶入，無法手動更改。
-                </p>
-              </div>
+              <p v-if="isSessionTimeLocked" class="lr-time-lock-note lr-time-lock-note--inline">
+                <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px;margin-right:3px">info</span>
+                上課時間已依課程／排課堂次帶入，無法手動更改。
+              </p>
             </div>
           </div>
 
@@ -374,11 +456,11 @@
             <div class="lr-form-section-title">作業與進度</div>
             <div class="form-group">
               <label>上次作業</label>
-              <div class="lr-radio-group">
-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"> 已完成</label>
-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"> 部分完成</label>
-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"> 未完成</label>
-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"> 未攜帶</label>
+              <div class="lr-radio-group" data-group="homework">
+                <label class="lr-radio" data-value="completed"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"><span class="lr-radio-emoji">✓</span> 已完成</label>
+                <label class="lr-radio" data-value="partial"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"><span class="lr-radio-emoji">◐</span> 部分完成</label>
+                <label class="lr-radio" data-value="incomplete"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"><span class="lr-radio-emoji">✕</span> 未完成</label>
+                <label class="lr-radio" data-value="missing"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"><span class="lr-radio-emoji">?</span> 未攜帶</label>
               </div>
             </div>
             <div class="form-group">
@@ -394,10 +476,16 @@
             <div class="form-group">
               <label>授課進度</label>
               <textarea v-model="form.Progress" rows="3" :disabled="isReadOnly" placeholder="紀錄本次上課內容..."></textarea>
+              <div v-if="!isReadOnly" class="lr-phrase-row">
+                <button v-for="p in templatePhrases.Progress" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Progress', p)">{{ p }}</button>
+              </div>
             </div>
             <div class="form-group">
               <label>下次作業範圍</label>
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定下次作業..."></textarea>
+              <div v-if="!isReadOnly" class="lr-phrase-row">
+                <button v-for="p in templatePhrases.NextHomework" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextHomework', p)">{{ p }}</button>
+              </div>
             </div>
           </div>
 
@@ -406,24 +494,32 @@
             <div class="lr-form-section-title">上課狀況與評語</div>
             <div class="form-group">
               <label>上課狀況</label>
-              <div class="lr-radio-group">
-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"> 良好</label>
-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"> 普通</label>
-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"> 不良</label>
+              <div class="lr-radio-group" data-group="performance">
+                <label class="lr-radio" data-value="good"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"><span class="lr-radio-emoji">😊</span> 良好</label>
+                <label class="lr-radio" data-value="average"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"><span class="lr-radio-emoji">😐</span> 普通</label>
+                <label class="lr-radio" data-value="bad"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"><span class="lr-radio-emoji">😟</span> 不良</label>
               </div>
             </div>
             <div class="form-group">
               <label>學習進度與家長溝通</label>
               <textarea v-model="form.Comment" rows="4" :disabled="isReadOnly" placeholder="綜合評語與聯絡事項..."></textarea>
+              <div v-if="!isReadOnly" class="lr-phrase-row">
+                <button v-for="p in templatePhrases.Comment" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Comment', p)">{{ p }}</button>
+              </div>
             </div>
           </div>
 
-          <!-- Rejected Note -->
+          <!-- Status Context -->
           <div v-if="form.Status === 'rejected' || form.Status === 'changes_requested'" class="lr-reject-note">
             <div class="lr-reject-note-title">
-              {{ form.Status === 'rejected' ? '退回原因' : '需修改說明' }}
+              {{ form.Status === 'rejected' ? '⚠️ 退回原因' : '📝 需修改說明' }}
             </div>
             <p>{{ form.ReviewNote || '（無說明）' }}</p>
+          </div>
+
+          <div v-if="form.Status === 'approved' && form.id" class="lr-approved-note">
+            <span class="lr-approved-badge">✓ 已核准</span>
+            <span v-if="isTeacher">此評量已由主任核准，無法再修改。</span>
           </div>
 
           <!-- Actions -->
@@ -502,7 +598,7 @@ import SearchableSelect from '../components/SearchableSelect.vue';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { exportStudentCards } from '../lib/learningRecordExport';
 
-const props = defineProps(['branchId', 'userRole', 'userId']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId']);
 
 const formatLocalDate = (date) => {
   const y = date.getFullYear();
@@ -549,6 +645,18 @@ const directorSessionsByClassId = ref({});
 const formTimesFromBinding = ref(false);
 const filters = reactive({ status: '', student_name: '', teacher_id: '' });
 
+const reviewTab = ref('pending');
+const teacherFilterTab = ref('all');
+const selectedRecordIds = ref(new Set());
+const batchOperating = ref(false);
+const draftAutoSaveKey = ref('');
+
+const templatePhrases = {
+  Progress: ['課本 p.XX ~ p.XX', '複習上次範圍', '練習題本 第X回'],
+  NextHomework: ['課本 p.XX ~ p.XX', '題本 第X回', '背單字 Unit X'],
+  Comment: ['表現優良，繼續保持', '需加強練習', '建議每日複習 30 分鐘'],
+};
+
 const groupedRecordsByStudent = computed(() => {
   const groups = new Map();
   for (const record of records.value || []) {
@@ -585,6 +693,82 @@ const groupedRecordsByStudent = computed(() => {
     .sort((a, b) => collator.compare(a.student_name, b.student_name));
 });
 
+const filteredRecords = computed(() => {
+  let list = records.value || [];
+  if (isTeacher.value) {
+    if (teacherFilterTab.value === 'changes_requested') {
+      list = list.filter(r => r.Status === 'changes_requested');
+    } else if (teacherFilterTab.value === 'approved') {
+      list = list.filter(r => r.Status === 'approved');
+    } else if (teacherFilterTab.value === 'pending') {
+      list = list.filter(r => r.Status === 'pending');
+    }
+  } else if (isDirectorRole.value) {
+    if (reviewTab.value === 'pending') {
+      list = list.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
+    } else if (reviewTab.value === 'changes_requested') {
+      list = list.filter(r => r.Status === 'changes_requested');
+    } else if (reviewTab.value === 'approved') {
+      list = list.filter(r => r.Status === 'approved');
+    } else if (reviewTab.value === 'rejected') {
+      list = list.filter(r => r.Status === 'rejected');
+    }
+  }
+  return list;
+});
+
+const filteredGroupedRecords = computed(() => {
+  const groups = new Map();
+  for (const record of filteredRecords.value) {
+    const studentId = Number(record?.student_id || 0) || null;
+    const studentName = String(record?.student_name || '').trim() || '未命名學生';
+    const key = studentId ? `student-${studentId}` : `name-${studentName}`;
+    if (!groups.has(key)) {
+      groups.set(key, { key, student_id: studentId, student_name: studentName, pending_count: 0, records: [] });
+    }
+    const group = groups.get(key);
+    group.records.push(record);
+    if (record?.Status === 'pending' || record?.Status === 'changes_requested') group.pending_count += 1;
+  }
+  const collator = new Intl.Collator('zh-Hant');
+  return Array.from(groups.values())
+    .map(group => {
+      group.records.sort((a, b) => {
+        const aDate = String(a?.SessionDate || '');
+        const bDate = String(b?.SessionDate || '');
+        if (aDate !== bDate) return bDate.localeCompare(aDate);
+        return String(b?.StartTime || '').localeCompare(String(a?.StartTime || ''));
+      });
+      return group;
+    })
+    .sort((a, b) => collator.compare(a.student_name, b.student_name));
+});
+
+const pendingCount = computed(() => (records.value || []).filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length);
+const changesRequestedCount = computed(() => (records.value || []).filter(r => r.Status === 'changes_requested').length);
+const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
+const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
+
+const allSelected = computed(() => {
+  const selectable = filteredRecords.value.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
+  return selectable.length > 0 && selectable.every(r => selectedRecordIds.value.has(r.id));
+});
+
+const toggleSelectAll = () => {
+  const selectable = filteredRecords.value.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
+  if (allSelected.value) {
+    selectedRecordIds.value = new Set();
+  } else {
+    selectedRecordIds.value = new Set(selectable.map(r => r.id));
+  }
+};
+
+const toggleRecordSelection = (id) => {
+  const next = new Set(selectedRecordIds.value);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedRecordIds.value = next;
+};
+
 // Teacher schedule state
 const scheduleView = ref('today');
 const weekOffset = ref(0);  // 0 = current week, -1 = last week, +1 = next week
@@ -599,14 +783,8 @@ const bulkExistingDates = ref([]);
 const bulkDatesLoading = ref(false);
 const bulkSubmitting = ref(false);
 
-const subjectList = ['國文', '英文', '數學', '自然', '社會'];
+const subjectList = ['國文', '英文', '數學', '自然', '理化', '物理', '化學', '生物', '社會'];
 
-const timeOptions = [];
-for (let h = 8; h <= 23; h++) {
-  const hr = h.toString().padStart(2, '0');
-  timeOptions.push(`${hr}:00`);
-  timeOptions.push(`${hr}:30`);
-}
 
 const form = reactive({
   id: null,
@@ -635,22 +813,23 @@ const teacherChangeForm = reactive({
   student_name: '',
   current_teacher_name: '',
   session_date: '',
+  update_class: false,
 });
 
-const isSessionEnded = (sessionDate, endTime) => {
+const isSessionStarted = (sessionDate, startTime) => {
   const date = String(sessionDate || '').slice(0, 10);
-  const time = normalizeTime(endTime);
+  const time = normalizeTime(startTime);
   if (!date || !time) return true;
-  const endAt = new Date(`${date}T${time}:00`);
-  if (Number.isNaN(endAt.getTime())) return true;
-  return Date.now() > endAt.getTime();
+  const startAt = new Date(`${date}T${time}:00`);
+  if (Number.isNaN(startAt.getTime())) return true;
+  return Date.now() >= startAt.getTime();
 };
 
-const resolveTimeLockMessage = (sessionDate, endTime) => (
-  isSessionEnded(sessionDate, endTime) ? '' : '課程結束後開放填寫'
+const resolveTimeLockMessage = (sessionDate, startTime) => (
+  isSessionStarted(sessionDate, startTime) ? '' : '上課開始後開放填寫'
 );
 
-const timeLockMessage = computed(() => resolveTimeLockMessage(form.SessionDate, form.EndTime));
+const timeLockMessage = computed(() => resolveTimeLockMessage(form.SessionDate, form.StartTime));
 /** 上課日期：有綁定堂次時鎖定；主任僅依範本帶入時間時仍可改日期以重算。 */
 const isSessionDateLocked = computed(() => isTeacher.value || Number(form.ClassSessionID || 0) > 0);
 /** 開始／結束時間：老師一律鎖定；有 ClassSessionID 或主任已成功帶入課程時間則鎖定。 */
@@ -684,6 +863,19 @@ const studentOptions = computed(() =>
     };
   })
 );
+
+const currentStudentName = computed(() => {
+  const studentId = String(form.StudentID || '');
+  if (!studentId) return '未綁定堂次';
+  return studentList.value.find((item) => String(item.id) === studentId)?.name || `學生 #${studentId}`;
+});
+
+const currentTeacherName = computed(() => {
+  const teacherId = String(form.TeacherID || props.userId || '');
+  if (!teacherId) return '未指派老師';
+  const matched = teacherList.value.find((item) => String(item.id) === teacherId);
+  return matched?.username || matched?.T_Name || matched?.Name || `老師 #${teacherId}`;
+});
 
 const bulkStudentOptions = computed(() => {
   const students = Array.isArray(studentList.value) ? studentList.value : [];
@@ -831,7 +1023,7 @@ const fetchStudents = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ per_page: 'all' });
+    const params = new URLSearchParams({ per_page: '500' });
     if (props.branchId) params.set('branch_id', String(props.branchId));
     params.set('status', 'active');
     const res = await fetch(`/api/v1/students?${params.toString()}`, {
@@ -850,8 +1042,7 @@ const fetchTeacherClasses = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ per_page: 200, stop: 0 });
-    if (props.branchId) params.set('branch_id', props.branchId);
+    const params = new URLSearchParams({ per_page: 200, status: 'active' });
     const res = await fetch(`/api/v1/student-classes?${params}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });
@@ -865,7 +1056,7 @@ const fetchTeacherClasses = async () => {
 };
 
 const fetchTeacherSessionDates = async (rows = []) => {
-  if (!isTeacher.value || !props.branchId) {
+  if (!isTeacher.value) {
     sessionDatesByClassId.value = {};
     return;
   }
@@ -882,7 +1073,6 @@ const fetchTeacherSessionDates = async (rows = []) => {
 
     const { byClass } = await fetchClassSessions({
       token,
-      branchId: props.branchId,
       studentClassIds: classIds,
       perPage: 2000,
     });
@@ -1043,6 +1233,7 @@ const computedEndTimeForClass = (course, startTime) => {
 // Build schedule events from teacher's effective session dates (same source as director flow).
 const buildEvents = (targetDates) => {
   const targetSet = new Set(targetDates.map((d) => String(d).slice(0, 10)));
+  const myId = Number(props.userId || 0);
   const events = [];
   for (const sc of teacherClassList.value) {
     if (sc.Stop == 1) continue;
@@ -1060,7 +1251,11 @@ const buildEvents = (targetDates) => {
       const recordId = rawSession?.learning_record_id != null
         ? Number(rawSession.learning_record_id)
         : (record?.id || null);
-      const fillLocked = !isSessionEnded(dateStr, endTime);
+
+      const lrTeacherId = Number(rawSession?.learning_record_teacher_id || 0);
+      const isSubstituted = lrTeacherId > 0 && lrTeacherId !== myId && myId > 0;
+
+      const fillLocked = isSubstituted || !isSessionStarted(dateStr, startTime);
       const student = studentList.value.find(s => String(s.id) === String(sc.student_id || sc.StudentID));
       const studentName = student?.name || sc.student_name || `學生#${sc.student_id || sc.StudentID}`;
       events.push({
@@ -1074,11 +1269,12 @@ const buildEvents = (targetDates) => {
         startTime,
         endTime,
         timeRange: endTime ? `${startTime}~${endTime}` : startTime,
-        recordId: recordId || null,
-        formStatus,
-        formStatusLabel: scheduleStatusLabel(formStatus),
+        recordId: isSubstituted ? null : (recordId || null),
+        formStatus: isSubstituted ? 'substituted' : formStatus,
+        formStatusLabel: isSubstituted ? '代課' : scheduleStatusLabel(formStatus),
         fillLocked,
-        fillLockReason: fillLocked ? '課程結束後開放填寫' : '',
+        fillLockReason: isSubstituted ? '此堂已由代課老師處理' : (fillLocked ? '上課開始後開放填寫' : ''),
+        isSubstituted,
       });
     }
   }
@@ -1229,7 +1425,7 @@ const openFromSchedule = (ev) => {
   if (ev.recordId) {
     const existing = records.value.find((r) => Number(r.id) === Number(ev.recordId));
     if (existing) {
-      editRecord(existing);
+      openRecordAction(existing);
       return;
     }
   }
@@ -1246,11 +1442,19 @@ const openFromSchedule = (ev) => {
   });
   formTimesFromBinding.value = false;
   showModal.value = true;
+  const hasDraft = loadDraft();
+  if (hasDraft) {
+    console.log('[LR] Restored auto-saved draft');
+  }
 };
 
 const openFromScheduleMaybe = (ev) => {
+  if (ev?.isSubstituted) {
+    alert('此堂已由代課老師處理');
+    return;
+  }
   if (!ev?.recordId && ev?.fillLocked) {
-    alert(ev.fillLockReason || '課程結束後開放填寫');
+    alert(ev.fillLockReason || '上課開始後開放填寫');
     return;
   }
   openFromSchedule(ev);
@@ -1292,7 +1496,7 @@ const _fillForm = (record) => {
     StudentID: Number(record.student_id) || '',
     TeacherID: Number(record.TeacherID),
     ClassSessionID: Number(record.ClassSessionID) || 0,
-    Subject: record.Subject,
+    Subject: canonicalSubjectLabel(record.Subject) || record.Subject || '',
     SessionDate: record.SessionDate,
     StartTime: normalizeTime(record.StartTime) || String(record.StartTime || '').match(/(\d{1,2}:\d{2})/)?.[1] || '',
     EndTime: normalizeTime(record.EndTime) || String(record.EndTime || '').match(/(\d{1,2}:\d{2})/)?.[1] || '',
@@ -1333,7 +1537,22 @@ const _clearForm = () => {
   }
 };
 
+const _attachTextareaResize = () => {
+  nextTick(() => {
+    document.querySelectorAll('.lr-modal textarea').forEach(el => {
+      el.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = this.scrollHeight + 'px';
+      });
+    });
+  });
+};
+
 const openModal = (record = null) => {
+  if (!record && isTeacher.value) {
+    alert('請從上方課表點選堂次後填寫評量。');
+    return;
+  }
   forceReadOnly.value = false;
   if (record) {
     _fillForm(record);
@@ -1346,21 +1565,42 @@ const openModal = (record = null) => {
       syncFormTimesFromCourseSchedule();
     }
   });
+  _attachTextareaResize();
 };
 
 const viewRecord = (record) => {
   forceReadOnly.value = true;
   _fillForm(record);
   showModal.value = true;
+  _attachTextareaResize();
 };
 
 const editRecord = (record) => {
   forceReadOnly.value = false;
   _fillForm(record);
   showModal.value = true;
+  _attachTextareaResize();
 };
 
 const closeModal = () => { showModal.value = false; };
+
+const focusTeacherSchedule = () => {
+  const scheduleEl = document.querySelector('[data-guide="learning-teacher-schedule"]');
+  if (!scheduleEl) return;
+  scheduleEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+const switchToTeacherLogin = async () => {
+  const confirmed = window.confirm('將先登出目前帳號，並回到登入頁供老師登入。是否繼續？');
+  if (!confirmed) return;
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.error('signOut failed', e);
+  }
+  localStorage.removeItem('alltrue_session');
+  window.location.reload();
+};
 
 const submitForm = async () => {
   if (timeLockMessage.value) {
@@ -1391,6 +1631,7 @@ const submitForm = async () => {
   if (res.ok) {
     const savedRecord = await res.json().catch(() => null);
     const localRecord = buildLocalRecordFromForm(savedRecord);
+    clearDraft();
     await fetchRecords();
     if (localRecord?.id) {
       upsertRecordInList(localRecord);
@@ -1489,6 +1730,7 @@ const closeChangeTeacherModal = () => {
   teacherChangeForm.student_name = '';
   teacherChangeForm.current_teacher_name = '';
   teacherChangeForm.session_date = '';
+  teacherChangeForm.update_class = false;
 };
 
 const submitTeacherChange = async () => {
@@ -1510,6 +1752,7 @@ const submitTeacherChange = async () => {
       body: JSON.stringify({
         TeacherID: Number(teacherChangeForm.teacher_id),
         reason: teacherChangeForm.reason || null,
+        update_class: teacherChangeForm.update_class,
       }),
     });
 
@@ -1553,18 +1796,23 @@ const canReject = (record) => {
   return record.Status === 'pending' || record.Status === 'changes_requested';
 };
 
+const canRequestChanges = (record) => {
+  if (!isDirectorRole.value) return false;
+  return record.Status === 'pending';
+};
+
 const canRollbackApproval = (record) => {
   if (!isDirectorRole.value) return false;
   return record.Status === 'approved';
 };
 
-const isWriteLockedBySessionEnd = (record) => {
+const isWriteLockedBeforeSessionStart = (record) => {
   if (!record) return false;
-  return !isSessionEnded(record.SessionDate, record.EndTime);
+  return !isSessionStarted(record.SessionDate, record.StartTime);
 };
 
 const canEdit = (record) => {
-  if (isWriteLockedBySessionEnd(record)) return false;
+  if (isWriteLockedBeforeSessionStart(record)) return false;
   if (isDirectorRole.value) return true;
   if (record.Status === 'approved') return false;
   return true;
@@ -1575,10 +1823,46 @@ const canChangeTeacher = (record) => {
   return Boolean(record?.id);
 };
 
-const showTimeLockHint = (record) => isWriteLockedBySessionEnd(record);
+const showTimeLockHint = (record) => isWriteLockedBeforeSessionStart(record);
 
 const canDelete = (record) => {
   return isDirectorRole.value;
+};
+
+const primaryActionLabel = (record) => {
+  if (!record) return '檢視評量';
+  return canEdit(record) ? '編輯評量' : '檢視評量';
+};
+
+const openRecordAction = (record) => {
+  if (!record) return;
+  if (canEdit(record)) {
+    editRecord(record);
+    return;
+  }
+  viewRecord(record);
+};
+
+const findRecordById = (recordId) => {
+  const rid = Number(recordId || 0);
+  if (!rid) return null;
+  return records.value.find((item) => Number(item?.id || 0) === rid) || null;
+};
+
+const canEditScheduleEvent = (ev) => {
+  if (!ev) return false;
+  if (!ev.recordId) return !ev.fillLocked;
+  const existing = findRecordById(ev.recordId);
+  if (existing) return canEdit(existing);
+  if (ev.fillLocked) return false;
+  if (isTeacher.value && String(ev.formStatus || '') === 'approved') return false;
+  return true;
+};
+
+const scheduleActionLabel = (ev) => {
+  if (ev?.isSubstituted) return '代課中';
+  if (!ev?.recordId) return ev?.fillLocked ? '未開放' : '填評量';
+  return canEditScheduleEvent(ev) ? '編輯評量' : '檢視評量';
 };
 
 const deleteRecord = async (record) => {
@@ -1592,6 +1876,155 @@ const deleteRecord = async (record) => {
     fetchRecords();
   } else {
     alert('刪除失敗');
+  }
+};
+
+const batchApproveSelected = async () => {
+  const ids = [...selectedRecordIds.value];
+  if (ids.length === 0) return;
+  if (!confirm(`確定要批次核准 ${ids.length} 筆評量？`)) return;
+  batchOperating.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/learning-records/batch-approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ DirectorID: props.userId, branch_id: props.branchId })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      alert(json.message || '批次核准完成');
+      selectedRecordIds.value = new Set();
+      await fetchRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('批次核准失敗: ' + (err.message || ''));
+    }
+  } catch (e) { alert('批次核准失敗: ' + e.message); }
+  finally { batchOperating.value = false; }
+};
+
+const batchRejectSelected = async () => {
+  const ids = [...selectedRecordIds.value];
+  if (ids.length === 0) return;
+  const note = prompt(`請輸入退回原因（將套用到 ${ids.length} 筆）：`);
+  if (!note) return;
+  batchOperating.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/learning-records/batch-reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ids, ReviewNote: note, DirectorID: props.userId })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      alert(json.message || '批次退回完成');
+      selectedRecordIds.value = new Set();
+      await fetchRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('批次退回失敗: ' + (err.message || ''));
+    }
+  } catch (e) { alert('批次退回失敗: ' + e.message); }
+  finally { batchOperating.value = false; }
+};
+
+const batchRequestChangesSelected = async () => {
+  const ids = [...selectedRecordIds.value];
+  if (ids.length === 0) return;
+  const note = prompt(`請輸入修改說明（將套用到 ${ids.length} 筆）：`);
+  if (!note) return;
+  batchOperating.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/learning-records/batch-request-changes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ids, ReviewNote: note, DirectorID: props.userId })
+    });
+    if (res.ok) {
+      const json = await res.json();
+      alert(json.message || '批次標記需修改完成');
+      selectedRecordIds.value = new Set();
+      await fetchRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert('操作失敗: ' + (err.message || ''));
+    }
+  } catch (e) { alert('操作失敗: ' + e.message); }
+  finally { batchOperating.value = false; }
+};
+
+const requestChangesRecord = async (record) => {
+  const note = prompt('請輸入修改說明：');
+  if (!note) return;
+  const token = await getToken();
+  const res = await fetch(`/api/v1/learning-records/${record.id}/request-changes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ ReviewNote: note, DirectorID: props.userId })
+  });
+  if (res.ok) {
+    fetchRecords();
+  } else {
+    const err = await res.json().catch(() => ({}));
+    alert('操作失敗: ' + (err.message || ''));
+  }
+};
+
+const insertPhrase = (field, phrase) => {
+  const current = form[field] || '';
+  form[field] = current ? `${current}\n${phrase}` : phrase;
+};
+
+const saveDraft = () => {
+  if (!showModal.value || forceReadOnly.value || isEditing.value) return;
+  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      Progress: form.Progress,
+      NextHomework: form.NextHomework,
+      Comment: form.Comment,
+      HomeworkStatus: form.HomeworkStatus,
+      QuizScore: form.QuizScore,
+      Performance: form.Performance,
+      _ts: Date.now(),
+    }));
+  } catch (e) { /* quota exceeded */ }
+};
+
+const loadDraft = () => {
+  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    if (Date.now() - (draft._ts || 0) > 86400000) {
+      localStorage.removeItem(key);
+      return false;
+    }
+    if (draft.Progress) form.Progress = draft.Progress;
+    if (draft.NextHomework) form.NextHomework = draft.NextHomework;
+    if (draft.Comment) form.Comment = draft.Comment;
+    if (draft.HomeworkStatus) form.HomeworkStatus = draft.HomeworkStatus;
+    if (draft.QuizScore) form.QuizScore = draft.QuizScore;
+    if (draft.Performance) form.Performance = draft.Performance;
+    return true;
+  } catch { return false; }
+};
+
+const clearDraft = () => {
+  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
+  try { localStorage.removeItem(key); } catch {}
+};
+
+const openTargetRecord = () => {
+  const targetId = Number(props.targetRecordId || 0);
+  if (!targetId) return;
+  const record = records.value.find(r => Number(r.id) === targetId);
+  if (record) {
+    openRecordAction(record);
   }
 };
 
@@ -1634,6 +2067,18 @@ watch(
     syncFormTimesFromCourseSchedule();
   }
 );
+
+watch(
+  () => [form.Progress, form.NextHomework, form.Comment, form.HomeworkStatus, form.QuizScore, form.Performance],
+  () => { saveDraft(); },
+  { deep: false }
+);
+
+watch(() => props.targetRecordId, (newId) => {
+  if (newId) {
+    nextTick(() => openTargetRecord());
+  }
+});
 
 // ── Fetch Courses (for bulk backfill) ──
 const fetchCourses = async () => {
@@ -1901,13 +2346,14 @@ const executeExport = async () => {
 // ── Init ──
 onMounted(async () => {
   await ensurePastRecords();
-  fetchRecords();
+  await fetchRecords();
   fetchTeachers();
   await fetchStudents();
   if (props.branchId && isDirectorRole.value) {
     await fetchCourses();
   }
   if (isTeacher.value) fetchTeacherClasses();
+  nextTick(() => openTargetRecord());
 });
 
 watch(() => props.branchId, () => {
@@ -1935,6 +2381,199 @@ watch(() => props.branchId, () => {
 
 .lr-header button {
   white-space: nowrap;
+}
+
+/* ── Review / Filter Tabs ── */
+.lr-review-tabs {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+}
+
+.lr-tabs-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.lr-tab {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid #e0e0e0;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: #555;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lr-tab:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+.lr-tab.active {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+}
+
+.lr-tab-count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.08);
+  font-weight: 600;
+}
+
+.lr-tab.active .lr-tab-count {
+  background: rgba(255,255,255,0.25);
+  color: #fff;
+}
+
+.lr-tab-count.warn {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.lr-tab.active .lr-tab-count.warn {
+  background: rgba(255,255,255,0.3);
+  color: #fff;
+}
+
+.lr-tab-count.ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.lr-tab.active .lr-tab-count.ok {
+  background: rgba(255,255,255,0.3);
+  color: #fff;
+}
+
+.lr-tab-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* ── Batch Action Bar ── */
+.lr-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.lr-batch-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1565c0;
+  margin-right: 4px;
+}
+
+/* ── Template Phrases ── */
+.lr-phrase-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lr-phrase-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lr-phrase-btn:hover {
+  background: #e3f2fd;
+  border-color: #90caf9;
+  color: #1565c0;
+}
+
+/* ── Approved Note ── */
+.lr-approved-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #e8f5e9;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #2e7d32;
+  margin-bottom: 12px;
+}
+
+.lr-approved-badge {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.teacher-flow-guide {
+  margin-bottom: 12px;
+  padding: 12px 16px;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+}
+
+.teacher-flow-guide__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1d4ed8;
+  margin-bottom: 8px;
+}
+
+.teacher-flow-guide__steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.teacher-flow-guide__steps span {
+  font-size: 12px;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.lr-teacher-entry {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-left: 4px solid #f59e0b;
+  background: #fff7ed;
+}
+
+.lr-teacher-entry h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.lr-teacher-entry p {
+  margin: 0;
+  color: var(--text-light);
+  font-size: 13px;
+}
+
+.lr-teacher-entry__text {
+  flex: 1;
 }
 
 /* ── Teacher Schedule Widget ── */
@@ -2008,6 +2647,19 @@ watch(() => props.branchId, () => {
   color: var(--text-light);
   font-size: 13px;
   padding: 8px 0;
+}
+
+.lr-readonly-field {
+  width: 100%;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: var(--text);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
 }
 
 /* Today view */
@@ -2091,6 +2743,11 @@ watch(() => props.branchId, () => {
 .ts-status-chip.status-rejected {
   background: #eef2ff;
   color: #3730a3;
+}
+
+.ts-status-chip.status-substituted {
+  background: #f0f4f8;
+  color: #64748b;
 }
 
 .ts-fill-btn {
@@ -2191,6 +2848,12 @@ watch(() => props.branchId, () => {
 
 .ts-event-sm.locked {
   opacity: 0.72;
+}
+
+.ts-event-sm.substituted {
+  opacity: 0.6;
+  background: #f8fafc;
+  border-left: 3px solid #94a3b8;
 }
 
 .ts-event-sm .ts-time {
@@ -2380,13 +3043,41 @@ watch(() => props.branchId, () => {
   min-height: 38px;
   display: flex;
   align-items: center;
+  gap: 6px;
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #fed7aa;
+  border-left: 3px solid #FB8C00;
   border-radius: 8px;
-  background: #f8fafc;
-  color: #334155;
+  background: #fffbf7;
+  color: #92400e;
   font-size: 14px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.lr-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.lr-time-lock-note--inline {
+  grid-column: 1 / -1;
+  margin-top: -2px;
+}
+
+/* emoji 圖示預設隱藏，手機版才顯示 */
+.lr-radio-emoji {
+  display: none;
 }
 
 /* Status tag variant */
@@ -2893,7 +3584,9 @@ watch(() => props.branchId, () => {
   }
 
   .form-group textarea {
-    min-height: 80px;
+    min-height: 90px;
+    resize: vertical;
+    field-sizing: content; /* Chrome 123+ / iOS 17.4+ auto-height */
   }
 
   .lr-radio-group {
@@ -2909,7 +3602,81 @@ watch(() => props.branchId, () => {
     text-align: center;
   }
 
+  /* HomeworkStatus：2x2 大卡片 */
+  .lr-radio-group[data-group="homework"] {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .lr-radio-group[data-group="homework"] .lr-radio {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 8px;
+    min-height: 64px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  /* Performance：3 欄橫排 */
+  .lr-radio-group[data-group="performance"] {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  .lr-radio-group[data-group="performance"] .lr-radio {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 6px;
+    min-height: 64px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  /* Emoji 圖示手機版顯示 */
+  .lr-radio-emoji {
+    display: block;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* 選中語意顏色 */
+  .lr-radio-group[data-group="homework"] .lr-radio[data-value="completed"]:has(input:checked),
+  .lr-radio-group[data-group="performance"] .lr-radio[data-value="good"]:has(input:checked) {
+    border-color: var(--success);
+    background: #f0fdf4;
+    color: var(--success);
+  }
+
+  .lr-radio-group[data-group="homework"] .lr-radio[data-value="partial"]:has(input:checked),
+  .lr-radio-group[data-group="performance"] .lr-radio[data-value="average"]:has(input:checked) {
+    border-color: #FB8C00;
+    background: #fff7ed;
+    color: #92400e;
+  }
+
+  .lr-radio-group[data-group="homework"] .lr-radio[data-value="incomplete"]:has(input:checked),
+  .lr-radio-group[data-group="homework"] .lr-radio[data-value="missing"]:has(input:checked),
+  .lr-radio-group[data-group="performance"] .lr-radio[data-value="bad"]:has(input:checked) {
+    border-color: var(--danger);
+    background: #fff0f0;
+    color: var(--danger);
+  }
+
+  /* Sticky 提交按鈕 */
   .lr-form-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--card-bg);
+    margin: 0 -20px;
+    padding: 12px 20px env(safe-area-inset-bottom, 12px);
+    border-top: 1px solid var(--border);
+    z-index: 10;
     flex-direction: column-reverse;
     gap: 10px;
   }

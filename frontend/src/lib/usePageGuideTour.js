@@ -238,6 +238,8 @@ export function usePageGuideTour() {
 
   return {
     isOpen,
+    steps,
+    stepIndex,
     currentStep,
     popoverStyle,
     effectivePlacement,

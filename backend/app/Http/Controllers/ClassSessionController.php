@@ -100,6 +100,7 @@ class ClassSessionController extends Controller
                 DB::raw('COALESCE(t.T_Name, u.Name, "") as teacher_name'),
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
+                'lr.TeacherID as learning_record_teacher_id',
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
                 DB::raw('COALESCE(rbu.Name, sit.T_Name, siu.Name, "") as recorded_by_name'),
@@ -173,6 +174,7 @@ class ClassSessionController extends Controller
             $row->status = (string) ($row->Status ?? '');
             $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
             $row->learning_record_status = $row->learning_record_status ?? 'missing';
+            $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
             $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
             $row->attendance_memo = $row->attendance_memo ?: '';
             $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');

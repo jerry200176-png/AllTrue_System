@@ -22,6 +22,8 @@ class User extends Model
         'MustChangePassword',
         'PasswordChangedAt',
         'PasswordSetByUserID',
+        'bug_inbox_last_seen_at',
+        'bug_inbox_last_seen_bug_id',
     ];
 
     protected $hidden = ['PSW'];
@@ -29,5 +31,6 @@ class User extends Model
     protected $casts = [
         'MustChangePassword' => 'boolean',
         'PasswordChangedAt' => 'datetime',
+        'bug_inbox_last_seen_at' => 'datetime',
     ];
 }

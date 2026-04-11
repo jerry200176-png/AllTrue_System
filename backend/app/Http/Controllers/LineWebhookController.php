@@ -348,21 +348,28 @@ class LineWebhookController extends Controller
         if (!$campus) {
             return response()->json(['message' => 'Campus not found'], 404);
         }
-        return response()->json($this->buildStatus($campus));
+        return response()->json($this->buildStatus($campus, $request));
     }
 
     public function saveSettings(Request $request): \Illuminate\Http\JsonResponse
     {
-        $campusId = $this->getDirectorCampusId($request);
-        if (!$campusId) {
-            return response()->json(['message' => 'Campus not found'], 404);
-        }
-
         $data = $request->validate([
+            'branch_id'                => 'nullable|integer',
             'messaging_channel_token'  => 'nullable|string|max:512',
             'messaging_channel_secret' => 'nullable|string|max:64',
             'liff_id'                  => 'nullable|string|max:64',
         ]);
+
+        $campusId = !empty($data['branch_id']) ? (int) $data['branch_id'] : $this->getDirectorCampusId($request);
+        if (!$campusId) {
+            return response()->json(['message' => 'Campus not found'], 404);
+        }
+
+        $authCampusIds = $request->attributes->get('auth_campus_ids', []);
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($authCampusIds) && !in_array($campusId, $authCampusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
 
         $update = [];
         if (array_key_exists('messaging_channel_token', $data)) {
@@ -382,7 +389,7 @@ class LineWebhookController extends Controller
         }
 
         $campus = $this->getCampus($campusId);
-        return response()->json(['message' => 'LINE 設定已儲存', 'status' => $this->buildStatus($campus)]);
+        return response()->json(['message' => 'LINE 設定已儲存', 'status' => $this->buildStatus($campus, $request)]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -400,14 +407,14 @@ class LineWebhookController extends Controller
         return !empty($campusIds) ? (int) $campusIds[0] : null;
     }
 
-    private function buildStatus(object $campus): array
+    private function buildStatus(object $campus, ?Request $request = null): array
     {
-        // Prefer campus's own URL; fallback to app.url
-        $campusUrl = !empty($campus->URL) ? rtrim($campus->URL, '/') : rtrim(config('app.url'), '/');
+        $campusUrl = $this->resolveCampusBaseUrl($campus, $request);
         $liffId = $campus->LIFFID ?? '';
 
-        // Build webhook URL: use campus domain + domain-based route (no campusId suffix)
-        $webhookUrl = "{$campusUrl}/api/v1/line/webhook";
+        // Prefer URL with campus id so LINE Verify works without relying on Host→Campus.URL matching
+        // (Domain-only /line/webhook remains supported via handleDomainBased for existing setups.)
+        $webhookUrl = "{$campusUrl}/api/v1/line/webhook/{$campus->id}";
 
         return [
             'campus_id'              => $campus->id,
@@ -435,8 +442,40 @@ class LineWebhookController extends Controller
         if (!empty($campus->LIFFID)) {
             return "https://liff.line.me/{$campus->LIFFID}";
         }
-        $baseUrl = !empty($campus->URL) ? rtrim($campus->URL, '/') : config('app.url');
+        $baseUrl = $this->resolveCampusBaseUrl($campus, null);
         return $baseUrl . '/#/parent';
+    }
+
+    private function resolveCampusBaseUrl(object $campus, ?Request $request = null): string
+    {
+        $isLocalHost = static function (?string $url): bool {
+            if (empty($url)) {
+                return true;
+            }
+            $host = parse_url($url, PHP_URL_HOST);
+            if (empty($host)) {
+                return true;
+            }
+            $host = strtolower($host);
+            return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+        };
+
+        $campusUrl = !empty($campus->URL) ? rtrim((string) $campus->URL, '/') : '';
+        if (!$isLocalHost($campusUrl)) {
+            return $campusUrl;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if (!$isLocalHost($appUrl)) {
+            return $appUrl;
+        }
+
+        if ($request) {
+            return rtrim($request->getSchemeAndHttpHost(), '/');
+        }
+
+        // Last-resort fallback to preserve previous behavior if request context is unavailable.
+        return $appUrl ?: $campusUrl ?: 'http://localhost';
     }
 
     // ─────────────────────────────────────────────────────────────────────────

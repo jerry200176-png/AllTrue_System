@@ -17,7 +17,8 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 5. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任儀表板「繳費提醒」業務規則，改 `AlertController::tuition` 前必讀）
 6. `docs/GITHUB_SYNC_WORKFLOW.md`
 7. `docs/CHANGELOG.md`（近期功能異動與權限調整）
-8. `docs/CHAT_BUG_SYSTEM.md`（聊天＋Bug 回報模組交接）
+8. **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（聊天／Bug／頭像：**已實作細節與禁止回歸**，改動前必讀）
+9. `docs/CHAT_BUG_SYSTEM.md`（同上模組速覽與檔案索引）
 
 ## Non-negotiable rules
 

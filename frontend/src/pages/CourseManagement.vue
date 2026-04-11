@@ -8,7 +8,7 @@
           <p class="ref-hint">管理所有學生的課程安排，快速新增課程</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
-            <span class="meta-pill">{{ courses.length }} 筆課程</span>
+            <span class="meta-pill">{{ pagination.total || courses.length }} 筆課程{{ pagination.lastPage > 1 ? `（第 ${pagination.page} 頁）` : '' }}</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -31,7 +31,7 @@
         </div>
         <div class="filter-field">
           <label>上課類型</label>
-          <select v-model="filters.class_type" @change="loadCourses">
+          <select v-model="filters.class_type" @change="loadCourses(1)">
             <option value="">全部</option>
             <option value="one_on_one">一對一</option>
             <option value="one_on_two">一對二</option>
@@ -41,14 +41,14 @@
         </div>
         <div class="filter-field">
           <label>老師</label>
-          <select v-model="filters.teacher_id" @change="loadCourses">
+          <select v-model="filters.teacher_id" @change="loadCourses(1)">
             <option value="">全部</option>
             <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
           </select>
         </div>
         <div class="filter-field">
           <label>課程狀態</label>
-          <select v-model="filters.course_status" @change="loadCourses">
+          <select v-model="filters.course_status" @change="loadCourses(1)">
             <option value="">全部</option>
             <option value="active">進行中</option>
             <option value="inactive">已暫停</option>
@@ -101,11 +101,13 @@
           v-for="group in groupedCourses"
           :key="group.key"
           class="student-group-card"
+          :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
         >
           <button class="student-group-header" @click="toggleStudentGroup(group.key)">
             <span class="student-group-left">
               <span class="expand-indicator">{{ expandedStudentGroups.has(group.key) ? '▼' : '▶' }}</span>
               <span class="cell-student">{{ group.student_name }}</span>
+              <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
             </span>
             <span class="student-group-meta">{{ group.courses.length }} 筆課程</span>
           </button>
@@ -115,31 +117,34 @@
                 <tr>
                   <th>科目</th>
                   <th>老師</th>
-                  <th>類型</th>
-                  <th>每堂費用</th>
-                  <th>總費用</th>
-                  <th>排課時段</th>
-                  <th>地點</th>
-                  <th>繳費方式</th>
-                  <th>繳費狀態</th>
+                  <th>時段</th>
+                  <th>繳費</th>
                   <th>剩餘堂數</th>
-                  <th>上課日期</th>
                   <th class="col-actions">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <template v-for="c in group.courses" :key="c.id">
                   <tr :class="['course-row', { 'course-paused': c.status === 'inactive' }]">
-                    <td>
-                      <span class="tag subject-tag">{{ getSubjectLabel(c.subject) }}</span>
-                      <span v-if="c.status === 'inactive'" class="tag tag-paused">已暫停</span>
+                    <td class="td-subject">
+                      <div v-if="c.status === 'inactive'" class="paused-course-callout" role="status">
+                        <span class="paused-course-callout__icon" aria-hidden="true">⏸</span>
+                        <span class="paused-course-callout__main">課程暫停中</span>
+                        <span class="paused-course-callout__sub">未恢復前不排新課、不計入待辦</span>
+                      </div>
+                      <div class="subject-line">
+                        <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
+                        <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
+                        <span v-if="c.status === 'inactive'" class="tag tag-paused">已暫停</span>
+                      </div>
+                      <div class="price-line">
+                        <span>每堂 ${{ sessionPrice(c) }}</span>
+                        <span class="price-sep">｜</span>
+                        <span>總費用 ${{ totalPrice(c) }}</span>
+                      </div>
+                      <div v-if="courseMemo(c)" class="memo-line">備註：{{ courseMemo(c) }}</div>
                     </td>
                     <td>{{ c.teacher_name || '待指派' }}</td>
-                    <td>
-                      <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
-                    </td>
-                    <td class="cell-fee">${{ sessionPrice(c) }}</td>
-                    <td class="cell-total">${{ totalPrice(c) }}</td>
                     <td class="cell-schedule">
                       <span v-if="Array.isArray(c.day_time_slots) && c.day_time_slots.length > 0">
                         {{ formatDayTimeSlots(c) }}
@@ -153,55 +158,60 @@
                       <span v-else class="hint">未排定</span>
                     </td>
                     <td>
-                      <span v-if="c.branch_name || c.room_name">
-                        {{ [c.branch_name, c.room_name].filter(Boolean).join(' － ') }}
-                      </span>
-                      <span v-else class="hint">—</span>
-                    </td>
-                    <td>
-                      <span v-if="c.payment_type === 'session'">堂數制</span>
-                      <span v-else>月結<span v-if="c.settlement_day">（每月{{ c.settlement_day }}號）</span></span>
-                    </td>
-                    <td>
                       <button
                         :class="['small', 'btn-status', paymentStatusButtonClass(c)]"
-                        title="點擊後會跳出確認視窗"
+                        title="點擊切換繳費狀態"
                         @click="togglePaymentStatus(c)"
                       >{{ paymentStatusButtonLabel(c) }}</button>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
                       {{ displayRemainingSessions(c) ?? '—' }}
                     </td>
-                    <td>
-                      <button class="small ghost btn-toggle" @click="toggleDates(c)">
-                        {{ expandedDates.has(c.id) ? '收起' : '查看' }}
-                      </button>
-                    </td>
                     <td class="cell-actions">
-                      <div class="action-btns action-btns-compact">
-                        <button class="small ghost action-main" @click="editCourse(c)">編輯</button>
-                        <button class="small ghost" @click="openPurchaseModal(c)">加購</button>
-                        <button v-if="c.status !== 'inactive'" class="small ghost" @click="toggleCoursePause(c)" title="暫停此課程，未來堂次將取消">暫停</button>
-                        <button v-else class="small primary" @click="toggleCoursePause(c)" title="恢復此課程">恢復</button>
-                        <button class="small ghost" @click="duplicateCourseForTeacher(c)" title="複製此課程並換另一位老師">換師複製</button>
-                        <button class="small danger" @click="deleteCourse(c)">刪除</button>
+                      <div class="action-btns-row">
+                        <button class="small ghost btn-toggle" @click="toggleDates(c)">
+                          {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
+                        </button>
+                        <div class="action-menu-wrapper">
+                          <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
+                          <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
+                            <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()">編輯</button>
+                            <button class="action-dropdown-item" @click="openPurchaseModal(c); closeActionMenu()">加購堂數</button>
+                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()">暫停課程</button>
+                            <button v-else class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()">恢復課程</button>
+                            <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()">換師複製</button>
+                            <hr class="action-dropdown-divider" />
+                            <button class="action-dropdown-item action-dropdown-danger" @click="deleteCourse(c); closeActionMenu()">刪除課程</button>
+                          </div>
+                        </div>
                       </div>
                     </td>
                   </tr>
-                  <tr v-if="expandedDates.has(c.id)" class="dates-row">
-                    <td colspan="12">
-                      <div class="dates-panel">
-                        <strong>上課日期（實際 {{ countNonLeaveSessions(c) }} 堂，共 {{ displaySessions(c).length }} 筆）：</strong>
-                        <span v-if="displaySessions(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
-                        <span
-                          v-for="d in displaySessions(c)"
-                          :key="`${c.id}-${d}`"
-                          :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, d)]"
-                          :title="getSessionTooltip(c, d)"
-                          @click="openSessionEdit(c, d)"
-                        >
-                          <template v-if="getSessionNumber(c, d)">第{{ getSessionNumber(c, d) }}堂 </template>{{ d }}<template v-if="getSessionStateLabel(c, d)">（{{ getSessionStateLabel(c, d) }}）</template>
-                        </span>
+                  <tr v-if="expandedDates.has(c.id)" :class="['dates-row', { 'dates-row-paused': c.status === 'inactive' }]">
+                    <td colspan="6">
+                      <div class="detail-panel">
+                        <div class="detail-meta">
+                          <span class="detail-item"><span class="detail-label">每堂</span> ${{ sessionPrice(c) }}</span>
+                          <span class="detail-item"><span class="detail-label">總費用</span> <strong>${{ totalPrice(c) }}</strong></span>
+                          <span class="detail-item" v-if="c.branch_name || c.room_name"><span class="detail-label">地點</span> {{ [c.branch_name, c.room_name].filter(Boolean).join(' — ') }}</span>
+                          <span class="detail-item"><span class="detail-label">繳費方式</span>
+                            <template v-if="c.payment_type === 'session'">堂數制</template>
+                            <template v-else>月結<template v-if="c.settlement_day">（每月{{ c.settlement_day }}號）</template></template>
+                          </span>
+                        </div>
+                        <div class="dates-panel">
+                          <strong>上課日期（實際 {{ countNonLeaveSessions(c) }} 堂，共 {{ displaySessions(c).length }} 筆）：</strong>
+                          <span v-if="displaySessions(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
+                          <span
+                            v-for="d in displaySessions(c)"
+                            :key="`${c.id}-${d}`"
+                            :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, d)]"
+                            :title="getSessionTooltip(c, d)"
+                            @click="openSessionEdit(c, d)"
+                          >
+                            <template v-if="getSessionNumber(c, d)">第{{ getSessionNumber(c, d) }}堂 </template>{{ d }}<template v-if="getSessionStateLabel(c, d)">（{{ getSessionStateLabel(c, d) }}）</template>
+                          </span>
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -215,6 +225,17 @@
         <div class="empty-icon">📋</div>
         <p class="empty-title">目前尚無課程資料</p>
         <p class="empty-desc">請在「學生管理」為學生建立課程，或使用上方「新增課程」快速建立課程。</p>
+      </div>
+      <div v-if="pagination.lastPage > 1" class="pagination-bar">
+        <span class="pagination-info">第 {{ (pagination.page - 1) * pagination.perPage + 1 }}–{{ Math.min(pagination.page * pagination.perPage, pagination.total) }} 筆，共 {{ pagination.total }} 筆</span>
+        <div class="pagination-controls">
+          <button class="btn-soft pagination-btn" :disabled="pagination.page <= 1" @click="goToPage(pagination.page - 1)">‹ 上一頁</button>
+          <span class="pagination-current">{{ pagination.page }} / {{ pagination.lastPage }}</span>
+          <button class="btn-soft pagination-btn" :disabled="pagination.page >= pagination.lastPage" @click="goToPage(pagination.page + 1)">下一頁 ›</button>
+        </div>
+      </div>
+      <div v-else-if="pagination.total > 0" class="pagination-bar">
+        <span class="pagination-info">共 {{ pagination.total }} 筆課程</span>
       </div>
     </div>
 
@@ -254,356 +275,108 @@
       </div>
     </div>
 
-    <!-- Purchase Sessions Modal -->
-    <div v-if="showPurchaseModal" class="modal-overlay" @click.self="showPurchaseModal = false">
-      <div class="modal course-modal" style="max-width: 420px;">
-        <h3 class="modal-title">加購堂數</h3>
-        <p class="modal-desc">
-          {{ purchaseForm.student_name }} — {{ getSubjectLabel(purchaseForm.subject) }}
-        </p>
-        <div class="form-group">
-          <label>加購堂數</label>
-          <input v-model.number="purchaseForm.sessions" type="number" min="1" step="1" />
-        </div>
-        <div class="form-group">
-          <label>新批次開始日期</label>
-          <input v-model="purchaseForm.start_date" type="date" />
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showPurchaseModal = false">取消</button>
-          <button class="primary" @click="submitPurchaseSessions">確認加購</button>
-        </div>
-      </div>
-    </div>
+    <PurchaseSessionsModal
+      :show="showPurchaseModal"
+      :form="purchaseForm"
+      @close="showPurchaseModal = false"
+      @submit="submitPurchaseSessions"
+    />
 
-    <!-- Quick Add Session Modal -->
-    <div v-if="showQuickAddSessionModal" class="modal-overlay" @click.self="showQuickAddSessionModal = false">
-      <div class="modal course-modal" style="max-width: 440px;">
-        <h3 class="modal-title">加課／補登（不增加總堂數）</h3>
-        <p class="modal-desc">
-          {{ quickAddSessionForm.student_name }} — {{ getSubjectLabel(quickAddSessionForm.subject) }}
-        </p>
-        <div class="form-group">
-          <label>上課日期</label>
-          <input v-model="quickAddSessionForm.session_date" type="date" />
-        </div>
-        <div class="form-group">
-          <label>開始時間</label>
-          <select v-model="quickAddSessionForm.start_time">
-            <option v-for="t in TIME_OPTIONS_30" :key="t" :value="t">{{ t }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>時長（分鐘）</label>
-          <input v-model.number="quickAddSessionForm.duration_minutes" type="number" min="30" step="30" />
-        </div>
-        <div class="form-group">
-          <label>備註（選填）</label>
-          <input v-model.trim="quickAddSessionForm.note" type="text" placeholder="例如：臨時加課" />
-        </div>
-        <div class="form-group">
-          <label class="hint">
-            <input v-model="quickAddSessionForm.auto_approve" type="checkbox" />
-            若該堂已下課，直接補登並扣堂
-          </label>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showQuickAddSessionModal = false">取消</button>
-          <button class="primary" @click="submitQuickAddSession">確認送出</button>
-        </div>
-      </div>
-    </div>
+    <QuickAddSessionModal
+      :show="showQuickAddSessionModal"
+      :form="quickAddSessionForm"
+      :time-options="TIME_OPTIONS_30"
+      @close="showQuickAddSessionModal = false"
+      @submit="submitQuickAddSession"
+    />
 
-    <!-- Leave Modal (請假) -->
-    <div v-if="showLeaveModal" class="modal-overlay" @click.self="showLeaveModal = false">
-      <div class="modal course-modal" style="max-width: 420px;">
-        <h3 class="modal-title">請假登記</h3>
-        <p class="modal-desc">請假不扣堂數、不需填寫評量表</p>
-        <div v-if="leaveSessionOptions.length === 0" class="form-group">
-          <p class="hint">此課程無可請假堂次（請確認開課日與排課設定）。</p>
-        </div>
-        <template v-else>
-          <div class="form-group">
-            <label>選擇要請假的堂次</label>
-            <select v-model="leaveForm.schedule_date">
-              <option value="">請選擇</option>
-              <option v-for="(opt, i) in leaveSessionOptions" :key="opt.date" :value="opt.date">
-                第{{ opt.index }}堂 {{ opt.date }}{{ opt.isRetro ? ' ⚠️ 已上課' : '' }}
-              </option>
-            </select>
-          </div>
-          <div v-if="isSelectedRetroLeave" class="retro-leave-warning" style="margin: 8px 0; padding: 10px 14px; border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.92em;">
-            <strong>補請假：</strong>此堂已點名/上課，確認後將沖回堂數並作廢該堂出缺勤與評量記錄。
-            <div class="form-group" style="margin-top: 8px;">
-              <label>補請假原因（選填）</label>
-              <input v-model="leaveForm.reason" type="text" placeholder="例：家長臨時通知" style="width: 100%;" />
-            </div>
-          </div>
-          <template v-if="leaveForm.schedule_date">
-            <div class="form-group">
-              <label>學生</label>
-              <p style="font-weight: 600;">{{ leaveForm.student_name }}</p>
-            </div>
-            <div class="form-group">
-              <label>科目</label>
-              <p>{{ getSubjectLabel(leaveForm.subject) }}</p>
-            </div>
-            <div class="form-group">
-              <label>原時段</label>
-              <p>{{ dayLabel(leaveForm.day_of_week) }} {{ leaveForm.start_time }}~{{ leaveForm.end_time }}</p>
-            </div>
-          </template>
-          <div class="actions">
-            <button class="ghost" @click="showLeaveModal = false">取消</button>
-            <button class="primary" @click="submitLeave" :disabled="!leaveForm.schedule_date">
-              {{ isSelectedRetroLeave ? '確認補請假（沖回堂數）' : '確認請假' }}
-            </button>
-          </div>
-        </template>
-      </div>
-    </div>
+    <LeaveModal
+      :show="showLeaveModal"
+      :form="leaveForm"
+      :session-options="leaveSessionOptions"
+      :is-retro-leave="isSelectedRetroLeave"
+      :day-label="dayLabel"
+      @close="showLeaveModal = false"
+      @submit="submitLeave"
+    />
 
-    <!-- Bulk Holiday Leave Modal (連假批次請假) -->
-    <div v-if="showBulkLeaveModal" class="modal-overlay" @click.self="showBulkLeaveModal = false">
-      <div class="modal course-modal" style="max-width: 460px;">
-        <h3 class="modal-title">連假批次請假</h3>
-        <p class="modal-desc">一次將該分校指定日期區間內所有課程標記請假，並自動順延補堂</p>
-        <div class="form-group">
-          <label>開始日期</label>
-          <input type="date" v-model="bulkLeaveForm.start_date" />
-        </div>
-        <div class="form-group">
-          <label>結束日期</label>
-          <input type="date" v-model="bulkLeaveForm.end_date" />
-        </div>
-        <p v-if="bulkLeaveForm.start_date && bulkLeaveForm.end_date" class="hint" style="margin-top:6px;">
-          將對「{{ bulkLeaveForm.start_date }}」至「{{ bulkLeaveForm.end_date }}」區間所有可請假堂次執行批次請假。
-        </p>
-        <div v-if="bulkLeaveResult" class="bulk-leave-result" style="margin-top:12px;padding:10px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;">
-          <p style="font-weight:600;margin-bottom:4px;">{{ bulkLeaveResult.message }}</p>
-          <p v-if="bulkLeaveResult.skipped && bulkLeaveResult.skipped.length">
-            略過原因：
-            <span v-for="(s, i) in bulkLeaveResult.skipped" :key="i" style="display:block;font-size:12px;color:#6b7280;">
-              課程 #{{ s.course_id }} {{ s.session_date }}：{{ s.reason }}
-            </span>
-          </p>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showBulkLeaveModal = false; bulkLeaveResult = null;">關閉</button>
-          <button
-            class="primary"
-            @click="submitBulkLeave"
-            :disabled="!bulkLeaveForm.start_date || !bulkLeaveForm.end_date || bulkLeaveSubmitting"
-          >{{ bulkLeaveSubmitting ? '處理中…' : '確認批次請假' }}</button>
-        </div>
-      </div>
-    </div>
+    <BulkLeaveModal
+      :show="showBulkLeaveModal"
+      :form="bulkLeaveForm"
+      :result="bulkLeaveResult"
+      :submitting="bulkLeaveSubmitting"
+      @close="showBulkLeaveModal = false; bulkLeaveResult = null"
+      @submit="submitBulkLeave"
+    />
 
-    <!-- Reschedule Modal (調課) -->
-    <div v-if="showRescheduleModal" class="modal-overlay" @click.self="showRescheduleModal = false">
-      <div class="modal course-modal" style="max-width: 420px;">
-        <h3 class="modal-title">調課</h3>
-        <p class="modal-desc">將原本的課程改到新的日期時間</p>
-        <div v-if="rescheduleSessionOptions.length === 0" class="form-group">
-          <p class="hint">此課程無可調課堂次（請確認開課日與排課設定）。</p>
-        </div>
-        <template v-else>
-          <div class="form-group">
-            <label>選擇要調動的堂次</label>
-            <select v-model="rescheduleForm.original_date">
-              <option value="">請選擇</option>
-              <option v-for="(opt, i) in rescheduleSessionOptions" :key="opt.date" :value="opt.date">
-                第{{ opt.index }}堂 {{ opt.date }} {{ rescheduleCourse ? dayLabel(dayOfWeekFromDate(opt.date)) : '' }}
-              </option>
-            </select>
-          </div>
-          <template v-if="rescheduleForm.original_date">
-            <div class="form-group">
-              <label>學生</label>
-              <p style="font-weight: 600;">{{ rescheduleForm.student_name }}</p>
-            </div>
-            <div class="form-group">
-              <label>科目</label>
-              <p>{{ getSubjectLabel(rescheduleForm.subject) }}</p>
-            </div>
-            <div class="form-group">
-              <label>原時段</label>
-              <p>{{ rescheduleForm.original_date }} {{ rescheduleForm.original_start }}~{{ rescheduleForm.original_end }}</p>
-            </div>
-            <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;" />
-            <div style="margin-bottom: 12px;">
-              <button class="small ghost btn-makeup-query" @click="fetchMakeupSlots" :disabled="makeupLoading">
-                {{ makeupLoading ? '查詢中…' : '查詢可補課時段' }}
-              </button>
-            </div>
-            <div class="form-group">
-              <label>新日期</label>
-              <input v-model="rescheduleForm.new_date" type="date" />
-            </div>
-            <div class="form-group">
-              <label>新開始時間</label>
-              <select v-model="rescheduleForm.new_start" @change="onRescheduleNewStartChange">
-                <option v-for="t in TIME_OPTIONS_30" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>預計新結束時間</label>
-              <p class="computed-end-time">{{ computeEndTime(rescheduleForm.new_start, rescheduleForm.duration_hours) || '—' }}</p>
-            </div>
-          </template>
-          <div class="actions">
-            <button class="ghost" @click="showRescheduleModal = false">取消</button>
-            <button class="primary" @click="submitReschedule" :disabled="!rescheduleForm.new_date">確認調課</button>
-          </div>
-        </template>
-      </div>
-    </div>
+    <RescheduleModal
+      :show="showRescheduleModal"
+      :form="rescheduleForm"
+      :session-options="rescheduleSessionOptions"
+      :time-options="TIME_OPTIONS_30"
+      :makeup-loading="makeupLoading"
+      :day-label="dayLabel"
+      :day-of-week-from-date="dayOfWeekFromDate"
+      :compute-end-time="computeEndTime"
+      @close="showRescheduleModal = false"
+      @submit="submitReschedule"
+      @query-makeup="fetchMakeupSlots"
+    />
 
-    <!-- Makeup Slots Modal (補課空檔查詢) -->
-    <div v-if="showMakeupSlotsModal" class="modal-overlay" @click.self="showMakeupSlotsModal = false">
-      <div class="modal course-modal" style="max-width: 520px;">
-        <h3 class="modal-title">老師可補課時段</h3>
-        <p class="modal-desc">
-          {{ rescheduleForm.student_name }} — {{ getSubjectLabel(rescheduleForm.subject) }}
-          ｜老師空檔（未來 {{ makeupDateRange }} 天）
-        </p>
-        <div class="makeup-range-bar">
-          <label>查詢範圍</label>
-          <select v-model.number="makeupDateRange" @change="fetchMakeupSlots">
-            <option :value="7">未來 7 天</option>
-            <option :value="14">未來 14 天</option>
-            <option :value="30">未來 30 天</option>
-            <option :value="60">未來 60 天</option>
-          </select>
-        </div>
-        <div v-if="makeupLoading" class="makeup-status">查詢中…</div>
-        <div v-else-if="makeupSlotsGrouped.length === 0" class="makeup-status">
-          查無可補課空檔，請嘗試放寬查詢範圍。
-        </div>
-        <div v-else class="makeup-slots-list">
-          <div v-for="group in makeupSlotsGrouped" :key="group.date" class="makeup-date-group">
-            <div class="makeup-date-header">{{ group.date }} {{ dayLabel(group.day_of_week) }}</div>
-            <div v-for="slot in group.slots" :key="slot.start_time"
-              class="makeup-slot-row" :class="{ 'slot-has-students': slot.currentStudentCount > 0 }">
-              <div class="slot-info">
-                <span class="slot-time">{{ slot.start_time }} ~ {{ slot.end_time }}</span>
-                <span class="slot-capacity" :class="slot.currentStudentCount > 0 ? 'cap-partial' : 'cap-free'">
-                  {{ slot.currentStudentCount }} / {{ slot.capacity }} 人
-                </span>
-                <span v-if="slot.existingStudents && slot.existingStudents.length" class="slot-students">
-                  {{ slot.existingStudents.join('、') }}
-                </span>
-              </div>
-              <button class="small primary" @click="selectMakeupSlot(slot)">選擇</button>
-            </div>
-          </div>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showMakeupSlotsModal = false">關閉</button>
-        </div>
-      </div>
-    </div>
+    <MakeupSlotsModal
+      :show="showMakeupSlotsModal"
+      :student-name="rescheduleForm.student_name"
+      :subject="rescheduleForm.subject"
+      :date-range="makeupDateRange"
+      :loading="makeupLoading"
+      :slots-grouped="makeupSlotsGrouped"
+      :day-label="dayLabel"
+      @close="showMakeupSlotsModal = false"
+      @select="selectMakeupSlot"
+      @update:date-range="makeupDateRange = $event"
+      @refresh="fetchMakeupSlots"
+    />
 
-    <!-- Session Edit Modal (單堂課編輯) -->
-    <div v-if="showSessionEditModal" class="modal-overlay" @click.self="closeSessionEdit">
-      <div class="modal course-modal session-edit-modal" style="max-width: 520px;">
-        <h3 class="modal-title">單堂課操作</h3>
-        <p class="modal-desc">{{ sessionEditForm.student_name }} — {{ getSubjectLabel(sessionEditForm.subject) }}</p>
-
-        <div class="session-edit-info">
-          <div class="se-row"><span class="se-label">日期</span><span>{{ sessionEditForm.session_date }}</span></div>
-          <div class="se-row"><span class="se-label">時段</span><span>{{ sessionEditForm.start_time || '—' }} ~ {{ sessionEditForm.end_time || '—' }}</span></div>
-          <div class="se-row"><span class="se-label">老師</span><span>{{ sessionEditForm.teacher_name || '—' }}</span></div>
-          <div class="se-row">
-            <span class="se-label">目前狀態</span>
-            <span :class="['se-status-badge', 'se-st-' + sessionEditForm.current_status]">{{ sessionStatusLabel(sessionEditForm.current_status) }}</span>
-          </div>
-          <div v-if="sessionEditForm.attendance_time" class="se-row"><span class="se-label">點名時間</span><span>{{ sessionEditForm.attendance_time }}</span></div>
-          <div v-if="sessionEditForm.lr_status && sessionEditForm.lr_status !== 'missing'" class="se-row"><span class="se-label">評量</span><span>{{ sessionEditForm.lr_status }}</span></div>
-        </div>
-
-        <div v-if="sessionEditMode === 'menu'" class="session-edit-actions">
-          <h4 class="se-section-title">操作</h4>
-          <div class="se-action-grid se-action-grid-compact">
-            <button v-if="canTransitionTo('scheduled')" class="se-action-btn se-btn-scheduled" @click="doStatusChange('scheduled')">改為未上</button>
-            <button v-if="canTransitionTo('leave') || canTransitionTo('leave_adjusted')" class="se-action-btn se-btn-leave" @click="canTransitionTo('leave_adjusted') ? startRetroLeave() : doStatusChange('leave')">標記請假</button>
-            <button class="se-action-btn se-btn-reschedule" @click="startSessionReschedule">調課</button>
-          </div>
-          <div v-if="secondaryStatusOptions.length" class="se-secondary-action">
-            <label>其他狀態</label>
-            <div class="se-secondary-row">
-              <select v-model="secondaryStatusSelection">
-                <option value="">請選擇</option>
-                <option v-for="opt in secondaryStatusOptions" :key="opt" :value="opt">{{ sessionStatusLabel(opt) }}</option>
-              </select>
-              <button class="small ghost" :disabled="!secondaryStatusSelection" @click="applySecondaryStatus">套用</button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="sessionEditMode === 'retro-leave'" class="session-edit-retro">
-          <h4 class="se-section-title">補請假確認</h4>
-          <div class="retro-leave-warning" style="margin: 8px 0; padding: 10px 14px; border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.92em;">
-            <strong>此堂已上課/已點名</strong>，確認後將沖回堂數並作廢該堂出缺勤與評量記錄。
-          </div>
-          <div class="form-group">
-            <label>補請假原因（選填）</label>
-            <input v-model="sessionEditForm.reason" type="text" placeholder="例：家長臨時通知" style="width: 100%;" />
-          </div>
-          <div class="actions">
-            <button class="ghost" @click="sessionEditMode = 'menu'">返回</button>
-            <button class="primary" @click="doRetroLeave" :disabled="sessionEditSubmitting">確認補請假</button>
-          </div>
-        </div>
-
-        <div v-if="sessionEditMode === 'reschedule'" class="session-edit-reschedule">
-          <h4 class="se-section-title">調課 — 選擇新時段</h4>
-          <div class="se-reschedule-grid">
-            <div class="form-group">
-              <label>新日期</label>
-              <input v-model="sessionEditForm.new_date" type="date" :min="todayYmd" />
-            </div>
-            <div class="form-group">
-              <label>新開始時間</label>
-              <select v-model="sessionEditForm.new_start">
-                <option v-for="t in TIME_OPTIONS_30" :key="t" :value="t">{{ t }}</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>預計新結束</label>
-              <p class="computed-end-time">{{ computeEndTime(sessionEditForm.new_start, sessionEditForm.duration_hours) || '—' }}</p>
-            </div>
-          </div>
-          <div style="margin: 8px 0;">
-            <button class="small ghost btn-makeup-query" @click="fetchMakeupSlotsForEdit" :disabled="makeupLoading">
-              {{ makeupLoading ? '查詢中…' : '查詢老師可補課時段' }}
-            </button>
-          </div>
-          <div class="actions">
-            <button class="ghost" @click="sessionEditMode = 'menu'">返回</button>
-            <button class="primary" @click="doSessionReschedule" :disabled="sessionEditSubmitting || !sessionEditForm.new_date">確認調課</button>
-          </div>
-        </div>
-
-        <div v-if="sessionEditMode === 'menu'" class="actions" style="margin-top: 16px; justify-content: space-between;">
-          <button class="ghost" @click="closeSessionEdit">關閉</button>
-          <button class="small ghost" @click="addSessionFromModal">+ 新增堂次</button>
-        </div>
-
-        <div v-if="sessionEditSubmitting" class="se-loading">處理中…</div>
-      </div>
-    </div>
+    <SessionEditModal
+      :show="showSessionEditModal"
+      :form="sessionEditForm"
+      :mode="sessionEditMode"
+      :submitting="sessionEditSubmitting"
+      :time-options="TIME_OPTIONS_30"
+      :today-ymd="todayYmd"
+      :makeup-loading="makeupLoading"
+      :compute-end-time="computeEndTime"
+      @close="closeSessionEdit"
+      @set-mode="sessionEditMode = $event"
+      @status-change="doStatusChange"
+      @start-retro-leave="startRetroLeave"
+      @do-retro-leave="doRetroLeave"
+      @start-reschedule="startSessionReschedule"
+      @do-reschedule="doSessionReschedule"
+      @fetch-makeup="fetchMakeupSlotsForEdit"
+      @add-session="addSessionFromModal"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
+import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
+import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
+import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
+import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
+import LeaveModal from '../components/course-management/LeaveModal.vue';
+import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
+import RescheduleModal from '../components/course-management/RescheduleModal.vue';
+import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
+import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 
 const DAY_OPTIONS = [
   { value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' },
@@ -672,10 +445,26 @@ const schedulerTeachers = computed(() => (
   })).filter((t) => Number.isFinite(t.id) && t.id > 0)
 ));
 const filters = ref({ name: '', class_type: '', teacher_id: '', course_status: '' });
+const pagination = ref({ page: 1, lastPage: 1, total: 0, perPage: 50 });
 const completedSessionDatesByCourse = ref({});
 const classSessionsByCourse = ref({});
 const effectiveSessionDatesByCourse = ref({});
 const expandedStudentGroups = ref(new Set());
+
+const {
+  expandedDates, toggleDates, sessions, getSessionNumber, countNonLeaveSessions,
+  getCourseSessionRows, getSessionRowsForDate, getSessionDisplayRow,
+  getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
+  getCourseCompletedDates, isCompletedDate, displaySessions,
+  isSessionMode, getPurchasedSessions, getRawRemainingSessions, getUsedSessions, displayRemainingSessions,
+  formatAttendanceTooltipTime, updateLocalSessionRow,
+  ensureCompletedSessionDatesLoaded, loadClassSessionsForCourses, loadEffectiveSessionDates,
+  LEAVE_STATUSES, ATTENDED_SESSION_STATUSES,
+} = useCourseSessionsDisplay({
+  classSessionsByCourse, completedSessionDatesByCourse, effectiveSessionDatesByCourse,
+  fetchClassSessionsFn: fetchClassSessions, supabase,
+  branchId: computed(() => props.branchId),
+});
 
 // Bulk Holiday Leave
 const showBulkLeaveModal = ref(false);
@@ -1005,203 +794,11 @@ const quickAddSessionForm = ref({
   subject: 'Math',
 });
 
-// Session dates expansion
-const expandedDates = ref(new Set());
-const toggleDates = (c) => {
-  const s = new Set(expandedDates.value);
-  if (s.has(c.id)) s.delete(c.id);
-  else {
-    s.add(c.id);
-    ensureCompletedSessionDatesLoaded(c).catch(() => {});
-  }
-  expandedDates.value = s;
+const activeActionMenu = ref(null);
+const toggleActionMenu = (courseId) => {
+  activeActionMenu.value = activeActionMenu.value === courseId ? null : courseId;
 };
-const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
-const sessions = (c) => {
-  const cid = String(c?.id ?? '');
-  const rows = classSessionsByCourse.value[cid];
-  if (Array.isArray(rows) && rows.length > 0) {
-    const dates = rows
-      .filter((row) => {
-        const status = String(row?.status || '').toLowerCase();
-        return status !== 'cancelled';
-      })
-      .map((row) => String(row?.session_date || '').slice(0, 10))
-      .filter(Boolean);
-    return [...new Set(dates)].sort();
-  }
-  const effective = effectiveSessionDatesByCourse.value[cid];
-  if (Array.isArray(effective)) {
-    return [...new Set(effective.map((d) => String(d || '').slice(0, 10)).filter(Boolean))].sort();
-  }
-  return [];
-};
-const getSessionNumber = (course, dateYmd) => {
-  const allDates = sessions(course);
-  let num = 0;
-  for (const d of allDates) {
-    const state = getSessionState(course, d);
-    const isLeave = state && LEAVE_STATUSES.has(state.className);
-    if (d === dateYmd) {
-      return isLeave ? null : num + 1;
-    }
-    if (!isLeave) num++;
-  }
-  return null;
-};
-const countNonLeaveSessions = (course) => {
-  const allDates = sessions(course);
-  let count = 0;
-  for (const d of allDates) {
-    const state = getSessionState(course, d);
-    if (!state || !LEAVE_STATUSES.has(state.className)) count++;
-  }
-  return count;
-};
-const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
-const getCourseSessionRows = (course) => {
-  const key = String(course?.id ?? '');
-  const rows = classSessionsByCourse.value[key];
-  return Array.isArray(rows) ? rows : [];
-};
-const getSessionRowsForDate = (course, dateYmd) => {
-  const target = String(dateYmd || '').slice(0, 10);
-  if (!target) return [];
-  return getCourseSessionRows(course).filter((row) => String(row?.session_date || '').slice(0, 10) === target);
-};
-const formatAttendanceTooltipTime = (value) => {
-  if (!value) return '';
-  const text = String(value);
-  if (text.includes('T')) {
-    const d = new Date(text);
-    if (!Number.isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mm = String(d.getMinutes()).padStart(2, '0');
-      return `${y}-${m}-${day} ${hh}:${mm}`;
-    }
-  }
-  return text.replace('T', ' ').slice(0, 16);
-};
-const getSessionDisplayRow = (course, dateYmd) => {
-  const rows = getSessionRowsForDate(course, dateYmd);
-  if (!rows.length) return null;
-  const priority = ['completed', 'attended', 'late', 'excused', 'absent', 'leave_adjusted', 'leave', 'cancelled', 'scheduled'];
-  const sorted = [...rows].sort((a, b) => {
-    const aStatus = String(a?.status || '').toLowerCase();
-    const bStatus = String(b?.status || '').toLowerCase();
-    return priority.indexOf(aStatus) - priority.indexOf(bStatus);
-  });
-  return sorted[0] || null;
-};
-const resolveRecordedByLabel = (row) => {
-  const memo = String(row?.attendance_memo || '').toLowerCase();
-  if (memo === 'swipe' || memo === 'swipe-rfid') return 'RFID 刷卡';
-  if (memo === 'manual-match') return row?.recorded_by_name || '人工配對';
-  return row?.recorded_by_name || row?.teacher_name || '';
-};
-const getSessionState = (course, dateYmd) => {
-  const rows = getSessionRowsForDate(course, dateYmd);
-  if (!rows.length) {
-    return isCompletedDate(course, dateYmd) ? { label: '已上', className: 'completed' } : null;
-  }
-
-  const statuses = new Set(rows.map((row) => String(row?.status || '').toLowerCase()).filter(Boolean));
-
-  if (statuses.has('leave_adjusted')) {
-    return { label: '補請假', className: 'leave' };
-  }
-  if (statuses.has('excused') || statuses.has('leave')) {
-    return { label: '請假', className: 'leave' };
-  }
-  if (statuses.has('cancelled')) {
-    return { label: '取消', className: 'cancelled' };
-  }
-  if (statuses.has('absent')) {
-    return { label: '缺席', className: 'absent' };
-  }
-
-  if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) {
-    return { label: '已上', className: 'completed' };
-  }
-  if (rows.some((row) => String(row?.learning_record_status || '').toLowerCase() === 'approved')) {
-    return { label: '已上', className: 'completed' };
-  }
-  return null;
-};
-const getCourseCompletedDates = (course) => {
-  const key = String(course?.id ?? '');
-  const rows = getCourseSessionRows(course);
-  if (Array.isArray(rows) && rows.length > 0) {
-    const dates = rows
-      .filter((row) => {
-        const learningRecordStatus = String(row?.learning_record_status || '').toLowerCase();
-        const sessionStatus = String(row?.status || '').toLowerCase();
-        return learningRecordStatus === 'approved' || ATTENDED_SESSION_STATUSES.has(sessionStatus);
-      })
-      .map((row) => String(row?.session_date || '').slice(0, 10))
-      .filter(Boolean);
-    return [...new Set(dates)].sort();
-  }
-  const dates = completedSessionDatesByCourse.value[key];
-  return Array.isArray(dates) ? dates : [];
-};
-const isCompletedDate = (course, dateYmd) => getCourseCompletedDates(course).includes(String(dateYmd || ''));
-const getSessionStateLabel = (course, dateYmd) => getSessionState(course, dateYmd)?.label || '';
-const getSessionStateClass = (course, dateYmd) => getSessionState(course, dateYmd)?.className || '';
-const getSessionTooltip = (course, dateYmd) => {
-  const row = getSessionDisplayRow(course, dateYmd);
-  const stateLabel = getSessionStateLabel(course, dateYmd) || '未上';
-  if (!row) return `狀態：${stateLabel}`;
-
-  const lines = [
-    `狀態：${stateLabel}`,
-    `時段：${String(row?.start_time || '').slice(0, 5)}-${String(row?.end_time || '').slice(0, 5)}`,
-  ];
-
-  const attendanceTime = formatAttendanceTooltipTime(row?.attendance_sign_in_at);
-  if (attendanceTime) {
-    lines.push(`點名時間：${attendanceTime}`);
-  }
-
-  const recordedBy = resolveRecordedByLabel(row);
-  if (recordedBy) {
-    lines.push(`點名人：${recordedBy}`);
-  }
-
-  if (!attendanceTime && !recordedBy && row?.teacher_name) {
-    lines.push(`授課老師：${row.teacher_name}`);
-  }
-
-  return lines.join('\n');
-};
-const displaySessions = (course) => sessions(course);
-const isSessionMode = (course) => {
-  const paymentType = String(course?.payment_type || '').trim();
-  if (paymentType) return paymentType === 'session';
-  return Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) > 0;
-};
-const getPurchasedSessions = (course) => Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
-const getRawRemainingSessions = (course) => {
-  const v = course?.remaining_sessions ?? course?.RemainingSessions;
-  return Number.isFinite(Number(v)) ? Number(v) : null;
-};
-const getUsedSessions = (course) => {
-  const purchased = getPurchasedSessions(course);
-  const remaining = getRawRemainingSessions(course);
-  if (remaining != null) return Math.max(0, purchased - remaining);
-  const used = course?.sessions_used ?? course?.UsedSessions;
-  if (Number.isFinite(Number(used))) return Math.max(0, Number(used));
-  return Math.max(0, getCourseCompletedDates(course).length);
-};
-const displayRemainingSessions = (course) => {
-  if (!isSessionMode(course)) return null;
-  const purchased = getPurchasedSessions(course);
-  const used = Math.min(purchased, getUsedSessions(course));
-  return Math.max(0, purchased - used);
-};
+const closeActionMenu = () => { activeActionMenu.value = null; };
 
 const localTodayYmd = () => {
   const d = new Date();
@@ -1391,457 +988,6 @@ async function submitQuickAddSession() {
     alert('加課失敗：' + (e?.message || '請稍後再試'));
   }
 }
-async function ensureCompletedSessionDatesLoaded(course) {
-  const cid = String(course?.id ?? '');
-  if (!cid || completedSessionDatesByCourse.value[cid]) return;
-
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) return;
-
-    const { byClass } = await fetchClassSessions({
-      token,
-      branchId: props.branchId,
-      studentClassId: cid,
-      perPage: 2000,
-    });
-    const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
-    classSessionsByCourse.value = {
-      ...classSessionsByCourse.value,
-      [cid]: rows,
-    };
-    const dates = [...new Set(rows
-      .filter((row) => String(row?.learning_record_status || '') === 'approved')
-      .map((row) => String(row?.session_date || '').slice(0, 10))
-      .filter(Boolean))].sort();
-
-    completedSessionDatesByCourse.value = {
-      ...completedSessionDatesByCourse.value,
-      [cid]: dates,
-    };
-  } catch (_) {
-    // ignore completed-date fetch failures
-  }
-}
-
-async function loadClassSessionsForCourses(courseRows = [], token = '') {
-  const ids = (courseRows || []).map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
-  if (!props.branchId || ids.length === 0 || !token) {
-    classSessionsByCourse.value = {};
-    return;
-  }
-  try {
-    const { byClass } = await fetchClassSessions({
-      token,
-      branchId: props.branchId,
-      studentClassIds: ids,
-      perPage: 2000,
-    });
-    classSessionsByCourse.value = byClass || {};
-  } catch (_) {
-    classSessionsByCourse.value = {};
-  }
-}
-
-async function loadEffectiveSessionDates(courseRows = [], token = '') {
-  const rows = Array.isArray(courseRows) ? courseRows : [];
-  if (!props.branchId || rows.length === 0 || !token) {
-    effectiveSessionDatesByCourse.value = {};
-    return;
-  }
-
-  const payloadCourses = rows
-    .map((c) => ({
-      id: Number(c?.id || c?.ID || 0),
-      first_class_date: c?.first_class_date || null,
-      sessions_purchased: Number(c?.sessions_purchased ?? c?.SessionCount ?? 0) || 0,
-      days_of_week: Array.isArray(c?.days_of_week) && c.days_of_week.length
-        ? c.days_of_week.map((d) => Number(d)).filter((d) => d >= 1 && d <= 7)
-        : ((Number(c?.day_of_week || 0) >= 1 && Number(c?.day_of_week || 0) <= 7)
-          ? [Number(c.day_of_week)]
-          : []),
-    }))
-    .filter((c) => c.id > 0);
-
-  if (payloadCourses.length === 0) {
-    effectiveSessionDatesByCourse.value = {};
-    return;
-  }
-
-  try {
-    const params = new URLSearchParams({ branch_id: String(props.branchId) });
-    const res = await fetch(`/api/v1/student-classes/session-dates?${params.toString()}`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        branch_id: Number(props.branchId),
-        courses: payloadCourses,
-      }),
-    });
-    if (!res.ok) return;
-    const json = await res.json().catch(() => ({}));
-    const mapped = {};
-    Object.keys(json || {}).forEach((key) => {
-      const list = Array.isArray(json[key]) ? json[key] : [];
-      mapped[String(key)] = [...new Set(list.map((d) => String(d || '').slice(0, 10)).filter(Boolean))].sort();
-    });
-    effectiveSessionDatesByCourse.value = mapped;
-  } catch (_) {
-    // ignore and fall back to classSessionsByCourse
-  }
-}
-
-// ----- Session Edit Modal (單堂課編輯) -----
-const showSessionEditModal = ref(false);
-const sessionEditMode = ref('menu'); // 'menu' | 'retro-leave' | 'reschedule'
-const sessionEditSubmitting = ref(false);
-const sessionEditForm = ref({
-  session_id: null,
-  student_class_id: null,
-  session_date: '',
-  start_time: '',
-  end_time: '',
-  current_status: '',
-  student_name: '',
-  teacher_name: '',
-  subject: '',
-  attendance_time: '',
-  lr_status: '',
-  course: null,
-  reason: '',
-  new_date: '',
-  new_start: '16:00',
-  duration_hours: 2,
-});
-
-const SESSION_STATUS_TRANSITIONS = {
-  scheduled:      ['attended', 'late', 'absent', 'excused', 'leave', 'cancelled'],
-  attended:       ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-  completed:      ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-  late:           ['leave', 'leave_adjusted', 'scheduled', 'attended', 'absent', 'excused', 'cancelled'],
-  absent:         ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'excused', 'cancelled'],
-  excused:        ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'absent', 'cancelled'],
-  leave:          ['scheduled', 'cancelled'],
-  leave_adjusted: ['cancelled'],
-  cancelled:      ['scheduled'],
-};
-
-const SESSION_STATUS_LABELS = {
-  scheduled: '排課中', attended: '已上', completed: '已上', late: '遲到', absent: '缺席',
-  excused: '請假', leave: '請假', leave_adjusted: '請假',
-  cancelled: '已取消',
-};
-
-function sessionStatusLabel(status) {
-  return SESSION_STATUS_LABELS[status] || status || '—';
-}
-
-function canTransitionTo(target) {
-  const current = sessionEditForm.value.current_status || '';
-  const allowed = SESSION_STATUS_TRANSITIONS[current] || [];
-  return allowed.includes(target);
-}
-
-const secondaryStatusSelection = ref('');
-const secondaryStatusOptions = computed(() => {
-  const current = sessionEditForm.value.current_status || '';
-  const allowed = SESSION_STATUS_TRANSITIONS[current] || [];
-  const hiddenPrimary = new Set(['scheduled', 'leave', 'leave_adjusted']);
-  return allowed.filter((s) => !hiddenPrimary.has(s));
-});
-
-function applySecondaryStatus() {
-  if (!secondaryStatusSelection.value) return;
-  const next = secondaryStatusSelection.value;
-  secondaryStatusSelection.value = '';
-  doStatusChange(next);
-}
-
-function openSessionEdit(course, dateYmd) {
-  const row = getSessionDisplayRow(course, dateYmd);
-  if (!row) return;
-  sessionEditForm.value = {
-    session_id: row.id,
-    student_class_id: row.student_class_id || course.id,
-    session_date: dateYmd,
-    start_time: row.start_time || '',
-    end_time: row.end_time || '',
-    current_status: String(row.status || '').toLowerCase(),
-    student_name: course.student_name || row.student_name || '—',
-    teacher_name: course.teacher_name || row.teacher_name || '—',
-    subject: course.subject || '',
-    attendance_time: formatAttendanceTooltipTime(row.attendance_sign_in_at) || '',
-    lr_status: row.learning_record_status || '',
-    course,
-    reason: '',
-    new_date: '',
-    new_start: row.start_time || '16:00',
-    duration_hours: course.duration_hours ?? 2,
-  };
-  sessionEditMode.value = 'menu';
-  secondaryStatusSelection.value = '';
-  sessionEditSubmitting.value = false;
-  showSessionEditModal.value = true;
-}
-
-async function openSessionEditFromAction(course) {
-  await ensureCompletedSessionDatesLoaded(course);
-  const dates = displaySessions(course);
-  if (!Array.isArray(dates) || dates.length === 0) {
-    alert('此課程目前沒有可操作的上課日期。');
-    return;
-  }
-  // Prefer nearest upcoming session; fallback to first.
-  const today = todayYmd.value;
-  const upcoming = dates.find((d) => String(d) >= today);
-  openSessionEdit(course, upcoming || dates[0]);
-}
-
-function closeSessionEdit() {
-  showSessionEditModal.value = false;
-  sessionEditMode.value = 'menu';
-}
-
-function addSessionFromModal() {
-  const course = sessionEditForm.value?.course;
-  if (course) {
-    closeSessionEdit();
-    openQuickAddSessionModal(course);
-  }
-}
-
-async function doStatusChange(newStatus) {
-  const form = sessionEditForm.value;
-  if (!form.session_id) return;
-  if (!confirm(`確定要將此堂狀態改為「${sessionStatusLabel(newStatus)}」嗎？`)) return;
-
-  sessionEditSubmitting.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-
-    const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ status: newStatus, reason: form.reason || '' }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert('狀態更新失敗：' + (json.message || res.statusText));
-      return;
-    }
-    if (json.session) {
-      updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
-    }
-    closeSessionEdit();
-    alert(json.message || '狀態已更新');
-    await loadCourses();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    sessionEditSubmitting.value = false;
-  }
-}
-
-function startRetroLeave() {
-  sessionEditMode.value = 'retro-leave';
-}
-
-async function doRetroLeave() {
-  const form = sessionEditForm.value;
-  if (!form.session_id) return;
-  if (!confirm('此堂已上課/已點名，確認要執行補請假嗎？\n（將沖回堂數、作廢出缺勤與評量記錄）')) return;
-
-  sessionEditSubmitting.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-
-    const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
-      method: 'PATCH',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ status: 'leave_adjusted', reason: form.reason || '' }),
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      alert('補請假失敗：' + (json.message || res.statusText));
-      return;
-    }
-    if (json.session) {
-      updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
-    }
-    closeSessionEdit();
-    alert(json.message || '補請假完成');
-    await loadCourses();
-  } catch (e) {
-    alert('操作失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    sessionEditSubmitting.value = false;
-  }
-}
-
-function startSessionReschedule() {
-  sessionEditMode.value = 'reschedule';
-  sessionEditForm.value.new_date = '';
-  sessionEditForm.value.new_start = sessionEditForm.value.start_time || '16:00';
-}
-
-async function fetchMakeupSlotsForEdit() {
-  const form = sessionEditForm.value;
-  if (!form.course) return;
-  rescheduleCourse.value = form.course;
-  rescheduleForm.value = {
-    ...rescheduleForm.value,
-    student_id: form.course.student_id,
-    student_name: form.student_name,
-    subject: form.subject,
-    teacher_id: form.course.teacher_id,
-    class_type: form.course.class_type || 'one_on_one',
-    duration_hours: form.duration_hours,
-    course_id: form.student_class_id || form.course.id,
-    original_date: form.session_date,
-    original_start: form.start_time,
-    original_end: form.end_time,
-  };
-  await fetchMakeupSlots();
-}
-
-async function doSessionReschedule() {
-  const form = sessionEditForm.value;
-  if (!form.new_date || !form.session_id) return;
-  if (!confirm(`確定要將 ${form.session_date} 的課程調到 ${form.new_date} ${form.new_start} 嗎？`)) return;
-
-  sessionEditSubmitting.value = true;
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (!token) { alert('請重新登入'); return; }
-
-    const branchId = Number(props.branchId) || 0;
-    const course = form.course;
-    const newEnd = computeEndTime(form.new_start, form.duration_hours);
-    const newDayOfWeek = dayOfWeekFromDate(form.new_date);
-
-    const payload1 = {
-      student_id: course.student_id,
-      teacher_id: course.teacher_id || null,
-      subject: form.subject,
-      day_of_week: dayOfWeekFromDate(form.session_date),
-      start_time: form.start_time,
-      end_time: form.end_time,
-      duration_hours: form.duration_hours,
-      class_type: course.class_type || 'one_on_one',
-      status: 'rescheduled',
-      type: 'normal',
-      deduction: 0,
-      branch_id: branchId,
-      student_course_id: form.student_class_id || course.id,
-      schedule_date: form.session_date,
-    };
-    const payload2 = (originalId) => ({
-      student_id: course.student_id,
-      teacher_id: course.teacher_id || null,
-      subject: form.subject,
-      day_of_week: newDayOfWeek,
-      start_time: normalizeTo30Min(form.new_start),
-      end_time: newEnd,
-      duration_hours: form.duration_hours,
-      class_type: course.class_type || 'one_on_one',
-      status: 'scheduled',
-      type: 'normal',
-      deduction: 1,
-      branch_id: branchId,
-      schedule_date: form.new_date,
-      original_schedule_id: originalId,
-      student_course_id: form.student_class_id || course.id,
-    });
-
-    let originalId = null;
-    const existingRes = await fetch(
-      `/api/v1/schedules?branch_id=${branchId}&student_course_id=${form.student_class_id || course.id}&schedule_date=${form.session_date}&status=rescheduled&__limit=1`,
-      { credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }
-    );
-    if (existingRes.ok) {
-      const existingList = await existingRes.json();
-      const arr = Array.isArray(existingList) ? existingList : existingList?.data ?? [];
-      if (arr.length > 0 && arr[0].id) originalId = arr[0].id;
-    }
-    if (originalId == null) {
-      const r1 = await fetch('/api/v1/schedules', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload1),
-      });
-      if (!r1.ok) {
-        const err = await r1.json().catch(() => ({}));
-        alert('調課失敗：' + (err.message || '無法寫入原堂次紀錄'));
-        return;
-      }
-      const created = await r1.json();
-      originalId = created?.id ?? null;
-    }
-    const r2 = await fetch('/api/v1/schedules', {
-      method: 'POST', credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify(payload2(originalId)),
-    });
-    if (!r2.ok) {
-      const err = await r2.json().catch(() => ({}));
-      alert('調課失敗：' + (err.message || '無法寫入新堂次'));
-      return;
-    }
-    if (form.student_class_id || course.id) {
-      await fetch('/api/v1/learning-records/reschedule-session', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          student_class_id: form.student_class_id || course.id,
-          old_date: form.session_date,
-          new_date: form.new_date,
-          start_time: normalizeTo30Min(form.new_start),
-          end_time: newEnd,
-        }),
-      }).catch(() => {});
-    }
-
-    closeSessionEdit();
-    alert('調課完成');
-    await loadCourses();
-  } catch (e) {
-    alert('調課失敗：' + (e?.message || '請稍後再試'));
-  } finally {
-    sessionEditSubmitting.value = false;
-  }
-}
-
-function updateLocalSessionRow(courseId, sessionData) {
-  const key = String(courseId || '');
-  if (!key) return;
-  const rows = classSessionsByCourse.value[key];
-  if (!Array.isArray(rows)) return;
-  const idx = rows.findIndex((r) => r.id === sessionData.id);
-  if (idx >= 0) {
-    const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
-    const updated = { ...rows[idx], status: sessionData.status, start_time: sessionData.start_time, end_time: sessionData.end_time };
-    if (leaveStatuses.has(sessionData.status)) {
-      updated.learning_record_status = null;
-      updated.attendance_sign_in_at = null;
-    }
-    rows[idx] = updated;
-    classSessionsByCourse.value = { ...classSessionsByCourse.value, [key]: [...rows] };
-  }
-}
-
 // ----- Leave (請假) -----
 const showLeaveModal = ref(false);
 const leaveCourse = ref(null);
@@ -2041,413 +1187,18 @@ async function submitBulkLeave() {
   }
 }
 
-const showRescheduleModal = ref(false);
-const rescheduleCourse = ref(null);
-const rescheduleForm = ref({
-  student_id: '', student_name: '', subject: '', teacher_id: '', class_type: 'one_on_one',
-  duration_hours: 2, course_id: null,
-  original_date: '', original_day: 1, original_start: '', original_end: '',
-  new_date: '', new_start: '16:00'
-});
-const rescheduleSessionOptions = computed(() => {
-  const c = rescheduleCourse.value;
-  if (!c) return [];
-  const cid = String(c?.id ?? '');
-  const rows = classSessionsByCourse.value[cid];
-  if (Array.isArray(rows) && rows.length > 0) {
-    const options = [];
-    const seenDates = new Set();
-    rows.forEach((row, idx) => {
-      const status = String(row?.status || '').toLowerCase();
-      if (['completed', 'attended', 'late', 'excused', 'absent', 'cancelled', 'leave', 'leave_adjusted'].includes(status)) return;
-      const date = String(row?.session_date || '').slice(0, 10);
-      if (!date || seenDates.has(date)) return;
-      seenDates.add(date);
-      options.push({ date, index: idx + 1 });
-    });
-    return options;
-  }
-  const list = sessions(c);
-  return list.map((date, i) => ({ date, index: i + 1 }));
-});
-async function openReschedule(c) {
-  await ensureCompletedSessionDatesLoaded(c);
-  const list = sessions(c);
-  if (!list || list.length === 0) {
-    alert('此課程無可調課堂次（請確認開課日與排課設定）。');
-    return;
-  }
-  rescheduleCourse.value = c;
-  const first = list[0];
-  rescheduleForm.value = {
-    student_id: c.student_id,
-    student_name: c.student_name || '—',
-    subject: c.subject,
-    teacher_id: c.teacher_id || null,
-    class_type: c.class_type || 'one_on_one',
-    duration_hours: c.duration_hours ?? 2,
-    course_id: c.id,
-    original_date: first,
-    original_day: dayOfWeekFromDate(first),
-    original_start: c.start_time || '16:00',
-    original_end: c.end_time || computeEndTime(c.start_time || '16:00', c.duration_hours ?? 2),
-    new_date: '',
-    new_start: normalizeTo30Min(c.start_time || '16:00')
-  };
-  showRescheduleModal.value = true;
-}
 watch(() => leaveForm.value.schedule_date, (date) => {
   if (!date) return;
   leaveForm.value.day_of_week = dayOfWeekFromDate(date);
 });
-watch(() => rescheduleForm.value.original_date, (date) => {
-  if (!date) return;
-  rescheduleForm.value.original_day = dayOfWeekFromDate(date);
-});
-function onRescheduleNewStartChange() {
-  // optional: sync end time display; computed already handles it
-}
-async function submitReschedule() {
-  const form = rescheduleForm.value;
-  if (!form.new_date) return;
-  const branchId = Number(props.branchId) || 0;
-  if (!branchId) { alert('請先選擇分校'); return; }
-  const newEnd = computeEndTime(form.new_start, form.duration_hours);
-  const newDayOfWeek = dayOfWeekFromDate(form.new_date);
-
-  const payload1 = {
-    student_id: form.student_id,
-    teacher_id: form.teacher_id || null,
-    subject: form.subject,
-    day_of_week: form.original_day,
-    start_time: form.original_start,
-    end_time: form.original_end,
-    duration_hours: form.duration_hours,
-    class_type: form.class_type,
-    status: 'rescheduled',
-    type: 'normal',
-    deduction: 0,
-    branch_id: branchId,
-    student_course_id: form.course_id,
-    schedule_date: form.original_date
-  };
-
-  const payload2 = (originalId) => ({
-    student_id: form.student_id,
-    teacher_id: form.teacher_id || null,
-    subject: form.subject,
-    day_of_week: newDayOfWeek,
-    start_time: normalizeTo30Min(form.new_start),
-    end_time: newEnd,
-    duration_hours: form.duration_hours,
-    class_type: form.class_type,
-    status: 'scheduled',
-    type: 'normal',
-    deduction: 1,
-    branch_id: branchId,
-    schedule_date: form.new_date,
-    original_schedule_id: originalId,
-    student_course_id: form.course_id
-  });
-
-  // 優先使用 Laravel API
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token) {
-      let originalId = null;
-      const existingRes = await fetch(
-        `/api/v1/schedules?branch_id=${branchId}&student_course_id=${form.course_id}&schedule_date=${form.original_date}&status=rescheduled&__limit=1`,
-        { credentials: 'include', headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` } }
-      );
-      if (existingRes.ok) {
-        const existingList = await existingRes.json();
-        const arr = Array.isArray(existingList) ? existingList : existingList?.data ?? [];
-        if (arr.length > 0 && arr[0].id) originalId = arr[0].id;
-      }
-      if (originalId == null) {
-        const r1 = await fetch('/api/v1/schedules', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify(payload1)
-        });
-        if (!r1.ok) {
-          const err = await r1.json().catch(() => ({}));
-          alert('調課失敗：' + (err.message || '無法寫入原堂次紀錄'));
-          return;
-        }
-        const created = await r1.json();
-        originalId = created?.id ?? null;
-      }
-      const r2 = await fetch('/api/v1/schedules', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(payload2(originalId))
-      });
-      if (!r2.ok) {
-        const err = await r2.json().catch(() => ({}));
-        alert('調課失敗：' + (err.message || '無法寫入新堂次'));
-        return;
-      }
-      if (form.course_id) {
-        await fetch('/api/v1/learning-records/reschedule-session', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({
-            student_class_id: form.course_id,
-            old_date: form.original_date || null,
-            new_date: form.new_date,
-            start_time: normalizeTo30Min(form.new_start),
-            end_time: newEnd
-          })
-        }).catch(() => {});
-      }
-      showRescheduleModal.value = false;
-      rescheduleCourse.value = null;
-      alert('調課完成');
-      loadCourses();
-      return;
-    }
-  } catch (_) { /* fallback to Supabase */ }
-
-  let originalId = null;
-  const { data: existing } = await supabase
-    .from('schedules')
-    .select('id')
-    .eq('student_course_id', form.course_id)
-    .eq('schedule_date', form.original_date)
-    .eq('status', 'rescheduled')
-    .maybeSingle();
-  if (existing?.id) {
-    originalId = existing.id;
-  } else {
-    const { data: ins, error: e1 } = await supabase.from('schedules').insert([payload1]).select('id').single();
-    if (e1) {
-      alert('調課失敗：' + (e1.message || '無法寫入原堂次紀錄'));
-      return;
-    }
-    originalId = ins?.id ?? null;
-  }
-  const { error: e2 } = await supabase.from('schedules').insert([payload2(originalId)]);
-  if (e2) {
-    alert('調課失敗：' + (e2.message || '無法寫入新堂次'));
-    return;
-  }
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token && form.course_id) {
-      await fetch('/api/v1/learning-records/reschedule-session', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          student_class_id: form.course_id,
-          old_date: form.original_date || null,
-          new_date: form.new_date,
-          start_time: normalizeTo30Min(form.new_start),
-          end_time: newEnd
-        })
-      }).catch(() => {});
-    }
-  } catch (_) {}
-  showRescheduleModal.value = false;
-  rescheduleCourse.value = null;
-  alert('調課完成');
-  loadCourses();
-}
-
-// ----- Makeup Slots (補課空檔查詢) -----
-const showMakeupSlotsModal = ref(false);
-const makeupLoading = ref(false);
-const makeupDateRange = ref(30);
-const availableMakeupSlots = ref([]);
-
-function timeToSlotIndex(timeStr) {
-  const [h, m] = (timeStr || '00:00').split(':').map(Number);
-  return h * 2 + Math.floor((m || 0) / 30);
-}
-function slotIndexToTime(idx) {
-  const h = Math.floor(idx / 2);
-  const m = (idx % 2) * 30;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-const makeupSlotsGrouped = computed(() => {
-  const map = {};
-  for (const s of availableMakeupSlots.value) {
-    if (!map[s.date]) map[s.date] = { date: s.date, day_of_week: s.day_of_week, slots: [] };
-    map[s.date].slots.push(s);
-  }
-  return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
-});
-
-async function fetchMakeupSlots() {
-  const form = rescheduleForm.value;
-  if (!form.teacher_id) { alert('此課程未指定老師，無法查詢空檔'); return; }
-  const branchId = Number(props.branchId) || 0;
-  if (!branchId) { alert('請先選擇分校'); return; }
-
-  makeupLoading.value = true;
-  showMakeupSlotsModal.value = true;
-  availableMakeupSlots.value = [];
-
-  const now = new Date();
-  now.setHours(12, 0, 0, 0);
-  const startDate = new Date(now.getTime() + 86400000).toISOString().slice(0, 10);
-  const endDate = new Date(now.getTime() + makeupDateRange.value * 86400000).toISOString().slice(0, 10);
-
-  let teacherCourses = [];
-  let schedExceptions = [];
-
-  try {
-    const { data: { session: sess } } = await supabase.auth.getSession();
-    const token = sess?.access_token;
-    if (token) {
-      const [cRes, sRes] = await Promise.all([
-        fetch(`/api/v1/student-classes?${new URLSearchParams({
-          branch_id: String(branchId), teacher_id: String(form.teacher_id), per_page: '1000'
-        })}`, {
-          credentials: 'include',
-          headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-        }),
-        fetch(`/api/v1/schedules?${new URLSearchParams({
-          branch_id: String(branchId), teacher_id: String(form.teacher_id), per_page: '1000'
-        })}`, {
-          credentials: 'include',
-          headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
-        })
-      ]);
-      if (cRes.ok) {
-        const j = await cRes.json();
-        const a = Array.isArray(j) ? j : (j?.data ?? []);
-        teacherCourses = Array.isArray(a) ? a : [];
-      }
-      if (sRes.ok) {
-        const j = await sRes.json();
-        const a = Array.isArray(j) ? j : (j?.data ?? []);
-        schedExceptions = Array.isArray(a) ? a : [];
-      }
-    }
-  } catch (_) {}
-
-  if (teacherCourses.length === 0) {
-    const { data } = await supabase.from('student-classes').select('*')
-      .eq('branch_id', branchId).eq('teacher_id', form.teacher_id);
-    teacherCourses = data || [];
-  }
-  if (schedExceptions.length === 0) {
-    const { data } = await supabase.from('schedules').select('*')
-      .eq('teacher_id', form.teacher_id).eq('branch_id', branchId);
-    schedExceptions = data || [];
-  }
-
-  const leaveSet = new Set();
-  const reschFromSet = new Set();
-  const reschToList = [];
-  for (const ex of schedExceptions) {
-    const d = ex.schedule_date ? String(ex.schedule_date).slice(0, 10) : '';
-    const cid = String(ex.student_course_id || '');
-    if (ex.status === 'leave') leaveSet.add(`${cid}_${d}`);
-    else if (ex.status === 'rescheduled') reschFromSet.add(`${cid}_${d}`);
-    else if (ex.status === 'scheduled' && ex.original_schedule_id) reschToList.push(ex);
-  }
-
-  const maxStudentsPerSlot = getCapacityForClassType(form.class_type || 'one_on_one');
-
-  const occMap = {};
-  const slotStudentsMap = {};
-
-  function markOcc(date, st, et, studentName) {
-    if (!st || !et) return;
-    if (!occMap[date]) occMap[date] = {};
-    if (!slotStudentsMap[date]) slotStudentsMap[date] = {};
-    const s = timeToSlotIndex(st), e = timeToSlotIndex(et);
-    for (let i = s; i < e; i++) {
-      occMap[date][i] = (occMap[date][i] || 0) + 1;
-      if (studentName) {
-        if (!slotStudentsMap[date][i]) slotStudentsMap[date][i] = [];
-        slotStudentsMap[date][i].push(studentName);
-      }
-    }
-  }
-
-  const dEnd = new Date(endDate + 'T12:00:00');
-  let cursor = new Date(startDate + 'T12:00:00');
-  while (cursor <= dEnd) {
-    const ymd = cursor.toISOString().slice(0, 10);
-    const dow = cursor.getDay() === 0 ? 7 : cursor.getDay();
-    for (const c of teacherCourses) {
-      const cDays = Array.isArray(c.days_of_week) && c.days_of_week.length
-        ? c.days_of_week.map(Number) : (c.day_of_week ? [Number(c.day_of_week)] : []);
-      if (!cDays.includes(dow)) continue;
-      const cid = String(c.id || '');
-      if (leaveSet.has(`${cid}_${ymd}`) || reschFromSet.has(`${cid}_${ymd}`)) continue;
-      const fcd = c.first_class_date ? String(c.first_class_date).slice(0, 10) : null;
-      if (fcd && ymd < fcd) continue;
-      const st = c.start_time || '16:00';
-      markOcc(ymd, st, c.end_time || computeEndTime(st, c.duration_hours || 2), c.student_name || '');
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  for (const ex of reschToList) {
-    const d = ex.schedule_date ? String(ex.schedule_date).slice(0, 10) : '';
-    if (d >= startDate && d <= endDate) markOcc(d, ex.start_time, ex.end_time, ex.student_name || '');
-  }
-
-  const durSlots = Math.ceil((form.duration_hours || 2) * 2);
-  const tStart = timeToSlotIndex('09:00');
-  const tEnd = timeToSlotIndex('21:00');
-  const result = [];
-
-  cursor = new Date(startDate + 'T12:00:00');
-  while (cursor <= dEnd) {
-    const ymd = cursor.toISOString().slice(0, 10);
-    const dow = cursor.getDay() === 0 ? 7 : cursor.getDay();
-    const occ = occMap[ymd] || {};
-    const stuMap = slotStudentsMap[ymd] || {};
-    for (let i = tStart; i <= tEnd - durSlots; i++) {
-      let available = true;
-      let maxOcc = 0;
-      for (let j = 0; j < durSlots; j++) {
-        const cnt = occ[i + j] || 0;
-        if (cnt >= maxStudentsPerSlot) { available = false; break; }
-        if (cnt > maxOcc) maxOcc = cnt;
-      }
-      if (available) {
-        const studentsSet = new Set();
-        for (let j = 0; j < durSlots; j++) {
-          for (const name of (stuMap[i + j] || [])) { if (name) studentsSet.add(name); }
-        }
-        result.push({
-          date: ymd, start_time: slotIndexToTime(i),
-          end_time: slotIndexToTime(i + durSlots), day_of_week: dow,
-          currentStudentCount: maxOcc, capacity: maxStudentsPerSlot,
-          existingStudents: [...studentsSet]
-        });
-      }
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  availableMakeupSlots.value = result;
-  makeupLoading.value = false;
-}
-
-function selectMakeupSlot(slot) {
-  rescheduleForm.value.new_date = slot.date;
-  rescheduleForm.value.new_start = slot.start_time;
-  showMakeupSlotsModal.value = false;
-}
-
 const getSubjectLabel = (val) => getSubjectText(val);
 const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
   return map[type] || type;
+};
+const courseMemo = (course) => {
+  const text = String(course?.memo ?? course?.Memo ?? '').trim();
+  return text || '';
 };
 
 const CLASS_CAPACITY = { one_on_one: 1, one_on_two: 2, one_on_three: 3, tutoring: 4 };
@@ -2506,6 +1257,10 @@ const toggleStudentGroup = (groupKey) => {
   else next.add(groupKey);
   expandedStudentGroups.value = next;
 };
+
+const groupHasPausedCourse = (group) =>
+  (group?.courses || []).some((c) => c.status === 'inactive');
+
 const expandAllGroups = () => {
   resetExpandedStudentGroups(groupedCourses.value);
 };
@@ -2544,9 +1299,10 @@ const paymentStatusButtonLabel = (course) => {
   return course?.payment_status === 'paid' ? '已繳費' : '未繳費';
 };
 
-const loadCourses = async () => {
+const loadCourses = async (page = 1) => {
   if (!props.branchId) {
     courses.value = [];
+    pagination.value = { page: 1, lastPage: 1, total: 0, perPage: 50 };
     completedSessionDatesByCourse.value = {};
     classSessionsByCourse.value = {};
     effectiveSessionDatesByCourse.value = {};
@@ -2562,11 +1318,13 @@ const loadCourses = async () => {
     if (token) {
       const params = new URLSearchParams({
         branch_id: String(props.branchId),
-        per_page: '1000'
+        per_page: String(pagination.value.perPage),
+        page: String(page),
       });
       if (filters.value.class_type) params.set('class_type', filters.value.class_type);
       if (filters.value.teacher_id) params.set('teacher_id', filters.value.teacher_id);
       if (filters.value.course_status) params.set('status', filters.value.course_status);
+      if (filters.value.name) params.set('name', filters.value.name);
       const res = await fetch(`/api/v1/student-classes?${params}`, {
         credentials: 'include',
         headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` }
@@ -2575,18 +1333,21 @@ const loadCourses = async () => {
         const json = await res.json();
         const list = json?.data ?? json;
         const arr = Array.isArray(list) ? list : (list?.data ?? []);
-        let result = arr.map(c => ({
+        const result = arr.map(c => ({
           ...c,
           data_source: 'laravel',
           student_name: c.student_name ?? '—',
           teacher_name: c.teacher_name ?? '',
+          memo: c.memo ?? c.Memo ?? '',
           sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
           remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null
         }));
-        if (filters.value.name) {
-          const q = filters.value.name.toLowerCase();
-          result = result.filter(c => (c.student_name || '').toLowerCase().includes(q));
-        }
+        pagination.value = {
+          page: Number(json?.current_page ?? page),
+          lastPage: Number(json?.last_page ?? 1),
+          total: Number(json?.total ?? arr.length),
+          perPage: pagination.value.perPage,
+        };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         await loadClassSessionsForCourses(result, token);
@@ -2609,6 +1370,7 @@ const loadCourses = async () => {
     data_source: 'supabase',
     student_name: c.student?.name || '—',
     teacher_name: c.teacher_name || c.teacher?.username || '',
+    memo: c.memo ?? c.Memo ?? '',
     sessions_used: c.sessions_used ?? c.used_sessions ?? c.UsedSessions ?? null,
     remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
     branch_name: null,
@@ -2621,6 +1383,7 @@ const loadCourses = async () => {
     result = result.filter(c => c.student_name.toLowerCase().includes(q));
   }
 
+  pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
   courses.value = result;
   resetExpandedStudentGroups(groupCoursesByStudent(result));
   try {
@@ -2633,6 +1396,52 @@ const loadCourses = async () => {
     effectiveSessionDatesByCourse.value = {};
   }
 };
+
+const {
+  showRescheduleModal, rescheduleCourse, rescheduleForm, rescheduleSessionOptions,
+  openReschedule, onRescheduleNewStartChange, submitReschedule,
+  showMakeupSlotsModal, makeupLoading, makeupDateRange, availableMakeupSlots,
+  makeupSlotsGrouped, fetchMakeupSlots, selectMakeupSlot,
+} = useRescheduleAndMakeup({
+  supabase,
+  branchId: computed(() => props.branchId),
+  computeEndTime,
+  normalizeTo30Min,
+  dayOfWeekFromDate,
+  classSessionsByCourse,
+  sessions,
+  ensureCompletedSessionDatesLoaded,
+  loadCourses,
+  getCapacityForClassType,
+});
+
+const {
+  showSessionEditModal, sessionEditMode, sessionEditSubmitting, sessionEditForm,
+  secondaryStatusSelection, secondaryStatusOptions,
+  SESSION_STATUS_TRANSITIONS, SESSION_STATUS_LABELS,
+  sessionStatusLabel, canTransitionTo, applySecondaryStatus,
+  openSessionEdit, openSessionEditFromAction, closeSessionEdit,
+  addSessionFromModal, doStatusChange,
+  startRetroLeave, doRetroLeave,
+  startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
+} = useSessionEditFlow({
+  supabase,
+  branchId: computed(() => props.branchId),
+  computeEndTime,
+  normalizeTo30Min,
+  dayOfWeekFromDate,
+  getSessionDisplayRow,
+  formatAttendanceTooltipTime,
+  updateLocalSessionRow,
+  ensureCompletedSessionDatesLoaded,
+  displaySessions,
+  todayYmd,
+  rescheduleCourse,
+  rescheduleForm,
+  fetchMakeupSlots,
+  loadCourses,
+  openQuickAddSessionModal,
+});
 
 const togglePaymentStatus = async (c) => {
   if (!c?.id) return;
@@ -2676,7 +1485,7 @@ const loadStudents = async () => {
     if (token) {
       const params = new URLSearchParams({
         branch_id: branchId,
-        per_page: '1000',
+        per_page: '500',
       });
       const res = await fetch(`/api/v1/students?${params.toString()}`, {
         credentials: 'include',
@@ -2754,7 +1563,15 @@ const loadTeachers = async () => {
   }
 };
 
-const debouncedLoad = () => setTimeout(loadCourses, 300);
+let _debouncedTimer = null;
+const debouncedLoad = () => {
+  clearTimeout(_debouncedTimer);
+  _debouncedTimer = setTimeout(() => loadCourses(1), 300);
+};
+const goToPage = (p) => {
+  if (p < 1 || p > pagination.value.lastPage) return;
+  loadCourses(p);
+};
 
 const loadRoomsForBranch = async () => {
   if (!props.branchId) { rooms.value = []; return; }
@@ -2782,6 +1599,16 @@ const editCourse = (c) => {
   const existingDays = Array.isArray(c.days_of_week) && c.days_of_week.length
     ? c.days_of_week.map(Number)
     : (c.day_of_week ? [Number(c.day_of_week)] : []);
+  const existingSlots = Array.isArray(c.day_time_slots)
+    ? c.day_time_slots
+        .map((slot) => ({
+          day: Number(slot?.day || 0),
+          start_time: normalizeTo30Min(slot?.start_time || c.start_time || '16:00'),
+          duration_hours: Number(slot?.duration_hours || c.duration_hours || 2),
+        }))
+        .filter((slot) => slot.day >= 1 && slot.day <= 7)
+        .sort((a, b) => a.day - b.day)
+    : [];
   editForm.value = {
     subject: c.subject,
     teacher_id: c.teacher_id || '',
@@ -2791,6 +1618,7 @@ const editCourse = (c) => {
     sessions_purchased: c.sessions_purchased ?? 8,
     remaining_sessions: c.remaining_sessions ?? 0,
     days_of_week: existingDays,
+    day_time_slots: existingSlots,
     start_time: normalizeTo30Min(c.start_time || '16:00'),
     end_time: c.end_time || '',
     payment_type: c.payment_type || 'session',
@@ -3102,7 +1930,13 @@ watch(() => props.initialTeacherId, (id) => {
     emit('clear-initial-teacher');
   }
 }, { immediate: true });
-onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
+onMounted(() => {
+  loadCourses(); loadStudents(); loadTeachers();
+  document.addEventListener('click', closeActionMenu);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', closeActionMenu);
+});
 </script>
 
 <style scoped>
@@ -3342,7 +2176,7 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
 /* ----- Table ----- */
 .table-card {
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 16px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
@@ -3360,11 +2194,28 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
   gap: 12px;
   padding: 10px;
 }
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: 0.9rem;
+  color: #64748b;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pagination-btn { min-width: 80px; }
+.pagination-btn:disabled { opacity: 0.4; cursor: default; }
+.pagination-current { font-weight: 600; color: #334155; }
 
 .student-group-card {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 14px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--card-bg);
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
 }
@@ -3406,6 +2257,24 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
   white-space: nowrap;
 }
 
+.student-group-has-paused {
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
+  border-radius: 10px;
+}
+
+.student-group-paused-badge {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #9a3412;
+  background: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+  border: 1px solid #fdba74;
+  border-radius: 999px;
+  padding: 2px 10px;
+  vertical-align: middle;
+}
+
 .group-table-wrap {
   border-top: 1px solid var(--border);
   max-height: 56vh;
@@ -3413,7 +2282,7 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
 
 .course-table {
   width: 100%;
-  min-width: 840px;
+  min-width: 540px;
   border-collapse: collapse;
   font-size: 12.5px;
 }
@@ -3445,6 +2314,88 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
 
 .course-row:hover {
   background: #f8fafc;
+}
+
+.course-row.course-paused:hover td {
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.98) 0%, rgba(245, 245, 244, 0.92) 100%);
+}
+
+.td-subject {
+  min-width: 140px;
+}
+
+.subject-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.price-line {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 600;
+}
+
+.memo-line {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.price-sep {
+  margin: 0 6px;
+  color: #94a3b8;
+}
+
+.paused-course-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 55%, #fef3c7 100%);
+  border: 1px solid #f59e0b;
+  box-shadow: 0 1px 2px rgba(180, 83, 9, 0.12);
+}
+
+.paused-course-callout__icon {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+.paused-course-callout__main {
+  font-size: 13px;
+  font-weight: 800;
+  color: #7c2d12;
+  letter-spacing: 0.03em;
+}
+
+.paused-course-callout__sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  flex: 1 1 100%;
+}
+
+.subject-tag--paused {
+  background: #e7e5e4 !important;
+  color: #57534e !important;
+  border: 1px solid #d6d3d1 !important;
+}
+
+.dates-row-paused .dates-panel {
+  margin-top: 2px;
+  padding-left: 12px;
+  border-left: 4px solid #d97706;
+  background: linear-gradient(90deg, rgba(255, 247, 237, 0.65) 0%, rgba(250, 250, 249, 0.4) 100%);
+  border-radius: 0 8px 8px 0;
 }
 
 .cell-student {
@@ -3490,28 +2441,88 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
 .col-actions,
 .cell-actions {
   white-space: nowrap;
-  min-width: 130px;
+  min-width: 128px;
 }
 
-.action-btns {
+.action-btns-row {
   display: flex;
-  gap: 4px 6px;
-  flex-wrap: nowrap;
+  gap: 6px;
   align-items: center;
 }
 
-.action-btns-compact .small {
-  padding: 5px 9px;
-  font-size: 11.5px;
-  white-space: nowrap;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  background: #fff;
+.action-menu-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.action-btns-compact .action-main {
-  border-color: rgba(59, 130, 246, 0.32);
-  color: #1d4ed8;
+.action-menu-trigger {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0;
+  padding: 6px 12px !important;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.26) !important;
+  background: #fff;
+  cursor: pointer;
+  line-height: 1.2;
+}
+
+.action-dropdown {
+  position: static;
+  margin-top: 6px;
+  min-width: 170px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  z-index: 1;
+  padding: 4px 0;
+  animation: dropdown-fade 0.12s ease;
+}
+
+@keyframes dropdown-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.action-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.action-dropdown-item:hover {
+  background: #f1f5f9;
+}
+
+.action-dropdown-resume {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.action-dropdown-danger {
+  color: #dc2626;
+}
+
+.action-dropdown-danger:hover {
+  background: #fef2f2;
+}
+
+.action-dropdown-divider {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
 }
 
 .btn-status {
@@ -3747,11 +2758,10 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
   }
   .col-actions,
   .cell-actions {
-    min-width: 110px;
+    min-width: 90px;
   }
-  .action-btns-compact .small {
-    padding: 4px 6px;
-    font-size: 11px;
+  .detail-meta {
+    gap: 4px 12px;
   }
 }
 .preview-dates-box .hint-small { font-size: 12px; margin-top: 6px; color: #558B2F; }
@@ -3787,6 +2797,35 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+}
+
+.detail-panel {
+  padding: 14px 16px;
+  background: #f8fbff;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.detail-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-light);
 }
 
 .dates-row td { padding: 0; }
@@ -3877,21 +2916,35 @@ onMounted(() => { loadCourses(); loadStudents(); loadTeachers(); });
   border-color: #d1d5db;
   color: #6b7280;
 }
-.course-paused {
-  opacity: 0.55;
+.course-paused td {
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.75) 0%, rgba(245, 245, 244, 0.55) 100%);
+  box-shadow: inset 4px 0 0 #d97706;
+  color: #44403c;
 }
-.course-paused:hover {
-  opacity: 0.85;
+
+.course-paused .cell-remaining.low {
+  color: #78716c;
 }
+
+.course-paused .action-btns-compact .small.ghost,
+.course-paused .action-btns-compact .small.danger {
+  opacity: 0.72;
+}
+
+.course-paused .action-btns-compact .small.primary {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.35);
+}
+
 .tag-paused {
-  background: #fef3c7;
-  color: #92400e;
-  border: 1px solid #fbbf24;
+  background: #ffedd5;
+  color: #7c2d12;
+  border: 1px solid #ea580c;
   border-radius: 6px;
-  font-size: 11px;
-  padding: 1px 6px;
-  margin-left: 4px;
-  font-weight: 600;
+  font-size: 12px;
+  padding: 3px 8px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 .tag-paid {
   background: #e8f5e9;

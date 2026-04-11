@@ -75,7 +75,8 @@ If API fails:
 - **`docs/AI_REGRESSION_LESSONS.md`**（AI／工程必讀，避免已修問題再犯）
 - `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（繳費提醒 API 規則）
 - `docs/CHANGELOG.md`（近期上線內容與權限調整）
-- `docs/CHAT_BUG_SYSTEM.md`（聊天＋Bug 回報交接）
+- **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（聊天／Bug／頭像：實作細節與禁止回歸）
+- `docs/CHAT_BUG_SYSTEM.md`（同上模組速覽）
 - `docs/GITHUB_SYNC_WORKFLOW.md`
 - **Claude Code**：`CLAUDE.md` · **GitHub Copilot**：`.github/copilot-instructions.md`
 - `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`

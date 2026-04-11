@@ -195,9 +195,28 @@
           <h3>學習評量</h3>
           <span v-if="lrTotal > 0" class="pp-section-count">共 {{ lrTotal }} 筆</span>
         </div>
+        <div v-if="allLearningRecords.length && learningRecordsBySubject.length > 1" class="pp-lr-filter-row">
+          <button
+            type="button"
+            class="pp-lr-chip"
+            :class="{ active: !lrSubjectFilter }"
+            @click="lrSubjectFilter = ''"
+          >全部</button>
+          <button
+            v-for="[subj] in learningRecordsBySubject"
+            :key="'chip-' + subj"
+            type="button"
+            class="pp-lr-chip"
+            :class="{ active: lrSubjectFilter === subj }"
+            @click="lrSubjectFilter = subj"
+          >{{ subj }}</button>
+        </div>
         <template v-if="allLearningRecords.length">
-          <div v-for="record in allLearningRecords" :key="record.id"
-               class="pp-report" @click="toggleRecord(record.id)">
+          <template v-for="[lrSubject, lrGroup] in visibleLearningRecordGroups" :key="'grp-' + lrSubject">
+            <section class="pp-lr-subject-block">
+            <h4 class="pp-lr-subject-heading">{{ lrSubject }}</h4>
+            <div v-for="record in lrGroup" :key="record.id ?? record.ID"
+                 class="pp-report" @click="toggleRecord(record.id ?? record.ID)">
             <!-- Report Header -->
             <div class="pp-report-head">
               <div class="pp-report-head-left">
@@ -215,7 +234,7 @@
                 <span class="pp-report-score-val">{{ record.QuizScore }}</span>
                 <span class="pp-report-score-unit">分</span>
               </div>
-              <span class="material-symbols-outlined pp-expand-icon" :class="{ expanded: expandedRecords.has(record.id) }">expand_more</span>
+              <span class="material-symbols-outlined pp-expand-icon" :class="{ expanded: expandedRecords.has(record.id ?? record.ID) }">expand_more</span>
             </div>
 
             <!-- Quick Indicators -->
@@ -235,7 +254,7 @@
             </div>
 
             <!-- Expanded Detail -->
-            <div class="pp-report-body" v-if="expandedRecords.has(record.id)">
+            <div class="pp-report-body" v-if="expandedRecords.has(record.id ?? record.ID)">
               <div class="pp-report-field" v-if="record.Progress || record.Content">
                 <div class="pp-report-field-label">
                   <span class="material-symbols-outlined">trending_up</span>
@@ -258,7 +277,9 @@
                 <div class="pp-report-field-value pp-report-comment">{{ record.Comment }}</div>
               </div>
             </div>
-          </div>
+            </div>
+            </section>
+          </template>
         </template>
         <button v-if="lrHasMore" class="pp-btn-more" @click="loadMoreRecords" :disabled="lrLoading">
           <template v-if="lrLoading">
@@ -361,6 +382,19 @@
 import { onMounted, ref, computed, reactive } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent } from '../api';
 
+/** For multi-branch: LINE Endpoint URL must pass this (e.g. ?parent_liff_id=xxx); do not rely on a single VITE_LINE_LIFF_ID per build. */
+function resolveParentLiffId() {
+  const q = new URLSearchParams(window.location.search);
+  const fromQuery =
+    q.get('parent_liff_id')
+    || q.get('liff_id')
+    || q.get('liff.id')
+    || q.get('liffId');
+  const trimmed = String(fromQuery || '').trim();
+  if (trimmed) return trimmed;
+  return String(import.meta.env.VITE_LINE_LIFF_ID || '').trim();
+}
+
 const props = defineProps({
   standalone: { type: Boolean, default: false },
 });
@@ -395,6 +429,32 @@ const lrHasMore = ref(false);
 const lrTotal = ref(0);
 const lrLoading = ref(false);
 const allLearningRecords = ref([]);
+const lrSubjectFilter = ref('');
+
+const recordSubjectKey = (record) => {
+  const raw = record?.Subject ?? record?.subject ?? record?.SubjectName ?? '';
+  const key = String(raw).trim();
+  return key || '其他';
+};
+
+const learningRecordsBySubject = computed(() => {
+  const groups = new Map();
+  for (const record of allLearningRecords.value) {
+    const key = recordSubjectKey(record);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  return Array.from(groups.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0], 'zh-Hant-TW')
+  );
+});
+
+const visibleLearningRecordGroups = computed(() => {
+  const all = learningRecordsBySubject.value;
+  const f = String(lrSubjectFilter.value || '').trim();
+  if (!f) return all;
+  return all.filter(([subj]) => subj === f);
+});
 
 const statusLabel = (s) => {
   const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '已請假', cancelled: '已取消', completed: '已完成' };
@@ -488,6 +548,7 @@ const loadDashboard = async () => {
   if (!token.value) return;
   try {
     lrPage.value = 1;
+    lrSubjectFilter.value = '';
     const data = await getParentDashboard(token.value, { lrPage: 1, lrPerPage });
     dashboard.value = data;
     if (data.students && data.students.length > 1) setStudents(data.students);
@@ -608,9 +669,7 @@ onMounted(async () => {
     } catch { /* token expired, continue to LIFF login */ }
   }
 
-  const liffId = import.meta.env.VITE_LINE_LIFF_ID
-    || new URLSearchParams(window.location.search).get('liff.id')
-    || '';
+  const liffId = resolveParentLiffId();
   const isLineInApp = /Line/i.test(navigator.userAgent);
   const hasLiffId = !!String(liffId).trim();
 
@@ -892,6 +951,43 @@ onMounted(async () => {
 .pp-detail-label { font-weight: 600; color: #607d8b; white-space: nowrap; margin-right: 4px; }
 
 /* ═══ Report Card (Learning Records) ═══ */
+.pp-lr-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0 4px;
+}
+.pp-lr-chip {
+  border: 1px solid #cfd8dc;
+  background: #fff;
+  color: #455a64;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-lr-chip.active {
+  background: #5c6bc0;
+  border-color: #5c6bc0;
+  color: #fff;
+}
+.pp-lr-subject-block {
+  margin-bottom: 8px;
+}
+.pp-lr-subject-heading {
+  margin: 16px 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #37474f;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eceff1;
+}
+.pp-lr-subject-block:first-of-type .pp-lr-subject-heading {
+  margin-top: 0;
+}
 .pp-report {
   background: #fafafa; border-radius: 10px; padding: 14px;
   margin-bottom: 10px; cursor: pointer; border: 1px solid #eee;

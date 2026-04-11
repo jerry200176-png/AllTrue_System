@@ -28,6 +28,8 @@ use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ClassSessionController;
 use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\ChatController;
+use App\Http\Controllers\BugReportController;
 
 
 Route::get('/fix-db', function () {
@@ -105,7 +107,9 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/login', [AuthController::class, 'login']);
     Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store']);
 
-    // ── LINE Webhook per-campus (public, verified by campus channel secret) ──
+    // ── LINE Webhook (public, verified by campus channel secret) ──
+    // Domain-based URL (no id): match Host to Campus.URL — must be registered before the {campusId} route
+    Route::post('line/webhook', [LineWebhookController::class, 'handleDomainBased']);
     Route::post('line/webhook/{campusId}', [LineWebhookController::class, 'handle'])->where('campusId', '[0-9]+');
 
     // ── Parent Portal: LINE-based login ─────────────────────────────────
@@ -152,6 +156,7 @@ Route::prefix('v1')->group(function () {
     Route::get('me/notification-preferences', [AuthController::class, 'notificationPreferences']);
     Route::put('me/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
     Route::get('me/security', [AuthController::class, 'security']);
+    Route::post('me/security/logout-others', [AuthController::class, 'logoutOtherSessions']);
 
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');
@@ -188,6 +193,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-records/backdoor-approve', [LearningRecordController::class, 'backdoorApprove']);
         Route::post('learning-records/bulk-backdoor-approve', [LearningRecordController::class, 'bulkBackdoorApprove']);
         Route::post('learning-records/batch-approve', [LearningRecordController::class, 'batchApprove']);
+        Route::post('learning-records/batch-reject', [LearningRecordController::class, 'batchReject']);
+        Route::post('learning-records/batch-request-changes', [LearningRecordController::class, 'batchRequestChanges']);
         Route::post('learning-records/reschedule-session', [LearningRecordController::class, 'rescheduleSession']);
         Route::post('learning-records/ensure-past', [LearningRecordController::class, 'ensurePastRecords']);
 
@@ -203,6 +210,7 @@ Route::prefix('v1')->group(function () {
         Route::post('notifications/sync', [NotificationController::class, 'sync']);
         Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::post('notifications/{notificationId}/read', [NotificationController::class, 'markRead']);
+        Route::post('notifications/{notificationId}/tuition-paid', [NotificationController::class, 'markTuitionPaid']);
         Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
@@ -259,6 +267,46 @@ Route::prefix('v1')->group(function () {
                 ->sortBy('name')
                 ->values()
             );
+        });
+
+        // Subject CRUD (director only)
+        Route::post('subjects', function (\Illuminate\Http\Request $request) use ($normalizeSubjectName) {
+            $name = trim((string) ($request->input('name') ?? ''));
+            if ($name === '') {
+                return response()->json(['message' => '科目名稱不能為空'], 422);
+            }
+            if (mb_strlen($name) > 20) {
+                return response()->json(['message' => '科目名稱最多 20 字'], 422);
+            }
+            $normalized = $normalizeSubjectName($name);
+            $display = $normalized !== '' ? $normalized : $name;
+            $exists = \Illuminate\Support\Facades\DB::table('Subject')
+                ->whereRaw('LOWER(Subject_Name) = LOWER(?)', [$display])
+                ->exists();
+            if ($exists) {
+                return response()->json(['message' => '此科目已存在'], 409);
+            }
+            $id = \Illuminate\Support\Facades\DB::table('Subject')->insertGetId([
+                'School_id' => 0,
+                'Grade_no'  => 0,
+                'Subject_Name' => mb_substr($display, 0, 16),
+            ]);
+            return response()->json(['id' => $id, 'name' => $display], 201);
+        });
+
+        Route::delete('subjects/{id}', function ($id) {
+            $subject = \Illuminate\Support\Facades\DB::table('Subject')->find((int) $id);
+            if (!$subject) {
+                return response()->json(['message' => '科目不存在'], 404);
+            }
+            $inUse = \Illuminate\Support\Facades\DB::table('StudentClass')
+                ->where('SubjectID', (int) $id)
+                ->exists();
+            if ($inUse) {
+                return response()->json(['message' => '此科目已有課程使用中，無法刪除'], 409);
+            }
+            \Illuminate\Support\Facades\DB::table('Subject')->where('id', (int) $id)->delete();
+            return response()->json(null, 204);
         });
 
         Route::get('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
@@ -329,5 +377,39 @@ Route::prefix('v1')->group(function () {
         Route::get('parent/payment-message/{studentId}', [ParentPortalController::class, 'paymentMessage']);
         Route::get('line/status', [LineWebhookController::class, 'status']);
         Route::post('line/settings', [LineWebhookController::class, 'saveSettings']);
+    });
+
+    // ── Chat (director + teacher) ─────────────────────────────────────
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('chat/threads', [ChatController::class, 'threads']);
+        Route::post('chat/threads/dm', [ChatController::class, 'createDm']);
+        Route::post('chat/threads/group', [ChatController::class, 'createGroup']);
+        Route::get('chat/threads/{threadId}/messages', [ChatController::class, 'messages']);
+        Route::post('chat/threads/{threadId}/messages', [ChatController::class, 'sendMessage']);
+        Route::post('chat/threads/{threadId}/attachments', [ChatController::class, 'uploadAttachment']);
+        Route::post('chat/threads/{threadId}/read', [ChatController::class, 'markRead']);
+        Route::delete('chat/threads/{threadId}', [ChatController::class, 'deleteThread']);
+        Route::get('chat/threads/{threadId}/members', [ChatController::class, 'getMembers']);
+        Route::patch('chat/threads/{threadId}', [ChatController::class, 'updateThread']);
+        Route::post('chat/threads/{threadId}/members', [ChatController::class, 'addMembers']);
+        Route::delete('chat/threads/{threadId}/members/{userId}', [ChatController::class, 'removeMember']);
+        Route::post('chat/threads/{threadId}/leave', [ChatController::class, 'leaveThread']);
+        Route::post('chat/threads/{threadId}/transfer-owner', [ChatController::class, 'transferOwner']);
+        Route::post('chat/threads/{threadId}/pin', [ChatController::class, 'pinThread']);
+        Route::delete('chat/messages/{messageId}', [ChatController::class, 'deleteMessage']);
+        Route::get('chat/unread-count', [ChatController::class, 'unreadCount']);
+    });
+
+    // ── Bug Reports (director + teacher: submit & view own; super_admin: status only) ──
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('bugs', [BugReportController::class, 'store']);
+        Route::get('bugs', [BugReportController::class, 'index']);
+        Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
+        Route::get('bugs/{id}', [BugReportController::class, 'show']);
+        Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
+    });
+    Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);
+        Route::post('bugs/mark-inbox-seen', [BugReportController::class, 'markInboxSeen']);
     });
 });

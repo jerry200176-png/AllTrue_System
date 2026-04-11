@@ -98,6 +98,13 @@
       </div>
     </aside>
 
+    <!-- Bug Report Launcher (floating button, all staff pages) -->
+    <BugReportLauncher
+      v-if="session && !isStandaloneParent && (isDirector || isTeacher)"
+      :branch-id="currentBranch"
+      :current-page-key="active"
+    />
+
     <!-- Mobile Bottom Nav (5 tabs + More) -->
     <nav class="mobile-bottom-nav" v-if="session && !isStandaloneParent">
       <button
@@ -109,9 +116,9 @@
         <span class="material-symbols-outlined mob-tab-icon">{{ tab.icon }}</span>
         <span class="mob-tab-label">{{ tab.label }}</span>
         <span
-          v-if="getItemBadgeCount(tab) > 0"
+          v-if="getMobileTabBadgeCount(tab) > 0"
           class="mob-tab-badge"
-        >{{ getItemBadgeCount(tab) > 99 ? '99+' : getItemBadgeCount(tab) }}</span>
+        >{{ getMobileTabBadgeCount(tab) > 99 ? '99+' : getMobileTabBadgeCount(tab) }}</span>
       </button>
     </nav>
 
@@ -131,6 +138,10 @@
           >
             <span class="material-symbols-outlined">{{ item.icon }}</span>
             <span>{{ item.label }}</span>
+            <span
+              v-if="getMoreSheetItemBadgeCount(item) > 0"
+              class="more-item-badge"
+            >{{ getMoreSheetItemBadgeCount(item) > 99 ? '99+' : getMoreSheetItemBadgeCount(item) }}</span>
           </button>
         </div>
       </div>
@@ -214,7 +225,7 @@
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
 
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -226,6 +237,8 @@
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
+      <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
+      <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
       <div v-if="!isDirector && !isTeacher" class="card" style="max-width: 480px; margin: 2rem auto; padding: 2rem; text-align: center;">
@@ -246,12 +259,21 @@
       @click.stop
     >
       <div class="guide-tour-popover-head">
-        <strong>{{ guideTour.currentStep.value?.title }}</strong>
+        <div class="guide-tour-head-title">
+          <span v-if="guideTour.currentStep.value?.icon" class="guide-tour-icon">{{ guideTour.currentStep.value.icon }}</span>
+          <strong>{{ guideTour.currentStep.value?.title }}</strong>
+        </div>
         <button type="button" class="guide-tour-close" @click.stop="guideTour.closeTour">✕</button>
       </div>
       <p class="guide-tour-popover-text">{{ guideTour.currentStep.value?.description }}</p>
+      <div class="guide-tour-dots">
+        <span
+          v-for="(_, i) in guideTour.steps.value"
+          :key="i"
+          :class="['guide-tour-dot', { active: i === guideTour.stepIndex.value }]"
+        />
+      </div>
       <div class="guide-tour-popover-foot">
-        <span class="guide-tour-progress">{{ guideTour.progressText.value }}</span>
         <div class="guide-tour-actions">
           <button type="button" class="guide-tour-btn" :disabled="!guideTour.hasPrev.value" @click="guideTour.prevStep">上一步</button>
           <button
@@ -295,6 +317,10 @@ import SubjectUnitsPage from './pages/SubjectUnitsPage.vue';
 import DirectorAccountsPage from './pages/DirectorAccountsPage.vue';
 import NotificationsCenter from './pages/NotificationsCenter.vue';
 import ProfileCenterPage from './pages/ProfileCenterPage.vue';
+import ChatPage from './pages/ChatPage.vue';
+import BugReportsPage from './pages/BugReportsPage.vue';
+import BugReportLauncher from './components/BugReportLauncher.vue';
+import { fetchChatUnreadCount } from './lib/chatApi';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -495,6 +521,7 @@ function onWindowResizeGuideFab() {
 
 const active = ref('director');
 const currentBranch = ref(null); // Will be set after branches load
+const learningTargetRecordId = ref(null);
 
 // Sidebar collapse state (desktop)
 const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true');
@@ -511,7 +538,7 @@ const mobileTabItems = computed(() => {
       { page: 'director', label: '儀表板', icon: 'dashboard' },
       { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
       { page: 'students', label: '學生', icon: 'groups' },
-      { page: 'attendance', label: '出勤', icon: 'fact_check' },
+      { page: 'attendance', label: '出勤', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
       { page: 'more', label: '更多', icon: 'apps' },
     ];
   }
@@ -533,6 +560,7 @@ const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
+let chatBadgePollingTimer = null;
 
 const unreadNotificationLabel = computed(() => (unreadNotificationCount.value > 99 ? '99+' : String(unreadNotificationCount.value)));
 
@@ -544,6 +572,7 @@ function isItemBadgeUrgent(item) {
   if (!item?.badgeTypes?.length) return false;
   return item.badgeTypes.some((t) => (badgeByType.value[t]?.urgent || 0) > 0);
 }
+
 const currentGuidePage = computed(() => (isStandaloneParent.value ? 'parent' : active.value));
 const buildTimeDisplay = computed(() => formatBuildTime(__APP_BUILD_TIME__));
 
@@ -564,7 +593,7 @@ function onNavigateToSchedule({ teacherId, target }) {
   else active.value = 'course-mgmt';
 }
 
-function onNavigateFromNotifications({ target }) {
+function onNavigateFromNotifications({ target, recordId }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -572,6 +601,11 @@ function onNavigateFromNotifications({ target }) {
   if (!target) return;
   if (target === 'calendar') {
     calendarResetToken.value += 1;
+  }
+  if (target === 'learning' && recordId) {
+    learningTargetRecordId.value = Number(recordId);
+  } else {
+    learningTargetRecordId.value = null;
   }
   active.value = target;
 }
@@ -640,6 +674,7 @@ const sidebarNavGroups = computed(() => {
         items: [
           { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
           { page: 'notifications', label: '通知中心', icon: 'notifications' },
+          { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
         ],
       },
       {
@@ -659,7 +694,7 @@ const sidebarNavGroups = computed(() => {
         title: '考勤與評量',
         defaultOpen: true,
         items: [
-          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe'] },
+          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review'] },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
         ],
@@ -668,7 +703,10 @@ const sidebarNavGroups = computed(() => {
         key: 'system',
         title: '系統管理',
         defaultOpen: true,
-        items: systemItems,
+        items: [
+          ...systemItems,
+          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
+        ],
       },
     ];
   }
@@ -684,6 +722,8 @@ const sidebarNavGroups = computed(() => {
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check' },
           { page: 'learning', label: '課表與評量', icon: 'assignment' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
+          { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
+          { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
       },
     ];
@@ -691,6 +731,34 @@ const sidebarNavGroups = computed(() => {
 
   return [];
 });
+
+/** 底欄「更多」：加總未固定在底欄的選項之未讀（含通知中心）。 */
+const moreMenuBadgeCount = computed(() => {
+  let sum = 0;
+  for (const group of sidebarNavGroups.value) {
+    for (const item of group.items) {
+      if (!mobileTabPages.value.has(item.page)) {
+        sum += getItemBadgeCount(item);
+        if (item.page === 'notifications') {
+          sum += unreadNotificationCount.value;
+        }
+      }
+    }
+  }
+  return sum;
+});
+
+function getMobileTabBadgeCount(tab) {
+  if (tab?.page === 'more') return moreMenuBadgeCount.value;
+  return getItemBadgeCount(tab);
+}
+
+/** 「更多」抽屜內單一列的未讀數（通知中心用全域未讀）。 */
+function getMoreSheetItemBadgeCount(item) {
+  let n = getItemBadgeCount(item);
+  if (item?.page === 'notifications') n += unreadNotificationCount.value;
+  return n;
+}
 
 // When director/super_admin: load branches from authenticated /api/v1/campuses and set currentBranch
 async function ensureDirectorBranches() {
@@ -760,9 +828,13 @@ onMounted(async () => {
     unreadPollingTimer = window.setInterval(() => {
         refreshUnreadNotifications();
     }, 60000);
+    chatBadgePollingTimer = window.setInterval(() => {
+      mergeChatUnreadBadge();
+    }, 25000);
     await refreshUnreadNotifications();
 
     window.addEventListener('resize', onWindowResizeGuideFab);
+    window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
 });
 
 const fetchProfile = async (_uid) => {
@@ -880,8 +952,23 @@ watch(currentBranch, (value) => {
   refreshUnreadNotifications();
 });
 
-watch([active, isStandaloneParent], () => {
+watch([active, isStandaloneParent], async ([p]) => {
   guideTour.closeTour();
+  if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
+  if (role.value !== 'super_admin') return;
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const res = await fetch(`${baseUrl}/v1/bugs/mark-inbox-seen`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.value.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (res.ok) {
+      await refreshUnreadNotifications();
+    }
+  } catch { /* ignore */ }
 });
 
 watch(guidePopoverRef, (el) => {
@@ -898,45 +985,117 @@ watch(isPasswordChangeLocked, (locked) => {
   }
 });
 
+function onRefreshBadgesEvent() {
+  refreshUnreadNotifications();
+}
+
 onBeforeUnmount(() => {
   guideTour.closeTour();
   if (unreadPollingTimer) {
     clearInterval(unreadPollingTimer);
     unreadPollingTimer = null;
   }
+  if (chatBadgePollingTimer) {
+    clearInterval(chatBadgePollingTimer);
+    chatBadgePollingTimer = null;
+  }
   window.removeEventListener('resize', onWindowResizeGuideFab);
+  window.removeEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
 });
 
-async function refreshUnreadNotifications() {
-  if (!session.value?.access_token || !isDirector.value || !currentBranch.value) {
-    unreadNotificationCount.value = 0;
-    urgentNotificationCount.value = 0;
+async function mergeBugUnreadBadge() {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.bugs;
+    badgeByType.value = next;
     return;
   }
-
   try {
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
     const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
-    const res = await fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
+    const res = await fetch(`${baseUrl}/v1/bugs/unread-badge?${params}`, {
       headers: {
         Authorization: `Bearer ${session.value.access_token}`,
         Accept: 'application/json',
       },
     });
-    if (res.status === 401) {
-      await supabase.auth.signOut();
-      session.value = null;
-      return;
-    }
-    if (!res.ok) throw new Error('unread-count request failed');
+    if (!res.ok) throw new Error('bug unread-badge failed');
     const json = await res.json();
-    unreadNotificationCount.value = Number(json.unread_count || 0);
-    urgentNotificationCount.value = Number(json.urgent_unread_count || 0);
-    badgeByType.value = json.by_type || {};
+    const n = Number(json.unread_count || 0);
+    const next = { ...badgeByType.value };
+    next.bugs = { total: n, urgent: n > 0 ? n : 0 };
+    badgeByType.value = next;
   } catch {
+    const next = { ...badgeByType.value };
+    delete next.bugs;
+    badgeByType.value = next;
+  }
+}
+
+async function refreshUnreadNotifications() {
+  if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
     badgeByType.value = {};
+    await mergeBugUnreadBadge();
+    await mergeChatUnreadBadge();
+    return;
+  }
+
+  if (isDirector.value) {
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+      const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
+      const res = await fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
+        headers: {
+          Authorization: `Bearer ${session.value.access_token}`,
+          Accept: 'application/json',
+        },
+      });
+      if (res.status === 401) {
+        await supabase.auth.signOut();
+        session.value = null;
+        await mergeBugUnreadBadge();
+        await mergeChatUnreadBadge();
+        return;
+      }
+      if (!res.ok) throw new Error('unread-count request failed');
+      const json = await res.json();
+      unreadNotificationCount.value = Number(json.unread_count || 0);
+      urgentNotificationCount.value = Number(json.urgent_unread_count || 0);
+      badgeByType.value = json.by_type || {};
+    } catch {
+      unreadNotificationCount.value = 0;
+      urgentNotificationCount.value = 0;
+      badgeByType.value = {};
+    }
+  } else {
+    unreadNotificationCount.value = 0;
+    urgentNotificationCount.value = 0;
+    badgeByType.value = {};
+  }
+
+  await mergeBugUnreadBadge();
+  await mergeChatUnreadBadge();
+}
+
+async function mergeChatUnreadBadge() {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.chat;
+    badgeByType.value = next;
+    return;
+  }
+  try {
+    const data = await fetchChatUnreadCount(String(currentBranch.value));
+    const n = Number(data.unread_count || 0);
+    const next = { ...badgeByType.value };
+    next.chat = { total: n, urgent: n > 0 ? n : 0 };
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.chat;
+    badgeByType.value = next;
   }
 }
 
@@ -978,8 +1137,9 @@ function formatBuildTime(rawIso) {
 .user-avatar-image {
   width: 100%;
   height: 100%;
-  border-radius: 50%;
   object-fit: cover;
+  object-position: center center;
+  display: block;
 }
 .nav-no-role-hint {
   padding: 12px 20px;
@@ -1296,6 +1456,19 @@ function formatBuildTime(rawIso) {
   border-bottom: 1px solid #f3f3f3;
 }
 
+.guide-tour-head-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.guide-tour-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .guide-tour-popover-head strong {
   font-size: 14px;
   color: #263238;
@@ -1307,28 +1480,45 @@ function formatBuildTime(rawIso) {
   color: #607d8b;
   cursor: pointer;
   font-size: 14px;
+  flex-shrink: 0;
 }
 
 .guide-tour-popover-text {
   margin: 0;
-  padding: 12px 14px;
+  padding: 12px 14px 8px;
   font-size: 13px;
   line-height: 1.6;
   color: #455a64;
   overflow-y: auto;
 }
 
+.guide-tour-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 0;
+}
+
+.guide-tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #cfd8dc;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.guide-tour-dot.active {
+  background: #ff9800;
+  transform: scale(1.3);
+}
+
 .guide-tour-popover-foot {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
   padding: 10px 14px 14px;
-}
-
-.guide-tour-progress {
-  font-size: 12px;
-  color: #78909c;
 }
 
 .guide-tour-actions {

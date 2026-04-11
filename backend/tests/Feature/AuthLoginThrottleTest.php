@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -55,5 +57,54 @@ class AuthLoginThrottleTest extends TestCase
             'user_id' => $user->id,
             'success' => 1,
         ]);
+    }
+
+    public function test_login_revokes_previous_token_on_same_device_and_uses_seven_day_expiry(): void
+    {
+        $email = 'same-device@example.com';
+        $password = 'correct-pass';
+
+        $user = User::create([
+            'LoginName' => $email,
+            'Name' => 'Same Device User',
+            'PSW' => password_hash($password, PASSWORD_DEFAULT),
+            'type' => 'T',
+            'phone' => 900100002,
+        ]);
+
+        $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit Test/1.0';
+
+        $first = $this
+            ->withHeaders(['User-Agent' => $agent])
+            ->postJson('/api/v1/auth/login', [
+                'email' => $email,
+                'password' => $password,
+            ])
+            ->assertOk();
+
+        $firstToken = (string) $first->json('data.session.access_token');
+        $this->assertNotSame('', $firstToken);
+        $this->assertDatabaseHas('auth_tokens', ['token' => $firstToken, 'user_id' => $user->id]);
+
+        $second = $this
+            ->withHeaders(['User-Agent' => $agent])
+            ->postJson('/api/v1/auth/login', [
+                'email' => $email,
+                'password' => $password,
+            ])
+            ->assertOk();
+
+        $secondToken = (string) $second->json('data.session.access_token');
+        $this->assertNotSame('', $secondToken);
+        $this->assertNotSame($firstToken, $secondToken);
+
+        $this->assertDatabaseMissing('auth_tokens', ['token' => $firstToken]);
+        $this->assertDatabaseHas('auth_tokens', ['token' => $secondToken, 'user_id' => $user->id]);
+
+        $activeTokens = AuthToken::where('user_id', $user->id)->get();
+        $this->assertCount(1, $activeTokens);
+
+        $expiresAt = Carbon::parse($activeTokens->first()->expires_at);
+        $this->assertTrue($expiresAt->between(now()->addDays(6), now()->addDays(8)));
     }
 }

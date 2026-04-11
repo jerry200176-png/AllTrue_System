@@ -70,8 +70,16 @@
               <span class="urgent-title">{{ item.Title }}</span>
               <div class="urgent-actions">
                 <button v-if="!item.read_at" class="small" @click="markRead(item.id)">標記已讀</button>
+                <button
+                  v-if="canMarkTuitionPaid(item)"
+                  class="small primary"
+                  :disabled="isMarkingTuitionPaid(item.id)"
+                  @click="markTuitionPaid(item)"
+                >
+                  {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
+                </button>
                 <button v-if="canCopyTuition(item)" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-                <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type)">前往處理</button>
+                <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
               </div>
             </div>
           </div>
@@ -94,8 +102,16 @@
 
             <div class="item-actions">
               <button v-if="!item.read_at" class="small" @click="markRead(item.id)">標記已讀</button>
+              <button
+                v-if="canMarkTuitionPaid(item)"
+                class="small primary"
+                :disabled="isMarkingTuitionPaid(item.id)"
+                @click="markTuitionPaid(item)"
+              >
+                {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
+              </button>
               <button v-if="canCopyTuition(item)" class="small ghost" @click="copyTuitionMessage(item)">複製繳費通知</button>
-              <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type)">前往處理</button>
+              <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
             </div>
           </div>
         </div>
@@ -136,6 +152,7 @@ const soundEnabled = ref(localStorage.getItem('notifications_sound_enabled') !==
 const severityRank = { high: 3, medium: 2, low: 1, info: 0 };
 const hasUrgentWatchInitialized = ref(false);
 const lastUrgentDigest = ref('');
+const markingTuitionPaidIds = ref(new Set());
 
 const getToken = () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
@@ -182,10 +199,12 @@ const targetPage = (type) => {
   return null;
 };
 
-const goToTarget = (type) => {
+const goToTarget = (type, item) => {
   const target = targetPage(type);
   if (!target) return;
-  emit('navigate', { target });
+  const payload = item ? payloadOf(item) : {};
+  const recordId = type === 'learning_review' ? (payload.record_id || null) : null;
+  emit('navigate', { target, recordId });
 };
 
 const payloadOf = (item) => {
@@ -205,6 +224,21 @@ const canCopyTuition = (item) => {
   if (!item || item.Type !== 'tuition') return false;
   const payload = payloadOf(item);
   return Number(payload?.student_id || 0) > 0;
+};
+
+const canMarkTuitionPaid = (item) => {
+  if (!item || item.ResolvedAt) return false;
+  return item.SourceType === 'StudentClass' || item.SourceType === 'Invoice';
+};
+
+const isMarkingTuitionPaid = (notificationId) => markingTuitionPaidIds.value.has(String(notificationId));
+
+const setMarkingTuitionPaid = (notificationId, pending) => {
+  const next = new Set(markingTuitionPaidIds.value);
+  const key = String(notificationId);
+  if (pending) next.add(key);
+  else next.delete(key);
+  markingTuitionPaidIds.value = next;
 };
 
 const copyText = async (text) => {
@@ -433,6 +467,36 @@ const markAllRead = async () => {
     errorMessage.value = err.message || '全部已讀失敗';
   } finally {
     markingAllRead.value = false;
+  }
+};
+
+const markTuitionPaid = async (item) => {
+  if (!item?.id || !props.branchId || isMarkingTuitionPaid(item.id)) return;
+  const ok = confirm(`確定將「${item.Title || '此通知'}」標記為已繳費嗎？`);
+  if (!ok) return;
+
+  setMarkingTuitionPaid(item.id, true);
+  errorMessage.value = '';
+  try {
+    const token = getToken();
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/v1/notifications/${item.id}/tuition-paid`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ branch_id: Number(props.branchId) }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '更新繳費狀態失敗');
+
+    await syncNotifications(false);
+  } catch (err) {
+    errorMessage.value = err.message || '更新繳費狀態失敗';
+  } finally {
+    setMarkingTuitionPaid(item.id, false);
   }
 };
 

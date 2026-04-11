@@ -2,7 +2,7 @@
   <div class="li-page">
 
     <!-- 狀態總覽 -->
-    <div class="card">
+    <div class="card" data-guide="line-status">
       <div class="li-top">
         <div>
           <h2>家長 LINE 通知設定</h2>
@@ -26,7 +26,7 @@
             <div class="sc-desc">{{ status.liff_configured ? '已設定' : '尚未設定' }}</div>
           </div>
         </div>
-        <div class="sc" :class="status.bound_count > 0 ? 'ok' : 'pending'">
+        <div class="sc" :class="status.bound_count > 0 ? 'ok' : 'pending'" data-guide="line-bound-parents">
           <span class="sc-dot"></span>
           <div>
             <div class="sc-title">已綁定家長</div>
@@ -35,10 +35,11 @@
         </div>
       </div>
       <div v-else-if="loading" class="hint" style="padding:12px 0;">載入中…</div>
+      <div v-else-if="loadError" class="hint err-banner">{{ loadError }}</div>
     </div>
 
     <!-- 設定表單 -->
-    <div class="card">
+    <div class="card" data-guide="line-config">
       <h3>🔑 填入 LINE 設定</h3>
       <p class="hint mb">以下資訊從 LINE 官方帳號管理後台取得，請見下方步驟說明</p>
 
@@ -136,12 +137,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 
 const props = defineProps({ branchId: { type: Number, default: null } });
 
 const loading = ref(false);
+const loadError = ref('');
 const saving  = ref(false);
 const status  = ref(null);
 const saveMsg = ref('');
@@ -152,47 +154,55 @@ const openStep = ref(0);
 const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '' });
 const show = ref({ token: false, secret: false });
 
-const steps = [
-  {
-    title: '建立 LINE 官方帳號 & 開啟 Messaging API',
-    lines: [
-      '1. 用電腦打開 <strong>LINE Official Account Manager</strong>（<code>manager.line.biz</code>）',
-      '2. 登入後點擊右上角「設定」→「Messaging API」→「啟用 Messaging API」',
-      '3. 選擇或建立一個 Provider，完成後系統會帶你到 LINE Developers Console',
-      '✅ 完成後你就有了一個可以接收訊息的官方帳號',
-    ],
-  },
-  {
-    title: '取得 Channel Access Token 和 Channel Secret',
-    lines: [
-      '1. 進入 <strong>LINE Developers Console</strong>（<code>developers.line.biz</code>）',
-      '2. 點擊你的 Channel → 上方選「<strong>Messaging API</strong>」分頁',
-      '3. 往下捲找到「<strong>Channel access token</strong>」→ 點「<strong>Issue</strong>」產生 Token → 複製貼到上方表單',
-      '4. 點上方「<strong>Basic settings</strong>」分頁 → 找「<strong>Channel secret</strong>」→ 複製貼到上方表單',
-      '5. 回到本頁點「<strong>儲存設定</strong>」',
-    ],
-  },
-  {
-    title: '填入 Webhook 網址（讓系統接收家長訊息）',
-    lines: [
-      '1. 在 LINE Developers → Messaging API 分頁，找「<strong>Webhook settings</strong>」',
-      '2. 點「<strong>Edit</strong>」，將上方的 Webhook 網址貼入',
-      '3. 開啟「<strong>Use webhook</strong>」開關',
-      '4. 點「<strong>Verify</strong>」，若顯示「Success」表示設定成功 ✅',
-    ],
-  },
-  {
-    title: '（選）設定 LIFF，讓家長在 LINE 內直接開啟頁面',
-    lines: [
-      '若不設定，家長點連結會用手機瀏覽器開啟，設定後體驗更流暢。',
-      '1. 在 LINE Developers → 你的 Channel → 上方選「<strong>LIFF</strong>」分頁',
-      '2. 點「<strong>Add</strong>」，Size 選「<strong>Full</strong>」',
-      `3. Endpoint URL 填入：<strong>${window.location.origin}/#/parent</strong>（你的分校網站網址）`,
-      '4. Scopes 勾選「<strong>profile</strong>」→ 按「Add」建立',
-      '5. 建立後會出現 <strong>LIFF ID</strong>（格式：1234567890-xxxxxxxx），複製貼到上方表單儲存',
-    ],
-  },
-];
+const steps = computed(() => {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const id = String(form.value.liff_id || status.value?.liff_id_value || '').trim();
+  const parentEndpoint = id
+    ? `${origin}/?parent_liff_id=${encodeURIComponent(id)}#/parent`
+    : `${origin}/#/parent`;
+  return [
+    {
+      title: '建立 LINE 官方帳號 & 開啟 Messaging API',
+      lines: [
+        '1. 用電腦打開 <strong>LINE Official Account Manager</strong>（<code>manager.line.biz</code>）',
+        '2. 登入後點擊右上角「設定」→「Messaging API」→「啟用 Messaging API」',
+        '3. 選擇或建立一個 Provider，完成後系統會帶你到 LINE Developers Console',
+        '✅ 完成後你就有了一個可以接收訊息的官方帳號',
+      ],
+    },
+    {
+      title: '取得 Channel Access Token 和 Channel Secret',
+      lines: [
+        '1. 進入 <strong>LINE Developers Console</strong>（<code>developers.line.biz</code>）',
+        '2. 點擊你的 Channel → 上方選「<strong>Messaging API</strong>」分頁',
+        '3. 往下捲找到「<strong>Channel access token</strong>」→ 點「<strong>Issue</strong>」產生 Token → 複製貼到上方表單',
+        '4. 點上方「<strong>Basic settings</strong>」分頁 → 找「<strong>Channel secret</strong>」→ 複製貼到上方表單',
+        '5. 回到本頁點「<strong>儲存設定</strong>」',
+      ],
+    },
+    {
+      title: '填入 Webhook 網址（讓系統接收家長訊息）',
+      lines: [
+        '1. 在 LINE Developers → Messaging API 分頁，找「<strong>Webhook settings</strong>」',
+        '2. 點「<strong>Edit</strong>」，將上方的 Webhook 網址貼入',
+        '3. 開啟「<strong>Use webhook</strong>」開關',
+        '4. 點「<strong>Verify</strong>」，若顯示「Success」表示設定成功 ✅（網址結尾會有一組分校代號數字，請完整複製）',
+      ],
+    },
+    {
+      title: '（選）設定 LIFF，讓家長在 LINE 內直接開啟頁面',
+      lines: [
+        '若不設定，家長點連結會用手機瀏覽器開啟，設定後體驗更流暢。',
+        '1. 在 LINE Developers → 你的 Channel → 上方選「<strong>LIFF</strong>」分頁',
+        '2. 點「<strong>Add</strong>」，Size 選「<strong>Full</strong>」',
+        `3. <strong>Endpoint URL</strong> 請填下面這一行（<strong>每個分校都要不同</strong>；多校共用同一網址會讓家長連續跳出「別校」官方帳號授權）：<br><code style="display:block;word-break:break-all;margin:6px 0;">${parentEndpoint}</code>`,
+        '若已用舊版只填 <code>/#/parent</code> 建立過 LIFF，請在 LINE Developers 編輯該 LIFF，把 Endpoint 改成上面網址。',
+        '4. Scopes 勾選「<strong>profile</strong>」→ 按「Add」建立',
+        '5. 建立後會出現 <strong>LIFF ID</strong>（格式：1234567890-xxxxxxxx），複製貼到上方表單儲存（儲存後步驟 3 會顯示含正確 ID 的網址）',
+      ],
+    },
+  ];
+});
 
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -204,6 +214,7 @@ async function getAuthHeaders() {
 
 async function loadStatus() {
   loading.value = true;
+  loadError.value = '';
   try {
     const headers = await getAuthHeaders();
     const url = props.branchId
@@ -215,9 +226,17 @@ async function loadStatus() {
       // Pre-fill LIFF ID if already set (non-sensitive)
       if (status.value.liff_id_value) form.value.liff_id = status.value.liff_id_value;
     } else {
-      console.error('LINE status API error:', res.status, await res.text());
+      const t = await res.text();
+      let msg = `無法載入狀態（HTTP ${res.status}）`;
+      try {
+        const j = JSON.parse(t);
+        if (j.message) msg = j.message === 'Forbidden' ? '無權限檢視此分校的 LINE 設定' : j.message;
+      } catch (_) { /* ignore */ }
+      loadError.value = msg;
+      console.error('LINE status API error:', res.status, t);
     }
   } catch (e) {
+    loadError.value = '連線失敗，請確認網路後再按「重新整理」。';
     console.error('Failed to load LINE status:', e);
   } finally {
     loading.value = false;
@@ -230,6 +249,7 @@ async function saveSettings() {
   try {
     const headers = await getAuthHeaders();
     const body = {};
+    if (props.branchId != null && props.branchId !== '') body.branch_id = Number(props.branchId);
     if (form.value.messaging_channel_token.trim()) body.messaging_channel_token = form.value.messaging_channel_token.trim();
     if (form.value.messaging_channel_secret.trim()) body.messaging_channel_secret = form.value.messaging_channel_secret.trim();
     body.liff_id = form.value.liff_id.trim();
@@ -293,6 +313,15 @@ h2 { margin: 0 0 4px; font-size: 20px; font-weight: 700; color: #1e293b; }
 h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #1e293b; }
 .sub { margin: 0; font-size: 13px; color: #64748b; }
 .hint { font-size: 12px; color: #64748b; }
+.err-banner {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
 .hint.mb { margin-bottom: 14px; }
 .mb { margin-bottom: 14px; }
 .mt { margin-top: 12px; }

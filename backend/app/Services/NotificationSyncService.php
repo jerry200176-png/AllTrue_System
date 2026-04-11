@@ -21,9 +21,10 @@ class NotificationSyncService
     public static function sync(array $campusIds = [], ?int $branchId = null): array
     {
         $scopedCampusIds = self::resolveCampusScope($campusIds, $branchId);
-        $managedTypes = ['tuition', 'learning_review', 'pending_swipe'];
+        $managedTypes = ['tuition', 'learning_review', 'pending_swipe', 'low_sessions'];
         $activeByKey = array_merge(
             self::buildTuitionNotifications($scopedCampusIds),
+            self::buildLowSessionsNotifications($scopedCampusIds),
             self::buildInvoiceOverdueNotifications($scopedCampusIds),
             self::buildLearningNotifications($scopedCampusIds),
             self::buildPendingSwipeNotifications($scopedCampusIds)
@@ -157,6 +158,63 @@ class NotificationSyncService
      * @param  array<int>  $campusIds
      * @return array<string, array<string, mixed>>
      */
+    private static function buildLowSessionsNotifications(array $campusIds): array
+    {
+        $query = StudentClass::query()
+            ->with('student')
+            ->where('Stop', 0)
+            ->where('ScheduleMode', 'count')
+            ->where('RemainingSessions', '<=', 2)
+            ->where('RemainingSessions', '>', 0); // 0 堂已由 Stop=1 處理，此處只提醒 1–2 堂
+
+        if (!empty($campusIds)) {
+            $query->whereHas('student', function ($sub) use ($campusIds) {
+                $sub->whereIn('CampusID', $campusIds);
+            });
+        }
+
+        $rows = [];
+        foreach ($query->get() as $class) {
+            $student = $class->student;
+            if (!$student) {
+                continue;
+            }
+
+            $campusId  = (int) ($student->CampusID ?? 0);
+            $remaining = (int) ($class->RemainingSessions ?? 0);
+            $subject   = (string) ($class->Subject ?: '課程');
+            $severity  = $remaining <= 1 ? 'high' : 'medium';
+
+            $sourceKey = "low_sessions:{$campusId}:{$class->ID}";
+            $rows[$sourceKey] = [
+                'CampusID'   => $campusId,
+                'Type'       => 'low_sessions',
+                'Severity'   => $severity,
+                'Title'      => "⚠️ {$student->name} {$subject} 剩餘堂數不足",
+                'Body'       => "剩餘 {$remaining} 堂，請盡快安排續課或加購堂數。",
+                'SourceType' => 'StudentClass',
+                'SourceID'   => (string) $class->ID,
+                'SourceKey'  => $sourceKey,
+                'Payload'    => [
+                    'student_id'         => (int) $student->id,
+                    'student_name'       => (string) $student->name,
+                    'class_id'           => (int) $class->ID,
+                    'subject'            => $subject,
+                    'remaining_sessions' => $remaining,
+                    'paid'               => (bool) $class->Paid,
+                ],
+                'OccurredAt' => now(),
+                'ResolvedAt' => null,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @param  array<int>  $campusIds
+     * @return array<string, array<string, mixed>>
+     */
     private static function buildInvoiceOverdueNotifications(array $campusIds): array
     {
         $query = Invoice::query()
@@ -249,7 +307,12 @@ class NotificationSyncService
     {
         $query = LearningRecord::query()
             ->with(['studentClass.student'])
-            ->whereIn('Status', ['pending', 'changes_requested']);
+            ->whereIn('Status', ['pending', 'changes_requested'])
+            ->whereHas('studentClass', function ($sc) {
+                $sc->where(function ($w) {
+                    $w->where('Stop', 0)->orWhereNull('Stop');
+                });
+            });
 
         if (!empty($campusIds)) {
             $query->whereHas('studentClass.student', function ($sub) use ($campusIds) {

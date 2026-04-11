@@ -8,10 +8,8 @@ use App\Models\LearningRecordTeacherChange;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
-use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
-use App\Services\SessionDeductionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -133,6 +131,8 @@ class LearningRecordController extends Controller
             $query->whereRaw("CONCAT(SessionDate, ' ', COALESCE(EndTime, '23:59:59')) <= ?", [$now]);
         }
 
+        $query->excludePausedCoursePendingReview();
+
         $perPage = min((int) $request->input('per_page', 20), 200);
         $records = $query->with('studentClass.student')
             ->orderBy('SessionDate', 'desc')
@@ -234,9 +234,9 @@ class LearningRecordController extends Controller
                 $classSessionId = $classSession->id;
             }
 
-            $timeGateResponse = $this->validateSessionEndedForWrite(
+            $timeGateResponse = $this->validateSessionStartedForWrite(
                 $classSession->SessionDate ?? ($data['SessionDate'] ?? null),
-                $classSession->EndTime ?? ($data['EndTime'] ?? null)
+                $classSession->StartTime ?? ($data['StartTime'] ?? null)
             );
             if ($timeGateResponse) {
                 return $timeGateResponse;
@@ -330,9 +330,9 @@ class LearningRecordController extends Controller
         if ($boundSessionId > 0) {
             $boundSession = ClassSession::find($boundSessionId);
         }
-        $timeGateResponse = $this->validateSessionEndedForWrite(
+        $timeGateResponse = $this->validateSessionStartedForWrite(
             $boundSession->SessionDate ?? $learningRecord->SessionDate ?? ($data['SessionDate'] ?? null),
-            $boundSession->EndTime ?? $learningRecord->EndTime ?? ($data['EndTime'] ?? null)
+            $boundSession->StartTime ?? $learningRecord->StartTime ?? ($data['StartTime'] ?? null)
         );
         if ($timeGateResponse) {
             return $timeGateResponse;
@@ -368,6 +368,7 @@ class LearningRecordController extends Controller
         $data = $request->validate([
             'TeacherID' => 'required|integer|exists:User,id',
             'reason' => 'nullable|string|max:255',
+            'update_class' => 'nullable|boolean',
         ]);
 
         $role = $request->attributes->get('auth_role');
@@ -410,9 +411,19 @@ class LearningRecordController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data) {
+        $updateClass = (bool) ($data['update_class'] ?? false);
+
+        return DB::transaction(function () use ($request, $learningRecord, $newTeacherId, $oldTeacherId, $data, $updateClass) {
             $learningRecord->TeacherID = $newTeacherId;
             $learningRecord->save();
+
+            if ($updateClass) {
+                $studentClass = StudentClass::find($learningRecord->StudentClassID);
+                if ($studentClass && (int) $studentClass->TeacherID !== $newTeacherId) {
+                    $studentClass->TeacherID = $newTeacherId;
+                    $studentClass->save();
+                }
+            }
 
             if ((string) $learningRecord->Status === 'approved') {
                 if ($oldTeacherId > 0) {
@@ -437,7 +448,11 @@ class LearningRecordController extends Controller
                 'reason' => $data['reason'] ?? null,
             ]);
 
-            return response()->json($this->hydrateRecordForResponse($learningRecord->fresh()));
+            $response = $this->hydrateRecordForResponse($learningRecord->fresh());
+            if ($updateClass) {
+                $response['class_teacher_updated'] = true;
+            }
+            return response()->json($response);
         });
     }
 
@@ -458,7 +473,6 @@ class LearningRecordController extends Controller
         ]);
 
         return DB::transaction(function () use ($learningRecord, $data) {
-            $studentClass = StudentClass::find($learningRecord->StudentClassID);
             if ($learningRecord->Status === 'approved') {
                 return response()->json(['message' => 'Already approved'], 409);
             }
@@ -473,17 +487,8 @@ class LearningRecordController extends Controller
             $learningRecord->ReviewNote = null;
             $learningRecord->save();
 
-            // 核准評量時也可扣堂；若已扣過（例如先點名/刷卡），則只標記不重複扣。
-            $recordAlreadyDeducted = $this->hasLearningRecordSessionDeductedColumn() && (bool) ($learningRecord->SessionDeducted ?? false);
-            if (!$recordAlreadyDeducted && $this->deductSessionForApprovedRecord($learningRecord)) {
-                if ($this->hasLearningRecordSessionDeductedColumn()) {
-                    $learningRecord->SessionDeducted = true;
-                    $learningRecord->save();
-                }
-                if ($studentClass) {
-                    SessionDeductionService::syncCounters($studentClass);
-                }
-            }
+            // Business rule: approval only affects review status / subject units.
+            // Remaining sessions are driven by attendance (present/late) only.
 
             // 給授課老師加一堂課 (業績+1)
             User::where('id', $learningRecord->TeacherID)->increment('TeachingSessionCount');
@@ -500,7 +505,6 @@ class LearningRecordController extends Controller
         ]);
 
         return DB::transaction(function () use ($learningRecord, $data) {
-            $studentClass = StudentClass::find($learningRecord->StudentClassID);
             if ($learningRecord->Status !== 'approved') {
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
@@ -509,9 +513,6 @@ class LearningRecordController extends Controller
             $learningRecord->ReviewNote = $data['ReviewNote'] ?? null;
             $learningRecord->ApprovedBy = null;
             $learningRecord->ApprovedAt = null;
-            if ($this->hasLearningRecordSessionDeductedColumn()) {
-                $learningRecord->SessionDeducted = false;
-            }
             $learningRecord->save();
 
             // Roll back previously-added approved session count.
@@ -519,9 +520,7 @@ class LearningRecordController extends Controller
                 ->where('TeachingSessionCount', '>', 0)
                 ->decrement('TeachingSessionCount');
 
-            if ($studentClass) {
-                SessionDeductionService::syncCounters($studentClass);
-            }
+            // Do not mutate session counters here. Attendance is the sole source.
 
             return response()->json($learningRecord);
         });
@@ -554,7 +553,9 @@ class LearningRecordController extends Controller
             $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
             $classIds = $classIds->whereIn('StudentID', $studentIds);
         }
-        $classIds = $classIds->pluck('ID');
+        $classIds = $classIds->where(function ($q) {
+            $q->where('Stop', 0)->orWhereNull('Stop');
+        })->pluck('ID');
 
         $query = LearningRecord::whereIn('StudentClassID', $classIds)
             ->whereIn('Status', ['pending', 'changes_requested']);
@@ -575,17 +576,79 @@ class LearningRecordController extends Controller
                 $learningRecord->ReviewNote = null;
                 $learningRecord->save();
 
-                // 核准評量時也可扣堂；若已扣過則只標記不重複扣。
-                if (!$learningRecord->SessionDeducted && $this->deductSessionForApprovedRecord($learningRecord)) {
-                    $learningRecord->SessionDeducted = true;
-                    $learningRecord->save();
-                }
+                // Approval only affects review status / subject units.
 
                 User::where('id', $learningRecord->TeacherID)->increment('TeachingSessionCount');
                 $approved++;
             }
             return response()->json(['message' => "已核准 {$approved} 筆評量", 'approved' => $approved]);
         });
+    }
+
+    public function batchReject(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+            'ReviewNote' => 'nullable|string|max:255',
+            'DirectorID' => 'nullable|integer',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'teacher') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $records = LearningRecord::whereIn('id', $data['ids'])
+            ->whereIn('Status', ['pending', 'changes_requested'])
+            ->get();
+
+        $rejected = 0;
+        DB::transaction(function () use ($records, $data, &$rejected) {
+            foreach ($records as $record) {
+                $record->Status = 'rejected';
+                $record->ReviewNote = $data['ReviewNote'] ?? '';
+                $record->ApprovedBy = $data['DirectorID'] ?? null;
+                $record->ApprovedAt = null;
+                $record->save();
+                $rejected++;
+            }
+        });
+
+        return response()->json(['message' => "已退回 {$rejected} 筆評量", 'rejected' => $rejected]);
+    }
+
+    public function batchRequestChanges(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+            'ReviewNote' => 'nullable|string|max:255',
+            'DirectorID' => 'nullable|integer',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'teacher') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $records = LearningRecord::whereIn('id', $data['ids'])
+            ->whereIn('Status', ['pending', 'changes_requested'])
+            ->get();
+
+        $changed = 0;
+        DB::transaction(function () use ($records, $data, &$changed) {
+            foreach ($records as $record) {
+                $record->Status = 'changes_requested';
+                $record->ReviewNote = $data['ReviewNote'] ?? '';
+                $record->ApprovedBy = $data['DirectorID'] ?? null;
+                $record->ApprovedAt = null;
+                $record->save();
+                $changed++;
+            }
+        });
+
+        return response()->json(['message' => "已標記 {$changed} 筆需修改", 'changed' => $changed]);
     }
 
     public function backdoorApprove(Request $request)
@@ -639,11 +702,6 @@ class LearningRecordController extends Controller
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                 }
 
-                if (!$existing->SessionDeducted && $this->deductSessionForApprovedRecord($existing)) {
-                    $existing->SessionDeducted = true;
-                    $existing->save();
-                }
-
                 return response()->json($existing, 201);
             }
 
@@ -666,11 +724,6 @@ class LearningRecordController extends Controller
                 $recordPayload['ExcludeFromSubjectCount'] = 1; // 補登空白評量(單一課程) 不算入老師科目數
             }
             $record = LearningRecord::create($recordPayload);
-
-            if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
-                $record->SessionDeducted = true;
-                $record->save();
-            }
 
             return response()->json($record, 201);
         });
@@ -773,10 +826,6 @@ class LearningRecordController extends Controller
                 if ($record) {
                     if ($record->Status === 'approved') {
                         $this->syncRecordWithClassSession($record, $classSession, $teacherId);
-                        if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
-                            $record->SessionDeducted = true;
-                            $record->save();
-                        }
                         continue;
                     }
                     $record->Status = 'approved';
@@ -787,10 +836,6 @@ class LearningRecordController extends Controller
                     }
                     $this->syncRecordWithClassSession($record, $classSession, $teacherId);
                     $record->save();
-                if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
-                    $record->SessionDeducted = true;
-                    $record->save();
-                }
                     $approved++;
                     continue;
                 }
@@ -809,10 +854,6 @@ class LearningRecordController extends Controller
                     'ApprovedBy' => $data['DirectorID'],
                     'ApprovedAt' => now(),
                 ]);
-                if (!$record->SessionDeducted && $this->deductSessionForApprovedRecord($record)) {
-                    $record->SessionDeducted = true;
-                    $record->save();
-                }
                 $created++;
             }
 
@@ -1107,21 +1148,21 @@ class LearningRecordController extends Controller
             ->first();
     }
 
-    private function validateSessionEndedForWrite($sessionDate, $endTime): ?\Illuminate\Http\JsonResponse
+    private function validateSessionStartedForWrite($sessionDate, $startTime): ?\Illuminate\Http\JsonResponse
     {
         $date = $this->normalizeDateValue($sessionDate);
-        $time = $this->normalizeProjectionTime($endTime);
+        $time = $this->normalizeProjectionTime($startTime);
         if (!$date || !$time) {
             return null;
         }
 
         try {
             $timezone = config('app.timezone', 'Asia/Taipei');
-            $sessionEndAt = Carbon::createFromFormat('Y-m-d H:i:s', "{$date} {$time}", $timezone);
-            if (now($timezone)->lessThanOrEqualTo($sessionEndAt)) {
+            $sessionStartAt = Carbon::createFromFormat('Y-m-d H:i:s', "{$date} {$time}", $timezone);
+            if (now($timezone)->lessThan($sessionStartAt)) {
                 return response()->json([
-                    'message' => '課程尚未結束，課程結束後開放填寫評量表',
-                    'session_end_at' => $sessionEndAt->toDateTimeString(),
+                    'message' => '課程尚未開始，請於上課時間後再填寫評量表',
+                    'session_start_at' => $sessionStartAt->toDateTimeString(),
                 ], 422);
             }
         } catch (\Throwable $e) {
@@ -1295,12 +1336,9 @@ class LearningRecordController extends Controller
             : null;
         $usedSessions = max(0, (int) ($studentClass->UsedSessions ?? 0));
 
-        // 堂數制優先以「總堂數 - 已使用/已核准」推導，避免舊資料 RemainingSessions 過時導致多推算。
+        // 堂數制以「總堂數 - 已使用(出缺勤扣堂)」推導。
         if ($sessionCount > 0) {
-            $approvedCount = LearningRecord::where('StudentClassID', $studentClass->ID)
-                ->where('Status', 'approved')
-                ->count();
-            $derivedRemaining = max(0, $sessionCount - max($approvedCount, $usedSessions));
+            $derivedRemaining = max(0, $sessionCount - $usedSessions);
 
             if ($remainingSessions === null) {
                 return $derivedRemaining;
@@ -1555,38 +1593,6 @@ class LearningRecordController extends Controller
             return null;
         }
         return substr($str, 0, 5);
-    }
-
-    private function deductSessionForApprovedRecord(LearningRecord $learningRecord): bool
-    {
-        $studentClass = StudentClass::find($learningRecord->StudentClassID);
-        if (!$studentClass) {
-            return false;
-        }
-
-        $classSessionId = (int) ($learningRecord->ClassSessionID ?? 0);
-        if ($classSessionId > 0) {
-            $alreadyDeducted = StudentSignIn::where('ClassSessionID', $classSessionId)
-                ->where('SessionDeducted', true)
-                ->exists();
-            if ($alreadyDeducted) {
-                SessionDeductionService::syncCounters($studentClass);
-                return true;
-            }
-        }
-
-        $signIn = null;
-        if ($classSessionId > 0) {
-            $signIn = StudentSignIn::where('ClassSessionID', $classSessionId)
-                ->orderBy('id', 'desc')
-                ->first();
-        }
-
-        return SessionDeductionService::deductOnAttendance(
-            $studentClass,
-            $signIn,
-            $classSessionId > 0 ? $classSessionId : null
-        );
     }
 
 }

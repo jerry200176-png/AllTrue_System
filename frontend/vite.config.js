@@ -1,11 +1,18 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import path from 'path';
 
 const buildTimeIso = new Date().toISOString();
 
 export default defineConfig({
   base: './',
   cacheDir: './.vite_cache',
+  resolve: {
+    alias: {
+      'laravel-echo': path.resolve(__dirname, 'vendor-modules/laravel-echo'),
+      'pusher-js': path.resolve(__dirname, 'vendor-modules/pusher-js'),
+    },
+  },
   define: {
     __APP_BUILD_TIME__: JSON.stringify(buildTimeIso),
   },
