@@ -12,6 +12,7 @@ use App\Models\Invoice;
 use App\Models\Announcement;
 use App\Models\Subject;
 use App\Models\User;
+use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -162,6 +163,25 @@ class ParentPortalController extends Controller
             ->get();
 
         $classIds = $classes->pluck('ID')->all();
+        $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
+
+        $sessionMetrics = static function (StudentClass $c) use ($observedUsedByClass): array {
+            $mode = (string) ($c->ScheduleMode ?? 'count');
+            $purchased = max(0, (int) ($c->SessionCount ?? 0));
+            if ($mode !== 'count' || $purchased <= 0) {
+                return [
+                    'used' => max(0, (int) ($c->UsedSessions ?? 0)),
+                    'remaining' => max(0, (int) ($c->RemainingSessions ?? 0)),
+                ];
+            }
+            $observed = max(0, (int) ($observedUsedByClass[$c->ID] ?? 0));
+            $used = min($purchased, $observed);
+
+            return [
+                'used' => $used,
+                'remaining' => max(0, $purchased - $used),
+            ];
+        };
 
         // Learning records (approved only) — paginated
         $lrPage    = max(1, (int) $request->query('lr_page', 1));
@@ -182,9 +202,10 @@ class ParentPortalController extends Controller
                     $teacher = User::find($rec->TeacherID);
                     $rec->teacher_name = $teacher ? $teacher->Name : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
-                    if ($sc) {
-                        $rec->Subject = $this->resolveSubjectName($sc);
-                    }
+                    $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
+                    $rec->Subject = trim((string) ($rec->Subject ?? '')) !== ''
+                        ? (string) $rec->Subject
+                        : ($fromCourse ?: '課程');
                     return $rec;
                 });
             $lrHasMore = ($lrPage * $lrPerPage) < $lrTotal;
@@ -194,63 +215,82 @@ class ParentPortalController extends Controller
         $attendance = StudentSignIn::where('StudentID', $student->id)
             ->orderBy('SignInDT', 'desc')
             ->limit(100)
-            ->get();
+            ->get()
+            ->map(function ($row) {
+                $status = (string) ($row->Status ?? '');
+                $row->status_label = match ($status) {
+                    'present' => '到班',
+                    'late' => '遲到',
+                    'excused' => '請假',
+                    'absent' => '缺席',
+                    'leave' => '離班',
+                    default => $status,
+                };
+                $row->is_late = $status === 'late';
+                return $row;
+            });
 
-        // Per-course remaining session breakdown — only truly active courses
+        // Per-course breakdown — 家長端「進行中」：堂數制僅顯示尚有剩餘堂數者
         $perCourse = $classes
-            ->filter(function ($c) {
-                $paid      = (bool) $c->Paid;
-                $remaining = (int) ($c->RemainingSessions ?? 0);
-                $stopped   = (bool) $c->Stop;
+            ->filter(function ($c) use ($sessionMetrics) {
+                $paid = (bool) $c->Paid;
+                $stopped = (bool) $c->Stop;
+                $metrics = $sessionMetrics($c);
+                $remaining = (int) $metrics['remaining'];
 
-                // Fully used + paid → course complete, hide
-                if ($paid && $remaining <= 0) {
+                if ($stopped && $paid) {
                     return false;
                 }
 
-                // Stopped + paid → no longer active, hide
-                if ($stopped && $paid) {
+                if ((string) ($c->ScheduleMode ?? 'count') === 'count') {
+                    return $remaining > 0;
+                }
+
+                if ($paid && $remaining <= 0) {
                     return false;
                 }
 
                 return true;
             })
-            ->map(function ($c) {
+            ->map(function ($c) use ($sessionMetrics) {
+                $metrics = $sessionMetrics($c);
+
                 return [
                     'id'                 => $c->ID,
                     'subject'            => $this->resolveSubjectName($c),
                     'schedule_mode'      => $c->ScheduleMode,
                     'sessions_purchased' => $c->SessionCount,
-                    'remaining_sessions' => $c->RemainingSessions,
-                    'used_sessions'      => $c->UsedSessions,
+                    'remaining_sessions' => $metrics['remaining'],
+                    'used_sessions'      => $metrics['used'],
                     'is_stopped'         => (bool) $c->Stop,
                     'paid'               => (bool) $c->Paid,
                 ];
             })
             ->values();
 
-        $remainingTotal = $classes
-            ->where('ScheduleMode', 'count')
-            ->sum(fn ($c) => (int) ($c->RemainingSessions ?? 0));
+        // 與下方「進行中的課程」卡片一致：勿把已隱藏課程（如已暫停且已繳）的剩餘加進總數，否則會比主任只看進行中時多 1 堂以上
+        $remainingTotal = $perCourse
+            ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+            ->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0));
 
-        $remainingBySubject = $classes
-            ->where('ScheduleMode', 'count')
-            ->filter(fn ($c) => (int) ($c->RemainingSessions ?? 0) > 0)
-            ->groupBy(fn ($c) => $this->resolveSubjectName($c))
-            ->map(fn ($group) => $group->sum(fn ($c) => (int) ($c->RemainingSessions ?? 0)))
+        $remainingBySubject = $perCourse
+            ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+            ->filter(fn ($row) => (int) ($row['remaining_sessions'] ?? 0) > 0)
+            ->groupBy('subject')
+            ->map(fn ($group) => $group->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0)))
             ->sortDesc()
             ->toArray();
 
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes
-            ->filter(function ($c) {
+            ->filter(function ($c) use ($sessionMetrics) {
                 if ($c->ScheduleMode !== 'count' && ($c->SessionCount ?? 0) <= 0) {
                     return false;
                 }
 
-                $remaining = (int) ($c->RemainingSessions ?? 0);
-                $paid      = (bool) $c->Paid;
-                $stopped   = (bool) $c->Stop;
+                $remaining = (int) $sessionMetrics($c)['remaining'];
+                $paid = (bool) $c->Paid;
+                $stopped = (bool) $c->Stop;
 
                 // Fully used + already paid → course complete, nothing to act on
                 if ($paid && $remaining <= 0) {
@@ -264,21 +304,32 @@ class ParentPortalController extends Controller
 
                 return $remaining <= 2 || !$paid;
             })
-            ->map(function ($c) {
+            ->map(function ($c) use ($sessionMetrics) {
                 return [
                     'class_id'           => $c->ID,
                     'subject'            => $this->resolveSubjectName($c),
-                    'remaining_sessions' => (int) ($c->RemainingSessions ?? 0),
+                    'remaining_sessions' => (int) $sessionMetrics($c)['remaining'],
                     'paid'               => (bool) $c->Paid,
                     'is_stopped'         => (bool) $c->Stop,
                 ];
             })
             ->values();
 
+        $upcomingClassIds = $classes->filter(function ($c) use ($sessionMetrics) {
+            if ((string) ($c->ScheduleMode ?? 'count') === 'count') {
+                return (int) $sessionMetrics($c)['remaining'] > 0;
+            }
+            if ((bool) $c->Stop && (bool) $c->Paid) {
+                return false;
+            }
+
+            return true;
+        })->pluck('ID')->all();
+
         // Upcoming sessions
         $upcomingSessions = [];
-        if (!empty($classIds)) {
-            $upcomingSessions = ClassSession::whereIn('StudentClassID', $classIds)
+        if (!empty($upcomingClassIds)) {
+            $upcomingSessions = ClassSession::whereIn('StudentClassID', $upcomingClassIds)
                 ->where('SessionDate', '>=', Carbon::today())
                 ->whereIn('Status', ['scheduled', 'rescheduled', 'leave_requested'])
                 ->orderBy('SessionDate', 'asc')

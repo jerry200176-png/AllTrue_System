@@ -70,7 +70,15 @@ class TeacherScopeService
 
         $warnings = [];
 
-        $subjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "科目#{$subjectId}";
+        $rawSubjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
+            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val');
+        $subjectDisplayNames = [
+            'Chinese' => '國文', 'English' => '英文', 'Math' => '數學',
+            'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '理化',
+            'Biology' => '生物', 'Social' => '社會',
+        ];
+        $subjectName = ($rawSubjectName ? ($subjectDisplayNames[$rawSubjectName] ?? $rawSubjectName) : null)
+            ?? "科目#{$subjectId}";
         $teacherName = DB::table('User')->where('id', $teacherId)->value('Name') ?? "老師#{$teacherId}";
         $levelLabel = $level ? (self::LEVEL_LABELS[$level] ?? $level) : '未知學段';
 

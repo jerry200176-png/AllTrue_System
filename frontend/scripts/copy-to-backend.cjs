@@ -11,6 +11,14 @@ function ensureBranchesJson() {
   if (!fs.existsSync(p)) fs.writeFileSync(p, '[{"id":1,"name":"大安分校","code":"daan"}]');
 }
 
+function resetAssetsDir() {
+  const assetsTo = path.join(toDir, 'assets');
+  try {
+    fs.rmSync(assetsTo, { recursive: true, force: true });
+  } catch (_) {}
+  fs.mkdirSync(assetsTo, { recursive: true });
+}
+
 if (!fs.existsSync(fromDir)) {
   console.error('Run npm run build first.');
   process.exit(1);
@@ -24,8 +32,8 @@ function copyWithFsCp() {
   const indexFrom = path.join(fromDir, 'index.html');
   const assetsFrom = path.join(fromDir, 'assets');
   const assetsTo = path.join(toDir, 'assets');
+  resetAssetsDir();
   fs.cpSync(indexFrom, path.join(toDir, 'index.html'), { force: true });
-  if (!fs.existsSync(assetsTo)) fs.mkdirSync(assetsTo, { recursive: true });
   for (const f of fs.readdirSync(assetsFrom)) {
     const src = path.join(assetsFrom, f);
     const dest = path.join(assetsTo, f);
@@ -40,7 +48,7 @@ function copyWithNode() {
   fs.writeFileSync(indexTo, fs.readFileSync(indexFrom));
   const assetsFrom = path.join(fromDir, 'assets');
   const assetsTo = path.join(toDir, 'assets');
-  if (!fs.existsSync(assetsTo)) fs.mkdirSync(assetsTo, { recursive: true });
+  resetAssetsDir();
   for (const f of fs.readdirSync(assetsFrom)) {
     const src = path.join(assetsFrom, f);
     const dest = path.join(assetsTo, f);
@@ -52,6 +60,7 @@ function copyWithNode() {
 function copyWithCp() {
   const fromAssets = path.join(fromDir, 'assets');
   const toAssets = path.join(toDir, 'assets');
+  resetAssetsDir();
   execSync(`mkdir -p "${toAssets}" && cp -f "${path.join(fromDir, 'index.html')}" "${toDir}/" && cp -rf "${fromAssets}"/* "${toAssets}/"`, { stdio: 'pipe', shell: true });
   ensureBranchesJson();
 }

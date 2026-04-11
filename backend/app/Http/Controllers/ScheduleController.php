@@ -72,6 +72,14 @@ class ScheduleController extends Controller
             $query->where('schedule_date', $request->input('schedule_date'));
         }
 
+        // Date range filters (start/end)
+        if ($request->filled('start')) {
+            $query->where('schedule_date', '>=', $request->input('start'));
+        }
+        if ($request->filled('end')) {
+            $query->where('schedule_date', '<=', $request->input('end'));
+        }
+
         // __limit shortcut
         if ($request->filled('__limit')) {
             $query->limit((int) $request->input('__limit'));
@@ -79,6 +87,7 @@ class ScheduleController extends Controller
 
         $perPage = $request->input('per_page');
         if ($perPage === 'all' || (int) $perPage >= 1000) {
+            $query->limit(5000);
             return response()->json($query->orderBy('schedule_date', 'asc')->get());
         }
 

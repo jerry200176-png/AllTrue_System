@@ -688,6 +688,7 @@ async function submit() {
     alert('月結課請先選擇結算日');
     return;
   }
+  const projectedFutureDates = futureDates.value;
   if (form.payment_type === 'monthly') {
     const targetYm = toYmd(currentMonth.value).slice(0, 7);
     const allDates = sortDates([...manualDates.value, ...projectedFutureDates]);
@@ -710,8 +711,6 @@ async function submit() {
       return;
     }
   }
-
-  const projectedFutureDates = futureDates.value;
   if (projectedFutureDates.some((date) => date < todayYmd)) {
     alert('系統預排日期不可早於今天，請調整固定上課星期');
     return;
@@ -866,19 +865,36 @@ async function submit() {
 }
 
 .weekday-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  min-width: 58px;
   padding: 7px 11px;
   border-radius: 999px;
   border: 1px solid #d6deeb;
   background: #fff;
   cursor: pointer;
+  text-align: center;
 }
 
 .weekday-chip.selected {
   background: #ecf4ff;
   border-color: #6ea8fe;
+}
+
+.weekday-chip input[type='checkbox'] {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.weekday-chip span {
+  display: inline-block;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .weekday-slot-grid {

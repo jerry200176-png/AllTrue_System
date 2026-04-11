@@ -36,8 +36,16 @@ frontend/dist/
 frontend/dist_build/
 backend/public/assets/
 
+# User uploads (avatars, bug screenshots) — do not commit to git
+backend/storage/app/public/avatars/
+backend/storage/app/public/bug-reports/
+
 # Local data volumes
 data/
+
+# Database dumps / backups (keep out of git; use mysqldump + secure storage)
+docs/AllTrue_backup.sql
+**/*_backup.sql
 
 # OS/editor artifacts
 .DS_Store

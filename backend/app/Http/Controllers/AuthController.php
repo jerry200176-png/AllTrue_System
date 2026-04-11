@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserLoginActivity;
 use App\Models\UserNotificationPreference;
 use App\Models\UserCampus;
+use App\Support\PublicAvatarUrl;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -72,11 +73,13 @@ class AuthController extends Controller
         $user = $matchingUsers->first();
         $role = $this->resolveRole($user);
 
+        $this->revokeSameDeviceActiveTokens((int) $user->id, (string) $request->userAgent());
+
         $token = Str::random(64);
         $authToken = AuthToken::create([
             'user_id'    => $user->id,
             'token'      => $token,
-            'expires_at' => Carbon::now()->addDays(30),
+            'expires_at' => Carbon::now()->addDays(7),
         ]);
         $this->recordLoginActivity($request, $user->id, true, $authToken->id);
 
@@ -125,6 +128,8 @@ class AuthController extends Controller
             'subject_level_scopes' => 'nullable|array',
             'subject_level_scopes.*.subject_id' => 'required_with:subject_level_scopes|integer|min:1',
             'subject_level_scopes.*.level' => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
+            'multi_branches' => 'nullable|array',
+            'multi_branches.*' => 'integer|min:1',
         ]);
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
         if ($loginName === '') {
@@ -134,6 +139,17 @@ class AuthController extends Controller
         $branchId = isset($data['branch_id']) ? (int) $data['branch_id'] : null;
         if ($branchId !== null && !Campus::where('id', $branchId)->exists()) {
             return response()->json(['message' => '分校不存在'], 422);
+        }
+
+        $multiBranchIds = array_values(array_unique(array_map(
+            'intval',
+            (array) ($data['multi_branches'] ?? [])
+        )));
+        $multiBranchIds = array_values(array_filter($multiBranchIds, static fn (int $id) => $id > 0));
+        foreach ($multiBranchIds as $mid) {
+            if (!Campus::where('id', $mid)->exists()) {
+                return response()->json(['message' => '跨校分校不存在'], 422);
+            }
         }
 
         $type = match ($data['role'] ?? 'teacher') {
@@ -163,7 +179,7 @@ class AuthController extends Controller
 
         $initialStatus = $type === 'T' ? 'pending' : 'active';
 
-        $user = DB::transaction(function () use ($data, $type, $normalizedPhone, $branchId, $loginName, $initialStatus) {
+        $user = DB::transaction(function () use ($data, $type, $normalizedPhone, $branchId, $loginName, $initialStatus, $multiBranchIds) {
             $user = User::create([
                 'LoginName' => $loginName,
                 'Name'      => $data['name'],
@@ -176,6 +192,13 @@ class AuthController extends Controller
             $allBranches = [];
             if ($branchId !== null) {
                 $allBranches[] = (int) $branchId;
+            }
+            if ($type === 'T') {
+                foreach ($multiBranchIds as $extraId) {
+                    if (!in_array($extraId, $allBranches, true)) {
+                        $allBranches[] = $extraId;
+                    }
+                }
             }
 
             foreach ($allBranches as $campusId) {
@@ -432,24 +455,78 @@ class AuthController extends Controller
             return response()->json(['message' => '目前系統尚未啟用頭像欄位'], 422);
         }
 
-        $data = $request->validate([
-            'avatar' => 'required|image|mimes:jpg,jpeg,png,webp|max:2048',
-        ]);
-
-        $file = $data['avatar'];
-        $folder = "avatars/{$user->id}";
-        $fileName = 'avatar.' . strtolower($file->getClientOriginalExtension() ?: 'jpg');
-        $path = Storage::disk('public')->putFileAs($folder, $file, $fileName);
-
-        $oldAvatar = $user->AvatarUrl ?? null;
-        if (!empty($oldAvatar) && str_starts_with($oldAvatar, '/storage/')) {
-            $oldPath = substr($oldAvatar, strlen('/storage/'));
-            if ($oldPath && $oldPath !== $path && Storage::disk('public')->exists($oldPath)) {
-                Storage::disk('public')->delete($oldPath);
+        // PHP upload errors surface as Laravel rule "uploaded" → raw key "validation.uploaded" without this.
+        if ($request->hasFile('avatar')) {
+            $uploaded = $request->file('avatar');
+            if (!$uploaded->isValid()) {
+                $code = $uploaded->getError();
+                $hint = '（管理員請將 PHP 的 upload_max_filesize、post_max_size 調為至少 16M，nginx 則 client_max_body_size。）';
+                $msg = match ($code) {
+                    \UPLOAD_ERR_INI_SIZE, \UPLOAD_ERR_FORM_SIZE =>
+                        '檔案超過伺服器允許大小，請改選較小的照片後再試。' . $hint,
+                    \UPLOAD_ERR_PARTIAL => '上傳未完成（網路中斷），請再試一次。',
+                    \UPLOAD_ERR_NO_TMP_DIR => '伺服器暫存目錄設定異常，請聯絡管理員。',
+                    \UPLOAD_ERR_CANT_WRITE => '伺服器無法寫入暫存檔，請聯絡管理員。',
+                    \UPLOAD_ERR_EXTENSION => '伺服器阻擋了此類上傳，請聯絡管理員。',
+                    default => '檔案未成功上傳，請再試或改選較小的圖片。' . $hint,
+                };
+                return response()->json([
+                    'message' => $msg,
+                    'errors' => ['avatar' => [$msg]],
+                ], 422);
             }
         }
 
-        $user->AvatarUrl = Storage::disk('public')->url($path);
+        // max is kilobytes (8192 ≈ 8MB). Many phone photos exceed legacy 2048 (2MB) and caused 422.
+        $data = $request->validate(
+            [
+                'avatar' => 'required|image|mimes:jpeg,jpg,png,webp|max:8192',
+            ],
+            [
+                'avatar.required' => '請選擇圖片檔。',
+                'avatar.uploaded' => '檔案未完整上傳，常見原因是超過 PHP 大小限制；請改選較小圖片，或請管理員調高 upload_max_filesize／post_max_size（建議 ≥16M）。',
+                'avatar.image' => '請上傳有效的圖片（JPEG、PNG 或 WebP）。',
+                'avatar.mimes' => '僅支援 JPEG、PNG、WebP。iPhone「HEIC」請在相機改為「最相容」或先轉成 JPEG 再上傳。',
+                'avatar.max' => '圖檔請勿超過 8MB，請縮小或改選較小的照片。',
+            ]
+        );
+
+        $file = $data['avatar'];
+        $folder = "avatars/{$user->id}";
+        $ext = strtolower($file->getClientOriginalExtension() ?: '');
+        if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+            $ext = match ($file->getMimeType()) {
+                'image/png' => 'png',
+                'image/webp' => 'webp',
+                default => 'jpg',
+            };
+        }
+        $fileName = 'avatar.' . $ext;
+        try {
+            $path = Storage::disk('public')->putFileAs($folder, $file, $fileName);
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('[Avatar] Storage failed: ' . $e->getMessage(), ['user_id' => $user->id]);
+            return response()->json(['message' => '頭像儲存失敗，請稍後再試或聯絡管理員。'], 500);
+        }
+        if ($path === false || $path === '') {
+            return response()->json(['message' => '無法寫入儲存空間，請確認伺服器 storage 權限或聯絡管理員。'], 500);
+        }
+
+        $oldAvatar = $user->AvatarUrl ?? null;
+        $oldPath = self::avatarStoredPathForDisk($oldAvatar);
+        if ($oldPath && $oldPath !== $path && Storage::disk('public')->exists($oldPath)) {
+            try {
+                Storage::disk('public')->delete($oldPath);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('[Avatar] Delete old file failed: '.$e->getMessage(), [
+                    'user_id' => $user->id,
+                    'old_path' => $oldPath,
+                ]);
+            }
+        }
+
+        // Store disk-relative path only — never APP_URL-prefixed URLs (breaks LAN / alternate host).
+        $user->AvatarUrl = $path;
         $user->save();
 
         return response()->json([
@@ -512,6 +589,40 @@ class AuthController extends Controller
 
         return response()->json([
             'data' => $this->buildSecuritySummary($request, (int) $user->id),
+        ]);
+    }
+
+    public function logoutOtherSessions(Request $request)
+    {
+        $user = $request->attributes->get('auth_user');
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        if (!Schema::hasTable('auth_tokens')) {
+            return response()->json([
+                'message' => '目前系統尚未啟用登入 token 管理',
+                'revoked_count' => 0,
+            ]);
+        }
+
+        $currentTokenId = null;
+        $bearer = $request->bearerToken();
+        if ($bearer) {
+            $currentTokenId = (int) (AuthToken::where('token', $bearer)->value('id') ?? 0);
+        }
+
+        $query = AuthToken::query()->where('user_id', (int) $user->id);
+        if ($currentTokenId > 0) {
+            $query->where('id', '!=', $currentTokenId);
+        }
+
+        $revokedCount = (int) $query->count();
+        $query->delete();
+
+        return response()->json([
+            'message' => '已登出其他裝置',
+            'revoked_count' => $revokedCount,
         ]);
     }
 
@@ -627,13 +738,50 @@ class AuthController extends Controller
 
     private function toAvatarUrl(?string $avatar): ?string
     {
-        if (!$avatar) {
+        $url = PublicAvatarUrl::forBrowser($avatar);
+        if ($url === null || $url === '') {
             return null;
         }
-        if (str_starts_with($avatar, 'http://') || str_starts_with($avatar, 'https://') || str_starts_with($avatar, '/')) {
-            return $avatar;
+        // Same path after re-upload (e.g. avatars/1/avatar.jpg) must change in the browser; append file mtime.
+        $diskPath = self::avatarStoredPathForDisk($avatar);
+        if ($diskPath !== null && $diskPath !== '' && Storage::disk('public')->exists($diskPath)) {
+            try {
+                $v = Storage::disk('public')->lastModified($diskPath);
+                $sep = str_contains($url, '?') ? '&' : '?';
+
+                return $url.$sep.'v='.$v;
+            } catch (\Throwable $e) {
+                // fall through: return without query param
+            }
         }
-        return Storage::disk('public')->url($avatar);
+
+        return $url;
+    }
+
+    /**
+     * Path under storage/app/public for delete/compare (avatars/1/avatar.jpg).
+     */
+    private static function avatarStoredPathForDisk(?string $stored): ?string
+    {
+        if ($stored === null || $stored === '') {
+            return null;
+        }
+        $s = trim($stored);
+        if (str_starts_with($s, '/storage/')) {
+            return substr($s, strlen('/storage/')) ?: null;
+        }
+        if (str_starts_with($s, 'http://') || str_starts_with($s, 'https://')) {
+            if (preg_match('#/storage/([^?\s#]+)#', $s, $m)) {
+                return urldecode($m[1]) ?: null;
+            }
+
+            return null;
+        }
+        if (str_contains($s, '://')) {
+            return null;
+        }
+
+        return ltrim($s, '/') ?: null;
     }
 
     private function normalizePhone($raw): ?string
@@ -738,6 +886,50 @@ class AuthController extends Controller
         }
     }
 
+    private function revokeSameDeviceActiveTokens(int $userId, string $userAgent): void
+    {
+        if ($userId <= 0 || !Schema::hasTable('auth_tokens') || !Schema::hasTable('user_login_activities')) {
+            return;
+        }
+
+        $ua = trim($userAgent);
+        $deviceLabel = $this->guessDeviceLabel($ua);
+
+        $tokenIds = UserLoginActivity::query()
+            ->where('user_id', $userId)
+            ->where('success', true)
+            ->whereNotNull('auth_token_id')
+            ->where(function ($query) use ($ua, $deviceLabel) {
+                if ($ua !== '') {
+                    $query->where('user_agent', $ua);
+                } elseif ($deviceLabel !== 'Unknown Device') {
+                    $query->where('device_label', $deviceLabel);
+                } else {
+                    $query->whereRaw('1 = 0');
+                }
+            })
+            ->orderByDesc('login_at')
+            ->limit(50)
+            ->pluck('auth_token_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($tokenIds)) {
+            return;
+        }
+
+        AuthToken::query()
+            ->where('user_id', $userId)
+            ->whereIn('id', $tokenIds)
+            ->where(function ($query) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>=', now());
+            })
+            ->delete();
+    }
+
     private function resolveRole(User $user): string
     {
         return match ($user->type) {
@@ -754,15 +946,7 @@ class AuthController extends Controller
             return false;
         }
 
-        if (password_verify($password, $user->PSW)) {
-            return true;
-        }
-
-        if ($user->PSW === $password) {
-            return true;
-        }
-
-        return md5($password) === $user->PSW;
+        return password_verify($password, $user->PSW);
     }
 
     private function loginTypePriority(?string $type): int

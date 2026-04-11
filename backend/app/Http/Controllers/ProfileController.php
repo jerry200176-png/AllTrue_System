@@ -711,6 +711,11 @@ class ProfileController extends Controller
     public function update(Request $request, $id)
     {
         $user = User::findOrFail($id);
+
+        if ((string) $user->type === 'T' && !$this->canManageTeacher($request, (int) $user->id)) {
+            return response()->json(['message' => '無權限操作此老師帳號'], 403);
+        }
+
         $input = $request->validate([
             'username'        => 'nullable|string|max:64',
             'name'            => 'nullable|string|max:64',

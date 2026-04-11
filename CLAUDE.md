@@ -10,7 +10,9 @@
 3. **`docs/AI_REGRESSION_LESSONS.md`** — **防再犯**：已發生過的缺口（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI 等）
 4. **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`** — 若動到主任儀表板「繳費提醒」或 `GET /api/v1/alerts/tuition`（`AlertController::tuition`）
 5. **`docs/OPERATIONS_RUNBOOK.md`**、**`docs/GITHUB_SYNC_WORKFLOW.md`**
-6. **`docs/CHANGELOG.md`**、**`docs/CHAT_BUG_SYSTEM.md`**（聊天＋Bug 回報）
+6. **`docs/CHANGELOG.md`**
+7. **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（聊天／Bug／頭像完整手冊）
+8. **`docs/CHAT_BUG_SYSTEM.md`**（速覽）
 
 ## 高風險變更前請對照
 
@@ -20,7 +22,7 @@
 | 課程列表暫停 UI | 同上 §B、`CourseManagement.vue` |
 | 繳費提醒、堂數／月結 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + 同上 §C |
 | 通知 sync、`NotificationSyncService` | 同上 §D |
-| 聊天功能、Bug 回報權限 | `docs/CHAT_BUG_SYSTEM.md` + `docs/CHANGELOG.md` |
+| 聊天、Bug、使用者頭像 URL | **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**、`docs/CHAT_BUG_SYSTEM.md`、`docs/CHANGELOG.md` |
 
 ## 協作分支
 

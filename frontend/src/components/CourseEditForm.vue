@@ -288,7 +288,10 @@ function syncDayTimeSlotsFromSelection() {
       .filter(([day]) => day >= 1 && day <= 7)
   );
   const firstSlot = existing.size > 0 ? [...existing.values()][0] : null;
-  const baseTime = firstSlot ? String(firstSlot.start_time || '16:00').slice(0, 5) : '16:00';
+  const parentStartTime = String(form.start_time || '').slice(0, 5);
+  const baseTime = firstSlot
+    ? String(firstSlot.start_time || '16:00').slice(0, 5)
+    : (parentStartTime || '16:00');
   form.day_time_slots = sortedSelectedDays.value.map((day) => {
     const ex = existing.get(day);
     return {

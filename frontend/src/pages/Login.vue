@@ -36,9 +36,12 @@
               :aria-pressed="selectedRole === 'director'"
               @click="selectedRole = 'director'"
             >
-              <span class="role-icon">🧑‍💼</span>
-              <span class="role-title">主任</span>
-              <span class="role-subtitle">含管理員</span>
+              <span class="role-icon role-icon-dual" aria-hidden="true">
+                <span class="role-icon-part">🧑‍💼</span>
+                <span class="role-icon-part">🖥️</span>
+              </span>
+              <span class="role-title">主任/櫃台</span>
+              <span class="role-subtitle">含管理員 · 同入口</span>
             </button>
           </div>
         </div>
@@ -110,7 +113,7 @@
           <label for="forgot-role">身份</label>
           <select id="forgot-role" v-model="forgotRole">
             <option value="teacher">老師</option>
-            <option value="director">主任</option>
+            <option value="director">主任/櫃台</option>
           </select>
         </div>
         <div class="form-group">
@@ -256,7 +259,7 @@ const handleLogin = async () => {
     }
     if (selectedRole.value === 'teacher' && resolvedRole !== 'teacher') {
       await supabase.auth.signOut();
-      throw new Error('此帳號不是老師，請切換「主任」登入');
+      throw new Error('此帳號不是老師，請切換「主任/櫃台」登入');
     }
 
     // 後端已在 session.user 帶入 role（主任/老師/super_admin），不 bypass、不另查 profiles
@@ -449,6 +452,16 @@ onBeforeUnmount(() => {
 }
 .role-icon {
   font-size: 1.35rem;
+  line-height: 1;
+}
+.role-icon-dual {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.role-icon-dual .role-icon-part {
+  font-size: 1.1rem;
   line-height: 1;
 }
 .role-title {

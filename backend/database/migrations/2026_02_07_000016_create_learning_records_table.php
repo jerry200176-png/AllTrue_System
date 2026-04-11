@@ -18,7 +18,7 @@ return new class extends Migration
             $table->integer('TeacherID');
             $table->text('Content');
             $table->string('AttachmentUrl', 255)->nullable();
-            $table->string('Status', 16)->default('pending');
+            $table->string('Status', 32)->default('pending');
             $table->integer('ApprovedBy')->nullable();
             $table->dateTime('ApprovedAt')->nullable();
             $table->timestamps();

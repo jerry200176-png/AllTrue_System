@@ -19,7 +19,13 @@ async function parseResponse(res) {
     }
   }
   if (!res.ok) {
-    throw new Error(json?.message || `請求失敗 (${res.status})`);
+    const errs = json?.errors;
+    let detail = json?.message || `請求失敗 (${res.status})`;
+    if (errs && typeof errs === 'object') {
+      const first = Object.values(errs).flat().find(Boolean);
+      if (first) detail = first;
+    }
+    throw new Error(detail);
   }
   return json;
 }
@@ -73,6 +79,14 @@ export async function updateNotificationPrefs(token, payload) {
 export async function getSecuritySummary(token) {
   const res = await fetch(`${API_BASE}/me/security`, {
     method: 'GET',
+    headers: buildHeaders(token),
+  });
+  return parseResponse(res);
+}
+
+export async function logoutOtherSessions(token) {
+  const res = await fetch(`${API_BASE}/me/security/logout-others`, {
+    method: 'POST',
     headers: buildHeaders(token),
   });
   return parseResponse(res);

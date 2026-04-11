@@ -551,7 +551,7 @@ const fetchStudents = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const res = await fetch('/api/v1/students?per_page=1000', { headers: { 'Authorization': `Bearer ${token}` } });
+    const res = await fetch(`/api/v1/students?per_page=500&branch_id=${props?.branchId || ''}`, { headers: { 'Authorization': `Bearer ${token}` } });
     if (res.ok) {
       const data = await res.json();
       studentList.value = data.data || data || [];

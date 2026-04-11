@@ -75,6 +75,13 @@ class StudentClassController extends Controller
             }
         }
 
+        if ($request->filled('name')) {
+            $nameTerm = $request->input('name');
+            $query->whereHas('student', function ($sub) use ($nameTerm) {
+                $sub->where('name', 'like', '%' . $nameTerm . '%');
+            });
+        }
+
         $perPage = min((int) $request->input('per_page', 20), 1000);
         $classes = $query->orderBy('ID', 'desc')->paginate($perPage);
 
@@ -93,40 +100,9 @@ class StudentClassController extends Controller
             ->pluck('Name', 'id')
             ->toArray();
         $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
-        $approvedRecordCounts = [];
-        $deductedAttendanceCounts = [];
-        $ledgerNetCounts = [];
-        if (!empty($classIds)) {
-            $approvedRecordCounts = LearningRecord::query()
-                ->whereIn('StudentClassID', $classIds)
-                ->whereNull('VoidedAt')
-                ->where('Status', 'approved')
-                ->select('StudentClassID', DB::raw('COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as aggregate_count'))
-                ->groupBy('StudentClassID')
-                ->pluck('aggregate_count', 'StudentClassID')
-                ->map(fn ($value) => (int) $value)
-                ->toArray();
+        $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
 
-            $deductedAttendanceCounts = StudentSignIn::query()
-                ->whereIn('StudentClassID', $classIds)
-                ->whereNull('VoidedAt')
-                ->where('SessionDeducted', true)
-                ->select('StudentClassID', DB::raw('COUNT(DISTINCT COALESCE(NULLIF(ClassSessionID, 0), id)) as aggregate_count'))
-                ->groupBy('StudentClassID')
-                ->pluck('aggregate_count', 'StudentClassID')
-                ->map(fn ($value) => (int) $value)
-                ->toArray();
-
-            $ledgerNetCounts = \App\Models\SessionDeductionLedger::query()
-                ->whereIn('student_class_id', $classIds)
-                ->selectRaw("student_class_id, SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE 0 END) - SUM(CASE WHEN event_type = 'reverse' THEN 1 ELSE 0 END) as net")
-                ->groupBy('student_class_id')
-                ->pluck('net', 'student_class_id')
-                ->map(fn ($v) => max(0, (int) $v))
-                ->toArray();
-        }
-
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $approvedRecordCounts, $deductedAttendanceCounts, $ledgerNetCounts) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $observedUsedByClass) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -159,8 +135,18 @@ class StudentClassController extends Controller
                 '理化' => 'Science',
                 '生物' => 'Biology',
                 '地科' => 'Science',
+                // Subject table may already store English keys.
+                'Chinese' => 'Chinese',
+                'English' => 'English',
+                'Math' => 'Math',
+                'Physics' => 'Physics',
+                'Chemistry' => 'Chemistry',
+                'Science' => 'Science',
+                'Biology' => 'Biology',
+                'Social' => 'Social',
             ];
-            $class->subject = $reverseSubjectMap[$class->subject_name] ?? 'Math';
+            $subjectNameKey = trim((string) ($class->subject_name ?? ''));
+            $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
             $class->class_type = $class->ClassType ?? 'one_on_one';
             $class->rate_per_30min = $class->Rate ?? 0;
             $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
@@ -220,16 +206,9 @@ class StudentClassController extends Controller
             $class->end_time = $class->start_time ? date('H:i', strtotime($class->start_time) + $durationSecs) : null;
             $class->payment_type = ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly';
             $class->sessions_purchased = (int) ($class->SessionCount ?? 0);
-            $rawUsedSessions = max(0, (int) ($class->UsedSessions ?? 0));
-            $approvedCount = (int) ($approvedRecordCounts[$class->ID] ?? 0);
-            $deductedAttendanceCount = (int) ($deductedAttendanceCounts[$class->ID] ?? 0);
-            $ledgerNet = (int) ($ledgerNetCounts[$class->ID] ?? 0);
+            $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
 
-            // Ledger is the source of truth when populated; fall back to
-            // flag-based max for courses that haven't been seeded yet.
-            $observedUsedSessions = $ledgerNet > 0
-                ? $ledgerNet
-                : max($approvedCount, $rawUsedSessions, $deductedAttendanceCount);
+            // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
 
             if ($class->sessions_purchased > 0) {
                 $observedUsedSessions = min($class->sessions_purchased, $observedUsedSessions);
@@ -969,9 +948,8 @@ class StudentClassController extends Controller
                     if ($remaining !== null) {
                         $row['RemainingSessions'] = (int) $remaining;
                     } elseif ($sessionCount > 0) {
-                        $approvedCount = LearningRecord::where('StudentClassID', $id)->where('Status', 'approved')->count();
-                        $row['RemainingSessions'] = max(0, $sessionCount - $approvedCount);
-                        $row['UsedSessions'] = $approvedCount;
+                        $row['RemainingSessions'] = $sessionCount;
+                        $row['UsedSessions'] = 0;
                     }
                     DB::statement('SET @old_auto_increment = (SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = "StudentClass")');
                     DB::table('StudentClass')->insert($row);
@@ -1066,15 +1044,10 @@ class StudentClassController extends Controller
                         }
                     }
 
-                    // Recalculate remaining sessions based on ALL approved LRs for this course
-                    $totalApproved = LearningRecord::where('StudentClassID', (int) $id)
-                        ->where('Status', 'approved')
-                        ->count();
-                    $newRemaining = max(0, $sessionCount - $totalApproved);
-                    DB::table('StudentClass')->where('ID', (int) $id)->update([
-                        'RemainingSessions' => $newRemaining,
-                        'UsedSessions' => $totalApproved,
-                    ]);
+                    $classForCounters = StudentClass::find((int) $id);
+                    if ($classForCounters) {
+                        SessionDeductionService::syncCounters($classForCounters);
+                    }
                 }
             } catch (\Throwable $e) {
                 continue;
@@ -1560,7 +1533,11 @@ class StudentClassController extends Controller
             return $input;
         }
 
-        $subjectMap = [
+        // Subject name resolution: frontend sends English key (e.g. 'Math').
+        // Subject table stores English names (Chinese, Math, English…) with IDs 64–71.
+        // teacher_subject_levels also uses Subject table IDs, so we MUST resolve to those.
+        // Old code translated to Chinese then queried Subject (miss) → BaseData (different IDs) → fallback 1.
+        $subjectChineseMap = [
             'Chinese' => '國文',
             'English' => '英文',
             'Math' => '數學',
@@ -1568,12 +1545,19 @@ class StudentClassController extends Controller
             'Chemistry' => '化學',
             'Science' => '理化',
             'Biology' => '生物',
-            'Social' => '社會'
+            'Social' => '社會',
         ];
         $frontendSubject = $input['subject'] ?? 'Math';
-        $subjectName = $subjectMap[$frontendSubject] ?? $frontendSubject;
-        $subjectId = DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id') ??
-            DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id') ?? 1;
+        $subjectName = $subjectChineseMap[$frontendSubject] ?? $frontendSubject;
+        // Priority: exact English match in Subject table → Chinese LIKE in Subject → Chinese LIKE in BaseData → null
+        $subjectId = DB::table('Subject')->where('Subject_Name', $frontendSubject)->value('id')
+            ?? DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id')
+            ?? DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id')
+            ?? null;
+        if (!$subjectId) {
+            \Log::warning("[StudentClassController] Cannot resolve SubjectID for subject='{$frontendSubject}' (mapped='{$subjectName}')");
+            $subjectId = 66; // fallback: Math (Subject id=66) instead of non-existent id=1
+        }
 
         $mappedData = [];
         if (isset($input['student_id'])) $mappedData['StudentID'] = $input['student_id'];
@@ -1837,14 +1821,7 @@ class StudentClassController extends Controller
             }
 
             if ($sessionCount > 0) {
-                $approvedCount = LearningRecord::where('StudentClassID', $classId)
-                    ->where('Status', 'approved')
-                    ->count();
-                $remaining = max(0, $sessionCount - $approvedCount);
-                $studentClass->UsedSessions = $approvedCount;
-                $studentClass->RemainingSessions = $remaining;
-                $studentClass->Stop = $remaining <= 0 ? 1 : 0;
-                $studentClass->save();
+                SessionDeductionService::syncCounters($studentClass);
             }
 
             return [
@@ -1967,14 +1944,7 @@ class StudentClassController extends Controller
         }
 
         if ($sessionCount > 0) {
-            $approvedCount = LearningRecord::where('StudentClassID', (int) $studentClass->ID)
-                ->where('Status', 'approved')
-                ->count();
-            $remaining = max(0, $sessionCount - $approvedCount);
-            $studentClass->UsedSessions = $approvedCount;
-            $studentClass->RemainingSessions = $remaining;
-            $studentClass->Stop = $remaining <= 0 ? 1 : 0;
-            $studentClass->save();
+            SessionDeductionService::syncCounters($studentClass);
         }
 
         return [

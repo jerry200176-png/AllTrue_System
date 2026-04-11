@@ -12,7 +12,8 @@
 | 4 | [`docs/GITHUB_SYNC_WORKFLOW.md`](docs/GITHUB_SYNC_WORKFLOW.md) | GitHub 與 `jerry-sync-main` 流程 |
 | 5 | [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md) | 部署、避坑、事故處理 |
 | 6 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | 近期變更摘要（先看再改） |
-| 7 | [`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) | 聊天＋Bug 回報模組交接與權限矩陣 |
+| 7 | [`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`](docs/AI_HANDOFF_CHAT_BUG_AVATAR.md) | 聊天／Bug／頭像：**完整手冊與禁止回歸**（改動前必讀） |
+| 8 | [`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) | 同上模組速覽與檔案索引 |
 
 若變更**主任儀表板繳費提醒**或 **`AlertController::tuition`**，另讀：  
 [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](docs/DIRECTOR_PAYMENT_ALERT_RULES.md)。

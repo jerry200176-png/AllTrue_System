@@ -5,34 +5,31 @@
 ## 2026-04-11
 
 ### Added
+- 新增 **`docs/FAQ.md`**：專案常見問題（角色、部署、登入、GitHub 同步、文件索引）；**`docs/DIRECTOR_SCALING_FAQ.md`**：大分校／主任向效能與資料說明
 - 新增內部聊天系統（`/api/v1/chat/*`）：
-  - 1 對 1 聊天、群組聊天室、訊息列表、已讀標記、未讀統計
+  - 1 對 1 聊天、群組聊天室、訊息列表、已讀標記、未讀統計；訊息／成員帶**頭像 URL**（根相對 `/storage/...`）
   - 資料表：`chat_threads`、`chat_thread_members`、`chat_messages`
   - 前端頁面：`frontend/src/pages/ChatPage.vue`
 - 新增 Bug 回報系統（`/api/v1/bugs*`）：
-  - 全系統可提交回報、查看自己的回報與處理狀態
-  - 資料表：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`
-  - 前端頁面：`frontend/src/pages/BugReportsPage.vue`
-  - 全域回報入口：`frontend/src/components/BugReportLauncher.vue`
+  - 全系統可提交；**主任／老師僅能看自己的回報**；**僅 `super_admin` 可更新狀態與內部備註**
+  - **截圖附件**：`bug_report_attachments`，`POST /bugs` 支援 `attachments[]`
+  - **側欄紅點**：`GET /bugs/unread-badge`、`POST /bugs/mark-inbox-seen`（super_admin）、`bug_report_user_reads` 與 `User` 收件匣欄位
+  - 資料表：`bug_reports`、`bug_report_comments`、`bug_report_status_logs`、`bug_report_attachments`、`bug_report_user_reads`
+  - 前端：`frontend/src/pages/BugReportsPage.vue`、`BugReportLauncher.vue`；`App.vue` 合併 `badgeTypes: ['bugs']` 與 `alltrue-refresh-badges`
+- **文件**：**`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（後續 AI／工程師改動前必讀，含禁止回歸項）
 
 ### Changed
-- 權限收斂（Bug 回報）：
-  - `teacher` / `director`：只能查看自己的回報與留言
-  - **僅 `super_admin`**：可更新狀態、指派、內部備註
-- UI 修正：
-  - 修正 Bug 浮動按鈕與導覽 `?` 按鈕遮擋
-  - 修正聊天「選擇對象」顯示空白（統一人員名稱映射 `username/Name/name`）
+- Bug：**已移除指派**（無 assign API／UI；詳情不再回傳承辦人欄位）
+- Bug 狀態：`POST /bugs/{id}/status` 僅 **`middleware super_admin`**（`RequireSuperAdmin`）
+- 使用者頭像：`User.AvatarUrl` 上傳後只存 **disk 相對路徑**；API 經 **`App\Support\PublicAvatarUrl`** 輸出，避免 `APP_URL=localhost` 造成聊天／側欄破圖
+- UI：Bug 浮動鈕可拖曳；聊天選人顯示名稱正規化
 
 ### Infra / Notes
-- Laravel Broadcasting 相關設定與事件已建立：
-  - `backend/config/broadcasting.php`
-  - `backend/routes/channels.php`
-  - `backend/app/Events/ChatMessageCreated.php`
-- 前端已完成 deploy 至 `backend/public`（`npm run deploy`）。
-- 後端新增測試：
-  - `backend/tests/Feature/ChatApiTest.php`
-  - `backend/tests/Feature/BugReportApiTest.php`
+- Laravel Broadcasting：`backend/config/broadcasting.php`、`routes/channels.php`、`ChatMessageCreated`
+- 測試：`ChatApiTest.php`、`BugReportApiTest.php`；頭像相關可搭配 `ProfileCenterApiTest.php`
 
 ### Follow-up
-- 建議儘快把 WebSocket server（soketi）加入正式常駐程序（systemd/docker）。
-- 建議修復 `frontend/node_modules` 權限不一致問題，避免後續 npm install 受阻。
+- 建議把 WebSocket（soketi）納入正式常駐程序。
+- 建議修復 `frontend/node_modules` 權限問題（或沿用 vendor-modules alias）。
+
+**完整行為與檢查清單**：`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`。

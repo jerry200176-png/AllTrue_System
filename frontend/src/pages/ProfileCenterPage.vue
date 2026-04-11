@@ -25,11 +25,22 @@
               <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" />
               <div v-else class="avatar-fallback">{{ avatarLetter }}</div>
             </div>
-            <input ref="avatarInputRef" type="file" accept=".jpg,.jpeg,.png,.webp" @change="onAvatarSelected" />
-            <button class="primary small" :disabled="uploadingAvatar || !avatarFile" @click="submitAvatar">
-              {{ uploadingAvatar ? '上傳中...' : '上傳頭像' }}
-            </button>
-            <div class="hint">支援 JPG/PNG/WEBP，大小上限 2MB</div>
+            <div v-if="avatarUrl" class="avatar-sidebar-preview-wrap">
+              <span class="avatar-preview-label">側欄預覽（與左下角相同比例）</span>
+              <div class="avatar-sidebar-preview">
+                <img :src="avatarUrl" alt="" />
+              </div>
+            </div>
+            <input
+              ref="avatarInputRef"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              @change="onAvatarSelected"
+            />
+            <p class="avatar-hint">
+              選檔後會開啟裁切：可拖曳與縮放選擇呈現區域。原始檔支援 JPEG／PNG／WebP，最多 8MB；iPhone HEIC 請先轉 JPEG。
+            </p>
+            <p v-if="uploadingAvatar" class="avatar-uploading">上傳中…</p>
           </div>
 
           <div class="form-panel">
@@ -53,6 +64,13 @@
             </div>
           </div>
         </div>
+
+        <AvatarCropModal
+          v-model="showAvatarCrop"
+          :image-src="avatarCropSrc"
+          @confirm="onAvatarCropped"
+          @cancel="revokeAvatarCropSrc"
+        />
 
         <div v-if="isTeacher" class="teacher-settings-block">
           <h4>教學設定</h4>
@@ -188,7 +206,12 @@
         </div>
 
         <div class="security-block">
-          <h4>目前登入裝置</h4>
+          <div class="security-header">
+            <h4>目前登入裝置</h4>
+            <button class="ghost small" :disabled="revokingOtherSessions" @click="handleLogoutOtherDevices">
+              {{ revokingOtherSessions ? '處理中...' : '登出其他裝置' }}
+            </button>
+          </div>
           <table v-if="securitySummary.active_sessions.length > 0">
             <thead>
               <tr>
@@ -277,11 +300,13 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import AvatarCropModal from '../components/AvatarCropModal.vue';
 import {
   getMe,
   getNotificationPrefs,
   getSecuritySummary,
+  logoutOtherSessions,
   updateMe,
   updateNotificationPrefs,
   uploadAvatar,
@@ -309,14 +334,16 @@ const activeTab = ref(props.forcePasswordChange ? 'security' : props.initialTab 
 const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
 const avatarUrl = ref('');
-const avatarFile = ref(null);
 const avatarInputRef = ref(null);
+const showAvatarCrop = ref(false);
+const avatarCropSrc = ref('');
 
 const savingProfile = ref(false);
 const savingPassword = ref(false);
 const savingPrefs = ref(false);
 const uploadingAvatar = ref(false);
 const savingTeaching = ref(false);
+const revokingOtherSessions = ref(false);
 
 const profileMsg = ref(null);
 const passwordMsg = ref(null);
@@ -507,28 +534,60 @@ function normalizeSecuritySummary(raw) {
   };
 }
 
-function onAvatarSelected(event) {
-  const file = event.target.files?.[0];
-  avatarFile.value = file || null;
+function revokeAvatarCropSrc() {
+  if (avatarCropSrc.value) {
+    URL.revokeObjectURL(avatarCropSrc.value);
+    avatarCropSrc.value = '';
+  }
 }
 
-async function submitAvatar() {
-  if (!avatarFile.value) return;
+function onAvatarSelected(event) {
+  const file = event.target.files?.[0];
+  if (avatarInputRef.value) avatarInputRef.value.value = '';
+  if (!file) return;
+  revokeAvatarCropSrc();
+  avatarCropSrc.value = URL.createObjectURL(file);
+  showAvatarCrop.value = true;
+}
+
+async function onAvatarCropped(file) {
+  revokeAvatarCropSrc();
+  await submitAvatarFile(file);
+}
+
+async function submitAvatarFile(file) {
+  if (!file) return;
   uploadingAvatar.value = true;
   profileMsg.value = null;
   try {
-    const result = await uploadAvatar(props.token, avatarFile.value);
+    const result = await uploadAvatar(props.token, file);
     avatarUrl.value = result?.avatar_url || '';
     profileMsg.value = { type: 'success', text: '頭像更新成功。' };
-    avatarFile.value = null;
-    if (avatarInputRef.value) avatarInputRef.value.value = '';
     emit('profile-updated', { avatar_url: avatarUrl.value });
   } catch (error) {
     profileMsg.value = { type: 'error', text: error.message || '頭像上傳失敗。' };
+    try {
+      const me = await getMe(props.token);
+      const next = me?.avatar_url || '';
+      if (next && next !== avatarUrl.value) {
+        avatarUrl.value = next;
+        emit('profile-updated', { avatar_url: avatarUrl.value });
+        profileMsg.value = {
+          type: 'success',
+          text: '頭像已更新（連線中斷或逾時時仍可能成功，已為您同步顯示）。',
+        };
+      }
+    } catch {
+      /* keep upload error */
+    }
   } finally {
     uploadingAvatar.value = false;
   }
 }
+
+onBeforeUnmount(() => {
+  revokeAvatarCropSrc();
+});
 
 async function submitProfile() {
   profileMsg.value = null;
@@ -653,6 +712,24 @@ async function refreshSecurity() {
   }
 }
 
+async function handleLogoutOtherDevices() {
+  securityMsg.value = null;
+  revokingOtherSessions.value = true;
+  try {
+    const res = await logoutOtherSessions(props.token);
+    const revoked = Number(res?.revoked_count || 0);
+    securityMsg.value = {
+      type: 'success',
+      text: revoked > 0 ? `已登出其他裝置（${revoked} 筆）。` : '目前沒有其他有效裝置。',
+    };
+    await refreshSecurity();
+  } catch (error) {
+    securityMsg.value = { type: 'error', text: error.message || '登出其他裝置失敗。' };
+  } finally {
+    revokingOtherSessions.value = false;
+  }
+}
+
 function formatDateTime(value) {
   if (!value) return '-';
   const date = new Date(value);
@@ -735,7 +812,7 @@ onMounted(loadData);
 .avatar-box {
   width: 140px;
   height: 140px;
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
   background: #fafafa;
@@ -747,6 +824,40 @@ onMounted(loadData);
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center center;
+}
+
+.avatar-sidebar-preview-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.avatar-preview-label {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+.avatar-sidebar-preview {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #fafafa;
+}
+
+.avatar-sidebar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  display: block;
+}
+
+.avatar-uploading {
+  font-size: 13px;
+  color: var(--primary, #f97316);
+  margin: 0;
 }
 
 .avatar-fallback {
@@ -758,6 +869,14 @@ onMounted(loadData);
   background: linear-gradient(135deg, #ff8a65, #fb8c00);
   display: grid;
   place-items: center;
+}
+
+.avatar-hint {
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.45;
+  margin: 0;
+  max-width: 220px;
 }
 
 .form-panel {

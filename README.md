@@ -51,13 +51,15 @@ AllTrue 是一套補習班教務與營運整合系統，目標是把「學生、
 ## 新加入協作者先看
 
 1. **`CONTRIBUTING.md`** — 人類與 AI 共用入口（含 Cursor / Claude Code / Copilot 對應檔案）
-2. `AI_QUICKSTART.md`（AI/工程師快速理解專案）
-3. `docs/AI_REGRESSION_LESSONS.md`（**防再犯**：已發生過的產品／實作缺口）
-4. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任「繳費提醒」API 規則）
-5. `docs/GITHUB_SYNC_WORKFLOW.md`（GitHub 協作流程）
-6. `docs/OPERATIONS_RUNBOOK.md`（SOP + 避坑）
-7. `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`（歷史事故）
-8. `docs/CHANGELOG.md`、`docs/CHAT_BUG_SYSTEM.md`（新功能與權限交接）
+2. **`docs/FAQ.md`** — 專案常見問題（產品／部署／GitHub／文件導覽）
+3. `AI_QUICKSTART.md`（AI/工程師快速理解專案）
+4. `docs/AI_REGRESSION_LESSONS.md`（**防再犯**：已發生過的產品／實作缺口）
+5. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任「繳費提醒」API 規則）
+6. `docs/DIRECTOR_SCALING_FAQ.md`（大分校資料量與畫面行為說明，給主任／老闆）
+7. `docs/GITHUB_SYNC_WORKFLOW.md`（GitHub 協作流程）
+8. `docs/OPERATIONS_RUNBOOK.md`（SOP + 避坑）
+9. `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`（歷史事故）
+10. `docs/CHANGELOG.md`、`docs/CHAT_BUG_SYSTEM.md`（新功能與權限交接）
 
 ### 用 AI 寫程式時（工具對照）
 

@@ -4,7 +4,7 @@ return [
     'driver'          => env('SESSION_DRIVER', 'cookie'),
     'lifetime'        => env('SESSION_LIFETIME', 120),
     'expire_on_close' => false,
-    'encrypt'         => false,
+    'encrypt'         => true,
     'cookie'          => env('SESSION_COOKIE', 'alltrue_session'),
     'path'            => '/',
     'domain'          => env('SESSION_DOMAIN'),

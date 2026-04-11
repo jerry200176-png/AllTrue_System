@@ -101,8 +101,9 @@ class NotificationApiTest extends TestCase
         ]);
 
         $first->assertOk();
-        $this->assertSame(4, (int) $first->json('active_count'));
-        $this->assertDatabaseCount('Notifications', 4);
+        // tuition + low_sessions (classA RemainingSessions=1) + overdue invoice + learning_review + pending_swipe
+        $this->assertSame(5, (int) $first->json('active_count'));
+        $this->assertDatabaseCount('Notifications', 5);
         $this->assertDatabaseHas('Notifications', [
             'SourceType' => 'Invoice',
             'SourceID' => (string) $invoiceA->id,
@@ -129,7 +130,7 @@ class NotificationApiTest extends TestCase
 
         $second->assertOk();
         $this->assertSame(0, (int) $second->json('created'));
-        $this->assertDatabaseCount('Notifications', 4);
+        $this->assertDatabaseCount('Notifications', 5);
     }
 
     public function test_read_status_is_isolated_per_user(): void
@@ -137,15 +138,16 @@ class NotificationApiTest extends TestCase
         $tokenA = $this->createDirectorToken([1], 'director-a@example.com');
         $tokenB = $this->createDirectorToken([1], 'director-b@example.com');
 
+        // 非 sync 託管類型，避免 GET /unread-count 內建 sync 將手動通知自動結案
         $notification = Notification::create([
             'CampusID' => 1,
-            'Type' => 'tuition',
+            'Type' => 'legacy_alert',
             'Severity' => 'high',
             'Title' => '測試通知',
             'Body' => '測試內容',
             'SourceType' => 'StudentClass',
             'SourceID' => '100',
-            'SourceKey' => 'tuition:1:100',
+            'SourceKey' => 'legacy:1:100',
             'Payload' => ['class_id' => 100],
             'OccurredAt' => now(),
             'ResolvedAt' => null,
@@ -196,7 +198,7 @@ class NotificationApiTest extends TestCase
             ->assertJsonCount(1, 'data');
     }
 
-    public function test_tuition_alert_endpoint_excludes_paid_classes_even_with_zero_remaining_sessions(): void
+    public function test_tuition_alert_endpoint_includes_low_sessions_even_when_paid(): void
     {
         $token = $this->createDirectorToken([1], 'director-alerts@example.com');
 
@@ -209,8 +211,9 @@ class NotificationApiTest extends TestCase
             'Notify_Token' => '',
         ]);
 
-        $unpaidClass = $this->createStudentClass($student->id, 0, 1, 0);
-        $paidClass = $this->createStudentClass($student->id, 1, 1, 0);
+        $unpaidClass = $this->createStudentClass($student->id, 0, 1, 5);
+        $paidLowSessionsClass = $this->createStudentClass($student->id, 1, 1, 1);
+        $paidNormalClass = $this->createStudentClass($student->id, 1, 1, 6);
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -223,7 +226,58 @@ class NotificationApiTest extends TestCase
 
         $ids = collect($data)->pluck('id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $unpaidClass->ID, $ids);
-        $this->assertNotContains((int) $paidClass->ID, $ids);
+        $this->assertContains((int) $paidLowSessionsClass->ID, $ids);
+        $this->assertNotContains((int) $paidNormalClass->ID, $ids);
+    }
+
+    public function test_unread_count_sync_resolves_paid_tuition_notifications(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-unread-sync@example.com');
+
+        $student = Student::create([
+            'name' => '同步學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $class = $this->createStudentClass($student->id, 0, 1, 5);
+        Notification::create([
+            'CampusID' => 1,
+            'Type' => 'tuition',
+            'Severity' => 'high',
+            'Title' => '舊的催繳通知',
+            'Body' => '尚未同步前的舊通知',
+            'SourceType' => 'StudentClass',
+            'SourceID' => (string) $class->ID,
+            'SourceKey' => "tuition:1:{$class->ID}",
+            'Payload' => ['class_id' => (int) $class->ID],
+            'OccurredAt' => now(),
+            'ResolvedAt' => null,
+        ]);
+
+        $class->Paid = 1;
+        $class->save();
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/notifications/unread-count?branch_id=1');
+
+        $response->assertOk();
+        $response->assertJsonPath('unread_count', 0);
+        $byType = $response->json('by_type') ?? [];
+        $this->assertArrayNotHasKey('tuition', $byType);
+
+        $this->assertDatabaseHas('Notifications', [
+            'SourceKey' => "tuition:1:{$class->ID}",
+        ]);
+        $this->assertDatabaseMissing('Notifications', [
+            'SourceKey' => "tuition:1:{$class->ID}",
+            'ResolvedAt' => null,
+        ]);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director@example.com'): string

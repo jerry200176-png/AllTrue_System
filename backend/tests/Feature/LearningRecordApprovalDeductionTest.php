@@ -17,22 +17,21 @@ class LearningRecordApprovalDeductionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_approving_learning_record_deducts_sessions_and_marks_record(): void
+    public function test_approving_learning_record_does_not_change_session_counters(): void
     {
         $token = $this->createDirectorToken([1], 'director-approve-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-approve-a@example.com');
         $student = $this->createStudent(1, '核准扣堂測試A');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 6,
             'remaining_sessions' => 6,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [1],
             'start_time' => '16:00',
-        ])->assertCreated();
-
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
         $before = StudentClass::findOrFail($courseId);
 
         $classSession = ClassSession::create([
@@ -62,32 +61,30 @@ class LearningRecordApprovalDeductionTest extends TestCase
             ->assertOk();
 
         $after = StudentClass::findOrFail($courseId);
-        $this->assertSame((int) $before->RemainingSessions - 1, (int) $after->RemainingSessions);
-        $this->assertSame((int) $before->UsedSessions + 1, (int) $after->UsedSessions);
+        $this->assertSame((int) $before->RemainingSessions, (int) $after->RemainingSessions);
+        $this->assertSame((int) $before->UsedSessions, (int) $after->UsedSessions);
 
         $this->assertDatabaseHas('LearningRecord', [
             'id' => $record->id,
             'Status' => 'approved',
-            'SessionDeducted' => 1,
         ]);
     }
 
-    public function test_attendance_after_approved_record_does_not_deduct_twice(): void
+    public function test_attendance_after_approved_record_deducts_once_via_attendance_only(): void
     {
         $token = $this->createDirectorToken([1], 'director-approve-b@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-approve-b@example.com');
         $student = $this->createStudent(1, '核准扣堂測試B');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 5,
             'remaining_sessions' => 5,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [2],
             'start_time' => '17:00',
-        ])->assertCreated();
-
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -131,8 +128,8 @@ class LearningRecordApprovalDeductionTest extends TestCase
         ])->assertCreated();
 
         $afterAttendance = StudentClass::findOrFail($courseId);
-        $this->assertSame($remainingAfterApprove, (int) $afterAttendance->RemainingSessions);
-        $this->assertSame($usedAfterApprove, (int) $afterAttendance->UsedSessions);
+        $this->assertSame($remainingAfterApprove - 1, (int) $afterAttendance->RemainingSessions);
+        $this->assertSame($usedAfterApprove + 1, (int) $afterAttendance->UsedSessions);
 
         $this->assertDatabaseHas('StudentSingIn', [
             'ClassSessionID' => $classSession->id,
@@ -140,7 +137,7 @@ class LearningRecordApprovalDeductionTest extends TestCase
         ]);
     }
 
-    public function test_backdoor_approve_deducts_and_attendance_does_not_deduct_twice(): void
+    public function test_backdoor_approve_does_not_deduct_attendance_deducts_once(): void
     {
         $directorLogin = 'director-backdoor-a@example.com';
         $token = $this->createDirectorToken([1], $directorLogin);
@@ -148,16 +145,15 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-backdoor-a@example.com');
         $student = $this->createStudent(1, '補登扣堂測試A');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 4,
             'remaining_sessions' => 4,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [1],
             'start_time' => '15:00',
-        ])->assertCreated();
-
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
         $before = StudentClass::findOrFail($courseId);
         $sessionDate = now()->subDay()->toDateString();
         ClassSession::create([
@@ -184,9 +180,8 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $record = LearningRecord::findOrFail($recordId);
 
         $afterApprove = StudentClass::findOrFail($courseId);
-        $this->assertSame((int) $before->RemainingSessions - 1, (int) $afterApprove->RemainingSessions);
-        $this->assertSame((int) $before->UsedSessions + 1, (int) $afterApprove->UsedSessions);
-        $this->assertSame(1, (int) $record->SessionDeducted);
+        $this->assertSame((int) $before->RemainingSessions, (int) $afterApprove->RemainingSessions);
+        $this->assertSame((int) $before->UsedSessions, (int) $afterApprove->UsedSessions);
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -200,48 +195,28 @@ class LearningRecordApprovalDeductionTest extends TestCase
         ])->assertCreated();
 
         $afterAttendance = StudentClass::findOrFail($courseId);
-        $this->assertSame((int) $afterApprove->RemainingSessions, (int) $afterAttendance->RemainingSessions);
-        $this->assertSame((int) $afterApprove->UsedSessions, (int) $afterAttendance->UsedSessions);
+        $this->assertSame((int) $afterApprove->RemainingSessions - 1, (int) $afterAttendance->RemainingSessions);
+        $this->assertSame((int) $afterApprove->UsedSessions + 1, (int) $afterAttendance->UsedSessions);
     }
 
-    public function test_bulk_backdoor_approve_deducts_each_created_record(): void
+    public function test_legacy_bulk_backdoor_approve_endpoint_returns_410(): void
     {
-        $directorLogin = 'director-backdoor-b@example.com';
+        $directorLogin = 'director-bulk-retired@example.com';
         $token = $this->createDirectorToken([1], $directorLogin);
         $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backdoor-b@example.com');
-        $student = $this->createStudent(1, '補登扣堂測試B');
+        $teacherId = $this->createTeacher(1, 'teacher-bulk-retired@example.com');
+        $student = $this->createStudent(1, 'bulk retired stub');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
-            'sessions_purchased' => 8,
-            'remaining_sessions' => 8,
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [1],
             'start_time' => '15:00',
-        ])->assertCreated();
-
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
-        $before = StudentClass::findOrFail($courseId);
-
-        $d1 = now()->subDays(2)->toDateString();
-        $d2 = now()->subDay()->toDateString();
-        ClassSession::create([
-            'StudentClassID' => $courseId,
-            'SessionDate' => $d1,
-            'StartTime' => '15:00',
-            'EndTime' => '17:00',
-            'Status' => 'completed',
-            'Note' => '',
         ]);
-        ClassSession::create([
-            'StudentClassID' => $courseId,
-            'SessionDate' => $d2,
-            'StartTime' => '15:00',
-            'EndTime' => '17:00',
-            'Status' => 'completed',
-            'Note' => '',
-        ]);
+        $courseId = (int) $course->ID;
+        $d = now()->subDay()->toDateString();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -250,110 +225,33 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'StudentClassID' => $courseId,
             'TeacherID' => $teacherId,
             'DirectorID' => $directorId,
-            'session_dates' => [$d1, $d2],
-        ])->assertCreated();
-
-        $after = StudentClass::findOrFail($courseId);
-        $this->assertSame((int) $before->RemainingSessions - 2, (int) $after->RemainingSessions);
-        $this->assertSame((int) $before->UsedSessions + 2, (int) $after->UsedSessions);
-
-        $deductedCount = LearningRecord::where('StudentClassID', $courseId)
-            ->whereIn('SessionDate', [$d1, $d2])
-            ->where('SessionDeducted', 1)
-            ->count();
-        $this->assertSame(2, $deductedCount);
+            'session_dates' => [$d],
+        ])->assertStatus(410)
+            ->assertJsonPath('code', 'legacy_bulk_backfill_retired');
     }
 
-    public function test_bulk_backdoor_approve_skips_dates_without_effective_class_session(): void
-    {
-        $directorLogin = 'director-backdoor-skip-a@example.com';
-        $token = $this->createDirectorToken([1], $directorLogin);
-        $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backdoor-skip-a@example.com');
-        $student = $this->createStudent(1, '補登略過測試A');
-
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
-            'sessions_purchased' => 6,
-            'remaining_sessions' => 6,
-            'sessions_used' => 0,
-            'first_class_date' => '2026-03-01',
-            'days_of_week' => [6],
-            'start_time' => '15:00',
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
-
-        $d1 = now()->subDays(7)->toDateString();
-        $d2 = now()->subDays(6)->toDateString(); // leave（不應建立評量）
-        $d3 = now()->subDays(5)->toDateString();
-        $d4 = now()->subDays(4)->toDateString(); // 沒有 ClassSession（不應建立評量）
-
-        ClassSession::create([
-            'StudentClassID' => $courseId,
-            'SessionDate' => $d1,
-            'StartTime' => '15:00',
-            'EndTime' => '17:00',
-            'Status' => 'completed',
-            'Note' => '',
-        ]);
-        ClassSession::create([
-            'StudentClassID' => $courseId,
-            'SessionDate' => $d2,
-            'StartTime' => '15:00',
-            'EndTime' => '17:00',
-            'Status' => 'leave',
-            'Note' => '請假',
-        ]);
-        ClassSession::create([
-            'StudentClassID' => $courseId,
-            'SessionDate' => $d3,
-            'StartTime' => '15:00',
-            'EndTime' => '17:00',
-            'Status' => 'attended',
-            'Note' => '',
-        ]);
-
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/learning-records/bulk-backdoor-approve', [
-            'StudentClassID' => $courseId,
-            'TeacherID' => $teacherId,
-            'DirectorID' => $directorId,
-            'session_dates' => [$d1, $d2, $d3, $d4],
-            'auto_project_future' => false,
-        ])->assertCreated();
-
-        $this->assertSame(2, (int) ($res->json('created') ?? 0));
-        $this->assertSame(2, (int) ($res->json('skipped_missing_session_count') ?? 0));
-        $this->assertEqualsCanonicalizing([$d2, $d4], $res->json('skipped_missing_session_dates') ?? []);
-
-        $this->assertDatabaseHas('LearningRecord', ['StudentClassID' => $courseId, 'SessionDate' => $d1]);
-        $this->assertDatabaseHas('LearningRecord', ['StudentClassID' => $courseId, 'SessionDate' => $d3]);
-        $this->assertDatabaseMissing('LearningRecord', ['StudentClassID' => $courseId, 'SessionDate' => $d2]);
-        $this->assertDatabaseMissing('LearningRecord', ['StudentClassID' => $courseId, 'SessionDate' => $d4]);
-    }
-
-    public function test_learning_record_store_rejects_before_session_end_time(): void
+    public function test_learning_record_store_rejects_before_session_start_time(): void
     {
         $token = $this->createDirectorToken([1], 'director-time-lock-store-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-time-lock-store-a@example.com');
         $student = $this->createStudent(1, '時間卡控測試A');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 4,
             'remaining_sessions' => 4,
             'sessions_used' => 0,
             'first_class_date' => now()->toDateString(),
             'days_of_week' => [3],
             'start_time' => '15:00',
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
+        $futureDate = now()->addDay()->toDateString();
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
-            'SessionDate' => now()->toDateString(),
-            'StartTime' => '00:00',
-            'EndTime' => '23:59',
+            'SessionDate' => $futureDate,
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
             'Status' => 'scheduled',
             'Note' => '',
         ]);
@@ -366,35 +264,36 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'ClassSessionID' => $classSession->id,
             'TeacherID' => $teacherId,
             'Subject' => '數學',
-            'SessionDate' => now()->toDateString(),
-            'StartTime' => '00:00',
-            'EndTime' => '23:59',
-            'Content' => '尚未下課不應可填',
+            'SessionDate' => $futureDate,
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+            'Content' => '尚未開課不應可填',
         ])->assertStatus(422)
-            ->assertJsonFragment(['message' => '課程尚未結束，課程結束後開放填寫評量表']);
+            ->assertJsonFragment(['message' => '課程尚未開始，請於上課時間後再填寫評量表']);
     }
 
-    public function test_learning_record_update_rejects_before_session_end_time(): void
+    public function test_learning_record_update_rejects_before_session_start_time(): void
     {
         $token = $this->createDirectorToken([1], 'director-time-lock-update-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-time-lock-update-a@example.com');
         $student = $this->createStudent(1, '時間卡控測試B');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 4,
             'remaining_sessions' => 4,
             'sessions_used' => 0,
             'first_class_date' => now()->toDateString(),
             'days_of_week' => [3],
             'start_time' => '15:00',
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
+        $futureDate = now()->addDay()->toDateString();
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
-            'SessionDate' => now()->toDateString(),
-            'StartTime' => '00:00',
-            'EndTime' => '23:59',
+            'SessionDate' => $futureDate,
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
             'Status' => 'scheduled',
             'Note' => '',
         ]);
@@ -414,56 +313,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->putJson("/api/v1/learning-records/{$record->id}", [
-            'Content' => '尚未下課不應可修改',
+            'Content' => '尚未開課不應可修改',
         ])->assertStatus(422)
-            ->assertJsonFragment(['message' => '課程尚未結束，課程結束後開放填寫評量表']);
-    }
-
-    public function test_bulk_backdoor_approve_still_projects_future_sessions_without_historical_class_sessions(): void
-    {
-        $directorLogin = 'director-backfill-project-d@example.com';
-        $token = $this->createDirectorToken([1], $directorLogin);
-        $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backfill-project-d@example.com');
-        $student = $this->createStudent(1, '補登推算測試D');
-
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
-            'sessions_purchased' => 4,
-            'remaining_sessions' => 4,
-            'sessions_used' => 0,
-            'days_of_week' => [6], // 週六
-            'start_time' => '15:00',
-            'skip_auto_sessions' => true,
-            'first_class_date' => now()->subWeeks(8)->toDateString(),
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
-
-        $first = now()->copy()->subWeeks(8)->startOfDay();
-        while ((int) $first->dayOfWeekIso !== 6) {
-            $first->addDay();
-        }
-        $d1 = $first->toDateString();
-        $d2 = $first->copy()->addWeek()->toDateString();
-
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/learning-records/bulk-backdoor-approve', [
-            'StudentClassID' => $courseId,
-            'TeacherID' => $teacherId,
-            'DirectorID' => $directorId,
-            'session_dates' => [$d1, $d2],
-            'auto_project_future' => true,
-        ])->assertCreated();
-
-        $this->assertSame(2, (int) ($res->json('created') ?? -1));
-        $this->assertSame(0, (int) ($res->json('approved') ?? -1));
-        $this->assertSame(0, (int) ($res->json('skipped_missing_session_count') ?? -1));
-        $this->assertSame(2, (int) ($res->json('projected_future_count') ?? -1));
-
-        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $d1]);
-        $this->assertDatabaseHas('ClassSession', ['StudentClassID' => $courseId, 'SessionDate' => $d2]);
-        $this->assertSame(4, ClassSession::where('StudentClassID', $courseId)->count());
+            ->assertJsonFragment(['message' => '課程尚未開始，請於上課時間後再填寫評量表']);
     }
 
     public function test_ensure_past_creates_record_bound_to_existing_class_session(): void
@@ -472,15 +324,15 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-ensure-past-a@example.com');
         $student = $this->createStudent(1, '補齊評量測試A');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 6,
             'remaining_sessions' => 6,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [1],
             'start_time' => '16:00',
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -514,15 +366,15 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-ensure-past-b@example.com');
         $student = $this->createStudent(1, '補齊評量測試B');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 6,
             'remaining_sessions' => 6,
             'sessions_used' => 0,
             'first_class_date' => '2026-03-01',
             'days_of_week' => [2],
             'start_time' => '17:00',
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -562,238 +414,327 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $this->assertSame(1, $count);
     }
 
-    public function test_bulk_backdoor_approve_auto_projects_remaining_sessions_into_future(): void
+    public function test_batch_reject_sets_status_and_review_note(): void
     {
-        $directorLogin = 'director-backfill-project-a@example.com';
-        $token = $this->createDirectorToken([1], $directorLogin);
-        $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backfill-project-a@example.com');
-        $student = $this->createStudent(1, '補登推算測試A');
+        $token = $this->createDirectorToken([1], 'director-batch-reject@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-batch-reject@example.com');
+        $student = $this->createStudent(1, '批次退回測試');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
-            'sessions_purchased' => 8,
-            'remaining_sessions' => 8,
-            'sessions_used' => 0,
-            'days_of_week' => [3], // 週三
-            'start_time' => '16:00',
-            'skip_auto_sessions' => true,
-            'first_class_date' => now()->subWeeks(8)->toDateString(),
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
-
-        $base = now()->copy()->subWeeks(6)->startOfDay();
-        while ((int) $base->dayOfWeekIso !== 3) {
-            $base->addDay();
-        }
-
-        $historyDates = [];
-        for ($i = 0; $i < 6; $i++) {
-            $d = $base->copy()->addWeeks($i)->toDateString();
-            $historyDates[] = $d;
-            ClassSession::create([
-                'StudentClassID' => $courseId,
-                'SessionDate' => $d,
-                'StartTime' => '16:00',
-                'EndTime' => '18:00',
-                'Status' => 'completed',
-                'Note' => '',
-            ]);
-        }
-
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/learning-records/bulk-backdoor-approve', [
-            'StudentClassID' => $courseId,
-            'TeacherID' => $teacherId,
-            'DirectorID' => $directorId,
-            'session_dates' => $historyDates,
-        ])->assertCreated();
-
-        $this->assertSame(2, (int) ($res->json('projected_future_count') ?? 0));
-
-        $lastHistorical = \Carbon\Carbon::parse(end($historyDates));
-        $expected1 = $lastHistorical->copy()->addWeek()->toDateString();
-        $expected2 = $lastHistorical->copy()->addWeeks(2)->toDateString();
-
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected1,
-            'Status' => 'scheduled',
-        ]);
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected2,
-            'Status' => 'scheduled',
-        ]);
-
-        $course = StudentClass::findOrFail($courseId);
-        $this->assertSame(2, (int) $course->RemainingSessions);
-        $this->assertSame(6, (int) $course->UsedSessions);
-
-        $approvedCount = LearningRecord::where('StudentClassID', $courseId)
-            ->where('Status', 'approved')
-            ->count();
-        $this->assertSame(6, $approvedCount);
-    }
-
-    public function test_bulk_backdoor_approve_projection_ignores_historical_gaps_and_moves_forward_only(): void
-    {
-        $directorLogin = 'director-backfill-project-b@example.com';
-        $token = $this->createDirectorToken([1], $directorLogin);
-        $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backfill-project-b@example.com');
-        $student = $this->createStudent(1, '補登推算測試B');
-
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 4,
             'remaining_sessions' => 4,
             'sessions_used' => 0,
-            'days_of_week' => [3], // 週三
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
             'start_time' => '16:00',
-            'skip_auto_sessions' => true,
-            'first_class_date' => now()->subWeeks(10)->toDateString(),
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
-        $last = now()->copy()->subWeek()->startOfDay();
-        while ((int) $last->dayOfWeekIso !== 3) {
-            $last->subDay();
-        }
-        $first = $last->copy()->subWeeks(7);
-        $gapDate = $last->copy()->subWeek()->toDateString(); // 歷史中間空檔（不應回補）
-        $historyDates = [$first->toDateString(), $last->toDateString()];
-
-        foreach ($historyDates as $d) {
-            ClassSession::create([
-                'StudentClassID' => $courseId,
-                'SessionDate' => $d,
-                'StartTime' => '16:00',
-                'EndTime' => '18:00',
-                'Status' => 'completed',
-                'Note' => '',
-            ]);
-        }
+        $d1 = now()->subDay()->toDateString();
+        $d2 = now()->subDays(2)->toDateString();
+        $cs1 = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+        $cs2 = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $d2,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+        $r1 = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $cs1->id,
+            'TeacherID' => $teacherId,
+            'Content' => '批次退回測試1',
+            'Status' => 'pending',
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+        ]);
+        $r2 = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $cs2->id,
+            'TeacherID' => $teacherId,
+            'Content' => '批次退回測試2',
+            'Status' => 'pending',
+            'SessionDate' => $d2,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+        ]);
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
-        ])->postJson('/api/v1/learning-records/bulk-backdoor-approve', [
-            'StudentClassID' => $courseId,
-            'TeacherID' => $teacherId,
-            'DirectorID' => $directorId,
-            'session_dates' => $historyDates,
-        ])->assertCreated();
+        ])->postJson('/api/v1/learning-records/batch-reject', [
+            'ids' => [$r1->id, $r2->id],
+            'ReviewNote' => '內容不完整',
+        ]);
 
-        $this->assertSame(2, (int) ($res->json('projected_future_count') ?? 0));
+        $res->assertOk();
+        $this->assertSame(2, (int) $res->json('rejected'));
 
-        $expected1 = $last->copy()->addWeek()->toDateString();
-        $expected2 = $last->copy()->addWeeks(2)->toDateString();
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected1,
-        ]);
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected2,
-        ]);
-        $this->assertDatabaseMissing('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $gapDate,
-        ]);
+        $this->assertDatabaseHas('LearningRecord', ['id' => $r1->id, 'Status' => 'rejected', 'ReviewNote' => '內容不完整']);
+        $this->assertDatabaseHas('LearningRecord', ['id' => $r2->id, 'Status' => 'rejected', 'ReviewNote' => '內容不完整']);
     }
 
-    public function test_bulk_backdoor_projection_caps_by_derived_remaining_when_remaining_sessions_is_stale(): void
+    public function test_batch_request_changes_sets_status(): void
     {
-        $directorLogin = 'director-backfill-project-c@example.com';
-        $token = $this->createDirectorToken([1], $directorLogin);
-        $directorId = $this->getUserIdByLoginName($directorLogin);
-        $teacherId = $this->createTeacher(1, 'teacher-backfill-project-c@example.com');
-        $student = $this->createStudent(1, '補登推算測試C');
+        $token = $this->createDirectorToken([1], 'director-batch-changes@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-batch-changes@example.com');
+        $student = $this->createStudent(1, '批次需修改測試');
 
-        $courseRes = $this->createCourseViaApi($token, $student->id, $teacherId, [
-            'sessions_purchased' => 8,
-            'remaining_sessions' => 8,
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
             'sessions_used' => 0,
-            'days_of_week' => [3], // 週三
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
             'start_time' => '16:00',
-            'skip_auto_sessions' => true,
-            'first_class_date' => now()->subWeeks(10)->toDateString(),
-        ])->assertCreated();
-        $courseId = $this->resolveCourseId($courseRes, $student->id, $teacherId);
+        ]);
+        $courseId = (int) $course->ID;
 
-        $base = now()->copy()->subWeeks(6)->startOfDay();
-        while ((int) $base->dayOfWeekIso !== 3) {
-            $base->addDay();
-        }
-
-        $historyDates = [];
-        for ($i = 0; $i < 6; $i++) {
-            $date = $base->copy()->addWeeks($i)->toDateString();
-            $historyDates[] = $date;
-
-            $classSession = ClassSession::create([
-                'StudentClassID' => $courseId,
-                'SessionDate' => $date,
-                'StartTime' => '16:00',
-                'EndTime' => '18:00',
-                'Status' => 'completed',
-                'Note' => '',
-            ]);
-
-            LearningRecord::create([
-                'StudentClassID' => $courseId,
-                'ClassSessionID' => $classSession->id,
-                'TeacherID' => $teacherId,
-                'Content' => '已核准歷史評量',
-                'Subject' => '數學',
-                'SessionDate' => $date,
-                'StartTime' => '16:00',
-                'EndTime' => '18:00',
-                'Status' => 'approved',
-                'SessionDeducted' => 1,
-                'ApprovedBy' => $directorId,
-                'ApprovedAt' => now(),
-            ]);
-        }
-
-        // 模擬舊資料：RemainingSessions 未同步，仍維持購買堂數。
-        StudentClass::where('ID', $courseId)->update([
-            'RemainingSessions' => 8,
-            'UsedSessions' => 6,
+        $d1 = now()->subDay()->toDateString();
+        $cs1 = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+        $r1 = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $cs1->id,
+            'TeacherID' => $teacherId,
+            'Content' => '批次需修改測試',
+            'Status' => 'pending',
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
         ]);
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
-        ])->postJson('/api/v1/learning-records/bulk-backdoor-approve', [
+        ])->postJson('/api/v1/learning-records/batch-request-changes', [
+            'ids' => [$r1->id],
+            'ReviewNote' => '請補充進度內容',
+        ]);
+
+        $res->assertOk();
+        $this->assertSame(1, (int) $res->json('changed'));
+        $this->assertDatabaseHas('LearningRecord', ['id' => $r1->id, 'Status' => 'changes_requested', 'ReviewNote' => '請補充進度內容']);
+    }
+
+    public function test_teacher_cannot_batch_reject(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-batch-reject-fail@example.com');
+        $teacherToken = bin2hex(random_bytes(16));
+        $teacherUser = User::where('LoginName', 'teacher-batch-reject-fail@example.com')->first();
+        AuthToken::create([
+            'user_id' => $teacherUser->id,
+            'token' => $teacherToken,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/batch-reject', [
+            'ids' => [1],
+            'ReviewNote' => 'should fail',
+        ]);
+
+        $res->assertStatus(403);
+    }
+
+    public function test_teacher_cannot_edit_approved_record(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-teacher-edit-approved@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-edit-approved@example.com');
+        $student = $this->createStudent(1, '老師不可改已核准');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+        $directorId = $this->getUserIdByLoginName('director-teacher-edit-approved@example.com');
+
+        $d1 = now()->subDay()->toDateString();
+        $cs1 = ClassSession::create([
             'StudentClassID' => $courseId,
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $cs1->id,
             'TeacherID' => $teacherId,
-            'DirectorID' => $directorId,
-            'session_dates' => $historyDates,
-        ])->assertCreated();
-
-        $this->assertSame(2, (int) ($res->json('projected_future_count') ?? 0));
-        $this->assertCount(2, $res->json('projected_future_dates') ?? []);
-
-        $lastHistorical = \Carbon\Carbon::parse(end($historyDates));
-        $expected1 = $lastHistorical->copy()->addWeek()->toDateString();
-        $expected2 = $lastHistorical->copy()->addWeeks(2)->toDateString();
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected1,
-            'Status' => 'scheduled',
-        ]);
-        $this->assertDatabaseHas('ClassSession', [
-            'StudentClassID' => $courseId,
-            'SessionDate' => $expected2,
-            'Status' => 'scheduled',
+            'Content' => '已核准內容',
+            'Status' => 'approved',
+            'SessionDate' => $d1,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'ApprovedBy' => $directorId,
+            'ApprovedAt' => now(),
         ]);
 
-        $futureProjectedCount = ClassSession::where('StudentClassID', $courseId)
-            ->where('SessionDate', '>', $lastHistorical->toDateString())
-            ->count();
-        $this->assertSame(2, $futureProjectedCount);
+        $teacherUser = User::where('LoginName', 'teacher-edit-approved@example.com')->first();
+        $teacherToken = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $teacherUser->id,
+            'token' => $teacherToken,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}", [
+            'Content' => '老師想改已核准',
+        ]);
+
+        $res->assertStatus(409);
+    }
+
+    public function test_rollback_approval_resets_status_and_counters(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-rollback-full@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-rollback-full@example.com');
+        $student = $this->createStudent(1, '退回待審完整測試');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '退回待審內容',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+            ->assertOk();
+
+        $afterApprove = StudentClass::findOrFail($courseId);
+        $this->assertSame(6, (int) $afterApprove->RemainingSessions);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/rollback-approval", [
+            'ReviewNote' => '需要重新檢查',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'id' => $record->id,
+            'Status' => 'pending',
+            'ReviewNote' => '需要重新檢查',
+        ]);
+
+        $afterRollback = StudentClass::findOrFail($courseId);
+        $this->assertSame(6, (int) $afterRollback->RemainingSessions);
+    }
+
+    public function test_paused_course_hides_pending_learning_record_from_index_but_keeps_approved_visible(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-paused-lr-index@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-paused-lr-index@example.com');
+        $student = $this->createStudent(1, '暫停課程評量索引測試');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '10:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $sc = StudentClass::findOrFail($courseId);
+        $sc->Stop = 1;
+        $sc->save();
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-03-28',
+            'StartTime' => '10:00',
+            'EndTime' => '12:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+
+        $pendingRecord = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '暫停後待審',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => $classSession->StartTime,
+            'EndTime' => $classSession->EndTime,
+        ]);
+
+        $resPending = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $resPending->assertOk();
+        $ids = collect($resPending->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $pendingRecord->id, $ids, '暫停課程的待審評量不應出現在列表');
+
+        $pendingRecord->Status = 'approved';
+        $pendingRecord->ApprovedAt = now();
+        $pendingRecord->save();
+
+        $resApproved = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $resApproved->assertOk();
+        $idsAfter = collect($resApproved->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $pendingRecord->id, $idsAfter, '已核准評量在暫停課程仍應可查');
     }
 
     /**
@@ -865,12 +806,15 @@ class LearningRecordApprovalDeductionTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
-    private function createCourseViaApi(string $token, int $studentId, int $teacherId, array $overrides = []): \Illuminate\Testing\TestResponse
+    /**
+     * POST /api/v1/student-classes is retired (410); tests seed StudentClass directly.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function createStudentClassForTest(int $studentId, int $teacherId, array $overrides = []): StudentClass
     {
-        $payload = array_merge([
-            'student_id' => $studentId,
+        $o = array_merge([
             'subject' => 'Math',
-            'teacher_id' => $teacherId,
             'class_type' => 'one_on_one',
             'rate_per_30min' => 500,
             'duration_hours' => 2,
@@ -884,24 +828,44 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'Memo' => '測試課程',
         ], $overrides);
 
-        return $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/student-classes', $payload);
-    }
+        $subjectKey = strtolower((string) $o['subject']);
+        $subjectId = match ($subjectKey) {
+            'math', '數學' => 1,
+            default => 1,
+        };
 
-    private function resolveCourseId(\Illuminate\Testing\TestResponse $courseRes, int $studentId, int $teacherId): int
-    {
-        $courseId = (int) ($courseRes->json('ID') ?? $courseRes->json('id') ?? 0);
-        if ($courseId <= 0) {
-            $courseId = (int) (DB::table('StudentClass')
-                ->where('StudentID', $studentId)
-                ->where('TeacherID', $teacherId)
-                ->max('ID') ?? 0);
-        }
-        $this->assertTrue($courseId > 0, 'Course ID should be available.');
+        $course = StudentClass::create([
+            'StudentID' => $studentId,
+            'GradeID' => 1,
+            'SubjectID' => $subjectId,
+            'TeacherID' => $teacherId,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => $o['first_class_date'],
+            'EndDate' => null,
+            'TotalHours' => 40,
+            'Memo' => $o['Memo'],
+            'Charge' => null,
+            'Pay' => null,
+            'PayDate' => null,
+            'Paid' => 0,
+            'Disconunt' => null,
+            'Rate' => (float) $o['rate_per_30min'],
+            'LearnTimeID' => null,
+            'RoomID' => 'R1',
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => (int) $o['sessions_purchased'],
+            'RemainingSessions' => (int) $o['remaining_sessions'],
+            'UsedSessions' => (int) $o['sessions_used'],
+            'SessionDuration' => max(30, (int) $o['duration_hours'] * 60),
+            'ClassType' => $o['class_type'],
+        ]);
 
-        return $courseId;
+        $this->assertTrue($course->ID > 0, 'Course ID should be available.');
+
+        return $course;
     }
 
     private function getUserIdByLoginName(string $loginName): int

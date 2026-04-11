@@ -1,5 +1,6 @@
 <template>
   <div>
+    <div v-if="calendarLoading" class="calendar-loading-bar">{{ calendarLoadProgress || '載入中…' }}</div>
     <!-- Top Bar -->
     <div class="smart-cal-top" data-guide="calendar-header">
       <div class="smart-cal-header">
@@ -657,6 +658,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchClassSessions } from '../lib/classSessionsApi';
+import { fetchAllPages } from '../lib/pagedFetchAll';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 
@@ -807,6 +809,8 @@ const weekOffset = ref(0); // 上週/下週偏移
 const jumpToDate = ref(formatLocalDate(new Date()));
 const courses = ref([]);
 const exceptions = ref([]); // Store schedules (leaves, extras, reschedules)
+const calendarLoading = ref(false);
+const calendarLoadProgress = ref('');
 /** 與課程管理相同：每門課的實際上課日期列表（來自 session-dates API），用於智慧排課只顯示到最後一堂 */
 const sessionDatesByCourseId = ref({});
 const allStudents = ref([]);
@@ -1478,42 +1482,46 @@ const loadCourses = async () => {
     courses.value = [];
     exceptions.value = [];
     sessionDatesByCourseId.value = {};
+    calendarLoading.value = false;
+    calendarLoadProgress.value = '';
     return;
   }
+
+  calendarLoading.value = true;
+  calendarLoadProgress.value = '載入課程中…';
+  const mapCourse = (c) => ({
+    id: c.id,
+    student_id: c.student_id,
+    teacher_id: c.teacher_id,
+    subject: c.subject,
+    class_type: c.class_type,
+    rate_per_30min: c.rate_per_30min,
+    duration_hours: c.duration_hours ?? 2,
+    day_of_week: parseInt(c.day_of_week) || 0,
+    days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
+    start_time: c.start_time || '',
+    end_time: c.end_time || '',
+    student_name: c.student_name || '—',
+    teacher_name: c.teacher_name || '未指派',
+    weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
+    first_class_date: c.first_class_date || c.StartDate || null,
+    payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
+    sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
+    room_id: c.RoomID || c.room_id || ''
+  });
 
   let courseList = [];
   if (token) {
     try {
-      const params = new URLSearchParams({ branch_id: String(branchId), per_page: 1000 });
-      if (isTeacher.value && props.userId) params.set('teacher_id', props.userId);
-      const res = await fetch(`${baseUrl}/v1/student-classes?${params}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+      const apiUrl = `${baseUrl}/v1/student-classes?branch_id=${branchId}${isTeacher.value && props.userId ? `&teacher_id=${props.userId}` : ''}`;
+      const { data: allCourses } = await fetchAllPages(apiUrl, token, {
+        perPage: 200,
+        concurrency: 4,
+        onProgress: (loaded, total) => {
+          calendarLoadProgress.value = `載入課程中… ${loaded}/${total}`;
+        },
       });
-      if (res.ok) {
-        const json = await res.json();
-        const items = json.data ?? json;
-        const list = Array.isArray(items) ? items : (items?.data ?? []);
-        courseList = list.map(c => ({
-          id: c.id,
-          student_id: c.student_id,
-          teacher_id: c.teacher_id,
-          subject: c.subject,
-          class_type: c.class_type,
-          rate_per_30min: c.rate_per_30min,
-          duration_hours: c.duration_hours ?? 2,
-          day_of_week: parseInt(c.day_of_week) || 0,
-          days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
-          start_time: c.start_time || '',
-          end_time: c.end_time || '',
-          student_name: c.student_name || '—',
-          teacher_name: c.teacher_name || '未指派',
-          weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
-          first_class_date: c.first_class_date || c.StartDate || null,
-          payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
-          sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
-          room_id: c.RoomID || c.room_id || ''
-        }));
-      }
+      courseList = allCourses.map(mapCourse);
     } catch (e) {
       console.warn('Calendar: API load failed, falling back to Supabase', e);
     }
@@ -1557,10 +1565,16 @@ const loadCourses = async () => {
   }
 
   // 優先從 Laravel API 載入請假/調課（與課程管理寫入的資料一致，該堂才會正確消失）
+  // Use a +-2 month window around the current display month to avoid full-table load
+  const schedRangeStart = new Date(displayYear.value, displayMonth.value - 3, 1);
+  const schedRangeEnd = new Date(displayYear.value, displayMonth.value + 1, 0);
+  const schedStart = `${schedRangeStart.getFullYear()}-${String(schedRangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+  const schedEnd = `${schedRangeEnd.getFullYear()}-${String(schedRangeEnd.getMonth() + 1).padStart(2, '0')}-${String(schedRangeEnd.getDate()).padStart(2, '0')}`;
+
   let excData = [];
   if (token) {
     try {
-      const excParams = new URLSearchParams({ branch_id: String(branchId), per_page: 1000 });
+      const excParams = new URLSearchParams({ branch_id: String(branchId), per_page: '2000', start: schedStart, end: schedEnd });
       if (isTeacher.value && props.userId) excParams.set('teacher_id', props.userId);
       const excRes = await fetch(`${baseUrl}/v1/schedules?${excParams}`, {
         credentials: 'include',
@@ -1650,6 +1664,8 @@ const loadCourses = async () => {
       }).catch(() => {});
     } catch (_) {}
   }
+  calendarLoading.value = false;
+  calendarLoadProgress.value = '';
 };
 
 const loadStudents = async () => {
@@ -1657,7 +1673,7 @@ const loadStudents = async () => {
   const token = sess?.access_token;
   if (!token) return;
   try {
-    const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=all`, {
+    const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const json = await res.json();
@@ -2542,6 +2558,18 @@ onMounted(() => {
 
 <style scoped>
 /* ----- 字體與排版基底 ----- */
+.calendar-loading-bar {
+  text-align: center;
+  padding: 8px 16px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
 .smart-cal-top,
 .week-view,
 .teacher-view {

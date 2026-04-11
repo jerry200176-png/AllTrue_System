@@ -117,6 +117,38 @@ class ProfileCenterApiTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_avatar_second_upload_same_filename_succeeds(): void
+    {
+        Storage::fake('public');
+
+        $teacher = User::create([
+            'LoginName' => 'avatar-twice@example.com',
+            'Name' => 'Avatar Twice',
+            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
+            'type' => 'T',
+            'phone' => '0900000009',
+        ]);
+        $token = $this->issueToken($teacher->id);
+
+        $headers = [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)->post('/api/v1/me/avatar', [
+            'avatar' => UploadedFile::fake()->image('avatar.jpg', 80, 80),
+        ])->assertOk();
+
+        $this->withHeaders($headers)->post('/api/v1/me/avatar', [
+            'avatar' => UploadedFile::fake()->image('avatar.jpg', 90, 90),
+        ])->assertOk()
+            ->assertJsonStructure(['avatar_url']);
+
+        $teacher->refresh();
+        $this->assertSame('avatars/'.$teacher->id.'/avatar.jpg', $teacher->AvatarUrl);
+        Storage::disk('public')->assertExists("avatars/{$teacher->id}/avatar.jpg");
+    }
+
     public function test_notification_preferences_can_be_read_and_updated(): void
     {
         $teacher = User::create([
@@ -213,6 +245,34 @@ class ProfileCenterApiTest extends TestCase
             $tokenOwner = AuthToken::where('id', $session['token_id'])->value('user_id');
             $this->assertSame($userA->id, (int) $tokenOwner);
         }
+    }
+
+    public function test_logout_other_sessions_keeps_current_token_only(): void
+    {
+        $user = User::create([
+            'LoginName' => 'security-logout-others@example.com',
+            'Name' => 'Security Logout Others',
+            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
+            'type' => 'T',
+            'phone' => '0900000006',
+        ]);
+
+        $currentToken = $this->issueToken($user->id);
+        $otherToken = $this->issueToken($user->id);
+
+        $this->assertDatabaseHas('auth_tokens', ['token' => $currentToken]);
+        $this->assertDatabaseHas('auth_tokens', ['token' => $otherToken]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$currentToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/me/security/logout-others')
+            ->assertOk()
+            ->assertJsonPath('message', '已登出其他裝置')
+            ->assertJsonPath('revoked_count', 1);
+
+        $this->assertDatabaseHas('auth_tokens', ['token' => $currentToken]);
+        $this->assertDatabaseMissing('auth_tokens', ['token' => $otherToken]);
     }
 
     public function test_password_update_still_requires_current_password(): void

@@ -186,6 +186,10 @@
                     新增課程
                   </button>
                 </div>
+                <div class="student-note-line">
+                  <span class="student-note-label">學生備註：</span>
+                  <span>{{ student.notes || '無' }}</span>
+                </div>
 
                 <div v-if="getStudentCourses(student.id).length === 0" class="empty-text">
                   {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
@@ -213,6 +217,7 @@
                         <span class="status-tag" :class="course.class_type">
                           {{ classTypeLabel(course.class_type) }}
                         </span>
+                        <div v-if="courseMemo(course)" class="course-memo-line">備註：{{ courseMemo(course) }}</div>
                       </td>
                       <td>
                         <div v-if="course.payment_type === 'session'" class="sessions-cell">
@@ -462,6 +467,7 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { getPerSessionFee } from '../lib/coursePricing';
+import { fetchAllPages } from '../lib/pagedFetchAll';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import EnrollmentWizard from '../components/EnrollmentWizard.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
@@ -591,6 +597,10 @@ const classTypeLabel = (type) => {
   const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
   return map[type] || type;
 };
+const courseMemo = (course) => {
+  const text = String(course?.memo ?? course?.Memo ?? '').trim();
+  return text || '';
+};
 const dayLabel = (d) => {
   const days = ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'];
   return days[d] || '';
@@ -662,14 +672,7 @@ const getLaravelStudentId = (student) => {
   const id = Number(student?._laravelId ?? student?.id ?? 0);
   return Number.isFinite(id) && id > 0 ? id : null;
 };
-const displayStudents = computed(() => {
-  if (showHistoricalCourses.value) return students.value;
-  return students.value.filter((student) => {
-    const allCourses = getStudentAllCourses(student.id);
-    if (allCourses.length === 0) return true;
-    return allCourses.some((course) => !isHistoricalCourse(course));
-  });
-});
+const displayStudents = computed(() => students.value);
 const visibleStudentLaravelIds = computed(() => displayStudents.value.map(getLaravelStudentId).filter(id => id != null));
 const selectedStudentCount = computed(() => selectedStudentIds.value.length);
 const hasSelectedStudents = computed(() => selectedStudentCount.value > 0);
@@ -791,7 +794,7 @@ const loadStudents = async () => {
     if (token) {
       const params = new URLSearchParams({
         branch_id: String(props.branchId),
-        per_page: '1000'
+        per_page: '500'
       });
       if (filters.value.name) params.set('name', filters.value.name);
       if (filters.value.status) params.set('status', filters.value.status || '');
@@ -826,7 +829,7 @@ const loadStudents = async () => {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (token) {
-      const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=1000`, {
+      const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -974,18 +977,10 @@ const loadAllStudentCourses = async () => {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (token) {
-      const params = new URLSearchParams({
-        branch_id: String(props.branchId),
-        per_page: '1000'
-      });
-      const res = await fetch(`/api/v1/student-classes?${params}`, {
-        credentials: 'include',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        const list = json?.data ?? json;
-        const arr = Array.isArray(list) ? list : (list?.data ?? []);
+      const apiUrl = `/api/v1/student-classes?branch_id=${props.branchId}`;
+      const { data: allData } = await fetchAllPages(apiUrl, token, { perPage: 200 });
+      if (allData.length > 0) {
+        const arr = allData;
         const map = {};
         arr.forEach((c) => {
           const sid = Number(c?.student_id ?? c?.StudentID ?? 0);
@@ -2193,6 +2188,14 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   color: var(--primary);
   margin: 0;
 }
+.student-note-line {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+.student-note-label {
+  font-weight: 700;
+}
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;
@@ -2211,6 +2214,13 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.course-memo-line {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+  word-break: break-word;
+}
 
 /* ═══ Form Section ═══ */
 .form-section-title {

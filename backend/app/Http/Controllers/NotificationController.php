@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Notification;
 use App\Models\NotificationRead;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Services\NotificationSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -202,13 +204,109 @@ class NotificationController extends Controller
         ]);
     }
 
-    public function unreadCount(Request $request)
+    public function markTuitionPaid(Request $request, int $notificationId)
     {
-        [$campusIds] = $this->resolveCampusScope($request);
+        $request->validate([
+            'branch_id' => 'nullable|integer',
+        ]);
+
+        [$campusIds, , $branchId] = $this->resolveCampusScope($request);
         $userId = $this->resolveAuthUserId($request);
         if (!$userId) {
             return response()->json(['message' => 'Unauthorized'], 401);
         }
+
+        $notification = $this->findScopedNotification($notificationId, $campusIds);
+        if (!$notification) {
+            return response()->json(['message' => 'Notification not found'], 404);
+        }
+
+        if (!in_array((string) $notification->SourceType, ['StudentClass', 'Invoice'], true)) {
+            return response()->json(['message' => '此通知不支援繳費處理'], 422);
+        }
+
+        $payload = is_array($notification->Payload) ? $notification->Payload : [];
+
+        try {
+            DB::transaction(function () use ($notification, $payload, $userId) {
+                if ((string) $notification->SourceType === 'StudentClass') {
+                    $studentClassId = (int) ($notification->SourceID ?: ($payload['class_id'] ?? 0));
+                    if ($studentClassId <= 0) {
+                        throw new \RuntimeException('找不到課程資料');
+                    }
+
+                    $affected = DB::table('StudentClass')
+                        ->where('ID', $studentClassId)
+                        ->update(['Paid' => 1]);
+
+                    if ($affected <= 0) {
+                        throw new \RuntimeException('找不到對應課程，無法更新繳費狀態');
+                    }
+                } else {
+                    $invoiceId = (int) ($notification->SourceID ?: ($payload['invoice_id'] ?? 0));
+                    if ($invoiceId <= 0) {
+                        throw new \RuntimeException('找不到帳單資料');
+                    }
+
+                    $invoice = Invoice::query()->find($invoiceId);
+                    if (!$invoice) {
+                        throw new \RuntimeException('找不到帳單資料');
+                    }
+
+                    $total = (int) ($invoice->TotalAmount ?? 0);
+                    $paid = (int) ($invoice->PaidAmount ?? 0);
+                    $remaining = max(0, $total - $paid);
+
+                    if ($remaining > 0) {
+                        Payment::create([
+                            'InvoiceID' => (int) $invoice->id,
+                            'Amount' => $remaining,
+                            'PaidAt' => now(),
+                            'Method' => 'notification_center',
+                            'Note' => '通知中心標記已繳費',
+                        ]);
+                    }
+
+                    $invoice->PaidAmount = max($total, $paid);
+                    $invoice->Status = 'paid';
+                    $invoice->save();
+                }
+
+                NotificationRead::updateOrCreate(
+                    [
+                        'NotificationID' => $notification->id,
+                        'UserID' => $userId,
+                    ],
+                    [
+                        'ReadAt' => now(),
+                    ]
+                );
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $syncResult = NotificationSyncService::sync($campusIds, $branchId);
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => '已標記繳費完成',
+            'sync' => $syncResult,
+            'unread_count' => $this->countUnread($userId, $campusIds),
+            'urgent_unread_count' => $this->countUrgentUnread($userId, $campusIds),
+        ]);
+    }
+
+    public function unreadCount(Request $request)
+    {
+        [$campusIds, , $branchId] = $this->resolveCampusScope($request);
+        $userId = $this->resolveAuthUserId($request);
+        if (!$userId) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        // Keep badge counters fresh by reconciling source data first.
+        NotificationSyncService::sync($campusIds, $branchId);
 
         $byType = $this->countUnreadByType($userId, $campusIds);
 
@@ -222,6 +320,10 @@ class NotificationController extends Controller
         $pendingCount = $pendingQuery->count();
         if ($pendingCount > 0) {
             $byType['pending_teachers'] = ['total' => $pendingCount, 'urgent' => 0];
+        }
+        $pendingAttendanceCount = $this->countPendingAttendance($campusIds);
+        if ($pendingAttendanceCount > 0) {
+            $byType['attendance'] = ['total' => $pendingAttendanceCount, 'urgent' => $pendingAttendanceCount];
         }
 
         return response()->json([
@@ -348,6 +450,22 @@ class NotificationController extends Controller
         }
 
         return (int) $query->count('Notifications.id');
+    }
+
+    private function countPendingAttendance(array $campusIds): int
+    {
+        $today = now()->toDateString();
+        $query = DB::table('ClassSession')
+            ->join('StudentClass', 'ClassSession.StudentClassID', '=', 'StudentClass.ID')
+            ->join('Student', 'StudentClass.StudentID', '=', 'Student.id')
+            ->whereDate('ClassSession.SessionDate', $today)
+            ->where('ClassSession.Status', 'scheduled');
+
+        if (!empty($campusIds)) {
+            $query->whereIn('Student.CampusID', $campusIds);
+        }
+
+        return (int) $query->count('ClassSession.id');
     }
 
     private function findScopedNotification(int $notificationId, array $campusIds): ?Notification
