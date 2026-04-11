@@ -95,6 +95,34 @@
             >{{ b.name.split('(')[0].trim() }}</button>
           </div>
         </div>
+        <div v-else-if="isTeacher && teacherBranches.length > 1" class="branch-switcher" data-guide="app-branch-switcher">
+          <div class="branch-switcher-label">切換分校</div>
+          <div class="branch-buttons">
+            <button
+              v-for="b in teacherBranches"
+              :key="b.id"
+              :class="['branch-btn', { active: currentBranch === b.id }]"
+              @click="currentBranch = b.id"
+            >{{ b.name.split('(')[0].trim() }}</button>
+          </div>
+        </div>
+
+        <!-- 主題切換 -->
+        <div class="theme-switcher" :title="sidebarCollapsed ? '切換顯示模式' : ''">
+          <div class="theme-switcher-label" v-show="!sidebarCollapsed">顯示模式</div>
+          <div class="theme-buttons" :class="{ 'theme-buttons-collapsed': sidebarCollapsed }">
+            <button
+              v-for="opt in themeOptions"
+              :key="opt.value"
+              :class="['theme-btn', { active: themePreference === opt.value }]"
+              :title="opt.label"
+              @click="setTheme(opt.value)"
+            >
+              <span>{{ opt.icon }}</span>
+              <span v-show="!sidebarCollapsed" class="theme-btn-label">{{ opt.label }}</span>
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
 
@@ -207,6 +235,21 @@
           </option>
         </select>
       </div>
+      <div v-else-if="isTeacher && teacherBranches.length > 0" class="mobile-branch-bar">
+        <label class="mobile-branch-label" for="mobile-branch-select-teacher">分校</label>
+        <select
+          v-if="teacherBranches.length > 1"
+          id="mobile-branch-select-teacher"
+          class="mobile-branch-select"
+          :value="currentBranch"
+          @change="(e) => { const v = (e.target).value; if (v !== '') currentBranch = Number(v); }"
+        >
+          <option v-for="b in teacherBranches" :key="b.id" :value="b.id">
+            {{ b.name.split('(')[0].trim() }}
+          </option>
+        </select>
+        <span v-else class="mobile-branch-label">{{ teacherBranches[0]?.name?.split('(')[0]?.trim() }}</span>
+      </div>
       <div v-if="isPasswordChangeLocked" class="card password-lock-card">
         為了帳號安全，請先到「右上角帳號選單 > 個人管理 > 安全性」完成初始密碼修改後再繼續使用系統。
       </div>
@@ -225,6 +268,15 @@
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
 
+      <TeacherHomePage
+        v-if="!isPasswordChangeLocked && isTeacher && active === 'teacher-home'"
+        :branch-id="currentBranch"
+        :user-id="session.user.id"
+        :user-role="role"
+        :teacher-branch-ids="teacherBranches.map(b => b.id)"
+        @navigate="setActivePage($event)"
+        @navigate-learning="learningTargetRecordId = $event?.recordId || null; setActivePage('learning')"
+      />
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" />
       <ProfileCenterPage
@@ -321,6 +373,7 @@ import NotificationsCenter from './pages/NotificationsCenter.vue';
 import ProfileCenterPage from './pages/ProfileCenterPage.vue';
 import ChatPage from './pages/ChatPage.vue';
 import BugReportsPage from './pages/BugReportsPage.vue';
+import TeacherHomePage from './pages/TeacherHomePage.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 
@@ -527,6 +580,35 @@ const learningTargetRecordId = ref(null);
 
 // Sidebar collapse state (desktop)
 const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true');
+
+// ===== 主題模式（日間 / 夜間 / 系統） =====
+const THEME_KEY = 'app_color_scheme';
+const themeOptions = [
+  { value: 'light',  icon: '☀️', label: '日間' },
+  { value: 'dark',   icon: '🌙', label: '夜間' },
+  { value: 'system', icon: '💻', label: '系統' },
+];
+const themePreference = ref(localStorage.getItem(THEME_KEY) || 'system');
+
+function getSystemDark() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+function applyTheme(pref) {
+  const dark = pref === 'dark' || (pref === 'system' && getSystemDark());
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+}
+function setTheme(pref) {
+  themePreference.value = pref;
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme(pref);
+}
+
+// 監聽系統主題變化（當使用者選「系統」時即時跟隨）
+const systemThemeMq = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+function onSystemThemeChange() {
+  if (themePreference.value === 'system') applyTheme('system');
+}
+applyTheme(themePreference.value);
 function toggleSidebarCollapsed() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem('sidebar_collapsed', sidebarCollapsed.value);
@@ -546,10 +628,10 @@ const mobileTabItems = computed(() => {
   }
   if (isTeacher.value) {
     return [
-      { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
+      { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
       { page: 'attendance', label: '出勤', icon: 'fact_check' },
       { page: 'learning', label: '評量', icon: 'assignment' },
-      { page: 'subject-units', label: '統計', icon: 'calculate' },
+      { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
       { page: 'more', label: '更多', icon: 'apps' },
     ];
   }
@@ -726,9 +808,10 @@ const sidebarNavGroups = computed(() => {
         title: '教學工作',
         defaultOpen: true,
         items: [
-          { page: 'calendar', label: '班級行事曆 / 課表', icon: 'calendar_today' },
-          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check' },
+          { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
+          { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['attendance'] },
           { page: 'learning', label: '課表與評量', icon: 'assignment' },
+          { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
@@ -768,6 +851,29 @@ function getMoreSheetItemBadgeCount(item) {
   return n;
 }
 
+const teacherBranches = computed(() => {
+  const ids = userProfile.value?.branch_ids;
+  if (!ids || ids.length === 0) return [];
+  const idSet = new Set(ids.map(Number));
+  return branches.value.filter(b => idSet.has(b.id));
+});
+
+function ensureTeacherBranch() {
+  if (!isTeacher.value) return;
+  const allowed = teacherBranches.value;
+  if (allowed.length > 0) {
+    const allowedIds = new Set(allowed.map(b => b.id));
+    if (currentBranch.value != null && allowedIds.has(currentBranch.value)) return;
+    const preferred = allowed[0].id;
+    currentBranch.value = preferred;
+    localStorage.setItem('app_branch', String(preferred));
+  } else if (branches.value.length > 0) {
+    if (currentBranch.value != null && branches.value.some(b => b.id === currentBranch.value)) return;
+    currentBranch.value = branches.value[0].id;
+    localStorage.setItem('app_branch', String(branches.value[0].id));
+  }
+}
+
 // When director/super_admin: load branches from authenticated /api/v1/campuses and set currentBranch
 async function ensureDirectorBranches() {
     const s = session.value;
@@ -799,6 +905,9 @@ async function ensureDirectorBranches() {
 
 // Auth Listener
 onMounted(async () => {
+    // 系統主題監聽
+    systemThemeMq?.addEventListener('change', onSystemThemeChange);
+
     // Load branches from API (public endpoint, no auth needed)
     await loadBranches();
 
@@ -898,8 +1007,12 @@ const fetchProfile = async (_uid) => {
           return;
         }
 
-        if (me.role === 'teacher') active.value = 'learning';
-        else if (me.role === 'director' || me.role === 'super_admin') active.value = 'director';
+        if (me.role === 'teacher') {
+            active.value = 'teacher-home';
+            ensureTeacherBranch();
+        } else if (me.role === 'director' || me.role === 'super_admin') {
+            active.value = 'director';
+        }
     } catch {
         userProfile.value = null;
     }
@@ -918,9 +1031,10 @@ const handleLoginSuccess = async ({ user, profile }) => {
     }
 
     if (mustChangePassword) active.value = 'profile';
-    else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'learning';
+    else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'teacher-home';
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
     await ensureDirectorBranches();
+    ensureTeacherBranch();
 };
 
 const onProfileUpdated = async (updated) => {
@@ -949,7 +1063,7 @@ const onPasswordChangeComplete = async () => {
   }
   await fetchProfile(session.value?.user?.id);
   if (!isPasswordChangeLocked.value) {
-    if (isTeacher.value) active.value = 'learning';
+    if (isTeacher.value) active.value = 'teacher-home';
     else if (isDirector.value) active.value = 'director';
   }
 };
@@ -1001,6 +1115,7 @@ function onRefreshBadgesEvent() {
 }
 
 onBeforeUnmount(() => {
+  systemThemeMq?.removeEventListener('change', onSystemThemeChange);
   guideTour.closeTour();
   if (unreadPollingTimer) {
     clearInterval(unreadPollingTimer);
@@ -1090,6 +1205,38 @@ async function refreshUnreadNotifications() {
   await mergeBugUnreadBadge();
   await mergeChatUnreadBadge();
   await mergeDirectorPendingBadge();
+  await mergeTeacherAttendanceBadge();
+}
+
+async function mergeTeacherAttendanceBadge() {
+  if (!session.value?.access_token || !isTeacher.value || !currentBranch.value || isPasswordChangeLocked.value) {
+    if (isTeacher.value) {
+      const next = { ...badgeByType.value };
+      delete next.attendance;
+      badgeByType.value = next;
+    }
+    return;
+  }
+  try {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const qs = new URLSearchParams({ start: today, end: today, per_page: '500' });
+    const res = await fetch(`${baseUrl}/v1/class-sessions?${qs}`, {
+      headers: { Authorization: `Bearer ${session.value.access_token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error('teacher attendance badge failed');
+    const json = await res.json();
+    const rows = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : []);
+    const pending = rows.filter(r => String(r?.status || '').toLowerCase() === 'scheduled').length;
+    const next = { ...badgeByType.value };
+    next.attendance = { total: pending, urgent: pending > 0 ? pending : 0 };
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.attendance;
+    badgeByType.value = next;
+  }
 }
 
 async function mergeDirectorPendingBadge() {
@@ -1301,9 +1448,9 @@ function formatBuildTime(rawIso) {
   align-items: center;
   gap: 10px;
   cursor: pointer;
-  border: 1px solid #dbe3ec;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--topbar-bg);
   padding: 6px 10px 6px 6px;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
 }
@@ -1339,7 +1486,7 @@ function formatBuildTime(rawIso) {
 }
 
 .account-name {
-  color: #0f172a;
+  color: var(--text);
   font-size: 13px;
   font-weight: 600;
   max-width: 140px;
@@ -1369,9 +1516,9 @@ function formatBuildTime(rawIso) {
   top: calc(100% + 8px);
   right: 0;
   min-width: 188px;
-  border: 1px solid #dbe3ec;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #fff;
+  background: var(--modal-bg);
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.16);
   padding: 6px;
   display: grid;
@@ -1387,12 +1534,12 @@ function formatBuildTime(rawIso) {
   width: 100%;
   border-radius: 8px;
   padding: 8px 10px;
-  color: #334155;
+  color: var(--text);
   font-size: 13px;
 }
 
 .account-menu-btn:hover {
-  background: #f8fafc;
+  background: var(--input-bg);
 }
 
 .account-menu-btn .material-symbols-outlined {
@@ -1645,5 +1792,64 @@ function formatBuildTime(rawIso) {
   .guide-tour-actions {
     justify-content: flex-end;
   }
+}
+
+/* ===== 主題切換 ===== */
+.theme-switcher {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.theme-switcher-label {
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.theme-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.theme-buttons-collapsed {
+  grid-template-columns: 1fr;
+}
+
+.theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.theme-btn:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+}
+
+.theme-btn.active {
+  background: rgba(14, 165, 233, 0.22);
+  border-color: rgba(125, 211, 252, 0.45);
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
+.theme-btn-label {
+  font-size: 11px;
 }
 </style>

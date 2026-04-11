@@ -51,6 +51,10 @@
         </button>
       </div>
 
+      <label v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'all'" class="lr-unfilled-toggle">
+        <input type="checkbox" v-model="onlyUnfilled"> 只看未填
+      </label>
+
       <!-- Batch action bar -->
       <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
         <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
@@ -246,6 +250,7 @@
               <span class="lr-group-student">{{ group.student_name }}</span>
               <span class="lr-group-count">{{ group.records.length }} 筆</span>
               <span v-if="group.pending_count > 0" class="lr-group-pending">{{ group.pending_count }} 待處理</span>
+              <span v-if="group.unfilled_body_count > 0" class="lr-group-unfilled">{{ group.unfilled_body_count }} 未填</span>
             </div>
             <span class="lr-group-hint">展開 / 收合</span>
           </summary>
@@ -261,12 +266,13 @@
                   <th>學生 / 班級</th>
                   <th>科目</th>
                   <th v-if="!isTeacher">授課老師</th>
+                  <th>填寫</th>
                   <th>狀態</th>
                   <th style="text-align:right">操作</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="record in group.records" :key="record.id" class="lr-table-row" @click="viewRecord(record)">
+                <tr v-for="record in group.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing' }" @click="viewRecord(record)">
                   <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                     <input
                       v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
@@ -288,20 +294,25 @@
                   </td>
                   <td v-if="!isTeacher">{{ record.teacher_name }}</td>
                   <td>
+                    <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                    <span v-else class="fill-badge-na">—</span>
+                  </td>
+                  <td>
                     <span :class="statusTagClass(record.Status)" class="status-tag">
                       {{ statusLabel(record.Status) }}
                     </span>
                   </td>
                   <td class="lr-actions" @click.stop>
-                    <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                    <button v-if="!isTeacher && canEdit(record)" class="ghost xs" @click="editRecord(record)">編輯</button>
-                    <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
-                    <span v-if="showTimeLockHint(record)" class="lr-lock-hint">上課開始後開放填寫</span>
-                    <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                    <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                    <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
-                    <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
-                    <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
+                    <div class="lr-actions-inner">
+                      <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                      <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
+                      <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
+                      <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
+                      <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                      <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
+                      <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
+                      <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -647,6 +658,7 @@ const filters = reactive({ status: '', student_name: '', teacher_id: '' });
 
 const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
+const onlyUnfilled = ref(false);
 const selectedRecordIds = ref(new Set());
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
@@ -714,6 +726,11 @@ const filteredRecords = computed(() => {
       list = list.filter(r => r.Status === 'rejected');
     }
   }
+  if (onlyUnfilled.value) {
+    list = list.filter(r =>
+      (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
+    );
+  }
   return list;
 });
 
@@ -724,16 +741,22 @@ const filteredGroupedRecords = computed(() => {
     const studentName = String(record?.student_name || '').trim() || '未命名學生';
     const key = studentId ? `student-${studentId}` : `name-${studentName}`;
     if (!groups.has(key)) {
-      groups.set(key, { key, student_id: studentId, student_name: studentName, pending_count: 0, records: [] });
+      groups.set(key, { key, student_id: studentId, student_name: studentName, pending_count: 0, unfilled_body_count: 0, records: [] });
     }
     const group = groups.get(key);
     group.records.push(record);
-    if (record?.Status === 'pending' || record?.Status === 'changes_requested') group.pending_count += 1;
+    if (record?.Status === 'pending' || record?.Status === 'changes_requested') {
+      group.pending_count += 1;
+      if (!hasLearningRecordBody(record)) group.unfilled_body_count += 1;
+    }
   }
   const collator = new Intl.Collator('zh-Hant');
   return Array.from(groups.values())
     .map(group => {
       group.records.sort((a, b) => {
+        const isPendingA = (a?.Status === 'pending' || a?.Status === 'changes_requested') && !hasLearningRecordBody(a) ? 0 : 1;
+        const isPendingB = (b?.Status === 'pending' || b?.Status === 'changes_requested') && !hasLearningRecordBody(b) ? 0 : 1;
+        if (isPendingA !== isPendingB) return isPendingA - isPendingB;
         const aDate = String(a?.SessionDate || '');
         const bDate = String(b?.SessionDate || '');
         if (aDate !== bDate) return bDate.localeCompare(aDate);
@@ -1796,6 +1819,17 @@ const submitTeacherChange = async () => {
 };
 
 // ── Helpers ──
+
+// 「已填」僅以授課進度（Progress）是否有內容判定；與表單「授課進度」欄一致。
+const hasLearningRecordBody = (record) => {
+  if (!record) return false;
+  return String(record.Progress || '').trim() !== '';
+};
+
+const fillLabel = (record) => (hasLearningRecordBody(record) ? '已填' : '未填');
+
+const fillLabelClass = (record) => (hasLearningRecordBody(record) ? 'fill-done' : 'fill-missing');
+
 const statusLabel = (status) => {
   const map = { pending: '待審核', approved: '已核准', rejected: '已退回', changes_requested: '需修改' };
   return map[status] || status;
@@ -2484,6 +2518,18 @@ watch(() => props.branchId, () => {
   color: #888;
 }
 
+.lr-unfilled-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #555;
+  user-select: none;
+}
+.lr-unfilled-toggle input { width: auto; margin: 0; }
+
 /* ── Batch Action Bar ── */
 .lr-batch-bar {
   display: flex;
@@ -2629,8 +2675,9 @@ watch(() => props.branchId, () => {
 }
 
 .ts-tabs button {
-  padding: 5px 14px;
-  font-size: 13px;
+  padding: 8px 16px;
+  font-size: 14px;
+  min-height: 40px;
   border: none;
   background: none;
   cursor: pointer;
@@ -2699,6 +2746,7 @@ watch(() => props.branchId, () => {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
+  min-height: 48px;
   background: var(--primary-bg);
   border-left: 3px solid var(--primary);
   border-radius: 0 8px 8px 0;
@@ -2779,9 +2827,10 @@ watch(() => props.branchId, () => {
   background: var(--primary);
   color: #fff;
   border: none;
-  padding: 6px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  min-height: 44px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
@@ -2990,6 +3039,17 @@ watch(() => props.branchId, () => {
   color: #c2410c;
 }
 
+.lr-group-unfilled {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #FFF3E0;
+  color: #E65100;
+}
+
 .lr-group-hint {
   font-size: 12px;
   color: var(--text-light);
@@ -3007,9 +3067,32 @@ watch(() => props.branchId, () => {
   cursor: pointer;
   transition: background 0.15s;
 }
-
+.lr-table-row.lr-row-unfilled {
+  border-left: 3px solid #FB8C00;
+}
 .lr-table-row:hover {
   background: #f7f9ff;
+}
+
+.fill-badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+.fill-badge.fill-missing {
+  background: #FFF3E0;
+  color: #E65100;
+}
+.fill-badge.fill-done {
+  background: #E8F5E9;
+  color: #2E7D32;
+}
+.fill-badge-na {
+  color: var(--text-light);
+  font-size: 12px;
 }
 
 .lr-date {
@@ -3035,11 +3118,38 @@ watch(() => props.branchId, () => {
 
 .lr-actions {
   text-align: right;
+}
+
+.lr-actions-inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Unified xs button sizing inside action cell */
+.lr-actions-inner button {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
-.lr-actions button {
-  margin-left: 4px;
+/* Muted danger variant for destructive actions (退回, 刪除) */
+.lr-actions-inner button.danger {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  font-weight: 500;
+  box-shadow: none;
+}
+.lr-actions-inner button.danger:hover {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 
 .lr-lock-hint {
@@ -3451,6 +3561,11 @@ watch(() => props.branchId, () => {
   }
   .ts-week {
     grid-template-columns: repeat(4, 1fr);
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px;
   }
 }
 

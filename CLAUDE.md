@@ -7,8 +7,8 @@
 
 1. **`AGENTS.md`** — 任務守則、First-read 清單、常見坑
 2. **`AI_QUICKSTART.md`** — 專案與協作流程速覽
-3. **`docs/AI_REGRESSION_LESSONS.md`** — **防再犯**：已發生過的缺口（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI、**手動過去日＝已上完**、**`index.html` 與 Vite hashed chunk 不同步導致整站 MIME 錯誤** 等）
-4. **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`** — 若動到主任儀表板「繳費提醒」或 `GET /api/v1/alerts/tuition`（`AlertController::tuition`）
+3. **`docs/AI_REGRESSION_LESSONS.md`** — **防再犯**：已發生過的缺口（暫停課程與評量待審、**請假後仍出待審評量（作廢列與孤兒 pending）**、繳費提醒漏月結／0 堂、暫停 UI、**手動過去日＝已上完**、**固定排課契約與堂次（批次入班／列表時段／改星期同步未來堂）**、**老師教學工作台（TeacherHome／跨分校週課表／badge／預設頁）**、**`index.html` 與 Vite hashed chunk 不同步導致整站 MIME 錯誤** 等）
+4. **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`** — 若動到主任儀表板「繳費／續課提醒」或 `GET /api/v1/alerts/tuition`（`AlertController::tuition`）；**邏輯變更前必問使用者**（見該檔「變更管制」）
 5. **`docs/OPERATIONS_RUNBOOK.md`**、**`docs/GITHUB_SYNC_WORKFLOW.md`**
 6. **`docs/CHANGELOG.md`**
 7. **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（聊天／Bug／頭像完整手冊）
@@ -19,12 +19,16 @@
 | 主題 | 先讀 |
 |------|------|
 | **核准評量扣堂**（`ApprovalSessionSyncService` / `SessionDeductionService` / `LearningRecordController` approve/batchApprove/rollbackApproval） | **改動前必須先詢問使用者**。`docs/AI_REGRESSION_LESSONS.md`（2026-04-11 核准評量）、`docs/OPERATIONS_RUNBOOK.md` §K、`docs/CHANGELOG.md`（2026-04-11 B） |
+| **請假與評量**（`VoidedAt`、`ensurePastRecords`、`excludeLeaveSessionPendingReview`、`NotificationSyncService`） | `docs/AI_REGRESSION_LESSONS.md`（2026-04-12 — 請假與學習評量）、`docs/CHANGELOG.md`（2026-04-12 B）、`AGENTS.md` Common pitfalls |
 | 學習評量、待審列表、`LearningRecord`、`Stop`（暫停） | `docs/AI_REGRESSION_LESSONS.md` §2026-04-10 A |
 | 課程列表暫停 UI | 同上 §B、`CourseManagement.vue` |
 | 繳費提醒、堂數／月結 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + 同上 §C |
 | 通知 sync、`NotificationSyncService` | 同上 §D |
 | 聊天、Bug、使用者頭像 URL | **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**、`docs/CHAT_BUG_SYSTEM.md`、`docs/CHANGELOG.md` |
 | 批次排課／入班、`confirmed_dates`／`future_dates`、手動月曆日期語意 | **`docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md`**、`docs/AI_REGRESSION_LESSONS.md`（2026-04-11 一節） |
+| **課程時段顯示**（`reconcileWeekTimeFieldsFromSessions`、`index()` `$sessionSlotsByClassId`、`ensurePastRecords` StartTime/EndTime）、**出缺勤補請假 retro-leave**、**出缺勤 VoidedAt 過濾** | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 手動補登日期汙染課程時段顯示） |
+| **固定排課契約與堂次**（`UniversalClassScheduler`、`EnrollmentService::store`、`StudentClassController::index` 契約過濾、`syncFutureScheduledSessionTimes`／`remapFutureScheduledSessionsToContract`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-12 — 固定排課契約與堂次一致）、`AGENTS.md` Common pitfalls |
+| **老師教學工作台**（`teacher-home`、`TeacherHomePage.vue`、`mergeTeacherAttendanceBadge`、跨分校週課表、老師預設 `active`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-12 — 老師教學工作台）、**`docs/CHANGELOG.md`（2026-04-12 (G)）**、`CONTRIBUTING.md` |
 | 前端上線、`backend/public`、瀏覽器 **`MIME type "text/html"`** on `index-*.js` | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）；務必 **`npm run deploy`** 同輪寫入 `index.html` + `assets/` |
 
 ## 協作分支
