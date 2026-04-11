@@ -35,6 +35,12 @@ git checkout -b feature/your-topic
 
 Then open a PR to `jerry-sync-main`.
 
+## After `git pull` or a fresh clone (humans + any AI)
+
+1. Read **`CONTRIBUTING.md`** → **`AGENTS.md`** First-read → **`docs/CHANGELOG.md`（最上方數則）** → **`docs/AI_REGRESSION_LESSONS.md`**。  
+2. 與本機或線上行為不一致時，**先對照 CHANGELOG 與防再犯檔**，再改程式；避免重複已關閉的 regression。  
+3. 前端有變更時務必 **`cd frontend && npm run deploy`**（見 `AGENTS.md`），避免 `index.html` 與 `assets` hash 脫鉤。
+
 ## Safety Rules
 
 - Do not force push to shared branch.

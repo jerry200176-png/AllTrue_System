@@ -10,6 +10,7 @@ AllTrue is a cram-school operations platform:
 - attendance + RFID
 - billing and payment tracking
 - learning records approval flow
+- **teacher home dashboard** (`teacher-home`): default landing for `role=teacher` after 2026-04-12; see `docs/CHANGELOG.md` (2026-04-12 (G)) and `docs/AI_REGRESSION_LESSONS.md` (TeacherHome)
 
 ## 2) Stack and folders
 

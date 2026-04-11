@@ -16,6 +16,8 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 5. Sync to GitHub:
    - `./scripts/git-sync.sh "feat/fix: message"`
 
+6. **老師端（2026-04-12 起）**：預設首頁為 **教學工作台**（`teacher-home`）。部署含前端變更後，建議抽樣：**老師登入** → 工作台載入、跨分校本週課表、點「出勤／評量」導頁、側欄出缺勤**紅點**（當日有待點名 `scheduled` 堂次時）是否正常。
+
 ## B. GitHub SOP
 
 - Main collaboration target is `jerry-sync-main`.
@@ -184,7 +186,7 @@ ls -la backend/.env
 
 ---
 
-## K. Attendance / Remaining Sessions / Subject Units SOP（2026-04-11 更新）
+## K. Attendance / Remaining Sessions / Subject Units SOP（2026-04-12 更新）
 
 > 這段是**強制口徑**，後續人員與 AI 不可再混用邏輯。
 
@@ -206,6 +208,11 @@ ls -la backend/.env
 - `late` 雖扣堂，但必須保留在出缺勤資料中供家長端查閱
 - **核准評量視同 present 到班**
 
+#### 2a) 曠改請假（`excused` + 既有 `ClassSessionID`）
+
+- 老師／主任在出缺勤將某堂標為 **請假（`excused`）且對應既有堂次** 時：後端會寫入 **`schedules`（status=leave）** 並呼叫 **`CourseLeaveCascadeService::applyLeaveCascade`**，與課程管理／智慧排課的請假順延**同一套邏輯**；該筆 `StudentSingIn` 仍 **`SessionDeducted=0`**（該節不扣堂），但後續預排堂次可能前移並延長 `EndDate`。
+- **禁止**在 `AttendanceController` 另寫一套順延而繞過 `CourseLeaveCascadeService`，以免與 `ScheduleController` 行為分歧。
+
 ### 3) 科目數（Subject Units）口徑
 
 - 科目數只看評量審核結果（approved LearningRecord）與其加權規則
@@ -224,6 +231,7 @@ ls -la backend/.env
 
 ### 5) 上線前回歸檢查（必跑）
 
+0. 新後端含出缺勤科目修正者：確認已跑 migration **`2026_04_12_200000_remap_orphaned_subject_ids`**（若環境有舊 Subject 主鍵殘留）；`GET /api/v1/attendance` 抽查 `subject_name` 非空列
 1. 點名 `present` 後，`UsedSessions +1 / RemainingSessions -1`
 2. 點名 `late` 後，`UsedSessions +1 / RemainingSessions -1`，且家長端可見「遲到」
 3. 核准評量後：`RemainingSessions -1`（堂數制）、`UsedSessions +1`（月結制）、`ClassSession.Status=attended`、出缺勤不再列出待點名

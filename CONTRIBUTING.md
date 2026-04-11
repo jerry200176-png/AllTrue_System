@@ -15,6 +15,8 @@
 | 7 | [`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`](docs/AI_HANDOFF_CHAT_BUG_AVATAR.md) | 聊天／Bug／頭像：**完整手冊與禁止回歸**（改動前必讀） |
 | 8 | [`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) | 同上模組速覽與檔案索引 |
 
+**老師端／教學工作台（2026-04-12 起）**：動預設首頁、側欄、手機底欄、`TeacherHomePage`、跨分校週課表合併、或 **`mergeTeacherAttendanceBadge`** 前，請讀 **`docs/CHANGELOG.md`（2026-04-12 (G)）** 與 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-12 — 老師教學工作台）**，避免與「跨校一覽／點名導覽」規格衝突。
+
 若變更**主任儀表板繳費提醒**或 **`AlertController::tuition`**，另讀：  
 [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](docs/DIRECTOR_PAYMENT_ALERT_RULES.md)。
 
@@ -33,6 +35,7 @@
 - 協作主分支：**`jerry-sync-main`**（非任意 `main`／備份分支）。
 - 提交前請確認前端若有改動已執行 `cd frontend && npm run deploy`（見 `AGENTS.md`）。
 - 觸及評量、繳費提醒、通知 sync 時，請執行相關 PHPUnit 測試（見 `docs/AI_REGRESSION_LESSONS.md` 文末檢查清單）。
+- **`git pull` 或新 clone 後**：請再掃一眼 **`docs/CHANGELOG.md` 最上方數則**，GitHub／其他 AI 協作時以變更紀錄為單一真相來源（與 `AGENTS.md` First-read 一致）。
 
 ## 新增「防再犯」項目
 
