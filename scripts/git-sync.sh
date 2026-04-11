@@ -38,7 +38,10 @@ echo "[git-sync] Committing..."
 git commit -m "$commit_msg"
 
 echo "[git-sync] Pushing..."
-if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
+# Local `main` tracks collaboration branch `jerry-sync-main` on origin (see README).
+if [[ "$branch" == "main" ]]; then
+  git push origin HEAD:jerry-sync-main
+elif git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
   git push
 else
   git push -u origin "$branch"
