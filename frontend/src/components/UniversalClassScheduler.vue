@@ -118,22 +118,41 @@
               </label>
             </div>
             <div v-if="selectedDays.length > 0" class="weekday-slot-grid">
-              <div v-for="day in selectedDays" :key="`slot-${day}`" class="weekday-slot-row per-day-row">
-                <span class="weekday-slot-day">週{{ weekdayLabelMap[day] }}</span>
-                <select :value="slotStartTimeByDay[day] || form.start_time" @change="updateDaySlot(day, $event.target.value)">
-                  <option v-for="slot in halfHourTimeOptions" :key="`${day}-${slot}`" :value="slot">{{ slot }}</option>
-                </select>
-                <input
-                  type="number"
-                  class="per-day-dur"
-                  :value="slotDurationByDay[day] ?? form.duration_hours"
-                  min="0.5"
-                  step="0.5"
-                  inputmode="decimal"
-                  @change="updateDayDuration(day, $event.target.value)"
-                />
-                <small class="field-note">~ {{ computeSessionEndTime(slotStartTimeByDay[day] || form.start_time, slotDurationByDay[day] ?? form.duration_hours) }}</small>
-              </div>
+              <template v-for="day in selectedDays" :key="`day-${day}`">
+                <div
+                  v-for="(globalIdx, slotNum) in getSlotIndicesForDay(day)"
+                  :key="`slot-${globalIdx}`"
+                  class="weekday-slot-row per-day-row"
+                >
+                  <span class="weekday-slot-day">{{ slotNum === 0 ? `週${weekdayLabelMap[day]}` : '' }}</span>
+                  <select
+                    :value="form.day_time_slots[globalIdx].start_time"
+                    @change="updateSlot(globalIdx, $event.target.value)"
+                  >
+                    <option v-for="t in halfHourTimeOptions" :key="`${globalIdx}-${t}`" :value="t">{{ t }}</option>
+                  </select>
+                  <input
+                    type="number"
+                    class="per-day-dur"
+                    :value="form.day_time_slots[globalIdx].duration_hours"
+                    min="0.5"
+                    step="0.5"
+                    inputmode="decimal"
+                    @change="updateSlotDur(globalIdx, $event.target.value)"
+                  />
+                  <small class="field-note">~ {{ computeSessionEndTime(form.day_time_slots[globalIdx].start_time, form.day_time_slots[globalIdx].duration_hours) }}</small>
+                  <button
+                    v-if="getSlotIndicesForDay(day).length > 1"
+                    type="button"
+                    class="slot-remove-btn"
+                    title="移除此時段"
+                    @click="removeSlotAt(globalIdx)"
+                  >✕</button>
+                </div>
+                <div class="slot-add-row">
+                  <button type="button" class="slot-add-btn" @click="addSlotForDay(day)">＋ 新增時段</button>
+                </div>
+              </template>
             </div>
           </article>
 
@@ -183,12 +202,12 @@
             <h4>日曆摘要</h4>
             <div class="summary-row">
               <div class="summary-pill confirmed">
-                <div class="summary-label">手動選定</div>
-                <strong>{{ manualDates.length }}</strong>
+                <div class="summary-label">手動選定（堂）</div>
+                <strong>{{ manualSessionCount }}</strong>
               </div>
               <div class="summary-pill future">
-                <div class="summary-label">未來預排</div>
-                <strong>{{ futureDates.length }}</strong>
+                <div class="summary-label">未來預排（堂）</div>
+                <strong>{{ futureSessionOccurrences.length }}</strong>
               </div>
               <div class="summary-pill total">
                 <div class="summary-label">{{ plannedCountLabel }}</div>
@@ -217,9 +236,9 @@
               <div>{{ manualDates.join('、') }}</div>
             </div>
 
-            <div v-if="futureDates.length > 0" class="date-list future">
-              <p>系統未來預排：</p>
-              <div>{{ futureDates.join('、') }}</div>
+            <div v-if="futureSessionOccurrences.length > 0" class="date-list future">
+              <p>系統未來預排（每列一堂）：</p>
+              <div>{{ futureSessionLines.join('、') }}</div>
             </div>
           </article>
         </section>
@@ -236,9 +255,10 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { checkTeacherScope } from '../lib/constants';
+import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
 
 const weekdayOptions = [
@@ -256,7 +276,7 @@ const weekdayText = ['一', '二', '三', '四', '五', '六', '日'];
 const halfHourTimeOptions = buildHalfHourTimeOptions();
 const settlementDayOptions = Array.from({ length: 31 }, (_, index) => index + 1);
 
-const subjectOptions = [
+const subjectOptions = ref([
   { value: 'Chinese', label: '國文' },
   { value: 'English', label: '英文' },
   { value: 'Math', label: '數學' },
@@ -265,7 +285,7 @@ const subjectOptions = [
   { value: 'Physics', label: '物理' },
   { value: 'Biology', label: '生物' },
   { value: 'Social', label: '社會' },
-];
+]);
 
 const props = defineProps({
   title: { type: String, default: '通用排課' },
@@ -339,7 +359,7 @@ const scopeWarning = computed(() => {
   const teacher = selectedTeacher.value;
   if (!teacher) return null;
   const studentGrade = selectedStudent.value?.grade || selectedStudent.value?.ClassID || null;
-  return checkTeacherScope(teacher, form.subject, studentGrade, subjectOptions);
+  return checkTeacherScope(teacher, form.subject, studentGrade, subjectOptions.value);
 });
 
 const apiScopeWarning = ref('');
@@ -352,36 +372,147 @@ const safePlannedSessions = computed(() => (
 const selectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
+/** 每個星期幾的時段列表（依開始時間排序），用於多堂／同日多時段 */
+function orderedSlotsForWeekday(day) {
+  const d = Number(day);
+  if (d < 1 || d > 7) return [];
+  const out = [];
+  for (let i = 0; i < (form.day_time_slots || []).length; i += 1) {
+    if (Number(form.day_time_slots[i]?.day || 0) === d) {
+      const start = normalizeHalfHourTime(form.day_time_slots[i]?.start_time || '16:00');
+      const durH = Number(form.day_time_slots[i]?.duration_hours || 0) || form.duration_hours;
+      out.push({
+        index: i,
+        start_time: start,
+        duration_hours: durH,
+        duration_minutes: durationHoursToMinutes(durH),
+      });
+    }
+  }
+  out.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  return out;
+}
+
+function sessionCountForWeekday(day) {
+  const n = orderedSlotsForWeekday(day).length;
+  return n > 0 ? n : 1;
+}
+
+function sessionCountForYmd(ymd) {
+  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+  return sessionCountForWeekday(dow);
+}
+
+function slotEndDateTimeFromParts(ymd, startTimeStr, durHours) {
+  const durationMinutes = durationHoursToMinutes(durHours);
+  if (durationMinutes < 30) return null;
+  const [year, month, day] = String(ymd || '').split('-').map(Number);
+  const normalizedStart = normalizeHalfHourTime(startTimeStr || '00:00');
+  const [hour, minute] = normalizedStart.split(':').map(Number);
+  if (!year || !month || !day || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  const endAt = new Date(year, month - 1, day, hour, minute, 0, 0);
+  endAt.setMinutes(endAt.getMinutes() + durationMinutes);
+  return endAt;
+}
+
+/** 該日上課時段中最晚的下課時間（同日多時段用於「今天是否算已上完」） */
+function getLatestSlotEndDateTime(ymd) {
+  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+  const slots = orderedSlotsForWeekday(dow);
+  let latest = null;
+  for (const s of slots) {
+    const endAt = slotEndDateTimeFromParts(ymd, s.start_time, s.duration_hours);
+    if (endAt && (!latest || endAt > latest)) latest = endAt;
+  }
+  return latest;
+}
+
 const slotStartTimeByDay = computed(() => {
   const map = {};
-  for (const slot of (form.day_time_slots || [])) {
-    const day = Number(slot?.day || 0);
-    if (day >= 1 && day <= 7) {
-      map[day] = String(slot?.start_time || '').slice(0, 5);
-    }
+  for (const day of selectedDays.value) {
+    const slots = orderedSlotsForWeekday(day);
+    if (slots[0]) map[day] = String(slots[0].start_time || '').slice(0, 5);
   }
   return map;
 });
 const slotDurationByDay = computed(() => {
   const map = {};
-  for (const slot of (form.day_time_slots || [])) {
-    const day = Number(slot?.day || 0);
-    const dur = Number(slot?.duration_hours || 0);
-    if (day >= 1 && day <= 7 && dur > 0) {
-      map[day] = dur;
-    }
+  for (const day of selectedDays.value) {
+    const slots = orderedSlotsForWeekday(day);
+    if (slots[0]) map[day] = slots[0].duration_hours;
   }
   return map;
 });
 const hasPerDayDuration = computed(() => {
-  const vals = Object.values(slotDurationByDay.value);
+  const vals = (form.day_time_slots || []).map((s) => Number(s.duration_hours) || form.duration_hours);
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
 });
 const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
 ));
-const monthlyAvailableTotal = computed(() => manualDates.value.length + futureDates.value.length);
+
+const manualDates = computed(() => sortDates(form.confirmed_dates || []));
+const manualDateSet = computed(() => new Set(manualDates.value));
+const confirmedDates = computed(() => manualDates.value.filter((date) => isManualDateConfirmed(date)));
+const manualScheduledDates = computed(() => manualDates.value.filter((date) => !isManualDateConfirmed(date)));
+
+const manualSessionCount = computed(() => (
+  manualDates.value.reduce((sum, ymd) => sum + sessionCountForYmd(ymd), 0)
+));
+
+const futureSessionOccurrences = computed(() => {
+  const remaining = safePlannedSessions.value - manualSessionCount.value;
+  if (remaining <= 0) return [];
+
+  const daySet = new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7));
+  if (daySet.size === 0) return [];
+
+  const todayYmd = getCurrentTodayYmd();
+  const manual = manualDates.value;
+  const lastManual = manual.length > 0 ? manual[manual.length - 1] : null;
+  const effectiveAnchor = lastManual || todayYmd;
+  const targetMonthYm = form.payment_type === 'monthly' ? effectiveAnchor.slice(0, 7) : '';
+  const selected = [];
+  const seenDay = new Set(manual);
+  const cursor = new Date(`${effectiveAnchor}T00:00:00`);
+  let guard = 0;
+  while (selected.length < remaining && guard < 3660) {
+    guard += 1;
+    const candidate = new Date(cursor);
+    const ymd = toYmd(candidate);
+    const dow = weekdayOneToSeven(candidate);
+    const canUseDay = (!lastManual || ymd > lastManual)
+      && daySet.has(dow)
+      && ymd >= todayYmd
+      && (form.payment_type !== 'monthly' || ymd.slice(0, 7) === targetMonthYm)
+      && !seenDay.has(ymd);
+    if (canUseDay) {
+      seenDay.add(ymd);
+      const slots = orderedSlotsForWeekday(dow);
+      const slotList = slots.length ? slots : [{
+        start_time: normalizeHalfHourTime(form.start_time || '16:00'),
+        duration_minutes: durationHoursToMinutes(form.duration_hours),
+      }];
+      for (const slot of slotList) {
+        if (selected.length >= remaining) break;
+        selected.push({
+          ymd,
+          start_time: slot.start_time,
+          duration_minutes: slot.duration_minutes,
+        });
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return selected;
+});
+
+const futureSessionLines = computed(() => (
+  futureSessionOccurrences.value.map((o) => `${o.ymd} ${o.start_time}`)
+));
+
+const monthlyAvailableTotal = computed(() => manualSessionCount.value + futureSessionOccurrences.value.length);
 const monthlyCapacityHint = computed(() => {
   if (form.payment_type !== 'monthly') return '';
   if ((form.days_of_week || []).length === 0) return '';
@@ -419,47 +550,9 @@ watch(
   { deep: true }
 );
 
-const manualDates = computed(() => sortDates(form.confirmed_dates || []));
-const manualDateSet = computed(() => new Set(manualDates.value));
-const confirmedDates = computed(() => manualDates.value.filter((date) => isManualDateConfirmed(date)));
-const manualScheduledDates = computed(() => manualDates.value.filter((date) => !isManualDateConfirmed(date)));
-
-const futureDates = computed(() => {
-  const manual = manualDates.value;
-  const remaining = safePlannedSessions.value - manual.length;
-  if (remaining <= 0) return [];
-
-  const daySet = new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7));
-  if (daySet.size === 0) return [];
-
-  const todayYmd = getCurrentTodayYmd();
-  const lastManual = manual.length > 0 ? manual[manual.length - 1] : null;
-  const effectiveAnchor = lastManual || todayYmd;
-  const targetMonthYm = form.payment_type === 'monthly' ? effectiveAnchor.slice(0, 7) : '';
-  const selected = [];
-  const seen = new Set(manual);
-  const cursor = new Date(`${effectiveAnchor}T00:00:00`);
-  let guard = 0;
-  while (selected.length < remaining && guard < 3660) {
-    guard += 1;
-    const candidate = new Date(cursor);
-    const ymd = toYmd(candidate);
-    const dow = weekdayOneToSeven(candidate);
-    const canUse = (!lastManual || ymd > lastManual)
-      && daySet.has(dow)
-      && ymd >= todayYmd
-      && (form.payment_type !== 'monthly' || ymd.slice(0, 7) === targetMonthYm)
-      && !seen.has(ymd);
-    if (canUse) {
-      seen.add(ymd);
-      selected.push(ymd);
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return sortDates(selected);
-});
-
-const futureDateSet = computed(() => new Set(futureDates.value));
+const futureDateSet = computed(() => (
+  new Set(futureSessionOccurrences.value.map((o) => o.ymd))
+));
 
 const calendarCells = computed(() => {
   const first = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth(), 1);
@@ -486,6 +579,13 @@ const calendarCells = computed(() => {
     });
   }
   return cells;
+});
+
+onMounted(async () => {
+  try {
+    const opts = await fetchSubjectOptions({ branchId: props.branchId });
+    if (opts.length > 0) subjectOptions.value = opts;
+  } catch { /* keep defaults */ }
 });
 
 function toYmd(date) {
@@ -540,18 +640,7 @@ function durationHoursToMinutes(rawHours) {
 }
 
 function getSessionEndDateTime(ymd) {
-  const weekday = weekdayOneToSeven(new Date(`${ymd}T00:00:00`));
-  const startForDay = slotStartTimeByDay.value[weekday] || form.start_time;
-  const normalizedStart = normalizeHalfHourTime(startForDay || '00:00');
-  const dayDur = slotDurationByDay.value[weekday] ?? form.duration_hours;
-  const durationMinutes = durationHoursToMinutes(dayDur);
-  if (durationMinutes < 30) return null;
-  const [year, month, day] = String(ymd || '').split('-').map(Number);
-  const [hour, minute] = normalizedStart.split(':').map(Number);
-  if (!year || !month || !day || !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  const endAt = new Date(year, month - 1, day, hour, minute, 0, 0);
-  endAt.setMinutes(endAt.getMinutes() + durationMinutes);
-  return endAt;
+  return getLatestSlotEndDateTime(ymd);
 }
 
 function computeSessionEndTime(startTimeRaw, durHours) {
@@ -566,46 +655,104 @@ function computeSessionEndTime(startTimeRaw, durHours) {
 }
 
 function syncDaySlotsFromSelection() {
-  const existed = new Map(
-    (form.day_time_slots || [])
-      .map((slot) => [Number(slot?.day || 0), slot])
-      .filter(([day]) => day >= 1 && day <= 7)
-  );
-  const firstSlot = existed.size > 0 ? [...existed.values()][0] : null;
-  const baseTime = firstSlot ? normalizeHalfHourTime(firstSlot.start_time || '16:00') : normalizeHalfHourTime('16:00');
-  form.day_time_slots = selectedDays.value.map((day) => {
-    const ex = existed.get(day);
-    return {
+  const grouped = new Map();
+  for (const slot of (form.day_time_slots || [])) {
+    const day = Number(slot?.day || 0);
+    if (day < 1 || day > 7) continue;
+    if (!grouped.has(day)) grouped.set(day, []);
+    grouped.get(day).push({
       day,
-      start_time: ex ? normalizeHalfHourTime(ex.start_time || '16:00') : baseTime,
-      duration_hours: ex?.duration_hours || form.duration_hours,
-    };
-  });
+      start_time: normalizeHalfHourTime(slot?.start_time || '16:00'),
+      duration_hours: Number(slot?.duration_hours || 0) || form.duration_hours,
+    });
+  }
+
+  const firstBucket = grouped.values().next().value || [];
+  const firstSlot = firstBucket[0] || null;
+  const baseTime = firstSlot ? normalizeHalfHourTime(firstSlot.start_time || '16:00') : normalizeHalfHourTime('16:00');
+  const baseDuration = Number(firstSlot?.duration_hours || 0) || form.duration_hours;
+
+  const rebuilt = [];
+  for (const day of selectedDays.value) {
+    const slots = grouped.get(day);
+    if (Array.isArray(slots) && slots.length > 0) {
+      for (const slot of slots) {
+        rebuilt.push({
+          day,
+          start_time: normalizeHalfHourTime(slot.start_time || baseTime),
+          duration_hours: Number(slot.duration_hours || 0) || baseDuration,
+        });
+      }
+      continue;
+    }
+    rebuilt.push({
+      day,
+      start_time: baseTime,
+      duration_hours: baseDuration,
+    });
+  }
+  form.day_time_slots = rebuilt;
 }
 
-function updateDaySlot(day, nextTime) {
+function getSlotIndicesForDay(day) {
   const d = Number(day);
-  if (d < 1 || d > 7) return;
-  const normalized = normalizeHalfHourTime(nextTime);
-  form.day_time_slots = (form.day_time_slots || []).map((slot) => (
-    Number(slot?.day || 0) === d ? { ...slot, start_time: normalized } : slot
-  ));
+  if (d < 1 || d > 7) return [];
+  const indices = [];
+  for (let i = 0; i < (form.day_time_slots || []).length; i += 1) {
+    if (Number(form.day_time_slots[i]?.day || 0) === d) indices.push(i);
+  }
+  return indices;
 }
 
-function updateDayDuration(day, rawValue) {
-  const d = Number(day);
-  if (d < 1 || d > 7) return;
+function updateSlot(index, nextTime) {
+  const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const slots = [...(form.day_time_slots || [])];
+  if (!slots[idx]) return;
+  slots[idx] = { ...slots[idx], start_time: normalizeHalfHourTime(nextTime) };
+  form.day_time_slots = slots;
+}
+
+function updateSlotDur(index, rawValue) {
+  const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const slots = [...(form.day_time_slots || [])];
+  if (!slots[idx]) return;
   const dur = Math.max(0.5, Math.round(Number(rawValue) * 2) / 2);
-  form.day_time_slots = (form.day_time_slots || []).map((slot) => (
-    Number(slot?.day || 0) === d ? { ...slot, duration_hours: dur } : slot
-  ));
+  slots[idx] = { ...slots[idx], duration_hours: dur };
+  form.day_time_slots = slots;
+}
+
+function addSlotForDay(day) {
+  const d = Number(day);
+  if (d < 1 || d > 7) return;
+  if (!selectedDays.value.includes(d)) return;
+  const indices = getSlotIndicesForDay(d);
+  const lastIdx = indices.length ? indices[indices.length - 1] : -1;
+  const base = lastIdx >= 0 ? form.day_time_slots[lastIdx] : null;
+  const slot = {
+    day: d,
+    start_time: normalizeHalfHourTime(base?.start_time || form.start_time || '16:00'),
+    duration_hours: Number(base?.duration_hours || 0) || form.duration_hours,
+  };
+  form.day_time_slots = [...(form.day_time_slots || []), slot];
+}
+
+function removeSlotAt(index) {
+  const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const slots = [...(form.day_time_slots || [])];
+  const target = slots[idx];
+  if (!target) return;
+  const sameDayCount = slots.filter((slot) => Number(slot?.day || 0) === Number(target.day || 0)).length;
+  if (sameDayCount <= 1) return;
+  slots.splice(idx, 1);
+  form.day_time_slots = slots;
 }
 
 function isTodaySessionEnded() {
-  const todayYmd = getCurrentTodayYmd();
-  const sessionEndAt = getSessionEndDateTime(todayYmd);
-  if (!sessionEndAt) return false;
-  return new Date() >= sessionEndAt;
+  const latestEnd = getLatestSlotEndDateTime(getCurrentTodayYmd());
+  return Boolean(latestEnd && new Date() >= latestEnd);
 }
 
 function clearConfirmedDates() {
@@ -614,9 +761,12 @@ function clearConfirmedDates() {
 
 function isManualDateConfirmed(ymd) {
   const todayYmd = getCurrentTodayYmd();
+  // 產品規則（勿擅自改動）：手動點選「今天以前」＝已上完／補登；「今天」則依是否已過該日「最晚」下課時間（同日多時段）。
+  // 詳見 docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md
   if (ymd < todayYmd) return true;
   if (ymd > todayYmd) return false;
-  return isTodaySessionEnded();
+  const latestEnd = getLatestSlotEndDateTime(ymd);
+  return Boolean(latestEnd && new Date() >= latestEnd);
 }
 
 function onDateClick(cell) {
@@ -635,8 +785,9 @@ function onDateClick(cell) {
     return;
   }
 
-  if (current.size >= safePlannedSessions.value) {
-    alert(`手動指定日期不可超過${plannedCountLabel.value}（${safePlannedSessions.value}）。`);
+  const addCount = sessionCountForYmd(cell.ymd);
+  if (manualSessionCount.value + addCount > safePlannedSessions.value) {
+    alert(`手動指定不可超過${plannedCountLabel.value}（${safePlannedSessions.value} 堂）；此日會佔 ${addCount} 堂。`);
     return;
   }
 
@@ -670,17 +821,22 @@ async function submit() {
       return;
     }
   }
-  const durationMinutes = durationHoursToMinutes(form.duration_hours);
-  if (durationMinutes < 30) {
+  const slotDurList = (form.day_time_slots || []).length
+    ? (form.day_time_slots || []).map((s) => durationHoursToMinutes(Number(s.duration_hours) || form.duration_hours))
+    : [durationHoursToMinutes(form.duration_hours)];
+  const minSlotM = Math.min(...slotDurList);
+  const maxSlotM = Math.max(...slotDurList);
+  if (minSlotM < 30) {
     alert('上課時長至少為 0.5 小時');
     return;
   }
-  if (durationMinutes > 480) {
+  if (maxSlotM > 480) {
     alert('上課時長不可超過 8 小時');
     return;
   }
-  if (manualDates.value.length > safePlannedSessions.value) {
-    alert(`手動指定日期不可超過${plannedCountLabel.value}`);
+  const durationMinutes = maxSlotM;
+  if (manualSessionCount.value > safePlannedSessions.value) {
+    alert(`手動指定堂數不可超過${plannedCountLabel.value}`);
     return;
   }
 
@@ -688,10 +844,10 @@ async function submit() {
     alert('月結課請先選擇結算日');
     return;
   }
-  const projectedFutureDates = futureDates.value;
+  const projectedFutureYmds = [...new Set(futureSessionOccurrences.value.map((o) => o.ymd))];
   if (form.payment_type === 'monthly') {
     const targetYm = toYmd(currentMonth.value).slice(0, 7);
-    const allDates = sortDates([...manualDates.value, ...projectedFutureDates]);
+    const allDates = sortDates([...manualDates.value, ...projectedFutureYmds]);
     const hasCrossMonth = allDates.some((date) => String(date).slice(0, 7) !== targetYm);
     if (hasCrossMonth) {
       alert('月結課程僅能建立在同一月份，請調整手動日期或月份。');
@@ -699,8 +855,8 @@ async function submit() {
     }
   }
 
-  const remaining = safePlannedSessions.value - manualDates.value.length;
-  if (remaining > 0 && (form.days_of_week || []).length === 0) {
+  const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
+  if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
     alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
     return;
   }
@@ -711,36 +867,64 @@ async function submit() {
       return;
     }
   }
-  if (projectedFutureDates.some((date) => date < todayYmd)) {
+  if (futureSessionOccurrences.value.some((o) => o.ymd < todayYmd)) {
     alert('系統預排日期不可早於今天，請調整固定上課星期');
     return;
   }
-  if ((manualDates.value.length + projectedFutureDates.length) !== safePlannedSessions.value) {
+  if ((manualSessionCount.value + futureSessionOccurrences.value.length) !== safePlannedSessions.value) {
     alert(`系統無法補齊至${plannedCountLabel.value}，請調整固定上課星期或手動指定日期`);
     return;
   }
 
+  const sessionPlan = [];
+  for (const ymd of manualDates.value) {
+    const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+    const indices = getSlotIndicesForDay(dow);
+    const kind = isManualDateConfirmed(ymd) ? 'confirmed' : 'future';
+    for (const idx of indices) {
+      const s = form.day_time_slots[idx];
+      sessionPlan.push({
+        session_date: ymd,
+        start_time: normalizeHalfHourTime(s.start_time),
+        kind,
+      });
+    }
+  }
+  for (const fs of futureSessionOccurrences.value) {
+    sessionPlan.push({
+      session_date: fs.ymd,
+      start_time: fs.start_time,
+      kind: 'future',
+    });
+  }
+  sessionPlan.sort((a, b) => {
+    const c = a.session_date.localeCompare(b.session_date);
+    if (c !== 0) return c;
+    return a.start_time.localeCompare(b.start_time);
+  });
+
   submitting.value = true;
   try {
     const normalizedStartTime = normalizeHalfHourTime(form.start_time);
-    const normalizedDaySlots = selectedDays.value.map((day) => {
-      const perDayDur = slotDurationByDay.value[day] ?? form.duration_hours;
-      return {
-        day,
-        start_time: normalizeHalfHourTime(slotStartTimeByDay.value[day] || normalizedStartTime),
-        duration_minutes: durationHoursToMinutes(perDayDur),
-      };
-    });
-    const manualConfirmedDates = confirmedDates.value;
-    const manualFutureDates = manualScheduledDates.value;
+    const normalizedDaySlots = [];
+    for (const day of selectedDays.value) {
+      for (const slot of orderedSlotsForWeekday(day)) {
+        normalizedDaySlots.push({
+          day,
+          start_time: slot.start_time,
+          duration_minutes: slot.duration_minutes,
+        });
+      }
+    }
     const payload = {
       branch_id: branchId,
       student_id: Number(form.student_id),
       teacher_id: Number(form.teacher_id),
       subject: form.subject,
       class_type: form.class_type,
-      confirmed_dates: manualConfirmedDates,
-      future_dates: sortDates([...manualFutureDates, ...projectedFutureDates]),
+      confirmed_dates: [],
+      future_dates: [],
+      session_plan: sessionPlan,
       days_of_week: [...(form.days_of_week || [])].map((d) => Number(d)).filter((d) => d >= 1 && d <= 7),
       day_time_slots: normalizedDaySlots,
       start_time: normalizedStartTime,
@@ -760,8 +944,8 @@ async function submit() {
     }
 
     const result = await createUniversalClassSchedule(payload);
-    const createdConfirmed = Number(result?.created_confirmed_sessions ?? manualConfirmedDates.length);
-    const createdFuture = Number(result?.created_future_sessions ?? (manualFutureDates.length + projectedFutureDates.length));
+    const createdConfirmed = Number(result?.created_confirmed_sessions ?? sessionPlan.filter((r) => r.kind === 'confirmed').length);
+    const createdFuture = Number(result?.created_future_sessions ?? sessionPlan.filter((r) => r.kind === 'future').length);
     const autoBackfilled = Number(result?.auto_backfilled_sessions ?? 0);
     const autoBackfillSuffix = autoBackfilled > 0
       ? `，其中 ${autoBackfilled} 堂因新增時已過下課時間，系統已自動補登核准`

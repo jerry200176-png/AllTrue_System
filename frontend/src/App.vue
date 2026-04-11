@@ -220,8 +220,9 @@
       <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers'" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
-      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" />
+      <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="active = $event" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
+      <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
       <SubjectUnitsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'subject-units'" :branch-id="currentBranch" :user-role="role" />
 
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
@@ -311,6 +312,7 @@ import ParentPortal from './pages/ParentPortal.vue';
 import LineIntegration from './pages/LineIntegration.vue';
 import CourseManagement from './pages/CourseManagement.vue';
 import ClassroomManagement from './pages/ClassroomManagement.vue';
+import SubjectSettingsPage from './pages/SubjectSettingsPage.vue';
 import TeachersList from './pages/TeachersList.vue';
 import AttendancePage from './pages/AttendancePage.vue';
 import SubjectUnitsPage from './pages/SubjectUnitsPage.vue';
@@ -664,7 +666,12 @@ const sidebarNavGroups = computed(() => {
       { page: 'line-integration', label: '家長 LINE 通知', icon: 'chat' },
     ];
     if (role.value === 'super_admin') {
-      systemItems.push({ page: 'director-accounts', label: '主任審核', icon: 'admin_panel_settings' });
+      systemItems.push({
+        page: 'director-accounts',
+        label: '主任審核',
+        icon: 'admin_panel_settings',
+        badgeTypes: ['director_pending'],
+      });
     }
     return [
       {
@@ -687,6 +694,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'students', label: '學生管理', icon: 'groups' },
           { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
           { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
+          { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
         ],
       },
       {
@@ -828,8 +836,11 @@ onMounted(async () => {
     unreadPollingTimer = window.setInterval(() => {
         refreshUnreadNotifications();
     }, 60000);
+    // Bug 紅點與聊天未讀一併輪詢（通知中心仍 60s），避免新 Bug 僅靠 1 分鐘才更新。
     chatBadgePollingTimer = window.setInterval(() => {
       mergeChatUnreadBadge();
+      mergeBugUnreadBadge();
+      mergeDirectorPendingBadge();
     }, 25000);
     await refreshUnreadNotifications();
 
@@ -1039,6 +1050,7 @@ async function refreshUnreadNotifications() {
     badgeByType.value = {};
     await mergeBugUnreadBadge();
     await mergeChatUnreadBadge();
+    await mergeDirectorPendingBadge();
     return;
   }
 
@@ -1077,6 +1089,36 @@ async function refreshUnreadNotifications() {
 
   await mergeBugUnreadBadge();
   await mergeChatUnreadBadge();
+  await mergeDirectorPendingBadge();
+}
+
+async function mergeDirectorPendingBadge() {
+  if (!session.value?.access_token || role.value !== 'super_admin' || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.director_pending;
+    badgeByType.value = next;
+    return;
+  }
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const res = await fetch(`${baseUrl}/v1/directors/pending`, {
+      headers: {
+        Authorization: `Bearer ${session.value.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('directors pending failed');
+    const data = await res.json();
+    const list = Array.isArray(data) ? data : [];
+    const n = list.length;
+    const next = { ...badgeByType.value };
+    next.director_pending = { total: n, urgent: n > 0 ? n : 0 };
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.director_pending;
+    badgeByType.value = next;
+  }
 }
 
 async function mergeChatUnreadBadge() {
@@ -1098,6 +1140,19 @@ async function mergeChatUnreadBadge() {
     badgeByType.value = next;
   }
 }
+
+watch(active, (p) => {
+  if (p !== 'bugs') return;
+  if (!session.value?.access_token || !currentBranch.value || isPasswordChangeLocked.value) return;
+  if (!isDirector.value && !isTeacher.value) return;
+  mergeBugUnreadBadge();
+});
+
+watch(active, (p) => {
+  if (p !== 'director-accounts') return;
+  if (!session.value?.access_token || role.value !== 'super_admin') return;
+  mergeDirectorPendingBadge();
+});
 
 function formatBuildTime(rawIso) {
   const source = String(rawIso || '').trim();

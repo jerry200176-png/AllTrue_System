@@ -30,6 +30,7 @@ use App\Http\Controllers\ClassSessionController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
+use App\Http\Controllers\SubjectController;
 
 
 Route::get('/fix-db', function () {
@@ -85,24 +86,6 @@ Route::post('/debug-log', function (\Illuminate\Http\Request $req) {
 });
 
 Route::prefix('v1')->group(function () {
-    $normalizeSubjectName = function ($name) {
-        $raw = trim((string) $name);
-        if ($raw === '') return '';
-        $k = mb_strtolower(str_replace([' ', '_', '-'], '', $raw));
-        return match ($k) {
-            'chinese', '國文' => '國文',
-            'english', '英文' => '英文',
-            'math', 'mathematics', '數學' => '數學',
-            'social', '社會' => '社會',
-            'science', '理化' => '理化',
-            'physics', '物理' => '物理',
-            'chemistry', '化學' => '化學',
-            'biology', '生物' => '生物',
-            default => $raw,
-        };
-    };
-    $canonicalSubjects = ['國文', '英文', '數學', '社會', '理化', '物理', '化學', '生物'];
-
     // ── Auth (public) ───────────────────────────────────────────────
     Route::post('auth/login', [AuthController::class, 'login']);
     Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store']);
@@ -117,30 +100,7 @@ Route::prefix('v1')->group(function () {
 
     // ── Public Branch Data (No auth required) ───────────────────────
     Route::get('branches', [CampusController::class, 'listPublic']);
-    Route::get('subjects-public', function () use ($normalizeSubjectName, $canonicalSubjects) {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('Subject')) {
-            return response()->json([]);
-        }
-        $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
-        $existingNormalized = $rows->map(fn ($r) => $normalizeSubjectName($r->Subject_Name))->filter()->unique()->values()->all();
-        $missing = array_values(array_diff($canonicalSubjects, $existingNormalized));
-        if (!empty($missing)) {
-            $insertRows = array_map(fn ($name) => [
-                'School_id' => 1,
-                'Grade_no' => 0,
-                'Subject_Name' => $name,
-            ], $missing);
-            \Illuminate\Support\Facades\DB::table('Subject')->insert($insertRows);
-            $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
-        }
-
-        return response()->json($rows
-            ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $normalizeSubjectName($r->Subject_Name)])
-            ->filter(fn ($r) => $r['name'] !== '')
-            ->sortBy('name')
-            ->values()
-        );
-    });
+    Route::get('subjects-public', [SubjectController::class, 'indexPublic']);
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe']);
@@ -232,9 +192,13 @@ Route::prefix('v1')->group(function () {
         Route::get('api-clients', [ApiClientController::class, 'index']);
         Route::post('api-clients', [ApiClientController::class, 'store']);
         Route::post('api-clients/{apiClient}/revoke', [ApiClientController::class, 'revoke']);
+
+        Route::post('subjects', [SubjectController::class, 'store']);
+        Route::put('subjects/{id}', [SubjectController::class, 'update']);
+        Route::delete('subjects/{id}', [SubjectController::class, 'destroy']);
     });
 
-    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () use ($normalizeSubjectName, $canonicalSubjects) {
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('students', [StudentController::class, 'index']);
         Route::get('students/{student}', [StudentController::class, 'show']);
         Route::get('profiles', [ProfileController::class, 'index']);
@@ -244,70 +208,7 @@ Route::prefix('v1')->group(function () {
             return app(\App\Http\Controllers\ProfileController::class)->index($req);
         });
 
-        // Subjects list (for teacher manage subject dropdown, course form, etc.)
-        Route::get('subjects', function () use ($normalizeSubjectName, $canonicalSubjects) {
-            if (!\Illuminate\Support\Facades\Schema::hasTable('Subject')) {
-                return response()->json([]);
-            }
-            $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
-            $existingNormalized = $rows->map(fn ($r) => $normalizeSubjectName($r->Subject_Name))->filter()->unique()->values()->all();
-            $missing = array_values(array_diff($canonicalSubjects, $existingNormalized));
-            if (!empty($missing)) {
-                $insertRows = array_map(fn ($name) => [
-                    'School_id' => 1,
-                    'Grade_no' => 0,
-                    'Subject_Name' => $name,
-                ], $missing);
-                \Illuminate\Support\Facades\DB::table('Subject')->insert($insertRows);
-                $rows = \Illuminate\Support\Facades\DB::table('Subject')->get(['id', 'Subject_Name']);
-            }
-            return response()->json($rows
-                ->map(fn ($r) => ['id' => (int) $r->id, 'name' => $normalizeSubjectName($r->Subject_Name)])
-                ->filter(fn ($r) => $r['name'] !== '')
-                ->sortBy('name')
-                ->values()
-            );
-        });
-
-        // Subject CRUD (director only)
-        Route::post('subjects', function (\Illuminate\Http\Request $request) use ($normalizeSubjectName) {
-            $name = trim((string) ($request->input('name') ?? ''));
-            if ($name === '') {
-                return response()->json(['message' => '科目名稱不能為空'], 422);
-            }
-            if (mb_strlen($name) > 20) {
-                return response()->json(['message' => '科目名稱最多 20 字'], 422);
-            }
-            $normalized = $normalizeSubjectName($name);
-            $display = $normalized !== '' ? $normalized : $name;
-            $exists = \Illuminate\Support\Facades\DB::table('Subject')
-                ->whereRaw('LOWER(Subject_Name) = LOWER(?)', [$display])
-                ->exists();
-            if ($exists) {
-                return response()->json(['message' => '此科目已存在'], 409);
-            }
-            $id = \Illuminate\Support\Facades\DB::table('Subject')->insertGetId([
-                'School_id' => 0,
-                'Grade_no'  => 0,
-                'Subject_Name' => mb_substr($display, 0, 16),
-            ]);
-            return response()->json(['id' => $id, 'name' => $display], 201);
-        });
-
-        Route::delete('subjects/{id}', function ($id) {
-            $subject = \Illuminate\Support\Facades\DB::table('Subject')->find((int) $id);
-            if (!$subject) {
-                return response()->json(['message' => '科目不存在'], 404);
-            }
-            $inUse = \Illuminate\Support\Facades\DB::table('StudentClass')
-                ->where('SubjectID', (int) $id)
-                ->exists();
-            if ($inUse) {
-                return response()->json(['message' => '此科目已有課程使用中，無法刪除'], 409);
-            }
-            \Illuminate\Support\Facades\DB::table('Subject')->where('id', (int) $id)->delete();
-            return response()->json(null, 204);
-        });
+        Route::get('subjects', [SubjectController::class, 'index']);
 
         Route::get('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
         Route::post('student-classes/session-dates', [StudentClassController::class, 'sessionDates']);
@@ -400,7 +301,7 @@ Route::prefix('v1')->group(function () {
         Route::get('chat/unread-count', [ChatController::class, 'unreadCount']);
     });
 
-    // ── Bug Reports (director + teacher: submit & view own; super_admin: status only) ──
+    // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs', [BugReportController::class, 'store']);
         Route::get('bugs', [BugReportController::class, 'index']);
@@ -410,6 +311,7 @@ Route::prefix('v1')->group(function () {
     });
     Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);
+        Route::patch('bugs/{id}/comments/{commentId}/visibility', [BugReportController::class, 'updateCommentVisibility']);
         Route::post('bugs/mark-inbox-seen', [BugReportController::class, 'markInboxSeen']);
     });
 });

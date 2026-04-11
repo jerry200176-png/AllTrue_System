@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use App\Models\UserCampus;
 use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -47,6 +48,7 @@ class AuthDuplicateEmailRoleTest extends TestCase
     public function test_login_tries_all_users_when_same_email_exists(): void
     {
         $email = 'dual-role@example.com';
+        $campus = CampusFactory::new()->create();
 
         $teacher = User::create([
             'LoginName' => $email,
@@ -54,6 +56,12 @@ class AuthDuplicateEmailRoleTest extends TestCase
             'PSW' => password_hash('teacher-pass', PASSWORD_DEFAULT),
             'type' => 'T',
             'phone' => 912300001,
+        ]);
+        UserCampus::create([
+            'UserID' => $teacher->id,
+            'CampusID' => $campus->id,
+            'Admin' => 0,
+            'Approved' => true,
         ]);
 
         $director = User::create([

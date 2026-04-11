@@ -11,6 +11,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -405,6 +406,72 @@ class ScheduleLeaveCascadeTest extends TestCase
             'student_course_id' => $courseId,
             'session_date'      => $futureDates[0],
         ])->assertForbidden();
+    }
+
+    public function test_reschedule_to_future_resets_completed_session_to_scheduled_and_recomputes_remaining(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-reschedule-future@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-reschedule-future@example.com');
+        $student = $this->createStudent(1, '調課未上測試');
+
+        $firstFriday = Carbon::now()->next(Carbon::FRIDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstFriday->copy()->addWeeks($i)->toDateString();
+        }
+
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [5],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+        $this->assertTrue($courseId > 0);
+
+        $course = StudentClass::findOrFail($courseId);
+        $targetSession = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('id', 'asc')
+            ->first();
+        $this->assertNotNull($targetSession);
+
+        $oldDate = Carbon::yesterday()->toDateString();
+        $newDate = Carbon::tomorrow()->addDays(3)->toDateString();
+        $targetSession->SessionDate = $oldDate;
+        $targetSession->Status = 'completed';
+        $targetSession->save();
+
+        SessionDeductionService::recomputeCounters($courseId);
+        $course->refresh();
+        $this->assertSame(3, (int) $course->RemainingSessions);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $courseId,
+            'old_date' => $oldDate,
+            'new_date' => $newDate,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+        ])
+            ->assertOk()
+            ->assertJson([
+                'reset_to_scheduled' => true,
+            ]);
+
+        $targetSession->refresh();
+        $this->assertSame($newDate, Carbon::parse($targetSession->SessionDate)->toDateString());
+        $this->assertSame('scheduled', strtolower((string) $targetSession->Status));
+
+        $course->refresh();
+        $this->assertSame(4, (int) $course->RemainingSessions);
     }
 
     public function test_retro_leave_idempotent_no_double_reverse(): void

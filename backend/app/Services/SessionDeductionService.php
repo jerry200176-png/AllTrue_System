@@ -12,8 +12,8 @@ use Illuminate\Support\Facades\DB;
 class SessionDeductionService
 {
     /**
-     * Observable "已上堂數" per course: max of (扣點出缺勤、已完成堂次狀態、已核准評量所綁堂次)，
-     * 避免僅依 SessionDeducted 時與課表/評量畫面不同步。
+     * Observable "已用堂數" per course: max of (扣點出缺勤、已完成堂次狀態、無綁定堂次之已核准評量筆數)。
+     * 已核准但綁定 ClassSession 的評量不計入：堂次仍 scheduled 時須以點名／核課為準，避免與出缺勤待點名矛盾。
      *
      * @param  array<int|string>  $studentClassIds
      * @return array<int,int> student_class_id => used count (not capped by SessionCount)
@@ -40,18 +40,11 @@ class SessionDeductionService
             ->selectRaw('StudentClassID, COUNT(*) as c')
             ->pluck('c', 'StudentClassID');
 
-        $approvedLrBound = LearningRecord::query()
-            ->whereIn('StudentClassID', $ids)
-            ->where('Status', 'approved')
-            ->where('ClassSessionID', '>', 0)
-            ->groupBy('StudentClassID')
-            ->selectRaw('StudentClassID, COUNT(DISTINCT ClassSessionID) as c')
-            ->pluck('c', 'StudentClassID');
-
-        // 已核准但未綁 ClassSessionID 的評量（舊資料／補登）：以日期去重估算堂數
-        $orphanDateExpr = DB::connection()->getDriverName() === 'sqlite'
-            ? 'substr(SessionDate, 1, 10)'
-            : 'DATE(SessionDate)';
+        // Orphan LRs (no ClassSessionID): count by date+StartTime to avoid
+        // undercounting multi-slot days.
+        $orphanDateTimeExpr = DB::connection()->getDriverName() === 'sqlite'
+            ? "substr(SessionDate, 1, 10) || '|' || COALESCE(substr(StartTime, 1, 5), '')"
+            : "CONCAT(DATE(SessionDate), '|', COALESCE(LEFT(StartTime, 5), ''))";
         $approvedLrOrphan = LearningRecord::query()
             ->whereIn('StudentClassID', $ids)
             ->where('Status', 'approved')
@@ -60,16 +53,15 @@ class SessionDeductionService
             })
             ->whereNotNull('SessionDate')
             ->groupBy('StudentClassID')
-            ->selectRaw("StudentClassID, COUNT(DISTINCT {$orphanDateExpr}) as c")
+            ->selectRaw("StudentClassID, COUNT(DISTINCT {$orphanDateTimeExpr}) as c")
             ->pluck('c', 'StudentClassID');
 
         $out = [];
         foreach ($ids as $id) {
             $a = max(0, (int) ($deducted[$id] ?? 0));
             $b = max(0, (int) ($completedSessions[$id] ?? 0));
-            $c = max(0, (int) ($approvedLrBound[$id] ?? 0));
             $d = max(0, (int) ($approvedLrOrphan[$id] ?? 0));
-            $out[$id] = max($a, $b, $c, $d);
+            $out[$id] = max($a, $b, $d);
         }
 
         return $out;
@@ -168,14 +160,9 @@ class SessionDeductionService
                 ->count();
             $classSessionUsed = max(0, (int) $classSessionUsed);
 
-            $lrBound = LearningRecord::query()
-                ->where('StudentClassID', $studentClassId)
-                ->where('Status', 'approved')
-                ->where('ClassSessionID', '>', 0)
-                ->selectRaw('COUNT(DISTINCT ClassSessionID) as c')
-                ->value('c');
-            $lrBound = max(0, (int) ($lrBound ?? 0));
-
+            $orphanExpr = DB::connection()->getDriverName() === 'sqlite'
+                ? "substr(SessionDate, 1, 10) || '|' || COALESCE(substr(StartTime, 1, 5), '')"
+                : "CONCAT(DATE(SessionDate), '|', COALESCE(LEFT(StartTime, 5), ''))";
             $lrOrphan = LearningRecord::query()
                 ->where('StudentClassID', $studentClassId)
                 ->where('Status', 'approved')
@@ -183,26 +170,20 @@ class SessionDeductionService
                     $q->whereNull('ClassSessionID')->orWhere('ClassSessionID', '<=', 0);
                 })
                 ->whereNotNull('SessionDate')
-                ->selectRaw(
-                    DB::connection()->getDriverName() === 'sqlite'
-                        ? "COUNT(DISTINCT substr(SessionDate, 1, 10)) as c"
-                        : 'COUNT(DISTINCT DATE(SessionDate)) as c'
-                )
+                ->selectRaw("COUNT(DISTINCT {$orphanExpr}) as c")
                 ->value('c');
             $lrOrphan = max(0, (int) ($lrOrphan ?? 0));
 
-            $lrApprovedUsed = max($lrBound, $lrOrphan);
-
             // Keep ledger as a secondary safeguard for attendance-driven updates
             // (e.g. status transitions that may temporarily not have sign-in rows).
-            // Explicitly exclude learning-record approval sources.
+            // Bound approved LRs (ClassSessionID set) do not add used count: 堂數以點名／堂次狀態為準。
             $ledgerUsed = SessionDeductionLedger::query()
                 ->where('student_class_id', $studentClassId)
                 ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust'])
                 ->selectRaw("SUM(CASE WHEN event_type = 'deduct' THEN 1 ELSE 0 END) - SUM(CASE WHEN event_type = 'reverse' THEN 1 ELSE 0 END) as net")
                 ->value('net');
             $ledgerUsed = max(0, (int) ($ledgerUsed ?? 0));
-            $usedByAttendance = max($attendanceUsed, $ledgerUsed, $classSessionUsed, $lrApprovedUsed);
+            $usedByAttendance = max($attendanceUsed, $ledgerUsed, $classSessionUsed, $lrOrphan);
 
             $isSessionMode = (string) ($sc->ScheduleMode ?? 'count') === 'count';
             $sessionCount  = max(0, (int) ($sc->SessionCount ?? 0));

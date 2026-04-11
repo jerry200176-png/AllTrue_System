@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\UserCampus;
+use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
 use App\Services\TeacherScopeService;
@@ -182,14 +183,13 @@ class StudentClassController extends Controller
                 }
                 $durField = $durationFields[$index] ?? null;
                 $perDayMin = $durField ? (int) ($class->{$durField} ?? 0) : 0;
-                $dayTimeSlots[$day] = [
+                $dayTimeSlots[] = [
                     'day' => $day,
                     'start_time' => $start,
                     'duration_hours' => $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours,
                 ];
             }
-            ksort($dayTimeSlots);
-            $class->day_time_slots = array_values($dayTimeSlots);
+            $class->day_time_slots = $this->dedupeIdenticalConsecutiveDayTimeSlots($dayTimeSlots);
             $class->rate_unit = $class->rate_unit ?? 'session';
 
             // Build the 'weeks' array for frontend (week-of-month: 第1週..第5週)
@@ -300,7 +300,7 @@ class StudentClassController extends Controller
                     if (!isset($sessionDatesByClass[$id])) {
                         $sessionDatesByClass[$id] = [];
                     }
-                    $sessionDatesByClass[$id][$d] = true;
+                    $sessionDatesByClass[$id][] = $d;
                 }
                 foreach ($bodyCourses as $c) {
                     $cid = $c['id'] ?? null;
@@ -310,9 +310,9 @@ class StudentClassController extends Controller
                         ? array_values(array_unique(array_map('intval', array_filter($c['days_of_week'], function ($d) { return $d >= 1 && $d <= 7; }))))
                         : [];
                     if ($cid !== null && isset($sessionDatesByClass[(string) $cid])) {
-                        $list = array_keys($sessionDatesByClass[(string) $cid]);
+                        $list = $sessionDatesByClass[(string) $cid];
                         sort($list);
-                        $result[(string) $cid] = $list;
+                        $result[(string) $cid] = array_values($list);
                         continue;
                     }
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
@@ -1533,30 +1533,10 @@ class StudentClassController extends Controller
             return $input;
         }
 
-        // Subject name resolution: frontend sends English key (e.g. 'Math').
-        // Subject table stores English names (Chinese, Math, English…) with IDs 64–71.
-        // teacher_subject_levels also uses Subject table IDs, so we MUST resolve to those.
-        // Old code translated to Chinese then queried Subject (miss) → BaseData (different IDs) → fallback 1.
-        $subjectChineseMap = [
-            'Chinese' => '國文',
-            'English' => '英文',
-            'Math' => '數學',
-            'Physics' => '物理',
-            'Chemistry' => '化學',
-            'Science' => '理化',
-            'Biology' => '生物',
-            'Social' => '社會',
-        ];
         $frontendSubject = $input['subject'] ?? 'Math';
-        $subjectName = $subjectChineseMap[$frontendSubject] ?? $frontendSubject;
-        // Priority: exact English match in Subject table → Chinese LIKE in Subject → Chinese LIKE in BaseData → null
-        $subjectId = DB::table('Subject')->where('Subject_Name', $frontendSubject)->value('id')
-            ?? DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id')
-            ?? DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id')
-            ?? null;
+        $subjectId = FrontendSubjectIdResolver::resolve($frontendSubject);
         if (!$subjectId) {
-            \Log::warning("[StudentClassController] Cannot resolve SubjectID for subject='{$frontendSubject}' (mapped='{$subjectName}')");
-            $subjectId = 66; // fallback: Math (Subject id=66) instead of non-existent id=1
+            $subjectId = 66;
         }
 
         $mappedData = [];
@@ -1626,17 +1606,24 @@ class StudentClassController extends Controller
                 $mappedData["time{$i}"] = null;
                 $mappedData["duration{$i}"] = null;
             }
-            foreach ($dayTimeSlots as $idx => $slot) {
-                if ($idx >= 6) break;
-                $mappedData['week' . ($idx + 1)] = (int) $slot['day'];
-                $mappedData['time' . ($idx + 1)] = substr((string) $slot['start_time'], 0, 5) . ':00';
-                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
-                    $mappedData['duration' . ($idx + 1)] = (int) $slot['duration_minutes'];
-                }
-            }
             $primary = $dayTimeSlots[0];
             $mappedData['week'] = (int) $primary['day'];
             $mappedData['time'] = substr((string) $primary['start_time'], 0, 5) . ':00';
+            if (!empty($primary['duration_minutes']) && (int) $primary['duration_minutes'] >= 30) {
+                $mappedData['SessionDuration'] = (int) $primary['duration_minutes'];
+            }
+            $rest = array_slice($dayTimeSlots, 1);
+            foreach ($rest as $j => $slot) {
+                if ($j >= 6) {
+                    break;
+                }
+                $n = $j + 1;
+                $mappedData['week' . $n] = (int) $slot['day'];
+                $mappedData['time' . $n] = substr((string) $slot['start_time'], 0, 5) . ':00';
+                if (!empty($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30) {
+                    $mappedData['duration' . $n] = (int) $slot['duration_minutes'];
+                }
+            }
             $mappedData['ScheduleSlots'] = array_map(fn ($slot) => [
                 'weekday' => (int) $slot['day'],
                 'time' => substr((string) $slot['start_time'], 0, 5),
@@ -1656,10 +1643,13 @@ class StudentClassController extends Controller
         if (!is_array($rawSlots)) {
             return [];
         }
-        $byDay = [];
+        $out = [];
         foreach ($rawSlots as $slot) {
             if (!is_array($slot)) {
                 continue;
+            }
+            if (count($out) >= 7) {
+                break;
             }
             $day = (int) ($slot['day'] ?? 0);
             $startTime = trim((string) ($slot['start_time'] ?? ''));
@@ -1669,14 +1659,41 @@ class StudentClassController extends Controller
             $durMin = isset($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30
                 ? (int) $slot['duration_minutes']
                 : null;
-            $byDay[$day] = [
+            $out[] = [
                 'day' => $day,
                 'start_time' => substr($startTime, 0, 5),
                 'duration_minutes' => $durMin,
             ];
         }
-        ksort($byDay);
-        return array_values($byDay);
+
+        return $out;
+    }
+
+    /**
+     * Legacy mapFrontendPayload wrote slot 0 into both week/time and week1/time1; drop exact duplicate neighbors.
+     *
+     * @param  array<int, array{day:int,start_time:string,duration_hours:float|int}>  $slots
+     * @return array<int, array{day:int,start_time:string,duration_hours:float|int}>
+     */
+    private function dedupeIdenticalConsecutiveDayTimeSlots(array $slots): array
+    {
+        if (count($slots) < 2) {
+            return $slots;
+        }
+        $out = [$slots[0]];
+        for ($i = 1; $i < count($slots); $i++) {
+            $prev = $out[count($out) - 1];
+            $cur = $slots[$i];
+            if ((int) ($prev['day'] ?? 0) === (int) ($cur['day'] ?? 0)
+                && (string) ($prev['start_time'] ?? '') === (string) ($cur['start_time'] ?? '')
+                && (string) ($prev['duration_hours'] ?? '') === (string) ($cur['duration_hours'] ?? '')
+            ) {
+                continue;
+            }
+            $out[] = $cur;
+        }
+
+        return $out;
     }
 
     /**
@@ -2104,8 +2121,9 @@ class StudentClassController extends Controller
         }
 
         if (empty($slots)) {
+            $globalDur = (int) ($studentClass->SessionDuration ?? 0);
             $candidates = [
-                ['week', 'time', 'duration1'],
+                ['week', 'time', null],
                 ['week1', 'time1', 'duration1'],
                 ['week2', 'time2', 'duration2'],
                 ['week3', 'time3', 'duration3'],
@@ -2113,32 +2131,59 @@ class StudentClassController extends Controller
                 ['week5', 'time5', 'duration5'],
                 ['week6', 'time6', 'duration6'],
             ];
-            $seenWeekdays = [];
             foreach ($candidates as [$weekField, $timeField, $durField]) {
                 $weekday = (int) ($studentClass->{$weekField} ?? 0);
                 if ($weekday < 1 || $weekday > 7) {
                     continue;
                 }
-                if (isset($seenWeekdays[$weekday])) {
-                    continue;
-                }
-                $seenWeekdays[$weekday] = true;
                 $time = $this->normalizeSessionTime($studentClass->{$timeField} ?? null, $studentClass->time ?? '16:00');
                 $entry = [
                     'weekday' => $weekday,
                     'time' => substr($time, 0, 5),
                 ];
-                $perDayDur = (int) ($studentClass->{$durField} ?? 0);
+                $perDayDur = $durField !== null ? (int) ($studentClass->{$durField} ?? 0) : 0;
                 if ($perDayDur >= 30) {
                     $entry['duration_minutes'] = $perDayDur;
+                } elseif ($globalDur >= 30) {
+                    $entry['duration_minutes'] = $globalDur;
                 }
                 $slots[] = $entry;
             }
+            $slots = $this->dedupeIdenticalConsecutiveScheduleSlots($slots);
         }
 
-        usort($slots, fn ($a, $b) => ($a['weekday'] <=> $b['weekday']));
+        usort($slots, function ($a, $b) {
+            $c = ($a['weekday'] <=> $b['weekday']);
+
+            return $c !== 0 ? $c : strcmp((string) ($a['time'] ?? ''), (string) ($b['time'] ?? ''));
+        });
 
         return $slots;
+    }
+
+    /**
+     * @param  array<int, array{weekday:int,time:string,duration_minutes?:int}>  $slots
+     * @return array<int, array{weekday:int,time:string,duration_minutes?:int}>
+     */
+    private function dedupeIdenticalConsecutiveScheduleSlots(array $slots): array
+    {
+        if (count($slots) < 2) {
+            return $slots;
+        }
+        $out = [$slots[0]];
+        for ($i = 1; $i < count($slots); $i++) {
+            $prev = $out[count($out) - 1];
+            $cur = $slots[$i];
+            if ((int) ($prev['weekday'] ?? 0) === (int) ($cur['weekday'] ?? 0)
+                && (string) ($prev['time'] ?? '') === (string) ($cur['time'] ?? '')
+                && (int) ($prev['duration_minutes'] ?? 0) === (int) ($cur['duration_minutes'] ?? 0)
+            ) {
+                continue;
+            }
+            $out[] = $cur;
+        }
+
+        return $out;
     }
 
     private function normalizeDateString($value): ?string

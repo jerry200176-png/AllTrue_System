@@ -91,3 +91,12 @@ export async function updateBugStatus(bugId, status, note = null) {
   return json(res);
 }
 
+export async function updateBugCommentVisibility(bugId, commentId, isInternalNote) {
+  const res = await fetch(`${API}/bugs/${bugId}/comments/${commentId}/visibility`, {
+    method: 'PATCH',
+    headers: headers(),
+    body: JSON.stringify({ is_internal_note: isInternalNote }),
+  });
+  return json(res);
+}
+

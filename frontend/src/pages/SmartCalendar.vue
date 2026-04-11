@@ -61,6 +61,7 @@
                 <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
               </select>
               <input v-model="teacherSearch" type="text" class="filter-input" placeholder="搜尋老師…" />
+              <input v-model="studentSearch" type="text" class="filter-input" placeholder="搜尋學生…" />
             </div>
           </template>
           <button type="button" class="btn-secondary btn-icon-text" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="btn-emoji">🏫</span><span class="btn-text">教室</span></button>
@@ -310,7 +311,7 @@
           <div class="form-group">
             <label>科目</label>
             <select v-model="modalForm.subject" :disabled="!!editingCourseId">
-              <option v-for="s in SUBJECTS" :key="s.value" :value="s.value">{{ s.label }}</option>
+              <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -546,7 +547,7 @@
           <div class="form-group">
             <label>科目</label>
             <select v-model="extraForm.subject">
-              <option v-for="s in SUBJECTS" :key="s.value" :value="s.value">{{ s.label }}</option>
+              <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -657,6 +658,7 @@
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
@@ -677,6 +679,14 @@ const currentTeacherId = computed(() => {
   if (raw == null || raw === '') return null;
   return String(raw);
 });
+
+const subjectOptions = ref([...SUBJECTS]);
+async function loadSubjects() {
+  try {
+    const opts = await fetchSubjectOptions({ branchId: props.branchId });
+    if (opts.length > 0) subjectOptions.value = opts;
+  } catch { /* keep defaults */ }
+}
 
 const getToken = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -838,6 +848,23 @@ const selectedDow = computed(() => selectedDayIdx.value + 1);
 const selectedDateStr = computed(() => getDisplayDateFull(selectedDow.value));
 const roomFilter = ref('');
 const teacherSearch = ref('');
+const studentSearch = ref('');
+
+/** 工具列「搜尋學生」：與老師名、教室篩選並用時為 AND；日檢視僅看當天、週檢視看整週。 */
+const courseMatchesStudentSearch = (c) => {
+  const q = (studentSearch.value || '').trim().toLowerCase();
+  if (!q) return true;
+  let label = (c.student_name && c.student_name !== '—') ? String(c.student_name) : '';
+  if (!label && c.student_id) {
+    const fromCourse = courses.value.find((x) => x.student_id === c.student_id);
+    if (fromCourse?.student_name && fromCourse.student_name !== '—') label = String(fromCourse.student_name);
+    else {
+      const fromList = allStudents.value.find((s) => s.id === c.student_id);
+      label = fromList?.name ? String(fromList.name) : '';
+    }
+  }
+  return label.toLowerCase().includes(q);
+};
 
 // Week Overview mode
 const isWeekOverview = ref(isTeacher.value);
@@ -1093,6 +1120,55 @@ function getSessionDateSetForCourse(c) {
   return null;
 }
 
+/** 由開始／結束時間推算時長（小時，一位小數），供課表格與 ClassSession 一致 */
+function durationHoursFromStartEnd(start, end) {
+  if (!start || !end) return null;
+  const toM = (t) => {
+    const [h, m] = String(t).split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  const diff = toM(end) - toM(start);
+  if (diff <= 0) return null;
+  return Math.round((diff / 60) * 10) / 10;
+}
+
+/**
+ * 智慧排課格子用的時段：優先該日的 ClassSession（與點名一致），否則後端 day_time_slots 對應星期幾，
+ * 最後才用課程主檔 start_time（後端目前取 day_time_slots[0]，多日不同時會錯）。
+ */
+function resolveCourseGridTimes(c, dow, targetYmd) {
+  const ymd = String(targetYmd || '').slice(0, 10);
+  const rows = sessionDatesByCourseId.value[String(c.id)];
+  if (ymd && Array.isArray(rows)) {
+    const hit = rows.find((r) => {
+      if (String(r.session_date || '').slice(0, 10) !== ymd) return false;
+      const st = String(r?.status || '').toLowerCase();
+      return st !== 'cancelled';
+    });
+    if (hit?.start_time) {
+      const st = normalizeTimeTo30(hit.start_time);
+      const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
+      const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
+      return { start_time: st, end_time: en, duration_hours: dh };
+    }
+  }
+  const slots = Array.isArray(c.day_time_slots) ? c.day_time_slots : [];
+  const slot = slots.find((s) => Number(s.day) === Number(dow));
+  if (slot?.start_time) {
+    const st = normalizeTimeTo30(slot.start_time);
+    const dh = Number(slot.duration_hours) || Number(c.duration_hours) || 2;
+    const en = computeEndTime(st, dh);
+    return { start_time: st, end_time: en, duration_hours: dh };
+  }
+  const defSt = normalizeTimeTo30(c.start_time || '');
+  const defDh = Number(c.duration_hours) || 2;
+  return {
+    start_time: defSt,
+    end_time: (c.end_time && normalizeTimeTo30(c.end_time)) || computeEndTime(defSt || '08:00', defDh),
+    duration_hours: defDh,
+  };
+}
+
 /** 堂數制是否超過購買堂數；與課程管理一致：只到最後一堂日，之後一律視為超過 */
 function isOverSessionLimit(courseId, targetDate) {
   const course = courses.value.find((item) => String(item.id) === String(courseId));
@@ -1174,6 +1250,7 @@ const getCoursesForTeacherAt = (teacherId, hour) => {
     if (c.teacher_id !== teacherId) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (c.day_of_week !== selectedDow.value) return false;
+    if (!courseMatchesStudentSearch(c)) return false;
     return true;
   });
 };
@@ -1201,7 +1278,7 @@ const getTeacherCourseBlockStyle = (course, teacherId, hour, idx) => {
 };
 
 const getDayCourseCount = (dow) => {
-  return filteredCourses.value.filter(c => c.day_of_week === dow).length;
+  return filteredCourses.value.filter(c => c.day_of_week === dow && courseMatchesStudentSearch(c)).length;
 };
 
 // Week Overview helpers
@@ -1209,13 +1286,14 @@ const getCoursesForWeekCell = (dow, hour) => {
   return filteredCourses.value.filter(c =>
     c.teacher_id === weekViewTeacherId.value &&
     c.day_of_week === dow &&
-    parseHour(c.start_time) === hour
+    parseHour(c.start_time) === hour &&
+    courseMatchesStudentSearch(c)
   );
 };
 
 const getWeekTeacherDayCount = (dow) => {
   return filteredCourses.value.filter(c =>
-    c.teacher_id === weekViewTeacherId.value && c.day_of_week === dow
+    c.teacher_id === weekViewTeacherId.value && c.day_of_week === dow && courseMatchesStudentSearch(c)
   ).length;
 };
 
@@ -1272,6 +1350,19 @@ const visibleTeachers = computed(() => {
   if (teacherSearch.value) {
     const q = teacherSearch.value.toLowerCase();
     filtered = filtered.filter(t => t.username.toLowerCase().includes(q));
+  }
+  if (studentSearch.value.trim()) {
+    const dowFilter = !isWeekOverview.value ? selectedDow.value : null;
+    const tidSet = new Set(
+      filteredCourses.value
+        .filter((c) => {
+          if (!courseMatchesStudentSearch(c)) return false;
+          if (dowFilter != null && c.day_of_week !== dowFilter) return false;
+          return true;
+        })
+        .map((c) => c.teacher_id)
+    );
+    filtered = filtered.filter((t) => tidSet.has(t.id));
   }
   if (isTeacher.value && currentTeacherId.value) {
     filtered = filtered.filter(t => String(t.id) === currentTeacherId.value);
@@ -1380,7 +1471,10 @@ const filteredCourses = computed(() => {
           if (!sessionSet.has(targetYmd)) continue;
           const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
           if (lastDate != null && targetYmd > lastDate) continue;
-          if (!hasLeaveOrReschedule && !hasScheduledExc) mergedList.push({ ...c, day_of_week: dow, days_of_week: [dow], is_base: true });
+          if (!hasLeaveOrReschedule && !hasScheduledExc) {
+            const t = resolveCourseGridTimes(c, dow, targetYmd);
+            mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
+          }
           continue;
         }
         const isFirstDay = c.first_class_date && String(targetDate).trim() === String(c.first_class_date).trim();
@@ -1389,7 +1483,8 @@ const filteredCourses = computed(() => {
         const isBeforeStart = c.first_class_date && String(targetDate).trim() < String(c.first_class_date).trim();
         const overSessionLimit = isOverSessionLimit(c.id, targetDate);
         if (!hasLeaveOrReschedule && !hasScheduledExc && !isBeforeStart && !overSessionLimit) {
-          mergedList.push({ ...c, day_of_week: dow, days_of_week: [dow], is_base: true });
+          const t = resolveCourseGridTimes(c, dow, targetYmd);
+          mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
         }
       }
     });
@@ -1452,7 +1547,7 @@ const filteredCourses = computed(() => {
   return list;
 });
 
-const weekCourseCount = computed(() => filteredCourses.value.length);
+const weekCourseCount = computed(() => filteredCourses.value.filter(courseMatchesStudentSearch).length);
 
 
 // Teacher-grouped view
@@ -1501,6 +1596,7 @@ const loadCourses = async () => {
     days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
     start_time: c.start_time || '',
     end_time: c.end_time || '',
+    day_time_slots: Array.isArray(c.day_time_slots) && c.day_time_slots.length ? c.day_time_slots : null,
     student_name: c.student_name || '—',
     teacher_name: c.teacher_name || '未指派',
     weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
@@ -2542,7 +2638,7 @@ watch(isTeacher, (val) => {
   }
 });
 onMounted(() => {
-  loadCourses(); loadStudents(); loadTeachers(); loadRooms();
+  loadCourses(); loadStudents(); loadTeachers(); loadRooms(); loadSubjects();
   // 僅在左鍵點擊時關閉右鍵選單，避免右鍵觸發的後續事件誤關選單
   document.addEventListener('click', (e) => {
     if (e.button === 0) contextMenu.value.show = false;

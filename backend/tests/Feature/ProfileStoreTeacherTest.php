@@ -78,6 +78,8 @@ class ProfileStoreTeacherTest extends TestCase
 
     public function test_subjects_endpoint_bootstraps_default_subjects_when_empty(): void
     {
+        DB::table('Subject')->delete();
+
         $director = User::create([
             'LoginName' => 'director-subject-bootstrap',
             'Name' => 'Director',

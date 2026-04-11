@@ -136,6 +136,7 @@ async function approve(id) {
     }
     msg.value = { type: 'success', text: '已通過審核' };
     await loadAll();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } finally {
     actionId.value = null;
   }
@@ -158,6 +159,7 @@ async function reject(id) {
     }
     msg.value = { type: 'success', text: '已拒絕' };
     await loadAll();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } finally {
     actionId.value = null;
   }

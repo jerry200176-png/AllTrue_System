@@ -30,10 +30,14 @@ class ClassSessionController extends Controller
             'confirmed_dates.*' => 'date',
             'future_dates' => 'present|array|max:500',
             'future_dates.*' => 'required|date',
+            'session_plan' => 'nullable|array|max:500',
+            'session_plan.*.session_date' => 'required_with:session_plan|date',
+            'session_plan.*.start_time' => 'required_with:session_plan|date_format:H:i',
+            'session_plan.*.kind' => 'required_with:session_plan|in:confirmed,future',
             'days_of_week' => 'nullable|array',
             'days_of_week.*' => 'integer|min:1|max:7',
             'start_time' => 'required_without:day_time_slots|date_format:H:i',
-            'day_time_slots' => 'nullable|array|max:7',
+            'day_time_slots' => 'nullable|array|max:56',
             'day_time_slots.*.day' => 'required_with:day_time_slots|integer|min:1|max:7',
             'day_time_slots.*.start_time' => 'required_with:day_time_slots|date_format:H:i',
             'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480',
@@ -608,33 +612,6 @@ class ClassSessionController extends Controller
         return $sessionEndAt->lte($now);
     }
 
-    private function resolveSubjectId(string $frontendSubject): int
-    {
-        $subjectMap = [
-            'Chinese' => '國文',
-            'English' => '英文',
-            'Math' => '數學',
-            'Physics' => '物理',
-            'Chemistry' => '化學',
-            'Science' => '理化',
-            'Biology' => '生物',
-            'Social' => '社會',
-        ];
-        $subjectName = $subjectMap[$frontendSubject] ?? $frontendSubject;
-
-        return (int) (
-            DB::table('Subject')->where('Subject_Name', 'like', '%' . $subjectName . '%')->value('id')
-            ?? DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', '%' . $subjectName . '%')->value('id')
-            ?? 1
-        );
-    }
-
-    private function resolveSubjectName(int $subjectId, string $fallback): string
-    {
-        $name = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
-            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val');
-        return (string) ($name ?: $fallback);
-    }
 
     /**
      * Retry StudentClass::create by removing unknown columns for mixed schemas.
