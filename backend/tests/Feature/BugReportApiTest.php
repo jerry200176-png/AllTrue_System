@@ -209,7 +209,7 @@ class BugReportApiTest extends TestCase
         $res->assertStatus(404);
     }
 
-    public function test_director_sees_only_own_bug_reports(): void
+    public function test_director_bug_list_shows_only_own_reports(): void
     {
         [$tokenDirector, $director] = $this->createUserToken([1], 'dirOwn@test.com', 'A');
         [$tokenOther, $other] = $this->createUserToken([1], 'dirOther@test.com', 'A');
@@ -234,6 +234,38 @@ class BugReportApiTest extends TestCase
         $this->assertNotContains('Someone else bug', $titles);
     }
 
+    public function test_director_unread_badge_ignores_others_new_submissions(): void
+    {
+        [$tokenDirector, $director] = $this->createUserToken([1], 'dirBadge@test.com', 'A');
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'teaBadge@test.com', 'T');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'From teacher', 'description' => 'Desc', 'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $badge = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenDirector}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+
+        $badge->assertOk();
+        $this->assertEquals(0, $badge->json('unread_count'));
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $director->id,
+            'title' => 'My own new', 'description' => 'Desc', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $badge2 = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenDirector}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+
+        $badge2->assertOk();
+        $this->assertEquals(0, $badge2->json('unread_count'));
+    }
+
     public function test_director_cannot_update_bug_status(): void
     {
         [$tokenDirector, $director] = $this->createUserToken([1], 'dir@test.com', 'A');
@@ -251,6 +283,36 @@ class BugReportApiTest extends TestCase
             'status' => 'triaged',
         ]);
         $statusRes->assertStatus(403);
+    }
+
+    public function test_director_cannot_update_bug_comment_visibility(): void
+    {
+        [$tokenDirector, $director] = $this->createUserToken([1], 'dirVis@test.com', 'A');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $director->id,
+            'title' => 'Visibility Permission Test', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $commentRes = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenDirector}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '一般留言',
+            'is_internal_note' => false,
+        ]);
+        $commentRes->assertStatus(201);
+        $commentId = (int) $commentRes->json('id');
+
+        $toggleRes = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenDirector}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/bugs/{$bug->id}/comments/{$commentId}/visibility", [
+            'is_internal_note' => true,
+        ]);
+
+        $toggleRes->assertStatus(403);
     }
 
     public function test_reporter_unread_badge_after_reply_and_cleared_on_view(): void
@@ -282,7 +344,46 @@ class BugReportApiTest extends TestCase
         $this->withHeaders([
             'Authorization' => "Bearer {$tokenTeacher}",
             'Accept' => 'application/json',
-        ])->getJson("/api/v1/bugs/{$bug->id}")->assertOk();
+        ])->getJson('/api/v1/bugs?branch_id=1')->assertOk();
+
+        $badge2 = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+        $badge2->assertOk();
+        $this->assertEquals(0, $badge2->json('unread_count'));
+    }
+
+    public function test_reporter_unread_badge_after_status_change_only_and_cleared_on_view(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'statT@test.com', 'T');
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'statA@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Status badge', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'triaged',
+            'note' => 'Queued',
+        ])->assertOk();
+
+        $badge1 = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+        $badge1->assertOk();
+        $this->assertEquals(1, $badge1->json('unread_count'));
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1')->assertOk();
 
         $badge2 = $this->withHeaders([
             'Authorization' => "Bearer {$tokenTeacher}",
@@ -317,6 +418,73 @@ class BugReportApiTest extends TestCase
         ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
         $badge->assertOk();
         $this->assertEquals(0, $badge->json('unread_count'));
+    }
+
+    public function test_reporter_cannot_view_internal_comment_in_bug_detail(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'intViewT@test.com', 'T');
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'intViewA@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Internal visibility', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '只給內部看',
+            'is_internal_note' => true,
+        ])->assertStatus(201);
+
+        $detail = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+
+        $detail->assertOk();
+        $comments = collect($detail->json('comments'));
+        $this->assertFalse($comments->contains(fn ($c) => ($c['body'] ?? null) === '只給內部看'));
+    }
+
+    public function test_super_admin_can_toggle_comment_visibility_for_reporter(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'visT@test.com', 'T');
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'visA@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Toggle visibility', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $createComment = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '可切換可見性',
+            'is_internal_note' => true,
+        ]);
+        $createComment->assertStatus(201);
+        $commentId = (int) $createComment->json('id');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/bugs/{$bug->id}/comments/{$commentId}/visibility", [
+            'is_internal_note' => false,
+        ])->assertOk();
+
+        $detail = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+
+        $detail->assertOk();
+        $comments = collect($detail->json('comments'));
+        $this->assertTrue($comments->contains(fn ($c) => ($c['body'] ?? null) === '可切換可見性'));
     }
 
     public function test_super_admin_new_bug_badge_and_mark_inbox_seen(): void

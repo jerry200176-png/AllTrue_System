@@ -100,25 +100,53 @@
         </label>
       </div>
       <div v-if="(form.days_of_week || []).length > 0" class="day-time-slots">
-        <div v-for="d in sortedSelectedDays" :key="d" class="day-time-slot-row per-day-row">
-          <span class="day-time-slot-label">週{{ dayLabelMap[d] }}</span>
+        <div
+          v-for="(slot, idx) in (form.day_time_slots || [])"
+          :key="`slot-${idx}-${slot.day}-${slot.start_time}`"
+          class="day-time-slot-row per-day-row"
+        >
           <select
-            :value="slotStartTimeByDay[d] || form.start_time"
-            @change="updateSlotTime(d, $event.target.value)"
+            v-if="sortedSelectedDays.length > 1"
+            class="day-inline-select"
+            :value="Number(slot.day)"
+            @change="updateSlotDay(idx, $event.target.value)"
           >
-            <option v-for="t in timeOptions" :key="`${d}-${t}`" :value="t">{{ t }}</option>
+            <option v-for="d in sortedSelectedDays" :key="`opt-${idx}-${d}`" :value="d">週{{ dayLabelMap[d] }}</option>
+          </select>
+          <span v-else class="day-time-slot-label">週{{ dayLabelMap[Number(slot.day)] || '?' }}</span>
+          <select
+            :value="String(slot.start_time || form.start_time).slice(0, 5)"
+            @change="updateSlotTime(idx, $event.target.value)"
+          >
+            <option v-for="t in timeOptions" :key="`${idx}-${t}`" :value="t">{{ t }}</option>
           </select>
           <input
             type="number"
             class="per-day-dur"
-            :value="slotDurationByDay[d] ?? form.duration_hours"
+            :value="Number(slot.duration_hours ?? form.duration_hours)"
             min="0.5"
             step="0.5"
             inputmode="decimal"
-            @change="updateSlotDuration(d, $event.target.value)"
+            @change="updateSlotDuration(idx, $event.target.value)"
           />
-          <span class="day-time-slot-end">~ {{ computeEndTime(slotStartTimeByDay[d] || form.start_time, slotDurationByDay[d] ?? form.duration_hours) || '—' }}</span>
+          <span class="day-time-slot-end">~ {{ computeEndTime(slot.start_time || form.start_time, slot.duration_hours ?? form.duration_hours) || '—' }}</span>
+          <button
+            v-if="(form.day_time_slots || []).length > 1"
+            type="button"
+            class="btn-remove-slot"
+            @click="removeSlot(idx)"
+          >
+            移除
+          </button>
         </div>
+        <button
+          v-if="(form.day_time_slots || []).length < 7"
+          type="button"
+          class="btn-add-slot"
+          @click="addTimeSlot"
+        >
+          ＋ 新增時段（同日可排多段，最多 7 段）
+        </button>
       </div>
     </div>
 
@@ -197,27 +225,10 @@ const dayLabelMap = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六'
 const sortedSelectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
-const slotStartTimeByDay = computed(() => {
-  const map = {};
-  for (const slot of (form.day_time_slots || [])) {
-    const day = Number(slot?.day || 0);
-    if (day >= 1 && day <= 7) {
-      map[day] = String(slot?.start_time || '').slice(0, 5);
-    }
-  }
-  return map;
-});
-const slotDurationByDay = computed(() => {
-  const map = {};
-  for (const slot of (form.day_time_slots || [])) {
-    const day = Number(slot?.day || 0);
-    const dur = Number(slot?.duration_hours || 0);
-    if (day >= 1 && day <= 7 && dur > 0) map[day] = dur;
-  }
-  return map;
-});
 const hasPerDayDuration = computed(() => {
-  const vals = Object.values(slotDurationByDay.value);
+  const vals = (form.day_time_slots || [])
+    .map((s) => Number(s?.duration_hours || 0))
+    .filter((v) => v > 0);
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
 });
@@ -282,41 +293,74 @@ watch(
 );
 
 function syncDayTimeSlotsFromSelection() {
-  const existing = new Map(
-    (form.day_time_slots || [])
-      .map((slot) => [Number(slot?.day || 0), slot])
-      .filter(([day]) => day >= 1 && day <= 7)
+  let chipDays = new Set(
+    [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))]
   );
-  const firstSlot = existing.size > 0 ? [...existing.values()][0] : null;
-  const parentStartTime = String(form.start_time || '').slice(0, 5);
-  const baseTime = firstSlot
-    ? String(firstSlot.start_time || '16:00').slice(0, 5)
-    : (parentStartTime || '16:00');
-  form.day_time_slots = sortedSelectedDays.value.map((day) => {
-    const ex = existing.get(day);
-    return {
-      day,
-      start_time: ex ? String(ex.start_time || '16:00').slice(0, 5) : baseTime,
-      duration_hours: ex?.duration_hours || form.duration_hours,
-    };
-  });
+  let slots = [...(form.day_time_slots || [])];
+
+  // API 偶爾只回 day_time_slots、days_of_week 為空：勿把多段時段整批刪掉；從時段還原勾選的星期
+  if (chipDays.size === 0 && slots.length > 0 && syncingFromParent) {
+    form.days_of_week = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
+    chipDays = new Set(form.days_of_week);
+  }
+
+  if (chipDays.size > 0) {
+    slots = slots.filter((s) => chipDays.has(Number(s?.day || 0)));
+  } else if (!syncingFromParent) {
+    slots = [];
+  }
+
+  const baseTime = String(form.start_time || '16:00').slice(0, 5);
+  const dur = form.duration_hours || 2;
+  for (const day of [...chipDays].sort((a, b) => a - b)) {
+    if (!slots.some((s) => Number(s.day) === day)) {
+      slots.push({
+        day,
+        start_time: baseTime,
+        duration_hours: dur,
+      });
+    }
+  }
+  slots.sort((a, b) => Number(a.day) - Number(b.day) || String(a.start_time || '').localeCompare(String(b.start_time || '')));
+  form.day_time_slots = slots;
 }
 
-function updateSlotTime(day, nextTime) {
-  const d = Number(day);
+function addTimeSlot() {
+  if ((form.day_time_slots || []).length >= 7) return;
+  const days = sortedSelectedDays.value;
+  const day = days.length ? days[days.length - 1] : 1;
+  const baseTime = String(form.start_time || '16:00').slice(0, 5);
+  form.day_time_slots = [...(form.day_time_slots || []), {
+    day,
+    start_time: baseTime,
+    duration_hours: form.duration_hours || 2,
+  }];
+}
+
+function removeSlot(idx) {
+  form.day_time_slots = (form.day_time_slots || []).filter((_, i) => i !== idx);
+  syncDayTimeSlotsFromSelection();
+}
+
+function updateSlotDay(idx, dayVal) {
+  const d = Number(dayVal);
   if (d < 1 || d > 7) return;
-  const t = String(nextTime || '').slice(0, 5);
-  form.day_time_slots = (form.day_time_slots || []).map((slot) => (
-    Number(slot?.day) === d ? { ...slot, start_time: t } : slot
+  form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
+    i === idx ? { ...slot, day: d } : slot
   ));
 }
 
-function updateSlotDuration(day, rawValue) {
-  const d = Number(day);
-  if (d < 1 || d > 7) return;
+function updateSlotTime(idx, nextTime) {
+  const t = String(nextTime || '').slice(0, 5);
+  form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
+    i === idx ? { ...slot, start_time: t } : slot
+  ));
+}
+
+function updateSlotDuration(idx, rawValue) {
   const dur = Math.max(0.5, Math.round(Number(rawValue) * 2) / 2);
-  form.day_time_slots = (form.day_time_slots || []).map((slot) => (
-    Number(slot?.day) === d ? { ...slot, duration_hours: dur } : slot
+  form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
+    i === idx ? { ...slot, duration_hours: dur } : slot
   ));
 }
 
@@ -334,9 +378,6 @@ function computeEndTime(startRaw, durHours) {
   return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
 }
 
-const computedEndTime = computed(() => {
-  return computeEndTime(form.start_time);
-});
 </script>
 
 <style scoped>
@@ -389,7 +430,43 @@ const computedEndTime = computed(() => {
   gap: 8px;
 }
 .day-time-slot-row.per-day-row {
-  grid-template-columns: 52px minmax(100px, 150px) 70px auto;
+  grid-template-columns: minmax(52px, 88px) minmax(100px, 150px) 70px 1fr auto;
+  align-items: center;
+}
+.day-inline-select {
+  max-width: 88px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #d1d5db);
+  font-size: 13px;
+}
+.btn-add-slot {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--border, #cbd5e1);
+  background: var(--surface-2, #f8fafc);
+  color: var(--primary, #2563eb);
+  font-size: 13px;
+  cursor: pointer;
+  width: fit-content;
+}
+.btn-add-slot:hover {
+  border-color: var(--primary, #2563eb);
+  background: var(--primary-bg, #eef2ff);
+}
+.btn-remove-slot {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+.btn-remove-slot:hover {
+  color: #b91c1c;
+  background: #fef2f2;
 }
 .per-day-dur {
   width: 70px;

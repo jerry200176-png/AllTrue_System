@@ -79,38 +79,75 @@ export function resolveGradeLevel(grade) {
     return null;
 }
 
+/** Same idea as backend TeacherScopeService: group Subject rows by display name. */
+function subjectEquivalenceKey(s) {
+    if (!s || typeof s !== 'object') return '';
+    const v = s.value;
+    const lbl = s.label ?? s.Subject_Name ?? s.name ?? '';
+    return getSubjectLabel(v) || getSubjectLabel(lbl) || String(lbl || '').trim() || String(v || '').trim();
+}
+
+function resolveSelectedSubjectKey(subjectValue, subjectsList) {
+    const strVal = String(subjectValue ?? '').trim();
+    const numVal = Number(subjectValue);
+    if (Number.isFinite(numVal) && numVal > 0) {
+        const byId = subjectsList.find((s) => Number(s?.id) === numVal);
+        if (byId) return subjectEquivalenceKey(byId);
+    }
+    const byField = subjectsList.find(
+        (s) => s?.value === subjectValue || s?.id === subjectValue
+            || String(s?.label) === strVal || String(s?.Subject_Name) === strVal || String(s?.name) === strVal
+    );
+    if (byField) return subjectEquivalenceKey(byField);
+    return getSubjectLabel(strVal) || strVal;
+}
+
 /**
  * Check teacher scope against subject + student grade.
  * Returns a warning string or null.
  * @param {object} teacher - teacher object with subject_level_scopes[]
  * @param {string} subjectValue - e.g. 'Math'
  * @param {string|number|null} studentGrade - e.g. 'P3' or 7
- * @param {object[]} subjectsList - subjects list with {id, name/Subject_Name}
+ * @param {object[]} subjectsList - subjects list with {id, value, label / Subject_Name}
  */
 export function checkTeacherScope(teacher, subjectValue, studentGrade, subjectsList = []) {
-    if (!teacher || !subjectValue) return null;
+    if (!teacher || subjectValue == null || subjectValue === '') return null;
     const scopes = Array.isArray(teacher.subject_level_scopes) ? teacher.subject_level_scopes : [];
     if (scopes.length === 0) return null;
 
-    const subjectEntry = subjectsList.find(
-        (s) => s.value === subjectValue || s.id === subjectValue
-    );
-    const subjectId = subjectEntry?.id ?? null;
-    if (!subjectId) return null;
+    const list = Array.isArray(subjectsList) ? subjectsList : [];
+    const selectedKey = resolveSelectedSubjectKey(subjectValue, list);
+    let matchIds = list
+        .filter((s) => s?.id != null && s?.id !== '' && selectedKey && subjectEquivalenceKey(s) === selectedKey)
+        .map((s) => Number(s.id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (matchIds.length === 0) {
+        const entry = list.find(
+            (s) => s?.value === subjectValue || s?.id === subjectValue
+                || String(s?.label) === String(subjectValue) || String(s?.Subject_Name) === String(subjectValue)
+        );
+        if (entry?.id != null && entry.id !== '') {
+            const one = Number(entry.id);
+            if (Number.isFinite(one) && one > 0) matchIds = [one];
+        }
+    }
+
+    if (matchIds.length === 0) return null;
 
     const level = resolveGradeLevel(studentGrade);
-    const hasSubject = scopes.some((s) => Number(s.subject_id) === Number(subjectId));
     const teacherName = teacher.username || teacher.name || teacher.Name || '';
-    const subjectLabel = SUBJECT_NAME_MAP[subjectValue] || subjectValue;
+    const subjectLabel = SUBJECT_NAME_MAP[subjectValue] || getSubjectLabel(String(subjectValue)) || String(subjectValue);
     const levelLabel = level ? (LEVEL_LABELS[level] || level) : null;
 
+    const hasSubject = scopes.some((s) => matchIds.includes(Number(s.subject_id)));
     if (!hasSubject) {
         return `${teacherName} 的授課設定中沒有「${subjectLabel}」科目`;
     }
 
     if (level) {
         const hasMatch = scopes.some(
-            (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
+            (s) => matchIds.includes(Number(s.subject_id)) && s.level === level
         );
         if (!hasMatch) {
             return `${teacherName} 可教「${subjectLabel}」但未包含「${levelLabel}」學段`;

@@ -7,6 +7,17 @@ use Illuminate\Support\Facades\Schema;
 
 class TeacherScopeService
 {
+    private const SUBJECT_NORMALIZE_MAP = [
+        'chinese' => '國文', '國文' => '國文',
+        'english' => '英文', '英文' => '英文',
+        'math' => '數學', 'mathematics' => '數學', '數學' => '數學',
+        'social' => '社會', '社會' => '社會',
+        'science' => '理化', '理化' => '理化', '自然' => '理化',
+        'physics' => '物理', '物理' => '物理',
+        'chemistry' => '化學', '化學' => '化學',
+        'biology' => '生物', '生物' => '生物',
+    ];
+
     private const GRADE_LEVEL_MAP = [
         'P1' => 'elementary', 'P2' => 'elementary', 'P3' => 'elementary',
         'P4' => 'elementary', 'P5' => 'elementary', 'P6' => 'elementary',
@@ -51,9 +62,10 @@ class TeacherScopeService
             ];
         }
 
+        $equivalentSubjectIds = self::resolveEquivalentSubjectIds($subjectId);
         $query = DB::table('teacher_subject_levels')
             ->where('teacher_id', $teacherId)
-            ->where('subject_id', $subjectId);
+            ->whereIn('subject_id', $equivalentSubjectIds);
 
         if ($level) {
             $query->where('level', $level);
@@ -72,19 +84,13 @@ class TeacherScopeService
 
         $rawSubjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
             ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val');
-        $subjectDisplayNames = [
-            'Chinese' => '國文', 'English' => '英文', 'Math' => '數學',
-            'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '理化',
-            'Biology' => '生物', 'Social' => '社會',
-        ];
-        $subjectName = ($rawSubjectName ? ($subjectDisplayNames[$rawSubjectName] ?? $rawSubjectName) : null)
-            ?? "科目#{$subjectId}";
+        $subjectName = self::normalizeSubjectName((string) $rawSubjectName) ?: ($rawSubjectName ?: "科目#{$subjectId}");
         $teacherName = DB::table('User')->where('id', $teacherId)->value('Name') ?? "老師#{$teacherId}";
         $levelLabel = $level ? (self::LEVEL_LABELS[$level] ?? $level) : '未知學段';
 
         $hasSubject = DB::table('teacher_subject_levels')
             ->where('teacher_id', $teacherId)
-            ->where('subject_id', $subjectId)
+            ->whereIn('subject_id', $equivalentSubjectIds)
             ->exists();
 
         if (!$hasSubject) {
@@ -182,5 +188,60 @@ class TeacherScopeService
     public static function levelLabel(string $level): string
     {
         return self::LEVEL_LABELS[$level] ?? $level;
+    }
+
+    private static function normalizeSubjectName(?string $raw): string
+    {
+        $name = trim((string) ($raw ?? ''));
+        if ($name === '') {
+            return '';
+        }
+        $lower = mb_strtolower($name);
+        return self::SUBJECT_NORMALIZE_MAP[$lower]
+            ?? self::SUBJECT_NORMALIZE_MAP[$name]
+            ?? $name;
+    }
+
+    /**
+     * @return array<int>
+     */
+    private static function resolveEquivalentSubjectIds(int $subjectId): array
+    {
+        if ($subjectId <= 0) {
+            return [$subjectId];
+        }
+
+        $rows = Schema::hasTable('Subject')
+            ? DB::table('Subject')->get(['id', 'Subject_Name'])
+            : collect();
+
+        $targetRow = $rows->firstWhere('id', $subjectId);
+        $targetName = self::normalizeSubjectName((string) ($targetRow->Subject_Name ?? ''));
+
+        if ($targetName === '' && Schema::hasTable('BaseData')) {
+            $baseVal = DB::table('BaseData')
+                ->where('Name', '課程')
+                ->where('id', $subjectId)
+                ->value('Val');
+            $targetName = self::normalizeSubjectName((string) ($baseVal ?? ''));
+        }
+
+        if ($targetName === '') {
+            return [$subjectId];
+        }
+
+        $ids = $rows
+            ->filter(fn ($row) => self::normalizeSubjectName((string) ($row->Subject_Name ?? '')) === $targetName)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
+
+        if (!in_array($subjectId, $ids, true)) {
+            $ids[] = $subjectId;
+        }
+
+        return array_values(array_unique($ids));
     }
 }

@@ -7,7 +7,7 @@
 
 1. **`AGENTS.md`** — 任務守則、First-read 清單、常見坑
 2. **`AI_QUICKSTART.md`** — 專案與協作流程速覽
-3. **`docs/AI_REGRESSION_LESSONS.md`** — **防再犯**：已發生過的缺口（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI 等）
+3. **`docs/AI_REGRESSION_LESSONS.md`** — **防再犯**：已發生過的缺口（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI、**手動過去日＝已上完**、**`index.html` 與 Vite hashed chunk 不同步導致整站 MIME 錯誤** 等）
 4. **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`** — 若動到主任儀表板「繳費提醒」或 `GET /api/v1/alerts/tuition`（`AlertController::tuition`）
 5. **`docs/OPERATIONS_RUNBOOK.md`**、**`docs/GITHUB_SYNC_WORKFLOW.md`**
 6. **`docs/CHANGELOG.md`**
@@ -18,11 +18,14 @@
 
 | 主題 | 先讀 |
 |------|------|
+| **核准評量扣堂**（`ApprovalSessionSyncService` / `SessionDeductionService` / `LearningRecordController` approve/batchApprove/rollbackApproval） | **改動前必須先詢問使用者**。`docs/AI_REGRESSION_LESSONS.md`（2026-04-11 核准評量）、`docs/OPERATIONS_RUNBOOK.md` §K、`docs/CHANGELOG.md`（2026-04-11 B） |
 | 學習評量、待審列表、`LearningRecord`、`Stop`（暫停） | `docs/AI_REGRESSION_LESSONS.md` §2026-04-10 A |
 | 課程列表暫停 UI | 同上 §B、`CourseManagement.vue` |
 | 繳費提醒、堂數／月結 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` + 同上 §C |
 | 通知 sync、`NotificationSyncService` | 同上 §D |
 | 聊天、Bug、使用者頭像 URL | **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**、`docs/CHAT_BUG_SYSTEM.md`、`docs/CHANGELOG.md` |
+| 批次排課／入班、`confirmed_dates`／`future_dates`、手動月曆日期語意 | **`docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md`**、`docs/AI_REGRESSION_LESSONS.md`（2026-04-11 一節） |
+| 前端上線、`backend/public`、瀏覽器 **`MIME type "text/html"`** on `index-*.js` | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）；務必 **`npm run deploy`** 同輪寫入 `index.html` + `assets/` |
 
 ## 協作分支
 
@@ -30,4 +33,4 @@
 
 ## 前端變更上線
 
-- 修改 `frontend/src` 等後執行：`cd frontend && npm run deploy`（見專案規則與 `AGENTS.md`）
+- 修改 `frontend/src` 等後執行：`cd frontend && npm run deploy`（見專案規則與 `AGENTS.md`）。**禁止**只覆寫部分 `assets` 或讓 `index.html` 與 chunk 檔名脫節，否則 SPA fallback 會把 HTML 當 JS 回傳、整站無法載入（見 **`docs/AI_REGRESSION_LESSONS.md`**）。

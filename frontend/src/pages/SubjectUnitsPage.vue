@@ -57,6 +57,45 @@
       </div>
     </div>
 
+    <!-- Subject-count calculation (matches GET /api/v1/finance/subject-units) -->
+    <div v-if="teacherList.length > 0" class="card calc-guide" data-guide="subject-units-formula">
+      <div class="calc-guide-header" @click="showCalcGuide = !showCalcGuide">
+        <h3>📎 科目數計算方式</h3>
+        <button type="button" class="ghost small">{{ showCalcGuide ? '收合 ▲' : '展開 ▼' }}</button>
+      </div>
+      <div v-if="showCalcGuide" class="calc-guide-body">
+        <p class="calc-guide-lead">
+          本頁「科目數」與「加權總分」由後端依下列規則計算，與薪資報表口徑一致。
+        </p>
+        <ul class="calc-guide-list">
+          <li>
+            <strong>資料範圍</strong>：所選月份、分校內，學習評量狀態為「已審核通過（approved）」的紀錄。
+          </li>
+          <li>
+            <strong>上課時數（各堂別欄位）</strong>：優先依評量上的開始／結束時間換算為小時；若無法推算，則使用該學生課程設定的單堂分鐘數（SessionDuration）換算；仍無資料時預設每堂 2 小時。
+          </li>
+          <li>
+            <strong>加權總分（含輔導）</strong>：
+            一對一×1.5 ＋ 一對二×0.75 ＋ 一對三×0.5 ＋ 輔導×0.5。
+          </li>
+          <li>
+            <strong>加權總分（不含輔導）</strong>：同上前三項之和，<strong>不</strong>將輔導時數列入加權。
+          </li>
+          <li>
+            <strong>科目數</strong>＝ 對應加權總分 ÷ <strong>8</strong>。
+            摘要卡上的大數字即為此商；「加權總分」即除法前的分子。
+          </li>
+        </ul>
+        <p class="calc-guide-example" v-if="totals.totalUnitsWithTutoring > 0 || totals.totalUnitsWithoutTutoring > 0">
+          <strong>本月合計對照</strong>：
+          含輔導科目數 {{ totals.subjectCountWith }}
+          ＝ 加權總分 {{ totals.totalUnitsWithTutoring }} ÷ 8；
+          不含輔導科目數 {{ totals.subjectCountWithout }}
+          ＝ 加權總分 {{ totals.totalUnitsWithoutTutoring }} ÷ 8。
+        </p>
+      </div>
+    </div>
+
     <!-- Teacher Breakdown Table -->
     <div v-if="teacherList.length > 0" class="card" data-guide="subject-units-table">
       <h3>👨‍🏫 老師科目數明細</h3>
@@ -168,6 +207,7 @@ const loading = ref(true);
 const teacherList = ref([]);
 const levelBreakdownTotals = ref([]);
 const showLevelBreakdown = ref(false);
+const showCalcGuide = ref(true);
 const totals = ref({
   oneOnOneHours: 0, oneOnTwoHours: 0, oneOnThreeHours: 0, tutoringHours: 0,
   totalHours: 0, totalUnitsWithTutoring: 0, totalUnitsWithoutTutoring: 0,
@@ -478,5 +518,60 @@ table tfoot td {
 }
 .level-card {
   border-left-color: #8b5cf6;
+}
+
+.calc-guide {
+  border: 1px dashed var(--border);
+  background: var(--card-bg);
+  border-left: 4px solid var(--primary);
+}
+
+.calc-guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.calc-guide-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.calc-guide-body {
+  margin-top: 14px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.calc-guide-lead {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+
+.calc-guide-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.calc-guide-list li {
+  margin-bottom: 8px;
+}
+
+.calc-guide-example {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  border-radius: 8px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--text-light);
 }
 </style>

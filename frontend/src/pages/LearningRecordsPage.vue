@@ -1154,10 +1154,26 @@ const recordLookup = computed(() => {
     const classId = Number(record.StudentClassID || 0);
     const date = String(record.SessionDate || '').slice(0, 10);
     if (!classId || !date) continue;
-    const key = `${classId}|${date}`;
-    const prev = map.get(key);
+    const csId = Number(record.ClassSessionID || 0);
+    if (csId > 0) {
+      const exactKey = `cs:${csId}`;
+      const prev = map.get(exactKey);
+      if (!prev || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prev.Status)) {
+        map.set(exactKey, record);
+      }
+    }
+    const dateKey = `${classId}|${date}`;
+    const startTime = normalizeTime(record.StartTime || '');
+    if (startTime) {
+      const timeKey = `${classId}|${date}|${startTime}`;
+      const prevT = map.get(timeKey);
+      if (!prevT || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prevT.Status)) {
+        map.set(timeKey, record);
+      }
+    }
+    const prev = map.get(dateKey);
     if (!prev || scheduleStatusPriority(record.Status) > scheduleStatusPriority(prev.Status)) {
-      map.set(key, record);
+      map.set(dateKey, record);
     }
   }
   return map;
@@ -1245,7 +1261,10 @@ const buildEvents = (targetDates) => {
       if (!targetSet.has(dateStr)) continue;
       const startTime = normalizeTime(rawSession?.start_time || rawSession?.StartTime) || resolveCourseStartTime(sc, dateStr);
       const endTime = normalizeTime(rawSession?.end_time || rawSession?.EndTime) || computedEndTimeForClass(sc, startTime);
-      const record = recordLookup.value.get(`${classId}|${dateStr}`);
+      const csId = Number(rawSession?.id || 0);
+      const record = (csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null)
+        || (startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null)
+        || recordLookup.value.get(`${classId}|${dateStr}`);
       const rowStatus = String(rawSession?.learning_record_status || '');
       const formStatus = rowStatus || record?.Status || 'missing';
       const recordId = rawSession?.learning_record_id != null
@@ -1258,9 +1277,10 @@ const buildEvents = (targetDates) => {
       const fillLocked = isSubstituted || !isSessionStarted(dateStr, startTime);
       const student = studentList.value.find(s => String(s.id) === String(sc.student_id || sc.StudentID));
       const studentName = student?.name || sc.student_name || `學生#${sc.student_id || sc.StudentID}`;
+      const eventKey = csId > 0 ? `cs-${csId}` : `${classId}-${dateStr}-${startTime || ''}`;
       events.push({
-        key: `${classId}-${dateStr}`,
-        classSessionId: Number(rawSession?.id || 0) || null,
+        key: eventKey,
+        classSessionId: csId || null,
         classId,
         studentId: sc.student_id || sc.StudentID,
         studentName,
@@ -1395,11 +1415,16 @@ const syncFormTimesFromCourseSchedule = () => {
 
   const classId = Number(course.id || course.ID || 0);
   const sessions = directorSessionsByClassId.value[String(classId)] || [];
-  const daySession = sessions.find((s) => {
+  const daySessions = sessions.filter((s) => {
     if (String(s.session_date).slice(0, 10) !== dateStr) return false;
     const st = String(s.status || '').toLowerCase();
     return st !== 'cancelled' && st !== 'leave';
   });
+  let daySession = daySessions[0] || null;
+  if (daySessions.length > 1 && form.StartTime) {
+    const byTime = daySessions.find((s) => normalizeTime(s.start_time) === normalizeTime(form.StartTime));
+    if (byTime) daySession = byTime;
+  }
 
   if (daySession && daySession.id) {
     form.ClassSessionID = Number(daySession.id);

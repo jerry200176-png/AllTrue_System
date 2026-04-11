@@ -29,19 +29,24 @@ export function useRescheduleAndMakeup({
     const rows = classSessionsByCourse.value[cid];
     if (Array.isArray(rows) && rows.length > 0) {
       const options = [];
-      const seenDates = new Set();
       rows.forEach((row, idx) => {
         const status = String(row?.status || '').toLowerCase();
         if (['completed', 'attended', 'late', 'excused', 'absent', 'cancelled', 'leave', 'leave_adjusted'].includes(status)) return;
         const date = String(row?.session_date || '').slice(0, 10);
-        if (!date || seenDates.has(date)) return;
-        seenDates.add(date);
-        options.push({ date, index: idx + 1 });
+        if (!date) return;
+        const startTime = String(row?.start_time || '').slice(0, 5);
+        options.push({
+          date,
+          index: idx + 1,
+          session_id: row?.id || null,
+          start_time: startTime || null,
+          label: startTime ? `${date} ${startTime}` : date,
+        });
       });
       return options;
     }
     const list = sessions(c);
-    return list.map((date, i) => ({ date, index: i + 1 }));
+    return list.map((date, i) => ({ date, index: i + 1, session_id: null, start_time: null, label: date }));
   });
 
   async function openReschedule(c) {

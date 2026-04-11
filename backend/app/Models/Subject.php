@@ -13,5 +13,6 @@ class Subject extends Model
         'School_id',
         'Grade_no',
         'Subject_Name',
+        'CampusID',
     ];
 }

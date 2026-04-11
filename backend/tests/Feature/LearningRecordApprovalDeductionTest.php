@@ -17,7 +17,7 @@ class LearningRecordApprovalDeductionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_approving_learning_record_does_not_change_session_counters(): void
+    public function test_approving_lr_deducts_session_and_marks_class_session_attended(): void
     {
         $token = $this->createDirectorToken([1], 'director-approve-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-approve-a@example.com');
@@ -32,14 +32,13 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'start_time' => '16:00',
         ]);
         $courseId = (int) $course->ID;
-        $before = StudentClass::findOrFail($courseId);
 
         $classSession = ClassSession::create([
             'StudentClassID' => $courseId,
             'SessionDate' => now()->subDay()->toDateString(),
             'StartTime' => '16:00',
             'EndTime' => '18:00',
-            'Status' => 'completed',
+            'Status' => 'scheduled',
             'Note' => '',
         ]);
 
@@ -61,16 +60,22 @@ class LearningRecordApprovalDeductionTest extends TestCase
             ->assertOk();
 
         $after = StudentClass::findOrFail($courseId);
-        $this->assertSame((int) $before->RemainingSessions, (int) $after->RemainingSessions);
-        $this->assertSame((int) $before->UsedSessions, (int) $after->UsedSessions);
+        $this->assertSame(5, (int) $after->RemainingSessions, 'approve should deduct one session');
+        $this->assertSame(1, (int) $after->UsedSessions);
 
-        $this->assertDatabaseHas('LearningRecord', [
-            'id' => $record->id,
-            'Status' => 'approved',
+        $this->assertDatabaseHas('LearningRecord', ['id' => $record->id, 'Status' => 'approved']);
+
+        $classSession->refresh();
+        $this->assertSame('attended', $classSession->Status);
+
+        $this->assertDatabaseHas('StudentSingIn', [
+            'ClassSessionID' => $classSession->id,
+            'Memo' => 'lr_approve',
+            'SessionDeducted' => 1,
         ]);
     }
 
-    public function test_attendance_after_approved_record_deducts_once_via_attendance_only(): void
+    public function test_approving_already_attended_session_does_not_double_deduct(): void
     {
         $token = $this->createDirectorToken([1], 'director-approve-b@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-approve-b@example.com');
@@ -91,9 +96,24 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'SessionDate' => now()->subDay()->toDateString(),
             'StartTime' => '17:00',
             'EndTime' => '19:00',
-            'Status' => 'completed',
+            'Status' => 'scheduled',
             'Note' => '',
         ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $courseId,
+            'TeacherID' => $teacherId,
+            'ClassSessionID' => $classSession->id,
+            'Status' => 'present',
+        ])->assertCreated();
+
+        $afterAttendance = StudentClass::findOrFail($courseId);
+        $this->assertSame(4, (int) $afterAttendance->RemainingSessions);
+        $this->assertSame(1, (int) $afterAttendance->UsedSessions);
 
         $record = LearningRecord::create([
             'StudentClassID' => $courseId,
@@ -113,10 +133,154 @@ class LearningRecordApprovalDeductionTest extends TestCase
             ->assertOk();
 
         $afterApprove = StudentClass::findOrFail($courseId);
-        $remainingAfterApprove = (int) $afterApprove->RemainingSessions;
-        $usedAfterApprove = (int) $afterApprove->UsedSessions;
+        $this->assertSame(4, (int) $afterApprove->RemainingSessions, 'should NOT double-deduct');
+        $this->assertSame(1, (int) $afterApprove->UsedSessions);
+    }
+
+    public function test_approving_lr_on_monthly_course_increments_used_sessions(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-monthly-a@example.com');
+        $student = $this->createStudent(1, '月結制測試A');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 0,
+            'remaining_sessions' => 0,
+            'sessions_used' => 0,
+            'schedule_mode' => 'monthly',
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '月結評量',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => $classSession->StartTime,
+            'EndTime' => $classSession->EndTime,
+        ]);
 
         $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+            ->assertOk();
+
+        $after = StudentClass::findOrFail($courseId);
+        $this->assertSame(1, (int) $after->UsedSessions, 'monthly: UsedSessions should increment');
+        $this->assertSame(0, (int) $after->RemainingSessions, 'monthly: RemainingSessions stays 0');
+    }
+
+    public function test_approving_lr_with_no_class_session_id_resolves_and_deducts(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-orphan-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-orphan-a@example.com');
+        $student = $this->createStudent(1, 'Orphan LR 測試');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '14:00',
+        ]);
+        $courseId = (int) $course->ID;
+        $sessionDate = now()->subDay()->toDateString();
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '14:00',
+            'EndTime' => '16:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => 0,
+            'TeacherID' => $teacherId,
+            'Content' => 'Orphan 評量',
+            'Status' => 'pending',
+            'SessionDate' => $sessionDate,
+            'StartTime' => '14:00',
+            'EndTime' => '16:00',
+        ]);
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        $this->assertSame(0, (int) $record->ClassSessionID);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+            ->assertOk();
+
+        $record->refresh();
+        $this->assertSame((int) $classSession->id, (int) $record->ClassSessionID, 'orphan LR should be bound');
+
+        $after = StudentClass::findOrFail($courseId);
+        $this->assertSame(5, (int) $after->RemainingSessions, 'orphan LR approve should deduct');
+    }
+
+    public function test_attendance_after_approval_returns_409(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-att409-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-att409-a@example.com');
+        $student = $this->createStudent(1, '核准後點名409');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '15:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '先核准再點名',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+            ->assertOk();
+
+        $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->postJson('/api/v1/attendance', [
@@ -125,16 +289,9 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'TeacherID' => $teacherId,
             'ClassSessionID' => $classSession->id,
             'Status' => 'present',
-        ])->assertCreated();
-
-        $afterAttendance = StudentClass::findOrFail($courseId);
-        $this->assertSame($remainingAfterApprove - 1, (int) $afterAttendance->RemainingSessions);
-        $this->assertSame($usedAfterApprove + 1, (int) $afterAttendance->UsedSessions);
-
-        $this->assertDatabaseHas('StudentSingIn', [
-            'ClassSessionID' => $classSession->id,
-            'SessionDeducted' => 1,
         ]);
+
+        $response->assertStatus(409);
     }
 
     public function test_backdoor_approve_does_not_deduct_attendance_deducts_once(): void
@@ -612,13 +769,14 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $res->assertStatus(409);
     }
 
-    public function test_rollback_approval_resets_status_and_counters(): void
+    public function test_rollback_approval_reverses_deduction_but_not_independent_attendance(): void
     {
         $token = $this->createDirectorToken([1], 'director-rollback-full@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-rollback-full@example.com');
         $student = $this->createStudent(1, '退回待審完整測試');
 
-        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+        // --- Scenario A: approve then rollback → restored ---
+        $courseA = $this->createStudentClassForTest($student->id, $teacherId, [
             'sessions_purchased' => 6,
             'remaining_sessions' => 6,
             'sessions_used' => 0,
@@ -626,24 +784,24 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'days_of_week' => [1],
             'start_time' => '16:00',
         ]);
-        $courseId = (int) $course->ID;
+        $courseAId = (int) $courseA->ID;
 
-        $classSession = ClassSession::create([
-            'StudentClassID' => $courseId,
+        $csA = ClassSession::create([
+            'StudentClassID' => $courseAId,
             'SessionDate' => now()->subDay()->toDateString(),
             'StartTime' => '16:00',
             'EndTime' => '18:00',
-            'Status' => 'completed',
+            'Status' => 'scheduled',
             'Note' => '',
         ]);
 
-        $record = LearningRecord::create([
-            'StudentClassID' => $courseId,
-            'ClassSessionID' => $classSession->id,
+        $recordA = LearningRecord::create([
+            'StudentClassID' => $courseAId,
+            'ClassSessionID' => $csA->id,
             'TeacherID' => $teacherId,
             'Content' => '退回待審內容',
             'Status' => 'pending',
-            'SessionDate' => $classSession->SessionDate,
+            'SessionDate' => $csA->SessionDate,
             'StartTime' => '16:00',
             'EndTime' => '18:00',
         ]);
@@ -651,27 +809,98 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
-        ])->postJson("/api/v1/learning-records/{$record->id}/approve")
+        ])->postJson("/api/v1/learning-records/{$recordA->id}/approve")
             ->assertOk();
 
-        $afterApprove = StudentClass::findOrFail($courseId);
-        $this->assertSame(6, (int) $afterApprove->RemainingSessions);
+        $afterApproveA = StudentClass::findOrFail($courseAId);
+        $this->assertSame(5, (int) $afterApproveA->RemainingSessions);
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
-        ])->postJson("/api/v1/learning-records/{$record->id}/rollback-approval", [
+        ])->postJson("/api/v1/learning-records/{$recordA->id}/rollback-approval", [
             'ReviewNote' => '需要重新檢查',
         ])->assertOk();
 
         $this->assertDatabaseHas('LearningRecord', [
-            'id' => $record->id,
+            'id' => $recordA->id,
             'Status' => 'pending',
             'ReviewNote' => '需要重新檢查',
         ]);
 
-        $afterRollback = StudentClass::findOrFail($courseId);
-        $this->assertSame(6, (int) $afterRollback->RemainingSessions);
+        $afterRollbackA = StudentClass::findOrFail($courseAId);
+        $this->assertSame(6, (int) $afterRollbackA->RemainingSessions, 'rollback should restore sessions');
+        $this->assertSame(0, (int) $afterRollbackA->UsedSessions);
+
+        $csA->refresh();
+        $this->assertSame('scheduled', $csA->Status);
+
+        // --- Scenario B: attendance then approve then rollback → attendance deduction intact ---
+        $courseB = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [2],
+            'start_time' => '17:00',
+        ]);
+        $courseBId = (int) $courseB->ID;
+
+        $csB = ClassSession::create([
+            'StudentClassID' => $courseBId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '17:00',
+            'EndTime' => '19:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $courseBId,
+            'TeacherID' => $teacherId,
+            'ClassSessionID' => $csB->id,
+            'Status' => 'present',
+        ])->assertCreated();
+
+        $afterAttB = StudentClass::findOrFail($courseBId);
+        $this->assertSame(5, (int) $afterAttB->RemainingSessions);
+
+        $recordB = LearningRecord::create([
+            'StudentClassID' => $courseBId,
+            'ClassSessionID' => $csB->id,
+            'TeacherID' => $teacherId,
+            'Content' => '先點名再核准',
+            'Status' => 'pending',
+            'SessionDate' => $csB->SessionDate,
+            'StartTime' => '17:00',
+            'EndTime' => '19:00',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$recordB->id}/approve")
+            ->assertOk();
+
+        $afterApproveB = StudentClass::findOrFail($courseBId);
+        $this->assertSame(5, (int) $afterApproveB->RemainingSessions, 'approve after attendance should not double-deduct');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$recordB->id}/rollback-approval")
+            ->assertOk();
+
+        $afterRollbackB = StudentClass::findOrFail($courseBId);
+        $this->assertSame(5, (int) $afterRollbackB->RemainingSessions, 'rollback should NOT undo independent attendance');
+        $this->assertSame(1, (int) $afterRollbackB->UsedSessions);
+
+        $csB->refresh();
+        $this->assertSame('attended', $csB->Status, 'independent attendance keeps CS as attended');
     }
 
     public function test_paused_course_hides_pending_learning_record_from_index_but_keeps_approved_visible(): void
@@ -855,7 +1084,7 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
-            'ScheduleMode' => 'count',
+            'ScheduleMode' => $o['schedule_mode'] ?? 'count',
             'SessionCount' => (int) $o['sessions_purchased'],
             'RemainingSessions' => (int) $o['remaining_sessions'],
             'UsedSessions' => (int) $o['sessions_used'],

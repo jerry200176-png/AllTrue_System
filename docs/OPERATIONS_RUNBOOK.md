@@ -184,25 +184,27 @@ ls -la backend/.env
 
 ---
 
-## K. Attendance / Remaining Sessions / Subject Units SOP（2026-04-10 凍結）
+## K. Attendance / Remaining Sessions / Subject Units SOP（2026-04-11 更新）
 
 > 這段是**強制口徑**，後續人員與 AI 不可再混用邏輯。
 
 ### 1) 剩餘堂數唯一規則
 
 - 堂數制課程：`RemainingSessions = SessionCount - UsedSessions`（`UsedSessions` 與 `SessionCount` 取 min cap）
+- 月結制課程：`RemainingSessions` 恆 0，`UsedSessions` 依實際上課堂數累加
 - **已上堂數（UsedSessions 口徑）**須與畫面上「已上」一致，取以下三者之**最大值**後再與購買堂數取 cap：
   1. 已扣點出缺勤：`StudentSingIn.SessionDeducted = 1`（DISTINCT 堂次）
   2. 排課堂次已結：`ClassSession.Status ∈ {completed, attended, late}`
-  3. 已核准評量所綁堂次：`LearningRecord.Status=approved` 且 `ClassSessionID>0`（DISTINCT）
+  3. 無綁定堂次之 orphan 評量（歷史補登遺留）：`LearningRecord.Status=approved` 且 `ClassSessionID<=0`
 - 另與 `SessionDeductionLedger`（attendance / retro_leave / status_adjust）取 max，避免漏帳
-- **評量審核 API 仍不得主動呼叫扣堂**；但若該堂次在 (2)(3) 已可辨識為已上，同步邏輯必須算入，否則會出現「畫面五堂已上、剩餘卻顯示六堂」之類錯誤（2026-04-10 實例：黃品皓課程列表）
+- **核准評量 = 點名的一種手段**：核准時透過 `ApprovalSessionSyncService::syncOnApprove` 建立 `StudentSignIn(Memo=lr_approve)`、更新 `ClassSession.Status=attended`、呼叫 `deductOnAttendance`，與手動點名走同一管線
 
 ### 2) 到班判定口徑
 
 - 視為到班並扣堂：`present`, `late`
 - 不扣堂：`absent`, `excused`, `leave`
 - `late` 雖扣堂，但必須保留在出缺勤資料中供家長端查閱
+- **核准評量視同 present 到班**
 
 ### 3) 科目數（Subject Units）口徑
 
@@ -211,19 +213,22 @@ ls -la backend/.env
 
 ### 4) 開發/改碼禁忌（給後續 AI）
 
-- 禁止在 `LearningRecordController::approve/batchApprove/rollback` 內呼叫任何扣堂邏輯
-- 禁止**只**用 `SessionDeducted` 或**只**用 `approved LearningRecord count` 單一來源當 `UsedSessions`（必須與 `ClassSession` 已完成狀態一併對齊；實作見 `SessionDeductionService::batchObservedUsedSessions` / `recomputeCounters`）
+- 核准評量時**必須**呼叫 `ApprovalSessionSyncService::syncOnApprove`，此為唯一的核准驅動扣堂入口；禁止在任何地方直接呼叫 `SessionDeductionService::deductForSession` 而不透過 `deductOnAttendance` 或 `syncOnApprove`
+- 禁止**只**用 `SessionDeducted` 或**只**用 `approved LearningRecord count` 單一來源當 `UsedSessions`（必須與 `ClassSession` 已完成狀態一併對齊；實作見 `SessionDeductionService::batchObservedUsedSessions` / `recomputeCounters`）。無綁定堂次之 orphan 評量仍可依日期計入（補登遺留）。
 - 若調整堂數計算，必須先檢查：
   - `AttendanceController`（手動點名）
   - `SwipeRfidController`（刷卡）
   - `SessionDeductionService`
+  - `ApprovalSessionSyncService`（核准驅動扣堂）
   - `StudentClassController::index`（課程列表展示）
 
 ### 5) 上線前回歸檢查（必跑）
 
 1. 點名 `present` 後，`UsedSessions +1 / RemainingSessions -1`
 2. 點名 `late` 後，`UsedSessions +1 / RemainingSessions -1`，且家長端可見「遲到」
-3. 評量從 pending → approved 後：**不得**由審核流程額外觸發扣堂；若該堂在排程上已標為已上/已綁堂次，匯總後的 `UsedSessions` 須與畫面一致（不得少算）
-4. 評量 rollback 後，堂數不變
-5. 科目數統計隨評量審核變動，但不影響堂數
+3. 核准評量後：`RemainingSessions -1`（堂數制）、`UsedSessions +1`（月結制）、`ClassSession.Status=attended`、出缺勤不再列出待點名
+4. 若已有獨立點名再核准：堂數不重複扣
+5. 核准後再手動送出點名（POST attendance）：應回傳 409
+6. 評量 rollback 後：堂數恢復、`ClassSession.Status=scheduled`（若無其他點名）；若有獨立點名，rollback 不影響獨立點名
+7. 科目數統計隨評量審核變動，但不影響堂數
 

@@ -139,6 +139,14 @@
                 <span class="comment-author">{{ c.author_name }}</span>
                 <span class="comment-time">{{ formatDate(c.created_at) }}</span>
                 <span v-if="c.is_internal_note" class="internal-tag">內部</span>
+                <button
+                  v-if="isSuperAdmin"
+                  class="btn-sm btn-ghost"
+                  :disabled="isUpdatingCommentVisibility(c.id)"
+                  @click="toggleCommentVisibility(c)"
+                >
+                  {{ c.is_internal_note ? '給回報者看' : '設為內部' }}
+                </button>
               </div>
               <div class="comment-body">{{ c.body }}</div>
             </div>
@@ -147,7 +155,7 @@
               <textarea v-model="newComment" placeholder="輸入留言..." rows="2" class="form-textarea"></textarea>
               <div class="comment-form-actions">
                 <label v-if="isSuperAdmin" class="checkbox-label">
-                  <input type="checkbox" v-model="commentIsInternal" /> 內部備註
+                  <input type="checkbox" v-model="commentIsInternal" /> 內部備註（回報者不可見）
                 </label>
                 <button class="btn-sm btn-primary" :disabled="!newComment.trim()" @click="doAddComment">送出</button>
               </div>
@@ -163,7 +171,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
-  updateBugStatus,
+  updateBugStatus, updateBugCommentVisibility,
 } from '../lib/bugReportsApi';
 
 const props = defineProps({
@@ -183,14 +191,19 @@ const newStatus = ref('');
 const statusNote = ref('');
 const newComment = ref('');
 const commentIsInternal = ref(false);
+const updatingCommentVisibilityIds = ref(new Set());
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
-const pageTitle = computed(() => (isSuperAdmin.value ? 'Bug 回報（處理中心）' : '我的 Bug 回報'));
-const pageDesc = computed(() => (
-  isSuperAdmin.value
-    ? '檢視各校區回報並更新狀態（僅超級管理員可處理）'
-    : '僅顯示你本人提交的問題與處理進度'
-));
+const pageTitle = computed(() => {
+  if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
+  return '我的 Bug 回報';
+});
+const pageDesc = computed(() => {
+  if (isSuperAdmin.value) {
+    return '檢視各校區回報並更新狀態（僅超級管理員可處理）';
+  }
+  return '僅顯示你本人提交的問題與處理進度';
+});
 
 const TRANSITIONS = {
   new: ['triaged', 'in_progress', 'closed'],
@@ -224,6 +237,7 @@ async function loadBugs() {
     if (filterSeverity.value) filters.severity = filterSeverity.value;
     const data = await fetchBugReports(props.branchId, filters);
     bugs.value = data.data || [];
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     console.error('[Bugs] loadBugs:', e);
   } finally {
@@ -267,6 +281,24 @@ async function doAddComment() {
     await selectBug(activeBug.value);
   } catch (e) {
     alert('留言失敗：' + e.message);
+  }
+}
+
+function isUpdatingCommentVisibility(commentId) {
+  return updatingCommentVisibilityIds.value.has(commentId);
+}
+
+async function toggleCommentVisibility(comment) {
+  if (!activeBug.value) return;
+  const nextValue = !Boolean(comment?.is_internal_note);
+  updatingCommentVisibilityIds.value.add(comment.id);
+  try {
+    await updateBugCommentVisibility(activeBug.value.id, comment.id, nextValue);
+    await selectBug(activeBug.value);
+  } catch (e) {
+    alert('更新留言可見性失敗：' + e.message);
+  } finally {
+    updatingCommentVisibilityIds.value.delete(comment.id);
   }
 }
 
@@ -377,6 +409,8 @@ function formatDate(iso) {
 .btn-sm { padding: 6px 14px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; }
 .btn-sm.btn-primary { background: var(--primary); color: #fff; }
 .btn-sm.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-sm.btn-ghost { background: #fff; border: 1px solid var(--border); color: var(--text); padding: 4px 10px; }
+.btn-sm.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .status-log-section { margin: 16px 0; }
 .status-log-section strong { display: block; margin-bottom: 8px; }

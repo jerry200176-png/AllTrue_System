@@ -72,8 +72,8 @@ export function useSessionEditFlow({
     doStatusChange(next);
   }
 
-  function openSessionEdit(course, dateYmd) {
-    const row = getSessionDisplayRow(course, dateYmd);
+  function openSessionEdit(course, dateYmd, sessionId) {
+    const row = getSessionDisplayRow(course, dateYmd, sessionId);
     if (!row) return;
     sessionEditForm.value = {
       session_id: row.id,
@@ -108,7 +108,8 @@ export function useSessionEditFlow({
     }
     const today = typeof todayYmd === 'object' ? todayYmd.value : todayYmd;
     const upcoming = dates.find((d) => String(d) >= today);
-    openSessionEdit(course, upcoming || dates[0]);
+    const targetDate = upcoming || dates[0];
+    openSessionEdit(course, targetDate);
   }
 
   function closeSessionEdit() {

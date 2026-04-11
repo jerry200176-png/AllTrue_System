@@ -84,8 +84,8 @@
 
 **回報者（主任／老師）**
 
-- 條件：存在 **非內部備註**、**作者 ≠ 回報者**、且留言時間視為「新回覆」的留言。
-- 實作：`bug_report_user_reads` 記錄 `(user_id, bug_report_id, read_at)`；`GET /api/v1/bugs/{id}` 成功且觀看者為回報者時 **`markBugRead`**。
+- 條件：**其一**即可計未讀—（1）存在 **非內部備註**、**作者 ≠ 回報者**、且為「新回覆」之留言；（2）**狀態異動紀錄**（`bug_report_status_logs`）中 **`changed_by` ≠ 回報者** 且為新異動（如被改為已解決）。
+- 實作：`bug_report_user_reads` 記錄 `(user_id, bug_report_id, read_at)`。回報者 **`GET /api/v1/bugs`（清單）** 時 **`markReporterInboxSeenFromList`**：已進清單頁＝已讀，**側欄未讀應歸零**；`GET /api/v1/bugs/{id}` 時 **`markBugRead`** 再更新該筆。
 - SQL 須涵蓋「留言與回報同秒」情境：使用 `c.created_at >= bug_reports.created_at` 與 `c.created_at > COALESCE(read_at, '1970-01-01')`（見 `BugReportService::countReporterReplyUnread`）。
 - **內部備註**不計入回報者紅點。
 
@@ -105,6 +105,7 @@
 
 - `GET /api/v1/bugs/unread-badge?branch_id=` — 必須註冊在 **`GET /api/v1/bugs/{id}` 之前**。
 - `POST /api/v1/bugs/mark-inbox-seen` — `super_admin` middleware。
+- `PATCH /api/v1/bugs/{id}/comments/{commentId}/visibility` — `super_admin` 才可切換留言 `is_internal_note`（內部/可見）。
 
 ### 3.5 測試
 

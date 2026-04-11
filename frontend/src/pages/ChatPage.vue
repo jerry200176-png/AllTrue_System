@@ -21,7 +21,7 @@
           <!-- Thread list (left panel) -->
           <div class="thread-panel" :class="{ 'hidden-mobile': activeThread }">
             <div class="thread-panel-header">
-              <button class="btn-new-chat" @click="showNewChat = true; dmSearch = ''; selectedUserId = ''">
+              <button class="btn-new-chat" @click="showNewChat = true; dmSearch = ''; selectedUserId = ''; groupMemberSearch = ''">
                 <span class="material-symbols-outlined">add</span>
                 新對話
               </button>
@@ -226,7 +226,8 @@
               :class="{ selected: selectedUserId == u.id }"
               @click="selectedUserId = u.id"
             >
-              {{ u.display_name }}
+              <span class="dm-staff-name">{{ u.display_name }}</span>
+              <span v-if="u.role_label" class="staff-role-tag">{{ u.role_label }}</span>
             </div>
             <div v-if="filteredStaffList.length === 0" class="dm-staff-empty">找不到符合的人員</div>
           </div>
@@ -236,12 +237,21 @@
         <div v-if="newChatTab === 'group'">
           <label>群組名稱</label>
           <input v-model="groupName" class="form-input" placeholder="例：教務群" />
+          <label>搜尋成員</label>
+          <input
+            v-model="groupMemberSearch"
+            class="form-input"
+            placeholder="輸入名字篩選..."
+            autocomplete="off"
+          />
           <label>成員（多選）</label>
-          <div class="member-checkboxes">
-            <label v-for="u in staffList" :key="u.id" class="checkbox-label">
+          <div class="member-pick-list">
+            <label v-for="u in filteredStaffForGroup" :key="u.id" class="member-pick-row">
               <input type="checkbox" :value="u.id" v-model="groupMemberIds" />
-              {{ u.display_name }}
+              <span class="member-pick-name">{{ u.display_name }}</span>
+              <span v-if="u.role_label" class="staff-role-tag">{{ u.role_label }}</span>
             </label>
+            <div v-if="filteredStaffForGroup.length === 0" class="member-pick-empty">找不到符合的人員</div>
           </div>
           <button class="btn-primary" :disabled="!groupName.trim() || groupMemberIds.length === 0" @click="startGroup">建立群組</button>
         </div>
@@ -303,11 +313,19 @@
         <!-- Add members -->
         <div v-if="canManageGroup && availableToAdd.length > 0" class="add-members-section">
           <div class="section-label">新增成員</div>
-          <div class="member-checkboxes">
-            <label v-for="u in availableToAdd" :key="u.id" class="checkbox-label">
+          <input
+            v-model="addMemberSearch"
+            class="form-input"
+            placeholder="搜尋可加入的人員..."
+            autocomplete="off"
+          />
+          <div class="member-pick-list">
+            <label v-for="u in filteredAvailableToAdd" :key="u.id" class="member-pick-row">
               <input type="checkbox" :value="u.id" v-model="addMemberIds" />
-              {{ u.display_name }}
+              <span class="member-pick-name">{{ u.display_name }}</span>
+              <span v-if="u.role_label" class="staff-role-tag">{{ u.role_label }}</span>
             </label>
+            <div v-if="filteredAvailableToAdd.length === 0" class="member-pick-empty">找不到符合的人員</div>
           </div>
           <button
             class="btn-primary"
@@ -425,8 +443,10 @@ const newChatTab     = ref('dm');
 const selectedUserId = ref('');
 const groupName      = ref('');
 const groupMemberIds = ref([]);
-const staffList      = ref([]);
-const dmSearch       = ref('');
+const staffList        = ref([]);
+const dmSearch         = ref('');
+const groupMemberSearch = ref('');
+const addMemberSearch  = ref('');
 
 // ── Message context menu (right-click / long-press) ─────────────
 const contextMenu = ref({ show: false, msg: null, x: 0, y: 0 });
@@ -495,6 +515,23 @@ const filteredStaffList = computed(() => {
   return staffList.value.filter(u => u.display_name.toLowerCase().includes(q));
 });
 
+function staffMatchesQuery(u, q) {
+  if (!q) return true;
+  const name = (u.display_name || '').toLowerCase();
+  const role = (u.role_label || '').toLowerCase();
+  return name.includes(q) || role.includes(q);
+}
+
+const filteredStaffForGroup = computed(() => {
+  const q = groupMemberSearch.value.trim().toLowerCase();
+  return staffList.value.filter(u => staffMatchesQuery(u, q));
+});
+
+const filteredAvailableToAdd = computed(() => {
+  const q = addMemberSearch.value.trim().toLowerCase();
+  return availableToAdd.value.filter(u => staffMatchesQuery(u, q));
+});
+
 // ── Avatar helpers ───────────────────────────────────────────────
 
 function threadListAvatarUrl(t) {
@@ -554,6 +591,16 @@ async function loadThreads() {
   }
 }
 
+function staffRoleLabel(role) {
+  switch (role) {
+    case 'teacher': return '老師';
+    case 'director': return '主任';
+    case 'super_admin': return '超級管理員';
+    case 'admin': return '管理員';
+    default: return '';
+  }
+}
+
 async function loadStaff() {
   try {
     const data = await fetchStaffList(null); // load all branches so cross-branch DM works
@@ -562,6 +609,7 @@ async function loadStaff() {
       .map((u) => ({
         ...u,
         display_name: u.username || u.Name || u.name || u.account || u.email || `User#${u.id}`,
+        role_label: staffRoleLabel(u.role),
       }))
       .filter((u) => Number(u.id) !== myUserId.value);
   } catch (e) {
@@ -824,6 +872,7 @@ async function openGroupInfo() {
   showGroupInfo.value       = true;
   loadingGroupMembers.value = true;
   addMemberIds.value        = [];
+  addMemberSearch.value     = '';
   editingGroupName.value    = false;
   try {
     const res        = await fetchThreadMembers(activeThread.value.id);
@@ -1192,9 +1241,45 @@ function formatTime(iso) {
   width: 100%; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14px; margin: 4px 0 12px; box-sizing: border-box;
 }
-.member-checkboxes {
-  max-height: 200px; overflow-y: auto; border: 1px solid var(--border);
-  border-radius: 8px; padding: 8px; margin: 4px 0 12px;
+.member-pick-list {
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 4px 0 12px;
+}
+.member-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.member-pick-row:last-child { border-bottom: none; }
+.member-pick-row:hover { background: var(--primary-bg); }
+.member-pick-row input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+.member-pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.member-pick-row .staff-role-tag { flex-shrink: 0; }
+.member-pick-empty {
+  padding: 14px;
+  font-size: 13px;
+  color: var(--text-light);
+  text-align: center;
 }
 .checkbox-label { display: block; padding: 4px 0; font-size: 14px; cursor: pointer; }
 .btn-primary {
@@ -1265,6 +1350,7 @@ function formatTime(iso) {
   border-radius: 8px; margin: 4px 0 12px;
 }
 .dm-staff-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 10px 14px; font-size: 14px; cursor: pointer;
   border-bottom: 1px solid var(--border);
   transition: background 0.12s;
@@ -1272,6 +1358,21 @@ function formatTime(iso) {
 .dm-staff-item:last-child { border-bottom: none; }
 .dm-staff-item:hover { background: var(--primary-bg); }
 .dm-staff-item.selected { background: var(--primary); color: #fff; }
+.dm-staff-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-staff-item.selected .staff-role-tag {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.staff-role-tag {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--primary-bg, #f3f4f6);
+  color: var(--primary, #c2410c);
+}
 .dm-staff-empty { padding: 14px; font-size: 13px; color: var(--text-light); text-align: center; }
 
 /* Lightbox */

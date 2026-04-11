@@ -237,8 +237,17 @@
                       </td>
                       <td style="font-weight: 600;">${{ sessionFeeDisplay(course) }}</td>
                       <td>{{ course.duration_hours }} 小時</td>
-                      <td>
-                        <span v-if="course.days_of_week && course.days_of_week.length">
+                      <td class="cell-schedule-slots">
+                        <div v-if="scheduleDisplayLines(course).length > 0" class="schedule-slot-lines">
+                          <div
+                            v-for="(line, sidx) in scheduleDisplayLines(course)"
+                            :key="`${course.id}-sch-${sidx}`"
+                            class="schedule-slot-line"
+                          >
+                            {{ line }}
+                          </div>
+                        </div>
+                        <span v-else-if="course.days_of_week && course.days_of_week.length">
                           {{ scheduleDisplay(course) }}
                         </span>
                         <span v-else-if="course.day_of_week">
@@ -356,7 +365,7 @@
           v-model="courseForm"
           :teachers="teachers"
           :rooms="rooms"
-          :subjects="SUBJECTS"
+          :subjects="subjectOptions"
           :day-options="dayOptions"
           :time-options="TIME_OPTIONS_30"
           :settlement-day-options="settlementDayOptions"
@@ -382,16 +391,6 @@
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
-    />
-
-    <EnrollmentWizard
-      v-if="showEnrollmentWizard"
-      :branch-id="props.branchId"
-      :students="schedulerStudents"
-      :teachers="teachers"
-      :rooms="rooms"
-      @cancel="showEnrollmentWizard = false"
-      @success="handleEnrollmentSuccess"
     />
 
     <!-- Add Sessions Modal -->
@@ -466,15 +465,16 @@
 import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import CourseEditForm from '../components/CourseEditForm.vue';
-import EnrollmentWizard from '../components/EnrollmentWizard.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 
 // --- State ---
+const subjectOptions = ref([...SUBJECTS]);
 const students = ref([]);
 const branchStudentTotal = ref(0);
 const studentCourses = ref({}); // { studentId: [courses] }
@@ -491,7 +491,6 @@ const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_n
 
 // Course modal
 const showCourseModal = ref(false);
-const showEnrollmentWizard = ref(false);
 const editingCourseId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const selectedStudent = ref(null);
@@ -611,28 +610,33 @@ const scheduleTimeRange = (course) => {
   const end = computeEndTime(start, Number(course?.duration_hours) || 2) || course?.end_time;
   return `${start}~${end}`;
 };
-const scheduleDisplay = (course) => {
+
+/** 有 day_time_slots 時每段一行（與課程管理「時段」一致） */
+const scheduleDisplayLines = (course) => {
   const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
   const globalDur = Number(course?.duration_hours) || 2;
-  if (slots.length > 0) {
-    const normalized = slots
-      .map((slot) => ({
-        day: Number(slot?.day || 0),
-        start: String(slot?.start_time || '').slice(0, 5),
-        dur: Number(slot?.duration_hours || 0) || globalDur,
-      }))
-      .filter((slot) => slot.day >= 1 && slot.day <= 7 && slot.start)
-      .sort((a, b) => a.day - b.day);
-    if (normalized.length > 0) {
-      const allSameDur = new Set(normalized.map((s) => s.dur)).size <= 1;
-      return normalized
-        .map((slot) => {
-          const end = computeEndTime(slot.start, slot.dur) || course?.end_time || '';
-          const durSuffix = !allSameDur ? ` ${slot.dur}h` : '';
-          return `${dayLabel(slot.day)} ${slot.start}~${end}${durSuffix}`;
-        })
-        .join('、');
-    }
+  if (!slots.length) return [];
+  const normalized = slots
+    .map((slot) => ({
+      day: Number(slot?.day || 0),
+      start: String(slot?.start_time || '').slice(0, 5),
+      dur: Number(slot?.duration_hours || 0) || globalDur,
+    }))
+    .filter((slot) => slot.day >= 1 && slot.day <= 7 && slot.start)
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+  if (!normalized.length) return [];
+  const allSameDur = new Set(normalized.map((s) => s.dur)).size <= 1;
+  return normalized.map((slot) => {
+    const end = computeEndTime(slot.start, slot.dur) || course?.end_time || '';
+    const durSuffix = !allSameDur ? ` ${slot.dur}h` : '';
+    return `${dayLabel(slot.day)} ${slot.start}~${end}${durSuffix}`;
+  });
+};
+
+const scheduleDisplay = (course) => {
+  const lines = scheduleDisplayLines(course);
+  if (lines.length > 0) {
+    return lines.join('、');
   }
   const daysText = (course?.days_of_week || []).map((d) => dayLabel(d)).join(' ');
   const range = scheduleTimeRange(course);
@@ -1057,15 +1061,6 @@ const openAddStudent = () => {
   showStudentModal.value = true;
 };
 
-const openEnrollmentWizard = async () => {
-  if (!props.branchId) {
-    alert('請先在上方選擇分校');
-    return;
-  }
-  await loadRoomsForBranch();
-  showEnrollmentWizard.value = true;
-};
-
 const editStudent = (student) => {
   editingStudentId.value = student.id;
   studentForm.value = {
@@ -1364,17 +1359,28 @@ const editCourse = (course) => {
     settlement_day: course.settlement_day ?? null,
     monthly_sessions: course.monthly_sessions ?? null,
     day_of_week: course.day_of_week || 0,
-    days_of_week: Array.isArray(course.days_of_week) ? course.days_of_week : (course.day_of_week ? [course.day_of_week] : []),
     rate_unit: course.rate_unit || 'session',
-    day_time_slots: Array.isArray(course.day_time_slots) && course.day_time_slots.length
-      ? course.day_time_slots.map((slot) => ({
-        day: Number(slot?.day || 0),
-        start_time: normalizeTo30Min(slot?.start_time || course.start_time || '16:00'),
-        duration_hours: Number(slot?.duration_hours || 0) || course.duration_hours || 2,
-      })).filter((slot) => slot.day >= 1 && slot.day <= 7)
-      : (Array.isArray(course.days_of_week) ? course.days_of_week : (course.day_of_week ? [course.day_of_week] : []))
-        .map((day) => ({ day: Number(day), start_time: normalizeTo30Min(course.start_time || '16:00'), duration_hours: course.duration_hours || 2 }))
-        .filter((slot) => slot.day >= 1 && slot.day <= 7),
+    ...(() => {
+      const dowBase = Array.isArray(course.days_of_week)
+        ? course.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7)
+        : (course.day_of_week ? [Number(course.day_of_week)] : []);
+      const mappedSlots = Array.isArray(course.day_time_slots) && course.day_time_slots.length
+        ? course.day_time_slots.map((slot) => ({
+          day: Number(slot?.day || 0),
+          start_time: normalizeTo30Min(slot?.start_time || course.start_time || '16:00'),
+          duration_hours: Number(slot?.duration_hours || 0) || course.duration_hours || 2,
+        })).filter((slot) => slot.day >= 1 && slot.day <= 7)
+        : (dowBase.length
+          ? dowBase.map((day) => ({
+            day: Number(day),
+            start_time: normalizeTo30Min(course.start_time || '16:00'),
+            duration_hours: course.duration_hours || 2,
+          }))
+          : []);
+      const slotDays = mappedSlots.map((s) => s.day).filter((d) => d >= 1 && d <= 7);
+      const days_of_week = [...new Set([...dowBase, ...slotDays])].sort((a, b) => a - b);
+      return { days_of_week, day_time_slots: mappedSlots };
+    })(),
     start_time: normalizeTo30Min(course.start_time || '16:00'),
     end_time: course.end_time || '18:00',
     first_class_date: course.first_class_date || '',
@@ -1397,12 +1403,6 @@ const handleUniversalSchedulerSuccess = async () => {
   if (sid != null) {
     await loadStudentCourses(sid);
   }
-  await loadAllStudentCourses();
-};
-
-const handleEnrollmentSuccess = async () => {
-  showEnrollmentWizard.value = false;
-  await loadStudents();
   await loadAllStudentCourses();
 };
 
@@ -1834,7 +1834,10 @@ watch(displayStudents, () => {
     expandedId.value = null;
   }
 });
-onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
+onMounted(async () => {
+  loadStudents(); loadTeachers(); loadAllStudentCourses();
+  try { const opts = await fetchSubjectOptions({ branchId: props.branchId }); if (opts.length > 0) subjectOptions.value = opts; } catch { /* keep defaults */ }
+});
 </script>
 
 <style scoped>
@@ -2220,6 +2223,18 @@ onMounted(() => { loadStudents(); loadTeachers(); loadAllStudentCourses(); });
   color: #64748b;
   line-height: 1.35;
   word-break: break-word;
+}
+
+.cell-schedule-slots .schedule-slot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.cell-schedule-slots .schedule-slot-line {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 /* ═══ Form Section ═══ */

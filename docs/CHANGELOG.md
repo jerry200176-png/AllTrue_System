@@ -2,6 +2,41 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-11 (B) — 核准評量 = 點名核課（重大架構變更）
+
+### ⚠️ Breaking Change — 核准評量現在會扣堂
+
+> **改動前必讀**：`docs/OPERATIONS_RUNBOOK.md` §K、`docs/AI_REGRESSION_LESSONS.md`（2026-04-11 核准評量扣堂）
+
+### Changed
+- **核准評量（`LearningRecordController::approve / batchApprove`）現在等同點名**：
+  - 核准時透過 `ApprovalSessionSyncService::syncOnApprove` 建立 `StudentSignIn(Memo=lr_approve, SessionDeducted=true)`
+  - 同步更新 `ClassSession.Status → attended`
+  - 呼叫 `SessionDeductionService::deductOnAttendance`（與手動點名同一管線）
+  - 堂數制：`RemainingSessions -1`；月結制：`UsedSessions +1`（`RemainingSessions` 恆 0）
+- **退回核准（`rollbackApproval`）對稱沖回**：void `lr_approve` 型 SignIn → reverse ledger → 若無其他點名則 `ClassSession.Status → scheduled`
+- **冪等保護**：若已有獨立點名（`SessionDeducted=true` SignIn），核准不重複扣堂；rollback 不影響獨立點名
+- 核准後再手動 POST attendance → 回傳 409（已有 SignIn）
+
+### Added
+- **`backend/app/Services/ApprovalSessionSyncService.php`**（新服務）：`syncOnApprove` / `syncOnRollback`，含守衛規則（leave/cancelled/未來堂次 skip、冪等 skip）
+- 測試新增 3 個情境：月結制、orphan LR 綁定、409 衝突
+- 測試改寫 3 個情境：核准扣堂、已點名不重複扣、rollback 對稱沖回
+
+### Docs
+- `docs/OPERATIONS_RUNBOOK.md` §K 全面更新（口徑、禁忌、回歸清單 5 → 7 項）
+- `docs/AI_REGRESSION_LESSONS.md` 新增防再犯條目
+- `docs/CHANGELOG.md` 本節
+
+### 受影響關鍵檔案（修改前必讀本節與 §K）
+- `backend/app/Services/ApprovalSessionSyncService.php`
+- `backend/app/Services/SessionDeductionService.php`
+- `backend/app/Http/Controllers/LearningRecordController.php`（approve / batchApprove / rollbackApproval）
+- `backend/app/Http/Controllers/AttendanceController.php`
+- `backend/tests/Feature/LearningRecordApprovalDeductionTest.php`
+
+---
+
 ## 2026-04-11
 
 ### Added
@@ -19,8 +54,11 @@
 - **文件**：**`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（後續 AI／工程師改動前必讀，含禁止回歸項）
 
 ### Changed
+- **登入（`POST /api/v1/auth/login`）**：查詢候選使用者時排除 `User.status` 為 **`inactive`**、**`suspended`** 的列，避免帳號合併／停用後仍因 `LoginName`／`Name` 比對（含不分大小寫）而登入舊帳。測試：`tests/Feature/AuthInactiveUserLoginTest.php`。
+- **登入（老師待審核）**：`type = T` 且尚無任一「已放行」分校（`UserCampus` 無 `Approved = 1` 或 `Approved IS NULL` 之列）時，回 **403**，`message` 提示聯繫主任審核，`code`：`teacher_pending_approval`（與舊版僅依 `require_campus` 擋 API 不同，登入階段即拒絕發 token）。無 `UserCampus.Approved` 欄位時仍僅依 `User.status === pending` 判斷。測試：`tests/Feature/AuthTeacherPendingApprovalLoginTest.php`。
 - Bug：**已移除指派**（無 assign API／UI；詳情不再回傳承辦人欄位）
 - Bug 狀態：`POST /bugs/{id}/status` 僅 **`middleware super_admin`**（`RequireSuperAdmin`）
+- Bug 留言：恢復 `is_internal_note` 為「回報者不可見」；`super_admin` 可在詳情頁切換每則留言「內部 / 給回報者看」
 - 使用者頭像：`User.AvatarUrl` 上傳後只存 **disk 相對路徑**；API 經 **`App\Support\PublicAvatarUrl`** 輸出，避免 `APP_URL=localhost` 造成聊天／側欄破圖
 - UI：Bug 浮動鈕可拖曳；聊天選人顯示名稱正規化
 

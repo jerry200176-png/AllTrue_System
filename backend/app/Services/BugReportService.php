@@ -117,9 +117,11 @@ class BugReportService
             'created_at' => $l->created_at?->toIso8601String(),
         ])->all();
 
+        // Root-relative URL so images load on the same host the browser uses (LAN IP, etc.).
+        // Storage::disk('public')->url() bakes in APP_URL and breaks when APP_URL ≠ page origin.
         $attachments = $bug->attachments()->orderBy('id')->get()->map(fn ($a) => [
             'id' => $a->id,
-            'url' => Storage::disk('public')->url($a->stored_path),
+            'url' => self::publicDiskBrowserUrl($a->stored_path),
             'original_name' => $a->original_name,
             'mime_type' => $a->mime_type,
         ])->all();
@@ -153,6 +155,23 @@ class BugReportService
             'is_internal_note' => $isInternal,
             'created_at' => Carbon::now(),
         ]);
+    }
+
+    public static function updateCommentVisibility(int $bugId, int $commentId, bool $isInternal): ?BugReportComment
+    {
+        $comment = BugReportComment::query()
+            ->where('id', $commentId)
+            ->where('bug_report_id', $bugId)
+            ->first();
+
+        if (!$comment) {
+            return null;
+        }
+
+        $comment->is_internal_note = $isInternal;
+        $comment->save();
+
+        return $comment;
     }
 
     public static function changeStatus(int $bugId, int $changedBy, string $newStatus, ?string $note = null): bool
@@ -195,7 +214,7 @@ class BugReportService
     }
 
     /**
-     * Reporter opened bug detail — clears "new reply" badge for this bug.
+     * Reporter opened bug detail — clears unread badge for this bug (replies + status changes).
      */
     public static function markBugRead(int $userId, int $bugReportId): void
     {
@@ -208,6 +227,28 @@ class BugReportService
             ['user_id' => $userId, 'bug_report_id' => $bugReportId],
             ['read_at' => Carbon::now()]
         );
+    }
+
+    /**
+     * Reporter opened the bug list — treat all own reports in scope as read (sidebar badge).
+     */
+    public static function markReporterInboxSeenFromList(int $userId, array $campusIds): void
+    {
+        $now = Carbon::now();
+        $query = BugReport::query()->where('reporter_user_id', $userId);
+        if (!empty($campusIds)) {
+            $query->whereIn('CampusID', $campusIds);
+        }
+        $query->orderBy('id')->chunkById(500, function ($bugs) use ($userId, $now) {
+            $payload = $bugs->map(fn ($b) => [
+                'user_id' => $userId,
+                'bug_report_id' => $b->id,
+                'read_at' => $now,
+            ])->all();
+            if ($payload !== []) {
+                BugReportUserRead::upsert($payload, ['user_id', 'bug_report_id'], ['read_at']);
+            }
+        });
     }
 
     /**
@@ -232,6 +273,9 @@ class BugReportService
         return $reporter;
     }
 
+    /**
+     * Reporter-facing unread: public comments or status changes by someone else after last list or detail view.
+     */
     private static function countReporterReplyUnread(int $userId, array $campusIds): int
     {
         $query = BugReport::query()->where('reporter_user_id', $userId);
@@ -240,16 +284,27 @@ class BugReportService
         }
 
         $epoch = '1970-01-01 00:00:00';
-        $query->whereExists(function ($q) use ($userId, $epoch) {
-            $q->selectRaw('1')
-                ->from('bug_report_comments as c')
-                ->whereColumn('c.bug_report_id', 'bug_reports.id')
-                ->where('c.is_internal_note', false)
-                ->where('c.author_user_id', '!=', $userId)
-                ->whereRaw(
-                    'c.created_at >= bug_reports.created_at AND c.created_at > COALESCE((SELECT r.read_at FROM bug_report_user_reads r WHERE r.bug_report_id = bug_reports.id AND r.user_id = ?), ?)',
-                    [$userId, $epoch]
-                );
+        $query->where(function ($outer) use ($userId, $epoch) {
+            $outer->whereExists(function ($q) use ($userId, $epoch) {
+                $q->selectRaw('1')
+                    ->from('bug_report_comments as c')
+                    ->whereColumn('c.bug_report_id', 'bug_reports.id')
+                    ->where('c.is_internal_note', false)
+                    ->where('c.author_user_id', '!=', $userId)
+                    ->whereRaw(
+                        'c.created_at >= bug_reports.created_at AND c.created_at > COALESCE((SELECT r.read_at FROM bug_report_user_reads r WHERE r.bug_report_id = bug_reports.id AND r.user_id = ?), ?)',
+                        [$userId, $epoch]
+                    );
+            })->orWhereExists(function ($q) use ($userId, $epoch) {
+                $q->selectRaw('1')
+                    ->from('bug_report_status_logs as s')
+                    ->whereColumn('s.bug_report_id', 'bug_reports.id')
+                    ->where('s.changed_by', '!=', $userId)
+                    ->whereRaw(
+                        's.created_at >= bug_reports.created_at AND s.created_at > COALESCE((SELECT r.read_at FROM bug_report_user_reads r WHERE r.bug_report_id = bug_reports.id AND r.user_id = ?), ?)',
+                        [$userId, $epoch]
+                    );
+            });
         });
 
         return (int) $query->count();
@@ -283,6 +338,21 @@ class BugReportService
         if (!empty($filters['severity'])) {
             $query->where('severity', $filters['severity']);
         }
+    }
+
+    /**
+     * Browser URL for a path on the public disk (same idea as ChatService::mediaUrl).
+     */
+    private static function publicDiskBrowserUrl(?string $storedPath): string
+    {
+        if (!$storedPath) {
+            return '';
+        }
+        if (str_starts_with($storedPath, '/')) {
+            return $storedPath;
+        }
+
+        return '/storage/' . ltrim(str_replace('\\', '/', $storedPath), '/');
     }
 
     private static function formatPaginated($rows): array

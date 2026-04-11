@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\User;
+use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -23,6 +24,12 @@ class AuthLoginThrottleTest extends TestCase
             'PSW' => password_hash($password, PASSWORD_DEFAULT),
             'type' => 'T',
             'phone' => 900100001,
+        ]);
+        UserCampus::create([
+            'UserID' => $user->id,
+            'CampusID' => 1,
+            'Admin' => 0,
+            'Approved' => true,
         ]);
 
         for ($i = 1; $i <= 4; $i++) {
@@ -70,6 +77,12 @@ class AuthLoginThrottleTest extends TestCase
             'PSW' => password_hash($password, PASSWORD_DEFAULT),
             'type' => 'T',
             'phone' => 900100002,
+        ]);
+        UserCampus::create([
+            'UserID' => $user->id,
+            'CampusID' => 1,
+            'Admin' => 0,
+            'Approved' => true,
         ]);
 
         $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit Test/1.0';

@@ -67,6 +67,7 @@ class BugReportController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $this->resolveCampusIds($request);
         $isSuperAdmin = $role === 'super_admin';
+        $seesAllBranchBugs = $isSuperAdmin;
 
         $filters = array_filter([
             'status' => $request->input('status'),
@@ -74,7 +75,11 @@ class BugReportController extends Controller
         ]);
         $perPage = (int) $request->input('per_page', 20);
 
-        if ($isSuperAdmin) {
+        if ($userId) {
+            BugReportService::markReporterInboxSeenFromList($userId, $campusIds);
+        }
+
+        if ($seesAllBranchBugs) {
             return response()->json(BugReportService::listForAdmin($campusIds, $filters, $perPage));
         }
 
@@ -87,6 +92,7 @@ class BugReportController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $this->resolveCampusIds($request);
         $isSuperAdmin = $role === 'super_admin';
+        $seesAllBranchBugs = $isSuperAdmin;
 
         $bugId = (int) $id;
 
@@ -99,7 +105,7 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        if (!$isSuperAdmin && $detail['reporter_user_id'] !== $userId) {
+        if (!$seesAllBranchBugs && (int) $detail['reporter_user_id'] !== (int) $userId) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -154,12 +160,14 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        // Non-super-admin can only comment on their own bug reports.
-        if (!$isSuperAdmin) {
-            $detail = BugReportService::getDetail($bugId, false);
-            if (!$detail || (int) $detail['reporter_user_id'] !== (int) $userId) {
-                return response()->json(['message' => 'Not found'], 404);
-            }
+        $detail = BugReportService::getDetail($bugId, true);
+        if (!$detail) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $canComment = $isSuperAdmin || ((int) $detail['reporter_user_id'] === (int) $userId);
+        if (!$canComment) {
+            return response()->json(['message' => 'Not found'], 404);
         }
 
         $isInternal = filter_var($request->input('is_internal_note', false), FILTER_VALIDATE_BOOLEAN);
@@ -193,6 +201,32 @@ class BugReportController extends Controller
         $ok = BugReportService::changeStatus($bugId, $userId, $request->input('status'), $request->input('note'));
         if (!$ok) {
             return response()->json(['message' => 'Invalid status transition'], 422);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function updateCommentVisibility(Request $request, $id, $commentId)
+    {
+        $request->validate([
+            'is_internal_note' => 'required|boolean',
+        ]);
+
+        $campusIds = $this->resolveCampusIds($request);
+        $bugId = (int) $id;
+        $commentIdInt = (int) $commentId;
+
+        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $comment = BugReportService::updateCommentVisibility(
+            $bugId,
+            $commentIdInt,
+            (bool) $request->boolean('is_internal_note')
+        );
+        if (!$comment) {
+            return response()->json(['message' => 'Not found'], 404);
         }
 
         return response()->json(['ok' => true]);

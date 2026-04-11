@@ -13,7 +13,7 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 1. `README.md`
 2. `AI_QUICKSTART.md`
 3. `docs/OPERATIONS_RUNBOOK.md`
-4. **`docs/AI_REGRESSION_LESSONS.md`**（防再犯：暫停課程／繳費提醒／評量待審等已踩過的坑）
+4. **`docs/AI_REGRESSION_LESSONS.md`**（防再犯：暫停課程／繳費提醒／評量待審／**前端 `index.html` 與 hashed assets 必須同輪 deploy** 等已踩過的坑）
 5. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任儀表板「繳費提醒」業務規則，改 `AlertController::tuition` 前必讀）
 6. `docs/GITHUB_SYNC_WORKFLOW.md`
 7. `docs/CHANGELOG.md`（近期功能異動與權限調整）
@@ -37,7 +37,9 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 
 ## Common pitfalls
 
+- **核准評量 = 點名扣堂**（2026-04-11 架構級變更）：`ApprovalSessionSyncService` / `SessionDeductionService` / `LearningRecordController`（approve / batchApprove / rollbackApproval）為高風險檔案，**改動前必須先詢問使用者**。禁止將核准改回「不扣堂」。詳見 `docs/AI_REGRESSION_LESSONS.md`、`docs/OPERATIONS_RUNBOOK.md` §K
 - 未讀 `docs/AI_REGRESSION_LESSONS.md` 就改評量／繳費提醒／暫停課程相關邏輯，易重複已修過的 regression
+- **只更新部分** `backend/public/assets`、或 `index.html` 與 chunk **不同步**，會觸發整站 **`MIME type "text/html"`** on `index-*.js`（SPA fallback 誤當 JS）；務必 **`npm run deploy`** 一輪寫入。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）
 - Wrong PR target branch
 - Stale Laravel cache files under `backend/bootstrap/cache/`
 - Broken `.env` DB credentials

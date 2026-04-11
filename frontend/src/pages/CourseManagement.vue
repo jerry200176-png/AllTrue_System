@@ -17,6 +17,9 @@
           <button class="btn-soft" @click="showBulkLeaveModal = true">
             <span class="btn-icon">🏖️</span> 連假批次請假
           </button>
+          <button class="btn-soft" @click="emit('navigate', 'subject-settings')">
+            <span class="btn-icon">📚</span> 管理科目
+          </button>
           <button class="btn-accent" @click="openBackfillModal">
             <span class="btn-icon">📥</span> 新增課程
           </button>
@@ -111,6 +114,12 @@
             </span>
             <span class="student-group-meta">{{ group.courses.length }} 筆課程</span>
           </button>
+          <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
+            <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
+              <span class="btn-icon" aria-hidden="true">＋</span>
+              為此學生新增課程
+            </button>
+          </div>
           <div v-if="expandedStudentGroups.has(group.key)" class="table-wrap group-table-wrap">
             <table class="course-table">
               <thead>
@@ -146,9 +155,15 @@
                     </td>
                     <td>{{ c.teacher_name || '待指派' }}</td>
                     <td class="cell-schedule">
-                      <span v-if="Array.isArray(c.day_time_slots) && c.day_time_slots.length > 0">
-                        {{ formatDayTimeSlots(c) }}
-                      </span>
+                      <div v-if="formatDayTimeSlotLines(c).length > 0" class="schedule-slot-lines">
+                        <div
+                          v-for="(line, sidx) in formatDayTimeSlotLines(c)"
+                          :key="`${c.id}-slot-${sidx}`"
+                          class="schedule-slot-line"
+                        >
+                          {{ line }}
+                        </div>
+                      </div>
                       <span v-else-if="(c.days_of_week || []).length > 0">
                         {{ (c.days_of_week || []).map(d => dayLabel(d)).join('、') }} {{ c.start_time }}~{{ c.end_time }}
                       </span>
@@ -200,17 +215,21 @@
                           </span>
                         </div>
                         <div class="dates-panel">
-                          <strong>上課日期（實際 {{ countNonLeaveSessions(c) }} 堂，共 {{ displaySessions(c).length }} 筆）：</strong>
-                          <span v-if="displaySessions(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
-                          <span
-                            v-for="d in displaySessions(c)"
-                            :key="`${c.id}-${d}`"
-                            :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, d)]"
-                            :title="getSessionTooltip(c, d)"
-                            @click="openSessionEdit(c, d)"
-                          >
-                            <template v-if="getSessionNumber(c, d)">第{{ getSessionNumber(c, d) }}堂 </template>{{ d }}<template v-if="getSessionStateLabel(c, d)">（{{ getSessionStateLabel(c, d) }}）</template>
-                          </span>
+                          <div class="dates-panel-heading">
+                            <strong class="dates-panel-title">上課日期（實際 {{ countNonLeaveSessions(c) }} 堂，共 {{ sessionUnits(c).length }} 筆）</strong>
+                            <span v-if="sessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
+                          </div>
+                          <div v-if="sessionUnits(c).length > 0" class="dates-chip-grid">
+                            <span
+                              v-for="u in sessionUnits(c)"
+                              :key="sessionRowKey(u)"
+                              :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)]"
+                              :title="getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id)"
+                            >
+                              <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template>
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -247,6 +266,8 @@
       :students="schedulerStudents"
       :teachers="schedulerTeachers"
       :rooms="rooms"
+      :initial-student-id="schedulerInitialStudentId"
+      :initial-teacher-id="schedulerInitialTeacherId"
       mode="backfill"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
@@ -261,7 +282,7 @@
             v-model="editForm"
             :teachers="teachers"
             :rooms="rooms"
-            :subjects="SUBJECTS"
+            :subjects="subjectOptions"
             :day-options="DAY_OPTIONS"
             :time-options="TIME_OPTIONS_30"
             :settlement-day-options="settlementDayOptions"
@@ -363,6 +384,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
@@ -427,11 +449,20 @@ function addDays(ymd, days) {
 }
 
 const props = defineProps({ branchId: [String, Number], initialTeacherId: [String, Number] });
-const emit = defineEmits(['clear-initial-teacher']);
+const emit = defineEmits(['clear-initial-teacher', 'navigate']);
 
 const courses = ref([]);
 const allStudents = ref([]);
 const teachers = ref([]);
+
+const subjectOptions = ref([...SUBJECTS]);
+
+async function loadSubjects() {
+  try {
+    const opts = await fetchSubjectOptions({ branchId: props.branchId });
+    if (opts.length > 0) subjectOptions.value = opts;
+  } catch { /* keep defaults */ }
+}
 const schedulerStudents = computed(() => (
   (allStudents.value || []).map((s) => ({
     id: Number(s?.id ?? 0),
@@ -452,10 +483,10 @@ const effectiveSessionDatesByCourse = ref({});
 const expandedStudentGroups = ref(new Set());
 
 const {
-  expandedDates, toggleDates, sessions, getSessionNumber, countNonLeaveSessions,
-  getCourseSessionRows, getSessionRowsForDate, getSessionDisplayRow,
+  expandedDates, toggleDates, sessions, sessionUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions,
+  getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
-  getCourseCompletedDates, isCompletedDate, displaySessions,
+  getCourseCompletedDates, getCompletedSessionCount, isCompletedDate, displaySessions,
   isSessionMode, getPurchasedSessions, getRawRemainingSessions, getUsedSessions, displayRemainingSessions,
   formatAttendanceTooltipTime, updateLocalSessionRow,
   ensureCompletedSessionDatesLoaded, loadClassSessionsForCourses, loadEffectiveSessionDates,
@@ -466,6 +497,21 @@ const {
   branchId: computed(() => props.branchId),
 });
 
+/** Format a session unit into a readable chip label: "04/11（六）15:00–17:00" */
+const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
+function formatSessionChipDate(u) {
+  const dateStr = String(u?.session_date || '').slice(0, 10);
+  if (!dateStr) return '—';
+  const [, mm, dd] = dateStr.split('-');
+  const dow = DAY_LABELS[new Date(`${dateStr}T12:00:00`).getDay()] ?? '';
+  const base = `${mm}/${dd}（${dow}）`;
+  const start = String(u?.start_time || '').slice(0, 5);
+  const end = String(u?.end_time || '').slice(0, 5);
+  if (start && end) return `${base} ${start}–${end}`;
+  if (start) return `${base} ${start}`;
+  return base;
+}
+
 // Bulk Holiday Leave
 const showBulkLeaveModal = ref(false);
 const bulkLeaveSubmitting = ref(false);
@@ -474,6 +520,9 @@ const bulkLeaveForm = ref({ start_date: '', end_date: '' });
 
 // Backfill (aligned with edit form fields)
 const showBackfillModal = ref(false);
+/** Preset for UniversalClassScheduler when opened from this page */
+const schedulerInitialStudentId = ref('');
+const schedulerInitialTeacherId = ref('');
 const backfillForm = ref({
   student_id: '', subject: 'Math', teacher_id: '', class_type: 'one_on_one',
   rate_per_30min: 500, duration_hours: 2,
@@ -756,7 +805,38 @@ async function importBackfillCoursesFromCsv(event) {
   }
 }
 
+function resolveGroupStudentId(group) {
+  if (!group) return '';
+  const key = String(group.key || '');
+  if (key.startsWith('sid:')) {
+    const n = Number(key.slice(4));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  const c0 = group.courses?.[0];
+  const raw = c0?.student_id ?? c0?.StudentID;
+  if (raw != null && raw !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return '';
+}
+
+function openBackfillModalForGroup(group) {
+  const sid = resolveGroupStudentId(group);
+  if (!sid) {
+    alert('無法取得此學生的編號，請改從上方「新增課程」手動選擇學生。');
+    return;
+  }
+  schedulerInitialStudentId.value = sid;
+  schedulerInitialTeacherId.value = '';
+  resetBackfillDatePicker();
+  showBackfillModal.value = true;
+  loadRoomsForBranch();
+}
+
 function openBackfillModal() {
+  schedulerInitialStudentId.value = '';
+  schedulerInitialTeacherId.value = '';
   resetBackfillDatePicker();
   showBackfillModal.value = true;
   loadRoomsForBranch();
@@ -858,7 +938,11 @@ function duplicateCourseForTeacher(course) {
     room_id: course.room_id || null,
     memo: `雙師課程（同學生另一位老師，原課程#${course.id}）`,
   };
+  const sid = Number(course.student_id ?? course.StudentID) || '';
+  schedulerInitialStudentId.value = sid;
+  schedulerInitialTeacherId.value = '';
   showBackfillModal.value = true;
+  loadRoomsForBranch();
 }
 
 function openPurchaseModal(course) {
@@ -1002,19 +1086,25 @@ const getLeaveSessionOptionsForCourse = (course) => {
   const rows = classSessionsByCourse.value[cid];
   if (!Array.isArray(rows) || rows.length === 0) {
     const fallbackDates = sessions(course);
-    return fallbackDates.map((date, i) => ({ date, index: i + 1, isRetro: false }));
+    return fallbackDates.map((date, i) => ({ date, index: i + 1, isRetro: false, session_id: null, start_time: null }));
   }
 
   const options = [];
-  const seenDates = new Set();
   rows.forEach((row, idx) => {
     const status = String(row?.status || '').toLowerCase();
     if (['cancelled', 'leave', 'leave_adjusted'].includes(status)) return;
     const date = String(row?.session_date || '').slice(0, 10);
-    if (!date || seenDates.has(date)) return;
-    seenDates.add(date);
+    if (!date) return;
     const isRetro = RETRO_LEAVE_STATUSES.has(status);
-    options.push({ date, index: idx + 1, isRetro });
+    const startTime = String(row?.start_time || '').slice(0, 5);
+    options.push({
+      date,
+      index: idx + 1,
+      isRetro,
+      session_id: row?.id || null,
+      start_time: startTime || null,
+      label: startTime ? `${date} ${startTime}` : date,
+    });
   });
   return options;
 };
@@ -1024,29 +1114,35 @@ const leaveSessionOptions = computed(() => {
   return getLeaveSessionOptionsForCourse(c);
 });
 const isSelectedRetroLeave = computed(() => {
+  const sid = leaveForm.value.session_id;
   const date = leaveForm.value.schedule_date;
-  if (!date) return false;
-  return leaveSessionOptions.value.some((opt) => opt.date === date && opt.isRetro);
+  if (!date && !sid) return false;
+  return leaveSessionOptions.value.some((opt) => {
+    if (sid && opt.session_id) return opt.session_id === sid && opt.isRetro;
+    return opt.date === date && opt.isRetro;
+  });
 });
 async function openLeave(c) {
   await ensureCompletedSessionDatesLoaded(c);
-  const list = getLeaveSessionOptionsForCourse(c).map((opt) => opt.date);
-  if (!list || list.length === 0) {
+  const opts = getLeaveSessionOptionsForCourse(c);
+  if (!opts || opts.length === 0) {
     alert('此課程無可請假堂次（請確認開課日與排課設定）。');
     return;
   }
+  const first = opts[0];
   leaveCourse.value = c;
   leaveForm.value = {
     student_id: c.student_id,
     student_name: c.student_name || '—',
     subject: c.subject,
     teacher_id: c.teacher_id || null,
-    day_of_week: dayOfWeekFromDate(list[0]),
-    start_time: c.start_time || '16:00',
-    end_time: c.end_time || computeEndTime(c.start_time || '16:00', c.duration_hours ?? 2),
+    day_of_week: dayOfWeekFromDate(first.date),
+    start_time: first.start_time || c.start_time || '16:00',
+    end_time: c.end_time || computeEndTime(first.start_time || c.start_time || '16:00', c.duration_hours ?? 2),
     duration_hours: c.duration_hours ?? 2,
     class_type: c.class_type || 'one_on_one',
-    schedule_date: list[0] || '',
+    schedule_date: first.date || '',
+    session_id: first.session_id || null,
     course_id: c.id,
     reason: ''
   };
@@ -1205,22 +1301,107 @@ const CLASS_CAPACITY = { one_on_one: 1, one_on_two: 2, one_on_three: 3, tutoring
 function getCapacityForClassType(type) { return CLASS_CAPACITY[type] ?? 1; }
 const dayLabel = (d) => ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'][d] || '';
 
-const formatDayTimeSlots = (course) => {
+const SESSION_INFER_SKIP = new Set(['cancelled', 'leave_adjusted']);
+
+function sessionsRowsForCourse(course) {
+  const cid = String(course?.id ?? course?.ID ?? '');
+  const rows = classSessionsByCourse.value[cid];
+  return Array.isArray(rows) ? rows : [];
+}
+
+/** 同一天已排多個不同開始時間（與下方上課日期列表一致） */
+function hasMultiStartSameCalendarDay(rows) {
+  const byDate = new Map();
+  for (const r of rows) {
+    const st = String(r.status || '').toLowerCase();
+    if (SESSION_INFER_SKIP.has(st)) continue;
+    const d = String(r.session_date || '').slice(0, 10);
+    if (!d || !r.start_time) continue;
+    if (!byDate.has(d)) byDate.set(d, new Set());
+    byDate.get(d).add(String(r.start_time).slice(0, 5));
+  }
+  for (const starts of byDate.values()) {
+    if (starts.size >= 2) return true;
+  }
+  return false;
+}
+
+function diffMinutesStartEnd(startRaw, endRaw) {
+  const parse = (t) => {
+    const s = String(t || '').slice(0, 5);
+    const [h, m] = s.split(':').map(Number);
+    return (Number(h) || 0) * 60 + (Number(m) || 0);
+  };
+  let diff = parse(endRaw) - parse(startRaw);
+  if (diff <= 0) diff += 24 * 60;
+  return diff;
+}
+
+/** 由已載入的 ClassSession 推斷固定 (星期幾, 開始) 時段（不含取消堂） */
+function distinctDowStartSlotsFromSessions(course, rows) {
+  const globalDur = Number(course?.duration_hours) || 2;
+  const map = new Map();
+  for (const r of rows) {
+    const st = String(r.status || '').toLowerCase();
+    if (SESSION_INFER_SKIP.has(st)) continue;
+    const d = String(r.session_date || '').slice(0, 10);
+    if (!d || !r.start_time) continue;
+    const dow = dayOfWeekFromDate(d);
+    const start = String(r.start_time).slice(0, 5);
+    const key = `${dow}|${start}`;
+    let dur = globalDur;
+    if (r.end_time) {
+      const mins = diffMinutesStartEnd(r.start_time, r.end_time);
+      if (mins >= 30) dur = Math.max(0.5, Math.round(mins / 30) / 2);
+    }
+    if (!map.has(key)) {
+      map.set(key, { day: dow, start, dur });
+    } else {
+      const cur = map.get(key);
+      map.set(key, { ...cur, dur: Math.max(Number(cur.dur) || 0, dur) });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+}
+
+/** 每段一行（同日多時段會多行），供「時段」欄位顯示；若主檔少段但堂次有同日多段則併入堂次推斷 */
+const formatDayTimeSlotLines = (course) => {
   const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
   const globalDur = Number(course?.duration_hours) || 2;
-  const normalized = slots
-    .map((s) => ({ day: Number(s?.day || 0), start: String(s?.start_time || '').slice(0, 5), dur: Number(s?.duration_hours || 0) || globalDur }))
+  let normalized = slots
+    .map((s) => ({
+      day: Number(s?.day || 0),
+      start: String(s?.start_time || '').slice(0, 5),
+      dur: Number(s?.duration_hours || 0) || globalDur,
+    }))
     .filter((s) => s.day >= 1 && s.day <= 7 && s.start)
-    .sort((a, b) => a.day - b.day);
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+
+  const rows = sessionsRowsForCourse(course);
+  if (rows.length > 0 && hasMultiStartSameCalendarDay(rows)) {
+    const inferred = distinctDowStartSlotsFromSessions(course, rows);
+    const keySet = new Set(normalized.map((s) => `${s.day}|${s.start}`));
+    for (const inf of inferred) {
+      const k = `${inf.day}|${inf.start}`;
+      if (!keySet.has(k)) {
+        normalized.push({ day: inf.day, start: inf.start, dur: inf.dur });
+        keySet.add(k);
+      }
+    }
+    normalized.sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+  } else if (!normalized.length && rows.length > 0) {
+    normalized = distinctDowStartSlotsFromSessions(course, rows);
+  }
+
   const allSameDur = new Set(normalized.map((s) => s.dur)).size <= 1;
-  return normalized
-    .map((s) => {
-      const end = computeEndTime(s.start, s.dur) || '';
-      const durSuffix = !allSameDur ? ` ${s.dur}h` : '';
-      return `${dayLabel(s.day)} ${s.start}~${end}${durSuffix}`;
-    })
-    .join('、');
+  return normalized.map((s) => {
+    const end = computeEndTime(s.start, s.dur) || '';
+    const durSuffix = !allSameDur ? ` ${s.dur}h` : '';
+    return `${dayLabel(s.day)} ${s.start}~${end}${durSuffix}`;
+  });
 };
+
+const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、');
 
 // 與學生管理共用單一費用邏輯（Single Source of Truth）
 const sessionPrice = (c) => getPerSessionFee(c);
@@ -1596,19 +1777,59 @@ const editCourse = (c) => {
     || c.room_name != null
     || c.settlement_day != null
   );
-  const existingDays = Array.isArray(c.days_of_week) && c.days_of_week.length
-    ? c.days_of_week.map(Number)
+  const existingDaysRaw = Array.isArray(c.days_of_week) && c.days_of_week.length
+    ? c.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7)
     : (c.day_of_week ? [Number(c.day_of_week)] : []);
+
   const existingSlots = Array.isArray(c.day_time_slots)
     ? c.day_time_slots
         .map((slot) => ({
           day: Number(slot?.day || 0),
           start_time: normalizeTo30Min(slot?.start_time || c.start_time || '16:00'),
-          duration_hours: Number(slot?.duration_hours || c.duration_hours || 2),
+          duration_hours: Number(slot?.duration_hours || 0) || c.duration_hours || 2,
         }))
         .filter((slot) => slot.day >= 1 && slot.day <= 7)
-        .sort((a, b) => a.day - b.day)
     : [];
+
+  // 若課程是用 session_plan 批次建立，StudentClass 主檔可能只存第一個時段；
+  // 補齊：從已載入的 ClassSession 資料中推斷缺少的（同日多段）時段
+  const cid = String(c?.id ?? c?.ID ?? '');
+  const sessionRows = classSessionsByCourse.value[cid] || [];
+  if (sessionRows.length > 0) {
+    const skipStatuses = new Set(['cancelled', 'leave_adjusted']);
+    const existingKeys = new Set(existingSlots.map((s) => `${s.day}|${s.start_time}`));
+    const inferredMap = new Map();
+    for (const r of sessionRows) {
+      const st = String(r.status || '').toLowerCase();
+      if (skipStatuses.has(st)) continue;
+      if (!r.session_date || !r.start_time) continue;
+      const dow = dayOfWeekFromDate(String(r.session_date).slice(0, 10));
+      const start = normalizeTo30Min(String(r.start_time).slice(0, 5));
+      const k = `${dow}|${start}`;
+      if (!inferredMap.has(k)) {
+        let dur = c.duration_hours || 2;
+        if (r.end_time) {
+          const [sh, sm] = String(r.start_time).split(':').map(Number);
+          const [eh, em] = String(r.end_time).split(':').map(Number);
+          let mins = (eh * 60 + em) - (sh * 60 + sm);
+          if (mins <= 0) mins += 24 * 60;
+          if (mins >= 30) dur = Math.round(mins / 30) / 2;
+        }
+        inferredMap.set(k, { day: dow, start_time: start, duration_hours: dur });
+      }
+    }
+    for (const [k, slot] of inferredMap) {
+      if (!existingKeys.has(k)) {
+        existingSlots.push(slot);
+        existingKeys.add(k);
+      }
+    }
+    existingSlots.sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
+  }
+
+  const slotDays = existingSlots.map((s) => s.day).filter((d) => d >= 1 && d <= 7);
+  const existingDays = [...new Set([...existingDaysRaw, ...slotDays])].sort((a, b) => a - b);
+
   editForm.value = {
     subject: c.subject,
     teacher_id: c.teacher_id || '',
@@ -1651,6 +1872,13 @@ const submitEdit = async () => {
           remaining_sessions: form.remaining_sessions,
           days_of_week: (form.days_of_week || []).length ? form.days_of_week : [],
           start_time: form.start_time,
+          day_time_slots: (form.day_time_slots || [])
+            .map((slot) => ({
+              day: Number(slot?.day || 0),
+              start_time: normalizeTo30Min(slot?.start_time || form.start_time || '16:00'),
+              duration_minutes: Number(slot?.duration_hours || 0) > 0 ? Math.round(Number(slot.duration_hours) * 60) : undefined,
+            }))
+            .filter((slot) => slot.day >= 1 && slot.day <= 7),
           end_time: endTime,
           payment_type: form.payment_type,
           settlement_day: form.payment_type === 'monthly' ? form.settlement_day : null,
@@ -1931,7 +2159,7 @@ watch(() => props.initialTeacherId, (id) => {
   }
 }, { immediate: true });
 onMounted(() => {
-  loadCourses(); loadStudents(); loadTeachers();
+  loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
 });
 onUnmounted(() => {
@@ -2275,6 +2503,20 @@ onUnmounted(() => {
   vertical-align: middle;
 }
 
+.student-group-add-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px 12px 6px;
+  background: rgba(248, 250, 252, 0.9);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.student-group-add-btn {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 .group-table-wrap {
   border-top: 1px solid var(--border);
   max-height: 56vh;
@@ -2430,6 +2672,17 @@ onUnmounted(() => {
   min-width: 100px;
 }
 
+.schedule-slot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.schedule-slot-line {
+  line-height: 1.35;
+}
+
 .cell-remaining {
   font-weight: 700;
 }
@@ -2563,6 +2816,68 @@ onUnmounted(() => {
   margin: 0 auto;
   line-height: 1.6;
 }
+
+/* ----- Subject Modal ----- */
+.subject-modal {
+  width: 100%;
+  max-width: 420px;
+}
+.subject-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.subject-modal .modal-header h3 { margin: 0; font-size: 1.1rem; }
+.subject-modal .modal-body { display: flex; flex-direction: column; gap: 12px; }
+.subject-add-row {
+  display: flex;
+  gap: 8px;
+}
+.subject-add-row .input-field {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+}
+.subject-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.subject-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.subject-item:last-child { border-bottom: none; }
+.btn-danger-soft {
+  background: none;
+  border: none;
+  color: #e53935;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.btn-danger-soft:hover { background: #fdecea; }
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: var(--text-light);
+  padding: 2px 6px;
+}
+.error-text { color: #e53935; font-size: 13px; margin: 0; }
 
 /* ----- Modals ----- */
 .course-modal {
@@ -2832,26 +3147,65 @@ onUnmounted(() => {
 .dates-panel {
   background: #f8fbff;
   border-top: 1px solid rgba(148, 163, 184, 0.24);
-  padding: 12px 16px;
+  padding: 12px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  font-size: 13px;
+}
+.dates-panel-heading {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+  align-items: baseline;
+  gap: 8px 12px;
+}
+.dates-panel-title {
   font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.4;
+}
+.dates-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
 }
 .date-chip {
   background: #fff;
   border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  padding: 4px 10px;
+  border-radius: 8px;
+  padding: 5px 10px;
   font-size: 12px;
   color: #1d4ed8;
   white-space: nowrap;
   cursor: help;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
 }
 .date-chip-clickable {
   cursor: pointer;
+}
+.chip-seq {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 11px;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+.chip-date {
+  color: #1d4ed8;
+}
+.chip-state {
+  font-size: 11px;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 999px;
+  padding: 1px 5px;
 }
 .date-chip:hover {
   transform: translateY(-1px);
@@ -2899,6 +3253,9 @@ onUnmounted(() => {
   background: #e8f5e9;
   border-color: #a5d6a7;
   color: #2e7d32;
+}
+.date-chip.completed .chip-date {
+  color: #1b5e20;
 }
 .date-chip.leave {
   background: #fff1e0;

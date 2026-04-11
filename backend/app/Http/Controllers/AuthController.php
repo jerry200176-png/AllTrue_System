@@ -50,6 +50,11 @@ class AuthController extends Controller
                 $query->where('LoginName', $input)
                     ->orWhere('Name', $input);
             })
+            // Block merged/disabled accounts. Pending teachers authenticate only after director approval (see below).
+            ->where(function ($query) {
+                $query->whereNull('status')
+                    ->orWhereNotIn('status', ['inactive', 'suspended']);
+            })
             ->when($typeFilter !== null, fn ($query) => $query->where('type', $typeFilter))
             ->get();
 
@@ -68,9 +73,16 @@ class AuthController extends Controller
             return $this->invalidLoginResponse($throttleKey);
         }
 
+        $user = $matchingUsers->first();
+        if ($this->teacherAwaitingDirectorApproval($user)) {
+            return response()->json([
+                'message' => '此帳號尚未通過主任審核，請聯繫分校主任完成審核後再行登入。',
+                'code' => 'teacher_pending_approval',
+            ], 403);
+        }
+
         RateLimiter::clear($throttleKey);
 
-        $user = $matchingUsers->first();
         $role = $this->resolveRole($user);
 
         $this->revokeSameDeviceActiveTokens((int) $user->id, (string) $request->userAgent());
@@ -978,6 +990,29 @@ class AuthController extends Controller
             'D' => ['D', 'S', 'A', 'U'],
             default => ['T', 'D', 'S', 'A', 'U'],
         };
+    }
+
+    /**
+     * Self-registered teachers get UserCampus rows with Approved=false until a director approves.
+     * If the DB has no Approved column (legacy), fall back to User.status === pending.
+     */
+    private function teacherAwaitingDirectorApproval(User $user): bool
+    {
+        if ($user->type !== 'T') {
+            return false;
+        }
+        if (!Schema::hasColumn('UserCampus', 'Approved')) {
+            return Schema::hasColumn('User', 'status') && ($user->status ?? '') === 'pending';
+        }
+
+        $hasReleasedCampus = UserCampus::query()
+            ->where('UserID', $user->id)
+            ->where(function ($q) {
+                $q->where('Approved', true)->orWhereNull('Approved');
+            })
+            ->exists();
+
+        return !$hasReleasedCampus;
     }
 
     private function loginThrottleKey(Request $request, string $account, ?string $role): string

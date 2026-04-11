@@ -54,7 +54,7 @@
         <div class="form-group">
           <label>科目</label>
           <select v-model="form.subject">
-            <option v-for="s in SUBJECTS" :key="s.value" :value="s.value">{{ s.label }}</option>
+            <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
           </select>
         </div>
         <div class="form-group">
@@ -84,11 +84,19 @@
 import { ref, onMounted } from 'vue';
 import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
+import { fetchSubjectOptions } from '../lib/subjectsApi';
 
 const rates = ref([]);
 const showModal = ref(false);
 const editingId = ref(null);
 const form = ref({ grade: 'J1', subject: 'Math', class_type: 'one_on_one', rate_per_30min: 500 });
+const subjectOptions = ref([...SUBJECTS]);
+async function loadSubjects() {
+  try {
+    const opts = await fetchSubjectOptions();
+    if (opts.length > 0) subjectOptions.value = opts;
+  } catch { /* keep defaults */ }
+}
 const ratePer2hInput = ref(2000);
 
 function syncRatePer2hFromForm() {
@@ -147,7 +155,7 @@ const deleteRate = async (rate) => {
   loadRates();
 };
 
-onMounted(loadRates);
+onMounted(() => { loadRates(); loadSubjects(); });
 </script>
 
 <style scoped>
