@@ -78,6 +78,8 @@ cd /home/admin   # 或你的 clone 根目錄
 ./scripts/git-sync.sh "feat: 簡短說明這次改動"
 ```
 
+若你目前在本機分支 **`main`**，腳本會把改動推到遠端的 **`jerry-sync-main`**（與 README 協作約定一致）。
+
 詳細流程、被拒絕 push 時怎麼辦：[`docs/GITHUB_SYNC_WORKFLOW.md`](GITHUB_SYNC_WORKFLOW.md)。
 
 **注意**：請勿將資料庫備份、`.env` 密鑰、使用者上傳的私密檔案推上 GitHub；`.gitignore` 已排除常見敏感路徑。
