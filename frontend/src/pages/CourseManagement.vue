@@ -8,7 +8,7 @@
           <p class="ref-hint">管理所有學生的課程安排，快速新增課程</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
-            <span class="meta-pill">{{ pagination.total || courses.length }} 筆課程{{ pagination.lastPage > 1 ? `（第 ${pagination.page} 頁）` : '' }}</span>
+            <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
           </div>
         </div>
         <div class="header-buttons">
@@ -40,14 +40,12 @@
             <option value="one_on_two">一對二</option>
             <option value="one_on_three">一對三</option>
             <option value="tutoring">輔導</option>
+            <option value="trial">試聽</option>
           </select>
         </div>
         <div class="filter-field">
-          <label>老師</label>
-          <select v-model="filters.teacher_id" @change="loadCourses(1)">
-            <option value="">全部</option>
-            <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
-          </select>
+          <label>搜尋老師</label>
+          <input v-model="filters.teacher_name" placeholder="輸入老師姓名..." @input="debouncedLoad" />
         </div>
         <div class="filter-field">
           <label>課程狀態</label>
@@ -58,50 +56,42 @@
           </select>
         </div>
       </div>
-    </div>
 
-    <!-- Summary Cards -->
-    <div class="summary-row">
-      <div class="summary-card summary-total">
-        <span class="summary-label">學生課程數</span>
-        <span class="summary-value">{{ courses.length }}</span>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">一對一</span>
-        <span class="summary-value">{{ coursesByType.one_on_one }}</span>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">一對二</span>
-        <span class="summary-value">{{ coursesByType.one_on_two }}</span>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">輔導</span>
-        <span class="summary-value">{{ coursesByType.tutoring }}</span>
-      </div>
-    </div>
-
-    <!-- Subject Stats -->
-    <div v-if="coursesBySubject.length" class="card subject-stats-card">
-      <div class="subject-stats-header">
-        <span class="subject-stats-title">科目數統計</span>
-        <span class="subject-stats-total">共 {{ coursesBySubject.length }} 科</span>
-      </div>
-      <div class="subject-stats-list">
-        <span
-          v-for="s in coursesBySubject"
-          :key="s.subject"
-          class="subject-stat-chip"
-        >
-          {{ s.label }}：{{ s.count }}
+      <!-- Compact stats strip -->
+      <div class="stats-strip">
+        <span class="stats-strip-item stats-strip-total">
+          <span class="stats-strip-num">{{ courses.length }}</span> 筆課程
         </span>
+        <span class="stats-strip-sep">·</span>
+        <span class="stats-strip-item">一對一 <strong>{{ coursesByType.one_on_one }}</strong></span>
+        <span class="stats-strip-sep">·</span>
+        <span class="stats-strip-item">一對二 <strong>{{ coursesByType.one_on_two }}</strong></span>
+        <span class="stats-strip-sep">·</span>
+        <span class="stats-strip-item">一對三 <strong>{{ coursesByType.one_on_three }}</strong></span>
+        <span class="stats-strip-sep">·</span>
+        <span class="stats-strip-item">輔導 <strong>{{ coursesByType.tutoring }}</strong></span>
+        <span class="stats-strip-sep">·</span>
+        <span class="stats-strip-item">試聽 <strong>{{ coursesByType.trial }}</strong></span>
+        <template v-if="coursesBySubject.length">
+          <span class="stats-strip-sep stats-strip-pipe">|</span>
+          <span
+            v-for="s in coursesBySubject"
+            :key="s.subject"
+            class="stats-strip-subject"
+          >{{ s.label }} {{ s.count }}</span>
+        </template>
       </div>
     </div>
 
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
-      <div v-if="groupedCourses.length" class="grouped-course-list">
+      <div v-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
+        <div v-if="focusedStudentKey" class="focus-mode-banner">
+          <span>專注模式：只顯示 {{ visibleGroups[0]?.student_name }}</span>
+          <button @click="focusedStudentKey = null">✕ 回復全部顯示</button>
+        </div>
         <section
-          v-for="group in groupedCourses"
+          v-for="group in visibleGroups"
           :key="group.key"
           class="student-group-card"
           :class="{ 'student-group-has-paused': groupHasPausedCourse(group) }"
@@ -113,6 +103,12 @@
               <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
             </span>
             <span class="student-group-meta">{{ group.courses.length }} 筆課程</span>
+            <button
+              class="focus-btn"
+              :class="{ active: focusedStudentKey === group.key }"
+              @click="focusStudent(group, $event)"
+              :title="focusedStudentKey === group.key ? '取消專注' : '專注此學生'"
+            >⊙</button>
           </button>
           <div v-if="expandedStudentGroups.has(group.key)" class="student-group-add-row">
             <button type="button" class="btn-soft student-group-add-btn" @click="openBackfillModalForGroup(group)">
@@ -134,9 +130,9 @@
               </thead>
               <tbody>
                 <template v-for="c in group.courses" :key="c.id">
-                  <tr :class="['course-row', { 'course-paused': c.status === 'inactive' }]">
+                  <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="c.status === 'inactive'" class="paused-course-callout" role="status">
+                      <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-course-callout" role="status">
                         <span class="paused-course-callout__icon" aria-hidden="true">⏸</span>
                         <span class="paused-course-callout__main">課程暫停中</span>
                         <span class="paused-course-callout__sub">未恢復前不排新課、不計入待辦</span>
@@ -144,7 +140,10 @@
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
-                        <span v-if="c.status === 'inactive'" class="tag tag-paused">已暫停</span>
+                        <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
+                        <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">已暫停</span>
+                        <span v-else-if="effectiveClosedReason(c) === 'settled'" class="tag tag-settled">已結算</span>
+                        <span v-else-if="effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已完課</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -171,6 +170,8 @@
                         {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
                       </span>
                       <span v-else class="hint">未排定</span>
+                      <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '今日起尚未上課的預排堂次，與固定排課（契約）的星期／起迄或時長不一致。請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
+                      <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
                     </td>
                     <td>
                       <button
@@ -178,22 +179,41 @@
                         title="點擊切換繳費狀態"
                         @click="togglePaymentStatus(c)"
                       >{{ paymentStatusButtonLabel(c) }}</button>
+                      <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
-                      {{ displayRemainingSessions(c) ?? '—' }}
+                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}</template>
+                      <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
                     <td class="cell-actions">
                       <div class="action-btns-row">
+                        <button
+                          v-if="isSessionMode(c)"
+                          class="small btn-add-session"
+                          :class="{ disabled: !canQuickAddSession(c) }"
+                          :disabled="!canQuickAddSession(c)"
+                          :title="canQuickAddSession(c) ? '加課／補登（不增加總堂數）' : quickAddDisabledReason(c)"
+                          @click="canQuickAddSession(c) && openQuickAddSessionModal(c)"
+                        >+ 新增堂次</button>
                         <button class="small ghost btn-toggle" @click="toggleDates(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
+                            <button
+                              v-if="isSessionMode(c)"
+                              class="action-dropdown-item action-dropdown-add-session-mobile"
+                              :class="{ 'action-dropdown-item--disabled': !canQuickAddSession(c) }"
+                              :disabled="!canQuickAddSession(c)"
+                              :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
+                              @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
+                            >+ 新增堂次</button>
                             <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()">編輯</button>
                             <button class="action-dropdown-item" @click="openPurchaseModal(c); closeActionMenu()">加購堂數</button>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()">暫停課程</button>
-                            <button v-else class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()">恢復課程</button>
+                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()">恢復課程</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()">結案（不續報）</button>
                             <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()">換師複製</button>
                             <hr class="action-dropdown-divider" />
                             <button class="action-dropdown-item action-dropdown-danger" @click="deleteCourse(c); closeActionMenu()">刪除課程</button>
@@ -216,18 +236,22 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（實際 {{ countNonLeaveSessions(c) }} 堂，共 {{ sessionUnits(c).length }} 筆）</strong>
-                            <span v-if="sessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
+                            <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(c) }} / 購買 {{ getPurchasedSessions(c) }} 堂<template v-if="cancelledSessionCount(c) > 0">，{{ cancelledSessionCount(c) }} 堂已取消</template>）</strong>
+                            <span v-if="sessionCountWarning(c)" :class="['drift-hint', { 'drift-hint-info': sessionCountWarning(c)?.type === 'under_leave' }]">⚠ {{ sessionCountWarning(c)?.message }}</span>
+                            <span v-if="allSessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
+                            <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
+                              {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
+                            </button>
                           </div>
-                          <div v-if="sessionUnits(c).length > 0" class="dates-chip-grid">
+                          <div v-if="allSessionUnits(c).length > 0" class="dates-chip-grid">
                             <span
-                              v-for="u in sessionUnits(c)"
+                              v-for="u in allSessionUnits(c)"
                               :key="sessionRowKey(u)"
                               :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)]"
                               :title="getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
                               @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id)"
                             >
-                              <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template>
+                              <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </span>
                           </div>
                         </div>
@@ -274,7 +298,7 @@
     />
 
     <!-- Edit Course Modal -->
-    <div v-if="showEditModal" class="modal-overlay" @click.self="showEditModal = false">
+    <div v-if="showEditModal" class="modal-overlay">
       <div class="modal course-modal">
         <h3 class="modal-title">編輯課程</h3>
         <div class="form-section">
@@ -288,6 +312,13 @@
             :settlement-day-options="settlementDayOptions"
             :show-remaining="true"
           />
+        </div>
+        <div
+          v-if="editForm.payment_type === 'session' && editingCourseFromLaravel"
+          class="quick-add-session-link"
+          style="margin: 12px 0 4px; text-align: right;"
+        >
+          <button type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 單次加課（不增加總堂數）</button>
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
@@ -307,8 +338,11 @@
       :show="showQuickAddSessionModal"
       :form="quickAddSessionForm"
       :time-options="TIME_OPTIONS_30"
+      :conflict="quickAddConflict"
+      :checking="quickAddChecking"
       @close="showQuickAddSessionModal = false"
       @submit="submitQuickAddSession"
+      @check="runQuickAddCheck"
     />
 
     <LeaveModal
@@ -367,6 +401,7 @@
       :today-ymd="todayYmd"
       :makeup-loading="makeupLoading"
       :compute-end-time="computeEndTime"
+      :teachers="teachers"
       @close="closeSessionEdit"
       @set-mode="sessionEditMode = $event"
       @status-change="doStatusChange"
@@ -376,13 +411,18 @@
       @do-reschedule="doSessionReschedule"
       @fetch-makeup="fetchMakeupSlotsForEdit"
       @add-session="addSessionFromModal"
+      @start-substitute="startSubstitute"
+      @do-substitute="doSubstitute"
+      @start-edit-note-time="startEditNoteTime"
+      @do-edit-note-time="doEditNoteTime"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
+import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
@@ -475,15 +515,36 @@ const schedulerTeachers = computed(() => (
     name: t?.username || t?.name || t?.Name || `#${t?.id ?? ''}`,
   })).filter((t) => Number.isFinite(t.id) && t.id > 0)
 ));
-const filters = ref({ name: '', class_type: '', teacher_id: '', course_status: '' });
+const filters = ref({ name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '' });
 const pagination = ref({ page: 1, lastPage: 1, total: 0, perPage: 50 });
 const completedSessionDatesByCourse = ref({});
 const classSessionsByCourse = ref({});
 const effectiveSessionDatesByCourse = ref({});
 const expandedStudentGroups = ref(new Set());
+const focusedStudentKey = ref(null);
+const focusStudent = (group, e) => {
+  e.stopPropagation();
+  if (focusedStudentKey.value === group.key) {
+    focusedStudentKey.value = null;
+  } else {
+    focusedStudentKey.value = group.key;
+    const next = new Set(expandedStudentGroups.value);
+    next.add(group.key);
+    expandedStudentGroups.value = next;
+  }
+};
+watch(focusedStudentKey, (v, prev) => {
+  if (v && !prev) lockScroll();
+  else if (!v && prev) unlockScroll();
+});
+const visibleGroups = computed(() =>
+  focusedStudentKey.value
+    ? groupedCourses.value.filter((g) => g.key === focusedStudentKey.value)
+    : groupedCourses.value
+);
 
 const {
-  expandedDates, toggleDates, sessions, sessionUnits, sessionRowKey, getSessionNumber, countNonLeaveSessions,
+  expandedDates, toggleDates, sessions, sessionUnits, allSessionUnits, cancelledSessionCount, sessionRowKey, getSessionNumber, countNonLeaveSessions, effectiveSessionCount, leaveSessionCount, sessionCountWarning,
   getCourseSessionRows, getSessionRowsForDate, getSessionRowById, getSessionDisplayRow,
   getSessionState, getSessionStateLabel, getSessionStateClass, getSessionTooltip,
   getCourseCompletedDates, getCompletedSessionCount, isCompletedDate, displaySessions,
@@ -852,6 +913,9 @@ const showEditModal = ref(false);
 const editingId = ref(null);
 const editingCourseFromLaravel = ref(false);
 const editForm = ref({});
+/** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
+const editScheduleBaseline = ref(null);
+const originalFirstClassDate = ref('');
 const rooms = ref([]);
 const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const showPurchaseModal = ref(false);
@@ -864,6 +928,8 @@ const purchaseForm = ref({
 });
 const showQuickAddSessionModal = ref(false);
 const quickAddSessionCourse = ref(null);
+const quickAddConflict = ref(null);
+const quickAddChecking = ref(false);
 const quickAddSessionForm = ref({
   session_date: '',
   start_time: '16:00',
@@ -913,6 +979,41 @@ async function toggleCoursePause(course) {
       return;
     }
     alert(json.message || `已${action}`);
+    await loadCourses();
+  } catch (e) {
+    alert('操作失敗：' + (e?.message || '請稍後再試'));
+  }
+}
+
+function canCloseCourse(c) {
+  return c.status !== 'inactive'
+    && isSessionMode(c)
+    && c.payment_status === 'paid'
+    && Number(c.remaining_sessions ?? 0) <= 0;
+}
+
+async function closeCourseNoRenew(course) {
+  const studentName = course.student_name || '學生';
+  const subject = getSubjectLabel(course.subject);
+  if (!confirm(`確定要結案「${studentName}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入'); return; }
+
+    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('結案失敗：' + (json.message || res.statusText));
+      return;
+    }
+    alert('已結案，此課程不再出現在繳費／續課提醒中。');
     await loadCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
@@ -1004,6 +1105,8 @@ async function submitPurchaseSessions() {
 
 function openQuickAddSessionModal(course) {
   quickAddSessionCourse.value = course;
+  quickAddConflict.value = null;
+  quickAddChecking.value = false;
   quickAddSessionForm.value = {
     session_date: localTodayYmd(),
     start_time: normalizeTo30Min(course?.start_time || '16:00'),
@@ -1014,6 +1117,51 @@ function openQuickAddSessionModal(course) {
     subject: course?.subject || 'Math',
   };
   showQuickAddSessionModal.value = true;
+  runQuickAddCheck(course?.id);
+}
+
+let _quickAddCheckTimer = null;
+async function runQuickAddCheck(courseIdOverride) {
+  const courseId = courseIdOverride || quickAddSessionCourse.value?.id;
+  if (!courseId) return;
+  const form = quickAddSessionForm.value;
+  if (!form.session_date || !form.start_time) return;
+  clearTimeout(_quickAddCheckTimer);
+  _quickAddCheckTimer = setTimeout(async () => {
+    quickAddChecking.value = true;
+    quickAddConflict.value = null;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) return;
+      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+      });
+      const json = await res.json().catch(() => ({}));
+      quickAddConflict.value = json;
+    } catch (_) {
+      quickAddConflict.value = null;
+    } finally {
+      quickAddChecking.value = false;
+    }
+  }, 300);
+}
+
+/** 編輯課程彈窗內開啟單次加課（與列表加課同一支 API） */
+function openQuickAddSessionFromEditModal() {
+  const id = editingId.value;
+  if (!id || !editingCourseFromLaravel.value) return;
+  const row = courses.value.find((x) => String(x.id) === String(id));
+  const form = editForm.value;
+  openQuickAddSessionModal({
+    id,
+    student_name: row?.student_name || '—',
+    subject: form.subject || row?.subject || 'Math',
+    start_time: form.start_time || row?.start_time || '16:00',
+    duration_hours: form.duration_hours ?? row?.duration_hours ?? 2,
+  });
 }
 
 async function submitQuickAddSession() {
@@ -1057,11 +1205,17 @@ async function submitQuickAddSession() {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      alert(details || json?.message || '加課失敗');
+      if (res.status === 409 && json?.suggested_actions?.length) {
+        quickAddConflict.value = json;
+        runQuickAddCheck();
+      } else {
+        const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+        alert(details || json?.message || '加課失敗');
+      }
       return;
     }
     showQuickAddSessionModal.value = false;
+    quickAddConflict.value = null;
     const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
     const defaultMsg = movedFrom
       ? `已補登完成，已將原 ${movedFrom} 的堂次調整到新日期（總堂數不變）。`
@@ -1287,9 +1441,38 @@ watch(() => leaveForm.value.schedule_date, (date) => {
   if (!date) return;
   leaveForm.value.day_of_week = dayOfWeekFromDate(date);
 });
+function effectiveClosedReason(c) {
+  if (c.closed_reason) return c.closed_reason;
+  if (c.status === 'inactive' && isSessionMode(c) && c.payment_status === 'paid' && Number(c.remaining_sessions ?? 0) <= 0) {
+    return 'completed';
+  }
+  return null;
+}
+
+function canQuickAddSession(c) {
+  if (!isSessionMode(c)) return false;
+  if (c.status === 'inactive') return false;
+  if (effectiveClosedReason(c)) return false;
+  return true;
+}
+
+function quickAddDisabledReason(c) {
+  if (!isSessionMode(c)) return '僅堂數制課程可新增堂次';
+  if (effectiveClosedReason(c) === 'settled') return '已結算課程無法新增堂次';
+  if (effectiveClosedReason(c) === 'completed') return '已完課課程無法新增堂次';
+  if (c.status === 'inactive') return '課程已暫停，請先恢復後再新增堂次';
+  return '';
+}
+
+const courseRowClass = (c) => {
+  if (c.status !== 'inactive') return {};
+  const reason = effectiveClosedReason(c);
+  if (reason === 'settled' || reason === 'completed') return { 'course-settled': true };
+  return { 'course-paused': true };
+};
 const getSubjectLabel = (val) => getSubjectText(val);
 const classTypeLabel = (type) => {
-  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
+  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
   return map[type] || type;
 };
 const courseMemo = (course) => {
@@ -1297,7 +1480,7 @@ const courseMemo = (course) => {
   return text || '';
 };
 
-const CLASS_CAPACITY = { one_on_one: 1, one_on_two: 2, one_on_three: 3, tutoring: 4 };
+const CLASS_CAPACITY = { one_on_one: 1, one_on_two: 2, one_on_three: 3, tutoring: 4, trial: 1 };
 function getCapacityForClassType(type) { return CLASS_CAPACITY[type] ?? 1; }
 const dayLabel = (d) => ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'][d] || '';
 
@@ -1364,11 +1547,11 @@ function distinctDowStartSlotsFromSessions(course, rows) {
   return [...map.values()].sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
 }
 
-/** 每段一行（同日多時段會多行），供「時段」欄位顯示；若主檔少段但堂次有同日多段則併入堂次推斷 */
+/** 每段一行（同日多時段會多行），供「時段」欄位顯示；以契約 day_time_slots 為準 */
 const formatDayTimeSlotLines = (course) => {
   const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
   const globalDur = Number(course?.duration_hours) || 2;
-  let normalized = slots
+  const normalized = slots
     .map((s) => ({
       day: Number(s?.day || 0),
       start: String(s?.start_time || '').slice(0, 5),
@@ -1376,22 +1559,6 @@ const formatDayTimeSlotLines = (course) => {
     }))
     .filter((s) => s.day >= 1 && s.day <= 7 && s.start)
     .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
-
-  const rows = sessionsRowsForCourse(course);
-  if (rows.length > 0 && hasMultiStartSameCalendarDay(rows)) {
-    const inferred = distinctDowStartSlotsFromSessions(course, rows);
-    const keySet = new Set(normalized.map((s) => `${s.day}|${s.start}`));
-    for (const inf of inferred) {
-      const k = `${inf.day}|${inf.start}`;
-      if (!keySet.has(k)) {
-        normalized.push({ day: inf.day, start: inf.start, dur: inf.dur });
-        keySet.add(k);
-      }
-    }
-    normalized.sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
-  } else if (!normalized.length && rows.length > 0) {
-    normalized = distinctDowStartSlotsFromSessions(course, rows);
-  }
 
   const allSameDur = new Set(normalized.map((s) => s.dur)).size <= 1;
   return normalized.map((s) => {
@@ -1406,6 +1573,30 @@ const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、'
 // 與學生管理共用單一費用邏輯（Single Source of Truth）
 const sessionPrice = (c) => getPerSessionFee(c);
 const totalPrice = (c) => getCourseTotalFee(c);
+
+// 備註開關（預設關閉，截圖給家長時保持乾淨）
+const showSessionNotes = ref(localStorage.getItem('cm_show_notes') === '1');
+const toggleSessionNotes = () => {
+  showSessionNotes.value = !showSessionNotes.value;
+  localStorage.setItem('cm_show_notes', showSessionNotes.value ? '1' : '0');
+};
+
+// 系統自動產生的 Note 片段 pattern，符合的不算使用者備註
+const SYSTEM_NOTE_PATTERNS = [
+  /^系統/,                        // 系統重建堂次、系統判定補登、系統調整堂次…
+  /^auto-extended-after-leave$/,
+  /^leave$/,
+  /^retro-leave$/,
+  /^cancelled-after-attended$/,
+  /^revert-to-scheduled$/,
+  /^請假自動順延$/,
+];
+const isSystemNotePart = (part) => SYSTEM_NOTE_PATTERNS.some((p) => p.test(part.trim()));
+// 備註被 '; ' 分隔後，只要有任一片段不是系統備註，就視為使用者備註
+const isUserNote = (note) => {
+  if (!note || !note.trim()) return false;
+  return note.trim().split(/;\s*/).some((part) => part.trim() && !isSystemNotePart(part));
+};
 
 const groupCoursesByStudent = (list = []) => {
   const grouped = [];
@@ -1440,7 +1631,7 @@ const toggleStudentGroup = (groupKey) => {
 };
 
 const groupHasPausedCourse = (group) =>
-  (group?.courses || []).some((c) => c.status === 'inactive');
+  (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
 
 const expandAllGroups = () => {
   resetExpandedStudentGroups(groupedCourses.value);
@@ -1455,7 +1646,8 @@ const coursesByType = computed(() => {
     one_on_one: c.filter(x => x.class_type === 'one_on_one').length,
     one_on_two: c.filter(x => x.class_type === 'one_on_two').length,
     one_on_three: c.filter(x => x.class_type === 'one_on_three').length,
-    tutoring: c.filter(x => x.class_type === 'tutoring').length
+    tutoring: c.filter(x => x.class_type === 'tutoring').length,
+    trial: c.filter(x => x.class_type === 'trial').length
   };
 });
 
@@ -1503,7 +1695,8 @@ const loadCourses = async (page = 1) => {
         page: String(page),
       });
       if (filters.value.class_type) params.set('class_type', filters.value.class_type);
-      if (filters.value.teacher_id) params.set('teacher_id', filters.value.teacher_id);
+      if (filters.value.teacher_id) params.set('teacher_id', String(filters.value.teacher_id));
+      if (filters.value.teacher_name?.trim()) params.set('teacher_name', filters.value.teacher_name.trim());
       if (filters.value.course_status) params.set('status', filters.value.course_status);
       if (filters.value.name) params.set('name', filters.value.name);
       const res = await fetch(`/api/v1/student-classes?${params}`, {
@@ -1543,8 +1736,7 @@ const loadCourses = async (page = 1) => {
     .eq('branch_id', props.branchId);
 
   if (filters.value.class_type) query = query.eq('class_type', filters.value.class_type);
-  if (filters.value.teacher_id) query = query.eq('teacher_id', filters.value.teacher_id);
-
+  if (filters.value.teacher_id) query = query.eq('teacher_id', Number(filters.value.teacher_id));
   const { data } = await query;
   let result = (data || []).map(c => ({
     ...c,
@@ -1559,9 +1751,17 @@ const loadCourses = async (page = 1) => {
     settlement_day: null
   }));
 
+  if (filters.value.teacher_id) {
+    const id = String(filters.value.teacher_id);
+    result = result.filter(c => String(c.teacher_id ?? c.TeacherID ?? '') === id);
+  }
   if (filters.value.name) {
     const q = filters.value.name.toLowerCase();
     result = result.filter(c => c.student_name.toLowerCase().includes(q));
+  }
+  if (filters.value.teacher_name?.trim()) {
+    const q = filters.value.teacher_name.trim().toLowerCase();
+    result = result.filter(c => (c.teacher_name || '').toLowerCase().includes(q));
   }
 
   pagination.value = { page: 1, lastPage: 1, total: result.length, perPage: pagination.value.perPage };
@@ -1605,6 +1805,8 @@ const {
   addSessionFromModal, doStatusChange,
   startRetroLeave, doRetroLeave,
   startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
+  startSubstitute, doSubstitute,
+  startEditNoteTime, doEditNoteTime,
 } = useSessionEditFlow({
   supabase,
   branchId: computed(() => props.branchId),
@@ -1736,9 +1938,6 @@ const loadTeachers = async () => {
     if (editForm.value?.teacher_id && !teacherIdSet.has(String(editForm.value.teacher_id))) {
       editForm.value.teacher_id = '';
     }
-    if (filters.value.teacher_id && !teacherIdSet.has(String(filters.value.teacher_id))) {
-      filters.value.teacher_id = '';
-    }
   } catch (_) {
     teachers.value = [];
   }
@@ -1769,6 +1968,27 @@ const loadRoomsForBranch = async () => {
   } catch (_) { rooms.value = []; }
 };
 
+/** 固定排課／開課日／預設時長是否變更（不含老師費率等非排程欄位） */
+function scheduleFingerprintForEdit(form) {
+  const f = form || {};
+  const days = [...new Set((f.days_of_week || []).map(Number).filter((d) => d >= 1 && d <= 7))]
+    .sort((a, b) => a - b)
+    .join(',');
+  const slotRows = (f.day_time_slots || [])
+    .map((s) => ({
+      day: Number(s?.day || 0),
+      start: normalizeTo30Min(String(s?.start_time || f.start_time || '16:00').slice(0, 5)),
+      dur: Math.round((Number(s?.duration_hours || 0) || Number(f.duration_hours) || 2) * 10) / 10,
+    }))
+    .filter((s) => s.day >= 1 && s.day <= 7)
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start) || a.dur - b.dur);
+  const slots = slotRows.map((s) => `${s.day}|${s.start}|${s.dur}`).join(';');
+  const dur = Math.round((Number(f.duration_hours) || 2) * 10) / 10;
+  const start = normalizeTo30Min(String(f.start_time || '16:00').slice(0, 5));
+  const first = String(f.first_class_date || '').slice(0, 10);
+  return `${days}|${slots}|${dur}|${start}|${first}`;
+}
+
 const editCourse = (c) => {
   editingId.value = c.id;
   editingCourseFromLaravel.value = !!(
@@ -1791,42 +2011,6 @@ const editCourse = (c) => {
         .filter((slot) => slot.day >= 1 && slot.day <= 7)
     : [];
 
-  // 若課程是用 session_plan 批次建立，StudentClass 主檔可能只存第一個時段；
-  // 補齊：從已載入的 ClassSession 資料中推斷缺少的（同日多段）時段
-  const cid = String(c?.id ?? c?.ID ?? '');
-  const sessionRows = classSessionsByCourse.value[cid] || [];
-  if (sessionRows.length > 0) {
-    const skipStatuses = new Set(['cancelled', 'leave_adjusted']);
-    const existingKeys = new Set(existingSlots.map((s) => `${s.day}|${s.start_time}`));
-    const inferredMap = new Map();
-    for (const r of sessionRows) {
-      const st = String(r.status || '').toLowerCase();
-      if (skipStatuses.has(st)) continue;
-      if (!r.session_date || !r.start_time) continue;
-      const dow = dayOfWeekFromDate(String(r.session_date).slice(0, 10));
-      const start = normalizeTo30Min(String(r.start_time).slice(0, 5));
-      const k = `${dow}|${start}`;
-      if (!inferredMap.has(k)) {
-        let dur = c.duration_hours || 2;
-        if (r.end_time) {
-          const [sh, sm] = String(r.start_time).split(':').map(Number);
-          const [eh, em] = String(r.end_time).split(':').map(Number);
-          let mins = (eh * 60 + em) - (sh * 60 + sm);
-          if (mins <= 0) mins += 24 * 60;
-          if (mins >= 30) dur = Math.round(mins / 30) / 2;
-        }
-        inferredMap.set(k, { day: dow, start_time: start, duration_hours: dur });
-      }
-    }
-    for (const [k, slot] of inferredMap) {
-      if (!existingKeys.has(k)) {
-        existingSlots.push(slot);
-        existingKeys.add(k);
-      }
-    }
-    existingSlots.sort((a, b) => a.day - b.day || a.start_time.localeCompare(b.start_time));
-  }
-
   const slotDays = existingSlots.map((s) => s.day).filter((d) => d >= 1 && d <= 7);
   const existingDays = [...new Set([...existingDaysRaw, ...slotDays])].sort((a, b) => a - b);
 
@@ -1847,10 +2031,15 @@ const editCourse = (c) => {
     monthly_sessions: c.monthly_sessions ?? null,
     first_class_date: c.first_class_date || '',
     room_id: c.room_id ?? null,
-    memo: c.memo ?? c.Memo ?? ''
+    memo: c.memo ?? c.Memo ?? '',
+    paid_at: c.paid_at || c.last_paid_at || ''
   };
+  originalFirstClassDate.value = c.first_class_date || '';
   loadRoomsForBranch();
   showEditModal.value = true;
+  nextTick(() => {
+    editScheduleBaseline.value = scheduleFingerprintForEdit(editForm.value);
+  });
 };
 
 const submitEdit = async () => {
@@ -1888,6 +2077,7 @@ const submitEdit = async () => {
           room_id: form.room_id || null,
           Memo: form.memo || null
         };
+        if (form.paid_at) body.paid_at = form.paid_at;
         const res = await fetch(`/api/v1/student-classes/${id}`, {
           method: 'PUT',
           credentials: 'include',
@@ -1897,15 +2087,57 @@ const submitEdit = async () => {
         if (res.ok) {
           const payload = await res.json().catch(() => ({}));
           const sync = payload?.session_sync || {};
+          const baseline = editScheduleBaseline.value;
+          const scheduleChanged = baseline != null && scheduleFingerprintForEdit(form) !== baseline;
+          let scheduleAutoRebuildOk = false;
+          if (scheduleChanged) {
+            const rbRes = await fetch(`/api/v1/student-classes/${id}`, {
+              method: 'PUT',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ force_partial_rebuild: true }),
+            });
+            const rbPayload = await rbRes.json().catch(() => ({}));
+            if (rbRes.ok) {
+              scheduleAutoRebuildOk = true;
+              sync._auto_rebuild_updated = Number(rbPayload?.session_sync?.updated_future_sessions ?? 0);
+            } else {
+              sync._auto_rebuild_failed = rbPayload?.message || rbRes.statusText;
+            }
+          }
+          editScheduleBaseline.value = null;
           let successMsg = '課程已更新。';
+          if (scheduleChanged && scheduleAutoRebuildOk) {
+            const u = Number(sync._auto_rebuild_updated ?? 0);
+            if (u > 0) {
+              successMsg += ` 已依新固定排課同步 ${u} 筆未上堂次（已點名／已核准堂次維持不變）。`;
+            } else {
+              successMsg += ' 未上預排堂次已與新固定排課對齊（無需變更或已無未上堂次）。';
+            }
+          } else if (sync?._auto_rebuild_failed) {
+            successMsg += ` 未上堂次未自動同步：${sync._auto_rebuild_failed}。請稍後再開啟編輯並按儲存重試；若仍失敗請洽技術支援。`;
+          }
           if (sync?.rebuilt) {
             successMsg += ` 已依新開課日重排 ${Number(sync.created_sessions || 0)} 堂。`;
             if (sync?.reason === 'start_date_aligned') {
               successMsg += '（堂次首日已與開課日重新對齊）';
             }
-          } else if (sync?.reason === 'history_exists') {
-            successMsg += ' 本課已有出缺勤/核准紀錄，為保留歷史資料未重排堂次。';
-          } else if (sync?.reason === 'start_date_unchanged') {
+          } else if (sync?.reason === 'partial_rebuild') {
+            // 有歷史記錄但開課日改變：已鎖定堂次保留，未來未鎖定堂次重排
+            const updated = Number(sync.updated_future_sessions || 0);
+            if (updated > 0) {
+              successMsg += ` 已鎖定已點名／已核准堂次，並將 ${updated} 筆未來未上堂次依新開課日重新排程。`;
+            } else {
+              successMsg += ' 已鎖定已點名／已核准堂次；未來堂次日期無需調整。';
+            }
+          } else if (sync?.reason === 'history_exists' && !(scheduleChanged && scheduleAutoRebuildOk)) {
+            // 開課日無變動但有歷史記錄阻擋（或 slots 無法解析）
+            if (sync?.reconcile_skipped) {
+              successMsg += ' 課程時段已更新，但部分未來堂次因狀態鎖定未同步時間，請至堂次列表確認。';
+            } else {
+              successMsg += ' 本課已有出缺勤/核准紀錄，為保留歷史資料未重排堂次。';
+            }
+          } else if (sync?.reason === 'start_date_unchanged' && !(scheduleChanged && scheduleAutoRebuildOk)) {
             successMsg += ' 開課日未變更，故未重排堂次。';
           } else if (sync?.reason === 'start_date_not_updated') {
             successMsg += ' 本次未更新開課日，故未重排堂次。';
@@ -1936,6 +2168,7 @@ const submitEdit = async () => {
     alert('更新失敗：' + (error?.message || '請稍後再試'));
     return;
   }
+  editScheduleBaseline.value = null;
   showEditModal.value = false;
   alert('課程已更新。');
   loadCourses();
@@ -2151,13 +2384,22 @@ const submitBackfill = async () => {
 };
 
 watch(() => props.branchId, () => { loadCourses(); loadStudents(); loadTeachers(); });
-watch(() => props.initialTeacherId, (id) => {
-  if (id != null && id !== '') {
-    filters.value.teacher_id = Number(id) || id;
-    loadCourses();
+watch(
+  () => [props.initialTeacherId, teachers.value],
+  () => {
+    const id = props.initialTeacherId;
+    if (id == null || id === '') return;
+    filters.value.teacher_id = String(id);
+    const t = (teachers.value || []).find((x) => String(x.id) === String(id));
+    if (t) {
+      const label = t.username || t.name || t.Name || '';
+      if (label) filters.value.teacher_name = label;
+    }
+    loadCourses(1);
     emit('clear-initial-teacher');
-  }
-}, { immediate: true });
+  },
+  { immediate: true },
+);
 onMounted(() => {
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
@@ -2313,92 +2555,58 @@ onUnmounted(() => {
   background: #fff;
 }
 
-/* ----- Summary cards ----- */
-.summary-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 14px;
-  margin: 16px 0 18px;
-}
-
-.summary-card {
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border-radius: 14px;
-  padding: 16px 14px;
-  text-align: center;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  transition: var(--transition);
-}
-
-.summary-card:hover {
-  box-shadow: var(--shadow-hover);
-}
-
-.summary-card.summary-total {
-  border-color: rgba(99, 102, 241, 0.35);
-  background: linear-gradient(135deg, #ffffff 0%, #eef2ff 100%);
-}
-
-.summary-label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-light);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.summary-value {
-  display: block;
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: var(--text);
-  margin-top: 6px;
-}
-
-.summary-total .summary-value {
-  color: var(--primary);
-}
-
-/* ----- Subject stats ----- */
-.subject-stats-card {
-  margin-bottom: 16px;
-  padding: 14px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-}
-
-.subject-stats-header {
+/* ----- Compact stats strip ----- */
+.stats-strip {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 12.5px;
+  color: var(--text-light);
 }
 
-.subject-stats-title {
-  font-size: 13px;
+.stats-strip-item {
+  color: #475569;
+}
+
+.stats-strip-item strong {
   font-weight: 700;
   color: var(--text);
 }
 
-.subject-stats-total {
-  font-size: 12px;
-  color: var(--text-light);
+.stats-strip-total {
+  font-weight: 600;
+  color: var(--primary);
 }
 
-.subject-stats-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.stats-strip-total .stats-strip-num {
+  font-size: 14px;
+  font-weight: 800;
 }
 
-.subject-stat-chip {
-  font-size: 12px;
-  padding: 4px 10px;
+.stats-strip-sep {
+  color: rgba(148, 163, 184, 0.6);
+  font-size: 11px;
+}
+
+.stats-strip-pipe {
+  margin: 0 2px;
+  color: rgba(148, 163, 184, 0.5);
+  font-size: 13px;
+}
+
+.stats-strip-subject {
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--primary-bg);
   color: var(--primary);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 /* ----- Table ----- */
@@ -2420,7 +2628,22 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 10px;
+}
+.grouped-course-list.focus-fullscreen-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #fff;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
+  gap: 12px;
+}
+.grouped-course-list.focus-fullscreen-mode .group-table-wrap,
+.grouped-course-list.focus-fullscreen-mode .table-wrap {
+  max-height: none;
+  overflow-y: visible;
 }
 .pagination-bar {
   display: flex;
@@ -2479,12 +2702,50 @@ onUnmounted(() => {
 }
 
 .student-group-meta {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-light);
   font-weight: 600;
   white-space: nowrap;
 }
 
+.focus-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.focus-btn:hover, .focus-btn.active {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+.focus-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #1e40af;
+}
+.focus-mode-banner button {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  background: #fff;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+.focus-mode-banner button:hover { background: #dbeafe; }
 .student-group-has-paused {
   box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
   border-radius: 10px;
@@ -2492,7 +2753,7 @@ onUnmounted(() => {
 
 .student-group-paused-badge {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: #9a3412;
@@ -2526,16 +2787,21 @@ onUnmounted(() => {
   width: 100%;
   min-width: 540px;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: 13.5px;
 }
 
 .course-table thead {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: rgba(248, 250, 252, 0.95);
-  backdrop-filter: blur(6px);
+  background: #f8fafc;
   border-bottom: 1px solid rgba(99, 102, 241, 0.25);
+}
+@media (min-width: 641px) {
+  .course-table thead {
+    background: rgba(248, 250, 252, 0.95);
+    backdrop-filter: blur(6px);
+  }
 }
 
 .course-table th {
@@ -2575,16 +2841,16 @@ onUnmounted(() => {
 
 .price-line {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: #475569;
   font-weight: 600;
 }
 
 .memo-line {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: #64748b;
-  line-height: 1.35;
+  line-height: 1.4;
   word-break: break-word;
 }
 
@@ -2641,6 +2907,7 @@ onUnmounted(() => {
 }
 
 .cell-student {
+  font-size: 16px;
   font-weight: 600;
   color: var(--text);
 }
@@ -2649,7 +2916,7 @@ onUnmounted(() => {
   display: inline-block;
   padding: 4px 10px;
   border-radius: 20px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   background: var(--primary-bg);
   color: var(--primary);
@@ -2666,7 +2933,7 @@ onUnmounted(() => {
 }
 
 .cell-schedule {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text);
   word-break: keep-all;
   min-width: 100px;
@@ -2681,6 +2948,28 @@ onUnmounted(() => {
 
 .schedule-slot-line {
   line-height: 1.35;
+}
+.schedule-drift-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+.contract-exception-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  padding: 1px 6px;
 }
 
 .cell-remaining {
@@ -2764,12 +3053,41 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
+.action-dropdown-close {
+  color: #92400e;
+  font-weight: 500;
+}
+.action-dropdown-close:hover {
+  background: #fef3c7;
+}
+
 .action-dropdown-danger {
   color: #dc2626;
 }
 
 .action-dropdown-danger:hover {
   background: #fef2f2;
+}
+
+button.danger {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+button.danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .action-dropdown-divider {
@@ -2788,6 +3106,56 @@ onUnmounted(() => {
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: #fff;
   color: #334155;
+}
+
+.btn-add-session {
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-add-session:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #60a5fa;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+}
+.btn-add-session:disabled,
+.btn-add-session.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #94a3b8;
+  transform: none;
+  box-shadow: none;
+}
+
+.action-dropdown-add-session-mobile {
+  display: none;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.action-dropdown-item--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: #94a3b8 !important;
+}
+
+@media (max-width: 640px) {
+  .btn-add-session {
+    display: none;
+  }
+  .action-dropdown-add-session-mobile {
+    display: block;
+  }
 }
 
 /* ----- Empty state ----- */
@@ -2948,6 +3316,7 @@ onUnmounted(() => {
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.status-tag.trial { background: #E8EAF6; color: #3949AB; }
 
 .legacy-box {
   background: #FFF8E1;
@@ -3166,6 +3535,20 @@ onUnmounted(() => {
   color: #334155;
   line-height: 1.4;
 }
+.drift-hint {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 500;
+}
+.drift-hint.drift-hint-info {
+  color: #1e40af;
+  background: #dbeafe;
+}
 .dates-chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -3207,6 +3590,28 @@ onUnmounted(() => {
   border-radius: 999px;
   padding: 1px 5px;
 }
+.chip-note-text {
+  display: block;
+  font-size: 11px;
+  color: #6366f1;
+  margin-top: 3px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.notes-toggle-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4f46e5;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.notes-toggle-btn:hover { background: #e0e7ff; }
 .date-chip:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
@@ -3303,6 +3708,35 @@ onUnmounted(() => {
   font-weight: 800;
   letter-spacing: 0.02em;
 }
+
+.course-settled td {
+  background: #f9fafb;
+  color: #9ca3af;
+  box-shadow: inset 4px 0 0 #d1d5db;
+}
+.course-settled:hover td {
+  background: #f3f4f6;
+}
+.course-settled .cell-remaining.low {
+  color: #9ca3af;
+}
+.tag-package {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+  font-size: 0.65rem;
+  cursor: help;
+}
+.tag-settled {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 .tag-paid {
   background: #e8f5e9;
   color: #2e7d32;
@@ -3323,6 +3757,7 @@ onUnmounted(() => {
   cursor: pointer;
   padding: 3px 10px;
 }
+.paid-date-hint { font-size: 11px; color: #2e7d32; margin-top: 2px; white-space: nowrap; }
 .tag-armed {
   background: #ffebee;
   color: #c62828;

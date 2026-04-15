@@ -5,6 +5,25 @@ const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
 /** 剩餘堂數顯示：與「已上」一併視為已占用的狀態（缺席通常已扣堂）。 */
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
 
+/**
+ * 狀態矩陣：哪些 ClassSession.Status 占購買堂數額度。
+ * 與後端 StudentClassController::extendSessionsIfNeeded 口徑一致
+ * （後端 whereNotIn: cancelled, leave, leave_adjusted）。
+ *
+ *  狀態            | 占購買額度 | 說明
+ *  --------------- | ---------- | -------
+ *  scheduled       | YES        | 未來預排堂次
+ *  attended        | YES        | 已上（核准評量後）
+ *  completed       | YES        | 已上（舊路徑）
+ *  late            | YES        | 遲到但算已上
+ *  absent          | YES        | 缺席（通常已扣堂）
+ *  leave           | NO         | 請假，不占購買額度
+ *  leave_adjusted  | NO         | 補請假，不占購買額度
+ *  excused         | NO         | 歷史相容，語意同 leave
+ *  cancelled       | NO         | 已取消
+ */
+const SESSION_NOT_OCCUPYING_QUOTA = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
+
 export function useCourseSessionsDisplay({
   classSessionsByCourse,
   completedSessionDatesByCourse,
@@ -118,6 +137,14 @@ export function useCourseSessionsDisplay({
     return `${date}|${start}`;
   };
 
+  const sortSessionRows = (rows) =>
+    [...rows].sort((a, b) => {
+      const da = String(a?.session_date || '');
+      const db = String(b?.session_date || '');
+      if (da !== db) return da.localeCompare(db);
+      return String(a?.start_time || '').localeCompare(String(b?.start_time || ''));
+    });
+
   /**
    * Return ordered, non-cancelled session "units". Each unit is either a real
    * ClassSession row or a synthetic { session_date } from legacy date lists.
@@ -127,14 +154,7 @@ export function useCourseSessionsDisplay({
     const cid = String(c?.id ?? '');
     const rows = classSessionsByCourse.value[cid];
     if (Array.isArray(rows) && rows.length > 0) {
-      return rows
-        .filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled')
-        .sort((a, b) => {
-          const da = String(a?.session_date || '');
-          const db = String(b?.session_date || '');
-          if (da !== db) return da.localeCompare(db);
-          return String(a?.start_time || '').localeCompare(String(b?.start_time || ''));
-        });
+      return sortSessionRows(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
     }
     const effective = effectiveSessionDatesByCourse.value[cid];
     if (Array.isArray(effective)) {
@@ -143,6 +163,23 @@ export function useCourseSessionsDisplay({
         .map((d) => ({ session_date: d, _synthetic: true }));
     }
     return [];
+  };
+
+  /** All session rows including cancelled, sorted by date. */
+  const allSessionUnits = (c) => {
+    const cid = String(c?.id ?? '');
+    const rows = classSessionsByCourse.value[cid];
+    if (Array.isArray(rows) && rows.length > 0) {
+      return sortSessionRows(rows);
+    }
+    return sessionUnits(c);
+  };
+
+  const cancelledSessionCount = (c) => {
+    const cid = String(c?.id ?? '');
+    const rows = classSessionsByCourse.value[cid];
+    if (!Array.isArray(rows)) return 0;
+    return rows.filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
   };
 
   /** Legacy compat: unique sorted date strings (for callers that iterate dates). */
@@ -195,7 +232,7 @@ export function useCourseSessionsDisplay({
     const rows = getSessionRowsForDate(course, dateYmd);
     if (!rows.length) return null;
     if (rows.length === 1) return rows[0];
-    const priority = ['completed', 'attended', 'late', 'excused', 'absent', 'leave_adjusted', 'leave', 'cancelled', 'scheduled'];
+    const priority = ['completed', 'attended', 'late', 'absent', 'scheduled', 'excused', 'leave_adjusted', 'leave', 'cancelled'];
     const sorted = [...rows].sort((a, b) => {
       const aStatus = String(a?.status || '').toLowerCase();
       const bStatus = String(b?.status || '').toLowerCase();
@@ -256,11 +293,12 @@ export function useCourseSessionsDisplay({
       return isCompletedDate(course, dateYmd) ? { label: '已上', className: 'completed' } : null;
     }
     const statuses = new Set(rows.map((row) => String(row?.status || '').toLowerCase()).filter(Boolean));
+    if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
+    if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
+    if (statuses.has('scheduled')) return null;
     if (statuses.has('leave_adjusted')) return { label: '補請假', className: 'leave' };
     if (statuses.has('excused') || statuses.has('leave')) return { label: '請假', className: 'leave' };
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
-    if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
-    if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
     return null;
   };
 
@@ -291,6 +329,47 @@ export function useCourseSessionsDisplay({
       if (!state || !LEAVE_STATUSES.has(state.className)) count++;
     }
     return count;
+  };
+
+  /**
+   * 有效堂次數：占購買額度的堂次。
+   * 口徑與後端 extendSessionsIfNeeded 一致：排除 cancelled/leave/leave_adjusted/excused。
+   * 用於警示判定，與 displayRemainingSessions 解耦。
+   */
+  const effectiveSessionCount = (course) => {
+    const cid = String(course?.id ?? '');
+    const rows = classSessionsByCourse.value[cid];
+    if (Array.isArray(rows) && rows.length > 0) {
+      return rows.filter((row) => !SESSION_NOT_OCCUPYING_QUOTA.has(String(row?.status || '').toLowerCase())).length;
+    }
+    return countNonLeaveSessions(course);
+  };
+
+  const leaveSessionCount = (course) => {
+    const cid = String(course?.id ?? '');
+    const rows = classSessionsByCourse.value[cid];
+    if (!Array.isArray(rows)) return 0;
+    return rows.filter((row) => LEAVE_STATUSES.has(String(row?.status || '').toLowerCase())).length;
+  };
+
+  /**
+   * 堂次警示判定。回傳 { show, type, message } 或 null。
+   * type: 'over' | 'under_leave' | 'under_other'
+   */
+  const sessionCountWarning = (course) => {
+    if (!isSessionMode(course)) return null;
+    const purchased = getPurchasedSessions(course);
+    if (purchased <= 0) return null;
+    const effective = effectiveSessionCount(course);
+    if (effective === purchased) return null;
+    const leaves = leaveSessionCount(course);
+    if (effective > purchased) {
+      return { show: true, type: 'over', message: '排程列數與購買堂數不一致' };
+    }
+    if (leaves > 0) {
+      return { show: true, type: 'under_leave', message: '有請假堂次尚未補課' };
+    }
+    return { show: true, type: 'under_other', message: '排程列數與購買堂數不一致' };
   };
 
   const countUpcomingNonLeaveSessions = (course) => {
@@ -389,9 +468,14 @@ export function useCourseSessionsDisplay({
     toggleDates,
     sessions,
     sessionUnits,
+    allSessionUnits,
+    cancelledSessionCount,
     sessionRowKey,
     getSessionNumber,
     countNonLeaveSessions,
+    effectiveSessionCount,
+    leaveSessionCount,
+    sessionCountWarning,
     getCourseSessionRows,
     getSessionRowsForDate,
     getSessionRowById,
@@ -416,5 +500,6 @@ export function useCourseSessionsDisplay({
     loadEffectiveSessionDates,
     LEAVE_STATUSES,
     ATTENDED_SESSION_STATUSES,
+    SESSION_NOT_OCCUPYING_QUOTA,
   };
 }

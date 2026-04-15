@@ -229,7 +229,50 @@ ls -la backend/.env
   - `ApprovalSessionSyncService`（核准驅動扣堂）
   - `StudentClassController::index`（課程列表展示）
 
-### 5) 上線前回歸檢查（必跑）
+### 5) 課程管理堂次警示排查 SOP
+
+營運/客服回報「排程列數與購買堂數不一致」時：
+
+1. **確認課程 ID**（請回報者提供學生姓名 + 科目，從後台查 `StudentClass.ID`）
+2. **查後端堂次分佈**：
+   ```sql
+   SELECT Status, COUNT(*) AS cnt
+   FROM ClassSession
+   WHERE StudentClassID = ?
+   GROUP BY Status;
+   ```
+3. **計算有效堂次**：加總非 `cancelled/leave/leave_adjusted/excused` 的 `cnt`
+4. **比對購買堂數**：`SELECT SessionCount FROM StudentClass WHERE ID = ?`
+5. **判定**：
+   - 有效 = 購買 → 前端未更新或快取，執行前端 deploy 並請使用者清瀏覽器快取
+   - 有效 > 購買 → 真異常，檢查是否多排；聯繫工程修正
+   - 有效 < 購買 → 若有 leave 列＝正常（待補課）；無 leave 列＝缺堂，檢查 `extendSessionsIfNeeded` 是否遺漏
+6. **回報格式**：course_id / branch_id / 有效堂次 / 購買堂數 / 各狀態計數
+
+**批次稽核查詢**（dry-run，唯讀）：列出所有「有效堂次 != 購買堂數」的進行中課程
+
+```sql
+SELECT
+  sc.ID AS course_id,
+  s.CampusID AS branch_id,
+  sc.SessionCount AS purchased,
+  COUNT(CASE WHEN cs.Status NOT IN ('cancelled','leave','leave_adjusted','excused') THEN 1 END) AS effective,
+  COUNT(CASE WHEN cs.Status = 'leave' THEN 1 END) AS leaves,
+  COUNT(CASE WHEN cs.Status = 'leave_adjusted' THEN 1 END) AS leave_adj,
+  COUNT(CASE WHEN cs.Status = 'cancelled' THEN 1 END) AS cancelled,
+  COUNT(CASE WHEN cs.Status = 'excused' THEN 1 END) AS excused,
+  COUNT(*) AS total_rows
+FROM StudentClass sc
+JOIN Student s ON s.id = sc.StudentID
+LEFT JOIN ClassSession cs ON cs.StudentClassID = sc.ID
+WHERE sc.Stop = 0
+  AND sc.SessionCount > 0
+GROUP BY sc.ID, s.CampusID, sc.SessionCount
+HAVING effective != purchased
+ORDER BY branch_id, course_id;
+```
+
+### 6) 上線前回歸檢查（必跑）
 
 0. 新後端含出缺勤科目修正者：確認已跑 migration **`2026_04_12_200000_remap_orphaned_subject_ids`**（若環境有舊 Subject 主鍵殘留）；`GET /api/v1/attendance` 抽查 `subject_name` 非空列
 1. 點名 `present` 後，`UsedSessions +1 / RemainingSessions -1`
