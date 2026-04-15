@@ -4,16 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\LearningRecordTeacherChange;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\EnrollmentService;
+use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class ClassSessionController extends Controller
@@ -24,7 +29,7 @@ class ClassSessionController extends Controller
             'student_id' => 'required|integer|exists:Student,id',
             'teacher_id' => 'required|integer|exists:User,id',
             'subject' => 'required|string|max:64',
-            'class_type' => 'required|in:one_on_one,one_on_two,one_on_three,tutoring',
+            'class_type' => 'required|in:one_on_one,one_on_two,one_on_three,tutoring,trial',
             'total_classes' => 'nullable|integer|min:1|max:500',
             'confirmed_dates' => 'present|array|max:500',
             'confirmed_dates.*' => 'date',
@@ -34,6 +39,7 @@ class ClassSessionController extends Controller
             'session_plan.*.session_date' => 'required_with:session_plan|date',
             'session_plan.*.start_time' => 'required_with:session_plan|date_format:H:i',
             'session_plan.*.kind' => 'required_with:session_plan|in:confirmed,future',
+            'session_plan.*.subject' => 'nullable|string|max:64',
             'days_of_week' => 'nullable|array',
             'days_of_week.*' => 'integer|min:1|max:7',
             'start_time' => 'required_without:day_time_slots|date_format:H:i',
@@ -41,6 +47,7 @@ class ClassSessionController extends Controller
             'day_time_slots.*.day' => 'required_with:day_time_slots|integer|min:1|max:7',
             'day_time_slots.*.start_time' => 'required_with:day_time_slots|date_format:H:i',
             'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480',
+            'day_time_slots.*.subject' => 'nullable|string|max:64',
             'duration_minutes' => 'required|integer|min:30|max:480',
             'rate_unit' => 'nullable|in:session,hour',
             'price_per_session' => 'required|numeric|min:0',
@@ -49,6 +56,7 @@ class ClassSessionController extends Controller
             'monthly_sessions' => 'nullable|integer|min:1|max:500',
             'room_id' => 'nullable|integer|exists:rooms,id',
             'memo' => 'nullable|string|max:512',
+            'paid_at' => 'nullable|date',
             'branch_id' => 'nullable|integer|min:1',
             'mode' => 'nullable|in:create,backfill',
         ]);
@@ -77,6 +85,17 @@ class ClassSessionController extends Controller
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            // Single-session substitute: schedules.scheduled + original_schedule_id → 代課老師（點名／列表用）
+            // Join on course + date + start_time to avoid mismatching when same course has multiple sessions on one day.
+            ->leftJoin('schedules as sub_sched', function ($join) {
+                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->where('sub_sched.status', '=', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id');
+            })
+            ->leftJoin('Teacher as subt', 'subt.id', '=', 'sub_sched.teacher_id')
+            ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
             ->leftJoin('LearningRecord as lr', function ($join) {
                 $join->on('lr.ClassSessionID', '=', 'cs.id')
                      ->whereNull('lr.VoidedAt');
@@ -87,9 +106,13 @@ class ClassSessionController extends Controller
             })
             ->leftJoin('Teacher as t', 't.id', '=', 'sc.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
+            // lr_teacher: 評量紀錄上記錄的老師（儲存授課當下的老師，不隨契約換師而變動）
+            ->leftJoin('Teacher as lrt', 'lrt.id', '=', 'lr.TeacherID')
+            ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
             ->leftJoin('Teacher as sit', 'sit.id', '=', 'si.TeacherID')
             ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')
             ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
+            ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
             ->select([
                 'cs.id',
                 'cs.StudentClassID',
@@ -97,21 +120,29 @@ class ClassSessionController extends Controller
                 'cs.StartTime',
                 'cs.EndTime',
                 'cs.Status',
+                'cs.Note',
                 'sc.StudentID',
                 'sc.TeacherID',
+                'sub_sched.teacher_id as substitute_teacher_id',
                 's.CampusID',
                 's.name as student_name',
-                DB::raw('COALESCE(t.T_Name, u.Name, "") as teacher_name'),
+                // 優先順序：代課老師 > 評量記錄的老師（歷史老師） > 契約主責老師（現任）
+                DB::raw('COALESCE(subt.T_Name, subu.Name, lrt.T_Name, lru.Name, t.T_Name, u.Name, "") as teacher_name'),
+                DB::raw('COALESCE(sub.Subject_Name, "") as subject_name'),
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
                 'lr.TeacherID as learning_record_teacher_id',
+                'lr.Progress as learning_record_progress',
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
                 DB::raw('COALESCE(rbu.Name, sit.T_Name, siu.Name, "") as recorded_by_name'),
             ]);
 
         if ($role === 'teacher') {
-            $query->where('sc.TeacherID', $teacherId);
+            $query->where(function ($q) use ($teacherId) {
+                $q->where('sc.TeacherID', $teacherId)
+                    ->orWhere('sub_sched.teacher_id', $teacherId);
+            });
         }
 
         if (!empty($campusIds)) {
@@ -119,7 +150,11 @@ class ClassSessionController extends Controller
         }
 
         if ($request->filled('teacher_id')) {
-            $query->where('sc.TeacherID', (int) $request->input('teacher_id'));
+            $filterTid = (int) $request->input('teacher_id');
+            $query->where(function ($q) use ($filterTid) {
+                $q->where('sc.TeacherID', $filterTid)
+                    ->orWhere('sub_sched.teacher_id', $filterTid);
+            });
         }
 
         if ($request->filled('student_id')) {
@@ -170,7 +205,9 @@ class ClassSessionController extends Controller
             $row->id = (int) $row->id;
             $row->student_class_id = (int) $row->StudentClassID;
             $row->student_id = (int) $row->StudentID;
-            $row->teacher_id = (int) ($row->TeacherID ?? 0);
+            $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
+                ? (int) $row->substitute_teacher_id : 0;
+            $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
             $row->branch_id = (int) ($row->CampusID ?? 0);
             $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
             $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
@@ -178,19 +215,24 @@ class ClassSessionController extends Controller
             $row->status = (string) ($row->Status ?? '');
             $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
             $row->learning_record_status = $row->learning_record_status ?? 'missing';
+            $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
             $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+            unset($row->learning_record_progress);
             $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
             $row->attendance_memo = $row->attendance_memo ?: '';
             $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');
+            $row->note = $row->Note !== null ? (string) $row->Note : null;
             unset(
                 $row->StudentClassID,
                 $row->StudentID,
                 $row->TeacherID,
+                $row->substitute_teacher_id,
                 $row->CampusID,
                 $row->SessionDate,
                 $row->StartTime,
                 $row->EndTime,
-                $row->Status
+                $row->Status,
+                $row->Note
             );
             return $row;
         });
@@ -202,6 +244,10 @@ class ClassSessionController extends Controller
                 $byClass[$key] = [];
             }
             $byClass[$key][] = $item;
+        }
+
+        if (config('perfflags.log_session_count_mismatch')) {
+            $this->logSessionCountMismatches($byClass, $request);
         }
 
         return response()->json([
@@ -219,18 +265,17 @@ class ClassSessionController extends Controller
      * Key = current status, value = allowed next statuses.
      */
     private const STATUS_TRANSITIONS = [
-        'scheduled'      => ['attended', 'late', 'absent', 'excused', 'leave', 'cancelled'],
-        'attended'       => ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-        'completed'      => ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-        'late'           => ['leave', 'leave_adjusted', 'scheduled', 'attended', 'absent', 'excused', 'cancelled'],
-        'absent'         => ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'excused', 'cancelled'],
-        'excused'        => ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'absent', 'cancelled'],
-        'leave'          => ['scheduled', 'cancelled'],
+        'scheduled'      => ['attended', 'late', 'absent', 'leave', 'cancelled'],
+        'attended'       => ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'cancelled'],
+        'completed'      => ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'cancelled'],
+        'late'           => ['leave', 'leave_adjusted', 'scheduled', 'attended', 'absent', 'cancelled'],
+        'absent'         => ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'cancelled'],
+        'leave'          => ['scheduled', 'attended', 'late', 'absent', 'cancelled'],
         'leave_adjusted' => ['cancelled'],
         'cancelled'      => ['scheduled'],
     ];
 
-    private const ATTENDED_STATUSES = ['attended', 'completed', 'late', 'absent', 'excused'];
+    private const ATTENDED_STATUSES = ['attended', 'completed', 'late', 'absent'];
     private const LEAVE_ADJUSTED_REQUIRES = ['director', 'admin', 'super_admin'];
 
     /**
@@ -272,6 +317,7 @@ class ClassSessionController extends Controller
 
         if ($currentStatus === $newStatus) {
             $this->applyTimeAndNoteUpdates($session, $data);
+            $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
         }
 
@@ -292,7 +338,7 @@ class ClassSessionController extends Controller
         }
 
         if ($role === 'teacher') {
-            $teacherAllowed = ['attended', 'late', 'absent', 'excused', 'leave'];
+            $teacherAllowed = ['attended', 'late', 'absent', 'leave'];
             if (!in_array($newStatus, $teacherAllowed, true)) {
                 return response()->json(['message' => '老師僅可標記出缺勤或請假狀態'], 403);
             }
@@ -389,6 +435,15 @@ class ClassSessionController extends Controller
 
                 SessionDeductionService::syncCounters($studentClass);
 
+                // If leave → attended/late/absent/completed: the LR was voided by the leave
+                // cascade. Restore it so teachers can fill it in.
+                if (
+                    $currentStatus === 'leave' &&
+                    in_array($newStatus, ['attended', 'late', 'absent', 'completed'], true)
+                ) {
+                    $this->restoreVoidedLearningRecord($session);
+                }
+
                 return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
             });
         } catch (\InvalidArgumentException $e) {
@@ -445,6 +500,26 @@ class ClassSessionController extends Controller
             });
     }
 
+    /**
+     * When a session transitions from leave back to an attended-like status,
+     * restore any previously voided LearningRecord so teachers can fill it in.
+     */
+    private function restoreVoidedLearningRecord(ClassSession $session): void
+    {
+        $lr = LearningRecord::where('ClassSessionID', $session->id)->first();
+        if (!$lr || !$lr->isVoided()) {
+            return;
+        }
+        $lr->VoidedAt       = null;
+        $lr->VoidedByUserID = null;
+        $lr->VoidReason     = null;
+        $lr->Status         = 'pending';
+        $lr->SessionDate    = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
+        $lr->StartTime      = $session->StartTime   ? substr((string) $session->StartTime, 0, 5)   : null;
+        $lr->EndTime        = $session->EndTime      ? substr((string) $session->EndTime, 0, 5)     : null;
+        $lr->save();
+    }
+
     private function applyTimeAndNoteUpdates(ClassSession $session, array $data): void
     {
         if (!empty($data['start_time'])) {
@@ -453,10 +528,26 @@ class ClassSessionController extends Controller
         if (!empty($data['end_time'])) {
             $session->EndTime = substr($data['end_time'], 0, 5);
         }
-        if (array_key_exists('note', $data) && $data['note'] !== null) {
-            $session->Note = $data['note'];
+        if (array_key_exists('note', $data)) {
+            $session->Note = $data['note'] ?? '';
         }
         $session->save();
+    }
+
+    /**
+     * 當 end_time 有異動時，同步更新同一堂次所有未作廢的評量記錄 EndTime。
+     * 讓家長看到的評量表時間與實際上課時間一致。
+     * 不論評量狀態（pending/submitted/approved）皆更新，因為這是事實性的時間修正。
+     */
+    private function syncLearningRecordTime(ClassSession $session, array $data): void
+    {
+        if (empty($data['end_time'])) {
+            return;
+        }
+        $newEndTime = substr($data['end_time'], 0, 5);
+        LearningRecord::where('ClassSessionID', $session->id)
+            ->whereNull('VoidedAt')
+            ->update(['EndTime' => $newEndTime]);
     }
 
     private function tryExtendOnLeave(StudentClass $studentClass, ClassSession $leaveSession): ?ClassSession
@@ -464,6 +555,20 @@ class ClassSessionController extends Controller
         $mode = strtolower(trim((string) ($studentClass->ScheduleMode ?? '')));
         if ($mode === 'date') {
             return null;
+        }
+
+        // 只在「有效堂次數不足」時才順延。
+        // 有效堂次 = 非 leave/leave_adjusted/cancelled 的 session（這些堂次仍會被上課或待上）。
+        // 若有效堂次 >= SessionCount，代表課程已有足夠堂次，不需再補建，
+        // 防止同一堂次反覆 absent→leave_adjusted→cancelled→scheduled 產生無限累加。
+        $sessionCount = (int) ($studentClass->SessionCount ?? 0);
+        if ($sessionCount > 0) {
+            $effectiveCount = ClassSession::where('StudentClassID', $studentClass->ID)
+                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                ->count();
+            if ($effectiveCount >= $sessionCount) {
+                return null;
+            }
         }
 
         $lastSession = ClassSession::where('StudentClassID', $studentClass->ID)
@@ -476,31 +581,30 @@ class ClassSessionController extends Controller
             return null;
         }
 
-        $baseDate = Carbon::parse($lastSession->SessionDate);
-        $weekday = (int) ($studentClass->week ?? 0);
-        if ($weekday < 1 || $weekday > 7) {
-            $weekday = $baseDate->dayOfWeekIso;
-        }
+        // 使用 CourseLeaveCascadeService 的多星期解析邏輯，支援週一+週四等雙日課程
+        $weekdays = \App\Services\CourseLeaveCascadeService::resolveCourseWeekdays(
+            $studentClass,
+            (int) Carbon::parse($lastSession->SessionDate)->dayOfWeekIso
+        );
 
-        $nextDate = $baseDate->copy()->addDay();
-        for ($i = 0; $i < 14; $i++) {
-            if ($nextDate->dayOfWeekIso === $weekday) {
-                break;
-            }
-            $nextDate->addDay();
-        }
+        // 收集所有現有 session 日期作為 occupied，避免撞期
+        $occupiedDates = ClassSession::where('StudentClassID', $studentClass->ID)
+            ->whereNotIn('Status', ['cancelled'])
+            ->pluck('SessionDate')
+            ->map(fn($d) => substr((string) $d, 0, 10))
+            ->flip()
+            ->map(fn() => true)
+            ->all();
 
-        $exists = ClassSession::where('StudentClassID', $studentClass->ID)
-            ->whereDate('SessionDate', $nextDate->toDateString())
-            ->where('StartTime', $leaveSession->StartTime)
-            ->exists();
-        if ($exists) {
-            return null;
-        }
+        $appendDate = \App\Services\CourseLeaveCascadeService::nextRecurringDate(
+            Carbon::parse($lastSession->SessionDate)->startOfDay(),
+            $weekdays,
+            $occupiedDates
+        );
 
         return ClassSession::create([
             'StudentClassID' => $studentClass->ID,
-            'SessionDate'    => $nextDate->toDateString(),
+            'SessionDate'    => $appendDate,
             'StartTime'      => $leaveSession->StartTime,
             'EndTime'        => $leaveSession->EndTime,
             'Status'         => 'scheduled',
@@ -657,7 +761,7 @@ class ClassSessionController extends Controller
         $approved = false;
         $deducted = false;
 
-        $record = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+        $record = LearningRecord::where('ClassSessionID', $classSession->id)->active()->first();
         if (!$record) {
             $payload = [
                 'StudentClassID' => $studentClass->ID,
@@ -757,8 +861,516 @@ class ClassSessionController extends Controller
 
         $studentClass->UsedSessions = $usedSessions;
         $studentClass->RemainingSessions = $remainingSessions;
-        $studentClass->Stop = $remainingSessions <= 0 ? 1 : 0;
+        // Remaining 0 does not imply Stop; director pauses explicitly.
         $studentClass->save();
+    }
+
+    /**
+     * POST /api/v1/class-sessions/{id}/substitute
+     *
+     * Atomic single-session substitute teacher: writes schedules (rescheduled + scheduled
+     * with new teacher_id on same date/time) and updates LearningRecord.TeacherID.
+     */
+    public function substitute(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'substitute_teacher_id' => 'required|integer|exists:User,id',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $session = ClassSession::find($id);
+        if (!$session) {
+            return response()->json(['message' => '找不到該堂次'], 404);
+        }
+
+        $studentClass = StudentClass::find($session->StudentClassID);
+        if (!$studentClass) {
+            return response()->json(['message' => '找不到對應課程'], 404);
+        }
+
+        $student = Student::find($studentClass->StudentID);
+        if (!$student) {
+            return response()->json(['message' => '找不到該課程的學生資料'], 422);
+        }
+        $campusId = (int) ($student->CampusID ?? 0);
+        if ($campusId <= 0) {
+            return response()->json(['message' => '學生未設定分校，無法寫入排程與代課'], 422);
+        }
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if (!empty($campusIds) && !in_array($campusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $newTeacherId = (int) $data['substitute_teacher_id'];
+        $oldTeacherId = (int) ($studentClass->TeacherID ?? 0);
+
+        if ($newTeacherId === $oldTeacherId) {
+            return response()->json([
+                'message' => '代課老師與正班老師相同，無需替換',
+                'errors' => ['substitute_teacher_id' => ['請選擇不同的老師。']],
+            ], 422);
+        }
+
+        $teacherHasCampus = UserCampus::where('UserID', $newTeacherId)
+            ->where('CampusID', $campusId)
+            ->exists();
+        if (!$teacherHasCampus) {
+            return response()->json([
+                'message' => '所選老師未綁定此分校',
+                'errors' => ['substitute_teacher_id' => ['所選老師未綁定此分校。']],
+            ], 422);
+        }
+
+        try {
+            $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
+        } catch (\Throwable $e) {
+            return response()->json(['message' => '堂次日期格式無效'], 422);
+        }
+        $startTime = $this->normalizeSessionTimeForSchedule($session->StartTime ?? '');
+        $endTime = $this->normalizeSessionTimeForSchedule($session->EndTime ?? '');
+        if ($startTime === '' || $endTime === '') {
+            return response()->json(['message' => '堂次起迄時間不完整，無法寫入排程'], 422);
+        }
+        $courseId = (int) $studentClass->ID;
+        $studentId = (int) $studentClass->StudentID;
+        $subject = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name') ?? '';
+        $classType = (string) ($studentClass->ClassType ?? 'one_on_one');
+        $dayOfWeek = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+        $roomId = (int) ($studentClass->room_id ?? 0);
+        if ($roomId <= 0) {
+            $legacyRoom = $studentClass->RoomID ?? null;
+            $roomId = is_numeric($legacyRoom) ? (int) $legacyRoom : 0;
+        }
+        if ($roomId <= 0) {
+            $roomId = null;
+        }
+
+        // Pre-read + conflict check OUTSIDE the DB transaction so a 409 does not commit partial writes.
+        $existingRescheduled = Schedule::where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'rescheduled')
+            ->first();
+        $rescheduledIdForGuard = $existingRescheduled ? (int) $existingRescheduled->id : null;
+        $existingScheduled = null;
+        if ($rescheduledIdForGuard) {
+            $existingScheduled = Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $rescheduledIdForGuard)
+                ->first();
+        }
+
+        // Determine whether the session is in the past (already ended or attended-like status).
+        // Past sessions bypass the capacity guard -- the class already happened, so swapping the
+        // teacher on record is a bookkeeping correction, not a scheduling conflict.
+        $sessionStatus = strtolower(trim((string) ($session->Status ?? 'scheduled')));
+        $isPastSession = in_array($sessionStatus, ['attended', 'completed', 'late', 'absent'], true);
+        if (!$isPastSession) {
+            try {
+                $sessionEndDt = Carbon::parse($sessionDate . ' ' . ($endTime ?: '23:59'));
+                $isPastSession = $sessionEndDt->lte(Carbon::now());
+            } catch (\Throwable $e) {
+                $isPastSession = false;
+            }
+        }
+
+        if (!$isPastSession) {
+            $guard = app(ScheduleGuardService::class);
+            $conflicts = $guard->validateScheduleOccurrence([
+                'teacher_id' => $newTeacherId,
+                'class_type' => $classType,
+                'room_id' => $roomId,
+                'branch_id' => $campusId,
+                'schedule_date' => $sessionDate,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'exclude_schedule_id' => $existingScheduled ? (int) $existingScheduled->id : null,
+            ]);
+            if (!empty($conflicts)) {
+                $conflictMessage = $conflicts[0]['message'] ?? '代課老師此時段與既有課程衝突';
+                $overlapSummary = $conflicts[0]['overlap_summary'] ?? '';
+                if ($overlapSummary !== '') {
+                    $conflictMessage .= '（' . $overlapSummary . '）';
+                }
+
+                Log::info('[substitute] capacity_conflict', [
+                    'class_session_id' => $id,
+                    'new_teacher_id' => $newTeacherId,
+                    'session_date' => $sessionDate,
+                    'conflicts' => $conflicts,
+                ]);
+
+                return response()->json([
+                    'message' => $conflictMessage,
+                    'conflicts' => $conflicts,
+                ], 409);
+            }
+        } else {
+            $this->logSubstituteDiag('guard_bypassed_past_session', [
+                'class_session_id' => $id,
+                'session_status' => $sessionStatus,
+                'session_date' => $sessionDate,
+                'new_teacher_id' => $newTeacherId,
+            ]);
+        }
+
+        $this->logSubstituteDiag('pre_transaction', [
+            'class_session_id' => $id,
+            'student_class_id' => $courseId,
+            'student_id' => $studentId,
+            'campus_id' => $campusId,
+            'session_date' => $sessionDate,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'old_teacher_id' => $oldTeacherId,
+            'new_teacher_id' => $newTeacherId,
+            'class_type' => $classType,
+            'room_id' => $roomId,
+            'has_existing_rescheduled' => (bool) $existingRescheduled,
+            'has_existing_scheduled' => (bool) $existingScheduled,
+        ]);
+
+        try {
+            return $this->runSubstituteTransaction(
+                $request,
+                $session,
+                $data,
+                $newTeacherId,
+                $oldTeacherId,
+                $sessionDate,
+                $startTime,
+                $endTime,
+                $courseId,
+                $studentId,
+                $subject,
+                $classType,
+                $dayOfWeek,
+                $campusId,
+                $roomId,
+                $existingRescheduled,
+                $existingScheduled
+            );
+        } catch (\Throwable $e) {
+            $this->logSubstituteDiag('failed', [
+                'class_session_id' => $id,
+                'exception' => get_class($e),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'message' => config('app.debug') ? $e->getMessage() : '代課設定失敗，請稍後再試或聯絡管理員',
+            ], 500);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function runSubstituteTransaction(
+        Request $request,
+        ClassSession $session,
+        array $data,
+        int $newTeacherId,
+        int $oldTeacherId,
+        string $sessionDate,
+        string $startTime,
+        string $endTime,
+        int $courseId,
+        int $studentId,
+        string $subject,
+        string $classType,
+        int $dayOfWeek,
+        int $campusId,
+        ?int $roomId,
+        $existingRescheduled,
+        $existingScheduled
+    ) {
+        return DB::transaction(function () use (
+            $request, $session, $data, $newTeacherId, $oldTeacherId,
+            $sessionDate, $startTime, $endTime, $courseId, $studentId, $subject,
+            $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled
+        ) {
+            $durationHours = 2;
+            if ($startTime && $endTime) {
+                $mins = abs(Carbon::parse($startTime)->diffInMinutes(Carbon::parse($endTime)));
+                if ($mins > 0) {
+                    $durationHours = max(0.5, round($mins / 60, 1));
+                }
+            }
+
+            $this->logSubstituteDiag('transaction_begin', [
+                'class_session_id' => $session->id,
+                'duration_hours' => $durationHours,
+            ]);
+
+            // 1) Upsert rescheduled record (hides original teacher's slot)
+            $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'rescheduled')
+                ->first();
+
+            $rescheduledId = null;
+            if (!$existingRescheduledRow) {
+                // Align with ScheduleController@store: avoid ghost scheduled rows on the same course/date.
+                DB::table('schedules')
+                    ->where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->delete();
+
+                $rescheduled = Schedule::create([
+                    'student_id' => $studentId,
+                    'teacher_id' => $oldTeacherId > 0 ? $oldTeacherId : null,
+                    'subject' => $subject,
+                    'day_of_week' => $dayOfWeek,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'duration_hours' => $durationHours,
+                    'class_type' => $classType,
+                    'status' => 'rescheduled',
+                    'type' => 'normal',
+                    'deduction' => 0,
+                    'branch_id' => $campusId,
+                    'schedule_date' => $sessionDate,
+                    'student_course_id' => $courseId,
+                ]);
+                $rescheduledId = $rescheduled->id;
+            } else {
+                $rescheduledId = $existingRescheduledRow->id;
+            }
+
+            $this->logSubstituteDiag('after_rescheduled', [
+                'class_session_id' => $session->id,
+                'rescheduled_id' => $rescheduledId,
+                'reused_rescheduled_row' => (bool) $existingRescheduledRow,
+            ]);
+
+            // 2) Upsert substitute scheduled record (new teacher's slot on same day)
+            $existingScheduledRow = $existingScheduled ?: Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $rescheduledId)
+                ->first();
+
+            if ($existingScheduledRow) {
+                $existingScheduledRow->update(['teacher_id' => $newTeacherId]);
+                $scheduledId = $existingScheduledRow->id;
+            } else {
+                $scheduled = Schedule::create([
+                    'student_id' => $studentId,
+                    'teacher_id' => $newTeacherId,
+                    'subject' => $subject,
+                    'day_of_week' => $dayOfWeek,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'duration_hours' => $durationHours,
+                    'class_type' => $classType,
+                    'status' => 'scheduled',
+                    'type' => 'normal',
+                    'deduction' => 1,
+                    'branch_id' => $campusId,
+                    'schedule_date' => $sessionDate,
+                    'student_course_id' => $courseId,
+                    'original_schedule_id' => $rescheduledId,
+                ]);
+                $scheduledId = $scheduled->id;
+            }
+
+            $this->logSubstituteDiag('after_scheduled', [
+                'class_session_id' => $session->id,
+                'scheduled_id' => $scheduledId,
+                'original_schedule_id' => $rescheduledId,
+            ]);
+
+            // 3) Update LearningRecord if one exists for this session
+            // Use query builder (not Eloquent active()+save) so production DB quirks
+            // (casts, hydration, partial migrations) cannot break substitute after schedules succeed.
+            $lrTable = (new LearningRecord())->getTable();
+            $lrRowQuery = DB::table($lrTable)->where('ClassSessionID', $session->id);
+            if (Schema::hasColumn($lrTable, 'VoidedAt')) {
+                $lrRowQuery->whereNull('VoidedAt');
+            }
+            $lrRow = $lrRowQuery->first();
+
+            $this->logSubstituteDiag('lr_lookup', [
+                'class_session_id' => $session->id,
+                'lr_table' => $lrTable,
+                'voided_at_column' => Schema::hasColumn($lrTable, 'VoidedAt'),
+                'learning_record_found' => (bool) $lrRow,
+                'learning_record_id' => $lrRow ? (int) $lrRow->id : null,
+            ]);
+
+            $lrId = null;
+            if ($lrRow) {
+                $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
+                $lrStatus = (string) ($lrRow->Status ?? '');
+                if ($lrOldTeacher !== $newTeacherId) {
+                    $lrUpdate = ['TeacherID' => $newTeacherId];
+                    if (Schema::hasColumn($lrTable, 'updated_at')) {
+                        $lrUpdate['updated_at'] = now();
+                    }
+                    DB::table($lrTable)->where('id', (int) $lrRow->id)->update($lrUpdate);
+
+                    $authUser = $request->attributes->get('auth_user');
+                    $changedBy = (int) ($authUser->id ?? 0);
+                    if ($changedBy <= 0) {
+                        $changedBy = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+                    }
+
+                    if (Schema::hasTable('learning_record_teacher_changes')) {
+                        try {
+                            $auditReason = $this->scrubSubstituteUtf8($data['reason'] ?? '代課') ?: '代課';
+                            if (function_exists('mb_strlen') && mb_strlen($auditReason, 'UTF-8') > 255) {
+                                $auditReason = mb_substr($auditReason, 0, 255, 'UTF-8');
+                            } elseif (strlen($auditReason) > 255) {
+                                $auditReason = substr($auditReason, 0, 255);
+                            }
+                            LearningRecordTeacherChange::create([
+                                'learning_record_id' => (int) $lrRow->id,
+                                'old_teacher_id' => $lrOldTeacher > 0 ? $lrOldTeacher : null,
+                                'new_teacher_id' => $newTeacherId,
+                                'changed_by' => $changedBy,
+                                'reason' => $auditReason,
+                            ]);
+                        } catch (\Throwable $auditEx) {
+                            Log::warning('substitute: learning_record_teacher_changes insert skipped', [
+                                'learning_record_id' => $lrRow->id,
+                                'message' => $auditEx->getMessage(),
+                            ]);
+                        }
+                    }
+
+                    if ($lrStatus === 'approved' && Schema::hasColumn('User', 'TeachingSessionCount')) {
+                        try {
+                            if ($lrOldTeacher > 0) {
+                                User::where('id', $lrOldTeacher)
+                                    ->where('TeachingSessionCount', '>', 0)
+                                    ->decrement('TeachingSessionCount');
+                            }
+                            User::where('id', $newTeacherId)->increment('TeachingSessionCount');
+                        } catch (\Throwable $kpiEx) {
+                            Log::warning('substitute: TeachingSessionCount update skipped', [
+                                'message' => $kpiEx->getMessage(),
+                            ]);
+                        }
+                    }
+                }
+                $lrId = (int) $lrRow->id;
+            }
+
+            $this->logSubstituteDiag('pre_teacher_display', [
+                'class_session_id' => $session->id,
+                'learning_record_id' => $lrId,
+            ]);
+
+            $teacherRaw = DB::table('Teacher')->where('id', $newTeacherId)->value('T_Name')
+                ?? DB::table('User')->where('id', $newTeacherId)->value('Name');
+            $teacherName = $this->scrubSubstituteUtf8($teacherRaw);
+            if ($teacherName === '') {
+                $teacherName = '未指派';
+            }
+
+            $reasonForLog = $this->scrubSubstituteUtf8($data['reason'] ?? null);
+            $this->logSubstituteDiag('applied', [
+                'class_session_id' => $session->id,
+                'student_class_id' => $courseId,
+                'old_teacher_id' => $oldTeacherId,
+                'new_teacher_id' => $newTeacherId,
+                'session_date' => $sessionDate,
+                'reason' => $reasonForLog !== '' ? $reasonForLog : null,
+            ]);
+
+            $jsonFlags = JSON_UNESCAPED_UNICODE;
+            if (defined('JSON_INVALID_UTF8_SUBSTITUTE')) {
+                $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
+            }
+
+            $this->logSubstituteDiag('before_json_response', [
+                'class_session_id' => $session->id,
+                'rescheduled_id' => $rescheduledId,
+                'scheduled_id' => $scheduledId,
+                'learning_record_id' => $lrId,
+                'teacher_name_len' => strlen($teacherName),
+            ]);
+
+            return response()->json([
+                'message' => '代課設定完成',
+                'class_session_id' => $session->id,
+                'substitute_teacher_id' => $newTeacherId,
+                'substitute_teacher_name' => $teacherName,
+                'rescheduled_schedule_id' => $rescheduledId,
+                'scheduled_schedule_id' => $scheduledId,
+                'learning_record_id' => $lrId,
+            ], 200, [], $jsonFlags);
+        });
+    }
+
+    /**
+     * 代課除錯：寫入 laravel.log，grep `[substitute]` 即可依 step 對照中斷點。
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function logSubstituteDiag(string $step, array $context = []): void
+    {
+        try {
+            Log::info('[substitute]', array_merge([
+                'step' => $step,
+                't' => now()->format('Y-m-d H:i:s.v'),
+            ], $context));
+        } catch (\Throwable $e) {
+            // 不因 log 失敗影響代課
+        }
+    }
+
+    /**
+     * Strip / replace invalid UTF-8 so Monolog and JsonResponse do not throw.
+     *
+     * @param  mixed  $value
+     */
+    private function scrubSubstituteUtf8($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        $s = is_string($value) ? $value : (string) $value;
+        if ($s === '') {
+            return '';
+        }
+        if (function_exists('mb_scrub')) {
+            return mb_scrub($s, 'UTF-8');
+        }
+        $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $s);
+
+        return $converted !== false ? $converted : '';
+    }
+
+    /**
+     * Normalize ClassSession StartTime/EndTime (time, datetime string, or Carbon) to HH:MM for schedules.
+     */
+    private function normalizeSessionTimeForSchedule($value): string
+    {
+        if ($value === null) {
+            return '';
+        }
+        if ($value instanceof \Carbon\CarbonInterface) {
+            return $value->format('H:i');
+        }
+        $s = trim((string) $value);
+        if ($s === '') {
+            return '';
+        }
+        if (preg_match('/(\d{1,2}):(\d{2})(?::\d{2})?/', $s, $m)) {
+            return sprintf('%02d:%02d', (int) $m[1], (int) $m[2]);
+        }
+
+        return $s;
     }
 
     private function resolveStudentGradeId(int $studentId): int
@@ -768,6 +1380,42 @@ class ClassSessionController extends Controller
             return $gradeId ? (int) $gradeId : 1;
         } catch (\Throwable $e) {
             return 1;
+        }
+    }
+
+    /**
+     * Diagnostic: log when effective session count != purchased for any course in response.
+     * Only runs when perfflags.log_session_count_mismatch is true.
+     * Logs only course_id, branch_id, and status counts (no PII).
+     */
+    private function logSessionCountMismatches(array $byClass, $request): void
+    {
+        static $nonQuota = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+        $branchId = (int) ($request->input('branch_id') ?? 0);
+
+        foreach ($byClass as $courseId => $sessions) {
+            $purchased = DB::table('StudentClass')->where('ID', $courseId)->value('SessionCount');
+            if (!$purchased || $purchased <= 0) {
+                continue;
+            }
+            $statusCounts = [];
+            $effective = 0;
+            foreach ($sessions as $s) {
+                $st = strtolower($s->status ?? '');
+                $statusCounts[$st] = ($statusCounts[$st] ?? 0) + 1;
+                if (!in_array($st, $nonQuota, true)) {
+                    $effective++;
+                }
+            }
+            if ($effective !== (int) $purchased) {
+                \Log::channel('single')->info('session_count_mismatch', [
+                    'course_id' => $courseId,
+                    'branch_id' => $branchId,
+                    'purchased' => (int) $purchased,
+                    'effective' => $effective,
+                    'status_breakdown' => $statusCounts,
+                ]);
+            }
         }
     }
 }
