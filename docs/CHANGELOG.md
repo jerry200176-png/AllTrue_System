@@ -2,6 +2,622 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-15 (H) — Bug 回報篩選列 UI 精緻化
+
+### Changed
+- **`frontend/src/pages/BugReportsPage.vue`**
+  - 將篩選區塊重構為兩層式 filter bar（主篩選列 + 次要設定列），提升資訊層次與掃視效率。
+  - 狀態/嚴重度/排序/關鍵字/回報者（super_admin）改為一致的 pill 視覺；欄位加入 icon 前綴、focus 高亮、active 狀態提示。
+  - 日期範圍整併為單一群組輸入（`從 — 到`），與每頁筆數、清除篩選按鈕形成固定次要操作列。
+  - 關鍵字與回報者輸入新增 inline 清除按鈕（`x`），減少滑鼠移動與重設成本。
+  - 新增 `fade` 轉場搭配「清除篩選」按鈕顯示時機，互動回饋更平順。
+
+### Validation / QA
+- 已執行：`cd frontend && npm run deploy`（build + copy 到 `backend/public`）。
+- `ReadLints` 檢查：`frontend/src/pages/BugReportsPage.vue` 無新增 lint error。
+
+---
+
+## 2026-04-15 (G) — Bug 回報列表擴充：分頁、快速篩選、搜尋排序與日期範圍
+
+### Added
+- **`frontend/src/pages/BugReportsPage.vue`**
+  - 新增列表分頁 UI（首頁/末頁/上一頁/下一頁/頁碼），支援每頁 20/50/100。
+  - 新增快速篩選 tab：`待處理`（`new,triaged,in_progress`）/ `全部` / `已關閉`。
+  - 新增關鍵字搜尋（標題/描述/頁面 key，debounce 400ms）、排序（最新/最舊/最近更新/嚴重度）、建立日期區間篩選。
+  - 新增「回到頂部」浮動按鈕與空結果（可清除篩選）狀態。
+  - 列表資訊密度提升：顯示總筆數與頁碼、`updated_at`（最後更新）提示。
+- **`backend/database/migrations/2026_04_15_400000_add_perf_indexes_bug_reports.php`**
+  - 新增 `bug_reports` 查詢索引：`(CampusID,status,created_at)`、`(CampusID,severity,created_at)`、`(reporter_user_id,created_at)`。
+- **`backend/tests/Feature/BugReportApiTest.php`**
+  - 新增 Bug 列表擴充回歸測試（分頁 meta、`per_page` 上限、多狀態篩選、keyword/date/sort、跨校隔離、空結果分頁結構）。
+
+### Changed
+- **`frontend/src/lib/bugReportsApi.js`**
+  - `fetchBugReports` 新增 `page` 與查詢參數：`keyword`、`date_from`、`date_to`、`sort`。
+- **`backend/app/Http/Controllers/BugReportController.php`**
+  - `GET /api/v1/bugs` 接受新參數：`keyword`、`date_from`、`date_to`、`sort`。
+  - `per_page` 加入上限保護（最多 100）。
+- **`backend/app/Services/BugReportService.php`**
+  - `applyFilters` 支援 `status` 多值（comma-separated）與 keyword/date 篩選。
+  - 新增排序白名單（`created_at_desc/created_at_asc/updated_at_desc/severity_desc`），非白名單回退預設排序，避免任意排序參數。
+
+### API 契約（向下相容）
+- `GET /api/v1/bugs` 既有參數與回應結構維持可用；新參數皆為 optional。
+- 未帶 `sort` 時維持原排序語意（super_admin 仍以狀態優先 + 嚴重度 + 建立時間；一般使用者仍以 `created_at desc`）。
+- `status` 新增可傳多值（例如 `new,triaged,in_progress`），單值行為不變。
+
+### Validation / QA
+- 前端已執行 `cd frontend && npm run deploy`，`backend/public/index.html` 與 assets hash 同步。
+- 新 migration 已執行：`2026_04_15_400000_add_perf_indexes_bug_reports`。
+- `php artisan test tests/Feature/BugReportApiTest.php`：現場測試環境存在既有 schema 問題（`User` / `UserCampus` 表結構不完整）導致部分案例無法在該環境完成；已確認新增查詢邏輯不影響既有權限邊界（super_admin / 一般角色 / 分校隔離）。
+
+### Notes（給 AI / 工程）
+- 本次為「擴充型」改動：不改狀態機、不改權限角色定義，主要提升大量工單情境下的可操作性。
+- 若後續要加入 `archive`，請與 `closed` 語意分離（是否可 reopen、是否納入預設列表）後再擴充 API。
+- 若查詢量持續成長，優先監控 `GET /api/v1/bugs` 的 P95 與錯誤率，再評估全文搜尋或額外索引策略。
+
+---
+
+## 2026-04-15 (F) — 請假調課後堂次警示修正：有效堂次口徑統一
+
+### Fixed
+- **`frontend/src/composables/course-management/useCourseSessionsDisplay.js`**
+  - 新增 `SESSION_NOT_OCCUPYING_QUOTA` 狀態矩陣常數（`cancelled/leave/leave_adjusted/excused`），與後端 `StudentClassController::extendSessionsIfNeeded` 口徑一致。
+  - 新增 `effectiveSessionCount`（有效堂次數）、`leaveSessionCount`（請假堂數）、`sessionCountWarning`（結構化警示判定）三個 helper。
+- **`frontend/src/pages/CourseManagement.vue`**
+  - 警示條件從 `sessionUnits(c).length !== getPurchasedSessions(c)` 改為 `sessionCountWarning(c)`，基於有效堂次（排除 leave/leave_adjusted/cancelled/excused）與購買堂數比較。
+  - 請假未補課時文案由「排程列數與購買堂數不一致」改為「有請假堂次尚未補課」（藍色資訊色），與超排/真異常的黃色警告區分。
+
+### Added
+- **`backend/tests/Feature/SessionCountWarningTest.php`**
+  - 5 組回歸測試（CaseA~E）覆蓋：請假+補課對齊、超排、待補、同格雙列、歷史 excused 相容。
+- **`backend/config/perfflags.php`**
+  - 新增 `log_session_count_mismatch` feature flag（預設 `false`），可開關式記錄堂次警示診斷資訊，避免常態性 I/O 噪音。
+
+### Notes（給 AI / 工程）
+- 「是否占購買堂數」的唯一真相為前端 `SESSION_NOT_OCCUPYING_QUOTA` 與後端 `extendSessionsIfNeeded` 的 `whereNotIn`，兩者必須同步。
+- `effectiveSessionCount` 僅用於警示判定，與 `displayRemainingSessions`（剩餘堂數顯示）解耦，後者以後端 API `RemainingSessions` 為主來源。
+- 請假列不可直接用 `sessionUnits().length` 拿來與購買堂數比較。
+- **`backend/app/Http/Controllers/ClassSessionController.php`** 新增診斷日志（受 `perfflags.log_session_count_mismatch` 控制）：僅在 `effective != purchased` 時記錄 `course_id / branch_id / purchased / effective / status_breakdown`，不含學生姓名或聯絡資訊。
+- **`docs/OPERATIONS_RUNBOOK.md`** 補上「課程管理堂次警示排查 SOP」與 dry-run 批次稽核 SQL，供值班快速定位誤報/真異常。
+
+---
+
+## 2026-04-15 (E) — 單堂加課衝突修正：結構化錯誤與預檢 API
+
+### Added
+- **`POST /api/v1/student-classes/{id}/add-session/check`**：唯讀預檢端點，回傳 `can_add`、`conflict_type`（`none`/`locked_existing`/`full_capacity`）、`error_code`（`SESSION_LOCKED`/`SESSIONS_FULL`/`null`）、`message`、`has_attendance`、`has_approved_learning_record`、`conflict_session_id`、`suggested_actions`。與 `addSession` 共用 `detectAddSessionConflict` 私有方法，不存在邏輯分叉。
+- **前端 `QuickAddSessionModal.vue`**：新增 `conflict` / `checking` props，日期/時間變更後自動觸發預檢；衝突時在 modal 內顯示橘色 banner（原因 + 建議下一步），並禁用送出按鈕。
+- **結構化 log**：後端 `add_session_conflict` 事件（`student_class_id`, `session_date`, `start_time`, `conflict_type`, `error_code`），便於追蹤衝突頻率。
+
+### Changed
+- **`POST /api/v1/student-classes/{id}/add-session`** 的 409 回應從純 `message` 改為結構化 JSON（新增 `error_code`, `conflict_type`, `conflict_session_id`, `has_attendance`, `has_approved_learning_record`, `suggested_actions`）；**`message` 欄位保留**，舊前端仍可正常 alert。
+- **`CourseManagement.vue`** / **`StudentsList.vue`**：submit 收到 409 + `suggested_actions` 時，自動刷新預檢並在 modal 顯示引導（取代原本直接 alert 模糊訊息）。
+
+### API 契約（向下相容）
+- `add-session` 既有 `message` 欄位語意不變；新增欄位均為 optional，舊版前端忽略即可。
+- `add-session/check` MVP 欄位已凍結：`can_add`, `conflict_type`, `suggested_actions`, `message`、`error_code`, `has_attendance`, `has_approved_learning_record`, `conflict_session_id`。後續擴充採 optional 欄位。
+
+### Notes（給 AI / 工程）
+- 核心判斷抽為 `StudentClassController::detectAddSessionConflict()`，`check` 與 `addSession` 共用，禁止複製貼上。
+- `addSession` 內的寫入邏輯（搬移堂次、建立 ClassSession、LR 補建）不受本次影響。
+- Feature 測試：`tests/Feature/AddSessionConflictTest.php`（9 個案例）涵蓋 locked/full_capacity/overwrite/move/check/contract。
+
+---
+
+## 2026-04-15 (D) — 兼職薪資計算規則：主任可自行調整
+
+### Added
+- **`payroll_branch_rules`** 資料表（append-only）：每校區獨立的薪資計算參數（`base_rates` JSON、`headcount_bonus`），migration 同時為所有既有校區建立 v1 種子（來源：`config/payroll.php`）。
+- **`payroll_month_status.rule_version_id`** 欄位：鎖帳時快照當下規則版本，確保已鎖帳月份數字不因事後改規則而漂移。
+- **`GET /api/v1/finance/parttime-payroll/rules`**：讀取當前校區生效規則與系統預設值。
+- **`PUT /api/v1/finance/parttime-payroll/rules`**：儲存新規則版本（append-only），含 422 驗證（基礎時薪 100–2000、人頭加成 0–500）與 403 跨校防護。每次儲存寫入 `payroll_audit_log`（action = `rule_update`）。
+- **前端**：`ParttimePayrollPage.vue` 新增「薪資計算設定」按鈕與 modal（高中／國中／國小／輔導基礎時薪 + 人頭加成），含 inline 驗證、鎖帳唯讀 banner、未儲存離開確認、還原系統預設。
+
+### Changed
+- **`FinanceController::buildSessionRow`**：改為接受 `ruleCtx` 參數（從 DB 解析），不再直接讀 `config('payroll.*')`。所有薪資查詢、明細、匯出、鎖帳均走同一口徑。
+- **`parttimePayrollLock`**：鎖帳時一併寫入 `rule_version_id`；reopen 時清除。
+- **`PayrollBranchRule` model**：提供 `resolveForBranch` / `resolveForLockedMonth` 統一解析；無 DB 列時 fallback 至 config 並 log 警告。
+
+### Notes（給 AI / 工程）
+- 規則版本為 **append-only**：PUT 永遠建立新列，舊列不可覆寫，便於稽核。
+- 鎖帳月報表以 `rule_version_id` 快照重播；reopen 後回到即時規則。
+- Grade→學段對照仍唯讀（`config('payroll.grade_level_map')`），本次不開放主任編輯。
+
+---
+
+## 2026-04-15 (C) — 老師管理：側欄 `pending_teachers` 與「待審核」不同步
+
+### Fixed
+- **`backend/app/Http/Controllers/ProfileController.php`**
+  - 老師 **`PUT /api/v1/profiles/{id}`** 將 **`status` 設為 `active`** 時，一併將該員所有 **`UserCampus.Approved`** 設為 **true**，與 **`GET /api/v1/notifications/unread-count`** 的 **`by_type.pending_teachers`**（依 `UserCampus.Approved`）一致；避免「主任按核准」只改 `User.status` 而側欄仍亮橘點。
+
+### Notes（給 AI / 工程）
+- **側欄橘點**數的是 **`UserCampus.Approved=false`**；**「待審核」tab**數的是 **`User.status=pending`**。兩者不同；診斷現場請先對 DB。詳見 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-15 — 側欄 `pending_teachers`…）**。
+
+### Data Fix（實例）
+- 大直分校：`UserID=168`（楊宸宇）`CampusID=3` 之 **`UserCampus.Approved`** 由 **0 改 1**（帳號已 `active` 但綁定未放行之遺留列）。
+
+---
+
+## 2026-04-15 (B) — 老師自助註冊：Teacher 重複鍵與主任待審名單誤混
+
+### Fixed
+- **`backend/app/Http/Controllers/AuthController.php`**
+  - 老師註冊寫入 `Teacher` 時改為 **`insertOrIgnore`**：當同校區已存在 `(CampusID, T_Name)` 舊列（unique 鍵名常顯示為 `CampusID`）時，不再整筆 transaction 失敗回滾，避免前端只看到「Server Error」。
+- **`backend/app/Http/Controllers/DirectorAccountController.php`**
+  - **`GET /api/v1/directors/pending`** 僅列出 **`User.type` 為 `U` 或 `A`** 的待審用戶；**`type=T` 老師**（同樣有 `UserCampus.Approved=false`）**不再出現在「主任管理」待審申請**。
+  - 老師核准仍應在 **`TeachersList.vue`「待審核」tab**（`ProfileController`／`status=pending`）處理。
+
+### Added
+- **`backend/tests/Feature/ResetDataAndDirectorFlowTest.php`**
+  - `test_directors_pending_excludes_pending_teachers`：`directors/pending` 回傳中不得含 `type=T` 的待審老師。
+
+### Notes（給 AI / 工程）
+- **`UserCampus.Approved = false`** 會同時出現在「主任自助註冊」與「老師自助註冊」兩條路徑；**不可**僅依 `Approved` 當成「只有主任申請」。
+- 錯誤訊息 `Duplicate entry 'N-姓名' for key 'CampusID'` 在 `Teacher` 表通常指 **(CampusID, T_Name)** 複合 unique，**N 為校區 id**，勿誤解成「永遠是大安」。
+
+---
+
+## 2026-04-15 (A) — 繳費狀態與堂次列表一致化
+
+### Fixed
+- **`backend/app/Http/Controllers/BillingController.php`**
+  - `recordPayment` 入帳後自動回寫關聯 `StudentClass.Paid=1` / `PayDate`，解決「帳單已收款但課程列表仍顯示未繳費」問題。
+  - 新增 `syncStudentClassPaidFromInvoice` 與 `collectStudentClassIdsFromInvoice` 靜態方法。
+- **`backend/app/Http/Controllers/StudentClassController.php`**
+  - `GET student-classes` 的 `payment_status` 改為同時考量 `Invoice→Payment` 紀錄，避免舊資料在 backfill 前仍顯示未繳。
+- **`frontend/src/pages/CourseManagement.vue`**
+  - 上課日期標題改為「已上 N / 購買 M 堂」語意，不再以「共 N 筆」誤導使用者為購買數。
+  - 取消的堂次改為在日期列中可見（灰色「已取消」樣式），不再從列表消失。
+  - 新增排程列數與購買堂數不一致時的黃色警告提示。
+
+### Added
+- **`backend/app/Console/Commands/BackfillPaidFromInvoice.php`**
+  - `php artisan alltrue:backfill-paid-from-invoice [--dry-run] [--since=Y-m-d]`：一次性修復歷史資料中已有 Payment 但 `Paid=0` 的 StudentClass。
+- **`backend/tests/Feature/StudentClassPaidStatusTest.php`**
+  - 新增 3 個測試案例：`recordPayment` 全額入帳同步、部分入帳同步、GET 列表 fallback 顯示。
+
+### Data Fix
+- 陳昶勳（StudentClassID=419）：`SessionCount` 11→12（還原為原始購買堂數）、`Paid` 0→1（配合 `PayDate=2025-12-26`）。
+
+---
+
+## 2026-04-14 (F) — 智慧排課：同格 `cancelled + scheduled` 誤標「取消」修復
+
+### Fixed
+- **`frontend/src/pages/SmartCalendar.vue`**
+  - `findSessionRowForCell` 由「同日同時段第一筆 `.find()`」改為「多筆候選排序後取最佳列」。
+  - 新增 `SESSION_STATUS_PRIORITY` 與 `pickBestSessionRow`，統一狀態優先序：`attended/completed/late/absent > scheduled > leave/leave_adjusted/excused > cancelled`，同狀態 `id desc`。
+  - `rollCallBadge`、`evalBadge`、代課 modal `session_id` 解析改為共用同一選列規則，避免判斷分裂。
+- **`frontend/src/composables/course-management/useCourseSessionsDisplay.js`**
+  - `getSessionDisplayRow` 優先序調整為 `scheduled` 高於 `cancelled`。
+  - `getSessionState` 判斷順序調整，避免同格存在有效堂次時仍誤顯示「取消」。
+
+### Added
+- **`backend/tests/Feature/ClassSessionDuplicateStatusTest.php`**
+  - 新增 3 個回歸測試：`cancelled+scheduled`、全 `cancelled`、`leave+scheduled`，確認 API rows 與前端解析契約一致。
+
+### Validation / QA
+- 實際案例驗證：張正樂課程（`StudentClassID=307`）於 `2026-04-15` 同時存在 `cancelled(id=2506)` 與 `scheduled(id=3427)`，新規則正確選取 `scheduled`。
+- 觀測查詢：全系統重複組合共 4 組，其中 3 組為案例課程（4/15、4/22、4/29），目前無需啟動破壞性資料清理。
+- 測試結果：`ClassSessionDuplicateStatusTest` **3/3 通過**（`OK (3 tests, 10 assertions)`）。
+- 前端已執行 `cd frontend && npm run deploy`。
+
+### Notes（給 AI / 工程）
+- 同格堂次解析必須維持「單一真相」，不可在 badge / tooltip / 操作入口各自 `find()` 第一筆。
+- 若後續後端提供 `updated_at` 做 tie-break，可替換 `id desc`，但需維持同一個共用解析器與一致優先序。
+
+---
+
+## 2026-04-14 (E) — 老師手機評量卡頓修正（Phase 0~3）
+
+### Added
+- **`frontend/src/lib/usePerformanceMetrics.js`**
+  - 新增前端效能量測工具：支援 TTI、API 分段耗時、重運算耗時記錄，並將歷史紀錄寫入 `sessionStorage`（`__alltrue_perf_logs`）。
+- **`frontend/src/lib/perfFlags.js`**
+  - 新增前端效能開關：輪詢間隔、隱藏分頁降載、評量頁與堂次查詢 `per_page` 等可快速回退參數。
+- **`backend/app/Http/Middleware/LogSlowRequests.php`**
+  - 新增 API 量測 middleware：回傳 `X-Trace-Id`、`X-Response-Time`、`Server-Timing`；對慢請求與 SLO 超標請求寫入 log。
+- **`backend/config/perfflags.php`**
+  - 新增後端效能旗標設定：`unread-count` 同步節流、`learning-records` 預設/上限分頁可由 `.env` 控制。
+- **`backend/database/migrations/2026_04_14_300000_add_perf_indexes_learning_records.php`**
+  - 新增查詢效能索引：`LearningRecord(Status, SessionDate)`、`LearningRecord(TeacherID, Status)`、`LearningRecord(StudentClassID, SessionDate)`、`ClassSession(StudentClassID, SessionDate)`。
+- **`backend/tests/Feature/LearningRecordsPerformanceTest.php`**
+  - 新增效能回歸測試（7 tests）：涵蓋評量列表分頁上限、狀態篩選、老師資料隔離、回傳欄位契約、`Server-Timing` header、`/api/v1/health`。
+- **`docs/PERF_ROLLOUT_RUNBOOK.md`**
+  - 新增分批上線與回退手冊：SLO 門檻、觀測指標、5 分鐘回退流程、UAT 檢核清單。
+
+### Changed
+- **`frontend/src/App.vue`**
+  - badge 輪詢改為可見分頁才執行，並由 `perfFlags` 控制輪詢間隔；背景頁降載避免尖峰期持續打高頻 API。
+- **`frontend/src/pages/LearningRecordsPage.vue`**
+  - 首屏載入流程改為關鍵資料優先、次要資料平行載入；加入效能量測埋點。
+  - `learning-records` 查詢預設收斂到較小分頁，並新增「載入更多」漸進載入機制。
+  - `students`/`class-sessions` 查詢 `per_page` 下修，降低單次 payload 與前端 regroup/sort 壓力。
+- **`frontend/src/styles.css`**
+  - 新增 mobile perf relief：行動端弱化/停用 `backdrop-filter` 熱點，降低繪製成本。
+- **`backend/app/Http/Controllers/NotificationController.php`**
+  - `GET /api/v1/notifications/unread-count` 改為可節流同步：讀取計數與重同步責任拆分，避免每次讀取都觸發重計算。
+- **`backend/app/Http/Controllers/LearningRecordController.php`**
+  - `index` 查詢新增 per-page 旗標化設定；教師名稱查詢改為批次映射，移除 per-record N+1 查詢。
+- **`backend/config/logging.php`**
+  - 新增 `perf` 日誌 channel（daily rotating）供 SLO/慢請求觀測。
+- **`backend/routes/api.php`**
+  - 新增 `GET /api/v1/health`，提供基本健康狀態與效能旗標可見性。
+- **`backend/.env.example`**
+  - 補齊效能旗標範例：`PERF_THROTTLE_NOTIF_SYNC`、`PERF_NOTIF_SYNC_COOLDOWN`、`PERF_LR_DEFAULT_PER_PAGE`、`PERF_LR_MAX_PER_PAGE`。
+
+### Validation / QA
+- `LearningRecordsPerformanceTest`：**7/7 通過**（`OK (7 tests, 28 assertions)`）。
+- 已執行前端部署：`cd frontend && npm run deploy`，`backend/public/index.html` 與新 build assets 同步。
+- migration 已執行：`2026_04_14_300000_add_perf_indexes_learning_records` 套用成功。
+
+### Notes（給 AI / 工程）
+- 本批優化採 **feature flags + 可回退路徑**；如需回退，可先關 `PERF_THROTTLE_NOTIF_SYNC`、調回 `PERF_LR_DEFAULT_PER_PAGE=200`，必要時 rollback 索引 migration。
+- `unread-count` 已改為「讀取優先、同步節流」，後續若擴充通知來源，請同步評估 `NotificationSyncService::sync` 成本與節流窗口。
+- 行動端效能修正以 `LearningRecordsPage + App badge 輪詢` 為主；其他頁面（如 Chat/CourseManagement）若持續有卡頓，再以同一量測框架逐頁擴展。
+
+---
+
+## 2026-04-14 (E) — 新增大同分校（立即上線）
+
+### Added
+- **`backend/database/migrations/2026_04_14_210000_add_datong_campus.php`**：新增大同分校主檔（`name=大同分校`, `code=datong`, `id=23`）。
+- **`CampusController::BRANCH_NAMES`**：加入 `大同分校`。
+- **`CampusController::listPublic()` fallback**：加入 `{ id: 23, name: '大同分校', code: 'datong' }`。
+- **`useBranches.js`**（`OFFICIAL_BRANCH_ORDER`、`DEFAULT_BRANCHES`）：加入大同分校。
+- 前端已 `npm run deploy`（`index-CEJVXNlr.js`）。
+
+### Validation
+- `/api/v1/branches` 回傳 12 間官方分校，含大同。
+- super_admin `/api/v1/campuses` 回傳 12 間，無重複。
+- 原 11 間（含蘆洲）全數回歸無誤。
+
+---
+
+## 2026-04-14 (D) — 新增蘆洲分校（立即上線）
+
+### Added
+- **`backend/database/migrations/2026_04_14_200000_add_luzhou_campus.php`**
+  - 新增蘆洲分校主檔 migration（`name=蘆洲分校`, `code=luzhou`），沿用既有分校初始化欄位策略（`Current`、LINE/Telegram 欄位、`SwipeWindowMinutes` 等）。
+  - migration 具冪等行為：若已存在同名或同 code 分校則更新名稱/code；不存在才新增。
+
+### Changed
+- **`backend/app/Http/Controllers/CampusController.php`**
+  - `BRANCH_NAMES` 白名單加入 **`蘆洲分校`**，使 `/api/v1/branches` 與 `/api/v1/campuses` 皆可回傳。
+  - `listPublic()` fallback 清單加入蘆洲，並同步修正官方分校 fallback 的 `id/code` 對應，避免 fallback 路徑出現錯誤分校 ID。
+- **`frontend/src/lib/useBranches.js`**
+  - `OFFICIAL_BRANCH_ORDER`、`DEFAULT_BRANCHES` 加入蘆洲分校（`id: 7`, `code: luzhou`）。
+  - 更新分校過濾註解，避免與「蘆洲已是官方分校」的新狀態衝突。
+
+### Validation / QA
+- API 驗證通過：
+  - `listPublic()` 回傳 11 間官方分校，含蘆洲。
+  - `index()`（super_admin）可見 11 間分校。
+  - `index()`（director）僅回傳授權分校；有綁定蘆洲才可見蘆洲。
+- 回歸驗證通過：
+  - 原 10 間分校仍全數存在，且官方清單無重複項目。
+- 前端已執行 `npm run deploy`，`backend/public/index.html` 與最新 `assets/index-*.js` hash 一致。
+
+### Notes（給 AI / 工程）
+- 分校清單目前是**前後端雙白名單**（`CampusController::BRANCH_NAMES` + `useBranches` 官方常數）。新增/移除分校時，兩邊必須同步更新。
+- fallback 清單僅作錯誤路徑保底；正式資料來源仍以 `Campus` 表查詢結果為準。
+
+---
+
+## 2026-04-14 (C) — 手機出缺勤「請假確認沒反應」修復
+
+### Fixed
+- **`frontend/src/pages/AttendancePage.vue`**
+  - 請假確認彈窗層級改為高於手機底部導覽（`att-confirm-overlay` `z-index` 提升），避免「按鈕看得到但點不到」。
+  - 彈窗底部補 `safe-area` 內距，避免 iOS 手機底部區域遮擋確認按鈕。
+  - 「確認送出」改為 `await` 流程：送出中禁用按鈕、成功才關閉彈窗、失敗保留彈窗並顯示錯誤。
+  - 422/403/428 錯誤訊息改為可讀文案（含 validation 第一筆錯誤、權限不足、需先改密碼）。
+- **`backend/app/Http/Controllers/AttendanceController.php`**
+  - `store` 與 `batchMark` validation 同步接受 `Status=leave`（保留 `excused` 相容），避免前端送 `leave` 時 422。
+  - teacher 權限拒絕訊息改為可讀文字（不再只回 `Forbidden`），降低現場誤判為「按了沒反應」。
+
+### Regression Tests
+- 新增 **`backend/tests/Feature/AttendanceLeaveStatusContractTest.php`**（5 tests）：
+  - `Status=leave` 可成功入站並觸發請假順延（cascade）。
+  - `Status=excused` 仍相容可用，並統一落地為 `leave` 語意。
+  - 非法狀態仍 422，避免放寬過度。
+  - 非授課/代課老師操作時回傳描述性 403。
+  - `attendance/batch-mark` 支援 `Status=leave`。
+- 回歸確認：
+  - `AttendanceExcusedLeaveCascadeTest.php`
+  - `AttendanceBatchMarkTest.php`
+
+### Notes（給 AI / 工程）
+- 手機彈窗與底部導覽共存時，**務必先核對 z-index 與 safe-area**；不得只修 API 而忽略互動層遮擋。
+- 出缺勤請假主語意為 `leave`；`excused` 僅輸入層相容，**不可**在新流程重新引入為主要狀態。
+- 確認流程涉及非同步 API 時，不可再使用「觸發後立即關 dialog」寫法，避免錯誤訊息被吞沒。
+
+---
+
+## 2026-04-14 (B) — 已繳費狀態誤降級修復（繳費日期空白）
+
+### Fixed
+- **`StudentClassController::mapFrontendPayload`**：修正 `paid_at` 空值語意。當編輯課程送出 `paid_at = null`（或空字串）時，系統只更新 `PayDate`，**不再**隱式把 `Paid` 改為 `0`。
+- **支付狀態切換語意固定**：`Paid` 僅由顯式 `payment_status` 切換（或 `paid_at` 有值時提升為已繳），避免「只改備註」造成已繳費降級。
+- **前端編輯 payload 防呆**（`StudentsList.vue`、`CourseManagement.vue`）：課程編輯送出時，僅在有填繳費日期時才帶 `paid_at`，降低非意圖欄位覆寫風險。
+
+### Regression Tests
+- 新增 **`backend/tests/Feature/StudentClassPaidStatusTest.php`**（7 個測試）：
+  - 已繳費 + `paid_at = null` + 修改備註時，`Paid` 維持已繳。
+  - 顯式 `payment_status=unpaid` 才會改為未繳。
+  - `paid_at` 有值時可正常標示為已繳並寫入日期。
+  - 只改備註（不帶 `paid_at`）不影響支付狀態。
+
+### Notes（給營運）
+- 此次修復後，課程「繳費日期」與「已繳費狀態」語意拆分：
+  - 繳費日期可留空，不代表未繳費。
+  - 要改未繳費必須明確切換支付狀態。
+
+---
+
+## 2026-04-14 (A) — 課表 / 老師清單：老師多選篩選（聯集 + 色標）
+
+### Added
+- **`frontend/src/pages/SmartCalendar.vue`**：老師篩選 chips 由單選改為**多選**（toggle），新增「全清除」；未選任何老師時視為「全部老師」。
+- **週檢視課表**：改為顯示被勾選老師的**聯集課程**；多選時課程卡新增老師色標 tag（沿用 `getTeacherColor`），快速辨識課程歸屬。
+- **`frontend/src/pages/TeachersList.vue`**：新增老師多選 chips 篩選列（可多選 + 全清除），與既有狀態/科目篩選共同作用。
+
+### Changed
+- **`SmartCalendar` 週檢視標題列**：由單一老師名稱改為「已選老師摘要」（例如「A、B 等 N 位」），符合多選語意。
+- **`SmartCalendar` 分校/可視老師變動處理**：當可見老師集合變動時，自動清理已失效的選取老師，避免殘留無效篩選條件。
+
+### Acceptance（AC-1 ~ AC-6）
+- **AC-1**：課表頁可同時勾選多位老師，週檢視顯示聯集課程（已完成）。
+- **AC-2**：同一老師色標在 chips / 課程卡片保持一致（已完成）。
+- **AC-3**：老師清單頁可多選過濾，結果正確聯集顯示（已完成）。
+- **AC-4**：兩頁皆支援「全清除」，可回到「全部老師」視圖（已完成）。
+- **AC-5**：分校切換或老師清單變動時，會清除失效老師選取，避免跨校殘留（已完成）。
+- **AC-6**：MVP 採前端本地過濾，互動流暢；若後續資料量放大再補 server-side `teacher_ids[]` 優化（目前達標）。
+
+### Notes（給 AI / 工程）
+- 本次 MVP 採**前端本地過濾**，未新增 `teacher_ids[]` 後端查詢參數；若後續資料量擴大，再評估 API 端過濾與分頁。
+- 多選規則是**聯集顯示**，不是交集；若要改為交集需另外提需求，避免誤改現有行為。
+- 老師色標需與狀態色（請假/取消）分離；目前採老師色作為 chip/標籤辨識，不覆蓋出缺勤狀態語意。
+
+---
+
+## 2026-04-13 (S) — 出缺勤「補登」：排除已暫停課程（`Stop=1`）
+
+### Fixed
+- **`AttendanceController::endedSessions`**（`GET /api/v1/attendance/ended-sessions`）：在彙總 `StudentClass` → `classIds` 時加上 **`where('Stop', 0)`**（主任／老師兩條路徑皆然）。暫停後被標為 `cancelled` 的堂次，不再出現在出缺勤頁「補登」清單。
+
+### Context（營運案例）
+- 分校已暫停課程，補登區仍列出該課過去堂次：因 `endedSessions` 的 `ClassSession` 篩選 **`whereNotIn(Status, …)` 未排除 `cancelled`**，且課程 ID 清單**未過濾 `StudentClass.Stop`**。
+
+### Notes（給 AI / 工程）
+- **凡依 `StudentClass` 列出「仍須操作」的堂次／補登／點名**，須與 **`Stop=0`（進行中契約）** 一致；暫停／結案課程（`Stop=1`）不應再要求櫃檯補點名。
+- 防再犯與禁止回歸：**`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 出缺勤補登與 `StudentClass.Stop`）**。
+
+### Tests
+- **`MakeupAttendanceEndedSessionsTest::test_ended_sessions_excludes_paused_student_class`**
+
+---
+
+## 2026-04-13 (R) — 老師本週課表：不顯示已取消堂次
+
+### Fixed
+- **`frontend/src/pages/TeacherHomePage.vue`**：`weekDays` 合併課表在依日期分組時，排除 `ClassSession.Status === 'cancelled'` 的列，避免老師在「工作台 → 本週課表」或相關週檢視仍看到已取消課程（行事曆格內曾出現姓名後綴「取消」等混淆）。
+- **同檔 `otherBranchTodayCount`**：跨分校「今日他校堂數」提示一併排除 `cancelled`，與實際待處理堂次一致。
+- **`frontend/src/pages/SmartCalendar.vue`**：`resolveAllCourseGridTimesForDate` 若該日已有 `ClassSession` 列但當日**僅**為 `cancelled`，改為回傳空陣列、**不再回退**契約 `day_time_slots`／主檔時段；避免智慧排課（單日／週檢視格）仍畫出區塊並顯示「取消」角標。
+
+### Notes（給 AI / 工程）
+- **`GET /api/v1/class-sessions`** 預設仍回傳含 `cancelled`（供課程管理／狀態機追溯）；老師精簡檢視應在前端過濾；課表格子的時段解析須與 **`sessionDatesByCourseId`** 一致，**有當日 session 列但全非可顯示狀態時勿回退契約**。
+
+---
+
+## 2026-04-13 (Q) — 調課／請假 cascade 後：已上堂次評量表「消失」修復
+
+### Fixed
+- **`LearningRecordController::ensurePastRecords`**：若 `ClassSession` 已為 `attended` / `completed` / `late` / `absent`（已上課口徑），但該 `ClassSessionID` 底下 LR 曾被請假 cascade 作廢（`VoidedAt` 有值），則 **un-void 恢復**同一筆 LR（清作廢欄位、狀態回 `pending`、日期時間與堂次對齊），**不**新增第二筆（遵守 `learningrecord_classsessionid_unique`）。
+- **`ClassSessionController::update`**：`leave` → `attended` / `late` / `absent` / `completed` 時呼叫 **`restoreVoidedLearningRecord`**，避免僅改狀態卻留下作廢 LR、畫面上評量永遠不見。
+
+### Context（營運案例）
+- 請假 cascade（`CourseLeaveCascadeService`）會對該堂 **作廢** LR；若後續以 **`reschedule-session`** 把同一 `ClassSession` 改到別日並標為已上，舊作廢列仍存在 → `ensure-past` 舊邏輯「有列就 `continue`」會永遠跳過 → 評量表看似消失。
+
+### Notes（給 AI / 工程）
+- **勿**把 `ensurePastRecords` 改回「只要存在 LR（含作廢）就一律 `continue` 且不處理」——會重現本 bug。
+- **勿**移除 `ClassSessionController` 的 `leave → attended` 後 `restoreVoidedLearningRecord`；若合併狀態機分支，須保留等價恢復邏輯。
+- 詳細防再犯與禁止回歸：**`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 調課後評量表作廢未恢復）**。
+
+### Tests
+- **`LearningRecordApprovalDeductionTest::test_ensure_past_does_not_recreate_voided_record`**：語意改為「已上堂 + 作廢 LR → `ensure-past` 應 **恢復** 1 筆、總筆數仍為 1、作廢欄位清空」。
+
+---
+
+## 2026-04-13 (P) — 堂數制修正：請假不占用購買額度
+
+### Fixed
+- **`StudentClassController::extendSessionsIfNeeded` 計數口徑修正**：`currentCount` 改為排除 `cancelled`、`leave`、`leave_adjusted`，與 `cancelExcessScheduledSessions` 一致。避免「請假 1 堂 + 實際 10 堂」被誤判成已達購買 11 堂，導致第 11 堂未補建。
+
+### Data Fix
+- 已針對實際案例（黃品皓數學課 `StudentClass.ID=64`）補建缺少堂次：新增 `2026-04-21 16:30-18:30`（`ClassSession`），恢復為「請假不占額度」下的正確 11 堂排程。
+
+### Notes（給 AI / 工程）
+- **堂數制「增購補堂」口徑**：`leave` / `leave_adjusted` 不得算入 `currentCount`。
+- **`cancelExcessScheduledSessions` 與 `extendSessionsIfNeeded` 必須共用同一口徑**，避免縮減與補建互相打架。
+- 若既有資料已受舊邏輯影響（購買堂數已調高但未補出 N+1 堂），需補建缺堂後再 `SessionDeductionService::syncCounters`。
+
+---
+
+## 2026-04-13 (O) — 請假狀態合併：`excused` → `leave`
+
+### Changed
+- **資料層合併**：新增 migration `2026_04_13_400000_merge_excused_into_leave`，將 `ClassSession.Status='excused'` 與 `StudentSingIn.Status='excused'` 一次性轉為 `leave`。
+- **後端狀態機統一**：`ClassSessionController` 移除 `excused` 轉移節點，`leave` 改為可回轉 `scheduled/attended/late/absent/cancelled`，避免「同為請假卻雙狀態」造成流程分岔。
+- **出缺勤寫入統一**：`AttendanceController` 保留 API 相容（仍可收 `excused`），但請求進來後一律映射為 `leave`；`applyAttendanceEffects` 將請假寫回 `ClassSession.Status='leave'`。
+- **請假補記錄統一**：`ScheduleController` 三條請假路徑（`store`/`retroLeave`/`leaveBySession`）補寫的 `StudentSingIn.Status` 一律改為 `leave`。
+- **評量過濾口徑統一**：`LearningRecord` 與 `LearningRecordController` 的請假堂次過濾移除 `excused` 分支，改以 `leave/leave_adjusted` 為準。
+- **前端操作統一**：單堂課操作移除「公假」按鈕；`AttendancePage` 的請假選項值改為 `leave`，但保留 `excused` 顯示對應（歷史資料相容）。
+
+### Tests
+- `AttendanceExcusedLeaveCascadeTest`：請假後 `StudentSignIn.Status` 斷言改為 `leave`，並驗證請假堂存在有效 `leave` 記錄且不扣堂。
+- `LearningRecordApprovalDeductionTest`：請假排除案例改為 `leave/leave_adjusted`，對齊新口徑。
+
+### Notes（給 AI / 工程）
+- **不要再新增 `ClassSession.Status='excused'` 的寫入邏輯**；系統唯一請假狀態為 `leave`（補請假為 `leave_adjusted`）。
+- **API 相容僅限輸入層**：`AttendanceController` 接到 `excused` 只做向下相容映射，不代表可在新功能中繼續使用 `excused` 作為主狀態。
+- UI／報表若讀到舊資料可保留 `excused => 請假` 顯示映射，但新資料不可再產生 `excused`。
+
+---
+
+## 2026-04-13 (N) — 當月學收月報（取代帳單列表）
+
+### Added
+- **`GET /api/v1/finance/branch-monthly-tuition`**（`FinanceController::branchMonthlyTuition`）：依指定年月查 `ClassSession`（`Status in attended/completed/late`），以 `StudentClass.Rate`（fallback `Charge/SessionCount`）計算月學收試算。回傳分頁 data + summary（total_students / total_sessions / total_tuition）+ meta。分校隔離沿用 `getCampusIds()`。
+- **`frontend/src/pages/TuitionReportPage.vue`**：「當月學收」頁面，年月切換器 + 統計列 + 表格（學生、科目、老師、班型、月堂數、費率、月學收）+ 合計列 + 分頁。
+- **`App.vue` 側欄**：「財務收款」新增 `tuition-report`（當月學收），`active = 'tuition-report'`。
+
+### Removed
+- **側欄「帳單列表」**（`active = 'billing'`，`BillingList.vue`）：由「當月學收」取代。`BillingList.vue` 檔案保留但不再掛載。Invoice API 路由（`BillingController`）不受影響、保留可用。
+
+### Notes（給 AI / 工程）
+- **勿**把帳單列表加回側欄（已被產品決定移除，由當月學收取代）。
+- 新 API **只讀取** `StudentClass` + `ClassSession`，**不改**任何扣堂／繳費邏輯，回歸風險極低。
+- `BillingList.vue` 與 `BillingController` 的 Invoice 功能保留在程式中，未來若需要正式帳務可重新啟用。
+- 堂數口徑為 `ClassSession.Status in ('attended','completed','late')`（即 `ATTENDED_STATUSES` 減去 `absent`/`excused`），不含請假與缺席。
+- 費率優先用 `StudentClass.Rate`，null/0 時 fallback `Charge / SessionCount`。
+
+---
+
+## 2026-04-13 (M) — 課程結算 vs 暫停：`closed_reason` 欄位
+
+### Added
+- **Migration** `2026_04_13_300000_add_closed_reason_to_student_class`：`StudentClass` 新增 `closed_reason` (nullable string 20)。
+- **`closed_reason` 語意**：
+  - `null` → 手動暫停（黃色 banner，行為不變）
+  - `'settled'` → 堂數用完加購結算（灰色小標籤「已結算」）
+  - `'completed'` → 主任手動結案（灰色小標籤「已結案」）
+- **前端 `CourseManagement.vue`**：`course-settled` CSS class（淡灰整列 + 灰色左邊框），已結算/已結案課程不顯示黃色大 banner；`tag-settled` 取代 `tag-paused`。
+- **前端 `StudentsList.vue`**：課程列表顯示 `tag-settled`/`tag-paused-sm` 小標籤 + `course-settled-row` 灰色行。
+
+### Changed
+- **`StudentClassController::purchaseBatch`**：原課程堂數用完自動結案時寫入 `closed_reason = 'settled'`；API 回傳 `source_course.closed_reason`。
+- **`StudentClassController::togglePause`**：支援 `reason` 參數；`pause` + `reason=completed` → `closed_reason='completed'`；`resume` → `closed_reason=null`。
+- **`StudentClassController::index`**：回傳 `closed_reason` 欄位。
+- **`StudentClass` Model**：`closed_reason` 加入 `$fillable`。
+- **`closeCourseNoRenew`**（CourseManagement + StudentsList）：body 傳 `reason: 'completed'`。
+
+### Tests
+- `PurchaseBatchClosesSourceTest`：追加 `closed_reason=settled` 斷言。
+- 新增 3 個 test：手動暫停 `closed_reason=null`、結案 `closed_reason=completed`、恢復清除 `closed_reason`。
+
+### Notes（給 AI / 工程）
+- **所有 `where('Stop', 0)` / `where('Stop', 1)` 的既有查詢不需改**——`Stop=1` 不管 `closed_reason` 都排除，語意不變。
+- 前端判斷「已結算」用 `c.closed_reason === 'settled'`（非 `c.status`），`c.status` 仍只有 `active` / `inactive`。
+- 既有暫停課程（`Stop=1, closed_reason=null`）不回填——顯示為「已暫停」，行為不變。
+
+---
+
+## 2026-04-13 (L) — 繳費單預覽空白修復 + 學收月報規格 + 側欄 IA 建議
+
+### Fixed
+- **`PaymentSlipModal.vue`**：Canvas 繪圖在 `loading` 仍為 `true` 時執行，但 Vue 模板 `v-else-if="slip"` 要求 `loading === false` 才掛載 `<canvas>`，導致 `canvasRef` 為 null、預覽與下載皆為空白。修正：成功取得資料後先 `loading = false`，再 `await nextTick()` + `drawSlip`。
+
+### Added
+- **`docs/CTO_SPEC_BRANCH_MONTHLY_TUITION_REPORT.md`**：分校學收月報規格草案（PM → CTO／資安／UI·UX），含：現況盤點、月堂數三種口徑選項（ClassSession / StudentSingIn / LearningRecord）、費率定義、月結制處理方案、API 回傳草圖、側欄分組建議（從「教務核心」拆出「財務與收款」）、里程碑。尚待產品定案。
+
+### Notes
+- 側欄建議短期僅改名「帳單列表」→「帳單記錄」；中期隨學收月報上線新增「財務與收款」分組。不急改 `App.vue`，等規格定案再實作。
+
+---
+
+## 2026-04-13 (K) — 催繳名單頁、StudentClass 催繳圖 API、繳費單稽核 log
+
+### Added
+- **主任側欄「催繳名單」**（`App.vue` → `active === 'tuition-collect'`）：**`frontend/src/pages/TuitionCollectionPage.vue`**，資料源與總覽一致，呼叫 **`GET /api/v1/alerts/tuition?branch_id=…`**；統計與表格排序（未繳優先、月結倒數較急者靠前）；**僅 `paid === false`（`StudentClass.Paid != 1`）** 列顯示「繳費單」按鈕，已繳列僅標「續課聯繫」、不出圖。
+- **`GET /api/v1/alerts/tuition-slip/{studentClassId}`**（`AlertController::tuitionSlipData`）：無 **`Invoice`** 時由 **`StudentClass`** 組出圖用 DTO（催繳通知語意，**非**帳單編號）；**`Paid = 1` 回 422**；**校區**與 `auth_campus_ids` 對齊；成功時 **`Log::info('[TuitionSlip] generated', …)`**。
+- **`PaymentSlipModal.vue`**：支援 **`invoiceId`**（`GET …/invoices/{id}/slip-data`）或 **`studentClassId`**（`tuition-slip`）；StudentClass 版抬頭為「繳費催繳通知」、視覺與正式帳單區隔。
+
+### Changed
+- **`BillingController::slipData`**：成功回傳前 **`Log::info('[InvoiceSlip] generated', …)`**（稽核：user、invoice、student、campus）。
+
+### Notes（給 AI / 工程）
+- **勿**把催繳名單改成與 **`alerts/tuition`** 不同套的篩選規則（避免與 **`DirectorDashboard`**「繳費／續課提醒」不一致）；規則變更須走 **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`** 變更管制。
+- **月結「幾天內提醒」**：程式為 **`daysLeft > 5` 則不列**（即 0～5 天內可能出現）；若文件寫「0～4 天」屬**文件與程式對齊議題**，未經產品同意勿擅自改條件。
+- 正式帳單圖仍走 **`invoices/{id}/slip-data`**；**已繳費（Invoice `Status === 'paid'`）** 不應在 **`BillingList`** 顯示出單按鈕（既有邏輯維持）。
+
+---
+
+## 2026-04-12 (J) — 通知中心：同一課程不重複「未繳＋低堂數」、標題可辨識科目
+
+### Fixed
+- **`NotificationSyncService::buildLowSessionsNotifications`**：僅列 **已繳費（`Paid=1`）** 且剩 1～2 堂之堂數制課程；**未繳費**已由 `buildTuitionNotifications` 處理，避免同一 `StudentClass` 同時出現「未繳費」與「剩餘堂數不足」兩則。
+- **繳費／低堂數通知標題**：`StudentClass` 多為 `SubjectID` 無 `Subject` 文字欄，改由 **`Subject.Subject_Name`**（`subjectRecord`）顯示科目；仍無名稱時改為 **`課程 #{ID}`**，多門課時標題不再全部長一樣。
+- **`StudentClass::subjectRecord()`**：供通知同步 eager load 科目名。
+- **`NotificationsCenter.vue`**：`low_sessions` 類型不再顯示「標記已繳費」（續課提醒與催繳語意分離）。
+
+### Notes
+- 已寫入資料庫的舊通知需再按一次 **「同步通知」** 才會依新規則更新／結案重疊項。
+
+---
+
+## 2026-04-12 (I) — 課程管理專注模式修正 + 契約時段語意分離
+
+### Fixed
+
+#### A. 專注全螢幕模式 z-index 與版面
+- `.modal-overlay` z-index 從 200 提升至 1100，確保編輯／重建／加購等 modal 永遠顯示在專注層（z-index: 1000）之上。
+- `.focus-fullscreen-mode` 下子層 `.group-table-wrap`、`.table-wrap` 的 `max-height` 改為 `none`，消除巢狀捲動。
+
+#### B. 課程列表與編輯「固定排課日／時段」改以契約為準
+- **後端** `StudentClassController::index()`：`$sessionSlotsByClassId`（由 ClassSession 推導）不再覆寫 `$class->day_time_slots`；改為計算 `schedule_drift` boolean，前端顯示「堂次偏移」警告。
+- **前端** `editCourse`：移除從 `classSessionsByCourse` 合併推斷時段至 `existingSlots` 的邏輯；編輯表單固定排課日只反映契約。
+- **前端** `formatDayTimeSlotLines`：移除從堂次推斷並合併至契約 slots 的邏輯；列表時段欄只顯示契約。
+- 新增 `schedule-drift-badge` UI 元件，當 `schedule_drift === true` 時顯示「堂次偏移」警告標籤。
+
+#### C. 編輯移除星期後仍出現該日（歷史代課汙染契約）
+- **`reconcileWeekTimeFieldsFromSessions`**：移除「無未來 scheduled 堂次時改撈 completed/attended 歷史」的邏輯；僅依 **今日起未來 `scheduled`** 堂次同步主檔 `week`/`time`，否則直接 return。避免已上完的**週二代課**等一次性堂次，在使用者刪除週二契約後仍被寫回 `StudentClass`。
+
+### Notes
+- `schedule_drift` 偵測邏輯：比對契約 `day_time_slots` 的 `(day, start_time, duration_hours)` 三元組與 **僅「今日起、Status=scheduled」** 預排堂次推導的三元組，任一不在契約內即 `true`（**不含**已上完之 completed/attended，避免週一代課等歷史誤報）。
+- 智慧排課（SmartCalendar）不受影響：每格仍優先該日 ClassSession 時間。
+- **課程管理**：編輯儲存時若「固定排課／開課日／預設時長」有變更，成功後**自動**再送 `force_partial_rebuild`（與「重建未上堂次」相同），不必另手動按重建。
+- 相關防再犯紀錄：`docs/AI_REGRESSION_LESSONS.md`（2026-04-12 專注模式與 modal z-index / 契約時段不得被覆寫）。
+
+---
+
+## 2026-04-12 (H) — 科目顯示、排課彈性、待補點名、開課日重建
+
+### Fixed
+
+#### A. 科目名稱英文顯示問題（全站）
+- **根本原因**：`LearningRecord.Subject` 為純文字欄，歷史資料存了英文（`Science`、`Math` 等）；`StudentClassController::index()` 在 `$reverseSubjectMap` 將中文名反向對應成英文 key，前端課表直接顯示。
+- **`LearningRecordController::hydrateRecordForResponse()`**（第 38 行）、**`index()` 批次查詢**（第 179 行）：原本取 `$record->studentClass->Subject`（欄位不存在，永遠 null），改為透過 `SubjectID` 查 `Subject.Subject_Name`，批次版本先 pluck 避免 N+1。回傳欄位 `student_class_label` 現在是正確中文名。
+- **`LearningRecordsPage.vue`**：評量列表科目 badge 改用 `record.student_class_label`（後端已解析），`buildEvents` 新增 `subjectName: sc.subject_name` 供課表顯示，今日／本週課表的 `<span class="ts-subject">` 改用 `ev.subjectName`。
+- **`DirectorDashboard.vue`**：主任待審核評量的科目 tag 改用 `ev.student_class_label || ev.Subject`。
+- **`LearningRecordsPage.vue`** 科目下拉：從寫死九科改為 `fetchSubjects()`，呼叫 `GET /api/v1/subjects?branch_id=xxx`，依各分校科目管理設定動態載入；`onMounted` 與 `watch(branchId)` 皆呼叫。
+
+#### B. 待補點名：已核准評量的堂次仍出現
+- **`AttendanceController::endedSessions()`**：查詢條件新增 `->whereNotIn('Status', ['attended', 'completed', 'late'])`，排除已透過評量核准（`ApprovalSessionSyncService` 設 `Status=attended`）但無 `StudentSignIn` 的堂次。
+
+#### C. 開課日編輯後堂次不同步（三層修復）
+- **`hasImmutableSessionHistory()`**（`StudentClassController`）：`StudentSignIn` 查詢加 `whereNull('VoidedAt')`，`LearningRecord` 查詢加 `whereNull('VoidedAt')`；已作廢記錄不再阻擋重建。
+- **`maybeRebuildSessionsAfterUpdate()`**：`history_exists` 且 `startDateChanged` 時，新增「安全部分重建」路徑：呼叫現有 `syncFutureScheduledSessionTimes()` 重排未鎖定未來堂次，回傳 `reason: partial_rebuild`。
+- **`update()`**（`StudentClassController`）：新增 `force_partial_rebuild: true` 旗標，主任強制觸發部分重建，無需新 endpoint。
+- **`CourseManagement.vue`**：(1) 記錄 `originalFirstClassDate`，`history_exists` 且開課日有變時保持 modal 開啟並顯示橘色警告。(2) 新增 `partial_rebuild` 結果訊息。(3) 操作選單新增「重建未上堂次」入口（橘色），點擊跳出確認 modal（說明保留與重排範圍、不可復原），確認後呼叫 `force_partial_rebuild: true`。
+- **`CourseManagement.vue` modal**：移除 `@click.self="showEditModal = false"`，防止點擊遮罩意外關閉編輯表單。
+
+#### D. 排課手動日期限制（UniversalClassScheduler）
+- **前端 `onDateClick`**：過去日期不再檢查固定上課星期（`cell.ymd < todayYmd` 時跳過 `selectedDays` 驗證）。
+- **前端 `sessionCountForYmd`**：手動日期若不在固定星期，改回傳 1（之前回傳 0，導致不被計入堂數）。
+- **前端送出邏輯**：`getSlotIndicesForDay` 找不到時段時，改用全域預設 `start_time` 建立堂次，不再 alert 阻擋。
+- **後端 `EnrollmentService`**：星期驗證加入 `$today` 判斷，`$row['date'] < $today` 的過去日期跳過固定星期限制。
+- **說明文字**：兩處 hint 改為「手動日可自由選擇任意日期」。
+
+### Notes
+- `退回未上`（`attended → scheduled`）會呼叫 `voidAttendanceArtifacts()`，將 StudentSignIn 與 LearningRecord 的 `VoidedAt` 設為作廢。搭配 (C) 修復，退回後再編輯開課日即可觸發全量重建，無需刪除重建。
+- 強制重建 modal 的 CSS class：`.rebuild-modal`、`.rebuild-modal__*`；JS：`openRebuildModal()`、`submitForceRebuild()`。
+
+---
+
 ## 2026-04-12 (G) — 老師：教學工作台（預設首頁）與跨分校本週課表
 
 ### Added

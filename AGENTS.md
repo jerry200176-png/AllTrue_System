@@ -13,7 +13,7 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 1. `README.md`
 2. `AI_QUICKSTART.md`
 3. `docs/OPERATIONS_RUNBOOK.md`
-4. **`docs/AI_REGRESSION_LESSONS.md`**（防再犯：暫停課程／繳費提醒／評量待審／**固定排課契約與堂次**／**老師教學工作台（TeacherHome）**／**前端 `index.html` 與 hashed assets 必須同輪 deploy** 等已踩過的坑）
+4. **`docs/AI_REGRESSION_LESSONS.md`**（防再犯：暫停課程／繳費提醒／**催繳名單與 `tuition-slip`（已繳不產圖）**／評量待審／**調課後評量表作廢未恢復**（`ensurePastRecords` un-void、`leave→attended` 須恢復 LR）／**固定排課契約與堂次**／**老師教學工作台（TeacherHome）**／**智慧排課同格 `cancelled+scheduled` 誤標取消**／**老師註冊 vs `directors/pending`、Teacher 重複鍵**／**增加購買堂數後第 N+1 堂起未自動產生**／**前端 `index.html` 與 hashed assets 必須同輪 deploy** 等已踩過的坑）
 5. `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（主任「繳費／續課提醒」業務規則；改 `AlertController::tuition` 或總覽對應邏輯**前必讀**，且**變更須先經使用者／產品明示同意**）
 6. `docs/GITHUB_SYNC_WORKFLOW.md`
 7. `docs/CHANGELOG.md`（近期功能異動與權限調整）
@@ -28,6 +28,15 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 - If frontend code changed, run `cd frontend && npm run deploy`
 - Validate API health after deploy/config edits
 
+## Commit SOP（所有 AI 必須遵守）
+
+- 完成一個**完整子功能**（可驗收、可回歸）就應建立一筆 commit，避免把多個需求混在同一筆。
+- commit 前必做：
+  - 程式碼語法正確、可執行（至少完成對應 build / lint / 型別或等價檢查）。
+  - 若該模組已有測試腳本，至少跑基本測試並確認通過（最小可接受集合）。
+- 禁止只因「單一檔案拼字修正」或「純格式微調」單獨 commit；除非該變更是明確獨立任務（例如文件專案、專門的 typo 任務）。
+- commit 訊息需描述「為何」與子功能邊界；不要用含糊訊息（例如 `update` / `fix stuff`）。
+
 ## Project context (short)
 
 - Frontend: Vue 3 in `frontend/`
@@ -35,15 +44,24 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 - Auth: token in `localStorage.alltrue_session`
 - Domain: students, classes, schedules, attendance, billing, learning records
 - **Teacher default home (2026-04-12)**: `active=teacher-home` → `frontend/src/pages/TeacherHomePage.vue`; cross-campus weekly schedule merges per-branch `class-sessions`; see `docs/CHANGELOG.md` (2026-04-12 (G)) + `docs/AI_REGRESSION_LESSONS.md` (TeacherHome section)
+- **Director tuition list + slips (2026-04-13)**: `active=tuition-collect` → `TuitionCollectionPage.vue` (data from `GET /api/v1/alerts/tuition`); unpaid-only slip via `tuition-slip` or invoice `slip-data`; see `docs/CHANGELOG.md` (2026-04-13 (K))
 
 ## Common pitfalls
 
 - **核准評量 = 點名扣堂**（2026-04-11 架構級變更）：`ApprovalSessionSyncService` / `SessionDeductionService` / `LearningRecordController`（approve / batchApprove / rollbackApproval）為高風險檔案，**改動前必須先詢問使用者**。禁止將核准改回「不扣堂」。詳見 `docs/AI_REGRESSION_LESSONS.md`、`docs/OPERATIONS_RUNBOOK.md` §K
 - **請假與評量**（2026-04-12）：待審列表不能只靠 `VoidedAt`；須保留 **`excludeLeaveSessionPendingReview`**（堂次 `leave`/`excused`/`leave_adjusted` 不顯示 pending）、**`ensurePastRecords`** 不對請假堂補建、讀取財務／家長端仍要 **`active()`**。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-12 — 請假與學習評量）
+- **調課後評量「消失」**（2026-04-13）：請假 cascade 作廢 LR 後，同一 `ClassSession` 經 `reschedule-session` 改日並標已上時，**`ensurePastRecords` 須能 un-void**；**`leave→attended`** 須 **`restoreVoidedLearningRecord`**。勿改回「有作廢列就永遠跳過」。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 調課／請假 cascade 後評量表作廢未恢復）、**`docs/CHANGELOG.md`（2026-04-13 (Q)）**
 - **固定排課契約與堂次一致**（2026-04-12）：動 **`UniversalClassScheduler`／`EnrollmentService::store`／`StudentClassController::index`（列表時段）／`syncFutureScheduledSessionTimes`（編輯課程改星期）** 前必讀 **`docs/AI_REGRESSION_LESSONS.md`** 該節；禁止恢復「非固定星期手動日 fallback」、禁止列表用預排覆寫而不過濾契約、禁止只改時間卻不對契約外星期的未來堂重算日期。
 - **老師教學工作台（TeacherHome）**（2026-04-12）：動 **`TeacherHomePage.vue`／`App.vue`（老師預設 `active`、`mergeTeacherAttendanceBadge`、側欄／底欄）** 前必讀 **`docs/AI_REGRESSION_LESSONS.md`** 該節與 **`docs/CHANGELOG.md`（2026-04-12 (G)）**；禁止週課表 silently 改回僅單校、禁止漏接 badge 合併、禁止他校填評量不切分校。
-- 未讀 `docs/AI_REGRESSION_LESSONS.md` 就改評量／**繳費／續課提醒（`AlertController::tuition`）**／暫停課程相關邏輯，易重複已修過的 regression；**後者邏輯變更前必問使用者**（見 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 變更管制）
+- **老師管理「授課學段」**（2026-04-13）：**`GET/PUT /api/v1/profiles`、老師列表、`TeachersList.vue`** 須與 **`teacher_subject_levels`／`TeacherScopeService`**、**`PUT /api/v1/me`** 一致帶出並可編輯 **`subject_level_scopes`**；勿只做科目不做學段。詳見 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-13）**。
+- 未讀 `docs/AI_REGRESSION_LESSONS.md` 就改評量／**繳費／續課提醒（`AlertController::tuition`）**／**催繳名單（`TuitionCollectionPage`）／`tuitionSlipData`（`alerts/tuition-slip`）**／暫停課程相關邏輯，易重複已修過的 regression；**`tuition` 列入條件變更前必問使用者**（見 `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` 變更管制）；**已繳（`Paid=1`）不得產出催繳／繳費單圖**（前後端皆須擋）。
 - **只更新部分** `backend/public/assets`、或 `index.html` 與 chunk **不同步**，會觸發整站 **`MIME type "text/html"`** on `index-*.js`（SPA fallback 誤當 JS）；務必 **`npm run deploy`** 一輪寫入。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）
+- **勿把「帳單列表」（`active = 'billing'`、`BillingList.vue`）加回側欄**——已被「當月學收」（`TuitionReportPage.vue`、`active = 'tuition-report'`）取代（2026-04-13 (N)）。`BillingList.vue` 與 Invoice API 保留在程式中但不掛載。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 當月學收月報）
+- **增加購買堂數後須補建 ClassSession**（2026-04-13）：`StudentClassController::update` 更新 `SessionCount` 時，**僅縮減才呼叫 `cancelExcessScheduledSessions`** 是不夠的——增加時必須緊接呼叫 `extendSessionsIfNeeded` 補建差額堂次；勿整刪重建；`currentCount` 排除 `cancelled` 但含 `leave`/`attended`。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 增加購買堂數後第 N+1 堂起未自動產生）
+- **出缺勤「補登」`ended-sessions`**（2026-04-13）：`AttendanceController::endedSessions` 組 `classIds` 時須 **`where('Stop', 0)`**（主任／老師路徑皆然）；暫停後堂次多為 `cancelled`，僅靠 `whereNotIn(Status, attended/…)` **不會**排除，勿移除 `Stop` 篩選。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 出缺勤補登…）、**`docs/CHANGELOG.md`（2026-04-13 (S)）**
+- **智慧排課同格誤標取消**（2026-04-14）：`SmartCalendar` 同日同時段多筆堂次（`cancelled + scheduled`）禁止用 `.find()` 拿第一筆；必須走共用優先序解析器（`scheduled` 高於 `cancelled`，同狀態 `id desc`）。代課 `session_id` 選取與 `useCourseSessionsDisplay` 也要同口徑。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-14 — 智慧排課角標誤判）、**`docs/CHANGELOG.md`（2026-04-14 (F)）**
+- **老師自助註冊與主任待審**（2026-04-15）：**`GET /api/v1/directors/pending`** 不可只依 `UserCampus.Approved=false`；須排除 **`type=T`**。老師核准在 **`TeachersList` 待審核**。`Teacher` 表 `(CampusID, T_Name)` 衝突時 **`insertOrIgnore`**，勿裸 `insert` 導致整筆註冊 500。詳見 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-15）**、**`docs/CHANGELOG.md`（2026-04-15 (B)）**
+- **老師管理側欄橘點 vs「待審核」**（2026-04-15）：側欄 **`pending_teachers`** 來自 **`notifications/unread-count`**（**`UserCampus.Approved=false`**）；**「待審核」tab** 只看 **`User.status=pending`**。核准 **`PUT profiles` → `active`** 須同步 **`UserCampus.Approved`**（見 **`ProfileController::update`**）。勿把兩種計數混為同一語意。詳見 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-15 第二節）**、**`docs/CHANGELOG.md`（2026-04-15 (C)）**
 - Wrong PR target branch
 - Stale Laravel cache files under `backend/bootstrap/cache/`
 - Broken `.env` DB credentials
