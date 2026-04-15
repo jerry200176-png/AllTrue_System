@@ -43,6 +43,8 @@ class NotificationApiTest extends TestCase
         $classA = $this->createStudentClass($studentA->id, 0, 1);
         $classB = $this->createStudentClass($studentB->id, 0, 1);
         $paidClass = $this->createStudentClass($studentA->id, 1, 1, 0);
+        // 已繳 + 剩 1–2 堂才會產生 low_sessions；未繳課程僅走 tuition，避免同一課兩則通知
+        $paidLowSessionsClass = $this->createStudentClass($studentA->id, 1, 1, 2);
 
         $session = ClassSession::create([
             'StudentClassID' => $classA->ID,
@@ -101,7 +103,7 @@ class NotificationApiTest extends TestCase
         ]);
 
         $first->assertOk();
-        // tuition + low_sessions (classA RemainingSessions=1) + overdue invoice + learning_review + pending_swipe
+        // tuition (classA unpaid) + low_sessions (paidLowSessionsClass) + overdue invoice + learning_review + pending_swipe
         $this->assertSame(5, (int) $first->json('active_count'));
         $this->assertDatabaseCount('Notifications', 5);
         $this->assertDatabaseHas('Notifications', [

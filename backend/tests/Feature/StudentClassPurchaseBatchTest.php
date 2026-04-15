@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -33,9 +34,11 @@ class StudentClassPurchaseBatchTest extends TestCase
             'UsedSessions' => 7,
             'Paid' => 1,
             'Rate' => 500,
-            'SessionDuration' => 60,
-            'Charge' => 8000,
+            'SessionDuration' => 120,
+            'Charge' => 4000,
             'StartDate' => '2026-03-01',
+            'week' => 2,
+            'time' => '20:00:00',
         ]);
 
         $res = $this->withHeaders([
@@ -43,7 +46,7 @@ class StudentClassPurchaseBatchTest extends TestCase
             'Accept' => 'application/json',
         ])->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
             'sessions' => 6,
-            'start_date' => '2026-04-01',
+            'start_date' => '2026-04-07',
             'mode' => 'new_purchase',
         ]);
 
@@ -63,8 +66,19 @@ class StudentClassPurchaseBatchTest extends TestCase
         $this->assertSame(6, (int) $newCourse->SessionCount);
         $this->assertSame(6, (int) $newCourse->RemainingSessions);
         $this->assertSame(0, (int) $newCourse->Paid);
-        $this->assertStringStartsWith('2026-04-01', (string) $newCourse->StartDate);
-        $this->assertSame(6000, (int) $newCourse->Charge);
+        $this->assertStringStartsWith('2026-04-07', (string) $newCourse->StartDate);
+        $this->assertSame(3000, (int) $newCourse->Charge);
+
+        // ClassSession rows must be created for the new course
+        $sessionRows = ClassSession::where('StudentClassID', $newId)
+            ->orderBy('SessionDate')
+            ->get();
+        $this->assertCount(6, $sessionRows);
+        // First session on start_date (2026-04-07, a Monday — fallback uses start_date DOW)
+        $this->assertStringStartsWith('2026-04-07', (string) $sessionRows[0]->SessionDate);
+        $this->assertSame('scheduled', (string) $sessionRows[0]->Status);
+        // All sessions should have the inherited time
+        $this->assertStringStartsWith('20:00', (string) $sessionRows[0]->StartTime);
     }
 
     public function test_purchase_batch_rejects_split_mode(): void

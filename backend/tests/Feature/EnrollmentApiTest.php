@@ -18,6 +18,25 @@ class EnrollmentApiTest extends TestCase
         $token = $this->createDirectorToken([1], 'director-enrollment-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-enrollment-a@example.com');
 
+        $today = now()->toDateString();
+        $pastTue = now()->copy();
+        for ($i = 0; $i < 21; $i++) {
+            if ((int) $pastTue->dayOfWeekIso === 2 && $pastTue->toDateString() < $today) {
+                break;
+            }
+            $pastTue->subDay();
+        }
+        $this->assertTrue(
+            (int) $pastTue->dayOfWeekIso === 2 && $pastTue->toDateString() < $today,
+            'Fixture requires a Tuesday before today'
+        );
+        $futureTue1 = $pastTue->copy()->addWeek();
+        while ($futureTue1->toDateString() <= $pastTue->toDateString() || $futureTue1->toDateString() < $today) {
+            $futureTue1->addWeek();
+        }
+        $futureTue2 = $futureTue1->copy()->addWeek();
+        $futureTue3 = $futureTue2->copy()->addWeek();
+
         $response = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -33,11 +52,11 @@ class EnrollmentApiTest extends TestCase
             'teacher_id' => $teacherId,
             'subject' => 'Math',
             'class_type' => 'one_on_one',
-            'confirmed_dates' => [now()->subDays(3)->toDateString()],
+            'confirmed_dates' => [$pastTue->toDateString()],
             'future_dates' => [
-                now()->addDays(4)->toDateString(),
-                now()->addDays(11)->toDateString(),
-                now()->addDays(18)->toDateString(),
+                $futureTue1->toDateString(),
+                $futureTue2->toDateString(),
+                $futureTue3->toDateString(),
             ],
             'days_of_week' => [2],
             'start_time' => '16:00',
