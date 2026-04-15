@@ -571,6 +571,157 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $this->assertSame(1, $count);
     }
 
+    public function test_ensure_past_skips_leave_sessions(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-ensure-past-leave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-ensure-past-leave@example.com');
+        $student = $this->createStudent(1, '請假不補評量');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        foreach (['leave', 'leave_adjusted'] as $status) {
+            ClassSession::create([
+                'StudentClassID' => $courseId,
+                'SessionDate' => now()->subDays(3)->toDateString(),
+                'StartTime' => '16:00',
+                'EndTime' => '18:00',
+                'Status' => $status,
+                'Note' => "test-{$status}",
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/ensure-past', [
+            'branch_id' => 1,
+        ])->assertOk();
+
+        $this->assertSame(0, (int) ($res->json('created') ?? -1), 'ensure-past must not create LR for leave/leave_adjusted sessions');
+    }
+
+    public function test_ensure_past_does_not_recreate_voided_record(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-ensure-past-voided@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-ensure-past-voided@example.com');
+        $student = $this->createStudent(1, '作廢不重建');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+
+        LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '被作廢的評量',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'VoidedAt' => now(),
+            'VoidReason' => '一般請假',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/ensure-past', [
+            'branch_id' => 1,
+        ])->assertOk();
+
+        // Session is attended-like (completed) and LR was voided by a leave cascade.
+        // ensure-past should RESTORE (un-void) the existing record so the teacher can fill it in.
+        // It must NOT insert a new row (unique constraint on ClassSessionID).
+        $this->assertSame(1, (int) ($res->json('created') ?? -1), 'ensure-past should restore a voided LR for an attended session');
+        $total = LearningRecord::where('ClassSessionID', $classSession->id)->count();
+        $this->assertSame(1, $total, 'should still have exactly 1 record (the restored one)');
+        $restored = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+        $this->assertNull($restored->VoidedAt, 'restored LR must have VoidedAt cleared');
+        $this->assertSame('pending', $restored->Status, 'restored LR must be pending');
+    }
+
+    public function test_voided_record_excluded_from_index_and_batch(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-voided-index@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-voided-index@example.com');
+        $student = $this->createStudent(1, '作廢不顯示');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '16:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $cs = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => now()->subDay()->toDateString(),
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'leave',
+            'Note' => '',
+        ]);
+
+        $voided = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $cs->id,
+            'TeacherID' => $teacherId,
+            'Content' => '已作廢',
+            'Status' => 'pending',
+            'SessionDate' => $cs->SessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'VoidedAt' => now(),
+            'VoidReason' => '一般請假',
+        ]);
+
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $indexRes = $this->withHeaders($headers)
+            ->getJson('/api/v1/learning-records?branch_id=1&per_page=50&status=pending');
+        $indexRes->assertOk();
+        $ids = collect($indexRes->json('data'))->pluck('id')->map(fn ($v) => (int) $v)->all();
+        $this->assertNotContains((int) $voided->id, $ids, 'voided record must not appear in index');
+
+        $batchRes = $this->withHeaders($headers)
+            ->postJson('/api/v1/learning-records/batch-approve', [
+                'DirectorID' => 1,
+                'branch_id' => 1,
+            ]);
+        $batchRes->assertOk();
+        $this->assertSame(0, (int) $batchRes->json('approved'), 'batch-approve must skip voided records');
+
+        $voided->refresh();
+        $this->assertSame('pending', $voided->Status, 'voided record status must remain unchanged');
+    }
+
     public function test_batch_reject_sets_status_and_review_note(): void
     {
         $token = $this->createDirectorToken([1], 'director-batch-reject@example.com');

@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -171,6 +173,129 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(1, (int) $row['paid']);
         $this->assertSame('2026-05-15', $row['due_date']);
         $this->assertSame(3, (int) $row['days_until_settlement']);
+    }
+
+    public function test_tuition_alert_returns_last_paid_at_when_payment_exists(): void
+    {
+        $token = $this->createDirectorToken([1], 'paid-at-test@example.com');
+        $student = Student::create([
+            'name' => '已繳費學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1,
+            'RemainingSessions' => 2,
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+        ]);
+
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-05 14:30:00',
+            'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('2026-04-05', $row['last_paid_at']);
+    }
+
+    public function test_tuition_alert_returns_null_last_paid_at_when_no_payment(): void
+    {
+        $token = $this->createDirectorToken([1], 'no-paid-at@example.com');
+        $student = Student::create([
+            'name' => '未繳費學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0,
+            'RemainingSessions' => 1,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertNull($row['last_paid_at']);
+    }
+
+    public function test_tuition_alert_returns_latest_paid_at_with_multiple_payments(): void
+    {
+        $token = $this->createDirectorToken([1], 'multi-pay@example.com');
+        $student = Student::create([
+            'name' => '多次繳費',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1,
+            'RemainingSessions' => 0,
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'TotalAmount' => 10000,
+            'PaidAmount' => 10000,
+            'Status' => 'paid',
+        ]);
+
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-01 10:00:00',
+            'Method' => 'cash',
+        ]);
+
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-10 16:00:00',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('2026-04-10', $row['last_paid_at']);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string

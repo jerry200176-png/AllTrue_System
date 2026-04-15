@@ -121,7 +121,8 @@ class FinanceSubjectUnitsTest extends TestCase
         $this->assertSame(2.0, (float) ($after[0]['one_on_one_hours'] ?? 0));
     }
 
-    public function test_teacher_can_view_only_their_own_subject_units(): void
+    /** 老師與主任同樣可看該分校「科目數排行」（同儀表競爭力）；仍受 branch_id 範圍限制。 */
+    public function test_teacher_sees_branch_wide_subject_units(): void
     {
         $teacherA = $this->createTeacherWithToken(1, 'teacher-subject-units-self-a@example.com', '老師甲');
         $teacherB = $this->createTeacherWithToken(1, 'teacher-subject-units-self-b@example.com', '老師乙');
@@ -234,10 +235,16 @@ class FinanceSubjectUnitsTest extends TestCase
         ])->getJson("/api/v1/finance/subject-units?branch_id=1&start={$sessionDate}&end={$sessionDate}")
             ->assertOk();
 
-        $teachers = $response->json('teachers');
-        $this->assertCount(1, $teachers);
-        $this->assertSame('老師甲', $teachers[0]['teacher_name'] ?? null);
-        $this->assertSame(2.0, (float) ($teachers[0]['one_on_one_hours'] ?? 0));
+        $teachers = collect($response->json('teachers'));
+        $this->assertCount(2, $teachers);
+        $rowA = $teachers->firstWhere('teacher_name', '老師甲');
+        $rowB = $teachers->firstWhere('teacher_name', '老師乙');
+        $this->assertNotNull($rowA);
+        $this->assertNotNull($rowB);
+        $this->assertSame(2.0, (float) ($rowA['one_on_one_hours'] ?? 0));
+        $this->assertSame(2.0, (float) ($rowB['one_on_two_hours'] ?? 0));
+        $this->assertEqualsWithDelta(66.7, (float) ($rowA['share_pct'] ?? 0), 0.15);
+        $this->assertEqualsWithDelta(33.3, (float) ($rowB['share_pct'] ?? 0), 0.15);
     }
 
     /**

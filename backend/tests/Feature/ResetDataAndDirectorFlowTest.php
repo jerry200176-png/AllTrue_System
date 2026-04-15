@@ -126,6 +126,50 @@ class ResetDataAndDirectorFlowTest extends TestCase
 
     /**
      * @test
+     * Pending teachers (type=T, UserCampus.Approved=false) must not appear on directors/pending — only U/A applicants.
+     */
+    public function test_directors_pending_excludes_pending_teachers(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $superAdmin = UserFactory::new()->superAdmin()->create();
+
+        $pendingTeacher = UserFactory::new()->teacher()->create([
+            'LoginName' => 'teacher.pending@example.com',
+            'Name' => 'Pending Teacher',
+            'status' => 'pending',
+        ]);
+        UserCampusFactory::new()->create([
+            'UserID' => $pendingTeacher->id,
+            'CampusID' => $campus->id,
+            'Admin' => 0,
+            'Approved' => false,
+        ]);
+
+        $pendingDirector = UserFactory::new()->pendingDirector()->create([
+            'LoginName' => 'director.pending2@example.com',
+            'Name' => 'Pending Director Two',
+        ]);
+        UserCampusFactory::new()->create([
+            'UserID' => $pendingDirector->id,
+            'CampusID' => $campus->id,
+            'Admin' => 0,
+            'Approved' => false,
+        ]);
+
+        $response = $this->getJson('/api/v1/directors/pending', [
+            'X-User-Id' => (string) $superAdmin->id,
+        ]);
+
+        $response->assertOk();
+        $data = $response->json();
+        $this->assertIsArray($data);
+        $this->assertCount(1, $data);
+        $this->assertSame($pendingDirector->id, $data[0]['id']);
+        $this->assertSame('Pending Director Two', $data[0]['name']);
+    }
+
+    /**
+     * @test
      */
     public function super_admin_can_delete_approved_director(): void
     {

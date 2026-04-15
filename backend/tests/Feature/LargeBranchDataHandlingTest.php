@@ -8,10 +8,12 @@ use App\Models\ClassSession;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\Teacher;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class LargeBranchDataHandlingTest extends TestCase
@@ -55,6 +57,68 @@ class LargeBranchDataHandlingTest extends TestCase
         $res->assertOk();
         $this->assertCount(1, $res->json('data'));
         $this->assertStringContainsString('特殊搜尋名', $res->json('data.0.student_name'));
+    }
+
+    public function test_student_classes_teacher_name_filter(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '學生老師篩', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $teacher = Teacher::create([
+            'CampusID' => 1,
+            'T_Name' => '唯一篩選老師',
+            'TelegramID' => '',
+            'MDT' => now(),
+            'Enable' => 1,
+        ]);
+        $this->createCourse($student->id, ['TeacherID' => $teacher->id]);
+        $this->seedCoursesForBranch(1, 4);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&teacher_name=' . rawurlencode('唯一篩選') . '&per_page=50');
+
+        $res->assertOk();
+        $this->assertCount(1, $res->json('data'));
+        $this->assertStringContainsString('唯一篩選老師', (string) $res->json('data.0.teacher_name'));
+    }
+
+    public function test_student_classes_teacher_name_filter_matches_user_name(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherUser = User::create([
+            'LoginName' => 'coco-en-filter-' . mt_rand(10000, 99999) . '@test.com',
+            'Name' => 'CocoEnglishFilter',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => 912345670,
+        ]);
+        DB::table('Teacher')->insert([
+            'id' => $teacherUser->id,
+            'CampusID' => 1,
+            'T_Name' => '可可',
+            'TelegramID' => '',
+            'MDT' => now(),
+            'Enable' => 1,
+        ]);
+        $student = Student::create([
+            'name' => '學生老師英', 'CampusID' => 1, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $this->createCourse($student->id, ['TeacherID' => $teacherUser->id]);
+        $this->seedCoursesForBranch(1, 3);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/student-classes?branch_id=1&teacher_name=CocoEnglish&per_page=50');
+
+        $res->assertOk();
+        $this->assertCount(1, $res->json('data'));
+        $this->assertSame((int) $teacherUser->id, (int) $res->json('data.0.teacher_id'));
     }
 
     // ----- schedules date range filter -----

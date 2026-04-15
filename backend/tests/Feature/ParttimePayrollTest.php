@@ -1,0 +1,632 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\LearningRecord;
+use App\Models\PayrollMonthStatus;
+use App\Models\Student;
+use App\Models\StudentClass;
+use App\Models\User;
+use App\Models\UserCampus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+class ParttimePayrollTest extends TestCase
+{
+    use RefreshDatabase;
+
+    // ──────────────────────────────────────────
+    // Golden calculation: one-on-one high school
+    // ──────────────────────────────────────────
+    public function test_golden_one_on_one_high_school_rate(): void
+    {
+        $dir = $this->createDirector('dir-payroll-1@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt1@test.com', '兼職甲');
+        $stu = $this->createStudent(1, '高中生A');
+
+        $sc = $this->makeStudentClass($stu, $tid, 10, 'one_on_one');
+        $this->makeApprovedLR($sc, $tid, '2026-04-01', '16:00', '18:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $data = $res->json();
+        $this->assertCount(1, $data['teachers']);
+        $teacher = $data['teachers'][0];
+        $this->assertEquals(800, $teacher['total_salary']); // 400/h * 2h
+        $this->assertEquals(2, $teacher['total_hours']);
+        $this->assertEquals(2, $teacher['high_hours']);
+    }
+
+    // ──────────────────────────────────────────
+    // Golden: one-on-two junior high
+    // ──────────────────────────────────────────
+    public function test_golden_one_on_two_junior_rate(): void
+    {
+        $dir = $this->createDirector('dir-payroll-2@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt2@test.com', '兼職乙');
+        $stu = $this->createStudent(1, '國中生B');
+
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_two');
+        $this->makeApprovedLR($sc, $tid, '2026-04-02', '10:00', '12:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // base 350 + headcount_bonus 50*(2-1) = 400/h * 2h = 800
+        $this->assertEquals(800, $teacher['total_salary']);
+        $this->assertEquals(2, $teacher['junior_hours']);
+    }
+
+    // ──────────────────────────────────────────
+    // Golden: one-on-three elementary
+    // ──────────────────────────────────────────
+    public function test_golden_one_on_three_elementary_rate(): void
+    {
+        $dir = $this->createDirector('dir-payroll-3@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt3@test.com', '兼職丙');
+        $stu = $this->createStudent(1, '國小生C');
+
+        $sc = $this->makeStudentClass($stu, $tid, 3, 'one_on_three');
+        $this->makeApprovedLR($sc, $tid, '2026-04-03', '14:00', '16:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // base 300 + 50*(3-1) = 400/h * 2h = 800
+        $this->assertEquals(800, $teacher['total_salary']);
+        $this->assertEquals(2, $teacher['elementary_hours']);
+    }
+
+    // ──────────────────────────────────────────
+    // Golden: tutoring always 200/h, no headcount bonus
+    // ──────────────────────────────────────────
+    public function test_golden_tutoring_rate_no_bonus(): void
+    {
+        $dir = $this->createDirector('dir-payroll-4@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt4@test.com', '兼職丁');
+        $stu = $this->createStudent(1, '輔導生D');
+
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'tutoring');
+        $this->makeApprovedLR($sc, $tid, '2026-04-04', '09:00', '11:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // tutoring 200/h * 2h = 400
+        $this->assertEquals(400, $teacher['total_salary']);
+        $this->assertEquals(2, $teacher['tutoring_hours']);
+    }
+
+    // ──────────────────────────────────────────
+    // Only part_time teachers show up
+    // ──────────────────────────────────────────
+    public function test_excludes_full_time_teachers(): void
+    {
+        $dir = $this->createDirector('dir-payroll-5@test.com', [1]);
+        $ptId = $this->createPartTimeTeacher(1, 'pt5@test.com', '兼職');
+        $ftId = $this->createFullTimeTeacher(1, 'ft5@test.com', '專職');
+        $stu1 = $this->createStudent(1, '學生E');
+        $stu2 = $this->createStudent(1, '學生F');
+
+        $sc1 = $this->makeStudentClass($stu1, $ptId, 10, 'one_on_one');
+        $sc2 = $this->makeStudentClass($stu2, $ftId, 10, 'one_on_one');
+        $this->makeApprovedLR($sc1, $ptId, '2026-04-05', '10:00', '12:00');
+        $this->makeApprovedLR($sc2, $ftId, '2026-04-05', '14:00', '16:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $this->assertCount(1, $res->json('teachers'));
+        $this->assertEquals('兼職', $res->json('teachers.0.teacher_name'));
+    }
+
+    // ──────────────────────────────────────────
+    // Only approved + active records count
+    // ──────────────────────────────────────────
+    public function test_excludes_pending_and_voided_records(): void
+    {
+        $dir = $this->createDirector('dir-payroll-6@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt6@test.com', '兼職戊');
+        $stu = $this->createStudent(1, '學生G');
+
+        $sc = $this->makeStudentClass($stu, $tid, 7, 'one_on_one');
+
+        // Approved
+        $this->makeApprovedLR($sc, $tid, '2026-04-10', '10:00', '12:00');
+        // Pending — should be excluded
+        $this->makeLR($sc, $tid, '2026-04-11', '10:00', '12:00', 'pending');
+        // Voided — should be excluded
+        $voided = $this->makeLR($sc, $tid, '2026-04-12', '10:00', '12:00', 'approved');
+        $voided->update(['VoidedAt' => now()]);
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $this->assertEquals(1, $res->json('teachers.0.session_count'));
+    }
+
+    // ──────────────────────────────────────────
+    // Branch isolation
+    // ──────────────────────────────────────────
+    public function test_branch_isolation(): void
+    {
+        $dir1 = $this->createDirector('dir-b1@test.com', [1]);
+        $dir2 = $this->createDirector('dir-b2@test.com', [2]);
+        $tid = $this->createPartTimeTeacher(1, 'pt7@test.com', '兼職己');
+        $stu1 = $this->createStudent(1, '分校1學生');
+        $stu2 = $this->createStudent(2, '分校2學生');
+
+        $sc1 = $this->makeStudentClass($stu1, $tid, 10, 'one_on_one');
+        $sc2 = $this->makeStudentClass($stu2, $tid, 10, 'one_on_one');
+        $this->makeApprovedLR($sc1, $tid, '2026-04-15', '10:00', '12:00');
+        $this->makeApprovedLR($sc2, $tid, '2026-04-15', '14:00', '16:00');
+
+        // Director 1 sees only branch 1
+        $r1 = $this->withHeaders($this->authHeaders($dir1['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+        $r1->assertOk();
+        $this->assertEquals(1, $r1->json('teachers.0.session_count'));
+
+        // Director 2 sees only branch 2
+        $r2 = $this->withHeaders($this->authHeaders($dir2['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=2');
+        $r2->assertOk();
+        $this->assertEquals(1, $r2->json('teachers.0.session_count'));
+    }
+
+    // ──────────────────────────────────────────
+    // Teacher sessions endpoint pagination
+    // ──────────────────────────────────────────
+    public function test_teacher_sessions_pagination(): void
+    {
+        $dir = $this->createDirector('dir-payroll-8@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt8@test.com', '分頁老師');
+        $stu = $this->createStudent(1, '學生H');
+        $sc = $this->makeStudentClass($stu, $tid, 10, 'one_on_one');
+
+        for ($d = 1; $d <= 5; $d++) {
+            $this->makeApprovedLR($sc, $tid, sprintf('2026-04-%02d', $d), '10:00', '12:00');
+        }
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson("/api/v1/finance/parttime-payroll/{$tid}/sessions?month=2026-04&branch_id=1&per_page=2&page=1");
+
+        $res->assertOk();
+        $this->assertCount(2, $res->json('sessions'));
+        $this->assertEquals(5, $res->json('meta.total'));
+        $this->assertEquals(3, $res->json('meta.last_page'));
+    }
+
+    // ──────────────────────────────────────────
+    // Lock & reopen workflow
+    // ──────────────────────────────────────────
+    public function test_lock_and_reopen_workflow(): void
+    {
+        $dir = $this->createDirector('dir-payroll-9@test.com', [1]);
+        $superAdmin = $this->createSuperAdmin('sa-payroll@test.com', [1]);
+
+        // Lock
+        $r1 = $this->withHeaders($this->authHeaders($dir['token']))
+            ->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 1]);
+        $r1->assertOk();
+        $this->assertEquals('locked', $r1->json('status'));
+
+        // Double lock should fail
+        $r2 = $this->withHeaders($this->authHeaders($dir['token']))
+            ->postJson('/api/v1/finance/parttime-payroll/lock', ['month' => '2026-04', 'branch_id' => 1]);
+        $r2->assertStatus(422);
+
+        // Director cannot reopen
+        $r3 = $this->withHeaders($this->authHeaders($dir['token']))
+            ->postJson('/api/v1/finance/parttime-payroll/reopen', ['month' => '2026-04', 'branch_id' => 1, 'reason' => 'test']);
+        $r3->assertStatus(403);
+
+        // Super admin can reopen
+        $r4 = $this->withHeaders($this->authHeaders($superAdmin['token']))
+            ->postJson('/api/v1/finance/parttime-payroll/reopen', ['month' => '2026-04', 'branch_id' => 1, 'reason' => '重新計算']);
+        $r4->assertOk();
+        $this->assertEquals('draft', $r4->json('status'));
+
+        // Verify audit log
+        $this->assertDatabaseHas('payroll_audit_log', ['branch_id' => 1, 'month' => '2026-04', 'action' => 'lock']);
+        $this->assertDatabaseHas('payroll_audit_log', ['branch_id' => 1, 'month' => '2026-04', 'action' => 'reopen', 'reason' => '重新計算']);
+    }
+
+    // ──────────────────────────────────────────
+    // Export endpoint returns CSV
+    // ──────────────────────────────────────────
+    public function test_export_returns_csv(): void
+    {
+        $dir = $this->createDirector('dir-payroll-10@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt10@test.com', '匯出老師');
+        $stu = $this->createStudent(1, '學生X');
+        $sc = $this->makeStudentClass($stu, $tid, 10, 'one_on_one');
+        $this->makeApprovedLR($sc, $tid, '2026-04-07', '14:00', '16:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->get('/api/v1/finance/parttime-payroll/export?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $content = $res->streamedContent();
+        $this->assertStringContainsString('老師姓名', $content);
+        $this->assertStringContainsString('匯出老師', $content);
+    }
+
+    // ──────────────────────────────────────────
+    // Month validation
+    // ──────────────────────────────────────────
+    public function test_invalid_month_returns_422(): void
+    {
+        $dir = $this->createDirector('dir-payroll-11@test.com', [1]);
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=bad&branch_id=1');
+
+        $res->assertStatus(422);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency bonus: two 1-on-1 sessions overlap 1h
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_two_sessions_overlap_1h(): void
+    {
+        $dir = $this->createDirector('dir-cb1@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb1@test.com', '併堂甲');
+        $stuA = $this->createStudent(1, '學生A');
+        $stuB = $this->createStudent(1, '學生B');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A: 400*2h = 800 + concurrency 50*1*1h = 50 => 850
+        // B: 400*2h = 800 + concurrency 50*1*1h = 50 => 850
+        // total = 1700
+        $this->assertEquals(1700, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency bonus: 0.5h overlap
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_half_hour_overlap(): void
+    {
+        $dir = $this->createDirector('dir-cb2@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb2@test.com', '併堂乙');
+        $stuA = $this->createStudent(1, '學生C');
+        $stuB = $this->createStudent(1, '學生D');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:30', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A: 400*2h = 800 + concurrency 50*1*0.5h = 25 => 825
+        // B: 400*1.5h = 600 + concurrency 50*1*0.5h = 25 => 625
+        // total = 1450
+        $this->assertEquals(1450, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency bonus: 2h full overlap
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_two_hour_overlap(): void
+    {
+        $dir = $this->createDirector('dir-cb3@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb3@test.com', '併堂丙');
+        $stuA = $this->createStudent(1, '學生E');
+        $stuB = $this->createStudent(1, '學生F');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '20:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A: 400*3h = 1200 + concurrency 50*1*2h = 100 => 1300
+        // B: 400*2h = 800 + concurrency 50*1*2h = 100 => 900
+        // total = 2200
+        $this->assertEquals(2200, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency: one_on_two + one_on_one overlap 1h (k=3 students)
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_mixed_class_types(): void
+    {
+        $dir = $this->createDirector('dir-cb4@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb4@test.com', '併堂丁');
+        $stuA = $this->createStudent(1, '學生G');
+        $stuB = $this->createStudent(1, '學生H');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_two');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A (one_on_two): base (400+50)*2h = 900 + concurrency 50*2*1h = 100 => 1000
+        // B (one_on_one): base 400*2h = 800 + concurrency 50*1*1h = 50 => 850
+        // total = 1850
+        $this->assertEquals(1850, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency: tutoring + one_on_one overlap
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_tutoring_plus_regular(): void
+    {
+        $dir = $this->createDirector('dir-cb5@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb5@test.com', '併堂戊');
+        $stuA = $this->createStudent(1, '學生I');
+        $stuB = $this->createStudent(1, '學生J');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 7, 'tutoring');
+        $scB = $this->makeStudentClass($stuB, $tid, 3, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A (tutoring): base 200*2h = 400 + concurrency 50*1*1h = 50 => 450
+        // B (elementary): base 300*2h = 600 + concurrency 50*1*1h = 50 => 650
+        // total = 1100
+        $this->assertEquals(1100, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Concurrency: three sessions fully overlap 1h (k=3 students)
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_three_sessions_overlap(): void
+    {
+        $dir = $this->createDirector('dir-cb6@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb6@test.com', '併堂己');
+        $stuA = $this->createStudent(1, '學生K');
+        $stuB = $this->createStudent(1, '學生L');
+        $stuC = $this->createStudent(1, '學生M');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+        $scC = $this->makeStudentClass($stuC, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '18:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '19:00');
+        $this->makeApprovedLR($scC, $tid, '2026-04-10', '18:00', '19:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // Each: base 400*1h = 400 + concurrency 50*1*1h = 50 => 450
+        // total = 1350
+        $this->assertEquals(1350, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // No overlap → concurrency bonus = 0, same as before
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_no_overlap_regression(): void
+    {
+        $dir = $this->createDirector('dir-cb7@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb7@test.com', '併堂庚');
+        $stuA = $this->createStudent(1, '學生N');
+        $stuB = $this->createStudent(1, '學生O');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '14:00', '16:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '17:00', '19:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A: 400*2h = 800, B: 400*2h = 800, no overlap → total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // LR missing StartTime → excluded from concurrency, bonus = 0
+    // ──────────────────────────────────────────
+    public function test_concurrency_bonus_missing_time_excluded(): void
+    {
+        $dir = $this->createDirector('dir-cb8@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb8@test.com', '併堂辛');
+        $stuA = $this->createStudent(1, '學生P');
+        $stuB = $this->createStudent(1, '學生Q');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $lrB = $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+        $lrB->update(['StartTime' => null, 'EndTime' => null]);
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson('/api/v1/finance/parttime-payroll?month=2026-04&branch_id=1');
+
+        $res->assertOk();
+        $teacher = $res->json('teachers.0');
+        // A: 400*2h = 800, no valid overlap partner → bonus 0
+        // B: 400 * fallback 2h = 800, no bonus (excluded)
+        // total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // Session detail returns concurrency_bonus_amount field
+    // ──────────────────────────────────────────
+    public function test_session_detail_includes_concurrency_bonus(): void
+    {
+        $dir = $this->createDirector('dir-cb9@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'ptcb9@test.com', '併堂壬');
+        $stuA = $this->createStudent(1, '學生R');
+        $stuB = $this->createStudent(1, '學生S');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 10, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 10, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-10', '17:00', '19:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-10', '18:00', '20:00');
+
+        $res = $this->withHeaders($this->authHeaders($dir['token']))
+            ->getJson("/api/v1/finance/parttime-payroll/{$tid}/sessions?month=2026-04&branch_id=1");
+
+        $res->assertOk();
+        $sessions = $res->json('sessions');
+        $this->assertCount(2, $sessions);
+
+        $bonuses = array_column($sessions, 'concurrency_bonus_amount');
+        sort($bonuses);
+        $this->assertEquals([50, 50], $bonuses);
+
+        foreach ($sessions as $s) {
+            $this->assertArrayHasKey('concurrency_bonus_amount', $s);
+        }
+    }
+
+    // ──────────────────────────────────────────
+    // Helpers
+    // ──────────────────────────────────────────
+
+    private function createDirector(string $email, array $campusIds): array
+    {
+        $user = User::create([
+            'LoginName' => $email, 'Name' => '主任', 'PSW' => 'secret',
+            'type' => 'A', 'phone' => '0911000000', 'MustChangePassword' => false,
+        ]);
+        foreach ($campusIds as $cid) {
+            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return ['token' => $token, 'user_id' => (int) $user->id];
+    }
+
+    private function createSuperAdmin(string $email, array $campusIds): array
+    {
+        $user = User::create([
+            'LoginName' => $email, 'Name' => 'SuperAdmin', 'PSW' => 'secret',
+            'type' => 'S', 'phone' => '0911999999', 'MustChangePassword' => false,
+        ]);
+        foreach ($campusIds as $cid) {
+            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return ['token' => $token, 'user_id' => (int) $user->id];
+    }
+
+    private function createPartTimeTeacher(int $campusId, string $email, string $name): int
+    {
+        $user = User::create([
+            'LoginName' => $email, 'Name' => $name, 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0922111111', 'MustChangePassword' => false,
+            'employment_type' => 'part_time',
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        return (int) $user->id;
+    }
+
+    private function createFullTimeTeacher(int $campusId, string $email, string $name): int
+    {
+        $user = User::create([
+            'LoginName' => $email, 'Name' => $name, 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0922222222', 'MustChangePassword' => false,
+            'employment_type' => 'full_time',
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        return (int) $user->id;
+    }
+
+    private function createStudent(int $campusId, string $name): Student
+    {
+        return Student::create([
+            'name' => $name, 'CampusID' => $campusId, 'ClassID' => 7,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+    }
+
+    private function makeStudentClass(Student $stu, int $teacherId, int $gradeId, string $classType): StudentClass
+    {
+        return StudentClass::create([
+            'StudentID' => $stu->id, 'TeacherID' => $teacherId, 'GradeID' => $gradeId,
+            'SubjectID' => 1, 'ClassType' => $classType, 'by1' => 1,
+            'ScheduleMode' => 'count', 'SessionCount' => 10, 'RemainingSessions' => 9,
+            'UsedSessions' => 1, 'Rate' => 500, 'Charge' => 5000, 'Pay' => 0, 'Paid' => 0,
+            'Period' => 4, 'SessionDuration' => 120, 'TotalHours' => 20,
+            'StartDate' => '2026-04-01', 'EndDate' => '2026-06-30',
+            'week' => 2, 'time' => '16:00:00', 'RoomID' => 'R1', 'Stop' => 0, 'MDate' => now(),
+        ]);
+    }
+
+    private function makeApprovedLR(StudentClass $sc, int $teacherId, string $date, string $start, string $end): LearningRecord
+    {
+        return $this->makeLR($sc, $teacherId, $date, $start, $end, 'approved');
+    }
+
+    private function makeLR(StudentClass $sc, int $teacherId, string $date, string $start, string $end, string $status): LearningRecord
+    {
+        $cs = ClassSession::create([
+            'StudentClassID' => $sc->ID, 'SessionDate' => $date,
+            'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
+            'Status' => 'completed', 'Note' => '',
+        ]);
+        return LearningRecord::create([
+            'StudentClassID' => $sc->ID, 'ClassSessionID' => $cs->id,
+            'TeacherID' => $teacherId, 'Content' => 'test', 'Subject' => 'Math',
+            'Status' => $status, 'SessionDate' => $date,
+            'StartTime' => "{$start}:00", 'EndTime' => "{$end}:00",
+            'SessionDeducted' => $status === 'approved',
+            'ApprovedBy' => $status === 'approved' ? $teacherId : null,
+            'ApprovedAt' => $status === 'approved' ? now() : null,
+        ]);
+    }
+
+    private function authHeaders(string $token): array
+    {
+        return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+    }
+}

@@ -8,6 +8,7 @@ use App\Models\LearningRecord;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -22,8 +23,27 @@ class ClassSessionBatchApiTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-batch-a@example.com');
         $student = $this->createStudent(1, '批次排課測試A');
 
-        $pastDate = now()->subDays(3)->toDateString();
-        $futureDate = now()->addDays(3)->toDateString();
+        $todayYmd = now()->toDateString();
+        $pastMon = now()->copy();
+        for ($i = 0; $i < 21; $i++) {
+            if ((int) $pastMon->dayOfWeekIso === 1 && $pastMon->toDateString() < $todayYmd) {
+                break;
+            }
+            $pastMon->subDay();
+        }
+        $pastDate = $pastMon->toDateString();
+        $futureThu = now()->copy()->addDay();
+        for ($i = 0; $i < 45; $i++) {
+            if (
+                (int) $futureThu->dayOfWeekIso === 4
+                && $futureThu->toDateString() >= $todayYmd
+                && $futureThu->toDateString() > $pastDate
+            ) {
+                break;
+            }
+            $futureThu->addDay();
+        }
+        $futureDate = $futureThu->toDateString();
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -69,7 +89,10 @@ class ClassSessionBatchApiTest extends TestCase
             ->orderBy('SessionDate')
             ->get();
         $this->assertCount(2, $sessions);
-        $this->assertSame([$pastDate, $futureDate], $sessions->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all());
+        $this->assertSame(
+            [substr($pastDate, 0, 10), substr($futureDate, 0, 10)],
+            $sessions->pluck('SessionDate')->map(fn ($d) => substr((string) $d, 0, 10))->all()
+        );
         $this->assertSame('completed', (string) ($sessions[0]->Status ?? ''));
         $this->assertSame('scheduled', (string) ($sessions[1]->Status ?? ''));
 
@@ -86,18 +109,29 @@ class ClassSessionBatchApiTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-batch-remain-a@example.com');
         $student = $this->createStudent(1, '批次排課扣堂測試A');
 
-        $confirmedDates = [
-            now()->subDays(7)->toDateString(),
-            now()->subDays(5)->toDateString(),
-            now()->subDays(3)->toDateString(),
-        ];
-        $futureDates = [
-            now()->addDays(2)->toDateString(),
-            now()->addDays(4)->toDateString(),
-            now()->addDays(6)->toDateString(),
-            now()->addDays(8)->toDateString(),
-            now()->addDays(10)->toDateString(),
-        ];
+        $todayY = now()->toDateString();
+        $confirmedDates = [];
+        $c = now()->copy();
+        for ($i = 0; $i < 120 && count($confirmedDates) < 3; $i++) {
+            if ((int) $c->dayOfWeekIso === 4 && $c->toDateString() < $todayY) {
+                $confirmedDates[] = $c->toDateString();
+            }
+            $c->subDay();
+        }
+        sort($confirmedDates);
+        $lastConf = $confirmedDates[count($confirmedDates) - 1];
+        $futureDates = [];
+        $f = Carbon::parse($lastConf)->addDay();
+        for ($i = 0; $i < 120 && count($futureDates) < 5; $i++) {
+            if (
+                (int) $f->dayOfWeekIso === 4
+                && $f->toDateString() > $lastConf
+                && $f->toDateString() >= $todayY
+            ) {
+                $futureDates[] = $f->toDateString();
+            }
+            $f->addDay();
+        }
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -111,7 +145,7 @@ class ClassSessionBatchApiTest extends TestCase
             'total_classes' => 8,
             'confirmed_dates' => $confirmedDates,
             'future_dates' => $futureDates,
-            'days_of_week' => [1, 4],
+            'days_of_week' => [4],
             'start_time' => '16:00',
             'duration_minutes' => 120,
             'price_per_session' => 500,
@@ -145,6 +179,40 @@ class ClassSessionBatchApiTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-batch-compat-a@example.com');
         $student = $this->createStudent(1, '批次排課扣堂測試B');
 
+        $today = Carbon::today();
+        $pastTue = $today->copy();
+        for ($i = 0; $i < 14; $i++) {
+            if ((int) $pastTue->dayOfWeekIso === 2 && $pastTue->toDateString() < $today->toDateString()) {
+                break;
+            }
+            $pastTue->subDay();
+        }
+        $confYmd = $pastTue->toDateString();
+        $fu1 = $pastTue->copy()->addDay();
+        for ($i = 0; $i < 28; $i++) {
+            if (
+                (int) $fu1->dayOfWeekIso === 2
+                && $fu1->toDateString() > $confYmd
+                && $fu1->toDateString() >= $today->toDateString()
+            ) {
+                break;
+            }
+            $fu1->addDay();
+        }
+        $fu2 = $pastTue->copy()->addDay();
+        for ($i = 0; $i < 28; $i++) {
+            if (
+                (int) $fu2->dayOfWeekIso === 4
+                && $fu2->toDateString() > $confYmd
+                && $fu2->toDateString() >= $today->toDateString()
+            ) {
+                break;
+            }
+            $fu2->addDay();
+        }
+        $futurePair = [$fu1->toDateString(), $fu2->toDateString()];
+        sort($futurePair);
+
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -155,8 +223,8 @@ class ClassSessionBatchApiTest extends TestCase
             'subject' => 'Math',
             'class_type' => 'one_on_one',
             'total_classes' => 3,
-            'confirmed_dates' => [now()->subDays(3)->toDateString()],
-            'future_dates' => [now()->addDays(3)->toDateString(), now()->addDays(5)->toDateString()],
+            'confirmed_dates' => [$confYmd],
+            'future_dates' => $futurePair,
             'days_of_week' => [2, 4],
             'start_time' => '16:00',
             'duration_minutes' => 120,
@@ -221,29 +289,34 @@ class ClassSessionBatchApiTest extends TestCase
 
     public function test_batch_endpoint_rejects_overlap_between_confirmed_and_future_dates(): void
     {
+        Carbon::setTestNow('2026-04-10 18:00:00');
         $token = $this->createUserToken('A', [1], 'director-batch-overlap-a@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-batch-overlap-a@example.com');
         $student = $this->createStudent(1, '批次排課重疊測試A');
-        $date = now()->subDay()->toDateString();
+        $date = '2026-04-08';
 
-        $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/class-sessions/batch', [
-            'branch_id' => 1,
-            'student_id' => $student->id,
-            'teacher_id' => $teacherId,
-            'subject' => 'Math',
-            'class_type' => 'one_on_one',
-            'total_classes' => 2,
-            'confirmed_dates' => [$date],
-            'future_dates' => [$date],
-            'days_of_week' => [3],
-            'start_time' => '16:00',
-            'duration_minutes' => 120,
-            'price_per_session' => 500,
-            'payment_type' => 'session',
-        ])->assertStatus(422);
+        try {
+            $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson('/api/v1/class-sessions/batch', [
+                'branch_id' => 1,
+                'student_id' => $student->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'total_classes' => 2,
+                'confirmed_dates' => [$date],
+                'future_dates' => [$date],
+                'days_of_week' => [3],
+                'start_time' => '16:00',
+                'duration_minutes' => 120,
+                'price_per_session' => 500,
+                'payment_type' => 'session',
+            ])->assertStatus(422);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_director_cannot_create_sessions_for_unassigned_branch(): void
@@ -251,6 +324,15 @@ class ClassSessionBatchApiTest extends TestCase
         $token = $this->createUserToken('A', [1], 'director-batch-c@example.com');
         $teacherId = $this->createTeacher(2, 'teacher-batch-c@example.com');
         $student = $this->createStudent(2, '批次排課測試C');
+
+        $todayY = now()->toDateString();
+        $pastMon = now()->copy();
+        for ($i = 0; $i < 14; $i++) {
+            if ((int) $pastMon->dayOfWeekIso === 1 && $pastMon->toDateString() < $todayY) {
+                break;
+            }
+            $pastMon->subDay();
+        }
 
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -262,7 +344,7 @@ class ClassSessionBatchApiTest extends TestCase
             'subject' => 'Math',
             'class_type' => 'one_on_one',
             'total_classes' => 1,
-            'confirmed_dates' => [now()->subDay()->toDateString()],
+            'confirmed_dates' => [$pastMon->toDateString()],
             'future_dates' => [],
             'days_of_week' => [1],
             'start_time' => '16:00',
@@ -279,6 +361,15 @@ class ClassSessionBatchApiTest extends TestCase
         $anotherTeacherId = $this->createTeacher(1, 'teacher-batch-e@example.com');
         $student = $this->createStudent(1, '批次排課測試D');
 
+        $todayY = now()->toDateString();
+        $pastWed = now()->copy();
+        for ($i = 0; $i < 14; $i++) {
+            if ((int) $pastWed->dayOfWeekIso === 3 && $pastWed->toDateString() < $todayY) {
+                break;
+            }
+            $pastWed->subDay();
+        }
+
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
@@ -289,7 +380,7 @@ class ClassSessionBatchApiTest extends TestCase
             'subject' => 'Math',
             'class_type' => 'one_on_one',
             'total_classes' => 1,
-            'confirmed_dates' => [now()->subDay()->toDateString()],
+            'confirmed_dates' => [$pastWed->toDateString()],
             'future_dates' => [],
             'days_of_week' => [3],
             'start_time' => '16:00',
@@ -305,50 +396,52 @@ class ClassSessionBatchApiTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teacher-batch-monthly-a@example.com');
         $student = $this->createStudent(1, '月結批次排課測試A');
 
-        $confirmedDate = now()->subDays(2)->toDateString();
-        $futureDates = [
-            now()->addDays(2)->toDateString(),
-            now()->addDays(9)->toDateString(),
-        ];
+        Carbon::setTestNow('2026-04-12 18:00:00');
+        $confirmedDate = '2026-04-07';
+        $futureDates = ['2026-04-14', '2026-04-21'];
 
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/class-sessions/batch', [
-            'branch_id' => 1,
-            'student_id' => $student->id,
-            'teacher_id' => $teacherId,
-            'subject' => 'Math',
-            'class_type' => 'one_on_one',
-            'confirmed_dates' => [$confirmedDate],
-            'future_dates' => $futureDates,
-            'days_of_week' => [2],
-            'start_time' => '16:00',
-            'duration_minutes' => 120,
-            'price_per_session' => 500,
-            'payment_type' => 'monthly',
-            'settlement_day' => 10,
-            'monthly_sessions' => 3,
-        ]);
+        try {
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->postJson('/api/v1/class-sessions/batch', [
+                'branch_id' => 1,
+                'student_id' => $student->id,
+                'teacher_id' => $teacherId,
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'confirmed_dates' => [$confirmedDate],
+                'future_dates' => $futureDates,
+                'days_of_week' => [2],
+                'start_time' => '16:00',
+                'duration_minutes' => 120,
+                'price_per_session' => 500,
+                'payment_type' => 'monthly',
+                'settlement_day' => 10,
+                'monthly_sessions' => 3,
+            ]);
 
-        $res->assertCreated()
-            ->assertJsonPath('created_sessions', 3)
-            ->assertJsonPath('created_confirmed_sessions', 1)
-            ->assertJsonPath('created_future_sessions', 2)
-            ->assertJsonPath('deducted_sessions', 1);
+            $res->assertCreated()
+                ->assertJsonPath('created_sessions', 3)
+                ->assertJsonPath('created_confirmed_sessions', 1)
+                ->assertJsonPath('created_future_sessions', 2)
+                ->assertJsonPath('deducted_sessions', 1);
 
-        $studentClassId = (int) ($res->json('student_class_id') ?? 0);
-        $this->assertTrue($studentClassId > 0);
+            $studentClassId = (int) ($res->json('student_class_id') ?? 0);
+            $this->assertTrue($studentClassId > 0);
 
-        $this->assertDatabaseHas('StudentClass', [
-            'ID' => $studentClassId,
-            'ScheduleMode' => 'date',
-            'SessionCount' => 0,
-            'RemainingSessions' => 0,
-            'UsedSessions' => 1,
-            'settlement_day' => 10,
-            'monthly_sessions' => 3,
-        ]);
+            $this->assertDatabaseHas('StudentClass', [
+                'ID' => $studentClassId,
+                'ScheduleMode' => 'date',
+                'SessionCount' => 0,
+                'RemainingSessions' => 0,
+                'UsedSessions' => 1,
+                'settlement_day' => 10,
+                'monthly_sessions' => 3,
+            ]);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     /**
@@ -480,6 +573,55 @@ class ClassSessionBatchApiTest extends TestCase
         ]);
     }
 
+    public function test_batch_rejects_session_plan_on_weekday_outside_fixed_schedule(): void
+    {
+        $token = $this->createUserToken('A', [1], 'director-batch-wd@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-batch-wd@example.com');
+        $student = $this->createStudent(1, '固定星期驗證');
+
+        $wed = now()->addDays(1);
+        while ((int) $wed->dayOfWeekIso !== 3) {
+            $wed->addDay();
+        }
+        $wedYmd = $wed->toDateString();
+
+        $sat = now()->addDays(1);
+        while ((int) $sat->dayOfWeekIso !== 6) {
+            $sat->addDay();
+        }
+        $satYmd = $sat->toDateString();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1,
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'total_classes' => 2,
+            'confirmed_dates' => [],
+            'future_dates' => [],
+            'session_plan' => [
+                ['session_date' => $wedYmd, 'start_time' => '13:00', 'kind' => 'future'],
+                ['session_date' => $satYmd, 'start_time' => '13:00', 'kind' => 'future'],
+            ],
+            'days_of_week' => [6, 7],
+            'day_time_slots' => [
+                ['day' => 6, 'start_time' => '13:00', 'duration_minutes' => 120],
+                ['day' => 7, 'start_time' => '10:00', 'duration_minutes' => 120],
+            ],
+            'start_time' => '13:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 500,
+            'payment_type' => 'session',
+        ]);
+
+        $res->assertStatus(422);
+        $this->assertStringContainsString('週三', (string) $res->json('message'));
+    }
+
     public function test_multi_slot_deduction_counts_each_session_separately(): void
     {
         $token = $this->createUserToken('A', [1], 'director-deduct-ms@example.com');
@@ -533,6 +675,70 @@ class ClassSessionBatchApiTest extends TestCase
 
         $this->assertEquals(2, $res->json('created_learning_records'), 'Both past slots should get LRs');
         $this->assertEquals(2, $res->json('deducted_sessions'), 'Both slots should deduct a session');
+    }
+
+    public function test_batch_per_slot_subjects_create_two_student_classes(): void
+    {
+        $token = $this->createUserToken('A', [1], 'director-multi-subj@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-multi-subj@example.com');
+        $student = $this->createStudent(1, '同日雙科測試');
+
+        $pastDate = now()->subDays(2)->toDateString();
+        $dow = (int) \Carbon\Carbon::parse($pastDate)->dayOfWeekIso;
+
+        $sessionPlan = [
+            ['session_date' => $pastDate, 'start_time' => '15:00', 'kind' => 'confirmed', 'subject' => 'Math'],
+            ['session_date' => $pastDate, 'start_time' => '17:00', 'kind' => 'confirmed', 'subject' => 'English'],
+        ];
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1,
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'total_classes' => 2,
+            'confirmed_dates' => [],
+            'future_dates' => [],
+            'session_plan' => $sessionPlan,
+            'days_of_week' => [$dow],
+            'day_time_slots' => [
+                ['day' => $dow, 'start_time' => '15:00', 'duration_minutes' => 120, 'subject' => 'Math'],
+                ['day' => $dow, 'start_time' => '17:00', 'duration_minutes' => 120, 'subject' => 'English'],
+            ],
+            'start_time' => '15:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 500,
+            'payment_type' => 'session',
+        ]);
+
+        $res->assertCreated();
+        $ids = $res->json('student_class_ids');
+        $this->assertIsArray($ids);
+        $this->assertCount(2, $ids);
+
+        $mathId = (int) DB::table('Subject')->where('Subject_Name', 'Math')->value('id');
+        $englishId = (int) DB::table('Subject')->where('Subject_Name', 'English')->value('id');
+        $this->assertGreaterThan(0, $mathId);
+        $this->assertGreaterThan(0, $englishId);
+
+        $subjects = DB::table('StudentClass')->whereIn('ID', $ids)->orderBy('ID')->pluck('SubjectID')->all();
+        sort($subjects);
+        $expected = [$mathId, $englishId];
+        sort($expected);
+        $this->assertSame($expected, $subjects);
+
+        foreach ($ids as $scId) {
+            $this->assertDatabaseHas('StudentClass', [
+                'ID' => (int) $scId,
+                'StudentID' => $student->id,
+                'SessionCount' => 1,
+            ]);
+            $this->assertSame(1, (int) DB::table('ClassSession')->where('StudentClassID', (int) $scId)->count());
+        }
     }
 
     public function test_reschedule_targets_correct_session_on_multi_slot_day(): void
