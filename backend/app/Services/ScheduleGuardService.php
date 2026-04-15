@@ -13,6 +13,7 @@ class ScheduleGuardService
         'one_on_two' => 2,
         'one_on_three' => 3,
         'tutoring' => 4,
+        'trial' => 1,
     ];
 
     /** @var array<int, object|null> */
@@ -136,6 +137,7 @@ class ScheduleGuardService
             'one_on_two' => '一對二',
             'one_on_three' => '一對三',
             'tutoring' => '輔導',
+            'trial' => '試聽',
             default => (string) ($classType ?: '課程'),
         };
     }

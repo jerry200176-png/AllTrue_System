@@ -72,8 +72,13 @@ class BugReportController extends Controller
         $filters = array_filter([
             'status' => $request->input('status'),
             'severity' => $request->input('severity'),
+            'reporter' => $isSuperAdmin ? $request->input('reporter') : null,
+            'keyword' => $request->input('keyword'),
+            'date_from' => $request->input('date_from'),
+            'date_to' => $request->input('date_to'),
+            'sort' => $request->input('sort'),
         ]);
-        $perPage = (int) $request->input('per_page', 20);
+        $perPage = min((int) $request->input('per_page', 20), 100);
 
         if ($userId) {
             BugReportService::markReporterInboxSeenFromList($userId, $campusIds);

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ApprovalSessionSyncService;
 use App\Services\SessionDeductionService;
+use App\Services\SubstituteScheduleService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -34,7 +35,11 @@ class LearningRecordController extends Controller
         $record->loadMissing('studentClass.student');
         $record->student_name = $record->studentClass->student->name ?? '—';
         $record->student_id = $record->studentClass->student->id ?? null;
-        $record->student_class_label = $record->studentClass->Subject ?? $record->Subject;
+        $subjectId = $record->studentClass->SubjectID ?? null;
+        $subjectName = $subjectId
+            ? DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
+            : null;
+        $record->student_class_label = $subjectName ?? $record->Subject;
         $teacherName = DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
             ?? DB::table('User')->where('id', $record->TeacherID)->value('Name');
         $record->teacher_name = $teacherName ?? '未指派';
@@ -43,7 +48,7 @@ class LearningRecordController extends Controller
 
     public function index(Request $request)
     {
-        $query = LearningRecord::query();
+        $query = LearningRecord::active();
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
 
@@ -52,15 +57,28 @@ class LearningRecordController extends Controller
             if (!$teacherId) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            $query->where('TeacherID', $teacherId);
-            // Teacher view should only show records that still map to existing classes.
-            // Otherwise historical orphan rows render as "Unknown" and confuse schedule/review flow.
+            // Show records where: (a) LR.TeacherID is mine, (b) my contract courses,
+            // (c) 代課：schedules 顯示我帶此 ClassSession 但 LR 尚未改 TeacherID 者。
             $teacherClassIds = StudentClass::where('TeacherID', $teacherId)->pluck('ID');
-            if ($teacherClassIds->isEmpty()) {
-                $query->whereRaw('1 = 0');
-            } else {
-                $query->whereIn('StudentClassID', $teacherClassIds);
-            }
+            $lrTable = (new LearningRecord())->getTable();
+            $query->where(function ($q) use ($teacherId, $teacherClassIds, $lrTable) {
+                $q->where('TeacherID', $teacherId);
+                if ($teacherClassIds->isNotEmpty()) {
+                    $q->orWhereIn('StudentClassID', $teacherClassIds);
+                }
+                $q->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
+                    $sub->select(DB::raw(1))
+                        ->from('ClassSession as cs')
+                        ->join('schedules as s', function ($join) use ($teacherId) {
+                            $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                ->where('s.status', '=', 'scheduled')
+                                ->whereNotNull('s.original_schedule_id')
+                                ->where('s.teacher_id', '=', $teacherId);
+                        })
+                        ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                });
+            });
         }
 
         if ($role !== 'teacher' && ($request->filled('branch_id') || $request->filled('campus_id'))) {
@@ -102,7 +120,23 @@ class LearningRecordController extends Controller
         }
 
         if ($request->filled('teacher_id')) {
-            $query->where('TeacherID', $request->input('teacher_id'));
+            $filterTid = (int) $request->input('teacher_id');
+            $lrTable = (new LearningRecord())->getTable();
+            $query->where(function ($q) use ($filterTid, $lrTable) {
+                $q->where('TeacherID', $filterTid)
+                    ->orWhereExists(function ($sub) use ($filterTid, $lrTable) {
+                        $sub->select(DB::raw(1))
+                            ->from('ClassSession as cs')
+                            ->join('schedules as s', function ($join) use ($filterTid) {
+                                $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                    ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                    ->where('s.status', '=', 'scheduled')
+                                    ->whereNotNull('s.original_schedule_id')
+                                    ->where('s.teacher_id', '=', $filterTid);
+                            })
+                            ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                    });
+            });
         }
 
         if ($request->filled('student_class_id')) {
@@ -135,20 +169,44 @@ class LearningRecordController extends Controller
         }
 
         $query->excludePausedCoursePendingReview();
+        $query->excludeLeaveSessionPendingReview();
 
-        $perPage = min((int) $request->input('per_page', 20), 200);
+        $defaultPerPage = config('perfflags.learning_records_default_per_page', 50);
+        $maxPerPage = config('perfflags.learning_records_max_per_page', 200);
+        $perPage = min((int) $request->input('per_page', $defaultPerPage), $maxPerPage);
         $records = $query->with('studentClass.student')
             ->orderBy('SessionDate', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage);
 
-        $records->getCollection()->transform(function ($record) {
+        $collection = $records->getCollection();
+
+        // Batch-load subject names (avoid N+1)
+        $subjectIds = $collection->pluck('studentClass.SubjectID')->filter()->unique()->values();
+        $subjectMap = $subjectIds->isNotEmpty()
+            ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')
+            : collect();
+
+        // Batch-load teacher names (avoid N+1 — previously queried per-record)
+        $teacherIds = $collection->pluck('TeacherID')->filter()->unique()->values();
+        $teacherNameMap = collect();
+        if ($teacherIds->isNotEmpty()) {
+            $fromTeacher = DB::table('Teacher')->whereIn('id', $teacherIds)->pluck('T_Name', 'id');
+            $missingIds = $teacherIds->diff($fromTeacher->keys());
+            $fromUser = $missingIds->isNotEmpty()
+                ? DB::table('User')->whereIn('id', $missingIds)->pluck('Name', 'id')
+                : collect();
+            $teacherNameMap = $fromTeacher->union($fromUser);
+        }
+
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
-            $record->student_class_label = $record->studentClass->Subject ?? $record->Subject;
-            $teacherName = \Illuminate\Support\Facades\DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
-                ?? \Illuminate\Support\Facades\DB::table('User')->where('id', $record->TeacherID)->value('Name');
-            $record->teacher_name = $teacherName ?? '未指派';
+            $subjectId = $record->studentClass->SubjectID ?? null;
+            $record->student_class_label = ($subjectId && isset($subjectMap[$subjectId]))
+                ? $subjectMap[$subjectId]
+                : $record->Subject;
+            $record->teacher_name = $teacherNameMap[$record->TeacherID] ?? '未指派';
             return $record;
         });
 
@@ -181,11 +239,25 @@ class LearningRecordController extends Controller
             $subjectId = \Illuminate\Support\Facades\DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id') ??
                 \Illuminate\Support\Facades\DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id') ?? 1;
 
-            $studentClass = StudentClass::where('StudentID', $studentId)
-                ->where('TeacherID', $data['TeacherID'])
-                ->where('SubjectID', $subjectId)
-                ->where('Stop', 0)
-                ->first();
+            $studentClass = null;
+            $classSessionIdEarly = !empty($data['ClassSessionID']) ? (int) $data['ClassSessionID'] : 0;
+            if ($classSessionIdEarly > 0) {
+                $csEarly = ClassSession::find($classSessionIdEarly);
+                if ($csEarly) {
+                    $scCandidate = StudentClass::find($csEarly->StudentClassID);
+                    if ($scCandidate && (int) $scCandidate->StudentID === (int) $studentId) {
+                        $studentClass = $scCandidate;
+                    }
+                }
+            }
+
+            if (!$studentClass) {
+                $studentClass = StudentClass::where('StudentID', $studentId)
+                    ->where('TeacherID', $data['TeacherID'])
+                    ->where('SubjectID', $subjectId)
+                    ->where('Stop', 0)
+                    ->first();
+            }
 
             if (!$studentClass) {
                 $studentClass = StudentClass::where('StudentID', $studentId)
@@ -204,12 +276,6 @@ class LearningRecordController extends Controller
 
             $role = request()->attributes->get('auth_role');
             $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
-            if ($role === 'teacher') {
-                $teacherId = request()->attributes->get('auth_teacher_id');
-                if (!$teacherId || (int) $data['TeacherID'] !== (int) $teacherId) {
-                    return response()->json(['message' => 'Forbidden'], 403);
-                }
-            }
 
             if ($role !== 'teacher' && !empty($campusIds)) {
                 $allowed = Student::whereIn('CampusID', $campusIds)
@@ -237,6 +303,13 @@ class LearningRecordController extends Controller
                 $classSessionId = $classSession->id;
             }
 
+            if ($role === 'teacher') {
+                $authTid = (int) (request()->attributes->get('auth_teacher_id') ?? 0);
+                if (!$authTid || !$this->teacherAllowedToCreateLearningRecord($studentClass, $classSession, $authTid, (int) $data['TeacherID'])) {
+                    return response()->json(['message' => 'Forbidden'], 403);
+                }
+            }
+
             $timeGateResponse = $this->validateSessionStartedForWrite(
                 $classSession->SessionDate ?? ($data['SessionDate'] ?? null),
                 $classSession->StartTime ?? ($data['StartTime'] ?? null)
@@ -245,7 +318,7 @@ class LearningRecordController extends Controller
                 return $timeGateResponse;
             }
 
-            $existing = LearningRecord::where('ClassSessionID', $classSessionId)->first();
+            $existing = LearningRecord::where('ClassSessionID', $classSessionId)->active()->first();
             if ($existing) {
                 return response()->json(['message' => 'Learning record already exists'], 409);
             }
@@ -256,26 +329,48 @@ class LearningRecordController extends Controller
             $startTime = $this->normalizeTimeValue($classSession->StartTime) ?? ($data['StartTime'] ?? null);
             $endTime = $this->normalizeTimeValue($classSession->EndTime) ?? ($data['EndTime'] ?? null);
 
-            $record = LearningRecord::create([
-                'StudentClassID' => $studentClass->ID,
-                'ClassSessionID' => $classSessionId,
-                'TeacherID' => $data['TeacherID'],
-                'CreatedByUserID' => $authUser ? (int) $authUser->id : null,
-                'Content' => $content,
-                'AttachmentUrl' => $data['AttachmentUrl'] ?? null,
-                'Subject' => $data['Subject'] ?? null,
-                // Keep LearningRecord strictly bound to ClassSession date/time.
-                'SessionDate' => $sessionDate,
-                'StartTime' => $startTime,
-                'EndTime' => $endTime,
-                'HomeworkStatus' => $data['HomeworkStatus'] ?? null,
-                'QuizScore' => $data['QuizScore'] ?? null,
-                'Progress' => $data['Progress'] ?? null,
-                'NextHomework' => $data['NextHomework'] ?? null,
-                'Performance' => $data['Performance'] ?? null,
-                'Comment' => $data['Comment'] ?? null,
-                'Status' => 'pending',
-            ]);
+            $lrTeacherId = SubstituteScheduleService::effectiveInstructorUserId(
+                (int) $studentClass->ID,
+                $classSession->SessionDate,
+                (int) ($studentClass->TeacherID ?? 0)
+            );
+            if ($lrTeacherId <= 0) {
+                $lrTeacherId = (int) ($data['TeacherID'] ?? 0);
+            }
+
+            try {
+                $record = LearningRecord::create([
+                    'StudentClassID' => $studentClass->ID,
+                    'ClassSessionID' => $classSessionId,
+                    'TeacherID' => $lrTeacherId,
+                    'CreatedByUserID' => $authUser ? (int) $authUser->id : null,
+                    'Content' => $content,
+                    'AttachmentUrl' => $data['AttachmentUrl'] ?? null,
+                    'Subject' => $data['Subject'] ?? null,
+                    // Keep LearningRecord strictly bound to ClassSession date/time.
+                    'SessionDate' => $sessionDate,
+                    'StartTime' => $startTime,
+                    'EndTime' => $endTime,
+                    'HomeworkStatus' => $data['HomeworkStatus'] ?? null,
+                    'QuizScore' => $data['QuizScore'] ?? null,
+                    'Progress' => $data['Progress'] ?? null,
+                    'NextHomework' => $data['NextHomework'] ?? null,
+                    'Performance' => $data['Performance'] ?? null,
+                    'Comment' => $data['Comment'] ?? null,
+                    'Status' => 'pending',
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Race condition or duplicate submission: another record was inserted between
+                // the active() check above and this INSERT. Return the existing record instead.
+                if ($e->errorInfo[1] === 1062) {
+                    $dup = LearningRecord::where('ClassSessionID', $classSessionId)->first();
+                    return response()->json([
+                        'message' => '此堂評量表已存在，請重新整理頁面後查看。',
+                        'existing_record_id' => $dup ? $dup->id : null,
+                    ], 409);
+                }
+                throw $e;
+            }
 
             return response()->json($this->hydrateRecordForResponse($record), 201);
         });
@@ -301,8 +396,8 @@ class LearningRecordController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         if ($role === 'teacher') {
-            $teacherId = $request->attributes->get('auth_teacher_id');
-            if (!$teacherId || (int) $learningRecord->TeacherID !== (int) $teacherId) {
+            $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            if (!$teacherId || !$this->teacherIsInstructorForLearningRecord($learningRecord, $teacherId)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
         }
@@ -319,7 +414,10 @@ class LearningRecordController extends Controller
 
         if (!$isDirector) {
             $isOwner = $role === 'teacher' &&
-                (int) ($request->attributes->get('auth_teacher_id')) === (int) $learningRecord->TeacherID;
+                $this->teacherIsInstructorForLearningRecord(
+                    $learningRecord,
+                    (int) ($request->attributes->get('auth_teacher_id') ?? 0)
+                );
             $editableStatuses = $isOwner
                 ? ['pending', 'rejected', 'changes_requested']
                 : ['rejected', 'changes_requested'];
@@ -565,11 +663,29 @@ class LearningRecordController extends Controller
             $q->where('Stop', 0)->orWhereNull('Stop');
         })->pluck('ID');
 
-        $query = LearningRecord::whereIn('StudentClassID', $classIds)
-            ->whereIn('Status', ['pending', 'changes_requested']);
+        $query = LearningRecord::active()
+            ->whereIn('StudentClassID', $classIds)
+            ->whereIn('Status', ['pending', 'changes_requested'])
+            ->excludeLeaveSessionPendingReview();
 
         if (!empty($data['teacher_id'])) {
-            $query->where('TeacherID', (int) $data['teacher_id']);
+            $filterTid = (int) $data['teacher_id'];
+            $lrTable = (new LearningRecord())->getTable();
+            $query->where(function ($q) use ($filterTid, $lrTable) {
+                $q->where('TeacherID', $filterTid)
+                    ->orWhereExists(function ($sub) use ($filterTid, $lrTable) {
+                        $sub->select(DB::raw(1))
+                            ->from('ClassSession as cs')
+                            ->join('schedules as s', function ($join) use ($filterTid) {
+                                $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                    ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                    ->where('s.status', '=', 'scheduled')
+                                    ->whereNotNull('s.original_schedule_id')
+                                    ->where('s.teacher_id', '=', $filterTid);
+                            })
+                            ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                    });
+            });
         }
 
         $records = $query->get();
@@ -611,7 +727,8 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $records = LearningRecord::whereIn('id', $data['ids'])
+        $records = LearningRecord::active()
+            ->whereIn('id', $data['ids'])
             ->whereIn('Status', ['pending', 'changes_requested'])
             ->get();
 
@@ -644,7 +761,8 @@ class LearningRecordController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $records = LearningRecord::whereIn('id', $data['ids'])
+        $records = LearningRecord::active()
+            ->whereIn('id', $data['ids'])
             ->whereIn('Status', ['pending', 'changes_requested'])
             ->get();
 
@@ -701,7 +819,7 @@ class LearningRecordController extends Controller
                 ]);
             }
 
-            $existing = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+            $existing = LearningRecord::where('ClassSessionID', $classSession->id)->active()->first();
             if ($existing) {
                 if ($existing->Status !== 'approved') {
                     $existing->Status = 'approved';
@@ -834,7 +952,7 @@ class LearningRecordController extends Controller
                     $projectionAnchorDate = $effectiveDate;
                 }
 
-                $record = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+                $record = LearningRecord::where('ClassSessionID', $classSession->id)->active()->first();
                 if ($record) {
                     if ($record->Status === 'approved') {
                         $this->syncRecordWithClassSession($record, $classSession, $teacherId);
@@ -1039,7 +1157,7 @@ class LearningRecordController extends Controller
         int $authUserId,
         string $oldStatus = 'scheduled'
     ): bool {
-        $attendedLike = ['attended', 'completed', 'late', 'absent', 'excused'];
+        $attendedLike = ['attended', 'completed', 'late', 'absent'];
         $reason = '調課到未來，自動改回未上';
         $sessionId = (int) $session->id;
         $classId = (int) $studentClass->ID;
@@ -1183,16 +1301,30 @@ class LearningRecordController extends Controller
 
         foreach ($classes as $sc) {
             $sessions = ClassSession::where('StudentClassID', $sc->ID)
-                ->whereNotIn('Status', ['cancelled'])
-                ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(EndTime, '23:59:59')) <= ?", [$now])
+                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
                 ->get();
 
             foreach ($sessions as $cs) {
                 $existing = LearningRecord::where('ClassSessionID', $cs->id)->first();
                 if ($existing) {
-                    // Self-heal legacy drift: if record date/time no longer matches ClassSession,
-                    // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
-                    $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
+                    if (!$existing->isVoided()) {
+                        // Self-heal legacy drift: if record date/time no longer matches ClassSession,
+                        // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
+                        $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
+                    } elseif (in_array(strtolower((string) ($cs->Status ?? '')), ['attended', 'completed', 'late', 'absent'], true)) {
+                        // The LR was previously voided (e.g. by a leave cascade that was later reversed),
+                        // but the session is now attended. Restore it so teachers can fill in the record.
+                        $existing->VoidedAt = null;
+                        $existing->VoidedByUserID = null;
+                        $existing->VoidReason = null;
+                        $existing->Status = 'pending';
+                        $existing->SessionDate = $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null;
+                        $existing->StartTime   = $cs->StartTime   ? substr((string) $cs->StartTime, 0, 5)   : null;
+                        $existing->EndTime     = $cs->EndTime     ? substr((string) $cs->EndTime, 0, 5)     : null;
+                        $existing->save();
+                        $created++;
+                    }
                     continue;
                 }
 
@@ -1200,10 +1332,15 @@ class LearningRecordController extends Controller
                     ?? DB::table('BaseData')->where('Name', '課程')->where('id', $sc->SubjectID)->value('Val')
                     ?? '未知';
 
+                $tid = SubstituteScheduleService::effectiveInstructorUserId(
+                    (int) $sc->ID,
+                    $cs->SessionDate,
+                    (int) ($sc->TeacherID ?? 0)
+                );
                 LearningRecord::create([
                     'StudentClassID' => $sc->ID,
                     'ClassSessionID' => $cs->id,
-                    'TeacherID' => $sc->TeacherID ?: 0,
+                    'TeacherID' => $tid > 0 ? $tid : (int) ($sc->TeacherID ?? 0),
                     'Content' => '',
                     'Subject' => $subjectName,
                     'SessionDate' => $cs->SessionDate,
@@ -1258,14 +1395,60 @@ class LearningRecordController extends Controller
             $record->EndTime = $targetEnd;
             $dirty = true;
         }
-        if (!empty($fallbackTeacherId) && (int) $record->TeacherID <= 0) {
-            $record->TeacherID = (int) $fallbackTeacherId;
+        $subTid = SubstituteScheduleService::resolveSubstituteUserId(
+            (int) $classSession->StudentClassID,
+            $classSession->SessionDate
+        );
+        $contractTid = (int) ($fallbackTeacherId ?? 0);
+        $effectiveTeacherId = $subTid !== null ? $subTid : max(0, $contractTid);
+        if ($effectiveTeacherId > 0 && (int) $record->TeacherID !== $effectiveTeacherId) {
+            $record->TeacherID = $effectiveTeacherId;
             $dirty = true;
         }
 
         if ($dirty) {
             $record->save();
         }
+    }
+
+    /**
+     * 正班（LR.TeacherID）或單堂代課 schedules 指派之代課老師皆可編輯該筆評量。
+     */
+    private function teacherIsInstructorForLearningRecord(LearningRecord $lr, int $authTeacherId): bool
+    {
+        if ($authTeacherId <= 0) {
+            return false;
+        }
+        if ((int) ($lr->TeacherID ?? 0) === $authTeacherId) {
+            return true;
+        }
+        $csId = (int) ($lr->ClassSessionID ?? 0);
+        if ($csId <= 0) {
+            return false;
+        }
+        $cs = ClassSession::find($csId);
+        if (!$cs) {
+            return false;
+        }
+        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $cs->StudentClassID, $cs->SessionDate);
+
+        return $sub !== null && $sub === $authTeacherId;
+    }
+
+    private function teacherAllowedToCreateLearningRecord(StudentClass $sc, ClassSession $cs, int $authTeacherId, int $payloadTeacherId): bool
+    {
+        if ($authTeacherId <= 0) {
+            return false;
+        }
+        if ((int) ($sc->TeacherID ?? 0) === $authTeacherId) {
+            return true;
+        }
+        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $sc->ID, $cs->SessionDate);
+        if ($sub !== null && $sub === $authTeacherId) {
+            return true;
+        }
+
+        return $payloadTeacherId === $authTeacherId;
     }
 
     private function findEffectiveClassSessionForDate(int $studentClassId, string $sessionDate, ?string $startTime = null): ?ClassSession

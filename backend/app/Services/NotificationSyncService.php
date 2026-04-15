@@ -101,7 +101,7 @@ class NotificationSyncService
     private static function buildTuitionNotifications(array $campusIds): array
     {
         $query = StudentClass::query()
-            ->with('student')
+            ->with(['student', 'subjectRecord'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
             // Keep tuition notifications focused on unpaid classes only.
@@ -123,7 +123,7 @@ class NotificationSyncService
             $campusId = (int) ($student->CampusID ?? 0);
             $remaining = (int) ($class->RemainingSessions ?? 0);
             $isUnpaid = (int) ($class->Paid ?? 0) === 0;
-            $subject = (string) ($class->Subject ?: '課程');
+            $subject = self::displaySubjectForClass($class);
 
             $title = "{$student->name} {$subject} 未繳費";
             $body = "剩餘 {$remaining} 堂，狀態：未繳費";
@@ -160,12 +160,14 @@ class NotificationSyncService
      */
     private static function buildLowSessionsNotifications(array $campusIds): array
     {
+        // 已繳費但剩 1–2 堂：續課／加購提醒。未繳費者已由 buildTuitionNotifications 處理，避免同一課程兩則通知。
         $query = StudentClass::query()
-            ->with('student')
+            ->with(['student', 'subjectRecord'])
             ->where('Stop', 0)
             ->where('ScheduleMode', 'count')
+            ->where('Paid', 1)
             ->where('RemainingSessions', '<=', 2)
-            ->where('RemainingSessions', '>', 0); // 0 堂已由 Stop=1 處理，此處只提醒 1–2 堂
+            ->where('RemainingSessions', '>', 0); // 僅提醒 1–2 堂（0 堂不列入低堂數推播）
 
         if (!empty($campusIds)) {
             $query->whereHas('student', function ($sub) use ($campusIds) {
@@ -182,7 +184,7 @@ class NotificationSyncService
 
             $campusId  = (int) ($student->CampusID ?? 0);
             $remaining = (int) ($class->RemainingSessions ?? 0);
-            $subject   = (string) ($class->Subject ?: '課程');
+            $subject   = self::displaySubjectForClass($class);
             $severity  = $remaining <= 1 ? 'high' : 'medium';
 
             $sourceKey = "low_sessions:{$campusId}:{$class->ID}";
@@ -305,9 +307,10 @@ class NotificationSyncService
      */
     private static function buildLearningNotifications(array $campusIds): array
     {
-        $query = LearningRecord::query()
+        $query = LearningRecord::active()
             ->with(['studentClass.student'])
             ->whereIn('Status', ['pending', 'changes_requested'])
+            ->excludeLeaveSessionPendingReview()
             ->whereHas('studentClass', function ($sc) {
                 $sc->where(function ($w) {
                     $w->where('Stop', 0)->orWhereNull('Stop');
@@ -405,6 +408,23 @@ class NotificationSyncService
         }
 
         return $rows;
+    }
+
+    private static function displaySubjectForClass(StudentClass $class): string
+    {
+        $raw = trim((string) ($class->getAttribute('Subject') ?? ''));
+        if ($raw !== '') {
+            return $raw;
+        }
+        $row = $class->relationLoaded('subjectRecord') ? $class->subjectRecord : $class->subjectRecord()->first();
+        if ($row) {
+            $name = trim((string) ($row->Subject_Name ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return '課程 #' . (int) $class->ID;
     }
 
     /**

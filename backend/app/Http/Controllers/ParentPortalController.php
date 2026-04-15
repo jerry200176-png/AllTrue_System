@@ -190,7 +190,8 @@ class ParentPortalController extends Controller
         $lrTotal      = 0;
         $lrHasMore    = false;
         if (!empty($classIds)) {
-            $lrQuery = LearningRecord::whereIn('StudentClassID', $classIds)
+            $lrQuery = LearningRecord::active()
+                ->whereIn('StudentClassID', $classIds)
                 ->where('Status', 'approved');
             $lrTotal = $lrQuery->count();
             $records = $lrQuery
@@ -221,9 +222,8 @@ class ParentPortalController extends Controller
                 $row->status_label = match ($status) {
                     'present' => '到班',
                     'late' => '遲到',
-                    'excused' => '請假',
                     'absent' => '缺席',
-                    'leave' => '離班',
+                    'leave', 'excused' => '請假',
                     default => $status,
                 };
                 $row->is_late = $status === 'late';

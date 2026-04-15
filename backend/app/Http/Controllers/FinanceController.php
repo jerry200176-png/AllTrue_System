@@ -3,11 +3,16 @@
 namespace App\Http\Controllers;
 
 use App\Models\LearningRecord;
+use App\Models\PayrollAuditLog;
+use App\Models\PayrollBranchRule;
+use App\Models\PayrollMonthStatus;
+use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinanceController extends Controller
 {
@@ -39,7 +44,8 @@ class FinanceController extends Controller
 
         $classIds = (clone $classQuery)->pluck('ID')->all();
 
-        $approvedRecords = empty($classIds) ? 0 : LearningRecord::whereIn('StudentClassID', $classIds)
+        $approvedRecords = empty($classIds) ? 0 : LearningRecord::active()
+            ->whereIn('StudentClassID', $classIds)
             ->where('Status', 'approved')
             ->count();
 
@@ -136,7 +142,7 @@ class FinanceController extends Controller
             return response()->json([]);
         }
 
-        $query = LearningRecord::where('Status', 'approved');
+        $query = LearningRecord::active()->where('Status', 'approved');
         if (!empty($classIds)) {
             $query->whereIn('StudentClassID', $classIds);
         }
@@ -190,7 +196,7 @@ class FinanceController extends Controller
             ]);
         }
 
-        $query = LearningRecord::where('Status', 'approved')
+        $query = LearningRecord::active()->where('Status', 'approved')
             ->with('studentClass');
 
         if (!empty($classIds)) {
@@ -222,11 +228,15 @@ class FinanceController extends Controller
 
         foreach ($records as $r) {
             $tid = $r->TeacherID;
+            $classType = $r->studentClass->ClassType ?? 'one_on_one';
+            // 試聽不計入科目數加權統計
+            if ($classType === 'trial') {
+                continue;
+            }
             if (!isset($buckets[$tid])) {
                 $buckets[$tid] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
             }
             $hours     = $this->calcHours($r->StartTime, $r->EndTime, $r->studentClass);
-            $classType = $r->studentClass->ClassType ?? 'one_on_one';
             $key       = in_array($classType, ['one_on_one', 'one_on_two', 'one_on_three', 'tutoring'])
                          ? $classType : 'one_on_one';
             $buckets[$tid][$key] += $hours;
@@ -277,15 +287,18 @@ class FinanceController extends Controller
                 'total_hours'            => round($total, 2),
                 'subject_count_with'     => number_format($wWith    / 8, 2),
                 'subject_count_without'  => number_format($wWithout / 8, 2),
+                // Temp: share_pct uses same basis as subject_count_with (weighted ÷ 8).
+                '_weighted_with'         => $wWith,
                 'share_pct'              => 0, // filled below
             ];
         }
 
-        // Fill share_pct
-        $grandTotal = $grandTotals['total'];
+        // Fill share_pct = this teacher's weighted hours / month total weighted (same ratio as 科目數含輔導)
         foreach ($result as &$t) {
-            $t['share_pct'] = $grandTotal > 0
-                ? round(($t['total_hours'] / $grandTotal) * 100, 1)
+            $w = (float) ($t['_weighted_with'] ?? 0);
+            unset($t['_weighted_with']);
+            $t['share_pct'] = $grandWeightedWith > 0
+                ? round(($w / $grandWeightedWith) * 100, 1)
                 : 0;
         }
         unset($t);
@@ -392,6 +405,1054 @@ class FinanceController extends Controller
             return $studentClass->SessionDuration / 60.0;
         }
         return 2.0; // default fallback: 2h per session
+    }
+
+    /**
+     * GET /api/v1/finance/branch-monthly-tuition
+     * Per-student, per-course monthly tuition report for a branch.
+     *
+     * Query params: branch_id (required), year, month, page, per_page
+     */
+    public function branchMonthlyTuition(Request $request)
+    {
+        $campusIds      = $this->getCampusIds($request);
+        $branchFiltered = !empty($campusIds);
+        $studentIds     = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
+
+        if ($branchFiltered && empty($studentIds)) {
+            return response()->json([
+                'data'    => [],
+                'summary' => ['total_students' => 0, 'total_sessions' => 0, 'total_tuition' => 0],
+                'meta'    => ['current_page' => 1, 'last_page' => 1, 'per_page' => 50, 'total' => 0],
+            ]);
+        }
+
+        $year  = (int) $request->input('year', date('Y'));
+        $month = (int) $request->input('month', date('n'));
+        $startDate = sprintf('%04d-%02d-01', $year, $month);
+        $endDate   = date('Y-m-t', strtotime($startDate));
+
+        $attendedStatuses = ['attended', 'completed', 'late'];
+
+        $sessionCounts = DB::table('ClassSession')
+            ->whereBetween('SessionDate', [$startDate, $endDate])
+            ->whereIn('Status', $attendedStatuses)
+            ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('StudentClassID');
+
+        $query = StudentClass::query()
+            ->where('Stop', 0)
+            ->joinSub($sessionCounts, 'sc_counts', function ($join) {
+                $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
+            })
+            ->with(['student', 'teacher']);
+
+        if (!empty($studentIds)) {
+            $query->whereIn('StudentClass.StudentID', $studentIds);
+        }
+
+        $query->select('StudentClass.*', 'sc_counts.cnt as monthly_session_count');
+
+        $allRows = (clone $query)->get();
+        $uniqueStudents = $allRows->pluck('StudentID')->unique()->count();
+        $totalSessions  = $allRows->sum('monthly_session_count');
+
+        $totalTuition = $allRows->sum(function ($c) {
+            $rate = $this->resolveRate($c);
+            return $c->monthly_session_count * $rate;
+        });
+
+        $perPage = min((int) $request->input('per_page', 50), 200);
+        $page    = max((int) $request->input('page', 1), 1);
+        $total   = $allRows->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+
+        $paged = $allRows->sortBy([
+            fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
+            fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
+        ])->slice(($page - 1) * $perPage, $perPage)->values();
+
+        $pagedClassIds = $paged->pluck('ID')->map(fn ($id) => (int) $id)->all();
+        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($pagedClassIds);
+
+        $data = $paged->map(function ($c) use ($paidAtMap) {
+            $rate = $this->resolveRate($c);
+            $sessions = (int) $c->monthly_session_count;
+            return [
+                'student_class_id'  => (int) $c->ID,
+                'student_id'        => (int) $c->StudentID,
+                'student_name'      => $c->student->name ?? 'Unknown',
+                'subject'           => $c->displaySubjectName(),
+                'teacher_name'      => $c->teacher->Name ?? 'Unknown',
+                'class_type'        => $c->ClassType ?? 'one_on_one',
+                'schedule_mode'     => $c->ScheduleMode ?? 'count',
+                'rate'              => round($rate, 2),
+                'monthly_sessions'  => $sessions,
+                'monthly_tuition'   => round($sessions * $rate, 2),
+                'remaining_sessions' => max(0, (int) ($c->RemainingSessions ?? 0)),
+                'paid'              => (bool) $c->Paid,
+                'paid_at'           => $c->PayDate ? substr($c->PayDate, 0, 10) : null,
+                'last_paid_at'      => ($c->PayDate ? substr($c->PayDate, 0, 10) : null) ?? ($paidAtMap[(int) $c->ID] ?? null),
+            ];
+        })->all();
+
+        return response()->json([
+            'data'    => array_values($data),
+            'summary' => [
+                'total_students'  => $uniqueStudents,
+                'total_sessions'  => $totalSessions,
+                'total_tuition'   => round($totalTuition, 2),
+            ],
+            'meta' => [
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ]);
+    }
+
+    private function resolveRate(StudentClass $c): float
+    {
+        $rate = (float) ($c->Rate ?? 0);
+        if ($rate > 0) {
+            return $rate;
+        }
+        $charge = (float) ($c->Charge ?? 0);
+        $count  = (int) ($c->SessionCount ?? 0);
+        if ($charge > 0 && $count > 0) {
+            return $charge / $count;
+        }
+        return 0;
+    }
+
+    // ── Parttime Payroll ────────────────────────────────────────────
+
+    /**
+     * GET /api/v1/finance/parttime-payroll
+     * Summary + per-teacher salary for part-time teachers in a given month.
+     */
+    public function parttimePayroll(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $month = $request->input('month');
+        if (!$month || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return response()->json(['error' => 'month parameter required (YYYY-MM)'], 422);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+
+        $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
+        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow);
+
+        $rows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+
+        if ($request->filled('search')) {
+            $q = mb_strtolower($request->input('search'));
+            $rows = array_filter($rows, fn ($r) => str_contains(mb_strtolower($r['teacher_name']), $q));
+            $rows = array_values($rows);
+        }
+
+        $sort = $request->input('sort', 'salary_desc');
+        usort($rows, match ($sort) {
+            'salary_asc'  => fn ($a, $b) => $a['total_salary'] <=> $b['total_salary'],
+            'hours_desc'  => fn ($a, $b) => $b['total_hours'] <=> $a['total_hours'],
+            'name_asc'    => fn ($a, $b) => strcmp($a['teacher_name'], $b['teacher_name']),
+            default       => fn ($a, $b) => $b['total_salary'] <=> $a['total_salary'],
+        });
+
+        $totalSalary = array_sum(array_column($rows, 'total_salary'));
+        $totalHours  = round(array_sum(array_column($rows, 'total_hours')), 2);
+        $teacherCount = count($rows);
+
+        $branchName = $branchId ? (DB::table('Campus')->where('id', $branchId)->value('name') ?? '') : '';
+
+        return response()->json([
+            'summary' => [
+                'total_salary'    => $totalSalary,
+                'total_hours'     => $totalHours,
+                'teacher_count'   => $teacherCount,
+                'avg_hourly_rate' => $totalHours > 0 ? round($totalSalary / $totalHours) : 0,
+                'month'           => $month,
+                'branch_id'       => $branchId,
+                'branch_name'     => $branchName,
+                'lock_status'     => $lockRow->status ?? 'draft',
+                'locked_at'       => $lockRow->locked_at ?? null,
+                'locked_by'       => $lockRow->locked_by ?? null,
+                'rule_version_id' => $ruleCtx['rule_id'] ?? null,
+            ],
+            'teachers' => $rows,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/finance/parttime-payroll/{teacherId}/sessions
+     */
+    public function parttimePayrollSessions(Request $request, int $teacherId)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $month = $request->input('month');
+        if (!$month || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return response()->json(['error' => 'month parameter required (YYYY-MM)'], 422);
+        }
+
+        $campusIds  = $this->getCampusIds($request);
+        $startDate  = $month . '-01';
+        $endDate    = date('Y-m-t', strtotime($startDate));
+        $maxPerPage = config('payroll.max_per_page', 200);
+        $perPage    = min((int) $request->input('per_page', 50), $maxPerPage);
+        $page       = max((int) $request->input('page', 1), 1);
+
+        $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
+        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow);
+
+        $query = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
+            ->where('LearningRecord.TeacherID', $teacherId);
+
+        $total    = (clone $query)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+
+        $allTeacherRecords = (clone $this->parttimeBaseQuery($campusIds, $startDate, $endDate))
+            ->where('LearningRecord.TeacherID', $teacherId)
+            ->get();
+        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords);
+
+        $records = $query->orderBy('LearningRecord.SessionDate')
+            ->offset(($page - 1) * $perPage)
+            ->limit($perPage)
+            ->get();
+
+        $teacherName = DB::table('User')->where('id', $teacherId)->value('Name')
+            ?? DB::table('Teacher')->where('id', $teacherId)->value('T_Name')
+            ?? 'Unknown';
+
+        $sessions   = [];
+        $sumSalary  = 0;
+        $sumHours   = 0.0;
+
+        foreach ($records as $r) {
+            $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
+            $sessions[] = $row;
+            $sumSalary += $row['session_salary'];
+            $sumHours  += $row['hours'];
+        }
+
+        if ($total > $perPage) {
+            $fullRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+            $teacherRow = collect($fullRows)->firstWhere('teacher_id', $teacherId);
+            $sumSalary = $teacherRow['total_salary'] ?? $sumSalary;
+            $sumHours  = $teacherRow['total_hours'] ?? $sumHours;
+        }
+
+        return response()->json([
+            'teacher' => [
+                'teacher_id'    => $teacherId,
+                'teacher_name'  => $teacherName,
+                'total_salary'  => $sumSalary,
+                'total_hours'   => round($sumHours, 2),
+                'session_count' => $total,
+            ],
+            'sessions' => $sessions,
+            'meta' => [
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'per_page'     => $perPage,
+                'total'        => $total,
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/finance/parttime-payroll/export
+     */
+    public function parttimePayrollExport(Request $request): StreamedResponse
+    {
+        if (!config('payroll.enabled', true)) {
+            abort(503, 'Payroll feature is disabled');
+        }
+
+        $month = $request->input('month');
+        if (!$month || !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            abort(422, 'month parameter required (YYYY-MM)');
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        $branchName = $branchId ? (DB::table('Campus')->where('id', $branchId)->value('name') ?? 'all') : 'all';
+
+        $startDate = $month . '-01';
+        $endDate   = date('Y-m-t', strtotime($startDate));
+
+        $lockRow   = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
+        $ruleCtx   = $this->resolvePayrollRule($branchId, $lockRow);
+
+        $totalRows = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->count();
+        $maxExport = config('payroll.max_export_rows', 5000);
+        if ($totalRows > $maxExport) {
+            abort(422, "Too many rows ({$totalRows}). Max export is {$maxExport}. Please narrow your scope.");
+        }
+
+        $teacherRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
+
+        $allRecords = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
+        $bonusMap = $this->buildConcurrencyBonusMap($allRecords);
+
+        $filename = "兼職薪資_{$branchName}_{$month}.csv";
+
+        return response()->streamDownload(function () use ($teacherRows, $campusIds, $startDate, $endDate, $ruleCtx, $bonusMap) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+            fputcsv($out, ['老師姓名', '總時數', '高中時數', '國中時數', '國小時數', '輔導時數', '應付薪資', '堂次數', '費率來源']);
+            foreach ($teacherRows as $t) {
+                fputcsv($out, [
+                    $t['teacher_name'], $t['total_hours'], $t['high_hours'],
+                    $t['junior_hours'], $t['elementary_hours'], $t['tutoring_hours'],
+                    $t['total_salary'], $t['session_count'],
+                    ($t['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
+                ]);
+            }
+
+            fputcsv($out, []);
+            fputcsv($out, ['日期', '老師', '學生', '科目', '學段', '課型', '時數', '基礎時薪', '人數加成', '併堂加給', '實際時薪', '堂次薪資', '費率來源']);
+
+            $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
+                ->orderBy('LearningRecord.id')
+                ->chunk(200, function ($records) use ($out, $ruleCtx, $bonusMap) {
+                    foreach ($records as $r) {
+                        $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
+                        fputcsv($out, [
+                            $row['session_date'], $row['teacher_name'] ?? '', $row['student_name'],
+                            $row['subject'], $row['level_label'], $row['class_type'],
+                            $row['hours'], $row['base_rate'], $row['headcount_bonus'],
+                            $row['concurrency_bonus_amount'], $row['effective_rate'], $row['session_salary'],
+                            ($row['rule_source'] ?? 'branch_default') === 'teacher_override' ? '個別費率' : '分校預設',
+                        ]);
+                    }
+                });
+
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * POST /api/v1/finance/parttime-payroll/lock
+     */
+    public function parttimePayrollLock(Request $request)
+    {
+        $month    = $request->input('month');
+        $branchId = (int) $request->input('branch_id');
+        if (!$month || !$branchId) {
+            return response()->json(['error' => 'month and branch_id required'], 422);
+        }
+
+        $row = PayrollMonthStatus::firstOrCreate(
+            ['branch_id' => $branchId, 'month' => $month],
+            ['status' => 'draft']
+        );
+
+        if ($row->status === 'locked') {
+            return response()->json(['error' => 'Already locked'], 422);
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        $userId   = $authUser ? (int) $authUser->id : null;
+
+        DB::transaction(function () use ($row, $branchId, $month, $userId) {
+            $currentRule = PayrollBranchRule::latestForBranch($branchId);
+            $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId);
+
+            $teacherSnapshots = [];
+            foreach ($teacherMap as $tid => $rule) {
+                $teacherSnapshots[(string) $tid] = $rule->id;
+            }
+
+            $row->update([
+                'status'                 => 'locked',
+                'locked_by'              => $userId,
+                'locked_at'              => now(),
+                'rule_version_id'        => $currentRule?->id,
+                'teacher_rule_snapshots' => !empty($teacherSnapshots) ? $teacherSnapshots : null,
+            ]);
+
+            PayrollAuditLog::create([
+                'branch_id'  => $branchId,
+                'month'      => $month,
+                'action'     => 'lock',
+                'user_id'    => $userId,
+                'created_at' => now(),
+            ]);
+        });
+
+        return response()->json(['ok' => true, 'status' => 'locked']);
+    }
+
+    /**
+     * POST /api/v1/finance/parttime-payroll/reopen (super_admin only)
+     */
+    public function parttimePayrollReopen(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin') {
+            return response()->json(['error' => 'Only super_admin can reopen'], 403);
+        }
+
+        $month    = $request->input('month');
+        $branchId = (int) $request->input('branch_id');
+        $reason   = $request->input('reason', '');
+        if (!$month || !$branchId) {
+            return response()->json(['error' => 'month and branch_id required'], 422);
+        }
+
+        $row = PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first();
+        if (!$row || $row->status !== 'locked') {
+            return response()->json(['error' => 'Not locked'], 422);
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        $userId   = $authUser ? (int) $authUser->id : null;
+        $row->update(['status' => 'draft', 'locked_by' => null, 'locked_at' => null, 'rule_version_id' => null, 'teacher_rule_snapshots' => null]);
+
+        PayrollAuditLog::create([
+            'branch_id'  => $branchId,
+            'month'      => $month,
+            'action'     => 'reopen',
+            'user_id'    => $userId,
+            'reason'     => $reason,
+            'created_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true, 'status' => 'draft']);
+    }
+
+    // ── Parttime Payroll helpers ─────────────────────────────────────
+
+    private function parttimeBaseQuery(array $campusIds, string $startDate, string $endDate)
+    {
+        $branchFiltered = !empty($campusIds);
+        $studentIds = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
+        $classIds   = !empty($studentIds) ? StudentClass::whereIn('StudentID', $studentIds)->pluck('ID')->all() : [];
+
+        $partTimeTeacherIds = DB::table('User')
+            ->where('employment_type', 'part_time')
+            ->whereIn('type', ['T', 'D'])
+            ->pluck('id')->all();
+
+        $query = LearningRecord::query()
+            ->select('LearningRecord.*')
+            ->active()
+            ->where('LearningRecord.Status', 'approved')
+            ->whereBetween('LearningRecord.SessionDate', [$startDate, $endDate])
+            ->whereIn('LearningRecord.TeacherID', $partTimeTeacherIds)
+            ->with('studentClass');
+
+        if ($branchFiltered && empty($classIds)) {
+            $query->whereRaw('1=0');
+        } elseif (!empty($classIds)) {
+            $query->whereIn('LearningRecord.StudentClassID', $classIds);
+        }
+
+        $query->whereHas('studentClass', function ($q) {
+            $q->where(function ($w) {
+                $w->where('ClassType', '!=', 'trial')->orWhereNull('ClassType');
+            });
+        });
+
+        return $query;
+    }
+
+    private function buildParttimePayrollData(string $month, array $campusIds, array $ruleCtx = []): array
+    {
+        $startDate = $month . '-01';
+        $endDate   = date('Y-m-t', strtotime($startDate));
+
+        $records = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
+        $bonusMap = $this->buildConcurrencyBonusMap($records);
+
+        $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
+        $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
+
+        $teacherOverrides = $ruleCtx['teacher_overrides'] ?? [];
+
+        $buckets = [];
+        foreach ($records as $r) {
+            $tid = $r->TeacherID;
+            if (!isset($buckets[$tid])) {
+                $hasOverride = isset($teacherOverrides[$tid]);
+                $buckets[$tid] = [
+                    'teacher_id'       => $tid,
+                    'teacher_name'     => $userNames[$tid] ?? ($teacherNames[$tid] ?? 'Unknown'),
+                    'high_hours'       => 0, 'junior_hours' => 0,
+                    'elementary_hours' => 0, 'tutoring_hours' => 0,
+                    'total_hours'      => 0, 'total_salary' => 0,
+                    'session_count'    => 0,
+                    'rule_source'      => $hasOverride ? 'teacher_override' : 'branch_default',
+                ];
+            }
+
+            $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
+            $level = $row['level'];
+            $hours = $row['hours'];
+
+            $levelKey = match ($level) {
+                'high'       => 'high_hours',
+                'junior'     => 'junior_hours',
+                'elementary' => 'elementary_hours',
+                default      => 'tutoring_hours',
+            };
+            if ($row['class_type'] === 'tutoring') {
+                $levelKey = 'tutoring_hours';
+            }
+
+            $buckets[$tid][$levelKey]      += $hours;
+            $buckets[$tid]['total_hours']   += $hours;
+            $buckets[$tid]['total_salary']  += $row['session_salary'];
+            $buckets[$tid]['session_count'] += 1;
+        }
+
+        foreach ($buckets as &$b) {
+            $b['high_hours']       = round($b['high_hours'], 2);
+            $b['junior_hours']     = round($b['junior_hours'], 2);
+            $b['elementary_hours'] = round($b['elementary_hours'], 2);
+            $b['tutoring_hours']   = round($b['tutoring_hours'], 2);
+            $b['total_hours']      = round($b['total_hours'], 2);
+            $b['total_salary']     = (int) round($b['total_salary']);
+        }
+        unset($b);
+
+        return array_values($buckets);
+    }
+
+    private function buildSessionRow(LearningRecord $r, array $ruleCtx = [], array $bonusMap = []): array
+    {
+        $sc        = $r->studentClass;
+        $classType = $sc->ClassType ?? 'one_on_one';
+        $gradeId   = (int) ($sc->GradeID ?? 0);
+        $hours     = round($this->calcHours($r->StartTime, $r->EndTime, $sc), 2);
+
+        $levelMap = config('payroll.grade_level_map', []);
+        $level    = $levelMap[$gradeId] ?? 'unknown';
+        if ($classType === 'tutoring') {
+            $level = 'tutoring';
+        }
+        if ($level === 'unknown') {
+            $level = 'elementary';
+        }
+
+        $teacherOverrides = $ruleCtx['teacher_overrides'] ?? [];
+        $tid = (int) $r->TeacherID;
+        $ruleSource = 'branch_default';
+        if (isset($teacherOverrides[$tid])) {
+            $effectiveCtx = $teacherOverrides[$tid];
+            $ruleSource = 'teacher_override';
+        } else {
+            $effectiveCtx = $ruleCtx;
+        }
+
+        $levelLabels = ['elementary' => '國小', 'junior' => '國中', 'high' => '高中', 'tutoring' => '輔導'];
+        $baseRates   = $effectiveCtx['base_rates'] ?? config('payroll.base_rates', []);
+        $bonus       = $effectiveCtx['headcount_bonus'] ?? config('payroll.headcount_bonus', 50);
+
+        $baseRate = $baseRates[$level] ?? 300;
+        $headcountBonus = 0;
+        if ($classType !== 'tutoring') {
+            $studentCount = match ($classType) {
+                'one_on_two'   => 2,
+                'one_on_three' => 3,
+                default        => 1,
+            };
+            $headcountBonus = ($studentCount - 1) * $bonus;
+        }
+        $effectiveRate         = $baseRate + $headcountBonus;
+        $baseSalary            = (int) round($effectiveRate * $hours);
+        $concurrencyBonus      = $bonusMap[$r->id] ?? 0;
+        $sessionSalary         = $baseSalary + $concurrencyBonus;
+
+        $studentName = $sc->student->name ?? 'Unknown';
+
+        return [
+            'learning_record_id'       => $r->id,
+            'session_date'             => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : '',
+            'student_name'             => $studentName,
+            'subject'                  => $r->Subject ?: ($sc->displaySubjectName()),
+            'level'                    => $level,
+            'level_label'              => $levelLabels[$level] ?? $level,
+            'class_type'               => $classType,
+            'student_count'            => match ($classType) { 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 0, default => 1 },
+            'start_time'               => $r->StartTime ? substr((string) $r->StartTime, 0, 5) : null,
+            'end_time'                 => $r->EndTime ? substr((string) $r->EndTime, 0, 5) : null,
+            'hours'                    => $hours,
+            'base_rate'                => $baseRate,
+            'headcount_bonus'          => $headcountBonus,
+            'effective_rate'           => $effectiveRate,
+            'concurrency_bonus_amount' => $concurrencyBonus,
+            'session_salary'           => $sessionSalary,
+            'teacher_name'             => DB::table('User')->where('id', $r->TeacherID)->value('Name'),
+            'rule_source'              => $ruleSource,
+        ];
+    }
+
+    /**
+     * Build a map of LR id → concurrency bonus amount for all records in the collection.
+     * Groups by TeacherID + SessionDate, then sweeps the time axis to find overlapping segments.
+     */
+    private function buildConcurrencyBonusMap($records): array
+    {
+        $bonusPerStudent = config('payroll.concurrency_bonus_per_student', 50);
+        $bonusMap = [];
+
+        $grouped = [];
+        foreach ($records as $r) {
+            $key = $r->TeacherID . '_' . substr((string) $r->SessionDate, 0, 10);
+            $grouped[$key][] = $r;
+        }
+
+        foreach ($grouped as $dayRecords) {
+            if (count($dayRecords) < 2) {
+                continue;
+            }
+
+            $intervals = [];
+            foreach ($dayRecords as $r) {
+                $startMin = $this->timeToMinutes($r->StartTime);
+                $endMin   = $this->timeToMinutes($r->EndTime);
+                if ($startMin === null || $endMin === null || $endMin <= $startMin) {
+                    continue;
+                }
+                $sc = $r->studentClass;
+                $studentCount = match ($sc->ClassType ?? 'one_on_one') {
+                    'one_on_two'   => 2,
+                    'one_on_three' => 3,
+                    default        => 1,
+                };
+                $intervals[] = [
+                    'lr_id'         => $r->id,
+                    'start'         => $startMin,
+                    'end'           => $endMin,
+                    'student_count' => $studentCount,
+                ];
+            }
+
+            if (count($intervals) < 2) {
+                continue;
+            }
+
+            $points = [];
+            foreach ($intervals as $iv) {
+                $points[] = $iv['start'];
+                $points[] = $iv['end'];
+            }
+            $points = array_unique($points);
+            sort($points);
+
+            foreach ($intervals as $iv) {
+                $lrBonus = 0.0;
+                for ($i = 0, $cnt = count($points) - 1; $i < $cnt; $i++) {
+                    $segStart = $points[$i];
+                    $segEnd   = $points[$i + 1];
+                    if ($segStart >= $iv['end'] || $segEnd <= $iv['start']) {
+                        continue;
+                    }
+
+                    $lrCountInSeg = 0;
+                    foreach ($intervals as $other) {
+                        if ($other['start'] < $segEnd && $other['end'] > $segStart) {
+                            $lrCountInSeg++;
+                        }
+                    }
+
+                    if ($lrCountInSeg >= 2) {
+                        $dt = ($segEnd - $segStart) / 60.0;
+                        $lrBonus += $bonusPerStudent * $iv['student_count'] * $dt;
+                    }
+                }
+                if ($lrBonus > 0) {
+                    $bonusMap[$iv['lr_id']] = (int) round($lrBonus);
+                }
+            }
+        }
+
+        return $bonusMap;
+    }
+
+    private function timeToMinutes(?string $time): ?int
+    {
+        if (!$time) {
+            return null;
+        }
+        foreach (['H:i:s', 'H:i'] as $fmt) {
+            $subLen = $fmt === 'H:i:s' ? 8 : 5;
+            try {
+                $t = \Carbon\Carbon::createFromFormat($fmt, substr($time, 0, $subLen));
+                return $t->hour * 60 + $t->minute;
+            } catch (\Exception $ignored) {}
+        }
+        return null;
+    }
+
+    // ── Payroll Rules ─────────────────────────────────────────────
+
+    /**
+     * GET /api/v1/finance/parttime-payroll/rules
+     */
+    public function parttimePayrollRules(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if (!$branchId) {
+            return response()->json(['error' => 'branch_id required'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $rule = PayrollBranchRule::latestForBranch($branchId);
+        $defaults = config('payroll.base_rates', []);
+
+        return response()->json([
+            'branch_id'        => $branchId,
+            'rule_version_id'  => $rule?->id,
+            'base_rates'       => $rule ? $rule->base_rates : $defaults,
+            'headcount_bonus'  => $rule ? $rule->headcount_bonus : config('payroll.headcount_bonus', 50),
+            'created_by'       => $rule?->created_by,
+            'created_at'       => $rule?->created_at?->toIso8601String(),
+            'created_by_name'  => $rule?->created_by ? (DB::table('User')->where('id', $rule->created_by)->value('Name') ?? '') : null,
+            'defaults'         => [
+                'base_rates'      => $defaults,
+                'headcount_bonus' => config('payroll.headcount_bonus', 50),
+            ],
+        ]);
+    }
+
+    /**
+     * PUT /api/v1/finance/parttime-payroll/rules
+     */
+    public function parttimePayrollRulesUpdate(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = (int) $request->input('branch_id');
+        if (!$branchId) {
+            return response()->json(['error' => 'branch_id required'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $baseRates = $request->input('base_rates');
+        if (!is_array($baseRates)) {
+            return response()->json(['error' => 'base_rates must be an object'], 422);
+        }
+
+        $required = ['high', 'junior', 'elementary', 'tutoring'];
+        foreach ($required as $key) {
+            if (!isset($baseRates[$key]) || !is_numeric($baseRates[$key])) {
+                return response()->json(['error' => "base_rates.{$key} must be a number"], 422);
+            }
+            $val = (int) $baseRates[$key];
+            if ($val < 100 || $val > 2000) {
+                return response()->json(['error' => "base_rates.{$key} must be between 100 and 2000"], 422);
+            }
+        }
+
+        $headcountBonus = $request->input('headcount_bonus');
+        if (!is_numeric($headcountBonus)) {
+            return response()->json(['error' => 'headcount_bonus must be a number'], 422);
+        }
+        $headcountBonus = (int) $headcountBonus;
+        if ($headcountBonus < 0 || $headcountBonus > 500) {
+            return response()->json(['error' => 'headcount_bonus must be between 0 and 500'], 422);
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        $userId   = $authUser ? (int) $authUser->id : null;
+
+        $cleanRates = [
+            'high'       => (int) $baseRates['high'],
+            'junior'     => (int) $baseRates['junior'],
+            'elementary' => (int) $baseRates['elementary'],
+            'tutoring'   => (int) $baseRates['tutoring'],
+        ];
+
+        $newRule = PayrollBranchRule::create([
+            'branch_id'       => $branchId,
+            'base_rates'      => $cleanRates,
+            'headcount_bonus' => $headcountBonus,
+            'created_by'      => $userId,
+            'created_at'      => now(),
+        ]);
+
+        PayrollAuditLog::create([
+            'branch_id'  => $branchId,
+            'month'      => now()->format('Y-m'),
+            'action'     => 'rule_update',
+            'user_id'    => $userId,
+            'reason'     => json_encode(['rule_id' => $newRule->id, 'base_rates' => $cleanRates, 'headcount_bonus' => $headcountBonus]),
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'ok'              => true,
+            'rule_version_id' => $newRule->id,
+            'base_rates'      => $newRule->base_rates,
+            'headcount_bonus' => $newRule->headcount_bonus,
+        ]);
+    }
+
+    // ── Teacher-level Payroll Rules ──────────────────────────────────
+
+    /**
+     * GET /api/v1/finance/parttime-payroll/teacher-rules
+     */
+    public function parttimePayrollTeacherRules(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
+        if (!$branchId) {
+            return response()->json(['error' => 'branch_id required'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $teacherId = $request->filled('teacher_id') ? (int) $request->input('teacher_id') : null;
+
+        if ($teacherId) {
+            $rule = PayrollTeacherBranchRule::latestForTeacherBranch($teacherId, $branchId);
+            $branchRule = PayrollBranchRule::latestForBranch($branchId);
+            return response()->json([
+                'teacher_user_id'  => $teacherId,
+                'branch_id'        => $branchId,
+                'has_override'     => (bool) $rule,
+                'rule_version_id'  => $rule?->id,
+                'base_rates'       => $rule ? $rule->base_rates : ($branchRule ? $branchRule->base_rates : config('payroll.base_rates', [])),
+                'headcount_bonus'  => $rule ? $rule->headcount_bonus : ($branchRule ? $branchRule->headcount_bonus : config('payroll.headcount_bonus', 50)),
+                'created_by'       => $rule?->created_by,
+                'created_at'       => $rule?->created_at?->toIso8601String(),
+                'branch_defaults'  => [
+                    'base_rates'      => $branchRule ? $branchRule->base_rates : config('payroll.base_rates', []),
+                    'headcount_bonus' => $branchRule ? $branchRule->headcount_bonus : config('payroll.headcount_bonus', 50),
+                ],
+            ]);
+        }
+
+        $map = PayrollTeacherBranchRule::latestMapForBranch($branchId);
+        $result = [];
+        foreach ($map as $tid => $rule) {
+            $result[] = [
+                'teacher_user_id'  => $tid,
+                'branch_id'        => $branchId,
+                'rule_version_id'  => $rule->id,
+                'base_rates'       => $rule->base_rates,
+                'headcount_bonus'  => $rule->headcount_bonus,
+                'created_at'       => $rule->created_at?->toIso8601String(),
+            ];
+        }
+
+        return response()->json(['teacher_rules' => $result]);
+    }
+
+    /**
+     * PUT /api/v1/finance/parttime-payroll/teacher-rules
+     */
+    public function parttimePayrollTeacherRulesUpdate(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = (int) $request->input('branch_id');
+        $teacherId = (int) $request->input('teacher_id');
+        if (!$branchId || !$teacherId) {
+            return response()->json(['error' => 'branch_id and teacher_id required'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $teacher = DB::table('User')->where('id', $teacherId)->first();
+        if (!$teacher || ($teacher->employment_type ?? 'full_time') !== 'part_time') {
+            return response()->json(['error' => 'Teacher must be part_time employment type'], 422);
+        }
+
+        $baseRates = $request->input('base_rates');
+        if (!is_array($baseRates)) {
+            return response()->json(['error' => 'base_rates must be an object'], 422);
+        }
+        $required = ['high', 'junior', 'elementary', 'tutoring'];
+        foreach ($required as $key) {
+            if (!isset($baseRates[$key]) || !is_numeric($baseRates[$key])) {
+                return response()->json(['error' => "base_rates.{$key} must be a number"], 422);
+            }
+            $val = (int) $baseRates[$key];
+            if ($val < 100 || $val > 2000) {
+                return response()->json(['error' => "base_rates.{$key} must be between 100 and 2000"], 422);
+            }
+        }
+
+        $headcountBonus = $request->input('headcount_bonus');
+        if (!is_numeric($headcountBonus)) {
+            return response()->json(['error' => 'headcount_bonus must be a number'], 422);
+        }
+        $headcountBonus = (int) $headcountBonus;
+        if ($headcountBonus < 0 || $headcountBonus > 500) {
+            return response()->json(['error' => 'headcount_bonus must be between 0 and 500'], 422);
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        $userId   = $authUser ? (int) $authUser->id : null;
+
+        $cleanRates = [
+            'high'       => (int) $baseRates['high'],
+            'junior'     => (int) $baseRates['junior'],
+            'elementary' => (int) $baseRates['elementary'],
+            'tutoring'   => (int) $baseRates['tutoring'],
+        ];
+
+        $newRule = PayrollTeacherBranchRule::create([
+            'teacher_user_id' => $teacherId,
+            'branch_id'       => $branchId,
+            'base_rates'      => $cleanRates,
+            'headcount_bonus' => $headcountBonus,
+            'created_by'      => $userId,
+            'created_at'      => now(),
+        ]);
+
+        PayrollAuditLog::create([
+            'branch_id'  => $branchId,
+            'month'      => now()->format('Y-m'),
+            'action'     => 'teacher_rule_update',
+            'user_id'    => $userId,
+            'reason'     => json_encode(['teacher_id' => $teacherId, 'rule_id' => $newRule->id, 'base_rates' => $cleanRates, 'headcount_bonus' => $headcountBonus]),
+            'created_at' => now(),
+        ]);
+
+        return response()->json([
+            'ok'              => true,
+            'rule_version_id' => $newRule->id,
+            'base_rates'      => $newRule->base_rates,
+            'headcount_bonus' => $newRule->headcount_bonus,
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/finance/parttime-payroll/teacher-rules
+     * Revert a teacher to use the branch default by soft-deleting their override.
+     * Implemented as: no physical delete — we record the revert in audit log,
+     * and latestForTeacherBranch will no longer find an active rule after a
+     * "sentinel" row with null base_rates. Simpler: just check if latest is sentinel.
+     * Even simpler for append-only: we don't actually delete. We just need a way to
+     * mark "no override". We'll use a convention: delete all rows for this teacher+branch.
+     */
+    public function parttimePayrollTeacherRulesDelete(Request $request)
+    {
+        if (!config('payroll.enabled', true)) {
+            return response()->json(['error' => 'Payroll feature is disabled'], 503);
+        }
+
+        $campusIds = $this->getCampusIds($request);
+        $branchId  = (int) $request->input('branch_id');
+        $teacherId = (int) $request->input('teacher_id');
+        if (!$branchId || !$teacherId) {
+            return response()->json(['error' => 'branch_id and teacher_id required'], 422);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $deleted = PayrollTeacherBranchRule::where('teacher_user_id', $teacherId)
+            ->where('branch_id', $branchId)
+            ->delete();
+
+        $authUser = $request->attributes->get('auth_user');
+        $userId   = $authUser ? (int) $authUser->id : null;
+
+        PayrollAuditLog::create([
+            'branch_id'  => $branchId,
+            'month'      => now()->format('Y-m'),
+            'action'     => 'teacher_rule_revert',
+            'user_id'    => $userId,
+            'reason'     => json_encode(['teacher_id' => $teacherId, 'deleted_count' => $deleted]),
+            'created_at' => now(),
+        ]);
+
+        return response()->json(['ok' => true, 'reverted' => true]);
+    }
+
+    /**
+     * Resolve rule context for payroll calculation.
+     * Returns ['base_rates' => ..., 'headcount_bonus' => ..., 'rule_id' => ..., 'teacher_overrides' => [tid => [...]]].
+     * Locked months use snapshot rule_version_id + teacher_rule_snapshots; draft months use latest.
+     */
+    private function resolvePayrollRule(?int $branchId, ?PayrollMonthStatus $lockRow): array
+    {
+        if (!$branchId) {
+            return [];
+        }
+
+        if ($lockRow && $lockRow->status === 'locked') {
+            $branchCtx = $lockRow->rule_version_id
+                ? PayrollBranchRule::resolveForLockedMonth($branchId, $lockRow->rule_version_id)
+                : PayrollBranchRule::resolveForBranch($branchId);
+
+            $teacherOverrides = [];
+            $snapshots = $lockRow->teacher_rule_snapshots ?? [];
+            foreach ($snapshots as $tid => $ruleId) {
+                $rule = PayrollTeacherBranchRule::find($ruleId);
+                if ($rule) {
+                    $teacherOverrides[(int) $tid] = [
+                        'base_rates'      => $rule->base_rates,
+                        'headcount_bonus' => $rule->headcount_bonus,
+                        'rule_id'         => $rule->id,
+                    ];
+                }
+            }
+            $branchCtx['teacher_overrides'] = $teacherOverrides;
+            return $branchCtx;
+        }
+
+        $branchCtx = PayrollBranchRule::resolveForBranch($branchId);
+        $teacherMap = PayrollTeacherBranchRule::latestMapForBranch($branchId);
+        $teacherOverrides = [];
+        foreach ($teacherMap as $tid => $rule) {
+            $teacherOverrides[$tid] = [
+                'base_rates'      => $rule->base_rates,
+                'headcount_bonus' => $rule->headcount_bonus,
+                'rule_id'         => $rule->id,
+            ];
+        }
+        $branchCtx['teacher_overrides'] = $teacherOverrides;
+        return $branchCtx;
     }
 
     private function getCampusIds(Request $request): array

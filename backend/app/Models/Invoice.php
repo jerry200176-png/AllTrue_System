@@ -19,6 +19,11 @@ class Invoice extends Model
         'Note',
     ];
 
+    public function student()
+    {
+        return $this->belongsTo(Student::class, 'StudentID', 'id');
+    }
+
     public function items()
     {
         return $this->hasMany(InvoiceItem::class, 'InvoiceID', 'id');

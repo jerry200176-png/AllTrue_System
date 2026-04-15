@@ -305,8 +305,17 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        // Keep badge counters fresh by reconciling source data first.
-        NotificationSyncService::sync($campusIds, $branchId);
+        if (config('perfflags.throttle_notification_sync', true)) {
+            $cooldown = config('perfflags.notification_sync_cooldown_seconds', 300);
+            $syncCacheKey = 'notif_sync_' . ($branchId ?? 'all') . '_' . implode('_', $campusIds);
+            $lastSync = cache($syncCacheKey);
+            if (!$lastSync || (time() - $lastSync) > $cooldown) {
+                NotificationSyncService::sync($campusIds, $branchId);
+                cache([$syncCacheKey => time()], now()->addMinutes(10));
+            }
+        } else {
+            NotificationSyncService::sync($campusIds, $branchId);
+        }
 
         $byType = $this->countUnreadByType($userId, $campusIds);
 

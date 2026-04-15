@@ -28,12 +28,18 @@ class EnrollmentService
         $confirmedDates = $this->normalizeDateArray($data['confirmed_dates'] ?? []);
         $futureDates = $this->normalizeDateArray($data['future_dates'] ?? []);
 
-        $dayTimeSlotGroups = $this->normalizeDayTimeSlotGroups((array) ($data['day_time_slots'] ?? []));
+        $defaultSubject = trim((string) ($data['subject'] ?? ''));
+        if ($defaultSubject === '') {
+            $defaultSubject = 'Math';
+        }
+
+        $dayTimeSlotGroups = $this->normalizeDayTimeSlotGroups((array) ($data['day_time_slots'] ?? []), $defaultSubject);
         if (empty($dayTimeSlotGroups) && !empty($data['days_of_week']) && !empty($data['start_time'])) {
             foreach ($this->normalizeWeekdayArray((array) $data['days_of_week']) as $day) {
                 $dayTimeSlotGroups[$day] = [[
                     'start_time' => $this->normalizeTime((string) $data['start_time']),
                     'duration_minutes' => null,
+                    'subject' => $defaultSubject,
                 ]];
             }
         }
@@ -46,7 +52,14 @@ class EnrollmentService
         $sessionPlanRaw = $data['session_plan'] ?? null;
         $sessionRows = [];
         if (!empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
-            $sessionRows = $this->buildRowsFromSessionPlan($sessionPlanRaw, $dayTimeSlotGroups, $dayTimeSlotMap, $globalDuration, $startTime);
+            $sessionRows = $this->buildRowsFromSessionPlan(
+                $sessionPlanRaw,
+                $dayTimeSlotGroups,
+                $dayTimeSlotMap,
+                $globalDuration,
+                $startTime,
+                $defaultSubject
+            );
         } else {
             $totalDates = count($confirmedDates) + count($futureDates);
             if ($totalDates <= 0) {
@@ -63,7 +76,8 @@ class EnrollmentService
                 $dayTimeSlotMap,
                 $dayTimeSlotGroups,
                 $globalDuration,
-                $startTime
+                $startTime,
+                $defaultSubject
             );
         }
 
@@ -74,6 +88,35 @@ class EnrollmentService
                     'confirmed_dates' => ['請至少選擇 1 個日期'],
                 ],
             ], 422);
+        }
+
+        $allowedWeekdays = [];
+        if (!empty($dayTimeSlotMap)) {
+            $allowedWeekdays = array_map('intval', array_keys($dayTimeSlotMap));
+        } elseif (!empty($data['days_of_week'])) {
+            $allowedWeekdays = $this->normalizeWeekdayArray((array) $data['days_of_week']);
+        }
+        if (!empty($allowedWeekdays)) {
+            $allowedSet = array_fill_keys($allowedWeekdays, true);
+            $weekCn = ['', '一', '二', '三', '四', '五', '六', '日'];
+            $today = Carbon::today()->toDateString();
+            foreach ($sessionRows as $row) {
+                // 過去日期為歷史補登，不限固定上課星期
+                if (($row['date'] ?? '') < $today) {
+                    continue;
+                }
+                $wd = (int) Carbon::parse($row['date'])->dayOfWeekIso;
+                if (!isset($allowedSet[$wd])) {
+                    $label = $weekCn[$wd] ?? (string) $wd;
+
+                    return response()->json([
+                        'message' => "排課日期 {$row['date']} 為週{$label}，與固定上課星期不符。",
+                        'errors' => [
+                            'session_plan' => ['堂次日曆日須落在已設定的固定上課星期。'],
+                        ],
+                    ], 422);
+                }
+            }
         }
 
         $isSessionMode = ($data['payment_type'] ?? 'session') === 'session';
@@ -284,14 +327,21 @@ class EnrollmentService
             }
         }
 
-        $resolvedSubjectId = FrontendSubjectIdResolver::resolve((string) $data['subject']);
-        if ($resolvedSubjectId === null) {
-            return response()->json([
-                'message' => "無法將科目「{$data['subject']}」對應到 Subject 主檔，請檢查科目設定。",
-                'errors' => ['subject' => ["找不到對應的科目 ID：{$data['subject']}"]],
-            ], 422);
+        $subjectGroups = $this->groupSessionRowsBySubject($sessionRows);
+        $subjectMeta = [];
+        foreach (array_keys($subjectGroups) as $subKey) {
+            $rid = FrontendSubjectIdResolver::resolve($subKey);
+            if ($rid === null) {
+                return response()->json([
+                    'message' => "無法將科目「{$subKey}」對應到 Subject 主檔，請檢查科目設定。",
+                    'errors' => ['subject' => ["找不到對應的科目 ID：{$subKey}"]],
+                ], 422);
+            }
+            $subjectMeta[$subKey] = [
+                'id' => $rid,
+                'name' => FrontendSubjectIdResolver::resolveName($rid, $subKey),
+            ];
         }
-        $resolvedSubjectName = FrontendSubjectIdResolver::resolveName($resolvedSubjectId, (string) $data['subject']);
 
         $scopeWarnings = [];
         $gradeForScope = null;
@@ -300,29 +350,30 @@ class EnrollmentService
         } elseif (!empty($data['student']['grade'])) {
             $gradeForScope = (string) $data['student']['grade'];
         }
-        $scopeResult = TeacherScopeService::check(
-            (int) $data['teacher_id'],
-            $resolvedSubjectId,
-            $gradeForScope ?: null
-        );
-        if (!empty($scopeResult['warnings'])) {
-            $scopeWarnings = $scopeResult['warnings'];
+        foreach (array_keys($subjectGroups) as $subKey) {
+            $scopeResult = TeacherScopeService::check(
+                (int) $data['teacher_id'],
+                (int) $subjectMeta[$subKey]['id'],
+                $gradeForScope ?: null
+            );
+            if (!empty($scopeResult['warnings'])) {
+                $scopeWarnings = array_merge($scopeWarnings, $scopeResult['warnings']);
+            }
         }
+        $scopeWarnings = array_values(array_unique($scopeWarnings));
 
         return DB::transaction(function () use (
             $request,
             $data,
-            $sessionRows,
-            $plannedSessions,
             $targetCampusId,
             $startTime,
             $isSessionMode,
             $studentId,
             $scopeWarnings,
-            $dayTimeSlotMap,
             $globalDuration,
-            $resolvedSubjectId,
-            $resolvedSubjectName
+            $dayTimeSlotGroups,
+            $subjectGroups,
+            $subjectMeta
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -332,120 +383,19 @@ class EnrollmentService
                 return response()->json(['message' => '無法建立學生'], 422);
             }
 
-            $allDates = array_values(array_unique(array_column($sessionRows, 'date')));
-            sort($allDates);
-
-            $subjectId = $resolvedSubjectId;
-            $subjectName = $resolvedSubjectName;
-            $weekdays = [];
-            $seenWeekday = [];
-            foreach ($sessionRows as $r) {
-                $wd = (int) Carbon::parse($r['date'])->dayOfWeekIso;
-                if (!isset($seenWeekday[$wd])) {
-                    $seenWeekday[$wd] = true;
-                    $weekdays[] = $wd;
-                }
-            }
-            if (empty($weekdays)) {
-                $weekdays = !empty($dayTimeSlotMap)
-                    ? array_keys($dayTimeSlotMap)
-                    : $this->normalizeWeekdayArray($data['days_of_week'] ?? []);
-            }
-            $primaryWeekday = !empty($weekdays)
-                ? (int) $weekdays[0]
-                : (int) Carbon::parse($allDates[0])->dayOfWeekIso;
-
-            $weekFields = [];
-            for ($idx = 0; $idx < 6; $idx++) {
-                $weekday = $weekdays[$idx] ?? null;
-                $weekFields['week' . ($idx + 1)] = $weekday;
-                $weekFields['time' . ($idx + 1)] = $weekday
-                    ? $this->slotStartTime($dayTimeSlotMap, $weekday, $startTime)
-                    : null;
-                $weekFields['duration' . ($idx + 1)] = $weekday
-                    ? ($dayTimeSlotMap[$weekday]['duration_minutes'] ?? null)
-                    : null;
-            }
-
-            $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4];
-            $sessionCount = $isSessionMode ? $plannedSessions : 0;
-            $monthlySessions = !$isSessionMode ? (int) ($data['monthly_sessions'] ?? $plannedSessions) : null;
-            $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $plannedSessions);
-
-            // Pricing contract:
-            // - price_per_session is per class session by default (session mode)
-            // - only explicit rate_unit=hour enables hourly pricing
+            $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4, 'trial' => 1];
             $rateUnit = (!empty($data['rate_unit']) && $data['rate_unit'] === 'hour')
                 ? 'hour'
                 : 'session';
-
-            $totalHours = 0;
-            $charge = 0;
             $price = (float) $data['price_per_session'];
-            if ($rateUnit === 'hour') {
-                foreach ($sessionRows as $row) {
-                    $dur = (int) $row['duration_minutes'];
-                    $totalHours += $dur / 60.0;
-                    $charge += $price * ($dur / 60.0);
-                }
-                $totalHours = (int) round($totalHours);
-                $charge = (int) round($charge);
-            } else {
-                $sumMinutes = 0;
-                foreach ($sessionRows as $row) {
-                    $sumMinutes += (int) $row['duration_minutes'];
-                }
-                $totalHours = (int) round($sumMinutes / 60);
-                $charge = (int) round($price * $chargeUnits);
-            }
 
-            $studentClassPayload = array_merge([
-                'StudentID' => (int) $student->id,
-                'TeacherID' => (int) $data['teacher_id'],
-                'SubjectID' => $subjectId,
-                'ClassType' => (string) $data['class_type'],
-                'by1' => $by1Map[$data['class_type']] ?? 1,
-                'Rate' => $price,
-                'rate_unit' => $rateUnit,
-                'Charge' => $charge,
-                'Pay' => 0,
-                'Paid' => 0,
-                'Period' => 4,
-                'ScheduleMode' => $isSessionMode ? 'count' : 'date',
-                'SessionCount' => $sessionCount,
-                'RemainingSessions' => $isSessionMode ? $sessionCount : 0,
-                'UsedSessions' => 0,
-                'settlement_day' => !$isSessionMode ? (int) ($data['settlement_day'] ?? 0) : null,
-                'monthly_sessions' => !$isSessionMode ? $monthlySessions : null,
-                'SessionDuration' => $globalDuration,
-                'TotalHours' => $totalHours,
-                'StartDate' => $allDates[0],
-                'EndDate' => $allDates[count($allDates) - 1],
-                'week' => $primaryWeekday,
-                'time' => $startTime,
-                'Memo' => $data['memo'] ?? null,
-                'room_id' => !empty($data['room_id']) ? (int) $data['room_id'] : null,
-                'RoomID' => !empty($data['room_id']) ? (string) ((int) $data['room_id']) : '1',
-                'GradeID' => $this->resolveStudentGradeId((int) $student->id),
-                'Stop' => 0,
-                'MDate' => now(),
-            ], $weekFields);
-            $studentClass = $this->createStudentClassResilient($studentClassPayload);
-
-            $existingSiblings = StudentClass::where('StudentID', (int) $student->id)
-                ->where('SubjectID', $subjectId)
-                ->where('Stop', 0)
-                ->where('ID', '!=', $studentClass->ID)
-                ->get(['ID', 'TeacherID', 'ClassType']);
-            $dualTeacherWarning = null;
-            if ($existingSiblings->isNotEmpty()) {
-                $teacherIds = $existingSiblings->pluck('TeacherID')->unique()->values()->all();
-                $teacherNames = DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id')->all();
-                $others = $existingSiblings->map(function ($s) use ($teacherNames) {
-                    return ($teacherNames[(int) $s->TeacherID] ?? '老師#' . $s->TeacherID) . '（課程#' . $s->ID . '）';
-                })->implode('、');
-                $dualTeacherWarning = "此學生同科目已有其他課程：{$others}。若為雙師排課屬正常情況。";
+            $hasSessionDeductedColumn = Schema::hasColumn('LearningRecord', 'SessionDeducted');
+            $authUser = $request->attributes->get('auth_user');
+            $approvedByUserId = (int) ($authUser->id ?? 0);
+            if ($approvedByUserId <= 0) {
+                $approvedByUserId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
             }
+            $decisionNow = Carbon::now();
 
             $createdConfirmedSessions = 0;
             $createdFutureSessions = 0;
@@ -455,118 +405,251 @@ class EnrollmentService
             $autoApprovedFromFuture = 0;
             $skippedConfirmedDates = [];
             $skippedFutureDates = [];
-            $hasSessionDeductedColumn = Schema::hasColumn('LearningRecord', 'SessionDeducted');
-            $authUser = $request->attributes->get('auth_user');
-            $approvedByUserId = (int) ($authUser->id ?? 0);
-            if ($approvedByUserId <= 0) {
-                $approvedByUserId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
-            }
-            $decisionNow = Carbon::now();
+            $dualTeacherWarnings = [];
+            $studentClassIds = [];
+            $firstStudentClassId = null;
 
-            foreach ($sessionRows as $row) {
-                $date = $row['date'];
-                $slotStartTime = $row['start_time'];
-                $slotDur = (int) $row['duration_minutes'];
-                $slotEndTime = $this->computeEndTime($slotStartTime, $slotDur);
+            foreach ($subjectGroups as $subjectKey => $rowsForSubject) {
+                $meta = $subjectMeta[$subjectKey];
+                $subjectId = (int) $meta['id'];
+                $subjectName = (string) $meta['name'];
 
-                if ($row['kind'] === 'confirmed') {
+                $filteredSlotGroups = $this->filterSlotGroupsBySubject($dayTimeSlotGroups, $subjectKey);
+                if (empty($filteredSlotGroups)) {
+                    $filteredSlotGroups = $this->slotGroupsFromSessionRows($rowsForSubject);
+                }
+                $dayTimeSlotMapForGroup = $this->collapseSlotGroupsToFirstPerWeekday($filteredSlotGroups);
+
+                $groupGlobalDur = 0;
+                foreach ($rowsForSubject as $rr) {
+                    $groupGlobalDur = max($groupGlobalDur, (int) ($rr['duration_minutes'] ?? 0));
+                }
+                if ($groupGlobalDur <= 0) {
+                    $groupGlobalDur = $globalDuration;
+                }
+
+                $startTimeForGroup = !empty($dayTimeSlotMapForGroup)
+                    ? reset($dayTimeSlotMapForGroup)['start_time']
+                    : $startTime;
+
+                $allDates = array_values(array_unique(array_column($rowsForSubject, 'date')));
+                sort($allDates);
+
+                if (!empty($dayTimeSlotMapForGroup)) {
+                    $weekdays = array_keys($dayTimeSlotMapForGroup);
+                    sort($weekdays);
+                } elseif (!empty($data['days_of_week'])) {
+                    $weekdays = $this->normalizeWeekdayArray($data['days_of_week']);
+                } else {
+                    $weekdays = [];
+                    $seenWeekday = [];
+                    foreach ($rowsForSubject as $r) {
+                        $wd = (int) Carbon::parse($r['date'])->dayOfWeekIso;
+                        if (!isset($seenWeekday[$wd])) {
+                            $seenWeekday[$wd] = true;
+                            $weekdays[] = $wd;
+                        }
+                    }
+                }
+                $primaryWeekday = !empty($weekdays)
+                    ? (int) $weekdays[0]
+                    : (int) Carbon::parse($allDates[0])->dayOfWeekIso;
+
+                $weekFields = [];
+                for ($idx = 0; $idx < 6; $idx++) {
+                    $weekday = $weekdays[$idx] ?? null;
+                    $weekFields['week' . ($idx + 1)] = $weekday;
+                    $weekFields['time' . ($idx + 1)] = $weekday
+                        ? $this->slotStartTime($dayTimeSlotMapForGroup, $weekday, $startTimeForGroup)
+                        : null;
+                    $weekFields['duration' . ($idx + 1)] = $weekday
+                        ? ($dayTimeSlotMapForGroup[$weekday]['duration_minutes'] ?? null)
+                        : null;
+                }
+
+                $groupSessionCount = count($rowsForSubject);
+                $sessionCount = $isSessionMode ? $groupSessionCount : 0;
+                $monthlySessions = !$isSessionMode ? $groupSessionCount : null;
+                $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $groupSessionCount);
+
+                $totalHours = 0;
+                $charge = 0;
+                if ($rateUnit === 'hour') {
+                    foreach ($rowsForSubject as $row) {
+                        $dur = (int) $row['duration_minutes'];
+                        $totalHours += $dur / 60.0;
+                        $charge += $price * ($dur / 60.0);
+                    }
+                    $totalHours = (int) round($totalHours);
+                    $charge = (int) round($charge);
+                } else {
+                    $sumMinutes = 0;
+                    foreach ($rowsForSubject as $row) {
+                        $sumMinutes += (int) $row['duration_minutes'];
+                    }
+                    $totalHours = (int) round($sumMinutes / 60);
+                    $charge = (int) round($price * $chargeUnits);
+                }
+
+                $studentClassPayload = array_merge([
+                    'StudentID' => (int) $student->id,
+                    'TeacherID' => (int) $data['teacher_id'],
+                    'SubjectID' => $subjectId,
+                    'ClassType' => (string) $data['class_type'],
+                    'by1' => $by1Map[$data['class_type']] ?? 1,
+                    'Rate' => $price,
+                    'rate_unit' => $rateUnit,
+                    'Charge' => $charge,
+                    'Pay' => 0,
+                    'Paid' => 0,
+                    'Period' => 4,
+                    'ScheduleMode' => $isSessionMode ? 'count' : 'date',
+                    'SessionCount' => $sessionCount,
+                    'RemainingSessions' => $isSessionMode ? $sessionCount : 0,
+                    'UsedSessions' => 0,
+                    'settlement_day' => !$isSessionMode ? (int) ($data['settlement_day'] ?? 0) : null,
+                    'monthly_sessions' => !$isSessionMode ? $monthlySessions : null,
+                    'SessionDuration' => $groupGlobalDur,
+                    'TotalHours' => $totalHours,
+                    'StartDate' => $allDates[0],
+                    'EndDate' => $allDates[count($allDates) - 1],
+                    'week' => $primaryWeekday,
+                    'time' => $startTimeForGroup,
+                    'Memo' => $data['memo'] ?? null,
+                    'PayDate' => !empty($data['paid_at']) ? $data['paid_at'] : null,
+                    'Paid' => !empty($data['paid_at']) ? 1 : 0,
+                    'room_id' => !empty($data['room_id']) ? (int) $data['room_id'] : null,
+                    'RoomID' => !empty($data['room_id']) ? (string) ((int) $data['room_id']) : '1',
+                    'GradeID' => $this->resolveStudentGradeId((int) $student->id),
+                    'Stop' => 0,
+                    'MDate' => now(),
+                ], $weekFields);
+                $studentClass = $this->createStudentClassResilient($studentClassPayload);
+
+                if ($firstStudentClassId === null) {
+                    $firstStudentClassId = (int) $studentClass->ID;
+                }
+                $studentClassIds[] = (int) $studentClass->ID;
+
+                $existingSiblings = StudentClass::where('StudentID', (int) $student->id)
+                    ->where('SubjectID', $subjectId)
+                    ->where('Stop', 0)
+                    ->where('ID', '!=', $studentClass->ID)
+                    ->get(['ID', 'TeacherID', 'ClassType']);
+                if ($existingSiblings->isNotEmpty()) {
+                    $teacherIds = $existingSiblings->pluck('TeacherID')->unique()->values()->all();
+                    $teacherNames = DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id')->all();
+                    $others = $existingSiblings->map(function ($s) use ($teacherNames) {
+                        return ($teacherNames[(int) $s->TeacherID] ?? '老師#' . $s->TeacherID) . '（課程#' . $s->ID . '）';
+                    })->implode('、');
+                    $dualTeacherWarnings[] = "「{$subjectKey}」：此學生同科目已有其他課程：{$others}。若為雙師排課屬正常情況。";
+                }
+
+                foreach ($rowsForSubject as $row) {
+                    $date = $row['date'];
+                    $slotStartTime = $row['start_time'];
+                    $slotDur = (int) $row['duration_minutes'];
+                    $slotEndTime = $this->computeEndTime($slotStartTime, $slotDur);
+
+                    if ($row['kind'] === 'confirmed') {
+                        $existing = ClassSession::query()
+                            ->where('StudentClassID', $studentClass->ID)
+                            ->whereDate('SessionDate', $date)
+                            ->where('StartTime', $slotStartTime)
+                            ->first();
+
+                        $classSession = $existing;
+                        if ($existing) {
+                            if ((string) $existing->Status !== 'completed') {
+                                $existing->Status = 'completed';
+                                $existing->save();
+                            }
+                            $skippedConfirmedDates[] = $date;
+                        } else {
+                            $classSession = ClassSession::create([
+                                'StudentClassID' => $studentClass->ID,
+                                'SessionDate' => $date,
+                                'StartTime' => $slotStartTime,
+                                'EndTime' => $slotEndTime,
+                                'Status' => 'completed',
+                                'Note' => '',
+                            ]);
+                            $createdConfirmedSessions++;
+                        }
+
+                        $syncResult = $this->syncApprovedLearningRecord(
+                            $studentClass,
+                            $classSession,
+                            (int) $data['teacher_id'],
+                            $subjectName,
+                            $approvedByUserId > 0 ? $approvedByUserId : null,
+                            $hasSessionDeductedColumn
+                        );
+                        if ($syncResult['created']) {
+                            $createdLearningRecords++;
+                        }
+                        if ($syncResult['approved']) {
+                            $approvedLearningRecords++;
+                        }
+                        if ($syncResult['deducted']) {
+                            $deductedSessions++;
+                        }
+                        continue;
+                    }
+
                     $existing = ClassSession::query()
                         ->where('StudentClassID', $studentClass->ID)
                         ->whereDate('SessionDate', $date)
                         ->where('StartTime', $slotStartTime)
                         ->first();
-
-                    $classSession = $existing;
                     if ($existing) {
-                        if ((string) $existing->Status !== 'completed') {
-                            $existing->Status = 'completed';
-                            $existing->save();
-                        }
-                        $skippedConfirmedDates[] = $date;
-                    } else {
-                        $classSession = ClassSession::create([
-                            'StudentClassID' => $studentClass->ID,
-                            'SessionDate' => $date,
-                            'StartTime' => $slotStartTime,
-                            'EndTime' => $slotEndTime,
-                            'Status' => 'completed',
-                            'Note' => '',
-                        ]);
+                        $skippedFutureDates[] = $date;
+                        continue;
+                    }
+
+                    $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
+                    $classSession = ClassSession::create([
+                        'StudentClassID' => $studentClass->ID,
+                        'SessionDate' => $date,
+                        'StartTime' => $slotStartTime,
+                        'EndTime' => $slotEndTime,
+                        'Status' => $isEndedAtCreateTime ? 'completed' : 'scheduled',
+                        'Note' => $isEndedAtCreateTime ? '系統判定補登（新增時已過下課時間）' : '',
+                    ]);
+                    if ($isEndedAtCreateTime) {
+                        $autoApprovedFromFuture++;
                         $createdConfirmedSessions++;
+                        $syncResult = $this->syncApprovedLearningRecord(
+                            $studentClass,
+                            $classSession,
+                            (int) $data['teacher_id'],
+                            $subjectName,
+                            $approvedByUserId > 0 ? $approvedByUserId : null,
+                            $hasSessionDeductedColumn
+                        );
+                        if ($syncResult['created']) {
+                            $createdLearningRecords++;
+                        }
+                        if ($syncResult['approved']) {
+                            $approvedLearningRecords++;
+                        }
+                        if ($syncResult['deducted']) {
+                            $deductedSessions++;
+                        }
+                    } else {
+                        $createdFutureSessions++;
                     }
-
-                    $syncResult = $this->syncApprovedLearningRecord(
-                        $studentClass,
-                        $classSession,
-                        (int) $data['teacher_id'],
-                        $subjectName,
-                        $approvedByUserId > 0 ? $approvedByUserId : null,
-                        $hasSessionDeductedColumn
-                    );
-                    if ($syncResult['created']) {
-                        $createdLearningRecords++;
-                    }
-                    if ($syncResult['approved']) {
-                        $approvedLearningRecords++;
-                    }
-                    if ($syncResult['deducted']) {
-                        $deductedSessions++;
-                    }
-                    continue;
                 }
 
-                $existing = ClassSession::query()
-                    ->where('StudentClassID', $studentClass->ID)
-                    ->whereDate('SessionDate', $date)
-                    ->where('StartTime', $slotStartTime)
-                    ->first();
-                if ($existing) {
-                    $skippedFutureDates[] = $date;
-                    continue;
-                }
-
-                $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
-                $classSession = ClassSession::create([
-                    'StudentClassID' => $studentClass->ID,
-                    'SessionDate' => $date,
-                    'StartTime' => $slotStartTime,
-                    'EndTime' => $slotEndTime,
-                    'Status' => $isEndedAtCreateTime ? 'completed' : 'scheduled',
-                    'Note' => $isEndedAtCreateTime ? '系統判定補登（新增時已過下課時間）' : '',
-                ]);
-                if ($isEndedAtCreateTime) {
-                    $autoApprovedFromFuture++;
-                    $createdConfirmedSessions++;
-                    $syncResult = $this->syncApprovedLearningRecord(
-                        $studentClass,
-                        $classSession,
-                        (int) $data['teacher_id'],
-                        $subjectName,
-                        $approvedByUserId > 0 ? $approvedByUserId : null,
-                        $hasSessionDeductedColumn
-                    );
-                    if ($syncResult['created']) {
-                        $createdLearningRecords++;
-                    }
-                    if ($syncResult['approved']) {
-                        $approvedLearningRecords++;
-                    }
-                    if ($syncResult['deducted']) {
-                        $deductedSessions++;
-                    }
-                } else {
-                    $createdFutureSessions++;
-                }
+                SessionDeductionService::syncCounters($studentClass);
             }
-
-            SessionDeductionService::syncCounters($studentClass);
-            $studentClass->refresh();
 
             $createdSessions = $createdConfirmedSessions + $createdFutureSessions;
             $payload = [
                 'message' => 'Batch schedule created',
                 'student_id' => (int) $student->id,
-                'student_class_id' => (int) $studentClass->ID,
+                'student_class_id' => $firstStudentClassId,
+                'student_class_ids' => $studentClassIds,
                 'created_sessions' => $createdSessions,
                 'created_confirmed_sessions' => $createdConfirmedSessions,
                 'created_future_sessions' => $createdFutureSessions,
@@ -578,12 +661,13 @@ class EnrollmentService
                 'skipped_future_dates' => $skippedFutureDates,
                 'skipped_dates' => array_values(array_merge($skippedConfirmedDates, $skippedFutureDates)),
             ];
-            if ($dualTeacherWarning) {
-                $payload['dual_teacher_warning'] = $dualTeacherWarning;
+            if (!empty($dualTeacherWarnings)) {
+                $payload['dual_teacher_warning'] = implode("\n", $dualTeacherWarnings);
             }
             if (!empty($scopeWarnings)) {
                 $payload['scope_warning'] = implode(' ', $scopeWarnings);
             }
+
             return response()->json($payload, 201);
         });
     }
@@ -659,9 +743,9 @@ class EnrollmentService
 
     /**
      * @param  array<int, array<string, mixed>>  $slots
-     * @return array<int, list<array{start_time: string, duration_minutes: int|null}>>
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string}>>
      */
-    private function normalizeDayTimeSlotGroups(array $slots): array
+    private function normalizeDayTimeSlotGroups(array $slots, string $defaultSubject): array
     {
         $result = [];
         foreach ($slots as $slot) {
@@ -673,12 +757,17 @@ class EnrollmentService
             $durMin = isset($slot['duration_minutes']) && (int) $slot['duration_minutes'] >= 30
                 ? (int) $slot['duration_minutes']
                 : null;
+            $slotSubject = trim((string) ($slot['subject'] ?? ''));
+            if ($slotSubject === '') {
+                $slotSubject = $defaultSubject;
+            }
             if (!isset($result[$day])) {
                 $result[$day] = [];
             }
             $result[$day][] = [
                 'start_time' => $this->normalizeTime(substr($time, 0, 5)),
                 'duration_minutes' => $durMin,
+                'subject' => $slotSubject,
             ];
         }
         foreach ($result as &$list) {
@@ -714,14 +803,15 @@ class EnrollmentService
     }
 
     /**
-     * @return list<array{date: string, start_time: string, duration_minutes: int, kind: 'confirmed'|'future'}>
+     * @return list<array{date: string, start_time: string, duration_minutes: int, kind: 'confirmed'|'future', subject: string}>
      */
     private function buildRowsFromSessionPlan(
         array $sessionPlan,
         array $dayTimeSlotGroups,
         array $dayTimeSlotMap,
         int $globalDuration,
-        string $fallbackStart
+        string $fallbackStart,
+        string $defaultSubject
     ): array {
         $rows = [];
         foreach ($sessionPlan as $item) {
@@ -744,11 +834,16 @@ class EnrollmentService
             $slotStartTime = $this->normalizeTime($stRaw);
             $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
             $dur = $this->resolveSlotDurationMinutes($dayTimeSlotGroups, $dayTimeSlotMap, $weekday, $slotStartTime, $globalDuration);
+            $planSub = trim((string) ($item['subject'] ?? ''));
+            $subject = $planSub !== ''
+                ? $planSub
+                : $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $slotStartTime, $defaultSubject);
             $rows[] = [
                 'date' => $date,
                 'start_time' => $slotStartTime,
                 'duration_minutes' => $dur,
                 'kind' => $kind,
+                'subject' => $subject,
             ];
         }
         usort($rows, function ($a, $b) {
@@ -764,7 +859,7 @@ class EnrollmentService
     }
 
     /**
-     * @return list<array{date: string, start_time: string, duration_minutes: int, kind: 'confirmed'|'future'}>
+     * @return list<array{date: string, start_time: string, duration_minutes: int, kind: 'confirmed'|'future', subject: string}>
      */
     private function buildRowsFromLegacyDateLists(
         array $confirmedDates,
@@ -772,7 +867,8 @@ class EnrollmentService
         array $dayTimeSlotMap,
         array $dayTimeSlotGroups,
         int $globalDuration,
-        string $fallbackStart
+        string $fallbackStart,
+        string $defaultSubject
     ): array {
         $rows = [];
         foreach ($confirmedDates as $date) {
@@ -783,6 +879,7 @@ class EnrollmentService
                 'start_time' => $st,
                 'duration_minutes' => $dur,
                 'kind' => 'confirmed',
+                'subject' => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
             ];
         }
         foreach ($futureDates as $date) {
@@ -793,10 +890,131 @@ class EnrollmentService
                 'start_time' => $st,
                 'duration_minutes' => $dur,
                 'kind' => 'future',
+                'subject' => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>  $dayTimeSlotGroups
+     */
+    private function inferSubjectFromSlotGroups(
+        array $dayTimeSlotGroups,
+        int $weekday,
+        string $startTimeHms,
+        string $defaultSubject
+    ): string {
+        if (!empty($dayTimeSlotGroups[$weekday])) {
+            foreach ($dayTimeSlotGroups[$weekday] as $s) {
+                if ($s['start_time'] === $startTimeHms) {
+                    $sub = trim((string) ($s['subject'] ?? ''));
+
+                    return $sub !== '' ? $sub : $defaultSubject;
+                }
+            }
+            $first = $dayTimeSlotGroups[$weekday][0];
+            $sub = trim((string) ($first['subject'] ?? ''));
+
+            return $sub !== '' ? $sub : $defaultSubject;
+        }
+
+        return $defaultSubject;
+    }
+
+    /**
+     * @param  array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>  $dayTimeSlotGroups
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject?: string}>>
+     */
+    private function filterSlotGroupsBySubject(array $dayTimeSlotGroups, string $subjectKey): array
+    {
+        $out = [];
+        foreach ($dayTimeSlotGroups as $day => $list) {
+            $filtered = [];
+            foreach ($list as $s) {
+                if ((string) ($s['subject'] ?? '') === $subjectKey) {
+                    $filtered[] = $s;
+                }
+            }
+            if (!empty($filtered)) {
+                $out[$day] = $filtered;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<array{date: string, start_time: string, duration_minutes: int, kind: string, subject?: string}>  $rows
+     * @return array<int, list<array{start_time: string, duration_minutes: int|null, subject: string}>>
+     */
+    private function slotGroupsFromSessionRows(array $rows): array
+    {
+        $g = [];
+        foreach ($rows as $r) {
+            try {
+                $wd = (int) Carbon::parse($r['date'])->dayOfWeekIso;
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $st = $this->normalizeTime(substr((string) ($r['start_time'] ?? ''), 0, 5));
+            if (!isset($g[$wd])) {
+                $g[$wd] = [];
+            }
+            $g[$wd][] = [
+                'start_time' => $st,
+                'duration_minutes' => (int) ($r['duration_minutes'] ?? 0),
+                'subject' => (string) ($r['subject'] ?? ''),
+            ];
+        }
+        foreach ($g as &$list) {
+            $seen = [];
+            $deduped = [];
+            foreach ($list as $item) {
+                $k = $item['start_time'];
+                if (isset($seen[$k])) {
+                    continue;
+                }
+                $seen[$k] = true;
+                $deduped[] = $item;
+            }
+            $list = $deduped;
+            usort($list, fn ($a, $b) => strcmp($a['start_time'], $b['start_time']));
+        }
+        unset($list);
+        ksort($g);
+
+        return $g;
+    }
+
+    /**
+     * @param  list<array{date: string, start_time: string, duration_minutes: int, kind: string, subject: string}>  $sessionRows
+     * @return array<string, list<array{date: string, start_time: string, duration_minutes: int, kind: string, subject: string}>>
+     */
+    private function groupSessionRowsBySubject(array $sessionRows): array
+    {
+        $groups = [];
+        foreach ($sessionRows as $row) {
+            $k = (string) ($row['subject'] ?? '');
+            if ($k === '') {
+                $k = 'Math';
+            }
+            $groups[$k][] = $row;
+        }
+        foreach ($groups as &$gRows) {
+            usort($gRows, function ($a, $b) {
+                $c = strcmp($a['date'], $b['date']);
+                if ($c !== 0) {
+                    return $c;
+                }
+
+                return strcmp($a['start_time'], $b['start_time']);
+            });
+        }
+        unset($gRows);
+
+        return $groups;
     }
 
     /**
@@ -941,7 +1159,7 @@ class EnrollmentService
         $approved = false;
         $deducted = false;
 
-        $record = LearningRecord::where('ClassSessionID', $classSession->id)->first();
+        $record = LearningRecord::where('ClassSessionID', $classSession->id)->active()->first();
         if (!$record) {
             $payload = [
                 'StudentClassID' => $studentClass->ID,

@@ -23,7 +23,7 @@ class EnrollmentController extends Controller
             'student.rfid' => 'nullable|string|max:64',
             'teacher_id' => 'required|integer|exists:User,id',
             'subject' => 'required|string|max:64',
-            'class_type' => 'required|in:one_on_one,one_on_two,one_on_three,tutoring',
+            'class_type' => 'required|in:one_on_one,one_on_two,one_on_three,tutoring,trial',
             'total_classes' => 'nullable|integer|min:1|max:500',
             'confirmed_dates' => 'required|array|max:500',
             'confirmed_dates.*' => 'required|date',

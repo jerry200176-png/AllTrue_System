@@ -224,7 +224,7 @@ class AuthController extends Controller
 
             if ($type === 'T') {
                 if (Schema::hasTable('Teacher') && !DB::table('Teacher')->where('id', $user->id)->exists()) {
-                    DB::table('Teacher')->insert([
+                    DB::table('Teacher')->insertOrIgnore([
                         'id' => $user->id,
                         'T_Name' => $user->Name,
                         'CampusID' => $branchId ?? 0,

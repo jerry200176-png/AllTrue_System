@@ -54,17 +54,24 @@ class BugReportService
         }
     }
 
+    private const SORT_WHITELIST = [
+        'created_at_desc' => ['created_at', 'DESC'],
+        'created_at_asc'  => ['created_at', 'ASC'],
+        'updated_at_desc' => ['updated_at', 'DESC'],
+        'severity_desc'   => null, // handled specially
+    ];
+
     public static function listForUser(int $userId, array $campusIds, array $filters = [], int $perPage = 20): array
     {
-        $query = BugReport::query()->where('reporter_user_id', $userId)->withCount('attachments');
+        $query = BugReport::query()->where('reporter_user_id', $userId)->withCount(['attachments', 'comments']);
 
         if (!empty($campusIds)) {
             $query->whereIn('CampusID', $campusIds);
         }
 
         self::applyFilters($query, $filters);
+        self::applySort($query, $filters['sort'] ?? null, false);
 
-        $query->orderByDesc('created_at');
         $rows = $query->paginate($perPage);
 
         return self::formatPaginated($rows);
@@ -72,17 +79,14 @@ class BugReportService
 
     public static function listForAdmin(array $campusIds, array $filters = [], int $perPage = 20): array
     {
-        $query = BugReport::query()->withCount('attachments');
+        $query = BugReport::query()->withCount(['attachments', 'comments']);
 
         if (!empty($campusIds)) {
             $query->whereIn('CampusID', $campusIds);
         }
 
         self::applyFilters($query, $filters);
-
-        $query->orderByRaw("CASE status WHEN 'new' THEN 0 WHEN 'triaged' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'resolved' THEN 3 WHEN 'closed' THEN 4 END ASC");
-        $query->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END ASC");
-        $query->orderByDesc('created_at');
+        self::applySort($query, $filters['sort'] ?? null, true);
 
         $rows = $query->paginate($perPage);
 
@@ -333,10 +337,58 @@ class BugReportService
     private static function applyFilters($query, array $filters): void
     {
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            $statuses = explode(',', $filters['status']);
+            $valid = ['new', 'triaged', 'in_progress', 'resolved', 'closed'];
+            $statuses = array_intersect($statuses, $valid);
+            if (count($statuses) === 1) {
+                $query->where('status', $statuses[0]);
+            } elseif (count($statuses) > 1) {
+                $query->whereIn('status', $statuses);
+            }
         }
         if (!empty($filters['severity'])) {
             $query->where('severity', $filters['severity']);
+        }
+        if (!empty($filters['reporter'])) {
+            $query->whereHas('reporter', function ($q) use ($filters) {
+                $q->where('Name', 'like', '%' . $filters['reporter'] . '%');
+            });
+        }
+        if (!empty($filters['keyword'])) {
+            $kw = $filters['keyword'];
+            $query->where(function ($q) use ($kw) {
+                $q->where('title', 'like', "%{$kw}%")
+                  ->orWhere('description', 'like', "%{$kw}%")
+                  ->orWhere('page_key', 'like', "%{$kw}%");
+            });
+        }
+        if (!empty($filters['date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['date_to']);
+        }
+    }
+
+    private static function applySort($query, ?string $sort, bool $isAdmin): void
+    {
+        if ($sort && isset(self::SORT_WHITELIST[$sort])) {
+            if ($sort === 'severity_desc') {
+                $query->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END ASC");
+                $query->orderByDesc('created_at');
+            } else {
+                [$col, $dir] = self::SORT_WHITELIST[$sort];
+                $query->orderBy($col, $dir);
+            }
+            return;
+        }
+
+        if ($isAdmin) {
+            $query->orderByRaw("CASE status WHEN 'new' THEN 0 WHEN 'triaged' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'resolved' THEN 3 WHEN 'closed' THEN 4 END ASC");
+            $query->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END ASC");
+            $query->orderByDesc('created_at');
+        } else {
+            $query->orderByDesc('created_at');
         }
     }
 
@@ -367,6 +419,7 @@ class BugReportService
             'status' => $r['status'],
             'page_key' => $r['page_key'],
             'attachments_count' => (int) ($r['attachments_count'] ?? 0),
+            'comments_count' => (int) ($r['comments_count'] ?? 0),
             'created_at' => $r['created_at'],
             'updated_at' => $r['updated_at'],
         ])->all();

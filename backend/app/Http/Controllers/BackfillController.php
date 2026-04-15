@@ -40,7 +40,7 @@ class BackfillController extends Controller
             'courses.*.days_of_week.*' => 'integer|min:1|max:7',
             'courses.*.start_time' => 'required_with:courses|string',
             'courses.*.end_time' => 'required_with:courses|string',
-            'courses.*.class_type' => 'nullable|string|in:one_on_one,one_on_two,one_on_three,tutoring',
+            'courses.*.class_type' => 'nullable|string|in:one_on_one,one_on_two,one_on_three,tutoring,trial',
         ]);
 
         $start = Carbon::parse($data['start_date'])->startOfDay();
@@ -216,6 +216,7 @@ class BackfillController extends Controller
             'one_on_two' => 2,
             'one_on_three' => 3,
             'tutoring' => 0,
+            'trial' => 1,
             default => 1,
         };
         $sc->by1 = $by1;

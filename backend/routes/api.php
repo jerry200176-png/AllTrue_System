@@ -102,6 +102,19 @@ Route::prefix('v1')->group(function () {
     Route::get('branches', [CampusController::class, 'listPublic']);
     Route::get('subjects-public', [SubjectController::class, 'indexPublic']);
 
+    // ── Health / Perf Metrics (public, lightweight) ──────────────────
+    Route::get('health', function () {
+        return response()->json([
+            'status' => 'ok',
+            'timestamp' => now()->toIso8601String(),
+            'perf_flags' => [
+                'throttle_notif_sync' => config('perfflags.throttle_notification_sync'),
+                'lr_default_per_page' => config('perfflags.learning_records_default_per_page'),
+                'lr_max_per_page'     => config('perfflags.learning_records_max_per_page'),
+            ],
+        ]);
+    });
+
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
     Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe']);
     Route::post('auth/register', [AuthController::class, 'register']);
@@ -142,6 +155,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('invoices', [BillingController::class, 'index']);
         Route::post('invoices', [BillingController::class, 'store']);
+        Route::get('invoices/{invoice}/slip-data', [BillingController::class, 'slipData']);
         Route::post('invoices/{invoice}/payments', [BillingController::class, 'recordPayment']);
         Route::get('invoices/export', [ExportController::class, 'invoices']);
 
@@ -163,9 +177,22 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
+        Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
+
+        Route::get('finance/parttime-payroll', [FinanceController::class, 'parttimePayroll']);
+        Route::get('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRules']);
+        Route::put('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRulesUpdate']);
+        Route::get('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRules']);
+        Route::put('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesUpdate']);
+        Route::delete('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesDelete']);
+        Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport']);
+        Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId');
+        Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock']);
+        Route::post('finance/parttime-payroll/reopen', [FinanceController::class, 'parttimePayrollReopen']);
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
+        Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
         Route::get('notifications', [NotificationController::class, 'index']);
         Route::post('notifications/sync', [NotificationController::class, 'sync']);
         Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
@@ -220,12 +247,22 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
+        Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
         Route::delete('student-classes/{studentClass}', [StudentClassController::class, 'destroy']);
+
+        // Course packages (multi-subject shared session pool)
+        Route::get('course-packages', [\App\Http\Controllers\CoursePackageController::class, 'index']);
+        Route::post('course-packages/create-multi-subject', [\App\Http\Controllers\CoursePackageController::class, 'createMultiSubject']);
+        Route::get('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'show']);
+        Route::put('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'update']);
+        Route::post('course-packages/{id}/recompute', [\App\Http\Controllers\CoursePackageController::class, 'recompute']);
+        Route::post('course-packages/{id}/bind-courses', [\App\Http\Controllers\CoursePackageController::class, 'bindCourses']);
 
         Route::get('attendance', [AttendanceController::class, 'index']);
         Route::get('attendance/ended-sessions', [AttendanceController::class, 'endedSessions']);
         Route::post('attendance', [AttendanceController::class, 'store']);
+        Route::post('attendance/batch-mark', [AttendanceController::class, 'batchMark']);
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
 
         Route::get('learning-records', [LearningRecordController::class, 'index']);
@@ -236,10 +273,12 @@ Route::prefix('v1')->group(function () {
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
+        Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
 
         Route::get('schedules', [\App\Http\Controllers\ScheduleController::class, 'index']);
         Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store']);
         Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
+        Route::post('schedules/leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'leaveBySession']);
         Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave']);
         Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
         Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
