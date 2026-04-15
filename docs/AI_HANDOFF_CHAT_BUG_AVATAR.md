@@ -104,10 +104,26 @@
 ### 3.4 API 列表（Bug）
 
 - `GET /api/v1/bugs/unread-badge?branch_id=` — 必須註冊在 **`GET /api/v1/bugs/{id}` 之前**。
+- `GET /api/v1/bugs` — 支援查詢參數：
+  - 既有：`branch_id`、`per_page`、`status`、`severity`、`reporter(super_admin only)`
+  - 新增（2026-04-15）：`page`、`keyword`（title/description/page_key）、`date_from`、`date_to`、`sort`
+  - `status` 支援單值與逗號多值（例：`new,triaged,in_progress`）
+  - `per_page` 伺服器上限為 100（避免一次拉全量）
+- 排序白名單（後端）：
+  - `created_at_desc`、`created_at_asc`、`updated_at_desc`、`severity_desc`
+  - 非白名單值會回退預設排序（不可拼接任意排序欄位）
 - `POST /api/v1/bugs/mark-inbox-seen` — `super_admin` middleware。
 - `PATCH /api/v1/bugs/{id}/comments/{commentId}/visibility` — `super_admin` 才可切換留言 `is_internal_note`（內部/可見）。
 
-### 3.5 測試
+### 3.5 Bug 列表 UI 行為（2026-04-15 起）
+
+- `BugReportsPage.vue` 預設快速篩選為「待處理」：等同 `status=new,triaged,in_progress`。
+- 提供 quick tabs：`待處理` / `全部` / `已關閉`，以及完整條件篩選（狀態、嚴重度、排序、關鍵字、日期）。
+- 分頁為正式操作入口（首頁/末頁/上一頁/下一頁/頁碼），可選每頁 20/50/100。
+- 進入詳情再返回時，必須保留原查詢狀態（page/filter/sort/date），不可重置到第一頁。
+- 長列表顯示「回到頂部」按鈕，空結果需顯示可回復操作（清除篩選）。
+
+### 3.6 測試
 
 - `backend/tests/Feature/BugReportApiTest.php`（含附件、權限、未讀、mark inbox、內部備註不計入紅點）。
 
@@ -116,6 +132,7 @@
 - `backend/app/Http/Controllers/BugReportController.php`
 - `backend/app/Services/BugReportService.php`
 - `backend/app/Http/Middleware/RequireSuperAdmin.php`、`backend/app/Http/Kernel.php`（`super_admin` 別名）
+- `backend/database/migrations/2026_04_15_400000_add_perf_indexes_bug_reports.php`
 - `frontend/src/pages/BugReportsPage.vue`、`frontend/src/components/BugReportLauncher.vue`、`frontend/src/lib/bugReportsApi.js`
 
 ---
@@ -152,4 +169,4 @@ cd frontend && npm run deploy
 
 ---
 
-*最後更新：對齊 2026-04-11 起之實作與修復。*
+*最後更新：對齊 2026-04-15（Bug 列表分頁／搜尋排序／日期篩選）。*

@@ -1011,7 +1011,7 @@ function formatTime(iso) {
 </script>
 
 <style scoped>
-.chat-page { height: calc(100vh - 80px); display: flex; flex-direction: column; }
+.chat-page { height: calc(100vh - 80px); height: calc(100dvh - 80px); display: flex; flex-direction: column; }
 .page-header { padding: 16px 24px 8px; flex-shrink: 0; }
 .page-header h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
 .header-icon { font-size: 28px; color: var(--primary); }
@@ -1106,7 +1106,8 @@ function formatTime(iso) {
 .btn-danger-text:hover { color: var(--danger); background: #fee2e2; }
 
 .message-list {
-  flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  flex: 1; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px;
 }
 .message-row {
   display: flex; flex-direction: row; align-items: flex-end; gap: 8px;

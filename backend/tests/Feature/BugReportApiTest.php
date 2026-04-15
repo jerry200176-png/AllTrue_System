@@ -531,6 +531,237 @@ class BugReportApiTest extends TestCase
         $this->assertEquals(1, $b3->json('unread_count'));
     }
 
+    // ── Phase 2: Pagination, keyword, date, sort, multi-status ──
+
+    public function test_pagination_meta_fields(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'pagMeta@test.com', 'S');
+
+        for ($i = 0; $i < 25; $i++) {
+            BugReport::create([
+                'CampusID' => 1, 'reporter_user_id' => $user->id,
+                'title' => "Pag Bug {$i}", 'description' => 'Desc',
+                'severity' => 'low', 'status' => 'new',
+            ]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&per_page=10&page=1');
+
+        $res->assertOk();
+        $json = $res->json();
+        $this->assertCount(10, $json['data']);
+        $this->assertEquals(1, $json['current_page']);
+        $this->assertEquals(3, $json['last_page']);
+        $this->assertEquals(25, $json['total']);
+
+        $res2 = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&per_page=10&page=3');
+
+        $res2->assertOk();
+        $this->assertGreaterThan(0, count($res2->json('data')));
+        $this->assertLessThanOrEqual(10, count($res2->json('data')));
+        $this->assertGreaterThanOrEqual(1, (int) $res2->json('current_page'));
+    }
+
+    public function test_per_page_capped_at_100(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'pagCap@test.com', 'S');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Cap Test', 'description' => 'Desc',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&per_page=999');
+
+        $res->assertOk();
+        $this->assertEquals(100, $res->json('per_page'));
+    }
+
+    public function test_multi_status_filter(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'multiSt@test.com', 'S');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'New One', 'description' => 'Desc',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'In Progress One', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'in_progress',
+        ]);
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Closed One', 'description' => 'Desc',
+            'severity' => 'low', 'status' => 'closed',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&status=new,in_progress');
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+        $this->assertContains('New One', $titles);
+        $this->assertContains('In Progress One', $titles);
+        $this->assertNotContains('Closed One', $titles);
+    }
+
+    public function test_keyword_search_title_and_description(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'kwSearch@test.com', 'S');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => '排課頁面空白', 'description' => '切換分校後空白',
+            'severity' => 'high', 'status' => 'new',
+        ]);
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => '帳單問題', 'description' => '金額計算錯誤',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&keyword=' . urlencode('排課'));
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+        $this->assertContains('排課頁面空白', $titles);
+        $this->assertNotContains('帳單問題', $titles);
+
+        $res2 = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&keyword=' . urlencode('金額'));
+
+        $res2->assertOk();
+        $titles2 = collect($res2->json('data'))->pluck('title')->all();
+        $this->assertContains('帳單問題', $titles2);
+        $this->assertNotContains('排課頁面空白', $titles2);
+    }
+
+    public function test_date_range_filter(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'dateR@test.com', 'S');
+
+        $oldBug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Old Bug', 'description' => 'Desc',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+        $oldBug->created_at = '2026-01-15 10:00:00';
+        $oldBug->save();
+
+        $newBug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Recent Bug', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&date_from=2026-04-01');
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+        $this->assertContains('Recent Bug', $titles);
+        $this->assertNotContains('Old Bug', $titles);
+
+        $res2 = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&date_to=2026-02-01');
+
+        $res2->assertOk();
+        $titles2 = collect($res2->json('data'))->pluck('title')->all();
+        $this->assertContains('Old Bug', $titles2);
+        $this->assertNotContains('Recent Bug', $titles2);
+    }
+
+    public function test_sort_by_created_at_asc(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'sortAsc@test.com', 'S');
+
+        $b1 = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'First', 'description' => 'Desc',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+        $b1->created_at = '2026-04-01 10:00:00';
+        $b1->save();
+
+        $b2 = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $user->id,
+            'title' => 'Second', 'description' => 'Desc',
+            'severity' => 'medium', 'status' => 'new',
+        ]);
+        $b2->created_at = '2026-04-10 10:00:00';
+        $b2->save();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&sort=created_at_asc');
+
+        $res->assertOk();
+        $data = $res->json('data');
+        $this->assertEquals('First', $data[0]['title']);
+        $this->assertEquals('Second', $data[1]['title']);
+    }
+
+    public function test_keyword_search_does_not_leak_cross_campus(): void
+    {
+        [$tokenA, $userA] = $this->createUserToken([1], 'kwCampA@test.com', 'A');
+        [$tokenB, $userB] = $this->createUserToken([2], 'kwCampB@test.com', 'A');
+
+        BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userB->id,
+            'title' => '秘密排課問題', 'description' => '機密',
+            'severity' => 'high', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenA}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&keyword=' . urlencode('秘密'));
+
+        $res->assertOk();
+        $this->assertCount(0, $res->json('data'));
+    }
+
+    public function test_empty_result_returns_valid_pagination(): void
+    {
+        [$token, $user] = $this->createUserToken([1], 'emptyPag@test.com', 'S');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1&keyword=nonexistent_impossible_keyword');
+
+        $res->assertOk();
+        $json = $res->json();
+        $this->assertCount(0, $json['data']);
+        $this->assertEquals(1, $json['current_page']);
+        $this->assertEquals(1, $json['last_page']);
+        $this->assertEquals(0, $json['total']);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array

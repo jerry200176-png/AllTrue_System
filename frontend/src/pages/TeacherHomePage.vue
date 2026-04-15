@@ -254,7 +254,8 @@ const otherBranchTodayCount = computed(() => {
   const currentBid = Number(props.branchId);
   return todayAllSessions.value.filter(s => {
     const bid = Number(s?.branch_id || s?.CampusID || 0);
-    return bid > 0 && bid !== currentBid && String(s?.session_date || '').slice(0, 10) === today;
+    const st = String(s?.status || '').toLowerCase();
+    return bid > 0 && bid !== currentBid && String(s?.session_date || '').slice(0, 10) === today && st !== 'cancelled';
   }).length;
 });
 
@@ -375,7 +376,7 @@ const weekDays = computed(() => {
     d.setDate(weekStart.value.getDate() + i);
     const dateStr = formatDate(d);
     const events = weekSessions.value
-      .filter(s => s.session_date === dateStr)
+      .filter(s => s.session_date === dateStr && String(s.status || '').toLowerCase() !== 'cancelled')
       .map(s => ({
         key: `${s.id}-${s.branch_id}`,
         id: s.id,
@@ -450,10 +451,34 @@ async function refreshAll() {
   refreshing.value = false;
 }
 
+let pollTimer = null;
+const POLL_INTERVAL = 60000;
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      fetchPendingAttendance();
+      fetchPendingLearning();
+    }
+  }, POLL_INTERVAL);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    fetchPendingAttendance();
+    fetchPendingLearning();
+  }
+}
+
 onMounted(() => {
-  fetchPendingAttendance();
-  fetchPendingLearning();
-  loadWeekSchedule();
+  Promise.all([fetchPendingAttendance(), fetchPendingLearning(), loadWeekSchedule()]);
+  startPolling();
+  document.addEventListener('visibilitychange', onVisibilityChange);
 });
 
 watch(weekOffset, () => loadWeekSchedule());
@@ -465,6 +490,8 @@ watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
 
 onBeforeUnmount(() => {
   if (weekAbort) weekAbort.abort();
+  stopPolling();
+  document.removeEventListener('visibilitychange', onVisibilityChange);
 });
 </script>
 

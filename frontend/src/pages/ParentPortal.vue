@@ -660,6 +660,16 @@ const logout = () => {
   setStudents(null);
 };
 
+const loadLiffSdk = () => new Promise((resolve) => {
+  if (window.liff) { resolve(); return; }
+  const s = document.createElement('script');
+  s.charset = 'utf-8';
+  s.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+  s.onload = resolve;
+  s.onerror = resolve; // resolve anyway so caller can check window.liff
+  document.head.appendChild(s);
+});
+
 onMounted(async () => {
   // If we already have a saved token, try loading dashboard first
   if (token.value) {
@@ -672,6 +682,9 @@ onMounted(async () => {
   const liffId = resolveParentLiffId();
   const isLineInApp = /Line/i.test(navigator.userAgent);
   const hasLiffId = !!String(liffId).trim();
+
+  // Load LIFF SDK on-demand only when a liffId is configured
+  if (hasLiffId) await loadLiffSdk();
 
   // Only run auto LINE login in a configured LIFF entry.
   if (window.liff && hasLiffId) {
@@ -719,6 +732,7 @@ onMounted(async () => {
   font-family: 'Inter', 'Noto Sans TC', -apple-system, sans-serif;
   color: #37474F;
   min-height: 100vh;
+  min-height: 100dvh;
   background: #f5f5f5;
 }
 

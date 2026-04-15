@@ -61,6 +61,8 @@ const FALLBACK_BRANCHES = [
   { id: 6, name: '大直分校', code: 'dazhi' },
   { id: 7, name: '汐止分校', code: 'xizhi' },
   { id: 8, name: '內湖分校', code: 'neihu' },
+  { id: 12, name: '石牌分校', code: 'shipai' },
+  { id: 22, name: '敦化分校', code: 'dunhua' },
 ];
 
 const form = reactive({
@@ -142,6 +144,7 @@ async function submit() {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: #f5f5f5;
   background-image: linear-gradient(135deg, #FFF8E1 0%, #FFE0B2 100%);
 }

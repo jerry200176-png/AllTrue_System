@@ -214,7 +214,36 @@ export function rejectLearningRecord(id, data = {}) {
 
 // --- Finance ---
 export async function getInvoices(filters = {}) {
-  return []; // Not implemented in MVP Schema yet
+  const token = await getAuthToken();
+  if (!token) {
+    return { data: [], error: '請先登入' };
+  }
+  const params = new URLSearchParams();
+  const sid = filters.student_id;
+  if (sid != null && sid !== '' && Number.isFinite(Number(sid))) {
+    params.set('student_id', String(Number(sid)));
+  }
+  if (filters.status) params.set('status', filters.status);
+  if (filters.branch_id != null && filters.branch_id !== '') {
+    params.set('branch_id', String(Number(filters.branch_id)));
+  }
+  const response = await fetch(`/api/v1/invoices?${params}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  let json = {};
+  try {
+    json = await response.json();
+  } catch {
+    json = {};
+  }
+  if (!response.ok) {
+    return {
+      data: [],
+      error: json.message || json.error || `載入失敗（${response.status}）`,
+    };
+  }
+  const rows = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+  return { data: rows, error: null, meta: json };
 }
 
 export async function createInvoice(data) {

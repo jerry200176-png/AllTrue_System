@@ -49,12 +49,14 @@
 ### Bug
 
 - `POST /api/v1/bugs`（JSON 或 multipart + `attachments[]`）
-- `GET /api/v1/bugs`
+- `GET /api/v1/bugs`（支援 `branch_id`、`per_page`、`page`、`status`、`severity`、`reporter(super_admin)`、`keyword`、`date_from`、`date_to`、`sort`）
 - `GET /api/v1/bugs/unread-badge?branch_id=`（**須排在** `bugs/{id}` **之前**）
 - `GET /api/v1/bugs/{id}`
 - `POST /api/v1/bugs/{id}/comments`
 - `POST /api/v1/bugs/{id}/status`（**middleware `super_admin`**）
 - `POST /api/v1/bugs/mark-inbox-seen`（**middleware `super_admin`**）
+
+> `status` 可用逗號多值（如 `new,triaged,in_progress`）；`per_page` 伺服器上限 100；`sort` 僅白名單值有效（不接受任意排序欄位）。
 
 ## 權限規則（目前）
 
@@ -70,6 +72,14 @@
 - Bug 浮動入口：`frontend/src/components/BugReportLauncher.vue`
 - API lib：`frontend/src/lib/chatApi.js`、`frontend/src/lib/chatRealtime.js`、`frontend/src/lib/bugReportsApi.js`
 - 側欄未讀合併、Bug 紅點、事件：`frontend/src/App.vue`
+
+## Bug 列表行為（2026-04-15 起）
+
+- 預設快速篩選為「待處理」（`new + triaged + in_progress`）。
+- 支援 quick tabs：`待處理 / 全部 / 已關閉`。
+- 支援分頁操作與每頁筆數切換（20/50/100）。
+- 支援關鍵字（title/description/page_key）、排序（最新/最舊/最近更新/嚴重度）、日期區間。
+- 進入單筆詳情後返回列表，會保留原查詢狀態（篩選、排序、頁碼）。
 
 ## 已知注意事項
 

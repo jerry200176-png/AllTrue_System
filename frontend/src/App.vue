@@ -107,6 +107,17 @@
           </div>
         </div>
 
+        <!-- 電腦快捷鍵提示（主任限定，側欄展開時顯示） -->
+        <details v-if="!sidebarCollapsed" class="shortcut-hint">
+          <summary class="shortcut-hint__toggle">⌨️ 快捷鍵提示</summary>
+          <ul class="shortcut-hint__list">
+            <li><kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> <span>截圖</span></li>
+            <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> <span>更新網頁</span></li>
+            <li><kbd>Ctrl</kbd>+<kbd>C</kbd> <span>複製</span></li>
+            <li><kbd>Ctrl</kbd>+<kbd>V</kbd> <span>貼上</span></li>
+          </ul>
+        </details>
+
         <!-- 主題切換 -->
         <div class="theme-switcher" :title="sidebarCollapsed ? '切換顯示模式' : ''">
           <div class="theme-switcher-label" v-show="!sidebarCollapsed">顯示模式</div>
@@ -262,6 +273,9 @@
       />
       <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
+      <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report'" :branch-id="currentBranch" />
+      <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll'" :branch-id="currentBranch" :user-role="role" />
       <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers'" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
       <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="active = $event" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
@@ -351,6 +365,7 @@ import {
   resolveSavedBranchChoice,
 } from './lib/useBranches';
 import { usePageGuideTour } from './lib/usePageGuideTour';
+import { lockScroll, unlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
 
 // Pages
@@ -368,6 +383,10 @@ import SubjectSettingsPage from './pages/SubjectSettingsPage.vue';
 import TeachersList from './pages/TeachersList.vue';
 import AttendancePage from './pages/AttendancePage.vue';
 import SubjectUnitsPage from './pages/SubjectUnitsPage.vue';
+// BillingList removed — replaced by TuitionReportPage (當月學收)
+import TuitionCollectionPage from './pages/TuitionCollectionPage.vue';
+import TuitionReportPage from './pages/TuitionReportPage.vue';
+import ParttimePayrollPage from './pages/ParttimePayrollPage.vue';
 import DirectorAccountsPage from './pages/DirectorAccountsPage.vue';
 import NotificationsCenter from './pages/NotificationsCenter.vue';
 import ProfileCenterPage from './pages/ProfileCenterPage.vue';
@@ -376,6 +395,7 @@ import BugReportsPage from './pages/BugReportsPage.vue';
 import TeacherHomePage from './pages/TeacherHomePage.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
+import perfFlags from './lib/perfFlags';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -645,6 +665,42 @@ const urgentNotificationCount = ref(0);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
+let _badgePollingPaused = false;
+
+function _startBadgePolling() {
+  _stopBadgePolling();
+  _badgePollingPaused = false;
+
+  const notifInterval = perfFlags.NOTIFICATION_POLL_INTERVAL;
+  const badgeInterval = perfFlags.BADGE_POLL_INTERVAL;
+  const pauseOnHidden = perfFlags.PAUSE_POLLING_ON_HIDDEN;
+
+  unreadPollingTimer = window.setInterval(() => {
+    if (pauseOnHidden && document.visibilityState !== 'visible') return;
+    if (_badgePollingPaused) return;
+    refreshUnreadNotifications();
+  }, notifInterval);
+
+  chatBadgePollingTimer = window.setInterval(() => {
+    if (pauseOnHidden && document.visibilityState !== 'visible') return;
+    if (_badgePollingPaused) return;
+    mergeChatUnreadBadge();
+    mergeBugUnreadBadge();
+    mergeDirectorPendingBadge();
+  }, badgeInterval);
+}
+
+function _stopBadgePolling() {
+  if (unreadPollingTimer) { clearInterval(unreadPollingTimer); unreadPollingTimer = null; }
+  if (chatBadgePollingTimer) { clearInterval(chatBadgePollingTimer); chatBadgePollingTimer = null; }
+}
+
+function _onVisibilityChangeForPolling() {
+  if (document.visibilityState === 'visible' && !_badgePollingPaused) {
+    refreshUnreadNotifications();
+  }
+}
+
 
 const unreadNotificationLabel = computed(() => (unreadNotificationCount.value > 99 ? '99+' : String(unreadNotificationCount.value)));
 
@@ -757,8 +813,8 @@ const sidebarNavGroups = computed(() => {
     }
     return [
       {
-        key: 'operations',
-        title: '營運總覽',
+        key: 'overview',
+        title: '總覽與通訊',
         defaultOpen: true,
         items: [
           { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
@@ -767,33 +823,43 @@ const sidebarNavGroups = computed(() => {
         ],
       },
       {
-        key: 'academic-core',
-        title: '教務核心',
+        key: 'teaching',
+        title: '排課與教學',
         defaultOpen: true,
         items: [
           { page: 'calendar', label: '班級行事曆 / 課表', icon: 'calendar_today' },
           { page: 'course-mgmt', label: '課程管理', icon: 'menu_book', badgeTypes: ['tuition'] },
-          { page: 'students', label: '學生管理', icon: 'groups' },
-          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
-          { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
-          { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
-        ],
-      },
-      {
-        key: 'attendance-records',
-        title: '考勤與評量',
-        defaultOpen: true,
-        items: [
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review'] },
-          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
         ],
       },
       {
-        key: 'system',
-        title: '系統管理',
+        key: 'people',
+        title: '人員管理',
         defaultOpen: true,
         items: [
+          { page: 'students', label: '學生管理', icon: 'groups' },
+          { page: 'teachers', label: '老師管理', icon: 'badge', badgeTypes: ['pending_teachers'] },
+        ],
+      },
+      {
+        key: 'finance',
+        title: '財務收費',
+        defaultOpen: true,
+        items: [
+          { page: 'tuition-collect', label: '催繳名單', icon: 'payments' },
+          { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
+          { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
+          { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
+        ],
+      },
+      {
+        key: 'settings',
+        title: '系統設定',
+        defaultOpen: false,
+        items: [
+          { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
+          { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
           ...systemItems,
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
@@ -942,15 +1008,8 @@ onMounted(async () => {
         }
     });
 
-    unreadPollingTimer = window.setInterval(() => {
-        refreshUnreadNotifications();
-    }, 60000);
-    // Bug 紅點與聊天未讀一併輪詢（通知中心仍 60s），避免新 Bug 僅靠 1 分鐘才更新。
-    chatBadgePollingTimer = window.setInterval(() => {
-      mergeChatUnreadBadge();
-      mergeBugUnreadBadge();
-      mergeDirectorPendingBadge();
-    }, 25000);
+    _startBadgePolling();
+    document.addEventListener('visibilitychange', _onVisibilityChangeForPolling);
     await refreshUnreadNotifications();
 
     window.addEventListener('resize', onWindowResizeGuideFab);
@@ -1072,6 +1131,11 @@ const logout = async () => {
     await supabase.auth.signOut();
 };
 
+watch(showMoreMenu, (open) => {
+  if (open) lockScroll();
+  else unlockScroll();
+});
+
 watch(currentBranch, (value) => {
   localStorage.setItem('app_branch', value);
   refreshUnreadNotifications();
@@ -1117,14 +1181,8 @@ function onRefreshBadgesEvent() {
 onBeforeUnmount(() => {
   systemThemeMq?.removeEventListener('change', onSystemThemeChange);
   guideTour.closeTour();
-  if (unreadPollingTimer) {
-    clearInterval(unreadPollingTimer);
-    unreadPollingTimer = null;
-  }
-  if (chatBadgePollingTimer) {
-    clearInterval(chatBadgePollingTimer);
-    chatBadgePollingTimer = null;
-  }
+  _stopBadgePolling();
+  document.removeEventListener('visibilitychange', _onVisibilityChangeForPolling);
   window.removeEventListener('resize', onWindowResizeGuideFab);
   window.removeEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
 });
@@ -1572,11 +1630,20 @@ function formatBuildTime(rawIso) {
   touch-action: none;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
   z-index: 10010;
+  will-change: transform;
   transition:
     left 0.48s cubic-bezier(0.22, 1, 0.32, 1),
     top 0.48s cubic-bezier(0.22, 1, 0.32, 1),
     transform 0.2s ease,
     box-shadow 0.2s ease;
+}
+@media (pointer: coarse) {
+  .global-guide-btn {
+    transition:
+      left 0.35s cubic-bezier(0.22, 1, 0.32, 1),
+      top 0.35s cubic-bezier(0.22, 1, 0.32, 1),
+      box-shadow 0.2s ease;
+  }
 }
 
 .global-guide-btn:hover:not(.is-dragging) {
@@ -1792,6 +1859,66 @@ function formatBuildTime(rawIso) {
   .guide-tour-actions {
     justify-content: flex-end;
   }
+}
+
+/* ===== 快捷鍵提示 ===== */
+.shortcut-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.shortcut-hint__toggle {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-light, #94a3b8);
+  padding: 4px 2px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shortcut-hint__toggle::-webkit-details-marker { display: none; }
+
+.shortcut-hint__toggle:hover {
+  color: var(--text, #334155);
+}
+
+.shortcut-hint__list {
+  list-style: none;
+  padding: 6px 4px 2px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.shortcut-hint__list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-light, #94a3b8);
+}
+
+.shortcut-hint__list span {
+  color: var(--text, #475569);
+  margin-left: 2px;
+}
+
+.shortcut-hint__list kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+  color: var(--text, #475569);
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 /* ===== 主題切換 ===== */

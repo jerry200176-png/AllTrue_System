@@ -4,14 +4,14 @@ const pageGuideConfig = {
       target: '[data-guide="director-summary"]',
       icon: '📊',
       title: '今日關鍵數據',
-      description: '每次開啟系統先看這裡：未點名堂數、未繳費學生數、待審核評量，點擊卡片可直接跳到對應功能處理。',
+      description: '每次開啟系統先看這裡：未點名堂數、財務／續課需留意筆數、待審核評量，點擊卡片可直接跳到對應功能處理。',
       placement: 'bottom',
     },
     {
       target: '[data-guide="director-alerts"]',
       icon: '🔔',
-      title: '繳費提醒與通知',
-      description: '顯示本分校未繳費學生清單與未讀通知數量，數字異常時請優先處理，或點「前往通知中心」查看全部細節。',
+      title: '繳費／續課提醒與通知',
+      description: '列出本分校待繳費、月結將届，以及「已繳費但剩 0～2 堂」需聯繫加購的課程；另可從此區掌握未讀通知，或前往通知中心查看細節。',
       placement: 'right',
     },
     {

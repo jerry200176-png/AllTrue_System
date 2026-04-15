@@ -11,61 +11,93 @@
         </div>
       </div>
       <div v-if="viewMode === 'week'" class="smart-cal-toolbar" data-guide="calendar-toolbar">
-        <div class="toolbar-group">
-          <span class="toolbar-label">月份</span>
-          <div class="month-nav">
-            <button type="button" class="icon-btn" @click="prevMonth" title="上一個月" aria-label="上一個月">‹</button>
-            <span class="month-display">{{ displayYear }} / {{ displayMonth }}</span>
-            <button type="button" class="icon-btn" @click="nextMonth" title="下一個月" aria-label="下一個月">›</button>
-          </div>
-        </div>
-        <div class="toolbar-group">
-          <span class="toolbar-label">週次</span>
-          <div class="week-nav">
-            <button type="button" class="week-nav-btn" @click="prevWeek">‹ 上週</button>
-            <select v-model.number="displayWeek" class="week-select">
-              <option :value="0">全部</option>
-              <option v-for="w in weekOptions" :key="w.value" :value="w.value">{{ w.label }}</option>
-            </select>
-            <button type="button" class="week-nav-btn" @click="nextWeek">下週 ›</button>
-          </div>
-        </div>
-        <div class="toolbar-group">
-          <span class="toolbar-label">跳至日期</span>
-          <input
-            v-model="jumpToDate"
-            type="date"
-            class="filter-input jump-date-input"
-            @change="jumpToDateWeek"
-          />
-        </div>
-        <div v-if="!isTeacher" class="toolbar-group">
-          <div class="view-sub-toggle">
-            <button type="button" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
-            <button type="button" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
-          </div>
-        </div>
-        <div class="toolbar-fill"></div>
-        <div v-if="!isTeacher" class="toolbar-right">
-          <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
-          <template v-if="isWeekOverview">
-            <select v-model="weekViewTeacherId" class="filter-select" style="min-width: 160px;">
-              <option value="">選擇老師</option>
-              <option v-for="t in visibleTeachers" :key="t.id" :value="t.id">{{ t.username }}</option>
-            </select>
-          </template>
-          <template v-else>
-            <div class="toolbar-filters">
-              <select v-model="roomFilter" class="filter-select">
-                <option value="">全部教室</option>
-                <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
-              </select>
-              <input v-model="teacherSearch" type="text" class="filter-input" placeholder="搜尋老師…" />
-              <input v-model="studentSearch" type="text" class="filter-input" placeholder="搜尋學生…" />
+        <div class="toolbar-row toolbar-row-primary">
+          <div class="toolbar-group">
+            <span class="toolbar-label">月份</span>
+            <div class="month-nav">
+              <button type="button" class="icon-btn" @click="prevMonth" title="上一個月" aria-label="上一個月">‹</button>
+              <span class="month-display">{{ displayYear }} / {{ displayMonth }}</span>
+              <button type="button" class="icon-btn" @click="nextMonth" title="下一個月" aria-label="下一個月">›</button>
             </div>
-          </template>
-          <button type="button" class="btn-secondary btn-icon-text" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="btn-emoji">🏫</span><span class="btn-text">教室</span></button>
-          <button type="button" class="btn-primary btn-icon-text" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="btn-emoji">＋</span><span class="btn-text">快速排課</span></button>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">週次</span>
+            <div class="week-nav">
+              <button type="button" class="week-nav-btn" @click="prevWeek">‹ 上週</button>
+              <select v-model.number="displayWeek" class="week-select">
+                <option :value="0">全部</option>
+                <option v-for="w in weekOptions" :key="w.value" :value="w.value">{{ w.label }}</option>
+              </select>
+              <button type="button" class="week-nav-btn" @click="nextWeek">下週 ›</button>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">跳至日期</span>
+            <input
+              v-model="jumpToDate"
+              type="date"
+              class="filter-input jump-date-input"
+              @change="jumpToDateWeek"
+            />
+          </div>
+          <div v-if="!isTeacher" class="toolbar-group">
+            <div class="view-sub-toggle">
+              <button type="button" :class="{ active: !isWeekOverview }" @click="isWeekOverview = false">日檢視</button>
+              <button type="button" :class="{ active: isWeekOverview }" @click="isWeekOverview = true">週檢視</button>
+            </div>
+          </div>
+          <div class="toolbar-fill"></div>
+        </div>
+        <div v-if="!isTeacher" class="toolbar-row toolbar-row-secondary">
+          <div class="toolbar-secondary-line toolbar-secondary-line--meta">
+            <div class="toolbar-secondary-meta">
+              <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
+              <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
+            </div>
+          </div>
+          <div class="toolbar-secondary-line toolbar-secondary-line--filters">
+            <div class="toolbar-secondary-mid">
+              <div class="toolbar-filters">
+                <select v-model="roomFilter" class="filter-select toolbar-room-select" title="依教室篩選老師欄">
+                  <option value="">全部教室</option>
+                  <option v-for="r in allRoomOptions" :key="r" :value="r">教室 {{ r }}</option>
+                </select>
+                <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" autocomplete="off" />
+                <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" autocomplete="off" />
+              </div>
+              <div
+                v-if="visibleTeachers.length > 1 && !isTeacher"
+                class="week-teacher-chips"
+                role="group"
+                aria-label="篩選老師（可多選）"
+              >
+                <span class="week-teacher-chips-label">老師</span>
+                <div class="week-teacher-chips-scroll">
+                  <button
+                    v-for="t in visibleTeachers"
+                    :key="t.id"
+                    type="button"
+                    :aria-pressed="weekViewTeacherIdSet.has(String(t.id))"
+                    :class="['week-teacher-chip', { active: weekViewTeacherIdSet.has(String(t.id)) }]"
+                    :style="weekViewTeacherIdSet.has(String(t.id)) ? { background: getTeacherColor(t.id), borderColor: getTeacherColor(t.id), color: '#fff' } : {}"
+                    @click="toggleTeacherSelection(t.id)"
+                  >
+                    {{ t.username }}
+                  </button>
+                </div>
+                <button
+                  v-if="weekViewTeacherIds.length > 0"
+                  type="button"
+                  class="week-teacher-chip-clear"
+                  @click="clearTeacherSelection"
+                >全清除</button>
+              </div>
+            </div>
+            <div class="toolbar-secondary-actions">
+              <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="btn-emoji">🏫</span><span class="btn-text">教室</span></button>
+              <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="btn-emoji">＋</span><span class="btn-text">快速排課</span></button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -160,6 +192,8 @@
                   <div class="cb-student">{{ course.student_name }}</div>
                   <div class="cb-detail">{{ getSubjectLabel(course.subject) }}</div>
                   <div class="cb-type">{{ classTypeLabel(course.class_type) }}</div>
+                  <span v-if="rollCallBadge(course, selectedDateStr)" class="rc-tag" :class="'rc-' + rollCallBadge(course, selectedDateStr).kind">{{ rollCallBadge(course, selectedDateStr).label }}</span>
+                  <span v-if="evalBadge(course, selectedDateStr)" class="rc-tag rc-eval-missing" :class="{ 'rc-tag-second': !!rollCallBadge(course, selectedDateStr) }">{{ evalBadge(course, selectedDateStr).label }}</span>
                 </div>
               </div>
             </div>
@@ -170,10 +204,15 @@
       <!-- ── Week Overview ── -->
       <template v-else>
         <div class="week-overview-grid-wrapper" data-guide="calendar-grid">
-          <div v-if="!weekViewTeacherId" class="teacher-empty" style="padding: 32px; text-align: center;">
-            請先從上方下拉選單選擇一位老師。
+          <div v-if="visibleTeachers.length === 0" class="teacher-empty week-overview-empty">
+            目前無符合條件的老師。請調整「教室」或「搜尋老師／學生」關鍵字。
           </div>
-          <div v-else class="week-overview-grid">
+          <div v-else class="week-overview-body">
+            <div class="week-overview-context-bar">
+              <span class="week-overview-context-kicker">週檢視</span>
+              <strong class="week-overview-context-name">{{ weekViewSelectedLabel }}</strong>
+            </div>
+            <div class="week-overview-grid">
             <div class="time-col">
               <div class="col-header-blank"></div>
               <div v-for="h in hours" :key="h" class="time-label">{{ String(h).padStart(2, '0') }}:00</div>
@@ -189,10 +228,10 @@
                   'slot-room-full': isSlotRoomFull(idx + 1, h),
                   'drag-over': !isTeacher && dragOverSlot && dragOverSlot.dow === (idx + 1) && dragOverSlot.h === h
                 }"
-                @click="!isTeacher && onSlotClick(idx + 1, h, getDisplayDateFull(idx + 1), weekViewTeacherId)"
+                @click="!isTeacher && onSlotClick(idx + 1, h, getDisplayDateFull(idx + 1), weekViewTeacherIds.length === 1 ? weekViewTeacherIds[0] : '')"
                 @dragover.prevent="!isTeacher && (dragOverSlot = { dow: idx + 1, h })"
                 @dragleave="dragOverSlot = null"
-                @drop.prevent="!isTeacher && onSlotDrop(idx + 1, h, getDisplayDateFull(idx + 1), weekViewTeacherId)"
+                @drop.prevent="!isTeacher && onSlotDrop(idx + 1, h, getDisplayDateFull(idx + 1), weekViewTeacherIds.length === 1 ? weekViewTeacherIds[0] : '')"
               >
                 <div
                   v-for="(course, cIdx) in getCoursesForWeekCell(idx + 1, h)"
@@ -205,11 +244,15 @@
                   @dragstart.stop="!isTeacher && onCourseDragStart(course, getDisplayDateFull(idx + 1), $event)"
                   @dragend="draggingCourse = null; dragOverSlot = null"
                 >
+                  <div v-if="weekViewTeacherIds.length !== 1" class="cb-teacher-tag" :style="{ background: getTeacherColor(course.teacher_id) }">{{ course.teacher_name }}</div>
                   <div class="cb-student">{{ course.student_name }}</div>
                   <div class="cb-detail">{{ getSubjectLabel(course.subject) }}</div>
                   <div class="cb-type">{{ classTypeLabel(course.class_type) }}</div>
+                  <span v-if="rollCallBadge(course, getDisplayDateFull(idx + 1))" class="rc-tag" :class="'rc-' + rollCallBadge(course, getDisplayDateFull(idx + 1)).kind">{{ rollCallBadge(course, getDisplayDateFull(idx + 1)).label }}</span>
+                  <span v-if="evalBadge(course, getDisplayDateFull(idx + 1))" class="rc-tag rc-eval-missing" :class="{ 'rc-tag-second': !!rollCallBadge(course, getDisplayDateFull(idx + 1)) }">{{ evalBadge(course, getDisplayDateFull(idx + 1)).label }}</span>
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -275,6 +318,10 @@
       :students="schedulerStudents"
       :teachers="schedulerTeachers"
       :rooms="schedulerRooms"
+      :initial-teacher-id="modalForm.teacher_id"
+      :initial-start-time="modalForm.start_time"
+      :initial-days-of-week="modalForm.days_of_week || []"
+      :initial-calendar-ymd="modalForm.action_date || modalForm.first_class_date || ''"
       mode="create"
       @cancel="showModal = false"
       @success="handleUniversalSchedulerSuccess"
@@ -282,9 +329,21 @@
 
     <div v-if="showModal && editingCourseId" class="modal-overlay" @click.self="showModal = false">
       <div class="modal" style="width: 500px;">
-        <h3>{{ editingCourseId ? '檢視／單堂操作' : '快速排課' }}</h3>
-        <p v-if="editingCourseId && editingActionDate" class="hint occurrence-hint">
-          正在檢視 <strong>{{ editingActionDate }}</strong>（{{ dayNames[modalForm.day_of_week - 1] }}）此堂 — 僅可進行單堂操作（請假／調課／加課），欲修改整門課請至「課程管理」。
+        <h3>單堂檢視</h3>
+
+        <!-- 本堂資訊（第一層：最高視覺優先級） -->
+        <div v-if="editingActionDate" class="session-info-card">
+          <div class="session-info-row">
+            <span class="session-info-key">本堂日期</span>
+            <span class="session-info-val"><strong>{{ editingActionDate }}</strong>（{{ dayNames[modalForm.day_of_week - 1] }}）</span>
+          </div>
+          <div class="session-info-row">
+            <span class="session-info-key">上課時間</span>
+            <span class="session-info-val">{{ modalForm.start_time }} ~ {{ computedMainEndTime }}（{{ modalForm.duration_hours }} 小時）</span>
+          </div>
+        </div>
+        <p class="hint occurrence-hint">
+          僅可進行單堂操作（請假／調課／加課）。如需修改整門課設定，請至「課程管理」。
         </p>
 
         <!-- Conflict Warning：明顯色塊＋圖示 -->
@@ -296,8 +355,21 @@
           </div>
         </div>
 
-        <div class="modal-form-sections">
-          <div class="form-section-label">誰／什麼課／誰教</div>
+        <!-- 單堂操作（第二層：行動按鈕，緊跟本堂資訊） -->
+        <div class="schedule-actions-box">
+          <div class="schedule-actions-title">單堂操作</div>
+          <div class="schedule-actions-btns">
+            <button class="action-btn extra" @click="openExtraLesson">＋ 加課</button>
+            <button class="action-btn leave" @click="openLeaveModal">📋 請假</button>
+            <button class="action-btn reschedule" @click="openRescheduleModal">🔄 調課</button>
+            <button v-if="!isTeacher" class="action-btn substitute" @click="openSubstituteModal">👤 換代課老師</button>
+          </div>
+        </div>
+
+        <!-- 整門課參考資料（第三層：唯讀參考，視覺降級） -->
+        <div class="modal-form-sections course-ref-section">
+          <div class="form-section-label">課程資料（僅供參考）</div>
+          <p class="course-ref-hint">以下為整門課設定，不可在此修改。如需調整請至「課程管理」。</p>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
             <label>學生</label>
@@ -328,25 +400,15 @@
               <option value="one_on_two">一對二</option>
               <option value="one_on_three">一對三</option>
               <option value="tutoring">輔導</option>
+              <option value="trial">試聽</option>
             </select>
           </div>
           </div>
 
+          <template v-if="!editingCourseId">
           <div class="form-section-label">何時／多久／費用</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group" v-if="editingCourseId">
-            <label>星期幾</label>
-            <select v-model.number="modalForm.day_of_week" disabled>
-              <option :value="1">星期一</option>
-              <option :value="2">星期二</option>
-              <option :value="3">星期三</option>
-              <option :value="4">星期四</option>
-              <option :value="5">星期五</option>
-              <option :value="6">星期六</option>
-              <option :value="7">星期日</option>
-            </select>
-          </div>
-          <div class="form-group" v-else style="grid-column: span 2;">
+          <div class="form-group" style="grid-column: span 2;">
             <label>排課日（可選多天）</label>
             <div class="day-chip-row">
               <label v-for="d in calDayOptions" :key="d.value" :class="['cal-day-chip', { selected: (modalForm.days_of_week || []).includes(d.value) }]">
@@ -357,7 +419,7 @@
           </div>
           <div class="form-group">
             <label>首堂上課日期 (First Class Date)</label>
-            <input v-model="modalForm.first_class_date" type="date" :disabled="!!editingCourseId" />
+            <input v-model="modalForm.first_class_date" type="date" />
           </div>
           <div class="form-group">
             <label>課程時長 (Duration)</label>
@@ -413,11 +475,25 @@
           </div>
           <div class="form-group">
             <label>一堂課費用 ($)</label>
-            <input v-model.number="ratePer2h" type="number" min="0" step="100" :disabled="!!editingCourseId" @blur="syncRatePer2hToModel" />
+            <input v-model.number="ratePer2h" type="number" min="0" step="100" @blur="syncRatePer2hToModel" />
           </div>
           </div>
+          </template>
+          <template v-if="editingCourseId">
+          <div class="form-section-label">時段與費用</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div class="form-group">
+            <label>課程時長</label>
+            <p class="computed-time">{{ modalForm.duration_hours }} 小時</p>
+          </div>
+          <div class="form-group">
+            <label>一堂課費用</label>
+            <p class="computed-time">${{ ratePer2h }}</p>
+          </div>
+          </div>
+          </template>
 
-          <div class="form-section-label">繳費方式／堂數</div>
+          <div class="form-section-label">繳費狀態（僅供參考）</div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
           <div class="form-group">
             <label>繳費方式</label>
@@ -457,15 +533,7 @@
           </div>
         </div>
 
-        <!-- Action Buttons for existing courses -->
-        <div v-if="editingCourseId" class="schedule-actions-box">
-          <div class="schedule-actions-title">單堂課操作</div>
-          <div class="schedule-actions-btns">
-            <button class="action-btn extra" @click="openExtraLesson">＋ 加課</button>
-            <button class="action-btn leave" @click="openLeaveModal">📋 請假</button>
-            <button class="action-btn reschedule" @click="openRescheduleModal">🔄 調課</button>
-          </div>
-        </div>
+        <!-- (action buttons moved above to "單堂操作" section) -->
 
         <!-- 評量表總覽：顯示已過課程的評量紀錄 -->
         <div v-if="editingCourseId && courseEvalRecords.length > 0" class="eval-summary-box">
@@ -529,6 +597,47 @@
       </div>
     </div>
 
+    <!-- ===== Substitute Teacher Modal (換代課老師) ===== -->
+    <div v-if="showSubstituteModal" class="modal-overlay" @click.self="showSubstituteModal = false">
+      <div class="modal" style="width: 440px;">
+        <h3>👤 換代課老師</h3>
+        <p class="hint">僅替換此堂授課老師，不影響課程主檔與後續排課。</p>
+        <div class="form-group">
+          <label>學生</label>
+          <p style="font-weight: 600;">{{ getStudentName(substituteForm.student_id) }}</p>
+        </div>
+        <div class="form-group">
+          <label>科目</label>
+          <p>{{ getSubjectLabel(substituteForm.subject) }}</p>
+        </div>
+        <div class="form-group">
+          <label>日期 / 時段</label>
+          <p>{{ substituteForm.session_date }} {{ substituteForm.start_time }}~{{ substituteForm.end_time }}</p>
+        </div>
+        <div class="form-group">
+          <label>正班老師</label>
+          <p>{{ substituteForm.original_teacher_name || '—' }}</p>
+        </div>
+        <div class="form-group">
+          <label>代課老師 <span style="color: #ef4444;">*</span></label>
+          <select v-model="substituteForm.substitute_teacher_id">
+            <option value="">請選擇</option>
+            <option v-for="t in (teachers || [])" :key="t.id" :value="t.id">{{ t.username }}</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>原因（選填）</label>
+          <input v-model="substituteForm.reason" type="text" placeholder="例：正班老師請假" style="width: 100%;" />
+        </div>
+        <div class="actions">
+          <button class="ghost" @click="showSubstituteModal = false">取消</button>
+          <button class="primary" @click="submitSubstitute" :disabled="substituteSubmitting || !substituteForm.substitute_teacher_id">
+            {{ substituteSubmitting ? '處理中…' : '確認代課' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== Extra Lesson Modal (加課) ===== -->
     <div v-if="showExtraModal" class="modal-overlay" @click.self="showExtraModal = false">
       <div class="modal" style="width: 480px;">
@@ -564,6 +673,7 @@
               <option value="one_on_two">一對二</option>
               <option value="one_on_three">一對三</option>
               <option value="tutoring">輔導</option>
+              <option value="trial">試聽</option>
             </select>
           </div>
           <div class="form-group">
@@ -850,7 +960,7 @@ const roomFilter = ref('');
 const teacherSearch = ref('');
 const studentSearch = ref('');
 
-/** 工具列「搜尋學生」：與老師名、教室篩選並用時為 AND；日檢視僅看當天、週檢視看整週。 */
+/** 工具列「搜尋學生」：與老師名、教室篩選並用時為 AND；日檢視僅看當天、週檢視／老師下拉看整週。 */
 const courseMatchesStudentSearch = (c) => {
   const q = (studentSearch.value || '').trim().toLowerCase();
   if (!q) return true;
@@ -868,7 +978,21 @@ const courseMatchesStudentSearch = (c) => {
 
 // Week Overview mode
 const isWeekOverview = ref(isTeacher.value);
-const weekViewTeacherId = ref('');
+const weekViewTeacherIds = ref([]);
+const weekViewTeacherIdSet = computed(() => new Set(weekViewTeacherIds.value.map(String)));
+
+function toggleTeacherSelection(teacherId) {
+  const tid = String(teacherId);
+  const idx = weekViewTeacherIds.value.findIndex(id => String(id) === tid);
+  if (idx >= 0) {
+    weekViewTeacherIds.value.splice(idx, 1);
+  } else {
+    weekViewTeacherIds.value.push(teacherId);
+  }
+}
+function clearTeacherSelection() {
+  weekViewTeacherIds.value = [];
+}
 
 // Room management
 const roomList = ref([]);
@@ -967,7 +1091,7 @@ const getTeacherColor = (teacherId) => {
 
 // --- Helpers ---
 const getSubjectLabel = (val) => getSubjectText(val);
-const classTypeLabel = (type) => ({ one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[type] || type);
+const classTypeLabel = (type) => ({ one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[type] || type);
 const dayLabel = (d) => ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'][d] || '';
 /** 從 YYYY-MM-DD 得到星期幾，1=週一 … 7=週日 */
 const dayOfWeekFromDate = (ymd) => {
@@ -1137,36 +1261,50 @@ function durationHoursFromStartEnd(start, end) {
  * 最後才用課程主檔 start_time（後端目前取 day_time_slots[0]，多日不同時會錯）。
  */
 function resolveCourseGridTimes(c, dow, targetYmd) {
+  const all = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
+  return all[0];
+}
+
+/**
+ * 回傳該日所有堂次的時段陣列（同日多時段場景回傳多筆，例如週六 13:00 + 17:00）。
+ */
+function resolveAllCourseGridTimesForDate(c, dow, targetYmd) {
   const ymd = String(targetYmd || '').slice(0, 10);
-  const rows = sessionDatesByCourseId.value[String(c.id)];
-  if (ymd && Array.isArray(rows)) {
-    const hit = rows.find((r) => {
-      if (String(r.session_date || '').slice(0, 10) !== ymd) return false;
-      const st = String(r?.status || '').toLowerCase();
-      return st !== 'cancelled';
-    });
-    if (hit?.start_time) {
-      const st = normalizeTimeTo30(hit.start_time);
-      const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
-      const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
-      return { start_time: st, end_time: en, duration_hours: dh };
+  const rowKey = String((c && c.is_exception) ? (c.student_course_id ?? c.id) : (c?.id ?? ''));
+  const rows = sessionDatesByCourseId.value[rowKey];
+  if (ymd && Array.isArray(rows) && rows.length) {
+    const sameDate = rows.filter((r) => String(r.session_date || '').slice(0, 10) === ymd);
+    if (sameDate.length > 0) {
+      const hits = sameDate.filter((r) => String(r?.status || '').toLowerCase() !== 'cancelled');
+      if (hits.length > 0) {
+        return hits.map((hit) => {
+          const st = normalizeTimeTo30(hit.start_time);
+          const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
+          const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
+          return { start_time: st, end_time: en, duration_hours: dh };
+        });
+      }
+      // 當日僅有已取消堂次時，不可回退契約時段，否則課表仍會出現區塊 +「取消」角標
+      return [];
     }
   }
   const slots = Array.isArray(c.day_time_slots) ? c.day_time_slots : [];
-  const slot = slots.find((s) => Number(s.day) === Number(dow));
-  if (slot?.start_time) {
-    const st = normalizeTimeTo30(slot.start_time);
-    const dh = Number(slot.duration_hours) || Number(c.duration_hours) || 2;
-    const en = computeEndTime(st, dh);
-    return { start_time: st, end_time: en, duration_hours: dh };
+  const matchingSlots = slots.filter((s) => Number(s.day) === Number(dow));
+  if (matchingSlots.length > 0) {
+    return matchingSlots.map((slot) => {
+      const st = normalizeTimeTo30(slot.start_time);
+      const dh = Number(slot.duration_hours) || Number(c.duration_hours) || 2;
+      const en = computeEndTime(st, dh);
+      return { start_time: st, end_time: en, duration_hours: dh };
+    });
   }
   const defSt = normalizeTimeTo30(c.start_time || '');
   const defDh = Number(c.duration_hours) || 2;
-  return {
+  return [{
     start_time: defSt,
     end_time: (c.end_time && normalizeTimeTo30(c.end_time)) || computeEndTime(defSt || '08:00', defDh),
     duration_hours: defDh,
-  };
+  }];
 }
 
 /** 堂數制是否超過購買堂數；與課程管理一致：只到最後一堂日，之後一律視為超過 */
@@ -1178,6 +1316,76 @@ function isOverSessionLimit(courseId, targetDate) {
   const endDate = courseLastSessionDate.value[key];
   if (endDate == null) return true;
   return String(targetDate).slice(0, 10) > endDate;
+}
+
+const ATTENDED_STATUSES = new Set(['attended', 'completed', 'late', 'absent']);
+
+function rollCallSessionKey(course) {
+  return String(course.is_exception ? (course.student_course_id ?? course.id) : course.id);
+}
+
+const SESSION_STATUS_PRIORITY = {
+  attended: 0, completed: 0, late: 0, absent: 0,
+  scheduled: 1,
+  leave: 2, leave_adjusted: 2, excused: 2,
+  cancelled: 3,
+};
+
+function pickBestSessionRow(candidates) {
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  return candidates.slice().sort((a, b) => {
+    const pa = SESSION_STATUS_PRIORITY[String(a.status || '').toLowerCase()] ?? 2;
+    const pb = SESSION_STATUS_PRIORITY[String(b.status || '').toLowerCase()] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
+  })[0];
+}
+
+function findSessionRowForCell(course, ymd) {
+  const key = rollCallSessionKey(course);
+  const rows = sessionDatesByCourseId.value[key];
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const targetYmd = String(ymd || '').slice(0, 10);
+  if (!targetYmd) return null;
+  const courseStart = normalizeTimeTo30(course.start_time || '');
+  const candidates = rows.filter(r =>
+    String(r.session_date || '').slice(0, 10) === targetYmd &&
+    normalizeTimeTo30(r.start_time || '') === courseStart
+  );
+  return pickBestSessionRow(candidates);
+}
+
+function rollCallBadge(course, ymd) {
+  const row = findSessionRowForCell(course, ymd);
+  if (!row) return null;
+  const st = String(row.status || '').toLowerCase();
+  if (st === 'leave' || st === 'leave_adjusted' || st === 'excused') return { kind: 'leave', label: '假' };
+  if (st === 'cancelled') return { kind: 'cancelled', label: '取消' };
+  if (ATTENDED_STATUSES.has(st) || row.attendance_sign_in_at) return { kind: 'done', label: '✓' };
+  if (st === 'scheduled') {
+    const endTime = row.end_time || '23:59';
+    const sessionEnd = new Date(`${row.session_date}T${endTime}`);
+    if (sessionEnd < new Date()) return { kind: 'missed', label: '!' };
+  }
+  return null;
+}
+
+const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused', 'cancelled']);
+
+function evalBadge(course, ymd) {
+  const row = findSessionRowForCell(course, ymd);
+  if (!row) return null;
+  const st = String(row.status || '').toLowerCase();
+  if (LEAVE_STATUSES.has(st)) return null;
+  const endTime = row.end_time || '23:59';
+  const sessionEnd = new Date(`${row.session_date}T${endTime}`);
+  if (sessionEnd >= new Date()) return null;
+  if (row.learning_record_status === 'approved') return null;
+  if (!row.learning_record_id || row.learning_record_status === 'missing' || !row.learning_record_body_filled) {
+    return { kind: 'eval-missing', label: '評' };
+  }
+  return null;
 }
 
 // Get courses at a specific day + hour (start hour)
@@ -1245,12 +1453,22 @@ const getCourseBlockStyle = (course, dayOfWeek, hour, idx) => {
   };
 };
 
+const isSessionCancelledOnDate = (course, ymd) => {
+  if (!ymd) return false;
+  const key = String((course.is_exception ? (course.student_course_id ?? course.id) : course.id) ?? '');
+  const rows = sessionDatesByCourseId.value[key];
+  if (!Array.isArray(rows) || !rows.length) return false;
+  const sameDate = rows.filter(r => String(r.session_date || '').slice(0, 10) === ymd);
+  return sameDate.length > 0 && sameDate.every(r => String(r.status || '').toLowerCase() === 'cancelled');
+};
+
 const getCoursesForTeacherAt = (teacherId, hour) => {
   return filteredCourses.value.filter(c => {
     if (c.teacher_id !== teacherId) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (c.day_of_week !== selectedDow.value) return false;
     if (!courseMatchesStudentSearch(c)) return false;
+    if (isSessionCancelledOnDate(c, selectedDateStr.value)) return false;
     return true;
   });
 };
@@ -1278,23 +1496,31 @@ const getTeacherCourseBlockStyle = (course, teacherId, hour, idx) => {
 };
 
 const getDayCourseCount = (dow) => {
-  return filteredCourses.value.filter(c => c.day_of_week === dow && courseMatchesStudentSearch(c)).length;
+  const ymd = getDisplayDateFull(dow);
+  return filteredCourses.value.filter(c =>
+    c.day_of_week === dow &&
+    courseMatchesStudentSearch(c) &&
+    !isSessionCancelledOnDate(c, ymd)
+  ).length;
 };
 
 // Week Overview helpers
 const getCoursesForWeekCell = (dow, hour) => {
-  return filteredCourses.value.filter(c =>
-    c.teacher_id === weekViewTeacherId.value &&
-    c.day_of_week === dow &&
-    parseHour(c.start_time) === hour &&
-    courseMatchesStudentSearch(c)
-  );
+  return filteredCourses.value.filter(c => {
+    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    if (c.day_of_week !== dow) return false;
+    if (parseHour(c.start_time) !== hour) return false;
+    if (!courseMatchesStudentSearch(c)) return false;
+    if (isSessionCancelledOnDate(c, getDisplayDateFull(dow))) return false;
+    return true;
+  });
 };
 
 const getWeekTeacherDayCount = (dow) => {
-  return filteredCourses.value.filter(c =>
-    c.teacher_id === weekViewTeacherId.value && c.day_of_week === dow && courseMatchesStudentSearch(c)
-  ).length;
+  return filteredCourses.value.filter(c => {
+    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    return c.day_of_week === dow && courseMatchesStudentSearch(c);
+  }).length;
 };
 
 const getWeekCourseBlockStyle = (course, dow, hour, idx) => {
@@ -1364,6 +1590,10 @@ const visibleTeachers = computed(() => {
     );
     filtered = filtered.filter((t) => tidSet.has(t.id));
   }
+  if (filterTeacherId.value) {
+    const tid = String(filterTeacherId.value);
+    filtered = filtered.filter(t => String(t.id) === tid);
+  }
   if (isTeacher.value && currentTeacherId.value) {
     filtered = filtered.filter(t => String(t.id) === currentTeacherId.value);
     // Defensive fallback: if options are stale, still render from current courses.
@@ -1383,6 +1613,16 @@ const visibleTeachers = computed(() => {
     if (a.roomLabel !== b.roomLabel) return a.roomLabel.localeCompare(b.roomLabel);
     return a.username.localeCompare(b.username);
   });
+});
+
+/** 週檢視目前選定老師名稱（多選時顯示聯集） */
+const weekViewSelectedLabel = computed(() => {
+  if (weekViewTeacherIds.value.length === 0) return '全部老師';
+  const names = weekViewTeacherIds.value
+    .map(id => visibleTeachers.value.find(t => String(t.id) === String(id))?.username)
+    .filter(Boolean);
+  if (names.length <= 3) return names.join('、');
+  return names.slice(0, 2).join('、') + ` 等 ${names.length} 位`;
 });
 
 const allRoomOptions = computed(() => {
@@ -1428,11 +1668,15 @@ const resolveTeacherName = (tid) => {
 
 const filteredCourses = computed(() => {
   let list = displayWeekFilteredCourses.value;
-  if (isTeacher.value && currentTeacherId.value) {
-    list = list.filter(c => String(c.teacher_id) === currentTeacherId.value);
+  const teacherScopeId = isTeacher.value && currentTeacherId.value ? String(currentTeacherId.value) : '';
+  // 週檢視：不可在合併 schedules 前先依 course.teacher_id 過濾——代課-only 契約仍為正班 TeacherID，
+  // 合併後例外列才會帶代課老師的 teacher_id。非週檢視維持原過濾。
+  if (teacherScopeId && viewMode.value !== 'week') {
+    list = list.filter((c) => String(c.teacher_id) === teacherScopeId);
   }
   if (filterTeacherId.value) {
-    list = list.filter(c => c.teacher_id === filterTeacherId.value);
+    const selectedTeacherId = String(filterTeacherId.value);
+    list = list.filter(c => String(c.teacher_id ?? '') === selectedTeacherId);
   }
   
   // Merge exceptions based on the exact date of the current week view
@@ -1457,8 +1701,10 @@ const filteredCourses = computed(() => {
         const targetDate = getDisplayDateFull(dow);
         if (!targetDate) continue;
         const targetYmd = String(targetDate).slice(0, 10);
-        const hasLeaveOrReschedule = exceptions.value.some(ex =>
-          (ex.status === 'leave' || ex.status === 'rescheduled') &&
+        // Leave exceptions: keep the card visible (shows '假' badge via rollCallBadge)
+        // Rescheduled exceptions: hide the card on the original date (session was moved)
+        const hasReschedule = exceptions.value.some(ex =>
+          ex.status === 'rescheduled' &&
           (ex.student_course_id == null ? false : String(ex.student_course_id) === cid) &&
           toYmd(ex.schedule_date) === targetDate
         );
@@ -1471,9 +1717,12 @@ const filteredCourses = computed(() => {
           if (!sessionSet.has(targetYmd)) continue;
           const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
           if (lastDate != null && targetYmd > lastDate) continue;
-          if (!hasLeaveOrReschedule && !hasScheduledExc) {
-            const t = resolveCourseGridTimes(c, dow, targetYmd);
-            mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
+          if (!hasReschedule && !hasScheduledExc) {
+            const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
+            for (const t of times) {
+              if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
+              mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
+            }
           }
           continue;
         }
@@ -1482,9 +1731,12 @@ const filteredCourses = computed(() => {
         if (!isFirstDay && !isRecurringDay) continue;
         const isBeforeStart = c.first_class_date && String(targetDate).trim() < String(c.first_class_date).trim();
         const overSessionLimit = isOverSessionLimit(c.id, targetDate);
-        if (!hasLeaveOrReschedule && !hasScheduledExc && !isBeforeStart && !overSessionLimit) {
-          const t = resolveCourseGridTimes(c, dow, targetYmd);
-          mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
+        if (!hasReschedule && !hasScheduledExc && !isBeforeStart && !overSessionLimit) {
+          const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
+          for (const t of times) {
+            if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
+            mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
+          }
         }
       }
     });
@@ -1541,6 +1793,9 @@ const filteredCourses = computed(() => {
         }
       });
     }
+    if (teacherScopeId) {
+      return mergedList.filter((c) => String(c.teacher_id) === teacherScopeId);
+    }
     return mergedList;
   }
   
@@ -1553,7 +1808,7 @@ const weekCourseCount = computed(() => filteredCourses.value.filter(courseMatche
 // Teacher-grouped view
 const teacherGroups = computed(() => {
   const map = {};
-  courses.value.forEach(c => {
+  filteredCourses.value.forEach(c => {
     const tid = c.teacher_id || 'unassigned';
     const tname = c.teacher_name || '未指派';
     if (!map[tid]) map[tid] = { teacher_id: tid, teacher_name: tname, courses: [], open: true };
@@ -1573,7 +1828,7 @@ const loadCourses = async () => {
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
   const branchId = Number(props.branchId) || 0;
-  if (!branchId) {
+  if (!branchId && !isTeacher.value) {
     courses.value = [];
     exceptions.value = [];
     sessionDatesByCourseId.value = {};
@@ -1609,7 +1864,10 @@ const loadCourses = async () => {
   let courseList = [];
   if (token) {
     try {
-      const apiUrl = `${baseUrl}/v1/student-classes?branch_id=${branchId}${isTeacher.value && props.userId ? `&teacher_id=${props.userId}` : ''}`;
+      const scParams = new URLSearchParams();
+      if (!isTeacher.value && branchId) scParams.set('branch_id', String(branchId));
+      if (isTeacher.value && props.userId) scParams.set('teacher_id', String(props.userId));
+      const apiUrl = `${baseUrl}/v1/student-classes?${scParams.toString()}`;
       const { data: allCourses } = await fetchAllPages(apiUrl, token, {
         perPage: 200,
         concurrency: 4,
@@ -1627,8 +1885,8 @@ const loadCourses = async () => {
   {
     let query = supabase
       .from('student-classes')
-      .select('*, student:students(name), teacher:profiles(username)')
-      .eq('branch_id', branchId);
+      .select('*, student:students(name), teacher:profiles(username)');
+    if (!isTeacher.value && branchId) query = query.eq('branch_id', branchId);
     if (isTeacher.value && props.userId) query = query.eq('teacher_id', props.userId);
     const { data } = await query;
     supabaseList = (data || []).map(c => ({
@@ -1670,7 +1928,8 @@ const loadCourses = async () => {
   let excData = [];
   if (token) {
     try {
-      const excParams = new URLSearchParams({ branch_id: String(branchId), per_page: '2000', start: schedStart, end: schedEnd });
+      const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
+      if (!isTeacher.value && branchId) excParams.set('branch_id', String(branchId));
       if (isTeacher.value && props.userId) excParams.set('teacher_id', props.userId);
       const excRes = await fetch(`${baseUrl}/v1/schedules?${excParams}`, {
         credentials: 'include',
@@ -1689,8 +1948,8 @@ const loadCourses = async () => {
   if (excData.length === 0) {
     let excQuery = supabase
       .from('schedules')
-      .select('*')
-      .eq('branch_id', branchId);
+      .select('*');
+    if (!isTeacher.value && branchId) excQuery = excQuery.eq('branch_id', branchId);
     if (isTeacher.value && props.userId) excQuery = excQuery.eq('teacher_id', props.userId);
     const { data: excRaw } = await excQuery;
     excData = Array.isArray(excRaw) ? excRaw : (excRaw?.data || []);
@@ -1719,13 +1978,13 @@ const loadCourses = async () => {
 
   // Single source of truth: class session dates come from backend ClassSession API.
   sessionDatesByCourseId.value = {};
-  if (token && branchId && courseList.length > 0) {
+  if (token && (branchId || isTeacher.value) && courseList.length > 0) {
     const ids = courseList.map((c) => Number(c?.id || 0)).filter((id) => id > 0);
     if (ids.length > 0) {
       try {
         const { byClass } = await fetchClassSessions({
           token,
-          branchId,
+          branchId: isTeacher.value ? 0 : branchId,
           studentClassIds: ids,
           perPage: 2000,
         });
@@ -1736,30 +1995,9 @@ const loadCourses = async () => {
     }
   }
 
-  // Sync Supabase courses to MySQL so deduction/dashboard queries work
-  if (supabaseList.length > 0 && token) {
-    try {
-      const teacherMap = Object.fromEntries((teachers.value || []).map(t => [t.id, t.email]));
-      const syncPayload = supabaseList.map(c => ({
-        id: c.id, student_id: c.student_id, teacher_id: c.teacher_id,
-        teacher_email: teacherMap[c.teacher_id] || null,
-        subject: c.subject, class_type: c.class_type, payment_type: c.payment_type || 'session',
-        sessions_purchased: c.sessions_purchased ?? 0, remaining_sessions: c.remaining_sessions ?? null,
-        first_class_date: c.first_class_date || null, start_time: c.start_time || null,
-        days_of_week: Array.isArray(c.days_of_week) ? c.days_of_week : (c.day_of_week ? [c.day_of_week] : [])
-      }));
-      const exceptionsPayload = (excData || []).map(e => ({
-        student_course_id: e.student_course_id,
-        schedule_date: e.schedule_date,
-        status: e.status
-      }));
-      fetch(`${baseUrl}/v1/student-classes/sync`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ courses: syncPayload, exceptions: exceptionsPayload })
-      }).catch(() => {});
-    } catch (_) {}
-  }
+  // Legacy Supabase→MySQL sync removed (backend returns 410 since the
+  // endpoint was retired).  Course data now lives exclusively in MySQL
+  // and is managed through the standard student-classes CRUD endpoints.
   calendarLoading.value = false;
   calendarLoadProgress.value = '';
 };
@@ -1768,15 +2006,19 @@ const loadStudents = async () => {
   const { data: { session: sess } } = await supabase.auth.getSession();
   const token = sess?.access_token;
   if (!token) return;
+  const stuParams = new URLSearchParams({ per_page: '500' });
+  if (!isTeacher.value && props.branchId) stuParams.set('branch_id', String(props.branchId));
   try {
-    const res = await fetch(`/api/v1/students?branch_id=${props.branchId}&per_page=500`, {
+    const res = await fetch(`/api/v1/students?${stuParams.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const json = await res.json();
     allStudents.value = Array.isArray(json) ? json : (json?.data || []);
   } catch (e) {
     console.warn('loadStudents failed:', e);
-    const { data } = await supabase.from('students').select('id, name').eq('branch_id', props.branchId);
+    let query = supabase.from('students').select('id, name');
+    if (!isTeacher.value && props.branchId) query = query.eq('branch_id', props.branchId);
+    const { data } = await query;
     allStudents.value = Array.isArray(data) ? data : (data?.data || []);
   }
 };
@@ -1786,16 +2028,16 @@ const loadTeachers = async () => {
   const token = sess?.access_token;
   if (!token) return;
   const branchId = Number(props.branchId) || 0;
-  if (!branchId) {
+  if (!branchId && !isTeacher.value) {
     teachers.value = [];
     return;
   }
   try {
-    const params = new URLSearchParams({
-      per_page: 'all',
-      branch_id: String(branchId),
-      strict_branch: '1',
-    });
+    const params = new URLSearchParams({ per_page: 'all' });
+    if (!isTeacher.value && branchId) {
+      params.set('branch_id', String(branchId));
+      params.set('strict_branch', '1');
+    }
     const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -1819,7 +2061,9 @@ const loadTeachers = async () => {
         };
       })
       .filter(Boolean);
-    teachers.value = normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
+    teachers.value = isTeacher.value
+      ? normalized
+      : normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
   } catch (e) {
     console.warn('loadTeachers failed:', e);
     teachers.value = [];
@@ -1830,10 +2074,11 @@ const loadTeachers = async () => {
 const loadRooms = async () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
-  if (!token || !props.branchId) return;
+  if (!token || (!isTeacher.value && !props.branchId)) return;
   try {
     const baseUrl = import.meta.env.VITE_API_BASE || '/api';
-    const res = await fetch(`${baseUrl}/v1/rooms?branch_id=${props.branchId}`, {
+    const roomParams = props.branchId ? `branch_id=${props.branchId}` : '';
+    const res = await fetch(`${baseUrl}/v1/rooms?${roomParams}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
     });
     if (res.ok) {
@@ -1919,7 +2164,7 @@ const isSlotRoomFull = (dow, hour) => {
 
 // --- Conflict Detection ---
 // Rules: one_on_one max 1, one_on_two max 2, one_on_three max 3, tutoring counts as 1
-const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tutoring': 1 };
+const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tutoring': 1, 'trial': 1 };
 
 const checkConflict = () => {
   if (!modalForm.value.teacher_id || !modalForm.value.day_of_week || !modalForm.value.start_time) {
@@ -2296,6 +2541,109 @@ const submitLeave = async () => {
   alert('請假登記完成');
 };
 
+// ===== Substitute Teacher (換代課老師) =====
+const showSubstituteModal = ref(false);
+const substituteSubmitting = ref(false);
+const substituteForm = ref({
+  student_id: '', subject: '', session_date: '', start_time: '', end_time: '',
+  original_teacher_name: '', substitute_teacher_id: '', reason: '',
+  session_id: null, course_id: null,
+});
+
+const teacherDisplayName = (tid) => {
+  if (tid == null || tid === '') return '—';
+  const t = (teachers.value || []).find((x) => String(x.id) === String(tid));
+  return t?.name || t?.username || '—';
+};
+
+const openSubstituteFromDrag = (course, dateStr, dropTeacherId) => {
+  const baseId = course.is_exception ? course.student_course_id : course.id;
+  substituteForm.value = {
+    student_id: course.student_id,
+    subject: course.subject,
+    session_date: dateStr,
+    start_time: course.start_time || '',
+    end_time: course.end_time || '',
+    original_teacher_name: teacherDisplayName(course.teacher_id),
+    substitute_teacher_id: dropTeacherId != null && dropTeacherId !== '' ? String(dropTeacherId) : '',
+    reason: '行事曆拖曳至代課老師',
+    session_id: null,
+    course_id: baseId,
+  };
+  if (baseId && sessionDatesByCourseId.value) {
+    const sessions = sessionDatesByCourseId.value[String(baseId)] || [];
+    const ymd = String(dateStr).slice(0, 10);
+    const candidates = sessions.filter((s) => String(s.session_date || s.SessionDate || '').slice(0, 10) === ymd);
+    const match = pickBestSessionRow(candidates);
+    if (match) substituteForm.value.session_id = match.id;
+  }
+  showSubstituteModal.value = true;
+};
+
+const openSubstituteModal = () => {
+  const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+  substituteForm.value = {
+    student_id: modalForm.value.student_id,
+    subject: modalForm.value.subject,
+    session_date: exactDate,
+    start_time: modalForm.value.start_time || '',
+    end_time: modalForm.value.end_time || '',
+    original_teacher_name: teacherDisplayName(modalForm.value.teacher_id),
+    substitute_teacher_id: '',
+    reason: '',
+    session_id: null,
+    course_id: editingCourseId.value,
+  };
+  showModal.value = false;
+
+  // Resolve the ClassSession id for this date + course
+  const courseId = editingCourseId.value;
+  if (courseId && sessionDatesByCourseId.value) {
+    const sessions = sessionDatesByCourseId.value[String(courseId)] || [];
+    const candidates = sessions.filter(s => String(s.session_date || s.SessionDate || '').slice(0, 10) === exactDate);
+    const match = pickBestSessionRow(candidates);
+    if (match) substituteForm.value.session_id = match.id;
+  }
+
+  showSubstituteModal.value = true;
+};
+
+const submitSubstitute = async () => {
+  if (!substituteForm.value.substitute_teacher_id) { alert('請選擇代課老師'); return; }
+  if (!substituteForm.value.session_id) {
+    alert('找不到該堂次 ClassSession，無法設定代課。\n（可能此日期尚未有 ClassSession 紀錄）');
+    return;
+  }
+
+  substituteSubmitting.value = true;
+  try {
+    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const token = session?.access_token || '';
+    if (!token) { alert('請重新登入'); return; }
+
+    const res = await fetch(`/api/v1/class-sessions/${substituteForm.value.session_id}/substitute`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        substitute_teacher_id: Number(substituteForm.value.substitute_teacher_id),
+        reason: substituteForm.value.reason || null,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('代課設定失敗：' + (json.message || res.statusText));
+      return;
+    }
+    showSubstituteModal.value = false;
+    alert(json.message || '代課設定完成');
+    await loadCourses();
+  } catch (e) {
+    alert('代課設定失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    substituteSubmitting.value = false;
+  }
+};
+
 // ===== Right-click context menu =====
 const onCourseRightClick = (course, date, event) => {
   event.preventDefault();
@@ -2467,6 +2815,18 @@ const onSlotDrop = (dow, h, targetDate, teacherId) => {
   dragOverSlot.value = null;
   const sameSlot = targetDate === originalDate && parseHour(course.start_time) === h && (!teacherId || course.teacher_id === teacherId);
   if (sameSlot) return;
+  // 同日、同一開始鐘點，拖到「另一位老師」欄 → 開代課確認（非調課）
+  if (
+    !isTeacher.value &&
+    targetDate === originalDate &&
+    parseHour(course.start_time) === h &&
+    teacherId &&
+    course.teacher_id &&
+    Number(teacherId) !== Number(course.teacher_id)
+  ) {
+    openSubstituteFromDrag(course, originalDate, teacherId);
+    return;
+  }
   const newStart = `${String(h).padStart(2, '0')}:00`;
   const dur = course.duration_hours || 2;
   const baseId = course.is_exception ? course.student_course_id : course.id;
@@ -2559,7 +2919,17 @@ const submitReschedule = async () => {
 
   const res2 = await supabase.from('schedules').insert([payload2]);
   if (res2.error) {
-    alert('調課失敗：' + (res2.error?.message || '無法寫入新堂次'));
+    // Roll back the first step — delete the orphan rescheduled record so the original class reappears
+    if (originalId) {
+      await supabase.from('schedules').delete().eq('id', originalId);
+    }
+    const errMsg = res2.error?.message || '無法寫入新堂次';
+    const isConflict = res2.error?.conflicts?.length > 0 || String(errMsg).includes('已有') || String(errMsg).includes('上限');
+    if (isConflict) {
+      alert('調課失敗：目標時段已有其他學生（撞課），請換一個時段再試。\n\n詳細：' + errMsg);
+    } else {
+      alert('調課失敗：' + errMsg);
+    }
     return;
   }
 
@@ -2596,24 +2966,23 @@ watch(() => props.branchId, () => { loadCourses(); loadStudents(); loadTeachers(
 watch(() => props.resetWeekToken, () => { focusCalendarToday(); }, { immediate: true });
 watch(() => props.initialTeacherId, (id) => {
   if (id != null && id !== '') {
-    filterTeacherId.value = Number(id) || id;
+    filterTeacherId.value = String(id);
+    weekViewTeacherIds.value = [id];
     emit('clear-initial-teacher');
   }
 }, { immediate: true });
 watch(visibleTeachers, (list) => {
   if (!Array.isArray(list) || list.length === 0) {
-    weekViewTeacherId.value = '';
+    weekViewTeacherIds.value = [];
     return;
   }
   const visibleIds = new Set(list.map(t => String(t.id)));
   if (filterTeacherId.value && !visibleIds.has(String(filterTeacherId.value))) {
     filterTeacherId.value = '';
   }
-  if (weekViewTeacherId.value && !visibleIds.has(String(weekViewTeacherId.value))) {
-    weekViewTeacherId.value = '';
-  }
-  if (isWeekOverview.value && !weekViewTeacherId.value) {
-    weekViewTeacherId.value = list[0].id;
+  const cleaned = weekViewTeacherIds.value.filter(id => visibleIds.has(String(id)));
+  if (cleaned.length !== weekViewTeacherIds.value.length) {
+    weekViewTeacherIds.value = cleaned;
   }
 });
 watch(() => displayWeek.value, () => { weekOffset.value = 0; });
@@ -2625,16 +2994,12 @@ watch(
   },
   { immediate: true }
 );
-watch(isWeekOverview, (val) => {
-  if (val && !weekViewTeacherId.value && visibleTeachers.value.length) {
-    weekViewTeacherId.value = visibleTeachers.value[0].id;
-  }
+watch(isWeekOverview, () => {
+  // Multi-select: no need to auto-select first teacher; empty = show all
 });
 watch(isTeacher, (val) => {
   if (val) {
     isWeekOverview.value = true;
-  } else if (isWeekOverview.value && !weekViewTeacherId.value) {
-    isWeekOverview.value = false;
   }
 });
 onMounted(() => {
@@ -2682,6 +3047,8 @@ onMounted(() => {
 /* ----- Top / Header ----- */
 .smart-cal-top {
   margin-bottom: 24px;
+  max-width: 100%;
+  min-width: 0;
 }
 .smart-cal-header {
   display: flex;
@@ -2726,14 +3093,185 @@ onMounted(() => {
 }
 .smart-cal-toolbar {
   display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding: 12px 20px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 16px;
   background: #fff;
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.toolbar-row-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  row-gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.toolbar-row-secondary {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border-color, #e2e8f0);
+  min-width: 0;
+  max-width: 100%;
+}
+.toolbar-secondary-line--meta {
+  min-width: 0;
+}
+.toolbar-secondary-line--filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+.toolbar-secondary-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  min-width: 0;
+}
+.toolbar-secondary-meta .rc-legend {
+  margin-left: 0;
+}
+.toolbar-secondary-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.toolbar-secondary-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  justify-self: end;
+}
+.toolbar-action-btn.btn-primary {
+  padding: 8px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.toolbar-action-btn.btn-secondary {
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+}
+.week-teacher-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.week-teacher-chips-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light, #64748b);
+}
+.week-teacher-chips-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  max-height: 5.5rem;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+.week-teacher-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-color, #1a1a1a);
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.week-teacher-chip:hover {
+  background: var(--bg-muted, #f8fafc);
+  border-color: #cbd5e1;
+}
+.week-teacher-chip.active {
+  color: #fff;
+}
+.week-teacher-chip-clear {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px dashed var(--border-color, #cbd5e1);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-light, #64748b);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.week-teacher-chip-clear:hover {
+  color: #e53935;
+  border-color: #e53935;
+}
+.cb-teacher-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-bottom: 1px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.week-overview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.week-overview-context-bar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  background: var(--bg-muted, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--text-light, #64748b);
+}
+.week-overview-context-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-light, #64748b);
+  text-transform: uppercase;
+}
+.week-overview-context-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-color, #1a1a1a);
+}
+.week-overview-empty {
+  padding: 28px 20px !important;
 }
 .toolbar-group {
   display: flex;
@@ -2833,12 +3371,6 @@ onMounted(() => {
   min-width: 96px;
 }
 .toolbar-fill { flex: 1; min-width: 12px; }
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
 .week-stat {
   font-size: 14px;
   line-height: 1.4;
@@ -3113,12 +3645,62 @@ onMounted(() => {
   white-space: nowrap;
   display: block;
 }
+.rc-tag {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.rc-done  { background: rgba(34,197,94,.85); color: #fff; }
+.rc-missed { background: rgba(245,158,11,.9); color: #fff; }
+.rc-leave { background: rgba(148,163,184,.75); color: #fff; }
+.rc-cancelled { background: rgba(100,116,139,.6); color: #fff; font-size: 8px; }
+.rc-eval-missing { background: rgba(239,68,68,.85); color: #fff; }
+.rc-tag-second { top: auto; bottom: 2px; }
+.rc-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin-left: 8px;
+}
+.rc-legend .rc-tag { position: static; display: inline-block; }
 
 /* Toolbar filter input */
 .toolbar-filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+.toolbar-filters .toolbar-room-select,
+.toolbar-filters .filter-select.toolbar-room-select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.4;
+  background: #fff;
+  color: var(--text-color);
+  flex: 0 1 148px;
+  min-width: 88px;
+  max-width: 100%;
+  height: 38px;
+  cursor: pointer;
+}
+.toolbar-filters .filter-input.toolbar-search-input {
+  flex: 1 1 96px;
+  min-width: 0;
+  max-width: 100%;
+  height: 38px;
 }
 .filter-input {
   padding: 8px 12px;
@@ -3221,6 +3803,7 @@ onMounted(() => {
 .status-tag.one_on_two { background: #fefce8; color: #a16207; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 .status-tag.one_on_three { background: #fef2f2; color: #b91c1c; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 .status-tag.tutoring { background: #f0fdf4; color: #15803d; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.trial { background: #eef2ff; color: #4338ca; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 
 /* Conflict Warning */
 .conflict-box {
@@ -3250,6 +3833,43 @@ onMounted(() => {
 .conflict-box-prominent p { margin: 4px 0 0 0; font-size: 13px; line-height: 1.45; }
 .conflict-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
 .occurrence-hint { margin: 0 0 12px 0; padding: 8px 10px; background: #E3F2FD; border-radius: 6px; font-size: 13px; }
+.session-info-card {
+  background: #E8F5E9;
+  border: 1px solid #A5D6A7;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.session-info-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+}
+.session-info-key {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2E7D32;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+.session-info-val {
+  font-size: 14px;
+  color: #1B5E20;
+}
+.course-ref-section {
+  background: #FAFAFA;
+  border: 1px solid #E0E0E0;
+  border-radius: 8px;
+  padding: 0 12px 12px;
+  margin-top: 12px;
+}
+.course-ref-hint {
+  font-size: 12px;
+  color: #9E9E9E;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
 .modal-form-sections { margin-top: 4px; }
 .form-section-label {
   font-size: 12px;
@@ -3358,6 +3978,15 @@ onMounted(() => {
 }
 .action-btn.reschedule:hover {
   background: #E1BEE7;
+}
+
+.action-btn.substitute {
+  background: #ecfeff;
+  color: #0e7490;
+  border-color: #67e8f9;
+}
+.action-btn.substitute:hover {
+  background: #cffafe;
 }
 
 /* Day Chips */
@@ -3498,20 +4127,19 @@ onMounted(() => {
 .ctx-cancel:hover { background: #fef2f2; color: #dc2626; }
 
 /* ── Tablet Responsive ── */
-@media (max-width: 1024px) {
-  .smart-cal-toolbar {
-    flex-wrap: wrap;
-    gap: 12px;
+@media (max-width: 1100px) {
+  .teacher-col { min-width: 0; }
+}
+@media (max-width: 600px) {
+  .toolbar-secondary-line--filters {
+    grid-template-columns: 1fr;
   }
-  .toolbar-right {
+  .toolbar-secondary-actions {
+    justify-self: stretch;
     width: 100%;
     flex-wrap: wrap;
-    gap: 8px;
+    justify-content: flex-end;
   }
-  .toolbar-filters {
-    flex-wrap: wrap;
-  }
-  .teacher-col { min-width: 0; }
 }
 
 /* ── Mobile Responsive ── */
@@ -3562,6 +4190,7 @@ onMounted(() => {
     width: 100% !important;
     max-width: 100vw !important;
     max-height: 100vh !important;
+    max-height: 100dvh !important;
     border-radius: 0 !important;
   }
   .modal-overlay { padding: 0; }

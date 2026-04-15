@@ -60,10 +60,15 @@ export async function submitBugReport(data) {
 
 export { MAX_BUG_ATTACHMENTS };
 
-export async function fetchBugReports(branchId, filters = {}, perPage = 20) {
-  const params = new URLSearchParams({ branch_id: branchId, per_page: perPage });
+export async function fetchBugReports(branchId, filters = {}, perPage = 20, page = 1) {
+  const params = new URLSearchParams({ branch_id: branchId, per_page: perPage, page });
   if (filters.status) params.set('status', filters.status);
   if (filters.severity) params.set('severity', filters.severity);
+  if (filters.reporter) params.set('reporter', filters.reporter);
+  if (filters.keyword) params.set('keyword', filters.keyword);
+  if (filters.date_from) params.set('date_from', filters.date_from);
+  if (filters.date_to) params.set('date_to', filters.date_to);
+  if (filters.sort) params.set('sort', filters.sort);
   const res = await fetch(`${API}/bugs?${params}`, { headers: headers() });
   return json(res);
 }

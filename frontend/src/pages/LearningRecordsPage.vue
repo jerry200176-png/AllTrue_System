@@ -100,7 +100,7 @@
           <div class="ts-info">
             <div class="ts-student">{{ ev.studentName }}</div>
             <div class="ts-subject-row">
-              <span class="ts-subject">{{ ev.subject }}</span>
+              <span class="ts-subject">{{ ev.subjectName }}</span>
               <span :class="['ts-status-chip', `status-${ev.formStatus}`]">{{ ev.formStatusLabel }}</span>
             </div>
           </div>
@@ -136,7 +136,7 @@
             <div class="ts-info">
               <div class="ts-student">{{ ev.studentName }}</div>
               <div class="ts-subject-row">
-                <span class="ts-subject">{{ ev.subject }}</span>
+                <span class="ts-subject">{{ ev.subjectName }}</span>
                 <span :class="['ts-status-chip', `status-${ev.formStatus}`]">{{ ev.formStatusLabel }}</span>
               </div>
             </div>
@@ -225,6 +225,13 @@
             <option value="changes_requested">需修改</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>指定日期</label>
+          <div class="lr-date-filter-wrap">
+            <input v-model="filters.date" type="date" class="lr-date-input" @change="fetchRecords">
+            <button v-if="filters.date" class="ghost xs lr-date-clear" @click="filters.date = ''; fetchRecords()" title="清除日期篩選">✕</button>
+          </div>
+        </div>
         <div class="form-group lr-filter-btn-wrap">
           <label>&nbsp;</label>
           <button class="ghost" @click="fetchRecords">搜尋</button>
@@ -290,7 +297,7 @@
                     <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
                   </td>
                   <td>
-                    <span class="tag">{{ record.Subject }}</span>
+                    <span class="tag">{{ record.student_class_label || record.Subject }}</span>
                   </td>
                   <td v-if="!isTeacher">{{ record.teacher_name }}</td>
                   <td>
@@ -319,6 +326,13 @@
             </table>
           </div>
         </details>
+      </div>
+
+      <!-- Load More -->
+      <div v-if="recordsPagination.currentPage < recordsPagination.lastPage" class="lr-load-more">
+        <button class="ghost" :disabled="recordsPagination.loading" @click="loadMoreRecords">
+          {{ recordsPagination.loading ? '載入中...' : `載入更多（已顯示 ${records.length} / ${recordsPagination.total} 筆）` }}
+        </button>
       </div>
     </div>
 
@@ -608,8 +622,12 @@ import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { exportStudentCards } from '../lib/learningRecordExport';
+import { createPerfTracker } from '../lib/usePerformanceMetrics';
+import perfFlags from '../lib/perfFlags';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId']);
+
+const perf = createPerfTracker('LearningRecordsPage');
 
 const formatLocalDate = (date) => {
   const y = date.getFullYear();
@@ -641,6 +659,7 @@ const isTeacher = computed(() => props.userRole === 'teacher');
 const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].includes(String(props.userRole || '')));
 
 const records = ref([]);
+const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
 const showModal = ref(false);
 const isEditing = ref(false);
 const showChangeTeacherModal = ref(false);
@@ -654,7 +673,7 @@ const sessionDatesByClassId = ref({});
 const directorSessionsByClassId = ref({});
 /** Director 新增：時間已由課程／堂次帶入，與 ClassSessionID>0 一併鎖定。 */
 const formTimesFromBinding = ref(false);
-const filters = reactive({ status: '', student_name: '', teacher_id: '' });
+const filters = reactive({ status: '', student_name: '', teacher_id: '', date: '' });
 
 const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
@@ -806,7 +825,7 @@ const bulkExistingDates = ref([]);
 const bulkDatesLoading = ref(false);
 const bulkSubmitting = ref(false);
 
-const subjectList = ['國文', '英文', '數學', '自然', '理化', '物理', '化學', '生物', '社會'];
+const subjectList = ref([]);
 
 
 const form = reactive({
@@ -1046,7 +1065,7 @@ const fetchStudents = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ per_page: '500' });
+    const params = new URLSearchParams({ per_page: String(perfFlags.STUDENTS_PER_PAGE) });
     if (props.branchId) params.set('branch_id', String(props.branchId));
     params.set('status', 'active');
     const res = await fetch(`/api/v1/students?${params.toString()}`, {
@@ -1057,6 +1076,25 @@ const fetchStudents = async () => {
       studentList.value = json.data || json;
     }
   } catch (e) { console.error('fetchStudents', e); }
+};
+
+// ── Fetch subject list from campus subject management ──
+const fetchSubjects = async () => {
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const params = new URLSearchParams();
+    if (props.branchId) params.set('branch_id', String(props.branchId));
+    const res = await fetch(`/api/v1/subjects?${params}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const list = await res.json();
+      if (Array.isArray(list) && list.length > 0) {
+        subjectList.value = list.map(s => s.name);
+      }
+    }
+  } catch (e) { console.error('fetchSubjects', e); }
 };
 
 // ── Teacher: fetch own student-classes for schedule widget ──
@@ -1097,7 +1135,7 @@ const fetchTeacherSessionDates = async (rows = []) => {
     const { byClass } = await fetchClassSessions({
       token,
       studentClassIds: classIds,
-      perPage: 2000,
+      perPage: perfFlags.SESSION_MAX_PER_PAGE,
     });
 
     sessionDatesByClassId.value = byClass || {};
@@ -1125,7 +1163,7 @@ const fetchDirectorSessionsForCourses = async (courses) => {
       token,
       branchId: props.branchId,
       studentClassIds: classIds,
-      perPage: 2000,
+      perPage: perfFlags.SESSION_MAX_PER_PAGE,
     });
     directorSessionsByClassId.value = byClass || {};
   } catch (e) {
@@ -1308,6 +1346,7 @@ const buildEvents = (targetDates) => {
         studentId: sc.student_id || sc.StudentID,
         studentName,
         subject: sc.subject || sc.Subject || '?',
+        subjectName: sc.subject_name || sc.subject || sc.Subject || '?',
         date: dateStr,
         startTime,
         endTime,
@@ -1509,19 +1548,25 @@ const openFromScheduleMaybe = (ev) => {
 };
 
 // ── Fetch Records ──
+const _buildRecordsParams = (page = 1) => {
+  const params = new URLSearchParams();
+  if (props.branchId) params.set('branch_id', props.branchId);
+  if (filters.student_name) params.set('student_name', filters.student_name);
+  if (filters.teacher_id) params.set('teacher_id', filters.teacher_id);
+  if (filters.status) params.set('status', filters.status);
+  if (filters.date) { params.set('start_date', filters.date); params.set('end_date', filters.date); }
+  params.set('sort', 'session_date');
+  params.set('per_page', String(perfFlags.LR_DEFAULT_PER_PAGE));
+  params.set('page', String(page));
+  return params;
+};
+
 const fetchRecords = async () => {
   try {
     const token = await getToken();
     if (!token) return;
 
-    const params = new URLSearchParams();
-    if (props.branchId) params.set('branch_id', props.branchId);
-    if (filters.student_name) params.set('student_name', filters.student_name);
-    if (filters.teacher_id) params.set('teacher_id', filters.teacher_id);
-    if (filters.status) params.set('status', filters.status);
-    params.set('sort', 'session_date');
-    params.set('per_page', '200');
-
+    const params = _buildRecordsParams(1);
     const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -1530,8 +1575,44 @@ const fetchRecords = async () => {
 
     const data = await res.json();
     records.value = data.data || [];
+    recordsPagination.value = {
+      currentPage: data.current_page || 1,
+      lastPage: data.last_page || 1,
+      total: data.total || 0,
+      loading: false,
+    };
   } catch (e) {
     console.error(e);
+  }
+};
+
+const loadMoreRecords = async () => {
+  const pg = recordsPagination.value;
+  if (pg.loading || pg.currentPage >= pg.lastPage) return;
+  pg.loading = true;
+
+  try {
+    const token = await getToken();
+    if (!token) return;
+
+    const params = _buildRecordsParams(pg.currentPage + 1);
+    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Load more failed');
+
+    const data = await res.json();
+    const newRows = data.data || [];
+    const existingIds = new Set(records.value.map(r => r.id));
+    const deduped = newRows.filter(r => !existingIds.has(r.id));
+    records.value = [...records.value, ...deduped];
+    pg.currentPage = data.current_page || pg.currentPage + 1;
+    pg.lastPage = data.last_page || pg.lastPage;
+    pg.total = data.total || pg.total;
+  } catch (e) {
+    console.error(e);
+  } finally {
+    pg.loading = false;
   }
 };
 
@@ -1687,6 +1768,12 @@ const submitForm = async () => {
     if (isTeacher.value) {
       await fetchTeacherClasses();
     }
+    closeModal();
+  } else if (res.status === 409) {
+    const err = await res.json().catch(() => ({}));
+    alert(err.message || '此堂評量表已存在，請重新整理頁面後查看。');
+    clearDraft();
+    await fetchRecords();
     closeModal();
   } else {
     const err = await res.json().catch(() => ({}));
@@ -2404,20 +2491,36 @@ const executeExport = async () => {
 
 // ── Init ──
 onMounted(async () => {
-  await ensurePastRecords();
-  await fetchRecords();
-  fetchTeachers();
-  await fetchStudents();
+  await perf.trackAsync('ensurePastRecords', () => ensurePastRecords());
+  await perf.trackAsync('fetchRecords', () => fetchRecords());
+
+  // Secondary data: fire in parallel, don't block TTI
+  const secondaryLoads = [
+    perf.trackAsync('fetchTeachers', () => fetchTeachers()),
+    perf.trackAsync('fetchSubjects', () => fetchSubjects()),
+    perf.trackAsync('fetchStudents', () => fetchStudents()),
+  ];
   if (props.branchId && isDirectorRole.value) {
-    await fetchCourses();
+    secondaryLoads.push(perf.trackAsync('fetchCourses', () => fetchCourses()));
   }
-  if (isTeacher.value) fetchTeacherClasses();
+  if (isTeacher.value) {
+    secondaryLoads.push(perf.trackAsync('fetchTeacherClasses', () => fetchTeacherClasses()));
+  }
+  await Promise.all(secondaryLoads);
+
+  const tti = perf.markTTI();
+  perf.flushReport();
+  if (tti > 3000) {
+    console.warn(`[perf] LearningRecordsPage TTI=${tti}ms — exceeds 3s target`);
+  }
+
   nextTick(() => openTargetRecord());
 });
 
 watch(() => props.branchId, () => {
   fetchRecords();
   fetchTeachers();
+  fetchSubjects();
   fetchCourses();
   fetchStudents();
   if (isTeacher.value) fetchTeacherClasses();
@@ -2971,6 +3074,25 @@ watch(() => props.branchId, () => {
   width: 100%;
 }
 
+.lr-date-filter-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lr-date-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.lr-date-clear {
+  flex-shrink: 0;
+  padding: 4px 8px !important;
+  font-size: 12px !important;
+  line-height: 1;
+  color: #888;
+}
+
 /* ── Table ── */
 .lr-table-card {
   padding: 0;
@@ -2982,6 +3104,14 @@ watch(() => props.branchId, () => {
   flex-direction: column;
   gap: 10px;
   padding: 10px;
+}
+.lr-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 12px 10px 16px;
+}
+.lr-load-more button {
+  min-width: 200px;
 }
 
 .lr-group {
@@ -3551,6 +3681,7 @@ watch(() => props.branchId, () => {
     width: 100%;
     max-width: 100vw;
     max-height: 100vh;
+    max-height: 100dvh;
     border-radius: 0;
   }
   .lr-header {
