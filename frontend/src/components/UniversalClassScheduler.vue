@@ -4,11 +4,197 @@
       <header class="scheduler-header">
         <h3>{{ title }}</h3>
         <p class="scheduler-subtitle">
-          可先勾選「已上過課」日期；系統會依固定星期自動推算未來堂次，若今天尚未下課也可排入今日。
+          {{ packageMode
+            ? '建立多科共用堂數方案：多個科目共享同一份堂數池，每次上課（不論科目）扣 1 堂。'
+            : '手動勾選的日期可自由選擇，不限固定上課星期；系統會依固定星期自動補齊其餘堂次，若今天尚未下課也可排入今日。'
+          }}
         </p>
+        <div class="mode-tabs">
+          <button
+            type="button"
+            :class="['mode-tab', { active: !packageMode }]"
+            @click="packageMode = false"
+          >一般課程</button>
+          <button
+            type="button"
+            :class="['mode-tab', { active: packageMode }]"
+            @click="packageMode = true"
+          >多科共用方案</button>
+        </div>
       </header>
 
-      <div class="scheduler-layout">
+      <div v-if="packageMode" class="scheduler-layout package-layout">
+        <section class="panel-stack">
+          <article class="scheduler-card">
+            <h4>方案基本資料</h4>
+            <div class="scheduler-grid">
+              <div class="form-group">
+                <label>學生 *</label>
+                <SearchableSelect
+                  v-model="pkgForm.student_id"
+                  :options="studentOptions"
+                  placeholder="輸入學生姓名搜尋..."
+                />
+              </div>
+              <div class="form-group">
+                <label>方案名稱 *</label>
+                <input v-model="pkgForm.name" type="text" placeholder="例：王小明 24 堂多科方案" maxlength="128" />
+              </div>
+              <div class="form-group">
+                <label>總堂數 *</label>
+                <input v-model.number="pkgForm.total_sessions" type="number" min="1" max="999" />
+              </div>
+              <div class="form-group">
+                <label>每堂費率 *</label>
+                <input v-model.number="pkgForm.rate" type="number" min="0" step="50" />
+              </div>
+              <div class="form-group">
+                <label>上課類型 *</label>
+                <select v-model="pkgForm.class_type">
+                  <option value="one_on_one">一對一</option>
+                  <option value="one_on_two">一對二</option>
+                  <option value="one_on_three">一對三</option>
+                  <option value="tutoring">輔導</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>繳費日期（選填）</label>
+                <input v-model="pkgForm.paid_at" type="date" />
+                <p v-if="pkgForm.paid_at" class="field-note" style="color:#2e7d32;">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="scheduler-card">
+            <h4>科目清單（{{ pkgForm.subjects.length }} 科）</h4>
+            <div
+              v-for="(subj, idx) in pkgForm.subjects"
+              :key="idx"
+              :class="['pkg-card', { 'pkg-card-active': pkgActiveSubjectIdx === idx }]"
+              :style="{ borderLeftColor: pkgSubjectColor(idx) }"
+              @click="pkgActiveSubjectIdx = idx"
+            >
+              <div class="pkg-card-header">
+                <span class="pkg-card-dot" :style="{ background: pkgSubjectColor(idx) }"></span>
+                <div class="pkg-card-fields">
+                  <select v-model="subj.subject" class="pkg-inline-select" @click.stop>
+                    <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
+                  </select>
+                  <SearchableSelect
+                    v-model="subj.teacher_id"
+                    :options="teacherOptions"
+                    placeholder="老師"
+                    class="pkg-inline-teacher"
+                    @click.stop
+                  />
+                  <input v-model.number="subj.duration_hours" type="number" min="0.5" step="0.5" class="pkg-inline-dur" title="時長（小時）" @click.stop />
+                  <input v-model="subj.start_date" type="date" class="pkg-inline-date" title="開始日期" @click.stop />
+                </div>
+                <button
+                  v-if="pkgForm.subjects.length > 1"
+                  type="button"
+                  class="pkg-remove-btn"
+                  title="移除此科目"
+                  @click.stop="pkgForm.subjects.splice(idx, 1); if (pkgActiveSubjectIdx >= pkgForm.subjects.length) pkgActiveSubjectIdx = Math.max(0, pkgForm.subjects.length - 1)"
+                >✕</button>
+              </div>
+              <div v-if="subj.confirmed_dates.length > 0" class="pkg-card-dates">
+                <span class="pkg-card-count">{{ subj.confirmed_dates.length }} 堂已補登</span>
+                <span
+                  v-for="(d, di) in subj.confirmed_dates"
+                  :key="d"
+                  class="pkg-date-chip"
+                  :style="{ borderColor: pkgSubjectColor(idx), color: pkgSubjectColor(idx) }"
+                >{{ d.slice(5) }}<button type="button" @click.stop="removePkgConfirmedDate(idx, di)">✕</button></span>
+              </div>
+              <div v-else class="pkg-card-dates">
+                <span class="field-note">點選右側月曆補登已上課日期</span>
+              </div>
+            </div>
+            <button
+              v-if="pkgForm.subjects.length < 10"
+              type="button"
+              class="pkg-add-btn"
+              @click="addPkgSubject"
+            >＋ 新增科目</button>
+          </article>
+        </section>
+
+        <section class="panel-stack">
+          <article class="scheduler-card calendar-card">
+            <div class="calendar-header">
+              <button class="ghost small" type="button" @click="shiftPkgMonth(-1)">上個月</button>
+              <strong>{{ pkgMonthLabel }}</strong>
+              <button class="ghost small" type="button" @click="shiftPkgMonth(1)">下個月</button>
+            </div>
+            <div class="pkg-cal-active-label">
+              點選日期補登至：<strong :style="{ color: pkgSubjectColor(pkgActiveSubjectIdx) }">{{ pkgSubjectLabel(pkgForm.subjects[pkgActiveSubjectIdx]?.subject) }}</strong>
+            </div>
+            <div class="pkg-cal-tabs">
+              <button
+                v-for="(subj, idx) in pkgForm.subjects"
+                :key="idx"
+                type="button"
+                :class="['pkg-cal-tab', { active: pkgActiveSubjectIdx === idx }]"
+                :style="pkgActiveSubjectIdx === idx ? { background: pkgSubjectColor(idx), borderColor: pkgSubjectColor(idx) } : { borderColor: pkgSubjectColor(idx), color: pkgSubjectColor(idx) }"
+                @click="pkgActiveSubjectIdx = idx"
+              >{{ pkgSubjectLabel(subj.subject) }}</button>
+            </div>
+            <div class="calendar-weekdays">
+              <span v-for="wd in weekdayText" :key="wd">{{ wd }}</span>
+            </div>
+            <div class="calendar-grid">
+              <button
+                v-for="cell in pkgCalendarCells"
+                :key="cell.key"
+                type="button"
+                :class="['calendar-cell', { muted: !cell.inMonth || !cell.isPast, 'pkg-cell-disabled': !cell.isPast }]"
+                :disabled="!cell.isPast"
+                @click="onPkgDateClick(cell)"
+              >
+                <span>{{ cell.day }}</span>
+                <div v-if="cell.subjectIndices.length > 0" class="pkg-cell-dots">
+                  <span
+                    v-for="si in cell.subjectIndices"
+                    :key="si"
+                    class="pkg-cell-dot"
+                    :style="{ background: pkgSubjectColor(si) }"
+                  ></span>
+                </div>
+              </button>
+            </div>
+          </article>
+
+          <article class="scheduler-card">
+            <h4>方案摘要</h4>
+            <div class="pkg-summary-grid">
+              <div class="pkg-summary-item pkg-summary-total">
+                <div class="pkg-summary-num">{{ pkgForm.total_sessions }}</div>
+                <div class="pkg-summary-lbl">總堂數</div>
+              </div>
+              <div class="pkg-summary-item pkg-summary-used">
+                <div class="pkg-summary-num">{{ pkgTotalConfirmedCount }}</div>
+                <div class="pkg-summary-lbl">已補登</div>
+              </div>
+              <div class="pkg-summary-item pkg-summary-remain">
+                <div class="pkg-summary-num">{{ Math.max(0, pkgForm.total_sessions - pkgTotalConfirmedCount) }}</div>
+                <div class="pkg-summary-lbl">剩餘</div>
+              </div>
+            </div>
+            <div class="pkg-summary-meta">
+              <span>{{ pkgForm.subjects.length }} 科</span>
+              <span>{{ pkgForm.rate }} 元/堂</span>
+              <span>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[pkgForm.class_type] || pkgForm.class_type }}</span>
+            </div>
+            <p class="hint-text">
+              方案建立後，每個科目會產生獨立的學生課程，堂數從共用池扣除。
+              補登的日期會建立「已上課」堂次並自動扣堂。
+            </p>
+          </article>
+        </section>
+      </div>
+
+      <div v-else class="scheduler-layout">
         <section class="panel-stack">
           <article class="scheduler-card">
             <h4>欄位設定</h4>
@@ -32,10 +218,11 @@
               </div>
 
               <div class="form-group">
-                <label>科目 *</label>
+                <label>預設科目 *</label>
                 <select v-model="form.subject">
                   <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
                 </select>
+                <p class="field-note">新增星期／新增時段時的預設科目；下方各時段可改為不同科目（會建立多筆學生課程）。</p>
               </div>
 
               <div v-if="scopeWarning" class="scope-warning-banner" style="grid-column: 1 / -1;">
@@ -49,6 +236,7 @@
                   <option value="one_on_two">一對二</option>
                   <option value="one_on_three">一對三</option>
                   <option value="tutoring">輔導</option>
+                  <option value="trial">試聽</option>
                 </select>
               </div>
 
@@ -95,6 +283,12 @@
                   <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}</option>
                 </select>
               </div>
+
+              <div class="form-group">
+                <label>繳費日期（選填）</label>
+                <input v-model="form.paid_at" type="date" />
+                <p v-if="form.paid_at" class="field-note" style="color:#2e7d32;">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+              </div>
             </div>
           </article>
 
@@ -125,6 +319,13 @@
                   class="weekday-slot-row per-day-row"
                 >
                   <span class="weekday-slot-day">{{ slotNum === 0 ? `週${weekdayLabelMap[day]}` : '' }}</span>
+                  <select
+                    class="slot-subject-select"
+                    :value="form.day_time_slots[globalIdx].subject || form.subject"
+                    @change="updateSlotSubject(globalIdx, $event.target.value)"
+                  >
+                    <option v-for="s in subjectOptions" :key="`sub-${globalIdx}-${s.value}`" :value="s.value">{{ s.label }}</option>
+                  </select>
                   <select
                     :value="form.day_time_slots[globalIdx].start_time"
                     @change="updateSlot(globalIdx, $event.target.value)"
@@ -221,7 +422,7 @@
             </div>
 
             <p class="hint-text">
-              可手動指定過去或未來日期；系統只會從最後一個手動日期之後自動補齊剩餘堂次。
+              手動日可自由選擇任意日期；系統只會從最後一個手動日期之後依固定上課星期自動補齊剩餘堂次。
               <template v-if="form.payment_type === 'monthly'">月結課只會累積已使用堂次，不會扣剩餘堂數。</template>
             </p>
 
@@ -246,8 +447,13 @@
 
       <div class="modal-actions">
         <button class="ghost" type="button" @click="$emit('cancel')">取消</button>
-        <button class="primary" type="button" :disabled="submitting" @click="submit">
-          {{ submitting ? '送出中...' : submitLabel }}
+        <button
+          class="primary"
+          type="button"
+          :disabled="submitting"
+          @click="packageMode ? submitPackage() : submit()"
+        >
+          {{ submitting ? '送出中...' : (packageMode ? '建立方案' : submitLabel) }}
         </button>
       </div>
     </div>
@@ -257,6 +463,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
@@ -296,14 +503,49 @@ const props = defineProps({
   rooms: { type: Array, default: () => [] },
   initialStudentId: { type: [Number, String], default: '' },
   initialTeacherId: { type: [Number, String], default: '' },
+  /** 從智慧排課格子點選時帶入，例如 '11:00' */
+  initialStartTime: { type: String, default: '' },
+  /** 從日／週檢視格子點選時帶入的星期 1–7 */
+  initialDaysOfWeek: { type: Array, default: () => [] },
+  /** 打開時月曆預設顯示此日所在月份 YYYY-MM-DD */
+  initialCalendarYmd: { type: String, default: '' },
   mode: { type: String, default: 'create' },
 });
 
 const emit = defineEmits(['success', 'cancel']);
 
 const nowAtOpen = new Date();
-const currentMonth = ref(new Date(nowAtOpen.getFullYear(), nowAtOpen.getMonth(), 1));
+
+function parseYmdToMonthDate(ymd) {
+  if (!ymd || typeof ymd !== 'string') return null;
+  const m = String(ymd).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || mo < 1 || mo > 12) return null;
+  return new Date(y, mo - 1, 1);
+}
+
+function normalizeInitialDaysOfWeek(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return [...new Set(raw.map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
+}
+
+function normalizeHalfHourTime(raw) {
+  const [hRaw, mRaw] = String(raw || '00:00').split(':');
+  const hour = Math.max(0, Math.min(23, Number(hRaw) || 0));
+  const minute = Number(mRaw) || 0;
+  const rounded = minute < 15 ? 0 : (minute < 45 ? 30 : 0);
+  const carryHour = minute >= 45 ? 1 : 0;
+  const finalHour = (hour + carryHour) % 24;
+  return `${String(finalHour).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`;
+}
+
+const bootMonth = parseYmdToMonthDate(props.initialCalendarYmd);
+const currentMonth = ref(bootMonth || new Date(nowAtOpen.getFullYear(), nowAtOpen.getMonth(), 1));
 const submitting = ref(false);
+
+const seededStart = normalizeHalfHourTime(props.initialStartTime || '16:00');
 
 const form = reactive({
   student_id: props.initialStudentId ? Number(props.initialStudentId) : '',
@@ -314,15 +556,123 @@ const form = reactive({
   total_classes: 8,
   settlement_day: null,
   monthly_sessions: 4,
-  days_of_week: [],
+  days_of_week: normalizeInitialDaysOfWeek(props.initialDaysOfWeek),
   day_time_slots: [],
-  start_time: '16:00',
+  start_time: seededStart,
   duration_hours: 2,
   price_per_session: 1000,
   payment_type: 'session',
   room_id: '',
   memo: '',
+  paid_at: '',
 });
+
+const packageMode = ref(false);
+
+const pkgForm = reactive({
+  student_id: props.initialStudentId ? Number(props.initialStudentId) : '',
+  name: '',
+  total_sessions: 24,
+  rate: 1000,
+  class_type: 'one_on_one',
+  paid_at: '',
+  subjects: [
+    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
+  ],
+});
+
+const PKG_SUBJECT_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+];
+
+const pkgCurrentMonth = ref(new Date(nowAtOpen.getFullYear(), nowAtOpen.getMonth(), 1));
+const pkgActiveSubjectIdx = ref(0);
+
+const pkgTotalConfirmedCount = computed(() =>
+  pkgForm.subjects.reduce((sum, s) => sum + (s.confirmed_dates?.length || 0), 0)
+);
+
+const pkgAllConfirmedMap = computed(() => {
+  const map = {};
+  pkgForm.subjects.forEach((s, idx) => {
+    for (const d of (s.confirmed_dates || [])) {
+      if (!map[d]) map[d] = [];
+      map[d].push(idx);
+    }
+  });
+  return map;
+});
+
+const pkgCalendarCells = computed(() => {
+  const first = new Date(pkgCurrentMonth.value.getFullYear(), pkgCurrentMonth.value.getMonth(), 1);
+  const firstWeekday = ((first.getDay() + 6) % 7);
+  const start = new Date(first);
+  start.setDate(first.getDate() - firstWeekday);
+  const todayYmd = toYmd(new Date());
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const ymd = toYmd(d);
+    const inMonth = d.getMonth() === pkgCurrentMonth.value.getMonth();
+    const isPast = ymd < todayYmd;
+    const subjectIndices = pkgAllConfirmedMap.value[ymd] || [];
+    cells.push({ key: ymd, ymd, day: d.getDate(), inMonth, isPast, subjectIndices });
+  }
+  return cells;
+});
+
+function shiftPkgMonth(delta) {
+  const base = pkgCurrentMonth.value;
+  pkgCurrentMonth.value = new Date(base.getFullYear(), base.getMonth() + delta, 1);
+}
+
+const pkgMonthLabel = computed(() => {
+  const y = pkgCurrentMonth.value.getFullYear();
+  const m = String(pkgCurrentMonth.value.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+});
+
+function onPkgDateClick(cell) {
+  if (!cell?.ymd || !cell.isPast) return;
+  const idx = pkgActiveSubjectIdx.value;
+  const subj = pkgForm.subjects[idx];
+  if (!subj) return;
+  const pos = subj.confirmed_dates.indexOf(cell.ymd);
+  if (pos >= 0) {
+    subj.confirmed_dates.splice(pos, 1);
+    return;
+  }
+  if (pkgTotalConfirmedCount.value + 1 > pkgForm.total_sessions) {
+    alert(`補登堂數合計不可超過總堂數 ${pkgForm.total_sessions}`);
+    return;
+  }
+  subj.confirmed_dates.push(cell.ymd);
+  subj.confirmed_dates.sort();
+}
+
+function removePkgConfirmedDate(idx, dateIdx) {
+  const subj = pkgForm.subjects[idx];
+  if (!subj) return;
+  subj.confirmed_dates.splice(dateIdx, 1);
+}
+
+function addPkgSubject() {
+  if (pkgForm.subjects.length >= 10) return;
+  const existing = pkgForm.subjects.map((s) => s.subject);
+  const next = ['English', 'Science', 'Chinese', 'Physics', 'Chemistry', 'Biology', 'Social'].find((s) => !existing.includes(s)) || 'English';
+  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] });
+}
+
+function pkgSubjectColor(idx) {
+  return PKG_SUBJECT_COLORS[idx % PKG_SUBJECT_COLORS.length];
+}
+
+function pkgSubjectLabel(subjectKey) {
+  const opt = subjectOptions.value.find((s) => s.value === subjectKey);
+  return opt ? opt.label : subjectKey;
+}
 
 const studentOptions = computed(() => (
   (props.students || []).map((student) => ({
@@ -359,7 +709,18 @@ const scopeWarning = computed(() => {
   const teacher = selectedTeacher.value;
   if (!teacher) return null;
   const studentGrade = selectedStudent.value?.grade || selectedStudent.value?.ClassID || null;
-  return checkTeacherScope(teacher, form.subject, studentGrade, subjectOptions.value);
+  const subs = new Set();
+  for (const slot of form.day_time_slots || []) {
+    subs.add(String(slot?.subject || form.subject || '').trim() || String(form.subject));
+  }
+  if (subs.size === 0) subs.add(String(form.subject || ''));
+  const parts = [];
+  for (const subj of subs) {
+    if (!subj) continue;
+    const w = checkTeacherScope(teacher, subj, studentGrade, subjectOptions.value);
+    if (w) parts.push(`${subj}: ${w}`);
+  }
+  return parts.length ? parts.join('；') : null;
 });
 
 const apiScopeWarning = ref('');
@@ -386,6 +747,7 @@ function orderedSlotsForWeekday(day) {
         start_time: start,
         duration_hours: durH,
         duration_minutes: durationHoursToMinutes(durH),
+        subject: String(form.day_time_slots[i]?.subject || form.subject || ''),
       });
     }
   }
@@ -394,13 +756,21 @@ function orderedSlotsForWeekday(day) {
 }
 
 function sessionCountForWeekday(day) {
+  const d = Number(day);
+  if (d < 1 || d > 7 || !selectedDays.value.includes(d)) {
+    return 0;
+  }
   const n = orderedSlotsForWeekday(day).length;
   return n > 0 ? n : 1;
 }
 
 function sessionCountForYmd(ymd) {
   const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
-  return sessionCountForWeekday(dow);
+  // 手動日期不限固定星期，若該星期無設定時段則以 1 堂計
+  if (selectedDays.value.includes(dow)) {
+    return sessionCountForWeekday(dow);
+  }
+  return 1;
 }
 
 function slotEndDateTimeFromParts(ymd, startTimeStr, durHours) {
@@ -493,6 +863,7 @@ const futureSessionOccurrences = computed(() => {
       const slotList = slots.length ? slots : [{
         start_time: normalizeHalfHourTime(form.start_time || '16:00'),
         duration_minutes: durationHoursToMinutes(form.duration_hours),
+        subject: form.subject,
       }];
       for (const slot of slotList) {
         if (selected.length >= remaining) break;
@@ -500,6 +871,7 @@ const futureSessionOccurrences = computed(() => {
           ymd,
           start_time: slot.start_time,
           duration_minutes: slot.duration_minutes,
+          subject: slot.subject || form.subject,
         });
       }
     }
@@ -549,6 +921,45 @@ watch(
   },
   { deep: true }
 );
+
+/** 預設科目變更時：仍跟著舊預設的時段一併更新；已手動選成其他科目的時段不動 */
+watch(
+  () => form.subject,
+  (newSub, oldSub) => {
+    if (oldSub === undefined || oldSub === null || String(oldSub).trim() === '') {
+      return;
+    }
+    if (String(newSub) === String(oldSub)) {
+      return;
+    }
+    const slots = [...(form.day_time_slots || [])];
+    if (slots.length === 0) {
+      return;
+    }
+    let changed = false;
+    const next = String(newSub);
+    const prev = String(oldSub);
+    for (let i = 0; i < slots.length; i += 1) {
+      const s = slots[i];
+      const cur = s?.subject;
+      const curStr = cur != null && String(cur).trim() !== '' ? String(cur) : '';
+      if (!curStr || curStr === prev) {
+        slots[i] = { ...s, subject: next };
+        changed = true;
+      }
+    }
+    if (changed) {
+      form.day_time_slots = slots;
+    }
+  }
+);
+
+watch(() => form.student_id, (val) => {
+  if (val !== pkgForm.student_id) pkgForm.student_id = val;
+});
+watch(() => pkgForm.student_id, (val) => {
+  if (val !== form.student_id) form.student_id = val;
+});
 
 const futureDateSet = computed(() => (
   new Set(futureSessionOccurrences.value.map((o) => o.ymd))
@@ -613,16 +1024,6 @@ function sortDates(arr) {
   return [...new Set(arr)].sort((a, b) => a.localeCompare(b));
 }
 
-function normalizeHalfHourTime(raw) {
-  const [hRaw, mRaw] = String(raw || '00:00').split(':');
-  const hour = Math.max(0, Math.min(23, Number(hRaw) || 0));
-  const minute = Number(mRaw) || 0;
-  const rounded = minute < 15 ? 0 : (minute < 45 ? 30 : 0);
-  const carryHour = minute >= 45 ? 1 : 0;
-  const finalHour = (hour + carryHour) % 24;
-  return `${String(finalHour).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`;
-}
-
 function buildHalfHourTimeOptions() {
   const slots = [];
   for (let hour = 0; hour < 24; hour += 1) {
@@ -664,12 +1065,15 @@ function syncDaySlotsFromSelection() {
       day,
       start_time: normalizeHalfHourTime(slot?.start_time || '16:00'),
       duration_hours: Number(slot?.duration_hours || 0) || form.duration_hours,
+      subject: String(slot?.subject || form.subject || ''),
     });
   }
 
   const firstBucket = grouped.values().next().value || [];
   const firstSlot = firstBucket[0] || null;
-  const baseTime = firstSlot ? normalizeHalfHourTime(firstSlot.start_time || '16:00') : normalizeHalfHourTime('16:00');
+  const baseTime = firstSlot
+    ? normalizeHalfHourTime(firstSlot.start_time || '16:00')
+    : normalizeHalfHourTime(form.start_time || '16:00');
   const baseDuration = Number(firstSlot?.duration_hours || 0) || form.duration_hours;
 
   const rebuilt = [];
@@ -681,6 +1085,7 @@ function syncDaySlotsFromSelection() {
           day,
           start_time: normalizeHalfHourTime(slot.start_time || baseTime),
           duration_hours: Number(slot.duration_hours || 0) || baseDuration,
+          subject: String(slot.subject || form.subject || ''),
         });
       }
       continue;
@@ -689,6 +1094,7 @@ function syncDaySlotsFromSelection() {
       day,
       start_time: baseTime,
       duration_hours: baseDuration,
+      subject: String(form.subject || ''),
     });
   }
   form.day_time_slots = rebuilt;
@@ -723,6 +1129,15 @@ function updateSlotDur(index, rawValue) {
   form.day_time_slots = slots;
 }
 
+function updateSlotSubject(index, nextSubject) {
+  const idx = Number(index);
+  if (!Number.isInteger(idx) || idx < 0) return;
+  const slots = [...(form.day_time_slots || [])];
+  if (!slots[idx]) return;
+  slots[idx] = { ...slots[idx], subject: String(nextSubject || form.subject) };
+  form.day_time_slots = slots;
+}
+
 function addSlotForDay(day) {
   const d = Number(day);
   if (d < 1 || d > 7) return;
@@ -734,6 +1149,7 @@ function addSlotForDay(day) {
     day: d,
     start_time: normalizeHalfHourTime(base?.start_time || form.start_time || '16:00'),
     duration_hours: Number(base?.duration_hours || 0) || form.duration_hours,
+    subject: String(base?.subject || form.subject || ''),
   };
   form.day_time_slots = [...(form.day_time_slots || []), slot];
 }
@@ -771,6 +1187,16 @@ function isManualDateConfirmed(ymd) {
 
 function onDateClick(cell) {
   if (!cell?.ymd) return;
+  const todayYmd = getCurrentTodayYmd();
+  // 過去日期不限制星期，固定星期只約束未來排課
+  if (selectedDays.value.length > 0 && cell.ymd >= todayYmd) {
+    const dow = weekdayOneToSeven(new Date(`${cell.ymd}T12:00:00`));
+    if (!selectedDays.value.includes(dow)) {
+      const names = ['', '一', '二', '三', '四', '五', '六', '日'];
+      alert(`此日為週${names[dow] || dow}，不在已勾選的固定上課星期內；請只選固定排課日，或先調整「固定上課星期」。`);
+      return;
+    }
+  }
   if (form.payment_type === 'monthly') {
     const targetYm = toYmd(currentMonth.value).slice(0, 7);
     if (cell.ymd.slice(0, 7) !== targetYm) {
@@ -793,6 +1219,59 @@ function onDateClick(cell) {
 
   current.add(cell.ymd);
   form.confirmed_dates = sortDates([...current]);
+}
+
+async function submitPackage() {
+  const branchId = Number(props.branchId || 0);
+  if (branchId <= 0) { alert('請先選擇分校後再建立課程'); return; }
+  if (!pkgForm.student_id) { alert('請選擇學生'); return; }
+  if (!pkgForm.name.trim()) { alert('請輸入方案名稱'); return; }
+  if (!pkgForm.total_sessions || pkgForm.total_sessions < 1) { alert('總堂數至少為 1'); return; }
+  if (pkgForm.subjects.length === 0) { alert('請至少新增一個科目'); return; }
+  for (let i = 0; i < pkgForm.subjects.length; i++) {
+    const s = pkgForm.subjects[i];
+    if (!s.subject) { alert(`第 ${i + 1} 科目未選擇科目`); return; }
+    if (!s.teacher_id) { alert(`第 ${i + 1} 科目未選擇老師`); return; }
+    if (!s.start_date) { alert(`第 ${i + 1} 科目未填寫開始日期`); return; }
+  }
+  const subjectNames = pkgForm.subjects.map((s) => s.subject);
+  const dupes = subjectNames.filter((v, i) => subjectNames.indexOf(v) !== i);
+  if (dupes.length > 0) {
+    if (!confirm(`科目「${[...new Set(dupes)].join('、')}」重複出現，確定要繼續嗎？`)) return;
+  }
+  if (pkgTotalConfirmedCount.value > pkgForm.total_sessions) {
+    alert(`補登堂數合計（${pkgTotalConfirmedCount.value}）超過總堂數（${pkgForm.total_sessions}）`);
+    return;
+  }
+
+  submitting.value = true;
+  try {
+    const payload = {
+      student_id: Number(pkgForm.student_id),
+      branch_id: branchId,
+      name: pkgForm.name.trim(),
+      total_sessions: Number(pkgForm.total_sessions),
+      rate: Number(pkgForm.rate) || 0,
+      rate_unit: 'session',
+      class_type: pkgForm.class_type || 'one_on_one',
+      paid_at: pkgForm.paid_at || null,
+      subjects: pkgForm.subjects.map((s) => ({
+        subject_name: s.subject,
+        teacher_id: Number(s.teacher_id),
+        duration_hours: Number(s.duration_hours) || 2,
+        start_date: s.start_date || null,
+        confirmed_dates: (s.confirmed_dates || []).filter(Boolean),
+      })),
+    };
+    const result = await createMultiSubjectPackage(payload);
+    const memberCount = result?.members?.length ?? pkgForm.subjects.length;
+    alert(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。`);
+    emit('success', result);
+  } catch (err) {
+    alert(err?.message || '建立方案失敗，請稍後再試');
+  } finally {
+    submitting.value = false;
+  }
 }
 
 async function submit() {
@@ -881,12 +1360,23 @@ async function submit() {
     const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
     const indices = getSlotIndicesForDay(dow);
     const kind = isManualDateConfirmed(ymd) ? 'confirmed' : 'future';
-    for (const idx of indices) {
-      const s = form.day_time_slots[idx];
+    if (indices.length > 0) {
+      for (const idx of indices) {
+        const s = form.day_time_slots[idx];
+        sessionPlan.push({
+          session_date: ymd,
+          start_time: normalizeHalfHourTime(s.start_time),
+          kind,
+          subject: String(s.subject || form.subject),
+        });
+      }
+    } else {
+      // 手動日期不在固定上課星期，使用全域預設時間建立
       sessionPlan.push({
         session_date: ymd,
-        start_time: normalizeHalfHourTime(s.start_time),
+        start_time: normalizeHalfHourTime(form.start_time || '16:00'),
         kind,
+        subject: String(form.subject),
       });
     }
   }
@@ -895,6 +1385,7 @@ async function submit() {
       session_date: fs.ymd,
       start_time: fs.start_time,
       kind: 'future',
+      subject: String(fs.subject || form.subject),
     });
   }
   sessionPlan.sort((a, b) => {
@@ -913,6 +1404,7 @@ async function submit() {
           day,
           start_time: slot.start_time,
           duration_minutes: slot.duration_minutes,
+          subject: String(slot.subject || form.subject),
         });
       }
     }
@@ -936,6 +1428,7 @@ async function submit() {
       monthly_sessions: form.payment_type === 'monthly' ? safePlannedSessions.value : null,
       room_id: form.room_id ? Number(form.room_id) : null,
       memo: form.memo || null,
+      paid_at: form.paid_at || null,
       mode: props.mode,
     };
 
@@ -1094,7 +1587,15 @@ async function submit() {
   align-items: center;
 }
 .weekday-slot-row.per-day-row {
-  grid-template-columns: 56px minmax(100px, 150px) 70px auto;
+  grid-template-columns: 56px minmax(88px, 120px) minmax(88px, 130px) 70px auto minmax(28px, 32px);
+}
+.slot-subject-select {
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #d6deeb;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
 }
 .per-day-dur {
   width: 70px;
@@ -1296,5 +1797,282 @@ async function submit() {
   font-size: 13px;
   color: #92400e;
   line-height: 1.5;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 12px;
+  border: 1px solid #d6deeb;
+  border-radius: 10px;
+  overflow: hidden;
+  width: fit-content;
+}
+.mode-tab {
+  padding: 7px 18px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  transition: background 0.15s, color 0.15s;
+}
+.mode-tab + .mode-tab {
+  border-left: 1px solid #d6deeb;
+}
+.mode-tab.active {
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 600;
+}
+
+.package-layout {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+}
+
+/* --- Subject cards --- */
+.pkg-card {
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #3b82f6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: box-shadow .15s, border-color .15s;
+}
+.pkg-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+.pkg-card-active {
+  box-shadow: 0 2px 12px rgba(59,130,246,.12);
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+.pkg-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pkg-card-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pkg-card-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  align-items: center;
+}
+.pkg-inline-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+  max-width: 110px;
+}
+.pkg-inline-teacher {
+  max-width: 140px;
+  font-size: 13px;
+}
+.pkg-inline-dur {
+  width: 52px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 13px;
+  text-align: center;
+}
+.pkg-inline-date {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 12px;
+  max-width: 130px;
+}
+.pkg-remove-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.pkg-remove-btn:hover {
+  background: #fef2f2;
+}
+.pkg-card-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 22px;
+}
+.pkg-card-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-right: 4px;
+}
+.pkg-date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: #fff;
+  border: 1px solid #b8e6c4;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.pkg-date-chip button {
+  border: none;
+  background: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.pkg-add-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.pkg-add-btn:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+/* --- Package calendar --- */
+.calendar-card { padding-bottom: 14px; }
+
+.pkg-cal-active-label {
+  text-align: center;
+  font-size: 13px;
+  color: #475569;
+  margin: 6px 0 2px;
+}
+.pkg-cal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 8px 0 10px;
+}
+.pkg-cal-tab {
+  padding: 3px 12px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.pkg-cal-tab.active {
+  color: #fff !important;
+}
+.pkg-cell-disabled {
+  opacity: .35;
+  cursor: default !important;
+}
+.pkg-cell-dots {
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  margin-top: 2px;
+}
+.pkg-cell-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* --- Package summary --- */
+.pkg-summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.pkg-summary-item {
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: 10px;
+}
+.pkg-summary-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.pkg-summary-lbl {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.pkg-summary-total {
+  background: #eff6ff;
+  color: #1e40af;
+}
+.pkg-summary-total .pkg-summary-num { color: #1e40af; }
+.pkg-summary-used {
+  background: #ecfdf5;
+  color: #065f46;
+}
+.pkg-summary-used .pkg-summary-num { color: #065f46; }
+.pkg-summary-remain {
+  background: #fefce8;
+  color: #854d0e;
+}
+.pkg-summary-remain .pkg-summary-num { color: #854d0e; }
+
+.pkg-summary-meta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+.pkg-summary-meta span {
+  padding: 2px 10px;
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+@media (max-width: 760px) {
+  .package-layout {
+    grid-template-columns: 1fr;
+  }
+  .pkg-card-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pkg-inline-select,
+  .pkg-inline-teacher,
+  .pkg-inline-dur,
+  .pkg-inline-date {
+    max-width: 100%;
+    width: 100%;
+  }
 }
 </style>
