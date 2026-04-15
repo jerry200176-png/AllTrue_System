@@ -128,6 +128,10 @@ class LineWebhookController extends Controller
     private function handleMessage(string $lineUserId, string $text, ?string $replyToken, object $campus): void
     {
         $trimmed = trim($text);
+        // 貼圖、圖片等非文字事件沒有 text，不應自動回覆（避免洗版）
+        if ($trimmed === '') {
+            return;
+        }
 
         // 綁定 {StudentID} {Phone}
         if (preg_match('/^綁定\s+(\d+)\s+([\d\-\+]+)$/', $trimmed, $m)) {
@@ -150,29 +154,8 @@ class LineWebhookController extends Controller
             return;
         }
 
-        // Any other message → show portal link if already bound
-        $students = Student::where('LineID', $lineUserId)
-            ->where('CampusID', $campus->id)
-            ->get();
-
-        if ($students->isNotEmpty()) {
-            $names = $students->pluck('name')->implode('、');
-            $this->replyFlexMessage(
-                $replyToken,
-                "查看學習狀況",
-                "已綁定學生：{$names}\n點選下方按鈕立即查看 📚\n\n如需綁定其他孩子，請輸入「綁定 學生姓名」。",
-                $this->getPortalUrl($campus),
-                $campus
-            );
-        } else {
-            $this->replyMessage(
-                $replyToken,
-                "請輸入「綁定 學生姓名」來連結帳號。\n" .
-                "例如：綁定 王小明\n\n" .
-                "若有同名學生，請改用「綁定 學號」方式。",
-                $campus
-            );
-        }
+        // 一般聊天不回覆：避免家長每傳一句就收到「綁定／入口」洗版。
+        // 新用戶加好友時由 follow 事件說明綁定；已綁定者由綁定成功／歡迎回來訊息帶入口即可。
     }
 
     private function handleBindingByNameOnly(string $lineUserId, string $name, ?string $replyToken, object $campus): void

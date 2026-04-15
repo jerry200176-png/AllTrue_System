@@ -41,6 +41,10 @@ class CampusController extends Controller
         '大直分校',
         '汐止分校',
         '內湖分校',
+        '石牌分校',
+        '敦化分校',
+        '蘆洲分校',
+        '大同分校',
     ];
 
     public function listPublic()
@@ -62,14 +66,18 @@ class CampusController extends Controller
             \Log::error('[CampusController::listPublic] ' . $e->getMessage());
             // 後備：回傳預設八所分校
             return response()->json([
-                ['id' => 1, 'name' => '興隆分校', 'code' => 'xinglong'],
-                ['id' => 2, 'name' => '新店分校', 'code' => 'xindian'],
-                ['id' => 3, 'name' => '大安分校', 'code' => 'daan'],
-                ['id' => 4, 'name' => '木柵分校', 'code' => 'muzha'],
-                ['id' => 5, 'name' => '東湖分校', 'code' => 'donghu'],
-                ['id' => 6, 'name' => '大直分校', 'code' => 'dazhi'],
-                ['id' => 7, 'name' => '汐止分校', 'code' => 'xizhi'],
-                ['id' => 8, 'name' => '內湖分校', 'code' => 'neihu'],
+                ['id' => 17, 'name' => '興隆分校', 'code' => 'xinglong'],
+                ['id' => 9,  'name' => '新店分校', 'code' => 'xindian'],
+                ['id' => 15, 'name' => '大安分校', 'code' => 'daan'],
+                ['id' => 16, 'name' => '木柵分校', 'code' => 'muzha'],
+                ['id' => 2,  'name' => '東湖分校', 'code' => 'donghu'],
+                ['id' => 3,  'name' => '大直分校', 'code' => 'dazhi'],
+                ['id' => 4,  'name' => '汐止分校', 'code' => 'xizhi'],
+                ['id' => 1,  'name' => '內湖分校', 'code' => 'neihu'],
+                ['id' => 12, 'name' => '石牌分校', 'code' => 'shipai'],
+                ['id' => 22, 'name' => '敦化分校', 'code' => 'dunhua'],
+                ['id' => 7,  'name' => '蘆洲分校', 'code' => 'luzhou'],
+                ['id' => 23, 'name' => '大同分校', 'code' => 'datong'],
             ]);
         }
     }

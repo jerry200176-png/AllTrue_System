@@ -99,6 +99,10 @@ class SessionDeductionService
             'note'             => $note,
         ]);
 
+        PackageDeductionService::syncFromStudentClassDeduction(
+            $studentClassId, $classSessionId, 'deduct', $source, $createdBy, $note
+        );
+
         return true;
     }
 
@@ -131,6 +135,10 @@ class SessionDeductionService
             'created_by'       => $createdBy,
             'note'             => $note,
         ]);
+
+        PackageDeductionService::syncFromStudentClassDeduction(
+            $studentClassId, $classSessionId, 'reverse', $source, $createdBy, $note
+        );
 
         return true;
     }
@@ -192,7 +200,7 @@ class SessionDeductionService
                 $usedSessions = min($sessionCount, $usedByAttendance);
                 $sc->UsedSessions      = $usedSessions;
                 $sc->RemainingSessions  = max(0, $sessionCount - $usedSessions);
-                $sc->Stop               = $sc->RemainingSessions <= 0 ? 1 : 0;
+                // Do not auto-set Stop when remaining hits 0; pause is manual (StudentClassController pause/resume).
                 if ($sc->RemainingSessions <= 2) {
                     $sc->Paid = 0;
                 }

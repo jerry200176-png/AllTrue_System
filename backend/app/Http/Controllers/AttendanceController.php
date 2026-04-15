@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Campus;
 use App\Models\ClassSession;
 use App\Models\PendingSwipe;
+use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\CourseLeaveCascadeService;
 use App\Services\SessionDeductionService;
+use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +26,10 @@ class AttendanceController extends Controller
             ->leftJoin('Teacher as t', 't.id', '=', 'si.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
             ->leftJoin('Campus as c', 'c.id', '=', 'si.CampusID')
-            ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
+            // Subject: prefer StudentClass (contract), fall back to snapshot on StudentSingIn
+            // (many legacy rows have SubjectID on the sign-in only).
+            ->leftJoin('Subject as sub_sc', 'sub_sc.id', '=', 'sc.SubjectID')
+            ->leftJoin('Subject as sub_si', 'sub_si.id', '=', 'si.SubjectID')
             ->leftJoin('Teacher as sct', 'sct.id', '=', 'sc.TeacherID')
             ->leftJoin('User as scu', 'scu.id', '=', 'sc.TeacherID')
             ->select([
@@ -32,7 +38,7 @@ class AttendanceController extends Controller
                 DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
                 'st.CampusID as student_campus_id',
                 'c.name as campus_name',
-                'sub.Subject_Name as subject_name',
+                DB::raw('COALESCE(sub_sc.Subject_Name, sub_si.Subject_Name) as subject_name'),
                 DB::raw("COALESCE(sct.T_Name, scu.Name, '') as course_teacher_name"),
                 'sc.ClassType as class_type',
             ]);
@@ -91,13 +97,87 @@ class AttendanceController extends Controller
             $query->whereDate('si.SignInDT', $request->input('date'));
         }
 
+        $query->whereNull('si.VoidedAt');
         $records = $query->orderByDesc('si.id')->paginate((int) ($request->input('per_page', 20)));
+
+        // ── Supplemental: ClassSessions with leave status that have no active StudentSignIn ──
+        // Wrapped in try/catch so a SQL failure here never breaks the main response.
+        if ($request->filled('date')) {
+            try {
+                $leaveDate = $request->input('date');
+                $leaveQ = DB::table('ClassSession as cs')
+                    ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                    ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
+                    ->leftJoin('Campus as c', 'c.id', '=', 'st.CampusID')
+                    ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
+                    ->leftJoin('Teacher as sct', 'sct.id', '=', 'sc.TeacherID')
+                    ->leftJoin('User as scu', 'scu.id', '=', 'sc.TeacherID')
+                    ->whereDate('cs.SessionDate', $leaveDate)
+                    ->whereIn('cs.Status', ['leave', 'leave_adjusted'])
+                    ->whereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('StudentSingIn as si_check')
+                            ->whereColumn('si_check.ClassSessionID', 'cs.id')
+                            ->whereNull('si_check.VoidedAt');
+                    });
+
+                if ($role === 'teacher') {
+                    $teacherIdForLeave = $request->attributes->get('auth_teacher_id');
+                    if ($teacherIdForLeave) {
+                        $leaveQ->where('sc.TeacherID', $teacherIdForLeave);
+                    }
+                }
+                if ($selectedCampusId !== null) {
+                    $leaveQ->where('st.CampusID', $selectedCampusId);
+                } elseif (!empty($campusIds)) {
+                    $leaveQ->whereIn('st.CampusID', $campusIds);
+                }
+
+                $leaveRows = $leaveQ->select([
+                    DB::raw('-cs.id as id'),
+                    'sc.ID as StudentClassID',
+                    'sc.StudentID',
+                    'sc.TeacherID',
+                    DB::raw('NULL as RecordedByUserID'),
+                    DB::raw('NULL as GradeID'),
+                    DB::raw('NULL as SubjectID'),
+                    DB::raw('NULL as Get1byID'),
+                    DB::raw('NULL as Hours'),
+                    DB::raw('NULL as Memo'),
+                    DB::raw("CONCAT(DATE(cs.SessionDate), ' ', COALESCE(cs.StartTime, '00:00:00')) as SignInDT"),
+                    DB::raw('NULL as SignOutDT'),
+                    DB::raw('NOW() as MDT'),
+                    'cs.id as ClassSessionID',
+                    DB::raw("'leave' as Status"),
+                    DB::raw("'student' as PersonType"),
+                    'st.CampusID',
+                    DB::raw('0 as SessionDeducted'),
+                    DB::raw('NULL as VoidedAt'),
+                    DB::raw('NULL as VoidedByUserID'),
+                    DB::raw('NULL as VoidReason'),
+                    'st.name as student_name',
+                    DB::raw("COALESCE(sct.T_Name, scu.Name, '') as teacher_name"),
+                    'st.CampusID as student_campus_id',
+                    'c.name as campus_name',
+                    'sub.Subject_Name as subject_name',
+                    DB::raw("COALESCE(sct.T_Name, scu.Name, '') as course_teacher_name"),
+                    'sc.ClassType as class_type',
+                ])->get();
+
+                if ($leaveRows->isNotEmpty()) {
+                    $records->getCollection()->push(...$leaveRows->all());
+                }
+            } catch (\Exception $e) {
+                \Log::warning('AttendanceController supplemental query failed: ' . $e->getMessage());
+            }
+        }
+
         $statusLabelMap = [
             'present' => '到班',
             'late' => '遲到',
-            'excused' => '請假',
             'absent' => '缺席',
-            'leave' => '離班',
+            'leave' => '請假',
+            'excused' => '請假',
         ];
 
         $records->getCollection()->transform(function ($row) use ($statusLabelMap) {
@@ -123,42 +203,75 @@ class AttendanceController extends Controller
     }
 
     /**
-     * GET 已結束且尚未點名的節次（供「依節次點名」使用）
-     * Query: branch_id (optional), date (optional, default today and past)
+     * GET 已結束且尚未點名的節次（供「事後補點名」使用）
+     *
+     * Query params:
+     *   branch_id  (required for non-super_admin; super_admin must also provide)
+     *   start_date (optional, default: 7 days ago)
+     *   end_date   (optional, default: today)
+     *   per_page   (optional, default 50, max 200)
+     *   page       (optional, default 1)
      */
     public function endedSessions(Request $request)
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
         if ($request->filled('branch_id')) {
             $bid = (int) $request->input('branch_id');
             if ($role !== 'super_admin' && !empty($campusIds) && !in_array($bid, $campusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
             $campusIds = [$bid];
+        } elseif (empty($campusIds)) {
+            return response()->json(['message' => '請選擇分校'], 422);
         }
 
+        $startDate = $request->input('start_date', Carbon::now()->subDays(7)->toDateString());
+        $endDate = $request->input('end_date', Carbon::now()->toDateString());
+        $perPage = min((int) ($request->input('per_page', 50)), 200);
+
         $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
-        $classQuery = StudentClass::whereIn('StudentID', $studentIds);
+        $allClassIdsInCampus = StudentClass::whereIn('StudentID', $studentIds)->where('Stop', 0)->pluck('ID');
         if ($role === 'teacher') {
-            $teacherId = $request->attributes->get('auth_teacher_id');
-            if ($teacherId) {
-                $classQuery->where('TeacherID', $teacherId);
+            $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            if ($teacherId > 0) {
+                $contractClassIds = StudentClass::whereIn('StudentID', $studentIds)
+                    ->where('TeacherID', $teacherId)
+                    ->where('Stop', 0)
+                    ->pluck('ID');
+                $subClassIds = DB::table('schedules')
+                    ->where('status', 'scheduled')
+                    ->whereNotNull('original_schedule_id')
+                    ->where('teacher_id', $teacherId)
+                    ->whereBetween(DB::raw('DATE(schedule_date)'), [$startDate, $endDate])
+                    ->whereIn('student_course_id', $allClassIdsInCampus)
+                    ->pluck('student_course_id')
+                    ->unique();
+                $classIds = $contractClassIds->merge($subClassIds)->unique()->values();
+            } else {
+                $classIds = collect();
             }
+        } else {
+            $classIds = $allClassIdsInCampus;
         }
-        $classIds = $classQuery->pluck('ID');
 
         $now = Carbon::now()->format('Y-m-d H:i:s');
         $sessions = ClassSession::with(['studentClass.student'])
             ->whereIn('StudentClassID', $classIds)
-            ->whereDoesntHave('signIns')
+            ->whereBetween('SessionDate', [$startDate, $endDate])
+            ->whereDoesntHave('signIns', function ($q) {
+                $q->whereNull('VoidedAt');
+            })
+            ->whereIn('Status', ['scheduled', 'absent'])
             ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now])
             ->orderBy('SessionDate', 'desc')
             ->orderBy('StartTime', 'desc')
-            ->limit(100)
-            ->get();
+            ->paginate($perPage);
 
-        $subjectIds = $sessions->pluck('studentClass.SubjectID')->filter()->unique()->values();
+        $items = $sessions->getCollection();
+
+        $subjectIds = $items->pluck('studentClass.SubjectID')->filter()->unique()->values();
         $subjectNames = [];
         if ($subjectIds->isNotEmpty() && \Illuminate\Support\Facades\Schema::hasTable('Subject')) {
             $subjectNames = \Illuminate\Support\Facades\DB::table('Subject')
@@ -167,17 +280,25 @@ class AttendanceController extends Controller
                 ->all();
         }
 
-        $teacherIds = $sessions->pluck('studentClass.TeacherID')->filter()->unique()->values();
+        $substituteBySession = $this->batchSubstituteTeacherIdsForClassSessions($items);
+
+        $teacherIds = $items->pluck('studentClass.TeacherID')->filter()->unique()->values()
+            ->merge(collect($substituteBySession)->filter()->values())
+            ->unique()
+            ->values();
         $teacherNames = [];
         if ($teacherIds->isNotEmpty()) {
             $teacherNames = DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id')->all();
         }
 
-        $list = $sessions->map(function (ClassSession $cs) use ($subjectNames, $teacherNames) {
+        $sessions->getCollection()->transform(function (ClassSession $cs) use ($subjectNames, $teacherNames, $substituteBySession) {
             $sc = $cs->studentClass;
             $student = $sc ? $sc->student : null;
             $subjectId = $sc ? ($sc->SubjectID ?? 0) : 0;
-            $teacherId = $sc ? (int) ($sc->TeacherID ?? 0) : 0;
+            $contractTeacherId = $sc ? (int) ($sc->TeacherID ?? 0) : 0;
+            $subId = (int) ($substituteBySession[$cs->id] ?? 0);
+            $teacherId = $subId > 0 ? $subId : $contractTeacherId;
+            $sessionStatus = strtolower(trim((string) ($cs->Status ?? 'scheduled')));
             return [
                 'id' => $cs->id,
                 'class_session_id' => $cs->id,
@@ -190,10 +311,11 @@ class AttendanceController extends Controller
                 'student_name' => $student ? $student->name : '—',
                 'subject_name' => $subjectNames[$subjectId] ?? '—',
                 'teacher_name' => $teacherNames[$teacherId] ?? '—',
+                'session_status' => $sessionStatus,
             ];
-        })->values()->all();
+        });
 
-        return response()->json($list);
+        return response()->json($sessions);
     }
 
     /**
@@ -214,7 +336,7 @@ class AttendanceController extends Controller
             'SignOutDT' => 'nullable|date',
             'Hours' => 'nullable|integer',
             'Memo' => 'nullable|string|max:512',
-            'Status' => 'nullable|in:present,absent,late,excused',
+            'Status' => 'nullable|in:present,absent,late,excused,leave',
             'mark_mode' => 'nullable|in:arrival,ended',
         ]);
 
@@ -232,8 +354,25 @@ class AttendanceController extends Controller
             if ($role === 'teacher') {
                 $teacherId = (int) (request()->attributes->get('auth_teacher_id') ?? 0);
                 $authTeacherId = $teacherId;
-                if ($teacherId <= 0 || (int) $studentClass->TeacherID !== $teacherId) {
-                    return response()->json(['message' => 'Forbidden'], 403);
+                if ($teacherId <= 0) {
+                    return response()->json(['message' => '無法識別老師身分，請重新登入'], 403);
+                }
+                $sessionDateForSub = null;
+                if (!empty($data['ClassSessionID'])) {
+                    $tmpCs = ClassSession::find((int) $data['ClassSessionID']);
+                    if ($tmpCs && (int) $tmpCs->StudentClassID === (int) $studentClass->ID) {
+                        $sessionDateForSub = $tmpCs->SessionDate;
+                    }
+                } elseif (!empty($data['SessionDate'])) {
+                    $sessionDateForSub = $data['SessionDate'];
+                }
+                $subTeacherId = $sessionDateForSub
+                    ? $this->resolveSubstituteTeacherUserIdForSession((int) $studentClass->ID, $sessionDateForSub)
+                    : null;
+                $isContractTeacher = ((int) $studentClass->TeacherID === $teacherId);
+                $isSubstituteTeacher = ($subTeacherId !== null && (int) $subTeacherId === $teacherId);
+                if (!$isContractTeacher && !$isSubstituteTeacher) {
+                    return response()->json(['message' => '非該課程的授課或代課老師，無法操作'], 403);
                 }
             }
 
@@ -273,24 +412,89 @@ class AttendanceController extends Controller
             }
 
             if ($classSession->id) {
-                $existing = StudentSignIn::where('ClassSessionID', $classSession->id)->first();
+                $existing = StudentSignIn::where('ClassSessionID', $classSession->id)
+                    ->whereNull('VoidedAt')
+                    ->first();
                 if ($existing) {
                     return response()->json(['message' => 'Attendance already recorded'], 409);
                 }
             }
 
-            [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
-
             $status = $data['Status'] ?? 'present';
             $effectiveTeacherId = (int) ($data['TeacherID'] ?? $studentClass->TeacherID);
             if ($authTeacherId > 0) {
-                // 老師端一律以登入教師身分寫入，避免 payload 偽造
                 $effectiveTeacherId = $authTeacherId;
             }
 
-            // Snapshot the student's current CampusID so the record stays
-            // correctly attributed even if the student later transfers.
             $student = Student::find($data['StudentID']);
+
+            if ($status === 'excused') {
+                $status = 'leave';
+            }
+
+            // ── leave + 既有堂次 → 走課程請假順延（同課程管理 POST schedules leave）
+            if ($status === 'leave' && !empty($data['ClassSessionID'])) {
+                try {
+                    $leaveDate = Carbon::parse($classSession->SessionDate)->toDateString();
+                    $branchId = (int) ($student->CampusID ?? 0);
+                    $subjectName = DB::table('Subject')
+                        ->where('id', (int) ($studentClass->SubjectID ?? 0))
+                        ->value('Subject_Name') ?? '';
+
+                    Schedule::create([
+                        'student_id'        => (int) $data['StudentID'],
+                        'teacher_id'        => $effectiveTeacherId > 0 ? $effectiveTeacherId : null,
+                        'subject'           => $subjectName,
+                        'day_of_week'       => Carbon::parse($leaveDate)->dayOfWeekIso,
+                        'start_time'        => $classSession->StartTime ? substr((string) $classSession->StartTime, 0, 5) : '16:00',
+                        'end_time'          => $classSession->EndTime ? substr((string) $classSession->EndTime, 0, 5) : '18:00',
+                        'class_type'        => (string) ($studentClass->ClassType ?: 'one_on_one'),
+                        'status'            => 'leave',
+                        'type'              => 'normal',
+                        'deduction'         => 0,
+                        'branch_id'         => $branchId,
+                        'schedule_date'     => $leaveDate,
+                        'student_course_id' => (int) $studentClass->ID,
+                    ]);
+
+                    [$rows, $extendedEndDate, $leaveSessionDate] =
+                        CourseLeaveCascadeService::applyLeaveCascade((int) $studentClass->ID, $leaveDate);
+
+                    [$signInDT, $signOutDT] = [$classSession->StartTime
+                        ? Carbon::parse($leaveDate . ' ' . $classSession->StartTime)
+                        : now(), null];
+                    StudentSignIn::create([
+                        'StudentClassID'    => $studentClass->ID,
+                        'StudentID'         => (int) $data['StudentID'],
+                        'TeacherID'         => $effectiveTeacherId > 0 ? $effectiveTeacherId : null,
+                        'RecordedByUserID'  => $recordedByUserId > 0 ? $recordedByUserId : null,
+                        'GradeID'           => $studentClass->GradeID,
+                        'SubjectID'         => $studentClass->SubjectID,
+                        'CampusID'          => (int) ($student->CampusID ?? 0),
+                        'SignInDT'          => $signInDT,
+                        'SignOutDT'         => $signOutDT,
+                        'MDT'               => now(),
+                        'ClassSessionID'    => $classSession->id,
+                        'Status'            => 'leave',
+                        'SessionDeducted'   => 0,
+                    ]);
+
+                    return response()->json([
+                        'message'            => '已請假並順延後續課程',
+                        'status_label'       => '請假',
+                        'person_name'        => $student->name ?? '',
+                        'person_type_label'  => '學生',
+                        'leave_session_date' => $leaveSessionDate,
+                        'extended_end_date'  => $extendedEndDate,
+                        'class_sessions'     => $rows,
+                    ], 201);
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json(['message' => $e->getMessage()], 422);
+                }
+            }
+
+            // ── 一般出缺勤（到班/遲到/缺席，或 leave 但無既有堂次）
+            [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
 
             $signIn = StudentSignIn::create([
                 'StudentClassID' => $studentClass->ID,
@@ -314,7 +518,6 @@ class AttendanceController extends Controller
 
             $this->applyAttendanceEffects($classSession, $status);
 
-            // 點名成功才扣堂：僅 present / late 觸發扣堂
             if (in_array($status, ['present', 'late'], true) && !$signIn->SessionDeducted) {
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
             }
@@ -326,9 +529,8 @@ class AttendanceController extends Controller
             $payload['status_label'] = match ($status) {
                 'present' => '到班',
                 'late' => '遲到',
-                'excused' => '請假',
                 'absent' => '缺席',
-                'leave' => '離班',
+                'leave' => '請假',
                 default => (string) $status,
             };
             $payload['campus_name'] = null;
@@ -338,6 +540,72 @@ class AttendanceController extends Controller
             $payload['recorded_by_name'] = $recordedByUserId > 0 ? ($authUser->Name ?? '') : '';
             return response()->json($payload, 201);
         });
+    }
+
+    /**
+     * Batch mark attendance for multiple sessions in one request.
+     * Each item is processed independently (partial success model).
+     * Max 50 items per request. Auth/campus checks inherited from store().
+     */
+    public function batchMark(Request $request)
+    {
+        $request->validate([
+            'items' => 'required|array|min:1|max:50',
+            'items.*.ClassSessionID' => 'required|integer',
+            'items.*.StudentID' => 'required|integer',
+            'items.*.StudentClassID' => 'required|integer',
+            'items.*.Status' => 'required|in:present,late,excused,absent,leave',
+            'items.*.TeacherID' => 'nullable|integer',
+            'items.*.mark_mode' => 'nullable|in:arrival,ended',
+        ]);
+
+        $items = $request->input('items');
+        $results = [];
+        $savedInput = $request->all();
+
+        \Illuminate\Support\Facades\Log::info('attendance.batch_mark', [
+            'user_id' => $request->attributes->get('auth_user')?->id ?? null,
+            'role' => $request->attributes->get('auth_role'),
+            'count' => count($items),
+        ]);
+
+        foreach ($items as $item) {
+            try {
+                $request->replace($item);
+                $response = $this->store($request);
+                $body = json_decode($response->getContent(), true);
+                $results[] = [
+                    'class_session_id' => $item['ClassSessionID'],
+                    'success' => $response->getStatusCode() < 400,
+                    'status_code' => $response->getStatusCode(),
+                    'data' => $body,
+                ];
+            } catch (\Throwable $e) {
+                $statusCode = 500;
+                $message = $e->getMessage();
+                if ($e instanceof \Illuminate\Validation\ValidationException) {
+                    $statusCode = 422;
+                    $message = implode('; ', collect($e->errors())->flatten()->all());
+                }
+                $results[] = [
+                    'class_session_id' => $item['ClassSessionID'] ?? 0,
+                    'success' => false,
+                    'status_code' => $statusCode,
+                    'data' => ['message' => $message],
+                ];
+            }
+        }
+
+        $request->replace($savedInput);
+
+        $successCount = count(array_filter($results, fn($r) => $r['success']));
+
+        return response()->json([
+            'total' => count($results),
+            'success_count' => $successCount,
+            'fail_count' => count($results) - $successCount,
+            'results' => $results,
+        ], $successCount > 0 ? 200 : 422);
     }
 
     public function swipe(Request $request)
@@ -388,6 +656,14 @@ class AttendanceController extends Controller
         try {
             return DB::transaction(function () use ($matchedSession, $student, $swipeAt, $campusId) {
                 $studentClass = $matchedSession->studentClass;
+                $swipeTeacherId = (int) ($studentClass->TeacherID ?? 0);
+                $subSwipeTid = $this->resolveSubstituteTeacherUserIdForSession(
+                    (int) $studentClass->ID,
+                    $matchedSession->SessionDate
+                );
+                if ($subSwipeTid !== null && $subSwipeTid > 0) {
+                    $swipeTeacherId = $subSwipeTid;
+                }
 
                 // Lock the session row to prevent concurrent duplicate check race
                 $existing = StudentSignIn::where('ClassSessionID', $matchedSession->id)
@@ -403,7 +679,7 @@ class AttendanceController extends Controller
                 $signIn = StudentSignIn::create([
                     'StudentClassID' => $studentClass->ID,
                     'StudentID' => $student->id,
-                    'TeacherID' => $studentClass->TeacherID,
+                    'TeacherID' => $swipeTeacherId > 0 ? $swipeTeacherId : null,
                     'RecordedByUserID' => null,
                     'GradeID' => $studentClass->GradeID,
                     'SubjectID' => $studentClass->SubjectID,
@@ -460,8 +736,8 @@ class AttendanceController extends Controller
         $sessionStatus = match ($status) {
             'present' => 'attended',
             'late' => 'late',
-            'excused' => 'excused',
             'absent' => 'absent',
+            'leave', 'excused' => 'leave',
             default => 'attended',
         };
 
@@ -541,5 +817,67 @@ class AttendanceController extends Controller
             'Reason' => $reason,
             'Payload' => json_encode($payload),
         ]);
+    }
+
+    /**
+     * Single-session substitute: schedules row (scheduled + original_schedule_id) carries 代課 User id.
+     */
+    private function resolveSubstituteTeacherUserIdForSession(int $studentClassId, $sessionDate): ?int
+    {
+        return SubstituteScheduleService::resolveSubstituteUserId($studentClassId, $sessionDate);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, ClassSession>  $items
+     * @return array<int, int>  class_session_id => substitute teacher user id
+     */
+    private function batchSubstituteTeacherIdsForClassSessions($items): array
+    {
+        if ($items->isEmpty()) {
+            return [];
+        }
+        $courseIds = $items->pluck('StudentClassID')->unique()->filter()->values()->all();
+        if ($courseIds === []) {
+            return [];
+        }
+        $rows = DB::table('schedules')
+            ->whereIn('student_course_id', $courseIds)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->orderByDesc('id')
+            ->get(['student_course_id', 'schedule_date', 'teacher_id']);
+
+        $byCourseDate = [];
+        foreach ($rows as $r) {
+            try {
+                $d = Carbon::parse((string) $r->schedule_date)->toDateString();
+            } catch (\Throwable) {
+                continue;
+            }
+            $cid = (int) ($r->student_course_id ?? 0);
+            $tid = (int) ($r->teacher_id ?? 0);
+            if ($cid <= 0 || $tid <= 0) {
+                continue;
+            }
+            $key = $cid . '|' . $d;
+            if (!isset($byCourseDate[$key])) {
+                $byCourseDate[$key] = $tid;
+            }
+        }
+
+        $out = [];
+        foreach ($items as $cs) {
+            try {
+                $d = Carbon::parse((string) $cs->SessionDate)->toDateString();
+            } catch (\Throwable) {
+                continue;
+            }
+            $key = (int) $cs->StudentClassID . '|' . $d;
+            if (!empty($byCourseDate[$key])) {
+                $out[(int) $cs->id] = (int) $byCourseDate[$key];
+            }
+        }
+
+        return $out;
     }
 }

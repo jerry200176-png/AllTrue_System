@@ -15,6 +15,7 @@ use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * RFID 刷卡 API
@@ -89,18 +90,31 @@ class SwipeRfidController extends Controller
                 return $this->handleStudentSwipe($student, $campus, $swipeAt);
             }
 
-            // 老師主分校在 Teacher.CampusID，但主任變更分校時可能只更新了 UserCampus，
-            // 導致僅以 CampusID 比對會漏掉已綁 RFID 的老師。
-            $teacher = Teacher::where('RFID', $rfid)->where('Enable', 1)->first();
+            // 優先：UserCampus 每分校 RFID；備援：舊版 Teacher.RFID（單一欄位）
+            $teacher = null;
+            $teacherInCampus = false;
             $matchedUserCampus = false;
-            if ($teacher) {
-                $matchedUserCampus = UserCampus::where('UserID', $teacher->id)
+            if (Schema::hasColumn('UserCampus', 'RFID')) {
+                $uc = DB::table('UserCampus')
                     ->where('CampusID', $campusId)
-                    ->exists();
+                    ->where('RFID', $rfid)
+                    ->whereNotNull('RFID')
+                    ->where('RFID', '!=', '')
+                    ->first();
+                if ($uc) {
+                    $teacher = Teacher::where('id', (int) $uc->UserID)->where('Enable', 1)->first();
+                    $teacherInCampus = (bool) $teacher;
+                }
             }
-            $teacherInCampus = $teacher && (
-                (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus
-            );
+            if (!$teacher) {
+                $teacher = Teacher::where('RFID', $rfid)->where('Enable', 1)->first();
+                if ($teacher) {
+                    $matchedUserCampus = UserCampus::where('UserID', $teacher->id)
+                        ->where('CampusID', $campusId)
+                        ->exists();
+                    $teacherInCampus = (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus;
+                }
+            }
             // #region agent log
             $log('teacher lookup', [
                 'found' => (bool) $teacherInCampus,

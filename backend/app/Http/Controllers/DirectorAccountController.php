@@ -79,7 +79,8 @@ class DirectorAccountController extends Controller
             return response()->json([]);
         }
 
-        $users = User::whereIn('id', $userIds)->get();
+        // Only show director/admin applicants (type=U or A), not teachers (type=T)
+        $users = User::whereIn('id', $userIds)->whereIn('type', ['U', 'A'])->get();
         $campuses = Campus::all()->keyBy('id');
 
         $list = [];

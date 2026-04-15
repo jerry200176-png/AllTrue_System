@@ -14,5 +14,6 @@ class UserCampus extends Model
         'UserID',
         'Admin',
         'Approved',
+        'RFID',
     ];
 }

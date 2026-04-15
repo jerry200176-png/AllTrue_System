@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
@@ -16,7 +19,7 @@ class AlertController extends Controller
      *
      * 堂數制 (ScheduleMode=count)：未繳費，或剩餘堂數 <= 2（含 0 堂）。
      * 月結制 (ScheduleMode=date)：有設定 settlement_day，且 (a) 未繳費且已過本月繳費日 → 一律提醒；
-     * (b) 未繳費且尚未到繳費日 → 距繳費日 < 5 天提醒；(c) 已繳費 → 僅在「下一個」繳費日前 < 5 天提醒。
+     * (b) 未繳費且尚未到繳費日 → 距繳費日 <= 5 天提醒；(c) 已繳費 → 僅在「下一個」繳費日前 <= 5 天提醒。
      */
     public function tuition(Request $request)
     {
@@ -56,13 +59,29 @@ class AlertController extends Controller
             $dateQuery->whereIn('StudentID', $studentIds);
         }
 
+        $countResults = $countQuery->with('student')->get();
+        $dateResults  = $dateQuery->with('student')->get();
+
+        $allClassIds = $countResults->pluck('ID')->merge($dateResults->pluck('ID'))->unique()->values()->all();
+        $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
+
         $rows = collect()
             ->merge(
-                $countQuery->with('student')->get()->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
+                $countResults->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
             )
             ->merge(
-                $dateQuery->with('student')->get()->map(fn ($c) => $this->mapMonthlyAlert($c, $today))->filter()
+                $dateResults->map(fn ($c) => $this->mapMonthlyAlert($c, $today))->filter()
             )
+            ->map(function ($row) use ($paidAtMap, $countResults, $dateResults) {
+                $allResults = $countResults->merge($dateResults);
+                $sc = $allResults->first(fn ($c) => (int) $c->ID === (int) $row['id']);
+                $directPaidAt = ($sc && $sc->PayDate) ? substr($sc->PayDate, 0, 10) : null;
+                $invoicePaidAt = $paidAtMap[(int) $row['id']] ?? null;
+                return $row + [
+                    'paid_at'      => $directPaidAt,
+                    'last_paid_at' => $directPaidAt ?? $invoicePaidAt,
+                ];
+            })
             ->values();
 
         return response()->json($rows);
@@ -109,7 +128,7 @@ class AlertController extends Controller
         if (!$isPaid) {
             if ($today->lte($thisDue)) {
                 $daysLeft = (int) $today->copy()->startOfDay()->diffInDays($thisDue->copy()->startOfDay(), false);
-                if ($daysLeft >= 5) {
+                if ($daysLeft > 5) {
                     return null;
                 }
 
@@ -123,7 +142,7 @@ class AlertController extends Controller
         // 已繳費：若尚未過「本月」繳費日，下一個截止日仍為本月；否則為下月同日（遇短月則取月底）
         if ($today->lte($thisDue)) {
             $daysLeft = (int) $today->copy()->startOfDay()->diffInDays($thisDue->copy()->startOfDay(), false);
-            if ($daysLeft >= 5) {
+            if ($daysLeft > 5) {
                 return null;
             }
 
@@ -133,7 +152,7 @@ class AlertController extends Controller
         $nextMonth = $today->copy()->startOfMonth()->addMonthNoOverflow();
         $nextDue = $this->settlementDateInMonth((int) $nextMonth->year, (int) $nextMonth->month, $settlementDay);
         $daysLeft = (int) $today->copy()->startOfDay()->diffInDays($nextDue->copy()->startOfDay(), false);
-        if ($daysLeft >= 5) {
+        if ($daysLeft > 5) {
             return null;
         }
 
@@ -169,19 +188,110 @@ class AlertController extends Controller
         return Carbon::createFromDate($year, $month, $d)->startOfDay();
     }
 
-    private function subjectLabel(StudentClass $c): string
+    /**
+     * GET /api/v1/alerts/tuition-slip/{studentClassId}
+     * Returns slip-ready DTO from StudentClass (no Invoice required).
+     * Only allowed for Paid != 1 (unpaid).
+     */
+    public function tuitionSlipData(Request $request, int $studentClassId)
     {
-        $subject = $c->getAttribute('Subject');
-        if ($subject !== null && $subject !== '') {
-            return (string) $subject;
-        }
-        $id = (int) ($c->SubjectID ?? 0);
-        if ($id <= 0) {
-            return '課程';
+        $sc = StudentClass::with('student')->findOrFail($studentClassId);
+
+        if ((int) ($sc->Paid ?? 0) === 1) {
+            return response()->json(['message' => '此課程已繳費，不需產生繳費單'], 422);
         }
 
-        return (string) (DB::table('Subject')->where('id', $id)->value('Subject_Name')
-            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $id)->value('Val')
-            ?? '課程');
+        $student = $sc->student;
+        if (!$student) {
+            return response()->json(['message' => '找不到學生資料'], 404);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+            abort(403);
+        }
+
+        $campus = Campus::find((int) $student->CampusID);
+        $subject = $this->subjectLabel($sc);
+        $remaining = max(0, (int) ($sc->RemainingSessions ?? 0));
+        $charge = (int) ($sc->Charge ?? 0);
+        $mode = $sc->ScheduleMode ?? 'count';
+
+        $today = Carbon::today();
+        $dueDate = null;
+        $daysUntilSettlement = null;
+
+        if ($mode === 'date') {
+            $sd = (int) ($sc->settlement_day ?? 0);
+            if ($sd >= 1 && $sd <= 31) {
+                $thisDue = $this->settlementDateInMonth((int) $today->year, (int) $today->month, $sd);
+                if ($today->lte($thisDue)) {
+                    $dueDate = $thisDue->toDateString();
+                    $daysUntilSettlement = (int) $today->diffInDays($thisDue, false);
+                } else {
+                    $dueDate = $thisDue->toDateString();
+                    $daysUntilSettlement = -(int) $thisDue->diffInDays($today, false);
+                }
+            }
+        }
+
+        $authUser = $request->attributes->get('auth_user');
+        Log::info('[TuitionSlip] generated', [
+            'user_id' => $authUser?->id,
+            'student_class_id' => $sc->ID,
+            'student_id' => $student->id,
+            'campus_id' => $student->CampusID,
+        ]);
+
+        return response()->json([
+            'student_class_id' => $sc->ID,
+            'student_name'     => $student->name ?? '—',
+            'campus_name'      => $campus->name ?? '',
+            'subject'          => $subject,
+            'schedule_mode'    => $mode,
+            'remaining_sessions' => $remaining,
+            'charge'           => $charge,
+            'due_date'         => $dueDate,
+            'days_until_settlement' => $daysUntilSettlement,
+            'note'             => $sc->Memo ?? '',
+            'sessions' => ClassSession::sessionsForPaymentSlip([(int) $sc->ID]),
+        ]);
+    }
+
+    private function subjectLabel(StudentClass $c): string
+    {
+        return $c->displaySubjectName();
+    }
+
+    /**
+     * Batch-fetch the latest Payment.PaidAt per StudentClass ID.
+     * Uses Invoice.StudentClassID -> Payment.InvoiceID chain.
+     *
+     * @param  int[]  $studentClassIds
+     * @return array<int, string|null>  keyed by StudentClass ID, value is date string or null
+     */
+    public static function lastPaidAtByStudentClassIds(array $studentClassIds): array
+    {
+        if (empty($studentClassIds)) {
+            return [];
+        }
+
+        $rows = DB::table('Invoice')
+            ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+            ->whereIn('Invoice.StudentClassID', $studentClassIds)
+            ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
+            ->groupBy('Invoice.StudentClassID')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $date = $row->last_paid_at;
+            if ($date) {
+                $map[(int) $row->StudentClassID] = substr($date, 0, 10);
+            }
+        }
+
+        return $map;
     }
 }
