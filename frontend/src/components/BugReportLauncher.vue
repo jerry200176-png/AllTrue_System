@@ -302,7 +302,8 @@ async function doSubmit() {
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   cursor: grab; touch-action: none;
   display: flex; align-items: center; justify-content: center;
-  transition: left 0.35s cubic-bezier(0.22, 1, 0.36, 1), top 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.2s, box-shadow 0.2s;
+  will-change: transform;
+  transition: left 0.35s cubic-bezier(0.22, 1, 0.36, 1), top 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s;
 }
 .fab:hover { transform: scale(1.08); box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
 .fab.dragging { cursor: grabbing; transform: none; transition: none; }

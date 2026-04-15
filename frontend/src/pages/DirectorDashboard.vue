@@ -15,6 +15,10 @@
         </div>
 
         <!-- ===== Layer 1: Action Lane ===== -->
+        <div class="section-label-row">
+          <span class="section-label">每日待辦</span>
+          <span class="section-sublabel">今日需要處理的事項</span>
+        </div>
         <section class="action-lane" data-guide="director-summary">
           <div v-if="pendingAttendanceCount > 0"
                class="ac ac--attend" tabindex="0"
@@ -33,9 +37,9 @@
             <span class="material-symbols-outlined ac__icon">payments</span>
             <div class="ac__body">
               <span class="ac__count">{{ lowBalanceStudents.length }}</span>
-              <span class="ac__label">筆待催繳</span>
+              <span class="ac__label">{{ paymentActionLaneLabel }}</span>
             </div>
-            <button class="ac__cta" @click.stop="scrollTo('payments')">查看催繳</button>
+            <button class="ac__cta" @click.stop="scrollTo('payments')">查看</button>
           </div>
 
           <div v-if="pendingEvaluations.length > 0"
@@ -55,6 +59,7 @@
             <div class="ac__body">
               <span class="ac__label">匯入學生</span>
               <span class="ac__sub">CSV / Excel</span>
+              <button class="ac__format-link" type="button" @click.stop="showImportFormatModal = true">查看範例格式</button>
             </div>
             <button class="ac__cta" :disabled="importState === 'uploading'" @click.stop="triggerImport">
               {{ importState === 'uploading' ? '上傳中...' : '選擇檔案' }}
@@ -152,10 +157,11 @@
             <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
               <header class="wp__head">
                 <span class="material-symbols-outlined wp__hi">warning</span>
-                <h3>繳費提醒</h3>
+                <h3>繳費／續課提醒</h3>
                 <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
               </header>
-              <div v-if="!lowBalanceStudents.length" class="wp__empty">目前無符合催繳條件之課程</div>
+              <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
+              <div v-if="!lowBalanceStudents.length" class="wp__empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
               <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
                 <div class="pay-row__info">
                   <span class="pay-row__name">{{ s.name }}</span>
@@ -184,7 +190,7 @@
               <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                 <div class="eval-card__top">
                   <strong>{{ ev.student_name }}</strong>
-                  <span class="eval-card__tag">{{ ev.Subject }}</span>
+                  <span class="eval-card__tag">{{ ev.student_class_label || ev.Subject }}</span>
                   <span class="eval-card__tchr">{{ ev.teacher_name }}</span>
                 </div>
                 <div class="eval-card__mid">
@@ -272,6 +278,36 @@
       </div>
     </template>
   </div>
+
+  <!-- ===== 匯入格式說明 Modal ===== -->
+  <teleport to="body">
+    <div v-if="showImportFormatModal" class="import-format-overlay" @click.self="showImportFormatModal = false">
+      <div class="import-format-modal">
+        <div class="import-format-header">
+          <strong>匯入格式說明</strong>
+          <button class="import-format-close" @click="showImportFormatModal = false">&times;</button>
+        </div>
+        <p class="import-format-desc">第一列為標題列，欄位名稱（中英文皆可）：</p>
+        <table class="import-format-table">
+          <thead>
+            <tr><th>欄位</th><th>接受名稱</th><th>必填</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>學生姓名</td><td>學生 / 姓名 / name / student</td><td>✓ 必填</td></tr>
+            <tr><td>年級</td><td>年級學校 / 年級 / grade</td><td>選填</td></tr>
+            <tr><td>學校</td><td>學校 / school</td><td>選填</td></tr>
+            <tr><td>家長手機</td><td>手機 / 電話 / phone / 家長手機</td><td>選填</td></tr>
+          </tbody>
+        </table>
+        <p class="import-format-note">範例：</p>
+        <pre class="import-format-example">姓名,年級,學校,手機
+王小明,國中一年級,中正國中,0912345678
+李小花,高中二年級,建國高中,
+陳大雄,小學四年級,,0987654321</pre>
+        <p class="import-format-note">※ 手機可留空，但填寫可提升重複比對準確度。</p>
+      </div>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
@@ -300,6 +336,7 @@ const importFileInput = ref(null);
 const importState = ref('idle');
 const importResult = ref({ created: 0, updated: 0, skipped: 0, errors: [], warnings: [], low_confidence: 0 });
 const importErrorMsg = ref('');
+const showImportFormatModal = ref(false);
 
 const branchName = computed(() => getBranchName(props.branchId));
 
@@ -344,6 +381,19 @@ const displayPaymentAlerts = computed(() =>
     : lowBalanceStudents.value.slice(0, paymentAlertLimit)
 );
 
+/** 上方快捷列用：區分「真的未繳」與「已繳但低堂數／月結」避免誤以為催繳失敗 */
+const paymentActionLaneLabel = computed(() => {
+  const rows = lowBalanceStudents.value;
+  if (!rows.length) return '';
+  const hasUnpaid = rows.some(s => s.alert_type === 'unpaid');
+  const allLow = rows.every(s => s.alert_type === 'low_sessions');
+  const allMonthly = rows.every(s => s.alert_type === 'monthly_due_soon');
+  if (hasUnpaid) return '筆含未繳費';
+  if (allLow) return '筆低堂數／續課';
+  if (allMonthly) return '筆月結將届';
+  return '筆待留意';
+});
+
 const paymentAlertBadgeClass = (s) => {
   if (s.alert_type === 'monthly_due_soon') return 'badge-amber';
   if (s.alert_type === 'low_sessions') return 'badge-orange';
@@ -357,7 +407,12 @@ const paymentAlertBadgeText = (s) => {
     if (d === 0) return '月結 · 今日繳費日';
     return `月結 · 剩 ${d} 天`;
   }
-  return `${s.remaining_lessons} 堂`;
+  if (s.alert_type === 'low_sessions') {
+    const n = Number(s.remaining_lessons ?? 0);
+    if (!Number.isFinite(n) || n <= 0) return '已繳 · 堂數已用完';
+    return `已繳 · 剩 ${n} 堂`;
+  }
+  return `未繳 · ${s.remaining_lessons} 堂`;
 };
 
 const formatTime = (timeStr) => timeStr || '--:--';
@@ -365,7 +420,8 @@ const formatTime = (timeStr) => timeStr || '--:--';
 const formatScheduleStatus = (status) => {
   const map = {
     scheduled: '待到班', attended: '已到班', completed: '已下課',
-    cancelled: '已取消', leave: '已請假',
+    cancelled: '已取消', leave: '請假', leave_adjusted: '請假(順延)',
+    excused: '請假', absent: '缺席', late: '遲到',
   };
   return map[String(status || '').toLowerCase()] || String(status || '—');
 };
@@ -448,7 +504,7 @@ const loadData = async () => {
           subject: row?.subject || '',
           subject_name: row?.subject_name || '',
         }))
-        .filter(s => s.id > 0 && !['cancelled', 'leave'].includes(s.status))
+        .filter(s => s.id > 0 && !['cancelled'].includes(s.status))
         .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     } else {
       todaySchedules.value = [];
@@ -475,7 +531,7 @@ const loadData = async () => {
 
   try {
     const pendingRes = await fetch(
-      `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending&only_due=1&per_page=50&sort=session_date`,
+      `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending,changes_requested&per_page=100&sort=session_date`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
     );
     if (pendingRes.ok) {
@@ -579,8 +635,10 @@ const approveEvaluation = async (evalItem) => {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ DirectorID: session?.user?.id }),
     });
-    if (res.ok) { loadData(); }
-    else { const err = await res.json(); alert('核准失敗: ' + (err.message || '')); }
+    if (res.ok) {
+      pendingEvaluations.value = pendingEvaluations.value.filter(e => e.id !== evalItem.id);
+      loadData();
+    } else { const err = await res.json(); alert('核准失敗: ' + (err.message || '')); }
   } catch { alert('核准失敗'); }
 };
 
@@ -603,6 +661,18 @@ const copyPaymentMessage = async (student) => {
   const token = getToken();
   const baseUrl = getBaseUrl();
   const studentId = student.student_id;
+
+  if (student.alert_type === 'low_sessions') {
+    const n = Number(student.remaining_lessons ?? 0);
+    const name = student.raw_name || String(student.name || '').split(' — ')[0];
+    const line = !Number.isFinite(n) || n <= 0
+      ? '課程堂數已用完；若需繼續上課，請協助聯繫加購堂數。'
+      : `課程目前僅剩 ${n} 堂，即將用完；如需續課請協助聯繫加購。`;
+    const msg = `親愛的家長您好，\n\n${name} 同學：${line}\n\n如有疑問，歡迎聯繫補習班，謝謝！`;
+    try { await navigator.clipboard.writeText(msg); alert('續課／加購提醒已複製到剪貼簿！'); }
+    catch { prompt('請手動複製以下訊息：', msg); }
+    return;
+  }
 
   if (student.alert_type === 'monthly_due_soon') {
     const d = Number(student.days_until_settlement);
@@ -1052,6 +1122,10 @@ onMounted(loadData);
 .st--scheduled { color: #f97316; }
 .st--attended  { color: #22c55e; }
 .st--completed { color: #64748b; }
+.st--leave, .st--leave_adjusted, .st--excused { color: #8b5cf6; }
+.st--absent    { color: #ef4444; }
+.st--late      { color: #eab308; }
+.st--cancelled { color: #94a3b8; }
 
 /* ===== Payment Row ===== */
 .pay-row {
@@ -1338,5 +1412,112 @@ onMounted(loadData);
   .progress-board { grid-template-columns: 1fr; }
   .ac { min-width: 130px; }
   .ac__cta { display: none; }
+}
+
+/* ===== 每日待辦 section label ===== */
+.section-label-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.section-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.section-sublabel {
+  font-size: 11px;
+  color: var(--text-light);
+}
+
+/* ===== 匯入格式連結 ===== */
+.ac__format-link {
+  font-size: 11px;
+  color: #059669;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  font-family: inherit;
+  text-align: left;
+}
+
+/* ===== 匯入格式 Modal ===== */
+.import-format-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.import-format-modal {
+  background: var(--card-bg, #fff);
+  border-radius: 14px;
+  padding: 20px 24px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.22);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.import-format-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 15px;
+}
+.import-format-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-light);
+  line-height: 1;
+  padding: 0 4px;
+}
+.import-format-desc {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-bottom: 10px;
+}
+.import-format-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.import-format-table th,
+.import-format-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.import-format-table thead th {
+  background: var(--bg);
+  font-weight: 600;
+}
+.import-format-example {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: monospace;
+  overflow-x: auto;
+  margin: 4px 0 12px;
+  white-space: pre;
+}
+.import-format-note {
+  font-size: 12px;
+  color: var(--text-light);
+  margin: 6px 0 2px;
 }
 </style>

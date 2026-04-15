@@ -244,10 +244,16 @@ class QueryBuilder {
             options = { method: 'GET', headers: { ...JSON_ACCEPT_HEADER, ...authHeaders } };
         } else if (this._method === 'POST') {
             url = `${API_BASE}/${this._table}`;
+            // Laravel controllers expect a top-level JSON object for single-row inserts.
+            // Unwrap single-element arrays so `$request->validate()` sees root-level keys.
+            const postBody = Array.isArray(this._body) && this._body.length === 1
+                && this._body[0] && typeof this._body[0] === 'object' && !Array.isArray(this._body[0])
+                ? this._body[0]
+                : this._body;
             options = {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...JSON_ACCEPT_HEADER, ...authHeaders },
-                body: JSON.stringify(this._body)
+                body: JSON.stringify(postBody)
             };
         } else if (this._method === 'PUT') {
             const id = this._updateId || this._filters.id;
@@ -296,6 +302,10 @@ class QueryBuilder {
         }
         if (!resp.ok && !json.error) {
             json.error = { message: json.message || `Request failed (${resp.status})` };
+        }
+        // Preserve conflicts array from 409 responses on the error object for caller inspection
+        if (resp.status === 409 && json.conflicts && json.error) {
+            json.error.conflicts = json.conflicts;
         }
 
         const validationMessage = flattenValidationErrors(json?.errors);

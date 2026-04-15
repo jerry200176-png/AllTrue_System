@@ -7,8 +7,8 @@
         <p class="title-sub">管理老師資料、分校配置與登入帳號操作</p>
       </div>
       <div class="tabs">
-          <button :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師 (Active)</button>
-          <button :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 (Pending) <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
+          <button :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
+          <button :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
       </div>
       <div class="header-btns">
         <button class="ghost" @click="openBulkModal">批次新增老師</button>
@@ -25,9 +25,9 @@
         <label>狀態</label>
         <select v-model="filterStatus" @change="loadTeachers">
           <option value="">全部</option>
-          <option value="active">Active</option>
-          <option value="pending">Pending</option>
-          <option value="suspended">Suspended</option>
+          <option value="active">在職</option>
+          <option value="pending">待審核</option>
+          <option value="suspended">停用</option>
         </select>
       </div>
       <div class="filter-item">
@@ -37,6 +37,22 @@
           <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
       </div>
+    </div>
+
+    <div v-if="teachers.length > 0" class="teacher-chips-row" role="group" aria-label="快速篩選老師（可多選）">
+      <span class="teacher-chips-label">老師</span>
+      <div class="teacher-chips-scroll">
+        <button
+          v-for="t in chipTeacherOptions"
+          :key="t.id"
+          type="button"
+          :aria-pressed="selectedTeacherIdSet.has(String(t.id))"
+          :class="['teacher-chip', { active: selectedTeacherIdSet.has(String(t.id)) }]"
+          :style="selectedTeacherIdSet.has(String(t.id)) ? { background: teacherAvatarColor(t.id), borderColor: teacherAvatarColor(t.id), color: '#fff' } : {}"
+          @click="toggleTeacherChip(t.id)"
+        >{{ t.name }}</button>
+      </div>
+      <button v-if="selectedTeacherIds.length > 0" type="button" class="teacher-chip-clear" @click="selectedTeacherIds = []">全清除</button>
     </div>
 
     <div class="teacher-summary">
@@ -59,67 +75,112 @@
     </div>
 
     <div v-if="loading" class="hint">Loading...</div>
-
-    <div v-else class="teacher-cards-grid" data-guide="teachers-table">
-      <div v-if="filteredTeachers.length === 0" class="empty-state" style="grid-column: 1 / -1;">
-        目前沒有符合條件的老師資料。
-      </div>
-      <div
-        v-for="teacher in filteredTeachers"
-        :key="teacher.id"
-        class="teacher-card"
-      >
-        <!-- Card Header -->
-        <div class="tc-header">
-          <div class="tc-avatar" :style="avatarStyle(teacher.username)">
-            {{ teacher.username?.[0] ?? '?' }}
-          </div>
-          <div class="tc-identity">
-            <div class="tc-name">{{ teacher.username }}</div>
-            <div class="tc-account mono">{{ teacher.account || teacher.email || '—' }}</div>
-            <div class="tc-phone" v-if="teacher.phone">📞 {{ teacher.phone }}</div>
-          </div>
-          <span :class="['status-tag', teacher.status]">{{ teacher.status }}</span>
-        </div>
-
-        <!-- Card Body -->
-        <div class="tc-body">
-          <div class="tc-row">
-            <span class="tc-icon">🏫</span>
-            <div>
-              <span class="branch-tag main-branch">{{ getBranchName(teacher.branch_id) }}</span>
-              <span v-for="bName in getMultiBranchList(teacher)" :key="bName" class="branch-tag">{{ bName }}</span>
-            </div>
-          </div>
-          <div class="tc-row" v-if="teacherSubjectLabels(teacher).length > 0">
-            <span class="tc-icon">📚</span>
-            <div>
-              <span v-for="n in teacherScopeSummary(teacher)" :key="n" class="branch-tag subject-tag">{{ n }}</span>
-            </div>
-          </div>
-          <div class="tc-row tc-rfid" @click="editTeacher(teacher)" title="點擊編輯以綁定 RFID">
-            <span class="tc-icon">📡</span>
-            <span v-if="teacher.rfid" class="rfid-tag">{{ teacher.rfid }}</span>
-            <span v-else class="no-support">未綁定</span>
-          </div>
-        </div>
-
-        <!-- Card Footer -->
-        <div class="tc-footer">
-          <button class="small" @click="editTeacher(teacher)">編輯</button>
-          <button class="small ghost" @click="navigateToSchedule(teacher.id, 'course-mgmt')">課程</button>
-          <button class="small ghost" @click="navigateToSchedule(teacher.id, 'calendar')">日曆</button>
-          <div class="tc-dropdown" @click.stop="toggleDropdown(teacher.id)">
-            <button class="small ghost tc-more-btn">⋮</button>
-            <div v-if="activeDropdown === teacher.id" class="tc-dropdown-menu">
-              <button @click.stop="resetTeacherPassword(teacher); closeDropdown()">重設密碼</button>
-              <button v-if="teacher.status === 'pending'" @click.stop="approveTeacher(teacher); closeDropdown()" class="approve">核准</button>
-              <button @click.stop="deleteTeacher(teacher); closeDropdown()" class="danger">刪除</button>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div v-else-if="filteredTeachers.length === 0" class="empty-state">
+      目前沒有符合條件的老師資料。
     </div>
+
+    <div
+      v-else
+      class="teacher-card-grid"
+      data-guide="teachers-cards"
+    >
+      <article
+        v-for="teacher in filteredTeachers"
+        :key="'tc-' + teacher.id"
+        class="teacher-profile-card"
+      >
+        <header class="tpc-head">
+          <div
+            class="tpc-avatar"
+            :style="{ background: teacherAvatarColor(teacher.id) }"
+            aria-hidden="true"
+          >
+            {{ teacherInitial(teacher) }}
+          </div>
+          <div class="tpc-head-text">
+            <h3 class="tpc-name">{{ teacher.username }}</h3>
+            <p class="tpc-account mono">{{ teacher.account || teacher.email || '—' }}</p>
+          </div>
+          <span :class="['status-tag', 'tpc-status', teacher.status]">{{ teacherStatusLabel(teacher.status) }}</span>
+          <span v-if="teacher.employment_type === 'part_time'" class="status-tag tpc-parttime">兼職</span>
+        </header>
+
+        <div class="tpc-body">
+          <div class="tpc-row">
+            <span class="tpc-label">電話</span>
+            <span class="tpc-value">{{ teacher.phone || '—' }}</span>
+          </div>
+          <div class="tpc-row">
+            <span class="tpc-label">主分校</span>
+            <span class="tpc-value">{{ getBranchName(teacher.branch_id) }}</span>
+          </div>
+          <div class="tpc-row tpc-row-tags">
+            <span class="tpc-label">跨校</span>
+            <div class="tpc-tags">
+              <template v-if="getMultiBranchList(teacher).length > 0">
+                <span v-for="bName in getMultiBranchList(teacher)" :key="bName" class="branch-tag">{{ bName }}</span>
+              </template>
+              <span v-else class="no-support">無</span>
+            </div>
+          </div>
+          <div class="tpc-row tpc-row-tags">
+            <span class="tpc-label">科目</span>
+            <div class="tpc-tags">
+              <template v-if="teacherSubjectLabels(teacher).length > 0">
+                <span v-for="n in teacherSubjectLabels(teacher)" :key="n" class="branch-tag">{{ n }}</span>
+              </template>
+              <span v-else class="no-support">—</span>
+            </div>
+          </div>
+          <div class="tpc-row tpc-scope-summary">
+            <span class="tpc-label">學段</span>
+            <div class="tpc-tags tpc-scope-chips">
+              <template v-if="teacherScopeChips(teacher).length > 0">
+                <span
+                  v-for="chip in teacherScopeChips(teacher)"
+                  :key="chip.subjectId + chip.levelKey"
+                  class="scope-chip"
+                  :style="scopeSubjectStyle(chip.subjectId)"
+                >{{ chip.subject }}・{{ chip.label }}</span>
+              </template>
+              <span v-else class="no-support">未設定</span>
+            </div>
+          </div>
+          <div class="tpc-row tpc-rfid-block">
+            <span class="tpc-label">RFID</span>
+            <div class="tpc-rfid-inner">
+              <div v-if="teacher.rfid_by_branch && Object.keys(teacher.rfid_by_branch).length" class="rfid-multi-cell">
+                <div v-for="(v, bid) in teacher.rfid_by_branch" :key="'crfid-' + teacher.id + '-' + bid" class="rfid-line">
+                  <span class="rfid-branch-mini">{{ getBranchName(Number(bid)).split('(')[0].trim() }}</span>
+                  <span class="rfid-tag">{{ v }}</span>
+                </div>
+              </div>
+              <template v-else>
+                <span v-if="teacher.rfid" class="rfid-tag">{{ teacher.rfid }}</span>
+                <span v-else class="no-support">—</span>
+              </template>
+              <button type="button" class="small ghost tpc-rfid-btn" @click="editTeacher(teacher)">
+                {{ teacherHasAnyRfid(teacher) ? '重新綁定' : '綁定' }}
+              </button>
+            </div>
+          </div>
+          <div class="tpc-row">
+            <span class="tpc-label">臨時密碼</span>
+            <span class="tpc-value mono tpc-temp-pw">{{ temporaryPasswords[teacher.id] || '重設後顯示' }}</span>
+          </div>
+        </div>
+
+        <footer class="tpc-actions">
+          <button type="button" class="small" @click="editTeacher(teacher)">編輯</button>
+          <button type="button" class="small warning" @click="resetTeacherPassword(teacher)">重設密碼</button>
+          <button v-if="teacher.status === 'pending'" type="button" class="small primary" @click="approveTeacher(teacher)">核准</button>
+          <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'course-mgmt')">課程</button>
+          <button type="button" class="small ghost" @click="navigateToSchedule(teacher.id, 'calendar')">日曆</button>
+          <button type="button" class="small danger" @click="deleteTeacher(teacher)">刪除</button>
+        </footer>
+      </article>
+    </div>
+
 
     <!-- Modal -->
     <div v-if="showModal || showAddModal" class="modal-overlay">
@@ -173,11 +234,22 @@
         </div>
 
         <div class="form-group">
-          <label>RFID 卡片</label>
-          <div class="rfid-bind-row">
-            <input v-model="form.rfid" readonly placeholder="刷卡後點「綁定卡片」" />
-            <button type="button" class="small" @click="bindRfidFromTemp">{{ form.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
+          <label>RFID 卡片（依分校）</label>
+          <p class="hint">老師所屬的每一間分校可分別綁定不同卡片：請到該分校刷卡後，點該列的「讀取暫存」。</p>
+          <div v-for="bid in formTeacherCampusIds" :key="'form-rfid-' + bid" class="rfid-branch-block">
+            <div class="rfid-branch-title">{{ getBranchName(bid).split('(')[0].trim() }}</div>
+            <div class="rfid-bind-row">
+              <input
+                v-model="form.rfid_by_branch[String(bid)]"
+                readonly
+                placeholder="刷卡後點「讀取暫存」"
+              />
+              <button type="button" class="small" @click="bindRfidFromTempForCampus(bid)">
+                {{ form.rfid_by_branch[String(bid)] ? '重新讀取' : '讀取暫存' }}
+              </button>
+            </div>
           </div>
+          <p v-if="formTeacherCampusIds.length === 0" class="hint">請先選擇主分校（必要時加選跨校支援）。</p>
         </div>
 
         <div class="form-group">
@@ -196,45 +268,47 @@
           <p v-if="subjects.length === 0" class="hint">目前沒有可選科目，請先確認科目資料已建立。</p>
         </div>
 
-        <div v-if="selectedSubjectsForScopes.length > 0" class="form-group">
-          <label>授課學段設定</label>
-          <p class="hint">選擇每個科目可教授的學段（國小/國中/高中）。未勾選學段的科目在建課時會出現警示。</p>
-          <table class="scope-matrix">
-            <thead>
-              <tr>
-                <th>科目</th>
-                <th v-for="lv in LEVEL_OPTIONS" :key="'hdr-'+lv.value">{{ lv.label }}</th>
-                <th>全選</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="subj in selectedSubjectsForScopes" :key="'scope-'+subj.id">
-                <td class="scope-subj-name">{{ subj.name }}</td>
-                <td v-for="lv in LEVEL_OPTIONS" :key="'scope-'+subj.id+'-'+lv.value" class="scope-cell">
-                  <label class="scope-check-label">
+        <div v-if="selectedSubjectsForForm.length > 0" class="form-group">
+          <label>授課學段（依科目勾選國小／國中／高中）</label>
+          <p class="hint">與「帳號設定」內邏輯相同；影響排課／入班時的學段檢核（<code>teacher_subject_levels</code>）。</p>
+          <div class="scope-table-wrap">
+            <table class="scope-table">
+              <thead>
+                <tr>
+                  <th>科目</th>
+                  <th v-for="lv in LEVEL_OPTIONS" :key="'hdr-' + lv.value">{{ lv.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="subject in selectedSubjectsForForm" :key="'scope-' + subject.id">
+                  <td>{{ subject.name }}</td>
+                  <td v-for="lv in LEVEL_OPTIONS" :key="'scope-' + subject.id + '-' + lv.value">
                     <input
                       type="checkbox"
-                      :checked="hasScopeEntry(subj.id, lv.value)"
-                      @change="toggleScopeEntry(subj.id, lv.value)"
+                      :checked="hasScope(subject.id, lv.value)"
+                      @change="toggleScope(subject.id, lv.value)"
                     />
-                  </label>
-                </td>
-                <td class="scope-cell">
-                  <button type="button" class="scope-toggle-all" @click="toggleAllLevelsForSubject(subj.id)">
-                    {{ LEVEL_OPTIONS.every(lv => hasScopeEntry(subj.id, lv.value)) ? '取消全選' : '全選' }}
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>聘用類型</label>
+          <select v-model="form.employment_type">
+            <option value="full_time">正職</option>
+            <option value="part_time">兼職</option>
+          </select>
         </div>
 
         <div class="form-group">
           <label>狀態</label>
           <select v-model="form.status">
-              <option value="active">Active (正式)</option>
-              <option value="pending">Pending (待審核)</option>
-              <option value="suspended">Suspended (停用)</option>
+              <option value="active">在職</option>
+              <option value="pending">待審核</option>
+              <option value="suspended">停用</option>
           </select>
         </div>
 
@@ -262,8 +336,8 @@
           <div class="form-group">
             <label>預設狀態</label>
             <select v-model="bulkDefaultStatus">
-              <option value="active">Active (正式)</option>
-              <option value="pending">Pending (待審核)</option>
+              <option value="active">在職</option>
+              <option value="pending">待審核</option>
             </select>
           </div>
         </div>
@@ -370,7 +444,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
 
@@ -390,6 +464,50 @@ const tab = ref('active');
 const searchQ = ref('');
 const filterStatus = ref('');
 const filterSubjectId = ref('');
+const selectedTeacherIds = ref([]);
+const selectedTeacherIdSet = computed(() => new Set(selectedTeacherIds.value.map(String)));
+
+const chipTeacherOptions = computed(() =>
+  teachers.value
+    .filter(t => t.status === 'active')
+    .map(t => ({ id: t.id, name: t.username || t.name || `#${t.id}` }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+);
+
+/** API 仍用 active/pending/suspended；畫面顯示中文 */
+function teacherStatusLabel(status) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'active') return '在職';
+  if (s === 'pending') return '待審核';
+  if (s === 'suspended') return '停用';
+  return status ? String(status) : '—';
+}
+
+function toggleTeacherChip(teacherId) {
+  const tid = String(teacherId);
+  const idx = selectedTeacherIds.value.findIndex(id => String(id) === tid);
+  if (idx >= 0) {
+    selectedTeacherIds.value.splice(idx, 1);
+  } else {
+    selectedTeacherIds.value.push(teacherId);
+  }
+}
+
+
+const TEACHER_AVATAR_PALETTE = [
+  '#1565C0', '#6A1B9A', '#00838F', '#2E7D32', '#C62828', '#EF6C00', '#5D4037', '#37474F',
+  '#00695C', '#4527A0', '#AD1457', '#283593',
+];
+
+function teacherAvatarColor(teacherId) {
+  const n = Math.abs(Number(teacherId) || 0);
+  return TEACHER_AVATAR_PALETTE[n % TEACHER_AVATAR_PALETTE.length];
+}
+
+function teacherInitial(teacher) {
+  const name = String(teacher?.username || teacher?.account || '?').trim();
+  return name ? name.charAt(0) : '?';
+}
 
 const formBranchOptions = computed(() => {
   if (allBranchOptions.value.length > 0) return allBranchOptions.value;
@@ -406,6 +524,7 @@ const LEVEL_OPTIONS = [
   { value: 'junior', label: '國中' },
   { value: 'high', label: '高中' },
 ];
+const LEVEL_LABEL_LOOKUP = { elementary: '國小', junior: '國中', high: '高中' };
 
 const form = ref({
   username: '',
@@ -418,8 +537,122 @@ const form = ref({
   subject_ids: [],
   subject_level_scopes: [],
   status: 'active',
-  rfid: ''
+  rfid_by_branch: {}
 });
+
+const selectedSubjectsForForm = computed(() =>
+  subjects.value.filter((s) => (form.value.subject_ids || []).map(Number).includes(Number(s.id)))
+);
+
+function hasScope(subjectId, level) {
+  return (form.value.subject_level_scopes || []).some(
+    (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
+  );
+}
+
+function toggleScope(subjectId, level) {
+  const next = [...(form.value.subject_level_scopes || [])];
+  const idx = next.findIndex(
+    (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
+  );
+  if (idx >= 0) {
+    next.splice(idx, 1);
+  } else {
+    next.push({ subject_id: Number(subjectId), level });
+  }
+  form.value.subject_level_scopes = next;
+}
+
+function subjectNameByIdForDisplay(sid) {
+  const found = subjects.value.find((s) => Number(s.id) === Number(sid));
+  return found?.name || `科目#${sid}`;
+}
+
+const SCOPE_CHIP_PALETTE = [
+  { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+  { bg: '#faf5ff', color: '#7e22ce', border: '#e9d5ff' },
+  { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+  { bg: '#fff7ed', color: '#c2410c', border: '#fed7aa' },
+  { bg: '#fdf4ff', color: '#a21caf', border: '#f0abfc' },
+  { bg: '#f0fdfa', color: '#0f766e', border: '#99f6e4' },
+  { bg: '#fefce8', color: '#a16207', border: '#fde68a' },
+  { bg: '#fff1f2', color: '#be123c', border: '#fecdd3' },
+];
+
+function scopeSubjectStyle(subjectId) {
+  const n = Math.abs(Number(subjectId) || 0);
+  const p = SCOPE_CHIP_PALETTE[n % SCOPE_CHIP_PALETTE.length];
+  return { background: p.bg, color: p.color, border: `1px solid ${p.border}` };
+}
+
+function teacherScopeChips(teacher) {
+  const scopes = teacher?.subject_level_scopes;
+  if (!Array.isArray(scopes) || scopes.length === 0) return [];
+  return scopes
+    .filter((s) => Number.isFinite(Number(s.subject_id)) && Number(s.subject_id) > 0 && LEVEL_LABEL_LOOKUP[s.level])
+    .map((s) => ({
+      subjectId: Number(s.subject_id),
+      subject: subjectNameByIdForDisplay(Number(s.subject_id)),
+      label: LEVEL_LABEL_LOOKUP[s.level],
+      levelKey: s.level,
+    }));
+}
+
+function teacherScopeSummary(teacher) {
+  const scopes = teacher?.subject_level_scopes;
+  if (!Array.isArray(scopes) || scopes.length === 0) {
+    return '未設定';
+  }
+  const bySubject = new Map();
+  scopes.forEach((s) => {
+    const id = Number(s.subject_id);
+    if (!Number.isFinite(id) || id <= 0) return;
+    const lv = LEVEL_LABEL_LOOKUP[s.level] || s.level;
+    if (!bySubject.has(id)) bySubject.set(id, new Set());
+    bySubject.get(id).add(lv);
+  });
+  if (bySubject.size === 0) return '未設定';
+  const parts = [];
+  bySubject.forEach((set, sid) => {
+    parts.push(`${subjectNameByIdForDisplay(sid)}（${[...set].join('、')}）`);
+  });
+  return parts.join('；');
+}
+
+function normalizedSubjectLevelScopesForSubmit() {
+  const allowed = new Set((form.value.subject_ids || []).map(Number));
+  return (form.value.subject_level_scopes || [])
+    .filter((s) => allowed.has(Number(s.subject_id)))
+    .map((s) => ({ subject_id: Number(s.subject_id), level: String(s.level) }))
+    .filter((s) => Number.isFinite(s.subject_id) && s.subject_id > 0 && ['elementary', 'junior', 'high'].includes(s.level));
+}
+
+watch(
+  () => [...(form.value.subject_ids || [])],
+  () => {
+    const allowed = new Set((form.value.subject_ids || []).map(Number));
+    form.value.subject_level_scopes = (form.value.subject_level_scopes || []).filter((s) =>
+      allowed.has(Number(s.subject_id)));
+  }
+);
+
+const formTeacherCampusIds = computed(() => {
+  const main = form.value.branch_id != null ? Number(form.value.branch_id) : null;
+  const ids = new Set();
+  if (Number.isFinite(main) && main > 0) ids.add(main);
+  (form.value.multi_branches || []).forEach((b) => {
+    const n = Number(b);
+    if (Number.isFinite(n) && n > 0) ids.add(n);
+  });
+  return Array.from(ids).sort((a, b) => a - b);
+});
+
+function teacherHasAnyRfid(teacher) {
+  if (teacher?.rfid) return true;
+  const rb = teacher?.rfid_by_branch;
+  if (rb && typeof rb === 'object' && Object.keys(rb).length > 0) return true;
+  return false;
+}
 
 const formError = ref('');
 const isEditing = computed(() => !!editingId.value);
@@ -438,11 +671,8 @@ const SUBJECT_CATEGORY_CONFIG = [
   { key: 'chinese', label: '國文', aliases: ['chinese', '國文'] },
   { key: 'english', label: '英文', aliases: ['english', '英文'] },
   { key: 'math', label: '數學', aliases: ['math', 'mathematics', '數學'] },
-  { key: 'social', label: '社會', aliases: ['social', '社會'] },
-  { key: 'science_mix', label: '理化', aliases: ['science', '理化'] },
-  { key: 'physics', label: '物理', aliases: ['physics', '物理'] },
-  { key: 'chemistry', label: '化學', aliases: ['chemistry', '化學'] },
-  { key: 'biology', label: '生物', aliases: ['biology', '生物'] },
+  { key: 'science', label: '自然', aliases: ['science', 'physics', 'chemistry', 'biology', '自然', '物理', '化學', '生物'] },
+  { key: 'social', label: '社會', aliases: ['social', 'history', 'geography', 'civics', '社會', '歷史', '地理', '公民'] }
 ];
 const SUBJECT_ALIAS_TO_KEY = (() => {
   const map = new Map();
@@ -480,40 +710,13 @@ function teacherSubjectKeys(teacher) {
 }
 
 function teacherSubjectLabels(teacher) {
-  const labels = [];
-  const keySet = new Set(teacherSubjectKeys(teacher));
-  SUBJECT_CATEGORY_CONFIG.forEach((item) => {
-    if (keySet.has(item.key)) labels.push(item.label);
-  });
-
-  if (labels.length > 0) return labels;
-
-  const fallback = (teacher?.subject_names || [])
-    .map((name) => String(name || '').trim())
+  const ids = (teacher?.subject_ids || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
+  const labels = ids
+    .map((id) => subjects.value.find((s) => Number(s.id) === id)?.name || null)
     .filter(Boolean);
-  return Array.from(new Set(fallback));
-}
-
-const LEVEL_LABEL_MAP = { elementary: '國小', junior: '國中', high: '高中' };
-
-function teacherScopeSummary(teacher) {
-  const scopes = Array.isArray(teacher?.subject_level_scopes) ? teacher.subject_level_scopes : [];
-  if (scopes.length === 0) return teacherSubjectLabels(teacher);
-
-  const subjectLevels = {};
-  scopes.forEach((s) => {
-    const sid = Number(s.subject_id);
-    const key = subjectIdToKey.value[sid];
-    const cfg = key ? SUBJECT_CATEGORY_CONFIG.find((c) => c.key === key) : null;
-    const name = cfg?.label || `#${sid}`;
-    if (!subjectLevels[name]) subjectLevels[name] = [];
-    const lbl = LEVEL_LABEL_MAP[s.level] || s.level;
-    if (!subjectLevels[name].includes(lbl)) subjectLevels[name].push(lbl);
-  });
-
-  return Object.entries(subjectLevels).map(
-    ([name, levels]) => `${name}（${levels.join('/')}）`
-  );
+  if (labels.length > 0) return [...new Set(labels)];
+  // fallback: raw subject_names when IDs not yet resolved
+  return [...new Set((teacher?.subject_names || []).map((n) => String(n || '').trim()).filter(Boolean))];
 }
 
 function normalizeTeacherSubjectIds(teacher) {
@@ -721,10 +924,18 @@ const filteredTeachers = computed(() => {
       ? teachers.value.filter(t => t.status === 'active')
       : teachers.value.filter(t => t.status === 'pending');
 
+    if (selectedTeacherIds.value.length > 0) {
+      list = list.filter(t => selectedTeacherIdSet.value.has(String(t.id)));
+    }
+
     if (filterSubjectId.value) {
-      const selectedKey = subjectIdToKey.value[Number(filterSubjectId.value)];
-      if (!selectedKey) return [];
-      list = list.filter((teacher) => teacherSubjectKeys(teacher).includes(selectedKey));
+      const filterId = Number(filterSubjectId.value);
+      const selectedKey = subjectIdToKey.value[filterId];
+      if (selectedKey) {
+        list = list.filter((teacher) => teacherSubjectKeys(teacher).includes(selectedKey));
+      } else {
+        list = list.filter((teacher) => (teacher.subject_ids || []).map(Number).includes(filterId));
+      }
     }
 
     return list;
@@ -796,25 +1007,28 @@ async function loadSubjects() {
       return;
     }
     const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+
+    // Build key mappings for CSV import / filter backward compat
     const idToKey = {};
     const keyToId = {};
-
     list.forEach((item) => {
       const id = Number(item.id);
       const rawName = item.name || item.Subject_Name || '';
       if (!Number.isFinite(id) || !rawName) return;
       const key = resolveSubjectKey(rawName);
-      if (!key) return;
-      idToKey[id] = key;
-      if (!keyToId[key]) keyToId[key] = id;
+      if (key) {
+        idToKey[id] = key;
+        if (!keyToId[key]) keyToId[key] = id;
+      }
     });
-
     subjectIdToKey.value = idToKey;
     subjectKeyToId.value = keyToId;
 
-    subjects.value = SUBJECT_CATEGORY_CONFIG
-      .map((item) => ({ id: keyToId[item.key], name: item.label }))
-      .filter((item) => Number.isFinite(item.id));
+    // Use API subjects directly — no hardcoded category filtering
+    // Server already returns sorted by name (alphabetical)
+    subjects.value = list
+      .map((item) => ({ id: Number(item.id), name: item.name || item.Subject_Name || '' }))
+      .filter((item) => Number.isFinite(item.id) && item.id > 0 && item.name !== '');
   } catch (_) {
     subjects.value = [];
     subjectIdToKey.value = {};
@@ -841,49 +1055,21 @@ async function loadAllBranchOptions() {
   }
 }
 
-function hasScopeEntry(subjectId, level) {
-  return form.value.subject_level_scopes.some(
-    (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
-  );
-}
-
-function toggleScopeEntry(subjectId, level) {
-  const scopes = [...form.value.subject_level_scopes];
-  const idx = scopes.findIndex(
-    (s) => Number(s.subject_id) === Number(subjectId) && s.level === level
-  );
-  if (idx >= 0) {
-    scopes.splice(idx, 1);
-  } else {
-    scopes.push({ subject_id: Number(subjectId), level });
-  }
-  form.value.subject_level_scopes = scopes;
-}
-
-function toggleAllLevelsForSubject(subjectId) {
-  const allLevels = LEVEL_OPTIONS.map((l) => l.value);
-  const allPresent = allLevels.every((lv) => hasScopeEntry(subjectId, lv));
-  const scopes = form.value.subject_level_scopes.filter(
-    (s) => Number(s.subject_id) !== Number(subjectId)
-  );
-  if (!allPresent) {
-    allLevels.forEach((lv) => scopes.push({ subject_id: Number(subjectId), level: lv }));
-  }
-  form.value.subject_level_scopes = scopes;
-}
-
-const selectedSubjectsForScopes = computed(() => {
-  return subjects.value.filter((s) => form.value.subject_ids.includes(s.id));
-});
-
 const editTeacher = (teacher) => {
   editingId.value = teacher.id;
   const mainId = teacher.branch_id != null ? Number(teacher.branch_id) : null;
   const branchIds = teacher.branch_ids || [];
   const multiOnly = mainId != null ? branchIds.filter(b => Number(b) !== mainId) : branchIds;
-  const existingScopes = Array.isArray(teacher.subject_level_scopes)
-    ? teacher.subject_level_scopes.map((s) => ({ subject_id: Number(s.subject_id), level: s.level }))
-    : [];
+  const rb = {};
+  if (teacher.rfid_by_branch && typeof teacher.rfid_by_branch === 'object') {
+    Object.entries(teacher.rfid_by_branch).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') rb[k] = String(v).trim();
+    });
+  }
+  if (teacher.rfid && mainId != null && Number.isFinite(mainId)) {
+    const key = String(mainId);
+    if (!rb[key]) rb[key] = String(teacher.rfid).trim();
+  }
   form.value = {
     username: teacher.username,
     account: teacher.account || teacher.email || '',
@@ -891,10 +1077,15 @@ const editTeacher = (teacher) => {
     line_id: teacher.line_id || '',
     branch_id: teacher.branch_id,
     multi_branches: multiOnly,
-    subject_ids: normalizeTeacherSubjectIds(teacher),
-    subject_level_scopes: existingScopes,
+    subject_ids: (teacher.subject_ids || []).map(Number).filter((id) => subjects.value.some((s) => Number(s.id) === id)),
+    subject_level_scopes: Array.isArray(teacher.subject_level_scopes)
+      ? teacher.subject_level_scopes
+        .map((s) => ({ subject_id: Number(s.subject_id), level: String(s.level) }))
+        .filter((s) => Number.isFinite(s.subject_id) && s.subject_id > 0 && ['elementary', 'junior', 'high'].includes(s.level))
+      : [],
     status: teacher.status || 'active',
-    rfid: teacher.rfid || ''
+    employment_type: teacher.employment_type || 'full_time',
+    rfid_by_branch: rb
   };
 };
 
@@ -905,10 +1096,7 @@ const approveTeacher = async (teacher) => {
     const res = await fetch(`${API_BASE}/profiles/${teacher.id}`, {
       method: 'PUT',
       headers,
-      body: JSON.stringify({
-        status: 'active',
-        branch_id: props.branchId != null && props.branchId !== '' ? Number(props.branchId) : undefined,
-      })
+      body: JSON.stringify({ status: 'active' })
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
@@ -1171,26 +1359,30 @@ const closeModal = () => {
   const branchId = resolveDefaultFormBranchId();
   form.value = {
     username: '', account: '', password: 'teacher123', phone: '', line_id: '',
-    branch_id: branchId, multi_branches: [], subject_ids: [], subject_level_scopes: [],
-    status: 'active', rfid: ''
+    branch_id: branchId, multi_branches: [], subject_ids: [], subject_level_scopes: [], status: 'active', employment_type: 'full_time', rfid_by_branch: {}
   };
 };
 
-const bindRfidFromTemp = async () => {
-  if (!props.branchId) { formError.value = '請先選擇分校'; return; }
+const bindRfidFromTempForCampus = async (campusId) => {
+  const cid = Number(campusId);
+  if (!Number.isFinite(cid) || cid <= 0) {
+    formError.value = '分校無效';
+    return;
+  }
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/temp-rfid?campus_id=${props.branchId}`, { headers });
+    const res = await fetch(`${API_BASE}/temp-rfid?campus_id=${cid}`, { headers });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       formError.value = `取得暫存 RFID 失敗（HTTP ${res.status}）${json?.message ? '：' + json.message : ''}`;
       return;
     }
     if (json?.data?.rfid) {
-      form.value.rfid = json.data.rfid;
+      const next = { ...form.value.rfid_by_branch, [String(cid)]: json.data.rfid };
+      form.value.rfid_by_branch = next;
       formError.value = '';
     } else {
-      formError.value = '暫無刷卡資料，請先刷卡後 5 分鐘內點擊綁定';
+      formError.value = '暫無刷卡資料，請先於該分校刷卡後 5 分鐘內點擊讀取';
     }
   } catch (e) {
     formError.value = '取得暫存 RFID 失敗';
@@ -1206,17 +1398,24 @@ const submitForm = async () => {
     const subjectIds = (form.value.subject_ids || []).map(Number).filter((sid) => Number.isFinite(sid));
     if (isEditing.value) {
       if (!form.value.account) { formError.value = '請輸入登入帳號'; return; }
+      const rfidByBranch = {};
+      formTeacherCampusIds.value.forEach((bid) => {
+        const k = String(bid);
+        const raw = form.value.rfid_by_branch[k];
+        rfidByBranch[k] = raw == null || String(raw).trim() === '' ? '' : String(raw).trim();
+      });
       const body = {
         username: form.value.username,
         account: form.value.account,
         branch_id: form.value.branch_id,
         multi_branches: form.value.multi_branches || [],
         status: form.value.status,
+        employment_type: form.value.employment_type || 'full_time',
         phone: form.value.phone || null,
         line_id: form.value.line_id || null,
-        rfid: form.value.rfid || null,
+        rfid_by_branch: rfidByBranch,
         subject_ids: subjectIds,
-        subject_level_scopes: form.value.subject_level_scopes || []
+        subject_level_scopes: normalizedSubjectLevelScopesForSubmit(),
       };
       const res = await fetch(`${API_BASE}/profiles/${editingId.value}`, {
         method: 'PUT',
@@ -1240,10 +1439,11 @@ const submitForm = async () => {
         branch_id: form.value.branch_id,
         multi_branches: form.value.multi_branches || [],
         status: form.value.status,
+        employment_type: form.value.employment_type || 'full_time',
         phone: form.value.phone || null,
         line_id: form.value.line_id || null,
         subject_ids: subjectIds,
-        subject_level_scopes: form.value.subject_level_scopes || []
+        subject_level_scopes: normalizedSubjectLevelScopesForSubmit(),
       };
       const res = await fetch(`${API_BASE}/profiles`, {
         method: 'POST',
@@ -1272,26 +1472,10 @@ watch(() => props.branchId, () => {
   bulkDefaultBranchId.value = fallbackBranch;
   loadTeachers();
 });
-const activeDropdown = ref(null);
-function toggleDropdown(teacherId) {
-  activeDropdown.value = activeDropdown.value === teacherId ? null : teacherId;
-}
-function closeDropdown() {
-  activeDropdown.value = null;
-}
-function avatarStyle(name) {
-  const hue = (name?.charCodeAt(0) ?? 0) * 37 % 360;
-  return { background: `hsl(${hue}, 60%, 55%)` };
-}
-
 onMounted(() => {
   loadAllBranchOptions();
   loadTeachers();
   loadSubjects();
-  window.addEventListener('click', closeDropdown);
-});
-onUnmounted(() => {
-  window.removeEventListener('click', closeDropdown);
 });
 
 watch(showAddModal, (opened) => {
@@ -1386,11 +1570,73 @@ watch(showBulkModal, (opened) => {
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   padding: 12px;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   background: #f8fafc;
+}
+
+.teacher-chips-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  min-height: 40px;
+}
+.teacher-chips-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+.teacher-chips-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  max-height: 5.5rem;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+.teacher-chip {
+  padding: 5px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a1a1a;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.teacher-chip:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.teacher-chip.active {
+  color: #fff;
+}
+.teacher-chip-clear {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.teacher-chip-clear:hover {
+  color: #e53935;
+  border-color: #e53935;
 }
 
 .filter-item {
@@ -1400,6 +1646,214 @@ watch(showBulkModal, (opened) => {
 .filter-item-search {
   min-width: 260px;
   flex: 1;
+}
+
+.filter-item-view {
+  min-width: auto;
+}
+
+
+.teacher-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.teacher-profile-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.teacher-profile-card:hover {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
+.tpc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.tpc-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.tpc-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.tpc-name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpc-account {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpc-status.status-tag {
+  flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.tpc-body {
+  padding: 12px 16px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tpc-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tpc-row-tags {
+  align-items: flex-start;
+}
+
+.tpc-label {
+  flex: 0 0 52px;
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+}
+
+.tpc-value {
+  color: #334155;
+  word-break: break-all;
+}
+
+.tpc-tags {
+  flex: 1;
+  min-width: 0;
+}
+
+.tpc-rfid-block .tpc-label {
+  padding-top: 4px;
+}
+
+.tpc-rfid-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tpc-rfid-btn {
+  align-self: flex-start;
+}
+
+.tpc-temp-pw {
+  font-size: 12px;
+  color: #475569;
+}
+
+.tpc-scope-summary {
+  align-items: flex-start;
+}
+
+.tpc-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.scope-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+
+.scope-summary-cell {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+  max-width: 220px;
+}
+
+.scope-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.scope-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.scope-table th,
+.scope-table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.scope-table th:first-child,
+.scope-table td:first-child {
+  text-align: left;
+}
+
+.tpc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.tpc-actions .small {
+  min-height: 30px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .filter-row label {
   display: block;
@@ -1437,46 +1891,6 @@ watch(showBulkModal, (opened) => {
     font-weight: 700;
 }
 
-.teacher-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table-wrap {
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  overflow: auto;
-  background: #fff;
-}
-
-.teacher-table th, .teacher-table td {
-  padding: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  text-align: left;
-  vertical-align: top;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.teacher-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.teacher-table tbody tr:nth-child(even) {
-  background: #fcfdff;
-}
-
-.teacher-table tbody tr:hover {
-  background: #f8fbff;
-}
 
 .action-group {
   display: flex;
@@ -1500,6 +1914,7 @@ watch(showBulkModal, (opened) => {
 .status-tag.active { background: #e8f5e9; color: #2e7d32; }
 .status-tag.pending { background: #fff3e0; color: #ef6c00; }
 .status-tag.suspended { background: #ffebee; color: #c62828; }
+.status-tag.tpc-parttime { background: #ede9fe; color: #6d28d9; margin-left: 4px; }
 
 button.small.warning {
   background: #fff7ed;
@@ -1558,37 +1973,37 @@ button.small.danger {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 14px;
-  border-radius: 20px;
-  border: 2px solid #E0E0E0;
-  background: #FAFAFA;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: #616161;
-  transition: all 0.2s;
+  color: #334155;
+  transition: border-color 0.15s, background 0.15s;
   user-select: none;
 }
 
 .branch-chip:hover {
-  border-color: #90CAF9;
-  background: #E3F2FD;
+  border-color: var(--primary);
+  background: var(--primary-bg);
 }
 
 .branch-chip.selected {
-  border-color: #1565C0;
-  background: #E3F2FD;
-  color: #1565C0;
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary);
   font-weight: 700;
 }
 .branch-chip.disabled {
-  opacity: 0.7;
+  opacity: 0.5;
   cursor: default;
-  border-color: #BDBDBD;
-  background: #EEEEEE;
-  color: #757575;
+  border-color: #e2e8f0;
+  background: #f1f5f9;
+  color: #94a3b8;
 }
-.branch-chip.disabled:hover { border-color: #BDBDBD; background: #EEEEEE; }
+.branch-chip.disabled:hover { border-color: #e2e8f0; background: #f1f5f9; }
 .form-group .hint { font-size: 12px; color: #78909c; margin-bottom: 8px; font-weight: normal; }
 
 .rfid-bind-row {
@@ -1606,6 +2021,37 @@ button.small.danger {
   background: #f5f5f5;
   color: #333;
   cursor: default;
+}
+
+.rfid-branch-block {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.rfid-branch-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 8px;
+}
+.rfid-multi-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.rfid-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.rfid-branch-mini {
+  color: #64748b;
+  font-weight: 600;
 }
 
 .rfid-tag {
@@ -1717,170 +2163,5 @@ button.small.danger {
   .action-group {
     min-width: 220px;
   }
-}
-
-/* ── 卡片網格 ── */
-.teacher-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-@media (max-width: 1200px) { .teacher-cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 700px)  { .teacher-cards-grid { grid-template-columns: 1fr; } }
-
-/* ── 單張卡片 ── */
-.teacher-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  background: #fff;
-  box-shadow: 0 2px 8px rgba(15,23,42,0.05);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  transition: box-shadow 0.2s, transform 0.15s;
-}
-.teacher-card:hover {
-  box-shadow: 0 6px 20px rgba(15,23,42,0.10);
-  transform: translateY(-2px);
-}
-
-/* ── Card Header ── */
-.tc-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid #f1f5f9;
-}
-.tc-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 20px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.tc-identity { flex: 1; min-width: 0; }
-.tc-name { font-size: 16px; font-weight: 700; color: #1e293b; }
-.tc-account { font-size: 12px; color: #64748b; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tc-phone { font-size: 12px; color: #64748b; margin-top: 2px; }
-
-/* ── Card Body ── */
-.tc-body {
-  padding: 12px 16px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.tc-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 13px;
-}
-.tc-icon { flex-shrink: 0; font-size: 14px; line-height: 1.6; }
-.tc-rfid { cursor: pointer; }
-.tc-rfid:hover .rfid-tag { text-decoration: underline; }
-.main-branch {
-  background: #fff7ed;
-  color: #c2410c;
-  border: 1px solid #fdba74;
-}
-.subject-tag { background: #f0fdf4; color: #16a34a; }
-
-/* ── Card Footer ── */
-.tc-footer {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 16px;
-  border-top: 1px solid #f1f5f9;
-  background: #fafbfc;
-}
-.tc-dropdown { position: relative; margin-left: auto; }
-.tc-more-btn { min-width: 32px; font-size: 18px; line-height: 1; padding: 4px 8px; }
-.tc-dropdown-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 4px);
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15,23,42,0.12);
-  min-width: 130px;
-  z-index: 10;
-  overflow: hidden;
-}
-.tc-dropdown-menu button {
-  width: 100%;
-  text-align: left;
-  padding: 10px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  background: none;
-  border: none;
-  border-radius: 0;
-  cursor: pointer;
-  color: #374151;
-  display: block;
-}
-.tc-dropdown-menu button:hover { background: #f8fafc; }
-.tc-dropdown-menu button.danger { color: #b91c1c; }
-.tc-dropdown-menu button.danger:hover { background: #fef2f2; }
-.tc-dropdown-menu button.approve { color: #15803d; }
-.tc-dropdown-menu button.approve:hover { background: #f0fdf4; }
-
-.scope-matrix {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 8px;
-  font-size: 13px;
-}
-.scope-matrix th,
-.scope-matrix td {
-  padding: 8px 10px;
-  border: 1px solid #e2e8f0;
-  text-align: center;
-}
-.scope-matrix th {
-  background: #f8fafc;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-}
-.scope-subj-name {
-  text-align: left !important;
-  font-weight: 600;
-  color: #1e293b;
-}
-.scope-cell input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #1565C0;
-}
-.scope-check-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.scope-toggle-all {
-  font-size: 11px;
-  padding: 2px 8px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  background: #f8fafc;
-  cursor: pointer;
-  color: #475569;
-  white-space: nowrap;
-}
-.scope-toggle-all:hover {
-  background: #e2e8f0;
 }
 </style>

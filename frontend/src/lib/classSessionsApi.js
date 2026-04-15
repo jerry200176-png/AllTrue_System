@@ -17,12 +17,14 @@ export function normalizeClassSessionsPayload(json) {
       status: String(raw?.status || raw?.Status || ''),
       learning_record_id: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
       learning_record_status: String(raw?.learning_record_status || 'missing'),
+      learning_record_body_filled: !!raw?.learning_record_body_filled,
       learning_record_teacher_id: raw?.learning_record_teacher_id != null ? Number(raw.learning_record_teacher_id) : null,
       attendance_sign_in_at: raw?.attendance_sign_in_at || null,
       attendance_memo: String(raw?.attendance_memo || ''),
       recorded_by_name: String(raw?.recorded_by_name || ''),
       student_name: raw?.student_name || '',
       teacher_name: raw?.teacher_name || '',
+      note: raw?.note || null,
     };
 
     if (!item.id || !item.student_class_id || !item.session_date) continue;

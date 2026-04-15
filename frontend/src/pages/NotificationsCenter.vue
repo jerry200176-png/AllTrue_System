@@ -228,6 +228,8 @@ const canCopyTuition = (item) => {
 
 const canMarkTuitionPaid = (item) => {
   if (!item || item.ResolvedAt) return false;
+  // low_sessions = 已繳但堂數偏低（續課提醒），不應出現「標記已繳費」
+  if (item.Type === 'low_sessions') return false;
   return item.SourceType === 'StudentClass' || item.SourceType === 'Invoice';
 };
 

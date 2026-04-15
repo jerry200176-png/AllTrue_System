@@ -1,5 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, ref } from 'vue';
 import { resolvePageGuideSteps } from './pageGuideConfig';
+import { lockScroll, unlockScroll } from './useScrollLock';
 
 const HIGHLIGHT_CLASS = 'guide-tour-highlighted';
 const BODY_OPEN_CLASS = 'guide-tour-open';
@@ -169,6 +170,7 @@ export function usePageGuideTour() {
     removeHighlight();
     clearAllHighlights();
     cleanupListeners();
+    unlockScroll();
     if (typeof document !== 'undefined') {
       document.body.classList.remove(BODY_OPEN_CLASS);
     }
@@ -187,6 +189,7 @@ export function usePageGuideTour() {
     steps.value = availableSteps;
     stepIndex.value = 0;
     isOpen.value = true;
+    lockScroll();
     document.body.classList.add(BODY_OPEN_CLASS);
     ensureListeners();
     syncCurrentStep();

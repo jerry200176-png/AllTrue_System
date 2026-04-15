@@ -301,6 +301,7 @@ onBeforeUnmount(() => {
 /* 品牌專屬：高質感金桔/暖黃色彩漸層背景 */
 .login-wrap {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -309,6 +310,12 @@ onBeforeUnmount(() => {
   background-size: 400% 400%;
   animation: gradientBG 15s ease infinite;
 }
+@media (pointer: coarse) {
+  .login-wrap {
+    animation: none;
+    background-size: 100% 100%;
+  }
+}
 
 @keyframes gradientBG {
   0% { background-position: 0% 50%; }
@@ -316,11 +323,9 @@ onBeforeUnmount(() => {
   100% { background-position: 0% 50%; }
 }
 
-/* 玻璃擬態 (Glassmorphism) 卡片設計 - 深沉冷冽感 */
+/* 玻璃擬態 (Glassmorphism) 卡片設計 */
 .login-card {
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.2) inset;
@@ -328,6 +333,13 @@ onBeforeUnmount(() => {
   max-width: 420px;
   overflow: hidden;
   animation: floatUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (min-width: 641px) {
+  .login-card {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
 }
 
 @keyframes floatUp {

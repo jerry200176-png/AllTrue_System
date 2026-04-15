@@ -18,8 +18,8 @@
         <div class="header-buttons">
           <label class="button-outline">
             <span class="material-symbols-outlined btn-icon">upload_file</span>
-            匯入 CSV
-            <input type="file" @change="importStudents" accept=".csv" style="display: none;" />
+            匯入名單
+            <input type="file" @change="importStudents" accept=".csv,.xlsx" style="display: none;" />
           </label>
           <button class="primary" @click="openAddStudent">
             <span class="material-symbols-outlined btn-icon">add</span>
@@ -99,7 +99,7 @@
             <th>學校</th>
             <th>家長</th>
             <th>RFID</th>
-            <th>補習科目 / 剩餘堂數</th>
+            <th>補習科目 / 堂數</th>
             <th>操作</th>
           </tr>
         </thead>
@@ -154,10 +154,18 @@
                 <span
                   v-for="course in getStudentCourses(student.id)"
                   :key="course.id"
-                  :class="['subject-pill', { low: course.remaining_sessions <= 2 }]"
+                  :class="['subject-pill', { low: isSessionPaymentLowRemaining(course) }]"
                 >
                   {{ getSubjectLabel(course.subject).split('(')[0].trim() }}
-                  <strong>{{ course.remaining_sessions ?? 0 }}</strong>堂
+                  <template v-if="String(course.payment_type || '').toLowerCase() === 'monthly'">
+                    <template v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">
+                      每月<strong>{{ parseCourseNumber(course.monthly_sessions) }}</strong>堂
+                    </template>
+                    <template v-else>月結</template>
+                  </template>
+                  <template v-else>
+                    <strong>{{ course.remaining_sessions ?? 0 }}</strong>堂
+                  </template>
                 </span>
               </div>
               <span class="hint" v-else>尚未設定</span>
@@ -210,8 +218,14 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="course in getStudentCourses(student.id)" :key="course.id">
-                      <td><span class="tag">{{ getSubjectLabel(course.subject) }}</span></td>
+                    <tr v-for="course in getStudentCourses(student.id)" :key="course.id" :class="{ 'course-settled-row': effectiveClosedReason(course) === 'settled' || effectiveClosedReason(course) === 'completed' }">
+                      <td>
+                        <span class="tag">{{ getSubjectLabel(course.subject) }}</span>
+                        <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
+                        <span v-if="effectiveClosedReason(course) === 'settled'" class="tag tag-settled">已結算</span>
+                        <span v-else-if="effectiveClosedReason(course) === 'completed'" class="tag tag-settled">已完課</span>
+                        <span v-else-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
+                      </td>
                       <td>{{ course.teacher_name || '待指派' }}</td>
                       <td>
                         <span class="status-tag" :class="course.class_type">
@@ -233,6 +247,11 @@
                         </div>
                         <span v-else class="hint">
                           月結<span v-if="course.settlement_day">（每月{{ course.settlement_day }}號）</span>
+                          <template v-if="parseCourseNumber(course.monthly_sessions) != null && parseCourseNumber(course.monthly_sessions) > 0">
+                            <span v-if="course.settlement_day"> · </span>
+                            <span v-else> </span>
+                            每月<strong>{{ parseCourseNumber(course.monthly_sessions) }}</strong>堂
+                          </template>
                         </span>
                       </td>
                       <td style="font-weight: 600;">${{ sessionFeeDisplay(course) }}</td>
@@ -267,12 +286,14 @@
                           title="點擊切換繳費狀態"
                           :disabled="isPaymentStatusPending(course.id)"
                           @click="togglePaymentStatus(course, student.name)"
-                          style="font-size: 11px;"
+                          style="font-size: 12px;"
                         >
                           {{ paymentStatusButtonLabel(course) }}
                         </button>
+                        <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         <button class="small ghost" @click="openAddSessionsForCourse(course)">加購</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
+                        <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button class="small danger" @click="deleteCourse(course)">刪除</button>
                       </td>
                     </tr>
@@ -372,12 +393,27 @@
           :student-grade="selectedStudent?.grade || selectedStudent?.ClassID || null"
         />
 
+        <div v-if="courseForm.payment_type === 'session'" class="quick-add-session-link" style="margin: 12px 0 4px; text-align: right;">
+          <button type="button" class="ghost small" @click="openQuickAddSession">＋ 單次加課（不增加總堂數）</button>
+        </div>
+
         <div class="actions">
           <button class="ghost" @click="closeCourseModal">取消</button>
           <button class="primary" @click="submitCourse">儲存</button>
         </div>
       </div>
     </div>
+
+    <QuickAddSessionModal
+      :show="showQuickAddSession"
+      :form="quickAddSessionForm"
+      :time-options="TIME_OPTIONS_30"
+      :conflict="quickAddConflict"
+      :checking="quickAddChecking"
+      @close="showQuickAddSession = false"
+      @submit="submitQuickAddSession"
+      @check="runQuickAddCheck"
+    />
 
     <UniversalClassScheduler
       v-if="showCourseModal && !editingCourseId"
@@ -470,6 +506,7 @@ import { getPerSessionFee } from '../lib/coursePricing';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
+import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 
@@ -573,6 +610,12 @@ const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const selectedCourse = ref(null);
 const pendingPaymentStatusIds = ref(new Set());
 
+// Quick add session (single extra lesson within existing session count)
+const showQuickAddSession = ref(false);
+const quickAddConflict = ref(null);
+const quickAddChecking = ref(false);
+const quickAddSessionForm = ref({ session_date: '', start_time: '16:00', duration_minutes: 120, note: '', auto_approve: true, student_name: '', subject: '' });
+
 const isPaymentStatusPending = (courseId) => pendingPaymentStatusIds.value.has(String(courseId));
 const setPaymentStatusPending = (courseId, pending) => {
   const next = new Set(pendingPaymentStatusIds.value);
@@ -593,7 +636,7 @@ const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
 const getSubjectLabel = (val) => getSubjectText(val);
 const sessionFeeDisplay = (c) => getPerSessionFee(c);
 const classTypeLabel = (type) => {
-  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
+  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
   return map[type] || type;
 };
 const courseMemo = (course) => {
@@ -650,6 +693,13 @@ const parseCourseNumber = (value) => {
 const getCourseRemainingSessions = (course) => (
   parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
 );
+/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷 */
+const isSessionPaymentLowRemaining = (course) => {
+  if (String(course?.payment_type || '').toLowerCase() === 'monthly') return false;
+  const r = getCourseRemainingSessions(course);
+  if (r == null) return false;
+  return r <= 2;
+};
 const isCourseSettled = (course) => {
   const paymentStatus = String(course?.payment_status || '').toLowerCase();
   if (paymentStatus === 'paid') return true;
@@ -659,11 +709,52 @@ const isCourseSettled = (course) => {
   if (paid != null) return paid > 0;
   return false;
 };
+function effectiveClosedReason(course) {
+  if (course?.closed_reason) return course.closed_reason;
+  if (String(course?.status || '').toLowerCase() === 'inactive'
+    && course?.payment_type === 'session'
+    && isCourseSettled(course)
+    && getCourseRemainingSessions(course) != null
+    && getCourseRemainingSessions(course) <= 0) {
+    return 'completed';
+  }
+  return null;
+}
 const isHistoricalCourse = (course) => {
   const remaining = getCourseRemainingSessions(course);
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
 };
+
+const canCloseCourse = (course) => {
+  const remaining = getCourseRemainingSessions(course);
+  return course?.payment_type === 'session'
+    && isCourseSettled(course)
+    && remaining != null && remaining <= 0
+    && String(course?.status || '').toLowerCase() !== 'inactive';
+};
+
+async function closeCourseNoRenew(course, studentName) {
+  const subject = getSubjectLabel(course?.subject);
+  if (!confirm(`確定要結案「${studentName || '學生'}」的 ${subject} 課程嗎？\n\n結案後此課程將不再出現在繳費／續課提醒中。\n（等同暫停課程，之後仍可手動恢復。）`)) return;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入'); return; }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ action: 'pause', reason: 'completed' }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { alert('結案失敗：' + (json.message || res.statusText)); return; }
+    alert('已結案，此課程不再出現在繳費／續課提醒中。');
+    await loadAllStudentCourses();
+  } catch (e) {
+    alert('操作失敗：' + (e?.message || '請稍後再試'));
+  }
+}
+
 const getStudentAllCourses = (id) => studentCourses.value[id] || [];
 const getStudentCourses = (id) => {
   const all = getStudentAllCourses(id);
@@ -1378,14 +1469,18 @@ const editCourse = (course) => {
           }))
           : []);
       const slotDays = mappedSlots.map((s) => s.day).filter((d) => d >= 1 && d <= 7);
-      const days_of_week = [...new Set([...dowBase, ...slotDays])].sort((a, b) => a - b);
+      // 有時段時以 day_time_slots 為準（與列表 scheduleDisplayLines 一致），勿與 API days_of_week 聯集以免多出幽靈星期
+      const days_of_week = mappedSlots.length > 0
+        ? [...new Set(slotDays)].sort((a, b) => a - b)
+        : [...new Set(dowBase)].sort((a, b) => a - b);
       return { days_of_week, day_time_slots: mappedSlots };
     })(),
     start_time: normalizeTo30Min(course.start_time || '16:00'),
     end_time: course.end_time || '18:00',
     first_class_date: course.first_class_date || '',
     room_id: course.room_id ?? null,
-    memo: course.memo || ''
+    memo: course.memo || '',
+    paid_at: course.paid_at || course.last_paid_at || ''
   };
   loadRoomsForBranch();
   showCourseModal.value = true;
@@ -1544,6 +1639,7 @@ const submitCourse = async () => {
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
       };
+      if (form.paid_at) body.paid_at = form.paid_at;
       const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
         credentials: 'include',
@@ -1644,6 +1740,101 @@ const deleteCourse = async (course) => {
   await supabase.from('student-classes').delete().eq('id', course.id);
   await loadAllStudentCourses();
 };
+
+// --- Quick Add Session (single extra lesson, no total increase) ---
+function openQuickAddSession() {
+  const form = courseForm.value;
+  quickAddConflict.value = null;
+  quickAddChecking.value = false;
+  quickAddSessionForm.value = {
+    session_date: new Date().toISOString().slice(0, 10),
+    start_time: normalizeTo30Min(form.start_time || '16:00'),
+    duration_minutes: Math.max(30, Math.round((Number(form.duration_hours) || 2) * 60)),
+    note: '',
+    auto_approve: true,
+    student_name: selectedStudent.value?.name || '—',
+    subject: form.subject || 'Math',
+  };
+  showQuickAddSession.value = true;
+  runQuickAddCheck();
+}
+
+let _quickAddCheckTimer = null;
+async function runQuickAddCheck() {
+  const courseId = editingCourseId.value;
+  if (!courseId) return;
+  const form = quickAddSessionForm.value;
+  if (!form.session_date || !form.start_time) return;
+  clearTimeout(_quickAddCheckTimer);
+  _quickAddCheckTimer = setTimeout(async () => {
+    quickAddChecking.value = true;
+    quickAddConflict.value = null;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) return;
+      const res = await fetch(`/api/v1/student-classes/${courseId}/add-session/check`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ session_date: form.session_date, start_time: form.start_time }),
+      });
+      const json = await res.json().catch(() => ({}));
+      quickAddConflict.value = json;
+    } catch (_) {
+      quickAddConflict.value = null;
+    } finally {
+      quickAddChecking.value = false;
+    }
+  }, 300);
+}
+
+async function submitQuickAddSession() {
+  const courseId = editingCourseId.value;
+  if (!courseId) return;
+  if (!quickAddSessionForm.value.session_date) { alert('請選擇上課日期'); return; }
+  if (!quickAddSessionForm.value.start_time) { alert('請選擇開始時間'); return; }
+  const durationMinutes = Number(quickAddSessionForm.value.duration_minutes || 0);
+  if (!Number.isFinite(durationMinutes) || durationMinutes < 30) { alert('時長至少 30 分鐘'); return; }
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入後再試'); return; }
+    const res = await fetch(`/api/v1/student-classes/${courseId}/add-session`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        session_date: quickAddSessionForm.value.session_date,
+        start_time: quickAddSessionForm.value.start_time,
+        duration_minutes: durationMinutes,
+        note: quickAddSessionForm.value.note || null,
+        auto_approve: !!quickAddSessionForm.value.auto_approve,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 409 && json?.suggested_actions?.length) {
+        quickAddConflict.value = json;
+        runQuickAddCheck();
+      } else {
+        const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+        alert(details || json?.message || '加課失敗');
+      }
+      return;
+    }
+    showQuickAddSession.value = false;
+    quickAddConflict.value = null;
+    const movedFrom = String(json?.moved_from_date || '').slice(0, 10);
+    const defaultMsg = movedFrom
+      ? `已加課完成，已將原 ${movedFrom} 的堂次調整到新日期（總堂數不變）。`
+      : (json?.no_total_increase ? '已加課完成（總堂數不變）。' : '已加課完成。');
+    alert(json?.message ? `${json.message}\n${defaultMsg}` : defaultMsg);
+    const sid = selectedStudent.value?.id;
+    if (sid) await loadStudentCourses(sid);
+    await loadAllStudentCourses();
+  } catch (e) {
+    alert('加課失敗：' + (e?.message || '請稍後再試'));
+  }
+}
 
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
@@ -1841,8 +2032,15 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Page-level table font bump for readability */
+table td { font-size: 14px; }
+table th { font-size: 12.5px; }
+
 .text-secondary { color: var(--text-light); font-size: 0.9rem; }
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
+.close-btn { color: #92400e; border-color: #d97706; }
+.close-btn:hover { background: #fef3c7; }
+.paid-date-hint { display: inline-block; font-size: 12px; color: var(--success, #2e7d32); margin-left: 4px; white-space: nowrap; }
 
 /* ═══ Header ═══ */
 .header-actions {
@@ -1873,7 +2071,7 @@ onMounted(async () => {
   gap: 4px;
   padding: 3px 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   background: #FFF3E0;
   color: #E65100;
   font-weight: 600;
@@ -2018,14 +2216,17 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
 }
+.student-name-cell strong {
+  font-size: 15px;
+}
 .student-avatar-mini {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   color: #fff;
   flex-shrink: 0;
@@ -2049,9 +2250,9 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12.5px;
   background: #E8F5E9;
   color: #2E7D32;
   white-space: nowrap;
@@ -2072,9 +2273,9 @@ onMounted(async () => {
 
 .student-status-badge {
   display: inline-block;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: 11px;
   margin-left: 6px;
   font-weight: 600;
 }
@@ -2084,7 +2285,7 @@ onMounted(async () => {
 
 /* RFID */
 .rfid-tag {
-  font-size: 0.8em;
+  font-size: 12px;
   font-family: monospace;
   color: var(--primary);
   display: inline-flex;
@@ -2092,7 +2293,7 @@ onMounted(async () => {
   gap: 3px;
 }
 .rfid-unbound {
-  font-size: 0.8em;
+  font-size: 12px;
   color: #bdbdbd;
   display: inline-flex;
   align-items: center;
@@ -2186,14 +2387,14 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--primary);
   margin: 0;
 }
 .student-note-line {
   margin-bottom: 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #64748b;
 }
 .student-note-label {
@@ -2202,12 +2403,12 @@ onMounted(async () => {
 .course-inner-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 .course-inner-table th {
   background: #F0F0F0;
-  font-size: 11px;
-  padding: 8px;
+  font-size: 12px;
+  padding: 9px 8px;
 }
 .course-inner-table td {
   padding: 10px 8px;
@@ -2217,11 +2418,12 @@ onMounted(async () => {
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.status-tag.trial { background: #E8EAF6; color: #3949AB; }
 .course-memo-line {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
-  line-height: 1.35;
+  line-height: 1.4;
   word-break: break-word;
 }
 
@@ -2233,8 +2435,8 @@ onMounted(async () => {
 }
 
 .cell-schedule-slots .schedule-slot-line {
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 /* ═══ Form Section ═══ */
@@ -2338,5 +2540,37 @@ onMounted(async () => {
   .action-cell button span:not(.material-symbols-outlined) {
     display: none;
   }
+}
+
+.course-settled-row td {
+  background: #f9fafb;
+  color: #9ca3af;
+}
+.tag-package {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+  font-size: 0.65rem;
+  cursor: help;
+}
+.tag-settled {
+  background: #f3f4f6;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.tag-paused-sm {
+  background: #ffedd5;
+  color: #7c2d12;
+  border: 1px solid #ea580c;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+  font-weight: 600;
+  margin-left: 4px;
 }
 </style>

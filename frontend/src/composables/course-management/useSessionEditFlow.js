@@ -1,13 +1,12 @@
 import { ref, computed } from 'vue';
 
 const SESSION_STATUS_TRANSITIONS = {
-  scheduled:      ['attended', 'late', 'absent', 'excused', 'leave', 'cancelled'],
-  attended:       ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-  completed:      ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'excused', 'cancelled'],
-  late:           ['leave', 'leave_adjusted', 'scheduled', 'attended', 'absent', 'excused', 'cancelled'],
-  absent:         ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'excused', 'cancelled'],
-  excused:        ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'absent', 'cancelled'],
-  leave:          ['scheduled', 'cancelled'],
+  scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
+  attended:       ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'cancelled'],
+  completed:      ['leave', 'leave_adjusted', 'scheduled', 'absent', 'late', 'cancelled'],
+  late:           ['leave', 'leave_adjusted', 'scheduled', 'attended', 'absent', 'cancelled'],
+  absent:         ['leave', 'leave_adjusted', 'scheduled', 'attended', 'late', 'cancelled'],
+  leave:          ['scheduled', 'attended', 'late', 'absent', 'cancelled'],
   leave_adjusted: ['cancelled'],
   cancelled:      ['scheduled'],
 };
@@ -45,6 +44,7 @@ export function useSessionEditFlow({
     student_name: '', teacher_name: '', subject: '',
     attendance_time: '', lr_status: '', course: null,
     reason: '', new_date: '', new_start: '16:00', duration_hours: 2,
+    note: '', edit_end_time: '',
   });
 
   const secondaryStatusSelection = ref('');
@@ -83,7 +83,7 @@ export function useSessionEditFlow({
       end_time: row.end_time || '',
       current_status: String(row.status || '').toLowerCase(),
       student_name: course.student_name || row.student_name || '—',
-      teacher_name: course.teacher_name || row.teacher_name || '—',
+      teacher_name: row.teacher_name || course.teacher_name || '—',
       subject: course.subject || '',
       attendance_time: formatAttendanceTooltipTime(row.attendance_sign_in_at) || '',
       lr_status: row.learning_record_status || '',
@@ -92,6 +92,8 @@ export function useSessionEditFlow({
       new_date: '',
       new_start: row.start_time || '16:00',
       duration_hours: course.duration_hours ?? 2,
+      note: row.note || '',
+      edit_end_time: row.end_time || '',
     };
     sessionEditMode.value = 'menu';
     secondaryStatusSelection.value = '';
@@ -312,6 +314,102 @@ export function useSessionEditFlow({
     }
   }
 
+  function startEditNoteTime() {
+    sessionEditMode.value = 'edit-note-time';
+  }
+
+  async function doEditNoteTime() {
+    const form = sessionEditForm.value;
+    if (!form.session_id) return;
+
+    sessionEditSubmitting.value = true;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) { alert('請重新登入'); return; }
+
+      const body = { status: form.current_status };
+      if (form.edit_end_time) body.end_time = form.edit_end_time;
+      body.note = form.note ?? '';
+
+      const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('儲存失敗：' + (json.message || res.statusText));
+        return;
+      }
+      if (json.session) {
+        updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
+      }
+      closeSessionEdit();
+      await loadCourses();
+    } catch (e) {
+      alert('操作失敗：' + (e?.message || '請稍後再試'));
+    } finally {
+      sessionEditSubmitting.value = false;
+    }
+  }
+
+  function startSubstitute() {
+    sessionEditMode.value = 'substitute';
+    sessionEditForm.value.substitute_teacher_id = '';
+    sessionEditForm.value.substitute_reason = '';
+  }
+
+  async function doSubstitute() {
+    const form = sessionEditForm.value;
+    if (!form.session_id || !form.substitute_teacher_id) return;
+    if (!confirm('確定要將此堂換為代課老師嗎？（僅影響此堂，不影響後續排課）')) return;
+
+    sessionEditSubmitting.value = true;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) { alert('請重新登入'); return; }
+
+      const res = await fetch(`/api/v1/class-sessions/${form.session_id}/substitute`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          substitute_teacher_id: Number(form.substitute_teacher_id),
+          reason: form.substitute_reason || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        let errMsg = json.message || res.statusText;
+        if (res.status === 409 && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
+          const details = json.conflicts[0]?.overlap_details;
+          if (Array.isArray(details) && details.length > 0) {
+            const names = details.map((d) => d.student_name || `#${d.student_id}`).join('、');
+            errMsg += `\n衝突學生：${names}`;
+          }
+        }
+        alert('代課設定失敗：' + errMsg);
+        return;
+      }
+      // Immediately patch the local row so tooltip/list shows the new teacher before full reload
+      if (json.substitute_teacher_id) {
+        updateLocalSessionRow(form.student_class_id || form.course?.id, {
+          id: form.session_id,
+          teacher_id: json.substitute_teacher_id,
+          teacher_name: json.substitute_teacher_name || '',
+        });
+      }
+      closeSessionEdit();
+      alert(json.message || '代課設定完成');
+      await loadCourses();
+    } catch (e) {
+      alert('代課設定失敗：' + (e?.message || '請稍後再試'));
+    } finally {
+      sessionEditSubmitting.value = false;
+    }
+  }
+
   return {
     showSessionEditModal, sessionEditMode, sessionEditSubmitting, sessionEditForm,
     secondaryStatusSelection, secondaryStatusOptions,
@@ -321,5 +419,7 @@ export function useSessionEditFlow({
     addSessionFromModal, doStatusChange,
     startRetroLeave, doRetroLeave,
     startSessionReschedule, fetchMakeupSlotsForEdit, doSessionReschedule,
+    startSubstitute, doSubstitute,
+    startEditNoteTime, doEditNoteTime,
   };
 }

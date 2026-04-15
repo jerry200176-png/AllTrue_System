@@ -28,33 +28,76 @@ if (!fs.existsSync(toDir)) {
   process.exit(1);
 }
 
+// Files in dist_build root (from public/) that should always be deployed
+const ROOT_ASSETS = ['manifest.json', 'logo.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+
+function copyRootAssets() {
+  for (const f of ROOT_ASSETS) {
+    const src = path.join(fromDir, f);
+    const dest = path.join(toDir, f);
+    if (fs.existsSync(src)) {
+      try { fs.cpSync(src, dest, { force: true }); } catch (_) {
+        try { fs.writeFileSync(dest, fs.readFileSync(src)); } catch (_) {}
+      }
+    }
+  }
+}
+
+/** index.html 與 assets hash 必須一致，否則 SPA fallback 會把 .js 當 HTML 回傳 → 整站 MIME 白屏。 */
+function verifyIndexHtmlReferencesAssets() {
+  const indexPath = path.join(toDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    throw new Error('verify: index.html missing under backend/public');
+  }
+  const html = fs.readFileSync(indexPath, 'utf8');
+  const refs = new Set();
+  for (const re of [/src="\.\/assets\/([^"]+)"/g, /href="\.\/assets\/([^"]+)"/g]) {
+    let m;
+    while ((m = re.exec(html)) !== null) refs.add(m[1]);
+  }
+  const missing = [...refs].filter((f) => !fs.existsSync(path.join(toDir, 'assets', f)));
+  if (missing.length) {
+    throw new Error(
+      `verify: index.html references missing asset(s): ${missing.join(', ')} — run full deploy, do not copy only assets/`
+    );
+  }
+}
+
+function writeIndexHtmlAtomic(indexFrom) {
+  const buf = fs.readFileSync(indexFrom);
+  fs.writeFileSync(path.join(toDir, 'index.html'), buf);
+}
+
 function copyWithFsCp() {
   const indexFrom = path.join(fromDir, 'index.html');
   const assetsFrom = path.join(fromDir, 'assets');
   const assetsTo = path.join(toDir, 'assets');
   resetAssetsDir();
-  fs.cpSync(indexFrom, path.join(toDir, 'index.html'), { force: true });
+  writeIndexHtmlAtomic(indexFrom);
   for (const f of fs.readdirSync(assetsFrom)) {
     const src = path.join(assetsFrom, f);
     const dest = path.join(assetsTo, f);
     if (fs.statSync(src).isFile()) fs.cpSync(src, dest, { force: true });
   }
+  copyRootAssets();
   ensureBranchesJson();
+  verifyIndexHtmlReferencesAssets();
 }
 
 function copyWithNode() {
   const indexFrom = path.join(fromDir, 'index.html');
-  const indexTo = path.join(toDir, 'index.html');
-  fs.writeFileSync(indexTo, fs.readFileSync(indexFrom));
   const assetsFrom = path.join(fromDir, 'assets');
   const assetsTo = path.join(toDir, 'assets');
   resetAssetsDir();
+  writeIndexHtmlAtomic(indexFrom);
   for (const f of fs.readdirSync(assetsFrom)) {
     const src = path.join(assetsFrom, f);
     const dest = path.join(assetsTo, f);
     if (fs.statSync(src).isFile()) fs.writeFileSync(dest, fs.readFileSync(src));
   }
+  copyRootAssets();
   ensureBranchesJson();
+  verifyIndexHtmlReferencesAssets();
 }
 
 function copyWithCp() {
@@ -62,7 +105,9 @@ function copyWithCp() {
   const toAssets = path.join(toDir, 'assets');
   resetAssetsDir();
   execSync(`mkdir -p "${toAssets}" && cp -f "${path.join(fromDir, 'index.html')}" "${toDir}/" && cp -rf "${fromAssets}"/* "${toAssets}/"`, { stdio: 'pipe', shell: true });
+  copyRootAssets();
   ensureBranchesJson();
+  verifyIndexHtmlReferencesAssets();
 }
 
 function createPack() {

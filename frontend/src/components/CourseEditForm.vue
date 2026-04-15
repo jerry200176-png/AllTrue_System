@@ -31,6 +31,7 @@
         <option value="one_on_two">一對二</option>
         <option value="one_on_three">一對三</option>
         <option value="tutoring">輔導</option>
+        <option value="trial">試聽</option>
       </select>
     </div>
 
@@ -77,6 +78,12 @@
       </div>
     </template>
 
+    <div class="form-group">
+      <label>繳費日期（選填）</label>
+      <input v-model="form.paid_at" type="date" />
+      <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+    </div>
+
     <div v-if="showRemaining" class="form-group">
       <label>剩餘堂數</label>
       <input v-model.number="form.remaining_sessions" type="number" />
@@ -88,7 +95,7 @@
         <label
           v-for="d in dayOptions"
           :key="d.value"
-          :class="['day-chip', { selected: (form.days_of_week || []).includes(d.value) }]"
+          :class="['day-chip', { selected: selectedDaySet.has(d.value) }]"
         >
           <input
             type="checkbox"
@@ -204,6 +211,7 @@ const defaultForm = {
   room_id: null,
   memo: '',
   remaining_sessions: 0,
+  paid_at: '',
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
@@ -225,6 +233,8 @@ const dayLabelMap = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六'
 const sortedSelectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
+/** 與 checkbox :value 皆用數字比對（API 可能回字串，避免 includes 對不起來／同步順序造成 UI 錯亂） */
+const selectedDaySet = computed(() => new Set(sortedSelectedDays.value));
 const hasPerDayDuration = computed(() => {
   const vals = (form.day_time_slots || [])
     .map((s) => Number(s?.duration_hours || 0))
@@ -251,6 +261,16 @@ watch(
   { immediate: true }
 );
 
+/** 必須先於下方 deep form watcher 註冊：取消勾選星期時要先 sync 時段，再 emit，否則父層會短暫拿到「已取消勾選但 day_time_slots 仍含該日」的不一致 payload */
+watch(
+  () => form.days_of_week,
+  () => {
+    if (syncingFromParent) return;
+    syncDayTimeSlotsFromSelection();
+  },
+  { deep: true }
+);
+
 watch(
   form,
   () => {
@@ -258,7 +278,7 @@ watch(
     const payload = {
       ...form,
       rate_unit: hasPerDayDuration.value ? 'hour' : (form.rate_unit || 'session'),
-      days_of_week: [...(form.days_of_week || [])],
+      days_of_week: sortedSelectedDays.value,
       day_time_slots: [...(form.day_time_slots || [])].map((slot) => ({
         day: Number(slot?.day || 0),
         start_time: String(slot?.start_time || '').slice(0, 5),
@@ -268,15 +288,6 @@ watch(
     };
     lastEmittedModel = payload;
     emit('update:modelValue', payload);
-  },
-  { deep: true }
-);
-
-watch(
-  () => form.days_of_week,
-  () => {
-    if (syncingFromParent) return;
-    syncDayTimeSlotsFromSelection();
   },
   { deep: true }
 );
@@ -302,6 +313,13 @@ function syncDayTimeSlotsFromSelection() {
   if (chipDays.size === 0 && slots.length > 0 && syncingFromParent) {
     form.days_of_week = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
     chipDays = new Set(form.days_of_week);
+  }
+
+  // 從父層載入且已有時段：強制星期與時段一致（避免 days_of_week 多餘時補出假列，與列表顯示不符）
+  if (syncingFromParent && slots.length > 0) {
+    const fromSlots = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
+    form.days_of_week = fromSlots;
+    chipDays = new Set(fromSlots);
   }
 
   if (chipDays.size > 0) {
@@ -338,7 +356,16 @@ function addTimeSlot() {
 }
 
 function removeSlot(idx) {
-  form.day_time_slots = (form.day_time_slots || []).filter((_, i) => i !== idx);
+  const slots = form.day_time_slots || [];
+  const target = slots[idx];
+  if (!target) return;
+  const targetDay = Number(target.day || 0);
+  const sameDayCount = slots.filter((s) => Number(s?.day || 0) === targetDay).length;
+  form.day_time_slots = slots.filter((_, i) => i !== idx);
+  // 如果是該天最後一個時段，一併取消勾選該星期
+  if (sameDayCount <= 1 && targetDay >= 1 && targetDay <= 7) {
+    form.days_of_week = (form.days_of_week || []).filter((d) => Number(d) !== targetDay);
+  }
   syncDayTimeSlotsFromSelection();
 }
 
@@ -498,6 +525,9 @@ function computeEndTime(startRaw, durHours) {
   color: var(--primary, #1d4ed8);
   font-weight: 600;
 }
+
+.field-hint { font-size: 12px; margin-top: 4px; line-height: 1.4; }
+.field-hint--success { color: #2e7d32; }
 
 @media (max-width: 720px) {
   .course-form-grid {

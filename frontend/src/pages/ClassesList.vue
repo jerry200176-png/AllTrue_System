@@ -64,6 +64,7 @@
             <option value="one_on_two">一對二</option>
             <option value="one_on_three">一對三</option>
             <option value="tutoring">輔導</option>
+            <option value="trial">試聽</option>
           </select>
         </div>
         <div class="form-group">
@@ -112,7 +113,7 @@ function ratePer2hToStore() {
 const getGradeLabel = (val) => GRADES.find(g => g.value === val)?.label || val;
 const getSubjectLabel = (val) => getSubjectText(val);
 const classTypeLabel = (type) => {
-  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
+  const map = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' };
   return map[type] || type;
 };
 
@@ -176,6 +177,7 @@ onMounted(() => { loadRates(); loadSubjects(); });
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
 .status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.status-tag.trial { background: #E8EAF6; color: #3949AB; }
 
 .cost-preview {
   background: linear-gradient(135deg, #FFF8E1, #FFECB3);

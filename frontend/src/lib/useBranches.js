@@ -25,6 +25,10 @@ const OFFICIAL_BRANCH_ORDER = [
     '大直分校',
     '汐止分校',
     '內湖分校',
+    '石牌分校',
+    '敦化分校',
+    '蘆洲分校',
+    '大同分校',
 ];
 const OFFICIAL_BRANCH_NAME_SET = new Set(OFFICIAL_BRANCH_ORDER);
 
@@ -44,6 +48,10 @@ const DEFAULT_BRANCHES = [
     { id: 3,  name: '大直分校', code: 'dazhi'     },
     { id: 4,  name: '汐止分校', code: 'xizhi'     },
     { id: 1,  name: '內湖分校', code: 'neihu'     },
+    { id: 12, name: '石牌分校', code: 'shipai'    },
+    { id: 22, name: '敦化分校', code: 'dunhua'    },
+    { id: 7,  name: '蘆洲分校', code: 'luzhou'    },
+    { id: 23, name: '大同分校', code: 'datong'    },
 ];
 export const branches = ref([...DEFAULT_BRANCHES]);
 
@@ -101,8 +109,8 @@ export function resolveSavedBranchChoice(savedRaw, list) {
 }
 
 /**
- * Use only the eight campuses the backend exposes. Stale `/branches.json` or
- * old merged lists may contain extra names (e.g. 蘆洲分校) — drop them here.
+ * Use only the official campuses the backend exposes. Stale `/branches.json` or
+ * old merged lists may contain extra names — drop them here.
  */
 function mergeWithDefaults(list) {
     if (!list || list.length === 0) {
