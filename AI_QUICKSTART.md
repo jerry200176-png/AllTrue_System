@@ -75,6 +75,8 @@ If API fails:
 - `docs/OPERATIONS_RUNBOOK.md`
 - **`docs/AI_REGRESSION_LESSONS.md`**（AI／工程必讀，避免已修問題再犯）
 - `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（繳費提醒 API 規則）
+- **`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 催繳名單）**：`TuitionCollectionPage` 與 `alerts/tuition` 同源；**`tuition-slip`** 無 Invoice 出圖；**已繳不產圖**（見 **`docs/CHANGELOG.md` 2026-04-13 (K)**）
+- **`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 調課後評量作廢未恢復）**：`ensurePastRecords` 須可 un-void 已上堂之作廢 LR；**`leave→attended`** 須恢復 LR（見 **`docs/CHANGELOG.md` 2026-04-13 (Q)**）
 - `docs/CHANGELOG.md`（近期上線內容與權限調整）
 - **`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`**（聊天／Bug／頭像：實作細節與禁止回歸）
 - `docs/CHAT_BUG_SYSTEM.md`（同上模組速覽）

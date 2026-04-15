@@ -20,6 +20,10 @@
 若變更**主任儀表板繳費提醒**或 **`AlertController::tuition`**，另讀：  
 [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](docs/DIRECTOR_PAYMENT_ALERT_RULES.md)。
 
+**催繳名單／繳費單圖（2026-04-13 起）**：動 **`TuitionCollectionPage.vue`**、**`PaymentSlipModal.vue`**、**`GET /api/v1/alerts/tuition-slip/*`** 或 **`BillingController::slipData`** 前，請讀 **`docs/CHANGELOG.md`（2026-04-13 (K)）** 與 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 催繳名單）**；名單須與 **`alerts/tuition`** 一致，**已繳不產圖**。
+
+**評量表與調課／請假 cascade（2026-04-13 起）**：動 **`LearningRecordController::ensurePastRecords`**、**`reschedule-session`**、**`CourseLeaveCascadeService`**、或 **`ClassSessionController::update`（`leave`↔已上）** 前，請讀 **`docs/CHANGELOG.md`（2026-04-13 (Q)）** 與 **`docs/AI_REGRESSION_LESSONS.md`（2026-04-13 — 調課／請假 cascade 後評量表作廢未恢復）**；勿改回「有作廢 LR 就永遠跳過不處理」。
+
 ## 使用不同 AI 工具時
 
 | 工具 | 專用入口 |
