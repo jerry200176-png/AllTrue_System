@@ -2,6 +2,555 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-16 (V7) — 智慧排課日檢視：有課老師欄自動置左 + 可選隱藏空白老師欄
+
+### Problem
+- 日檢視（teacher-grid）老師欄依「教室 → 姓名」字母排序，與「今天是否有課」無關。空白老師佔據最左側，主任與老師都必須橫向捲動才能看到有意義的排課資訊。
+
+### Change
+1. **P0 — `visibleTeachers` sort 新增第一排序鍵 `_hasCourseToday`**（`frontend/src/pages/SmartCalendar.vue`）
+   - 判斷依據：`filteredCourses` 中存在 `teacher_id === t.id && day_of_week === selectedDow` 且未被 `isSessionCancelledOnDate` 排除
+   - 排序：`hasCoursesToday`（有課=0）→ `roomLabel`（localeCompare）→ `username`（localeCompare）
+   - 週檢視不受影響（`dowForSort = null` → 全部 flag 為 false → 退化為舊排序）
+2. **P1 — 新增「只顯示今日有課老師」開關**（純覽模式）
+   - 新增 `hideEmptyTeacherColumns` ref + `smart_calendar_hide_empty_teachers` localStorage 持久化
+   - 日檢視篩選列（`.toolbar-filters`）加入 checkbox label，僅 `!isWeekOverview && !isTeacher` 時顯示
+   - 開啟後過濾掉 `!_hasCourseToday` 老師欄；若全部被過濾，空狀態顯示「今日無已排課老師」+「顯示全部老師」按鈕
+   - Tooltip 明示：「開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課」
+   - 預設 **OFF**：因日檢視空格（`@click="onSlotClick"`）是主任快速排課的主要操作點，預設隱藏會破壞排課工作流程
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`
+  - `visibleTeachers` computed：sort 邏輯改為 3 層（有課 → roomLabel → username）
+  - 新增 `hideEmptyTeacherColumns` ref 與 `watch` 寫入 localStorage
+  - 範本加入 `.toolbar-hide-empty-toggle` checkbox
+  - `.teacher-empty` 空狀態針對 `hideEmptyTeacherColumns` 顯示友善引導
+  - 新增 `.toolbar-hide-empty-toggle` 樣式
+
+### 回歸防護（勿回退）
+- `teacherHasCourseToday` 必須以 **`filteredCourses`** 為判斷來源（已含取消過濾），勿改回 raw `courses.value`，否則「全天 cancelled」的老師會誤判為有課。
+- 週檢視（`isWeekOverview=true`）必須讓 `dowForSort = null`，避免 sort 以「今天是週幾」污染週檢視；勿移除該判斷。
+- 隱藏開關只在 `!isWeekOverview && !isTeacher` 顯示；`hideEmptyTeacherColumns` 在 computed 內也用 `!isWeekOverview.value` 守門，**兩處都要保留**。
+- 預設 **OFF** 是刻意決策（見 plan 第 13 節）；若未來改為預設 ON，必須同步移除「點空格快速排課」入口或調整流程，勿單獨切換預設值。
+
+## 2026-04-16 (V6) — 智慧排課：修 rc-tag 縱向長條 bug + 再縮緊湊容量徽章
+
+### Problem
+- 承 `(V5)` 改為數字徽章後出現兩個問題：
+  1. **「評」角標變成從卡片上緣到下緣的紅色長條**（本該是小圓角 chip）。根因：`(V4)` 加入的 `.teacher-grid-compact .rc-tag { top: 2px; right: 2px }` 特異性（0-2-0）**高於** `.rc-tag-second { top: auto; bottom: 2px }`（0-1-0），造成第二角標同時套用 `top: 2px` + `bottom: 2px` → 元素被撐成縱向滿高度長條。
+  2. **一對二 split 第一張卡姓名仍被截**：`2/2` 數字徽章 min-width 20px + padding 仍比理想值大。
+
+### Fixed
+1. **修 rc-tag 縱向撐開**：
+   - 移除 `.teacher-grid-compact .rc-tag { top: 2px }`（維持 base `.rc-tag` 的 `top: 2px` 即可）。
+   - 新增 `.teacher-grid-compact .rc-tag.rc-tag-second { top: auto; bottom: 2px }`（同等特異性 0-2-0），確保第二角標在底部而非撐滿。
+2. **再縮緊湊容量徽章**：
+   - `font-size: 9 → 8px`
+   - `min-width: 20 → 16px`
+   - `padding: 0 3px → 0 2px`
+   - `border-radius: 4 → 3px`
+   - 新增 `letter-spacing: -0.3px`（讓 `2/2` 更緊湊）
+   - `.cb-student` 讓位 `padding-left: 22 → 18px`
+
+### 實際可用文字寬（緊湊 140px 欄 × 一對二 split × 第一張卡）
+- 卡寬 66px − 卡 padding 8px − 左讓位 18px − 右讓位 13px = **27px 可用文字**
+- 緊湊字體 11px → **≈ 2.5 字中文**
+- 較 `(V5)` 版（21px / 1.9 字）改善；較 `(V4)` dot 版（35px / 3.2 字）仍略窄但主任可讀「X/Y」。
+
+### 回歸防護（勿回退）
+- `.teacher-grid-compact .rc-tag.rc-tag-second { top: auto; bottom: 2px }` **不可**移除，否則 `.rc-tag-second` 會被 compact 規則的 `top: 2px` 覆蓋，重現縱向長條 bug。
+- 若日後調整 `.teacher-grid-compact .rc-tag`，**不要**把 `top: 2px` 加回去（base `.rc-tag` 本身就有）。
+- `.capacity-badge-compact` 的 `letter-spacing: -0.3px` 與 `min-width: 16px` 為搭配 `2/2` 格式最小可辨識寬度的實驗值，勿加大。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（`.teacher-grid-compact .rc-tag`、新增 `.rc-tag-second` compact override、`.capacity-badge-compact`）
+
+## 2026-04-16 (V5) — 智慧排課：容量徽章統一改用數字（取消緊湊模式圓點）
+
+### Change
+- 主任要求：容量徽章改為**全部顯示數字 `1/3`、`2/3`、`3/3`**，不再用緊湊模式的圓點替代。
+- 容量徽章的「班型 vs 目前人數」資訊更直接，不用猜色彩語意。
+
+### Fixed
+- **Template**：移除緊湊模式的條件渲染（`isTeacherGridCompact ? '' : label`），一律顯示 `getSlotOccupancy(...).label`。
+- **`.capacity-badge-compact` 重新樣式化**：
+  - 從 `8×8 圓點 font-size:0` 改為 **`font-size: 9px; padding: 0 3px; min-width: 20px; border-radius: 4px; border-width: 1px`** — 小字矩形膠囊，仍比標準模式（font 10px / 6px padding / min 22px）緊湊。
+- **手機斷點（≤ 768px）`.capacity-badge`**：從 8px 圓點改為 `font-size: 8px; min-width: 18px; padding: 0 2px`（小字矩形），手機也顯示數字。
+- **`.slot:has(.capacity-badge-compact) .cb-student` padding-left**：`10px → 22px`（讓位給較寬的數字徽章）；標準模式 `28px → 30px`（配合 border 調整）。
+
+### 權衡說明（給工程師與 PM）
+- 換成數字後，緊湊 140px 欄 × 一對二 split 的**第一張卡**可用文字寬由 35px → 21px（`66 − 8 − 22 − 13`），約 **2 字中文** — 比圓點版（3 字）略窄。
+- 但主任可以**直接讀到「X/Y」** 不需記憶顏色意義（色盲／色彩辨識困難使用者亦更友善），業務判斷仍值得。
+- 第二張卡（無容量徽章 padding-left）不受影響，仍可顯示 4 字中文。
+- 若日後要再優化空間，可評估：a) 緊湊模式改顯示單一數字（只 `1`、`3`，不含分母），寬度可降至 17px；b) 緊湊模式 split ≥ 2 時隱藏徽章第一張卡只顯示在「整點第二張卡」。目前先以最直覺的 `1/3` 格式上線。
+
+### 回歸防護（勿回退）
+- 容量徽章 template **不可**再恢復 `isTeacherGridCompact ? '' : label` 條件（主任已確認要數字）。
+- 若要改動 `.capacity-badge-compact` 的 font-size / padding，需同步檢查 `.slot:has(.capacity-badge-compact) .cb-student` 的 padding-left 避免遮擋 regression。
+- `getSlotOccupancy` 的 `label` 格式 `"X/Y"` 為唯一真實來源，勿改為 `"X / Y"` 或其他格式（會讓徽章變寬且破壞緊湊計算）。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（template 190-193、`.capacity-badge-compact`、`.slot:has(...)` padding、手機斷點 `.capacity-badge`）
+
+## 2026-04-16 (V4) — 智慧排課：緊湊模式 split 卡片第一張仍截斷（雙邊 padding 夾擊）
+
+### Problem
+- 承 `(V3)` 修正後，緊湊模式（≥ 10 位老師，木柵／新店）下一對二的**第一張卡**仍顯示「張...」「林...」，但**第二張卡**可完整顯示「顧汶勳」「朱昱齊」。
+- 根因：第一張卡**同時**有「容量徽章」（左上）+「到班角標」（右上），`.cb-student` 被左右雙邊 padding 夾擊：
+  - `padding-left: 14px`（讓位給 `.capacity-badge-compact`）
+  - `padding-right: 18px`（讓位給 `.rc-tag`）
+  - 加上卡片自身 `padding: 4px 4px` = **共 40px 被吃掉**
+  - 緊湊 130px 欄 × 一對二 split = 每卡 61px → 扣除後僅剩 21px，只夠 1 字 + 省略號
+- 第二張卡沒有容量徽章 padding-left，所以多出 14px 顯示空間，姓名顯得完整。
+
+### Fixed（三管齊下）
+1. **欄寬再加 10px**：緊湊 130 → 140px、標準 140 → 150px。一對二 split 緊湊每卡由 61 → 66px。
+2. **緊湊容量徽章再縮小**：`.capacity-badge-compact` 寬高由 `10px` → `8px`、`border-width: 1px`、`left: 2px`；左側讓位 padding-left 由 `14px` → `10px`（省 4px）。
+3. **緊湊 rc-tag（到班/漏點/請假/評量）角標縮字縮邊**：新增 `.teacher-grid-compact .rc-tag { font-size: 8px; padding: 0 2px; top: 2px; right: 2px }`，右側讓位 padding-right 由 `18px` → `13px`（省 5px）。
+
+### 實際可用文字寬（緊湊 140px 欄、一對二 split、第一張卡）
+- 卡寬 66px − 卡 padding 8px − 左讓位 10px − 右讓位 13px = **35px 可用文字**
+- `.teacher-grid-compact .cb-student { font-size: 11px }` → **≈ 3 字中文**（可顯示「張嘉軒」「林昱誠」）
+- 第二張卡（無左讓位）：66 − 8 − 0 − 13 = **45px** ≈ 4 字中文
+
+### 業界對照
+- 緊湊模式下 rc-tag 縮為 8px 字體 + 2px padding 的做法，與 Google Calendar 窄欄位的 attendance indicator、Notion Calendar 的 status pill 一致 — 僅保留辨識色彩與字元，不佔無謂寬度。
+- 容量徽章從 10px 圓點縮為 8px 圓點，仍符合 Material Design 「8px grid system」最小可辨識圖示規範（8px × 8px）。
+
+### 回歸防護（勿回退）
+- `.capacity-badge-compact` 寬高 **不可**再放大回 10px，否則 padding-left 需增加、雙邊夾擊 regression 重現。
+- `.teacher-grid-compact .rc-tag` 的 `font-size: 8px; padding: 0 2px` **不可**回退，否則角標寬變回 17px、padding-right 需加大、split 卡文字區再次被壓縮。
+- 緊湊欄寬 140px、標準欄寬 150px **不可**再降，已為「一對二 split 可顯示 3 字」的最低值。
+- 非緊湊模式的 `.rc-tag`（font-size: 9px）未動，維持原本外觀。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（`gridTemplateStyle` min col width、`.capacity-badge-compact`、`.teacher-grid-compact .rc-tag`、`.cb-student` padding-left/right）
+
+## 2026-04-16 (V3) — 智慧排課：到班／請假／漏點角標遮擋學生姓名
+
+### Problem
+- 承 `(V2)` 修正後，split 卡片的姓名寬度擴大，但仍回報「到班綠勾」「請假」等 `.rc-tag` 角標壓到姓名末字（例：`黃秉澤✓` 的「澤」被綠勾蓋住）。
+- 根因：`.rc-tag` 為 `position: absolute; top: 2px; right: 3px`，寬度約 20px，與 `.cb-student` 文字自然延伸到卡片右緣時產生視覺重疊（雖然 rc-tag 有自己的背景色，但半透明疊在姓名上仍讓主任看不清末字）。
+
+### Fixed
+- 新增 CSS 規則，讓帶有 `.rc-tag` 的課程卡自動給 `.cb-student` 預留右側空間：
+  - 標準模式：`padding-right: 20px`
+  - 緊湊模式（`.teacher-grid-compact`）：`padding-right: 18px`
+- 使用 CSS `:has()` 選擇器自動偵測（不需改 template），卡片沒有角標時不受影響（維持原本寬度）。
+
+### 回歸防護（勿回退）
+- `.course-block:has(.rc-tag) .cb-student` 的 `padding-right` **不可**移除，否則「到班 ✓」「漏點 !」「請假 假」「未填評量 評」會遮擋學生姓名末字。
+- `.rc-tag` 本身的定位（`top: 2px; right: 3px`）**不要**改動；此修正只處理文字閃避，不動角標。
+- 容量徽章的 `padding-left` 規則（`.slot:has(.capacity-badge) .course-block:first-of-type .cb-student`）未改動，與 rc-tag padding-right 可並存。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（capacity-badge padding 規則之後新增 `.course-block:has(.rc-tag)` 兩條）
+
+## 2026-04-16 (V2) — 智慧排課：多老師排版可讀性 hotfix（一對二/一對三 split 仍被截斷）
+
+### Problem
+- `(V)` 修正落地後，木柵等老師多的分校仍回報卡片文字顯示「張…」「顧…」「林…」「朱…」（單字 + 省略號）。
+- 根因：同一老師在同一時段有多位學生（一對二 / 一對三）時，`getTeacherCourseBlockStyle` 會把卡片水平等分為 50/50（或 33/33/33）**在同一欄位內**。緊湊模式 100px 欄寬下，一對二 split 後每張卡只剩 ~50px，扣掉 `course-block` 左右 padding 8px（共 16px），可用文字寬僅 ~34px，只夠顯示 1 個中文字。
+
+### Fixed
+- **標準最小欄寬 120 → 140px**：一對二 split 後每卡 ~66px，可用文字 ~50px（約 4 字中文）。
+- **緊湊最小欄寬 100 → 130px**：一對二 split 後每卡 ~61px，可用文字 ~47px（約 3-4 字中文）。
+- **緊湊模式 `.course-block` padding 由 `4px 6px` → `4px 4px`**：左右各省下 2px（共 4px）給文字，讓緊湊模式的 split 卡片能多擠出 1 個字的寬度。
+
+### 業界數據（僅緊湊模式 split 後的每卡寬度）
+| 情境 | 每卡寬 | 文字寬 | 中文字數 @ 11px font |
+|---|---|---|---|
+| 130px 欄位 × 單一學生 | 130px | 118px | ≥ 10 字 |
+| 130px 欄位 × 一對二 split | 61px | 49px | ~4 字 |
+| 130px 欄位 × 一對三 split | 40px | 32px | ~3 字 |
+| 140px 欄位（標準）× 一對二 split | 66px | 54px | ~5 字 |
+
+### 回歸防護（勿回退）
+- 最小欄寬 **不可**再降回 100px / 120px，否則一對二／一對三 split 會重現截斷 bug。
+- `.teacher-grid-compact .course-block` 的 `padding: 4px 4px` **不可**再放寬至 `4px 6px`，否則 split 後文字區會縮回原本寬度。
+- `getTeacherCourseBlockStyle` 的 split 邏輯未變動（一對二 = 50/50、一對三 = 33/33/33），勿改。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（`gridTemplateStyle` min col width、`.teacher-grid-compact .course-block` padding）
+
+## 2026-04-16 (V) — 智慧排課：多老師排版可讀性（橫向捲動 + sticky 時間欄）
+
+### Problem
+- 新店等老師多的分校，日檢視 `gridTemplateColumns: 56px repeat(N, minmax(0, 1fr))` 會把每欄無限壓縮（老師越多欄位越細），配上 `.teacher-grid-wrapper { overflow-x: hidden }` 完全禁止橫向捲動，導致課程卡片縮到 ~40px、學生姓名只顯示「數…」「理…」兩個字，主任根本無法辨識是誰的課。
+
+### Fixed
+- **老師欄最小寬度**：`gridTemplateStyle` computed 改為 `56px repeat(N, minmax(120px, 1fr))`（標準模式）／ `minmax(100px, 1fr)`（`isTeacherGridCompact` 緊湊模式，老師 ≥ 10 人）。6 位老師以下欄位仍會撐滿（不出現捲軸）；超出可容納數量時，欄位維持最小寬度並觸發橫向捲動。
+- **開啟橫向捲動**：`.teacher-grid-wrapper` 由 `overflow-x: hidden` 改為 `overflow-x: auto`，配合 `-webkit-overflow-scrolling: touch`。
+- **時間欄 sticky 生效**：`.week-view` 由 `overflow: hidden` 改為 `overflow: clip`（CSS 2021，Chrome 90+／Safari 16+ 已全面支援）— 保留裁切外觀但**不建立 scroll container**，因此不會讓子孫 `position: sticky` 失效，也不截斷 `.teacher-grid-wrapper` 的橫向捲動。
+- **時間欄固定左側**：`.time-col` 原本已宣告 `position: sticky; left: 0; z-index: 5; background: var(--bg-muted, #f8fafc)`，過去因 `.week-view` 的 `overflow: hidden` 失效；改為 `overflow: clip` 後自動生效。
+- **左上角 corner cell 固定**：`.col-header-blank` 新增 `position: sticky; top: 0; z-index: 6; background: var(--bg-muted, #f8fafc)`，讓時間欄與老師欄標題的交集永遠可見（避免橫向捲動 + 縱向捲動時出現撕裂視覺）。
+- **手機斷點**：`@media (max-width: 768px)` 的 `.teacher-col` 由 `min-width: 0` 改為 `min-width: 80px`，手機也能橫滑。
+
+### 業界對照（120px/100px 最小欄寬依據）
+- **120px（標準）**：與 Google Calendar 桌機資源欄預設、Calendly 主持人欄等寬，可顯示 5 字中文姓名（欄寬 120 − 22 card padding − 28 badge padding = 70px ≥ 5 字 @ 12px）。
+- **100px（緊湊，≥ 10 人）**：與 Notion Calendar 資源欄最小值一致，至少顯示 4 字，仍可辨識。
+- **80px（手機）**：與 Google Calendar 行動版一致，顯示 2–3 字 + 橫滑。
+
+### 為何用 `overflow: clip` 而非 `hidden`
+- `overflow: hidden` 會建立 scroll container，使子孫 `position: sticky` 的「最近 scroll container」指向 `.week-view`，但 `.week-view` 沒有捲動行為 → sticky 名義上存在但永不觸發。
+- `overflow: clip`（CSS Overflow Module Level 3，2021）同樣裁切內容維持外觀，但**不建立 scroll container、不影響子孫 sticky**，是本場景最小改動解法。相容性：Chrome 90+（2021.4）、Firefox 81+、Safari 16+（2022.9），目標用戶為主任桌機 Chrome，完全支援。
+- 放棄方案：JS 同步雙面板（改動大）、`transform: translateX` 補位（repaint lag）、改寫為 `<table>` 結構（破壞性大）。
+
+### 回歸防護（勿回退）
+- `gridTemplateColumns` **不可**改回 `minmax(0, 1fr)`（會讓欄位無限壓縮，重現「姓名顯示 2 字」的 regression）。
+- `.teacher-grid-wrapper` **不可**改回 `overflow-x: hidden`（會截斷橫向捲動）。
+- `.week-view` **不可**改回 `overflow: hidden`（會讓 `.time-col` 與 `.col-header-blank` 的 sticky 全部失效）。
+- `.time-col` 的 `background: var(--bg-muted)` **不可**移除（否則捲動時會透視背後課程卡片）。
+- `.col-header-blank` 的 `sticky top: 0` **不可**移除（否則橫向 + 縱向捲動時左上角會撕裂）。
+- 容量徽章（`.capacity-badge` / `.capacity-badge-compact`）位置與外觀未變動，勿誤觸。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（`gridTemplateStyle` computed + `.week-view` / `.teacher-grid-wrapper` / `.col-header-blank` / 手機斷點 `.teacher-col` CSS）
+
+### 驗收
+- ≤ 6 位老師：欄位撐滿不出現捲軸（視覺與修改前一致）。
+- ≥ 10 位老師：橫向捲軸出現，時間欄（08:00、09:00…）捲動時固定左側；老師欄標題（姓名 + 頭像）固定頂部；左上角 corner 固定。
+- 課程卡片拖放（drag & drop）、容量徽章、`slot-room-full` 斜線視覺均正常。
+- 手機橫滑正常，每欄 ≥ 80px。
+
+## 2026-04-16 (U) — 智慧排課：老師時段容量徽章
+
+### Added
+- **容量徽章**：SmartCalendar 日檢視中，每位老師有課的**起始整點**格子右上角顯示「X/Y」徽章（X=目前學生人數、Y=班型上限）。
+- **動態分母**：分母依班型自動決定 — 一對一 = 1、一對二 = 2、其餘（一對三／輔導／試聽）= 3。一對一課永遠顯示 1/1（已滿）。
+- **三色語意**：綠 = 還可再收多位；橘 = 剩 1 位；紅 = 已滿。
+- **說明 Legend**：toolbar 右側新增「班型容量」圖例（1/3 可加 / 2/3 剩 1 位 / 3/3 已滿），讓主任一眼看懂徽章意義。
+- **清楚 tooltip**：hover 顯示「此時段學生 X 位（上限 Y 位，已滿／可再收 N 位）」。
+- **緊湊模式降級**：老師欄 ≥ 10 時徽章縮為彩色小圓點，hover 顯示 tooltip。
+
+### 商業規則裁決（主任 2026-04-16 確認）
+- **容量上限寫死於程式**：一對一=1、一對二=2、一對三/輔導/試聽=3。與班型命名對應，不做成可設定（無維護成本）。未來若某校區需要不同容量規則，再評估新增 `Campus` 欄位。
+- **半小時起始時間（08:30、09:30）** 以該整點 row 分組（`parseHour(08:30) = 8`），與既有日檢視視覺一致。徽章為視覺概略指示；真正時段衝突仍由 `checkConflict` 的重疊演算法把關。
+- **每筆 `StudentClass` = 1 位學生**：`count` 直接取 `coursesAtSlot.length`，不用 `CAPACITY_MAP` 加權（`CAPACITY_MAP` 保留給 `checkConflict` 使用，不可混淆）。
+
+### 回歸防護（勿回退）
+- `getSlotOccupancy` 的 count **不可**改回用 `CAPACITY_MAP` 加權（曾在 2026-04-16 造成 1 位一對三學生顯示 3/3 紅色滿員的 bug）。
+- 徽章**只在起始整點**顯示；勿改回跨整點每格都顯示（會造成跨小時課程徽章重複）。
+- 分母須依班型動態決定；勿改回一律 3/3（一對一會誤顯示 1/3 綠色，讓主任誤以為可加學生）。
+- `CAPACITY_MAP`、`getCoursesForTeacherAt`、`isSlotRoomFull`、`checkConflict` 均未修改，勿誤觸動。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（新增 `getSlotOccupancy` helper + `capacity-badge` template/CSS）
+
+### 回歸防護
+- `CAPACITY_MAP`、`getCoursesForTeacherAt`、`isSlotRoomFull`、`checkConflict` 均未修改。
+- 純前端 computed 顯示，無後端 API 或資料表異動。
+
+## 2026-04-16 (T) — 催繳名單：幽靈課程偵測與結案功能
+
+### Added
+- **「已有新課程」偵測**：`GET /api/v1/alerts/tuition` 每筆 `renew_needed` 記錄新增 `has_newer_course`（布林）、`newer_course_id`、`newer_course_remaining`、`newer_course_start_date` 欄位。偵測同分校、同學生、同科目（`SubjectID`）、`Stop=0` 的其他活躍課程。
+- **催繳名單「結案」按鈕**：`TuitionCollectionPage.vue` 的 `renew_needed` 行新增綠色「已有新課程」badge（偵測到時）與紫色「結案」按鈕。點擊後顯示確認 dialog（含學生名、科目、課程 ID、剩餘堂數、新課程資訊），確認後呼叫 `POST /api/v1/student-classes/{id}/pause` with `reason='settled'`。
+- **`closed_reason='settled'` 支援**：`StudentClassController::togglePause` 新增 `settled` 結案理由，設定 `Stop=1`、`closed_reason='settled'`、`EndDate=today`，並取消未來排課（標記 `[結案取消]`）。
+- **3 個新測試**：`TuitionAlertsApiTest` 新增 `has_newer_course` true/false 偵測、settle 結案後從催繳名單消失。
+
+### 背景
+- 工作人員在學生需續課時，未使用「續報加購」（`purchase-batch`）而直接「新增課程」，導致舊課程未自動關閉、永久出現在催繳名單。
+- 資料調查：全四間分校共 3 筆幽靈課程（新店 2 筆、興隆 1 筆）。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/AlertController.php`（新增 `newerCourseByStudentClassIds`、tuition 回傳新欄位）
+- `backend/app/Http/Controllers/StudentClassController.php`（`togglePause` 支援 `settled` 理由）
+- `frontend/src/pages/TuitionCollectionPage.vue`（結案 UI：badge、按鈕、dialog、toast）
+- `backend/tests/Feature/TuitionAlertsApiTest.php`（3 個新測試）
+
+### 回歸防護
+- 結案僅設 `Stop=1` 和 `closed_reason='settled'`，**不改 `Paid` 欄位**，不影響財務記錄。
+- 重用現有 `pause` 端點，受 `auth`、`role`、`require_campus` middleware 保護。
+- 「已有新課程」偵測使用 batch query（`newerCourseByStudentClassIds`）避免 N+1。
+
+## 2026-04-16 (S) — 催繳名單：已續課自動抑制舊課程續課提醒
+
+### Fixed
+- **已續課仍出現在催繳名單**：堂數制課程 `low_sessions` 提醒（`RemainingSessions <= 2`）未檢查同一學生是否已有同科目的續課。當主任為學生新建續課後，舊課程仍因剩餘堂數不足而出現在催繳名單，造成混淆。
+- **修正**：`AlertController::tuition` 新增 `suppressRenewedLowSessionAlerts` 後處理邏輯：若同一學生同一科目已有另一筆 `Stop=0` 且 `RemainingSessions > 2` 的課程，則舊課程的 `low_sessions` 提醒自動抑制。`unpaid` 類型不受影響。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/AlertController.php`（新增 `suppressRenewedLowSessionAlerts`）
+- `docs/DIRECTOR_PAYMENT_ALERT_RULES.md`（新增「續課抑制」段落）
+
+### 回歸防護
+- 續課抑制僅影響 `low_sessions`（已繳需續課），不影響 `unpaid`（未繳費）提醒。
+- 判定續課的條件：同一 `StudentID` + `SubjectID`、`Stop=0`、`RemainingSessions > 2`。
+
+## 2026-04-16 (R) — 課程管理固定排課星期同步修正
+
+### Fixed
+- **新增星期未觸發 remap**：`syncFutureScheduledSessionTimes` 原本只在「現有堂次在契約外星期」時觸發 remap；當使用者**新增**星期（如一二→一二四），所有既有堂次仍在契約內，導致不觸發 remap、新星期無堂次。現在雙向偵測：契約有但堂次沒有的星期也觸發 remap。
+- **`force_partial_rebuild` reconcile 覆寫**：第二次 PUT（`force_partial_rebuild: true`）無條件呼叫 `reconcileWeekTimeFieldsFromSessions`，即使 sync 回傳 0 筆更新也執行，導致舊 ClassSession 的星期回寫覆蓋使用者剛存的新契約。現在 `reconcile` 僅在 `updatedCount > 0` 時才執行。
+- **前端同步計數不完整**：成功訊息只計算第二次 PUT 的 `updated_future_sessions`，忽略第一次 PUT 已同步的堂次。現在加總兩次 PUT 的計數。
+- **課程列表刷新時機**：`loadCourses()` 在 `alert()` 之前 await，使用者確認訊息時列表已是最新資料。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/StudentClassController.php`（`syncFutureScheduledSessionTimes`、`force_partial_rebuild` 分支）
+- `backend/tests/Feature/StudentClassUpdateScheduleReconcileTest.php`（新增 2 個測試案例：加星期 remap、force_partial_rebuild 不覆寫）
+- `frontend/src/pages/CourseManagement.vue`（同步計數加總、await loadCourses）
+
+### 回歸防護
+- 禁止將 `$needsRemap` 偵測改回只看「堂次在契約外」；必須同時檢查「契約有但堂次沒有」的方向。
+- `force_partial_rebuild` 路徑的 reconcile 必須有 `updatedCount > 0` 守衛，與主路徑 `$skipReconcile` 邏輯一致。
+
+---
+
+## 2026-04-16 (Q) — 老師評量表草稿續填（本機暫存）
+
+### Added
+- **草稿自動暫存**：老師在學習評量表填寫途中離開（切換學生、關閉 modal），系統自動將表單內容保存到本機 localStorage，回來時自動恢復。
+- **草稿管理模組**：新增 `frontend/src/lib/learningRecordDrafts.js`，獨立於 `LearningRecordsPage.vue` 之外，負責草稿 key 建立、版本控制（v1）、7 天過期策略、容量限制與批次清理。
+- **草稿清單入口**：老師可從頁面標題列「草稿」按鈕查看所有未完成草稿，含學生、科目、日期、時段與儲存時間。可手動清除（含二次確認）。
+- **草稿狀態列**：在 modal 表單頂部顯示「草稿已於 HH:MM 自動儲存」或儲存失敗提示，含清除草稿按鈕。
+- **登出清除**：`App.vue` logout handler 於登出時清除該老師所有本機草稿，防止共用裝置下的資料外洩。
+- **舊版草稿遷移**：自動清除舊格式 `lr_draft_{userId}_{studentId}_{date}` key。
+
+### Changed
+- **草稿 key 格式**：從 `lr_draft_{userId}_{studentId}_{date}` 改為 `lr_draft_v1_{teacherId}_{classSessionId}`（含 teacherId 防碰撞），過期時間從 1 天延長至 7 天。
+- **節流策略**：自動保存改為 1.5 秒節流（throttle），取代逐次按鍵同步寫入，降低 localStorage 操作頻率。
+- **關閉時 flush**：modal 關閉前先 flush 尚在節流中的草稿，確保最後一次編輯不遺失。
+- **已核准記錄不存草稿**：`approved` 狀態的評量在編輯時不會觸發 saveDraft，也不會載入草稿。
+
+### 受影響檔案
+- `frontend/src/lib/learningRecordDrafts.js`（新增）
+- `frontend/src/pages/LearningRecordsPage.vue`（草稿整合、草稿清單 UI、CSS）
+- `frontend/src/App.vue`（logout 清除草稿）
+
+---
+
+## 2026-04-16 (P) — 催繳名單頁面優化：付款狀態精確化 + 快速操作 + 撤銷收款
+
+### Added
+- **`payment_status` 六種狀態值**：`GET /api/v1/alerts/tuition` 每筆新增 `payment_status`（`unpaid` / `partial` / `pending_report` / `paid` / `renew_needed` / `monthly_due_soon`）、`charge`（應繳）、`paid_amount`（已繳）、`outstanding`（未結清）、`latest_payment_report_id`（最近待核帳 report id）。狀態由後端計算，前端不自行推導。
+- **撤銷收款 API**：`PUT /api/v1/payment-reports/{id}/void`（僅限 director/admin/super_admin）。建立負值 Payment 沖銷、重算 Invoice.PaidAmount/Status、重置 StudentClass.Paid=0/PayDate=null、report 標記 voided。全程 DB transaction + `Log::info('[PaymentVoid]')`。
+- **Migration**：`payment_reports` 表新增 `voided_by`、`voided_at`、`void_reason` 欄位。
+
+### Changed
+- **催繳名單表格重設計**：移除語意不清的「繳費日期」欄，新增「應繳」「已繳」「未結清」三個金額欄位 + 六種狀態標籤色彩系統。
+- **快速操作按鈕**：根據 `payment_status` 動態顯示「核帳登記」「確認入帳」「退回」「撤銷收款」按鈕。所有操作完成後自動刷新名單。
+- **Summary cards**：新增第四張「未結清總額」卡片（紅色）。
+- **排序邏輯**：改為按 `payment_status` 優先序排列（未繳→部分→待核帳→月結→續課→已繳），取代原有 paid/unpaid 二分法。
+- **Skeleton loading**：首次載入改為 5 列骨架 + shimmer 動畫，取代舊有 spinner。
+- **Toast 系統**：支援成功（灰）、警告（橘）、錯誤（紅）三種顏色。
+- **響應式**：手機版（< 768px）改為卡片式佈局。
+- **撤銷確認彈窗**：含原因 textarea（必填 max 500 字）、danger 按鈕、二次確認。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/AlertController.php`（`tuition()` 補充欄位 + `computePaymentStatus()` + 批次查詢 helpers）
+- `backend/app/Http/Controllers/PaymentReportController.php`（新增 `void()` 方法）
+- `backend/app/Models/PaymentReport.php`（新增 void 相關 fillable + cast + relationship）
+- `backend/routes/api.php`（新增 void 路由）
+- `backend/database/migrations/2026_04_16_210000_add_void_fields_to_payment_reports_table.php`
+- `frontend/src/pages/TuitionCollectionPage.vue`（完整重構）
+- `backend/tests/Feature/TuitionAlertsApiTest.php`（新增 7 筆 payment_status 測試）
+- `backend/tests/Feature/PaymentReportApiTest.php`（新增 4 筆 void API 測試）
+
+### 禁止回歸
+- `alerts/tuition` 的列入條件不得因 payment_status 補充欄位而改變（依 `DIRECTOR_PAYMENT_ALERT_RULES.md`）
+- 已繳（`paid=true`）不得產出催繳通知單圖片（`tuitionSlipData` 的 422 guard 不得移除）
+- `payment_status` 計算必須集中在後端 `AlertController::computePaymentStatus`，前端禁止自行推導
+- void API 的 DB transaction 不得拆開（Payment/Invoice/StudentClass 三表一致性）
+- void API 僅限 `role:director,admin,super_admin`，teacher 角色不可呼叫
+- void 操作必須有 `voided_by` + `voided_at` + `void_reason` 稽核欄位
+
+---
+
+## 2026-04-16 (O) — 學習評量顯示堂次序號（第 X 堂）
+
+### Added
+- **後端 `session_number` 欄位**：`LearningRecordController::batchSessionNumbers()` 靜態方法，批次計算每筆 learning record 在所屬課程中的堂次序號。口徑：以 `ClassSession` 按日期時間排序，排除 `cancelled/leave/leave_adjusted/excused` 後累計編號。
+- **老師/主任端 API**：`GET /api/v1/learning-records` 回傳新增 `session_number` 欄位（整數或 null）。
+- **家長端 API**：`GET /api/v1/parent/dashboard` 的 `learning_records` 回傳新增 `session_number` 欄位。
+- **匯出評量圖**：匯出圖片每筆評量標題列從 `#1/#2`（匯出順序）改為「第 X 堂」（課程堂次序號），無法判定時降級回 `#index`。
+- **老師端列表與 Modal**：評量列表日期欄旁顯示藍色「第 X 堂」標籤；Modal header 也顯示堂次。
+- **家長端學習評量卡片**：科目名稱旁顯示藍色「第 X 堂」標籤，展開收合時固定可見。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/LearningRecordController.php`（新增 `batchSessionNumbers`，`index()` 附加欄位）
+- `backend/app/Http/Controllers/ParentPortalController.php`（`dashboard()` 附加欄位）
+- `frontend/src/lib/learningRecordExport.js`（`drawRecordSection` 使用 `session_number`）
+- `frontend/src/pages/LearningRecordsPage.vue`（列表 + Modal 顯示堂次 + CSS）
+- `frontend/src/pages/ParentPortal.vue`（卡片 header 顯示堂次 + CSS）
+
+### 備註
+- 堂次口徑與課程管理 `useCourseSessionsDisplay.js` 的 `getSessionNumber` 一致：請假/取消堂不佔序號。
+- 後端統一計算，避免家長端分頁或老師端批次匯出時前端自算不一致。
+- 無新增 migration，堂次序號為查詢時動態計算。
+
+---
+
+## 2026-04-16 (N) — UI 精緻化：課程管理與學生頁「已完課/已結算」呈現重構
+
+### Changed
+- **進行中 vs 歷史課程分區**：`CourseManagement.vue` 與 `StudentsList.vue` 的課程列表不再將已完課/已結算課程以灰底行混在進行中課程中。改為：
+  - 主表格只顯示進行中及已暫停的課程。
+  - 已完課/已結算課程收進可展開的「歷史課程」區塊（卡片式佈局），預設收合。
+- **歷史課程卡片**：以左側色帶 + 結構化卡片呈現歷史課程，包含科目、老師、費用、堂數摘要，並可展開查看堂次 chip。已結算標籤為綠色、已完課標籤為藍色，不再共用灰色 `tag-settled`。
+- **學生分組 header 改善**：顯示「N 筆進行中 · N 筆歷史」取代原本的「N 筆課程」。
+- **空狀態**：學生只有歷史課程時，主表格顯示「目前沒有進行中的課程」+ 引導下方歷史區塊。
+- **暗色模式支援**：新增歷史區塊、卡片、標籤的 dark theme 樣式。
+- **操作精簡**：歷史課程僅保留「查看堂次」「編輯」「恢復課程」「刪除」入口，不再顯示「新增堂次」「切換繳費」等不適用於歷史課程的操作。
+
+### 受影響檔案
+- `frontend/src/pages/CourseManagement.vue`（template 分區 + JS helpers + styles）
+- `frontend/src/pages/StudentsList.vue`（template 分區 + JS helpers + styles）
+
+### 備註
+- 無後端改動，不影響 `closed_reason`、`Stop`、堂數扣除等商業邏輯。
+- 已暫停課程仍留在主表格（非歷史區塊），維持原有暫停提示與恢復操作。
+
+---
+
+## 2026-04-16 (M) — Bug Fix：智慧排課近期課堂不顯示
+
+### Fixed
+- **孤兒 `schedules` 調課記錄遮蔽已上課堂**：鄭翔祐 × 黃品皓 4/16 課堂（ClassSession status=attended）因 `schedules` 表存在 `status=rescheduled` 但無對應目標日期的孤兒記錄，SmartCalendar 的 `hasReschedule` 判斷將該堂隱藏。已刪除孤兒記錄（schedule id=272），並在 `filteredCourses` 中新增防禦邏輯：若 ClassSession 已為 `attended`，則忽略 `rescheduled` 遮蔽。
+- **SmartCalendar `fetchClassSessions` 未傳日期範圍**（預防性修復）：`GET /api/v1/class-sessions` 以 `SessionDate ASC` 排序分頁（每頁 2000），歷史堂次多的課程近期日期可能被截斷。現已補上 `start`/`end` 參數，與 schedules 窗口（顯示月份 ±2 個月）對齊。
+- **LearningRecordsPage 同問題**：老師端與主任端的 `fetchClassSessions` 呼叫（`perPage: 500`）同樣無日期範圍，已補上 ±2 個月窗口。
+- **CourseManagement 批次載入**：`useCourseSessionsDisplay` 的 `loadClassSessionsForCourses` 同樣缺少日期範圍，已補上 ±2 個月窗口（單課程展開仍載入全量，不受影響）。
+
+### 受影響檔案
+- `frontend/src/pages/SmartCalendar.vue`（`hasReschedule` 增加 attended 防禦 + `fetchClassSessions` 加 `start`/`end`）
+- `frontend/src/pages/LearningRecordsPage.vue`（`fetchTeacherSessionDates`、`fetchDirectorSessionsForCourses` 加日期範圍）
+- `frontend/src/composables/course-management/useCourseSessionsDisplay.js`（`loadClassSessionsForCourses` 加日期範圍）
+- DB：刪除 `schedules` id=272（孤兒 rescheduled 記錄，student_course_id=64, date=2026-04-16）
+
+---
+
+## 2026-04-16 (L) — Bug Fix：LINE 綁定徽章解除後仍顯示
+
+### Fixed
+- **前端快取未更新**：`StudentsList.vue::removeLineBinding()` 解除成功後，現在會同步將 `students.value` 中對應學生的 `line_bound` 更新為 `lineBindings.value.length > 0`，不再需要重整頁面。
+- **後端資料來源不準**：`StudentController::transformStudent()` 改用 `student_line_bindings` 表判斷 `line_bound`（`index()` 批次 `whereIn`，`show()` 用 `exists()`），取代只看 `Student.LineID`。修正了多家長情境下「解除最後綁定者 → LineID 清空但另一方綁定仍存在 → 應顯示 true 卻顯示 false」的錯誤。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/StudentController.php`（`transformStudent()` 接受 `$boundIds` 參數；`index()` 批次查詢；`show()` 改 `exists()`）
+- `frontend/src/pages/StudentsList.vue`（`removeLineBinding()` 成功後更新 `students.value[idx].line_bound`）
+
+---
+
+## 2026-04-16 (K) — 主任後台：學生 LINE 綁定管理介面
+
+### Added
+- **`GET /api/v1/students/{id}/line-bindings`**（director 限定）：回傳該學生的 LINE 綁定清單，`line_user_id` 以 masked 格式（前 8 碼 + … + 後 4 碼）回傳，不曝露完整值。
+- **`DELETE /api/v1/students/{id}/line-bindings/{bindingId}`**（director 限定）：解除單筆 LINE 綁定。若被解除的 `line_user_id` 與 `Student.LineID` 相同，一併清空 `Student.LineID`。操作記錄 `Log::info`。
+- **`StudentsList.vue` 編輯 modal**：RFID 區塊下方新增「LINE 綁定家長」section，顯示 masked LINE ID + 綁定時間 + 逐筆「解除」按鈕。無綁定時顯示空狀態文字；解除需 confirm dialog 確認，成功後 toast 提示。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/StudentController.php`（新增 `lineBindings()`、`removeLineBinding()`）
+- `backend/routes/api.php`（新增兩條路由）
+- `frontend/src/pages/StudentsList.vue`（modal 新增 LINE 綁定 section + fetch/delete 邏輯 + toast）
+
+---
+
+## 2026-04-16 (J) — 多家長 LINE 綁定（爸媽各自綁定同一學生）
+
+### Added
+- **`student_line_bindings` 表**：新增關聯表（`student_id`, `line_user_id`, `campus_id`, `bound_at`），`(student_id, line_user_id)` UNIQUE。Migration 自動將既有 `Student.LineID` 反轉寫入新表，零遺失。
+- **多家長綁定**：同一學生可被多個 LINE 帳號（爸爸、媽媽各自）綁定，互不覆蓋。
+- **`StudentLineBinding` model**：對應新表的 Eloquent model。
+
+### Changed
+- **`LineWebhookController`**：
+  - `bindStudent()` 改為向 `student_line_bindings` 寫入（`insertOrIgnore` 防重複），同時保留 `Student.LineID` 向下相容。
+  - 所有「已綁定」判斷改查 `student_line_bindings.where(student_id, line_user_id).exists()`。
+  - `handleFollow` 的「歡迎回來」改查新表找綁定學生。
+  - `buildStatus` 的 `bound_count` 改查新表。
+- **`ParentPortalController`**：
+  - `loginWithLine()` 改查 `student_line_bindings` 取得學生列表。
+  - `dashboard()` sibling 查詢改用新表找共享 `line_user_id` 的學生。
+  - `switchStudent()` 授權檢查改查新表（兩學生是否有共用 `line_user_id`）。
+  - `line_linked` 改查新表 `exists()`。
+
+### 受影響檔案
+- `backend/database/migrations/2026_04_16_200000_create_student_line_bindings_table.php`（新增）
+- `backend/app/Models/StudentLineBinding.php`（新增）
+- `backend/app/Http/Controllers/LineWebhookController.php`
+- `backend/app/Http/Controllers/ParentPortalController.php`
+
+### 備註
+- `Student.LineID` 欄位保留不刪，新綁定仍同步寫入，確保其他讀取 `Student.LineID` 的地方（如 CSV export）不受影響。
+- 重複綁定（同一家長對同一學生）由 UNIQUE index + `insertOrIgnore` 防呆，回傳「已經綁定過了」友善提示。
+
+---
+
+## 2026-04-16 (I) — LINE 家長入口 LIFF 直登（免輸入姓名手機）
+
+### Added
+- **LIFF 直登流程**：已綁定 LINE 的家長從 LINE 官方帳號 LIFF 入口進入時，自動以 `lineUserId` 建立家長 session，直接進入 dashboard，不再停在姓名+手機登入頁。
+- **`GET /api/v1/parent/resolve-liff`**：公開端點，根據請求 hostname 比對 `Campus.URL` 回傳對應的 `liff_id`，讓多分校部署的前端可動態取得正確的 LIFF ID。
+- **前端 `resolveParentLiffIdAsync`**：`ParentPortal.vue` 在 LINE 瀏覽器中啟動時，若本地無 liffId，自動呼叫 `resolve-liff` API 取得，再初始化 LIFF SDK 並執行自動登入。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/ParentPortalController.php`（新增 `resolveLiff` 方法）
+- `backend/routes/api.php`（新增 `GET parent/resolve-liff` 公開路由）
+- `frontend/src/pages/ParentPortal.vue`（新增 `resolveParentLiffIdAsync`、`onMounted` 流程調整）
+
+### 備註
+- 後端 `loginWithLine` API（`POST /api/v1/parent/login-line`）已於先前版本實作，本次僅補齊前端 LIFF ID 動態解析。
+- 未綁定的家長仍自動回退至姓名+手機手動登入表單。
+
+---
+
+## 2026-04-16 (H) — 學生改名後 LINE 綁定 / 家長登入找不到學生
+
+### Fixed
+- **名字 trim**：`StudentController::store()` 與 `update()` 存入 DB 前對 `name` 執行 `trim()`，避免帶空白的名字導致後續查詢失敗。前端 `StudentsList.vue` `submitStudent` 同步 trim 並驗證空值。
+- **編輯不覆蓋校區**：`StudentController::update()` 移除 `branch_id → CampusID` 的無條件覆蓋邏輯；`StudentsList.vue` PUT payload 不再帶 `branch_id`。防止編輯學生名字/電話等基本資料時意外移動學生到另一校區（導致 LINE 綁定以校區過濾而找不到）。
+- **名字查詢容錯**：`ParentPortalController::login` 與 `LineWebhookController`（`handleBindingByNameOnly` / `handleBindingByName`）改用 `whereRaw('TRIM(name) = ?', [...])` 查詢，相容 DB 中既有含前後空白的舊資料。
+
+### 受影響檔案
+- `backend/app/Http/Controllers/StudentController.php`
+- `backend/app/Http/Controllers/ParentPortalController.php`
+- `backend/app/Http/Controllers/LineWebhookController.php`
+- `frontend/src/pages/StudentsList.vue`
+
+---
+
+## 2026-04-16 (G) — 學習評量單筆下載圖檔 + 學生姓名修正 + 彈窗 cursor 提示
+
+### Added
+- **單筆評量下載 PNG**：「檢視評量」readonly modal header 新增「下載圖檔」按鈕，呼叫 `generateStudentCardPng` 生成含學生姓名、科目、授課老師、成績等完整資訊的 PNG 圖檔。含 loading 狀態與成功/失敗 toast。手機版縮為 icon only。
+
+### Fixed
+- **學生姓名顯示**：`currentStudentName` computed 原先僅查 `studentList`，若快取無該學生則顯示「學生 #666」。修正為優先取 `studentList`，再 fallback `_activeRecordRef.student_name`（record 本身帶回的名稱）。
+- **彈窗 cursor 提示**：全域 `.modal-overlay` 新增 `cursor: pointer`，子元素重設 `cursor: default`，讓使用者看到可點擊背景關閉的視覺提示。
+
+### 受影響檔案
+- `frontend/src/pages/LearningRecordsPage.vue`
+- `frontend/src/styles.css`
+
+---
+
+## 2026-04-16 (F) — 家長入口登入修復 + 錯誤訊息改善
+
+### Fixed
+- **資料修復**：黃品皓 `Student.Phone` 為 null 導致家長手機登入失敗；已補登。`Student.LineID` 被測試帳號佔用導致 LINE 綁定異常；已清除。
+- **前端錯誤訊息**：`ParentPortal.vue` `login()` 的 `catch` 原先寫死「登入失敗，請確認學生姓名及手機號碼是否正確」，遮蓋後端精確原因。改為優先顯示 `error.message`（如「此學生尚未設定聯絡手機，請聯繫分校補登後再登入」），fallback 到原有預設文字。
+- **登入 loading 防護**：登入按鈕在 API 請求期間顯示「登入中…」並禁用，防止重複送出。
+- **錯誤訊息樣式**：`.pp-error` 色彩更新為 `#FEE2E2` 背景 + `#DC2626` 文字，與系統設計語言一致。
+
+### 受影響檔案
+- `frontend/src/pages/ParentPortal.vue`
+- `Student` 資料表（id=4，Phone + LineID 欄位修復）
+
+---
+
+## 2026-04-16 (E) — 手機出缺勤頁 UI 修復（底部遮擋 + 滑動閃爍）
+
+### Fixed
+- **滑動閃爍**：`.mobile-bottom-nav` 加 `will-change: transform; transform: translateZ(0)` 升至 GPU 合成層，減少滑動時主執行緒 repaint。`body` 移除 `-webkit-overflow-scrolling: touch`（僅保留在 `html`）。
+- **批次列遮擋**：`.att-sticky-batch` 的 `bottom` 從硬編碼 `68px` 改為 `calc(56px + env(safe-area-inset-bottom, 0px))`，動態適應 safe-area 裝置。批次列顯示時，`.att-cards` 動態加 `padding-bottom: 72px` 讓最後一張卡片可捲出批次列上方。
+- **確認 sheet 被底欄遮擋**：`AttendancePage.vue` 的 `.att-confirm-overlay` 以 `<Teleport to="body">` 渲染至 root stacking context，使 `z-index: 10100` 正確蓋過底欄的 `z-index: 10000`。確認 sheet 樣式移至非 scoped `<style>` block。
+
+### 受影響檔案
+- `frontend/src/styles.css`
+- `frontend/src/pages/AttendancePage.vue`
+
+---
+
 ## 2026-04-16 (D) — 重複課程保護邏輯修正（SubjectID + ClassType）
 
 ### Fixed

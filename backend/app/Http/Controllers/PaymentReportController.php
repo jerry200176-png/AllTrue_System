@@ -439,6 +439,95 @@ class PaymentReportController extends Controller
     }
 
     /**
+     * PUT /api/v1/payment-reports/{id}/void
+     * Director voids a confirmed payment report — reverses Payment, Invoice, StudentClass.
+     */
+    public function void(Request $request, $id)
+    {
+        $report = PaymentReport::with('student')->findOrFail($id);
+
+        if ($report->status !== 'confirmed') {
+            $msg = $report->status === 'voided'
+                ? '此收款已撤銷過'
+                : '此回報尚未確認，無法撤銷';
+            return response()->json(['message' => $msg], 422);
+        }
+
+        $data = $request->validate([
+            'void_reason' => 'required|string|max:500',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!empty($campusIds) && $report->student) {
+            if (!in_array((int) $report->student->CampusID, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        $userId = $request->attributes->get('auth_user_id');
+
+        return DB::transaction(function () use ($report, $userId, $data) {
+            $originalAmount = (int) abs($report->reported_amount);
+
+            $invoice = $report->InvoiceID ? Invoice::find($report->InvoiceID) : null;
+
+            if ($invoice) {
+                Payment::create([
+                    'InvoiceID'         => $invoice->id,
+                    'Amount'            => -$originalAmount,
+                    'PaidAt'            => Carbon::today()->toDateString(),
+                    'Method'            => 'void',
+                    'Note'              => $data['void_reason'],
+                    'payment_report_id' => $report->id,
+                ]);
+
+                $newPaid = max(0, (int) $invoice->PaidAmount - $originalAmount);
+                $invoiceStatus = $newPaid <= 0 ? 'unpaid' : ($newPaid < (int) $invoice->TotalAmount ? 'partial' : 'paid');
+                $invoice->update([
+                    'PaidAmount' => $newPaid,
+                    'Status'     => $invoiceStatus,
+                ]);
+            }
+
+            $sc = StudentClass::find($report->StudentClassID);
+            $scPaid = 0;
+            if ($sc) {
+                $invoiceStatus = $invoice->Status ?? 'unpaid';
+                if ($invoiceStatus === 'unpaid') {
+                    $sc->update(['Paid' => 0, 'PayDate' => null]);
+                    $scPaid = 0;
+                } else {
+                    $scPaid = (int) $sc->Paid;
+                }
+            }
+
+            $report->update([
+                'status'      => 'voided',
+                'voided_by'   => $userId,
+                'voided_at'   => Carbon::now(),
+                'void_reason' => $data['void_reason'],
+            ]);
+
+            Log::info('[PaymentVoid]', [
+                'report_id'        => $report->id,
+                'payment_id'       => $report->payment_id,
+                'user_id'          => $userId,
+                'void_reason'      => $data['void_reason'],
+                'student_class_id' => $report->StudentClassID,
+                'amount'           => $originalAmount,
+            ]);
+
+            return response()->json([
+                'message'            => '已撤銷收款',
+                'report_id'          => $report->id,
+                'invoice_status'     => $invoice->Status ?? null,
+                'student_class_paid' => $scPaid,
+            ]);
+        });
+    }
+
+    /**
      * GET /api/v1/payment-reports/{id}/receipt
      * Returns receipt data for Canvas rendering.
      */

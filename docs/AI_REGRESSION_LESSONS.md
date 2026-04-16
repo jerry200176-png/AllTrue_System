@@ -13,6 +13,8 @@
 - **主任「繳費／續課提醒」**：**`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**（堂數制低堂數含已繳、月結「小於 5 天」等；**改動前必問使用者**）
 - **課程 Stop 語意與 `closed_reason`**：見下方 **§2026-04-13 — 課程 Stop 語意：closed_reason 區分暫停 vs 結算**（勿移除 `settled` 寫入；勿用 `closed_reason` 影響 alert 篩選；resume 務必清除）
 - **催繳名單與繳費單圖**：見下方 **§2026-04-13 — 催繳名單、tuition-slip 與 PaymentSlipModal**（名單須與 `alerts/tuition` 同源；**已繳不產圖**；無 Invoice 用 `tuition-slip`，勿與帳單編號語意混用）
+- **催繳名單 payment_status 與 void API**：見下方 **§2026-04-16 — 催繳名單 payment_status 六種狀態與撤銷收款**（`payment_status` 後端計算不可前端自行推導；void API 的 DB transaction 不可拆開；`alerts/tuition` 列入規則不因補充欄位改變；void 僅限 director/admin/super_admin）
+- **催繳名單幽靈課程（跳過續報直接新增）**：見下方 **§2026-04-16 — 催繳名單幽靈課程偵測與結案**（`has_newer_course` 欄位不可移除；結案用 `reason='settled'` 走 `togglePause`；結案不改 `Paid`；`newerCourseByStudentClassIds` batch query 不可改為 N+1）
 - **固定排課／批次入班／學生課程列表「時段」／編輯課程改星期後未來堂**：見下方 **§2026-04-12 — 固定排課契約與堂次一致**（手動日、列表顯示、`PUT` 同步三項一次對照）
 - **老師教學工作台**：見下方 **§2026-04-12 — 老師教學工作台（TeacherHome）**（預設頁、跨分校週課表、badge、deploy）
 - **課程管理專注模式與 modal 層級**：見下方 **§2026-04-12 — 專注模式與 modal z-index / 契約時段不得被覆寫**
@@ -28,6 +30,46 @@
 - **課程管理堂次警示誤報（請假/調課後）**：見下方 **§2026-04-15 — 請假調課後堂次警示假陽性**（`sessionUnits().length` 不可與購買堂數比較；須用 `effectiveSessionCount`）
 - **課程管理同日 chip 重複（LEFT JOIN 行乘積）**：見下方 **§2026-04-15 — ClassSessionController::index LEFT JOIN 行乘積導致 chip 重複**（`sub_sched`／`LearningRecord`／`StudentSingIn` 的 LEFT JOIN 必須用 Derived Table 去重；前端 `normalizeClassSessionsPayload` 須有 id 去重防禦層）
 - **評量頁課表同時段重複卡片**（`cancelled + scheduled` 同格兩張卡）：見下方 **§2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片（buildEvents 未去重）**
+
+---
+
+## 2026-04-16 — 催繳名單幽靈課程偵測與結案
+
+| 項目 | 說明 |
+|---|---|
+| 問題 | 工作人員在學生需續課時，未用「續報加購」（`purchase-batch`）而直接「新增課程」。舊課程 `Stop=0`、`RemainingSessions=0`、`Paid=1` 永久出現在催繳名單（`renew_needed`），成為幽靈記錄。 |
+| 修正 | `AlertController::tuition` 新增 `has_newer_course`、`newer_course_id`、`newer_course_remaining`、`newer_course_start_date` 欄位，透過 `newerCourseByStudentClassIds` batch query 偵測同學生同科目活躍課程。`TuitionCollectionPage.vue` 新增「已有新課程」badge 與「結案」按鈕，呼叫 `POST /student-classes/{id}/pause` with `reason='settled'`。 |
+
+**禁止回歸：**
+
+1. **勿移除 `has_newer_course` 欄位**：前端 `TuitionCollectionPage.vue` 依賴此欄位顯示綠色 badge 和引導結案。
+2. **結案不改 `Paid`**：`togglePause` 的 `settled` 分支只設 `Stop=1`、`closed_reason='settled'`、`EndDate=today`，不動 `Paid` 欄位。
+3. **`newerCourseByStudentClassIds` 必須 batch query**：勿改為 loop 內逐筆查詢（N+1），影響 `alerts/tuition` 效能。
+4. **結案走 `togglePause` 端點**：受現有 `auth`、`role`（director/admin/super_admin）、`require_campus` middleware 保護，勿另建無保護端點。
+5. **`suppressRenewedLowSessionAlerts`（同日另一修正）與此功能互補**：前者自動抑制舊課程的 `low_sessions` 提醒（但需新課程 `RemainingSessions > 2`）；後者讓主任手動結案（即使新課程堂數也低）。兩者不互相取代。
+
+---
+
+## 2026-04-16 — 催繳名單 payment_status 六種狀態與撤銷收款（void API）
+
+| 項目 | 說明 |
+|------|------|
+| **曾發生的問題** | 催繳名單只有 `paid`（布林）+ `last_paid_at` 兩欄，「有日期但顯示未繳費」讓現場誤判已結清；主任無法在名單直接核帳或撤銷錯誤收款。 |
+| **根本原因** | `alerts/tuition` 缺乏中間狀態（部分付款、待核帳、月結將到期等），二分法不足以表達真實付款語意。 |
+| **正確行為** | 後端 `AlertController::computePaymentStatus()` 依優先序回傳六種狀態值（`pending_report` > `partial` > `unpaid` > `renew_needed` > `monthly_due_soon` > `paid`），前端 `TuitionCollectionPage.vue` 依 `payment_status` 渲染標籤與操作按鈕。新增 `void` API 可撤銷已確認收款並回滾 Payment/Invoice/StudentClass。 |
+| **禁止回歸** | **(a)** `payment_status` 計算邏輯必須集中在後端 `AlertController::computePaymentStatus`，前端禁止自行推導。**(b)** `alerts/tuition` 的列入規則（堂數制 / 月結制條件）不因 payment_status 補充欄位而改動。**(c)** `PUT /api/v1/payment-reports/{id}/void` 的 DB transaction 不可拆開（Payment/Invoice/StudentClass 三表一致性）。**(d)** void API 僅限 `role:director,admin,super_admin`，teacher 角色不可呼叫（後端 middleware 已限制）。**(e)** void 操作必須寫入 `voided_by`、`voided_at`、`void_reason` 稽核欄位。**(f)** 已繳（`paid=true`）不得產出催繳通知單圖片（`tuitionSlipData` 的 422 guard 不得移除）。**(g)** `outstanding = max(0, charge - paid_amount)` 不可為負。 |
+| **關聯檔案** | `backend/app/Http/Controllers/AlertController.php`、`backend/app/Http/Controllers/PaymentReportController.php`（`void()`）、`backend/app/Models/PaymentReport.php`、`frontend/src/pages/TuitionCollectionPage.vue`、`backend/tests/Feature/TuitionAlertsApiTest.php`、`backend/tests/Feature/PaymentReportApiTest.php`、`backend/database/migrations/2026_04_16_210000_add_void_fields_to_payment_reports_table.php` |
+
+### 高風險區塊（修改前必對照）
+
+| 檔案 | 方法 | 注意 |
+|------|------|------|
+| `AlertController.php` | `computePaymentStatus()` | 狀態機優先序不可調換；新增狀態值須同步前端 `STATUS_CONFIG` |
+| `AlertController.php` | `tuition()` | 補充欄位查詢用批次 `whereIn`，不得逐筆查詢（N+1） |
+| `PaymentReportController.php` | `void()` | 整個回滾必須在 `DB::transaction` 內；負值 Payment 金額正確 |
+| `TuitionCollectionPage.vue` | `STATUS_CONFIG` / `statusLabel()` | 六種狀態值與後端一對一對應 |
+| `AlertController.php` | `tuitionSlipData()` | `Paid=1` 仍回 422，不因 payment_status 改變此邏輯 |
+| `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | — | 列入條件變更前必問使用者 |
 
 ---
 
@@ -361,6 +403,16 @@
 | **關聯檔案** | **前端**：`frontend/src/components/UniversalClassScheduler.vue`（`onDateClick`、`sessionCountForWeekday`、`submit`）。**後端**：`backend/app/Services/EnrollmentService.php`（`store` 堂次日曆星期驗證）；`backend/app/Http/Controllers/StudentClassController.php`（`index` 契約過濾 session 覆寫；`syncFutureScheduledSessionTimes`／`remapFutureScheduledSessionsToContract`／`buildSlotsByWeekdayMap`／`snapDateToContractWeekday`） |
 | **測試** | `ClassSessionBatchApiTest::test_batch_rejects_session_plan_on_weekday_outside_fixed_schedule`、`SameDayMultiSlotTest::test_index_day_time_slots_ignore_future_sessions_outside_contract_weekdays`、`StudentClassUpdateScheduleReconcileTest::test_update_weekday_remaps_future_sessions_from_saturday_to_sunday` |
 | **搜尋用關鍵字** | 幽靈星期、契約、`session_plan`、週三誤排、`day_time_slots`、`syncFutureScheduledSessionTimes` |
+
+### 2026-04-16 補充：新增星期未觸發 remap
+
+| 項目 | 說明 |
+|------|------|
+| **曾發生的錯誤** | 使用者在課程管理把固定排課從「一、二」改成「一、二、四」，`syncFutureScheduledSessionTimes` 的 `$needsRemap` 只偵測「現有堂次在契約外星期」→ 一、二都在新契約內 → 不觸發 remap。結果：契約主檔存了「一二四」，但未來堂次全留在一、二，新星期四無堂次。此外 `force_partial_rebuild` 路徑無條件呼叫 `reconcileWeekTimeFieldsFromSessions`，sync 回傳 0 筆時仍執行 reconcile → 用舊 ClassSession 的一、二回寫覆蓋契約，導致使用者看到「改了沒生效」。 |
+| **正確行為** | `$needsRemap` 必須**雙向偵測**：(1) 堂次在契約外星期 → remap；(2) 契約有但堂次沒有的星期（新增星期）→ remap。`force_partial_rebuild` 路徑的 reconcile 必須有 `updatedCount > 0` 守衛，與主路徑 `$skipReconcile` 一致。 |
+| **禁止回歸** | **(a)** 勿把 `$needsRemap` 改回只看「堂次→契約」單方向。**(b)** 勿移除 `force_partial_rebuild` reconcile 的 `updatedCount > 0` 守衛。**(c)** 前端成功訊息須加總兩次 PUT 的 sync 計數，勿只取第二次。 |
+| **測試** | `StudentClassUpdateScheduleReconcileTest::test_adding_weekday_remaps_future_sessions_to_new_cadence`、`test_force_partial_rebuild_preserves_contract_when_zero_synced` |
+| **搜尋用關鍵字** | `$needsRemap`、`$sessionWeekdays`、`force_partial_rebuild`、`reconcile_skipped`、新增星期、remap |
 
 ---
 

@@ -140,14 +140,17 @@
             <td>{{ student.school || '—' }}</td>
             <td>{{ student.parent_name || '—' }}</td>
             <td @click.stop>
-              <span v-if="student.rfid" class="rfid-tag">
-                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">contactless</span>
-                {{ student.rfid }}
-              </span>
-              <span v-else class="rfid-unbound">
-                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;color:#bdbdbd;">contactless</span>
-                未綁定
-              </span>
+              <div class="student-binding-badges">
+                <span v-if="student.rfid" class="rfid-tag">
+                  <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">contactless</span>
+                  {{ student.rfid }}
+                </span>
+                <span v-else class="rfid-unbound">
+                  <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;color:#bdbdbd;">contactless</span>
+                  未綁定
+                </span>
+                <span v-if="student.line_bound" class="line-bound-badge">LINE</span>
+              </div>
             </td>
             <td>
               <div class="subject-tags" v-if="getStudentCourses(student.id).length > 0">
@@ -171,12 +174,14 @@
               <span class="hint" v-else>尚未設定</span>
             </td>
             <td @click.stop class="action-cell">
-              <button class="small ghost icon-btn" @click="editStudent(student)" title="編輯">
-                <span class="material-symbols-outlined">edit</span>
-              </button>
-              <button class="small danger icon-btn" @click="deleteStudent(student)" title="刪除">
-                <span class="material-symbols-outlined">delete</span>
-              </button>
+              <div class="action-cell-buttons">
+                <button class="small ghost icon-btn" @click="editStudent(student)" title="編輯">
+                  <span class="material-symbols-outlined">edit</span>
+                </button>
+                <button class="small danger icon-btn" @click="deleteStudent(student)" title="刪除">
+                  <span class="material-symbols-outlined">delete</span>
+                </button>
+              </div>
             </td>
           </tr>
 
@@ -203,7 +208,9 @@
                   {{ showHistoricalCourses ? '尚未建立課程，請點擊「+ 新增課程」開始設定' : '目前沒有進行中的課程（可切換「顯示已結業/歷史課程」查看歷史資料）' }}
                 </div>
 
-                <table v-else class="course-inner-table">
+                <template v-else>
+                <!-- Active courses table -->
+                <table v-if="getActiveStudentCourses(student.id).length > 0" class="course-inner-table">
                   <thead>
                     <tr>
                       <th>科目</th>
@@ -218,13 +225,11 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="course in getStudentCourses(student.id)" :key="course.id" :class="{ 'course-settled-row': effectiveClosedReason(course) === 'settled' || effectiveClosedReason(course) === 'completed' }">
+                    <tr v-for="course in getActiveStudentCourses(student.id)" :key="course.id">
                       <td>
                         <span class="tag">{{ getSubjectLabel(course.subject) }}</span>
                         <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
-                        <span v-if="effectiveClosedReason(course) === 'settled'" class="tag tag-settled">已結算</span>
-                        <span v-else-if="effectiveClosedReason(course) === 'completed'" class="tag tag-settled">已完課</span>
-                        <span v-else-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
+                        <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
                         <span v-else-if="course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 && !effectiveClosedReason(course)" class="tag tag-expiring">即將用完</span>
                       </td>
                       <td>{{ course.teacher_name || '待指派' }}</td>
@@ -244,6 +249,7 @@
                           </div>
                           <span :class="{ 'text-red': course.remaining_sessions <= 2 }">
                             <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
+                            <span v-if="course.PackageID" class="tag tag-package-hint">（方案共用）</span>
                           </span>
                         </div>
                         <span v-else class="hint">
@@ -303,6 +309,42 @@
                     </tr>
                   </tbody>
                 </table>
+                <div v-else-if="getHistoryStudentCourses(student.id).length > 0" class="sl-empty-active">
+                  <span class="material-symbols-outlined sl-empty-active__icon" aria-hidden="true">school</span>
+                  <span>目前沒有進行中的課程</span>
+                </div>
+
+                <!-- History courses collapsible section -->
+                <div v-if="getHistoryStudentCourses(student.id).length > 0" class="sl-history-section">
+                  <button class="sl-history-toggle" @click.stop="toggleHistoryCourses(student.id)">
+                    <span class="material-symbols-outlined sl-history-toggle__icon" aria-hidden="true">inventory_2</span>
+                    <span>歷史課程</span>
+                    <span class="sl-history-toggle__count">{{ getHistoryStudentCourses(student.id).length }} 筆</span>
+                    <span class="sl-history-toggle__chevron">{{ expandedHistoryCourses.has(student.id) ? '▲' : '▼' }}</span>
+                  </button>
+                  <div v-if="expandedHistoryCourses.has(student.id)" class="sl-history-body">
+                    <div v-for="hc in getHistoryStudentCourses(student.id)" :key="hc.id" class="sl-history-card">
+                      <div class="sl-history-card__header">
+                        <span class="tag sl-history-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
+                        <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
+                        <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                        <span v-if="effectiveClosedReason(hc) === 'settled'" class="tag sl-tag-history sl-tag-history--settled">已結算</span>
+                        <span v-else class="tag sl-tag-history sl-tag-history--completed">已完課</span>
+                      </div>
+                      <div class="sl-history-card__details">
+                        <span><span class="sl-history-card__label">老師</span>{{ hc.teacher_name || '—' }}</span>
+                        <span><span class="sl-history-card__label">費用</span>${{ sessionFeeDisplay(hc) }}/堂</span>
+                        <span v-if="hc.payment_type === 'session'"><span class="sl-history-card__label">堂數</span>{{ hc.used_sessions || 0 }} / {{ hc.sessions_purchased || 0 }}</span>
+                        <span v-if="hc.last_paid_at"><span class="sl-history-card__label">繳費</span>{{ hc.last_paid_at }}</span>
+                      </div>
+                      <div class="sl-history-card__actions">
+                        <button class="small ghost" @click="editCourse(hc)">編輯</button>
+                        <button class="small danger" @click="deleteCourse(hc)">刪除</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                </template>
               </div>
             </td>
           </tr>
@@ -355,6 +397,19 @@
           <div class="rfid-bind-row">
             <input v-model="studentForm.rfid" readonly placeholder="刷卡後點「綁定卡片」" />
             <button type="button" class="small" @click="bindRfidFromTemp">{{ studentForm.rfid ? '重新綁定卡片' : '綁定卡片' }}</button>
+          </div>
+        </div>
+
+        <div v-if="editingStudentId" class="form-section-title">LINE 綁定家長</div>
+        <div v-if="editingStudentId" class="line-bindings-section">
+          <div v-if="lineBindingsLoading" class="line-bindings-empty">載入中…</div>
+          <div v-else-if="lineBindings.length === 0" class="line-bindings-empty">尚未有家長透過 LINE 綁定此學生</div>
+          <div v-else class="line-bindings-list">
+            <div v-for="b in lineBindings" :key="b.id" class="line-binding-row">
+              <span class="line-binding-id">{{ b.line_user_id_masked }}</span>
+              <span class="line-binding-time">{{ b.bound_at }}</span>
+              <button type="button" class="line-binding-remove" @click="removeLineBinding(b.id)">解除</button>
+            </div>
           </div>
         </div>
 
@@ -537,6 +592,7 @@
       </div>
     </div>
   </div>
+  <div v-if="toastVisible" class="toast-notification">{{ toastMsg }}</div>
 </template>
 
 <script setup>
@@ -568,6 +624,10 @@ const showHistoricalCourses = ref(false);
 const showStudentModal = ref(false);
 const editingStudentId = ref(null);
 const studentForm = ref({ name: '', grade: 'J1', phone: '', school: '', parent_name: '', parent_phone: '', status: 'active', notes: '' });
+
+// LINE bindings (in edit modal)
+const lineBindings = ref([]);
+const lineBindingsLoading = ref(false);
 
 // Course modal
 const showCourseModal = ref(false);
@@ -774,6 +834,23 @@ const isHistoricalCourse = (course) => {
   const remaining = getCourseRemainingSessions(course);
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
+};
+const isHistoryCourseByReason = (course) => {
+  const reason = effectiveClosedReason(course);
+  return reason === 'settled' || reason === 'completed';
+};
+const getActiveStudentCourses = (id) => {
+  return getStudentCourses(id).filter(c => !isHistoryCourseByReason(c));
+};
+const getHistoryStudentCourses = (id) => {
+  return getStudentCourses(id).filter(c => isHistoryCourseByReason(c));
+};
+const expandedHistoryCourses = ref(new Set());
+const toggleHistoryCourses = (studentId) => {
+  const s = new Set(expandedHistoryCourses.value);
+  if (s.has(studentId)) s.delete(studentId);
+  else s.add(studentId);
+  expandedHistoryCourses.value = s;
 };
 
 const canCloseCourse = (course) => {
@@ -1216,11 +1293,77 @@ const editStudent = (student) => {
     rfid: student.rfid || ''
   };
   showStudentModal.value = true;
+  const laravelId = student._laravelId ?? student.id;
+  if (laravelId) fetchLineBindings(laravelId);
 };
 
 const closeStudentModal = () => {
   showStudentModal.value = false;
   editingStudentId.value = null;
+  lineBindings.value = [];
+};
+
+const fetchLineBindings = async (studentId) => {
+  if (!studentId) return;
+  lineBindingsLoading.value = true;
+  lineBindings.value = [];
+  try {
+    const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const token = sess?.access_token;
+    if (!token) return;
+    const res = await fetch(`/api/v1/students/${studentId}/line-bindings`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      lineBindings.value = json.bindings || [];
+    }
+  } catch (_) {}
+  lineBindingsLoading.value = false;
+};
+
+const removeLineBinding = async (bindingId) => {
+  if (!confirm('確定要解除此 LINE 綁定？解除後家長需重新綁定。')) return;
+  const studentId = editingStudentId.value;
+  const st = students.value.find(s => s.id === studentId);
+  const laravelId = st?._laravelId ?? st?.id;
+  if (!laravelId) return;
+  try {
+    const sess = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const token = sess?.access_token;
+    if (!token) return;
+    const res = await fetch(`/api/v1/students/${laravelId}/line-bindings/${bindingId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      lineBindings.value = lineBindings.value.filter(b => b.id !== bindingId);
+      const idx = students.value.findIndex(
+        s => s.id === studentId || s._laravelId === laravelId
+      );
+      if (idx !== -1) {
+        students.value[idx] = {
+          ...students.value[idx],
+          line_bound: lineBindings.value.length > 0,
+        };
+      }
+      showToast('已解除綁定');
+    } else {
+      alert('解除失敗，請重試');
+    }
+  } catch (_) {
+    alert('解除失敗，請重試');
+  }
+};
+
+const toastMsg = ref('');
+const toastVisible = ref(false);
+let toastTimer = null;
+const showToast = (msg) => {
+  toastMsg.value = msg;
+  toastVisible.value = true;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastVisible.value = false; }, 2500);
 };
 
 const deleteSelectedStudents = async () => {
@@ -1338,13 +1481,15 @@ const bindRfidFromTemp = async () => {
 };
 
 const submitStudent = async () => {
-  if (!studentForm.value.name) { alert('請輸入姓名'); return; }
+  const trimmedName = (studentForm.value.name || '').trim();
+  if (!trimmedName) { alert('姓名不得為空'); return; }
+  studentForm.value.name = trimmedName;
   if (!editingStudentId.value && !props.branchId) {
     alert('請先在上方「切換分校」選擇要新增學生的分校');
     return;
   }
   const payload = {
-    name: studentForm.value.name,
+    name: trimmedName,
     grade: studentForm.value.grade,
     phone: studentForm.value.phone,
     school: studentForm.value.school,
@@ -1365,7 +1510,7 @@ const submitStudent = async () => {
           const res = await fetch(`/api/v1/students/${laravelId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ ...payload, branch_id: props.branchId })
+            body: JSON.stringify(payload)
           });
           if (res.ok) {
             if (payload.rfid) {
@@ -2340,9 +2485,11 @@ table th { font-size: 12.5px; }
   display: flex;
   align-items: center;
   gap: 8px;
+  white-space: nowrap;
 }
 .student-name-cell strong {
   font-size: 15px;
+  white-space: nowrap;
 }
 .student-avatar-mini {
   width: 32px;
@@ -2409,6 +2556,12 @@ table th { font-size: 12.5px; }
 .student-status-badge.transferred { background: #F3E5F5; color: #6A1B9A; }
 
 /* RFID */
+.student-binding-badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 .rfid-tag {
   font-size: 12px;
   font-family: monospace;
@@ -2427,7 +2580,12 @@ table th { font-size: 12.5px; }
 
 /* Action buttons */
 .action-cell {
-  display: flex;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.action-cell-buttons {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
 .icon-btn {
@@ -2627,7 +2785,14 @@ table th { font-size: 12.5px; }
   -webkit-overflow-scrolling: touch;
 }
 .table-scroll-wrap > table {
-  min-width: 700px;
+  min-width: 820px;
+}
+
+/* Prevent wrapping in key columns */
+.student-row td:nth-child(4),
+.student-row td:nth-child(5),
+.student-row td:nth-child(6) {
+  white-space: nowrap;
 }
 
 /* ═══ Mobile Responsive ═══ */
@@ -2667,10 +2832,6 @@ table th { font-size: 12.5px; }
   }
 }
 
-.course-settled-row td {
-  background: #f9fafb;
-  color: #9ca3af;
-}
 .tag-package {
   background: #ede9fe;
   color: #6d28d9;
@@ -2678,15 +2839,10 @@ table th { font-size: 12.5px; }
   font-size: 0.65rem;
   cursor: help;
 }
-.tag-settled {
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 11px;
-  padding: 2px 7px;
-  font-weight: 600;
-  margin-left: 4px;
+.tag-package-hint {
+  font-size: 0.7em;
+  color: #6d28d9;
+  font-weight: 400;
 }
 .tag-paused-sm {
   background: #ffedd5;
@@ -2725,5 +2881,268 @@ table th { font-size: 12.5px; }
 }
 .btn-renew-warn:hover {
   background: #e65100 !important;
+}
+
+/* ── Empty active courses ── */
+.sl-empty-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  color: #94a3b8;
+  font-size: 14px;
+}
+.sl-empty-active__icon {
+  font-size: 24px;
+  color: #cbd5e1;
+}
+
+/* ── History section ── */
+.sl-history-section {
+  border-top: 1px dashed #e2e8f0;
+  margin-top: 8px;
+  background: #fafbfc;
+  border-radius: 0 0 8px 8px;
+}
+.sl-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sl-history-toggle:hover {
+  background: #f1f5f9;
+}
+.sl-history-toggle__icon {
+  font-size: 18px;
+  color: #94a3b8;
+}
+.sl-history-toggle__count {
+  font-weight: 400;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.sl-history-toggle__chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.sl-history-body {
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sl-history-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #d1d5db;
+  border-radius: 10px;
+  padding: 10px 14px;
+  transition: box-shadow 0.15s;
+}
+.sl-history-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.sl-history-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.sl-history-card__subject {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+.sl-tag-history {
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.sl-tag-history--settled {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+.sl-tag-history--completed {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+.sl-history-card__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 13px;
+  color: #64748b;
+}
+.sl-history-card__label {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-right: 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sl-history-card__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+@media (max-width: 640px) {
+  .sl-history-body {
+    padding: 4px 8px 12px;
+  }
+  .sl-history-card {
+    padding: 8px 10px;
+  }
+  .sl-history-card__details {
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
+/* LINE bound badge in student list */
+.line-bound-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #06C755;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.3px;
+  vertical-align: middle;
+}
+
+/* LINE bindings section */
+.line-bindings-section {
+  margin-bottom: 12px;
+}
+.line-bindings-empty {
+  color: #9e9e9e;
+  font-size: 13px;
+  padding: 6px 0;
+}
+.line-bindings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.line-binding-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.line-binding-id {
+  font-family: monospace;
+  font-size: 12px;
+  color: #06C755;
+  font-weight: 600;
+}
+.line-binding-time {
+  color: #757575;
+  font-size: 12px;
+  flex: 1;
+  text-align: right;
+}
+.line-binding-remove {
+  background: none;
+  border: 1px solid #ef5350;
+  color: #ef5350;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.line-binding-remove:hover {
+  background: #ef5350;
+  color: #fff;
+}
+
+/* Toast notification */
+.toast-notification {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #323232;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 10001;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  animation: toast-in 0.25s ease;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ── Dark mode: history section ── */
+[data-theme="dark"] .sl-history-section {
+  border-top-color: #334155;
+  background: #0f172a;
+}
+[data-theme="dark"] .sl-history-toggle {
+  color: #94a3b8;
+}
+[data-theme="dark"] .sl-history-toggle:hover {
+  background: #1e293b;
+}
+[data-theme="dark"] .sl-history-card {
+  background: #1e293b;
+  border-color: #334155;
+  border-left-color: #475569;
+}
+[data-theme="dark"] .sl-history-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .sl-history-card__subject {
+  background: #334155 !important;
+  color: #e2e8f0 !important;
+  border-color: #475569 !important;
+}
+[data-theme="dark"] .sl-tag-history--settled {
+  background: #052e16;
+  color: #4ade80;
+  border-color: #166534;
+}
+[data-theme="dark"] .sl-tag-history--completed {
+  background: #172554;
+  color: #60a5fa;
+  border-color: #1e40af;
+}
+[data-theme="dark"] .sl-history-card__details {
+  color: #94a3b8;
+}
+[data-theme="dark"] .sl-history-card__label {
+  color: #64748b;
+}
+[data-theme="dark"] .sl-empty-active {
+  color: #64748b;
+}
+[data-theme="dark"] .sl-empty-active__icon {
+  color: #475569;
 }
 </style>

@@ -407,6 +407,7 @@ import TeacherHomePage from './pages/TeacherHomePage.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
+import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -1140,6 +1141,8 @@ const onPasswordChangeComplete = async () => {
 };
 
 const logout = async () => {
+    const uid = session.value?.user?.id;
+    if (uid) clearAllDraftsByTeacher(uid);
     await supabase.auth.signOut();
 };
 

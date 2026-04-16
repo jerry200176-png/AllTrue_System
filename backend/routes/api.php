@@ -96,7 +96,8 @@ Route::prefix('v1')->group(function () {
     Route::post('line/webhook', [LineWebhookController::class, 'handleDomainBased']);
     Route::post('line/webhook/{campusId}', [LineWebhookController::class, 'handle'])->where('campusId', '[0-9]+');
 
-    // ── Parent Portal: LINE-based login ─────────────────────────────────
+    // ── Parent Portal: LIFF & LINE-based login ─────────────────────────
+    Route::get('parent/resolve-liff', [ParentPortalController::class, 'resolveLiff']);
     Route::post('parent/login-line', [ParentPortalController::class, 'loginWithLine']);
 
     // ── Public Branch Data (No auth required) ───────────────────────
@@ -168,6 +169,8 @@ Route::prefix('v1')->group(function () {
         Route::put('students/{student}', [StudentController::class, 'update']);
         Route::delete('students/{student}', [StudentController::class, 'destroy']);
         Route::post('students/{student}/bind-card', [StudentController::class, 'bindCard']);
+        Route::get('students/{student}/line-bindings', [StudentController::class, 'lineBindings']);
+        Route::delete('students/{student}/line-bindings/{binding}', [StudentController::class, 'removeLineBinding']);
 
         Route::post('students/import', [ImportController::class, 'students']);
         Route::get('students/export', [ExportController::class, 'students']);
@@ -223,6 +226,7 @@ Route::prefix('v1')->group(function () {
         Route::get('payment-reports', [PaymentReportController::class, 'index']);
         Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);
         Route::put('payment-reports/{id}/reject', [PaymentReportController::class, 'reject']);
+        Route::put('payment-reports/{id}/void', [PaymentReportController::class, 'void']);
         Route::get('payment-reports/{id}/receipt', [PaymentReportController::class, 'receipt']);
 
         Route::get('notifications', [NotificationController::class, 'index']);

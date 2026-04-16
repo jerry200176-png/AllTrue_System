@@ -14,7 +14,7 @@ class LearningRecord extends Model
         'Content', 'AttachmentUrl', 'Status', 'ApprovedBy', 'ApprovedAt',
         'SessionDeducted', 'ExcludeFromSubjectCount', 'ReviewNote', 'Subject',
         'SessionDate', 'StartTime', 'EndTime',
-        'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework',
+        'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework', 'NextWeekTestScope',
         'Performance', 'Comment',
         'VoidedAt', 'VoidedByUserID', 'VoidReason',
     ];

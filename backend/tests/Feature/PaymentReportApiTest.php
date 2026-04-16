@@ -367,6 +367,167 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
     }
 
+    // ── void ────────────────────────────────────────────────────────
+
+    public function test_director_can_void_confirmed_report(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1, 'Charge' => 8800, 'PayDate' => '2026-04-10']);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 8800, 'PaidAmount' => 8800, 'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 8800,
+            'PaidAt' => '2026-04-10', 'Method' => 'cash',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 8800, 'status' => 'confirmed',
+            'confirmed_by' => 1, 'confirmed_at' => Carbon::now(),
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-test-1'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '核帳金額有誤',
+        ]);
+
+        $res->assertOk();
+        $res->assertJsonFragment(['message' => '已撤銷收款']);
+
+        $report->refresh();
+        $this->assertSame('voided', $report->status);
+        $this->assertSame('核帳金額有誤', $report->void_reason);
+        $this->assertNotNull($report->voided_at);
+
+        $invoice->refresh();
+        $this->assertSame(0, (int) $invoice->PaidAmount);
+        $this->assertSame('unpaid', $invoice->Status);
+
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid);
+        $this->assertNull($sc->PayDate);
+
+        $voidPayment = Payment::where('InvoiceID', $invoice->id)->where('Amount', '<', 0)->first();
+        $this->assertNotNull($voidPayment);
+        $this->assertSame(-8800, (int) $voidPayment->Amount);
+        $this->assertSame('void', $voidPayment->Method);
+    }
+
+    public function test_void_rejects_pending_report(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 5000, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'void-pending-test'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '測試',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJsonFragment(['message' => '此回報尚未確認，無法撤銷']);
+    }
+
+    public function test_void_rejects_already_voided_report(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 5000, 'status' => 'voided',
+            'voided_at' => Carbon::now(), 'void_reason' => '已撤銷',
+            'report_token_hash' => hash('sha256', 'void-voided-test'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '再次撤銷',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJsonFragment(['message' => '此收款已撤銷過']);
+    }
+
+    public function test_void_requires_void_reason(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 5000, 'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'void-noreason-test'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", []);
+
+        $res->assertStatus(422);
+    }
+
+    public function test_void_cross_campus_returns_403(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Paid' => 1]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 5000, 'PaidAmount' => 5000, 'Status' => 'paid',
+        ]);
+        $payment = Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 5000, 'PaidAt' => '2026-04-10', 'Method' => 'cash',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $sc->ID, 'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 5000, 'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(), 'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'void-cross-campus'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/void", [
+            'void_reason' => '跨校測試',
+        ]);
+
+        $res->assertStatus(403);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private function assertStringContains(string $needle, string $haystack): void

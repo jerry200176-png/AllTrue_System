@@ -68,7 +68,12 @@ export function useCourseSessionsDisplay({
       return;
     }
     try {
-      const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, perPage: 2000 });
+      const now = new Date();
+      const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+      const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
+      const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, start, end, perPage: 2000 });
       classSessionsByCourse.value = byClass || {};
     } catch (_) {
       classSessionsByCourse.value = {};

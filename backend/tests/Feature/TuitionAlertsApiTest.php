@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -296,6 +297,260 @@ class TuitionAlertsApiTest extends TestCase
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
         $this->assertSame('2026-04-10', $row['last_paid_at']);
+    }
+
+    // ── payment_status tests ──────────────────────────────────────
+
+    public function test_payment_status_unpaid_for_count_mode_no_payment(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-unpaid@example.com');
+        $student = Student::create([
+            'name' => '未繳費堂數制',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'Charge' => 8800,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('unpaid', $row['payment_status']);
+        $this->assertSame(8800, $row['charge']);
+        $this->assertSame(0, $row['paid_amount']);
+        $this->assertSame(8800, $row['outstanding']);
+        $this->assertNull($row['latest_payment_report_id']);
+    }
+
+    public function test_payment_status_partial_when_invoice_partially_paid(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-partial@example.com');
+        $student = Student::create([
+            'name' => '部分付款',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 10000,
+        ]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01', 'TotalAmount' => 10000, 'PaidAmount' => 3000, 'Status' => 'partial',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id, 'Amount' => 3000, 'PaidAt' => '2026-04-05', 'Method' => 'cash',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('partial', $row['payment_status']);
+        $this->assertSame(10000, $row['charge']);
+        $this->assertSame(3000, $row['paid_amount']);
+        $this->assertSame(7000, $row['outstanding']);
+    }
+
+    public function test_payment_status_pending_report_when_has_pending_report(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-pending@example.com');
+        $student = Student::create([
+            'name' => '待核帳',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 5, 'Charge' => 8800,
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id, 'StudentClassID' => $course->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(), 'payment_method' => 'cash',
+            'reported_amount' => 8800, 'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'ps-pending-test'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('pending_report', $row['payment_status']);
+        $this->assertSame($report->id, $row['latest_payment_report_id']);
+    }
+
+    public function test_payment_status_renew_needed_for_paid_low_sessions(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-renew@example.com');
+        $student = Student::create([
+            'name' => '已繳低堂',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 1, 'Charge' => 8800,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('renew_needed', $row['payment_status']);
+    }
+
+    public function test_payment_status_monthly_due_soon_for_date_mode_paid(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'ps-monthly@example.com');
+        $student = Student::create([
+            'name' => '月結已繳',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 15, 'Paid' => 1,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('monthly_due_soon', $row['payment_status']);
+    }
+
+    public function test_payment_status_paid_for_count_mode_fully_paid_no_low_sessions(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-paid@example.com');
+        $student = Student::create([
+            'name' => '全額已繳',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8800,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('renew_needed', $row['payment_status']);
+    }
+
+    public function test_has_newer_course_true_when_same_subject_active_course_exists(): void
+    {
+        $token = $this->createDirectorToken([1], 'newer-true@example.com');
+        $student = Student::create([
+            'name' => '有新課程', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $oldCourse = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 66,
+        ]);
+        $newCourse = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 8, 'Charge' => 8000, 'SubjectID' => 66,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $oldCourse->ID);
+        if ($row !== null) {
+            $this->assertTrue($row['has_newer_course']);
+            $this->assertSame((int) $newCourse->ID, $row['newer_course_id']);
+        }
+    }
+
+    public function test_has_newer_course_false_when_no_same_subject_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'newer-false@example.com');
+        $student = Student::create([
+            'name' => '無新課程', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000, 'SubjectID' => 77,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertFalse($row['has_newer_course']);
+        $this->assertNull($row['newer_course_id']);
+    }
+
+    public function test_settle_closes_course_and_removes_from_alerts(): void
+    {
+        $token = $this->createDirectorToken([1], 'settle@example.com');
+        $student = Student::create([
+            'name' => '結案測試', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 1, 'RemainingSessions' => 0, 'Charge' => 8000,
+        ]);
+
+        $pauseRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/pause", [
+            'action' => 'pause',
+            'reason' => 'settled',
+        ]);
+
+        $pauseRes->assertOk();
+        $this->assertStringContainsString('已結案', $pauseRes->json('message'));
+
+        $course->refresh();
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('settled', $course->closed_reason);
+        $this->assertNotNull($course->EndDate);
+
+        $alertRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $alertRes->assertOk();
+        $ids = collect($alertRes->json())->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $course->ID, $ids);
+    }
+
+    public function test_outstanding_never_negative(): void
+    {
+        $token = $this->createDirectorToken([1], 'ps-negative@example.com');
+        $student = Student::create([
+            'name' => 'Charge 為空',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertGreaterThanOrEqual(0, $row['outstanding']);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string

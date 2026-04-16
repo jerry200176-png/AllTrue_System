@@ -58,10 +58,14 @@
   --topbar-border: #334155;
 }
 
-html, body {
+html {
   overflow-x: hidden;
   max-width: 100vw;
   -webkit-overflow-scrolling: touch;
+}
+body {
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 html {
   overflow-y: scroll;
@@ -441,6 +445,8 @@ body {
     box-shadow: 0 -2px 12px rgba(0,0,0,0.18);
     justify-content: space-around;
     align-items: stretch;
+    will-change: transform;
+    transform: translateZ(0);
   }
   .mob-tab {
     flex: 1;

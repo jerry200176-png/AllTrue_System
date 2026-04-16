@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Student;
+use App\Models\StudentLineBinding;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -98,9 +99,12 @@ class LineWebhookController extends Controller
 
     private function handleFollow(string $lineUserId, object $campus): void
     {
-        $students = Student::where('LineID', $lineUserId)
-            ->where('CampusID', $campus->id)
-            ->get();
+        $studentIds = StudentLineBinding::where('line_user_id', $lineUserId)
+            ->where('campus_id', $campus->id)
+            ->pluck('student_id');
+        $students = $studentIds->isNotEmpty()
+            ? Student::whereIn('id', $studentIds)->get()
+            : collect();
 
         if ($students->isNotEmpty()) {
             $names = $students->pluck('name')->implode('、');
@@ -160,7 +164,7 @@ class LineWebhookController extends Controller
 
     private function handleBindingByNameOnly(string $lineUserId, string $name, ?string $replyToken, object $campus): void
     {
-        $candidates = Student::where('name', $name)
+        $candidates = Student::whereRaw('TRIM(name) = ?', [$name])
             ->where('CampusID', $campus->id)
             ->get();
 
@@ -171,12 +175,12 @@ class LineWebhookController extends Controller
 
         if ($candidates->count() === 1) {
             $student = $candidates->first();
-            if ($student->LineID === $lineUserId) {
+            if ($this->isAlreadyBound($student->id, $lineUserId)) {
                 $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
                 return;
             }
             $this->bindStudent($student, $lineUserId);
-            $boundCount = Student::where('LineID', $lineUserId)->where('CampusID', $campus->id)->count();
+            $boundCount = $this->boundCount($lineUserId, $campus->id);
             $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
             $this->replyFlexMessage(
                 $replyToken,
@@ -208,13 +212,13 @@ class LineWebhookController extends Controller
             return;
         }
 
-        if ($student->LineID === $lineUserId) {
+        if ($this->isAlreadyBound($student->id, $lineUserId)) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
             return;
         }
 
         $this->bindStudent($student, $lineUserId);
-        $boundCount = Student::where('LineID', $lineUserId)->where('CampusID', $campus->id)->count();
+        $boundCount = $this->boundCount($lineUserId, $campus->id);
         $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
         $this->replyFlexMessage(
             $replyToken,
@@ -233,8 +237,7 @@ class LineWebhookController extends Controller
             return;
         }
 
-        // Scope to this campus
-        $candidates = Student::where('name', $name)
+        $candidates = Student::whereRaw('TRIM(name) = ?', [$name])
             ->where('CampusID', $campus->id)
             ->get();
 
@@ -251,13 +254,13 @@ class LineWebhookController extends Controller
             return;
         }
 
-        if ($student->LineID === $lineUserId) {
+        if ($this->isAlreadyBound($student->id, $lineUserId)) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
             return;
         }
 
         $this->bindStudent($student, $lineUserId);
-        $boundCount = Student::where('LineID', $lineUserId)->where('CampusID', $campus->id)->count();
+        $boundCount = $this->boundCount($lineUserId, $campus->id);
         $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
         $this->replyFlexMessage(
             $replyToken,
@@ -287,13 +290,13 @@ class LineWebhookController extends Controller
             return;
         }
 
-        if ($student->LineID === $lineUserId) {
+        if ($this->isAlreadyBound($student->id, $lineUserId)) {
             $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
             return;
         }
 
         $this->bindStudent($student, $lineUserId);
-        $boundCount = Student::where('LineID', $lineUserId)->where('CampusID', $campus->id)->count();
+        $boundCount = $this->boundCount($lineUserId, $campus->id);
         $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
         $this->replyFlexMessage(
             $replyToken,
@@ -306,7 +309,28 @@ class LineWebhookController extends Controller
 
     private function bindStudent(Student $student, string $lineUserId): void
     {
+        StudentLineBinding::insertOrIgnore([
+            'student_id'   => $student->id,
+            'line_user_id' => $lineUserId,
+            'campus_id'    => $student->CampusID,
+            'bound_at'     => now(),
+        ]);
+        // Keep Student.LineID in sync for backward compatibility
         $student->update(['LineID' => $lineUserId]);
+    }
+
+    private function isAlreadyBound(int $studentId, string $lineUserId): bool
+    {
+        return StudentLineBinding::where('student_id', $studentId)
+            ->where('line_user_id', $lineUserId)
+            ->exists();
+    }
+
+    private function boundCount(string $lineUserId, int $campusId): int
+    {
+        return StudentLineBinding::where('line_user_id', $lineUserId)
+            ->where('campus_id', $campusId)
+            ->count();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -407,10 +431,7 @@ class LineWebhookController extends Controller
             'webhook_url'            => $webhookUrl,
             'liff_url'               => $liffId ? "https://liff.line.me/{$liffId}" : null,
             'portal_url'             => $this->getPortalUrl($campus),
-            'bound_count'            => Student::where('CampusID', $campus->id)
-                                            ->whereNotNull('LineID')
-                                            ->where('LineID', '!=', '')
-                                            ->count(),
+            'bound_count'            => StudentLineBinding::where('campus_id', $campus->id)->count(),
             'has_channel_token'      => !empty($campus->messaging_channel_token),
             'has_channel_secret'     => !empty($campus->messaging_channel_secret),
             'liff_id_value'          => $liffId,

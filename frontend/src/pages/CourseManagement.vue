@@ -102,7 +102,10 @@
               <span class="cell-student">{{ group.student_name }}</span>
               <span v-if="groupHasPausedCourse(group)" class="student-group-paused-badge">含暫停課程</span>
             </span>
-            <span class="student-group-meta">{{ group.courses.length }} 筆課程</span>
+            <span class="student-group-meta">
+              <span>{{ activeCourses(group).length }} 筆進行中</span>
+              <span v-if="historyCourses(group).length" class="student-group-history-count">{{ historyCourses(group).length }} 筆歷史</span>
+            </span>
             <button
               class="focus-btn"
               :class="{ active: focusedStudentKey === group.key }"
@@ -129,7 +132,18 @@
                 </tr>
               </thead>
               <tbody>
-                <template v-for="c in group.courses" :key="c.id">
+                <template v-if="activeCourses(group).length === 0">
+                  <tr>
+                    <td colspan="6" class="empty-active-courses">
+                      <div class="empty-active-courses__inner">
+                        <span class="material-symbols-outlined empty-active-courses__icon" aria-hidden="true">school</span>
+                        <span class="empty-active-courses__text">目前沒有進行中的課程</span>
+                        <span v-if="historyCourses(group).length" class="empty-active-courses__hint">下方有 {{ historyCourses(group).length }} 筆歷史課程</span>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+                <template v-for="c in activeCourses(group)" :key="c.id">
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
                       <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-course-callout" role="status">
@@ -142,13 +156,16 @@
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">已暫停</span>
-                        <span v-else-if="effectiveClosedReason(c) === 'settled'" class="tag tag-settled">已結算</span>
-                        <span v-else-if="effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已完課</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
                         <span class="price-sep">｜</span>
-                        <span>總費用 ${{ totalPrice(c) }}</span>
+                        <template v-if="isMonthlyMode(c)">
+                          <span>已上堂費用 ${{ monthlyAttendedFee(c) }}</span>
+                        </template>
+                        <template v-else>
+                          <span>總費用 ${{ totalPrice(c) }}</span>
+                        </template>
                       </div>
                       <div v-if="courseMemo(c)" class="memo-line">備註：{{ courseMemo(c) }}</div>
                     </td>
@@ -182,7 +199,7 @@
                       <div v-if="c.last_paid_at" class="paid-date-hint">{{ c.last_paid_at }}</div>
                     </td>
                     <td :class="{ 'cell-remaining': true, 'low': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }">
-                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}</template>
+                      <template v-if="isSessionMode(c)">{{ displayRemainingSessions(c) ?? '—' }}<span v-if="c.PackageID" class="tag-package-hint">（方案共用）</span></template>
                       <template v-else>已上 {{ getCompletedSessionCount(c) }} 堂</template>
                     </td>
                     <td class="cell-actions">
@@ -230,7 +247,10 @@
                       <div class="detail-panel">
                         <div class="detail-meta">
                           <span class="detail-item"><span class="detail-label">每堂</span> ${{ sessionPrice(c) }}</span>
-                          <span class="detail-item"><span class="detail-label">總費用</span> <strong>${{ totalPrice(c) }}</strong></span>
+                          <span class="detail-item">
+                            <span class="detail-label">{{ isMonthlyMode(c) ? '已上堂費用' : '總費用' }}</span>
+                            <strong>${{ isMonthlyMode(c) ? monthlyAttendedFee(c) : totalPrice(c) }}</strong>
+                          </span>
                           <span class="detail-item" v-if="c.branch_name || c.room_name"><span class="detail-label">地點</span> {{ [c.branch_name, c.room_name].filter(Boolean).join(' — ') }}</span>
                           <span class="detail-item"><span class="detail-label">繳費方式</span>
                             <template v-if="c.payment_type === 'session'">堂數制</template>
@@ -264,6 +284,67 @@
                 </template>
               </tbody>
             </table>
+            <!-- History courses collapsible section -->
+            <div v-if="historyCourses(group).length" class="history-section">
+              <button class="history-section__toggle" @click="toggleHistoryGroup(group.key)">
+                <span class="material-symbols-outlined history-section__icon" aria-hidden="true">inventory_2</span>
+                <span class="history-section__label">歷史課程</span>
+                <span class="history-section__count">{{ historyCourses(group).length }} 筆</span>
+                <span class="history-section__chevron">{{ expandedHistoryGroups.has(group.key) ? '▲' : '▼' }}</span>
+              </button>
+              <div v-if="expandedHistoryGroups.has(group.key)" class="history-section__body">
+                <div v-for="hc in historyCourses(group)" :key="hc.id" class="history-course-card">
+                  <div class="history-course-card__header">
+                    <span class="tag subject-tag history-course-card__subject">{{ getSubjectLabel(hc.subject) }}</span>
+                    <span class="status-tag" :class="hc.class_type">{{ classTypeLabel(hc.class_type) }}</span>
+                    <span v-if="hc.PackageID" class="tag tag-package" :title="hc.PackageName || '多科方案'">方案</span>
+                    <span v-if="effectiveClosedReason(hc) === 'settled'" class="tag tag-history tag-history--settled">已結算</span>
+                    <span v-else class="tag tag-history tag-history--completed">已完課</span>
+                  </div>
+                  <div class="history-course-card__details">
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（每堂 ${{ sessionPrice(hc) }}）</span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> 已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</span>
+                    <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
+                  </div>
+                  <div class="history-course-card__actions">
+                    <button class="small ghost btn-toggle" @click="toggleDates(hc)">
+                      {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
+                    </button>
+                    <div class="action-menu-wrapper">
+                      <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="更多操作">操作 ▾</button>
+                      <div v-if="activeActionMenu === hc.id" class="action-dropdown" @click.stop>
+                        <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()">編輯</button>
+                        <button class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(hc); closeActionMenu()">恢復課程</button>
+                        <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()">換師複製</button>
+                        <hr class="action-dropdown-divider" />
+                        <button class="action-dropdown-item action-dropdown-danger" @click="deleteCourse(hc); closeActionMenu()">刪除課程</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="expandedDates.has(hc.id)" class="history-course-card__dates">
+                    <div class="detail-panel">
+                      <div class="dates-panel">
+                        <div class="dates-panel-heading">
+                          <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(hc) }} / 購買 {{ getPurchasedSessions(hc) }} 堂<template v-if="cancelledSessionCount(hc) > 0">，{{ cancelledSessionCount(hc) }} 堂已取消</template>）</strong>
+                        </div>
+                        <div v-if="allSessionUnits(hc).length > 0" class="dates-chip-grid">
+                          <span
+                            v-for="u in allSessionUnits(hc)"
+                            :key="sessionRowKey(u)"
+                            :class="['date-chip', getSessionStateClass(hc, (u.session_date || '').slice(0,10), u.id)]"
+                            :title="getSessionTooltip(hc, (u.session_date || '').slice(0,10), u.id)"
+                          >
+                            <template v-if="getSessionNumber(hc, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(hc, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(hc, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(hc, (u.session_date || '').slice(0,10), u.id) }}</span></template>
+                          </span>
+                        </div>
+                        <span v-else class="hint">無排課資料</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -1686,6 +1767,9 @@ const formatDayTimeSlots = (course) => formatDayTimeSlotLines(course).join('、'
 // 與學生管理共用單一費用邏輯（Single Source of Truth）
 const sessionPrice = (c) => getPerSessionFee(c);
 const totalPrice = (c) => getCourseTotalFee(c);
+// 月結制：已上堂費用 = 實際已上堂數 × 每堂費用（月結無預購堂數，用 completed count）
+const isMonthlyMode = (c) => (c?.payment_type || 'session') !== 'session';
+const monthlyAttendedFee = (c) => Math.round(getPerSessionFee(c) * getCompletedSessionCount(c));
 
 // 備註開關（預設關閉，截圖給家長時保持乾淨）
 const showSessionNotes = ref(localStorage.getItem('cm_show_notes') === '1');
@@ -1745,6 +1829,20 @@ const toggleStudentGroup = (groupKey) => {
 
 const groupHasPausedCourse = (group) =>
   (group?.courses || []).some((c) => c.status === 'inactive' && !effectiveClosedReason(c));
+
+const isHistoryCourse = (c) => {
+  const reason = effectiveClosedReason(c);
+  return reason === 'settled' || reason === 'completed';
+};
+const activeCourses = (group) => (group?.courses || []).filter(c => !isHistoryCourse(c));
+const historyCourses = (group) => (group?.courses || []).filter(c => isHistoryCourse(c));
+const expandedHistoryGroups = ref(new Set());
+const toggleHistoryGroup = (key) => {
+  const s = new Set(expandedHistoryGroups.value);
+  if (s.has(key)) s.delete(key);
+  else s.add(key);
+  expandedHistoryGroups.value = s;
+};
 
 const expandAllGroups = () => {
   resetExpandedStudentGroups(groupedCourses.value);
@@ -2221,7 +2319,7 @@ const submitEdit = async () => {
           editScheduleBaseline.value = null;
           let successMsg = '課程已更新。';
           if (scheduleChanged && scheduleAutoRebuildOk) {
-            const u = Number(sync._auto_rebuild_updated ?? 0);
+            const u = Number(sync._auto_rebuild_updated ?? 0) + Number(sync.updated_future_sessions ?? 0);
             if (u > 0) {
               successMsg += ` 已依新固定排課同步 ${u} 筆未上堂次（已點名／已核准堂次維持不變）。`;
             } else {
@@ -2256,8 +2354,8 @@ const submitEdit = async () => {
             successMsg += ' 本次未更新開課日，故未重排堂次。';
           }
           showEditModal.value = false;
+          await loadCourses();
           alert(successMsg);
-          loadCourses();
           return;
         }
         const err = await res.json().catch(() => ({}));
@@ -2283,8 +2381,8 @@ const submitEdit = async () => {
   }
   editScheduleBaseline.value = null;
   showEditModal.value = false;
+  await loadCourses();
   alert('課程已更新。');
-  loadCourses();
 };
 
 const deleteCourse = async (c) => {
@@ -3822,17 +3920,6 @@ button.danger:disabled {
   letter-spacing: 0.02em;
 }
 
-.course-settled td {
-  background: #f9fafb;
-  color: #9ca3af;
-  box-shadow: inset 4px 0 0 #d1d5db;
-}
-.course-settled:hover td {
-  background: #f3f4f6;
-}
-.course-settled .cell-remaining.low {
-  color: #9ca3af;
-}
 .tag-package {
   background: #ede9fe;
   color: #6d28d9;
@@ -3840,15 +3927,173 @@ button.danger:disabled {
   font-size: 0.65rem;
   cursor: help;
 }
-.tag-settled {
-  background: #f3f4f6;
-  color: #6b7280;
-  border: 1px solid #d1d5db;
+.tag-package-hint {
+  font-size: 0.7em;
+  color: #6d28d9;
+  font-weight: 400;
+}
+
+/* ── Empty active courses state ── */
+.empty-active-courses {
+  padding: 28px 16px !important;
+  text-align: center;
+  border-bottom: none !important;
+}
+.empty-active-courses__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.empty-active-courses__icon {
+  font-size: 32px;
+  color: #cbd5e1;
+}
+.empty-active-courses__text {
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.empty-active-courses__hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ── Student group header: history count ── */
+.student-group-history-count {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+.student-group-history-count::before {
+  content: '·';
+  margin-right: 6px;
+}
+
+/* ── History section ── */
+.history-section {
+  border-top: 1px dashed #e2e8f0;
+  background: #fafbfc;
+}
+.history-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.history-section__toggle:hover {
+  background: #f1f5f9;
+}
+.history-section__icon {
+  font-size: 18px;
+  color: #94a3b8;
+}
+.history-section__count {
+  font-weight: 400;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.history-section__chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.history-section__body {
+  padding: 4px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── History course card ── */
+.history-course-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: box-shadow 0.15s;
+  position: relative;
+  border-left: 3px solid #d1d5db;
+}
+.history-course-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.history-course-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.history-course-card__subject {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+.tag-history {
   border-radius: 6px;
   font-size: 11px;
-  padding: 2px 7px;
-  font-weight: 600;
+  padding: 2px 8px;
+  font-weight: 700;
   letter-spacing: 0.02em;
+}
+.tag-history--settled {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+.tag-history--completed {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+.history-course-card__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+.history-course-card__detail-label {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-right: 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.history-course-card__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.history-course-card__dates {
+  margin-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+}
+@media (max-width: 640px) {
+  .history-section__body {
+    padding: 4px 8px 12px;
+  }
+  .history-course-card {
+    padding: 10px 12px;
+  }
+  .history-course-card__details {
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 .tag-paid {
   background: #e8f5e9;
@@ -4008,5 +4253,63 @@ button.danger:disabled {
 .action-dropdown-renew {
   color: #e65100 !important;
   font-weight: 600 !important;
+}
+
+/* ── Dark mode: history section ── */
+[data-theme="dark"] .history-section {
+  border-top-color: #334155;
+  background: #0f172a;
+}
+[data-theme="dark"] .history-section__toggle {
+  color: #94a3b8;
+}
+[data-theme="dark"] .history-section__toggle:hover {
+  background: #1e293b;
+}
+[data-theme="dark"] .history-course-card {
+  background: #1e293b;
+  border-color: #334155;
+  border-left-color: #475569;
+}
+[data-theme="dark"] .history-course-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+[data-theme="dark"] .history-course-card__subject {
+  background: #334155 !important;
+  color: #e2e8f0 !important;
+  border-color: #475569 !important;
+}
+[data-theme="dark"] .tag-history--settled {
+  background: #052e16;
+  color: #4ade80;
+  border-color: #166534;
+}
+[data-theme="dark"] .tag-history--completed {
+  background: #172554;
+  color: #60a5fa;
+  border-color: #1e40af;
+}
+[data-theme="dark"] .history-course-card__details {
+  color: #94a3b8;
+}
+[data-theme="dark"] .history-course-card__detail-label {
+  color: #64748b;
+}
+[data-theme="dark"] .history-course-card__dates {
+  border-top-color: #334155;
+}
+[data-theme="dark"] .empty-active-courses__icon {
+  color: #475569;
+}
+[data-theme="dark"] .empty-active-courses__text,
+[data-theme="dark"] .empty-active-courses__hint {
+  color: #64748b;
+}
+
+/* ── Disabled button UX: cursor + tooltip affordance ── */
+.btn-add-session.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  position: relative;
 }
 </style>

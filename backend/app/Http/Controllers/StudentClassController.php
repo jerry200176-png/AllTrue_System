@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\UserCampus;
+use App\Models\CoursePackage;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
@@ -142,6 +143,12 @@ class StudentClassController extends Controller
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
 
+        $packageIds = $classes->getCollection()
+            ->pluck('PackageID')->filter(fn ($id) => $id > 0)->unique()->values()->all();
+        $packageMap = !empty($packageIds)
+            ? CoursePackage::whereIn('id', $packageIds)->get()->keyBy('id')
+            : collect();
+
         // Upcoming scheduled sessions only (for schedule_drift vs contract). Do not
         // merge completed/attended history — one-off substitute weekdays would false-positive.
         // Sessions with IsContractException=1 are legitimate add-on / makeup sessions and are
@@ -196,7 +203,7 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
@@ -355,6 +362,17 @@ class StudentClassController extends Controller
             }
             $class->sessions_used = (int) ($class->UsedSessions ?? 0);
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
+
+            if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
+                $pkg = $packageMap[$class->PackageID];
+                $class->remaining_sessions        = max(0, (int) $pkg->remaining_sessions);
+                $class->RemainingSessions          = max(0, (int) $pkg->remaining_sessions);
+                $class->sessions_used              = (int) $pkg->used_sessions;
+                $class->UsedSessions               = (int) $pkg->used_sessions;
+                $class->sessions_purchased         = (int) $pkg->total_sessions;
+                $class->package_remaining_sessions = (int) $pkg->remaining_sessions;
+            }
+
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
             $invoicePaidAt = $paidAtMap[(int) $class->ID] ?? null;
             $hasInvoicePayment = $invoicePaidAt !== null;
@@ -986,12 +1004,15 @@ class StudentClassController extends Controller
                     $slots,
                     $durationMinutes
                 );
-                $this->reconcileWeekTimeFieldsFromSessions($studentClass);
+                if ($updatedCount > 0) {
+                    $this->reconcileWeekTimeFieldsFromSessions($studentClass);
+                }
                 return response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
                         'reason'                  => 'force_partial_rebuild',
                         'updated_future_sessions' => $updatedCount,
+                        'reconcile_skipped'       => $updatedCount === 0,
                     ],
                 ]));
             }
@@ -2885,15 +2906,26 @@ class StudentClassController extends Controller
         })->values();
 
         $needsRemap = false;
+        $sessionWeekdays = [];
         foreach ($unlocked as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
             if (!$date) {
                 continue;
             }
             $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+            $sessionWeekdays[$isoDow] = true;
             if (!isset($slotsByWeekday[$isoDow])) {
                 $needsRemap = true;
                 break;
+            }
+        }
+
+        if (!$needsRemap && $unlocked->isNotEmpty()) {
+            foreach (array_keys($slotsByWeekday) as $contractDay) {
+                if (!isset($sessionWeekdays[$contractDay])) {
+                    $needsRemap = true;
+                    break;
+                }
             }
         }
 
@@ -3407,19 +3439,28 @@ class StudentClassController extends Controller
         try {
             if ($action === 'pause') {
                 $sc->Stop = 1;
-                $sc->closed_reason = $reason === 'completed' ? 'completed' : null;
+                if ($reason === 'completed') {
+                    $sc->closed_reason = 'completed';
+                } elseif ($reason === 'settled') {
+                    $sc->closed_reason = 'settled';
+                    $sc->EndDate = $today;
+                } else {
+                    $sc->closed_reason = null;
+                }
                 $sc->save();
 
+                $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
                 $cancelled = ClassSession::where('StudentClassID', $sc->ID)
                     ->where('SessionDate', '>=', $today)
                     ->where('Status', 'scheduled')
                     ->update([
                         'Status' => 'cancelled',
-                        'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' [暫停取消]')"),
+                        'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
                         'updated_at' => now(),
                     ]);
 
-                $label = $reason === 'completed' ? '已完課' : '已暫停';
+                $labels = ['completed' => '已完課', 'settled' => '已結案'];
+                $label = $labels[$reason] ?? '已暫停';
                 DB::commit();
                 return response()->json([
                     'message' => "課程{$label}，已取消 {$cancelled} 堂未來排課。",
