@@ -17,6 +17,8 @@ class Invoice extends Model
         'PaidAmount',
         'Status',
         'Note',
+        'reconciled_at',
+        'reconciled_by',
     ];
 
     public function student()

@@ -229,10 +229,12 @@
                     <span class="s-hours">{{ s.hours }}h</span>
                     <span class="s-rate hide-mobile rate-formula">
                       <span class="rate-base">{{ s.base_rate }}</span>
-                      <span class="rate-op">+</span>
-                      <span class="rate-bonus">{{ s.headcount_bonus }}</span>
-                      <span class="rate-op">=</span>
-                      <span class="rate-eff">{{ s.effective_rate }}</span>
+                      <template v-if="s.headcount_bonus > 0">
+                        <span class="rate-op">+</span>
+                        <span class="rate-bonus">{{ s.headcount_bonus }}</span>
+                        <span class="rate-op">=</span>
+                        <span class="rate-eff">{{ s.effective_rate }}</span>
+                      </template>
                     </span>
                     <span class="s-cb hide-mobile" :class="{ 'has-cb': s.concurrency_bonus_amount > 0 }">
                       {{ s.concurrency_bonus_amount > 0 ? '+' + s.concurrency_bonus_amount : '—' }}
@@ -341,27 +343,12 @@
             </div>
           </fieldset>
 
-          <fieldset class="rules-fieldset" :disabled="isRulesReadonly">
-            <legend>人頭加成</legend>
+          <fieldset class="rules-fieldset" disabled>
+            <legend>人數加成（已停用）</legend>
             <p class="rules-hint">
               <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:-1px">info</span>
-              一對二、一對三依人數累加；輔導課不加
+              人數加成已改為依實際同時段學生數自動計算（併堂加給），此欄位不影響薪資
             </p>
-            <div class="rules-field" style="max-width:240px">
-              <label for="headcount-bonus">每多一位學生加</label>
-              <div class="input-with-unit">
-                <input
-                  id="headcount-bonus"
-                  type="number"
-                  min="0" max="500" step="1"
-                  v-model.number="ruleForm.headcount_bonus"
-                  :class="{ 'has-error': ruleErrors.headcount_bonus }"
-                  :aria-describedby="ruleErrors.headcount_bonus ? 'err-hb' : undefined"
-                />
-                <span class="unit">元/h</span>
-              </div>
-              <span v-if="ruleErrors.headcount_bonus" id="err-hb" class="field-error">{{ ruleErrors.headcount_bonus }}</span>
-            </div>
           </fieldset>
 
           <div class="modal-actions">
@@ -441,20 +428,12 @@
             </div>
           </fieldset>
 
-          <fieldset class="rules-fieldset">
-            <legend>人頭加成</legend>
-            <div class="rules-field" style="max-width:240px">
-              <label for="tr-headcount-bonus">每多一位學生加</label>
-              <div class="input-with-unit">
-                <input
-                  id="tr-headcount-bonus"
-                  type="number"
-                  min="0" max="500" step="1"
-                  v-model.number="trForm.headcount_bonus"
-                />
-                <span class="unit">元/h</span>
-              </div>
-            </div>
+          <fieldset class="rules-fieldset" disabled>
+            <legend>人數加成（已停用）</legend>
+            <p class="rules-hint">
+              <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:-1px">info</span>
+              人數加成已改為依實際同時段學生數自動計算（併堂加給），此欄位不影響薪資
+            </p>
           </fieldset>
 
           <div class="modal-actions">
@@ -677,9 +656,6 @@ function validateRules() {
     if (v == null || v === '') errs[f.key] = '必填';
     else if (v < 100 || v > 2000) errs[f.key] = '100–2000';
   }
-  const hb = ruleForm.value.headcount_bonus;
-  if (hb == null || hb === '') errs.headcount_bonus = '必填';
-  else if (hb < 0 || hb > 500) errs.headcount_bonus = '0–500';
   ruleErrors.value = errs;
   return Object.keys(errs).length === 0;
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -100,6 +101,48 @@ class StudentController extends Controller
         return response()->json($this->transformStudent($student));
     }
 
+    /**
+     * GET /api/v1/students/{student}/active-courses
+     * Return active (Stop=0) StudentClass records for a student,
+     * used by frontend to warn before creating duplicate courses.
+     */
+    public function activeCourses(Student $student)
+    {
+        $role = request()->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : request()->attributes->get('auth_campus_ids', []);
+
+        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $subjectNameCol = Schema::hasColumn('Subject', 'Subject_Name') ? 'Subject_Name' : 'name';
+
+        $activeCourses = StudentClass::where('StudentID', $student->id)
+            ->where('Stop', 0)
+            ->get();
+
+        $subjectIds = $activeCourses->pluck('SubjectID')->unique()->filter()->values()->all();
+        $subjectMap = !empty($subjectIds)
+            ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck($subjectNameCol, 'id')
+            : collect();
+
+        $courses = $activeCourses->map(function ($sc) use ($subjectMap) {
+            return [
+                'id' => $sc->ID,
+                'subject_id' => (int) $sc->SubjectID,
+                'subject_name' => $subjectMap[$sc->SubjectID] ?? '',
+                'teacher_id' => (int) $sc->TeacherID,
+                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                'used_sessions' => (int) ($sc->UsedSessions ?? 0),
+                'session_count' => (int) ($sc->SessionCount ?? 0),
+                'class_type' => $sc->ClassType ?? 'one_on_one',
+                'payment_type' => $sc->settlement_day ? 'monthly' : 'session',
+            ];
+        });
+
+        return response()->json(['courses' => $courses]);
+    }
+
     public function store(Request $request)
     {
         $input = $request->all();
@@ -163,6 +206,12 @@ class StudentController extends Controller
         }
 
         $student->save();
+
+        if (isset($input['grade']) || isset($input['GradeID'])) {
+            \App\Models\StudentClass::where('StudentID', $student->id)
+                ->where('Stop', 0)
+                ->update(['GradeID' => $student->ClassID]);
+        }
 
         return response()->json($this->transformStudent($student));
     }

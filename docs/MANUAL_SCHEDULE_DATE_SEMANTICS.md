@@ -51,7 +51,30 @@
 
 ---
 
-## 5. 變更紀律
+## 5. 開課日欄位（`course_start_date`）
+
+2026-04-16 新增。在 `UniversalClassScheduler.vue`（`mode="create"`）中新增「開課日」date picker，預設值為今天。
+
+### 前端行為
+
+- **自動排課起算日**：`futureSessionOccurrences` 掃描起始日改為 `max(今天, 開課日)`，確保開課日前不會自動產生預排堂次。
+- **月曆跳轉**：設定開課日後，月曆自動切換至開課日所在月份。
+- **早於開課日警示**：手動點選未來日期且 `ymd < course_start_date` 時，前端彈出確認框提示「此日早於開課日，將視為補登」。
+
+### 後端行為
+
+- `POST /api/v1/class-sessions/batch` 接受 optional `course_start_date`（`nullable|date`）。
+- `EnrollmentService::store` 對 `kind='future'` 的 session_plan 資料驗證 `session_date >= course_start_date`；不符回 422。
+- `course_start_date` 缺失時行為與現行完全一致（向下相容）。
+
+### 與 `isManualDateConfirmed` 的關係
+
+- 開課日欄位**不改變** `isManualDateConfirmed` 的語意。過去日仍為「補登已上」，未來日仍為「預排」。
+- 開課日僅影響**自動排課起算點**與**防禦性驗證**，不影響手動日期的 confirmed/future 分類邏輯。
+
+---
+
+## 6. 變更紀律
 
 - 調整上述語意＝**變更產品契約**，須：更新本檔、更新／新增測試、並在 `docs/CHANGELOG.md` 或 release note 說明。
 - AI Agent：**禁止**以「避免誤扣堂」等理由單方面改回「過去＝預排」；若遇堂數爭議，應以營運流程或**新選項**處理，而非覆寫本規則。

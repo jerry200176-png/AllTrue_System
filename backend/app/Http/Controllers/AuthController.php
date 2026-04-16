@@ -169,9 +169,7 @@ class AuthController extends Controller
             default    => 'T',
         };
 
-        $existingSameRole = User::where('LoginName', $loginName)
-            ->where('type', $type)
-            ->first();
+        $existingSameRole = User::where('LoginName', $loginName)->first();
         if ($existingSameRole) {
             return response()->json([
                 'message' => '此帳號已存在，請直接登入',

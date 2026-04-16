@@ -33,10 +33,7 @@ class DirectorAccountController extends Controller
             return response()->json(['message' => '帳號不可空白'], 422);
         }
 
-        $accountInUseByDirectorSide = User::where('LoginName', $loginName)
-            ->whereIn('type', ['D', 'U', 'S', 'A'])
-            ->exists();
-        if ($accountInUseByDirectorSide) {
+        if (User::where('LoginName', $loginName)->exists()) {
             return response()->json(['message' => '此帳號已被使用'], 422);
         }
 
@@ -275,6 +272,52 @@ class DirectorAccountController extends Controller
         });
 
         return response()->json(['message' => '主任帳號已刪除', 'id' => $id]);
+    }
+
+    /**
+     * PUT /api/v1/directors/{id}/campuses — super_admin only: update campus assignments.
+     */
+    public function updateCampuses(Request $request, int $id)
+    {
+        if ($request->attributes->get('auth_role') !== 'super_admin') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'campus_ids'   => 'required|array|min:1',
+            'campus_ids.*' => 'integer',
+        ]);
+
+        $user = User::find($id);
+        if (!$user || (string) $user->type !== 'D') {
+            return response()->json(['message' => '找不到此主任帳號'], 404);
+        }
+
+        $campusIds = array_values(array_unique(array_map('intval', $data['campus_ids'])));
+        $validIds = Campus::whereIn('id', $campusIds)->pluck('id')->all();
+        if (empty($validIds)) {
+            return response()->json(['message' => '至少需指定一間有效分校'], 422);
+        }
+
+        DB::transaction(function () use ($user, $validIds) {
+            UserCampus::where('UserID', $user->id)->delete();
+            foreach ($validIds as $cid) {
+                UserCampus::create([
+                    'UserID'   => $user->id,
+                    'CampusID' => $cid,
+                    'Admin'    => 0,
+                    'Approved' => true,
+                ]);
+            }
+        });
+
+        $campusNames = Campus::whereIn('id', $validIds)->pluck('name')->all();
+
+        return response()->json([
+            'message'      => '分校已更新',
+            'campus_ids'   => $validIds,
+            'campus_names' => $campusNames,
+        ]);
     }
 
     private function generatePassword(): string

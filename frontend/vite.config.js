@@ -16,7 +16,19 @@ export default defineConfig({
   define: {
     __APP_BUILD_TIME__: JSON.stringify(buildTimeIso),
   },
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    {
+      name: 'emit-version-json',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ t: buildTimeIso }),
+        });
+      },
+    },
+  ],
   build: {
     outDir: 'dist_build',
     rollupOptions: {

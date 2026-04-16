@@ -1209,6 +1209,38 @@ const scheduleStatusLabel = (status) => {
   return '未填';
 };
 
+const SESSION_STATUS_PRIORITY = {
+  attended: 0, completed: 0, late: 0, absent: 0,
+  scheduled: 1,
+  leave: 2, leave_adjusted: 2, excused: 2,
+  cancelled: 3,
+};
+
+function pickBestSession(candidates) {
+  if (!candidates.length) return null;
+  if (candidates.length === 1) return candidates[0];
+  return candidates.slice().sort((a, b) => {
+    const sa = String(a?.status || a?.Status || '').toLowerCase();
+    const sb = String(b?.status || b?.Status || '').toLowerCase();
+    const pa = SESSION_STATUS_PRIORITY[sa] ?? 2;
+    const pb = SESSION_STATUS_PRIORITY[sb] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
+  })[0];
+}
+
+function deduplicateSessionsBySlot(sessions) {
+  const groups = {};
+  for (const s of sessions) {
+    const date = String(s?.session_date || s?.SessionDate || '').slice(0, 10);
+    const time = normalizeTime(s?.start_time || s?.StartTime) || '';
+    const key = `${date}|${time}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(s);
+  }
+  return Object.values(groups).map((g) => pickBestSession(g));
+}
+
 const recordLookup = computed(() => {
   const map = new Map();
   for (const record of records.value || []) {
@@ -1316,7 +1348,8 @@ const buildEvents = (targetDates) => {
     if (sc.Stop == 1) continue;
     const classId = Number(sc.id || sc.ID || 0);
     if (!classId) continue;
-    const rawSessions = sessionDatesByClassId.value[String(classId)] || [];
+    const allSessions = sessionDatesByClassId.value[String(classId)] || [];
+    const rawSessions = deduplicateSessionsBySlot(allSessions);
     for (const rawSession of rawSessions) {
       const dateStr = String(rawSession?.session_date || rawSession?.SessionDate || rawSession).slice(0, 10);
       if (!targetSet.has(dateStr)) continue;

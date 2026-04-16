@@ -29,7 +29,7 @@ if (!fs.existsSync(toDir)) {
 }
 
 // Files in dist_build root (from public/) that should always be deployed
-const ROOT_ASSETS = ['manifest.json', 'logo.png', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
+const ROOT_ASSETS = ['manifest.json', 'logo.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'version.json'];
 
 function copyRootAssets() {
   for (const f of ROOT_ASSETS) {

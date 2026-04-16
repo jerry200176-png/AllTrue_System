@@ -289,6 +289,13 @@
                 <input v-model="form.paid_at" type="date" />
                 <p v-if="form.paid_at" class="field-note" style="color:#2e7d32;">已填寫繳費日期，儲存後將自動標示為已繳費</p>
               </div>
+
+              <div class="form-group">
+                <label>開課日 *</label>
+                <input v-model="form.course_start_date" type="date" />
+                <p class="field-note">系統自動排課將從此日起算，不會在此日之前建立預排堂次。</p>
+                <p v-if="courseStartDateFarWarning" class="field-note warning-text">{{ courseStartDateFarWarning }}</p>
+              </div>
             </div>
           </article>
 
@@ -386,15 +393,19 @@
                   'calendar-cell',
                   {
                     muted: !cell.inMonth,
-                    confirmed: cell.status === 'manual',
+                    confirmed: cell.status === 'manual-confirmed',
+                    'manual-future': cell.status === 'manual-future',
                     future: cell.status === 'future',
+                    'course-start-marker': cell.isCourseStart,
                   },
                 ]"
                 @click="onDateClick(cell)"
               >
                 <span>{{ cell.day }}</span>
-                <small v-if="cell.status === 'manual'">手動</small>
-                <small v-else-if="cell.status === 'future'">預排</small>
+                <small v-if="cell.status === 'manual-confirmed'" class="cell-label cell-label-confirmed">補登</small>
+                <small v-else-if="cell.status === 'manual-future'" class="cell-label cell-label-scheduled">預排</small>
+                <small v-else-if="cell.status === 'future'" class="cell-label cell-label-auto">預排</small>
+                <small v-if="cell.isCourseStart" class="cell-flag">開課</small>
               </button>
             </div>
           </article>
@@ -402,13 +413,13 @@
           <article class="scheduler-card">
             <h4>日曆摘要</h4>
             <div class="summary-row">
-              <div class="summary-pill confirmed">
-                <div class="summary-label">手動選定（堂）</div>
-                <strong>{{ manualSessionCount }}</strong>
+              <div v-if="confirmedDates.length > 0" class="summary-pill confirmed">
+                <div class="summary-label">補登已上（堂）</div>
+                <strong>{{ confirmedDates.length }}</strong>
               </div>
               <div class="summary-pill future">
-                <div class="summary-label">未來預排（堂）</div>
-                <strong>{{ futureSessionOccurrences.length }}</strong>
+                <div class="summary-label">預排未上（堂）</div>
+                <strong>{{ manualScheduledDates.length + futureSessionOccurrences.length }}</strong>
               </div>
               <div class="summary-pill total">
                 <div class="summary-label">{{ plannedCountLabel }}</div>
@@ -416,13 +427,19 @@
               </div>
             </div>
 
+            <div v-if="form.course_start_date" class="course-start-info">
+              開課日：<strong>{{ form.course_start_date }}</strong>
+              <span v-if="form.course_start_date > getCurrentTodayYmd()" class="course-start-badge">尚未開課</span>
+            </div>
+
             <div class="legend-row">
-              <span class="legend-chip confirmed">🟢 手動指定日期</span>
-              <span class="legend-chip future">🔵 系統預排(未來)</span>
+              <span class="legend-chip confirmed">補登已上</span>
+              <span class="legend-chip manual-future">手動預排</span>
+              <span class="legend-chip future">系統預排</span>
             </div>
 
             <p class="hint-text">
-              手動日可自由選擇任意日期；系統只會從最後一個手動日期之後依固定上課星期自動補齊剩餘堂次。
+              開課日前不會建立預排堂次。系統從開課日起，依固定上課星期自動補齊剩餘堂次。
               <template v-if="form.payment_type === 'monthly'">月結課只會累積已使用堂次，不會扣剩餘堂數。</template>
             </p>
 
@@ -432,13 +449,18 @@
               </button>
             </div>
 
-            <div v-if="manualDates.length > 0" class="date-list confirmed">
-              <p>手動指定日期：</p>
-              <div>{{ manualDates.join('、') }}</div>
+            <div v-if="confirmedDates.length > 0" class="date-list confirmed">
+              <p>補登已上日期：</p>
+              <div>{{ confirmedDates.join('、') }}</div>
+            </div>
+
+            <div v-if="manualScheduledDates.length > 0" class="date-list manual-future-list">
+              <p>手動預排日期（未上）：</p>
+              <div>{{ manualScheduledDates.join('、') }}</div>
             </div>
 
             <div v-if="futureSessionOccurrences.length > 0" class="date-list future">
-              <p>系統未來預排（每列一堂）：</p>
+              <p>系統預排（每列一堂）：</p>
               <div>{{ futureSessionLines.join('、') }}</div>
             </div>
           </article>
@@ -512,7 +534,7 @@ const props = defineProps({
   mode: { type: String, default: 'create' },
 });
 
-const emit = defineEmits(['success', 'cancel']);
+const emit = defineEmits(['success', 'cancel', 'duplicate-course']);
 
 const nowAtOpen = new Date();
 
@@ -565,6 +587,7 @@ const form = reactive({
   room_id: '',
   memo: '',
   paid_at: '',
+  course_start_date: toYmd(new Date()),
 });
 
 const packageMode = ref(false);
@@ -822,6 +845,23 @@ const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
 ));
 
+const courseStartDateFarWarning = computed(() => {
+  if (!form.course_start_date) return '';
+  const startMs = new Date(`${form.course_start_date}T00:00:00`).getTime();
+  const todayMs = new Date(getCurrentTodayYmd() + 'T00:00:00').getTime();
+  const diffDays = Math.round((startMs - todayMs) / 86400000);
+  if (diffDays > 180) return `開課日距今 ${diffDays} 天（約 ${Math.round(diffDays / 30)} 個月），請確認是否正確。`;
+  return '';
+});
+
+watch(() => form.course_start_date, (val) => {
+  if (!val) return;
+  const monthDate = parseYmdToMonthDate(val);
+  if (monthDate) {
+    currentMonth.value = monthDate;
+  }
+});
+
 const manualDates = computed(() => sortDates(form.confirmed_dates || []));
 const manualDateSet = computed(() => new Set(manualDates.value));
 const confirmedDates = computed(() => manualDates.value.filter((date) => isManualDateConfirmed(date)));
@@ -839,9 +879,11 @@ const futureSessionOccurrences = computed(() => {
   if (daySet.size === 0) return [];
 
   const todayYmd = getCurrentTodayYmd();
+  const courseStart = form.course_start_date || '';
+  const effectiveToday = (courseStart > todayYmd) ? courseStart : todayYmd;
   const manual = manualDates.value;
   const lastManual = manual.length > 0 ? manual[manual.length - 1] : null;
-  const effectiveAnchor = lastManual || todayYmd;
+  const effectiveAnchor = (lastManual && lastManual >= effectiveToday) ? lastManual : effectiveToday;
   const targetMonthYm = form.payment_type === 'monthly' ? effectiveAnchor.slice(0, 7) : '';
   const selected = [];
   const seenDay = new Set(manual);
@@ -854,7 +896,7 @@ const futureSessionOccurrences = computed(() => {
     const dow = weekdayOneToSeven(candidate);
     const canUseDay = (!lastManual || ymd > lastManual)
       && daySet.has(dow)
-      && ymd >= todayYmd
+      && ymd >= effectiveToday
       && (form.payment_type !== 'monthly' || ymd.slice(0, 7) === targetMonthYm)
       && !seenDay.has(ymd);
     if (canUseDay) {
@@ -965,11 +1007,15 @@ const futureDateSet = computed(() => (
   new Set(futureSessionOccurrences.value.map((o) => o.ymd))
 ));
 
+const manualConfirmedSet = computed(() => new Set(confirmedDates.value));
+const manualFutureSet = computed(() => new Set(manualScheduledDates.value));
+
 const calendarCells = computed(() => {
   const first = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth(), 1);
   const firstWeekday = ((first.getDay() + 6) % 7); // Mon=0
   const start = new Date(first);
   start.setDate(first.getDate() - firstWeekday);
+  const courseStart = form.course_start_date || '';
 
   const cells = [];
   for (let i = 0; i < 42; i += 1) {
@@ -978,7 +1024,8 @@ const calendarCells = computed(() => {
     const ymd = toYmd(d);
 
     let status = '';
-    if (manualDateSet.value.has(ymd)) status = 'manual';
+    if (manualConfirmedSet.value.has(ymd)) status = 'manual-confirmed';
+    else if (manualFutureSet.value.has(ymd)) status = 'manual-future';
     else if (futureDateSet.value.has(ymd)) status = 'future';
 
     cells.push({
@@ -987,6 +1034,7 @@ const calendarCells = computed(() => {
       day: d.getDate(),
       inMonth: d.getMonth() === currentMonth.value.getMonth(),
       status,
+      isCourseStart: courseStart === ymd,
     });
   }
   return cells;
@@ -1188,12 +1236,18 @@ function isManualDateConfirmed(ymd) {
 function onDateClick(cell) {
   if (!cell?.ymd) return;
   const todayYmd = getCurrentTodayYmd();
-  // 過去日期不限制星期，固定星期只約束未來排課
   if (selectedDays.value.length > 0 && cell.ymd >= todayYmd) {
     const dow = weekdayOneToSeven(new Date(`${cell.ymd}T12:00:00`));
     if (!selectedDays.value.includes(dow)) {
       const names = ['', '一', '二', '三', '四', '五', '六', '日'];
       alert(`此日為週${names[dow] || dow}，不在已勾選的固定上課星期內；請只選固定排課日，或先調整「固定上課星期」。`);
+      return;
+    }
+  }
+  const courseStart = form.course_start_date || '';
+  if (courseStart && cell.ymd < courseStart && cell.ymd >= todayYmd) {
+    const removing = manualDateSet.value.has(cell.ymd);
+    if (!removing && !confirm(`此日期 (${cell.ymd}) 早於開課日 (${courseStart})，將視為補登已上課。確定要加入嗎？`)) {
       return;
     }
   }
@@ -1429,6 +1483,7 @@ async function submit() {
       room_id: form.room_id ? Number(form.room_id) : null,
       memo: form.memo || null,
       paid_at: form.paid_at || null,
+      course_start_date: form.course_start_date || null,
       mode: props.mode,
     };
 
@@ -1453,6 +1508,14 @@ async function submit() {
     alert(msg);
     emit('success', result);
   } catch (err) {
+    if (err?.isDuplicateCourse) {
+      emit('duplicate-course', {
+        conflicts: err.conflicts,
+        originalPayload: err.originalPayload,
+        message: err.message,
+      });
+      return;
+    }
     alert(err?.message || '排課失敗，請稍後再試');
   } finally {
     submitting.value = false;
@@ -1668,11 +1731,41 @@ async function submit() {
   font-weight: 700;
 }
 
+.calendar-cell.manual-future {
+  border-color: #8b5cf6;
+  background: #f3f0ff;
+  color: #5b21b6;
+  font-weight: 700;
+}
+
 .calendar-cell.future {
   border-color: #71a5ff;
   background: #ecf4ff;
   color: #1657c1;
   font-weight: 700;
+}
+
+.calendar-cell.course-start-marker {
+  box-shadow: inset 0 -3px 0 0 #f59e0b;
+}
+
+.cell-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+.cell-label-confirmed { color: #16783b; }
+.cell-label-scheduled { color: #5b21b6; }
+.cell-label-auto { color: #1657c1; }
+.cell-flag {
+  font-size: 8px;
+  font-weight: 700;
+  color: #b45309;
+  background: #fef3c7;
+  border-radius: 3px;
+  padding: 0 3px;
+  line-height: 1.3;
 }
 
 .summary-row {
@@ -1728,9 +1821,36 @@ async function submit() {
   color: #177a3c;
 }
 
+.legend-chip.manual-future {
+  background: #f3f0ff;
+  color: #5b21b6;
+}
+
 .legend-chip.future {
   background: #edf4ff;
   color: #1858bc;
+}
+
+.course-start-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+}
+.course-start-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #fef3c7;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
 }
 
 .hint-text {
@@ -1759,6 +1879,11 @@ async function submit() {
 .date-list.confirmed {
   background: #f6fcf7;
   border-color: #cae8d2;
+}
+
+.date-list.manual-future-list {
+  background: #faf8ff;
+  border-color: #ddd6fe;
 }
 
 .date-list.future {

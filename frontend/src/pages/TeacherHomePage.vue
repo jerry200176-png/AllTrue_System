@@ -52,9 +52,10 @@
             <span class="material-symbols-outlined">assignment</span>
           </div>
           <div class="th-action-body">
-            <div class="th-action-label" v-if="loadingLearning">載入中…</div>
+            <div class="th-action-label" v-if="loadingLearning && loadingOverdue">載入中…</div>
             <div class="th-action-label" v-else-if="pendingLearningCount > 0">
               待填／待修改 <strong>{{ pendingLearningCount }}</strong> 筆評量
+              <span v-if="overdueCount > 0" class="th-overdue-hint">（含過往 {{ overdueCount }} 筆）</span>
             </div>
             <div class="th-action-label" v-else>今日評量已完成</div>
             <div class="th-action-hint">前往課表與評量</div>
@@ -68,6 +69,36 @@
         <span class="material-symbols-outlined" style="font-size:16px">info</span>
         他校今日尚有 {{ otherBranchTodayCount }} 堂課，可切換分校查看
       </div>
+    </div>
+
+    <!-- A2. Overdue Learning Records Reminder -->
+    <div v-if="overdueRecords.length > 0" class="th-overdue card" data-guide="teacher-home-overdue">
+      <h3 class="th-section-title">
+        <span class="material-symbols-outlined th-section-icon th-overdue-icon">history</span>
+        補填提醒
+        <span class="th-overdue-badge">{{ overdueRecords.length }}</span>
+      </h3>
+      <div class="th-overdue-list">
+        <div
+          v-for="item in overdueRecords.slice(0, 5)"
+          :key="item.id"
+          class="th-overdue-row"
+        >
+          <div class="th-overdue-date">{{ overdueDateLabel(item.session_date) }}</div>
+          <div class="th-overdue-info">
+            <span class="th-overdue-student">{{ item.student_name || '—' }}</span>
+            <span class="th-overdue-subject">{{ item.subject_name || item.subject || '' }}</span>
+            <span class="th-branch-chip" :style="{ background: branchColor(item.branch_id) }">{{ branchShortName(item.branch_id) }}</span>
+          </div>
+          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branch_id, recordId: null, studentClassId: item.student_class_id })" title="填寫評量">
+            <span class="material-symbols-outlined">edit_note</span>
+          </button>
+        </div>
+      </div>
+      <button v-if="overdueRecords.length > 5" class="th-overdue-more" @click="goLearning">
+        查看全部 {{ overdueRecords.length }} 筆
+        <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">arrow_forward</span>
+      </button>
     </div>
 
     <!-- B. Weekly Schedule (merged across all branches) -->
@@ -213,9 +244,15 @@ async function fetchPendingAttendance() {
   }
 }
 
+// ── Overdue learning records (past 7 days, attended but missing) ──
+const loadingOverdue = ref(false);
+const overdueRecords = ref([]);
+const overdueCount = computed(() => overdueRecords.value.length);
+
 // ── Today's pending learning records ──
 const loadingLearning = ref(true);
-const pendingLearningCount = ref(0);
+const todayOnlyLearningCount = ref(0);
+const pendingLearningCount = computed(() => todayOnlyLearningCount.value + overdueCount.value);
 
 async function fetchPendingLearning() {
   loadingLearning.value = true;
@@ -241,10 +278,75 @@ async function fetchPendingLearning() {
         String(s?.session_date || '').slice(0, 10) === today &&
         (!s?.learning_record_id || s.learning_record_status === 'missing');
     });
-    pendingLearningCount.value = pending.length + missingToday.length;
+    todayOnlyLearningCount.value = pending.length + missingToday.length;
   } catch { /* ignore */ } finally {
     loadingLearning.value = false;
   }
+}
+
+async function fetchOverdueLearning() {
+  loadingOverdue.value = true;
+  try {
+    const token = await getToken();
+    if (!token) return;
+
+    const today = new Date();
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const startStr = formatDateUtil(sevenDaysAgo);
+    const endStr = formatDateUtil(yesterday);
+
+    const branchIds = props.teacherBranchIds.length > 0
+      ? props.teacherBranchIds.map(Number).filter(id => id > 0)
+      : (props.branchId ? [Number(props.branchId)] : []);
+
+    let allItems = [];
+
+    if (branchIds.length === 0) {
+      const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 200 });
+      allItems = result.items || [];
+    } else {
+      const results = await Promise.allSettled(
+        branchIds.map(bid =>
+          fetchClassSessions({ token, branchId: bid, start: startStr, end: endStr, perPage: 200 })
+        )
+      );
+      const seenIds = new Set();
+      results.forEach(r => {
+        if (r.status === 'fulfilled') {
+          for (const item of (r.value.items || [])) {
+            if (!seenIds.has(item.id)) {
+              seenIds.add(item.id);
+              allItems.push(item);
+            }
+          }
+        }
+      });
+    }
+
+    const missing = allItems.filter(s => {
+      const st = String(s.status || '').toLowerCase();
+      const lr = String(s.learning_record_status || 'missing').toLowerCase();
+      return st === 'attended' && lr === 'missing';
+    });
+
+    missing.sort((a, b) => b.session_date.localeCompare(a.session_date) || b.start_time.localeCompare(a.start_time));
+    overdueRecords.value = missing;
+  } catch { /* silent */ } finally {
+    loadingOverdue.value = false;
+  }
+}
+
+function formatDateUtil(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function overdueDateLabel(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dayNames_ = ['日', '一', '二', '三', '四', '五', '六'];
+  return `${d.getMonth() + 1}/${d.getDate()} 週${dayNames_[d.getDay()]}`;
 }
 
 // ── Cross-branch hint for today ──
@@ -447,7 +549,7 @@ function goFillRecord(ev) {
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
-  await Promise.all([fetchPendingAttendance(), fetchPendingLearning(), loadWeekSchedule()]);
+  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule()]);
   refreshing.value = false;
 }
 
@@ -459,6 +561,7 @@ function startPolling() {
   pollTimer = setInterval(() => {
     if (document.visibilityState === 'visible') {
       fetchPendingAttendance();
+      fetchOverdueLearning();
       fetchPendingLearning();
     }
   }, POLL_INTERVAL);
@@ -471,12 +574,13 @@ function stopPolling() {
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     fetchPendingAttendance();
+    fetchOverdueLearning();
     fetchPendingLearning();
   }
 }
 
 onMounted(() => {
-  Promise.all([fetchPendingAttendance(), fetchPendingLearning(), loadWeekSchedule()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
 });
@@ -484,6 +588,7 @@ onMounted(() => {
 watch(weekOffset, () => loadWeekSchedule());
 watch(() => props.branchId, () => {
   fetchPendingAttendance();
+  fetchOverdueLearning();
   fetchPendingLearning();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
@@ -544,6 +649,44 @@ onBeforeUnmount(() => {
   background: var(--warning-bg); color: var(--warning);
   font-size: 13px; font-weight: 500;
 }
+
+/* ──────── A2. Overdue Reminder ──────── */
+.th-overdue {
+  padding: 16px 20px;
+  border-left: 4px solid var(--accent);
+}
+.th-overdue-icon { color: var(--accent) !important; }
+.th-overdue-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: var(--accent); color: #fff; margin-left: 4px;
+}
+.th-overdue-hint {
+  font-size: 12px; font-weight: 400; color: var(--text-light); margin-left: 2px;
+}
+.th-overdue-list { display: flex; flex-direction: column; gap: 6px; }
+.th-overdue-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--card-bg);
+  transition: var(--transition);
+}
+.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(255,167,38,0.10); }
+.th-overdue-date {
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  min-width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.th-overdue-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.th-overdue-student { font-size: 14px; font-weight: 600; color: var(--text); }
+.th-overdue-subject { font-size: 12px; color: var(--text-light); }
+.th-overdue-more {
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; margin-top: 10px; padding: 8px 0;
+  border: none; border-radius: 8px;
+  background: rgba(255,167,38,0.08); color: var(--accent);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: var(--transition);
+}
+.th-overdue-more:hover { background: rgba(255,167,38,0.16); }
 
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }
@@ -656,7 +799,7 @@ onBeforeUnmount(() => {
 /* ──────── Responsive ──────── */
 @media (max-width: 480px) {
   .th-page { padding-bottom: 100px; }
-  .th-today, .th-week, .th-links { padding: 14px; }
+  .th-today, .th-week, .th-links, .th-overdue { padding: 14px; }
   .th-action-btn { padding: 14px 10px; gap: 10px; }
   .th-action-icon-wrap { width: 38px; height: 38px; }
   .th-action-label { font-size: 14px; }

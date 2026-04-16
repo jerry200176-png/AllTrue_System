@@ -233,6 +233,10 @@ class EnrollmentService
             }
         }
 
+        $courseStartDate = !empty($data['course_start_date'])
+            ? Carbon::parse($data['course_start_date'])->toDateString()
+            : null;
+
         foreach ($sessionRows as $row) {
             if ($row['kind'] !== 'future') {
                 continue;
@@ -243,6 +247,14 @@ class EnrollmentService
                     'message' => '未來預排不可早於今天',
                     'errors' => [
                         'session_plan' => ['系統預排日期不可早於今天'],
+                    ],
+                ], 422);
+            }
+            if ($courseStartDate && $normalizedDate < $courseStartDate) {
+                return response()->json([
+                    'message' => "預排日期 {$normalizedDate} 早於開課日 {$courseStartDate}",
+                    'errors' => [
+                        'session_plan' => ['預排堂次不可早於開課日'],
                     ],
                 ], 422);
             }
@@ -361,6 +373,38 @@ class EnrollmentService
             }
         }
         $scopeWarnings = array_values(array_unique($scopeWarnings));
+
+        if ($studentId > 0 && empty($data['force'])) {
+            $existingActive = StudentClass::where('StudentID', $studentId)
+                ->where('Stop', 0)
+                ->get();
+
+            if ($existingActive->isNotEmpty()) {
+                $conflicts = [];
+                $newClassType = $data['class_type'] ?? '';
+                foreach ($subjectGroups as $subjectKey => $rows) {
+                    $sId = (int) $subjectMeta[$subjectKey]['id'];
+                    foreach ($existingActive as $sc) {
+                        if ((int) $sc->SubjectID === $sId && ($sc->ClassType ?? '') === $newClassType) {
+                            $conflicts[] = [
+                                'existing_course_id' => $sc->ID,
+                                'subject' => $subjectKey,
+                                'class_type' => $sc->ClassType ?? '',
+                                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                            ];
+                        }
+                    }
+                }
+
+                if (!empty($conflicts)) {
+                    return response()->json([
+                        'message' => '該學生已有相同科目的進行中課程，建議使用「加購堂數」延續原課程。如確定要建立新課程，請勾選強制建立。',
+                        'code' => 'duplicate_active_course',
+                        'conflicts' => $conflicts,
+                    ], 409);
+                }
+            }
+        }
 
         return DB::transaction(function () use (
             $request,

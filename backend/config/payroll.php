@@ -14,6 +14,13 @@ return [
     'headcount_bonus' => 50,
     'concurrency_bonus_per_student' => 50,
 
+    'level_weights' => [
+        'high'       => 4,
+        'junior'     => 3,
+        'elementary' => 2,
+        'tutoring'   => 1,
+    ],
+
     'grade_level_map' => [
         1 => 'elementary', 2 => 'elementary', 3 => 'elementary',
         4 => 'elementary', 5 => 'elementary', 6 => 'elementary',

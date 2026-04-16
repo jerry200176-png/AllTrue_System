@@ -6,12 +6,13 @@ return [
     'channels' => [
         'stack' => [
             'driver'   => 'stack',
-            'channels' => ['single'],
+            'channels' => ['daily'],
         ],
-        'single' => [
-            'driver'     => 'single',
+        'daily' => [
+            'driver'     => 'daily',
             'path'       => storage_path('logs/laravel.log'),
             'level'      => 'debug',
+            'days'       => 14,
             'permission' => 0664,
         ],
         'perf' => [

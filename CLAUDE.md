@@ -40,6 +40,9 @@
 | **側欄 `pending_teachers` vs「待審核」**（`NotificationController::unreadCount`、`UserCampus.Approved`、`TeachersList` `status=pending`、`ProfileController::update`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 第二節）、**`docs/CHANGELOG.md`（2026-04-15 (C)）**；兩者欄位不同，勿混用 |
 | **當月學收（取代帳單列表）**（`TuitionReportPage.vue`、`FinanceController::branchMonthlyTuition`、側欄 `tuition-report`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 當月學收月報）、**`docs/CHANGELOG.md`（2026-04-13 (N)）**；**勿把 `billing` / `BillingList` 加回側欄** |
 | **增加購買堂數後第 N+1 堂起未自動產生**（`StudentClassController::update`、`extendSessionsIfNeeded`、`cancelExcessScheduledSessions`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 增加購買堂數後第 N+1 堂起未自動產生）；`update` 必須在縮減之後緊接呼叫 `extendSessionsIfNeeded`；**勿整刪重建全部堂次**，應只補差額 |
+| **編輯課程費率後 Charge 未同步**（`StudentClassController::update`、`mapFrontendPayload`、`AlertController::tuitionSlipData`、`PaymentSlipModal`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 — 編輯課程費率後 Charge 未同步）；Rate/SessionCount 異動後必須重算 `Charge`，勿移除 update 中的同步區塊 |
+| **課程管理 chip 重複（LEFT JOIN 行乘積）**（`ClassSessionController::index`、`sub_sched`/`LearningRecord`/`StudentSingIn` LEFT JOIN、`normalizeClassSessionsPayload`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 — LEFT JOIN 行乘積）、**`docs/CHANGELOG.md`（2026-04-15 (I)）**；LEFT JOIN 1:N 關係必須用 Derived Table 去重；前端 normalize 須有 id 去重防禦 |
+| **評量頁課表重複卡片**（`LearningRecordsPage.vue` `buildEvents`、`deduplicateSessionsBySlot`、`SESSION_STATUS_PRIORITY`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片）；同格 `cancelled+scheduled` 必須去重；勿移除 `deduplicateSessionsBySlot`；優先序須與 `SmartCalendar` 一致 |
 | 前端上線、`backend/public`、瀏覽器 **`MIME type "text/html"`** on `index-*.js` | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）；務必 **`npm run deploy`** 同輪寫入 `index.html` + `assets/` |
 
 ## 協作分支

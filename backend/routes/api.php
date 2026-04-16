@@ -31,6 +31,7 @@ use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\PaymentReportController;
 
 
 Route::get('/fix-db', function () {
@@ -104,6 +105,27 @@ Route::prefix('v1')->group(function () {
 
     // ── Health / Perf Metrics (public, lightweight) ──────────────────
     Route::get('health', function () {
+        $logDir = storage_path('logs');
+        $tmpfsMount = '/var/log/alltrue-tmpfs';
+        $tmpfsActive = is_dir($tmpfsMount) && @disk_total_space($tmpfsMount) > 0;
+
+        $logPipeline = [
+            'driver'        => config('logging.channels.stack.channels.0', 'daily'),
+            'tmpfs_active'  => $tmpfsActive,
+        ];
+
+        if ($tmpfsActive) {
+            $total = @disk_total_space($tmpfsMount) ?: 0;
+            $free  = @disk_free_space($tmpfsMount) ?: 0;
+            $used  = $total - $free;
+            $logPipeline['tmpfs_total_mb']   = round($total / 1048576, 1);
+            $logPipeline['tmpfs_used_mb']    = round($used / 1048576, 1);
+            $logPipeline['tmpfs_usage_pct']  = $total > 0 ? round($used / $total * 100, 1) : 0;
+            $logPipeline['tmpfs_healthy']    = $logPipeline['tmpfs_usage_pct'] < 80;
+        }
+
+        $logPipeline['logs_dir_writable'] = is_writable($logDir);
+
         return response()->json([
             'status' => 'ok',
             'timestamp' => now()->toIso8601String(),
@@ -112,6 +134,7 @@ Route::prefix('v1')->group(function () {
                 'lr_default_per_page' => config('perfflags.learning_records_default_per_page'),
                 'lr_max_per_page'     => config('perfflags.learning_records_max_per_page'),
             ],
+            'log_pipeline' => $logPipeline,
         ]);
     });
 
@@ -178,6 +201,7 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
+        Route::get('finance/duplicate-courses', [FinanceController::class, 'duplicateCourses']);
 
         Route::get('finance/parttime-payroll', [FinanceController::class, 'parttimePayroll']);
         Route::get('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRules']);
@@ -193,6 +217,14 @@ Route::prefix('v1')->group(function () {
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
+
+        // ── Payment Reports (學收核銷) ──────────────────────────────
+        Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
+        Route::get('payment-reports', [PaymentReportController::class, 'index']);
+        Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);
+        Route::put('payment-reports/{id}/reject', [PaymentReportController::class, 'reject']);
+        Route::get('payment-reports/{id}/receipt', [PaymentReportController::class, 'receipt']);
+
         Route::get('notifications', [NotificationController::class, 'index']);
         Route::post('notifications/sync', [NotificationController::class, 'sync']);
         Route::post('notifications/read-all', [NotificationController::class, 'markAllRead']);
@@ -215,6 +247,7 @@ Route::prefix('v1')->group(function () {
         Route::post('directors/{id}/approve', [DirectorAccountController::class, 'approve']);
         Route::post('directors/{id}/reject', [DirectorAccountController::class, 'reject']);
         Route::post('directors/{id}/reset-password', [DirectorAccountController::class, 'resetPassword']);
+        Route::put('directors/{id}/campuses', [DirectorAccountController::class, 'updateCampuses'])->whereNumber('id');
         Route::delete('directors/{id}', [DirectorAccountController::class, 'destroy'])->whereNumber('id');
         Route::get('api-clients', [ApiClientController::class, 'index']);
         Route::post('api-clients', [ApiClientController::class, 'store']);
@@ -228,6 +261,7 @@ Route::prefix('v1')->group(function () {
     Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('students', [StudentController::class, 'index']);
         Route::get('students/{student}', [StudentController::class, 'show']);
+        Route::get('students/{student}/active-courses', [StudentController::class, 'activeCourses']);
         Route::get('profiles', [ProfileController::class, 'index']);
         // Alias: /api/v1/teachers → profiles filtered to type=T
         Route::get('teachers', function (\Illuminate\Http\Request $req) {
@@ -306,6 +340,8 @@ Route::prefix('v1')->group(function () {
         Route::post('teacher_branches', [TeacherBranchController::class, 'store']);
         Route::delete('teacher_branches', [TeacherBranchController::class, 'destroy']);
     });
+
+    // (pay-report public endpoints removed — reconciliation is now director-only)
 
     Route::post('parent/login', [ParentPortalController::class, 'login']);
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
