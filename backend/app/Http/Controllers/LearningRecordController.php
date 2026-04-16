@@ -199,7 +199,9 @@ class LearningRecordController extends Controller
             $teacherNameMap = $fromTeacher->union($fromUser);
         }
 
-        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap) {
+        $sessionNumbers = static::batchSessionNumbers($collection);
+
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $subjectId = $record->studentClass->SubjectID ?? null;
@@ -207,6 +209,7 @@ class LearningRecordController extends Controller
                 ? $subjectMap[$subjectId]
                 : $record->Subject;
             $record->teacher_name = $teacherNameMap[$record->TeacherID] ?? '未指派';
+            $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
             return $record;
         });
 
@@ -229,6 +232,7 @@ class LearningRecordController extends Controller
             'QuizScore' => 'nullable|string|max:32',
             'Progress' => 'nullable|string|max:2000',
             'NextHomework' => 'nullable|string|max:2000',
+            'NextWeekTestScope' => 'nullable|string|max:2000',
             'Performance' => 'nullable|string|max:16',
             'Comment' => 'nullable|string|max:2000',
         ]);
@@ -355,6 +359,7 @@ class LearningRecordController extends Controller
                     'QuizScore' => $data['QuizScore'] ?? null,
                     'Progress' => $data['Progress'] ?? null,
                     'NextHomework' => $data['NextHomework'] ?? null,
+                    'NextWeekTestScope' => $data['NextWeekTestScope'] ?? null,
                     'Performance' => $data['Performance'] ?? null,
                     'Comment' => $data['Comment'] ?? null,
                     'Status' => 'pending',
@@ -389,6 +394,7 @@ class LearningRecordController extends Controller
             'QuizScore' => 'nullable|string|max:32',
             'Progress' => 'nullable|string|max:2000',
             'NextHomework' => 'nullable|string|max:2000',
+            'NextWeekTestScope' => 'nullable|string|max:2000',
             'Performance' => 'nullable|string|max:16',
             'Comment' => 'nullable|string|max:2000',
         ]);
@@ -443,7 +449,7 @@ class LearningRecordController extends Controller
         $learningRecord->AttachmentUrl = $data['AttachmentUrl'] ?? null;
         // SessionDate/StartTime/EndTime are derived from ClassSession and are intentionally
         // not writable from payload anymore (kept only as compatibility mirror columns).
-        foreach (['Subject', 'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework', 'Performance', 'Comment'] as $key) {
+        foreach (['Subject', 'HomeworkStatus', 'QuizScore', 'Progress', 'NextHomework', 'NextWeekTestScope', 'Performance', 'Comment'] as $key) {
             if (array_key_exists($key, $data)) {
                 $learningRecord->$key = $data[$key];
             }
@@ -1917,4 +1923,57 @@ class LearningRecordController extends Controller
         return substr($str, 0, 5);
     }
 
+    /**
+     * Batch-compute session numbers for a collection of LearningRecords.
+     *
+     * For each record's StudentClass, all ClassSessions are ordered chronologically.
+     * Non-leave/non-cancelled sessions are numbered sequentially (1, 2, 3…).
+     * Leave/cancelled sessions get null (they don't occupy a slot).
+     *
+     * @param  \Illuminate\Support\Collection  $records  Collection of LearningRecord models
+     * @return array<int, int|null>  Map of LearningRecord.id => session_number (null if not determinable)
+     */
+    public static function batchSessionNumbers($records): array
+    {
+        $skipStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+
+        $classSessionIds = $records->pluck('ClassSessionID')->filter()->unique()->values();
+        if ($classSessionIds->isEmpty()) {
+            return [];
+        }
+
+        $studentClassIds = $records->pluck('StudentClassID')->filter()->unique()->values();
+        if ($studentClassIds->isEmpty()) {
+            return [];
+        }
+
+        $allSessions = ClassSession::whereIn('StudentClassID', $studentClassIds)
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('StartTime', 'asc')
+            ->orderBy('id', 'asc')
+            ->get(['id', 'StudentClassID', 'SessionDate', 'StartTime', 'Status']);
+
+        // Build map: classSessionId => session_number per StudentClassID
+        $sessionNumberMap = [];
+        $grouped = $allSessions->groupBy('StudentClassID');
+        foreach ($grouped as $scId => $sessions) {
+            $num = 0;
+            foreach ($sessions as $cs) {
+                $status = strtolower(trim((string) ($cs->Status ?? '')));
+                $isSkip = in_array($status, $skipStatuses, true);
+                if (!$isSkip) {
+                    $num++;
+                }
+                $sessionNumberMap[(int) $cs->id] = $isSkip ? null : $num;
+            }
+        }
+
+        $result = [];
+        foreach ($records as $rec) {
+            $csId = (int) ($rec->ClassSessionID ?? 0);
+            $result[(int) $rec->id] = $csId > 0 ? ($sessionNumberMap[$csId] ?? null) : null;
+        }
+
+        return $result;
+    }
 }

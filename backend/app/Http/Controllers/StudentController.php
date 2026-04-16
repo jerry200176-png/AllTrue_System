@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentLineBinding;
 use App\Models\UserCampus;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class StudentController extends Controller
@@ -23,8 +25,12 @@ class StudentController extends Controller
         return $map[$classId] ?? '';
     }
 
-    private function transformStudent($s): array
+    private function transformStudent($s, $boundIds = null): array
     {
+        $lineBound = $boundIds !== null
+            ? isset($boundIds[$s->id])
+            : StudentLineBinding::where('student_id', $s->id)->exists();
+
         return [
             'id'            => $s->id,
             'name'          => $s->name,
@@ -39,6 +45,7 @@ class StudentController extends Controller
             'branch_id'     => (int) $s->CampusID,
             'RFID'          => $s->RFID ?? '',
             '_laravelId'    => $s->id,
+            'line_bound'    => $lineBound,
         ];
     }
 
@@ -81,11 +88,15 @@ class StudentController extends Controller
         $perPage = $request->input('per_page');
         if ($perPage === 'all' || (int) $perPage >= 1000) {
             $students = $query->orderBy('name')->get();
-            return response()->json($students->map(fn($s) => $this->transformStudent($s))->values());
+            $boundIds = StudentLineBinding::whereIn('student_id', $students->pluck('id'))
+                ->pluck('student_id')->flip();
+            return response()->json($students->map(fn($s) => $this->transformStudent($s, $boundIds))->values());
         }
 
         $paginated = $query->orderBy('name')->paginate(min((int) ($perPage ?? 50), 500));
-        $paginated->getCollection()->transform(fn($s) => $this->transformStudent($s));
+        $boundIds = StudentLineBinding::whereIn('student_id', $paginated->getCollection()->pluck('id'))
+            ->pluck('student_id')->flip();
+        $paginated->getCollection()->transform(fn($s) => $this->transformStudent($s, $boundIds));
         return response()->json($paginated);
     }
 
@@ -154,7 +165,7 @@ class StudentController extends Controller
         $classId = self::GRADE_TO_CLASS[$gradeCode] ?? 7;
 
         $student = Student::create([
-            'name'         => $input['name'],
+            'name'         => trim($input['name']),
             'CampusID'     => (int) $campusId,
             'ClassID'      => $classId,
             'SchoolName'   => $input['school'] ?? $input['SchoolName'] ?? null,
@@ -183,7 +194,7 @@ class StudentController extends Controller
 
         $input = $request->all();
 
-        if (isset($input['name']))         $student->name = $input['name'];
+        if (isset($input['name']))         $student->name = trim($input['name']);
         if (isset($input['school']))       $student->SchoolName = $input['school'];
         if (isset($input['SchoolName']))   $student->SchoolName = $input['SchoolName'];
         if (isset($input['phone']))        $student->Phone = $input['phone'];
@@ -199,10 +210,6 @@ class StudentController extends Controller
         }
         if (isset($input['GradeID'])) {
             $student->ClassID = (int) $input['GradeID'];
-        }
-
-        if (isset($input['branch_id'])) {
-            $student->CampusID = (int) $input['branch_id'];
         }
 
         $student->save();
@@ -424,5 +431,64 @@ class StudentController extends Controller
         $student->save();
 
         return response()->json(['message' => '已綁定卡號', 'student_id' => $student->id]);
+    }
+
+    public function lineBindings(Request $request, Student $student)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $bindings = StudentLineBinding::where('student_id', $student->id)
+            ->orderBy('bound_at', 'desc')
+            ->get()
+            ->map(fn ($b) => [
+                'id'                   => $b->id,
+                'line_user_id_masked'  => $this->maskLineUserId($b->line_user_id),
+                'bound_at'             => $b->bound_at,
+            ]);
+
+        return response()->json(['bindings' => $bindings]);
+    }
+
+    public function removeLineBinding(Request $request, Student $student, int $bindingId)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        if (!empty($campusIds) && !in_array((int) $student->CampusID, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $binding = StudentLineBinding::where('id', $bindingId)
+            ->where('student_id', $student->id)
+            ->first();
+
+        if (!$binding) {
+            return response()->json(['message' => 'Binding not found'], 404);
+        }
+
+        $lineUserId = $binding->line_user_id;
+        $binding->delete();
+
+        if ($student->LineID === $lineUserId) {
+            $student->update(['LineID' => null]);
+        }
+
+        $userId = $request->attributes->get('auth_user_id');
+        Log::info("Director {$userId} removed LINE binding {$bindingId} for student {$student->id}");
+
+        return response()->json(['message' => '已解除綁定']);
+    }
+
+    private function maskLineUserId(string $uid): string
+    {
+        if (strlen($uid) <= 12) {
+            return $uid;
+        }
+        return substr($uid, 0, 8) . '…' . substr($uid, -4);
     }
 }

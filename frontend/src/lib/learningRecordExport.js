@@ -123,7 +123,7 @@ function renderStudentCard(ctx, studentName, records, teacherName, dateRange, br
   ctx.fillText('學習評量報告', PADDING, 42);
 
   ctx.font = `16px "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
-  const subtitle = `${branchName || 'AllTrue 補習班'} · ${dateRange}`;
+  const subtitle = `${branchName || '台北全真一對一補習班'} · ${dateRange}`;
   ctx.fillText(subtitle, PADDING, 70);
 
   // Student name + teacher on right
@@ -151,7 +151,7 @@ function renderStudentCard(ctx, studentName, records, teacherName, dateRange, br
   ctx.font = `12px "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
   const now = new Date();
   const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  ctx.fillText(`匯出時間：${ts}    此報告由 AllTrue 補習班管理系統自動產生`, PADDING, y);
+  ctx.fillText(`匯出時間：${ts}    此報告由 台北全真一對一補習班管理系統自動產生`, PADDING, y);
   y += 30;
 
   return y;
@@ -168,7 +168,8 @@ function drawRecordSection(ctx, startY, record, index) {
   const dateStr = String(record.SessionDate || '').slice(0, 10);
   const timeStr = record.StartTime ? `${record.StartTime}~${record.EndTime || ''}` : '';
   const subjectStr = record.Subject || '';
-  const sectionLabel = `#${index}  ${dateStr}  ${timeStr}  ${subjectStr}`;
+  const sessionTag = record.session_number ? `第${record.session_number}堂` : `#${index}`;
+  const sectionLabel = `${sessionTag}  ${dateStr}  ${timeStr}  ${subjectStr}`;
   ctx.fillText(sectionLabel, PADDING + 12, y + 24);
 
   // Status chip on the right
@@ -221,13 +222,16 @@ function drawRecordSection(ctx, startY, record, index) {
   }
 
   // Quiz score
-  y = drawLabelValue('周考成績', record.QuizScore);
+  y = drawLabelValue('週考成績', record.QuizScore);
 
   // Progress
   y = drawLabelValue('授課進度', record.Progress);
 
   // Next homework
   y = drawLabelValue('下次作業', record.NextHomework);
+
+  // Next week test scope
+  y = drawLabelValue('下次週考範圍', record.NextWeekTestScope);
 
   // Performance
   const perfKey = record.Performance;

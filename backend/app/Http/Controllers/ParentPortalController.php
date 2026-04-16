@@ -6,12 +6,14 @@ use App\Models\LearningRecord;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\Announcement;
 use App\Models\Subject;
 use App\Models\User;
+use App\Http\Controllers\LearningRecordController;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -43,7 +45,7 @@ class ParentPortalController extends Controller
             }
         } elseif (!empty(trim($data['Name'] ?? ''))) {
             $name = trim($data['Name']);
-            $candidates = Student::where('name', $name)->get();
+            $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->get();
             foreach ($candidates as $s) {
                 if (!empty($s->Phone) && $this->normalizePhone($s->Phone) === $phoneNorm) {
                     $student = $s;
@@ -83,6 +85,35 @@ class ParentPortalController extends Controller
         return response()->json($result);
     }
 
+    // ── Resolve LIFF ID from hostname (public, no auth) ──────────────────
+
+    public function resolveLiff(Request $request)
+    {
+        $host = $request->getHost();
+
+        $campus = \Illuminate\Support\Facades\DB::table('Campus')
+            ->whereNotNull('LIFFID')
+            ->where('LIFFID', '!=', '')
+            ->whereNotNull('URL')
+            ->where('URL', '!=', '')
+            ->get()
+            ->first(function ($c) use ($host) {
+                $parsed = parse_url($c->URL ?? '', PHP_URL_HOST);
+                if (!$parsed) return false;
+                return $parsed === $host || str_ends_with($host, '.' . $parsed) || str_ends_with($parsed, '.' . $host);
+            });
+
+        if (!$campus) {
+            return response()->json(['liff_id' => null]);
+        }
+
+        return response()->json([
+            'liff_id'     => $campus->LIFFID,
+            'campus_id'   => $campus->id,
+            'campus_name' => $campus->name,
+        ]);
+    }
+
     // ── Login: LINE userId ────────────────────────────────────────────────
 
     public function loginWithLine(Request $request)
@@ -91,7 +122,11 @@ class ParentPortalController extends Controller
             'line_user_id' => 'required|string',
         ]);
 
-        $students = Student::where('LineID', $data['line_user_id'])->get();
+        $studentIds = StudentLineBinding::where('line_user_id', $data['line_user_id'])
+            ->pluck('student_id');
+        $students = $studentIds->isNotEmpty()
+            ? Student::whereIn('id', $studentIds)->get()
+            : collect();
         if ($students->isEmpty()) {
             return response()->json(['message' => '尚未綁定學生帳號（此入口僅供家長/學生）。請透過 LINE 官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定'], 404);
         }
@@ -120,17 +155,20 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Student not found'], 404);
         }
 
-        // Verify the parent has access: same phone or same LineID
         $currentStudent = Student::find($session->StudentID);
         $allowed = false;
 
         if ($currentStudent) {
-            // Same LineID
-            if (!empty($currentStudent->LineID) && $currentStudent->LineID === $targetStudent->LineID) {
-                $allowed = true;
+            // Check via student_line_bindings: any shared line_user_id
+            $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
+                ->pluck('line_user_id');
+            if ($currentLineIds->isNotEmpty()) {
+                $allowed = StudentLineBinding::where('student_id', $targetStudent->id)
+                    ->whereIn('line_user_id', $currentLineIds)
+                    ->exists();
             }
             // Same phone
-            if (!empty($currentStudent->Phone) && !empty($targetStudent->Phone)
+            if (!$allowed && !empty($currentStudent->Phone) && !empty($targetStudent->Phone)
                 && $this->normalizePhone($currentStudent->Phone) === $this->normalizePhone($targetStudent->Phone)) {
                 $allowed = true;
             }
@@ -194,12 +232,15 @@ class ParentPortalController extends Controller
                 ->whereIn('StudentClassID', $classIds)
                 ->where('Status', 'approved');
             $lrTotal = $lrQuery->count();
-            $records = $lrQuery
+            $recordsRaw = $lrQuery
                 ->orderBy('ApprovedAt', 'desc')
                 ->skip(($lrPage - 1) * $lrPerPage)
                 ->take($lrPerPage)
-                ->get()
-                ->map(function ($rec) use ($classes) {
+                ->get();
+
+            $sessionNumbers = LearningRecordController::batchSessionNumbers($recordsRaw);
+
+            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers) {
                     $teacher = User::find($rec->TeacherID);
                     $rec->teacher_name = $teacher ? $teacher->Name : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
@@ -207,6 +248,7 @@ class ParentPortalController extends Controller
                     $rec->Subject = trim((string) ($rec->Subject ?? '')) !== ''
                         ? (string) $rec->Subject
                         : ($fromCourse ?: '課程');
+                    $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
                     return $rec;
                 });
             $lrHasMore = ($lrPage * $lrPerPage) < $lrTotal;
@@ -374,11 +416,20 @@ class ParentPortalController extends Controller
             $campusName = $campus ? $campus->name : null;
         } catch (\Exception $e) {}
 
-        // Find all students this parent can access (same LineID or same phone)
+        // Find all students this parent can access (shared LINE binding or same phone)
+        $lineUserIds = StudentLineBinding::where('student_id', $student->id)
+            ->pluck('line_user_id');
+        $siblingIdsByLine = $lineUserIds->isNotEmpty()
+            ? StudentLineBinding::whereIn('line_user_id', $lineUserIds)
+                ->where('student_id', '!=', $student->id)
+                ->pluck('student_id')
+                ->unique()
+            : collect();
+
         $siblingStudents = Student::where('id', '!=', $student->id)
-            ->where(function ($q) use ($student) {
-                if (!empty($student->LineID)) {
-                    $q->orWhere('LineID', $student->LineID);
+            ->where(function ($q) use ($student, $siblingIdsByLine) {
+                if ($siblingIdsByLine->isNotEmpty()) {
+                    $q->orWhereIn('id', $siblingIdsByLine);
                 }
                 if (!empty($student->Phone)) {
                     $phoneNorm = $this->normalizePhone($student->Phone);
@@ -400,7 +451,7 @@ class ParentPortalController extends Controller
                 'grade'       => $student->ClassID ?? null,
                 'school'      => $student->SchoolName ?? null,
                 'campus_name' => $campusName,
-                'line_linked' => !empty($student->LineID),
+                'line_linked' => StudentLineBinding::where('student_id', $student->id)->exists(),
             ],
             'students' => $allStudents->count() > 1 ? $allStudents->toArray() : null,
             'remaining_sessions_total' => $remainingTotal,

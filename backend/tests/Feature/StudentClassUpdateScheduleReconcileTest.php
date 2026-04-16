@@ -78,8 +78,6 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             'days_of_week' => [7],
             'start_time' => '13:00',
             'day_time_slots' => [['day' => 7, 'start_time' => '13:00']],
-            'sessions_purchased' => 8,
-            'remaining_sessions' => 4,
             'payment_type' => 'session',
         ]);
 
@@ -434,8 +432,6 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
                 'days_of_week' => [7],
                 'start_time' => '10:00',
                 'day_time_slots' => [['day' => 7, 'start_time' => '10:00']],
-                'sessions_purchased' => 8,
-                'remaining_sessions' => 4,
                 'payment_type' => 'session',
             ]);
 
@@ -457,6 +453,172 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         } finally {
             Carbon::setTestNow();
         }
+    }
+
+    /**
+     * Adding a new weekday (Mon+Tue → Mon+Tue+Thu) must trigger remap so
+     * existing future sessions are redistributed onto the new cadence.
+     */
+    public function test_adding_weekday_remaps_future_sessions_to_new_cadence(): void
+    {
+        Carbon::setTestNow('2026-04-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+
+            $student = Student::create([
+                'name' => '加星期測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-03-16',
+                'TotalHours' => 20,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 1500,
+                'RoomID' => '1',
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 11,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 5,
+                'UsedSessions' => 6,
+                'ClassType' => 'one_on_two',
+                'week' => 1,
+                'time' => '16:30:00',
+                'week1' => 2,
+                'time1' => '16:30:00',
+            ]);
+
+            $pastSession = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-03-16',
+                'StartTime' => '16:30:00',
+                'EndTime' => '18:30:00',
+                'Status' => 'attended',
+            ]);
+            StudentSignIn::create([
+                'StudentClassID' => $course->ID,
+                'StudentID' => $student->id,
+                'TeacherID' => 99,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'CampusID' => 1,
+                'SignInDT' => '2026-03-16 16:30:00',
+                'MDT' => now(),
+                'ClassSessionID' => $pastSession->id,
+                'Status' => 'present',
+                'SessionDeducted' => 1,
+            ]);
+
+            foreach ([
+                ['2026-04-13', 1], // Mon
+                ['2026-04-14', 2], // Tue
+                ['2026-04-20', 1], // Mon
+                ['2026-04-21', 2], // Tue
+                ['2026-04-27', 1], // Mon
+            ] as [$date, $dow]) {
+                ClassSession::create([
+                    'StudentClassID' => $course->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '16:30:00',
+                    'EndTime' => '18:30:00',
+                    'Status' => 'scheduled',
+                ]);
+            }
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math',
+                'class_type' => 'one_on_two',
+                'duration_hours' => 2,
+                'days_of_week' => [1, 2, 4],
+                'start_time' => '16:30',
+                'day_time_slots' => [
+                    ['day' => 1, 'start_time' => '16:30'],
+                    ['day' => 2, 'start_time' => '16:30'],
+                    ['day' => 4, 'start_time' => '16:30'],
+                ],
+                'payment_type' => 'session',
+            ]);
+
+            $res->assertOk();
+            $sync = $res->json('session_sync');
+            $this->assertGreaterThan(0, (int) ($sync['updated_future_sessions'] ?? 0),
+                'Sessions must be remapped when a new weekday is added to the contract');
+
+            $course->refresh();
+            $this->assertSame(1, (int) $course->week, 'Contract must have Monday');
+            $this->assertSame(2, (int) $course->week1, 'Contract must have Tuesday');
+            $this->assertSame(4, (int) $course->week2, 'Contract must have Thursday');
+
+            $future = ClassSession::where('StudentClassID', $course->ID)
+                ->where('Status', 'scheduled')
+                ->orderBy('SessionDate')
+                ->get();
+
+            $futureWeekdays = $future->map(fn ($s) => (int) Carbon::parse($s->SessionDate)->dayOfWeekIso)->unique()->sort()->values()->all();
+            $this->assertContains(4, $futureWeekdays, 'Future sessions must include Thursday after remap');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * force_partial_rebuild must NOT let reconcile overwrite contract when
+     * all future sessions are locked (completed) and sync returns 0.
+     */
+    public function test_force_partial_rebuild_preserves_contract_when_zero_synced(): void
+    {
+        [$token, $student, $course] = $this->seedCourseWithHistory(allFutureCompleted: true);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'duration_hours' => 2,
+            'days_of_week' => [7],
+            'start_time' => '13:00',
+            'day_time_slots' => [['day' => 7, 'start_time' => '13:00']],
+            'payment_type' => 'session',
+        ]);
+
+        $res->assertOk();
+
+        $course->refresh();
+        $this->assertSame('13:00:00', (string) $course->time,
+            'Contract time must be 13:00 after first PUT');
+
+        $res2 = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'force_partial_rebuild' => true,
+        ]);
+
+        $res2->assertOk();
+        $sync2 = $res2->json('session_sync');
+        $this->assertTrue($sync2['reconcile_skipped'] ?? false,
+            'Reconcile must be skipped when force_partial_rebuild syncs 0 sessions');
+
+        $course->refresh();
+        $this->assertSame('13:00:00', (string) $course->time,
+            'Contract time must NOT be overwritten by old ClassSession times via reconcile');
     }
 
     // ------------------------------------------------------------------

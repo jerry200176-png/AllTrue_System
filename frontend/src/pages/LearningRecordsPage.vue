@@ -7,6 +7,11 @@
         <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button v-if="isTeacher" class="ghost lr-draft-list-btn" @click="openDraftPanel">
+          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
+          草稿
+          <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
+        </button>
         <button class="ghost" @click="openExportModal">匯出評量圖</button>
         <button v-if="isTeacher" class="primary" @click="focusTeacherSchedule">從課表填寫</button>
       </div>
@@ -147,7 +152,7 @@
     </div>
 
     <!-- ===== 一鍵補登 Modal ===== -->
-    <div v-if="showBulkModal" class="modal-overlay" @click.self="showBulkModal = false">
+    <div v-if="showBulkModal" class="modal-overlay">
       <div class="lr-modal" style="max-width: 600px;">
         <div class="lr-modal-header">
           <h3>一鍵補登</h3>
@@ -291,6 +296,7 @@
                   <td>
                     <span class="lr-date">{{ record.SessionDate }}</span>
                     <span class="lr-time">{{ record.StartTime }}</span>
+                    <span v-if="record.session_number" class="lr-session-num">第{{ record.session_number }}堂</span>
                   </td>
                   <td>
                     <div class="lr-student-name">{{ record.student_name }}</div>
@@ -336,7 +342,7 @@
       </div>
     </div>
 
-    <div v-if="showChangeTeacherModal" class="modal-overlay" @click.self="closeChangeTeacherModal">
+    <div v-if="showChangeTeacherModal" class="modal-overlay">
       <div class="modal lr-modal" style="max-width: 520px;">
         <div class="lr-modal-header">
           <h3>更換授課老師</h3>
@@ -391,15 +397,40 @@
     </div>
 
     <!-- ======== Modal Form ======== -->
-    <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+    <div v-if="showModal" class="modal-overlay">
       <div class="modal lr-modal">
         <!-- Modal Header -->
         <div class="lr-modal-header">
-          <h3>{{ isEditing ? (isReadOnly ? '檢視評量' : '編輯評量') : '新增學習評量' }}</h3>
-          <button class="lr-modal-close" @click="closeModal">&times;</button>
+          <h3>{{ isEditing ? (isReadOnly ? '檢視評量' : '編輯評量') : '新增學習評量' }}<span v-if="_activeRecordRef?.session_number" class="lr-modal-session-num">第{{ _activeRecordRef.session_number }}堂</span></h3>
+          <div class="lr-modal-header-actions">
+            <button
+              v-if="isReadOnly"
+              class="lr-download-btn"
+              :disabled="downloadingPng"
+              @click="downloadSingleRecord"
+              title="下載圖檔"
+            >
+              <span class="material-symbols-outlined">download</span>
+              <span class="lr-download-label">{{ downloadingPng ? '下載中…' : '下載圖檔' }}</span>
+            </button>
+            <button class="lr-modal-close" @click="closeModal">&times;</button>
+          </div>
+          <Transition name="lr-toast">
+            <div v-if="downloadToast" class="lr-download-toast" :class="{ 'lr-toast-error': downloadToast.includes('失敗') }">
+              <span class="material-symbols-outlined">{{ downloadToast.includes('失敗') ? 'error' : 'check_circle' }}</span>
+              {{ downloadToast }}
+            </div>
+          </Transition>
         </div>
 
         <form @submit.prevent="submitForm" class="lr-form">
+          <!-- Draft status bar -->
+          <div v-if="draftStatusText && !isReadOnly" class="lr-draft-bar" :class="{ 'lr-draft-bar--error': draftSaveError }">
+            <span class="material-symbols-outlined lr-draft-bar-icon">{{ draftSaveError ? 'warning' : 'edit_note' }}</span>
+            <span class="lr-draft-bar-text">{{ draftStatusText }}</span>
+            <button v-if="!draftSaveError" type="button" class="lr-draft-bar-clear" @click="clearDraft" title="清除草稿">清除草稿</button>
+          </div>
+
           <!-- Section 1: 基本資訊 -->
           <div class="lr-form-section">
             <div class="lr-form-section-title">基本資訊</div>
@@ -489,7 +520,7 @@
               </div>
             </div>
             <div class="form-group">
-              <label>周考成績</label>
+              <label>週考成績</label>
               <input
                 v-model="form.QuizScore"
                 type="text"
@@ -510,6 +541,13 @@
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定下次作業..."></textarea>
               <div v-if="!isReadOnly" class="lr-phrase-row">
                 <button v-for="p in templatePhrases.NextHomework" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextHomework', p)">{{ p }}</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>下次週考範圍</label>
+              <textarea v-model="form.NextWeekTestScope" rows="2" :disabled="isReadOnly" placeholder="指定下次週考範圍..."></textarea>
+              <div v-if="!isReadOnly" class="lr-phrase-row">
+                <button v-for="p in templatePhrases.NextWeekTestScope" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextWeekTestScope', p)">{{ p }}</button>
               </div>
             </div>
           </div>
@@ -560,7 +598,7 @@
     </div>
 
     <!-- ===== Export Modal ===== -->
-    <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+    <div v-if="showExportModal" class="modal-overlay">
       <div class="lr-modal" style="max-width: 480px;">
         <div class="lr-modal-header">
           <h3>匯出學習評量圖</h3>
@@ -613,6 +651,42 @@
         </div>
       </div>
     </div>
+
+    <!-- ===== Draft List Panel ===== -->
+    <div v-if="showDraftPanel" class="modal-overlay" @click.self="closeDraftPanel">
+      <div class="lr-modal lr-draft-panel" style="max-width: 480px;">
+        <div class="lr-modal-header">
+          <h3>
+            <span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px;margin-right:4px">drafts</span>
+            未完成草稿
+          </h3>
+          <button class="lr-modal-close" @click="closeDraftPanel">&times;</button>
+        </div>
+        <div class="lr-draft-panel-body">
+          <div v-if="draftList.length === 0" class="lr-draft-empty">
+            <span class="material-symbols-outlined lr-draft-empty-icon">note_stack</span>
+            <p class="lr-draft-empty-text">目前沒有未完成的草稿</p>
+            <p class="lr-draft-empty-hint">從課表點一筆課程開始填寫評量，中途離開時系統會自動儲存草稿。</p>
+          </div>
+          <div v-else class="lr-draft-items">
+            <div v-for="d in draftList" :key="d.key" class="lr-draft-item">
+              <div class="lr-draft-item-info" @click="closeDraftPanel">
+                <div class="lr-draft-item-student">{{ d.studentName }}</div>
+                <div class="lr-draft-item-meta">
+                  <span>{{ d.subject }}</span>
+                  <span v-if="d.sessionDate"> · {{ d.sessionDate }}</span>
+                  <span v-if="d.startTime"> · {{ d.startTime }}–{{ d.endTime }}</span>
+                </div>
+                <div class="lr-draft-item-time">儲存於 {{ formatDraftTime(d.savedAt) }}</div>
+              </div>
+              <button class="lr-draft-item-delete" @click.stop="deleteDraftFromList(d)" title="清除此草稿">
+                <span class="material-symbols-outlined">delete_outline</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -621,9 +695,19 @@ import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import { fetchClassSessions } from '../lib/classSessionsApi';
-import { exportStudentCards } from '../lib/learningRecordExport';
+import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
 import perfFlags from '../lib/perfFlags';
+import {
+  saveDraft as _saveDraftToStorage,
+  loadDraft as _loadDraftFromStorage,
+  applyDraftToForm,
+  clearDraft as _clearDraftFromStorage,
+  listDrafts as _listDraftsFromStorage,
+  removeDraftByKey,
+  pruneOldDrafts,
+  migrateLegacyDrafts,
+} from '../lib/learningRecordDrafts';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId']);
 
@@ -663,6 +747,11 @@ const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: 
 const showModal = ref(false);
 const isEditing = ref(false);
 const showChangeTeacherModal = ref(false);
+const showDraftPanel = ref(false);
+const draftList = ref([]);
+const draftStatusText = ref('');
+const draftSaveError = ref(false);
+const _draftThrottleTimer = ref(null);
 const teacherChangeSubmitting = ref(false);
 const teacherList = ref([]);
 const studentList = ref([]);
@@ -685,6 +774,7 @@ const draftAutoSaveKey = ref('');
 const templatePhrases = {
   Progress: ['課本 p.XX ~ p.XX', '複習上次範圍', '練習題本 第X回'],
   NextHomework: ['課本 p.XX ~ p.XX', '題本 第X回', '背單字 Unit X'],
+  NextWeekTestScope: ['課本 p.XX ~ p.XX', 'Unit X 單字', '第X章'],
   Comment: ['表現優良，繼續保持', '需加強練習', '建議每日複習 30 分鐘'],
 };
 
@@ -841,6 +931,7 @@ const form = reactive({
   QuizScore: '',
   Progress: '',
   NextHomework: '',
+  NextWeekTestScope: '',
   Performance: 'good',
   Comment: '',
   Status: '',
@@ -848,6 +939,7 @@ const form = reactive({
 });
 
 const forceReadOnly = ref(false);
+const _activeRecordRef = ref(null);
 const teacherChangeForm = reactive({
   record_id: null,
   teacher_id: '',
@@ -909,7 +1001,11 @@ const studentOptions = computed(() =>
 const currentStudentName = computed(() => {
   const studentId = String(form.StudentID || '');
   if (!studentId) return '未綁定堂次';
-  return studentList.value.find((item) => String(item.id) === studentId)?.name || `學生 #${studentId}`;
+  const fromList = studentList.value.find((item) => String(item.id) === studentId)?.name;
+  if (fromList) return fromList;
+  const fromRecord = _activeRecordRef.value?.student_name;
+  if (fromRecord) return fromRecord;
+  return `學生 #${studentId}`;
 });
 
 const currentTeacherName = computed(() => {
@@ -1010,6 +1106,7 @@ const buildLocalRecordFromForm = (savedRecord = null) => {
     QuizScore: form.QuizScore ?? savedRecord?.QuizScore ?? '',
     Progress: form.Progress ?? savedRecord?.Progress ?? '',
     NextHomework: form.NextHomework ?? savedRecord?.NextHomework ?? '',
+    NextWeekTestScope: form.NextWeekTestScope ?? savedRecord?.NextWeekTestScope ?? '',
     Performance: form.Performance ?? savedRecord?.Performance ?? '',
     Comment: form.Comment ?? savedRecord?.Comment ?? '',
     Status: savedRecord?.Status || form.Status || 'pending',
@@ -1132,9 +1229,17 @@ const fetchTeacherSessionDates = async (rows = []) => {
       return;
     }
 
+    const now = new Date();
+    const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const startStr = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+    const endStr = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
+
     const { byClass } = await fetchClassSessions({
       token,
       studentClassIds: classIds,
+      start: startStr,
+      end: endStr,
       perPage: perfFlags.SESSION_MAX_PER_PAGE,
     });
 
@@ -1159,10 +1264,18 @@ const fetchDirectorSessionsForCourses = async (courses) => {
     return;
   }
   try {
+    const now = new Date();
+    const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const startStr = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+    const endStr = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
+
     const { byClass } = await fetchClassSessions({
       token,
       branchId: props.branchId,
       studentClassIds: classIds,
+      start: startStr,
+      end: endStr,
       perPage: perfFlags.SESSION_MAX_PER_PAGE,
     });
     directorSessionsByClassId.value = byClass || {};
@@ -1653,6 +1766,7 @@ const loadMoreRecords = async () => {
 const _fillForm = (record) => {
   isEditing.value = true;
   formTimesFromBinding.value = false;
+  _activeRecordRef.value = record;
   Object.assign(form, {
     id: record.id,
     StudentID: Number(record.student_id) || '',
@@ -1666,6 +1780,7 @@ const _fillForm = (record) => {
     QuizScore: record.QuizScore || '',
     Progress: record.Progress || '',
     NextHomework: record.NextHomework || '',
+    NextWeekTestScope: record.NextWeekTestScope || '',
     Performance: record.Performance || 'good',
     Comment: record.Comment || '',
     Status: record.Status,
@@ -1676,6 +1791,7 @@ const _fillForm = (record) => {
 const _clearForm = () => {
   isEditing.value = false;
   formTimesFromBinding.value = false;
+  _activeRecordRef.value = null;
   Object.assign(form, {
     id: null,
     StudentID: '',
@@ -1689,6 +1805,7 @@ const _clearForm = () => {
     QuizScore: '',
     Progress: '',
     NextHomework: '',
+    NextWeekTestScope: '',
     Performance: 'good',
     Comment: '',
     Status: 'pending',
@@ -1741,10 +1858,80 @@ const editRecord = (record) => {
   forceReadOnly.value = false;
   _fillForm(record);
   showModal.value = true;
+  if (record.Status !== 'approved') {
+    loadDraft();
+  }
   _attachTextareaResize();
 };
 
-const closeModal = () => { showModal.value = false; };
+const closeModal = () => {
+  if (_draftThrottleTimer.value) {
+    clearTimeout(_draftThrottleTimer.value);
+    _draftThrottleTimer.value = null;
+    saveDraft();
+  }
+  draftStatusText.value = '';
+  draftSaveError.value = false;
+  showModal.value = false;
+  if (isTeacher.value) refreshDraftList();
+};
+
+const downloadingPng = ref(false);
+const downloadToast = ref('');
+
+const downloadSingleRecord = async () => {
+  if (downloadingPng.value) return;
+  downloadingPng.value = true;
+  downloadToast.value = '';
+  try {
+    const rec = _activeRecordRef.value;
+    if (!rec) throw new Error('無評量記錄');
+
+    const studentName = currentStudentName.value || rec.student_name || '未命名學生';
+    const teacherName = currentTeacherName.value || rec.teacher_name || '未指派';
+    const sessionDate = form.SessionDate || rec.SessionDate || '';
+    const branchNames = { 1: '興隆校', 2: '新店校', 3: '大安校', 4: '木柵校' };
+    const branchName = branchNames[Number(props.branchId)] || '台北全真一對一補習班';
+
+    const recordForExport = {
+      ...rec,
+      Subject: form.Subject || rec.Subject || '',
+      SessionDate: sessionDate,
+      StartTime: form.StartTime || rec.StartTime || '',
+      EndTime: form.EndTime || rec.EndTime || '',
+      HomeworkStatus: form.HomeworkStatus || rec.HomeworkStatus || '',
+      QuizScore: form.QuizScore ?? rec.QuizScore ?? '',
+      Progress: form.Progress ?? rec.Progress ?? '',
+      NextHomework: form.NextHomework ?? rec.NextHomework ?? '',
+      NextWeekTestScope: form.NextWeekTestScope ?? rec.NextWeekTestScope ?? '',
+      Performance: form.Performance || rec.Performance || '',
+      Comment: form.Comment || rec.Comment || '',
+      Content: rec.Content || form.Comment || '',
+      Status: form.Status || rec.Status || '',
+    };
+
+    const blob = await generateStudentCardPng(
+      studentName,
+      [recordForExport],
+      teacherName,
+      sessionDate,
+      branchName,
+    );
+
+    const safeName = studentName.replace(/[\\/:*?"<>|]/g, '_');
+    const safeDate = sessionDate.replace(/\//g, '-');
+    downloadBlob(blob, `評量_${safeName}_${safeDate}.png`);
+
+    downloadToast.value = '已下載圖檔';
+    setTimeout(() => { downloadToast.value = ''; }, 2000);
+  } catch (err) {
+    console.error('Single record export failed:', err);
+    downloadToast.value = '下載失敗，請稍後再試';
+    setTimeout(() => { downloadToast.value = ''; }, 3000);
+  } finally {
+    downloadingPng.value = false;
+  }
+};
 
 const focusTeacherSchedule = () => {
   const scheduleEl = document.querySelector('[data-guide="learning-teacher-schedule"]');
@@ -2157,45 +2344,86 @@ const insertPhrase = (field, phrase) => {
   form[field] = current ? `${current}\n${phrase}` : phrase;
 };
 
+const _draftKeyParams = () => ({
+  teacherId: props.userId,
+  classSessionId: form.ClassSessionID,
+  fallback: { studentClassId: form.StudentID, sessionDate: form.SessionDate },
+});
+
+const _draftMeta = () => ({
+  studentName: currentStudentName.value,
+  subject: form.Subject,
+  sessionDate: form.SessionDate,
+  startTime: form.StartTime,
+  endTime: form.EndTime,
+});
+
 const saveDraft = () => {
-  if (!showModal.value || forceReadOnly.value || isEditing.value) return;
-  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
-  try {
-    localStorage.setItem(key, JSON.stringify({
-      Progress: form.Progress,
-      NextHomework: form.NextHomework,
-      Comment: form.Comment,
-      HomeworkStatus: form.HomeworkStatus,
-      QuizScore: form.QuizScore,
-      Performance: form.Performance,
-      _ts: Date.now(),
-    }));
-  } catch (e) { /* quota exceeded */ }
+  if (!showModal.value || forceReadOnly.value) return;
+  if (isEditing.value && form.Status === 'approved') return;
+  const result = _saveDraftToStorage({
+    ..._draftKeyParams(),
+    form,
+    meta: _draftMeta(),
+  });
+  if (result.saved) {
+    const now = new Date();
+    draftStatusText.value = `草稿已於 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} 自動儲存`;
+    draftSaveError.value = false;
+  } else if (result.error === 'quota_exceeded') {
+    draftStatusText.value = '儲存空間不足，草稿無法保存';
+    draftSaveError.value = true;
+  }
+};
+
+const saveDraftThrottled = () => {
+  if (_draftThrottleTimer.value) clearTimeout(_draftThrottleTimer.value);
+  _draftThrottleTimer.value = setTimeout(() => {
+    saveDraft();
+    _draftThrottleTimer.value = null;
+  }, 1500);
 };
 
 const loadDraft = () => {
-  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return false;
-    const draft = JSON.parse(raw);
-    if (Date.now() - (draft._ts || 0) > 86400000) {
-      localStorage.removeItem(key);
-      return false;
-    }
-    if (draft.Progress) form.Progress = draft.Progress;
-    if (draft.NextHomework) form.NextHomework = draft.NextHomework;
-    if (draft.Comment) form.Comment = draft.Comment;
-    if (draft.HomeworkStatus) form.HomeworkStatus = draft.HomeworkStatus;
-    if (draft.QuizScore) form.QuizScore = draft.QuizScore;
-    if (draft.Performance) form.Performance = draft.Performance;
-    return true;
-  } catch { return false; }
+  const { draft } = _loadDraftFromStorage(_draftKeyParams());
+  if (!draft) return false;
+  applyDraftToForm(draft, form);
+  const savedDate = new Date(draft._savedAt);
+  draftStatusText.value = `已載入草稿（${savedDate.getMonth()+1}/${savedDate.getDate()} ${String(savedDate.getHours()).padStart(2,'0')}:${String(savedDate.getMinutes()).padStart(2,'0')} 儲存）`;
+  draftSaveError.value = false;
+  return true;
 };
 
 const clearDraft = () => {
-  const key = `lr_draft_${props.userId}_${form.StudentID}_${form.SessionDate}`;
-  try { localStorage.removeItem(key); } catch {}
+  _clearDraftFromStorage(_draftKeyParams());
+  draftStatusText.value = '';
+  draftSaveError.value = false;
+};
+
+const refreshDraftList = () => {
+  if (!props.userId) { draftList.value = []; return; }
+  draftList.value = _listDraftsFromStorage(props.userId);
+};
+
+const openDraftPanel = () => {
+  refreshDraftList();
+  showDraftPanel.value = true;
+};
+
+const closeDraftPanel = () => {
+  showDraftPanel.value = false;
+};
+
+const deleteDraftFromList = (draftItem) => {
+  if (!confirm(`確定清除「${draftItem.studentName} — ${draftItem.sessionDate}」的草稿嗎？`)) return;
+  removeDraftByKey(draftItem.key);
+  refreshDraftList();
+};
+
+const formatDraftTime = (ts) => {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
 };
 
 const openTargetRecord = () => {
@@ -2248,8 +2476,8 @@ watch(
 );
 
 watch(
-  () => [form.Progress, form.NextHomework, form.Comment, form.HomeworkStatus, form.QuizScore, form.Performance],
-  () => { saveDraft(); },
+  () => [form.Progress, form.NextHomework, form.NextWeekTestScope, form.Comment, form.HomeworkStatus, form.QuizScore, form.Performance],
+  () => { saveDraftThrottled(); },
   { deep: false }
 );
 
@@ -2500,7 +2728,7 @@ const executeExport = async () => {
     const dateRange = `${exportForm.startDate} ~ ${exportForm.endDate}`;
 
     const branchNames = { 1: '興隆校', 2: '新店校', 3: '大安校', 4: '木柵校' };
-    const branchName = branchNames[Number(props.branchId)] || 'AllTrue 補習班';
+    const branchName = branchNames[Number(props.branchId)] || '台北全真一對一補習班';
 
     const { errors } = await exportStudentCards({
       groupedRecords: grouped,
@@ -2524,6 +2752,9 @@ const executeExport = async () => {
 
 // ── Init ──
 onMounted(async () => {
+  migrateLegacyDrafts();
+  if (props.userId) pruneOldDrafts(props.userId);
+
   await perf.trackAsync('ensurePastRecords', () => ensurePastRecords());
   await perf.trackAsync('fetchRecords', () => fetchRecords());
 
@@ -2540,6 +2771,8 @@ onMounted(async () => {
     secondaryLoads.push(perf.trackAsync('fetchTeacherClasses', () => fetchTeacherClasses()));
   }
   await Promise.all(secondaryLoads);
+
+  if (isTeacher.value) refreshDraftList();
 
   const tti = perf.markTTI();
   perf.flushReport();
@@ -3268,6 +3501,31 @@ watch(() => props.branchId, () => {
   color: var(--text-light);
 }
 
+.lr-session-num {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.lr-modal-session-num {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e40af;
+  background: #dbeafe;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .lr-student-name {
   font-weight: 600;
   font-size: 13.5px;
@@ -3492,6 +3750,7 @@ watch(() => props.branchId, () => {
   top: 0;
   background: var(--card-bg);
   z-index: 1;
+  flex-wrap: wrap;
 }
 
 .lr-modal-header h3 {
@@ -3516,6 +3775,67 @@ watch(() => props.branchId, () => {
 
 .lr-modal-close:hover {
   color: var(--danger);
+}
+
+.lr-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lr-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.lr-download-btn:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.lr-download-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.lr-download-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.lr-download-toast {
+  position: absolute;
+  top: 100%;
+  right: 28px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--success);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 2;
+}
+.lr-download-toast .material-symbols-outlined { font-size: 16px; }
+.lr-download-toast.lr-toast-error { background: var(--danger); }
+
+.lr-toast-enter-active, .lr-toast-leave-active {
+  transition: opacity 0.25s, transform 0.25s;
+}
+.lr-toast-enter-from, .lr-toast-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* ── Form ── */
@@ -3870,6 +4190,13 @@ watch(() => props.branchId, () => {
     font-size: 17px;
   }
 
+  .lr-download-btn .lr-download-label {
+    display: none;
+  }
+  .lr-download-btn {
+    padding: 6px 8px;
+  }
+
   .lr-form {
     padding: 16px 20px 24px;
   }
@@ -4018,6 +4345,188 @@ watch(() => props.branchId, () => {
     min-width: 0;
     flex: 1;
     text-align: center;
+  }
+}
+
+/* ── Draft Status Bar (inside modal) ── */
+.lr-draft-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  margin: 0 0 8px;
+  border-radius: 6px;
+  background: #f0f7ff;
+  border: 1px solid #c8ddf5;
+  font-size: 12px;
+  color: #3d6ba8;
+}
+.lr-draft-bar--error {
+  background: #fff4e5;
+  border-color: #f0c36d;
+  color: #a67c00;
+}
+.lr-draft-bar-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.lr-draft-bar-text {
+  flex: 1;
+  min-width: 0;
+}
+.lr-draft-bar-clear {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  color: #c0392b;
+  padding: 2px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.lr-draft-bar-clear:hover {
+  background: rgba(192, 57, 43, 0.08);
+}
+
+/* ── Draft List Button (header) ── */
+.lr-draft-list-btn {
+  position: relative;
+}
+.lr-draft-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  background: #FB8C00;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 5px;
+  margin-left: 4px;
+  line-height: 1;
+}
+
+/* ── Draft Panel Modal ── */
+.lr-draft-panel {
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.lr-draft-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+/* Empty state */
+.lr-draft-empty {
+  text-align: center;
+  padding: 32px 16px;
+}
+.lr-draft-empty-icon {
+  font-size: 48px;
+  color: #bbb;
+  margin-bottom: 12px;
+}
+.lr-draft-empty-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #555;
+  margin: 0 0 6px;
+}
+.lr-draft-empty-hint {
+  font-size: 13px;
+  color: #888;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Draft items */
+.lr-draft-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+}
+.lr-draft-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fafafa;
+  border: 1px solid #eee;
+  transition: background 0.15s;
+}
+.lr-draft-item:hover {
+  background: #f0f7ff;
+  border-color: #c8ddf5;
+}
+.lr-draft-item-info {
+  flex: 1;
+  min-width: 0;
+  cursor: default;
+}
+.lr-draft-item-student {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lr-draft-item-meta {
+  font-size: 12px;
+  color: #777;
+  margin-top: 2px;
+}
+.lr-draft-item-time {
+  font-size: 11px;
+  color: #aaa;
+  margin-top: 2px;
+}
+.lr-draft-item-delete {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: #c0392b;
+  flex-shrink: 0;
+}
+.lr-draft-item-delete:hover {
+  background: rgba(192, 57, 43, 0.08);
+}
+.lr-draft-item-delete .material-symbols-outlined {
+  font-size: 18px;
+}
+
+@media (max-width: 600px) {
+  .lr-draft-panel {
+    max-width: 100% !important;
+    margin: 0;
+    border-radius: 12px 12px 0 0;
+    max-height: 85vh;
+    align-self: flex-end;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .lr-draft-bar {
+    font-size: 11px;
+    padding: 5px 10px;
+  }
+  .lr-draft-item {
+    padding: 12px;
+  }
+  .lr-draft-item-delete {
+    width: 44px;
+    height: 44px;
+  }
+  .lr-draft-list-btn {
+    min-height: 44px;
   }
 }
 </style>

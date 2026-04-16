@@ -53,6 +53,12 @@
             <div class="toolbar-secondary-meta">
               <span class="week-stat">本日 <b>{{ getDayCourseCount(selectedDow) }}</b> 堂 / 本週 <b>{{ weekCourseCount }}</b> 堂</span>
               <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
+              <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
+                <span class="capacity-legend-label">班型容量</span>
+                <span class="capacity-legend-chip" style="background:#10b981">1/3</span>可加
+                <span class="capacity-legend-chip" style="background:#f59e0b">2/3</span>剩 1 位
+                <span class="capacity-legend-chip" style="background:#ef4444">3/3</span>已滿
+              </span>
             </div>
           </div>
           <div class="toolbar-secondary-line toolbar-secondary-line--filters">
@@ -64,6 +70,14 @@
                 </select>
                 <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" autocomplete="off" />
                 <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" autocomplete="off" />
+                <label
+                  v-if="!isWeekOverview && !isTeacher"
+                  class="filter-toggle toolbar-hide-empty-toggle"
+                  title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
+                >
+                  <input type="checkbox" v-model="hideEmptyTeacherColumns" />
+                  <span>只顯示今日有課老師</span>
+                </label>
               </div>
               <div
                 v-if="visibleTeachers.length > 1 && !isTeacher"
@@ -152,7 +166,14 @@
         </div>
         <div class="teacher-grid-wrapper" data-guide="calendar-grid">
           <div v-if="visibleTeachers.length === 0" class="teacher-empty">
-            目前無老師資料，請先在「學生管理」中建立課程並指派老師。
+            <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
+              <div style="font-weight:600;margin-bottom:6px;">今日無已排課老師</div>
+              <div style="color:#6b7280;font-size:13px;margin-bottom:10px;">可關閉「只顯示今日有課老師」以顯示全部老師欄並快速排課。</div>
+              <button type="button" class="btn-secondary" @click="hideEmptyTeacherColumns = false">顯示全部老師</button>
+            </template>
+            <template v-else>
+              目前無老師資料，請先在「學生管理」中建立課程並指派老師。
+            </template>
           </div>
           <div v-else :class="['teacher-grid', { 'teacher-grid-compact': isTeacherGridCompact }]" :style="gridTemplateStyle">
             <div class="time-col">
@@ -178,6 +199,13 @@
                 @dragleave="dragOverSlot = null"
                 @drop.prevent="!isTeacher && onSlotDrop(selectedDow, h, selectedDateStr, teacher.id)"
               >
+                <span
+                  v-if="getSlotOccupancy(teacher.id, selectedDow, h).count > 0"
+                  class="capacity-badge"
+                  :class="{ 'capacity-badge-compact': isTeacherGridCompact }"
+                  :style="{ background: getSlotOccupancy(teacher.id, selectedDow, h).color }"
+                  :title="getSlotOccupancy(teacher.id, selectedDow, h).tooltip"
+                >{{ getSlotOccupancy(teacher.id, selectedDow, h).label }}</span>
                 <div
                   v-for="(course, cIdx) in getCoursesForTeacherAt(teacher.id, h)"
                   :key="course.id"
@@ -959,6 +987,16 @@ const selectedDateStr = computed(() => getDisplayDateFull(selectedDow.value));
 const roomFilter = ref('');
 const teacherSearch = ref('');
 const studentSearch = ref('');
+// 日檢視：是否隱藏「當日無課」的老師欄（純覽模式；開啟後無法點空格快速排課）
+const HIDE_EMPTY_TEACHERS_KEY = 'smart_calendar_hide_empty_teachers';
+const hideEmptyTeacherColumns = ref((() => {
+  try { return localStorage.getItem(HIDE_EMPTY_TEACHERS_KEY) === '1'; }
+  catch (e) { return false; }
+})());
+watch(hideEmptyTeacherColumns, (v) => {
+  try { localStorage.setItem(HIDE_EMPTY_TEACHERS_KEY, v ? '1' : '0'); }
+  catch (e) { /* ignore storage errors (private mode etc.) */ }
+});
 
 /** 工具列「搜尋學生」：與老師名、教室篩選並用時為 AND；日檢視僅看當天、週檢視／老師下拉看整週。 */
 const courseMatchesStudentSearch = (c) => {
@@ -1609,7 +1647,34 @@ const visibleTeachers = computed(() => {
       }
     }
   }
-  return filtered.sort((a, b) => {
+  // 日檢視：當日有排課的老師優先置左，無課老師排後方，減少橫向捲動
+  const dowForSort = !isWeekOverview.value ? selectedDow.value : null;
+  const ymdForSort = !isWeekOverview.value ? selectedDateStr.value : null;
+  const teacherHasCourseToday = (tid) => {
+    if (dowForSort == null) return false;
+    return filteredCourses.value.some((c) => {
+      if (c.teacher_id !== tid) return false;
+      if (c.day_of_week !== dowForSort) return false;
+      if (ymdForSort && isSessionCancelledOnDate(c, ymdForSort)) return false;
+      return true;
+    });
+  };
+  const withBusyFlag = filtered.map((t) => ({
+    ...t,
+    _hasCourseToday: teacherHasCourseToday(t.id),
+  }));
+  if (hideEmptyTeacherColumns.value && !isWeekOverview.value) {
+    return withBusyFlag
+      .filter((t) => t._hasCourseToday)
+      .sort((a, b) => {
+        if (a.roomLabel !== b.roomLabel) return a.roomLabel.localeCompare(b.roomLabel);
+        return a.username.localeCompare(b.username);
+      });
+  }
+  return withBusyFlag.sort((a, b) => {
+    const ap = a._hasCourseToday ? 0 : 1;
+    const bp = b._hasCourseToday ? 0 : 1;
+    if (ap !== bp) return ap - bp;
     if (a.roomLabel !== b.roomLabel) return a.roomLabel.localeCompare(b.roomLabel);
     return a.username.localeCompare(b.username);
   });
@@ -1634,14 +1699,14 @@ const allRoomOptions = computed(() => {
   return Array.from(roomSet).sort();
 });
 
+const isTeacherGridCompact = computed(() => visibleTeachers.value.length >= 10);
 const gridTemplateStyle = computed(() => {
-  const count = visibleTeachers.value.length;
+  const count = Math.max(1, visibleTeachers.value.length);
+  const minColWidth = isTeacherGridCompact.value ? 140 : 150;
   return {
-    // Desktop: prioritize fitting all teacher columns without horizontal scroll.
-    gridTemplateColumns: `56px repeat(${Math.max(1, count)}, minmax(0, 1fr))`,
+    gridTemplateColumns: `56px repeat(${count}, minmax(${minColWidth}px, 1fr))`,
   };
 });
-const isTeacherGridCompact = computed(() => visibleTeachers.value.length >= 10);
 
 const displayWeekFilteredCourses = computed(() => {
   if (displayWeek.value === 0) return courses.value;
@@ -1703,11 +1768,15 @@ const filteredCourses = computed(() => {
         const targetYmd = String(targetDate).slice(0, 10);
         // Leave exceptions: keep the card visible (shows '假' badge via rollCallBadge)
         // Rescheduled exceptions: hide the card on the original date (session was moved)
-        const hasReschedule = exceptions.value.some(ex =>
+        // BUT if the ClassSession is already attended, the reschedule is stale — show the card.
+        const rawHasReschedule = exceptions.value.some(ex =>
           ex.status === 'rescheduled' &&
           (ex.student_course_id == null ? false : String(ex.student_course_id) === cid) &&
           toYmd(ex.schedule_date) === targetDate
         );
+        const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
+        const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
+        const hasReschedule = rawHasReschedule && !hasAttendedSession;
         const hasScheduledExc = exceptions.value.some(ex =>
           ex.status === 'scheduled' &&
           (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
@@ -1986,6 +2055,8 @@ const loadCourses = async () => {
           token,
           branchId: isTeacher.value ? 0 : branchId,
           studentClassIds: ids,
+          start: schedStart,
+          end: schedEnd,
           perPage: 2000,
         });
         sessionDatesByCourseId.value = byClass || {};
@@ -2165,6 +2236,33 @@ const isSlotRoomFull = (dow, hour) => {
 // --- Conflict Detection ---
 // Rules: one_on_one max 1, one_on_two max 2, one_on_three max 3, tutoring counts as 1
 const CAPACITY_MAP = { 'one_on_one': 1, 'one_on_two': 2, 'one_on_three': 3, 'tutoring': 1, 'trial': 1 };
+
+const TEACHER_SLOT_ABSOLUTE_MAX = 3;
+const getSlotOccupancy = (teacherId, dow, hour) => {
+  const coursesAtSlot = filteredCourses.value.filter(c => {
+    if (c.teacher_id !== teacherId) return false;
+    if (c.day_of_week !== dow) return false;
+    if (parseHour(c.start_time) !== hour) return false;
+    if (!courseMatchesStudentSearch(c)) return false;
+    const ymd = viewMode.value === 'day' ? selectedDateStr.value : getDisplayDateFull(dow);
+    if (isSessionCancelledOnDate(c, ymd)) return false;
+    return true;
+  });
+  if (coursesAtSlot.length === 0) {
+    return { count: 0, max: TEACHER_SLOT_ABSOLUTE_MAX, color: '#10b981', label: '', tooltip: '' };
+  }
+  const types = coursesAtSlot.map(c => String(c.class_type || ''));
+  let max = TEACHER_SLOT_ABSOLUTE_MAX;
+  if (types.includes('one_on_one')) max = 1;
+  else if (types.includes('one_on_two')) max = 2;
+  const rawCount = coursesAtSlot.length;
+  const count = Math.min(rawCount, max);
+  const remaining = Math.max(0, max - count);
+  const color = count >= max ? '#ef4444' : remaining === 1 ? '#f59e0b' : '#10b981';
+  const status = count >= max ? '已滿' : `可再收 ${remaining} 位`;
+  const tooltip = `此時段學生 ${count} 位（上限 ${max} 位，${status}）`;
+  return { count, max, color, label: `${count}/${max}`, tooltip, raw: rawCount, courses: coursesAtSlot };
+};
 
 const checkConflict = () => {
   if (!modalForm.value.teacher_id || !modalForm.value.day_of_week || !modalForm.value.start_time) {
@@ -3469,11 +3567,10 @@ onMounted(() => {
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  overflow: hidden;
-  overflow-x: hidden;
+  overflow: clip;
 }
 .teacher-grid-wrapper {
-  overflow-x: hidden;
+  overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 .teacher-grid {
@@ -3501,7 +3598,7 @@ onMounted(() => {
   font-size: 9px;
 }
 .teacher-grid.teacher-grid-compact .course-block {
-  padding: 4px 6px;
+  padding: 4px 4px;
   border-radius: 6px;
 }
 .teacher-grid.teacher-grid-compact .cb-student {
@@ -3523,6 +3620,10 @@ onMounted(() => {
   height: 64px;
   border-top: 3px solid transparent;
   border-bottom: 1px solid var(--border-color, #e2e8f0);
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: var(--bg-muted, #f8fafc);
 }
 .time-label {
   height: 56px;
@@ -3715,6 +3816,31 @@ onMounted(() => {
 }
 .filter-input:focus { border-color: var(--primary, #2563eb); }
 .filter-input::placeholder { color: var(--text-light, #94a3b8); }
+
+.toolbar-filters .toolbar-hide-empty-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  background: #fff;
+  color: var(--text, #334155);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  height: 38px;
+  box-sizing: border-box;
+}
+.toolbar-filters .toolbar-hide-empty-toggle:hover {
+  border-color: var(--primary, #2563eb);
+}
+.toolbar-filters .toolbar-hide-empty-toggle input[type="checkbox"] {
+  accent-color: var(--primary, #2563eb);
+  margin: 0;
+}
 
 /* ----- Teacher View ----- */
 .teacher-view { padding: 0; }
@@ -4168,7 +4294,7 @@ onMounted(() => {
   }
   .day-tab-name { font-size: 11px; }
   .day-tab-date { font-size: 9px; }
-  .teacher-col { min-width: 0; }
+  .teacher-col { min-width: 80px; }
   .week-view { overflow-x: auto; }
   .teacher-grid-wrapper { overflow-x: auto; }
   .teacher-grid { min-width: max-content; }
@@ -4439,6 +4565,98 @@ onMounted(() => {
     rgba(239, 68, 68, 0.12) 4px,
     rgba(239, 68, 68, 0.12) 8px
   );
+}
+
+/* --- Capacity Badge --- */
+.capacity-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 5;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  min-width: 22px;
+  text-align: center;
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.capacity-badge-compact {
+  font-size: 8px;
+  font-weight: 700;
+  min-width: 16px;
+  padding: 0 2px;
+  border-radius: 3px;
+  border-width: 1px;
+  top: 2px;
+  left: 2px;
+  letter-spacing: -0.3px;
+}
+/* 當時段有容量徽章時，讓第一張課程卡的學生姓名向右讓位，避免遮擋 */
+.slot:has(.capacity-badge) .course-block:first-of-type .cb-student {
+  padding-left: 30px;
+}
+.slot:has(.capacity-badge-compact) .course-block:first-of-type .cb-student {
+  padding-left: 18px;
+}
+/* 緊湊模式的角標（到班/漏點/請假/未填評量）：字更小、邊距更緊，讓 split 卡片有更多姓名空間 */
+.teacher-grid.teacher-grid-compact .rc-tag {
+  font-size: 8px;
+  padding: 0 2px;
+  right: 2px;
+}
+/* 修正：第二個角標（rc-tag-second）須維持在底部，避免特異性衝突讓 top/bottom 同時生效而縱向撐開 */
+.teacher-grid.teacher-grid-compact .rc-tag.rc-tag-second {
+  top: auto;
+  bottom: 2px;
+}
+/* 當課程卡有「到班 / 漏點 / 請假 / 未填評量」角標時，讓學生姓名留出右側空間，避免被遮擋 */
+.course-block:has(.rc-tag) .cb-student {
+  padding-right: 20px;
+}
+.teacher-grid.teacher-grid-compact .course-block:has(.rc-tag) .cb-student {
+  padding-right: 13px;
+}
+.capacity-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #64748b);
+  margin-left: 8px;
+  flex-wrap: wrap;
+}
+.capacity-legend-label {
+  font-weight: 600;
+  color: var(--text-color, #334155);
+  margin-right: 2px;
+}
+.capacity-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin: 0 2px 0 4px;
+}
+@media (max-width: 768px) {
+  .capacity-badge {
+    font-size: 8px;
+    min-width: 18px;
+    padding: 0 2px;
+    border-radius: 3px;
+    border-width: 1px;
+  }
 }
 
 /* Responsive for week overview */

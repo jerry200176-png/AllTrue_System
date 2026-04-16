@@ -26,6 +26,10 @@
 
 `alert_type`：`unpaid` 或 `low_sessions`（若同時符合，以前者優先欄位展示時前端以堂數／未繳狀態區分）。
 
+### 續課抑制（2026-04-16 新增）
+
+若一筆堂數制課程觸發 `low_sessions`，但**同一學生、同一科目**已存在另一筆進行中（`Stop=0`）且 `RemainingSessions > 2` 的課程（代表已續課），則該 `low_sessions` 提醒會被**自動抑制**，不再出現在催繳名單。`unpaid` 類型不受此邏輯影響。
+
 ## 月結制（`StudentClass.ScheduleMode = date`）
 
 - 課程須為進行中：`Stop = 0`。
@@ -66,3 +70,9 @@
 - 只查 `ScheduleMode = count` 會**完全漏掉月結**。
 - `remaining > 0 && <= 2` 會**漏掉 0 堂**。
 - 將 API 改成「只未繳費」會**漏掉低堂數已繳費**。
+
+## payment_status 補充欄位與列入規則的分離關係（2026-04-16）
+
+`alerts/tuition` 回傳的 `payment_status`（六種值）為**顯示用補充欄位**，由 `AlertController::computePaymentStatus()` 計算。此欄位**不影響列入條件**——即使 `payment_status = paid`，只要課程符合上述堂數制或月結制的列入條件，仍會出現在名單中。
+
+修改 `computePaymentStatus()` 時，不得連帶修改列入條件的 query；反之亦然。兩者為獨立邏輯，以避免互相干擾。

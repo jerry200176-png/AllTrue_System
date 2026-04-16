@@ -16,7 +16,7 @@
     </button>
 
     <!-- Submit dialog -->
-    <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+    <div v-if="showForm" class="modal-overlay">
       <div class="modal-card">
         <h3><span class="material-symbols-outlined">bug_report</span> 回報系統問題</h3>
 

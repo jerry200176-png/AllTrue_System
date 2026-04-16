@@ -24,12 +24,16 @@ class PaymentReport extends Model
         'report_token_hash',
         'token_expires_at',
         'payment_id',
+        'voided_by',
+        'voided_at',
+        'void_reason',
     ];
 
     protected $casts = [
         'payment_date'    => 'date',
         'confirmed_at'    => 'datetime',
         'token_expires_at' => 'datetime',
+        'voided_at'       => 'datetime',
         'reported_amount' => 'decimal:2',
     ];
 
@@ -56,6 +60,11 @@ class PaymentReport extends Model
     public function payment()
     {
         return $this->belongsTo(Payment::class, 'payment_id', 'id');
+    }
+
+    public function voidedByUser()
+    {
+        return $this->belongsTo(User::class, 'voided_by', 'id');
     }
 
     public function isPending(): bool

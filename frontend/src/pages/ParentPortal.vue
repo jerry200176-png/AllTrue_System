@@ -35,9 +35,15 @@
         </div>
       </div>
       <div class="pp-login-actions">
-        <button class="pp-btn pp-btn-primary" @click="login">
-          <span class="material-symbols-outlined">login</span>
-          登入
+        <button class="pp-btn pp-btn-primary" @click="login" :disabled="loginLoading">
+          <template v-if="loginLoading">
+            <div class="pp-spinner-inline"></div>
+            登入中…
+          </template>
+          <template v-else>
+            <span class="material-symbols-outlined">login</span>
+            登入
+          </template>
         </button>
         <button class="pp-btn pp-btn-line" @click="loginWithLine" v-if="liffAvailable">
           <span style="font-weight:700;">LINE 登入</span>
@@ -220,7 +226,10 @@
             <!-- Report Header -->
             <div class="pp-report-head">
               <div class="pp-report-head-left">
-                <div class="pp-report-subject">{{ record.Subject || '課程' }}</div>
+                <div class="pp-report-subject">
+                  {{ record.Subject || '課程' }}
+                  <span v-if="record.session_number" class="pp-session-num">第{{ record.session_number }}堂</span>
+                </div>
                 <div class="pp-report-meta">
                   <span class="material-symbols-outlined" style="font-size:14px;">calendar_today</span>
                   {{ record.SessionDate }}
@@ -268,6 +277,13 @@
                   下次作業
                 </div>
                 <div class="pp-report-field-value">{{ record.NextHomework }}</div>
+              </div>
+              <div class="pp-report-field" v-if="record.NextWeekTestScope">
+                <div class="pp-report-field-label">
+                  <span class="material-symbols-outlined">quiz</span>
+                  下次週考範圍
+                </div>
+                <div class="pp-report-field-value">{{ record.NextWeekTestScope }}</div>
               </div>
               <div class="pp-report-field" v-if="record.Comment">
                 <div class="pp-report-field-label">
@@ -388,7 +404,6 @@
 import { onMounted, ref, computed, reactive } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent } from '../api';
 
-/** For multi-branch: LINE Endpoint URL must pass this (e.g. ?parent_liff_id=xxx); do not rely on a single VITE_LINE_LIFF_ID per build. */
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
   const fromQuery =
@@ -401,6 +416,19 @@ function resolveParentLiffId() {
   return String(import.meta.env.VITE_LINE_LIFF_ID || '').trim();
 }
 
+async function resolveParentLiffIdAsync() {
+  const local = resolveParentLiffId();
+  if (local) return local;
+  try {
+    const res = await fetch('/api/v1/parent/resolve-liff');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.liff_id) return json.liff_id;
+    }
+  } catch { /* ignore */ }
+  return '';
+}
+
 const props = defineProps({
   standalone: { type: Boolean, default: false },
 });
@@ -409,6 +437,7 @@ const tokenKey = 'parent_portal_token';
 const token = ref(localStorage.getItem(tokenKey) || '');
 const loginForm = ref({ Name: '', Phone: '' });
 const loginError = ref('');
+const loginLoading = ref(false);
 const dashboard = ref(null);
 const liffAvailable = ref(false);
 const liffLoading = ref(false);
@@ -594,6 +623,8 @@ const login = async () => {
     loginError.value = '請輸入學生姓名和手機號碼';
     return;
   }
+  if (loginLoading.value) return;
+  loginLoading.value = true;
   try {
     const result = await parentLogin(loginForm.value);
     token.value = result.token;
@@ -601,7 +632,9 @@ const login = async () => {
     if (result.students) setStudents(result.students);
     await loadDashboard();
   } catch (error) {
-    loginError.value = '登入失敗，請確認學生姓名及手機號碼是否正確';
+    loginError.value = error.message || '登入失敗，請確認學生姓名及手機號碼是否正確';
+  } finally {
+    loginLoading.value = false;
   }
 };
 
@@ -677,7 +710,6 @@ const loadLiffSdk = () => new Promise((resolve) => {
 });
 
 onMounted(async () => {
-  // If we already have a saved token, try loading dashboard first
   if (token.value) {
     try {
       await loadDashboard();
@@ -685,14 +717,17 @@ onMounted(async () => {
     } catch { /* token expired, continue to LIFF login */ }
   }
 
-  const liffId = resolveParentLiffId();
   const isLineInApp = /Line/i.test(navigator.userAgent);
+  let liffId = resolveParentLiffId();
+
+  if (!liffId && isLineInApp) {
+    liffId = await resolveParentLiffIdAsync();
+  }
+
   const hasLiffId = !!String(liffId).trim();
 
-  // Load LIFF SDK on-demand only when a liffId is configured
   if (hasLiffId) await loadLiffSdk();
 
-  // Only run auto LINE login in a configured LIFF entry.
   if (window.liff && hasLiffId) {
     liffLoading.value = true;
     try {
@@ -751,7 +786,7 @@ onMounted(async () => {
 }
 
 .pp-hint { color: #78909c; font-size: 0.85em; margin: 4px 0 0; }
-.pp-error { color: #c62828; font-size: 0.88em; margin: 10px 0 0; padding: 8px 12px; background: #ffebee; border-radius: 6px; }
+.pp-error { color: #DC2626; font-size: 0.875em; margin: 12px 0 0; padding: 10px 14px; background: #FEE2E2; border-radius: 8px; line-height: 1.5; word-break: break-word; }
 
 /* ═══ Loading ═══ */
 .pp-loading-card { text-align: center; padding: 40px 20px; }
@@ -793,6 +828,7 @@ onMounted(async () => {
 }
 .pp-btn:active { opacity: 0.8; }
 .pp-btn-primary { background: var(--primary, #E65100); color: #fff; flex: 1; justify-content: center; }
+.pp-btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
 .pp-btn-primary .material-symbols-outlined { font-size: 20px; }
 .pp-btn-line { background: #06C755; color: #fff; flex: 1; justify-content: center; }
 .pp-btn-small {
@@ -1021,6 +1057,12 @@ onMounted(async () => {
 .pp-report-subject {
   font-weight: 700; font-size: 1em; color: #263238;
   margin-bottom: 2px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.pp-session-num {
+  font-size: 0.75em; font-weight: 600; color: #1e40af;
+  background: #dbeafe; padding: 1px 7px; border-radius: 8px;
+  white-space: nowrap;
 }
 .pp-report-meta {
   display: flex; align-items: center; gap: 4px; flex-wrap: wrap;

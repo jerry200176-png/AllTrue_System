@@ -115,7 +115,7 @@
         </div>
 
         <!-- Mobile cards (hidden on desktop) -->
-        <div class="att-mobile-only att-cards">
+        <div class="att-mobile-only att-cards" :style="selectedIds.length > 0 ? { paddingBottom: '72px' } : {}">
           <div
             v-for="s in pendingSessions" :key="'m-' + s.class_session_id"
             class="att-card"
@@ -385,7 +385,10 @@
       </div>
     </div>
 
-    <!-- Confirm dialog for non-present batch/single -->
+  </div>
+
+  <!-- Teleport to body so z-index beats the fixed bottom nav (z:10000) -->
+  <Teleport to="body">
     <div v-if="confirmDialog.visible" class="att-confirm-overlay" @click.self="!confirmDialog.submitting && (confirmDialog.visible = false)">
       <div class="att-confirm-sheet">
         <div class="att-confirm-title">{{ confirmDialog.title }}</div>
@@ -399,7 +402,7 @@
         </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -1235,12 +1238,13 @@ watch(() => props.branchId, () => {
 
 /* Sticky batch bar (mobile) */
 .att-sticky-batch {
-  position: fixed; bottom: 68px; left: 0; right: 0; z-index: 50;
+  position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 20px;
   background: var(--card-bg, #fff); border-top: 1px solid var(--border);
   box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
   font-size: 14px; font-weight: 600; color: var(--text);
+  will-change: transform; transform: translateZ(0);
 }
 .att-sticky-batch button { min-width: 100px; }
 
@@ -1256,21 +1260,7 @@ watch(() => props.branchId, () => {
 .att-batch-result-item.success { background: var(--success-bg); color: var(--success); }
 .att-batch-result-item.error { background: var(--danger-bg); color: var(--danger); }
 
-/* Confirm dialog */
-.att-confirm-overlay {
-  position: fixed; inset: 0; z-index: 10100; background: rgba(0,0,0,0.4);
-  display: flex; align-items: flex-end; justify-content: center;
-}
-.att-confirm-sheet {
-  background: var(--card-bg, #fff); border-radius: 16px 16px 0 0;
-  padding: 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
-  width: 100%; max-width: 480px;
-  box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
-}
-.att-confirm-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
-.att-confirm-body { font-size: 14px; color: var(--text-light); white-space: pre-line; margin-bottom: 20px; line-height: 1.6; }
-.att-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
-.att-confirm-actions button { min-width: 80px; min-height: 40px; }
+/* Confirm dialog styles moved to non-scoped block (Teleport renders outside component root) */
 
 /* Desktop / Mobile visibility */
 .att-desktop-only { display: block; }
@@ -1361,12 +1351,6 @@ watch(() => props.branchId, () => {
   .att-mobile-only { display: flex; }
   .att-sticky-batch { display: flex; }
 
-  .att-confirm-overlay { align-items: flex-end; }
-}
-
-@media (min-width: 769px) {
-  .att-confirm-overlay { align-items: center; }
-  .att-confirm-sheet { border-radius: 16px; }
 }
 
 @media (max-width: 480px) {
@@ -1376,5 +1360,31 @@ watch(() => props.branchId, () => {
   .att-checkin-card, .att-records-card, .att-pending-card { padding: 16px; }
   .att-card { padding: 12px; }
   .att-status-group-mobile .att-status-btn { padding: 8px 2px; font-size: 12px; }
+}
+</style>
+
+<!-- Non-scoped: Teleport'd confirm dialog renders outside component root -->
+<style>
+.att-confirm-overlay {
+  position: fixed; inset: 0; z-index: 10100; background: rgba(0,0,0,0.4);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.att-confirm-sheet {
+  background: var(--card-bg, #fff); border-radius: 16px 16px 0 0;
+  padding: 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  width: 100%; max-width: 480px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+}
+.att-confirm-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
+.att-confirm-body { font-size: 14px; color: var(--text-light); white-space: pre-line; margin-bottom: 20px; line-height: 1.6; }
+.att-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.att-confirm-actions button { min-width: 80px; min-height: 40px; }
+
+@media (max-width: 768px) {
+  .att-confirm-overlay { align-items: flex-end; }
+}
+@media (min-width: 769px) {
+  .att-confirm-overlay { align-items: center; }
+  .att-confirm-sheet { border-radius: 16px; }
 }
 </style>
