@@ -59,6 +59,8 @@ class ClassSessionController extends Controller
             'paid_at' => 'nullable|date',
             'branch_id' => 'nullable|integer|min:1',
             'mode' => 'nullable|in:create,backfill',
+            'force' => 'nullable|boolean',
+            'course_start_date' => 'nullable|date',
         ]);
 
         return app(EnrollmentService::class)->store($request, $data);
@@ -85,25 +87,17 @@ class ClassSessionController extends Controller
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            // Single-session substitute: schedules.scheduled + original_schedule_id → 代課老師（點名／列表用）
-            // Join on course + date + start_time to avoid mismatching when same course has multiple sessions on one day.
-            ->leftJoin('schedules as sub_sched', function ($join) {
+            // Substitute teacher: pick latest scheduled substitute per (course, date, start_time).
+            // Derived table prevents row multiplication when multiple substitute rows exist.
+            ->leftJoin(DB::raw('(SELECT sub_inner.* FROM `schedules` sub_inner INNER JOIN (SELECT student_course_id, DATE(schedule_date) AS sched_date, start_time, MAX(id) AS max_id FROM `schedules` WHERE status = "scheduled" AND original_schedule_id IS NOT NULL GROUP BY student_course_id, sched_date, start_time) sub_latest ON sub_inner.id = sub_latest.max_id) AS sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id');
+                    ->whereRaw('sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin('Teacher as subt', 'subt.id', '=', 'sub_sched.teacher_id')
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
-            ->leftJoin('LearningRecord as lr', function ($join) {
-                $join->on('lr.ClassSessionID', '=', 'cs.id')
-                     ->whereNull('lr.VoidedAt');
-            })
-            ->leftJoin('StudentSingIn as si', function ($join) {
-                $join->on('si.ClassSessionID', '=', 'cs.id')
-                     ->whereNull('si.VoidedAt');
-            })
+            ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
+            ->leftJoin(DB::raw('(SELECT si_inner.* FROM `StudentSingIn` si_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `StudentSingIn` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) si_latest ON si_inner.id = si_latest.max_id) AS si'), 'si.ClassSessionID', '=', 'cs.id')
             ->leftJoin('Teacher as t', 't.id', '=', 'sc.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
             // lr_teacher: 評量紀錄上記錄的老師（儲存授課當下的老師，不隨契約換師而變動）
@@ -1408,7 +1402,7 @@ class ClassSessionController extends Controller
                 }
             }
             if ($effective !== (int) $purchased) {
-                \Log::channel('single')->info('session_count_mismatch', [
+                \Log::channel('daily')->info('session_count_mismatch', [
                     'course_id' => $courseId,
                     'branch_id' => $branchId,
                     'purchased' => (int) $purchased,

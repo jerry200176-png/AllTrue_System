@@ -28,6 +28,9 @@
               <td>{{ item.account }}</td>
               <td>{{ item.campus_names.join('、') || '—' }}</td>
               <td class="actions">
+                <button type="button" class="btn-campus" @click="openCampusModal(item)" :disabled="actionId === item.id">
+                  編輯分校
+                </button>
                 <button type="button" class="btn-reset" @click="resetPassword(item)" :disabled="actionId === item.id">
                   重設密碼
                 </button>
@@ -73,11 +76,31 @@
         </table>
       </div>
     </section>
+
+    <!-- Edit campus modal -->
+    <div v-if="campusModal.visible" class="modal-overlay" @click.self="closeCampusModal">
+      <div class="modal-card">
+        <h3 class="modal-title">編輯分校 — {{ campusModal.directorName }}</h3>
+        <p class="modal-hint">勾選此主任可管理的分校（至少一間）</p>
+        <div class="campus-checkbox-list">
+          <label v-for="c in allCampuses" :key="c.id" class="campus-checkbox-item">
+            <input type="checkbox" :value="c.id" v-model="campusModal.selectedIds">
+            <span>{{ c.name }}</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" @click="closeCampusModal">取消</button>
+          <button type="button" class="btn-save" @click="saveCampuses" :disabled="campusModal.saving || campusModal.selectedIds.length === 0">
+            {{ campusModal.saving ? '儲存中...' : '儲存' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 
 const props = defineProps({
   token: { type: String, default: '' },
@@ -92,10 +115,19 @@ const loadingActive = ref(true);
 const msg = ref(null);
 const actionId = ref(null);
 const tempPasswords = ref({});
+const allCampuses = ref([]);
+
+const campusModal = reactive({
+  visible: false,
+  directorId: null,
+  directorName: '',
+  selectedIds: [],
+  saving: false,
+});
 
 async function loadAll() {
   if (!props.token) return;
-  await Promise.all([loadPending(), loadActive()]);
+  await Promise.all([loadPending(), loadActive(), loadCampuses()]);
 }
 
 async function loadPending() {
@@ -117,6 +149,48 @@ async function loadActive() {
     activeList.value = Array.isArray(data) ? data : [];
   } finally {
     loadingActive.value = false;
+  }
+}
+
+async function loadCampuses() {
+  try {
+    const res = await fetch('/api/v1/campuses', { headers: authHeaders() });
+    const data = await res.json().catch(() => []);
+    allCampuses.value = Array.isArray(data) ? data : [];
+  } catch (_) { /* noop */ }
+}
+
+function openCampusModal(item) {
+  campusModal.directorId = item.id;
+  campusModal.directorName = item.name;
+  campusModal.selectedIds = [...(item.campus_ids || [])];
+  campusModal.saving = false;
+  campusModal.visible = true;
+}
+
+function closeCampusModal() {
+  campusModal.visible = false;
+}
+
+async function saveCampuses() {
+  if (!props.token || campusModal.selectedIds.length === 0) return;
+  campusModal.saving = true;
+  try {
+    const res = await fetch(`/api/v1/directors/${campusModal.directorId}/campuses`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campus_ids: campusModal.selectedIds }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      msg.value = { type: 'error', text: data?.message || '更新失敗' };
+      return;
+    }
+    msg.value = { type: 'success', text: `已更新「${campusModal.directorName}」的分校` };
+    closeCampusModal();
+    await loadActive();
+  } finally {
+    campusModal.saving = false;
   }
 }
 
@@ -337,5 +411,56 @@ onMounted(() => loadAll());
   border-radius: 4px;
   white-space: nowrap;
 }
+.btn-campus {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  background: #e3f2fd;
+  color: #1565c0;
+}
+.btn-campus:hover:not(:disabled) { background: #bbdefb; }
+.btn-campus:disabled { opacity: 0.6; cursor: not-allowed; }
 .pending-table .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,.4);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: #fff; border-radius: 12px; padding: 1.5rem;
+  width: 360px; max-width: 92vw; max-height: 80vh; overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,.18);
+}
+.modal-title { margin: 0 0 0.25rem; font-size: 1.05rem; }
+.modal-hint { color: #78909c; font-size: 0.85rem; margin: 0 0 1rem; }
+.campus-checkbox-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 300px; overflow-y: auto; margin-bottom: 1.25rem;
+}
+.campus-checkbox-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  font-size: 14px;
+}
+.campus-checkbox-item:hover { background: #f5f5f5; }
+.campus-checkbox-item input[type="checkbox"] {
+  width: 16px; height: 16px; accent-color: #1565c0;
+}
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.btn-cancel {
+  padding: 8px 16px; border-radius: 6px; font-size: 13px;
+  cursor: pointer; border: 1px solid #ccc; background: #fff;
+  font-family: inherit; color: #455a64;
+}
+.btn-cancel:hover { background: #f5f5f5; }
+.btn-save {
+  padding: 8px 16px; border-radius: 6px; font-size: 13px;
+  cursor: pointer; border: none; background: #1565c0; color: #fff;
+  font-family: inherit;
+}
+.btn-save:hover:not(:disabled) { background: #0d47a1; }
+.btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>

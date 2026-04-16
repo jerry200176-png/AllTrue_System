@@ -52,7 +52,7 @@ class LogSlowRequests
         ];
 
         if ($durationMs >= self::SLOW_THRESHOLD_MS) {
-            Log::channel('single')->warning("[slow-request] {$method} /{$path} {$durationMs}ms", $context);
+            Log::channel('daily')->warning("[slow-request] {$method} /{$path} {$durationMs}ms", $context);
         }
 
         // SLO tracking for monitored endpoints

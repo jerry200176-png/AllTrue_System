@@ -2,6 +2,147 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-16 (D) — 重複課程保護邏輯修正（SubjectID + ClassType）
+
+### Fixed
+- **後端 `EnrollmentService::store`**：重複課程保護原先僅比對 `SubjectID`，導致同科目不同教學類型（如數學一對一 vs 數學輔導）也被 409 擋下。修正為 `SubjectID + ClassType` 均相同才視為重複。`conflicts[]` 回應新增 `class_type` 欄位。
+- **前端強制建立流程**：`StudentsList.vue` 與 `CourseManagement.vue` 的確認彈窗「我知道，仍要新增課程」按鈕原先僅重開空表單（再次送出仍 409，形成死循環）。修正為以 `originalPayload + force: true` 直接重送 API，成功後顯示建立結果並重整列表。
+
+### Added
+- **測試**：`tests/Feature/DuplicateCourseGuardTest.php`（3 案例：同科目不同 ClassType 允許建立、同科目同 ClassType 回 409、force=true 回 201）。
+
+---
+
+## 2026-04-16 (C) — 新建課程開課日設定優化（明確開課日 + 防誤標已上）
+
+### Added
+- **「開課日」欄位**：`UniversalClassScheduler.vue`（`mode="create"`）新增 date picker，預設今天。
+  - 自動排課（`futureSessionOccurrences`）從 `max(今天, 開課日)` 起算，開課日前不產生預排堂次。
+  - 設定開課日後月曆自動跳轉至該月。
+  - 手動點選早於開課日的未來日期時，彈出確認框提示「將視為補登」。
+- **後端 `course_start_date` 防禦驗證**：`POST /api/v1/class-sessions/batch` 接受 optional `course_start_date`；`EnrollmentService::store` 驗證 `kind='future'` 的堂次日期不早於開課日（違反回 422）。缺失時向下相容。
+- **月曆視覺優化**：
+  - 補登已上日期（`kind=confirmed`）：綠底 + 「補登」標籤。
+  - 手動預排未來日期：紫框 + 「預排」標籤（與系統預排的藍框區分）。
+  - 開課日格子底部顯示橙色「開課」旗標。
+- **摘要面板優化**：送出前顯示「補登已上 N 堂」vs「預排未上 N 堂」，取代原先的「手動選定 N 堂」模糊標示。
+- **測試**：`tests/Feature/CourseStartDateTest.php`（3 案例：遠未來開課日正確排課、早於開課日的 future 被 422 拒絕、無開課日向下相容）。
+
+### Changed
+- `docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md`：新增§5「開課日欄位」語意說明。
+- `isManualDateConfirmed` 語意**不受影響**（過去日仍為補登，未來日仍為預排）。
+
+---
+
+## 2026-04-16 (B) — 樹莓派儲存與 Log 寫入優化
+
+### Added
+- **Log Rotation**（FR-001）：`backend/config/logging.php` 的 `laravel.log` 從 `single`（永不輪轉）改為 `daily`（14 天保留），與 `perf.log` 一致。
+- **Health 端點擴充**（FR-006）：`GET /api/v1/health` 新增 `log_pipeline` 區段，回傳 log driver、tmpfs 啟用狀態、使用率與健康判斷。
+- **基礎設施腳本**：
+  - `scripts/infra/baseline-capture.sh`（FR-000）：建立效能基線快照。
+  - `scripts/infra/storage-inventory.sh`（FR-002）：盤點節點儲存介質，偵測 SD 卡。
+  - `scripts/infra/setup-log-tmpfs.sh`（FR-004/005）：掛載 128 MB tmpfs + systemd flush timer（每 5 分鐘）+ 監控 timer（每 1 分鐘）+ 80% 自動降級。
+  - `scripts/infra/rollback-log-tmpfs.sh`（FR-007）：一鍵回滾（< 5 分鐘），冪等。
+  - `scripts/infra/test-log-infra.sh`（TEST）：自動化測試套件（17+ 案例）。
+- **文件**：
+  - `docs/baselines/baseline_20260416_143105.md`：首份基線快照。
+  - `docs/QA_LOG_INFRA_ACCEPTANCE.md`：QA 驗收矩陣。
+  - `docs/SECURITY_REVIEW_LOG_INFRA.md`：資安審查報告（無阻擋項）。
+
+### Changed
+- `ClassSessionController::index`、`LogSlowRequests`：`Log::channel('single')` → `Log::channel('daily')`，配合 logging.php 更名。
+- `docs/OPERATIONS_RUNBOOK.md`：新增 §L（Log 管理與 Tmpfs 緩衝）。
+- `docs/deploy-raspberry-pi.md`：新增 Log 管理段落。
+
+### Security
+- 發現既有 SQL error log 含 PII（Teacher 手機、姓名），建議後續收緊檔案權限與 mask SQL 參數（非阻擋項）。
+
+---
+
+## 2026-04-16 (A) — 資料庫效能優化 P0（索引補齊 + N+1 修復 + P1 讀寫分離準備）
+
+### Added
+- **Migration `2026_04_16_100000_add_core_perf_indexes`**：為 8 張核心表新增 17 個索引
+  - `Student`: `(CampusID, name)`, `(CampusID, status)`, `(RFID)`
+  - `StudentClass`: `(StudentID)`, `(TeacherID)`, `(Stop, StudentID)`
+  - `ClassSession`: `(Status)`
+  - `StudentSingIn`: `(StudentID)`, `(StudentClassID)`, `(SignInDT)`
+  - `Invoice`: `(StudentID)`, `(StudentClassID)`, `(Status)`
+  - `Payment`: `(InvoiceID)`
+  - `UserCampus`: `(UserID)`, `(CampusID, Approved)`
+- **`config/database.php`**：新增 P1 讀寫分離框架（`read/write/sticky`）與 persistent PDO 選項
+  - 預設關閉（`DB_READ_HOST` 未設定時全走 primary）
+  - `sticky = true` 確保寫後讀一致性
+- **效能基線報告**：`docs/DB_PERF_BASELINE_2026-04-16.md`
+- **資安審查報告**：`docs/DB_PERF_SECURITY_REVIEW_2026-04-16.md`
+- **測試**：`tests/Feature/DatabasePerfTest.php`（25 案例，驗證索引存在與 EXPLAIN 命中）
+
+### Changed
+- **`StudentController::activeCourses`**：修復 N+1 查詢，從迴圈內逐筆查 Subject 改為批次 `whereIn` 查詢
+
+### Performance
+- 優化前：8 張核心表中 9 組常用查詢全部走 `type: ALL`（全表掃描）
+- 優化後：全部降為 `type: ref`（索引查詢），查詢計畫複雜度從 O(n) 降至 O(log n)
+- 索引總額外空間：約 200 KB
+
+### Rollback
+- `php artisan migrate:rollback --step=1` 即可移除所有新增索引
+- 完整備份：`backups/alltrue_pre_perf_optimization_2026-04-16.sql`
+
+## 2026-04-15 (J) — 學收核銷系統（家長繳費回報 + 主任核帳 + 電子收據）
+
+### Added
+- **新資料表 `payment_reports`**：家長繳費回報紀錄（匯款/現金、後5碼、申報金額、核帳狀態）
+- **`Payment` 表**新增 `receipt_url`、`payment_report_id` 欄位
+- **`Invoice` 表**新增 `reconciled_at`、`reconciled_by` 欄位
+- **`PaymentReportTokenService`**（`backend/app/Services/`）：HMAC-SHA256 簽署 token 產生/驗證/防重送
+- **`PaymentReportController`**（`backend/app/Http/Controllers/`）：
+  - `POST /api/v1/payment-reports/generate-link`（director）：產生家長回報連結
+  - `GET /api/v1/pay-report?token=`（public）：家長取得表單資料
+  - `POST /api/v1/pay-report`（public）：家長提交繳費回報
+  - `GET /api/v1/payment-reports`（director）：待核帳列表
+  - `PUT /api/v1/payment-reports/{id}/confirm`（director）：確認入帳 → 建 Payment + 更新 Invoice
+  - `PUT /api/v1/payment-reports/{id}/reject`（director）：退回回報
+  - `GET /api/v1/payment-reports/{id}/receipt`（director）：收據資料
+- **`PayReportPage.vue`**（`frontend/src/pages/`）：家長無登入獨立頁，Token 驗證後填寫繳費回報
+- **`ReceiptModal.vue`**（`frontend/src/components/`）：Canvas 繪製正式電子收據（綠色主題）
+- **`TuitionCollectionPage.vue`** 大幅改版：新增「催繳名單」/「待核帳」雙 Tab、「回報連結」按鈕、核帳/退回/收據操作
+- **`ParentPortal.vue`**：帳單列表增加「已核帳」徽章
+- **`App.vue`**：新增 `/pay-report` URL 路由偵測，導向 PayReportPage
+
+### Security
+- Token 72 小時有效，HMAC-SHA256 簽署，DB 存 hash 防重送
+- 帳號後5碼驗證（僅數字、max 5 碼）
+- 繳費日期不可超過今天、金額上限 999,999
+- 分校隔離：payment_reports 列表依 student.CampusID 過濾
+
+### Tests
+- `PaymentReportApiTest`：13 tests / 51 assertions 全部通過
+  - generate-link、formData、submit（匯款/現金/重複送出/後5碼驗證）、list、confirm、reject、receipt
+
+### Notes
+- 電子收據 ≠ 法定電子發票，僅供內部繳費確認用途
+- 第二期規劃：LINE 推送收據、核帳月報匯出、老師收款入口
+
+## 2026-04-15 (I) — 課程管理 chip 重複修正（LEFT JOIN 行乘積）
+
+### Fixed
+- **`backend/app/Http/Controllers/ClassSessionController.php`**
+  - `index` 方法的 `sub_sched`（代課 schedules）、`LearningRecord`、`StudentSingIn` 三個 LEFT JOIN 改為 Derived Table Subquery，每組合只取 `MAX(id)` 一筆，消除同一 `ClassSession` 因 1:N 關係被重複回傳的問題。
+  - 案例：木柵校林宥彣理化（course 70）1/12 有 3 筆代課 schedule，導致該 ClassSession 回傳 3 次。
+- **`frontend/src/lib/classSessionsApi.js`**
+  - `normalizeClassSessionsPayload` 新增 id 去重防禦（`byClass[key].some(r => r.id === item.id)`），防止後端意外回傳重複列時前端仍重複渲染。
+- **`frontend/src/composables/course-management/useCourseSessionsDisplay.js`**
+  - `updateLocalSessionRow` 改為遍歷所有同 id 列（原 `findIndex` 只更新第一筆，若有重複列會造成視覺不一致）。
+
+### Validation / QA
+- 舊查詢 course 70 回傳 12 列（1/12 重複 3 次）；新查詢回傳 10 列（每 session 唯一）。
+- `ClassSessionDuplicateStatusTest` 3/3 通過。
+- 前端已執行 `cd frontend && npm run deploy`。
+
+---
+
 ## 2026-04-15 (H) — Bug 回報篩選列 UI 精緻化
 
 ### Changed

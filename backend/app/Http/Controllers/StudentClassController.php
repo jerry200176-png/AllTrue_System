@@ -949,6 +949,20 @@ class StudentClassController extends Controller
         $studentClass->update($mapped);
         $studentClass->refresh();
 
+        // Rate 或 SessionCount 異動時同步 Charge（總費用快照）
+        if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
+            $rateUnit = $studentClass->rate_unit ?? 'session';
+            if ($rateUnit === 'hour') {
+                $newCharge = (int) round((float) $studentClass->Rate * (int) $studentClass->TotalHours);
+            } else {
+                $newCharge = (int) round((float) $studentClass->Rate * (int) $studentClass->SessionCount);
+            }
+            if ($newCharge > 0) {
+                $studentClass->update(['Charge' => $newCharge]);
+                $studentClass->refresh();
+            }
+        }
+
         // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次
         if (array_key_exists('SessionCount', $mapped)
             && (string) ($studentClass->ScheduleMode ?? 'count') === 'count'

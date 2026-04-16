@@ -397,14 +397,7 @@ class ProfileController extends Controller
             default    => 'T',
         };
 
-        $blockedTypes = $type === 'T'
-            ? ['T', 'S', 'A', 'U']
-            : ['D', 'S', 'A', 'U'];
-
-        $existsConflict = User::where('LoginName', $loginName)
-            ->whereIn('type', $blockedTypes)
-            ->exists();
-        if ($existsConflict) {
+        if (User::where('LoginName', $loginName)->exists()) {
             return response()->json(['message' => '此帳號已存在'], 409);
         }
 
@@ -1168,8 +1161,6 @@ class ProfileController extends Controller
     private function conflictingTypesForLoginName(string $type): array
     {
         return match ($type) {
-            'T' => ['T', 'S', 'A', 'U'],
-            'D' => ['D', 'S', 'A', 'U'],
             default => ['T', 'D', 'S', 'A', 'U'],
         };
     }

@@ -26,6 +26,34 @@
 - **老師管理側欄橘點 vs「待審核」**：見下方 **§2026-04-15 — 側欄 `pending_teachers` 與 `TeachersList`「待審核」不同步**
 - **單堂加課衝突（已有出缺勤/核准評量）**：見下方 **§2026-04-15 — 單堂加課衝突修正**（`detectAddSessionConflict` 共用邏輯、前端預檢、結構化 409）
 - **課程管理堂次警示誤報（請假/調課後）**：見下方 **§2026-04-15 — 請假調課後堂次警示假陽性**（`sessionUnits().length` 不可與購買堂數比較；須用 `effectiveSessionCount`）
+- **課程管理同日 chip 重複（LEFT JOIN 行乘積）**：見下方 **§2026-04-15 — ClassSessionController::index LEFT JOIN 行乘積導致 chip 重複**（`sub_sched`／`LearningRecord`／`StudentSingIn` 的 LEFT JOIN 必須用 Derived Table 去重；前端 `normalizeClassSessionsPayload` 須有 id 去重防禦層）
+- **評量頁課表同時段重複卡片**（`cancelled + scheduled` 同格兩張卡）：見下方 **§2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片（buildEvents 未去重）**
+
+---
+
+## 2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片（buildEvents 未去重）
+
+| 項目 | 說明 |
+|------|------|
+| **曾發生的錯誤** | 老師評量頁（`LearningRecordsPage.vue`）的課表 widget，鄭翔祐 4/15 19:30-21:30 看到張正樂出現兩張「國文 未填」評量卡。 |
+| **根本原因** | 同一 `StudentClassID` 同日同時段存在兩筆 `ClassSession`（`cancelled` + `scheduled`），`buildEvents` 直接迭代所有 `rawSessions` 而無 status 過濾或去重，每筆 ClassSession 都生成一張卡片。此問題與 §2026-04-14 智慧排課角標誤判（張正樂 4/15）**同源**，但 SmartCalendar 的修正（`SESSION_STATUS_PRIORITY` + `pickBestSessionRow`）未同步至 LearningRecordsPage。 |
+| **正確行為** | `buildEvents` 對每門課的 rawSessions 先以 `(session_date, start_time)` 分組，同組多筆用統一優先序（`attended/completed/late/absent > scheduled > leave/leave_adjusted/excused > cancelled`；同狀態 `id desc`）只保留最優一筆，再生成卡片。 |
+| **禁止回歸** | **(a)** 勿移除 `buildEvents` 中的 `deduplicateSessionsBySlot` 呼叫。**(b)** 勿把優先序改為 `cancelled` 高於 `scheduled`。**(c)** `SESSION_STATUS_PRIORITY` 與 `pickBestSession` 須與 `SmartCalendar.vue` 的同名常數保持一致。**(d)** 新增其他消費 `sessionDatesByClassId` 的路徑時，同樣必須套用去重。 |
+| **關聯檔案** | `frontend/src/pages/LearningRecordsPage.vue`（`SESSION_STATUS_PRIORITY`、`pickBestSession`、`deduplicateSessionsBySlot`、`buildEvents`）、`frontend/src/pages/SmartCalendar.vue`（同名常數）、`backend/tests/Feature/ClassSessionDuplicateStatusTest.php` |
+| **測試** | 既有 `ClassSessionDuplicateStatusTest`（DB 層）；前端可手動驗證同格 `cancelled+scheduled` 時評量頁只顯示一張卡。 |
+
+---
+
+## 2026-04-15 — ClassSessionController::index LEFT JOIN 行乘積導致 chip 重複
+
+| 項目 | 說明 |
+|------|------|
+| **曾發生的問題** | 課程管理頁木柵校林宥彣理化課程，1/12 同一時段（16:00-18:00）顯示 3 個相同的「取消」chip。點任一個標記「已上」或「取消」，3 個全部同步變動。 |
+| **根因** | `ClassSessionController::index`（L85–139）對 `schedules`（`sub_sched`）使用 `leftJoin`，當同一 `(student_course_id, DATE(schedule_date), start_time)` 組合有多筆 `status=scheduled AND original_schedule_id IS NOT NULL` 的記錄時，SQL Cartesian Product 使同一 `ClassSession` 出現 N 次。案例：course 70 在 2026-01-12 有 3 筆符合條件的 substitute schedule。前端 `normalizeClassSessionsPayload` 無 id 去重，照單全收 push 進 `byClass`，導致 Vue `v-for` 渲染重複 chip（`:key=id:XXX` 三個完全相同）。 |
+| **修正** | (1) 後端 `sub_sched`、`LearningRecord`、`StudentSingIn` 三個 LEFT JOIN 全改為 **Derived Table Subquery**，每組合只取 `MAX(id)` 一筆。(2) 前端 `normalizeClassSessionsPayload` 加 `id` 去重（`.some()` 檢查）作為防禦層。(3) `updateLocalSessionRow` 改為遍歷所有同 id 列（非只 `findIndex` 第一筆）。 |
+| **禁止回歸** | **(a)** 勿把 `sub_sched`/`LearningRecord`/`StudentSingIn` 的 LEFT JOIN 改回直接 join（不加 Derived Table 去重）。**(b)** 勿移除 `normalizeClassSessionsPayload` 中的 id 去重邏輯。**(c)** 新增 LEFT JOIN 到 `ClassSessionController::index` 時，必須評估是否會造成行乘積（1:N 關係必須用 Derived Table 或 subquery 限定為 1:1）。 |
+| **關聯檔案** | `backend/app/Http/Controllers/ClassSessionController.php`（`index` 方法）、`frontend/src/lib/classSessionsApi.js`（`normalizeClassSessionsPayload`）、`frontend/src/composables/course-management/useCourseSessionsDisplay.js`（`updateLocalSessionRow`） |
+| **資料稽核** | `LearningRecord`/`StudentSingIn` 無重複非作廢列；`schedules` 有 2 組重複（course 70 × 3、course 190 × 4）。重複資料不需清理——Derived Table 已在 query 層面處理。 |
 
 ---
 
@@ -536,3 +564,45 @@
 - `DirectorDashboard.vue`（總覽待審評量 API）→ 勿加回 **`only_due=1` 當唯一清單**；見本檔 **「主任總覽待審核評量：only_due」**；變更後 `npm run deploy`
 - `ClassSessionController.php`（`index`）→ 勿移除 Subject left join，否則待點名科目空白；見本檔 **2026-04-12 — 出缺勤「科目」欄**
 - `Subject` 表 → `Subject_Name` 須為中文（國文、英文…）；新增科目亦同；勿改回英文。前端 `SUBJECT_NAME_MAP` 已支援雙向
+- `StudentClassController.php`（`update`）→ Rate 或 SessionCount 異動後須同步 `Charge`；見本檔 **2026-04-15 — 編輯課程費率後 Charge 未同步**
+
+---
+
+## 2026-04-15 — 編輯課程費率後 Charge（總費用）未同步至催繳通知
+
+### 現象
+
+主任在「課程管理」編輯單堂費率（Rate: 1000 → 1100），8 堂課總費用應為 8800，但催繳通知單（`PaymentSlipModal`）仍顯示 NT$8,000。
+
+### 根因
+
+`StudentClass.Charge` 是**建課時的快照欄位**——`EnrollmentService::store()` 與 `purchaseBatch()` 會在建立課程時計算 `Charge = Rate × SessionCount`（或 `Rate × TotalHours`）並寫入 DB。
+
+然而 `StudentClassController::update()` 經 `mapFrontendPayload()` 只映射 `Rate` 與 `SessionCount`，**從未重算 `Charge`**。催繳單 API（`AlertController::tuitionSlipData`）直接回傳 `StudentClass.Charge`，因此金額永遠停留在建課時的數字。
+
+### 修正
+
+在 `StudentClassController::update()` 的 `$studentClass->refresh()` 之後，新增 Charge 同步區塊：
+
+- `rate_unit = 'session'`：`Charge = Rate × SessionCount`
+- `rate_unit = 'hour'`：`Charge = Rate × TotalHours`
+- 月結制（`SessionCount = 0`）：`newCharge` 為 0 → guard `> 0` 保護不覆寫
+
+### 高風險區塊（修改前必對照）
+
+| 檔案 | 方法 | 注意 |
+|------|------|------|
+| `StudentClassController.php` | `update()` | Rate/SessionCount 異動後必須同步 `Charge`；勿移除重算區塊 |
+| `StudentClassController.php` | `mapFrontendPayload()` | 若新增映射 `Charge` 欄位，確認不與重算邏輯衝突 |
+| `EnrollmentService.php` | `store()` | 建課的 Charge 計算邏輯為權威來源，update 應與其保持一致 |
+| `StudentClassController.php` | `purchaseBatch()` | 加購時的 Charge 計算也須與 update 同口徑 |
+| `AlertController.php` | `tuitionSlipData()` | 直接讀 `Charge` 欄位，不做額外計算；仰賴上游正確 |
+
+### QA 驗收
+
+1. 建課 1000/堂 × 8 堂 → `Charge = 8000`
+2. 編輯費率改為 1100/堂（堂數不變）→ `Charge` 應更新為 `8800`
+3. 開啟催繳通知單 → 金額顯示 NT$8,800
+4. 僅改 SessionCount（8 → 10，Rate 不變 1100）→ `Charge = 11000`
+5. 月結制課程修改 Rate → `Charge` 不應被清零
+6. 時數制課程修改 Rate → `Charge = Rate × TotalHours`

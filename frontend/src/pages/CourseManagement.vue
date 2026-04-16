@@ -210,7 +210,10 @@
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
                             >+ 新增堂次</button>
                             <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()">編輯</button>
-                            <button class="action-dropdown-item" @click="openPurchaseModal(c); closeActionMenu()">加購堂數</button>
+                            <button
+                              :class="['action-dropdown-item', { 'action-dropdown-renew': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }]"
+                              @click="openPurchaseModal(c); closeActionMenu()"
+                            >{{ isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 ? '⚡ 續報加購' : '加購堂數' }}</button>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()">暫停課程</button>
                             <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()">恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()">結案（不續報）</button>
@@ -295,6 +298,7 @@
       mode="backfill"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
+      @duplicate-course="handleSchedulerDuplicateCM"
     />
 
     <!-- Edit Course Modal -->
@@ -333,6 +337,40 @@
       @close="showPurchaseModal = false"
       @submit="submitPurchaseSessions"
     />
+
+    <!-- Duplicate Course Intercept Modal -->
+    <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
+      <div class="modal" style="width: 480px;">
+        <h3 style="color: #e65100;">⚠️ 此學生已有進行中的課程</h3>
+        <p style="margin-bottom: 12px;">
+          此學生目前有以下進行中的課程，通常續報應使用「加購堂數」延續原課程，而非新增：
+        </p>
+        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
+          <table class="course-table" style="font-size: 13px;">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th>類型</th>
+                <th>剩餘堂數</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in duplicateConflicts" :key="c.existing_course_id">
+                <td>{{ getSubjectLabel(c.subject_name) || c.subject_name }}</td>
+                <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[c.class_type] || c.class_type }}</td>
+                <td :style="{ color: (c.remaining_sessions ?? 0) <= 2 ? '#c62828' : 'inherit', fontWeight: 600 }">{{ c.remaining_sessions ?? 0 }} 堂</td>
+                <td><button class="small btn-renew-warn" @click="interceptGoToPurchaseCM(c)">去加購</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="modal-actions" style="gap: 8px;">
+          <button class="ghost" @click="showDuplicateInterceptModal = false" :disabled="forceSubmitting">取消</button>
+          <button class="ghost" @click="forceCreateCourse()" :disabled="forceSubmitting">{{ forceSubmitting ? '建立中...' : '我知道，仍要新增課程' }}</button>
+        </div>
+      </div>
+    </div>
 
     <QuickAddSessionModal
       :show="showQuickAddSessionModal"
@@ -427,6 +465,7 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
+import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -882,17 +921,79 @@ function resolveGroupStudentId(group) {
   return '';
 }
 
-function openBackfillModalForGroup(group) {
+const showDuplicateInterceptModal = ref(false);
+const duplicateConflicts = ref([]);
+const interceptPendingGroup = ref(null);
+const interceptOriginalPayload = ref(null);
+const forceSubmitting = ref(false);
+
+async function openBackfillModalForGroup(group) {
   const sid = resolveGroupStudentId(group);
   if (!sid) {
     alert('無法取得此學生的編號，請改從上方「新增課程」手動選擇學生。');
     return;
   }
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (token) {
+      const res = await fetch(`/api/v1/students/${sid}/active-courses`, {
+        headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const active = json?.courses || [];
+        if (active.length > 0) {
+          duplicateConflicts.value = active;
+          interceptPendingGroup.value = group;
+          showDuplicateInterceptModal.value = true;
+          return;
+        }
+      }
+    }
+  } catch { /* proceed normally */ }
+  proceedOpenBackfillForGroup(group);
+}
+
+function proceedOpenBackfillForGroup(group) {
+  showDuplicateInterceptModal.value = false;
+  const sid = resolveGroupStudentId(group);
   schedulerInitialStudentId.value = sid;
   schedulerInitialTeacherId.value = '';
   resetBackfillDatePicker();
   showBackfillModal.value = true;
   loadRoomsForBranch();
+}
+
+async function forceCreateCourse() {
+  const payload = interceptOriginalPayload.value;
+  if (!payload) {
+    interceptPendingGroup.value
+      ? proceedOpenBackfillForGroup(interceptPendingGroup.value)
+      : openBackfillModal();
+    return;
+  }
+  forceSubmitting.value = true;
+  try {
+    const result = await createUniversalClassSchedule({ ...payload, force: true });
+    showDuplicateInterceptModal.value = false;
+    interceptOriginalPayload.value = null;
+    const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
+    alert(`已強制建立 ${created} 堂課`);
+    await loadCourses();
+  } catch (err) {
+    alert(err?.message || '強制建立失敗，請稍後再試');
+  } finally {
+    forceSubmitting.value = false;
+  }
+}
+
+function interceptGoToPurchaseCM(conflict) {
+  showDuplicateInterceptModal.value = false;
+  const target = courses.value.find(c => c.id === conflict.existing_course_id);
+  if (target) {
+    openPurchaseModal(target);
+  }
 }
 
 function openBackfillModal() {
@@ -906,6 +1007,18 @@ function openBackfillModal() {
 async function handleUniversalBackfillSuccess() {
   showBackfillModal.value = false;
   await loadCourses();
+}
+
+function handleSchedulerDuplicateCM(evt) {
+  showBackfillModal.value = false;
+  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
+    existing_course_id: c.existing_course_id,
+    subject_name: c.subject || '',
+    remaining_sessions: c.remaining_sessions ?? 0,
+    class_type: c.class_type || '',
+  }));
+  interceptOriginalPayload.value = evt?.originalPayload || null;
+  showDuplicateInterceptModal.value = true;
 }
 
 // Edit
@@ -3878,5 +3991,22 @@ button.danger:disabled {
 }
 .slot-has-students {
   background: #fffde7;
+}
+.btn-renew-warn {
+  background: #ff9800 !important;
+  color: #fff !important;
+  border: 1px solid #e65100 !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-renew-warn:hover {
+  background: #e65100 !important;
+}
+.action-dropdown-renew {
+  color: #e65100 !important;
+  font-weight: 600 !important;
 }
 </style>

@@ -684,6 +684,9 @@ class ScheduleGuardService
             }
 
             $courseId = (int) ($row->student_course_id ?? 0);
+            if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
+                continue;
+            }
             // If this course already has a concrete ClassSession on the date,
             // trust ClassSession as the source of truth and ignore stale schedule overrides.
             if ($courseId > 0 && isset($classSessionCourseIds[$courseId])) {

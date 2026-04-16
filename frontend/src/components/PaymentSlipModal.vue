@@ -148,7 +148,7 @@ function normalizeSlipData(raw) {
     type: 'tuition',
     student_name: raw.student_name,
     campus_name: raw.campus_name,
-    title: '繳費催繳通知',
+    title: '繳費通知',
     amount_label: '應繳費用',
     amount: raw.charge || 0,
     sub_amounts: null,
@@ -157,7 +157,7 @@ function normalizeSlipData(raw) {
     items,
     note: raw.note,
     sessions: raw.sessions || [],
-    filename: `催繳通知_${raw.student_name}_${raw.student_class_id}.png`,
+    filename: `繳費通知_${raw.student_name}_${raw.student_class_id}.png`,
   };
 }
 

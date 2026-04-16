@@ -272,6 +272,62 @@ HAVING effective != purchased
 ORDER BY branch_id, course_id;
 ```
 
+---
+
+## L. Log 管理與 Tmpfs 緩衝（2026-04-16）
+
+### 1) 現況
+
+- `laravel.log`：已改為 **daily rotation**（14 天保留），取代原本 `single`（永不輪轉）。
+- `perf.log`：daily rotation，14 天保留（未改動）。
+- 根檔案系統：NVMe SSD（`/dev/nvme0n1p2`），非 SD 卡。
+
+### 2) Tmpfs 緩衝（選擇性啟用）
+
+啟用高頻 log 記憶體緩衝，定時落盤，降低 I/O 負載：
+
+```bash
+sudo bash /home/admin/scripts/infra/setup-log-tmpfs.sh
+```
+
+- 掛載 128 MB tmpfs 於 `/var/log/alltrue-tmpfs`
+- systemd timer 每 5 分鐘 flush 至 `backend/storage/logs/`
+- 使用率 > 80% 自動降級為直接落盤
+
+### 3) 回滾（< 5 分鐘）
+
+```bash
+sudo bash /home/admin/scripts/infra/rollback-log-tmpfs.sh
+```
+
+冪等操作：卸載 tmpfs → 停止 timer → 清理 fstab → 還原直寫。
+
+### 4) 監控
+
+- Health 端點：`GET /api/v1/health` → `log_pipeline` 區段
+- systemd timer：`systemctl list-timers | grep alltrue`
+- tmpfs 使用率：`df -h /var/log/alltrue-tmpfs`
+- flush 日誌：`journalctl -u alltrue-log-flush.service`
+- 告警紀錄：`journalctl -t alltrue-log`
+
+### 5) 儲存介質盤點
+
+```bash
+bash /home/admin/scripts/infra/storage-inventory.sh
+```
+
+輸出根檔案系統來源、裝置型號與 SD 卡偵測結果。
+
+### 6) 基線量測
+
+```bash
+bash /home/admin/scripts/infra/baseline-capture.sh
+```
+
+產出報告至 `docs/baselines/`，含 log 寫入量、API P95、記憶體狀態。
+
+---
+
 ### 6) 上線前回歸檢查（必跑）
 
 0. 新後端含出缺勤科目修正者：確認已跑 migration **`2026_04_12_200000_remap_orphaned_subject_ids`**（若環境有舊 Subject 主鍵殘留）；`GET /api/v1/attendance` 抽查 `subject_name` 非空列

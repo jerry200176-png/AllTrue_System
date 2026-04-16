@@ -93,8 +93,43 @@ cd backend && php artisan optimize:clear
 
 ---
 
+## Log 管理（2026-04-16 新增）
+
+### Log Rotation
+
+`laravel.log` 已改為 **daily rotation**（保留 14 天）。部署後無需額外設定。
+
+查看當日 log：
+```bash
+tail -30 backend/storage/logs/laravel-$(date +%Y-%m-%d).log
+```
+
+### Tmpfs 緩衝（選擇性）
+
+在正式節點可啟用 log 記憶體緩衝以降低 I/O：
+
+```bash
+sudo bash scripts/infra/setup-log-tmpfs.sh
+```
+
+回滾：
+```bash
+sudo bash scripts/infra/rollback-log-tmpfs.sh
+```
+
+詳見 `docs/OPERATIONS_RUNBOOK.md` §L。
+
+### 儲存介質檢查
+
+確認節點未使用 SD 卡作為根檔案系統：
+```bash
+bash scripts/infra/storage-inventory.sh
+```
+
+---
+
 ## 常見問題
 
 - **前端沒更新**：強制重新整理（Ctrl+Shift+R 或 Cmd+Shift+R），或清除瀏覽器快取。
-- **500 錯誤**：檢查 `backend/.env`、`storage/logs/laravel.log`，並確認 `backend/storage` 與 `backend/bootstrap/cache` 可寫。
+- **500 錯誤**：檢查 `backend/.env`、`storage/logs/laravel-$(date +%Y-%m-%d).log`，並確認 `backend/storage` 與 `backend/bootstrap/cache` 可寫。
 - **權限錯誤**：靜態檔建議可讀即可，例如 `chmod -R a+r backend/public/assets`。

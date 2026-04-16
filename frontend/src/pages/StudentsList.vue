@@ -225,6 +225,7 @@
                         <span v-if="effectiveClosedReason(course) === 'settled'" class="tag tag-settled">已結算</span>
                         <span v-else-if="effectiveClosedReason(course) === 'completed'" class="tag tag-settled">已完課</span>
                         <span v-else-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
+                        <span v-else-if="course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 && !effectiveClosedReason(course)" class="tag tag-expiring">即將用完</span>
                       </td>
                       <td>{{ course.teacher_name || '待指派' }}</td>
                       <td>
@@ -291,7 +292,10 @@
                           {{ paymentStatusButtonLabel(course) }}
                         </button>
                         <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
-                        <button class="small ghost" @click="openAddSessionsForCourse(course)">加購</button>
+                        <button
+                          :class="['small', course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 ? 'btn-renew-warn' : 'ghost']"
+                          @click="openAddSessionsForCourse(course)"
+                        >{{ course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 ? '續報加購' : '加購' }}</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
                         <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -427,6 +431,7 @@
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
+      @duplicate-course="handleSchedulerDuplicate"
     />
 
     <!-- Add Sessions Modal -->
@@ -439,8 +444,12 @@
         </div>
         <div class="form-group">
           <label>目前剩餘（此課程）</label>
-          <p style="font-size: 20px; font-weight: 700; color: var(--primary);">{{ selectedCourse?.remaining_sessions ?? 0 }} 堂</p>
+          <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.remaining_sessions ?? 0) <= 2 ? '#e65100' : 'var(--primary)' }">
+            {{ selectedCourse?.remaining_sessions ?? 0 }} 堂
+            <span v-if="(selectedCourse?.remaining_sessions ?? 0) <= 2" style="font-size: 13px; color: #e65100;">（即將用完，建議盡快加購）</span>
+          </p>
         </div>
+        <p class="hint" style="color: #666; margin-bottom: 8px;">此加購會延續原課程，不會建立新的課程。</p>
         <div class="form-group">
           <label>加購堂數</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
@@ -457,6 +466,39 @@
           <button class="primary" @click="submitAddSessions">
             確認加購
           </button>
+        </div>
+      </div>
+    </div>
+    <!-- Duplicate Course Intercept Modal -->
+    <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
+      <div class="modal" style="width: 480px;">
+        <h3 style="color: #e65100;">⚠️ 此學生已有進行中的課程</h3>
+        <p style="margin-bottom: 12px;">
+          <strong>{{ interceptPendingStudent?.name }}</strong> 目前有以下進行中的課程，通常續報應使用「加購堂數」延續原課程，而非新增：
+        </p>
+        <div style="max-height: 200px; overflow-y: auto; margin-bottom: 16px;">
+          <table class="course-inner-table" style="font-size: 13px;">
+            <thead>
+              <tr>
+                <th>科目</th>
+                <th>類型</th>
+                <th>剩餘堂數</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="c in duplicateConflicts" :key="c.id">
+                <td>{{ c.subject_name }}</td>
+                <td>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[c.class_type] || c.class_type }}</td>
+                <td :style="{ color: (c.remaining_sessions ?? 0) <= 2 ? '#c62828' : 'inherit', fontWeight: 600 }">{{ c.remaining_sessions ?? 0 }} 堂</td>
+                <td><button class="small btn-renew-warn" @click="interceptGoToPurchase(c)">去加購</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="actions" style="gap: 8px;">
+          <button class="ghost" @click="showDuplicateInterceptModal = false" :disabled="forceSubmitting">取消</button>
+          <button class="ghost" @click="forceCreateCourse()" :disabled="forceSubmitting">{{ forceSubmitting ? '建立中...' : '我知道，仍要新增課程' }}</button>
         </div>
       </div>
     </div>
@@ -504,6 +546,7 @@ import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/cons
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
 import { fetchAllPages } from '../lib/pagedFetchAll';
+import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -608,6 +651,13 @@ const showSessionsModal = ref(false);
 const addSessionCount = ref(8);
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const selectedCourse = ref(null);
+
+// Duplicate course intercept modal
+const showDuplicateInterceptModal = ref(false);
+const duplicateConflicts = ref([]);
+const interceptPendingStudent = ref(null);
+const interceptOriginalPayload = ref(null);
+const forceSubmitting = ref(false);
 const pendingPaymentStatusIds = ref(new Set());
 
 // Quick add session (single extra lesson within existing session count)
@@ -1419,7 +1469,34 @@ const loadRoomsForBranch = async () => {
   }
 };
 
-const openAddCourse = (student) => {
+const openAddCourse = async (student) => {
+  const sid = Number(student?._laravelId ?? student?.id ?? 0);
+  if (sid > 0) {
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (token) {
+        const res = await fetch(`/api/v1/students/${sid}/active-courses`, {
+          headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const active = json?.courses || [];
+          if (active.length > 0) {
+            duplicateConflicts.value = active;
+            interceptPendingStudent.value = student;
+            showDuplicateInterceptModal.value = true;
+            return;
+          }
+        }
+      }
+    } catch { /* proceed normally if check fails */ }
+  }
+  proceedOpenAddCourse(student);
+};
+
+const proceedOpenAddCourse = (student) => {
+  showDuplicateInterceptModal.value = false;
   selectedStudent.value = student;
   editingCourseId.value = null;
   editingCourseFromLaravel.value = false;
@@ -1433,6 +1510,41 @@ const openAddCourse = (student) => {
   };
   loadRoomsForBranch();
   showCourseModal.value = true;
+};
+
+const forceCreateCourse = async () => {
+  const payload = interceptOriginalPayload.value;
+  if (!payload) {
+    proceedOpenAddCourse(interceptPendingStudent.value);
+    return;
+  }
+  forceSubmitting.value = true;
+  try {
+    const result = await createUniversalClassSchedule({ ...payload, force: true });
+    showDuplicateInterceptModal.value = false;
+    interceptOriginalPayload.value = null;
+    const created = Number(result?.created_confirmed_sessions ?? 0) + Number(result?.created_future_sessions ?? 0);
+    alert(`已強制建立 ${created} 堂課`);
+    const sid = selectedStudent.value?.id;
+    if (sid != null) await loadStudentCourses(sid);
+    await loadAllStudentCourses();
+  } catch (err) {
+    alert(err?.message || '強制建立失敗，請稍後再試');
+  } finally {
+    forceSubmitting.value = false;
+  }
+};
+
+const interceptGoToPurchase = (conflict) => {
+  showDuplicateInterceptModal.value = false;
+  const student = interceptPendingStudent.value;
+  if (!student) return;
+  const sid = Number(student?._laravelId ?? student?.id ?? 0);
+  const courses = getStudentAllCourses(sid);
+  const target = courses.find(c => c.id === conflict.existing_course_id);
+  if (target) {
+    openAddSessionsForCourse(target);
+  }
 };
 
 const editCourse = (course) => {
@@ -1499,6 +1611,19 @@ const handleUniversalSchedulerSuccess = async () => {
     await loadStudentCourses(sid);
   }
   await loadAllStudentCourses();
+};
+
+const handleSchedulerDuplicate = (evt) => {
+  closeCourseModal();
+  duplicateConflicts.value = (evt?.conflicts || []).map(c => ({
+    existing_course_id: c.existing_course_id,
+    subject_name: c.subject || '',
+    remaining_sessions: c.remaining_sessions ?? 0,
+    class_type: c.class_type || '',
+  }));
+  interceptPendingStudent.value = selectedStudent.value;
+  interceptOriginalPayload.value = evt?.originalPayload || null;
+  showDuplicateInterceptModal.value = true;
 };
 
 const parseApiErrorMessage = (err, fallback = '操作失敗') => {
@@ -2572,5 +2697,33 @@ table th { font-size: 12.5px; }
   padding: 2px 7px;
   font-weight: 600;
   margin-left: 4px;
+}
+.tag-expiring {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ff9800;
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+  font-weight: 600;
+  margin-left: 4px;
+  animation: pulse-warn 2s ease-in-out infinite;
+}
+@keyframes pulse-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.btn-renew-warn {
+  background: #ff9800 !important;
+  color: #fff !important;
+  border: 1px solid #e65100 !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-renew-warn:hover {
+  background: #e65100 !important;
 }
 </style>

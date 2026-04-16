@@ -14,5 +14,7 @@ class Payment extends Model
         'PaidAt',
         'Method',
         'Note',
+        'receipt_url',
+        'payment_report_id',
     ];
 }

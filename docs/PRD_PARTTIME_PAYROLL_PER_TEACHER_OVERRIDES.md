@@ -34,7 +34,7 @@
 | `teacher_user_id` | unsignedInteger | `User.id` |
 | `branch_id` | unsignedInteger | `Campus.id` |
 | `base_rates` | JSON | `{ high, junior, elementary, tutoring }` |
-| `headcount_bonus` | unsignedInteger | 每多一位學生加多少 |
+| `headcount_bonus` | unsignedInteger | **已停用（v1.2）**：欄位保留但計算不再讀取。人數加成改為依實際同時段 LR 筆數自動計算（見 §4.2/§4.3） |
 | `created_by` | unsignedInteger nullable | 操作者 `User.id` |
 | `created_at` | timestamp | |
 

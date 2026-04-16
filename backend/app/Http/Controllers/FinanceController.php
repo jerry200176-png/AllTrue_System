@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollBranchRule;
@@ -226,18 +227,18 @@ class FinanceController extends Controller
         $buckets = []; // tid => [ one_on_one, one_on_two, one_on_three, tutoring ]
         $levelBuckets = []; // tid => level => [one_on_one, one_on_two, one_on_three, tutoring]
 
+        // --- Non-tutoring: from approved LearningRecords (existing logic) ---
         foreach ($records as $r) {
             $tid = $r->TeacherID;
             $classType = $r->studentClass->ClassType ?? 'one_on_one';
-            // 試聽不計入科目數加權統計
-            if ($classType === 'trial') {
+            if ($classType === 'trial' || $classType === 'tutoring') {
                 continue;
             }
             if (!isset($buckets[$tid])) {
                 $buckets[$tid] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
             }
             $hours     = $this->calcHours($r->StartTime, $r->EndTime, $r->studentClass);
-            $key       = in_array($classType, ['one_on_one', 'one_on_two', 'one_on_three', 'tutoring'])
+            $key       = in_array($classType, ['one_on_one', 'one_on_two', 'one_on_three'])
                          ? $classType : 'one_on_one';
             $buckets[$tid][$key] += $hours;
 
@@ -251,6 +252,47 @@ class FinanceController extends Controller
                     $levelBuckets[$tid][$level] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
                 }
                 $levelBuckets[$tid][$level][$key] += $hours;
+            }
+        }
+
+        // --- Tutoring: from ClassSession attended/completed (不依賴 approved LR) ---
+        $tutoringClassIds = StudentClass::where('ClassType', 'tutoring');
+        if (!empty($classIds)) {
+            $tutoringClassIds->whereIn('ID', $classIds);
+        }
+        $tutoringClasses = $tutoringClassIds->get()->keyBy('ID');
+
+        if ($tutoringClasses->isNotEmpty()) {
+            $tutoringSessionQuery = ClassSession::whereIn('StudentClassID', $tutoringClasses->keys())
+                ->whereIn('Status', ['attended', 'completed']);
+            if ($request->filled('start')) {
+                $tutoringSessionQuery->where('SessionDate', '>=', $request->input('start'));
+            }
+            if ($request->filled('end')) {
+                $tutoringSessionQuery->where('SessionDate', '<=', $request->input('end'));
+            }
+
+            foreach ($tutoringSessionQuery->get() as $cs) {
+                $sc  = $tutoringClasses->get($cs->StudentClassID);
+                if (!$sc) continue;
+                $tid = (int) ($sc->TeacherID ?? 0);
+                if (!isset($buckets[$tid])) {
+                    $buckets[$tid] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
+                }
+                $hours = $this->calcHours($cs->StartTime, $cs->EndTime, $sc);
+                $buckets[$tid]['tutoring'] += $hours;
+
+                if ($includeLevel) {
+                    $gradeId = (int) ($sc->GradeID ?? 0);
+                    $level = $gradeIdLevelMap[$gradeId] ?? 'unknown';
+                    if (!isset($levelBuckets[$tid])) {
+                        $levelBuckets[$tid] = [];
+                    }
+                    if (!isset($levelBuckets[$tid][$level])) {
+                        $levelBuckets[$tid][$level] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
+                    }
+                    $levelBuckets[$tid][$level]['tutoring'] += $hours;
+                }
             }
         }
 
@@ -623,7 +665,8 @@ class FinanceController extends Controller
         $allTeacherRecords = (clone $this->parttimeBaseQuery($campusIds, $startDate, $endDate))
             ->where('LearningRecord.TeacherID', $teacherId)
             ->get();
-        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords);
+        $rateMap  = $this->buildRateMap($allTeacherRecords, $ruleCtx);
+        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap);
 
         $records = $query->orderBy('LearningRecord.SessionDate')
             ->offset(($page - 1) * $perPage)
@@ -703,7 +746,8 @@ class FinanceController extends Controller
         $teacherRows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
 
         $allRecords = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
-        $bonusMap = $this->buildConcurrencyBonusMap($allRecords);
+        $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
+        $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap);
 
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 
@@ -875,7 +919,8 @@ class FinanceController extends Controller
         $endDate   = date('Y-m-t', strtotime($startDate));
 
         $records = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
-        $bonusMap = $this->buildConcurrencyBonusMap($records);
+        $rateMap  = $this->buildRateMap($records, $ruleCtx);
+        $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap);
 
         $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
         $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
@@ -959,22 +1004,13 @@ class FinanceController extends Controller
 
         $levelLabels = ['elementary' => '國小', 'junior' => '國中', 'high' => '高中', 'tutoring' => '輔導'];
         $baseRates   = $effectiveCtx['base_rates'] ?? config('payroll.base_rates', []);
-        $bonus       = $effectiveCtx['headcount_bonus'] ?? config('payroll.headcount_bonus', 50);
 
         $baseRate = $baseRates[$level] ?? 300;
         $headcountBonus = 0;
-        if ($classType !== 'tutoring') {
-            $studentCount = match ($classType) {
-                'one_on_two'   => 2,
-                'one_on_three' => 3,
-                default        => 1,
-            };
-            $headcountBonus = ($studentCount - 1) * $bonus;
-        }
         $effectiveRate         = $baseRate + $headcountBonus;
         $baseSalary            = (int) round($effectiveRate * $hours);
         $concurrencyBonus      = $bonusMap[$r->id] ?? 0;
-        $sessionSalary         = $baseSalary + $concurrencyBonus;
+        $sessionSalary         = max(0, $baseSalary + $concurrencyBonus);
 
         $studentName = $sc->student->name ?? 'Unknown';
 
@@ -982,7 +1018,7 @@ class FinanceController extends Controller
             'learning_record_id'       => $r->id,
             'session_date'             => $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : '',
             'student_name'             => $studentName,
-            'subject'                  => $r->Subject ?: ($sc->displaySubjectName()),
+            'subject'                  => $this->normalizeSubjectLabel($r->Subject ?: $sc->displaySubjectName()),
             'level'                    => $level,
             'level_label'              => $levelLabels[$level] ?? $level,
             'class_type'               => $classType,
@@ -1000,13 +1036,71 @@ class FinanceController extends Controller
         ];
     }
 
+    private static function normalizeSubjectLabel(string $subject): string
+    {
+        static $map = [
+            'English'   => '英文',
+            'Chinese'   => '國文',
+            'Math'      => '數學',
+            'Physics'   => '物理',
+            'Chemistry' => '化學',
+            'Science'   => '自然',
+            'Social'    => '社會',
+        ];
+        return $map[$subject] ?? $subject;
+    }
+
     /**
-     * Build a map of LR id → concurrency bonus amount for all records in the collection.
-     * Groups by TeacherID + SessionDate, then sweeps the time axis to find overlapping segments.
+     * Build rateMap for buildConcurrencyBonusMap: [lr_id => ['base_rate', 'level_weight']].
      */
-    private function buildConcurrencyBonusMap($records): array
+    private function buildRateMap($records, array $ruleCtx = []): array
+    {
+        $gradeLevelMap = config('payroll.grade_level_map', []);
+        $levelWeights  = config('payroll.level_weights', [
+            'high' => 4, 'junior' => 3, 'elementary' => 2, 'tutoring' => 1,
+        ]);
+        $defaultRates      = config('payroll.base_rates', []);
+        $teacherOverrides  = $ruleCtx['teacher_overrides'] ?? [];
+
+        $map = [];
+        foreach ($records as $r) {
+            $sc        = $r->studentClass;
+            $classType = $sc->ClassType ?? 'one_on_one';
+            $gradeId   = (int) ($sc->GradeID ?? 0);
+            $level     = $gradeLevelMap[$gradeId] ?? 'elementary';
+            if ($classType === 'tutoring') $level = 'tutoring';
+
+            $tid = (int) $r->TeacherID;
+            $effectiveCtx = $teacherOverrides[$tid] ?? $ruleCtx;
+            $baseRates = $effectiveCtx['base_rates'] ?? $defaultRates;
+
+            $map[$r->id] = [
+                'base_rate'    => $baseRates[$level] ?? 300,
+                'level_weight' => $levelWeights[$level] ?? 1,
+            ];
+        }
+        return $map;
+    }
+
+    /**
+     * Build a map of LR id → net concurrency adjustment for all records.
+     *
+     * Level dominance: when LRs of different levels overlap, the highest-level
+     * LR earns the +50/h per-extra-student bonus; lower-level LRs have their
+     * base_rate deducted for the overlapping duration (net can be negative).
+     * Same-level overlaps: every LR earns (n-1)*50*dt as before.
+     *
+     * @param  \Illuminate\Support\Collection  $records
+     * @param  array  $rateMap  [lr_id => ['base_rate' => int, 'level_weight' => int]]
+     */
+    private function buildConcurrencyBonusMap($records, array $rateMap = []): array
     {
         $bonusPerStudent = config('payroll.concurrency_bonus_per_student', 50);
+        $levelWeights    = config('payroll.level_weights', [
+            'high' => 4, 'junior' => 3, 'elementary' => 2, 'tutoring' => 1,
+        ]);
+        $gradeLevelMap   = config('payroll.grade_level_map', []);
+        $defaultRates    = config('payroll.base_rates', []);
         $bonusMap = [];
 
         $grouped = [];
@@ -1027,17 +1121,26 @@ class FinanceController extends Controller
                 if ($startMin === null || $endMin === null || $endMin <= $startMin) {
                     continue;
                 }
-                $sc = $r->studentClass;
-                $studentCount = match ($sc->ClassType ?? 'one_on_one') {
-                    'one_on_two'   => 2,
-                    'one_on_three' => 3,
-                    default        => 1,
-                };
+
+                if (isset($rateMap[$r->id])) {
+                    $baseRate    = $rateMap[$r->id]['base_rate'];
+                    $levelWeight = $rateMap[$r->id]['level_weight'];
+                } else {
+                    $sc        = $r->studentClass;
+                    $classType = $sc->ClassType ?? 'one_on_one';
+                    $gradeId   = (int) ($sc->GradeID ?? 0);
+                    $level     = $gradeLevelMap[$gradeId] ?? 'elementary';
+                    if ($classType === 'tutoring') $level = 'tutoring';
+                    $baseRate    = $defaultRates[$level] ?? 300;
+                    $levelWeight = $levelWeights[$level] ?? 1;
+                }
+
                 $intervals[] = [
-                    'lr_id'         => $r->id,
-                    'start'         => $startMin,
-                    'end'           => $endMin,
-                    'student_count' => $studentCount,
+                    'lr_id'        => $r->id,
+                    'start'        => $startMin,
+                    'end'          => $endMin,
+                    'base_rate'    => $baseRate,
+                    'level_weight' => $levelWeight,
                 ];
             }
 
@@ -1054,7 +1157,7 @@ class FinanceController extends Controller
             sort($points);
 
             foreach ($intervals as $iv) {
-                $lrBonus = 0.0;
+                $lrNet = 0.0;
                 for ($i = 0, $cnt = count($points) - 1; $i < $cnt; $i++) {
                     $segStart = $points[$i];
                     $segEnd   = $points[$i + 1];
@@ -1062,20 +1165,29 @@ class FinanceController extends Controller
                         continue;
                     }
 
-                    $lrCountInSeg = 0;
+                    $concurrent = [];
                     foreach ($intervals as $other) {
                         if ($other['start'] < $segEnd && $other['end'] > $segStart) {
-                            $lrCountInSeg++;
+                            $concurrent[] = $other;
                         }
                     }
 
-                    if ($lrCountInSeg >= 2) {
-                        $dt = ($segEnd - $segStart) / 60.0;
-                        $lrBonus += $bonusPerStudent * $iv['student_count'] * $dt;
+                    $lrCount = count($concurrent);
+                    if ($lrCount < 2) {
+                        continue;
+                    }
+
+                    $dt       = ($segEnd - $segStart) / 60.0;
+                    $maxLevel = max(array_column($concurrent, 'level_weight'));
+
+                    if ($iv['level_weight'] >= $maxLevel) {
+                        $lrNet += ($lrCount - 1) * $bonusPerStudent * $dt;
+                    } else {
+                        $lrNet -= $iv['base_rate'] * $dt;
                     }
                 }
-                if ($lrBonus > 0) {
-                    $bonusMap[$iv['lr_id']] = (int) round($lrBonus);
+                if (abs($lrNet) > 0.001) {
+                    $bonusMap[$iv['lr_id']] = (int) round($lrNet);
                 }
             }
         }
@@ -1453,6 +1565,57 @@ class FinanceController extends Controller
         }
         $branchCtx['teacher_overrides'] = $teacherOverrides;
         return $branchCtx;
+    }
+
+    /**
+     * GET /api/v1/finance/duplicate-courses?branch_id=
+     * List students with multiple active (Stop=0) courses for the same subject.
+     */
+    public function duplicateCourses(Request $request)
+    {
+        $campusIds = $this->getCampusIds($request);
+
+        $query = StudentClass::where('Stop', 0);
+        if (!empty($campusIds)) {
+            $studentIds = Student::whereIn('CampusID', $campusIds)->pluck('id');
+            $query->whereIn('StudentID', $studentIds);
+        }
+
+        $rows = $query->get()->groupBy(function ($sc) {
+            return $sc->StudentID . '|' . $sc->SubjectID;
+        })->filter(function ($group) {
+            return $group->count() > 1;
+        });
+
+        $results = [];
+        foreach ($rows as $key => $group) {
+            [$studentId, $subjectId] = explode('|', $key);
+            $student = Student::find($studentId);
+            $subjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? '';
+
+            $courses = $group->map(function ($sc) {
+                return [
+                    'course_id' => $sc->ID,
+                    'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                    'used_sessions' => (int) ($sc->UsedSessions ?? 0),
+                    'session_count' => (int) ($sc->SessionCount ?? 0),
+                    'class_type' => $sc->ClassType ?? 'one_on_one',
+                    'teacher_id' => (int) $sc->TeacherID,
+                    'paid' => (int) ($sc->Paid ?? 0),
+                    'created_at' => $sc->created_at ? $sc->created_at->toDateTimeString() : null,
+                ];
+            })->values();
+
+            $results[] = [
+                'student_id' => (int) $studentId,
+                'student_name' => $student->name ?? '',
+                'subject_id' => (int) $subjectId,
+                'subject_name' => $subjectName,
+                'courses' => $courses,
+            ];
+        }
+
+        return response()->json(['duplicates' => $results, 'count' => count($results)]);
     }
 
     private function getCampusIds(Request $request): array

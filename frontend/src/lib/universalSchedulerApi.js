@@ -46,6 +46,13 @@ export async function createUniversalClassSchedule(payload) {
     body = {};
   }
   if (!res.ok) {
+    if (res.status === 409 && body?.code === 'duplicate_active_course') {
+      const err = new Error(body.message || '該學生已有相同科目的進行中課程');
+      err.isDuplicateCourse = true;
+      err.conflicts = body.conflicts || [];
+      err.originalPayload = normalizedPayload;
+      throw err;
+    }
     const validationPairs = body?.errors && typeof body.errors === 'object'
       ? Object.entries(body.errors)
         .map(([field, messages]) => {

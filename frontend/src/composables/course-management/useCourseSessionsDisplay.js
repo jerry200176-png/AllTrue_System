@@ -450,15 +450,19 @@ export function useCourseSessionsDisplay({
     if (!key) return;
     const rows = classSessionsByCourse.value[key];
     if (!Array.isArray(rows)) return;
-    const idx = rows.findIndex((r) => r.id === sessionData.id);
-    if (idx >= 0) {
-      const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
-      const updated = { ...rows[idx], status: sessionData.status, start_time: sessionData.start_time, end_time: sessionData.end_time };
+    const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
+    let changed = false;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].id !== sessionData.id) continue;
+      const updated = { ...rows[i], status: sessionData.status, start_time: sessionData.start_time, end_time: sessionData.end_time };
       if (leaveStatuses.has(sessionData.status)) {
         updated.learning_record_status = null;
         updated.attendance_sign_in_at = null;
       }
-      rows[idx] = updated;
+      rows[i] = updated;
+      changed = true;
+    }
+    if (changed) {
       classSessionsByCourse.value = { ...classSessionsByCourse.value, [key]: [...rows] };
     }
   }

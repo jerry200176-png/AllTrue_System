@@ -351,9 +351,15 @@
             <div class="pp-invoice-date">{{ inv.IssueDate || inv.issue_date || '' }}</div>
             <div class="pp-invoice-amount">${{ inv.TotalAmount || inv.total_amount || 0 }}</div>
           </div>
-          <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
-            {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
-          </span>
+          <div class="pp-invoice-badges">
+            <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
+              {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
+            </span>
+            <span v-if="inv.reconciled_at" class="pp-badge pp-badge-reconciled" title="已核帳確認">
+              <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">verified</span>
+              已核帳
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1103,6 +1109,11 @@ onMounted(async () => {
 .pp-invoice-item:last-child { border-bottom: none; }
 .pp-invoice-date { font-size: 0.85em; color: #607d8b; }
 .pp-invoice-amount { font-weight: 700; font-size: 1.05em; }
+.pp-invoice-badges { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.pp-badge-reconciled {
+  background: #E8F5E9; color: #2E7D32;
+  display: inline-flex; align-items: center; gap: 2px;
+}
 
 /* ═══ LINE Binding ═══ */
 .pp-line-bound {

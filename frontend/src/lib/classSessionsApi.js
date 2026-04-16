@@ -30,7 +30,9 @@ export function normalizeClassSessionsPayload(json) {
     if (!item.id || !item.student_class_id || !item.session_date) continue;
     const key = String(item.student_class_id);
     if (!byClass[key]) byClass[key] = [];
-    byClass[key].push(item);
+    if (!byClass[key].some((r) => r.id === item.id)) {
+      byClass[key].push(item);
+    }
   }
 
   Object.keys(byClass).forEach((key) => {

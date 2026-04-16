@@ -40,6 +40,17 @@ return [
             'prefix' => '',
             'strict' => true,
             'engine' => null,
+            'options' => env('DB_PERSISTENT', false)
+                ? [\PDO::ATTR_PERSISTENT => true]
+                : [],
+
+            // P1 Read/Write Split — activate by setting DB_READ_HOST in .env
+            // When DB_READ_HOST is empty (default), all queries go to primary.
+            'read' => env('DB_READ_HOST')
+                ? ['host' => env('DB_READ_HOST'), 'port' => env('DB_READ_PORT', env('DB_PORT', '3306'))]
+                : [],
+            'write' => [],
+            'sticky' => true,
         ],
     ],
 

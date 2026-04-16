@@ -1,4 +1,14 @@
 <template>
+  <!-- Update available banner -->
+  <Transition name="update-banner">
+    <div v-if="updateAvailable && !updateDismissed" class="update-banner" role="alert">
+      <span class="material-symbols-outlined update-banner-icon">system_update</span>
+      <span class="update-banner-text">系統已更新，請重新整理頁面以取得最新版本</span>
+      <button class="update-banner-btn" @click="reloadForUpdate">重新整理</button>
+      <button class="update-banner-close" @click="dismissUpdate" title="稍後再說">&times;</button>
+    </div>
+  </Transition>
+
   <!-- Standalone parent portal (accessible without login via #/parent or ?parent=1) -->
   <div v-if="isStandaloneParent" class="standalone-parent-shell">
     <ParentPortal :standalone="true" />
@@ -365,6 +375,7 @@ import {
   resolveSavedBranchChoice,
 } from './lib/useBranches';
 import { usePageGuideTour } from './lib/usePageGuideTour';
+import { useUpdateChecker } from './composables/useUpdateChecker';
 import { lockScroll, unlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
 
@@ -715,6 +726,7 @@ function isItemBadgeUrgent(item) {
 
 const currentGuidePage = computed(() => (isStandaloneParent.value ? 'parent' : active.value));
 const buildTimeDisplay = computed(() => formatBuildTime(__APP_BUILD_TIME__));
+const { updateAvailable, dismissed: updateDismissed, dismiss: dismissUpdate, reload: reloadForUpdate } = useUpdateChecker();
 
 function startGuideTour() {
   guideTour.startTour(currentGuidePage.value, { role: role.value });
@@ -1978,5 +1990,80 @@ function formatBuildTime(rawIso) {
 
 .theme-btn-label {
   font-size: 11px;
+}
+
+/* ── Update banner ── */
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.update-banner-icon {
+  font-size: 20px;
+}
+
+.update-banner-text {
+  flex-shrink: 1;
+}
+
+.update-banner-btn {
+  background: #fff;
+  color: #2563eb;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.update-banner-btn:hover {
+  background: #e0edff;
+}
+
+.update-banner-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 4px;
+  transition: color 0.15s;
+}
+
+.update-banner-close:hover {
+  color: #fff;
+}
+
+.update-banner-enter-active {
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+.update-banner-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.update-banner-enter-from {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+.update-banner-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
 }
 </style>
