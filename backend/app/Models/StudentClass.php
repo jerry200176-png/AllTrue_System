@@ -65,6 +65,31 @@ class StudentClass extends Model
         return !empty($this->PackageID) && (int) $this->PackageID > 0;
     }
 
+    /**
+     * 取得「某堂課當日」的標準時長（分鐘）。
+     * 先查 duration1~duration6 對應 ISO weekday；否則 fallback 到 SessionDuration。
+     * 供單堂時間調整時的費率換算使用（per-day > contract default）。
+     *
+     * @param  int  $isoWeekday 1=Mon ... 7=Sun
+     */
+    public function resolveSessionDurationForWeekday(int $isoWeekday): int
+    {
+        $map = [
+            ['week1', 'duration1'], ['week2', 'duration2'], ['week3', 'duration3'],
+            ['week4', 'duration4'], ['week5', 'duration5'], ['week6', 'duration6'],
+        ];
+        foreach ($map as [$wf, $df]) {
+            if ((int) ($this->{$wf} ?? 0) === $isoWeekday) {
+                $dur = (int) ($this->{$df} ?? 0);
+                if ($dur >= 30) {
+                    return $dur;
+                }
+            }
+        }
+        $fallback = (int) ($this->SessionDuration ?? 0);
+        return $fallback > 0 ? $fallback : 0;
+    }
+
     /** Human-readable subject for UI / slips (Subject 欄位或 SubjectID 對照). */
     public function displaySubjectName(): string
     {

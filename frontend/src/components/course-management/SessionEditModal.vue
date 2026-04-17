@@ -96,22 +96,47 @@
       </div>
 
       <div v-if="mode === 'edit-note-time'" class="session-edit-note-time">
-        <h4 class="se-section-title">備註 / 調整結束時間</h4>
+        <h4 class="se-section-title">備註 / 調整時段</h4>
         <div v-if="form.lr_status === 'approved'" class="se-info-banner se-banner-info">
           此堂已有核准評量，修改結束時間後評量記錄時間也會同步更新。
         </div>
-        <div class="form-group">
-          <label>結束時間</label>
-          <input v-model="form.edit_end_time" type="time" step="1800" style="width: 100%;" />
-          <small class="field-note">修改後評量表的結束時間也會同步。</small>
+        <div class="se-time-grid">
+          <div class="form-group">
+            <label>開始時間</label>
+            <input v-model="form.edit_start_time" type="time" step="1800" class="se-time-input" />
+          </div>
+          <div class="form-group">
+            <label>結束時間</label>
+            <input v-model="form.edit_end_time" type="time" step="1800" class="se-time-input" />
+          </div>
         </div>
+        <p v-if="timeRangeError" class="se-inline-error" role="alert">{{ timeRangeError }}</p>
+
+        <div class="se-charge-preview" :class="chargePreviewClass" aria-live="polite">
+          <template v-if="chargePreview.kind === 'ok'">
+            <span class="se-charge-label">此堂費用</span>
+            <span class="se-charge-value">NT$ {{ chargePreview.value.toLocaleString() }}</span>
+            <span v-if="chargePreview.deltaText" class="se-charge-delta">{{ chargePreview.deltaText }}</span>
+            <small class="se-charge-hint">實際 {{ chargePreview.actualMinutes }} 分鐘 / 標準 {{ chargePreview.standardMinutes }} 分鐘</small>
+          </template>
+          <template v-else-if="chargePreview.kind === 'no-rate'">
+            <span class="se-charge-label">此堂費用</span>
+            <span class="se-charge-empty">費率未設定，無法計算</span>
+          </template>
+          <template v-else>
+            <span class="se-charge-label">此堂費用</span>
+            <span class="se-charge-empty">請輸入有效的時段</span>
+          </template>
+        </div>
+
         <div class="form-group">
           <label>備註</label>
           <input v-model="form.note" type="text" placeholder="例：今日加課 1 小時，已收費" style="width: 100%;" maxlength="200" />
         </div>
+        <small class="field-note">修改後評量表的結束時間也會同步；若費用因時長變動，課程總費用（Charge）也會依差額調整。</small>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
-          <button class="primary" @click="$emit('do-edit-note-time')" :disabled="submitting">儲存</button>
+          <button class="primary" @click="onSaveClick" :disabled="submitting || !!timeRangeError">儲存</button>
         </div>
       </div>
 
@@ -169,6 +194,86 @@ const canTransition = (target) => {
   return allowed.includes(target);
 };
 const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_start, props.form?.duration_hours) || '');
+
+function minutesOf(hhmm) {
+  if (!hhmm || typeof hhmm !== 'string') return null;
+  const m = hhmm.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+function diffMinutes(start, end) {
+  const s = minutesOf(start);
+  const e = minutesOf(end);
+  if (s == null || e == null) return null;
+  const d = e - s;
+  return d > 0 ? d : null;
+}
+
+const timeRangeError = computed(() => {
+  const s = props.form?.edit_start_time;
+  const e = props.form?.edit_end_time;
+  if (!s || !e) return '';
+  const sMin = minutesOf(s);
+  const eMin = minutesOf(e);
+  if (sMin == null || eMin == null) return '';
+  if (eMin <= sMin) return '結束時間必須晚於開始時間';
+  return '';
+});
+
+const chargePreview = computed(() => {
+  const rate = Number(props.form?.contract_rate ?? 0);
+  const dur = Number(props.form?.contract_session_duration ?? 0);
+  const unit = String(props.form?.contract_rate_unit || 'session').toLowerCase();
+  if (!(rate > 0) || !(dur > 0)) {
+    return { kind: 'no-rate' };
+  }
+  const actual = diffMinutes(props.form?.edit_start_time, props.form?.edit_end_time);
+  if (actual == null) return { kind: 'no-time' };
+
+  let value;
+  if (unit === 'hour') {
+    value = Math.round(rate * (actual / 60));
+  } else {
+    value = Math.round(rate * (actual / dur));
+  }
+  let standard;
+  if (unit === 'hour') {
+    standard = Math.round(rate * (dur / 60));
+  } else {
+    standard = Math.round(rate);
+  }
+  const deltaAbs = value - standard;
+  let deltaText = '';
+  let tone = 'standard';
+  if (deltaAbs > 0) { deltaText = `+NT$ ${deltaAbs.toLocaleString()}（高於標準）`; tone = 'higher'; }
+  else if (deltaAbs < 0) { deltaText = `-NT$ ${Math.abs(deltaAbs).toLocaleString()}（低於標準）`; tone = 'lower'; }
+
+  return {
+    kind: 'ok', value, standard, deltaText, tone,
+    actualMinutes: actual, standardMinutes: dur,
+    deviationRatio: standard > 0 ? Math.abs(deltaAbs) / standard : 0,
+  };
+});
+
+const chargePreviewClass = computed(() => {
+  const p = chargePreview.value;
+  if (!p || p.kind !== 'ok') return 'se-charge-neutral';
+  if (p.tone === 'higher') return 'se-charge-higher';
+  if (p.tone === 'lower') return 'se-charge-lower';
+  return 'se-charge-standard';
+});
+
+function onSaveClick() {
+  if (timeRangeError.value) return;
+  const p = chargePreview.value;
+  if (p?.kind === 'ok' && (p.deviationRatio ?? 0) >= 0.5) {
+    const ok = window.confirm(
+      `此堂費用 NT$ ${p.value.toLocaleString()}，明顯偏離標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。確定儲存嗎？`
+    );
+    if (!ok) return;
+  }
+  emit('do-edit-note-time');
+}
 </script>
 
 <style scoped>
@@ -221,4 +326,58 @@ const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_st
 .field-note { display: block; margin-top: 4px; font-size: 0.8em; color: #64748b; }
 .se-secondary-add { font-size: 0.82em !important; color: #94a3b8 !important; border-color: transparent !important; }
 .se-secondary-add:hover { color: #64748b !important; }
+
+/* 單堂時間費率自動計算 — SessionEditModal 精緻化 */
+.se-time-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.se-time-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 15px;
+}
+.se-time-input:focus { outline: none; border-color: var(--primary, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+.se-inline-error {
+  margin: 6px 0 10px;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 0.85em;
+}
+.se-charge-preview {
+  margin: 12px 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  border: 1px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.se-charge-label { font-size: 0.85em; font-weight: 600; color: #475569; min-width: 64px; }
+.se-charge-value { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.3px; }
+.se-charge-delta { font-size: 0.85em; font-weight: 600; }
+.se-charge-hint { width: 100%; font-size: 0.78em; color: #64748b; }
+.se-charge-empty { font-size: 0.9em; color: #94a3b8; font-style: italic; }
+.se-charge-standard { background: #eff6ff; border-color: #bfdbfe; }
+.se-charge-standard .se-charge-value { color: #1d4ed8; }
+.se-charge-higher { background: #fff7ed; border-color: #fed7aa; }
+.se-charge-higher .se-charge-value { color: #c2410c; }
+.se-charge-higher .se-charge-delta { color: #c2410c; }
+.se-charge-lower { background: #eff6ff; border-color: #bfdbfe; }
+.se-charge-lower .se-charge-value { color: #1e40af; }
+.se-charge-lower .se-charge-delta { color: #1e40af; }
+.se-charge-neutral { background: #f8fafc; border-color: #e2e8f0; }
+
+@media (max-width: 520px) {
+  .se-time-grid { grid-template-columns: 1fr; }
+}
 </style>

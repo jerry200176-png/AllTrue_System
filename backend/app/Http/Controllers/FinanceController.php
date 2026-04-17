@@ -554,6 +554,79 @@ class FinanceController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/finance/branch-monthly-tuition/export
+     * Export monthly tuition as UTF-8 CSV.
+     */
+    public function branchMonthlyTuitionExport(Request $request): StreamedResponse
+    {
+        $campusIds      = $this->getCampusIds($request);
+        $branchFiltered = !empty($campusIds);
+        $studentIds     = $branchFiltered ? Student::whereIn('CampusID', $campusIds)->pluck('id')->all() : [];
+
+        $year  = (int) $request->input('year', date('Y'));
+        $month = (int) $request->input('month', date('n'));
+        $startDate = sprintf('%04d-%02d-01', $year, $month);
+        $endDate   = date('Y-m-t', strtotime($startDate));
+
+        $attendedStatuses = ['attended', 'completed', 'late'];
+
+        $sessionCounts = DB::table('ClassSession')
+            ->whereBetween('SessionDate', [$startDate, $endDate])
+            ->whereIn('Status', $attendedStatuses)
+            ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
+            ->groupBy('StudentClassID');
+
+        $query = StudentClass::query()
+            ->where('Stop', 0)
+            ->joinSub($sessionCounts, 'sc_counts', function ($join) {
+                $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
+            })
+            ->with(['student', 'teacher']);
+
+        if (!empty($studentIds)) {
+            $query->whereIn('StudentClass.StudentID', $studentIds);
+        }
+
+        $query->select('StudentClass.*', 'sc_counts.cnt as monthly_session_count');
+
+        $allRows = $query->get()->sortBy([
+            fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
+            fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
+        ])->values();
+
+        $branchIds = $campusIds ?: [];
+        $branchName = !empty($branchIds)
+            ? (DB::table('Campus')->where('id', $branchIds[0])->value('name') ?? 'all')
+            : 'all';
+        $filename = "當月學收_{$branchName}_{$year}{$month}.csv";
+
+        return response()->streamDownload(function () use ($allRows) {
+            $out = fopen('php://output', 'w');
+            fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期']);
+            foreach ($allRows as $c) {
+                $rate = $this->resolveRate($c);
+                $sessions = (int) $c->monthly_session_count;
+                $classTypeLabels = [
+                    'one_on_one' => '一對一', 'one_on_two' => '一對二',
+                    'one_on_three' => '一對三', 'tutoring' => '輔導', 'trial' => '試聽',
+                ];
+                fputcsv($out, [
+                    $c->student->name ?? 'Unknown',
+                    $c->displaySubjectName(),
+                    $c->teacher->Name ?? 'Unknown',
+                    $classTypeLabels[$c->ClassType ?? ''] ?? ($c->ClassType ?? ''),
+                    $sessions,
+                    $rate,
+                    round($sessions * $rate, 2),
+                    $c->PayDate ? substr($c->PayDate, 0, 10) : '',
+                ]);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
     private function resolveRate(StudentClass $c): float
     {
         $rate = (float) ($c->Rate ?? 0);

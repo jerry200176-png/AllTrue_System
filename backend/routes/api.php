@@ -204,6 +204,7 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
+        Route::get('finance/branch-monthly-tuition/export', [FinanceController::class, 'branchMonthlyTuitionExport']);
         Route::get('finance/duplicate-courses', [FinanceController::class, 'duplicateCourses']);
 
         Route::get('finance/parttime-payroll', [FinanceController::class, 'parttimePayroll']);

@@ -33,13 +33,24 @@
 
           <div v-if="lowBalanceStudents.length > 0"
                class="ac ac--pay" tabindex="0"
-               @click="scrollTo('payments')" @keydown.enter="scrollTo('payments')">
+               @click="goToTuitionCollect" @keydown.enter="goToTuitionCollect">
             <span class="material-symbols-outlined ac__icon">payments</span>
             <div class="ac__body">
               <span class="ac__count">{{ lowBalanceStudents.length }}</span>
               <span class="ac__label">{{ paymentActionLaneLabel }}</span>
             </div>
-            <button class="ac__cta" @click.stop="scrollTo('payments')">查看</button>
+            <button class="ac__cta" @click.stop="goToTuitionCollect">前往催繳</button>
+          </div>
+
+          <div v-if="pendingMakeupCount > 0"
+               class="ac ac--makeup" tabindex="0"
+               @click="goToAttendance" @keydown.enter="goToAttendance">
+            <span class="material-symbols-outlined ac__icon">edit_note</span>
+            <div class="ac__body">
+              <span class="ac__count">{{ pendingMakeupCount }}</span>
+              <span class="ac__label">堂待補點名</span>
+            </div>
+            <button class="ac__cta" @click.stop="goToAttendance">補點名</button>
           </div>
 
           <div v-if="pendingEvaluations.length > 0"
@@ -331,6 +342,7 @@ const unreadNotificationCount = ref(0);
 const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
+const pendingMakeupCount = ref(0);
 
 const importFileInput = ref(null);
 const importState = ref('idle');
@@ -373,6 +385,7 @@ const allClearActionLane = computed(() =>
   pendingAttendanceCount.value === 0
   && lowBalanceStudents.value.length === 0
   && pendingEvaluations.value.length === 0
+  && pendingMakeupCount.value === 0
 );
 
 const displayPaymentAlerts = computed(() =>
@@ -542,6 +555,19 @@ const loadData = async () => {
     console.error('Failed to load pending evaluations:', err);
   }
 
+  try {
+    const makeupParams = new URLSearchParams({ branch_id: String(props.branchId), per_page: '1' });
+    const makeupRes = await fetch(`${baseUrl}/v1/attendance/ended-sessions?${makeupParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+    });
+    if (makeupRes.ok) {
+      const makeupJson = await makeupRes.json();
+      pendingMakeupCount.value = Number(makeupJson?.meta?.total ?? makeupJson?.total ?? 0);
+    }
+  } catch (err) {
+    console.error('Failed to load makeup count:', err);
+  }
+
   calculateTeacherStats();
 };
 
@@ -572,6 +598,7 @@ const loadNotificationSummary = async (token, baseUrl) => {
 
 const goToNotifications = () => emit('navigate', { target: 'notifications' });
 const goToAttendance = () => emit('navigate', { target: 'attendance' });
+const goToTuitionCollect = () => emit('navigate', { target: 'tuition-collect' });
 
 const getSubjectLabel = (val) => {
   const map = {
@@ -831,6 +858,7 @@ onMounted(loadData);
 .ac--attend { border-left-color: #ef4444; }
 .ac--pay    { border-left-color: #f97316; }
 .ac--eval   { border-left-color: #3b82f6; }
+.ac--makeup { border-left-color: #8b5cf6; }
 .ac--import { border-left-color: #10b981; }
 .ac--clear  {
   border-left-color: #22c55e;
@@ -846,6 +874,7 @@ onMounted(loadData);
 .ac--attend .ac__icon { color: #ef4444; }
 .ac--pay    .ac__icon { color: #f97316; }
 .ac--eval   .ac__icon { color: #3b82f6; }
+.ac--makeup .ac__icon { color: #8b5cf6; }
 .ac--import .ac__icon { color: #10b981; }
 .ac--clear  .ac__icon { color: #22c55e; }
 
@@ -890,6 +919,8 @@ onMounted(loadData);
 .ac--pay .ac__cta:hover { background: #ffedd5; }
 .ac--eval .ac__cta   { background: #eff6ff; color: #2563eb; }
 .ac--eval .ac__cta:hover { background: #dbeafe; }
+.ac--makeup .ac__cta { background: #f5f3ff; color: #7c3aed; }
+.ac--makeup .ac__cta:hover { background: #ede9fe; }
 .ac--import .ac__cta { background: #ecfdf5; color: #059669; }
 .ac--import .ac__cta:hover { background: #d1fae5; }
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }

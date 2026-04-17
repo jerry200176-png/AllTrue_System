@@ -151,11 +151,17 @@
                         <span class="paused-course-callout__main">課程暫停中</span>
                         <span class="paused-course-callout__sub">未恢復前不排新課、不計入待辦</span>
                       </div>
+                      <div v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
+                        <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
+                        <span class="settled-course-callout__main">已結案</span>
+                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完' }}</span>
+                      </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
                         <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">已暫停</span>
+                        <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -187,7 +193,7 @@
                         {{ dayLabel(c.day_of_week) }} {{ c.start_time }}~{{ c.end_time }}
                       </span>
                       <span v-else class="hint">未排定</span>
-                      <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '今日起尚未上課的預排堂次，與固定排課（契約）的星期／起迄或時長不一致。請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
+                      <span v-if="c.schedule_drift" class="schedule-drift-badge" :title="c.contract_exception_count > 0 ? '堂次偏移（另含 ' + c.contract_exception_count + ' 堂補課例外，不受影響）。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步偏移堂次。' : '未上預排堂次與固定排課（契約）的星期／時段不一致。若偏移非刻意調課，請開啟「編輯」確認固定排課後按儲存，系統會自動同步未上預排堂次。'">⚠ 堂次偏移</span>
                       <span v-else-if="c.contract_exception_count > 0" class="contract-exception-badge" :title="'含 ' + c.contract_exception_count + ' 堂非固定星期的補課／加課，不會被重建覆寫。'">補課例外</span>
                     </td>
                     <td>
@@ -1643,6 +1649,7 @@ function effectiveClosedReason(c) {
   return null;
 }
 
+
 function canQuickAddSession(c) {
   if (!isSessionMode(c)) return false;
   if (c.status === 'inactive') return false;
@@ -2288,7 +2295,7 @@ const submitEdit = async () => {
           room_id: form.room_id || null,
           Memo: form.memo || null
         };
-        if (form.paid_at) body.paid_at = form.paid_at;
+        body.paid_at = form.paid_at ? form.paid_at : null;
         const res = await fetch(`/api/v1/student-classes/${id}`, {
           method: 'PUT',
           credentials: 'include',
@@ -3068,6 +3075,41 @@ onUnmounted(() => {
 .price-sep {
   margin: 0 6px;
   color: #94a3b8;
+}
+
+.settled-course-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 10px;
+  margin-bottom: 6px;
+  border-radius: 7px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  box-shadow: 0 1px 2px rgba(22, 101, 52, 0.08);
+}
+.settled-course-callout__icon { font-size: 13px; line-height: 1; }
+.settled-course-callout__main {
+  font-size: 13px;
+  font-weight: 800;
+  color: #14532d;
+  letter-spacing: 0.03em;
+}
+.settled-course-callout__sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #166534;
+}
+.tag-settled {
+  background: #dcfce7;
+  color: #14532d;
+  border: 1px solid #86efac;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .paused-course-callout {

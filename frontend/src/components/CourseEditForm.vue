@@ -13,6 +13,14 @@
         <option value="">請選擇</option>
         <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
       </select>
+      <div v-if="form.teacher_id" class="teacher-schedule-hint">
+        <span v-if="teacherScheduleLoading" class="teacher-schedule-meta">載入排課中…</span>
+        <template v-else-if="teacherSchedule.length">
+          <span class="teacher-schedule-meta">近兩週排課：</span>
+          <span v-for="s in teacherScheduleDisplay" :key="s.key" class="teacher-busy-chip">{{ s.label }}</span>
+        </template>
+        <span v-else class="teacher-schedule-meta teacher-schedule-empty">近兩週無排課</span>
+      </div>
     </div>
 
     <div v-if="scopeWarning" class="scope-warning-banner" style="grid-column: 1 / -1;">
@@ -82,6 +90,7 @@
       <label>繳費日期（選填）</label>
       <input v-model="form.paid_at" type="date" />
       <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+      <p v-else class="field-hint field-hint--warning">清空繳費日期儲存後，將改為未繳費</p>
     </div>
 
     <div v-if="showRemaining" class="form-group">
@@ -175,7 +184,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, watch } from 'vue';
+import { computed, nextTick, reactive, ref, watch } from 'vue';
 import { checkTeacherScope } from '../lib/constants';
 
 const props = defineProps({
@@ -218,6 +227,23 @@ const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
 let syncingFromParent = false;
 let lastEmittedModel = null;
 
+const teacherSchedule = ref([]);
+const teacherScheduleLoading = ref(false);
+
+const teacherScheduleDisplay = computed(() => {
+  const dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
+  const seen = new Set();
+  return teacherSchedule.value
+    .map((s, i) => {
+      const d = new Date(s.date + 'T00:00:00');
+      const dow = d.getDay() || 7;
+      const mm = d.getMonth() + 1;
+      const dd = d.getDate();
+      return { key: i, label: `${mm}/${dd}(${dayNames[dow]}) ${s.start}` };
+    })
+    .filter((s) => { if (seen.has(s.label)) return false; seen.add(s.label); return true; });
+});
+
 const selectedTeacher = computed(() => {
   const tid = Number(form.teacher_id);
   return tid > 0 ? (props.teachers || []).find((t) => Number(t.id) === tid) : null;
@@ -242,6 +268,40 @@ const hasPerDayDuration = computed(() => {
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
 });
+
+watch(
+  () => form.teacher_id,
+  async (tid) => {
+    teacherSchedule.value = [];
+    if (!tid) return;
+    teacherScheduleLoading.value = true;
+    try {
+      const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
+      const token = session?.access_token;
+      if (!token) return;
+      const today = new Date();
+      const from = today.toISOString().slice(0, 10);
+      const toDate = new Date(today);
+      toDate.setDate(today.getDate() + 13);
+      const to = toDate.toISOString().slice(0, 10);
+      const resp = await fetch(
+        `/api/v1/class-sessions?teacher_id=${tid}&start=${from}&end=${to}&status=scheduled&per_page=200`,
+        { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
+      );
+      if (!resp.ok) return;
+      const json = await resp.json();
+      teacherSchedule.value = (json.data || []).map((s) => ({
+        date: s.session_date || s.SessionDate || '',
+        start: String(s.start_time || s.StartTime || '').slice(0, 5),
+        end: String(s.end_time || s.EndTime || '').slice(0, 5),
+      }));
+    } catch (_) {
+      // silently ignore
+    } finally {
+      teacherScheduleLoading.value = false;
+    }
+  }
+);
 
 watch(
   () => props.modelValue,
@@ -528,6 +588,7 @@ function computeEndTime(startRaw, durHours) {
 
 .field-hint { font-size: 12px; margin-top: 4px; line-height: 1.4; }
 .field-hint--success { color: #2e7d32; }
+.field-hint--warning { color: #b26a00; }
 
 @media (max-width: 720px) {
   .course-form-grid {
@@ -543,5 +604,28 @@ function computeEndTime(startRaw, durHours) {
   font-size: 13px;
   color: #92400e;
   line-height: 1.5;
+}
+
+.teacher-schedule-hint {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.teacher-schedule-meta {
+  font-size: 11px;
+  color: var(--text-light, #64748b);
+  white-space: nowrap;
+}
+.teacher-schedule-empty { font-style: italic; }
+.teacher-busy-chip {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  white-space: nowrap;
 }
 </style>

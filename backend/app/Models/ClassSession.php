@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string $SessionDate
  * @property string $StartTime
  * @property string $EndTime
+ * @property int|null $session_charge  Per-session charge override; null = use standard charge.
  */
 
 class ClassSession extends Model
@@ -26,10 +27,12 @@ class ClassSession extends Model
         'Status',
         'Note',
         'IsContractException',
+        'session_charge',
     ];
 
     protected $casts = [
         'IsContractException' => 'boolean',
+        'session_charge' => 'integer',
     ];
 
     public function studentClass()
