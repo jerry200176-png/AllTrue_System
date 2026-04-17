@@ -100,6 +100,7 @@
           v-for="ev in todayEvents"
           :key="ev.key"
           class="ts-event"
+          :class="{ 'ts-event-leave': ev.isLeave, 'ts-event-cancelled': ev.isCancelled }"
         >
           <div class="ts-time">{{ ev.timeRange }}</div>
           <div class="ts-info">
@@ -111,15 +112,22 @@
           </div>
           <button
             class="ts-fill-btn"
-            :disabled="!ev.recordId && ev.fillLocked"
-            :title="!ev.recordId && ev.fillLocked ? ev.fillLockReason : ''"
+            :disabled="(!ev.recordId && ev.fillLocked) || ev.isLeave || ev.isCancelled"
+            :title="(ev.isLeave || ev.isCancelled) ? ev.fillLockReason : (!ev.recordId && ev.fillLocked ? ev.fillLockReason : '')"
             @click="openFromScheduleMaybe(ev)"
           >{{ scheduleActionLabel(ev) }}</button>
         </div>
       </div>
 
+      <!-- Week view: summary when no items need filling -->
+      <div
+        v-if="scheduleView === 'week' && weekHasEvents && weekTotalMissingCount === 0"
+        class="ts-week-allclear"
+      >本週無待填評量</div>
+
       <!-- Week view -->
-      <div v-if="scheduleView === 'week'" class="ts-week">
+      <div v-if="scheduleView === 'week'" class="ts-week-scroll">
+      <div class="ts-week">
         <div
           v-for="day in weekDays"
           :key="day.date"
@@ -134,7 +142,12 @@
             v-for="ev in day.events"
             :key="ev.key"
             class="ts-event ts-event-sm"
-            :class="{ locked: !ev.recordId && ev.fillLocked, substituted: ev.isSubstituted }"
+            :class="{
+              locked: !ev.recordId && ev.fillLocked && !ev.isLeave && !ev.isCancelled,
+              substituted: ev.isSubstituted,
+              'ts-event-leave': ev.isLeave,
+              'ts-event-cancelled': ev.isCancelled,
+            }"
             @click="openFromScheduleMaybe(ev)"
           >
             <div class="ts-time">{{ ev.timeRange }}</div>
@@ -148,6 +161,7 @@
             <span class="ts-fill-hint">{{ scheduleActionLabel(ev) }}</span>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -1319,8 +1333,15 @@ const scheduleStatusLabel = (status) => {
   if (status === 'pending') return '待審';
   if (status === 'changes_requested') return '待修改';
   if (status === 'rejected') return '已退回';
+  if (status === 'leave' || status === 'leave_adjusted' || status === 'excused') return '請假';
+  if (status === 'cancelled') return '取消';
   return '未填';
 };
+
+// 與 SmartCalendar.vue 的 LEAVE_STATUSES 保持一致（請假類堂次不需填評量）。
+// 若未來新增請假類 ClassSession.Status，前後端（LearningRecord::scopeExcludeLeaveSessionPendingReview）
+// 必須同步更新，避免語意漂移。
+const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 
 const SESSION_STATUS_PRIORITY = {
   attended: 0, completed: 0, late: 0, absent: 0,
@@ -1473,7 +1494,14 @@ const buildEvents = (targetDates) => {
         || (startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null)
         || recordLookup.value.get(`${classId}|${dateStr}`);
       const rowStatus = String(rawSession?.learning_record_status || '');
-      const formStatus = rowStatus || record?.Status || 'missing';
+      const sessionStatus = String(rawSession?.status || rawSession?.Status || '').toLowerCase();
+      // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。
+      // 後端 LR 已被 CourseLeaveCascadeService 作廢（VoidedAt），learning_record_status 回 'missing'，
+      // 若未於此處攔截，評量頁會誤顯示「未填」並開放填寫 → 2026-04-17 修正。
+      const isLeaveSession = LEAVE_STATUSES.has(sessionStatus);
+      const isCancelledSession = sessionStatus === 'cancelled';
+      const baseFormStatus = rowStatus || record?.Status || 'missing';
+      const formStatus = isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : baseFormStatus);
       const recordId = rawSession?.learning_record_id != null
         ? Number(rawSession.learning_record_id)
         : (record?.id || null);
@@ -1481,10 +1509,17 @@ const buildEvents = (targetDates) => {
       const lrTeacherId = Number(rawSession?.learning_record_teacher_id || 0);
       const isSubstituted = lrTeacherId > 0 && lrTeacherId !== myId && myId > 0;
 
-      const fillLocked = isSubstituted || !isSessionStarted(dateStr, startTime);
+      // 請假／取消：永遠鎖定不可填；其他沿用既有規則（代課 or 尚未開始）。
+      const fillLocked = isLeaveSession || isCancelledSession || isSubstituted || !isSessionStarted(dateStr, startTime);
       const student = studentList.value.find(s => String(s.id) === String(sc.student_id || sc.StudentID));
       const studentName = student?.name || sc.student_name || `學生#${sc.student_id || sc.StudentID}`;
       const eventKey = csId > 0 ? `cs-${csId}` : `${classId}-${dateStr}-${startTime || ''}`;
+      let fillLockReason = '';
+      if (isLeaveSession) fillLockReason = '此堂已請假，無需填寫評量';
+      else if (isCancelledSession) fillLockReason = '此堂已取消，無需填寫評量';
+      else if (isSubstituted) fillLockReason = '此堂已由代課老師處理';
+      else if (fillLocked) fillLockReason = '上課開始後開放填寫';
+
       events.push({
         key: eventKey,
         classSessionId: csId || null,
@@ -1497,12 +1532,15 @@ const buildEvents = (targetDates) => {
         startTime,
         endTime,
         timeRange: endTime ? `${startTime}~${endTime}` : startTime,
-        recordId: isSubstituted ? null : (recordId || null),
+        // 請假／取消：不綁 recordId，避免誤觸 canEdit 分支開啟評量 modal。
+        recordId: (isLeaveSession || isCancelledSession || isSubstituted) ? null : (recordId || null),
         formStatus: isSubstituted ? 'substituted' : formStatus,
         formStatusLabel: isSubstituted ? '代課' : scheduleStatusLabel(formStatus),
         fillLocked,
-        fillLockReason: isSubstituted ? '此堂已由代課老師處理' : (fillLocked ? '上課開始後開放填寫' : ''),
+        fillLockReason,
         isSubstituted,
+        isLeave: isLeaveSession,
+        isCancelled: isCancelledSession,
       });
     }
   }
@@ -1531,11 +1569,15 @@ const weekDays = computed(() => {
       shortDate: `${d.getMonth() + 1}/${d.getDate()}`,
       isToday: dateStr === todayDate,
       events,
+      // 只計算真正「未填」（請假／取消因 formStatus 被改為 leave/cancelled，已自動排除）。
       missingCount: events.filter((ev) => ev.formStatus === 'missing').length,
     });
   }
   return days;
 });
+
+const weekHasEvents = computed(() => weekDays.value.some((day) => day.events.length > 0));
+const weekTotalMissingCount = computed(() => weekDays.value.reduce((sum, day) => sum + day.missingCount, 0));
 
 const findTeacherCourseForStudent = (studentId) => {
   if (!studentId) return null;
@@ -1684,6 +1726,10 @@ const openFromSchedule = (ev) => {
 const openFromScheduleMaybe = (ev) => {
   if (ev?.isSubstituted) {
     alert('此堂已由代課老師處理');
+    return;
+  }
+  if (ev?.isLeave || ev?.isCancelled) {
+    // 請假／取消堂次不需填評量；即使使用者誤觸也不開啟 modal。
     return;
   }
   if (!ev?.recordId && ev?.fillLocked) {
@@ -2227,6 +2273,8 @@ const canEditScheduleEvent = (ev) => {
 
 const scheduleActionLabel = (ev) => {
   if (ev?.isSubstituted) return '代課中';
+  if (ev?.isLeave) return '已請假';
+  if (ev?.isCancelled) return '已取消';
   if (!ev?.recordId) return ev?.fillLocked ? '未開放' : '填評量';
   return canEditScheduleEvent(ev) ? '編輯評量' : '檢視評量';
 };
@@ -3192,6 +3240,17 @@ watch(() => props.branchId, () => {
   color: #64748b;
 }
 
+.ts-status-chip.status-leave {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.ts-status-chip.status-cancelled {
+  background: #f1f5f9;
+  color: #64748b;
+  text-decoration: line-through;
+}
+
 .ts-fill-btn {
   background: var(--primary);
   color: #fff;
@@ -3216,10 +3275,26 @@ watch(() => props.branchId, () => {
 }
 
 /* Week view */
+.ts-week-scroll {
+  width: 100%;
+}
+
 .ts-week {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
+}
+
+.ts-week-allclear {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
 }
 
 .ts-day {
@@ -3297,6 +3372,43 @@ watch(() => props.branchId, () => {
   opacity: 0.6;
   background: #f8fafc;
   border-left: 3px solid #94a3b8;
+}
+
+.ts-event-sm.ts-event-leave,
+.ts-event-sm.ts-event-cancelled {
+  opacity: 0.72;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e1;
+  cursor: not-allowed;
+}
+
+.ts-event-sm.ts-event-leave:hover,
+.ts-event-sm.ts-event-cancelled:hover {
+  background: #f8fafc;
+}
+
+.ts-event-sm.ts-event-leave .ts-fill-hint,
+.ts-event-sm.ts-event-cancelled .ts-fill-hint {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.ts-event.ts-event-leave,
+.ts-event.ts-event-cancelled {
+  background: #f8fafc;
+  border-left: 4px solid #cbd5e1;
+}
+
+.ts-event.ts-event-leave .ts-fill-btn,
+.ts-event.ts-event-cancelled .ts-fill-btn {
+  background: #cbd5e1;
+  color: #475569;
+  cursor: not-allowed;
+}
+
+.ts-event.ts-event-leave .ts-fill-btn:hover,
+.ts-event.ts-event-cancelled .ts-fill-btn:hover {
+  background: #cbd5e1;
 }
 
 .ts-event-sm .ts-time {
@@ -4018,8 +4130,13 @@ watch(() => props.branchId, () => {
 
 /* ── Responsive: Tablet ── */
 @media (max-width: 900px) {
+  .ts-week-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .ts-week {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(86px, 1fr));
+    min-width: 602px;
   }
 }
 

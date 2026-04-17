@@ -1931,6 +1931,7 @@ const loadCourses = async () => {
     subject: c.subject,
     class_type: c.class_type,
     rate_per_30min: c.rate_per_30min,
+    rate_unit: c.rate_unit || 'session',
     duration_hours: c.duration_hours ?? 2,
     day_of_week: parseInt(c.day_of_week) || 0,
     days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
@@ -2354,13 +2355,29 @@ const computedMainEndTime = computed(() =>
   computeEndTime(modalForm.value.start_time, modalForm.value.duration_hours)
 );
 
-// 本堂費用顯示：優先使用 ClassSession.session_charge；未設定則用標準費用（rate_per_30min × duration）
+// 本堂費用顯示：
+// - session mode（按堂計費）：Single Source of Truth = 合約 Rate（rate_per_30min），
+//   不讀取可能落伍的 session_charge 衍生值，確保與排課設定一致。
+// - hour mode（按時計費）：優先讀取 ClassSession.session_charge（實際時長計費結果）；
+//   未設定則 fallback 為 Rate × 標準時長作為標準費。
 const currentSessionChargeDisplay = computed(() => {
   const courseId = editingCourseId.value;
   const dateStr = editingActionDate.value;
   const start = modalForm.value?.start_time;
   if (!courseId || !dateStr) return null;
 
+  const rateUnit = String(modalForm.value?.rate_unit || 'session').toLowerCase();
+  const rate = Number(modalForm.value?.rate_per_30min ?? 0);
+  const durationHours = Number(modalForm.value?.duration_hours ?? 0);
+
+  if (rateUnit === 'session') {
+    if (rate > 0) {
+      return { value: Math.round(rate), isAdjusted: false };
+    }
+    return null;
+  }
+
+  // hour mode
   const sessions = (sessionDatesByCourseId.value && sessionDatesByCourseId.value[String(courseId)]) || [];
   let matched = null;
   if (Array.isArray(sessions)) {
@@ -2375,10 +2392,8 @@ const currentSessionChargeDisplay = computed(() => {
     return { value: Number(matched.session_charge), isAdjusted: true };
   }
 
-  const rate30 = Number(modalForm.value?.rate_per_30min ?? 0);
-  const durationHours = Number(modalForm.value?.duration_hours ?? 0);
-  if (rate30 > 0 && durationHours > 0) {
-    const standard = Math.round(rate30 * (durationHours * 60 / 30));
+  if (rate > 0 && durationHours > 0) {
+    const standard = Math.round(rate * durationHours);
     return { value: standard, isAdjusted: false };
   }
   return null;
@@ -2455,6 +2470,7 @@ const onCourseClick = (course, fullDateStr) => {
     end_time: computeEndTime(start, course.duration_hours || 2),
     duration_hours: course.duration_hours || 2,
     rate_per_30min: baseCourse.rate_per_30min || 500,
+    rate_unit: baseCourse.rate_unit || 'session',
     payment_type: baseCourse.payment_type || 'session',
     remaining_sessions: baseCourse.remaining_sessions || 0,
     settlement_day: baseCourse.settlement_day ?? null,
@@ -4313,6 +4329,29 @@ onMounted(() => {
 @media (max-width: 1100px) {
   .teacher-col { min-width: 0; }
 }
+
+/* ── Tablet (iPad portrait, sidebar-aware ~520-650px content) ── */
+@media (max-width: 900px) {
+  .week-overview-grid { min-width: 540px; }
+  .day-col { min-width: 66px; }
+  .day-col-header { height: 50px; padding: 4px; }
+  .day-col-name { font-size: 11px; }
+  .day-col-date { font-size: 9px; }
+  .day-col-badge { min-width: 14px; height: 14px; font-size: 8px; top: 3px; right: 3px; }
+  .teacher-col-header { height: 56px; padding: 6px; gap: 4px; }
+  .col-header-blank { height: 56px; }
+  .teacher-col-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
+  .teacher-col-name { font-size: 11px; }
+  .teacher-col-room { font-size: 9px; }
+  .course-block { font-size: 10px; padding: 4px 5px; border-radius: 6px; }
+  .cb-student { font-size: 11px; }
+  .cb-detail, .cb-type { font-size: 9px; margin-top: 1px; }
+  .teacher-courses { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .teacher-table { min-width: 500px; }
+  .time-col { min-width: 40px; width: 40px; }
+  .time-label { font-size: 10px; padding: 4px 2px 0 0; }
+}
+
 @media (max-width: 600px) {
   .toolbar-secondary-line--filters {
     grid-template-columns: 1fr;
@@ -4718,11 +4757,11 @@ onMounted(() => {
 
 /* Responsive for week overview */
 @media (max-width: 768px) {
-  .week-overview-grid { min-width: 600px; }
-  .day-col { min-width: 75px; }
-  .day-col-header { height: 52px; padding: 4px; }
-  .day-col-name { font-size: 12px; }
-  .day-col-date { font-size: 9px; }
+  .week-overview-grid { min-width: 460px; }
+  .day-col { min-width: 56px; }
+  .day-col-header { height: 44px; padding: 3px; }
+  .day-col-name { font-size: 10px; }
+  .day-col-date { font-size: 8px; }
   .view-sub-toggle button { padding: 5px 10px; font-size: 12px; }
 }
 </style>
