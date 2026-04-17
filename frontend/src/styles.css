@@ -1206,6 +1206,16 @@ tr:hover td {
   }
 }
 
+@media (max-width: 768px) {
+  :root {
+    --sidebar-w: 216px;
+  }
+
+  .main-content {
+    padding: 16px 12px;
+  }
+}
+
 /* ===================== RWD UTILITIES ===================== */
 .responsive-table-wrap {
   overflow-x: auto;
