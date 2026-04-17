@@ -135,7 +135,19 @@ export function useRescheduleAndMakeup({
           headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify(payload2(originalId)),
         });
-        if (!r2.ok) { const err = await r2.json().catch(() => ({})); alert('調課失敗：' + (err.message || '無法寫入新堂次')); return; }
+        if (!r2.ok) {
+          const err = await r2.json().catch(() => ({}));
+          let errMsg = err.message || '無法寫入新堂次';
+          if (r2.status === 409 && Array.isArray(err.conflicts) && err.conflicts.length > 0) {
+            const details = err.conflicts[0]?.overlap_details;
+            if (Array.isArray(details) && details.length > 0) {
+              const names = details.map((d) => d.student_name || `#${d.student_id}`).join('、');
+              errMsg += `\n衝突學生：${names}`;
+            }
+          }
+          alert('調課失敗：' + errMsg);
+          return;
+        }
         if (form.course_id) {
           await fetch('/api/v1/learning-records/reschedule-session', {
             method: 'POST', credentials: 'include',

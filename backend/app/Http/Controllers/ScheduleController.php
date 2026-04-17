@@ -188,13 +188,14 @@ class ScheduleController extends Controller
 
         if (($data['status'] ?? 'scheduled') === 'scheduled') {
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-                'teacher_id' => $effectiveTeacherId,
-                'class_type' => $effectiveClassType,
-                'room_id' => $effectiveRoomId,
-                'branch_id' => $branchId,
-                'schedule_date' => $data['schedule_date'] ?? null,
-                'start_time' => $data['start_time'] ?? null,
-                'end_time' => $data['end_time'] ?? null,
+                'teacher_id'         => $effectiveTeacherId,
+                'class_type'         => $effectiveClassType,
+                'room_id'            => $effectiveRoomId,
+                'branch_id'          => $branchId,
+                'schedule_date'      => $data['schedule_date'] ?? null,
+                'start_time'         => $data['start_time'] ?? null,
+                'end_time'           => $data['end_time'] ?? null,
+                'exclude_student_id' => (int) ($data['student_id'] ?? 0),
             ]);
 
             if (!empty($guardConflicts)) {
