@@ -545,6 +545,7 @@ class PaymentReportController extends Controller
 
         $periodStart = null;
         $periodEnd = null;
+        $attendedDates = [];
         if ($sc) {
             if ($sc->ScheduleMode === 'date') {
                 $periodStart = $report->payment_date ? Carbon::parse($report->payment_date)->startOfMonth()->format('Y/m/d') : null;
@@ -553,6 +554,22 @@ class PaymentReportController extends Controller
                 $periodStart = $sc->StartDate ? Carbon::parse($sc->StartDate)->format('Y/m/d') : null;
                 $periodEnd = $sc->EndDate ? Carbon::parse($sc->EndDate)->format('Y/m/d') : null;
             }
+
+            $sessionQuery = \App\Models\ClassSession::where('StudentClassID', $sc->ID)
+                ->whereIn('Status', ['attended', 'completed', 'late'])
+                ->orderBy('SessionDate');
+
+            if ($sc->ScheduleMode === 'date' && $report->payment_date) {
+                $monthStart = Carbon::parse($report->payment_date)->startOfMonth()->toDateString();
+                $monthEnd   = Carbon::parse($report->payment_date)->endOfMonth()->toDateString();
+                $sessionQuery->whereDate('SessionDate', '>=', $monthStart)
+                             ->whereDate('SessionDate', '<=', $monthEnd);
+            }
+
+            $attendedDates = $sessionQuery->pluck('SessionDate')
+                ->map(fn ($d) => Carbon::parse((string) $d)->format('Y/m/d'))
+                ->values()
+                ->all();
         }
 
         $campusName = '';
@@ -569,6 +586,7 @@ class PaymentReportController extends Controller
             'session_count'    => $sc?->SessionCount,
             'period_start'     => $periodStart,
             'period_end'       => $periodEnd,
+            'attended_dates'   => $attendedDates,
             'payment_date'     => $report->payment_date?->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
             'amount'           => (float) $report->reported_amount,

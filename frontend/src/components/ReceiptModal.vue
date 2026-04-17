@@ -113,18 +113,26 @@ function drawReceipt(canvas, d) {
     { label: '科目', value: d.subject },
     { label: '課程類型', value: TYPE_ZH[d.class_type] || d.class_type || '—' },
     { label: '計費模式', value: MODE_ZH[d.schedule_mode] || d.schedule_mode || '—' },
-    d.session_count ? { label: '堂數', value: `${d.session_count} 堂` } : null,
-    d.period_start && d.period_end ? { label: '學費期間', value: `${d.period_start} ~ ${d.period_end}` } : null,
+    d.session_count ? { label: '已購堂數', value: `${d.session_count} 堂` } : null,
     { label: '繳費日期', value: d.payment_date || '—' },
     { label: '繳費方式', value: METHOD_ZH[d.payment_method] || d.payment_method },
     { label: '核帳日期', value: d.confirmed_at || '—' },
     { label: '核帳人員', value: d.confirmed_by || '—' },
   ].filter(Boolean);
 
+  // 上課日期：每行最多 3 個，以 ' · ' 分隔
+  const dates = Array.isArray(d.attended_dates) && d.attended_dates.length ? d.attended_dates : [];
+  const DATES_PER_ROW = 3;
+  const dateGroups = [];
+  for (let i = 0; i < dates.length; i += DATES_PER_ROW) {
+    dateGroups.push(dates.slice(i, i + DATES_PER_ROW).join('  ·  '));
+  }
+  const datesBlockH = dateGroups.length > 1 ? 36 + (dateGroups.length - 1) * 22 : 36;
+
   const headerH = 120;
   const amountH = 110;
   const rowH = 36;
-  const detailH = 20 + rows.length * rowH + 20;
+  const detailH = 20 + rows.length * rowH + datesBlockH + 20;
   const footerH = 80;
   const totalH = headerH + amountH + detailH + footerH;
 
@@ -193,6 +201,30 @@ function drawReceipt(canvas, d) {
 
     y += rowH;
   });
+
+  // 上課日期區塊
+  ctx.fillStyle = '#90A4AE';
+  ctx.font = '500 12px "Noto Sans TC", "Inter", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(`上課日期（${dates.length} 堂）`, PAD + 10, y + 14);
+
+  if (dateGroups.length === 0) {
+    ctx.fillStyle = '#37474F';
+    ctx.font = '500 13px "Noto Sans TC", "Inter", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('—', W - PAD - 10, y + 14);
+    ctx.textAlign = 'left';
+    y += rowH;
+  } else {
+    dateGroups.forEach((line, idx) => {
+      ctx.fillStyle = '#37474F';
+      ctx.font = '500 12px "Noto Sans TC", "Inter", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(line, W - PAD - 10, y + 14);
+      ctx.textAlign = 'left';
+      y += idx === 0 ? 36 : 22;
+    });
+  }
 
   y += 10;
   drawDivider(ctx, y);
