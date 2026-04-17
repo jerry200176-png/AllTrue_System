@@ -120,14 +120,10 @@ function drawReceipt(canvas, d) {
     { label: '核帳人員', value: d.confirmed_by || '—' },
   ].filter(Boolean);
 
-  // 上課日期：每行最多 3 個，以 ' · ' 分隔
+  // 上課日期：直式列表，每堂一行
   const dates = Array.isArray(d.attended_dates) && d.attended_dates.length ? d.attended_dates : [];
-  const DATES_PER_ROW = 3;
-  const dateGroups = [];
-  for (let i = 0; i < dates.length; i += DATES_PER_ROW) {
-    dateGroups.push(dates.slice(i, i + DATES_PER_ROW).join('  ·  '));
-  }
-  const datesBlockH = dateGroups.length > 1 ? 36 + (dateGroups.length - 1) * 22 : 36;
+  const DATE_ROW_H = 24;
+  const datesBlockH = dates.length > 0 ? 36 + dates.length * DATE_ROW_H + 8 : 36;
 
   const headerH = 120;
   const amountH = 110;
@@ -202,13 +198,13 @@ function drawReceipt(canvas, d) {
     y += rowH;
   });
 
-  // 上課日期區塊
+  // 上課日期區塊：直式列表
   ctx.fillStyle = '#90A4AE';
   ctx.font = '500 12px "Noto Sans TC", "Inter", sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText(`上課日期（${dates.length} 堂）`, PAD + 10, y + 14);
 
-  if (dateGroups.length === 0) {
+  if (dates.length === 0) {
     ctx.fillStyle = '#37474F';
     ctx.font = '500 13px "Noto Sans TC", "Inter", sans-serif';
     ctx.textAlign = 'right';
@@ -216,14 +212,26 @@ function drawReceipt(canvas, d) {
     ctx.textAlign = 'left';
     y += rowH;
   } else {
-    dateGroups.forEach((line, idx) => {
+    y += rowH;
+    const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+    dates.forEach((dateStr) => {
+      // 綠色小圓點
+      ctx.fillStyle = '#43A047';
+      ctx.beginPath();
+      ctx.arc(PAD + 20, y + 8, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 日期 + 星期
+      const dt = new Date(String(dateStr).replace(/\//g, '-') + 'T12:00:00');
+      const dayLabel = isNaN(dt.getTime()) ? '' : `（週${DAY_NAMES[dt.getDay()]}）`;
       ctx.fillStyle = '#37474F';
       ctx.font = '500 12px "Noto Sans TC", "Inter", sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(line, W - PAD - 10, y + 14);
       ctx.textAlign = 'left';
-      y += idx === 0 ? 36 : 22;
+      ctx.fillText(`${dateStr}${dayLabel}`, PAD + 32, y + 12);
+
+      y += DATE_ROW_H;
     });
+    y += 8;
   }
 
   y += 10;
