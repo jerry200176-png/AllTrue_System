@@ -1374,6 +1374,12 @@ watch(active, (p) => {
   mergeDirectorPendingBadge();
 });
 
+watch(active, (p) => {
+  if (p !== 'teachers') return;
+  if (!session.value?.access_token || !currentBranch.value || isPasswordChangeLocked.value) return;
+  refreshUnreadNotifications();
+});
+
 function formatBuildTime(rawIso) {
   const source = String(rawIso || '').trim();
   if (!source) return 'unknown';

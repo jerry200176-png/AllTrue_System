@@ -1105,6 +1105,7 @@ const approveTeacher = async (teacher) => {
     }
     tab.value = 'active';
     await loadTeachers();
+    window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     alert('核准失敗，請稍後再試');
   }
