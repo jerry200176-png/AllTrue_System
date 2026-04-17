@@ -293,7 +293,8 @@
               <div class="form-group">
                 <label>開課日 *</label>
                 <input v-model="form.course_start_date" type="date" />
-                <p class="field-note">系統自動排課將從此日起算，不會在此日之前建立預排堂次。</p>
+                <p class="field-note">若開課日為未來日，系統預排會從此日起算。若開課日已過，請在下方日曆點選各已上課日期；符合固定星期的開課日會自動加入「已上課」。</p>
+                <p v-if="pastCourseStartAutoAddHint" class="field-note warning-text">{{ pastCourseStartAutoAddHint }}</p>
                 <p v-if="courseStartDateFarWarning" class="field-note warning-text">{{ courseStartDateFarWarning }}</p>
               </div>
             </div>
@@ -870,6 +871,50 @@ const manualScheduledDates = computed(() => manualDates.value.filter((date) => !
 const manualSessionCount = computed(() => (
   manualDates.value.reduce((sum, ymd) => sum + sessionCountForYmd(ymd), 0)
 ));
+
+// 若開課日為過去日、且落在合約星期，自動加入 confirmed_dates（視為補登已上課）。
+// 背景：後端 EnrollmentService 拒絕 kind='future' 的過去日期，故過去開課日必須走 confirmed；
+// 原本 futureSessionOccurrences 的 effectiveToday 會使用 max(開課日, 今天)，導致開課日為過去時第一堂被推遲到下一個合約星期。
+// 見 docs/AI_REGRESSION_LESSONS.md 與 docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md。
+function maybeAutoAddCourseStartDate() {
+  const ymd = String(form.course_start_date || '').slice(0, 10);
+  if (!ymd) return;
+  const todayYmd = getCurrentTodayYmd();
+  if (ymd >= todayYmd) return;
+  if (!selectedDays.value.length) return;
+  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+  if (!selectedDays.value.includes(dow)) return;
+  const current = Array.isArray(form.confirmed_dates) ? form.confirmed_dates : [];
+  if (current.includes(ymd)) return;
+  const addCount = sessionCountForYmd(ymd);
+  if (manualSessionCount.value + addCount > safePlannedSessions.value) return;
+  form.confirmed_dates = sortDates([ymd, ...current]);
+}
+
+watch(
+  [() => form.course_start_date, () => selectedDays.value],
+  () => maybeAutoAddCourseStartDate(),
+  { immediate: true }
+);
+
+const pastCourseStartAutoAddHint = computed(() => {
+  const ymd = String(form.course_start_date || '').slice(0, 10);
+  if (!ymd) return '';
+  const todayYmd = getCurrentTodayYmd();
+  if (ymd >= todayYmd) return '';
+  const dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
+  if (!selectedDays.value.length) {
+    return `開課日 ${ymd} 已過，請先勾選「固定上課星期」，再於下方日曆點選各已上課日期。`;
+  }
+  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+  if (!selectedDays.value.includes(dow)) {
+    return `開課日 ${ymd}（週${dayNames[dow] || dow}）不在已勾選的固定上課星期內，請在下方日曆手動點選已上課日期，或調整「固定上課星期」。`;
+  }
+  if ((form.confirmed_dates || []).includes(ymd)) {
+    return `開課日 ${ymd} 已過，已自動標記為已上課日期，請確認下方日曆是否正確。`;
+  }
+  return `開課日 ${ymd} 已過且本次無法自動加入（可能超出預排堂數），請在下方日曆手動調整。`;
+});
 
 const futureSessionOccurrences = computed(() => {
   const remaining = safePlannedSessions.value - manualSessionCount.value;

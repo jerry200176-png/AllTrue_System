@@ -28,8 +28,29 @@
 - **老師管理側欄橘點 vs「待審核」**：見下方 **§2026-04-15 — 側欄 `pending_teachers` 與 `TeachersList`「待審核」不同步**
 - **單堂加課衝突（已有出缺勤/核准評量）**：見下方 **§2026-04-15 — 單堂加課衝突修正**（`detectAddSessionConflict` 共用邏輯、前端預檢、結構化 409）
 - **課程管理堂次警示誤報（請假/調課後）**：見下方 **§2026-04-15 — 請假調課後堂次警示假陽性**（`sessionUnits().length` 不可與購買堂數比較；須用 `effectiveSessionCount`）
+- **單堂時間費率自動計算（`session_charge`）**：見下方 **§2026-04-17 — 單堂時間費率自動計算**（per-day duration 優先、Rate 變更 preserve delta、SmartCalendar 僅顯示不編輯）
 - **課程管理同日 chip 重複（LEFT JOIN 行乘積）**：見下方 **§2026-04-15 — ClassSessionController::index LEFT JOIN 行乘積導致 chip 重複**（`sub_sched`／`LearningRecord`／`StudentSingIn` 的 LEFT JOIN 必須用 Derived Table 去重；前端 `normalizeClassSessionsPayload` 須有 id 去重防禦層）
 - **評量頁課表同時段重複卡片**（`cancelled + scheduled` 同格兩張卡）：見下方 **§2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片（buildEvents 未去重）**
+
+---
+
+## 2026-04-17 — 單堂時間費率自動計算（`session_charge`）
+
+| 項目 | 說明 |
+|---|---|
+| 問題 | 老師/主任在「課程管理」或「智慧排課」調整單堂上課時長（例如 2hr → 1.5hr 或 3hr），`StudentClass.Charge` 不會跟著時間比例調整；事後必須手動改帳單／課程費用，容易遺漏。 |
+| 修正 | `ClassSession` 新增 `session_charge`（nullable INT）；`ClassSessionController::syncSessionChargeForTimeChange` 在 `start_time`/`end_time` 異動時，依 `rate_unit`（session/hour）與堂次**當日**的標準時長（`duration{N}` > `SessionDuration`）換算 `session_charge`，並以 `delta = new_session_charge − (old_session_charge ∥ standard_charge)` 同步 `StudentClass.Charge`。`StudentClassController::update` 動 `Rate`/`SessionCount` 時保留累積的 `preserved_delta`，不直接覆寫 Charge。前端在 `SessionEditModal` 加入費用預覽、±50% 二次確認；SmartCalendar 僅顯示不編輯。 |
+
+**禁止回歸：**
+
+1. **per-day duration 優先於 `SessionDuration`**：堂次當日若有 `duration{N}`（對 ISO weekday），`syncSessionChargeForTimeChange` 必須用該值當分母；fallback 才是 `SessionDuration`。勿改成一律 `SessionDuration`，否則 Mon 120min / Fri 90min 這種異時長課程會在 Friday 堂次算錯（見 `test_per_day_duration_is_used_when_set_on_session_weekday`）。
+2. **Rate/SessionCount 異動保留 delta**：`StudentClassController::update` 在 `isset($mapped['Rate']) || isset($mapped['SessionCount'])` 時，**必須** snapshot 舊 Rate/Count/rate_unit，計算 `preserved_delta = 舊 Charge − 舊 Rate × 舊 Count`，新 Charge = `Rate_new × Count_new + preserved_delta`。**勿改回直接 `Rate × Count` 覆寫**，否則會把單堂時間調整累積的手動金額全部洗掉（見 `test_course_rate_update_preserves_accumulated_session_charge_delta`）。
+3. **SmartCalendar 維持顯示-only**：禁止在 SmartCalendar 單堂 modal 加入時間／費用編輯 UI；所有單堂時間調整必須走課程管理的 `SessionEditModal`，保持單一編輯入口與統一的二次確認流程。
+4. **baseline 取捨**：`old_session_charge !== null` 用舊值，否則用標準費用；勿改成每次都用標準，否則連續編輯會漏算先前差額（見 `test_second_edit_uses_previous_session_charge_as_baseline`）。
+5. **`session_charge` 是財務敏感欄位**：`PATCH /api/v1/class-sessions/{id}` 只接受 `start_time` / `end_time`，前端不可直接傳 `session_charge`；計算永遠在後端。
+6. **Rate ≤ 0 或標準時長 ≤ 0 必須 no-op**：`session_charge` 保持 null，`Charge` 不動。勿把 0 當分母。
+
+測試依據：`backend/tests/Feature/ClassSessionChargeTest.php`（9 case）。
 
 ---
 

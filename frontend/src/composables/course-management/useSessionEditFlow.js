@@ -44,7 +44,9 @@ export function useSessionEditFlow({
     student_name: '', teacher_name: '', subject: '',
     attendance_time: '', lr_status: '', course: null,
     reason: '', new_date: '', new_start: '16:00', duration_hours: 2,
-    note: '', edit_end_time: '',
+    note: '', edit_start_time: '', edit_end_time: '',
+    session_charge: null,
+    contract_rate: null, contract_session_duration: null, contract_rate_unit: 'session',
   });
 
   const secondaryStatusSelection = ref('');
@@ -93,7 +95,12 @@ export function useSessionEditFlow({
       new_start: row.start_time || '16:00',
       duration_hours: course.duration_hours ?? 2,
       note: row.note || '',
+      edit_start_time: row.start_time || '',
       edit_end_time: row.end_time || '',
+      session_charge: row.session_charge ?? null,
+      contract_rate: row.contract_rate ?? (course?.rate_per_30min != null ? Number(course.rate_per_30min) * 2 : null),
+      contract_session_duration: row.contract_session_duration ?? (course?.duration_hours != null ? Math.round(Number(course.duration_hours) * 60) : null),
+      contract_rate_unit: row.contract_rate_unit || 'session',
     };
     sessionEditMode.value = 'menu';
     secondaryStatusSelection.value = '';
@@ -329,6 +336,7 @@ export function useSessionEditFlow({
       if (!token) { alert('請重新登入'); return; }
 
       const body = { status: form.current_status };
+      if (form.edit_start_time) body.start_time = form.edit_start_time;
       if (form.edit_end_time) body.end_time = form.edit_end_time;
       body.note = form.note ?? '';
 

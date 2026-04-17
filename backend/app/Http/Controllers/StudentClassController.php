@@ -964,18 +964,37 @@ class StudentClassController extends Controller
             }
         }
 
+        // Rate/SessionCount 異動「前」快照舊 Charge vs 舊 Rate × 舊數量 的差額，
+        // 以便在更新 Charge 時保留透過單堂時間調整（session_charge）累積的手動調整金額。
+        $oldChargeSnapshot = (int) ($studentClass->Charge ?? 0);
+        $oldRateSnapshot = (float) ($studentClass->Rate ?? 0);
+        $oldSessionCountSnapshot = (int) ($studentClass->SessionCount ?? 0);
+        $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
+        $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+        if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
+            $oldRateUnitSnapshot = 'session';
+        }
+
         $studentClass->update($mapped);
         $studentClass->refresh();
 
-        // Rate 或 SessionCount 異動時同步 Charge（總費用快照）
+        // Rate 或 SessionCount 異動時同步 Charge（總費用快照），
+        // 並保留原本由單堂時間調整累積的 delta（老 Charge − 老 Rate×老數量），
+        // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
         if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
+            $oldBase = $oldRateUnitSnapshot === 'hour'
+                ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
+                : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
+            $preservedDelta = $oldChargeSnapshot - $oldBase;
+
             $rateUnit = $studentClass->rate_unit ?? 'session';
             if ($rateUnit === 'hour') {
-                $newCharge = (int) round((float) $studentClass->Rate * (int) $studentClass->TotalHours);
+                $newBase = (int) round((float) $studentClass->Rate * (int) $studentClass->TotalHours);
             } else {
-                $newCharge = (int) round((float) $studentClass->Rate * (int) $studentClass->SessionCount);
+                $newBase = (int) round((float) $studentClass->Rate * (int) $studentClass->SessionCount);
             }
-            if ($newCharge > 0) {
+            if ($newBase > 0) {
+                $newCharge = max(0, $newBase + $preservedDelta);
                 $studentClass->update(['Charge' => $newCharge]);
                 $studentClass->refresh();
             }
@@ -2026,15 +2045,19 @@ class StudentClassController extends Controller
         if (isset($input['sessions_purchased'])) $mappedData['SessionCount'] = $input['sessions_purchased'];
         if (isset($input['remaining_sessions'])) $mappedData['RemainingSessions'] = $input['remaining_sessions'];
         if (isset($input['status'])) $mappedData['Stop'] = $input['status'] === 'inactive' ? 1 : 0;
-        if (isset($input['payment_status'])) $mappedData['Paid'] = $input['payment_status'] === 'paid' ? 1 : 0;
-        // paid_at controls PayDate only; Paid must be changed explicitly via payment_status.
-        // Setting paid_at to a date also marks Paid=1 as a convenience for the "fill date = paid" UX.
-        // Clearing paid_at (null/empty) never downgrades Paid — use payment_status=unpaid for that.
+        // paid_at is the source of truth for Paid when the key is present in the payload:
+        //   - set a date   → PayDate=that date, Paid=1
+        //   - explicit null/empty → PayDate=null, Paid=0 (UX: 清空繳費日期 = 改為未繳費)
+        //   - key omitted  → do not touch Paid/PayDate
+        // Callers that only edit other fields (Memo, 排課…) must not include paid_at
+        // in the payload if they do not want to change the payment status.
         if (array_key_exists('paid_at', $input)) {
             $mappedData['PayDate'] = $input['paid_at'] ?: null;
-            if (!empty($input['paid_at'])) {
-                $mappedData['Paid'] = 1;
-            }
+            $mappedData['Paid'] = !empty($input['paid_at']) ? 1 : 0;
+        }
+        // Explicit payment_status still wins over paid_at (e.g. 列表按鈕切換狀態).
+        if (isset($input['payment_status'])) {
+            $mappedData['Paid'] = $input['payment_status'] === 'paid' ? 1 : 0;
         }
         if (array_key_exists('room_id', $input)) $mappedData['room_id'] = $input['room_id'] ? (int) $input['room_id'] : null;
         if (array_key_exists('settlement_day', $input)) $mappedData['settlement_day'] = $input['settlement_day'] !== null && $input['settlement_day'] !== '' ? (int) $input['settlement_day'] : null;

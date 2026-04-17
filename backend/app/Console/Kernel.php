@@ -11,6 +11,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('rfid:prune-pending')->dailyAt('03:00');
         $schedule->command('learning-records:drift-check --fix')->dailyAt('03:20');
+        // tuition:send-reminders 目前不自動執行，需手動呼叫或按需開啟
+        // $schedule->command('tuition:send-reminders')->dailyAt('08:00');
+        $schedule->command('reconcile:nightly')->dailyAt('02:00');
     }
 
     protected function commands(): void

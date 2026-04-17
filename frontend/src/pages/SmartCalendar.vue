@@ -180,7 +180,7 @@
               <div class="col-header-blank"></div>
               <div v-for="h in hours" :key="h" class="time-label">{{ String(h).padStart(2, '0') }}:00</div>
             </div>
-            <div v-for="teacher in visibleTeachers" :key="teacher.id" class="teacher-col">
+            <div v-for="teacher in dayViewTeacherColumns" :key="teacher.id" class="teacher-col">
               <div class="teacher-col-header" :style="{ borderTopColor: getTeacherColor(teacher.id) }">
                 <div class="teacher-col-avatar" :style="{ background: getTeacherColor(teacher.id) }">{{ teacher.username.charAt(0) }}</div>
                 <div class="teacher-col-info">
@@ -368,6 +368,14 @@
           <div class="session-info-row">
             <span class="session-info-key">上課時間</span>
             <span class="session-info-val">{{ modalForm.start_time }} ~ {{ computedMainEndTime }}（{{ modalForm.duration_hours }} 小時）</span>
+          </div>
+          <div v-if="currentSessionChargeDisplay" class="session-info-row">
+            <span class="session-info-key">本堂費用</span>
+            <span class="session-info-val">
+              <strong>NT$ {{ currentSessionChargeDisplay.value.toLocaleString() }}</strong>
+              <span v-if="currentSessionChargeDisplay.isAdjusted" class="session-charge-adjusted">（已依實際時長調整）</span>
+              <span v-else class="session-charge-standard">（標準費用）</span>
+            </span>
           </div>
         </div>
         <p class="hint occurrence-hint">
@@ -1680,6 +1688,14 @@ const visibleTeachers = computed(() => {
   });
 });
 
+const dayViewTeacherColumns = computed(() => {
+  if (isWeekOverview.value) return visibleTeachers.value;
+  if (weekViewTeacherIds.value.length === 0) return visibleTeachers.value;
+  return visibleTeachers.value.filter(t =>
+    weekViewTeacherIdSet.value.has(String(t.id))
+  );
+});
+
 /** 週檢視目前選定老師名稱（多選時顯示聯集） */
 const weekViewSelectedLabel = computed(() => {
   if (weekViewTeacherIds.value.length === 0) return '全部老師';
@@ -2337,6 +2353,36 @@ const onMainFormTimeChange = () => {
 const computedMainEndTime = computed(() =>
   computeEndTime(modalForm.value.start_time, modalForm.value.duration_hours)
 );
+
+// 本堂費用顯示：優先使用 ClassSession.session_charge；未設定則用標準費用（rate_per_30min × duration）
+const currentSessionChargeDisplay = computed(() => {
+  const courseId = editingCourseId.value;
+  const dateStr = editingActionDate.value;
+  const start = modalForm.value?.start_time;
+  if (!courseId || !dateStr) return null;
+
+  const sessions = (sessionDatesByCourseId.value && sessionDatesByCourseId.value[String(courseId)]) || [];
+  let matched = null;
+  if (Array.isArray(sessions)) {
+    matched = sessions.find((s) => {
+      if (String(s?.session_date || '').slice(0, 10) !== String(dateStr).slice(0, 10)) return false;
+      if (start && s?.start_time && String(s.start_time).slice(0, 5) !== String(start).slice(0, 5)) return false;
+      return true;
+    });
+  }
+
+  if (matched && matched.session_charge != null) {
+    return { value: Number(matched.session_charge), isAdjusted: true };
+  }
+
+  const rate30 = Number(modalForm.value?.rate_per_30min ?? 0);
+  const durationHours = Number(modalForm.value?.duration_hours ?? 0);
+  if (rate30 > 0 && durationHours > 0) {
+    const standard = Math.round(rate30 * (durationHours * 60 / 30));
+    return { value: standard, isAdjusted: false };
+  }
+  return null;
+});
 
 const handleUniversalSchedulerSuccess = async () => {
   showModal.value = false;
@@ -3982,6 +4028,17 @@ onMounted(() => {
 .session-info-val {
   font-size: 14px;
   color: #1B5E20;
+}
+.session-charge-adjusted {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #C2410C;
+  font-weight: 600;
+}
+.session-charge-standard {
+  margin-left: 6px;
+  font-size: 12px;
+  color: #64748B;
 }
 .course-ref-section {
   background: #FAFAFA;

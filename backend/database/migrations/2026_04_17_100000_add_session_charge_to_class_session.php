@@ -1,0 +1,28 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasColumn('ClassSession', 'session_charge')) {
+            return;
+        }
+        Schema::table('ClassSession', function (Blueprint $table) {
+            $table->integer('session_charge')->nullable()->after('IsContractException');
+        });
+    }
+
+    public function down(): void
+    {
+        if (!Schema::hasColumn('ClassSession', 'session_charge')) {
+            return;
+        }
+        Schema::table('ClassSession', function (Blueprint $table) {
+            $table->dropColumn('session_charge');
+        });
+    }
+};

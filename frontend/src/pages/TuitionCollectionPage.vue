@@ -98,8 +98,8 @@
           <button class="tc-cta-btn tc-cta-btn--ghost" @click="searchQuery = ''">清除搜尋</button>
         </div>
 
-        <!-- Desktop Table -->
-        <div v-else class="tc-table-wrap tc-desktop-only">
+        <!-- Table -->
+        <div v-else class="tc-table-wrap">
           <table class="tc-table">
             <thead>
               <tr>
@@ -207,45 +207,6 @@
           </table>
         </div>
 
-        <!-- Mobile Cards -->
-        <div v-if="filteredRows.length" class="tc-mobile-only tc-cards">
-          <div v-for="r in filteredRows" :key="r.id" class="tc-mcard" :class="rowClass(r)">
-            <div class="tc-mcard-top">
-              <span class="tc-mcard-name">{{ r.student_name }}</span>
-              <span class="status-tag" :class="statusClass(r)">{{ statusLabel(r) }}</span>
-            </div>
-            <div class="tc-mcard-meta">
-              <span>{{ r.subject }}</span>
-              <span class="mode-tag" :class="r.schedule_mode">{{ r.schedule_mode === 'date' ? '月結' : '堂數' }}</span>
-            </div>
-            <div class="tc-mcard-amounts">
-              <div><span class="tc-mcard-label">未結清</span><span class="tc-mcard-val" :class="{ 'tc-outstanding-warn': r.outstanding > 0 }">{{ formatCurrency(r.outstanding || 0) }}</span></div>
-              <div><span class="tc-mcard-label">已繳</span><span class="tc-mcard-val">{{ formatCurrency(r.paid_amount || 0) }}</span></div>
-              <div><span class="tc-mcard-label">應繳</span><span class="tc-mcard-val">{{ formatCurrency(r.charge || 0) }}</span></div>
-            </div>
-            <div class="tc-mcard-actions">
-              <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
-                <button class="tc-btn tc-btn--slip" @click="openSlip(r)"><span class="material-symbols-outlined">receipt_long</span>繳費單</button>
-                <button class="tc-btn tc-btn--confirm" @click="openPaymentEntry(r)" :disabled="actionLoading === r.id"><span class="material-symbols-outlined">check_circle</span>核帳</button>
-              </template>
-              <template v-if="r.payment_status === 'pending_report'">
-                <button class="tc-btn tc-btn--confirm" @click="confirmReport(r)" :disabled="actionLoading === r.id"><span class="material-symbols-outlined">check_circle</span>確認</button>
-                <button class="tc-btn tc-btn--reject" @click="rejectReport(r)" :disabled="actionLoading === r.id"><span class="material-symbols-outlined">cancel</span>退回</button>
-              </template>
-              <template v-if="r.payment_status === 'paid' || r.payment_status === 'renew_needed' || r.payment_status === 'monthly_due_soon'">
-                <button class="tc-btn tc-btn--receipt" @click="viewReceiptForClass(r)"><span class="material-symbols-outlined">receipt</span>收據</button>
-                <button v-if="canVoid" class="tc-btn tc-btn--void" @click="openVoidDialog(r)" :disabled="actionLoading === r.id"><span class="material-symbols-outlined">undo</span>撤銷</button>
-                <template v-if="r.payment_status === 'renew_needed'">
-                  <span v-if="r.has_newer_course" class="tc-newer-badge">已有新課程</span>
-                  <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id">
-                    <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
-                    <span v-else class="material-symbols-outlined">task_alt</span>結案
-                  </button>
-                </template>
-              </template>
-            </div>
-          </div>
-        </div>
       </div>
     </template>
 
@@ -1235,43 +1196,6 @@ loadAlerts();
 .fade-leave-active { transition: opacity 0.15s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
-/* ─── Mobile cards ─── */
-.tc-desktop-only { display: block; }
-.tc-mobile-only { display: none; }
-
-.tc-cards { display: flex; flex-direction: column; gap: 10px; }
-.tc-mcard {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-}
-.tc-mcard.row-paid { opacity: 0.55; }
-.tc-mcard-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.tc-mcard-name { font-weight: 600; font-size: 15px; }
-.tc-mcard-meta {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  font-size: 13px;
-  color: var(--text-light);
-  margin-bottom: 10px;
-}
-.tc-mcard-amounts {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.tc-mcard-amounts > div { display: flex; flex-direction: column; gap: 2px; }
-.tc-mcard-label { font-size: 11px; color: var(--text-light); text-transform: uppercase; }
-.tc-mcard-val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.tc-mcard-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .tc-page { padding: 16px; }
@@ -1280,12 +1204,5 @@ loadAlerts();
   .tc-card-num { font-size: 18px; }
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
-
-  .tc-desktop-only { display: none !important; }
-  .tc-mobile-only { display: block !important; }
-}
-
-@media (min-width: 769px) and (max-width: 1023px) {
-  .tc-col-currency:nth-child(5) { display: none; }
 }
 </style>

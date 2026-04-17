@@ -2,6 +2,55 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-17 — 單堂時間費率自動計算（session_charge）
+
+### Problem
+單堂時間調整（加時／縮時）後，費用未隨實際時長同步，造成課程總費用（`StudentClass.Charge`）與實際上課時數脫節。主任與家長需事後手動補帳。
+
+### Change
+1. **DB**：`ClassSession` 新增 `session_charge`（nullable INT）欄位（migration `2026_04_17_100000_add_session_charge_to_class_session.php`）。null 表示採標準費用、非 null 表示已依實際時長調整。
+2. **後端**：`ClassSessionController::applyTimeAndNoteUpdates` 在 `start_time` / `end_time` 有異動時自動：
+   - 以 `actual_minutes / SessionDuration`（session 模式）或 `actual_minutes / 60`（hour 模式）× `Rate` 計算 `session_charge`。
+   - 依 `delta = new_session_charge - (old_session_charge || standard_charge)` 同步更新 `StudentClass.Charge`（至少為 0）。
+   - `Rate`、`SessionDuration` 任一未設定時視為 no-op；`rate_unit` 未知值自動退回 `session`。
+3. **API 回應**：`PATCH /api/v1/class-sessions/{id}` 回傳 `session.session_charge`；`GET /api/v1/class-sessions` 每筆 row 新增 `session_charge`、`contract_rate`、`contract_session_duration`、`contract_rate_unit`，供前端計算標準／實際費用預覽。
+4. **前端（課程管理）**：`SessionEditModal` 的「備註 / 調整時段」分頁新增「開始時間」欄位（原本僅有結束時間），並即時顯示本堂費用預覽卡片：
+   - 三種視覺狀態：高於標準（橘）／低於標準（藍）／等於標準（淺藍）／費率未設定（灰）。
+   - 結束時間早於開始時間時顯示 inline 錯誤並停用儲存。
+   - 費用偏離標準 ±50% 以上時，儲存前彈出二次確認 dialog。
+   - 觸控目標 ≥ 44px、行動裝置 stacked 排列。
+5. **前端（智慧排課）**：`SmartCalendar` 單堂檢視 modal 新增「本堂費用」row，有調整過的堂顯示「已依實際時長調整」標記，未調整者顯示「標準費用」。
+
+### 受影響檔案
+- `backend/database/migrations/2026_04_17_100000_add_session_charge_to_class_session.php`（新增）
+- `backend/app/Models/ClassSession.php`（`$fillable`、`$casts`、docblock）
+- `backend/app/Http/Controllers/ClassSessionController.php`（`applyTimeAndNoteUpdates` + `syncSessionChargeForTimeChange` + `minutesBetween`；`index` select + transform；`sessionUpdateResponse`）
+- `frontend/src/composables/course-management/useSessionEditFlow.js`（`sessionEditForm` 擴充、`openSessionEdit` 帶入 contract rate、`doEditNoteTime` 送 `start_time`）
+- `frontend/src/components/course-management/SessionEditModal.vue`（開始時間欄位、費用預覽、inline 錯誤、二次確認 dialog、樣式）
+- `frontend/src/pages/SmartCalendar.vue`（`currentSessionChargeDisplay` computed + 單堂 modal row）
+- `backend/tests/Feature/ClassSessionChargeTest.php`（7 case：session/hour 模式、縮時／延時、baseline 接續、SessionDuration=0 no-op、僅改備註不動費用、回應含 `session_charge`）
+
+### 回歸防護（勿回退）
+- `syncSessionChargeForTimeChange` 須在 `$hasTimeChange` 成立時才觸發；**僅改 note** 或狀態不得污染 `session_charge` / `Charge`（已有測試 `test_note_only_update_does_not_touch_charge`）。
+- baseline 取捨：`old_session_charge != null` 用舊值、否則用標準費用；**勿改成每次都用標準費用**，否則重複編輯會一直以標準為基準而漏算先前差額（見 `test_second_edit_uses_previous_session_charge_as_baseline`）。
+- `Rate` 或 `SessionDuration` 為 0/null 時必須 no-op；勿把 `SessionDuration=0` 當分母。
+- `ClassSessionController::index` 的 derived table LEFT JOIN 架構（`sub_sched` / `lr` / `si` 皆以 `MAX(id)` 去重）**必須維持**；新加欄位不得回退成裸 LEFT JOIN（見 2026-04-15 (I) 課程管理 chip 重複一節）。
+- `session_charge` 是財務敏感欄位：`PATCH /api/v1/class-sessions/{id}` 只接受 `start_time` / `end_time`，**不接受前端直接傳 `session_charge`**；計算永遠在後端。
+
+### 2026-04-17 補：關閉計畫第 13 點三個待解項
+
+| 項目 | 決策（業界慣例） | 實作位置 |
+|------|------------------|----------|
+| per-day duration fallback（每日時長不同） | standard duration 優先採用堂次當日的 `duration{N}`（`week{N}` 對應 ISO weekday），fallback 到 `SessionDuration` | `StudentClass::resolveSessionDurationForWeekday()`（新增 public helper）、`ClassSessionController::syncSessionChargeForTimeChange()` |
+| 課程 Rate/SessionCount 變更時 session_charge 累積 delta 保留 | **保留原始金額**（會計系統慣例）：新 Charge = `Rate_new × Count_new` + `preserved_delta`，其中 `preserved_delta = 舊 Charge − 舊 Rate × 舊 Count` | `StudentClassController::update()` |
+| SmartCalendar 單堂時間編輯入口 | **顯示-only**：單堂時間調整統一走課程管理 `SessionEditModal`，維持單一編輯入口；SmartCalendar 只顯示 `session_charge` 供檢視 | `SmartCalendar.vue` `currentSessionChargeDisplay` |
+
+### 2026-04-17 補：回歸防護（三項決策）
+
+- **per-day duration**：若課程有填 `duration1~duration6`（例如 Mon 120min、Fri 90min），`syncSessionChargeForTimeChange` 必須依 `SessionDate` 的 ISO weekday 查對應 `duration{N}`；**勿回退成一律使用 `SessionDuration`**，否則多日異時長課程會算錯基準（測試 `test_per_day_duration_is_used_when_set_on_session_weekday`）。
+- **Rate 變更 preserve delta**：`StudentClassController::update` 動 `Rate` 或 `SessionCount` 時，不得把 `Charge` 直接覆寫為 `Rate × Count`；必須 snapshot 舊值、計算 `preserved_delta` 再加上新 base，否則單堂時間調整累積的手動金額會被洗掉（測試 `test_course_rate_update_preserves_accumulated_session_charge_delta`）。
+- **SmartCalendar 入口**：禁止在 SmartCalendar 加入單堂時間編輯表單；所有 `PATCH /api/v1/class-sessions/{id}` + `session_charge` 重算入口必須走 `SessionEditModal`，避免多入口邏輯分歧。
+
 ## 2026-04-16 (V7) — 智慧排課日檢視：有課老師欄自動置左 + 可選隱藏空白老師欄
 
 ### Problem

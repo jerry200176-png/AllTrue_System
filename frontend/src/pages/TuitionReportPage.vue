@@ -19,6 +19,10 @@
           <span class="material-symbols-outlined" style="font-size:18px">refresh</span>
           重新整理
         </button>
+        <button class="ghost" @click="exportCsv" :disabled="loading || !rows.length" title="匯出為 CSV">
+          <span class="material-symbols-outlined" style="font-size:18px">download</span>
+          匯出 CSV
+        </button>
       </div>
     </div>
 
@@ -173,6 +177,31 @@ async function loadData() {
     error.value = e.message || '載入失敗';
   } finally {
     loading.value = false;
+  }
+}
+
+async function exportCsv() {
+  const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
+  const token = session?.access_token;
+  if (!token) { alert('請先登入'); return; }
+  const params = new URLSearchParams();
+  if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+  params.set('year', String(year.value));
+  params.set('month', String(month.value));
+  const url = `/api/v1/finance/branch-monthly-tuition/export?${params}`;
+  try {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) { alert('匯出失敗'); return; }
+    const blob = await resp.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const cd = resp.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename\*?=['"]?([^'";\s]+)/);
+    a.download = match ? decodeURIComponent(match[1]) : `當月學收_${year.value}${String(month.value).padStart(2,'0')}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert('匯出失敗：' + e.message);
   }
 }
 

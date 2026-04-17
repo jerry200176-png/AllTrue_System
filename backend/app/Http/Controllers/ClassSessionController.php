@@ -115,8 +115,12 @@ class ClassSessionController extends Controller
                 'cs.EndTime',
                 'cs.Status',
                 'cs.Note',
+                'cs.session_charge',
                 'sc.StudentID',
                 'sc.TeacherID',
+                'sc.Rate as sc_rate',
+                'sc.SessionDuration as sc_session_duration',
+                'sc.rate_unit as sc_rate_unit',
                 'sub_sched.teacher_id as substitute_teacher_id',
                 's.CampusID',
                 's.name as student_name',
@@ -216,6 +220,14 @@ class ClassSessionController extends Controller
             $row->attendance_memo = $row->attendance_memo ?: '';
             $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');
             $row->note = $row->Note !== null ? (string) $row->Note : null;
+            $row->session_charge = isset($row->session_charge) && $row->session_charge !== null
+                ? (int) $row->session_charge : null;
+            $row->contract_rate = isset($row->sc_rate) && $row->sc_rate !== null
+                ? (float) $row->sc_rate : null;
+            $row->contract_session_duration = isset($row->sc_session_duration) && $row->sc_session_duration !== null
+                ? (int) $row->sc_session_duration : null;
+            $row->contract_rate_unit = isset($row->sc_rate_unit) && $row->sc_rate_unit !== null
+                ? (string) $row->sc_rate_unit : null;
             unset(
                 $row->StudentClassID,
                 $row->StudentID,
@@ -226,7 +238,10 @@ class ClassSessionController extends Controller
                 $row->StartTime,
                 $row->EndTime,
                 $row->Status,
-                $row->Note
+                $row->Note,
+                $row->sc_rate,
+                $row->sc_session_duration,
+                $row->sc_rate_unit
             );
             return $row;
         });
@@ -391,7 +406,15 @@ class ClassSessionController extends Controller
                     $this->applyTimeAndNoteUpdates($session, $data);
                     $session->save();
                     SessionDeductionService::recomputeCounters((int) $studentClass->ID);
-                    return $this->sessionUpdateResponse($session, '已更新為' . $newStatus . '，並完成堂數沖回');
+
+                    $msg = '已更新為' . $newStatus . '，並完成堂數沖回';
+                    if ($newStatus === 'cancelled') {
+                        $extended = $this->tryExtendOnLeave($studentClass, $session);
+                        if ($extended) {
+                            $msg .= '，已自動補建一堂至 ' . substr((string) $extended->SessionDate, 0, 10);
+                        }
+                    }
+                    return $this->sessionUpdateResponse($session, $msg);
                 }
 
                 // --- Transition: scheduled → leave ---
@@ -438,7 +461,14 @@ class ClassSessionController extends Controller
                     $this->restoreVoidedLearningRecord($session);
                 }
 
-                return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
+                $msg = '狀態已更新為' . $newStatus;
+                if ($newStatus === 'cancelled') {
+                    $extended = $this->tryExtendOnLeave($studentClass, $session);
+                    if ($extended) {
+                        $msg .= '，已自動補建一堂至 ' . substr((string) $extended->SessionDate, 0, 10);
+                    }
+                }
+                return $this->sessionUpdateResponse($session, $msg);
             });
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -516,6 +546,9 @@ class ClassSessionController extends Controller
 
     private function applyTimeAndNoteUpdates(ClassSession $session, array $data): void
     {
+        $hasTimeChange = !empty($data['start_time']) || !empty($data['end_time']);
+        $oldSessionCharge = $session->session_charge;
+
         if (!empty($data['start_time'])) {
             $session->StartTime = substr($data['start_time'], 0, 5);
         }
@@ -525,7 +558,110 @@ class ClassSessionController extends Controller
         if (array_key_exists('note', $data)) {
             $session->Note = $data['note'] ?? '';
         }
+
+        if ($hasTimeChange) {
+            $this->syncSessionChargeForTimeChange($session, $oldSessionCharge);
+        }
+
         $session->save();
+    }
+
+    /**
+     * Recompute per-session charge based on actual duration vs contract's SessionDuration,
+     * and sync the delta into StudentClass.Charge.
+     *
+     * Billing rules:
+     *   session mode: session_charge = Rate × (actual_minutes / SessionDuration)
+     *   hour mode:    session_charge = Rate × (actual_minutes / 60)
+     *
+     * StudentClass.Charge diff = new_session_charge - (old_session_charge || standard_charge)
+     * Standard charge (used as baseline when session has no prior override):
+     *   session mode: Rate (1 unit)
+     *   hour mode:    Rate × (SessionDuration / 60)
+     *
+     * No-op when Rate/SessionDuration not configured or resulting actual minutes invalid.
+     */
+    private function syncSessionChargeForTimeChange(ClassSession $session, $oldSessionCharge): void
+    {
+        $sc = StudentClass::where('ID', $session->StudentClassID)->first();
+        if (!$sc) {
+            return;
+        }
+
+        $rate = (float) ($sc->Rate ?? 0);
+        $rateUnit = strtolower(trim((string) ($sc->rate_unit ?? 'session')));
+        if (!in_array($rateUnit, ['session', 'hour'], true)) {
+            $rateUnit = 'session';
+        }
+
+        if ($rate <= 0) {
+            return;
+        }
+
+        // 優先採用堂次當日的 per-day duration（duration1~duration6），
+        // 避免「Mon 120min / Wed 90min」這種每日不同時長的課程被 SessionDuration 一概而論。
+        $iso = 0;
+        try {
+            $iso = (int) \Carbon\Carbon::parse((string) $session->SessionDate)->isoWeekday();
+        } catch (\Throwable $e) {
+            $iso = 0;
+        }
+        $standardDuration = $iso > 0
+            ? $sc->resolveSessionDurationForWeekday($iso)
+            : (int) ($sc->SessionDuration ?? 0);
+
+        if ($standardDuration <= 0) {
+            return;
+        }
+
+        $actualMinutes = $this->minutesBetween((string) $session->StartTime, (string) $session->EndTime);
+        if ($actualMinutes <= 0) {
+            return;
+        }
+
+        if ($rateUnit === 'hour') {
+            $newSessionCharge = (int) round($rate * ($actualMinutes / 60));
+        } else {
+            $newSessionCharge = (int) round($rate * ($actualMinutes / $standardDuration));
+        }
+
+        $baseline = $oldSessionCharge !== null ? (int) $oldSessionCharge : null;
+        if ($baseline === null) {
+            if ($rateUnit === 'hour') {
+                $baseline = (int) round($rate * ($standardDuration / 60));
+            } else {
+                $baseline = (int) round($rate);
+            }
+        }
+
+        $delta = $newSessionCharge - $baseline;
+
+        $session->session_charge = $newSessionCharge;
+
+        if ($delta !== 0) {
+            $newCharge = max(0, (int) ($sc->Charge ?? 0) + $delta);
+            $sc->Charge = $newCharge;
+            $sc->save();
+        }
+    }
+
+    /**
+     * Compute minutes between two HH:mm strings. Returns 0 on invalid input.
+     * Does not handle cross-midnight; lesson times are expected within a single day.
+     */
+    private function minutesBetween(string $start, string $end): int
+    {
+        $s = substr($start, 0, 5);
+        $e = substr($end, 0, 5);
+        if (!preg_match('/^\d{2}:\d{2}$/', $s) || !preg_match('/^\d{2}:\d{2}$/', $e)) {
+            return 0;
+        }
+        [$sh, $sm] = array_map('intval', explode(':', $s));
+        [$eh, $em] = array_map('intval', explode(':', $e));
+        $startMin = $sh * 60 + $sm;
+        $endMin = $eh * 60 + $em;
+        $diff = $endMin - $startMin;
+        return $diff > 0 ? $diff : 0;
     }
 
     /**
@@ -619,6 +755,7 @@ class ClassSessionController extends Controller
                 'end_time'         => $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
                 'status'           => (string) ($session->Status ?? ''),
                 'note'             => $session->Note,
+                'session_charge'   => $session->session_charge !== null ? (int) $session->session_charge : null,
             ],
         ]);
     }

@@ -15,26 +15,29 @@ class StudentClassPaidStatusTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * BUG regression: editing only Memo with paid_at=null must NOT downgrade Paid from 1 to 0.
+     * Contract: editing Memo while round-tripping the existing PayDate as paid_at
+     * (what the edit form does when the user did not touch the date field) must
+     * keep Paid=1. The frontend initializes form.paid_at from the existing PayDate,
+     * so a Memo-only edit still sends the real date back, not null.
      */
-    public function test_update_memo_with_null_paid_at_preserves_paid_status(): void
+    public function test_update_memo_with_existing_paid_at_preserves_paid_status(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent();
         $sc = $this->createStudentClass($student->id, [
             'Paid' => 1,
-            'PayDate' => null,
+            'PayDate' => '2026-04-01',
         ]);
 
         $res = $this->putJson(
             "/api/v1/student-classes/{$sc->ID}",
-            ['Memo' => '新備註', 'paid_at' => null],
+            ['Memo' => '新備註', 'paid_at' => '2026-04-01'],
             ['Authorization' => "Bearer {$token}"]
         );
 
         $res->assertOk();
         $sc->refresh();
-        $this->assertSame(1, (int) $sc->Paid, 'Paid must remain 1 when paid_at is null');
+        $this->assertSame(1, (int) $sc->Paid, 'Paid must remain 1 when the existing paid_at is round-tripped');
         $this->assertSame('新備註', $sc->Memo);
     }
 
@@ -86,9 +89,10 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
-     * Clearing paid_at (null) on a paid course without payment_status must NOT change Paid.
+     * Clearing paid_at (explicit null) must downgrade Paid to 0 and clear PayDate.
+     * This backs the edit-form UX: 清空繳費日期 + 存檔 → 改為未繳費。
      */
-    public function test_clearing_paid_at_without_payment_status_keeps_paid(): void
+    public function test_clearing_paid_at_downgrades_to_unpaid(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent();
@@ -105,8 +109,58 @@ class StudentClassPaidStatusTest extends TestCase
 
         $res->assertOk();
         $sc->refresh();
-        $this->assertSame(1, (int) $sc->Paid, 'Clearing paid_at must not downgrade Paid');
+        $this->assertSame(0, (int) $sc->Paid, 'Clearing paid_at must set Paid=0');
         $this->assertNull($sc->PayDate, 'PayDate should be cleared');
+    }
+
+    /**
+     * Edit-form round-trip: clear the date together with editing Memo → becomes unpaid.
+     */
+    public function test_edit_form_clears_paid_at_with_memo_marks_unpaid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-04-01',
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['Memo' => '改備註並取消繳費', 'paid_at' => null],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid);
+        $this->assertNull($sc->PayDate);
+        $this->assertSame('改備註並取消繳費', $sc->Memo);
+    }
+
+    /**
+     * payment_status is an explicit trump card: even if paid_at is also sent,
+     * payment_status wins. This preserves the existing list-button toggle.
+     */
+    public function test_payment_status_wins_over_paid_at(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['paid_at' => '2026-04-14', 'payment_status' => 'unpaid'],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, 'Explicit payment_status=unpaid must win over paid_at date');
+        $this->assertStringStartsWith('2026-04-14', (string) $sc->PayDate, 'PayDate still reflects the sent paid_at');
     }
 
     /**
@@ -179,12 +233,13 @@ class StudentClassPaidStatusTest extends TestCase
 
         $this->putJson(
             "/api/v1/student-classes/{$sc->ID}",
-            ['Memo' => '改備註後', 'paid_at' => null],
+            ['Memo' => '改備註後'],
             ['Authorization' => "Bearer {$token}"]
         )->assertOk();
 
         $sc->refresh();
         $this->assertSame(0, (int) $sc->Paid, 'After toggling unpaid, editing memo must keep Paid=0');
+        $this->assertSame('改備註後', $sc->Memo);
     }
 
     /**

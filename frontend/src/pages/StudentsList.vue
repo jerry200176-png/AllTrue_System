@@ -1909,7 +1909,7 @@ const submitCourse = async () => {
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
       };
-      if (form.paid_at) body.paid_at = form.paid_at;
+      body.paid_at = form.paid_at ? form.paid_at : null;
       const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
         credentials: 'include',
