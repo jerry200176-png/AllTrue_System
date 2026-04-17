@@ -103,8 +103,11 @@ class ScheduleGuardService
         $excludeScheduleId = isset($payload['exclude_schedule_id']) && $payload['exclude_schedule_id']
             ? (int) $payload['exclude_schedule_id']
             : null;
+        $excludeStudentId = isset($payload['exclude_student_id']) && $payload['exclude_student_id']
+            ? (int) $payload['exclude_student_id']
+            : null;
 
-        $entries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date, $excludeScheduleId);
+        $entries = $this->buildTeacherDateOccupancyEntries($teacherId, $branchId, $date, $excludeScheduleId, $excludeStudentId);
         $overlaps = array_values(array_filter($entries, function ($entry) use ($startTime, $endTime) {
             return $this->timesOverlap($startTime, $endTime, (string) $entry['start_time'], (string) $entry['end_time']);
         }));
@@ -578,7 +581,8 @@ class ScheduleGuardService
         int $teacherId,
         int $branchId,
         string $date,
-        ?int $excludeScheduleId = null
+        ?int $excludeScheduleId = null,
+        ?int $excludeStudentId = null
     ): array {
         $scheduleRowsQuery = DB::table('schedules')
             ->where('branch_id', $branchId)
@@ -640,6 +644,9 @@ class ScheduleGuardService
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
                 continue;
             }
+            if ($excludeStudentId && (int) ($row->StudentID ?? 0) === $excludeStudentId) {
+                continue;
+            }
 
             $start = $this->normalizeTime($row->StartTime ?? null);
             $end = $this->normalizeTime($row->EndTime ?? null);
@@ -685,6 +692,9 @@ class ScheduleGuardService
 
             $courseId = (int) ($row->student_course_id ?? 0);
             if ($courseId > 0 && isset($leaveOrRescheduled[$courseId])) {
+                continue;
+            }
+            if ($excludeStudentId && (int) ($row->student_id ?? 0) === $excludeStudentId) {
                 continue;
             }
             // If this course already has a concrete ClassSession on the date,
