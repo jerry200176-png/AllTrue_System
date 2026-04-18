@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\LearningRecord;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollBranchRule;
@@ -185,16 +186,21 @@ class FinanceController extends Controller
 
         // If a branch is specified but has no classes, return empty — never leak other branches' data
         if ($branchFiltered && empty($classIds)) {
-            return response()->json([
+            $role = $request->attributes->get('auth_role');
+            $empty = [
                 'teachers' => [],
-                'totals'   => [
+                'total_teachers' => 0,
+            ];
+            if ($role !== 'teacher') {
+                $empty['totals'] = [
                     'one_on_one_hours' => 0, 'one_on_two_hours' => 0,
                     'one_on_three_hours' => 0, 'tutoring_hours' => 0,
                     'total_hours' => 0,
                     'weighted_with_tutoring' => 0, 'weighted_without_tutoring' => 0,
                     'subject_count_with' => 0, 'subject_count_without' => 0,
-                ],
-            ]);
+                ];
+            }
+            return response()->json($empty);
         }
 
         $query = LearningRecord::active()->where('Status', 'approved')
@@ -237,7 +243,7 @@ class FinanceController extends Controller
             if (!isset($buckets[$tid])) {
                 $buckets[$tid] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
             }
-            $hours     = $this->calcHours($r->StartTime, $r->EndTime, $r->studentClass);
+            $hours     = $this->calcHours($r->StartTime, $r->EndTime, $r->studentClass, $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null);
             $key       = in_array($classType, ['one_on_one', 'one_on_two', 'one_on_three'])
                          ? $classType : 'one_on_one';
             $buckets[$tid][$key] += $hours;
@@ -279,7 +285,7 @@ class FinanceController extends Controller
                 if (!isset($buckets[$tid])) {
                     $buckets[$tid] = ['one_on_one' => 0, 'one_on_two' => 0, 'one_on_three' => 0, 'tutoring' => 0];
                 }
-                $hours = $this->calcHours($cs->StartTime, $cs->EndTime, $sc);
+                $hours = $this->calcHours($cs->StartTime, $cs->EndTime, $sc, $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null);
                 $buckets[$tid]['tutoring'] += $hours;
 
                 if ($includeLevel) {
@@ -347,8 +353,17 @@ class FinanceController extends Controller
 
         usort($result, fn($a, $b) => $b['total_hours'] <=> $a['total_hours']);
 
+        // FR-008: assign rank (1-based) after sorting.
+        foreach ($result as $idx => &$row) {
+            $row['rank'] = $idx + 1;
+        }
+        unset($row);
+
+        $totalTeachers = count($result);
+
         $response = [
             'teachers' => $result,
+            'total_teachers' => $totalTeachers,
             'totals'   => [
                 'one_on_one_hours'           => round($grandTotals['one_on_one'],   2),
                 'one_on_two_hours'           => round($grandTotals['one_on_two'],   2),
@@ -423,14 +438,81 @@ class FinanceController extends Controller
             $response['level_breakdown_totals'] = $formattedLevelTotals;
         }
 
+        // FR-008: for teacher role, redact other teachers' numeric columns and drop
+        // branch-wide totals. Rank & name remain visible so teachers can see their
+        // relative position without viewing colleagues' absolute numbers.
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'teacher') {
+            $authTeacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            $redactedFields = [
+                'one_on_one_hours',
+                'one_on_two_hours',
+                'one_on_three_hours',
+                'tutoring_hours',
+                'total_hours',
+                'subject_count_with',
+                'subject_count_without',
+                'share_pct',
+            ];
+            $response['teachers'] = array_map(function ($t) use ($authTeacherId, $redactedFields) {
+                $isSelf = $authTeacherId > 0 && (int) ($t['teacher_id'] ?? 0) === $authTeacherId;
+                $t['is_self'] = $isSelf;
+                if (!$isSelf) {
+                    foreach ($redactedFields as $f) {
+                        if (array_key_exists($f, $t)) {
+                            $t[$f] = null;
+                        }
+                    }
+                    if (array_key_exists('level_breakdown', $t)) {
+                        $t['level_breakdown'] = [];
+                    }
+                }
+                return $t;
+            }, $response['teachers']);
+            unset($response['totals'], $response['level_breakdown_totals']);
+        }
+
         return response()->json($response);
     }
 
     /**
-     * Calculate teaching hours from a learning record's times (or fallback to StudentClass duration).
+     * Contracted session duration in minutes.
+     * Priority: per-weekday contract > SessionDuration default > null (unknown).
+     * Returns null when no contract data is available (caller should then fall back to actual times).
      */
-    private function calcHours(?string $startTime, ?string $endTime, $studentClass = null): float
+    private function contractedDurationMinutes($studentClass, ?string $sessionDate): ?int
     {
+        if (!$studentClass) {
+            return null;
+        }
+        if ($sessionDate) {
+            try {
+                $isoWeekday = \Carbon\Carbon::parse($sessionDate)->isoWeekday();
+                $dur = (int) $studentClass->resolveSessionDurationForWeekday($isoWeekday);
+                if ($dur >= 30) {
+                    return $dur;
+                }
+            } catch (\Exception $ignored) {}
+        }
+        $dur = (int) ($studentClass->SessionDuration ?? 0);
+        return $dur >= 30 ? $dur : null;
+    }
+
+    /**
+     * Calculate teaching hours for payroll.
+     * FR-005: Contracted duration takes priority over actual start/end times so that director's
+     * annotation adjustments (e.g. 20:00 → 19:30) do not affect teacher pay.
+     * Priority: per-weekday contracted duration > SessionDuration > actual times > 2h default.
+     */
+    private function calcHours(?string $startTime, ?string $endTime, $studentClass = null, ?string $sessionDate = null): float
+    {
+        // FR-005: contracted duration takes precedence — see AI_REGRESSION_LESSONS §2026-04-17.
+        $contracted = $this->contractedDurationMinutes($studentClass, $sessionDate);
+        if ($contracted !== null) {
+            return $contracted / 60.0;
+        }
+
+        // Fallback: actual recorded start/end times
         if ($startTime && $endTime) {
             foreach (['H:i:s', 'H:i'] as $fmt) {
                 $subLen = $fmt === 'H:i:s' ? 8 : 5;
@@ -443,10 +525,7 @@ class FinanceController extends Controller
                 } catch (\Exception $ignored) {}
             }
         }
-        if ($studentClass && !empty($studentClass->SessionDuration) && $studentClass->SessionDuration > 0) {
-            return $studentClass->SessionDuration / 60.0;
-        }
-        return 2.0; // default fallback: 2h per session
+        return 2.0; // last-resort default
     }
 
     /**
@@ -482,8 +561,11 @@ class FinanceController extends Controller
             ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
             ->groupBy('StudentClassID');
 
+        // FR-002: Remove Stop=0 snapshot filter. INNER JOIN sc_counts already ensures only courses
+        // with attended sessions in the selected month appear. Filtering by current Stop flag would
+        // exclude stopped courses that had sessions in the queried historical month — a semantic
+        // error of "filtering historical facts by current state". See AI_REGRESSION_LESSONS §2026-04-17.
         $query = StudentClass::query()
-            ->where('Stop', 0)
             ->joinSub($sessionCounts, 'sc_counts', function ($join) {
                 $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
             })
@@ -496,20 +578,77 @@ class FinanceController extends Controller
         $query->select('StudentClass.*', 'sc_counts.cnt as monthly_session_count');
 
         $allRows = (clone $query)->get();
-        $uniqueStudents = $allRows->pluck('StudentID')->unique()->count();
-        $totalSessions  = $allRows->sum('monthly_session_count');
 
-        $totalTuition = $allRows->sum(function ($c) {
+        // ── Monthly billing packages: aggregate members into a single row ──
+        // Fetch active monthly billing packages for this branch, always show even with 0 sessions.
+        $monthlyPkgQuery = CoursePackage::query()
+            ->where('billing_mode', CoursePackage::BILLING_MODE_MONTHLY)
+            ->where('stop', false);
+        if (!empty($studentIds)) {
+            $monthlyPkgQuery->whereIn('student_id', $studentIds);
+        }
+        $monthlyPkgs = $monthlyPkgQuery->with('student')->get()->keyBy('id');
+
+        // IDs of StudentClass records that are monthly-package members
+        $monthlyMemberIds = collect();
+        if ($monthlyPkgs->isNotEmpty()) {
+            $monthlyMemberIds = StudentClass::whereIn('PackageID', $monthlyPkgs->keys())
+                ->pluck('ID');
+        }
+
+        // Session counts per StudentClass for monthly package members in this month
+        $memberSessionCounts = [];
+        if ($monthlyMemberIds->isNotEmpty()) {
+            $memberSessionCounts = DB::table('ClassSession')
+                ->whereBetween('SessionDate', [$startDate, $endDate])
+                ->whereIn('Status', $attendedStatuses)
+                ->whereIn('StudentClassID', $monthlyMemberIds)
+                ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
+                ->groupBy('StudentClassID')
+                ->pluck('cnt', 'StudentClassID')
+                ->map(fn ($v) => (int) $v)
+                ->toArray();
+        }
+
+        // Build package-level session totals (sum across all members per package)
+        $pkgSessionTotals = [];
+        if ($monthlyPkgs->isNotEmpty()) {
+            $membersByPkg = StudentClass::whereIn('PackageID', $monthlyPkgs->keys())
+                ->select('ID', 'PackageID')
+                ->get()
+                ->groupBy('PackageID');
+            foreach ($monthlyPkgs as $pkgId => $pkg) {
+                $members = $membersByPkg->get($pkgId, collect());
+                $total = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);
+                $pkgSessionTotals[$pkgId] = $total;
+            }
+        }
+
+        // Exclude monthly-package members from regular course rows
+        $regularRows = $allRows->filter(
+            fn ($c) => !$monthlyMemberIds->contains($c->ID)
+        );
+
+        $uniqueStudents = $regularRows->pluck('StudentID')
+            ->merge($monthlyPkgs->pluck('student_id'))
+            ->unique()->count();
+        $totalSessions  = $regularRows->sum('monthly_session_count')
+            + array_sum($pkgSessionTotals);
+
+        $totalTuition = $regularRows->sum(function ($c) {
             $rate = $this->resolveRate($c);
             return $c->monthly_session_count * $rate;
+        }) + $monthlyPkgs->sum(function ($pkg) use ($pkgSessionTotals) {
+            $sessions = $pkgSessionTotals[$pkg->id] ?? 0;
+            return $sessions * (float) $pkg->rate;
         });
 
         $perPage = min((int) $request->input('per_page', 50), 200);
         $page    = max((int) $request->input('page', 1), 1);
-        $total   = $allRows->count();
+        $total   = $regularRows->count() + $monthlyPkgs->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
 
-        $paged = $allRows->sortBy([
+        $paged = $regularRows->sortBy([
             fn ($a, $b) => strcmp($a->student->name ?? '', $b->student->name ?? ''),
             fn ($a, $b) => strcmp($a->displaySubjectName(), $b->displaySubjectName()),
         ])->slice(($page - 1) * $perPage, $perPage)->values();
@@ -521,25 +660,48 @@ class FinanceController extends Controller
             $rate = $this->resolveRate($c);
             $sessions = (int) $c->monthly_session_count;
             return [
-                'student_class_id'  => (int) $c->ID,
-                'student_id'        => (int) $c->StudentID,
-                'student_name'      => $c->student->name ?? 'Unknown',
-                'subject'           => $c->displaySubjectName(),
-                'teacher_name'      => $c->teacher->Name ?? 'Unknown',
-                'class_type'        => $c->ClassType ?? 'one_on_one',
-                'schedule_mode'     => $c->ScheduleMode ?? 'count',
-                'rate'              => round($rate, 2),
-                'monthly_sessions'  => $sessions,
-                'monthly_tuition'   => round($sessions * $rate, 2),
+                'row_type'           => 'course',
+                'student_class_id'   => (int) $c->ID,
+                'student_id'         => (int) $c->StudentID,
+                'student_name'       => $c->student->name ?? 'Unknown',
+                'subject'            => $c->displaySubjectName(),
+                'teacher_name'       => $c->teacher->Name ?? 'Unknown',
+                'class_type'         => $c->ClassType ?? 'one_on_one',
+                'schedule_mode'      => $c->ScheduleMode ?? 'count',
+                'rate'               => round($rate, 2),
+                'monthly_sessions'   => $sessions,
+                'monthly_tuition'    => round($sessions * $rate, 2),
                 'remaining_sessions' => max(0, (int) ($c->RemainingSessions ?? 0)),
-                'paid'              => (bool) $c->Paid,
-                'paid_at'           => $c->PayDate ? substr($c->PayDate, 0, 10) : null,
-                'last_paid_at'      => ($c->PayDate ? substr($c->PayDate, 0, 10) : null) ?? ($paidAtMap[(int) $c->ID] ?? null),
+                'paid'               => (bool) $c->Paid,
+                'paid_at'            => $c->PayDate ? substr($c->PayDate, 0, 10) : null,
+                'last_paid_at'       => ($c->PayDate ? substr($c->PayDate, 0, 10) : null) ?? ($paidAtMap[(int) $c->ID] ?? null),
+                'is_stopped'         => (bool) $c->Stop,
             ];
-        })->all();
+        })->values()->all();
+
+        // Append monthly billing package rows
+        $pkgRows = $monthlyPkgs->map(function ($pkg) use ($pkgSessionTotals) {
+            $sessions = $pkgSessionTotals[$pkg->id] ?? 0;
+            $rate     = (float) $pkg->rate;
+            return [
+                'row_type'           => 'package',
+                'package_id'         => $pkg->id,
+                'student_id'         => (int) $pkg->student_id,
+                'student_name'       => $pkg->student->name ?? 'Unknown',
+                'package_name'       => $pkg->name,
+                'billing_mode'       => CoursePackage::BILLING_MODE_MONTHLY,
+                'settlement_day'     => $pkg->settlement_day !== null ? (int) $pkg->settlement_day : null,
+                'rate'               => round($rate, 2),
+                'monthly_sessions'   => $sessions,
+                'monthly_tuition'    => round($sessions * $rate, 2),
+                'paid'               => (bool) $pkg->paid,
+                'paid_at'            => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
+                'is_stopped'         => (bool) $pkg->stop,
+            ];
+        })->values()->all();
 
         return response()->json([
-            'data'    => array_values($data),
+            'data'    => array_merge(array_values($data), $pkgRows),
             'summary' => [
                 'total_students'  => $uniqueStudents,
                 'total_sessions'  => $totalSessions,
@@ -577,8 +739,8 @@ class FinanceController extends Controller
             ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
             ->groupBy('StudentClassID');
 
+        // FR-002: Remove Stop=0 snapshot filter — same rationale as branchMonthlyTuition.
         $query = StudentClass::query()
-            ->where('Stop', 0)
             ->joinSub($sessionCounts, 'sc_counts', function ($join) {
                 $join->on('StudentClass.ID', '=', 'sc_counts.StudentClassID');
             })
@@ -604,7 +766,8 @@ class FinanceController extends Controller
         return response()->streamDownload(function () use ($allRows) {
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
-            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期']);
+            // FR-003: Added 課程狀態 column to distinguish active vs stopped courses.
+            fputcsv($out, ['學生', '科目', '老師', '班型', '月堂數', '費率', '月學收', '繳費日期', '課程狀態']);
             foreach ($allRows as $c) {
                 $rate = $this->resolveRate($c);
                 $sessions = (int) $c->monthly_session_count;
@@ -621,6 +784,7 @@ class FinanceController extends Controller
                     $rate,
                     round($sessions * $rate, 2),
                     $c->PayDate ? substr($c->PayDate, 0, 10) : '',
+                    $c->Stop ? '已結課' : '進行中',
                 ]);
             }
             fclose($out);
@@ -1054,7 +1218,7 @@ class FinanceController extends Controller
         $sc        = $r->studentClass;
         $classType = $sc->ClassType ?? 'one_on_one';
         $gradeId   = (int) ($sc->GradeID ?? 0);
-        $hours     = round($this->calcHours($r->StartTime, $r->EndTime, $sc), 2);
+        $hours     = round($this->calcHours($r->StartTime, $r->EndTime, $sc, $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null), 2);
 
         $levelMap = config('payroll.grade_level_map', []);
         $level    = $levelMap[$gradeId] ?? 'unknown';
@@ -1190,16 +1354,27 @@ class FinanceController extends Controller
             $intervals = [];
             foreach ($dayRecords as $r) {
                 $startMin = $this->timeToMinutes($r->StartTime);
-                $endMin   = $this->timeToMinutes($r->EndTime);
-                if ($startMin === null || $endMin === null || $endMin <= $startMin) {
+                if ($startMin === null) {
                     continue;
+                }
+
+                // FR-006: Use contracted duration for concurrency interval end, not actual end time.
+                $sessionDate = $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null;
+                $sc          = $r->studentClass;
+                $contracted  = $this->contractedDurationMinutes($sc, $sessionDate);
+                if ($contracted !== null) {
+                    $endMin = $startMin + $contracted;
+                } else {
+                    $endMin = $this->timeToMinutes($r->EndTime);
+                    if ($endMin === null || $endMin <= $startMin) {
+                        continue;
+                    }
                 }
 
                 if (isset($rateMap[$r->id])) {
                     $baseRate    = $rateMap[$r->id]['base_rate'];
                     $levelWeight = $rateMap[$r->id]['level_weight'];
                 } else {
-                    $sc        = $r->studentClass;
                     $classType = $sc->ClassType ?? 'one_on_one';
                     $gradeId   = (int) ($sc->GradeID ?? 0);
                     $level     = $gradeLevelMap[$gradeId] ?? 'elementary';
@@ -1253,7 +1428,18 @@ class FinanceController extends Controller
                     $dt       = ($segEnd - $segStart) / 60.0;
                     $maxLevel = max(array_column($concurrent, 'level_weight'));
 
-                    if ($iv['level_weight'] >= $maxLevel) {
+                    // v1.4 tie-break: when multiple sessions share the same max level within a
+                    // segment, only the one with the smallest lr_id is "primary" and earns the
+                    // concurrency bonus. All others (same-level non-primary OR dominated) have
+                    // their base_rate contribution zeroed out for this segment.
+                    // See AI_REGRESSION_LESSONS §2026-04-17, PayrollConcurrencyTest.
+                    $maxLevelIds = array_column(
+                        array_filter($concurrent, fn ($c) => $c['level_weight'] >= $maxLevel),
+                        'lr_id'
+                    );
+                    $primaryId = min($maxLevelIds);
+
+                    if ($iv['lr_id'] === $primaryId) {
                         $lrNet += ($lrCount - 1) * $bonusPerStudent * $dt;
                     } else {
                         $lrNet -= $iv['base_rate'] * $dt;

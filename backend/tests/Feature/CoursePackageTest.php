@@ -455,6 +455,7 @@ class CoursePackageTest extends TestCase
         $sc = $this->makePackageMember($pkg, $student->id, $teacher->id);
         $sc->RemainingSessions = 1;
         $sc->Paid = 0;
+        $sc->Charge = 2000; // 4 sessions × 500/session — required for alert to pass charge > 0 filter
         $sc->save();
 
         $res = $this->withHeaders([

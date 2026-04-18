@@ -3,6 +3,587 @@
 本檔記錄**已發生過的產品／實作缺口**，避免下次改壞或改漏。  
 **任何 AI Agent 或新進開發者**：請與 `AGENTS.md` 的 First-read 順序一併閱讀；修改下列模組前**先對照本檔**。
 
+---
+
+## §2026-04-18 — 代課 Undo 必須同時 voided 家長通知，禁止回歸（PRD 9c058f19）
+
+### 根本原因
+
+代課流程 v2（PRD 9c058f19）於 `ClassSessionController::substitute` 的同一交易中建立 `Notifications.Type=substitute` 家長站內通知（FR-010），並於 5 分鐘內允許主任 Undo。若 Undo 只回復 `schedules` + `LearningRecord.TeacherID` 卻未作廢通知，家長 App 會繼續顯示「已取消的代課」→ 造成接送誤解與客訴（FR-011 明列此為 P0）。
+
+### 禁止回歸項
+
+0. **Undo 時間窗必須以 `SystemSetting::get('substitute.undo_window_seconds')` 為單一事實來源**
+   - 僅允許 `5 / 10 / 20 / 30` 秒（業界對齊 Gmail Undo Send）；寫入限 `super_admin`。
+   - 伺服器實際放行視窗 = UI 秒數 **+ 60 秒 grace**（容忍時鐘/網路），由 `SubstituteController::resolveServerUndoWindow()` 提供。
+   - 禁止在 `SubstituteController` 或 `ClassSessionController::substitute` 中重新 hard-code Undo 視窗；所有對外回應的 `undo_window_seconds` 與 `undo_deadline_ms` 必須衍生自該設定。
+   - 前端 `ToastWithUndo` 必須從 API 回應 `undo_window_seconds` 驅動倒數；禁止 hard-code `durationMs: 5000`。
+
+1. **`SubstituteController::undo` 交易必須同時執行以下四件事**（缺一即回歸）：
+   - 刪除代課 `scheduled` row
+   - 刪除 `rescheduled` anchor row
+   - 將 `LearningRecord.TeacherID` 回復為正班老師 id（若有 LR）
+   - 把最近一筆 `Notifications.Type=substitute AND SourceID=$classSessionId` 的 `ResolvedAt` 設為 `now()`，並於 `Payload.voided=true / voided_by / voided_at_ms`
+
+2. **`SubstituteService::createParentNotification` 必須保持冪等**
+   - 以 `SourceKey='substitute:'.$classSessionId` 為冪等鍵；同 session 第二次代課必須回現有紀錄而非 INSERT（`SourceKey` 是 unique index）。
+   - 禁止改為 `Notification::create(...)` 無防護呼叫；會讓 idempotency 測試 + 第二次代課立即 500。
+
+3. **跨分校（物理不可分身）衝堂檢查只能攔「其他分校」**
+   - `ClassSessionController::substitute` 呼叫 `detectCrossCampusConflict()` 後必須 filter out `campus_id === 當前 session 所屬 campus_id`；同分校衝堂維持由 `ScheduleGuardService` 走 409，否則舊 `SubstituteTeacherTest::test_substitute_future_session_still_blocked_on_capacity_conflict` 會從 409 變 422 失敗。
+
+4. **Availability / Recent API 不得洩漏他校敏感欄位**
+   - `GET /api/v1/teachers/{id}/availability` 回傳 `busy_slots[]` **只能**含 `start_time`、`end_time`、`campus_id` 三個鍵；禁止夾帶學生姓名、科目、教室（PRD 第 9 節 Info Disclosure）。
+   - `GET /api/v1/substitutes/recent` 必須以 `auth_campus_ids` 過濾 `Notifications.CampusID`；`branch_id` 參數必須再做一次 `in_array($branchId, $managedCampusIds)` 檢查。
+
+5. **批次代課必須整批原子（預設 `atomic=true`）**
+   - `TeacherLeaveController::batchSubstitute` 先做全部預檢，任何一堂 `!ok` 且 `atomic=true` → 回 422 不進入交易；若進交易中途失敗則整批 `throw` 回滾。
+   - 禁止改為「邊跑邊 commit」；會導致主任看到部分成功部分失敗的不一致狀態，且家長通知無法一起回滾。
+
+### 覆蓋測試
+- `backend/tests/Feature/SubstituteUxV2Test.php` 8 組（單堂成功/跨分校衝堂/Undo voided 通知/Preview/Batch 成功/Batch 衝堂回滾/Availability schema/Recent 分校隔離）。
+- `backend/tests/Feature/SubstituteTeacherTest.php` 14 組必須持續通過（確保本次變更未破壞舊行為）。
+
+---
+
+## §2026-04-18 — 代課 + 調課組合操作必須雙層防護，嚴禁重複 scheduled 行（禁止回歸項）
+
+### 根本原因
+
+當一堂課在短時間內發生「代課」與「調課」的任意組合（最典型情境：老師請假 → 學生既要換老師也要換時間），`SmartCalendar.submitReschedule` 與 `LearningRecordController::syncSchedulesForRescheduledSession` 之間缺少「同一 anchor 的 scheduled 行至多一筆」約束：
+
+1. **前端雙寫**：`submitReschedule` 偵測到 `alreadyRescheduled = true`（代表 `schedules` 已有 `rescheduled` 錨點行）時仍無條件 `INSERT` 第二筆 `schedules{ status: scheduled, teacher_id: 原任老師, original_schedule_id: anchor }`，與既有代課 scheduled 行產生重複。
+2. **後端 sync 僅更新不去重**：`syncSchedulesForRescheduledSession` 把既有代課行的 `schedule_date/start_time/end_time` 改為新值，但從未清除同 `(student_course_id, new_date, original_schedule_id)` 下的其他重複 scheduled 行。
+3. **`ClassSessionController::index` 子查詢以 `MAX(id)` 挑代課老師**：前端後寫入的行 id 較大 → 被子查詢選中 → `teacher_name` 解析為原任老師，課程管理 tooltip 授課老師欄顯示錯誤。
+
+### 禁止回歸項
+
+1. **`SmartCalendar.submitReschedule` 必須偵測既有代課 scheduled 行，符合則跳過 payload2 的 Supabase insert**
+   - 判斷條件固定為：`originalId !== null && exceptions.value.some(ex => ex.status === 'scheduled' && ex.original_schedule_id != null && String(ex.original_schedule_id) === String(originalId) && String(ex.student_course_id) === String(rescheduleForm.value.course_id))`
+   - 禁止回退為「無條件插入 payload2」以簡化邏輯；任何回退都會立刻重現此 bug
+   - Fallback 行為：`exceptions` 未載入或缺 `original_schedule_id` 欄位時，允許插入；靠後端 sync 去重收尾
+
+2. **`syncSchedulesForRescheduledSession` 去重刪除 scope 必須維持五重條件**
+   - （1）`student_course_id = $classId`（2）`schedule_date = $newDateOnly`（3）`status = 'scheduled'`（4）`original_schedule_id IN $anchorIds`（5）`id NOT IN $substituteIds`
+   - **任一項缺失**都可能誤刪他課、他 anchor、正在更新的目標行；尤其第 5 項（`whereNotIn`）是最容易被 refactor 掉的保險栓
+   - 禁止以「先刪光再重建」的模式實作；必須先 update 再 pluck deleted_ids 記錄後刪除
+
+3. **`$anchorIds` 只能來自 `Schedule::whereIn('id', $substituteIds)->pluck('original_schedule_id')`**
+   - 禁止改用 `request('anchor_id')` 或其他外部輸入——會成為 IDOR
+   - 禁止直接以 `original_schedule_id` 做 where 條件而不經 $substituteIds 回推
+
+4. **刪除操作必須寫 audit log**
+   - 格式：`Log::info('reschedule_session.duplicate_scheduled_rows_deleted', ['student_class_id', 'new_date', 'anchor_ids', 'deleted_ids'])`
+   - 事後稽核用；排除「有刪但看不出來」的黑箱狀態
+
+5. **`ClassSessionController::index` 的 MAX(id) 子查詢本次刻意不動**
+   - 治本策略是「防止重複行產生」而非「改查詢適應重複行」
+   - 若未來為其他理由需改此查詢（例如改為 `ORDER BY updated_at DESC LIMIT 1`），必須先重讀本節並確認雙層防護仍有效
+
+### 關聯檔案
+
+- `backend/app/Http/Controllers/LearningRecordController.php`（`syncSchedulesForRescheduledSession` lines 1207–1310）
+- `frontend/src/pages/SmartCalendar.vue`（`submitReschedule` lines 3027–3150）
+- `backend/app/Http/Controllers/ClassSessionController.php`（`index` 的 `sub_sched` 子查詢 lines 87–97，本次不動）
+- `backend/tests/Feature/SubstituteReschedulesCombinationTest.php`（4 個 case 覆蓋所有組合）
+
+### 資料熱修正 SOP（若後續又發現類似殘留）
+
+```sql
+-- 1) 查詢同 anchor 重複的 scheduled 行
+SELECT id, teacher_id, status, schedule_date, start_time, original_schedule_id
+FROM schedules
+WHERE student_course_id = :course_id
+  AND DATE(schedule_date) = :new_date
+  AND status = 'scheduled'
+  AND original_schedule_id IS NOT NULL
+ORDER BY original_schedule_id, id;
+
+-- 2) 確認 ClassSessionController::index 子查詢挑出的 row
+SELECT sub_inner.*
+FROM schedules sub_inner
+INNER JOIN (
+  SELECT student_course_id, DATE(schedule_date) sd, start_time, MAX(id) mid
+  FROM schedules
+  WHERE status = 'scheduled' AND original_schedule_id IS NOT NULL
+  GROUP BY student_course_id, sd, start_time
+) x ON sub_inner.id = x.mid
+WHERE sub_inner.student_course_id = :course_id
+  AND DATE(sub_inner.schedule_date) = :new_date;
+
+-- 3) 若 MAX(id) 選到原任老師 → 刪除該行（保留代課老師行）
+DELETE FROM schedules WHERE id = :stale_id;
+```
+
+---
+
+## §2026-04-18 — schedule-discrepancies 分校隔離必須在後端強制（禁止回歸項）
+
+### 根本原因
+
+`ScheduleDiscrepancyController::resolveCampusScope` 原本對 director 角色在未帶 `branch_id` 時 `return $campusIds`（聚合該 director 所有指派分校），依賴前端每次記得帶 `branch_id` 才能限制視野。兩個缺口：
+
+1. **跨校資料曝光**：A/B 兩校都掛名的主任，在 A 校主操作時若前端漏掉 `branch_id` query，系統直接回傳兩校聚合列表——包含 B 校老師私下回報的學生姓名、時段爭議。此為非必要跨校曝光，違反 PDPA 最小必要原則。
+2. **後端非強制**：DevTools 直接呼叫 `GET /api/v1/schedule-discrepancies` 即可繞過前端分校選擇，輕易取得所有指派分校資料。
+
+### 禁止回歸項
+
+1. **director 無 `branch_id` 且多校時必須 422**
+   - `resolveCampusScope($request, requireBranch: true)` 是 `index()` 的唯一合法呼叫路徑
+   - 禁止再回歸為「聚合 auth_campus_ids」或「fallback 到 auth_campus_ids[0]」的 silent widen
+   - 單校 director（`count(auth_campus_ids) === 1`）可 fallback 為單校以保向下相容
+   - super_admin 保留無 `branch_id` 即跨校視野，但**非 super_admin** 一律強制
+
+2. **跨校 `branch_id` 必須 403**
+   - director 指定不屬於自己 `auth_campus_ids` 的 branch_id → `abort(403)`
+   - 禁止「靜默過濾為空列表」——必須明確拒絕，讓攻擊行為留下 audit 痕跡
+
+3. **分校隔離只能在後端**
+   - `ScheduleDiscrepancyPage.vue` 的 `hasBranch` 前端 guard 僅為 UX（避免打空 API）；即便前端被繞過，後端 422/403 仍必須生效
+   - 禁止把分校過濾邏輯搬到前端 `filter()`
+
+4. **`corrected_time_range` 屬使用者輸入，儲存前必須 normalize**
+   - 使用 `ScheduleDiscrepancyController::normalizeCorrectedTimeRange` 或同等嚴格驗證：regex `/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/`、trim、whitespace strip、start < end、長度 ≤ 32
+   - 禁止直接 `$request->input('corrected_time_range')` 就寫 DB
+   - 顯示端 Vue 預設 escape，但絕不可加任何 `v-html` 渲染此欄位
+
+5. **migration 必須含 `Schema::hasColumn` 冪等 guard**
+   - 同模組先前已有「schedule-discrepancies 路由靜默回退」事件；本檔的 `2026_04_19_100000_add_corrected_time_range_*` migration 必須具備 `Schema::hasTable` + `Schema::hasColumn` 雙守門才 add column / drop column
+
+### 對應回歸測試
+
+- `tests/Feature/ScheduleDiscrepancyBranchIsolationTest.php`（6 cases，分校隔離完整覆蓋）
+- `tests/Feature/ScheduleDiscrepancyCorrectedTimeTest.php`（9 cases，正確時間驗證 + Notifier 推播）
+- `tests/Feature/ScheduleDiscrepancyApiTest::test_cross_campus_director_cannot_view_other_campus_reports`
+
+---
+
+## §2026-04-18 — 調課＋代課需 atomic transaction 同步 schedules start_time（禁止回歸項）
+
+### 根本原因
+
+`LearningRecordController::rescheduleSession` 原本存在兩個嚴重缺口：
+
+1. **session 定位不精確**：以 `whereDate('SessionDate', $old_date)->first()` 單鍵定位 ClassSession，同一天若有多個時段（例：早 10:00–12:00 與晚 15:00–17:00）會誤選第一個 row，導致使用者看見「調課成功」但實際上另一個時段被改動或原時段完全沒變。
+2. **schedules 代課行未同步**：ClassSession 時間更新後，`schedules` 表內的代課 row（`status='scheduled'` + `original_schedule_id IS NOT NULL`）`start_time/end_time/schedule_date` 停留在原時段。`ClassSessionController::index` JOIN schedules 時，代課老師週課表讀到的格子仍在舊位置，SmartCalendar 出現「舊格有卡片但無點名 badge、新格完全空白」的鬼影格。
+
+前端三處（`useSessionEditFlow.js`、`useRescheduleAndMakeup.js`、`SmartCalendar.vue`）又以 `.catch(() => {})` 靜默吞掉 API 失敗，使用者端僅看到綠色「調課成功」toast，完全無從察覺 422/500。
+
+### 禁止回歸項
+
+1. **`rescheduleSession` 必須以 `(student_class_id, old_date, old_start_time)` 三鍵定位**
+   - 提供 `old_start_time` 時若找不到完全匹配 ClassSession 必須回 422；禁止 silent fallback 到 `first()`
+   - 禁止任何「猜測哪個 session 是對的」邏輯（`orderBy()->first()` 僅允許在 `old_start_time` 未傳時作向下相容 fallback）
+
+2. **ClassSession 更新與 schedules 代課行同步必須在同一 `DB::transaction` 內**
+   - `LearningRecordController::syncSchedulesForRescheduledSession` 為唯一合法路徑
+   - Scope 嚴格限於 `status='scheduled'` AND `original_schedule_id IS NOT NULL`（代課行）；**禁止**觸動 `rescheduled` 錨點行（代表原時段歷史紀錄，downstream 報表依賴其位置）
+   - 失敗必須整批 rollback；禁止「先更新 ClassSession 成功、schedules 同步失敗就靜默 log」的部分成功模式
+
+3. **前端 reschedule 呼叫禁止使用 `.catch(() => {})`**
+   - `useSessionEditFlow.js`、`useRescheduleAndMakeup.js`、`SmartCalendar.vue` 三處 reschedule-session fetch 必須顯式處理失敗（toast/alert 顯示後端 `message`）
+   - 請求 payload 必須包含 `old_start_time`（form 既有 `form.start_time` / `form.original_start`）
+
+4. **`SmartCalendar::findSessionRowForCell` 修改時禁止打破非例外匹配**
+   - `is_exception` fallback 僅在 exception 路徑生效；非例外 cell 的精準 date + start_time 匹配行為必須完全保留
+
+5. **回歸守護測試固定位置**
+   - `backend/tests/Feature/RescheduleSessionPrecisionTest.php`（5 tests）：
+     - `test_same_day_two_slots_precise_match_moves_only_the_targeted_session`
+     - `test_old_start_time_mismatch_returns_422`
+     - `test_omitting_old_start_time_falls_back_to_first_by_date`
+     - `test_reschedule_syncs_substitute_schedules_row_in_same_transaction`
+     - `test_reschedule_without_substitute_is_unaffected`
+   - `backend/tests/Feature/SubstituteRescheduleRegressionTest.php`（6 tests）：特別確認 `rescheduled` 錨點行不被 sync helper 位移
+   - 禁止刪除或弱化上述任一測試；新增代課流程前必須先通過
+
+### 關聯檔案
+
+- `backend/app/Http/Controllers/LearningRecordController.php::rescheduleSession` / `syncSchedulesForRescheduledSession`
+- `frontend/src/composables/course-management/useSessionEditFlow.js`
+- `frontend/src/composables/course-management/useRescheduleAndMakeup.js`
+- `frontend/src/pages/SmartCalendar.vue::findSessionRowForCell`
+
+---
+
+## §2026-04-18 — 老師端科目數敏感資訊遮蔽（禁止回歸項）
+
+### 根本原因
+
+`FinanceController::subjectUnits` 對所有角色回傳完整 `teachers[].{one_on_one_hours,one_on_two_hours,share_pct,subject_count_*,level_breakdown}` 與分校 `totals` / `level_breakdown_totals`。老師登入後在「科目數統計」頁面看得到同事的絕對數字與分校彙總，屬公司內部財務敏感資訊。前端若只靠 `v-if` 遮蔽是可以透過 DevTools / 直接打 API 繞過的。
+
+### 禁止回歸項
+
+1. **敏感資訊遮蔽必須在後端執行**
+   - `FinanceController::subjectUnits` 尾端對 `auth_role='teacher'` 執行 redaction：他人 row 的 `one_on_one_hours/one_on_two_hours/one_on_three_hours/tutoring_hours/total_hours/subject_count_with/subject_count_without/share_pct` 設 `null`；`level_breakdown` 清空為 `[]`
+   - `totals` / `level_breakdown_totals` 從 response 刪除（`unset`），而非僅前端隱藏
+   - 禁止僅以前端 `v-if` 或 `computed` 代替後端 redaction
+
+2. **`is_self` / `rank` / `total_teachers` 三個欄位必須存在**
+   - 每筆 teacher row 需有 `is_self: bool`、`rank: int（1-based）`
+   - Response 頂層需有 `total_teachers: int`
+   - 前端依 `is_self` 決定高亮與「(你)」tag；依 `rank` 顯示排名序號；依 `total_teachers` 顯示「共 Y 名」
+
+3. **主任 / super admin 視野不受影響**
+   - `auth_role` 為 `director` / `super_admin` 時 response 保持完整 totals 與所有數字
+   - 禁止以「統一簡化」為由把 director 視野也一併遮蔽
+
+4. **回歸守護測試固定位置**
+   - `backend/tests/Feature/FinanceSubjectUnitsTest.php::test_teacher_sees_branch_wide_subject_units`：驗證 teacher 視角他人數字為 null、無 totals、rank 正確
+   - `FinanceSubjectUnitsTest::test_director_view_is_unaffected_by_teacher_redaction`：驗證主任視角 totals + 所有數字完整
+   - 禁止刪除或合併上述兩測試
+
+### 關聯檔案
+
+- `backend/app/Http/Controllers/FinanceController.php::subjectUnits`（redaction 區塊）
+- `backend/app/Http/Middleware/AttachAuthUser.php`（`auth_role` / `auth_teacher_id` 來源）
+- `frontend/src/pages/SubjectUnitsPage.vue`（前端僅做呈現，不做權限決策）
+
+---
+
+## §2026-04-17 — 建立課程繳費日期失效（禁止回歸項）
+
+### 根本原因
+
+`SessionDeductionService::recomputeCounters` 原本在 `RemainingSessions <= 2` 時把 `StudentClass.Paid` 強制設為 0：
+
+```php
+if ($sc->RemainingSessions <= 2) {
+    $sc->Paid = 0;
+}
+```
+
+此服務每次課程建立、簽到、請假、LR 核准、補登後都會被呼叫。主任在 `UniversalClassScheduler` 填入「繳費日期」（`paid_at`）建立課程後，`EnrollmentService::store` 正確寫入 `Paid=1` / `PayDate`，但 `syncCounters` 立刻把 `Paid` 覆蓋回 0，前端 `payment_status` 顯示為「未繳費」。
+
+對短期課程（1–2 堂）或任何讓剩餘堂數降至 ≤2 的扣點路徑，這個 bug 每次都會重現。
+
+### 禁止回歸項
+
+1. **`SessionDeductionService::recomputeCounters` 僅能異動 `UsedSessions` / `RemainingSessions`**
+   - 禁止讀寫 `Paid` / `PayDate`；任何 `$sc->Paid = ...` 或 `$sc->PayDate = ...` 出現在此方法，一律視為回歸
+   - 禁止以「剩餘堂數」衍生任何財務決策（「快用完自動改未繳費」是錯誤的心智模型）
+
+2. **`Paid` / `PayDate` 只能由以下三條路徑寫入**
+   - `POST /api/v1/class-sessions/batch`：`EnrollmentService::store` 依 `paid_at` 決定 `Paid` 與 `PayDate`
+   - `PUT /api/v1/student-classes/{id}`：`StudentClassController::mapFrontendPayload` 處理 `paid_at` / `payment_status`
+   - Invoice 付款：`POST /api/v1/invoices/{id}/payments` 同步 `StudentClass.Paid`
+   - 其他位置（service、Job、command）新增 `Paid` 寫入前必須 PR review 並更新本條
+
+3. **回歸守護測試固定位置**
+   - `backend/tests/Feature/StudentClassPaidStatusTest.php::test_sync_counters_does_not_clear_paid_when_remaining_lte_2`
+   - `StudentClassPaidStatusTest::test_sync_counters_does_not_mutate_paid_for_unpaid_course`
+   - `backend/tests/Feature/EnrollmentApiTest.php::test_create_course_with_paid_at_shows_paid_status`
+   - `EnrollmentApiTest::test_create_short_course_with_paid_at_shows_paid`（直接覆蓋 `RemainingSessions=1` 觸發路徑）
+   - `EnrollmentApiTest::test_create_course_without_paid_at_stays_unpaid`（確保沒有相反副作用）
+
+4. **業務原則**
+   - 「剩餘堂數」屬教務統計，「繳費狀態」屬財務事實；兩者不得互相推導
+   - 「Paid 自動清零 / 自動抬升」的行為只存在於 Invoice 付款同步路徑
+   - 若未來業務要求「堂數用完自動提醒續費」，那是催繳提醒（`AlertController::tuition`）功能，不是改 Paid 欄位
+
+---
+
+## §2026-04-17 — 兼職老師薪資以「契約排定時長」為準（禁止回歸項）
+
+### 根本原因
+`FinanceController::calcHours` 原本優先讀取 `LearningRecord.StartTime`/`EndTime`，只在兩者皆缺才 fallback 到 `StudentClass.SessionDuration`。同時 `buildConcurrencyBonusMap` 用實際 `StartTime`/`EndTime` 作為重疊 interval 的端點。當主任在「備註 / 調整時段」把 20:00 改成 19:30，老師本月薪資就被縮短（`350 × 1.5 = 525`，而非 `350 × 2 = 700`），與「時段微調不影響薪酬」的業務共識相悖。另一方向的問題（例如實際 17:00-20:00 但契約僅 2h）則會讓老師被多付 1 小時。
+
+### 禁止回歸項
+
+1. **`calcHours` 的優先順序不得翻回「actual time first」**
+   - 新順序：`resolveSessionDurationForWeekday($sessionDate->isoWeekday())` → `StudentClass.SessionDuration` → 實際 `StartTime`/`EndTime`（fallback） → `2.0h` default
+   - 簽名必須保留 `$sessionDate` 參數，讓 per-weekday duration 正確解析
+   - **禁止**再用 `actual_minutes / SessionDuration` 類的比例縮放邏輯，這會讓「備註調整」被誤解為薪資輸入
+   - 這與學收端「單堂費用固定不隨時長縮放」為同一根原則的薪資側（見前一條 §）
+
+2. **`buildConcurrencyBonusMap` 的 interval end 必須用契約時長計算**
+   - `effectiveEnd = startMin + contractedDurationMinutes($lr)`；僅在契約時長 < 30min 才 fallback 到 actual `$endMin`
+   - 禁止以 `StartTime`/`EndTime` 建構 interval，否則「18:00-19:00（實際 1h，契約 2h）」的併堂加給會被錯算（實際上應對齊整個契約時段）
+
+3. **`contractedDurationMinutes` helper 不得省略 studentClass 檢查**
+   - 必須 graceful handle：缺 `studentClass` 關聯、缺 `SessionDuration`、或 `<30min` 垃圾值都要回 0，由呼叫端 fallback
+   - 回值 < 30 視為「契約不可用」；避免把錯誤資料放大進重疊計算
+
+4. **三個 `calcHours` 呼叫端必須同步傳 `$sessionDate`**
+   - `FinanceController.php` 中三處：主薪資彙總（`parttimePayroll`）、按老師 session（`parttimePayrollSessions`）、sessionRow builder。漏傳會導致 per-weekday duration 無法解析，只能 fallback 到 `SessionDuration`
+
+5. **回歸守護測試固定位置**
+   - `backend/tests/Feature/ParttimePayrollTest.php::test_contracted_duration_used_when_actual_shorter`（契約 2h / 實際 1.5h → 800）
+   - `ParttimePayrollTest::test_concurrency_bonus_two_hour_overlap`（A 實際 3h / 契約 2h → 1250，不是 1300）
+   - `ParttimePayrollTest::test_concurrency_bonus_three_sessions_overlap`（3 × 實際 1h / 契約 2h → 1000，不是 500）
+   - 這三個數字如果又回到「實際時長為準」的舊值，代表改回歸。必須先跑 `phpunit --filter 'ParttimePayrollTest|PayrollConcurrencyTest'`（34 tests 全綠）
+
+6. **業務原則（寫進 PRD 與 CHANGELOG）**
+   - 薪資 = **契約排定時長** × 時薪。「備註 / 調整時段」是記錄事實、讓主任追蹤實際到離時間，不是薪資輸入
+   - 與學收端「session 費用固定不隨時長」完全對稱：兩側都遵守「契約為準，實際為記錄」
+   - 若未來引入「超時加給」或「提早下課扣錢」，必須做成獨立規則而不是修改 `calcHours` 的 fallback 順序
+
+---
+
+## §2026-04-17 — 單堂費用固定不隨時長縮放（禁止回歸項）
+
+### 根本原因
+`ClassSessionController::syncSessionChargeForTimeChange` 對 `rate_unit='session'`（按堂計費）與 `rate_unit='hour'`（按時計費）一律套用比例縮放公式 `Rate × actual_minutes / SessionDuration`，違反「按堂計費＝固定堂費」的業界慣例與本系統產品定義。前端 `SessionEditModal.chargePreview` 與 `SmartCalendar.currentSessionChargeDisplay` 也都跟著時間比例邏輯，連帶把錯誤金額寫入 `ClassSession.session_charge` 與擾動 `StudentClass.Charge`。
+
+### 禁止回歸項
+
+1. **`syncSessionChargeForTimeChange` 的 session / hour 分支不得合併或互換公式**
+   - session mode：`session_charge = round(Rate)`（固定），`Charge` delta 依 baseline 只修正舊值偏差，不因時段調整產生新 delta
+   - hour mode：`session_charge = round(Rate × actual_minutes / 60)`（按時比例）
+   - 禁止再出現 `Rate × actual_minutes / SessionDuration` 這種「把按堂也縮放」的公式
+
+2. **`SessionEditModal.chargePreview` 必須依 `contract_rate_unit` 分支**
+   - session mode 強制 `value = rate`，且同時關閉 delta chip 與 `onSaveClick` 偏離警告
+   - 任何新的計費預覽分支必須同時更新前後端；單邊動會引起顯示與寫入不一致
+
+3. **`SmartCalendar.currentSessionChargeDisplay` 必須走 Single Source of Truth**
+   - session mode：直接取 `rate_per_30min`（= DB `Rate`），**不得**讀 `session_charge`
+   - hour mode：`session_charge` 優先；fallback 用 `rate × duration_hours`，禁止回退成舊的 `rate30 * (durationHours * 60 / 30)` 雙倍公式
+   - `mapCourse` 必須保留 `rate_unit` 欄位，否則分支判斷會退化
+
+4. **Backfill Migration 必須在應用程式碼之前執行**
+   - 部署順序：`php artisan migrate` → 後端 OPcache 清除 → `npm run deploy`
+   - 若先上線程式再跑 backfill，SmartCalendar（hour mode）會顯示還沒修正的 `session_charge` 舊值
+   - `session_charge_backfill_log` 為稽核與回滾的基礎，禁止在部署期間 drop 或 truncate
+
+5. **回歸守護測試固定位置**
+   - `backend/tests/Feature/ClassSessionChargeTest.php`（10 個：session 固定費、hour 比例計費、Charge delta 行為）
+   - `backend/tests/Feature/SessionChargeBackfillTest.php`（2 個：backfill 正確性、冪等性）
+   - 任何計費邏輯變更必須先更新這兩個檔案
+
+6. **不得假設「只要有 session_charge 就是權威值」**
+   - session mode 的 `session_charge` 是衍生值（derived），展示層應以契約 `Rate` 為準
+   - 任何新增的費用顯示位置（帳單、薪資、報表）在 session mode 下必須走 `getPerSessionFee(course)` 或等效公式，不可盲從 `session_charge`
+
+---
+
+## §2026-04-17 — 歷史課程漏算當月學收（禁止回歸項）
+
+### 根本原因
+`FinanceController::branchMonthlyTuition` 與 `::branchMonthlyTuitionExport` 查詢 `StudentClass` 時以 `->where('Stop', 0)` 過濾，導致已結案課程（Stop=1）即使當月有 attended 堂次也完全被排除。這屬於「**以當前狀態快照過濾歷史月份的事實**」典型 Bug 模式：報表查的是歷史月份，但判斷條件用的是當前時刻的旗標。
+
+### 禁止回歸項
+
+1. **`FinanceController::branchMonthlyTuition` 不得恢復 `->where('Stop', 0)` 過濾**
+   - 學收口徑以「當月實際出席堂次」為事實依據；`Stop = 1` 僅代表課程當前已結案，不代表當月沒有收入
+   - `INNER JOIN sc_counts` 已保證「只返回當月有堂次的課程」，零堂次的歷史課程自動排除
+   - `branchMonthlyTuitionExport`（CSV 匯出）必須與 `branchMonthlyTuition` 同步，二者查詢條件不得分歧
+
+2. **API response 必須保留 `is_stopped: bool` 欄位**
+   - 前端 `TuitionReportPage.vue` 依此欄位顯示灰色「已結課」badge 與降低 opacity
+   - 移除此欄位會讓主任無法識別報表中的歷史課程行，引發對帳疑問
+
+3. **CSV 匯出最右側「課程狀態」欄位不得移除**
+   - 值為「進行中／已結課／月結方案」三選一
+   - 主任可能以 CSV 對帳，沒有此欄位時無法辨識行意義
+
+4. **前端 `TuitionReportPage.vue` 的視覺區分必須保留**
+   - `is_stopped=true` → `.tr-stopped-row` class + `stopped-badge` span
+   - CSS：`opacity: 0.65`（hover 提升至 0.85）+ 灰色背景 `#6B7280`
+   - 不得改為只顯示 badge 而不降低 opacity，或反之（兩者合併才構成足夠識別度）
+
+5. **`alerts/tuition` 的 `Stop = 0` 條件不可比照移除**
+   - 催繳語意為「進行中課程才需要被提醒繳費」，與學收試算口徑不同
+   - 已結案的課程不應再出現在催繳清單
+   - 若誤把兩處當作同一 Bug 一併改動，會讓已結案課程出現在催繳名單造成騷擾
+
+6. **回歸守護測試固定位置**
+   - `backend/tests/Feature/BranchMonthlyTuitionHistoricalTest.php`
+   - 7 個案例：Stop=1 有堂次應出現、Stop=1 無堂次不應出現、Stop=1 堂次跨月不應出現、Stop=0 `is_stopped=false`、summary 正確加總、CSV 匯出、分校隔離
+   - 修改 `FinanceController::branchMonthlyTuition*` 前務必先跑此測試
+
+### 一般化 Bug 模式（值得推廣到其他報表）
+
+> **「快照過濾歷史事實」反模式**：任何以「當月／歷史期間」為維度的統計報表，禁止用「當前時刻的旗標（Stop / enabled / deleted_at IS NULL 等）」作為主要過濾條件。正確做法是以「事實來源（ClassSession / Invoice / Payment 等有時間戳的表）在期間內存在」為主條件，當前狀態僅作為**輔助標示**（如 badge），而非過濾。
+
+若未來設計新的 period-based 報表，審查時必檢查：
+- 過濾條件是否以「期間內事實」為主？
+- 「當前旗標」是否只用來標示（不過濾）？
+- 測試是否有「旗標=1 但期間內有事實」的案例覆蓋？
+
+---
+
+## §2026-04-17 — 請假後不再要求填評量（禁止回歸項）
+
+### 根本原因
+老師點名請假後，`CourseLeaveCascadeService` 作廢 LR（`VoidedAt`）並將 `ClassSession.Status` 設為 `leave`。`GET /api/v1/class-sessions` LEFT JOIN 因 `VoidedAt IS NULL` 帶不回 LR → `learning_record_status` 預設為 `'missing'`。`LearningRecordsPage::buildEvents` 未像 `SmartCalendar::evalBadge` 用 `LEAVE_STATUSES` 過濾堂次狀態，導致請假堂次被誤顯示為「未填評量」。
+
+### 禁止回歸項
+
+1. **前端 `LearningRecordsPage.vue::buildEvents` 必須依 `rawSession.status` 判斷請假類狀態**
+   - `LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused'])` 命中時：`formStatus = 'leave'`、`fillLocked = true`、`recordId = null`（防止進入 `canEdit` 分支）
+   - `cancelled`：`formStatus = 'cancelled'`、`fillLocked = true`
+   - **嚴禁**回到「只看 `rowStatus || record?.Status || 'missing'`」的舊邏輯——會讓請假堂次再度出現「未填」提示與可填評量按鈕
+   - 保留 `event.isLeave` / `event.isCancelled` flag 供模板樣式使用；`openFromScheduleMaybe` 必須對兩個 flag 提前 `return`，不可打開 modal
+
+2. **前端 `scheduleStatusLabel` 必須涵蓋請假／取消分支**
+   - `leave` / `leave_adjusted` / `excused` → `請假`
+   - `cancelled` → `取消`
+   - 移除分支會使狀態 chip 顯示為「未填」，UX 誤導同第 1 項
+
+3. **後端 `LearningRecord::scopeExcludeLeaveSessionPendingReview` 必須涵蓋 `leave` + `leave_adjusted` + `excused`**
+   - 2026-04-17 補上 `excused`，與前端 `LEAVE_STATUSES` 對齊
+   - **嚴禁**移除 `excused` 或新增請假類 status 時未同步更新此 scope
+   - 影響：`LearningRecordController::index`、`NotificationSyncService::buildLearningNotifications`、`tuition*` 待審／通知相關列表
+
+4. **前後端 `LEAVE_STATUSES` 必須同步**
+   - 出現在：`frontend/src/pages/SmartCalendar.vue`（`LEAVE_STATUSES` + `SESSION_STATUS_PRIORITY`）、`frontend/src/pages/LearningRecordsPage.vue`（`LEAVE_STATUSES`）、`backend/app/Models/LearningRecord.php`（`scopeExcludeLeaveSessionPendingReview`）
+   - 新增請假類 `ClassSession.Status` 時**四個位置都必須同步更新**；否則會出現「主任列表不顯示但老師評量頁仍要填」之類的語意漂移
+
+5. **回歸守護測試固定位置**
+   - `backend/tests/Feature/LearningRecordLeaveExclusionTest.php`
+   - 5 個案例：`leave` / `leave_adjusted` / `excused` pending 皆不出現 + `leave+approved` 仍可查 + `attended` pending 正常顯示
+   - 修改 `scopeExcludeLeaveSessionPendingReview` 或 `buildEvents` 前務必先跑此測試
+
+6. **`leave → attended` 恢復路徑不得被本次修改誤攔截**
+   - `rawSession.status = 'attended'` 時 `LEAVE_STATUSES.has()` 回 false，不進入本次攔截 → 不受影響
+   - 若未來擴增 `LEAVE_STATUSES`，必須驗證此恢復路徑仍可顯示評量（回歸守護：`LearningRecordLeaveExclusionTest::test_pending_lr_on_attended_session_remains_visible_regression`）
+
+7. **`deduplicateSessionsBySlot` 不得因本次邏輯而被移除或改順序**
+   - 本次僅在其輸出後附加狀態判斷；順序改動會連動 AI_REGRESSION_LESSONS §2026-04-15（同格重複卡片）回歸
+
+---
+
+## §2026-04-17 — 兼職老師薪資同層級併堂重複計算（PRD §4.3 v1.4，禁止回歸項）
+
+### 根本原因
+`FinanceController::buildConcurrencyBonusMap` 在 v1.3 對「同層級時間重疊」的 LR 採「每筆各得全額基礎薪 + 各得 `(n-1)*50*Δt` 加給」，缺少不同層級已有的「重疊段扣基本費」保護。結果當一位老師同時段教 3 名學生（同層級），基礎薪被計 3 次（Ruth蔣 04-03 實際應 ≈900 卻算成 2,400）。
+
+### 禁止回歸項
+
+1. **`buildConcurrencyBonusMap` 必須採「層級優先 + lr_id tie-break」統一規則**
+   - 取每個重疊段的 `concurrent` 集合中 `level_weight` 最大者的 `lr_id` 最小者為 `$primaryLrId`
+   - **主導者（高層且 lr_id 最小）**：`lrNet += (n-1) * bonus * dt`
+   - **非主導者（同層非 primary 或低層 dominated）**：`lrNet -= base_rate * dt`
+   - **嚴禁**回到「同層級每筆 LR 各保留基礎薪 + 各得加給」的 v1.3 行為——這會讓一位老師的同一個物理授課時段被計 N 份基礎薪。
+
+2. **tie-break 必須以 `lr_id` 決定，不得改用 `created_at` 或業務欄位**
+   - `lr_id` 是 DB 自增 PK，前端無法操控、無時區問題
+   - 業務上等值（同層級 = 相同時薪），tie-break 取法不影響老師總收入（`test_tie_break_swap_preserves_total_salary` 守護）
+   - 若未來需加入 tier-2 tie-break（例如「一對三優先」），可以 `class_type` 權重作為次序，但 tier-1 必須保留 `lr_id`
+
+3. **`buildSessionRow` 的 `max(0, $baseSalary + $concurrencyBonus)` 保底不得移除**
+   - 非主導 LR 的 `lrNet` 可為負值（例如 `-base_rate × dt`），靠 `max(0, ...)` 保證單堂薪資最低為 0
+   - 移除保底會出現負薪資、違反財務直覺
+
+4. **不同層級行為必須與 v1.3 完全一致（回歸守護）**
+   - 測試：`PayrollConcurrencyTest::test_different_level_regression_unchanged`（高中+國中 2h 完全重疊 → 900）
+   - 測試：`ParttimePayrollTest::test_concurrency_bonus_tutoring_plus_regular`（輔導被國小 dominated → 850）
+   - 測試：`ParttimePayrollTest::test_level_dominance_junior_over_tutoring`（國中+輔導 → 800）
+   - 任何改動若導致這三個測試的金額變動，代表誤改了回歸範圍。
+
+5. **回歸守護測試位置固定**
+   - 新功能規則：`backend/tests/Feature/PayrollConcurrencyTest.php`（8 tests）
+   - 舊測試更新：`backend/tests/Feature/ParttimePayrollTest.php` 中 `test_concurrency_bonus_*` 與 `test_same_level_tie_break_by_lr_id`、`test_one_on_two_both_students_present_concurrency`
+   - 修改 `buildConcurrencyBonusMap` 前務必先跑 `phpunit --testsuite Feature --filter 'Payroll|Parttime'`，必須 57 tests 全綠。
+
+6. **規格文件的黃金路徑是 `docs/PRD_PARTTIME_TEACHER_PAYROLL.md §4.3`**
+   - 任何計算邏輯異動必須同步 bump PRD 版本（v1.3 → v1.4 → ...）並在 CHANGELOG 留條目
+   - 參考業界最佳實踐（Gusto / Stripe）：薪資規則靜默改動是糾紛主要來源，改規則 = 改 PRD + 改測試 + 寫 CHANGELOG
+
+7. **修改 PHP 檔案後必須清 PHP-FPM opcache，否則 Web 請求仍執行舊 bytecode**
+   - PHP-FPM 預設 `opcache.enable=1`，**CLI 與 FPM 的 opcache 是分開的 shared memory**
+   - `php artisan config:cache` / `route:cache` **不會**清 FPM opcache，PHPUnit 測試通過也不代表生產環境生效
+   - 正確做法（三選一）：
+     - 跑完整 `./deploy.sh`（已含 php-fpm restart）
+     - `sudo service php8.2-fpm restart`
+     - `cd backend && php artisan opcache:reset`（本專案自製指令，不需 sudo，透過 HTTPS loopback 觸發 `opcache_reset()`）
+   - 本次 v1.4 部署踩過此坑：程式碼已合入 + 測試全綠，但使用者看到的薪資數字仍是 v1.3 的結果（截圖 1350 而非 2025），根因是部署時未清 FPM opcache
+   - 若 `sudo` 需要互動密碼無法跑時，務必 fallback 到 `php artisan opcache:reset`
+
+---
+
+## §2026-04-17 — 內部聊天強化：AttachAuthUser 需同時查 teacher_branches（禁止回歸項）
+
+### 根本原因
+`AttachAuthUser` 原本只從 `UserCampus` 解析老師的校區清單。部分老師帳號只有 `teacher_branches` 記錄（無 `UserCampus`），導致 `auth_has_campus = false`，`require_campus` middleware 攔截並回傳 403，老師無法使用需要校區的任何 API（包含內部聊天聯絡人載入）。
+
+### 禁止回歸項
+
+1. **`AttachAuthUser` 是唯一合法的校區解析入口**
+   - 所有 Controller 和 Service 必須使用 `auth_campus_ids` / `auth_has_campus` attribute，**禁止**在 Controller 層自行再查詢 `UserCampus` 或 `teacher_branches` 判斷校區歸屬。
+   - 目前 `ProfileController` 有自行查 `teacher_branches` 的 fallback（為歷史遺留），這是**例外而非標準**，未來應移除。
+
+2. **teacher_branches fallback 觸發條件必須同時滿足三個**
+   ```php
+   empty($campusIds) && $user->type === 'T' && Schema::hasTable('teacher_branches')
+   ```
+   - 只有 type=`T`（老師）才允許走 fallback
+   - `UserCampus` 確實為空才查 fallback
+   - 表不存在時不執行（避免測試環境 crash）
+
+3. **無任何校區記錄的老師仍應收到 403**
+   - 若 `UserCampus` 為空且 `teacher_branches` 也無記錄（兩表皆空），`auth_has_campus` 仍為 `false`，`require_campus` 正確回 403，Toast 應顯示「帳號尚未設定校區，請聯絡主任」。
+
+4. **前端錯誤分類（`loadStaff`）禁止回歸為通用「請確認網路」**
+   - HTTP 401 → 「登入逾期，請重新登入」
+   - HTTP 403 + message 含 campus → 「您的帳號尚未設定校區，請聯絡主任」
+   - HTTP 403 其他 → 「無存取權限，請聯絡管理員」
+   - `!navigator.onLine` 或 `!status` → 「網路連線異常，請確認後重試」
+   - 5xx → 「伺服器異常，請稍後重試」
+
+5. **typing 端點 POST /api/v1/chat/threads/{id}/typing 必須驗證 thread 成員**
+   - `ChatService::isMember($threadId, $userId)` 必須在廣播前執行
+   - 非成員呼叫必須回 403，不得廣播至他人 thread
+
+6. **`GET /api/v1/profiles` 必須保留在 `role:director,teacher` 群組，禁止在 director-only 群組重複註冊**
+   - Laravel 相同 method+URI 後註冊的路由會**覆蓋**前者。若在 director-only 群組中重複 `Route::get('profiles', ...)`，老師一律被 `RequireRole` 擋成 403（message="Forbidden"），前端就算分類再精細也只能顯示「無存取權限」。
+   - **director-only 群組只能放 profile 的寫入動作**：`POST /profiles`、`POST /profiles/bulk-teachers`、`POST /profiles/{id}/reset-password`、`PUT /profiles/{id}`、`DELETE /profiles/{id}`，以及 `teacher_branches` 三支 CRUD。
+   - 回歸守護測試：`ChatEnhancementTest::test_teacher_can_call_get_profiles_endpoint`（老師 `GET /profiles` 不得 403）+ `test_teacher_cannot_post_profiles`（老師 `POST /profiles` 必須 403）。修改 `backend/routes/api.php` 的 profiles/teacher_branches 區塊時請先跑這兩個測試。
+
+---
+
+## §2026-04-18 — AI 工具靜默回退 api.php 路由（禁止回歸項）
+
+### 根本原因
+
+Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/routes/api.php` 中 7 條 `schedule-discrepancies` 路由**，導致主任開啟「課表回報管理」頁面時收到 HTTP 404，老師無法提交出入回報。Controller（`ScheduleDiscrepancyController`）與 Migration（`2026_04_17_200000_create_schedule_discrepancies_table`）均存在，純粹是路由注冊被移除。
+
+這是一種**靜默回退（Silent Revert）**的 AI 工具風險模式：AI 改動某個大檔案時，未讀取完整差異，直接以「記憶中的舊版本」覆蓋檔案局部，讓已知有效的新增行消失，但不產生任何語法錯誤或測試失敗（路由只有在 HTTP 請求時才顯現）。
+
+### 禁止回歸項
+
+1. **任何 `api.php` 修改後必須執行 `php artisan route:list` 確認關鍵路由仍存在**
+   - 至少核查：`schedule-discrepancies`（7 條）、`profiles`（`GET` 在 `director,teacher` 群組）
+   - 靜態路由（`/my`、`/summary`、`/active-for-session`）必須在動態路由（`/{id}`）**之前**出現
+
+2. **`RouteRegistrationTest` 是 api.php 的路由守護測試，不得刪除或弱化**
+   - `backend/tests/Feature/RouteRegistrationTest.php`
+   - 7 個存在性斷言 + 1 個靜態-先於-動態順序斷言
+   - 任何 `api.php` 修改後必須先跑此測試（`phpunit tests/Feature/RouteRegistrationTest.php`，8 tests 全綠）
+
+3. **AI 工具修改 `api.php` 前必須先閱讀完整檔案**
+   - `api.php` 超過 400 行，AI 工具若只讀前半段就開始輸出，會把後半段（含 `schedule-discrepancies` 區塊）隱性截掉
+   - Cursor Agent：改動 routes 前先 `Read api.php` 完整檔案
+   - Claude Code：改動 routes 前在 `CLAUDE.md` 有此條提示（見下）
+
+4. **`CHANGELOG.md` 有記錄 ≠ 程式碼中存在**
+   - 本次事件的教訓：`CHANGELOG.md` 2026-04-17 已記載「補回 7 條路由」，但實際 `api.php` 中這些路由被 Claude Code 再次移除
+   - **任何新增的路由、函數、欄位，部署前必須以 `grep` / `route:list` / `php artisan tinker` 實際驗證存在**，不能只信 CHANGELOG
+
+5. **新增 CLAUDE.md 提示（已加入）**
+   - `CLAUDE.md` 的「routes 修改注意」段落已加入：「改動 routes/api.php 前必須先跑 `php artisan route:list --path=schedule-discrepancies` 確認 7 條路由均存在，並在修改後重跑」
+
+### 回歸守護測試
+
+```bash
+# 路由存在性 + 靜態先於動態
+./vendor/bin/phpunit tests/Feature/RouteRegistrationTest.php
+# 8 tests, 10 assertions — 全綠才允許合併
+```
+
+### 一般化教訓（給所有 AI Agent）
+
+> **「AI 大檔案覆蓋反模式」**：AI 工具對超過 300 行的關鍵設定檔（`api.php`、`AppServiceProvider.php`、重要 Vue 元件）進行「重構/整理」類操作時，極易因 context window 截斷或記憶偏差而靜默移除後段定義。
+>
+> **標準防護流程**：
+> 1. 改前 `Read` 完整檔案，確認改動範圍
+> 2. 改後針對關鍵特徵字串 `grep` 驗證
+> 3. 有對應測試的，改後立即執行測試
+> 4. 無法一次確認時，偏好「小改多驗」而非「大改少驗」
+
+---
+
 **不同工具如何接到本檔：** **Cursor** 透過 `AGENTS.md` 與 `.cursorrules`；**Claude Code** 讀根目錄 **`CLAUDE.md`**；**GitHub Copilot**／在 GitHub 上工作的 AI 讀 **`.github/copilot-instructions.md`**；人類協作者請看 **`CONTRIBUTING.md`**（皆連回本檔與繳費規則）。
 
 相關專項規格：
@@ -31,6 +612,36 @@
 - **單堂時間費率自動計算（`session_charge`）**：見下方 **§2026-04-17 — 單堂時間費率自動計算**（per-day duration 優先、Rate 變更 preserve delta、SmartCalendar 僅顯示不編輯）
 - **課程管理同日 chip 重複（LEFT JOIN 行乘積）**：見下方 **§2026-04-15 — ClassSessionController::index LEFT JOIN 行乘積導致 chip 重複**（`sub_sched`／`LearningRecord`／`StudentSingIn` 的 LEFT JOIN 必須用 Derived Table 去重；前端 `normalizeClassSessionsPayload` 須有 id 去重防禦層）
 - **評量頁課表同時段重複卡片**（`cancelled + scheduled` 同格兩張卡）：見下方 **§2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片（buildEvents 未去重）**
+- **課表出入回報系統（老師回報／主任處理）**：見下方 **§2026-04-17 — 課表出入回報系統禁止回歸項**（`reporter_id` 後端注入不可改為前端傳；重複回報須回既有紀錄不可 insert 新筆；`missing_session` 不可綁 `class_session_id`；`resolved` 必填 ≥10 字說明；LINE Push 失敗不得阻擋 API；`withdrawn` 為軟取消不可硬刪；跨校 `require_campus` 必保留）
+
+---
+
+## 2026-04-17 — 課表出入回報系統禁止回歸項
+
+**背景**：此系統解決「主任課」（主任排班、他人授課）在紙本/LINE 改動後系統未即時同步、導致老師點名遇到 4 種出入狀況的長期痛點（詳見 PRD 與 CHANGELOG）。以下為**禁止回歸**的關鍵契約，任何人碰到相關檔案時**必對照本節**。
+
+| 禁止項 | 理由 | 檔案 / 檢查點 |
+|---|---|---|
+| **`reporter_id` 由 body 傳入** | 任何 T 帳號可偽冒他人回報，破壞稽核性 | `ScheduleDiscrepancyController::store()` 必須以 `$this->resolveUserId()` 讀 `auth_user`，**絕不可** 接受 request body 的 `reporter_id`；test `test_teacher_can_submit_discrepancy_for_known_session` 已鎖此行為 |
+| **重複回報 insert 新筆** | 同一堂次會有多筆 pending 噪音，違反 FR-003 | `store()` 對有 `class_session_id` 的 payload 必先 `whereIn status pending/acknowledged` 查詢；存在時回 200 + `duplicate:true` + 現有紀錄，**不得** 新建 |
+| **`missing_session` 類型允許綁定 `class_session_id`** | 語意矛盾（「此課不在系統」卻綁 session） | `store()` L.44-49 的 guard 不可拿掉 |
+| **`missing_session` 允許空 subject/student/time** | 主任拿不到上課資訊無法處理 | 相同 guard L.50-54，三欄位為必填 |
+| **`resolved` 處理說明 < 10 字** | 違反 FR-008 稽核要求 | `updateStatus()` `mb_strlen($note) < 10` 回 422 不可移除 |
+| **已結案（resolved/withdrawn）改回 pending/acknowledged** | 破壞生命週期不可逆原則 | `updateStatus()` 回 409；test `test_status_lifecycle_with_resolution_note_guard` 覆蓋 |
+| **LINE Push 失敗拋例外阻擋 API** | 雲端/token 掛掉會連帶老師無法回報 | `ScheduleDiscrepancyNotifier` 一定用 try/catch + log，`fireNotification` 用 `dispatch(...)->afterResponse()`；test `test_submit_succeeds_even_without_line_config` 鎖此路徑 |
+| **`withdraw` 改為硬刪** | 失去誰在何時撤銷的稽核 | `withdraw()` 僅改 `status=withdrawn` + `withdrawn_at`，不可 `->delete()` |
+| **老師撤銷他人回報** | 權限洩漏 | `withdraw()` 內必驗 `reporter_id === userId`；test `test_other_teacher_cannot_withdraw_someone_elses_report` |
+| **主任已確認後還允許老師撤銷** | 稽核脆弱（撤掉已進入處理流程的紀錄） | `withdraw()` 必驗 `status === pending`，否則 409；test 已覆蓋 |
+| **移除 `require_campus` middleware** | 跨校讀取/寫入會被打通 | `routes/api.php` 所有 schedule-discrepancy 路由保留 `require_campus`；test `test_cross_campus_director_cannot_view_other_campus_reports` 鎖此 |
+| **封存改為硬刪或降低保留年限** | PRD 第 6 節明訂 12 個月保留；刪除會破壞日後稽核 | `ArchiveScheduleDiscrepancies` 只改 `archived_at`，預設 12 個月 |
+| **主任儀表板/管理頁 summary 算入 `archived_at` 非 null 者** | 舊資料會灌爆提示，操作者抗拒使用 | `summary()`/`index()` 預設 `whereNull('archived_at')` |
+
+**測試護欄**：`backend/tests/Feature/ScheduleDiscrepancyApiTest.php`（14 tests）— 改動上述任一行為前，**先跑此套件，確認原測試仍通過或有意識地更新**。
+
+**前端禁止回歸**：
+- `AttendancePage.vue` 的 「回報出入」按鈕、「已回報」徽章、「有課不在列表中？點此回報」CTA 不得因重構被移除——這些是 FR-001/003/004 的使用者入口。
+- `ReportDiscrepancyModal.vue` 的 `withdraw` 按鈕只能在 `status=pending` 時出現；其他狀態改為唯讀。
+- `DirectorDashboard.vue` 課表回報卡片與 `App.vue` sidebar 的「課表回報管理」入口不得因佈局調整被拿掉（否則主任看不到待處理提示 → 流程崩潰）。
 
 ---
 

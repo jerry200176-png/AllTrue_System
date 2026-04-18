@@ -83,6 +83,15 @@
       </div>
     </div>
 
+    <!-- Post-creation success banner -->
+    <transition name="fade">
+      <div v-if="creationSuccessBanner" class="creation-success-banner" role="status">
+        <span class="material-symbols-outlined creation-success-banner__icon">check_circle</span>
+        <span>{{ creationSuccessBanner }}</span>
+        <button class="creation-success-banner__close" @click="creationSuccessBanner = null" aria-label="關閉">✕</button>
+      </div>
+    </transition>
+
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
       <div v-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
@@ -643,6 +652,13 @@ const schedulerTeachers = computed(() => (
 ));
 const filters = ref({ name: '', class_type: '', teacher_name: '', teacher_id: '', course_status: '' });
 const pagination = ref({ page: 1, lastPage: 1, total: 0, perPage: 50 });
+const creationSuccessBanner = ref(null);
+let creationBannerTimer = null;
+function showCreationBanner(msg) {
+  creationSuccessBanner.value = msg;
+  if (creationBannerTimer) clearTimeout(creationBannerTimer);
+  creationBannerTimer = setTimeout(() => { creationSuccessBanner.value = null; }, 6000);
+}
 const completedSessionDatesByCourse = ref({});
 const classSessionsByCourse = ref({});
 const effectiveSessionDatesByCourse = ref({});
@@ -1091,9 +1107,18 @@ function openBackfillModal() {
   loadRoomsForBranch();
 }
 
-async function handleUniversalBackfillSuccess() {
+async function handleUniversalBackfillSuccess(result) {
   showBackfillModal.value = false;
   await loadCourses();
+  if (result?.package_id) {
+    const memberCount = result?.members?.length ?? 0;
+    const pkgName = result?.package?.name ?? '多科方案';
+    showCreationBanner(memberCount > 0
+      ? `方案「${pkgName}」已建立，共 ${memberCount} 個科目已加入課程管理列表`
+      : `方案「${pkgName}」已建立，課程已加入課程管理列表`);
+  } else if (result) {
+    showCreationBanner('課程建立成功，已更新課程管理列表');
+  }
 }
 
 function handleSchedulerDuplicateCM(evt) {
@@ -2057,14 +2082,47 @@ const togglePaymentStatus = async (c) => {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
       if (token) {
-        const res = await fetch(`/api/v1/student-classes/${c.id}`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ payment_status: newStatus })
-        });
+        const sendPaymentStatus = async (extra = {}) => {
+          const payload = { payment_status: newStatus, ...extra };
+          if (newStatus === 'unpaid') {
+            payload.paid_at = null;
+          }
+          return fetch(`/api/v1/student-classes/${c.id}`, {
+            method: 'PUT',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify(payload)
+          });
+        };
+        let res = await sendPaymentStatus();
+        if (res.status === 409 && newStatus === 'unpaid') {
+          const errBody = await res.json().catch(() => ({}));
+          const w = errBody?.warnings || {};
+          const amount = Number(w.total_paid_amount || 0).toLocaleString();
+          const msg = [
+            '此課程已有發票收款記錄：',
+            `  • 發票 ${w.invoice_count || 0} 筆`,
+            `  • 付款 ${w.payment_count || 0} 筆，共 NT$ ${amount}`,
+            '',
+            '直接改為未繳費將與發票資料不同步（會計建議走「付款報表 → 作廢」）。',
+            '仍要強制改為未繳費嗎？',
+          ].join('\n');
+          if (!confirm(msg)) return;
+          res = await sendPaymentStatus({ force_clear_paid: true });
+        }
         if (res.ok) {
           c.payment_status = newStatus;
+          if (newStatus === 'unpaid') {
+            c.paid_at = null;
+            c.last_paid_at = null;
+          } else {
+            const json = await res.json().catch(() => null);
+            const next = json?.data || json;
+            if (next && typeof next === 'object') {
+              if ('paid_at' in next) c.paid_at = next.paid_at;
+              if ('last_paid_at' in next) c.last_paid_at = next.last_paid_at;
+            }
+          }
           return;
         }
       }
@@ -2072,6 +2130,10 @@ const togglePaymentStatus = async (c) => {
   }
   await supabase.from('student-classes').update({ payment_status: newStatus }).eq('id', c.id);
   c.payment_status = newStatus;
+  if (newStatus === 'unpaid') {
+    c.paid_at = null;
+    c.last_paid_at = null;
+  }
 };
 
 const loadStudents = async () => {
@@ -2774,6 +2836,38 @@ onUnmounted(() => {
 }
 
 /* ----- Compact stats strip ----- */
+.creation-success-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 8px;
+  color: #065f46;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.creation-success-banner__icon {
+  font-size: 1.2rem;
+  color: #059669;
+  flex-shrink: 0;
+}
+.creation-success-banner__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #065f46;
+  font-size: 1rem;
+  opacity: 0.7;
+  padding: 0 4px;
+}
+.creation-success-banner__close:hover { opacity: 1; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
 .stats-strip {
   display: flex;
   flex-wrap: wrap;

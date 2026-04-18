@@ -8,10 +8,15 @@ class CoursePackage extends Model
 {
     protected $table = 'course_packages';
 
+    const BILLING_MODE_SESSION = 'count';
+    const BILLING_MODE_MONTHLY = 'date';
+
     protected $fillable = [
         'student_id',
         'campus_id',
         'name',
+        'billing_mode',
+        'settlement_day',
         'total_sessions',
         'remaining_sessions',
         'used_sessions',
