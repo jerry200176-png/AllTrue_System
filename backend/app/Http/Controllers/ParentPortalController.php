@@ -231,6 +231,24 @@ class ParentPortalController extends Controller
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
 
+        // PRD-H (2026-04-18)：月結制專用的「本月已上堂數」與預估月費，供家長端學習情況卡片顯示。
+        $monthlyClassIds = $classes
+            ->filter(fn ($c) => (string) ($c->ScheduleMode ?? 'count') !== 'count')
+            ->pluck('ID')->values()->all();
+        $attendedThisMonth = [];
+        $monthStart = Carbon::now()->startOfMonth()->toDateString();
+        $monthEnd   = Carbon::now()->endOfMonth()->toDateString();
+        $currentMonthLabel = Carbon::now()->format('n') . '月';
+        if (!empty($monthlyClassIds)) {
+            $attendedThisMonth = ClassSession::whereIn('StudentClassID', $monthlyClassIds)
+                ->whereBetween('SessionDate', [$monthStart, $monthEnd])
+                ->whereIn('Status', ['completed', 'attended', 'late'])
+                ->groupBy('StudentClassID')
+                ->selectRaw('StudentClassID, COUNT(*) as c')
+                ->pluck('c', 'StudentClassID')
+                ->toArray();
+        }
+
         $sessionMetrics = static function (StudentClass $c) use ($observedUsedByClass): array {
             $mode = (string) ($c->ScheduleMode ?? 'count');
             $purchased = max(0, (int) ($c->SessionCount ?? 0));
@@ -334,40 +352,46 @@ class ParentPortalController extends Controller
             return $row;
         });
 
-        // Per-course breakdown — 家長端「進行中」：堂數制僅顯示尚有剩餘堂數者
+        // Per-course breakdown — 家長端「進行中」：
+        //   - 堂數制：剩餘 > 0 才顯示（已用完或已停課+已繳不列）
+        //   - 月結制：一律顯示（除非 stopped+paid 代表整份結案），顯示本月已上堂數與預估月費
         $perCourse = $classes
             ->filter(function ($c) use ($sessionMetrics) {
-                $paid = (bool) $c->Paid;
+                $paid    = (bool) $c->Paid;
                 $stopped = (bool) $c->Stop;
-                $metrics = $sessionMetrics($c);
-                $remaining = (int) $metrics['remaining'];
+                $isCount = (string) ($c->ScheduleMode ?? 'count') === 'count';
 
                 if ($stopped && $paid) {
                     return false;
                 }
 
-                if ((string) ($c->ScheduleMode ?? 'count') === 'count') {
-                    return $remaining > 0;
+                if ($isCount) {
+                    return (int) $sessionMetrics($c)['remaining'] > 0;
                 }
 
-                if ($paid && $remaining <= 0) {
-                    return false;
-                }
-
+                // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics) {
-                $metrics = $sessionMetrics($c);
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth) {
+                $metrics   = $sessionMetrics($c);
+                $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
+                $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
+                $monthlyFee     = $isMonthly ? $this->resolveMonthlyFee($c) : 0;
+                $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
 
                 return [
-                    'id'                 => $c->ID,
-                    'subject'            => $this->resolveSubjectName($c),
-                    'schedule_mode'      => $c->ScheduleMode,
-                    'sessions_purchased' => $c->SessionCount,
-                    'remaining_sessions' => $metrics['remaining'],
-                    'used_sessions'      => $metrics['used'],
-                    'is_stopped'         => (bool) $c->Stop,
-                    'paid'               => (bool) $c->Paid,
+                    'id'                   => $c->ID,
+                    'subject'              => $this->resolveSubjectName($c),
+                    'schedule_mode'        => $c->ScheduleMode,
+                    'sessions_purchased'   => $c->SessionCount,
+                    'remaining_sessions'   => $metrics['remaining'],
+                    'used_sessions'        => $metrics['used'],
+                    'is_stopped'           => (bool) $c->Stop,
+                    'paid'                 => (bool) $c->Paid,
+                    'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
+                    'monthly_target'       => $isMonthly ? ($monthlyTarget ?: null) : null,
+                    'attended_this_month'  => $isMonthly ? $attended : null,
+                    'monthly_fee_estimate' => $isMonthly ? $monthlyFee : null,
                 ];
             })
             ->values();
@@ -505,6 +529,7 @@ class ParentPortalController extends Controller
                 'line_linked' => StudentLineBinding::where('student_id', $student->id)->exists(),
             ],
             'students' => $allStudents->count() > 1 ? $allStudents->toArray() : null,
+            'current_month_label'      => $currentMonthLabel,
             'remaining_sessions_total' => $remainingTotal,
             'remaining_by_subject'     => $remainingBySubject,
             'classes'                  => $perCourse,
@@ -688,6 +713,40 @@ class ParentPortalController extends Controller
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/[^0-9]/', '', $phone);
+    }
+
+    /**
+     * PRD-H：月結課程的預估「每月應繳」金額，給家長端學習情況卡片顯示參考。
+     * 計算邏輯：
+     *   1) 若有 `Charge` 欄位（通常 = 月費或整期總額），先把它當成月費回傳；
+     *   2) 否則 rate × monthly_sessions（rate_unit=session 直接乘；hour 要換算 SessionDuration）。
+     * 僅用於「預估顯示」，不影響實際對帳 / invoice 金額。
+     */
+    private function resolveMonthlyFee(StudentClass $class): int
+    {
+        // 月結課程的「每月應繳」估算：
+        //   1) 若設定了 monthly_sessions 且有 Rate → monthly_sessions × 單堂單價（優先，最直覺）
+        //   2) 否則使用 Charge 欄位（當該欄儲存月費時）
+        //   3) 最後退而求其次用 Pay
+        $monthlySessions = (int) ($class->monthly_sessions ?? 0);
+        if ($monthlySessions > 0) {
+            $unitPrice = $this->resolveUnitPrice($class, $monthlySessions);
+            if ($unitPrice > 0) {
+                return (int) round($unitPrice * $monthlySessions);
+            }
+        }
+
+        $charge = (float) ($class->Charge ?? 0);
+        if ($charge > 0) {
+            return (int) round($charge);
+        }
+
+        $pay = (float) ($class->Pay ?? 0);
+        if ($pay > 0) {
+            return (int) round($pay);
+        }
+
+        return 0;
     }
 
     private function resolveUnitPrice(StudentClass $class, int $sessionCount): float

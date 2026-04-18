@@ -2,6 +2,42 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-18 — PRD-H：家長端月結課程顯示「本月已上 X 堂」＋月費預估；nightly 備份強化
+
+### Problem
+
+1. 家長端「進行中的課程」卡片對月結（`ScheduleMode='date'`）課程硬套用堂數制欄位，顯示「已使用 0 / 購買 0 / 剩餘 0」無意義，月結家長看不出來自己本月上了幾堂、該繳多少。
+2. 備份側只留 7 天日備、沒有月備、沒有 git tag，想回溯 3 個月前的版本只能翻 commit，等同沒有「防版本回溯」的錨點。
+3. 家長反映「透過木柵 OA 綁定 LINE 還要通過大安認證」— 經原始碼審查確認**無任何主任審核步驟**（`LineWebhookController::bindStudent` insertOrIgnore 直接寫入 `student_line_bindings`）；家長看到的「兩邊都要綁」是因為每個分校各自擁有獨立 LINE channel（webhook 只能查 `CampusID = 當前 OA`），跨校學生需在兩個 OA 各發一次「綁定」指令而非審核。此議題僅須向家長說明，不改程式。
+
+### Change
+
+- **`backend/app/Http/Controllers/ParentPortalController.php`** — `dashboard()`：
+  - 新增 `$attendedThisMonth`：針對 `ScheduleMode !== 'count'` 的課程，以 `ClassSession.SessionDate` 介於當月起迄、`Status IN (completed,attended,late)` 統計本月已上堂數。
+  - `$perCourse` filter：月結課程不再因 `RemainingSessions <= 0 && Paid` 被隱藏，一律顯示（stopped+paid 才移除）；堂數制維持舊行為。
+  - `$perCourse` payload 新增欄位：`settlement_day`、`monthly_target`、`attended_this_month`、`monthly_fee_estimate`；回應根層加 `current_month_label`（例：「4月」）。
+  - 新增 `resolveMonthlyFee()`：優先用 `monthly_sessions × unit_price` 估月費，退而用 `Charge`／`Pay`。
+- **`frontend/src/pages/ParentPortal.vue`** — 課程卡片：
+  - 以 `isMonthlyCourse(c)` 分流：堂數制保留「已上 X / 購買 Y / X 堂剩餘」；月結顯示「{月}已上 X / 預定 Y 堂/月」進度條＋「$月費預估」＋「月結」badge。
+  - 新增 `monthlyProgressPercent()`、`formatMoney()` helper，以及 `.pp-monthly-stats`、`.pp-badge-info` CSS。
+  - `courseCardClass()` 對月結：僅未繳費時套 `warning`，避免因 `remaining_sessions=0` 誤標紅。
+- **`scripts/nightly-backup.sh`** — 備份強化：
+  - 日備保留天數 7 → 14；新增 `backups/monthly/` 月備（`alltrue_monthly_YYYY-MM.sql.gz`），每月 1 號或當月尚無月備時產生，保留 12 份。
+  - 每次 nightly 自動打 `nightly-YYYYMMDD-HHMM` git tag 並 push 至 origin，本地+遠端各僅保留最新 60 個；作為版本回溯時的時間錨點。
+
+### Impact
+
+- 家長開啟 LIFF／學習情況頁後，月結課程會直接看到「4月已上 2 堂 / 預定 4 堂/月」＋「$6600 月費預估」＋「已繳費／未繳費」徽章，不再出現「已使用 0 / 剩餘 0」的空白資訊。堂數制家長顯示完全向下相容。
+- 回溯 3、6、12 個月前資料庫 → 只要讀 `backups/monthly/alltrue_monthly_YYYY-MM.sql.gz`；回溯 3 個月前的程式碼 → 取 `nightly-YYYYMMDD-HHMM` tag 即可，不必猜 commit hash。
+- **無 DB migration、無破壞性變更**，純 payload 新增欄位；舊 app cached 版本仍可正常顯示（新欄位 null 時前端回到堂數制 render）。
+- 家長端「兩分校都要認證」疑慮已書面澄清；程式碼無需修改。
+
+### Auto-verified
+
+- `php artisan test tests/Feature/ParentPortalLoginIsolationTest.php` → 7/7 green。
+- `bash -n scripts/nightly-backup.sh` → syntax OK。
+- Tinker 實資料驗證：月結課程 ID=200（rate 1100/session × monthly_sessions 3）→ monthly_fee_estimate=3300、attended_this_month=1；ID=193/194 → attended_this_month=2/2。
+
 ## 2026-04-18 — PRD-F：兼職薪資改為 30-min slice-based 重疊計算（覆蓋 2026-04）
 
 ### Problem
