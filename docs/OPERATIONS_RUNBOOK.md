@@ -167,7 +167,6 @@ ls -la backend/.env
 - `README.md`
 - `AI_QUICKSTART.md`
 - `docs/GITHUB_SYNC_WORKFLOW.md`
-- `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`
 - `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`（分校選單 / 學生消失 / 全 API 500）
 
 ---
@@ -338,4 +337,79 @@ bash /home/admin/scripts/infra/baseline-capture.sh
 5. 核准後再手動送出點名（POST attendance）：應回傳 409
 6. 評量 rollback 後：堂數恢復、`ClassSession.Status=scheduled`（若無其他點名）；若有獨立點名，rollback 不影響獨立點名
 7. 科目數統計隨評量審核變動，但不影響堂數
+
+---
+
+## M. LINE 課表回報推播設定（`staff_line_group_id`）（2026-04-18 新增）
+
+### 背景
+
+課表出入回報系統（`schedule-discrepancies`）在老師提交回報時，會自動推播 LINE 訊息至各分校的主任群組。推播使用 LINE Messaging API Push Message，需要：
+1. 分校既有的 `messaging_channel_token`（LINE Bot Channel Access Token）
+2. 新增的 `staff_line_group_id`（主任 LINE 群組的 Group ID）
+
+Migration `2026_04_17_200001_add_staff_line_group_id_to_campus` 已新增此欄位至 `Campus` 資料表（nullable）。**未設定時，推播會靜默跳過**（不影響 API 回應與 in-app 功能）。
+
+### 設定步驟
+
+#### 1) 取得 LINE Group ID
+
+1. 在 LINE 上為各分校主任建立（或使用既有）群組
+2. 將 AllTrue LINE Bot 加入群組（需為群組成員）
+3. 隨便在群組發一則訊息，Bot 會收到 Webhook 事件
+4. 查看 `backend/storage/logs/laravel.log` 或 Webhook 日誌，找到：
+   ```json
+   { "type": "message", "source": { "type": "group", "groupId": "Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } }
+   ```
+5. 複製 `groupId`（以 `C` 開頭，32 位英數字）
+
+#### 2) 寫入資料庫
+
+```bash
+# 登入 MySQL（或使用 phpMyAdmin / Tinker）
+cd /home/admin/backend
+
+# 方法 A：Artisan Tinker
+php artisan tinker
+>>> DB::table('Campus')->where('id', <分校ID>)->update(['staff_line_group_id' => 'C你的GroupId'])
+
+# 方法 B：直接 SQL
+mysql -u root -p alltrue -e "UPDATE Campus SET staff_line_group_id='C你的GroupId' WHERE id=<分校ID>;"
+```
+
+#### 3) 驗證
+
+```bash
+# 確認欄位已寫入
+php artisan tinker --execute="print_r(DB::table('Campus')->select('id','name','staff_line_group_id')->get()->toArray())"
+
+# 觸發測試推播（在 Tinker 中）
+php artisan tinker
+>>> $d = \App\Models\ScheduleDiscrepancy::latest()->first();
+>>> \App\Services\ScheduleDiscrepancyNotifier::notify($d);
+```
+
+#### 4) 未設定時的行為
+
+若 `staff_line_group_id` 為空（或 `messaging_channel_token` 未設定），`ScheduleDiscrepancyNotifier` 會：
+- 記錄 `INFO schedule_discrepancy.line_skip`（`reason: missing_group_id` 或 `missing_token`）至 `laravel.log`
+- 靜默返回，**不影響 API 回應**（HTTP 200）
+- in-app 儀表板仍正常顯示所有回報
+
+#### 5) 排錯
+
+| 症狀 | 檢查點 |
+|---|---|
+| LINE 收不到訊息（無 log） | 確認 `staff_line_group_id` 不為空；確認 Bot 在群組內 |
+| log 出現 `line_4xx: status=403` | `messaging_channel_token` 已過期或沒有 push 權限，至 LINE Dev Console 確認 |
+| log 出現 `line_4xx: status=400` | `groupId` 格式錯誤或 Bot 不在群組中 |
+| log 出現 `line_failed` | 三次重試均失敗（5xx / 429），屬 LINE 服務端問題；in-app 仍正常，無需額外處理 |
+| `test_submit_succeeds_even_without_line_config` 失敗 | 代表 Notifier 例外未被 try/catch 正確吸收，為嚴重回歸，立刻查 `ScheduleDiscrepancyNotifier` |
+
+#### 6) 注意事項
+
+- `staff_line_group_id` 是**分校級**設定，每個分校一個群組
+- 若分校沒有 LINE Messaging API（`messaging_channel_token`），推播功能無效（已在 OQ-05 P1 列入下一 Sprint：建立 UI 設定頁讓主任自助填入）
+- LINE Notify 已於 2025-03-31 下線，此系統使用 LINE Messaging API Push Message（不同 API，需 Bot Channel Token）
+- LINE Push 失敗**不阻擋**課表出入回報的提交與處理流程
 

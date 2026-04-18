@@ -26,7 +26,10 @@
           <button v-if="canTransition('late')" class="se-action-btn se-btn-late" @click="$emit('status-change', 'late')">遲到</button>
           <button v-if="canTransition('cancelled')" class="se-action-btn se-btn-cancelled" @click="$emit('status-change', 'cancelled')">取消</button>
           <button class="se-action-btn se-btn-reschedule" @click="$emit('start-reschedule')">調課</button>
-          <button class="se-action-btn se-btn-substitute" @click="$emit('start-substitute')">換代課老師</button>
+          <button
+            class="se-action-btn se-btn-substitute"
+            @click="featureSubstituteV2 ? $emit('open-substitute-v2') : $emit('start-substitute')"
+          >換代課老師</button>
           <button class="se-action-btn se-btn-edit-note" @click="$emit('start-edit-note-time')">備註 / 時段</button>
         </div>
       </div>
@@ -116,8 +119,9 @@
           <template v-if="chargePreview.kind === 'ok'">
             <span class="se-charge-label">此堂費用</span>
             <span class="se-charge-value">NT$ {{ chargePreview.value.toLocaleString() }}</span>
-            <span v-if="chargePreview.deltaText" class="se-charge-delta">{{ chargePreview.deltaText }}</span>
-            <small class="se-charge-hint">實際 {{ chargePreview.actualMinutes }} 分鐘 / 標準 {{ chargePreview.standardMinutes }} 分鐘</small>
+            <span v-if="chargePreview.unit === 'hour' && chargePreview.deltaText" class="se-charge-delta">{{ chargePreview.deltaText }}</span>
+            <small v-if="chargePreview.unit === 'hour'" class="se-charge-hint">實際 {{ chargePreview.actualMinutes }} 分鐘 / 標準 {{ chargePreview.standardMinutes }} 分鐘</small>
+            <small v-else class="se-charge-hint">按堂計費：每堂固定金額，時段調整不影響收費</small>
           </template>
           <template v-else-if="chargePreview.kind === 'no-rate'">
             <span class="se-charge-label">此堂費用</span>
@@ -133,7 +137,8 @@
           <label>備註</label>
           <input v-model="form.note" type="text" placeholder="例：今日加課 1 小時，已收費" style="width: 100%;" maxlength="200" />
         </div>
-        <small class="field-note">修改後評量表的結束時間也會同步；若費用因時長變動，課程總費用（Charge）也會依差額調整。</small>
+        <small v-if="chargePreview.unit === 'hour'" class="field-note">修改後評量表的結束時間也會同步；按時計費時若時長變動，課程總費用（Charge）也會依差額調整。</small>
+        <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響費用與課程總費用（Charge）。</small>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
           <button class="primary" @click="onSaveClick" :disabled="submitting || !!timeRangeError">儲存</button>
@@ -179,11 +184,13 @@ const props = defineProps({
   makeupLoading: Boolean,
   computeEndTime: Function,
   teachers: { type: Array, default: () => [] },
+  // PRD 9c058f19：啟用代課 V2 卡片式 Modal（由父層處理 open-substitute-v2 事件）
+  featureSubstituteV2: { type: Boolean, default: false },
 });
 const emit = defineEmits([
   'close', 'set-mode', 'status-change', 'start-retro-leave', 'do-retro-leave',
   'start-reschedule', 'do-reschedule', 'fetch-makeup', 'add-session',
-  'start-substitute', 'do-substitute',
+  'start-substitute', 'do-substitute', 'open-substitute-v2',
   'start-edit-note-time', 'do-edit-note-time',
 ]);
 
@@ -230,18 +237,26 @@ const chargePreview = computed(() => {
   const actual = diffMinutes(props.form?.edit_start_time, props.form?.edit_end_time);
   if (actual == null) return { kind: 'no-time' };
 
-  let value;
-  if (unit === 'hour') {
-    value = Math.round(rate * (actual / 60));
-  } else {
-    value = Math.round(rate * (actual / dur));
+  // 按堂計費（session mode）：費用固定等於合約 Rate，不隨時段長度縮放。
+  // 業界慣例：按堂收費是「一堂多少錢」的契約，時段微調不影響收費。
+  if (unit !== 'hour') {
+    const value = Math.round(rate);
+    return {
+      kind: 'ok',
+      unit: 'session',
+      value,
+      standard: value,
+      deltaText: '',
+      tone: 'standard',
+      actualMinutes: actual,
+      standardMinutes: dur,
+      deviationRatio: 0,
+    };
   }
-  let standard;
-  if (unit === 'hour') {
-    standard = Math.round(rate * (dur / 60));
-  } else {
-    standard = Math.round(rate);
-  }
+
+  // 按時計費（hour mode）：依實際時長按小時比例計費。
+  const value = Math.round(rate * (actual / 60));
+  const standard = Math.round(rate * (dur / 60));
   const deltaAbs = value - standard;
   let deltaText = '';
   let tone = 'standard';
@@ -249,8 +264,14 @@ const chargePreview = computed(() => {
   else if (deltaAbs < 0) { deltaText = `-NT$ ${Math.abs(deltaAbs).toLocaleString()}（低於標準）`; tone = 'lower'; }
 
   return {
-    kind: 'ok', value, standard, deltaText, tone,
-    actualMinutes: actual, standardMinutes: dur,
+    kind: 'ok',
+    unit: 'hour',
+    value,
+    standard,
+    deltaText,
+    tone,
+    actualMinutes: actual,
+    standardMinutes: dur,
     deviationRatio: standard > 0 ? Math.abs(deltaAbs) / standard : 0,
   };
 });
@@ -266,7 +287,8 @@ const chargePreviewClass = computed(() => {
 function onSaveClick() {
   if (timeRangeError.value) return;
   const p = chargePreview.value;
-  if (p?.kind === 'ok' && (p.deviationRatio ?? 0) >= 0.5) {
+  // 僅按時計費（hour mode）才檢查偏離標準提示；按堂計費費用固定，不需提醒。
+  if (p?.kind === 'ok' && p.unit === 'hour' && (p.deviationRatio ?? 0) >= 0.5) {
     const ok = window.confirm(
       `此堂費用 NT$ ${p.value.toLocaleString()}，明顯偏離標準費用 NT$ ${p.standard.toLocaleString()}（差異 ${Math.round(p.deviationRatio * 100)}%）。確定儲存嗎？`
     );

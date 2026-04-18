@@ -59,7 +59,7 @@ AllTrue 是一套補習班教務與營運整合系統，目標是把「學生、
 6. `docs/DIRECTOR_SCALING_FAQ.md`（大分校資料量與畫面行為說明，給主任／老闆）
 7. `docs/GITHUB_SYNC_WORKFLOW.md`（GitHub 協作流程）
 8. `docs/OPERATIONS_RUNBOOK.md`（SOP + 避坑）
-9. `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`（歷史事故）
+9. `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`（歷史事故）
 10. `docs/CHANGELOG.md`、`docs/CHAT_BUG_SYSTEM.md`（新功能與權限交接）
 
 ### 用 AI 寫程式時（工具對照）
@@ -71,4 +71,10 @@ AllTrue 是一套補習班教務與營運整合系統，目標是把「學生、
 | **Cursor** | `AGENTS.md` + `.cursorrules`（專案已設定） |
 
 以上皆要求讀 **`docs/AI_REGRESSION_LESSONS.md`**，與 `CONTRIBUTING.md` 說明一致。
+
+### AI 共同強制規則（防版本回朔）
+
+- 未經使用者明示同意，**不得做任何版本回朔**（rollback / revert-to-old-state）。
+- 不得以舊版內容覆蓋新版關鍵檔案（特別是 `routes/api.php`、`frontend/src/**`、`backend/app/**`）。
+- 修改高風險檔案後，需確認關鍵路由與功能仍存在，避免「看似成功但實際回退」。
 

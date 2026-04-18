@@ -316,6 +316,7 @@
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
+      <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
       <div v-if="!isDirector && !isTeacher" class="card" style="max-width: 480px; margin: 2rem auto; padding: 2rem; text-align: center;">
@@ -404,6 +405,7 @@ import ProfileCenterPage from './pages/ProfileCenterPage.vue';
 import ChatPage from './pages/ChatPage.vue';
 import BugReportsPage from './pages/BugReportsPage.vue';
 import TeacherHomePage from './pages/TeacherHomePage.vue';
+import ScheduleDiscrepancyPage from './pages/ScheduleDiscrepancyPage.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
@@ -663,7 +665,7 @@ const mobileTabItems = computed(() => {
       { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
       { page: 'attendance', label: '出勤', icon: 'fact_check' },
       { page: 'learning', label: '評量', icon: 'assignment' },
-      { page: 'calendar', label: '行事曆', icon: 'calendar_today' },
+      { page: 'chat', label: '聊天', icon: 'forum', badgeTypes: ['chat'] },
       { page: 'more', label: '更多', icon: 'apps' },
     ];
   }
@@ -843,6 +845,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'calendar', label: '班級行事曆 / 課表', icon: 'calendar_today' },
           { page: 'course-mgmt', label: '課程管理', icon: 'menu_book', badgeTypes: ['tuition'] },
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
+          { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
           { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review'] },
         ],
       },
@@ -1279,6 +1282,40 @@ async function refreshUnreadNotifications() {
   await mergeChatUnreadBadge();
   await mergeDirectorPendingBadge();
   await mergeTeacherAttendanceBadge();
+  await mergeScheduleDiscrepancyBadge();
+}
+
+async function mergeScheduleDiscrepancyBadge() {
+  if (!session.value?.access_token || !isDirector.value || !currentBranch.value || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.schedule_discrepancy;
+    badgeByType.value = next;
+    return;
+  }
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
+    const res = await fetch(`${baseUrl}/v1/schedule-discrepancies/summary?${params}`, {
+      headers: {
+        Authorization: `Bearer ${session.value.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('schedule-discrepancy summary failed');
+    const json = await res.json();
+    const n = Number(json.pending || 0);
+    const next = { ...badgeByType.value };
+    if (n > 0) {
+      next.schedule_discrepancy = { total: n, urgent: n };
+    } else {
+      delete next.schedule_discrepancy;
+    }
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.schedule_discrepancy;
+    badgeByType.value = next;
+  }
 }
 
 async function mergeTeacherAttendanceBadge() {

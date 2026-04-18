@@ -101,6 +101,47 @@ curl -X PUT -H 'Authorization: Bearer <super>' \
 
 ---
 
+## 合併「代課 + 換時間」操作（PRD f0cce4d5）
+
+### 何時使用
+主任遇到「原老師請假且學生該時段也有事」→ 需要**同時**換代課老師與調整上課時間的情境。以往必須先調課再代課（或反之），兩步驟存在衝堂盲區與半成功風險；此功能把兩件事包在同一 Modal 的單一送出動作中，由後端在同一 DB transaction 內完成。
+
+### 操作流程（單堂）
+1. SmartCalendar 或課程管理頁 → 點擊課堂 → 下方抽屜 → **「👤 換代課老師」**。
+2. 在 Modal 原因欄位上方找到**「同時調整上課時間（選填）」**區塊 → 展開。
+3. 填入「新日期」與「新開始時間」（30 分鐘檔次 / 07:00~22:30）；結束時間依原課時長自動計算並唯讀顯示。
+4. 填完後，老師清單會**自動用新時段**重新查詢跨分校可用性；衝堂標記即時刷新（期間 Modal 頂端顯示細進度條）。
+5. 選一位**無衝堂**的代課老師 → 送出按鈕顯示為「確認代課 + 換時」→ 點送出。
+6. 成功後 Toast 顯示「已指派 X 代課並調整時間 · 時段：{new_date} {new_start}~{new_end} · N 秒內可撤銷」。
+7. 家長 App 會收到**單一**「課程異動通知」，同時說明時間變更與代課老師；Undo 後該通知會被作廢。
+
+### 驗收規則（UI）
+- 三欄（new_date / new_start / 新 end）**必須同填同省**；只填一半時，送出會 inline 顯示「請同時填寫新日期與新開始時間」。
+- 新日期**不可為過去**；選到過去日期會 inline 顯示「新日期不可為過去」。
+- 衝堂檢查以**新時段為準**（跨分校回 422、同分校回 409），不會因為先換時間就繞過。
+- 展開/收合有 0.2s 動畫；響應式 ≤480px 垂直排列、觸控目標 ≥ 44px。
+
+### Undo 行為
+- Undo 視窗同純代課（UI 5 秒預設 + Server 60 秒 grace）。
+- 合併操作的 Undo 會在**同一交易內**同時還原：
+  1. ClassSession 的 SessionDate / StartTime / EndTime
+  2. LearningRecord 的對應時間欄位
+  3. schedules 列（取代為遷移前的日期時段）
+  4. 代課老師回復原老師
+  5. 家長通知被 voided
+- 原始時間存於通知 `Payload.original_session_date/start_time/end_time`，純代課的 Undo 路徑不受影響。
+
+### API 增量
+- `POST /api/v1/class-sessions/{id}/substitute` 新增選填欄位：`new_date`（Y-m-d）/ `new_start_time`（HH:MM）/ `new_end_time`（HH:MM）。三欄同填同省。
+- 回應新增：`operation_type`（`substitute` / `substitute_with_reschedule`）、`rescheduled`、`session_date` / `start_time` / `end_time`（生效時段）、`original_session_date` / `original_start_time` / `original_end_time`。
+- `POST /api/v1/class-sessions/{id}/substitute/undo` 回應新增：`restored_time`、`restored_session_date/start_time/end_time`。
+- `GET /api/v1/substitutes/recent` 回應新增：`operation_type` + 原時段欄位，供儀表板「含換時」chip 使用。
+
+### 儀表板視覺
+「近 7 天代課記錄」卡片在 `operation_type === 'substitute_with_reschedule'` 時，於代課老師名稱右側顯示灰色 chip「含換時」；hover tooltip 對照原時段與新時段。
+
+---
+
 ## 禁止回歸項（必讀）
 
 請參閱 `docs/AI_REGRESSION_LESSONS.md` §2026-04-18「代課 Undo 必須同時 voided 家長通知」。五條禁令摘要：

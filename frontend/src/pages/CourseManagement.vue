@@ -285,9 +285,14 @@
                             <span
                               v-for="u in allSessionUnits(c)"
                               :key="sessionRowKey(u)"
-                              :class="['date-chip', 'date-chip-clickable', getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)]"
-                              :title="getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
-                              @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id)"
+                              :class="[
+                                'date-chip',
+                                !u._synthetic && 'date-chip-clickable',
+                                u._synthetic && 'date-chip-synthetic',
+                                getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)
+                              ]"
+                              :title="u._synthetic ? '此堂次資料載入中，請重新整理後再試' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              @click="!u._synthetic && openSessionEdit(c, (u.session_date || '').slice(0,10), u.id)"
                             >
                               <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </span>
@@ -536,6 +541,7 @@
       :makeup-loading="makeupLoading"
       :compute-end-time="computeEndTime"
       :teachers="teachers"
+      :feature-substitute-v2="featureSubstituteV2"
       @close="closeSessionEdit"
       @set-mode="sessionEditMode = $event"
       @status-change="doStatusChange"
@@ -547,9 +553,23 @@
       @add-session="addSessionFromModal"
       @start-substitute="startSubstitute"
       @do-substitute="doSubstitute"
+      @open-substitute-v2="openSubstituteV2FromEdit"
       @start-edit-note-time="startEditNoteTime"
       @do-edit-note-time="doEditNoteTime"
     />
+
+    <!-- PRD 9c058f19：卡片式代課選擇器 + ToastWithUndo（與 SmartCalendar 共用元件） -->
+    <SubstituteTeacherPickerModal
+      v-if="featureSubstituteV2"
+      ref="substituteV2PickerRef"
+      v-model="showSubstituteV2Modal"
+      :context="substituteV2Context"
+      :teachers="teachersForPicker"
+      :branch-name-map="branchNameMap"
+      :fetch-availability="fetchTeacherAvailability"
+      @submit="onSubstituteV2Submit"
+    />
+    <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
   </div>
 </template>
 
@@ -574,6 +594,13 @@ import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
 import RescheduleModal from '../components/course-management/RescheduleModal.vue';
 import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
+import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
+import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
+import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
+
+// PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
+// 與 SmartCalendar.vue 對齊：預設開啟（'1'），設為 '0' 回退舊版 <select> 模式。
+const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
 
 const DAY_OPTIONS = [
   { value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' },
@@ -2068,6 +2095,153 @@ const {
   loadCourses,
   openQuickAddSessionModal,
 });
+
+// ===== PRD 9c058f19 代課 V2（與 SmartCalendar 對齊：卡片式 Picker + ToastWithUndo） =====
+const featureSubstituteV2 = FEATURE_SUBSTITUTE_V2;
+const showSubstituteV2Modal = ref(false);
+const substituteV2PickerRef = ref(null);
+const toastRef = ref(null);
+const substituteV2SessionId = ref(null);
+const substituteV2Context = ref({});
+
+// 多數使用者為單分校主任，名稱由後端返回時可擴充；此處使用 id → label 降級，保持 UX 可用。
+const branchNameMap = computed(() => {
+  const m = {};
+  const bid = Number(props.branchId || 0);
+  if (bid > 0) m[bid] = `分校#${bid}`;
+  return m;
+});
+
+// Picker 期望 { id, name, branch_ids }；本頁 teachers 欄位是 username，需映射補上 name。
+const teachersForPicker = computed(() =>
+  (teachers.value || []).map((t) => ({
+    id: t.id,
+    name: t.name || t.username || `老師#${t.id}`,
+    username: t.username || '',
+    branch_ids: Array.isArray(t.branch_ids) ? t.branch_ids : [],
+  }))
+);
+
+// 從「單堂檢視」觸發 V2 代課選擇器：以 sessionEditForm 內容建構 context。
+const openSubstituteV2FromEdit = () => {
+  const form = sessionEditForm.value || {};
+  const course = form.course || {};
+  if (!form.session_id) {
+    alert('找不到該堂次 ClassSession，無法設定代課。');
+    return;
+  }
+  substituteV2SessionId.value = form.session_id;
+  substituteV2Context.value = {
+    student_name: form.student_name || course.student_name || '',
+    subject_id: course.subject_id || null,
+    subject_label: getSubjectLabel(form.subject || course.subject) || '',
+    session_date: form.session_date || '',
+    start_time: (form.start_time || '').toString().slice(0, 5),
+    end_time: (form.end_time || '').toString().slice(0, 5),
+    original_teacher_id: course.teacher_id ?? null,
+    original_teacher_name: form.teacher_name || course.teacher_name || '',
+    session_campus_id: Number(props.branchId || 0) || null,
+  };
+  closeSessionEdit();
+  showSubstituteV2Modal.value = true;
+};
+
+const onSubstituteV2Submit = async (submitPayload) => {
+  const { substitute_teacher_id, reason, new_date, new_start_time, new_end_time } = submitPayload || {};
+  const sessionId = substituteV2SessionId.value;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) throw new Error('請重新登入');
+    const body = {
+      substitute_teacher_id: Number(substitute_teacher_id),
+      reason: reason || null,
+    };
+    // PRD f0cce4d5：合併代課+換時（三欄同填同省）
+    if (new_date && new_start_time && new_end_time) {
+      body.new_date = new_date;
+      body.new_start_time = new_start_time;
+      body.new_end_time = new_end_time;
+    }
+    const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
+      method: 'POST', credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = json.message || res.statusText || '代課設定失敗';
+      substituteV2PickerRef.value?.setError?.(msg);
+      throw new Error(msg);
+    }
+    showSubstituteV2Modal.value = false;
+
+    // 對齊 SmartCalendar：先在本地 patch 這堂的授課老師，再整體重載
+    const ctx = substituteV2Context.value || {};
+    const courseKey = sessionEditForm.value?.student_class_id || sessionEditForm.value?.course?.id;
+    const teacherName =
+      json.substitute_teacher_name ||
+      (teachers.value || []).find((t) => Number(t.id) === Number(substitute_teacher_id))?.username ||
+      `#${substitute_teacher_id}`;
+    const uiSeconds = Number(json.undo_window_seconds);
+    const durationMs = Number.isFinite(uiSeconds) && uiSeconds > 0 ? uiSeconds * 1000 : 5000;
+    const isCombined = json.rescheduled === true || json.operation_type === 'substitute_with_reschedule';
+    const effDate = json.session_date || ctx.session_date;
+    const effStart = json.start_time || ctx.start_time;
+    const effEnd = json.end_time || ctx.end_time;
+    const origDate = json.original_session_date || ctx.session_date;
+    const origStart = json.original_start_time || ctx.start_time;
+    const origEnd = json.original_end_time || ctx.end_time;
+    // PRD f0cce4d5 P2：不等整頁重載，立即在本地 patch 代課老師 + （若換時）新日期/新時段
+    if (json.substitute_teacher_id) {
+      const teacherObj = (teachers.value || []).find((t) => Number(t.id) === Number(json.substitute_teacher_id));
+      const patch = {
+        id: sessionId,
+        teacher_id: json.substitute_teacher_id,
+        teacher_name: json.substitute_teacher_name || teacherObj?.username || '',
+      };
+      if (isCombined) {
+        if (effDate) patch.session_date = effDate;
+        if (effStart) patch.start_time = effStart;
+        if (effEnd) patch.end_time = effEnd;
+      }
+      updateLocalSessionRow(courseKey, patch);
+    }
+
+    const description = isCombined
+      ? `${ctx.student_name ? ctx.student_name + ' · ' : ''}已調整至 ${effDate} ${effStart}~${effEnd}`
+      : (ctx.student_name ? `${ctx.student_name} · ${ctx.session_date} ${ctx.start_time}` : '');
+    toastRef.value?.show?.({
+      title: isCombined ? `已指派 ${teacherName} 代課並調整時間` : `已指派 ${teacherName} 代課`,
+      description,
+      variant: 'success',
+      durationMs,
+      undoDescription: isCombined ? '代課與換時已撤銷，家長通知已作廢' : '代課已撤銷，家長通知已作廢',
+      onUndo: async () => {
+        await undoSubstitute(sessionId);
+        // PRD f0cce4d5 P2：Undo 也先就地還原本地 row（老師 + 若含換時則還原時間），不等重載
+        const undoPatch = { id: sessionId };
+        if (ctx.original_teacher_id) undoPatch.teacher_id = ctx.original_teacher_id;
+        if (ctx.original_teacher_name) undoPatch.teacher_name = ctx.original_teacher_name;
+        if (isCombined) {
+          if (origDate) undoPatch.session_date = origDate;
+          if (origStart) undoPatch.start_time = origStart;
+          if (origEnd) undoPatch.end_time = origEnd;
+        }
+        updateLocalSessionRow(courseKey, undoPatch);
+        await loadCourses();
+      },
+    });
+    await loadCourses();
+  } catch (e) {
+    substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
+    throw e;
+  }
+};
 
 const togglePaymentStatus = async (c) => {
   if (!c?.id) return;
@@ -3919,6 +4093,13 @@ button.danger:disabled {
 .date-chip-clickable {
   cursor: pointer;
 }
+/* Synthetic chips (placeholder rows rendered from schedule before ClassSession loads).
+ * Grayed out to communicate "not interactive yet"; paired with a title tooltip
+ * that guides the user to refresh. See PRD 薪資計算與調課按鈕修正 §5b + FR-004/005. */
+.date-chip.date-chip-synthetic {
+  opacity: 0.45;
+  cursor: default;
+}
 .chip-seq {
   font-weight: 700;
   color: #0f172a;
@@ -3962,6 +4143,11 @@ button.danger:disabled {
 .date-chip:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+}
+/* Synthetic chips stay flat on hover — they are not interactive. */
+.date-chip.date-chip-synthetic:hover {
+  transform: none;
+  box-shadow: none;
 }
 /* Session Edit Modal */
 .session-edit-modal .session-edit-info {

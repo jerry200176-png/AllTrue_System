@@ -24,6 +24,9 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 
 - Collaboration branch is `jerry-sync-main`
 - Do not merge backup branches into main collaboration flow
+- 禁止任何形式的版本回朔（rollback/revert-to-old-state）覆蓋現行已上線邏輯；除非使用者明確要求且指定範圍
+- 禁止以舊檔覆蓋新檔（特別是 `routes/api.php`、`frontend/src/**`、`backend/app/**`、`docs/AI_REGRESSION_LESSONS.md`）
+- 涉及高風險檔案修改後，必須做「存在性驗證」：不得讓既有關鍵路由／功能因編輯而消失
 - Avoid destructive git operations on a dirty worktree
 - If frontend code changed, run `cd frontend && npm run deploy`
 - Validate API health after deploy/config edits

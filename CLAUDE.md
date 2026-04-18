@@ -44,10 +44,17 @@
 | **課程管理 chip 重複（LEFT JOIN 行乘積）**（`ClassSessionController::index`、`sub_sched`/`LearningRecord`/`StudentSingIn` LEFT JOIN、`normalizeClassSessionsPayload`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 — LEFT JOIN 行乘積）、**`docs/CHANGELOG.md`（2026-04-15 (I)）**；LEFT JOIN 1:N 關係必須用 Derived Table 去重；前端 normalize 須有 id 去重防禦 |
 | **評量頁課表重複卡片**（`LearningRecordsPage.vue` `buildEvents`、`deduplicateSessionsBySlot`、`SESSION_STATUS_PRIORITY`） | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-15 — LearningRecordsPage 課表 widget 同格重複卡片）；同格 `cancelled+scheduled` 必須去重；勿移除 `deduplicateSessionsBySlot`；優先序須與 `SmartCalendar` 一致 |
 | 前端上線、`backend/public`、瀏覽器 **`MIME type "text/html"`** on `index-*.js` | **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-11 — 前端上線／hash 不同步）；務必 **`npm run deploy`** 同輪寫入 `index.html` + `assets/` |
+| **`routes/api.php` 路由被靜默刪除**（`schedule-discrepancies` 7 條路由） | **`docs/AI_REGRESSION_LESSONS.md`**（§2026-04-18 — AI 工具靜默回退 api.php 路由）；**修改 `api.php` 前後必須執行 `php artisan route:list` 驗證關鍵路由仍存在**；改後跑 `phpunit tests/Feature/RouteRegistrationTest.php`（8 tests 全綠）；api.php 超過 400 行，修改前必須完整閱讀再修改，不得以記憶取代讀取 |
 
 ## 協作分支
 
 - GitHub 協作主分支：**`jerry-sync-main`**（見 `AGENTS.md`）
+
+## 防止版本回朔（強制）
+
+- 禁止任何未經使用者明示同意的版本回朔（rollback / revert-to-old-state / 用舊檔覆蓋新檔）。
+- 禁止把舊版 `routes/api.php`、`frontend/src/**`、`backend/app/**` 或關鍵防再犯文件內容整段覆寫回去。
+- 觸及高風險檔案後，必須驗證關鍵路由與既有功能仍存在（不可因編輯造成靜默消失）。
 
 ## 前端變更上線
 

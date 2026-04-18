@@ -54,6 +54,8 @@ Do NOT:
 - force push shared branch unless explicitly approved
 - run risky reset/rebase on dirty tree
 - use `sudo` in project folders unless absolutely required
+- rollback/revert to older code state without explicit user approval
+- overwrite current key files with historical copies (especially `routes/api.php`, `frontend/src/**`, `backend/app/**`)
 
 ## 6) Production safety checks
 
@@ -82,5 +84,5 @@ If API fails:
 - `docs/CHAT_BUG_SYSTEM.md`（同上模組速覽）
 - `docs/GITHUB_SYNC_WORKFLOW.md`
 - **Claude Code**：`CLAUDE.md` · **GitHub Copilot**：`.github/copilot-instructions.md`
-- `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`
+- `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`
 
