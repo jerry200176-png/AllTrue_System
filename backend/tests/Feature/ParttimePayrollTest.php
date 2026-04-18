@@ -299,9 +299,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課，無 concurrency
-        // A: 400*2h = 800, B: 400*2h = 800, total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // PRD-F (2026-04-18)：30-min slice 模型，重疊部份算並堂。
+        // 17:00-18:00 A solo 400 + 18:00-19:00 A+B (400+50) + 19:00-20:00 B solo 400 = 1250
+        $this->assertEquals(1250, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -325,9 +325,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // v1.5: start 17:00 vs 18:30 差 90 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
-        // A: 400*2h (contracted) = 800, B: 400*2h (contracted) = 800, total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // PRD-F：30-min slice。A 17:00-19:00、B 18:30-20:30（contracted 120min）→ 重疊 18:30-19:00。
+        // 17:00-18:30 A solo 400×1.5=600 + 18:30-19:00 並堂 (400+50)×0.5=225 + 19:00-20:30 B solo 400×1.5=600 = 1425
+        $this->assertEquals(1425, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -351,9 +351,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
-        // A: 400*2h (contracted) = 800, B: 400*2h (contracted) = 800, total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // PRD-F：contracted=120min，A 17:00-19:00、B 18:00-20:00 → 重疊 18:00-19:00。
+        // 17:00-18:00 solo 400 + 18:00-19:00 並堂 450 + 19:00-20:00 solo 400 = 1250
+        $this->assertEquals(1250, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -377,9 +377,8 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
-        // A: 400*2h = 800, B: 400*2h = 800, total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // PRD-F：17:00-18:00 A solo 400 + 18:00-19:00 A+B 並堂 (400+50) + 19:00-20:00 B solo 400 = 1250
+        $this->assertEquals(1250, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -403,11 +402,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
-        // A (tutoring): 200*2h = 400
-        // B (elementary): 300*2h = 600
-        // total = 1000
-        $this->assertEquals(1000, $teacher['total_salary']);
+        // PRD-F：max-base 在並堂段取高值（elementary 300 > tutoring 200）。
+        // 17:00-18:00 A solo 200 + 18:00-19:00 A+B max=300,(300+50)=350 + 19:00-20:00 B solo 300 = 850
+        $this->assertEquals(850, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -519,8 +516,9 @@ class ParttimePayrollTest extends TestCase
 
         $bonuses = array_column($sessions, 'concurrency_bonus_amount');
         sort($bonuses);
-        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 → 無 concurrency，bonus=0
-        $this->assertEquals([0, 0], $bonuses);
+        // PRD-F (2026-04-18)：A baseline 400×2=800，attributed 400(17-18 solo)+450(18-19 並堂)=850，delta=+50。
+        //                     B baseline 400×2=800，attributed 400(19-20 solo)=400，delta=-400。
+        $this->assertEquals([-400, 50], $bonuses);
 
         foreach ($sessions as $s) {
             $this->assertArrayHasKey('concurrency_bonus_amount', $s);

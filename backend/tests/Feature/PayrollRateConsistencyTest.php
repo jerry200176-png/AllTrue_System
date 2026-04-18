@@ -115,9 +115,13 @@ class PayrollRateConsistencyTest extends TestCase
         // Ruth 併堂：primary 350*2 + (2-1)*50*2 = 800, non-primary 0 → 800
         $this->assertEquals(800, $ruth['total_salary']);
 
-        // 游錯開 30 分鐘 > 容忍度 15 → 不併堂 → 兩堂獨立 350*2 = 1400
-        // 此為 v1.5 PRD 薪資計算與調課按鈕修正的預期行為，PRD-C 不推翻此規則。
-        $this->assertEquals(1400, $you['total_salary']);
+        // 2026-04-18 晚間規則更新（PRD-F，主任確認，取代 v1.5 CONCURRENCY_START_TOLERANCE_MINUTES=15）：
+        // 30 分鐘 slice 模型，真實重疊部份算並堂、不重疊部份各自獨立。
+        //   09:30-10:00 A solo：350 × 0.5h = 175
+        //   10:00-11:30 A+B：max(350)+50 = 400/h × 1.5h = 600
+        //   11:30-12:00 B solo：350 × 0.5h = 175
+        //   總計 950
+        $this->assertEquals(950, $you['total_salary']);
     }
 
     // ───────────────── Helpers ─────────────────

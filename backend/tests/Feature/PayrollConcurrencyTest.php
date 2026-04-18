@@ -102,9 +102,12 @@ class PayrollConcurrencyTest extends TestCase
 
         $teacher = $this->fetchPayroll($dir['token']);
 
-        // v1.5：錯開 60 分鐘 > 容忍度 15 分鐘 → 不觸發 concurrency
-        // A: 350*2h = 700, B: 350*2h = 700, total = 1400
-        $this->assertEquals(1400, $teacher['total_salary']);
+        // 2026-04-18 規則更新（PRD-F，取代 v1.5 15-min tolerance）：partial overlap = concurrency for overlap duration.
+        // 14:00-15:00 A solo 350×1h = 350
+        // 15:00-16:00 A+B 並堂 (350+50)×1h = 400
+        // 16:00-17:00 B solo 350×1h = 350
+        // total = 1100
+        $this->assertEquals(1100, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -240,8 +243,12 @@ class PayrollConcurrencyTest extends TestCase
 
         $teacher = $this->fetchPayroll($dir['token']);
 
-        // 錯開超過容忍度 → 不觸發 concurrency，各自 350*2h = 700，total = 1400
-        $this->assertEquals(1400, $teacher['total_salary']);
+        // 2026-04-18 規則更新（PRD-F，取代 v1.5）：30-min slice，重疊部份算並堂。
+        // 09:30-10:00 A solo：350 × 0.5 = 175
+        // 10:00-11:30 A+B：(350+50) × 1.5 = 600
+        // 11:30-12:00 B solo：350 × 0.5 = 175
+        // total = 950
+        $this->assertEquals(950, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
