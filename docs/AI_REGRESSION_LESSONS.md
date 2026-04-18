@@ -5,6 +5,140 @@
 
 ---
 
+## §2026-04-18 — 老師評量表開啟錯誤：同天同學生多堂課（PRD 3baa154f）
+
+### 根本原因（兩個連環 bug）
+
+1. **`LearningRecordsPage.vue::buildEvents` 的 recordId fallback 錯誤**
+   - 三層 fallback：`cs:<id>` → `classId|date|startTime` → `classId|date`。當同天有多堂課（同一 `StudentClass`）時，第三層 `classId|date` key 會把已存在的第五堂 LR 錯配給未填的第六堂。
+   - 第六堂 API 回傳 `learning_record_id = null`，但 fallback 仍讓前端以為「有評量」，走入編輯分支打開了第五堂的記錄。
+
+2. **watch 覆蓋 openFromSchedule 設定的 form.StartTime / ClassSessionID**
+   - `openFromSchedule` 正確設定第六堂時段後，`watch([form.StudentID, ...])` 觸發 `applyTeacherFormDefaults`，該函式以「同日最早一堂」為預設，覆蓋為 15:00。
+   - 第五堂（已有 LR）走 `editRecord` → `isEditing=true`，watch 早 return 所以不受影響；只有「新增」路徑受害。
+
+### 禁止回歸項
+
+1. **`buildEvents` 的 `recordId` 必須嚴格依照 API 回傳 `learning_record_id`**
+   - 程式碼位置：[`frontend/src/pages/LearningRecordsPage.vue::buildEvents`](frontend/src/pages/LearningRecordsPage.vue)
+   - 標準寫法：`rawSession?.learning_record_id != null ? Number(rawSession.learning_record_id) : null`
+   - **禁止**加入 `record?.id` 或 `recordLookup.get('classId|date')` 等 fallback；`record` 變數只能用於 `formStatus` 顯示（讀 `record?.Status`），不得回流到 `recordId`。
+   - 理由：後端 `ClassSessionController` 已為每堂 session 精確 JOIN 最新未作廢 LR，前端再做模糊比對只會踩到這個 bug。
+
+2. **老師課表點選開啟評量的 flag guard 必須存在**
+   - `_openedFromScheduleSession` ref 必須在 `openFromSchedule` 設為 `ev.classSessionId || -1`。
+   - `watch([form.StudentID, form.SessionDate, form.Subject, form.TeacherID])` 的 teacher 分支內必須有：
+     ```js
+     if (_openedFromScheduleSession.value !== 0) {
+       _openedFromScheduleSession.value = 0;
+       return;
+     }
+     ```
+   - `closeModal` 必須重置 `_openedFromScheduleSession.value = 0`，防止 modal 被直接關閉而旗標殘留。
+   - **禁止**直接改用 `isEditing` 偷懶：新增路徑本來就是 `isEditing = false`，誤把它設成 true 會破壞 modal 標題、save 行為。
+
+3. **修改 `buildEvents` 或 `applyTeacherFormDefaults` 前必跑的 QA 情境**
+   - 同學生當天 2+ 堂：每堂 `recordId` 對應正確、時段不被覆蓋
+   - 儲存第一堂後不重整、立刻點第二堂，仍正確開啟第二堂空白
+   - 代課堂次（`isSubstituted`）：`recordId` 仍應強制 null（`events.push` 處的三元判斷守護）
+   - 請假／取消堂次：`recordId` 強制 null，點擊不開 modal（2026-04-17 LEAVE_STATUSES 守護線不退化）
+
+### 反面教材
+
+- 不要以為「API 沒給 recordId，就從 lookup map 拿最近的補上」—— 那只會讓不同堂次互相汙染。
+- 不要以為「form 欄位被 watch 覆蓋是設計如此」—— 這個 watch 本意是老師「手動換學生」時自動填入時段，不是「從課表點選」時也強制套用。區分進入路徑是必要的。
+- 不要只看 15:00 那堂（有 LR）正常運作就以為都沒事 —— 必須測 17:00 那堂（無 LR）才會觸發兩個 bug。
+
+---
+
+## §2026-04-18 — 兼職薪資 concurrency 偵測必須考量 start time 容忍度（PRD 1b8d93cc）
+
+### 根本原因
+
+`FinanceController::buildConcurrencyBonusMap()` v1.4 以「契約時長區間重疊」判斷同步教學。當同一老師同一天有兩堂 session 開始時間錯開 30~60 分鐘（如 09:30 + 10:00，各 120 min 契約時長），契約區間會重疊 90 分鐘，系統誤把它當成真正的 group class，把 non-primary 的 `base_rate × 重疊時長` 扣掉。興隆主任回報「只有 Ruth 蔣算對」，其實是 Ruth 的 group class 恰好都是**完全相同 start time**，其他老師才會踩到這個 bug。
+
+### 禁止回歸項
+
+1. **`buildConcurrencyBonusMap` 的 concurrent 集合判定必須保留 start time 容忍度檢查**
+   - 門檻由 class constant `FinanceController::CONCURRENCY_START_TOLERANCE_MINUTES` 控制（現值 15）。
+   - 檢查位置在「收集 $concurrent 陣列」的內迴圈，`abs($other['start'] - $iv['start']) <= 容忍度` 是必要條件；移除這層等同放回 bug。
+   - 容忍度**不得**硬編碼分散在多處；只能透過 class constant 調整。
+
+2. **「同 start time 但部分重疊」仍須走 v1.4 tie-break**
+   - 例如 10:00 + 10:10（差 10 min 在容忍度內）仍視為同一 group class；`test_staggered_10min_still_concurrent` 是守護線。
+   - 例如 10:00 + 10:00（差 0 min）完全重疊仍走 v1.4 tie-break；Ruth 蔣 n=3 / n=2 案例由 `PayrollConcurrencyTest` 8 條原有測試守護。
+
+3. **修改 concurrency 公式前必須執行完整 payroll 守護套件**
+   - `./vendor/bin/phpunit --filter='ParttimePayroll|PayrollConcurrency|PayrollRules|PayrollTeacherOverride'`（59 tests / 173 assertions）全綠才能 merge。
+
+### 反面教材
+
+- 不要以為「時間重疊 = 同時段教學」；必須配合「開始時間接近」才成立。
+- 不要用「任一 session 端點落在重疊段」作為 concurrent 判斷，那正是 v1.4 的原始 bug。
+
+---
+
+## §2026-04-18 — 課程管理合成 session chip 點擊不得靜默失敗（PRD 1b8d93cc）
+
+### 根本原因
+
+`CourseManagement.vue` 的 session chip 由 `allSessionUnits(course)` 渲染，該函式在 `classSessionsByCourse` 尚未載入完成時會回傳合成物件（`_synthetic: true`，**無 `id`**）。過去所有 chip 都綁定 `@click="openSessionEdit(...)"`，而 `openSessionEdit` 內部 `if (!row) return;` → 點擊合成 chip 完全沒反應。主任回報「調課按鈕不能按」，實際是看似可按但點了靜默結束。
+
+### 禁止回歸項
+
+1. **合成 chip 必須以視覺區分「不可操作」**
+   - `CourseManagement.vue` session chip 的 class binding 必須包含 `!u._synthetic && 'date-chip-clickable'` 與 `u._synthetic && 'date-chip-synthetic'`。
+   - `.date-chip-synthetic` 樣式必須維持 `opacity: 0.45; cursor: default;` 且 `:hover` 無 transform/box-shadow（避免看起來像可按）。
+
+2. **合成 chip 的 @click 必須在 template 內 short-circuit**
+   - 標準寫法：`@click="!u._synthetic && openSessionEdit(...)"`；不可僅依賴 `openSessionEdit` 內部 guard（合成 chip 的 tooltip 也必須指向「重新整理」）。
+
+3. **`openSessionEdit` 找不到 row 時不得 silent return**
+   - 必須 alert / toast 明確提示；`useSessionEditFlow.js::openSessionEdit` 內的 `if (!row) { alert(...); return; }` 是守護線，刪掉等於讓其他呼叫路徑（SmartCalendar、action menu、URL deep-link）重新回到 silent failure。
+
+### 反面教材
+
+- 不要讓「資料尚未載入」的 UI 元素看起來和「可操作」完全一樣。
+- 不要在「按鈕沒反應」的情境回傳 void 而不給使用者任何回饋；最低限度也要 `alert`。
+
+---
+
+## §2026-04-18 — 合併「代課 + 換時間」Undo 必須同時還原 ClassSession 時間（PRD f0cce4d5）
+
+### 根本原因
+
+PRD f0cce4d5 把「代課」與「換時間」合併到 `POST /api/v1/class-sessions/{id}/substitute` 同一次請求（選填 `new_date` / `new_start_time` / `new_end_time`）。合併路徑在同一 DB transaction 內遷移 `ClassSession.{SessionDate,StartTime,EndTime}`、同步 `LearningRecord` 時間、遷移 `schedules` 列、再套用代課老師。若 Undo 只回復代課老師與 schedules 卻未同時還原 `ClassSession` 與 `LearningRecord` 的時間欄位，課表會停留在**已換的新時段 + 回復的正班老師**的幽靈狀態，造成家長接送錯亂與稽核金流錯位。
+
+### 禁止回歸項
+
+1. **`ClassSessionController::substitute` 的「三欄同填同省」驗證不可放寬**
+   - `new_date` / `new_start_time` / `new_end_time` 必須是「三個都填」或「三個都不填」；只填一半回 422。
+   - `new_date` 不可為過去（基於 `App\Support\TimeHelper::now()->startOfDay()`）。
+   - 只要有填，**跨分校與同分校衝堂檢查必須以新時段為準**；不得使用原時段做檢查後才換時間（否則衝堂盲區會回歸）。
+
+2. **合併路徑必須在同一 DB transaction 內完成全部寫入**
+   - 順序：更新 `ClassSession.{SessionDate,StartTime,EndTime}` → 更新 `LearningRecord.{SessionDate,StartTime,EndTime}` → 遷移既有 `schedules`（rescheduled + scheduled 從原日期搬到新日期與新時段）→ 建立/更新代課 schedules → 建立/更新家長通知。
+   - 禁止拆為兩次 HTTP 呼叫（舊「先代課、再調課」路徑已含 FR-004 衝堂盲區）。
+
+3. **`SubstituteController::undo` 遇到合併操作必須同時還原時間**
+   - 從 `Notification.Payload` 讀 `operation_type`、`original_session_date`、`original_start_time`、`original_end_time`。
+   - `operation_type === 'substitute_with_reschedule'` 時，在同一交易還原 `ClassSession` 與 `LearningRecord` 的時間欄位；同時遷移 schedules 回原日期。
+   - 純代課的 Undo 路徑（`operation_type === 'substitute'` 或 Payload 無此欄位）**不可受影響**；回歸測試由 `SubstituteUxV2Test` + `SubstituteTeacherTest` 覆蓋。
+
+4. **`SubstituteService::createParentNotification` 的 Payload 必須保留原始時間**
+   - `operation_type` / `original_session_date` / `original_start_time` / `original_end_time` 四欄必須寫入 Payload，否則 Undo 無法還原。
+   - 合併模式的 Title 為「{學生} {科目} 課程異動通知」、Body 為「原定 {old_date} {old_start}~{old_end} 的課程已調整至 {new_date} {new_start}~{new_end}，由 {new_teacher} 代課。」；純代課 Title/Body 格式**不可改動**（回歸測試固定比對字串）。
+   - 冪等策略：既有通知 → 更新 Title/Body/Payload（不再 INSERT）；確保主任先純代課後又補加換時的資訊一致。
+
+5. **`SubstituteController::recent` 必須回傳 `operation_type` 與原時段**
+   - 儀表板「含換時」chip 的唯一資料來源；缺欄位會讓 UI 直接回歸為「看不出是合併操作」。
+
+### 覆蓋測試
+- `backend/tests/Feature/SubstituteWithRescheduleTest.php` 8 組（合併成功 / 新時段跨分校衝堂 422 / 新時段同分校衝堂 409 / Undo 還原時間 / 純代課回歸 / 半填欄位 422 / 過去日期 422 / recent 含 operation_type）。
+- `backend/tests/Feature/SubstituteUxV2Test.php` + `SubstituteTeacherTest.php` 必須同步通過（純代課無 new_date 時的既有行為不變）。
+
+---
+
 ## §2026-04-18 — 代課 Undo 必須同時 voided 家長通知，禁止回歸（PRD 9c058f19）
 
 ### 根本原因
