@@ -2,6 +2,41 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-18 — Bug Fix：老師評量表開啟錯誤（同天同學生多堂課）（PRD 3baa154f）
+
+### Problem
+
+老師（鄭翔祐）反映：學生沈宇璿 4/18 有兩堂課 15:00–17:00（已填待審）與 17:00–19:00（未填）。從課表點 17:00 堂的「編輯評量」時，系統卻開啟第五堂（15:00）的評量記錄；儲存第五堂後，回來點第六堂又跳回第五堂。
+
+### 根因（兩個連環 bug，純前端邏輯）
+
+**Bug 1（主因）**：`LearningRecordsPage.vue` 的 `buildEvents()` 為每堂尋找對應 LR 時有三層 fallback（`cs:<id>` → `classId|date|startTime` → `classId|date`）。當 API 回傳第六堂 `learning_record_id = null` 時，進入 fallback 分支並命中第三層 `classId|date` key，錯誤地把「同一 StudentClass 當天已存在的第五堂 LR」指派給第六堂的 `recordId`，使 `openFromSchedule()` 走入 `openRecordAction(existing)` 開啟第五堂記錄。
+
+**Bug 2（次因）**：即使 Bug 1 修掉，`openFromSchedule()` 新增路徑設完 `form.StudentID` 後會觸發 `watch([form.StudentID, ...])` → `applyTeacherFormDefaults()`，該函式以「同日最早一堂」為預設值，會覆蓋剛剛正確設好的 17:00 時段。第五堂（有 LR）進的是 `editRecord()`，`isEditing=true` 使 watch 直接 return，所以只有新增路徑受影響。
+
+### Change（純前端，後端零異動）
+
+**`frontend/src/pages/LearningRecordsPage.vue`**
+
+- `buildEvents()`：`recordId` 計算移除 `record?.id` fallback。API 回傳 `learning_record_id = null` 即代表該堂確實無 LR，不再以 `classId|date` 模糊比對覆寫。`record` 變數仍保留供 `baseFormStatus` 顯示狀態標籤使用。
+- 新增 `_openedFromScheduleSession` ref，於 `openFromSchedule()` 設為 `ev.classSessionId || -1`。
+- `watch([form.StudentID, form.SessionDate, form.Subject, form.TeacherID])` 的 teacher 分支：若 `_openedFromScheduleSession !== 0` 則清旗標後 return，跳過 `applyTeacherFormDefaults()`；後續老師在 modal 內手動改動欄位仍會觸發 defaults 自動填入。
+- `closeModal()`：清旗標為 0，防止使用者直接關閉 modal 而未觸發 watch 的邊際情況。
+
+### Impact
+
+- 同一學生當天有多堂課時，老師從課表「編輯評量」點選哪一堂即開哪一堂，不再被最早那堂 LR 覆蓋或被「預設最早堂」覆寫時段。
+- 代課堂次（`isSubstituted`）`recordId` 仍強制 `null`（既有三元式守護線不退化）。
+- 請假／取消堂次仍不可點擊（LEAVE_STATUSES 守護線不退化）。
+- 後端 API、資料庫、代課流程、薪資流程均零異動。
+
+### 防回歸
+
+- 新增 `docs/AI_REGRESSION_LESSONS.md` §2026-04-18 老師評量表開啟錯誤章節，列出「`buildEvents` 不得再加 `record?.id` fallback」「`_openedFromScheduleSession` flag 必須存在於 `openFromSchedule`/`watch`/`closeModal` 三處」等禁止回歸項。
+- PRD 第 10 節 QA Checklist：新增「同學生當天多堂」「儲存第五堂後點第六堂」「代課堂次 recordId 仍為 null」「請假堂次不可點擊」四組回歸測試。
+
+---
+
 ## 2026-04-18 — Enhancement：代課 Undo 時間窗設定化（Gmail Undo Send 模式）
 
 ### Problem

@@ -760,6 +760,8 @@ const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
 const showModal = ref(false);
 const isEditing = ref(false);
+// 從課表點選堂次開啟評量表時設為該 ClassSessionID（無 csId 則為 -1），用於阻擋 form watch 的 applyTeacherFormDefaults 覆蓋（Bug fix 2026-04-18）
+const _openedFromScheduleSession = ref(0);
 const showChangeTeacherModal = ref(false);
 const showDraftPanel = ref(false);
 const draftList = ref([]);
@@ -1504,7 +1506,7 @@ const buildEvents = (targetDates) => {
       const formStatus = isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : baseFormStatus);
       const recordId = rawSession?.learning_record_id != null
         ? Number(rawSession.learning_record_id)
-        : (record?.id || null);
+        : null;
 
       const lrTeacherId = Number(rawSession?.learning_record_teacher_id || 0);
       const isSubstituted = lrTeacherId > 0 && lrTeacherId !== myId && myId > 0;
@@ -1715,6 +1717,7 @@ const openFromSchedule = (ev) => {
     StartTime: normalizeTime(ev.startTime) || String(ev.startTime || '').slice(0, 5),
     EndTime: normalizeTime(ev.endTime) || String(ev.endTime || '').slice(0, 5),
   });
+  _openedFromScheduleSession.value = ev.classSessionId || -1;
   formTimesFromBinding.value = false;
   showModal.value = true;
   const hasDraft = loadDraft();
@@ -1919,6 +1922,7 @@ const closeModal = () => {
   draftStatusText.value = '';
   draftSaveError.value = false;
   showModal.value = false;
+  _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
 };
 
@@ -2497,6 +2501,10 @@ watch(
     if (!showModal.value || isEditing.value || forceReadOnly.value) return;
     if (isTeacher.value) {
       if (!form.StudentID) return;
+      if (_openedFromScheduleSession.value !== 0) {
+        _openedFromScheduleSession.value = 0;
+        return;
+      }
       applyTeacherFormDefaults({ studentId: form.StudentID, preserveStudent: true });
       return;
     }
