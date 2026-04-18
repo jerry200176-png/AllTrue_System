@@ -188,6 +188,8 @@
       </div>
 
       <!-- Courses & Remaining Sessions (Card Layout) -->
+      <!-- PRD-H (2026-04-18)：月結制改顯示「本月已上 X 堂 / 預定 Y 堂」＋「月繳 $Z 預估」，
+           堂數制仍維持已用/購買/剩餘；付款狀態 badge 兩種模式共用。 -->
       <div class="pp-card" v-if="(dashboard.classes || []).length > 0" data-guide="parent-classes-card">
         <div class="pp-section-header">
           <span class="material-symbols-outlined pp-section-icon" style="color:#2e7d32;">menu_book</span>
@@ -197,23 +199,51 @@
           <div v-for="c in dashboard.classes" :key="c.id" class="pp-course-card" :class="courseCardClass(c)">
             <div class="pp-course-top">
               <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
+              <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
               <span v-if="c.is_stopped" class="pp-badge pp-badge-danger">已停課</span>
               <span v-else-if="c.paid" class="pp-badge pp-badge-success">已繳費</span>
               <span v-else class="pp-badge pp-badge-warning">未繳費</span>
             </div>
-            <div class="pp-course-progress">
-              <div class="pp-progress-bar">
-                <div class="pp-progress-fill" :style="{ width: progressPercent(c) + '%', background: progressColor(c) }"></div>
+
+            <!-- 堂數制：顯示已用/購買進度條 + 剩餘堂數 -->
+            <template v-if="!isMonthlyCourse(c)">
+              <div class="pp-course-progress">
+                <div class="pp-progress-bar">
+                  <div class="pp-progress-fill" :style="{ width: progressPercent(c) + '%', background: progressColor(c) }"></div>
+                </div>
+                <div class="pp-progress-labels">
+                  <span>已上 {{ c.used_sessions ?? 0 }}</span>
+                  <span>購買 {{ c.sessions_purchased ?? 0 }}</span>
+                </div>
               </div>
-              <div class="pp-progress-labels">
-                <span>已使用 {{ c.used_sessions ?? 0 }}</span>
-                <span>購買 {{ c.sessions_purchased ?? 0 }}</span>
+              <div class="pp-course-remaining" :style="{ color: remainingColor(c) }">
+                <span class="pp-remaining-number">{{ c.remaining_sessions ?? 0 }}</span>
+                <span class="pp-remaining-label">堂剩餘</span>
               </div>
-            </div>
-            <div class="pp-course-remaining" :style="{ color: remainingColor(c) }">
-              <span class="pp-remaining-number">{{ c.remaining_sessions ?? 0 }}</span>
-              <span class="pp-remaining-label">堂剩餘</span>
-            </div>
+            </template>
+
+            <!-- 月結制：顯示本月已上堂數 + 預估月費 -->
+            <template v-else>
+              <div class="pp-course-progress" v-if="(c.monthly_target || 0) > 0">
+                <div class="pp-progress-bar">
+                  <div class="pp-progress-fill" :style="{ width: monthlyProgressPercent(c) + '%', background: '#1976d2' }"></div>
+                </div>
+                <div class="pp-progress-labels">
+                  <span>{{ dashboard.current_month_label || '本月' }}已上 {{ c.attended_this_month ?? 0 }}</span>
+                  <span>預定 {{ c.monthly_target }} 堂/月</span>
+                </div>
+              </div>
+              <div class="pp-monthly-stats">
+                <div class="pp-monthly-attended">
+                  <span class="pp-remaining-number" style="color:#1976d2;">{{ c.attended_this_month ?? 0 }}</span>
+                  <span class="pp-remaining-label">{{ dashboard.current_month_label || '本月' }}已上</span>
+                </div>
+                <div v-if="(c.monthly_fee_estimate || 0) > 0" class="pp-monthly-fee">
+                  <span class="pp-monthly-fee-amount">${{ formatMoney(c.monthly_fee_estimate) }}</span>
+                  <span class="pp-monthly-fee-label">月費預估</span>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -566,6 +596,24 @@ const progressPercent = (c) => {
   return Math.min(100, Math.round((used / total) * 100));
 };
 
+const isMonthlyCourse = (c) => {
+  const mode = String(c?.schedule_mode ?? 'count');
+  return mode !== 'count';
+};
+
+const monthlyProgressPercent = (c) => {
+  const target = c?.monthly_target || 0;
+  const attended = c?.attended_this_month || 0;
+  if (target <= 0) return 0;
+  return Math.min(100, Math.round((attended / target) * 100));
+};
+
+const formatMoney = (v) => {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return '0';
+  return n.toLocaleString('en-US');
+};
+
 const progressColor = (c) => {
   const remaining = c.remaining_sessions ?? 0;
   if (remaining <= 0) return '#c62828';
@@ -594,6 +642,10 @@ const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incom
 
 const courseCardClass = (c) => {
   if (c.is_stopped) return 'stopped';
+  if (isMonthlyCourse(c)) {
+    if (!c.paid) return 'warning';
+    return '';
+  }
   const r = c.remaining_sessions ?? 0;
   if (r <= 0) return 'danger';
   if (r <= 2) return 'warning';
@@ -1009,6 +1061,7 @@ onMounted(async () => {
 .pp-badge-success { background: #e8f5e9; color: #2e7d32; }
 .pp-badge-warning { background: #fff3e0; color: #e65100; }
 .pp-badge-danger { background: #ffebee; color: #c62828; }
+.pp-badge-info { background: #e3f2fd; color: #1565c0; }
 
 /* ═══ Upcoming Sessions ═══ */
 .pp-session-list { display: flex; flex-direction: column; gap: 0; }
@@ -1053,6 +1106,19 @@ onMounted(async () => {
 .pp-course-remaining { text-align: right; }
 .pp-remaining-number { font-size: 1.6em; font-weight: 800; }
 .pp-remaining-label { font-size: 0.78em; color: #90a4ae; margin-left: 2px; }
+
+/* PRD-H：月結課程「本月已上 + 月費預估」區塊 */
+.pp-monthly-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+}
+.pp-monthly-attended { text-align: left; display: flex; align-items: baseline; gap: 4px; }
+.pp-monthly-fee { text-align: right; display: flex; flex-direction: column; align-items: flex-end; }
+.pp-monthly-fee-amount { font-size: 1.15em; font-weight: 700; color: #37474f; }
+.pp-monthly-fee-label { font-size: 0.72em; color: #90a4ae; margin-top: 2px; }
 
 /* ═══ Learning Records ═══ */
 .pp-record-card {

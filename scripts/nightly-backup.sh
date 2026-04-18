@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-# nightly-backup.sh — MySQL dump + git push
+# nightly-backup.sh — MySQL dump + git push (+ monthly full archive + daily git tag)
 # Runs at 01:00 daily via cron.
-# Keeps last 7 SQL dumps to avoid filling disk.
+#
+# 保留策略：
+#   - 每日夜備 SQL：保留 KEEP_DAYS 天（預設 14）
+#   - 每月 1 號額外產生「月首全備」：保留 KEEP_MONTHS 份（預設 12 個月）
+#   - 每次 nightly 會打一個 git tag `nightly-YYYYMMDD-HHMM`（避免版本回溯時找不到錨點）；
+#     tag 只保留 KEEP_TAGS 個最新（預設 60），舊的自動刪除（本地 + origin）。
 
 set -euo pipefail
 
 REPO_ROOT="/home/admin"
 BACKUP_DIR="$REPO_ROOT/backups"
+MONTHLY_DIR="$BACKUP_DIR/monthly"
 ENV_FILE="$REPO_ROOT/backend/.env"
 LOG_FILE="$REPO_ROOT/backups/nightly-backup.log"
-KEEP_DAYS=7
+KEEP_DAYS=14
+KEEP_MONTHS=12
+KEEP_TAGS=60
+
+mkdir -p "$MONTHLY_DIR"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
@@ -30,6 +40,8 @@ log "=== Nightly backup start ==="
 
 # --- Step 1: MySQL dump ---
 TIMESTAMP=$(date '+%Y-%m-%d_%H%M')
+TODAY_DOM=$(date '+%d')            # 當月第幾日（01..31）
+TODAY_YM=$(date '+%Y-%m')
 DUMP_FILE="$BACKUP_DIR/alltrue_nightly_${TIMESTAMP}.sql.gz"
 
 log "Dumping MySQL database '$DB_DATABASE' to $DUMP_FILE ..."
@@ -45,10 +57,23 @@ mysqldump \
 
 log "Dump complete: $(du -sh "$DUMP_FILE" | cut -f1)"
 
-# --- Step 2: Remove old dumps (keep last KEEP_DAYS) ---
-log "Removing dumps older than $KEEP_DAYS days ..."
-find "$BACKUP_DIR" -name "alltrue_nightly_*.sql.gz" -mtime +${KEEP_DAYS} -delete && \
-  log "Old dumps cleaned." || log "No old dumps to remove."
+# --- Step 1b: 月首（每月 1 號）產生月備，或在當月沒有月備時補一份 ---
+MONTHLY_FILE="$MONTHLY_DIR/alltrue_monthly_${TODAY_YM}.sql.gz"
+if [ "$TODAY_DOM" = "01" ] || [ ! -f "$MONTHLY_FILE" ]; then
+  log "Creating monthly snapshot $MONTHLY_FILE (hardlink from daily) ..."
+  ln -f "$DUMP_FILE" "$MONTHLY_FILE" 2>/dev/null || cp "$DUMP_FILE" "$MONTHLY_FILE"
+fi
+
+# --- Step 2a: 清掉 KEEP_DAYS 天前的日備 ---
+log "Removing daily dumps older than $KEEP_DAYS days ..."
+find "$BACKUP_DIR" -maxdepth 1 -name "alltrue_nightly_*.sql.gz" -mtime +${KEEP_DAYS} -delete && \
+  log "Old daily dumps cleaned." || log "No old daily dumps to remove."
+
+# --- Step 2b: 月備僅保留最新 KEEP_MONTHS 份 ---
+log "Pruning monthly snapshots (keep latest $KEEP_MONTHS) ..."
+ls -1t "$MONTHLY_DIR"/alltrue_monthly_*.sql.gz 2>/dev/null | tail -n +$((KEEP_MONTHS + 1)) | while read -r old; do
+  [ -n "$old" ] && rm -f "$old" && log "Removed monthly: $(basename "$old")"
+done
 
 # --- Step 3: Cursor plans 主題索引（失敗不阻斷備份）---
 log "Refreshing plan topic index ..."
@@ -63,5 +88,28 @@ cd "$REPO_ROOT"
 
 log "Running git-sync.sh ..."
 ./scripts/git-sync.sh "chore(nightly): auto backup ${TIMESTAMP}" 2>&1 | tee -a "$LOG_FILE"
+
+# --- Step 5: 打 nightly tag（防版本回溯遺失錨點）---
+TAG_NAME="nightly-${TIMESTAMP}"
+log "Tagging commit as $TAG_NAME ..."
+if git tag -a "$TAG_NAME" -m "nightly backup ${TIMESTAMP}" 2>&1 | tee -a "$LOG_FILE"; then
+  if git push origin "$TAG_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+    log "Tag pushed."
+  else
+    log "WARN: tag push failed (continuing)."
+  fi
+else
+  log "WARN: tag creation failed or already exists (continuing)."
+fi
+
+# --- Step 5b: Prune 舊 nightly tag，只保留 KEEP_TAGS 個最新 ---
+log "Pruning nightly tags (keep latest $KEEP_TAGS) ..."
+mapfile -t OLD_TAGS < <(git tag --list 'nightly-*' --sort=-creatordate | tail -n +$((KEEP_TAGS + 1)))
+for t in "${OLD_TAGS[@]}"; do
+  [ -z "$t" ] && continue
+  git tag -d "$t" >/dev/null 2>&1 || true
+  git push origin ":refs/tags/$t" >/dev/null 2>&1 || true
+  log "Removed old tag: $t"
+done
 
 log "=== Nightly backup done ==="
