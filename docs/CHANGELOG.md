@@ -2,6 +2,45 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-18 — PRD-F：兼職薪資改為 30-min slice-based 重疊計算（覆蓋 2026-04）
+
+### Problem
+
+兼職老師薪水算法過去使用 `CONCURRENCY_START_TOLERANCE_MINUTES=15` — 兩堂課開始時間相差 > 15 分鐘即視為獨立排課，兩人分別照時薪計。結果 游靜鈴 在 4 月出現與 Ruth蔣 錯開 30–90 分鐘的多人並堂卻完全沒吃到「每多一人 +50 / 小時」 headcount bonus，實領 8400 元；但主任實際認知是「重疊時段就是並堂、加 headcount bonus，不重疊就各自 solo」，兩人工時一致時她倆不該差那麼多。
+
+### Change
+
+- **`backend/app/Http/Controllers/FinanceController.php`**
+  - 移除 `CONCURRENCY_START_TOLERANCE_MINUTES` 常數。
+  - `buildConcurrencyBonusMap($records, $rateMap, $ruleCtx)` 重寫為 sweep-line：
+    1. 以 (teacher, date) 分組，用每堂合約 contracted duration 或 StartTime/EndTime 計算 interval；
+    2. 取所有 interval 端點排序切出 atomic segments；
+    3. 每個 segment 找出 active intervals，segment 時薪 = `max(base_rate) + headcount_bonus * (n-1)`，pay = 時薪 × (b-a)/60（按真實分鐘 pro-rata）；
+    4. 把 segment pay 歸戶給 active 內 base_rate 最高的 LR（並堂時 tie-break 最小 LR id），其餘 LR 只拿 solo 段；
+    5. `bonusMap[lr] = attributed - baseline(base_rate × hours)` → 可正可負，提供前端/匯出層顯示 delta。
+  - `parttimePayroll` / `parttimePayrollSessions` / `buildParttimePayrollData` 全部改呼叫新簽名，把分行 rule 的 `headcount_bonus` 與 teacher override 併入 `$ruleCtx`。
+- **測試全綠**：`PayrollConcurrencyTest` 10/10、`PayrollRateConsistencyTest` 2/2、`ParttimePayrollTest` 25/25、`PayrollTeacherOverrideTest` 14/14、`PayrollRulesTest` 10/10（共 61 tests / 184 assertions）。已更新 6 個舊期望值：從 15-min tolerance 模型（全獨立或全並堂）改為 slice-based（重疊段並堂、非重疊段 solo）。
+
+### Impact
+
+- 2026-04 still-draft 月份立即生效。核對實數：
+  - 游靜鈴：8400 → 7350（-1050）— 錯開的非重疊段原本被誤認為「無並堂」吃了 400/hr × 全時數；現在非重疊段正常 solo、重疊段依 headcount bonus 累計。
+  - Ruth蔣：6200 維持不變（她的並堂剛好都屬完全重疊段，新舊算法結果一致）。
+- 分行主任仍可透過 `PayrollBranchRule.headcount_bonus` 覆寫預設 +50/hr；teacher override 也照常吃。
+- sessions 詳列 API 的 `concurrency_bonus_amount` 現在可能為負（代表該 LR 是非主攤位，只領 solo 段），前端顯示金額仍以 total_salary 為準，不會讓老師看到「扣款」。
+
+### Auto-verification
+
+1. `php artisan test tests/Feature/Payroll*Test.php tests/Feature/ParttimePayroll*Test.php` → 全 PASS。
+2. Tinker 模擬：以 admin 身份呼叫 `/api/v1/finance/parttime-payroll?month=2026-04&branch_id=17`，確認 游靜鈴 7350 / 24h、Ruth蔣 6200 / 26h。
+3. 範例驗證 (grade=高中 400/hr, bonus=+50)：A 17:00-19:00、B 18:00-20:00 → 17-18 solo 400 + 18-19 並堂 450 + 19-20 solo 400 = 1250（原 15-min tolerance 算成 2 × 800 = 1600）。
+
+### Resolution classification
+
+PAYROLL-ALGORITHM-CHANGE（財務規則變更）。資料表 schema 不變；歷史已 frozen 月份不重算（PayrollMonthStatus=frozen 的月份仍維持舊 snapshot）。
+
+---
+
 ## 2026-04-18 — PRD-E：SmartCalendar 多日多時段課程基底格被單一 scheduled 例外抹除修正（8c1673b9）
 
 ### Problem

@@ -920,7 +920,7 @@ class FinanceController extends Controller
             ->where('LearningRecord.TeacherID', $teacherId)
             ->get();
         $rateMap  = $this->buildRateMap($allTeacherRecords, $ruleCtx);
-        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap);
+        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap, $ruleCtx);
 
         $records = $query->orderBy('LearningRecord.SessionDate')
             ->offset(($page - 1) * $perPage)
@@ -1001,7 +1001,7 @@ class FinanceController extends Controller
 
         $allRecords = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
         $rateMap  = $this->buildRateMap($allRecords, $ruleCtx);
-        $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap);
+        $bonusMap = $this->buildConcurrencyBonusMap($allRecords, $rateMap, $ruleCtx);
 
         $filename = "兼職薪資_{$branchName}_{$month}.csv";
 
@@ -1174,7 +1174,7 @@ class FinanceController extends Controller
 
         $records = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->get();
         $rateMap  = $this->buildRateMap($records, $ruleCtx);
-        $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap);
+        $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap, $ruleCtx);
 
         $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
         $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
@@ -1339,24 +1339,37 @@ class FinanceController extends Controller
     /**
      * Build a map of LR id → net concurrency adjustment for all records.
      *
-     * Level dominance: when LRs of different levels overlap, the highest-level
-     * LR earns the +50/h per-extra-student bonus; lower-level LRs have their
-     * base_rate deducted for the overlapping duration (net can be negative).
-     * Same-level overlaps: every LR earns (n-1)*50*dt as before.
+     * ── 2026-04-18 rewrite: time-slice model (PRD-F, plan-id TBA) ──
+     * User-confirmed rule (取代先前 v1.5 CONCURRENCY_START_TOLERANCE_MINUTES=15):
+     *   1. 依老師 × 日期分組，沿時間軸做 sweep-line 切割成連續段（breakpoints = 所有
+     *      LR 的 start/end 分鐘）。
+     *   2. 每一段內：n = 該段 active LR 數；max_base = 活躍 LR 中最高的 base_rate；
+     *      segment_rate_per_hour = max_base + headcount_bonus × (n - 1)。
+     *   3. segment_pay = segment_rate_per_hour × (segEnd - segStart) / 60（pro-rata，
+     *      不足 30 分的尾巴按真實分鐘比例計）。
+     *   4. Primary attribution：將 segment_pay 全額歸給「該段 base_rate 最高、lr_id 最
+     *      小」的 LR；其他 LR 得到 0 歸屬 — UI 上顯示成「800 / 0」讓主任一眼看出是並堂。
+     *   5. bonusMap[lr_id] = attributed_pay - baseline_base_salary（即現有 controller
+     *      仍由 buildSessionRow 計算 base_rate × hours，再加本函式回傳的 delta）。
+     *
+     *   headcount_bonus 預設 50（每多一人、每小時），可由各分校主任於
+     *   PayrollBranchRule 設定；個別老師 override 取自 teacher_overrides。
+     *
+     *   取消 CONCURRENCY_START_TOLERANCE_MINUTES：錯開 30 分鐘的兩堂現在會按真實重疊時
+     *   段算並堂（主任 2026-04-18 晚間確認要改）。
      *
      * @param  \Illuminate\Support\Collection  $records
      * @param  array  $rateMap  [lr_id => ['base_rate' => int, 'level_weight' => int]]
      */
-    private function buildConcurrencyBonusMap($records, array $rateMap = []): array
+    private function buildConcurrencyBonusMap($records, array $rateMap = [], array $ruleCtx = []): array
     {
-        $bonusPerStudent = config('payroll.concurrency_bonus_per_student', 50);
-        $levelWeights    = config('payroll.level_weights', [
-            'high' => 4, 'junior' => 3, 'elementary' => 2, 'tutoring' => 1,
-        ]);
+        $defaultBonus    = config('payroll.concurrency_bonus_per_student', 50);
         $gradeLevelMap   = config('payroll.grade_level_map', []);
         $defaultRates    = config('payroll.base_rates', []);
-        $bonusMap = [];
+        $teacherOverrides = $ruleCtx['teacher_overrides'] ?? [];
+        $branchBonus     = $ruleCtx['headcount_bonus'] ?? $defaultBonus;
 
+        $bonusMap = [];
         $grouped = [];
         foreach ($records as $r) {
             $key = $r->TeacherID . '_' . substr((string) $r->SessionDate, 0, 10);
@@ -1364,117 +1377,93 @@ class FinanceController extends Controller
         }
 
         foreach ($grouped as $dayRecords) {
-            if (count($dayRecords) < 2) {
-                continue;
-            }
-
             $intervals = [];
             foreach ($dayRecords as $r) {
                 $startMin = $this->timeToMinutes($r->StartTime);
-                if ($startMin === null) {
-                    continue;
-                }
+                if ($startMin === null) continue;
 
-                // FR-006: Use contracted duration for concurrency interval end, not actual end time.
                 $sessionDate = $r->SessionDate ? substr((string) $r->SessionDate, 0, 10) : null;
-                $sc          = $r->studentClass;
-                $contracted  = $this->contractedDurationMinutes($sc, $sessionDate);
+                $sc = $r->studentClass;
+                $contracted = $this->contractedDurationMinutes($sc, $sessionDate);
                 if ($contracted !== null) {
                     $endMin = $startMin + $contracted;
                 } else {
                     $endMin = $this->timeToMinutes($r->EndTime);
-                    if ($endMin === null || $endMin <= $startMin) {
-                        continue;
-                    }
+                    if ($endMin === null || $endMin <= $startMin) continue;
                 }
 
                 if (isset($rateMap[$r->id])) {
-                    $baseRate    = $rateMap[$r->id]['base_rate'];
-                    $levelWeight = $rateMap[$r->id]['level_weight'];
+                    $baseRate = $rateMap[$r->id]['base_rate'];
                 } else {
                     $classType = $sc->ClassType ?? 'one_on_one';
                     $gradeId   = (int) ($sc->GradeID ?? 0);
                     $level     = $gradeLevelMap[$gradeId] ?? 'elementary';
                     if ($classType === 'tutoring') $level = 'tutoring';
-                    $baseRate    = $defaultRates[$level] ?? 300;
-                    $levelWeight = $levelWeights[$level] ?? 1;
+                    $baseRate = $defaultRates[$level] ?? 300;
                 }
 
+                $tid = (int) $r->TeacherID;
+                $teacherBonus = isset($teacherOverrides[$tid]['headcount_bonus'])
+                    ? (int) $teacherOverrides[$tid]['headcount_bonus']
+                    : (int) $branchBonus;
+
                 $intervals[] = [
-                    'lr_id'        => $r->id,
-                    'start'        => $startMin,
-                    'end'          => $endMin,
-                    'base_rate'    => $baseRate,
-                    'level_weight' => $levelWeight,
+                    'lr_id'      => $r->id,
+                    'start'      => $startMin,
+                    'end'        => $endMin,
+                    'base_rate'  => (int) $baseRate,
+                    'bonus'      => $teacherBonus,
+                    'hours'      => ($endMin - $startMin) / 60.0,
                 ];
             }
 
-            if (count($intervals) < 2) {
-                continue;
-            }
+            if (empty($intervals)) continue;
 
             $points = [];
             foreach ($intervals as $iv) {
                 $points[] = $iv['start'];
                 $points[] = $iv['end'];
             }
-            $points = array_unique($points);
+            $points = array_values(array_unique($points));
             sort($points);
 
+            $attributed = [];
             foreach ($intervals as $iv) {
-                $lrNet = 0.0;
-                for ($i = 0, $cnt = count($points) - 1; $i < $cnt; $i++) {
-                    $segStart = $points[$i];
-                    $segEnd   = $points[$i + 1];
-                    if ($segStart >= $iv['end'] || $segEnd <= $iv['start']) {
-                        continue;
-                    }
+                $attributed[$iv['lr_id']] = 0.0;
+            }
 
-                    // Only count another session as truly concurrent with the
-                    // current interval when their start times are within the
-                    // configured tolerance. Sessions whose contracted windows
-                    // overlap solely because of staggered scheduling (e.g.
-                    // 09:30 vs 10:00) are treated as independent, not a group
-                    // class. See CONCURRENCY_START_TOLERANCE_MINUTES above.
-                    $concurrent = [];
-                    foreach ($intervals as $other) {
-                        if ($other['start'] >= $segEnd || $other['end'] <= $segStart) {
-                            continue;
-                        }
-                        $startDiff = abs($other['start'] - $iv['start']);
-                        if ($startDiff > self::CONCURRENCY_START_TOLERANCE_MINUTES) {
-                            continue;
-                        }
-                        $concurrent[] = $other;
-                    }
+            for ($i = 0, $cnt = count($points) - 1; $i < $cnt; $i++) {
+                $a = $points[$i];
+                $b = $points[$i + 1];
+                if ($b <= $a) continue;
 
-                    $lrCount = count($concurrent);
-                    if ($lrCount < 2) {
-                        continue;
-                    }
+                $active = array_values(array_filter(
+                    $intervals,
+                    fn ($iv) => $iv['start'] <= $a && $iv['end'] >= $b
+                ));
+                if (empty($active)) continue;
 
-                    $dt       = ($segEnd - $segStart) / 60.0;
-                    $maxLevel = max(array_column($concurrent, 'level_weight'));
+                $n       = count($active);
+                $maxBase = max(array_column($active, 'base_rate'));
+                $bonus   = (int) max(array_column($active, 'bonus'));
 
-                    // v1.4 tie-break: when multiple sessions share the same max level within a
-                    // segment, only the one with the smallest lr_id is "primary" and earns the
-                    // concurrency bonus. All others (same-level non-primary OR dominated) have
-                    // their base_rate contribution zeroed out for this segment.
-                    // See AI_REGRESSION_LESSONS §2026-04-17, PayrollConcurrencyTest.
-                    $maxLevelIds = array_column(
-                        array_filter($concurrent, fn ($c) => $c['level_weight'] >= $maxLevel),
-                        'lr_id'
-                    );
-                    $primaryId = min($maxLevelIds);
+                $topIds = array_column(
+                    array_filter($active, fn ($iv) => $iv['base_rate'] >= $maxBase),
+                    'lr_id'
+                );
+                $primaryId = min($topIds);
 
-                    if ($iv['lr_id'] === $primaryId) {
-                        $lrNet += ($lrCount - 1) * $bonusPerStudent * $dt;
-                    } else {
-                        $lrNet -= $iv['base_rate'] * $dt;
-                    }
-                }
-                if (abs($lrNet) > 0.001) {
-                    $bonusMap[$iv['lr_id']] = (int) round($lrNet);
+                $ratePerHour = $maxBase + $bonus * ($n - 1);
+                $segPay      = $ratePerHour * ($b - $a) / 60.0;
+
+                $attributed[$primaryId] = ($attributed[$primaryId] ?? 0.0) + $segPay;
+            }
+
+            foreach ($intervals as $iv) {
+                $baseline = $iv['base_rate'] * $iv['hours'];
+                $delta    = ($attributed[$iv['lr_id']] ?? 0.0) - $baseline;
+                if (abs($delta) > 0.001) {
+                    $bonusMap[$iv['lr_id']] = (int) round($delta);
                 }
             }
         }
