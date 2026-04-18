@@ -14,6 +14,7 @@ use App\Models\UserCampus;
 use App\Services\EnrollmentService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
+use App\Services\SubstituteService;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -1047,15 +1048,19 @@ class ClassSessionController extends Controller
             ], 422);
         }
 
-        $teacherHasCampus = UserCampus::where('UserID', $newTeacherId)
-            ->where('CampusID', $campusId)
-            ->exists();
-        if (!$teacherHasCampus) {
+        // PRD FR-003：候選池為 operator 管理分校的聯集（managed_campus_ids）。
+        // 老師只要綁定任一 operator 管理分校即可被指派（跨分校協調）。
+        $substituteSvc = app(SubstituteService::class);
+        if (!$substituteSvc->teacherBoundToAny($newTeacherId, $campusIds)) {
             return response()->json([
-                'message' => '所選老師未綁定此分校',
-                'errors' => ['substitute_teacher_id' => ['所選老師未綁定此分校。']],
+                'message' => '所選老師未綁定任一您管理的分校',
+                'errors' => ['substitute_teacher_id' => ['所選老師未綁定任一您管理的分校。']],
             ], 422);
         }
+        $teacherHasThisCampus = UserCampus::where('UserID', $newTeacherId)
+            ->where('CampusID', $campusId)
+            ->exists();
+        $crossCampus = !$teacherHasThisCampus;
 
         try {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
@@ -1089,11 +1094,23 @@ class ClassSessionController extends Controller
         $rescheduledIdForGuard = $existingRescheduled ? (int) $existingRescheduled->id : null;
         $existingScheduled = null;
         if ($rescheduledIdForGuard) {
+            // Prefer the scheduled row whose start_time matches the ClassSession's current time.
+            // This is necessary when the ClassSession was rescheduled after a substitute was set:
+            // the old substitute row (at the original time) and a new row (at the new time) may
+            // both exist. Picking by time ensures we operate on the correct one.
             $existingScheduled = Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'scheduled')
                 ->where('original_schedule_id', $rescheduledIdForGuard)
+                ->where('start_time', $startTime)
                 ->first();
+            if (!$existingScheduled) {
+                $existingScheduled = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', $rescheduledIdForGuard)
+                    ->first();
+            }
         }
 
         // Determine whether the session is in the past (already ended or attended-like status).
@@ -1107,6 +1124,41 @@ class ClassSessionController extends Controller
                 $isPastSession = $sessionEndDt->lte(Carbon::now());
             } catch (\Throwable $e) {
                 $isPastSession = false;
+            }
+        }
+
+        // PRD FR-004a：跨分校（物理不可分身）衝堂檢查
+        // 過去堂次（補記）跳過；否則 operator 不可把一個已在別分校上課的老師再指派。
+        // 只攔截「其他分校」的物理衝突；同分校衝堂由 ScheduleGuardService 於下方以 409 處理。
+        if (!$isPastSession) {
+            $excludeSchedIds = [];
+            if ($existingScheduled) {
+                $excludeSchedIds[] = (int) $existingScheduled->id;
+            }
+            $allBusy = $substituteSvc->detectCrossCampusConflict(
+                $newTeacherId,
+                $sessionDate,
+                $startTime,
+                $endTime,
+                $excludeSchedIds
+            );
+            $crossConflicts = array_values(array_filter(
+                $allBusy,
+                static fn ($c) => (int) ($c['campus_id'] ?? 0) > 0 && (int) $c['campus_id'] !== (int) $campusId
+            ));
+            if (!empty($crossConflicts)) {
+                Log::info('[substitute] cross_campus_conflict', [
+                    'class_session_id' => $id,
+                    'new_teacher_id' => $newTeacherId,
+                    'session_date' => $sessionDate,
+                    'conflicts' => $crossConflicts,
+                ]);
+
+                return response()->json([
+                    'message' => '代課老師於此時段在其他分校另有課程，無法指派',
+                    'conflicts' => $crossConflicts,
+                    'cross_campus' => true,
+                ], 422);
             }
         }
 
@@ -1184,7 +1236,8 @@ class ClassSessionController extends Controller
                 $campusId,
                 $roomId,
                 $existingRescheduled,
-                $existingScheduled
+                $existingScheduled,
+                $crossCampus
             );
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
@@ -1221,12 +1274,14 @@ class ClassSessionController extends Controller
         int $campusId,
         ?int $roomId,
         $existingRescheduled,
-        $existingScheduled
+        $existingScheduled,
+        bool $crossCampus = false
     ) {
         return DB::transaction(function () use (
             $request, $session, $data, $newTeacherId, $oldTeacherId,
             $sessionDate, $startTime, $endTime, $courseId, $studentId, $subject,
-            $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled
+            $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled,
+            $crossCampus
         ) {
             $durationHours = 2;
             if ($startTime && $endTime) {
@@ -1283,16 +1338,45 @@ class ClassSessionController extends Controller
                 'reused_rescheduled_row' => (bool) $existingRescheduledRow,
             ]);
 
-            // 2) Upsert substitute scheduled record (new teacher's slot on same day)
-            $existingScheduledRow = $existingScheduled ?: Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
-                ->where('status', 'scheduled')
-                ->where('original_schedule_id', $rescheduledId)
-                ->first();
+            // 2) Upsert substitute scheduled record (new teacher's slot on same day).
+            // Prefer the row matching the ClassSession's current start_time to avoid operating
+            // on a stale row from before a same-day reschedule.
+            $existingScheduledRow = $existingScheduled;
+            if (!$existingScheduledRow) {
+                $existingScheduledRow = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', $rescheduledId)
+                    ->where('start_time', $startTime)
+                    ->first();
+            }
+            if (!$existingScheduledRow) {
+                $existingScheduledRow = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', $rescheduledId)
+                    ->first();
+            }
 
             if ($existingScheduledRow) {
-                $existingScheduledRow->update(['teacher_id' => $newTeacherId]);
+                $rowUpdate = ['teacher_id' => $newTeacherId];
+                // Sync time if the ClassSession was rescheduled after the substitute was set
+                if ($existingScheduledRow->start_time !== $startTime) {
+                    $rowUpdate['start_time'] = $startTime;
+                }
+                if ($existingScheduledRow->end_time !== $endTime) {
+                    $rowUpdate['end_time'] = $endTime;
+                }
+                $existingScheduledRow->update($rowUpdate);
                 $scheduledId = $existingScheduledRow->id;
+                // Remove any other stale scheduled rows for this rescheduled anchor on the same date
+                // (can accumulate when reschedule + substitute are done in different orders)
+                Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', $rescheduledId)
+                    ->where('id', '!=', $scheduledId)
+                    ->delete();
             } else {
                 $scheduled = Schedule::create([
                     'student_id' => $studentId,
@@ -1423,6 +1507,60 @@ class ClassSessionController extends Controller
                 $jsonFlags |= JSON_INVALID_UTF8_SUBSTITUTE;
             }
 
+            // PRD FR-010：同一交易建立家長代課通知
+            $oldTeacherName = '';
+            if ($oldTeacherId > 0) {
+                $oldRaw = DB::table('Teacher')->where('id', $oldTeacherId)->value('T_Name')
+                    ?? DB::table('User')->where('id', $oldTeacherId)->value('Name');
+                $oldTeacherName = $this->scrubSubstituteUtf8($oldRaw);
+            }
+            $studentName = $this->scrubSubstituteUtf8(DB::table('Student')->where('id', $studentId)->value('Name') ?? '');
+            $authUser = $request->attributes->get('auth_user');
+            $operatorId = (int) ($authUser->id ?? 0);
+
+            $substituteSvc = app(SubstituteService::class);
+            $notification = null;
+            try {
+                $notification = $substituteSvc->createParentNotification([
+                    'campus_id' => $campusId,
+                    'class_session_id' => $session->id,
+                    'student_id' => $studentId,
+                    'student_class_id' => $courseId,
+                    'student_name' => $studentName,
+                    'subject' => $subject,
+                    'session_date' => $sessionDate,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'old_teacher_id' => $oldTeacherId,
+                    'old_teacher_name' => $oldTeacherName,
+                    'new_teacher_id' => $newTeacherId,
+                    'new_teacher_name' => $teacherName,
+                    'reason' => $reasonForLog ?: null,
+                    'cross_campus' => $crossCampus,
+                    'operator_id' => $operatorId,
+                ]);
+            } catch (\Throwable $ne) {
+                Log::error('[substitute] parent_notification_failed_rollback', [
+                    'class_session_id' => $session->id,
+                    'message' => $ne->getMessage(),
+                ]);
+                throw $ne;
+            }
+
+            Log::info('[substitute_applied]', [
+                'class_session_id' => $session->id,
+                'student_class_id' => $courseId,
+                'student_id' => $studentId,
+                'campus_id' => $campusId,
+                'old_teacher_id' => $oldTeacherId,
+                'new_teacher_id' => $newTeacherId,
+                'cross_campus' => $crossCampus,
+                'operator_id' => $operatorId,
+                'notification_id' => $notification ? (int) $notification->id : null,
+                'rescheduled_id' => $rescheduledId,
+                'scheduled_id' => $scheduledId,
+            ]);
+
             $this->logSubstituteDiag('before_json_response', [
                 'class_session_id' => $session->id,
                 'rescheduled_id' => $rescheduledId,
@@ -1439,6 +1577,12 @@ class ClassSessionController extends Controller
                 'rescheduled_schedule_id' => $rescheduledId,
                 'scheduled_schedule_id' => $scheduledId,
                 'learning_record_id' => $lrId,
+                'notification_id' => $notification ? (int) $notification->id : null,
+                'cross_campus' => $crossCampus,
+                // 業界對齊 Gmail Undo Send：UI 倒數用 undo_window_seconds，後端 deadline 保留 60s grace
+                'undo_window_seconds' => \App\Http\Controllers\SubstituteController::resolveUiUndoWindow(),
+                'undo_deadline_ms' => (int) round(microtime(true) * 1000)
+                    + \App\Http\Controllers\SubstituteController::resolveServerUndoWindow() * 1000,
             ], 200, [], $jsonFlags);
         });
     }

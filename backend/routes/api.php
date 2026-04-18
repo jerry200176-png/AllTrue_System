@@ -27,11 +27,14 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
 use App\Http\Controllers\ClassSessionController;
+use App\Http\Controllers\SubstituteController;
+use App\Http\Controllers\TeacherLeaveController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
+use App\Http\Controllers\ScheduleDiscrepancyController;
 
 
 Route::get('/fix-db', function () {
@@ -313,6 +316,15 @@ Route::prefix('v1')->group(function () {
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
+        // PRD 9c058f19 — 代課流程 UX 優化
+        Route::post('class-sessions/{id}/substitute/undo', [SubstituteController::class, 'undo']);
+        Route::get('teachers/{id}/availability', [SubstituteController::class, 'availability']);
+        Route::post('teacher-leaves/preview', [TeacherLeaveController::class, 'preview']);
+        Route::post('teacher-leaves/batch-substitute', [TeacherLeaveController::class, 'batchSubstitute']);
+        Route::get('substitutes/recent', [SubstituteController::class, 'recent']);
+        // Undo 時間窗設定（Gmail Undo Send 模式：5/10/20/30 秒）
+        Route::get('system/settings/substitute-undo', [SubstituteController::class, 'getUndoSetting']);
+        Route::put('system/settings/substitute-undo', [SubstituteController::class, 'setUndoSetting']);
 
         Route::get('schedules', [\App\Http\Controllers\ScheduleController::class, 'index']);
         Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store']);
@@ -379,6 +391,22 @@ Route::prefix('v1')->group(function () {
         Route::post('chat/threads/{threadId}/pin', [ChatController::class, 'pinThread']);
         Route::delete('chat/messages/{messageId}', [ChatController::class, 'deleteMessage']);
         Route::get('chat/unread-count', [ChatController::class, 'unreadCount']);
+    });
+
+    // ── Schedule Discrepancies (課表回報管理) ─────────────────────────────────
+    // FR-008: Routes were accidentally removed by Claude Code on 2026-04-17. Re-added here.
+    // NOTE: Static paths (/my, /summary, /active-for-session) MUST be registered before the
+    // dynamic path (/{id}) to prevent Laravel's router from treating them as model IDs.
+    Route::middleware(['role:director,teacher', 'require_campus', 'require_password_change'])->group(function () {
+        Route::post('schedule-discrepancies', [ScheduleDiscrepancyController::class, 'store']);
+        Route::post('schedule-discrepancies/{id}/withdraw', [ScheduleDiscrepancyController::class, 'withdraw']);
+        Route::get('schedule-discrepancies/my', [ScheduleDiscrepancyController::class, 'mine']);
+        Route::get('schedule-discrepancies/active-for-session', [ScheduleDiscrepancyController::class, 'activeForSession']);
+    });
+    Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('schedule-discrepancies', [ScheduleDiscrepancyController::class, 'index']);
+        Route::get('schedule-discrepancies/summary', [ScheduleDiscrepancyController::class, 'summary']);
+        Route::put('schedule-discrepancies/{id}', [ScheduleDiscrepancyController::class, 'updateStatus']);
     });
 
     // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──

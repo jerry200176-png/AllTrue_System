@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campus;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
@@ -72,12 +73,91 @@ class AlertController extends Controller
 
         $allResults = $countResults->merge($dateResults)->keyBy('ID');
 
+        // ── Monthly billing package members: used to filter out member courses from individual alerts ──
+        $monthlyPkgMemberIds = collect();
+        $monthlyPkgAlerts = collect();
+
+        $monthlyPkgQuery = CoursePackage::query()
+            ->where('billing_mode', CoursePackage::BILLING_MODE_MONTHLY)
+            ->where('stop', false);
+        if ($studentIds !== null) {
+            $monthlyPkgQuery->whereIn('student_id', $studentIds);
+        }
+        $monthlyPkgs = $monthlyPkgQuery->with('student')->get();
+
+        if ($monthlyPkgs->isNotEmpty()) {
+            $allMemberScIds = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))
+                ->pluck('ID');
+            $monthlyPkgMemberIds = $allMemberScIds;
+
+            // Count attended sessions this month (start of month to today) per member
+            $startOfMonth = $today->copy()->startOfMonth()->toDateString();
+            $todayStr = $today->toDateString();
+            $attendedStatuses = ['attended', 'completed', 'late'];
+
+            $memberSessionCounts = DB::table('ClassSession')
+                ->whereBetween('SessionDate', [$startOfMonth, $todayStr])
+                ->whereIn('Status', $attendedStatuses)
+                ->whereIn('StudentClassID', $allMemberScIds)
+                ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
+                ->groupBy('StudentClassID')
+                ->pluck('cnt', 'StudentClassID')
+                ->map(fn ($v) => (int) $v)
+                ->toArray();
+
+            $membersByPkg = StudentClass::whereIn('PackageID', $monthlyPkgs->pluck('id'))
+                ->select('ID', 'PackageID')
+                ->get()
+                ->groupBy('PackageID');
+
+            foreach ($monthlyPkgs as $pkg) {
+                $members = $membersByPkg->get($pkg->id, collect());
+                $monthlySessions = $members->sum(fn ($m) => $memberSessionCounts[(int) $m->ID] ?? 0);
+                $rate = (float) $pkg->rate;
+                $charge = round($monthlySessions * $rate, 2);
+
+                $alertRow = $this->mapMonthlyAlert(
+                    $this->makeFakeSCForPackage($pkg),
+                    $today
+                );
+                if ($alertRow === null) {
+                    continue;
+                }
+
+                $monthlyPkgAlerts->push(array_merge($alertRow, [
+                    'id'               => null,
+                    'package_id'       => $pkg->id,
+                    'student_id'       => (int) $pkg->student_id,
+                    'student_name'     => $pkg->student->name ?? 'Unknown',
+                    'campus_id'        => (int) ($pkg->student->CampusID ?? 0),
+                    'subject'          => $pkg->name,
+                    'schedule_mode'    => 'date',
+                    'monthly_sessions' => $monthlySessions,
+                    'rate'             => round($rate, 2),
+                    'charge'           => $charge,
+                    'outstanding'      => $charge,
+                    'paid'             => (bool) $pkg->paid,
+                    'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
+                    'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
+                    'paid_amount'      => 0,
+                    'payment_status'   => 'unpaid',
+                    'latest_payment_report_id' => null,
+                    'has_newer_course'         => false,
+                    'newer_course_id'          => null,
+                    'newer_course_remaining'   => null,
+                    'newer_course_start_date'  => null,
+                ]));
+            }
+        }
+
         $rows = collect()
             ->merge(
                 $countResults->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
             )
             ->merge(
-                $dateResults->map(fn ($c) => $this->mapMonthlyAlert($c, $today))->filter()
+                // Exclude monthly-package members from individual date-mode alerts
+                $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
+                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today))->filter()
             )
             ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap) {
                 $classId = (int) $row['id'];
@@ -115,6 +195,9 @@ class AlertController extends Controller
             ->values();
 
         $rows = $this->suppressRenewedLowSessionAlerts($rows);
+
+        // Merge monthly billing package alerts (always included if within settlement window)
+        $rows = $rows->merge($monthlyPkgAlerts)->values();
 
         return response()->json($rows);
     }
@@ -218,6 +301,24 @@ class AlertController extends Controller
         $d = max(1, min($settlementDay, $dim));
 
         return Carbon::createFromDate($year, $month, $d)->startOfDay();
+    }
+
+    /**
+     * Build a minimal fake StudentClass object to drive mapMonthlyAlert for a CoursePackage.
+     * Only settlement_day, Paid, ID, and student (for campus_id) are needed by mapMonthlyAlert.
+     */
+    private function makeFakeSCForPackage(\App\Models\CoursePackage $pkg): StudentClass
+    {
+        $sc = new StudentClass();
+        $sc->ID = null;
+        $sc->StudentID = $pkg->student_id;
+        $sc->settlement_day = $pkg->settlement_day;
+        $sc->Paid = $pkg->paid ? 1 : 0;
+        $sc->Charge = 0;
+        $sc->ScheduleMode = 'date';
+        $sc->student = $pkg->student;
+
+        return $sc;
     }
 
     /**

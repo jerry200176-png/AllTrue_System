@@ -50,7 +50,15 @@ log "Removing dumps older than $KEEP_DAYS days ..."
 find "$BACKUP_DIR" -name "alltrue_nightly_*.sql.gz" -mtime +${KEEP_DAYS} -delete && \
   log "Old dumps cleaned." || log "No old dumps to remove."
 
-# --- Step 3: Git commit + push ---
+# --- Step 3: Cursor plans 主題索引（失敗不阻斷備份）---
+log "Refreshing plan topic index ..."
+if python3 "$REPO_ROOT/.cursor/plans/list-plans-by-topic.py" --write-index -q; then
+  log "Topic index OK."
+else
+  log "WARN: topic index refresh failed (continuing)."
+fi
+
+# --- Step 4: Git commit + push ---
 cd "$REPO_ROOT"
 
 log "Running git-sync.sh ..."

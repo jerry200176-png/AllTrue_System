@@ -70,6 +70,14 @@
                 </select>
                 <input v-model="teacherSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋老師…" autocomplete="off" />
                 <input v-model="studentSearch" type="search" class="filter-input toolbar-search-input" placeholder="搜尋學生…" autocomplete="off" />
+                <button
+                  v-if="featureSubstituteV2 && !isTeacher"
+                  type="button"
+                  class="filter-input toolbar-teacher-leave-btn"
+                  style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;cursor:pointer;"
+                  title="老師請假一次處理當日多堂代課"
+                  @click="openTeacherLeaveBatch"
+                >🗓️ 老師請假</button>
                 <label
                   v-if="!isWeekOverview && !isTeacher"
                   class="filter-toggle toolbar-hide-empty-toggle"
@@ -398,7 +406,11 @@
             <button class="action-btn extra" @click="openExtraLesson">＋ 加課</button>
             <button class="action-btn leave" @click="openLeaveModal">📋 請假</button>
             <button class="action-btn reschedule" @click="openRescheduleModal">🔄 調課</button>
-            <button v-if="!isTeacher" class="action-btn substitute" @click="openSubstituteModal">👤 換代課老師</button>
+            <button
+              v-if="!isTeacher"
+              class="action-btn substitute"
+              @click="featureSubstituteV2 ? openSubstituteV2Modal() : openSubstituteModal()"
+            >👤 換代課老師</button>
           </div>
         </div>
 
@@ -633,7 +645,29 @@
       </div>
     </div>
 
-    <!-- ===== Substitute Teacher Modal (換代課老師) ===== -->
+    <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
+    <SubstituteTeacherPickerModal
+      v-if="featureSubstituteV2"
+      ref="substituteV2PickerRef"
+      v-model="showSubstituteV2Modal"
+      :context="substituteV2Context"
+      :teachers="teachers"
+      :branch-name-map="branchNameMap"
+      :fetch-availability="fetchTeacherAvailability"
+      @submit="onSubstituteV2Submit"
+    />
+    <TeacherLeaveBatchModal
+      v-if="featureSubstituteV2 && !isTeacher"
+      v-model="showTeacherLeaveBatchModal"
+      :teachers="teachers"
+      :fetch-preview="previewTeacherLeaves"
+      :submit-batch="batchSubstituteApi"
+      :fetch-availability="fetchTeacherAvailability"
+      @submitted="onBatchSubstituteSubmitted"
+    />
+    <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
+
+    <!-- ===== Substitute Teacher Modal (legacy, 舊版 select 版；Feature flag 關閉時使用) ===== -->
     <div v-if="showSubstituteModal" class="modal-overlay" @click.self="showSubstituteModal = false">
       <div class="modal" style="width: 440px;">
         <h3>👤 換代課老師</h3>
@@ -809,6 +843,18 @@ import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
+import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
+import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
+import {
+  fetchTeacherAvailability,
+  undoSubstitute,
+  previewTeacherLeaves,
+  batchSubstitute as batchSubstituteApi,
+} from '../lib/substituteApi.js';
+
+// PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
+const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1395,11 +1441,25 @@ function findSessionRowForCell(course, ymd) {
   const targetYmd = String(ymd || '').slice(0, 10);
   if (!targetYmd) return null;
   const courseStart = normalizeTimeTo30(course.start_time || '');
-  const candidates = rows.filter(r =>
-    String(r.session_date || '').slice(0, 10) === targetYmd &&
-    normalizeTimeTo30(r.start_time || '') === courseStart
-  );
-  return pickBestSessionRow(candidates);
+  const sameDateRows = rows.filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
+  if (!sameDateRows.length) return null;
+
+  const exactMatches = courseStart
+    ? sameDateRows.filter(r => normalizeTimeTo30(r.start_time || '') === courseStart)
+    : [];
+
+  // FR-005: when the cell comes from a rescheduled-to exception entry, its
+  // course.start_time IS the exception's new start_time. If the ClassSession row
+  // for that date hasn't yet been synced to the new time (e.g. backend regression
+  // or deployment lag), fall back to the first same-date row so the attendance
+  // badge still mounts on the correct cell rather than disappearing.
+  if (exactMatches.length) {
+    return pickBestSessionRow(exactMatches);
+  }
+  if (course.is_exception) {
+    return pickBestSessionRow(sameDateRows);
+  }
+  return null;
 }
 
 function rollCallBadge(course, ymd) {
@@ -1506,6 +1566,35 @@ const isSessionCancelledOnDate = (course, ymd) => {
   if (!Array.isArray(rows) || !rows.length) return false;
   const sameDate = rows.filter(r => String(r.session_date || '').slice(0, 10) === ymd);
   return sameDate.length > 0 && sameDate.every(r => String(r.status || '').toLowerCase() === 'cancelled');
+};
+
+// Returns true when the course on this date is on leave (請假 / 已請假).
+// Two signals are consulted so the check works regardless of which source is
+// already loaded in the current view:
+//   1. ClassSession row status (sessionDatesByCourseId) — authoritative once loaded.
+//   2. schedules exception (exceptions.value) with status='leave' — covers newly
+//      created leave entries before the ClassSession list refreshes.
+// Used by getSlotOccupancy so that a leave card keeps showing the 假 badge but
+// frees up its seat in the capacity badge (e.g. 2/2 → 1/2) so another student
+// can be booked into the same slot.
+const isSessionOnLeaveOnDate = (course, ymd) => {
+  if (!ymd) return false;
+  const courseKey = String((course.is_exception ? (course.student_course_id ?? course.id) : course.id) ?? '');
+  const rows = sessionDatesByCourseId.value[courseKey];
+  if (Array.isArray(rows) && rows.length) {
+    const sameDate = rows.filter(r => String(r.session_date || '').slice(0, 10) === ymd);
+    if (sameDate.length > 0) {
+      const allLeave = sameDate.every(r => LEAVE_STATUSES.has(String(r.status || '').toLowerCase()));
+      if (allLeave) return true;
+    }
+  }
+  const leaveCourseId = course.is_exception ? (course.student_course_id ?? course.id) : course.id;
+  if (leaveCourseId == null) return false;
+  return exceptions.value.some(ex =>
+    String(ex.status || '').toLowerCase() === 'leave' &&
+    toYmd(ex.schedule_date) === ymd &&
+    String(ex.student_course_id) === String(leaveCourseId)
+  );
 };
 
 const getCoursesForTeacherAt = (teacherId, hour) => {
@@ -2263,6 +2352,9 @@ const getSlotOccupancy = (teacherId, dow, hour) => {
     if (!courseMatchesStudentSearch(c)) return false;
     const ymd = viewMode.value === 'day' ? selectedDateStr.value : getDisplayDateFull(dow);
     if (isSessionCancelledOnDate(c, ymd)) return false;
+    // 已請假的課程不占用容量徽章的名額 — 該時段仍可排新學生。
+    // 課程方塊本身仍會顯示（帶「假」角標），只是不算進 count。
+    if (isSessionOnLeaveOnDate(c, ymd)) return false;
     return true;
   });
   if (coursesAtSlot.length === 0) {
@@ -2804,6 +2896,111 @@ const submitSubstitute = async () => {
   }
 };
 
+// ===== PRD 9c058f19 代課流程 UX 優化（V2） =====
+const featureSubstituteV2 = FEATURE_SUBSTITUTE_V2;
+const showSubstituteV2Modal = ref(false);
+const substituteV2PickerRef = ref(null);
+const toastRef = ref(null);
+const substituteV2Context = ref({});
+const substituteV2SessionId = ref(null);
+
+const showTeacherLeaveBatchModal = ref(false);
+
+// 多數使用者為單分校主任，名稱由後端返回時可擴充；此處使用 id → label 降級，保持 UX 可用。
+const branchNameMap = computed(() => {
+  const m = {};
+  const bid = Number(props.branchId || 0);
+  if (bid > 0) m[bid] = `分校#${bid}`;
+  return m;
+});
+
+const openSubstituteV2Modal = () => {
+  const exactDate = modalForm.value.action_date || new Date().toISOString().split('T')[0];
+  const courseId = editingCourseId.value;
+  let sessionId = null;
+  if (courseId && sessionDatesByCourseId.value) {
+    const sessions = sessionDatesByCourseId.value[String(courseId)] || [];
+    const candidates = sessions.filter(s => String(s.session_date || s.SessionDate || '').slice(0, 10) === exactDate);
+    const match = pickBestSessionRow(candidates);
+    if (match) sessionId = match.id;
+  }
+  if (!sessionId) {
+    alert('找不到該堂次 ClassSession，無法設定代課。\n（可能此日期尚未有 ClassSession 紀錄）');
+    return;
+  }
+  substituteV2SessionId.value = sessionId;
+  substituteV2Context.value = {
+    student_name: getStudentName(modalForm.value.student_id),
+    subject_id: modalForm.value.subject_id || null,
+    subject_label: getSubjectLabel(modalForm.value.subject),
+    session_date: exactDate,
+    start_time: (modalForm.value.start_time || '').toString().slice(0, 5),
+    end_time: (modalForm.value.end_time || '').toString().slice(0, 5),
+    original_teacher_id: modalForm.value.teacher_id,
+    original_teacher_name: teacherDisplayName(modalForm.value.teacher_id),
+    session_campus_id: Number(props.branchId || 0) || null,
+  };
+  showModal.value = false;
+  showSubstituteV2Modal.value = true;
+};
+
+const onSubstituteV2Submit = async ({ substitute_teacher_id, reason }) => {
+  const sessionId = substituteV2SessionId.value;
+  try {
+    const ses = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const tkn = ses?.access_token || '';
+    if (!tkn) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${tkn}` },
+      body: JSON.stringify({ substitute_teacher_id: Number(substitute_teacher_id), reason: reason || null }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = json.message || res.statusText || '代課設定失敗';
+      substituteV2PickerRef.value?.setError?.(msg);
+      throw new Error(msg);
+    }
+    showSubstituteV2Modal.value = false;
+    const teacherName = json.substitute_teacher_name || teacherDisplayName(substitute_teacher_id);
+    // 業界對齊 Gmail Undo Send：UI 倒數直接採後端回應的 undo_window_seconds（受 SystemSetting 控制）
+    const uiSeconds = Number(json.undo_window_seconds);
+    const durationMs = Number.isFinite(uiSeconds) && uiSeconds > 0 ? uiSeconds * 1000 : 5000;
+    toastRef.value?.show?.({
+      title: `已指派 ${teacherName} 代課`,
+      description: substituteV2Context.value.student_name
+        ? `${substituteV2Context.value.student_name} · ${substituteV2Context.value.session_date} ${substituteV2Context.value.start_time}`
+        : '',
+      variant: 'success',
+      durationMs,
+      undoDescription: '代課已撤銷，家長通知已作廢',
+      onUndo: async () => {
+        await undoSubstitute(sessionId);
+        await loadCourses();
+      },
+    });
+    await loadCourses();
+  } catch (e) {
+    substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
+    throw e;
+  }
+};
+
+const openTeacherLeaveBatch = () => {
+  showTeacherLeaveBatchModal.value = true;
+};
+
+const onBatchSubstituteSubmitted = async (resp) => {
+  const sum = resp?.summary || {};
+  toastRef.value?.show?.({
+    title: '批次代課完成',
+    description: `成功 ${sum.success ?? 0} · 失敗 ${sum.fail ?? 0}${sum.cross_campus ? ` · 跨分校 ${sum.cross_campus}` : ''}`,
+    variant: sum.fail ? 'info' : 'success',
+    durationMs: 6000,
+  });
+  await loadCourses();
+};
+
 // ===== Right-click context menu =====
 const onCourseRightClick = (course, date, event) => {
   event.preventDefault();
@@ -3059,56 +3256,85 @@ const submitReschedule = async () => {
   }
 
   const newEnd = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
-  const payload2 = {
-    student_id: rescheduleForm.value.student_id,
-    teacher_id: rescheduleForm.value.teacher_id || null,
-    subject: rescheduleForm.value.subject,
-    day_of_week: newDayOfWeek,
-    start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
-    end_time: newEnd,
-    duration_hours: rescheduleForm.value.duration_hours,
-    class_type: rescheduleForm.value.class_type,
-    status: 'scheduled',
-    type: 'normal',
-    deduction: 1,
-    branch_id: branchId,
-    schedule_date: rescheduleForm.value.new_date,
-    original_schedule_id: originalId,
-    student_course_id: rescheduleForm.value.course_id
-  };
 
-  const res2 = await supabase.from('schedules').insert([payload2]);
-  if (res2.error) {
-    // Roll back the first step — delete the orphan rescheduled record so the original class reappears
-    if (originalId) {
-      await supabase.from('schedules').delete().eq('id', originalId);
+  // FR-001: If a substitute scheduled row already exists for this rescheduled
+  // anchor (originalId), DO NOT insert a second scheduled row. The backend
+  // /reschedule-session call below will move the existing substitute row to
+  // the new date/time via syncSchedulesForRescheduledSession. Inserting here
+  // would create a duplicate scheduled row with the ORIGINAL teacher_id,
+  // which wins the MAX(id) tiebreak in ClassSessionController::index and
+  // causes CourseManagement to display the wrong teacher.
+  // Fallback: if exceptions hasn't loaded or doesn't carry original_schedule_id,
+  // proceed with insert (FR-002 backend purge will clean up duplicates).
+  const alreadySubstituted = originalId !== null && exceptions.value.some(ex =>
+    ex.status === 'scheduled' &&
+    ex.original_schedule_id != null &&
+    String(ex.original_schedule_id) === String(originalId) &&
+    String(ex.student_course_id) === String(rescheduleForm.value.course_id)
+  );
+
+  if (!alreadySubstituted) {
+    const payload2 = {
+      student_id: rescheduleForm.value.student_id,
+      teacher_id: rescheduleForm.value.teacher_id || null,
+      subject: rescheduleForm.value.subject,
+      day_of_week: newDayOfWeek,
+      start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
+      end_time: newEnd,
+      duration_hours: rescheduleForm.value.duration_hours,
+      class_type: rescheduleForm.value.class_type,
+      status: 'scheduled',
+      type: 'normal',
+      deduction: 1,
+      branch_id: branchId,
+      schedule_date: rescheduleForm.value.new_date,
+      original_schedule_id: originalId,
+      student_course_id: rescheduleForm.value.course_id
+    };
+
+    const res2 = await supabase.from('schedules').insert([payload2]);
+    if (res2.error) {
+      // Roll back the first step — delete the orphan rescheduled record so the original class reappears
+      if (originalId) {
+        await supabase.from('schedules').delete().eq('id', originalId);
+      }
+      const errMsg = res2.error?.message || '無法寫入新堂次';
+      const isConflict = res2.error?.conflicts?.length > 0 || String(errMsg).includes('已有') || String(errMsg).includes('上限');
+      if (isConflict) {
+        alert('調課失敗：目標時段已有其他學生（撞課），請換一個時段再試。\n\n詳細：' + errMsg);
+      } else {
+        alert('調課失敗：' + errMsg);
+      }
+      return;
     }
-    const errMsg = res2.error?.message || '無法寫入新堂次';
-    const isConflict = res2.error?.conflicts?.length > 0 || String(errMsg).includes('已有') || String(errMsg).includes('上限');
-    if (isConflict) {
-      alert('調課失敗：目標時段已有其他學生（撞課），請換一個時段再試。\n\n詳細：' + errMsg);
-    } else {
-      alert('調課失敗：' + errMsg);
-    }
-    return;
   }
 
-  // Sync ClassSession to new date for RFID deduction
+  // Sync ClassSession to new date for RFID deduction.
+  // FR-002/003: pass old_start_time for precise location and surface API failures.
   if (rescheduleForm.value.course_id) {
     try {
       const token = await getToken();
-      await fetch('/api/v1/learning-records/reschedule-session', {
+      const resched = await fetch('/api/v1/learning-records/reschedule-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           student_class_id: rescheduleForm.value.course_id,
           old_date: rescheduleForm.value.original_date || null,
+          old_start_time: rescheduleForm.value.original_start || undefined,
           new_date: rescheduleForm.value.new_date,
           start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
           end_time: computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours),
         }),
       });
-    } catch (_) { /* non-critical */ }
+      if (!resched.ok) {
+        const err = await resched.json().catch(() => ({}));
+        alert('調課失敗：' + (err.message || '找不到指定堂次，請確認日期與時間是否正確'));
+        return;
+      }
+    } catch (e) {
+      alert('調課失敗：' + (e?.message || '網路錯誤，請稍後再試'));
+      return;
+    }
   }
 
   showRescheduleModal.value = false;

@@ -164,6 +164,45 @@
               </footer>
             </section>
 
+            <!-- Schedule Discrepancy Reports -->
+            <section
+              class="wp sd-card"
+              :class="{ 'sd-card--alert': sdSummary.pending > 0 }"
+              @click="goToScheduleDiscrepancy"
+              @keydown.enter="goToScheduleDiscrepancy"
+              tabindex="0"
+              role="button"
+            >
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">flag</span>
+                <h3>課表回報</h3>
+                <span v-if="sdSummary.pending > 0" class="wp__badge wp__badge--warn">{{ sdSummary.pending }}</span>
+              </header>
+              <div v-if="sdLoading" class="sd-skel-wrap" aria-hidden="true">
+                <div class="sd-skel-num"></div>
+                <div class="sd-skel-line"></div>
+              </div>
+              <template v-else>
+                <div v-if="sdSummary.pending > 0" class="sd-dash-body">
+                  <div class="sd-dash-num">{{ sdSummary.pending }}</div>
+                  <div class="sd-dash-text">
+                    <div class="sd-dash-title">筆待處理課表回報</div>
+                    <div class="sd-dash-sub">
+                      處理中 {{ sdSummary.acknowledged }} · 已解決 {{ sdSummary.resolved }}
+                    </div>
+                  </div>
+                  <button class="btn-o btn-sm sd-dash-cta" type="button" @click.stop="goToScheduleDiscrepancy">前往處理</button>
+                </div>
+                <div v-else class="sd-dash-empty">
+                  <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+                  <div>
+                    <div class="sd-dash-title">目前課表無回報</div>
+                    <div class="sd-dash-sub">老師沒有回報任何出入，一切正常</div>
+                  </div>
+                </div>
+              </template>
+            </section>
+
             <!-- Payment Alerts -->
             <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
               <header class="wp__head">
@@ -189,6 +228,9 @@
           </div>
 
           <div class="work-col">
+            <!-- PRD 9c058f19：近 7 天代課記錄 -->
+            <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+
             <!-- Pending Evaluations -->
             <section class="wp" id="evals-sec" data-guide="director-pending-evals">
               <header class="wp__head">
@@ -326,6 +368,9 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
+import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
+import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
+import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 
 const props = defineProps({
   branchId: [String, Number]
@@ -343,6 +388,27 @@ const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
 const pendingMakeupCount = ref(0);
+
+// Schedule-discrepancy summary card
+const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
+const sdLoading = ref(true);
+
+async function loadScheduleDiscrepancySummary() {
+  if (props.branchId == null) return;
+  sdLoading.value = true;
+  try {
+    sdSummary.value = await fetchDiscrepancySummary(props.branchId);
+  } catch (e) {
+    console.warn('loadScheduleDiscrepancySummary', e);
+    sdSummary.value = { pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 };
+  } finally {
+    sdLoading.value = false;
+  }
+}
+
+function goToScheduleDiscrepancy() {
+  emit('navigate', { target: 'schedule-discrepancy' });
+}
 
 const importFileInput = ref(null);
 const importState = ref('idle');
@@ -786,11 +852,73 @@ const scrollTo = (section) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-watch(() => props.branchId, loadData);
-onMounted(loadData);
+watch(() => props.branchId, () => {
+  loadData();
+  loadScheduleDiscrepancySummary();
+});
+onMounted(() => {
+  loadData();
+  loadScheduleDiscrepancySummary();
+});
 </script>
 
 <style scoped>
+/* ===== Schedule Discrepancy card ===== */
+.sd-card {
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  outline: none;
+}
+.sd-card:hover { background: var(--surface-muted, #f8fafc); }
+.sd-card:focus-visible { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25); }
+.sd-card--alert { border-left: 4px solid var(--warning, #f59e0b); }
+
+.sd-dash-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.sd-dash-num {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--warning-strong, #b45309);
+  min-width: 54px;
+  text-align: center;
+  background: var(--warning-soft, #fffbeb);
+  border: 1px solid var(--warning-border, #fde68a);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.sd-dash-text { flex: 1; min-width: 0; }
+.sd-dash-title { font-weight: 700; font-size: 14px; color: var(--text, #0f172a); }
+.sd-dash-sub { font-size: 12px; color: var(--text-light, #64748b); margin-top: 2px; }
+.sd-dash-cta { align-self: center; }
+
+.sd-dash-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+}
+.sd-dash-empty .material-symbols-outlined {
+  font-size: 28px;
+  color: var(--success-strong, #047857);
+}
+
+.sd-skel-wrap { padding: 6px 4px; display: flex; flex-direction: column; gap: 8px; }
+.sd-skel-num, .sd-skel-line {
+  background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.06) 75%);
+  background-size: 200% 100%;
+  border-radius: 6px;
+  animation: sd-skel 1.4s ease-in-out infinite;
+}
+.sd-skel-num { width: 50%; height: 36px; }
+.sd-skel-line { width: 80%; height: 12px; }
+@keyframes sd-skel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ===== Layout ===== */
 .dash {
   display: flex;

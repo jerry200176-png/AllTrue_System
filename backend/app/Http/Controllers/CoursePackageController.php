@@ -162,7 +162,9 @@ class CoursePackageController extends Controller
             'student_id'       => 'required|integer|exists:Student,id',
             'branch_id'        => 'required|integer',
             'name'             => 'required|string|max:128',
-            'total_sessions'   => 'required|integer|min:1|max:999',
+            'payment_type'     => 'nullable|in:session,monthly',
+            'total_sessions'   => 'nullable|integer|min:1|max:999',
+            'settlement_day'   => 'nullable|integer|min:1|max:31',
             'rate'             => 'required|numeric|min:0',
             'rate_unit'        => 'nullable|in:session,hour',
             'class_type'       => 'nullable|in:one_on_one,one_on_two,one_on_three,tutoring,trial',
@@ -179,6 +181,23 @@ class CoursePackageController extends Controller
             'subjects.*.start_time'      => 'nullable|date_format:H:i',
             'subjects.*.duration_hours'  => 'nullable|numeric|min:0.5|max:8',
         ]);
+
+        $isMonthly = ($data['payment_type'] ?? 'session') === 'monthly';
+        if (!$isMonthly && empty($data['total_sessions'])) {
+            return response()->json(['message' => '堂數制方案必須填寫總堂數（total_sessions）'], 422);
+        }
+        if ($isMonthly) {
+            if (count($data['subjects']) < 2) {
+                return response()->json(['message' => '多科月結方案至少需要 2 個科目'], 422);
+            }
+            if (empty($data['rate']) || (float) $data['rate'] <= 0) {
+                return response()->json(['message' => '月結方案必須設定每堂費率（rate > 0）'], 422);
+            }
+            if (empty($data['settlement_day'])) {
+                return response()->json(['message' => '月結方案必須填寫結算日（settlement_day）'], 422);
+            }
+        }
+        $totalSessions = $isMonthly ? 0 : (int) $data['total_sessions'];
 
         foreach ($data['subjects'] as $i => $spec) {
             if (empty($spec['subject_id']) && empty($spec['subject_name'])) {
@@ -210,13 +229,15 @@ class CoursePackageController extends Controller
             return response()->json(['message' => '學生不屬於該分校'], 422);
         }
 
-        return DB::transaction(function () use ($data, $branchId) {
+        return DB::transaction(function () use ($data, $branchId, $isMonthly, $totalSessions) {
             $pkg = CoursePackage::create([
                 'student_id'         => (int) $data['student_id'],
                 'campus_id'          => $branchId,
                 'name'               => $data['name'],
-                'total_sessions'     => (int) $data['total_sessions'],
-                'remaining_sessions' => (int) $data['total_sessions'],
+                'billing_mode'       => $isMonthly ? 'date' : 'count',
+                'settlement_day'     => $isMonthly ? ($data['settlement_day'] ?? null) : null,
+                'total_sessions'     => $totalSessions,
+                'remaining_sessions' => $totalSessions,
                 'used_sessions'      => 0,
                 'rate'               => (float) $data['rate'],
                 'rate_unit'          => $data['rate_unit'] ?? 'session',
@@ -258,21 +279,22 @@ class CoursePackageController extends Controller
                     'StartDate'         => $startDate,
                     'TotalHours'        => 0,
                     'RoomID'            => 0,
-                    'ScheduleMode'      => 'count',
-                    'SessionCount'      => (int) $data['total_sessions'],
-                    'RemainingSessions' => (int) $data['total_sessions'],
+                    'ScheduleMode'      => $isMonthly ? 'date' : 'count',
+                    'SessionCount'      => $totalSessions,
+                    'RemainingSessions' => $totalSessions,
                     'UsedSessions'      => 0,
                     'SessionDuration'   => $durationMinutes,
                     'ClassType'         => $data['class_type'] ?? 'one_on_one',
                     'Rate'              => (float) $data['rate'],
                     'rate_unit'         => $data['rate_unit'] ?? 'session',
+                    'settlement_day'    => $isMonthly ? ($data['settlement_day'] ?? null) : null,
                     'Charge'            => 0,
                     'Pay'               => 0,
                     'Paid'              => !empty($data['paid_at']) ? 1 : 0,
                     'PayDate'           => $data['paid_at'] ?? null,
                     'Stop'              => 0,
                     'PackageID'            => $pkg->id,
-                    'PackageTotalSessions' => (int) $data['total_sessions'],
+                    'PackageTotalSessions' => $totalSessions,
                     'PackageName'          => $data['name'],
                 ]);
 
@@ -442,11 +464,13 @@ class CoursePackageController extends Controller
         }
 
         $data = $request->validate([
-            'name'          => 'nullable|string|max:128',
-            'paid'          => 'nullable|boolean',
-            'paid_at'       => 'nullable|date',
-            'stop'          => 'nullable|boolean',
-            'closed_reason' => 'nullable|string|max:32',
+            'name'           => 'nullable|string|max:128',
+            'paid'           => 'nullable|boolean',
+            'paid_at'        => 'nullable|date',
+            'stop'           => 'nullable|boolean',
+            'closed_reason'  => 'nullable|string|max:32',
+            'settlement_day' => 'nullable|integer|min:1|max:31',
+            'rate'           => 'nullable|numeric|min:0',
         ]);
 
         if (array_key_exists('name', $data) && $data['name'] !== null) {
@@ -464,7 +488,22 @@ class CoursePackageController extends Controller
         if (array_key_exists('closed_reason', $data) && $data['closed_reason'] !== null) {
             $pkg->closed_reason = $data['closed_reason'];
         }
+
+        $cascadeToMembers = [];
+        if (array_key_exists('settlement_day', $data) && $data['settlement_day'] !== null) {
+            $pkg->settlement_day = (int) $data['settlement_day'];
+            $cascadeToMembers['settlement_day'] = (int) $data['settlement_day'];
+        }
+        if (array_key_exists('rate', $data) && $data['rate'] !== null) {
+            $pkg->rate = (float) $data['rate'];
+            $cascadeToMembers['Rate'] = (float) $data['rate'];
+        }
+
         $pkg->save();
+
+        if (!empty($cascadeToMembers)) {
+            StudentClass::where('PackageID', $pkg->id)->update($cascadeToMembers);
+        }
 
         return response()->json(['message' => '已更新', 'package' => $pkg]);
     }
