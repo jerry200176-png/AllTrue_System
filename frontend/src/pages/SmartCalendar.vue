@@ -4137,11 +4137,15 @@ onMounted(() => {
 .filter-input:focus { border-color: var(--primary, #2563eb); }
 .filter-input::placeholder { color: var(--text-light, #94a3b8); }
 
+/* PRD-G (2026-04-18 晚)：只看有課老師 toggle 排版修正。
+   舊版 overflow-wrap:anywhere + flex-shrink:0 會讓 min-content=1 字元寬，
+   造成中文字元於寬螢幕也被逐字折行變成直書（「只 顯 示 今 日 有 課 老 師」），整體很醜。
+   改為固定單行 nowrap + flex:0 0 auto；平板窄螢幕時單獨佔整列並允許自然換行。*/
 .toolbar-filters .toolbar-hide-empty-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 10px;
+  padding: 0 12px;
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
   font-size: 13px;
@@ -4150,40 +4154,33 @@ onMounted(() => {
   color: var(--text, #334155);
   cursor: pointer;
   user-select: none;
-  /* FR-D-001/002 (PRD 四項系統問題修正 §PRD-D, 2026-04-18):
-     平板寬度下「只顯示今日有課老師」toggle 文字超出格子。
-     原 CSS: white-space: nowrap + height: 38px 固定高度 → 窄螢幕時文字被裁切。
-     修正：min-height 取代 height，允許內容自然撐高；white-space: normal 讓
-     中文字元於容器邊界自然換行；word-break: keep-all 保持詞組完整；
-     touch target 於平板 ≥44px 由下方 @media 補強。*/
-  min-height: 38px;
+  height: 38px;
   box-sizing: border-box;
-  flex-shrink: 0;
-  white-space: normal;
-  word-break: keep-all;
-  overflow-wrap: anywhere;
-  max-width: 100%;
-}
-.toolbar-filters .toolbar-hide-empty-toggle > span {
-  display: inline-block;
-  max-width: 100%;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
 }
 .toolbar-filters .toolbar-hide-empty-toggle:hover {
   border-color: var(--primary, #2563eb);
+  background: #f8fafc;
 }
 .toolbar-filters .toolbar-hide-empty-toggle input[type="checkbox"] {
   accent-color: var(--primary, #2563eb);
   margin: 0;
   flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
-/* 平板（iPad portrait ~768px 至 1024px）：
-   1) toggle 與其他 filter 單獨佔一整列，避免在狹窄 grid 左欄中被擠壓。
-   2) 最小高度 44px 符合 WCAG / iOS touch target 指引。 */
+/* 平板（iPad portrait ~768px 至 1024px）：toggle 獨佔一列以避免擠壓；touch target ≥44px。 */
 @media (max-width: 1024px) {
   .toolbar-filters .toolbar-hide-empty-toggle {
     flex: 1 1 100%;
+    height: auto;
     min-height: 44px;
+    padding: 8px 12px;
     justify-content: flex-start;
+    white-space: normal;
   }
 }
 
