@@ -19,6 +19,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class FinanceController extends Controller
 {
     /**
+     * Start time tolerance (minutes) for concurrency/group-class detection.
+     *
+     * Two sessions by the same teacher on the same day are treated as a
+     * simultaneous group class (and therefore enter the v1.4 tie-break)
+     * only when their StartTime values are within this window.
+     *
+     * Without this guard, contracted-duration overlap alone (e.g. 09:30+120min
+     * overlapping 10:00+120min) would be misclassified as concurrent and the
+     * non-primary record would lose its base pay for the overlapping slice,
+     * underpaying teachers who run back-to-back staggered sessions.
+     *
+     * See AI_REGRESSION_LESSONS §2026-04-18, PayrollConcurrencyTest
+     * (test_staggered_* cases) and the PRD 薪資計算與調課按鈕修正.
+     */
+    private const CONCURRENCY_START_TOLERANCE_MINUTES = 15;
+
+    /**
      * GET /api/v1/finance/summary
      * Revenue and expense summary for a branch.
      */
@@ -1413,11 +1430,22 @@ class FinanceController extends Controller
                         continue;
                     }
 
+                    // Only count another session as truly concurrent with the
+                    // current interval when their start times are within the
+                    // configured tolerance. Sessions whose contracted windows
+                    // overlap solely because of staggered scheduling (e.g.
+                    // 09:30 vs 10:00) are treated as independent, not a group
+                    // class. See CONCURRENCY_START_TOLERANCE_MINUTES above.
                     $concurrent = [];
                     foreach ($intervals as $other) {
-                        if ($other['start'] < $segEnd && $other['end'] > $segStart) {
-                            $concurrent[] = $other;
+                        if ($other['start'] >= $segEnd || $other['end'] <= $segStart) {
+                            continue;
                         }
+                        $startDiff = abs($other['start'] - $iv['start']);
+                        if ($startDiff > self::CONCURRENCY_START_TOLERANCE_MINUTES) {
+                            continue;
+                        }
+                        $concurrent[] = $other;
                     }
 
                     $lrCount = count($concurrent);

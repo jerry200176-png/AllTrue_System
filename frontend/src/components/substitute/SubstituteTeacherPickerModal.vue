@@ -27,6 +27,8 @@
         </div>
       </section>
 
+      <div class="stp-body">
+
       <div class="stp-search">
         <span class="stp-search__icon" aria-hidden="true">🔍</span>
         <input
@@ -37,6 +39,11 @@
           aria-label="搜尋老師"
         />
         <button v-if="search" class="stp-search__clear" type="button" @click="search = ''">清除</button>
+      </div>
+
+      <!-- PRD f0cce4d5 5b：換時間變更後的即時刷新細進度條（避免整個 list layout shift） -->
+      <div v-if="loadingAvailability" class="stp-progress" aria-hidden="true">
+        <div class="stp-progress__bar"></div>
       </div>
 
       <section class="stp-list" aria-live="polite">
@@ -100,6 +107,65 @@
         </template>
       </section>
 
+      <!-- PRD f0cce4d5：合併代課 + 換時間（選填） -->
+      <section class="stp-resched">
+        <button
+          type="button"
+          class="stp-resched__toggle"
+          :aria-expanded="showReschedule"
+          @click="toggleReschedule"
+        >
+          <span class="stp-resched__chev" :class="{ 'stp-resched__chev--open': showReschedule }" aria-hidden="true">▸</span>
+          <span v-if="!showReschedule">+ 同時調整上課時間（選填）</span>
+          <span v-else-if="newDate && newStart">已選：{{ newDate }} {{ newStart }}~{{ computedNewEnd }}</span>
+          <span v-else>同時調整上課時間（選填）</span>
+        </button>
+        <div class="stp-resched__panel" :class="{ 'stp-resched__panel--open': showReschedule }">
+          <div v-if="showReschedule" class="stp-resched__inner">
+            <div class="stp-resched__row">
+              <label class="stp-resched__label">
+                <span>新日期</span>
+                <input
+                  v-model="newDate"
+                  type="date"
+                  :min="todayYmd"
+                  class="stp-resched__input"
+                  @change="onReschedChange"
+                />
+              </label>
+              <label class="stp-resched__label">
+                <span>新開始時間</span>
+                <select
+                  v-model="newStart"
+                  class="stp-resched__input"
+                  @change="onReschedChange"
+                >
+                  <option value="">請選擇</option>
+                  <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
+                </select>
+              </label>
+              <label class="stp-resched__label">
+                <span>新結束時間</span>
+                <input
+                  :value="computedNewEnd"
+                  type="text"
+                  readonly
+                  class="stp-resched__input stp-resched__input--readonly"
+                  placeholder="依原課時長自動計算"
+                  title="依原課時長自動計算"
+                />
+              </label>
+            </div>
+            <div v-if="reschedFieldError" class="stp-resched__err" role="alert">
+              {{ reschedFieldError }}
+            </div>
+            <div class="stp-resched__hint">
+              結束時間依原課時長（{{ origDurationLabel }}）自動計算。改變日期或開始時間時，系統會即時重新檢查所有老師的可用性。
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="stp-reason">
         <label class="stp-reason__label">原因（選填）</label>
         <input
@@ -113,18 +179,25 @@
 
       <div v-if="inlineError" class="stp-error" role="alert">{{ inlineError }}</div>
 
+      </div><!-- /stp-body -->
+
       <footer class="stp-actions">
-        <button class="stp-btn stp-btn--ghost" type="button" @click="close">取消</button>
-        <button
-          class="stp-btn stp-btn--primary"
-          type="button"
-          :disabled="!canSubmit || submitting"
-          :title="!canSubmit ? '請先選擇代課老師' : ''"
-          @click="submit"
-        >
-          <span v-if="submitting" class="stp-spinner" aria-hidden="true"></span>
-          {{ submitting ? '處理中…' : '確認代課' }}
-        </button>
+        <div v-if="isRescheduleActive && !reschedFieldError" class="stp-actions__summary">
+          將調整至 {{ newDate }} {{ newStart }}~{{ computedNewEnd }}，由 {{ selectedTeacherName || '所選老師' }} 代課
+        </div>
+        <div class="stp-actions__row">
+          <button class="stp-btn stp-btn--ghost" type="button" @click="close">取消</button>
+          <button
+            class="stp-btn stp-btn--primary"
+            type="button"
+            :disabled="!canSubmit || submitting"
+            :title="submitDisabledTooltip"
+            @click="submit"
+          >
+            <span v-if="submitting" class="stp-spinner" aria-hidden="true"></span>
+            {{ submitButtonLabel }}
+          </button>
+        </div>
       </footer>
     </div>
   </div>
@@ -161,9 +234,47 @@ const inlineError = ref('');
 const loadingAvailability = ref(false);
 const teacherBusyMap = ref({}); // teacherId -> busy_slots
 
+// PRD f0cce4d5：「同時調整上課時間」狀態
+const showReschedule = ref(false);
+const newDate = ref('');
+const newStart = ref('');
+const reschedFieldError = ref('');
+let availabilityReqToken = 0; // 防重：保留最新一次 refreshAvailability 的結果
+
 function close() {
   if (submitting.value) return;
   emit('update:modelValue', false);
+}
+
+function toggleReschedule() {
+  showReschedule.value = !showReschedule.value;
+  if (!showReschedule.value) {
+    // 收合時清掉欄位，確保只提交純代課
+    newDate.value = '';
+    newStart.value = '';
+    reschedFieldError.value = '';
+    // 立即重查以回到原時段的衝堂標記
+    refreshAvailability();
+  }
+}
+
+function onReschedChange() {
+  validateReschedFields();
+  refreshAvailability();
+}
+
+function validateReschedFields() {
+  reschedFieldError.value = '';
+  // 只填一半 → 提示（送出時也會擋）
+  if ((newDate.value && !newStart.value) || (!newDate.value && newStart.value)) {
+    reschedFieldError.value = '請同時填寫新日期與新開始時間';
+    return false;
+  }
+  if (newDate.value && newDate.value < todayYmd.value) {
+    reschedFieldError.value = '新日期不可為過去日期';
+    return false;
+  }
+  return true;
 }
 
 watch(
@@ -174,16 +285,34 @@ watch(
     reason.value = '';
     selectedTeacherId.value = null;
     inlineError.value = '';
+    showReschedule.value = false;
+    newDate.value = '';
+    newStart.value = '';
+    reschedFieldError.value = '';
     await refreshAvailability();
   }
 );
 
+// PRD f0cce4d5：生效的查詢時段（預設 context 原時段；換時啟用時用新時段）
+const effectiveDate = computed(() => {
+  if (isRescheduleActive.value) return newDate.value;
+  return props.context?.session_date || '';
+});
+const effectiveStart = computed(() => {
+  if (isRescheduleActive.value) return newStart.value;
+  return props.context?.start_time || '';
+});
+const effectiveEnd = computed(() => {
+  if (isRescheduleActive.value) return computedNewEnd.value;
+  return props.context?.end_time || '';
+});
+
 async function refreshAvailability() {
-  if (!props.context?.session_date) return;
+  const date = effectiveDate.value;
+  if (!date) return;
+  const token = ++availabilityReqToken;
   loadingAvailability.value = true;
-  teacherBusyMap.value = {};
   try {
-    const date = props.context.session_date;
     const results = await Promise.allSettled(
       (props.teachers || []).map(async (t) => {
         try {
@@ -194,6 +323,8 @@ async function refreshAvailability() {
         }
       })
     );
+    // 若在請求期間又觸發新的 refresh，捨棄本次結果避免 race condition
+    if (token !== availabilityReqToken) return;
     const out = {};
     for (const r of results) {
       if (r.status === 'fulfilled' && Array.isArray(r.value)) {
@@ -203,7 +334,9 @@ async function refreshAvailability() {
     }
     teacherBusyMap.value = out;
   } finally {
-    loadingAvailability.value = false;
+    if (token === availabilityReqToken) {
+      loadingAvailability.value = false;
+    }
   }
 }
 
@@ -216,6 +349,8 @@ const enriched = computed(() => {
   const ctx = props.context || {};
   const sessionCampus = Number(ctx.session_campus_id || 0);
   const originalId = Number(ctx.original_teacher_id || 0);
+  const checkStart = effectiveStart.value;
+  const checkEnd = effectiveEnd.value;
   return (props.teachers || [])
     .filter((t) => Number(t.id) !== originalId)
     .map((t) => {
@@ -235,7 +370,7 @@ const enriched = computed(() => {
       let conflict = false;
       let conflictCampusId = 0;
       for (const s of slots) {
-        if (overlaps(ctx.start_time, ctx.end_time, s.start_time, s.end_time)) {
+        if (overlaps(checkStart, checkEnd, s.start_time, s.end_time)) {
           conflict = true;
           conflictCampusId = Number(s.campus_id || 0);
           break;
@@ -281,19 +416,109 @@ function selectTeacher(t) {
   inlineError.value = '';
 }
 
-const canSubmit = computed(() => selectedTeacherId.value != null);
+// PRD f0cce4d5：今日 YYYY-MM-DD（date input 的 min）
+const todayYmd = computed(() => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+});
+
+// 原課時長（毫秒）用來推算新結束時間
+const origDurationMs = computed(() => {
+  const s = props.context?.start_time || '';
+  const e = props.context?.end_time || '';
+  if (!s || !e) return 2 * 60 * 60 * 1000;
+  const [sh, sm] = s.split(':').map(Number);
+  const [eh, em] = e.split(':').map(Number);
+  const diff = ((eh * 60 + (em || 0)) - (sh * 60 + (sm || 0))) * 60 * 1000;
+  return diff > 0 ? diff : 2 * 60 * 60 * 1000;
+});
+
+const origDurationLabel = computed(() => {
+  const mins = origDurationMs.value / 60000;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m === 0) return `${h} 小時`;
+  if (h === 0) return `${m} 分鐘`;
+  return `${h} 小時 ${m} 分鐘`;
+});
+
+const computedNewEnd = computed(() => {
+  if (!newStart.value) return '';
+  const [sh, sm] = newStart.value.split(':').map(Number);
+  const startMs = (sh * 60 + (sm || 0)) * 60 * 1000;
+  const endMs = startMs + origDurationMs.value;
+  const total = Math.floor(endMs / 60000);
+  const eh = Math.floor(total / 60) % 24;
+  const em = total % 60;
+  return `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+});
+
+// 時間選項：07:00 ~ 22:30 半小時為單位
+const timeOptions = (() => {
+  const opts = [];
+  for (let h = 7; h <= 22; h++) {
+    opts.push(`${String(h).padStart(2, '0')}:00`);
+    if (h < 22) opts.push(`${String(h).padStart(2, '0')}:30`);
+  }
+  return opts;
+})();
+
+const isRescheduleActive = computed(() =>
+  showReschedule.value && !!newDate.value && !!newStart.value && !!computedNewEnd.value && !reschedFieldError.value
+);
+
+const selectedTeacher = computed(() =>
+  enriched.value.find((t) => t.id === selectedTeacherId.value) || null
+);
+const selectedTeacherName = computed(() => selectedTeacher.value?.name || '');
+
+const canSubmit = computed(() => {
+  if (selectedTeacherId.value == null) return false;
+  if (showReschedule.value) {
+    // 展開換時區塊時：必須同填或同省
+    const filled = (newDate.value ? 1 : 0) + (newStart.value ? 1 : 0);
+    if (filled === 1) return false;
+    if (reschedFieldError.value) return false;
+  }
+  return true;
+});
+
+const submitDisabledTooltip = computed(() => {
+  if (selectedTeacherId.value == null) return '請先選擇代課老師';
+  if (showReschedule.value) {
+    const filled = (newDate.value ? 1 : 0) + (newStart.value ? 1 : 0);
+    if (filled === 1) return '請同時填寫新日期與新開始時間，或收合換時間區塊';
+    if (reschedFieldError.value) return reschedFieldError.value;
+  }
+  return '';
+});
+
+const submitButtonLabel = computed(() => {
+  if (submitting.value) return '處理中…';
+  return isRescheduleActive.value ? '確認代課 + 換時' : '確認代課';
+});
 
 async function submit() {
   if (!canSubmit.value || submitting.value) return;
   inlineError.value = '';
+  if (showReschedule.value && !validateReschedFields()) {
+    return;
+  }
   submitting.value = true;
   try {
-    await Promise.resolve(
-      emit('submit', {
-        substitute_teacher_id: selectedTeacherId.value,
-        reason: reason.value.trim() || null,
-      })
-    );
+    const payload = {
+      substitute_teacher_id: selectedTeacherId.value,
+      reason: reason.value.trim() || null,
+    };
+    if (isRescheduleActive.value) {
+      payload.new_date = newDate.value;
+      payload.new_start_time = newStart.value;
+      payload.new_end_time = computedNewEnd.value;
+    }
+    await Promise.resolve(emit('submit', payload));
   } catch (e) {
     inlineError.value = e?.message || '代課設定失敗，請稍後再試';
   } finally {
@@ -399,12 +624,14 @@ defineExpose({ setError });
   cursor: pointer;
 }
 
-.stp-list {
+.stp-body {
   flex: 1;
   overflow-y: auto;
+  min-height: 0; /* 讓 flex 子元素能正確收縮 */
+}
+
+.stp-list {
   padding: 12px 12px;
-  min-height: 200px;
-  max-height: 360px;
 }
 
 .stp-card {
@@ -477,6 +704,28 @@ defineExpose({ setError });
   font-weight: 700;
 }
 
+.stp-progress {
+  position: relative;
+  height: 2px;
+  overflow: hidden;
+  background: #e5e7eb;
+  margin: 0 20px;
+  border-radius: 2px;
+}
+.stp-progress__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  background: #2563eb;
+  animation: stp-progress-slide 1.2s ease-in-out infinite;
+}
+@keyframes stp-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}
+
 .stp-skel { padding: 4px 12px; }
 .stp-skel__row { display: flex; gap: 12px; padding: 12px; }
 .stp-skel__circle { width: 44px; height: 44px; border-radius: 50%; background: #e5e7eb; }
@@ -497,6 +746,91 @@ defineExpose({ setError });
   border-radius: 8px;
   padding: 6px 14px;
   cursor: pointer;
+}
+
+/* PRD f0cce4d5：合併代課 + 換時間區塊 */
+.stp-resched {
+  padding: 6px 20px 0 20px;
+  border-top: 1px solid #f3f4f6;
+}
+.stp-resched__toggle {
+  background: transparent;
+  border: 0;
+  padding: 8px 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  width: 100%;
+  text-align: left;
+  min-height: 36px;
+}
+.stp-resched__toggle:hover { color: #1e293b; }
+.stp-resched__chev {
+  display: inline-block;
+  width: 14px;
+  transition: transform 200ms ease;
+  color: #94a3b8;
+}
+.stp-resched__chev--open { transform: rotate(90deg); }
+.stp-resched__panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+.stp-resched__panel--open { max-height: 260px; }
+.stp-resched__inner {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.stp-resched__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.stp-resched__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+.stp-resched__label > span { font-weight: 500; }
+.stp-resched__input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.stp-resched__input:focus { border-color: #2563eb; outline: 2px solid rgba(37, 99, 235, 0.2); }
+.stp-resched__input--readonly {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+.stp-resched__err {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.stp-resched__hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.5;
 }
 
 .stp-reason {
@@ -527,11 +861,23 @@ defineExpose({ setError });
   font-size: 13px;
 }
 .stp-actions {
-  padding: 12px 20px 16px 20px;
+  padding: 10px 20px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #f3f4f6;
+  min-height: 66px; /* 預留 summary 行避免換時 toggle 造成 layout shift */
+  justify-content: flex-end;
+}
+.stp-actions__summary {
+  font-size: 13px;
+  color: #64748b;
+  text-align: right;
+}
+.stp-actions__row {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  border-top: 1px solid #f3f4f6;
 }
 .stp-btn {
   min-height: 40px;
@@ -580,7 +926,13 @@ defineExpose({ setError });
     border-radius: 0;
   }
   .stp-meta { grid-template-columns: 1fr; }
-  .stp-list { max-height: none; }
   .stp-btn { min-height: 44px; }
+}
+@media (max-width: 480px) {
+  /* 換時區塊欄位垂直排列，行動裝置觸控目標 >= 44px */
+  .stp-resched__row { grid-template-columns: 1fr; }
+  .stp-resched__input { height: 44px; font-size: 14px; }
+  .stp-resched__toggle { min-height: 44px; }
+  .stp-resched__panel--open { max-height: 420px; }
 }
 </style>

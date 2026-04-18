@@ -84,7 +84,7 @@
                   title="開啟後只顯示今日有排課的老師欄；此模式下無法點空格快速排課"
                 >
                   <input type="checkbox" v-model="hideEmptyTeacherColumns" />
-                  <span>只顯示今日有課老師</span>
+                  <span>只看有課老師</span>
                 </label>
               </div>
               <div
@@ -176,7 +176,7 @@
           <div v-if="visibleTeachers.length === 0" class="teacher-empty">
             <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
               <div style="font-weight:600;margin-bottom:6px;">今日無已排課老師</div>
-              <div style="color:#6b7280;font-size:13px;margin-bottom:10px;">可關閉「只顯示今日有課老師」以顯示全部老師欄並快速排課。</div>
+              <div style="color:#6b7280;font-size:13px;margin-bottom:10px;">可關閉「只看有課老師」以顯示全部老師欄並快速排課。</div>
               <button type="button" class="btn-secondary" @click="hideEmptyTeacherColumns = false">顯示全部老師</button>
             </template>
             <template v-else>
@@ -1882,18 +1882,32 @@ const filteredCourses = computed(() => {
         const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
         const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
         const hasReschedule = rawHasReschedule && !hasAttendedSession;
-        const hasScheduledExc = exceptions.value.some(ex =>
-          ex.status === 'scheduled' &&
-          (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
-          toYmd(ex.schedule_date) === targetDate
+        // PRD-E (2026-04-18, plan 8c1673b9) — 多日多時段課程不可被單一 scheduled 例外吃掉全部基底格。
+        // 舊邏輯 hasScheduledExc 為 boolean，只要該日該課程存在任何 status='scheduled' 例外就
+        // 整個日期的基底 weekly pattern 不渲染；遇到 days_of_week=[3,7] 這類多日多時段課程
+        // （例如 SC#382 吳艾潼：週三 16:00 + 週日 15:00），當週日 17:00-19:00 是從別日調過來的
+        // scheduled 例外，週日 15:00-17:00 的基底格會被誤抹除。
+        // 修正：改以 Set 收集該日該課程所有 scheduled 例外的 HH:MM，渲染基底時段時逐一比對，
+        // 只當基底時段與某個例外 start_time 完全重疊才跳過（代表那格是被調走/取代）。
+        const scheduledExcStartSet = new Set(
+          exceptions.value
+            .filter(ex =>
+              ex.status === 'scheduled' &&
+              (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
+              toYmd(ex.schedule_date) === targetDate
+            )
+            .map(ex => String(ex.start_time || '').slice(0, 5))
+            .filter(Boolean)
         );
         if (sessionSet) {
           if (!sessionSet.has(targetYmd)) continue;
           const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
           if (lastDate != null && targetYmd > lastDate) continue;
-          if (!hasReschedule && !hasScheduledExc) {
+          if (!hasReschedule) {
             const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
             for (const t of times) {
+              const tStart = String(t.start_time || '').slice(0, 5);
+              if (scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
               if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
               mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
             }
@@ -1905,9 +1919,11 @@ const filteredCourses = computed(() => {
         if (!isFirstDay && !isRecurringDay) continue;
         const isBeforeStart = c.first_class_date && String(targetDate).trim() < String(c.first_class_date).trim();
         const overSessionLimit = isOverSessionLimit(c.id, targetDate);
-        if (!hasReschedule && !hasScheduledExc && !isBeforeStart && !overSessionLimit) {
+        if (!hasReschedule && !isBeforeStart && !overSessionLimit) {
           const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
           for (const t of times) {
+            const tStart = String(t.start_time || '').slice(0, 5);
+            if (scheduledExcStartSet.has(tStart)) continue;
             if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
             mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
           }
@@ -2944,16 +2960,27 @@ const openSubstituteV2Modal = () => {
   showSubstituteV2Modal.value = true;
 };
 
-const onSubstituteV2Submit = async ({ substitute_teacher_id, reason }) => {
+const onSubstituteV2Submit = async (submitPayload) => {
+  const { substitute_teacher_id, reason, new_date, new_start_time, new_end_time } = submitPayload || {};
   const sessionId = substituteV2SessionId.value;
   try {
     const ses = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const tkn = ses?.access_token || '';
     if (!tkn) throw new Error('請重新登入');
+    const body = {
+      substitute_teacher_id: Number(substitute_teacher_id),
+      reason: reason || null,
+    };
+    // PRD f0cce4d5：合併代課+換時（三欄同填同省）
+    if (new_date && new_start_time && new_end_time) {
+      body.new_date = new_date;
+      body.new_start_time = new_start_time;
+      body.new_end_time = new_end_time;
+    }
     const res = await fetch(`/api/v1/class-sessions/${sessionId}/substitute`, {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${tkn}` },
-      body: JSON.stringify({ substitute_teacher_id: Number(substitute_teacher_id), reason: reason || null }),
+      body: JSON.stringify(body),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -2963,17 +2990,22 @@ const onSubstituteV2Submit = async ({ substitute_teacher_id, reason }) => {
     }
     showSubstituteV2Modal.value = false;
     const teacherName = json.substitute_teacher_name || teacherDisplayName(substitute_teacher_id);
-    // 業界對齊 Gmail Undo Send：UI 倒數直接採後端回應的 undo_window_seconds（受 SystemSetting 控制）
     const uiSeconds = Number(json.undo_window_seconds);
     const durationMs = Number.isFinite(uiSeconds) && uiSeconds > 0 ? uiSeconds * 1000 : 5000;
+    const isCombined = json.rescheduled === true || json.operation_type === 'substitute_with_reschedule';
+    const effDate = json.session_date || substituteV2Context.value.session_date;
+    const effStart = json.start_time || substituteV2Context.value.start_time;
+    const effEnd = json.end_time || substituteV2Context.value.end_time;
+    const studentName = substituteV2Context.value.student_name || '';
+    const description = isCombined
+      ? `${studentName ? studentName + ' · ' : ''}已調整至 ${effDate} ${effStart}~${effEnd}`
+      : (studentName ? `${studentName} · ${effDate} ${effStart}` : '');
     toastRef.value?.show?.({
-      title: `已指派 ${teacherName} 代課`,
-      description: substituteV2Context.value.student_name
-        ? `${substituteV2Context.value.student_name} · ${substituteV2Context.value.session_date} ${substituteV2Context.value.start_time}`
-        : '',
+      title: isCombined ? `已指派 ${teacherName} 代課並調整時間` : `已指派 ${teacherName} 代課`,
+      description,
       variant: 'success',
       durationMs,
-      undoDescription: '代課已撤銷，家長通知已作廢',
+      undoDescription: isCombined ? '代課與換時已撤銷，家長通知已作廢' : '代課已撤銷，家長通知已作廢',
       onUndo: async () => {
         await undoSubstitute(sessionId);
         await loadCourses();
@@ -4118,9 +4150,23 @@ onMounted(() => {
   color: var(--text, #334155);
   cursor: pointer;
   user-select: none;
-  white-space: nowrap;
-  height: 38px;
+  /* FR-D-001/002 (PRD 四項系統問題修正 §PRD-D, 2026-04-18):
+     平板寬度下「只顯示今日有課老師」toggle 文字超出格子。
+     原 CSS: white-space: nowrap + height: 38px 固定高度 → 窄螢幕時文字被裁切。
+     修正：min-height 取代 height，允許內容自然撐高；white-space: normal 讓
+     中文字元於容器邊界自然換行；word-break: keep-all 保持詞組完整；
+     touch target 於平板 ≥44px 由下方 @media 補強。*/
+  min-height: 38px;
   box-sizing: border-box;
+  flex-shrink: 0;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.toolbar-filters .toolbar-hide-empty-toggle > span {
+  display: inline-block;
+  max-width: 100%;
 }
 .toolbar-filters .toolbar-hide-empty-toggle:hover {
   border-color: var(--primary, #2563eb);
@@ -4128,6 +4174,17 @@ onMounted(() => {
 .toolbar-filters .toolbar-hide-empty-toggle input[type="checkbox"] {
   accent-color: var(--primary, #2563eb);
   margin: 0;
+  flex-shrink: 0;
+}
+/* 平板（iPad portrait ~768px 至 1024px）：
+   1) toggle 與其他 filter 單獨佔一整列，避免在狹窄 grid 左欄中被擠壓。
+   2) 最小高度 44px 符合 WCAG / iOS touch target 指引。 */
+@media (max-width: 1024px) {
+  .toolbar-filters .toolbar-hide-empty-toggle {
+    flex: 1 1 100%;
+    min-height: 44px;
+    justify-content: flex-start;
+  }
 }
 
 /* ----- Teacher View ----- */
@@ -4554,6 +4611,8 @@ onMounted(() => {
 /* ── Tablet Responsive ── */
 @media (max-width: 1100px) {
   .teacher-col { min-width: 0; }
+  /* 確保欄位維持 minmax 最小值，避免於平板寬度下被壓縮至溢出；外層 wrapper 已 overflow-x: auto */
+  .teacher-grid { min-width: max-content; }
 }
 
 /* ── Tablet (iPad portrait, sidebar-aware ~520-650px content) ── */
@@ -4564,7 +4623,9 @@ onMounted(() => {
   .day-col-name { font-size: 11px; }
   .day-col-date { font-size: 9px; }
   .day-col-badge { min-width: 14px; height: 14px; font-size: 8px; top: 3px; right: 3px; }
-  .teacher-col-header { height: 56px; padding: 6px; gap: 4px; }
+  /* 平板下固定欄寬避免壓縮，讓 wrapper 水平捲動 */
+  .teacher-grid { min-width: max-content; }
+  .teacher-col-header { height: 56px; padding: 6px; gap: 4px; overflow: hidden; }
   .col-header-blank { height: 56px; }
   .teacher-col-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
   .teacher-col-name { font-size: 11px; }

@@ -79,7 +79,13 @@ class PayrollConcurrencyTest extends TestCase
     }
 
     // ──────────────────────────────────────────
-    // 同層級部分重疊：非主導 LR 重疊段基本費歸 0，非重疊段保留
+    // 同層級部分重疊（錯開 60 分鐘）：v1.5 起不再視為併堂
+    //
+    // v1.4：14:00-16:00 與 15:00-17:00 重疊 1h → primary 750 + non-primary 350 = 1100
+    // v1.5（本次修正 CONCURRENCY_START_TOLERANCE_MINUTES=15）：
+    //   start 差 60 分鐘 > 15 分鐘容忍度 → 視為兩堂獨立排課，各自全額 700
+    //
+    // 此案對齊興隆主任回報的真實情境：錯開排課不應扣薪。
     // ──────────────────────────────────────────
     public function test_same_level_partial_overlap(): void
     {
@@ -96,11 +102,9 @@ class PayrollConcurrencyTest extends TestCase
 
         $teacher = $this->fetchPayroll($dir['token']);
 
-        // Overlap: 15:00-16:00 (1h)
-        // A (primary, 2h): 350*2h + (2-1)*50*1h = 700 + 50 = 750
-        // B (non-primary, 2h): 350*2h - 350*1h = 700 - 350 = 350
-        // total = 1100
-        $this->assertEquals(1100, $teacher['total_salary']);
+        // v1.5：錯開 60 分鐘 > 容忍度 15 分鐘 → 不觸發 concurrency
+        // A: 350*2h = 700, B: 350*2h = 700, total = 1400
+        $this->assertEquals(1400, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -213,6 +217,67 @@ class PayrollConcurrencyTest extends TestCase
         // 無重疊 → 各自 350*2h = 700
         // total = 1400
         $this->assertEquals(1400, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // 2026-04 興隆回歸：start time 錯開 >15 分鐘 → 不視為併堂
+    // buildConcurrencyBonusMap 以 CONCURRENCY_START_TOLERANCE_MINUTES=15 過濾
+    // 驗證游靜鈴 09:30 + 10:00 的案例：過去被誤扣薪，現在應各自全額計薪。
+    // ──────────────────────────────────────────
+    public function test_staggered_30min_no_concurrency(): void
+    {
+        $dir = $this->createDirector('dir-stag30@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-stag30@test.com', '錯開30分');
+        $stuA = $this->createStudent(1, 'stag30-A');
+        $stuB = $this->createStudent(1, 'stag30-B');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 8, 'one_on_one'); // junior 350/h
+        $scB = $this->makeStudentClass($stuB, $tid, 8, 'one_on_one'); // junior 350/h
+
+        // 契約時長 120min 讓區間重疊 90 分鐘，但 start 差 30 分鐘 → 不應併堂
+        $this->makeApprovedLR($scA, $tid, '2026-04-11', '09:30', '11:30');
+        $this->makeApprovedLR($scB, $tid, '2026-04-11', '10:00', '12:00');
+
+        $teacher = $this->fetchPayroll($dir['token']);
+
+        // 錯開超過容忍度 → 不觸發 concurrency，各自 350*2h = 700，total = 1400
+        $this->assertEquals(1400, $teacher['total_salary']);
+    }
+
+    // ──────────────────────────────────────────
+    // start time 錯開 10 分鐘（容忍度內）仍視為併堂
+    // 保護真實 group class 因 ≤15 分鐘記錄誤差不被排除
+    // ──────────────────────────────────────────
+    public function test_staggered_10min_still_concurrent(): void
+    {
+        $dir = $this->createDirector('dir-stag10@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-stag10@test.com', '錯開10分');
+        $stuA = $this->createStudent(1, 'stag10-A');
+        $stuB = $this->createStudent(1, 'stag10-B');
+
+        $scA = $this->makeStudentClass($stuA, $tid, 8, 'one_on_one'); // junior 350/h
+        $scB = $this->makeStudentClass($stuB, $tid, 8, 'one_on_one'); // junior 350/h
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-12', '10:00', '12:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-12', '10:10', '12:10');
+
+        $teacher = $this->fetchPayroll($dir['token']);
+
+        // 容忍度內仍併堂：
+        // 重疊區段 10:10-12:00 (110min = 1.833h)；非重疊段 10:00-10:10 (10min) + 12:00-12:10 (10min)
+        // A (primary, lr_id 較小)：
+        //   - 自己獨占 10:00-10:10：350 * (10/60) ≈ 58.33
+        //   - 重疊 10:10-12:00：350*(110/60) + (2-1)*50*(110/60) = 641.67 + 91.67 = 733.33
+        //   ≈ 791.67 → round 792
+        // B (non-primary)：
+        //   - 重疊 10:10-12:00：350*(110/60) - 350*(110/60) = 0
+        //   - 自己獨占 12:00-12:10：350*(10/60) ≈ 58.33 → round 58
+        //   ≈ 58
+        // 精準加總：A base = 350*2h = 700; A bonus ≈ +91.67 → 791.67
+        //            B base = 350*2h = 700; B net = -641.67 → 58.33
+        //            total ≈ 850
+        // 實際以 bonusMap int round 推算：A=792, B=58 → 850
+        $this->assertEquals(850, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────

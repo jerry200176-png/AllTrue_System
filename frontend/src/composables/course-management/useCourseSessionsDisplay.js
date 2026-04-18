@@ -452,15 +452,27 @@ export function useCourseSessionsDisplay({
 
   function updateLocalSessionRow(courseId, sessionData) {
     const key = String(courseId || '');
-    if (!key) return;
+    if (!key || !sessionData || sessionData.id == null) return;
     const rows = classSessionsByCourse.value[key];
     if (!Array.isArray(rows)) return;
     const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
+    // PRD f0cce4d5 P2：只覆寫 payload 中實際提供的欄位，避免把代課 patch（只帶 teacher_id/teacher_name）
+    // 意外覆寫成 undefined 的 status / start_time / end_time。
+    const overlayKeys = [
+      'status', 'session_date', 'start_time', 'end_time',
+      'teacher_id', 'teacher_name',
+      'learning_record_status', 'attendance_sign_in_at',
+    ];
     let changed = false;
     for (let i = 0; i < rows.length; i++) {
       if (rows[i].id !== sessionData.id) continue;
-      const updated = { ...rows[i], status: sessionData.status, start_time: sessionData.start_time, end_time: sessionData.end_time };
-      if (leaveStatuses.has(sessionData.status)) {
+      const updated = { ...rows[i] };
+      for (const k of overlayKeys) {
+        if (Object.prototype.hasOwnProperty.call(sessionData, k) && sessionData[k] !== undefined) {
+          updated[k] = sessionData[k];
+        }
+      }
+      if (sessionData.status !== undefined && leaveStatuses.has(sessionData.status)) {
         updated.learning_record_status = null;
         updated.attendance_sign_in_at = null;
       }

@@ -299,10 +299,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // A: 400*2h = 800 + concurrency 50*1*1h = 50 => 850
-        // B: 400*2h = 800 + concurrency 50*1*1h = 50 => 850
-        // total = 1700
-        $this->assertEquals(1700, $teacher['total_salary']);
+        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課，無 concurrency
+        // A: 400*2h = 800, B: 400*2h = 800, total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -326,10 +325,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // A: 400*2h = 800 + concurrency 50*1*0.5h = 25 => 825
-        // B: 400*1.5h = 600 + concurrency 50*1*0.5h = 25 => 625
-        // total = 1450
-        $this->assertEquals(1450, $teacher['total_salary']);
+        // v1.5: start 17:00 vs 18:30 差 90 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
+        // A: 400*2h (contracted) = 800, B: 400*2h (contracted) = 800, total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -353,10 +351,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // A: 400*3h = 1200 + concurrency 50*1*2h = 100 => 1300
-        // B: 400*2h = 800 + concurrency 50*1*2h = 100 => 900
-        // total = 2200
-        $this->assertEquals(2200, $teacher['total_salary']);
+        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
+        // A: 400*2h (contracted) = 800, B: 400*2h (contracted) = 800, total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -380,10 +377,9 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // A (one_on_two): base 400*2h = 800 + concurrency 50*1*1h = 50 => 850
-        // B (one_on_one): base 400*2h = 800 + concurrency 50*1*1h = 50 => 850
-        // total = 1700
-        $this->assertEquals(1700, $teacher['total_salary']);
+        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
+        // A: 400*2h = 800, B: 400*2h = 800, total = 1600
+        $this->assertEquals(1600, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -407,11 +403,11 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // Level dominance: elementary (weight=2) > tutoring (weight=1)
-        // A (tutoring, dominated): 200*2h=400 + (-200*1h overlap)=-200 => session=max(0,200)=200
-        // B (elementary, dominant): 300*2h=600 + (2-1)*50*1h=50 => 650
-        // total = 850
-        $this->assertEquals(850, $teacher['total_salary']);
+        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 15 分鐘 → 視為獨立排課
+        // A (tutoring): 200*2h = 400
+        // B (elementary): 300*2h = 600
+        // total = 1000
+        $this->assertEquals(1000, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -438,9 +434,11 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // 3 same-level (high): each gets (3-1)*50*1h = 100 bonus
-        // Each: 400*1h + 100 = 500; total = 1500
-        $this->assertEquals(1500, $teacher['total_salary']);
+        // v1.4 tie-break: all 3 same start 18:00 (diff=0，容忍度內) 且契約 2h 全重疊
+        // A (primary, lowest lr_id): 400*2h + (3-1)*50*2h = 800 + 200 = 1000
+        // B, C (non-primary): 400*2h - 400*2h = 0 each
+        // total = 1000
+        $this->assertEquals(1000, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -521,7 +519,8 @@ class ParttimePayrollTest extends TestCase
 
         $bonuses = array_column($sessions, 'concurrency_bonus_amount');
         sort($bonuses);
-        $this->assertEquals([50, 50], $bonuses);
+        // v1.5: start 17:00 vs 18:00 差 60 分鐘 > 容忍度 → 無 concurrency，bonus=0
+        $this->assertEquals([0, 0], $bonuses);
 
         foreach ($sessions as $s) {
             $this->assertArrayHasKey('concurrency_bonus_amount', $s);
@@ -549,9 +548,11 @@ class ParttimePayrollTest extends TestCase
 
         $res->assertOk();
         $teacher = $res->json('teachers.0');
-        // Each LR: base 350*2h = 700 + concurrency 50*1*2h = 100 => 800
-        // total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        // v1.4 tie-break: 同 start 10:00 (diff=0，容忍度內) 同層 junior 完全重疊 2h
+        // A (primary): 350*2h + (2-1)*50*2h = 700 + 100 = 800
+        // B (non-primary): 350*2h - 350*2h = 0
+        // total = 800
+        $this->assertEquals(800, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────
@@ -633,7 +634,7 @@ class ParttimePayrollTest extends TestCase
         // Same level (junior, weight=3): both dominant
         // Each: 350*2h=700 + (2-1)*50*2h=100 => 800
         // total = 1600
-        $this->assertEquals(1600, $teacher['total_salary']);
+        $this->assertEquals(800, $teacher['total_salary']);
     }
 
     // ──────────────────────────────────────────

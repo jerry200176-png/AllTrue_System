@@ -76,7 +76,15 @@ export function useSessionEditFlow({
 
   function openSessionEdit(course, dateYmd, sessionId) {
     const row = getSessionDisplayRow(course, dateYmd, sessionId);
-    if (!row) return;
+    if (!row) {
+      // Synthetic chips (rendered from schedule before ClassSession loads) or
+      // any other code path that supplies an unresolvable sessionId used to
+      // fall through silently — the modal simply never opened and the user
+      // (a 主任) was stuck with "button does nothing". Show an explicit
+      // message so the user knows to refresh. See PRD §FR-006.
+      alert('此堂次資料尚未載入，請重新整理頁面後再試。');
+      return;
+    }
     sessionEditForm.value = {
       session_id: row.id,
       student_class_id: row.student_class_id || course.id,
@@ -299,16 +307,31 @@ export function useSessionEditFlow({
         alert('調課失敗：' + (err.message || '無法寫入新堂次'));
         return;
       }
+      // FR-002/003: pass old_start_time so the backend can uniquely locate the
+      // correct ClassSession when a student has multiple time slots on the same day,
+      // and surface API errors instead of silently swallowing them.
       if (form.student_class_id || course.id) {
-        await fetch('/api/v1/learning-records/reschedule-session', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            student_class_id: form.student_class_id || course.id,
-            old_date: form.session_date, new_date: form.new_date,
-            start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-          }),
-        }).catch(() => {});
+        try {
+          const rescheduleRes = await fetch('/api/v1/learning-records/reschedule-session', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              student_class_id: form.student_class_id || course.id,
+              old_date: form.session_date,
+              old_start_time: form.start_time || undefined,
+              new_date: form.new_date,
+              start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
+            }),
+          });
+          if (!rescheduleRes.ok) {
+            const err = await rescheduleRes.json().catch(() => ({}));
+            alert('調課失敗：' + (err.message || '找不到指定堂次，請確認日期與時間是否正確'));
+            return;
+          }
+        } catch (e) {
+          alert('調課失敗：' + (e?.message || '網路錯誤，請稍後再試'));
+          return;
+        }
       }
 
       closeSessionEdit();

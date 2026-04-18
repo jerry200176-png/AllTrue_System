@@ -101,7 +101,8 @@ Route::prefix('v1')->group(function () {
 
     // ── Parent Portal: LIFF & LINE-based login ─────────────────────────
     Route::get('parent/resolve-liff', [ParentPortalController::class, 'resolveLiff']);
-    Route::post('parent/login-line', [ParentPortalController::class, 'loginWithLine']);
+    Route::post('parent/login-line', [ParentPortalController::class, 'loginWithLine'])
+        ->middleware('throttle:30,10');
 
     // ── Public Branch Data (No auth required) ───────────────────────
     Route::get('branches', [CampusController::class, 'listPublic']);
@@ -346,7 +347,6 @@ Route::prefix('v1')->group(function () {
 
     // ── Teacher Management (Profiles) ────────────────────────────────
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
-        Route::get('profiles', [ProfileController::class, 'index']);
         Route::post('profiles', [ProfileController::class, 'store']);
         Route::post('profiles/bulk-teachers', [ProfileController::class, 'bulkTeachers']);
         Route::post('profiles/{id}/reset-password', [ProfileController::class, 'resetPassword']);
@@ -360,7 +360,9 @@ Route::prefix('v1')->group(function () {
 
     // (pay-report public endpoints removed — reconciliation is now director-only)
 
-    Route::post('parent/login', [ParentPortalController::class, 'login']);
+    // PRD-B: rate-limit parent login to mitigate credential stuffing (5 attempts/10min per IP).
+    Route::post('parent/login', [ParentPortalController::class, 'login'])
+        ->middleware('throttle:5,10');
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);

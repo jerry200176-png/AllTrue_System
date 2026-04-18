@@ -115,6 +115,18 @@ class ClassSessionController extends Controller
                 'cs.StartTime',
                 'cs.EndTime',
                 'cs.Status',
+                // PRD-A (2026-04-18): Reconcile displayed status against the latest
+                // active StudentSignIn. When an attendance record exists but
+                // ClassSession.Status is still `scheduled` or `absent` (a known
+                // inconsistency from prior write paths), surface the sign-in's
+                // effective attendance state so the today-schedule UI never shows
+                // "缺席" while a present/late sign-in exists.
+                DB::raw("CASE
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'present' THEN 'attended'
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'late' THEN 'late'
+                    WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) IN ('leave','excused') THEN 'leave'
+                    ELSE cs.Status
+                END AS effective_status"),
                 'cs.Note',
                 'cs.session_charge',
                 'sc.StudentID',
@@ -211,7 +223,7 @@ class ClassSessionController extends Controller
             $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
             $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
             $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
-            $row->status = (string) ($row->Status ?? '');
+            $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
             $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
             $row->learning_record_status = $row->learning_record_status ?? 'missing';
             $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
@@ -239,6 +251,7 @@ class ClassSessionController extends Controller
                 $row->StartTime,
                 $row->EndTime,
                 $row->Status,
+                $row->effective_status,
                 $row->Note,
                 $row->sc_rate,
                 $row->sc_session_duration,
@@ -1008,6 +1021,11 @@ class ClassSessionController extends Controller
         $data = $request->validate([
             'substitute_teacher_id' => 'required|integer|exists:User,id',
             'reason' => 'nullable|string|max:255',
+            // PRD f0cce4d5：合併「代課 + 換時間」選填參數（FR-001 ~ FR-005）
+            // 三個欄位必須「全部填」或「全部省略」；填時以新時段為準做衝堂檢查與 DB 寫入。
+            'new_date' => 'nullable|date_format:Y-m-d',
+            'new_start_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'new_end_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
         ]);
 
         $role = $request->attributes->get('auth_role');
@@ -1072,6 +1090,54 @@ class ClassSessionController extends Controller
         if ($startTime === '' || $endTime === '') {
             return response()->json(['message' => '堂次起迄時間不完整，無法寫入排程'], 422);
         }
+
+        // PRD f0cce4d5：解析選填換時參數
+        // FR-003：三欄必須同填同省；FR-004：後續衝堂檢查以新時段為準
+        $origSessionDate = $sessionDate;
+        $origStartTime = $startTime;
+        $origEndTime = $endTime;
+        $newDateRaw = isset($data['new_date']) ? trim((string) $data['new_date']) : '';
+        $newStartRaw = isset($data['new_start_time']) ? $this->normalizeSessionTimeForSchedule($data['new_start_time']) : '';
+        $newEndRaw = isset($data['new_end_time']) ? $this->normalizeSessionTimeForSchedule($data['new_end_time']) : '';
+        $rescheduleFields = [$newDateRaw, $newStartRaw, $newEndRaw];
+        $rescheduleFilled = count(array_filter($rescheduleFields, static fn ($v) => $v !== ''));
+        $hasReschedule = $rescheduleFilled === 3;
+        if ($rescheduleFilled > 0 && $rescheduleFilled < 3) {
+            return response()->json([
+                'message' => '請同時填寫新日期與新開始時間，或收合換時間區塊',
+                'errors' => [
+                    'new_date' => $newDateRaw === '' ? ['請同時填寫新日期'] : [],
+                    'new_start_time' => $newStartRaw === '' ? ['請同時填寫新開始時間'] : [],
+                ],
+            ], 422);
+        }
+        if ($hasReschedule) {
+            try {
+                $parsedNewDate = Carbon::parse($newDateRaw)->startOfDay();
+            } catch (\Throwable $e) {
+                return response()->json([
+                    'message' => '新日期格式無效',
+                    'errors' => ['new_date' => ['新日期格式無效']],
+                ], 422);
+            }
+            if ($parsedNewDate->lt(Carbon::today())) {
+                return response()->json([
+                    'message' => '新日期不可為過去日期',
+                    'errors' => ['new_date' => ['新日期不可為過去日期']],
+                ], 422);
+            }
+            if (strcmp($newStartRaw, $newEndRaw) >= 0) {
+                return response()->json([
+                    'message' => '新時段的開始時間需早於結束時間',
+                    'errors' => ['new_start_time' => ['新開始時間需早於新結束時間']],
+                ], 422);
+            }
+            // 以新時段覆寫「生效」變數，後續衝堂檢查與 transaction 寫入皆以新時段為準
+            $sessionDate = $parsedNewDate->toDateString();
+            $startTime = $newStartRaw;
+            $endTime = $newEndRaw;
+        }
+
         $courseId = (int) $studentClass->ID;
         $studentId = (int) $studentClass->StudentID;
         $subject = DB::table('Subject')->where('id', $studentClass->SubjectID)->value('Subject_Name') ?? '';
@@ -1087,8 +1153,10 @@ class ClassSessionController extends Controller
         }
 
         // Pre-read + conflict check OUTSIDE the DB transaction so a 409 does not commit partial writes.
+        // 注意：existingRescheduled / existingScheduled 仍需以「原日期」搜尋，因為目前資料庫中這兩列
+        // 仍位於舊日期；合併路徑會在 transaction 內將它們遷移至新日期再套用代課老師。
         $existingRescheduled = Schedule::where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $sessionDate)
+            ->whereDate('schedule_date', $origSessionDate)
             ->where('status', 'rescheduled')
             ->first();
         $rescheduledIdForGuard = $existingRescheduled ? (int) $existingRescheduled->id : null;
@@ -1099,14 +1167,14 @@ class ClassSessionController extends Controller
             // the old substitute row (at the original time) and a new row (at the new time) may
             // both exist. Picking by time ensures we operate on the correct one.
             $existingScheduled = Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $sessionDate)
+                ->whereDate('schedule_date', $origSessionDate)
                 ->where('status', 'scheduled')
                 ->where('original_schedule_id', $rescheduledIdForGuard)
-                ->where('start_time', $startTime)
+                ->where('start_time', $origStartTime)
                 ->first();
             if (!$existingScheduled) {
                 $existingScheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
+                    ->whereDate('schedule_date', $origSessionDate)
                     ->where('status', 'scheduled')
                     ->where('original_schedule_id', $rescheduledIdForGuard)
                     ->first();
@@ -1237,7 +1305,11 @@ class ClassSessionController extends Controller
                 $roomId,
                 $existingRescheduled,
                 $existingScheduled,
-                $crossCampus
+                $crossCampus,
+                $hasReschedule,
+                $origSessionDate,
+                $origStartTime,
+                $origEndTime
             );
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
@@ -1275,13 +1347,17 @@ class ClassSessionController extends Controller
         ?int $roomId,
         $existingRescheduled,
         $existingScheduled,
-        bool $crossCampus = false
+        bool $crossCampus = false,
+        bool $hasReschedule = false,
+        string $origSessionDate = '',
+        string $origStartTime = '',
+        string $origEndTime = ''
     ) {
         return DB::transaction(function () use (
             $request, $session, $data, $newTeacherId, $oldTeacherId,
             $sessionDate, $startTime, $endTime, $courseId, $studentId, $subject,
             $classType, $dayOfWeek, $campusId, $roomId, $existingRescheduled, $existingScheduled,
-            $crossCampus
+            $crossCampus, $hasReschedule, $origSessionDate, $origStartTime, $origEndTime
         ) {
             $durationHours = 2;
             if ($startTime && $endTime) {
@@ -1294,7 +1370,61 @@ class ClassSessionController extends Controller
             $this->logSubstituteDiag('transaction_begin', [
                 'class_session_id' => $session->id,
                 'duration_hours' => $durationHours,
+                'has_reschedule' => $hasReschedule,
+                'orig_session_date' => $origSessionDate,
+                'orig_start_time' => $origStartTime,
             ]);
+
+            // PRD f0cce4d5 FR-005：合併代課+換時—在同一交易內先行遷移時間，再套用代課。
+            // - 更新 ClassSession.{SessionDate,StartTime,EndTime}
+            // - 同步對應 LearningRecord 的時間欄位
+            // - 將原日期的 rescheduled / scheduled schedule 列遷移至新日期與新時段
+            // 後續既有代課邏輯便可以新日期為 canonical 寫入，不需額外調整。
+            if ($hasReschedule) {
+                $session->SessionDate = $sessionDate;
+                $session->StartTime = $startTime;
+                $session->EndTime = $endTime;
+                $session->save();
+
+                $lrTableEarly = (new LearningRecord())->getTable();
+                $lrUpdateEarly = [
+                    'SessionDate' => $sessionDate,
+                    'StartTime' => $startTime,
+                    'EndTime' => $endTime,
+                ];
+                if (Schema::hasColumn($lrTableEarly, 'updated_at')) {
+                    $lrUpdateEarly['updated_at'] = now();
+                }
+                DB::table($lrTableEarly)
+                    ->where('ClassSessionID', $session->id)
+                    ->update($lrUpdateEarly);
+
+                if ($existingRescheduled) {
+                    $existingRescheduled->schedule_date = $sessionDate;
+                    $existingRescheduled->start_time = $startTime;
+                    $existingRescheduled->end_time = $endTime;
+                    $existingRescheduled->day_of_week = $dayOfWeek;
+                    $existingRescheduled->duration_hours = $durationHours;
+                    $existingRescheduled->save();
+                }
+                if ($existingScheduled) {
+                    $existingScheduled->schedule_date = $sessionDate;
+                    $existingScheduled->start_time = $startTime;
+                    $existingScheduled->end_time = $endTime;
+                    $existingScheduled->day_of_week = $dayOfWeek;
+                    $existingScheduled->duration_hours = $durationHours;
+                    $existingScheduled->save();
+                }
+
+                $this->logSubstituteDiag('reschedule_migrated', [
+                    'class_session_id' => $session->id,
+                    'new_session_date' => $sessionDate,
+                    'new_start_time' => $startTime,
+                    'new_end_time' => $endTime,
+                    'migrated_rescheduled_id' => $existingRescheduled ? (int) $existingRescheduled->id : null,
+                    'migrated_scheduled_id' => $existingScheduled ? (int) $existingScheduled->id : null,
+                ]);
+            }
 
             // 1) Upsert rescheduled record (hides original teacher's slot)
             $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
@@ -1538,6 +1668,11 @@ class ClassSessionController extends Controller
                     'reason' => $reasonForLog ?: null,
                     'cross_campus' => $crossCampus,
                     'operator_id' => $operatorId,
+                    // PRD f0cce4d5 FR-006 / FR-008：合併換時訊息 + Undo 還原所需原始時間
+                    'operation_type' => $hasReschedule ? 'substitute_with_reschedule' : 'substitute',
+                    'original_session_date' => $hasReschedule ? $origSessionDate : $sessionDate,
+                    'original_start_time' => $hasReschedule ? $origStartTime : $startTime,
+                    'original_end_time' => $hasReschedule ? $origEndTime : $endTime,
                 ]);
             } catch (\Throwable $ne) {
                 Log::error('[substitute] parent_notification_failed_rollback', [
@@ -1559,6 +1694,12 @@ class ClassSessionController extends Controller
                 'notification_id' => $notification ? (int) $notification->id : null,
                 'rescheduled_id' => $rescheduledId,
                 'scheduled_id' => $scheduledId,
+                // PRD f0cce4d5：稽核合併換時操作（第 9 節資安）
+                'operation_type' => $hasReschedule ? 'substitute_with_reschedule' : 'substitute',
+                'rescheduled_from_date' => $hasReschedule ? $origSessionDate : null,
+                'rescheduled_from_start_time' => $hasReschedule ? $origStartTime : null,
+                'rescheduled_to_date' => $hasReschedule ? $sessionDate : null,
+                'rescheduled_to_start_time' => $hasReschedule ? $startTime : null,
             ]);
 
             $this->logSubstituteDiag('before_json_response', [
@@ -1570,7 +1711,7 @@ class ClassSessionController extends Controller
             ]);
 
             return response()->json([
-                'message' => '代課設定完成',
+                'message' => $hasReschedule ? '代課與換時設定完成' : '代課設定完成',
                 'class_session_id' => $session->id,
                 'substitute_teacher_id' => $newTeacherId,
                 'substitute_teacher_name' => $teacherName,
@@ -1579,6 +1720,15 @@ class ClassSessionController extends Controller
                 'learning_record_id' => $lrId,
                 'notification_id' => $notification ? (int) $notification->id : null,
                 'cross_campus' => $crossCampus,
+                // PRD f0cce4d5：合併代課+換時的新時段資訊（純代課時回原時段）
+                'operation_type' => $hasReschedule ? 'substitute_with_reschedule' : 'substitute',
+                'rescheduled' => $hasReschedule,
+                'session_date' => $sessionDate,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'original_session_date' => $hasReschedule ? $origSessionDate : $sessionDate,
+                'original_start_time' => $hasReschedule ? $origStartTime : $startTime,
+                'original_end_time' => $hasReschedule ? $origEndTime : $endTime,
                 // 業界對齊 Gmail Undo Send：UI 倒數用 undo_window_seconds，後端 deadline 保留 60s grace
                 'undo_window_seconds' => \App\Http\Controllers\SubstituteController::resolveUiUndoWindow(),
                 'undo_deadline_ms' => (int) round(microtime(true) * 1000)

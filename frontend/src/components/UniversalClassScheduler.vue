@@ -2,31 +2,97 @@
   <div class="modal-overlay">
     <div class="modal universal-scheduler-modal">
       <header class="scheduler-header">
-        <h3>{{ title }}</h3>
+        <h3>{{ step === 1 ? '新增課程' : title }}</h3>
         <p class="scheduler-subtitle">
-          {{ packageMode
-            ? '建立多科共用堂數方案：多個科目共享同一份堂數池，每次上課（不論科目）扣 1 堂。'
-            : '手動勾選的日期可自由選擇，不限固定上課星期；系統會依固定星期自動補齊其餘堂次，若今天尚未下課也可排入今日。'
-          }}
+          <template v-if="step === 1">請先選擇要建立的課程類型，下一步再填寫詳細資料。</template>
+          <template v-else>
+            {{ packageMode
+              ? '建立多科共用堂數方案：多個科目共享同一份堂數池，每次上課（不論科目）扣 1 堂。'
+              : '手動勾選的日期可自由選擇，不限固定上課星期；系統會依固定星期自動補齊其餘堂次，若今天尚未下課也可排入今日。'
+            }}
+          </template>
         </p>
-        <div class="mode-tabs">
-          <button
-            type="button"
-            :class="['mode-tab', { active: !packageMode }]"
-            @click="packageMode = false"
-          >一般課程</button>
-          <button
-            type="button"
-            :class="['mode-tab', { active: packageMode }]"
-            @click="packageMode = true"
-          >多科共用方案</button>
+        <div v-if="step === 2" class="usw-stepper" role="navigation" aria-label="步驟指示">
+          <button type="button" class="usw-stepper-back" @click="goBack">
+            <span class="material-symbols-outlined">arrow_back</span>
+            返回
+          </button>
+          <ol class="usw-stepper-bar" aria-label="步驟">
+            <li class="usw-stepper-item is-done">
+              <span class="usw-stepper-dot material-symbols-outlined">check</span>
+              <span class="usw-stepper-label">選擇類型</span>
+            </li>
+            <li class="usw-stepper-separator" aria-hidden="true"></li>
+            <li class="usw-stepper-item is-active">
+              <span class="usw-stepper-dot">2</span>
+              <span class="usw-stepper-label">{{ packageMode ? '填寫方案資料' : '填寫課程資料' }}</span>
+            </li>
+          </ol>
         </div>
       </header>
 
+      <transition name="usw-step" mode="out-in">
+        <div v-if="step === 1" key="step1" class="usw-step1">
+          <div class="usw-step1-cards">
+            <button
+              type="button"
+              class="usw-type-card usw-type-card--general"
+              @click="selectType('general')"
+            >
+              <span class="usw-type-card-icon material-symbols-outlined">menu_book</span>
+              <h4 class="usw-type-card-title">一般課程</h4>
+              <p class="usw-type-card-sub">單一科目、固定排課時間，或一次買斷 N 堂</p>
+              <span class="usw-type-card-tags">
+                <span class="usw-type-card-tag">堂數制</span>
+                <span class="usw-type-card-tag">月結制</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="usw-type-card usw-type-card--package"
+              @click="selectType('package')"
+            >
+              <span class="usw-type-card-icon material-symbols-outlined">layers</span>
+              <h4 class="usw-type-card-title">多科共用方案</h4>
+              <p class="usw-type-card-sub">多個科目共用同一份堂數或月結計費，學生可跨科目自由補課</p>
+              <span class="usw-type-card-tags">
+                <span class="usw-type-card-tag">堂數制</span>
+                <span class="usw-type-card-tag">月結制</span>
+              </span>
+            </button>
+          </div>
+          <div class="usw-step1-actions">
+            <button class="ghost" type="button" @click="$emit('cancel')">取消</button>
+          </div>
+        </div>
+
+        <div v-else key="step2" class="usw-step2-wrapper">
       <div v-if="packageMode" class="scheduler-layout package-layout">
         <section class="panel-stack">
           <article class="scheduler-card">
             <h4>方案基本資料</h4>
+            <div class="pkg-billing-switch" role="tablist" aria-label="計費方式">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="pkgForm.payment_type === 'session'"
+                :class="['pkg-billing-option', { active: pkgForm.payment_type === 'session' }]"
+                @click="setPkgPaymentType('session')"
+              >
+                <span class="pkg-billing-title">堂數制</span>
+                <span class="pkg-billing-tag badge-gray">一次購入 N 堂共用池</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="pkgForm.payment_type === 'monthly'"
+                :class="['pkg-billing-option', { active: pkgForm.payment_type === 'monthly' }]"
+                @click="setPkgPaymentType('monthly')"
+              >
+                <span class="pkg-billing-title">月結制</span>
+                <span class="pkg-billing-tag badge-blue">每月固定月費</span>
+              </button>
+            </div>
             <div class="scheduler-grid">
               <div class="form-group">
                 <label>學生 *</label>
@@ -40,14 +106,46 @@
                 <label>方案名稱 *</label>
                 <input v-model="pkgForm.name" type="text" placeholder="例：王小明 24 堂多科方案" maxlength="128" />
               </div>
-              <div class="form-group">
-                <label>總堂數 *</label>
-                <input v-model.number="pkgForm.total_sessions" type="number" min="1" max="999" />
-              </div>
-              <div class="form-group">
-                <label>每堂費率 *</label>
-                <input v-model.number="pkgForm.rate" type="number" min="0" step="50" />
-              </div>
+
+              <transition name="pkg-fade-slide">
+                <div v-if="pkgForm.payment_type === 'session'" class="form-group">
+                  <label>總堂數 *</label>
+                  <input v-model.number="pkgForm.total_sessions" type="number" min="1" max="999" />
+                </div>
+              </transition>
+              <transition name="pkg-fade-slide">
+                <div v-if="pkgForm.payment_type === 'session'" class="form-group">
+                  <label>每堂費率 *</label>
+                  <input v-model.number="pkgForm.rate" type="number" min="0" step="50" />
+                </div>
+              </transition>
+
+              <transition name="pkg-fade-slide">
+                <div v-if="pkgForm.payment_type === 'monthly'" class="form-group">
+                  <label>每堂費率（元，月結計費用） *</label>
+                  <input
+                    v-model.number="pkgForm.rate"
+                    type="number"
+                    min="1"
+                    step="50"
+                    :aria-invalid="!!pkgRateError"
+                  />
+                  <p v-if="pkgRateError" class="field-note warning-text">{{ pkgRateError }}</p>
+                  <p v-else class="field-note">月結制每月費用 = 當月實際出席堂數 × 本費率（不分科目）。</p>
+                </div>
+              </transition>
+              <transition name="pkg-fade-slide">
+                <div v-if="pkgForm.payment_type === 'monthly'" class="form-group">
+                  <label>每月結算日（1–31） *</label>
+                  <select v-model.number="pkgForm.settlement_day" :aria-invalid="!!pkgSettlementDayError">
+                    <option :value="null">請選擇</option>
+                    <option v-for="d in 31" :key="d" :value="d">每月 {{ d }} 號</option>
+                  </select>
+                  <p v-if="pkgSettlementDayError" class="field-note warning-text">{{ pkgSettlementDayError }}</p>
+                  <p v-else class="field-note">遇短月（如 2 月）將自動 fallback 至當月最後一天。</p>
+                </div>
+              </transition>
+
               <div class="form-group">
                 <label>上課類型 *</label>
                 <select v-model="pkgForm.class_type">
@@ -166,8 +264,26 @@
           </article>
 
           <article class="scheduler-card">
-            <h4>方案摘要</h4>
-            <div class="pkg-summary-grid">
+            <h4>方案摘要
+              <span
+                :class="['pkg-billing-badge', pkgForm.payment_type === 'monthly' ? 'badge-blue' : 'badge-gray']"
+              >{{ pkgForm.payment_type === 'monthly' ? '月結制' : '堂數制' }}</span>
+            </h4>
+            <div v-if="pkgForm.payment_type === 'monthly'" class="pkg-summary-grid">
+              <div class="pkg-summary-item pkg-summary-total">
+                <div class="pkg-summary-num">{{ Number(pkgForm.rate || 0).toLocaleString('zh-TW') }}</div>
+                <div class="pkg-summary-lbl">每堂費率（元）</div>
+              </div>
+              <div class="pkg-summary-item pkg-summary-used">
+                <div class="pkg-summary-num">{{ pkgForm.settlement_day || '—' }}</div>
+                <div class="pkg-summary-lbl">每月結算日</div>
+              </div>
+              <div class="pkg-summary-item pkg-summary-remain">
+                <div class="pkg-summary-num">{{ pkgForm.subjects.length }}</div>
+                <div class="pkg-summary-lbl">科目數</div>
+              </div>
+            </div>
+            <div v-else class="pkg-summary-grid">
               <div class="pkg-summary-item pkg-summary-total">
                 <div class="pkg-summary-num">{{ pkgForm.total_sessions }}</div>
                 <div class="pkg-summary-lbl">總堂數</div>
@@ -183,12 +299,17 @@
             </div>
             <div class="pkg-summary-meta">
               <span>{{ pkgForm.subjects.length }} 科</span>
-              <span>{{ pkgForm.rate }} 元/堂</span>
+              <span>{{ Number(pkgForm.rate || 0).toLocaleString('zh-TW') }} 元/堂</span>
               <span>{{ { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' }[pkgForm.class_type] || pkgForm.class_type }}</span>
             </div>
             <p class="hint-text">
-              方案建立後，每個科目會產生獨立的學生課程，堂數從共用池扣除。
-              補登的日期會建立「已上課」堂次並自動扣堂。
+              <template v-if="pkgForm.payment_type === 'monthly'">
+                月結方案：每月收費 = 當月實際出席堂數 × 每堂費率（不分科目，共用費率），於結算日依累計堂數結算。
+              </template>
+              <template v-else>
+                方案建立後，每個科目會產生獨立的學生課程，堂數從共用池扣除。
+                補登的日期會建立「已上課」堂次並自動扣堂。
+              </template>
             </p>
           </article>
         </section>
@@ -473,13 +594,39 @@
         <button
           class="primary"
           type="button"
-          :disabled="submitting"
+          :disabled="submitting || (packageMode && pkgForm.payment_type === 'monthly' && pkgForm.subjects.length < 2)"
+          :title="(packageMode && pkgForm.payment_type === 'monthly' && pkgForm.subjects.length < 2) ? '多科方案至少需要 2 個科目' : ''"
           @click="packageMode ? submitPackage() : submit()"
         >
+          <span v-if="submitting" class="btn-spinner material-symbols-outlined">progress_activity</span>
           {{ submitting ? '送出中...' : (packageMode ? '建立方案' : submitLabel) }}
         </button>
       </div>
+        </div>
+      </transition>
+
+      <div v-if="confirmBackOpen" class="usw-back-confirm-overlay" @click.self="cancelGoBack">
+        <div class="usw-back-confirm-dialog" role="alertdialog" aria-labelledby="usw-back-confirm-title">
+          <h4 id="usw-back-confirm-title">確認返回</h4>
+          <p>返回將清空已填入的資料，確定返回類型選擇？</p>
+          <div class="usw-back-confirm-actions">
+            <button class="ghost" type="button" @click="cancelGoBack">取消</button>
+            <button class="danger" type="button" @click="confirmGoBack">確認返回</button>
+          </div>
+        </div>
+      </div>
     </div>
+    <transition name="pkg-toast">
+      <div
+        v-if="pkgToast.show"
+        :class="['pkg-toast', pkgToast.kind === 'error' ? 'pkg-toast--error' : 'pkg-toast--success']"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="material-symbols-outlined">{{ pkgToast.kind === 'error' ? 'error' : 'check_circle' }}</span>
+        <span>{{ pkgToast.message }}</span>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -593,17 +740,115 @@ const form = reactive({
 
 const packageMode = ref(false);
 
+// ── Step wizard state ──
+const step = ref(1);
+const confirmBackOpen = ref(false);
+
+function selectType(type) {
+  packageMode.value = type === 'package';
+  step.value = 2;
+}
+
+function goBack() {
+  confirmBackOpen.value = true;
+}
+
+function cancelGoBack() {
+  confirmBackOpen.value = false;
+}
+
+function confirmGoBack() {
+  resetForm();
+  resetPkgForm();
+  packageMode.value = false;
+  step.value = 1;
+  confirmBackOpen.value = false;
+}
+
+function resetForm() {
+  form.student_id = props.initialStudentId ? Number(props.initialStudentId) : '';
+  form.teacher_id = props.initialTeacherId ? Number(props.initialTeacherId) : '';
+  form.subject = 'Math';
+  form.class_type = 'one_on_one';
+  form.confirmed_dates = [];
+  form.total_classes = 8;
+  form.settlement_day = null;
+  form.monthly_sessions = 4;
+  form.days_of_week = normalizeInitialDaysOfWeek(props.initialDaysOfWeek);
+  form.day_time_slots = [];
+  form.start_time = seededStart;
+  form.duration_hours = 2;
+  form.price_per_session = 1000;
+  form.payment_type = 'session';
+  form.room_id = '';
+  form.memo = '';
+  form.paid_at = '';
+  form.course_start_date = toYmd(new Date());
+}
+
+function resetPkgForm() {
+  pkgForm.student_id = props.initialStudentId ? Number(props.initialStudentId) : '';
+  pkgForm.name = '';
+  pkgForm.payment_type = 'session';
+  pkgForm.total_sessions = 24;
+  pkgForm.rate = 1000;
+  pkgForm.settlement_day = 5;
+  pkgForm.class_type = 'one_on_one';
+  pkgForm.paid_at = '';
+  pkgForm.subjects = [
+    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
+  ];
+}
+
 const pkgForm = reactive({
   student_id: props.initialStudentId ? Number(props.initialStudentId) : '',
   name: '',
+  payment_type: 'session',
   total_sessions: 24,
   rate: 1000,
+  settlement_day: 5,
   class_type: 'one_on_one',
   paid_at: '',
   subjects: [
     { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
   ],
 });
+
+const pkgToast = reactive({ show: false, message: '', kind: 'success' });
+let pkgToastTimer = null;
+function showPkgToast(message, kind = 'success') {
+  pkgToast.message = message;
+  pkgToast.kind = kind;
+  pkgToast.show = true;
+  if (pkgToastTimer) clearTimeout(pkgToastTimer);
+  pkgToastTimer = setTimeout(() => { pkgToast.show = false; }, 3000);
+}
+
+const pkgRateError = computed(() => {
+  if (pkgForm.payment_type !== 'monthly') return '';
+  const v = Number(pkgForm.rate);
+  if (!Number.isFinite(v) || v <= 0) return '請輸入大於 0 的每堂費率';
+  return '';
+});
+const pkgSettlementDayError = computed(() => {
+  if (pkgForm.payment_type !== 'monthly') return '';
+  const v = Number(pkgForm.settlement_day);
+  if (!Number.isFinite(v) || v < 1 || v > 31) return '請輸入 1 到 31 之間的日期';
+  return '';
+});
+
+function setPkgPaymentType(mode) {
+  if (mode !== 'session' && mode !== 'monthly') return;
+  if (pkgForm.payment_type === mode) return;
+  // 若已填入堂數資料（補登日期），切換前提醒使用者
+  const hasConfirmedDates = pkgForm.subjects.some((s) => (s.confirmed_dates || []).length > 0);
+  if (hasConfirmedDates) {
+    const ok = confirm('切換計費方式將清空已補登的堂數設定，確定繼續？');
+    if (!ok) return;
+    pkgForm.subjects.forEach((s) => { s.confirmed_dates = []; });
+  }
+  pkgForm.payment_type = mode;
+}
 
 const PKG_SUBJECT_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -1325,8 +1570,17 @@ async function submitPackage() {
   if (branchId <= 0) { alert('請先選擇分校後再建立課程'); return; }
   if (!pkgForm.student_id) { alert('請選擇學生'); return; }
   if (!pkgForm.name.trim()) { alert('請輸入方案名稱'); return; }
-  if (!pkgForm.total_sessions || pkgForm.total_sessions < 1) { alert('總堂數至少為 1'); return; }
-  if (pkgForm.subjects.length === 0) { alert('請至少新增一個科目'); return; }
+
+  const isMonthly = pkgForm.payment_type === 'monthly';
+
+  if (isMonthly) {
+    if (pkgForm.subjects.length < 2) { alert('多科月結方案至少需要 2 個科目'); return; }
+    if (pkgRateError.value) { alert(pkgRateError.value); return; }
+    if (pkgSettlementDayError.value) { alert(pkgSettlementDayError.value); return; }
+  } else {
+    if (!pkgForm.total_sessions || pkgForm.total_sessions < 1) { alert('總堂數至少為 1'); return; }
+    if (pkgForm.subjects.length === 0) { alert('請至少新增一個科目'); return; }
+  }
   for (let i = 0; i < pkgForm.subjects.length; i++) {
     const s = pkgForm.subjects[i];
     if (!s.subject) { alert(`第 ${i + 1} 科目未選擇科目`); return; }
@@ -1338,7 +1592,7 @@ async function submitPackage() {
   if (dupes.length > 0) {
     if (!confirm(`科目「${[...new Set(dupes)].join('、')}」重複出現，確定要繼續嗎？`)) return;
   }
-  if (pkgTotalConfirmedCount.value > pkgForm.total_sessions) {
+  if (!isMonthly && pkgTotalConfirmedCount.value > pkgForm.total_sessions) {
     alert(`補登堂數合計（${pkgTotalConfirmedCount.value}）超過總堂數（${pkgForm.total_sessions}）`);
     return;
   }
@@ -1349,9 +1603,7 @@ async function submitPackage() {
       student_id: Number(pkgForm.student_id),
       branch_id: branchId,
       name: pkgForm.name.trim(),
-      total_sessions: Number(pkgForm.total_sessions),
-      rate: Number(pkgForm.rate) || 0,
-      rate_unit: 'session',
+      payment_type: isMonthly ? 'monthly' : 'session',
       class_type: pkgForm.class_type || 'one_on_one',
       paid_at: pkgForm.paid_at || null,
       subjects: pkgForm.subjects.map((s) => ({
@@ -1362,12 +1614,25 @@ async function submitPackage() {
         confirmed_dates: (s.confirmed_dates || []).filter(Boolean),
       })),
     };
+    if (isMonthly) {
+      payload.rate = Number(pkgForm.rate) || 0;
+      payload.rate_unit = 'session';
+      payload.settlement_day = Number(pkgForm.settlement_day);
+    } else {
+      payload.total_sessions = Number(pkgForm.total_sessions);
+      payload.rate = Number(pkgForm.rate) || 0;
+      payload.rate_unit = 'session';
+    }
     const result = await createMultiSubjectPackage(payload);
     const memberCount = result?.members?.length ?? pkgForm.subjects.length;
-    alert(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。`);
+    if (isMonthly) {
+      showPkgToast(`方案「${pkgForm.name}」已建立，每月 ${pkgForm.settlement_day} 日結算，按 $${Number(pkgForm.rate).toLocaleString('zh-TW')} 元/堂 × 當月實際出席堂數計費（含 ${memberCount} 科）。`);
+    } else {
+      showPkgToast(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。`);
+    }
     emit('success', result);
   } catch (err) {
-    alert(err?.message || '建立方案失敗，請稍後再試');
+    showPkgToast(err?.message || '建立方案失敗，請稍後再試', 'error');
   } finally {
     submitting.value = false;
   }
@@ -1576,6 +1841,7 @@ async function submit() {
   padding: 0;
   border-radius: 20px;
   background: #f9fafb;
+  position: relative;
 }
 
 .scheduler-header {
@@ -1957,6 +2223,19 @@ async function submit() {
   .summary-row {
     grid-template-columns: 1fr;
   }
+
+  .usw-step1-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .usw-stepper {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .usw-stepper-bar {
+    flex-basis: 100%;
+    order: 2;
+  }
 }
 
 .scope-warning-banner {
@@ -1969,32 +2248,236 @@ async function submit() {
   line-height: 1.5;
 }
 
-.mode-tabs {
+/* --- Step wizard --- */
+.usw-stepper {
   display: flex;
-  gap: 0;
+  align-items: center;
+  gap: 16px;
   margin-top: 12px;
-  border: 1px solid #d6deeb;
-  border-radius: 10px;
-  overflow: hidden;
-  width: fit-content;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
 }
-.mode-tab {
-  padding: 7px 18px;
+.usw-stepper-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
   border: none;
-  background: #fff;
-  cursor: pointer;
+  background: transparent;
+  color: #475569;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
   transition: background 0.15s, color 0.15s;
 }
-.mode-tab + .mode-tab {
-  border-left: 1px solid #d6deeb;
+.usw-stepper-back:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
-.mode-tab.active {
+.usw-stepper-back .material-symbols-outlined {
+  font-size: 18px;
+}
+.usw-stepper-bar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+.usw-stepper-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.usw-stepper-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+.usw-stepper-item.is-done .usw-stepper-dot {
+  background: #10b981;
+  color: #fff;
+  font-size: 14px;
+}
+.usw-stepper-item.is-done {
+  color: #065f46;
+}
+.usw-stepper-item.is-active .usw-stepper-dot {
   background: #3b82f6;
   color: #fff;
+}
+.usw-stepper-item.is-active {
+  color: #1e3a8a;
+}
+.usw-stepper-separator {
+  flex: 0 0 24px;
+  height: 2px;
+  background: linear-gradient(90deg, #cbd5e1, #e2e8f0);
+  border-radius: 2px;
+}
+
+/* Step 1 type selection cards */
+.usw-step1 {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.usw-step1-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.usw-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 24px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.1s;
+}
+.usw-type-card:hover {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  border-color: #cbd5e1;
+  transform: translateY(-2px);
+}
+.usw-type-card:active {
+  transform: scale(0.97);
+}
+.usw-type-card--general:hover {
+  border-color: #3b82f6;
+}
+.usw-type-card--package:hover {
+  border-color: #10b981;
+}
+.usw-type-card-icon {
+  font-size: 36px;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #3b82f6;
+}
+.usw-type-card--package .usw-type-card-icon {
+  background: #ecfdf5;
+  color: #10b981;
+}
+.usw-type-card-title {
+  margin: 0;
+  font-size: 16px;
   font-weight: 600;
+  color: #0f172a;
+}
+.usw-type-card-sub {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.55;
+}
+.usw-type-card-tags {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.usw-type-card-tag {
+  display: inline-flex;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+.usw-step1-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Step transition */
+.usw-step-enter-active,
+.usw-step-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.usw-step-enter-from {
+  opacity: 0;
+  transform: translateX(12px);
+}
+.usw-step-leave-to {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+/* Back confirm dialog */
+.usw-back-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  z-index: 10;
+}
+.usw-back-confirm-dialog {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: min(360px, 90%);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+}
+.usw-back-confirm-dialog h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.usw-back-confirm-dialog p {
+  margin: 0 0 18px;
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.6;
+}
+.usw-back-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.usw-back-confirm-actions .danger {
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.usw-back-confirm-actions .danger:hover {
+  background: #dc2626;
 }
 
 .package-layout {
@@ -2229,6 +2712,130 @@ async function submit() {
   border-radius: 999px;
 }
 
+/* 計費方式切換 (堂數制 / 月結制) */
+.pkg-billing-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pkg-billing-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 120ms ease;
+  text-align: left;
+  font-family: inherit;
+}
+.pkg-billing-option:hover {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+.pkg-billing-option.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.pkg-billing-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.pkg-billing-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
+.badge-gray { background: #e2e8f0; color: #334155; }
+
+.pkg-billing-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.warning-text { color: #b45309; }
+
+/* 計費方式切換時欄位切換動畫 */
+.pkg-fade-slide-enter-active,
+.pkg-fade-slide-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease, max-height 200ms ease;
+  overflow: hidden;
+}
+.pkg-fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+}
+.pkg-fade-slide-enter-to {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 200px;
+}
+.pkg-fade-slide-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 200px;
+}
+.pkg-fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+}
+
+/* 送出中 spinner */
+.btn-spinner {
+  display: inline-block;
+  font-size: 16px;
+  vertical-align: middle;
+  margin-right: 4px;
+  animation: pkg-spin 1s linear infinite;
+}
+@keyframes pkg-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Toast（右上角，綠色成功／紅色錯誤，3 秒） */
+.pkg-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  max-width: 420px;
+  line-height: 1.5;
+}
+.pkg-toast .material-symbols-outlined { font-size: 20px; }
+.pkg-toast--success { background: #dcfce7; color: #166534; }
+.pkg-toast--error   { background: #fee2e2; color: #b91c1c; }
+.pkg-toast-enter-active,
+.pkg-toast-leave-active { transition: opacity 200ms ease, transform 200ms ease; }
+.pkg-toast-enter-from,
+.pkg-toast-leave-to { opacity: 0; transform: translateY(-8px); }
+.pkg-toast-enter-to,
+.pkg-toast-leave-from { opacity: 1; transform: translateY(0); }
+
 @media (max-width: 760px) {
   .package-layout {
     grid-template-columns: 1fr;
@@ -2243,6 +2850,9 @@ async function submit() {
   .pkg-inline-date {
     max-width: 100%;
     width: 100%;
+  }
+  .pkg-billing-switch {
+    grid-template-columns: 1fr;
   }
 }
 </style>

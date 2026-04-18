@@ -88,7 +88,17 @@
                   <input type="checkbox" :checked="selectedSet.has(s.class_session_id)" @change="toggleSelect(s.class_session_id)" />
                 </td>
                 <td class="att-time-range">{{ s.start_time }}–{{ s.end_time }}</td>
-                <td><span class="att-person-name">{{ s.student_name || '—' }}</span></td>
+                <td>
+                  <span class="att-person-name">{{ s.student_name || '—' }}</span>
+                  <span
+                    v-if="getSessionDiscrepancy(s.class_session_id)"
+                    class="att-report-badge"
+                    :class="`att-report-badge-${getSessionDiscrepancy(s.class_session_id).status}`"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+                    {{ discrepancyBadgeLabel(getSessionDiscrepancy(s.class_session_id)) }}
+                  </span>
+                </td>
                 <td>{{ s.subject_name || '—' }}</td>
                 <td>{{ s.teacher_name || '—' }}</td>
                 <td>
@@ -101,13 +111,25 @@
                   </div>
                 </td>
                 <td style="text-align:right">
-                  <button
-                    class="primary small"
-                    :disabled="pendingMarkSubmitting[s.class_session_id]"
-                    @click="submitPendingMark(s)"
-                  >
-                    {{ pendingMarkSubmitting[s.class_session_id] ? '送出中…' : '點名' }}
-                  </button>
+                  <div class="att-ops-stack">
+                    <button
+                      class="primary small"
+                      :disabled="pendingMarkSubmitting[s.class_session_id]"
+                      @click="submitPendingMark(s)"
+                    >
+                      {{ pendingMarkSubmitting[s.class_session_id] ? '送出中…' : '點名' }}
+                    </button>
+                    <button
+                      class="att-report-btn"
+                      :class="{ 'att-report-btn-active': !!getSessionDiscrepancy(s.class_session_id) }"
+                      type="button"
+                      @click="openReportModalForSession(s)"
+                      :title="getSessionDiscrepancy(s.class_session_id) ? '已回報 — 點此查看' : '課表與實際不符？點此回報'"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+                      <span>{{ getSessionDiscrepancy(s.class_session_id) ? '已回報' : '回報出入' }}</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -124,7 +146,17 @@
             <div class="att-card-top">
               <input type="checkbox" :checked="selectedSet.has(s.class_session_id)" @change="toggleSelect(s.class_session_id)" class="att-card-check" />
               <div class="att-card-info">
-                <div class="att-card-student">{{ s.student_name || '—' }}</div>
+                <div class="att-card-student">
+                  {{ s.student_name || '—' }}
+                  <span
+                    v-if="getSessionDiscrepancy(s.class_session_id)"
+                    class="att-report-badge att-report-badge-mobile"
+                    :class="`att-report-badge-${getSessionDiscrepancy(s.class_session_id).status}`"
+                  >
+                    <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+                    {{ discrepancyBadgeLabel(getSessionDiscrepancy(s.class_session_id)) }}
+                  </span>
+                </div>
                 <div class="att-card-meta">
                   <span class="att-card-time">{{ s.start_time }}–{{ s.end_time }}</span>
                   <span class="att-card-subject">{{ s.subject_name || '—' }}</span>
@@ -140,13 +172,24 @@
                   @click="setStatus(s.class_session_id, opt.value)"
                 >{{ opt.label }}</button>
               </div>
-              <button
-                class="primary small att-card-submit"
-                :disabled="pendingMarkSubmitting[s.class_session_id]"
-                @click="submitPendingMark(s)"
-              >
-                {{ pendingMarkSubmitting[s.class_session_id] ? '…' : '確認' }}
-              </button>
+              <div class="att-card-cta-row">
+                <button
+                  class="att-report-btn att-report-btn-mobile"
+                  :class="{ 'att-report-btn-active': !!getSessionDiscrepancy(s.class_session_id) }"
+                  type="button"
+                  @click="openReportModalForSession(s)"
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true">flag</span>
+                  <span>{{ getSessionDiscrepancy(s.class_session_id) ? '已回報' : '回報出入' }}</span>
+                </button>
+                <button
+                  class="primary small att-card-submit"
+                  :disabled="pendingMarkSubmitting[s.class_session_id]"
+                  @click="submitPendingMark(s)"
+                >
+                  {{ pendingMarkSubmitting[s.class_session_id] ? '…' : '確認' }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -160,6 +203,74 @@
         </div>
       </template>
 
+      <!-- "Class missing from system" entry point (always visible per FR-004) -->
+      <div class="att-missing-cta">
+        <span class="material-symbols-outlined" aria-hidden="true">help</span>
+        <span>有課不在列表中？</span>
+        <div class="att-missing-cta-actions">
+          <button
+            v-if="isTeacher"
+            class="att-build-btn"
+            type="button"
+            :class="{ active: quickAttendOpen }"
+            @click="quickAttendOpen = !quickAttendOpen"
+          >
+            <span class="material-symbols-outlined">add_task</span>
+            補建並點名
+          </button>
+          <button class="att-missing-link" type="button" @click="openReportModalMissing">點此回報</button>
+        </div>
+      </div>
+
+      <!-- Teacher quick-attend inline form -->
+      <div v-if="isTeacher" class="att-quick-attend-wrap" :class="{ open: quickAttendOpen }">
+        <div class="att-quick-attend-form">
+          <div class="att-quick-grid">
+            <div class="form-group">
+              <label>課程 <span class="att-required">*</span></label>
+              <div v-if="teacherCoursesLoading" class="att-skeleton-bar"></div>
+              <SearchableSelect
+                v-else
+                v-model="quickForm.studentClassId"
+                :options="teacherCourseOptions"
+                placeholder="搜尋課程（學生/科目）..."
+              />
+              <p v-if="teacherCoursesError" class="att-field-err">{{ teacherCoursesError }}</p>
+            </div>
+            <div class="form-group">
+              <label>開始時間 <span class="att-required">*</span></label>
+              <input v-model="quickForm.startTime" type="time" step="1800" />
+            </div>
+            <div class="form-group">
+              <label>結束時間 <span class="att-required">*</span></label>
+              <input v-model="quickForm.endTime" type="time" step="1800" />
+              <p v-if="quickTimeError" class="att-field-err">{{ quickTimeError }}</p>
+            </div>
+            <div class="form-group">
+              <label>點名狀態 <span class="att-required">*</span></label>
+              <select v-model="quickForm.status">
+                <option value="present">到班</option>
+                <option value="late">遲到</option>
+                <option value="leave">請假</option>
+                <option value="absent">缺席</option>
+              </select>
+            </div>
+          </div>
+          <div class="att-quick-actions">
+            <button class="ghost small" type="button" @click="quickAttendOpen = false">取消</button>
+            <button
+              class="primary small"
+              type="button"
+              :disabled="quickSubmitting"
+              @click="submitQuickAttend"
+            >
+              <span v-if="quickSubmitting" class="material-symbols-outlined att-spin">progress_activity</span>
+              {{ quickSubmitting ? '送出中…' : '補建並點名' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <p v-if="pendingMarkMsg" class="att-msg" :class="pendingMarkMsgType">{{ pendingMarkMsg }}</p>
 
       <!-- Batch result detail -->
@@ -172,8 +283,84 @@
 
       <!-- Manual Entry (collapsed) -->
       <details v-if="!isTeacher" class="att-manual-details">
-        <summary class="att-manual-toggle">+ 手動登記（非排課堂次）</summary>
-        <div class="att-manual-grid">
+        <summary class="att-manual-toggle">+ 手動登記</summary>
+
+        <!-- Mode tabs -->
+        <div class="att-dir-mode-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            :class="['att-dir-mode-tab', { active: dirMode === 'system' }]"
+            @click="switchDirMode('system')"
+          >已排課程學生</button>
+          <button
+            type="button"
+            role="tab"
+            :class="['att-dir-mode-tab', { active: dirMode === 'external' }]"
+            @click="switchDirMode('external')"
+          >系統外人員</button>
+        </div>
+
+        <!-- System student mode -->
+        <div v-if="dirMode === 'system'" class="att-manual-grid">
+          <div class="form-group">
+            <label>學生 <span class="att-required">*</span></label>
+            <SearchableSelect
+              v-model="dirForm.studentId"
+              :options="studentOptions"
+              placeholder="搜尋學生姓名..."
+              @update:modelValue="onDirStudentChange"
+            />
+          </div>
+          <div class="form-group">
+            <label>課程 <span class="att-required">*</span></label>
+            <div v-if="dirCoursesLoading" class="att-skeleton-bar"></div>
+            <select
+              v-else
+              v-model="dirForm.studentClassId"
+              :disabled="!dirForm.studentId || dirCourses.length === 0"
+            >
+              <option value="">{{ !dirForm.studentId ? '請先選擇學生' : (dirCourses.length === 0 ? '此學生無進行中的課程' : '選擇課程') }}</option>
+              <option v-for="c in dirCourses" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>日期 <span class="att-required">*</span></label>
+            <input v-model="dirForm.date" type="date" />
+          </div>
+          <div class="form-group">
+            <label>開始時間 <span class="att-required">*</span></label>
+            <input v-model="dirForm.startTime" type="time" step="1800" />
+          </div>
+          <div class="form-group">
+            <label>結束時間 <span class="att-required">*</span></label>
+            <input v-model="dirForm.endTime" type="time" step="1800" />
+            <p v-if="dirTimeError" class="att-field-err">{{ dirTimeError }}</p>
+          </div>
+          <div class="form-group">
+            <label>狀態 <span class="att-required">*</span></label>
+            <select v-model="dirForm.status">
+              <option value="present">到班</option>
+              <option value="late">遲到</option>
+              <option value="leave">請假</option>
+              <option value="absent">缺席</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>備注</label>
+            <input v-model="dirForm.memo" type="text" placeholder="選填…" />
+          </div>
+          <div class="form-group att-submit-wrap">
+            <label>&nbsp;</label>
+            <button class="primary" :disabled="dirSubmitting" @click="submitDirQuick">
+              <span v-if="dirSubmitting" class="material-symbols-outlined att-spin">progress_activity</span>
+              {{ dirSubmitting ? '送出中…' : '補建並點名' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- External (original) mode -->
+        <div v-else class="att-manual-grid">
           <div class="form-group">
             <label>選擇學生 <span class="att-required">*</span></label>
             <SearchableSelect
@@ -208,6 +395,7 @@
             <button class="primary" @click="submitManual">登記</button>
           </div>
         </div>
+
         <p v-if="manualMsg" class="att-msg" :class="manualMsgType">{{ manualMsg }}</p>
       </details>
     </div>
@@ -403,12 +591,44 @@
       </div>
     </div>
   </Teleport>
+
+  <!-- Schedule-discrepancy report modal -->
+  <ReportDiscrepancyModal
+    v-if="discrepancyModal.visible"
+    :mode="discrepancyModal.mode"
+    :branch-id="props.branchId || 0"
+    :class-session-id="discrepancyModal.sessionId"
+    :session-context="discrepancyModal.sessionContext"
+    :existing="discrepancyModal.existing"
+    @close="closeDiscrepancyModal"
+    @submitted="onDiscrepancySubmitted"
+    @withdrawn="onDiscrepancyWithdrawn"
+  />
+
+  <!-- Toast notifications for discrepancy actions (top-right per §5b) -->
+  <Teleport to="body">
+    <Transition name="sd-toast">
+      <div
+        v-if="discrepancyToast.visible"
+        class="sd-toast"
+        :class="`sd-toast-${discrepancyToast.tone}`"
+        role="status"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">
+          {{ discrepancyToast.tone === 'success' ? 'check_circle' : (discrepancyToast.tone === 'error' ? 'error' : 'info') }}
+        </span>
+        <span>{{ discrepancyToast.text }}</span>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
 import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
+import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -492,6 +712,210 @@ const manualForm = ref({
   status: 'present',
   memo: ''
 });
+
+// ── Director: system-student quick-attend ──────────────────────────────
+const dirMode = ref('system'); // 'system' | 'external'
+const dirCourses = ref([]);
+const dirCoursesLoading = ref(false);
+const dirSubmitting = ref(false);
+const dirTimeError = ref('');
+const dirForm = ref({
+  studentId: '',
+  studentClassId: '',
+  date: new Date().toISOString().split('T')[0],
+  startTime: (() => { const d = new Date(); return `${String(d.getHours()).padStart(2,'0')}:${d.getMinutes() < 30 ? '00' : '30'}`; })(),
+  endTime: (() => { const d = new Date(); const h = d.getMinutes() < 30 ? d.getHours() : (d.getHours() + 1) % 24; return `${String(h).padStart(2,'0')}:${d.getMinutes() < 30 ? '30' : '00'}`; })(),
+  status: 'present',
+  memo: '',
+});
+
+const studentOptions = computed(() =>
+  studentList.value.map(s => ({ value: String(s.id), label: `${s.name}（學生）` }))
+);
+
+function switchDirMode(mode) {
+  dirMode.value = mode;
+  manualMsg.value = '';
+  dirTimeError.value = '';
+}
+
+async function onDirStudentChange(studentId) {
+  dirForm.value.studentClassId = '';
+  dirCourses.value = [];
+  dirTimeError.value = '';
+  if (!studentId) return;
+  dirCoursesLoading.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch(`/api/v1/student-classes?student_id=${studentId}&per_page=100&status=active`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const list = data.data || data || [];
+      dirCourses.value = list.map(c => ({
+        value: String(c.ID || c.id),
+        label: `${c.student_name || ''}・${c.subject_name || c.subject || ''}（${c.teacher_name || ''}）`,
+      }));
+    }
+  } catch (e) {
+    console.error('onDirStudentChange', e);
+  } finally {
+    dirCoursesLoading.value = false;
+  }
+}
+
+async function submitDirQuick() {
+  dirTimeError.value = '';
+  manualMsg.value = '';
+  if (!dirForm.value.studentId || !dirForm.value.studentClassId) {
+    manualMsg.value = '請選擇學生與課程';
+    manualMsgType.value = 'error';
+    return;
+  }
+  if (dirForm.value.startTime >= dirForm.value.endTime) {
+    dirTimeError.value = '結束時間須晚於開始時間';
+    return;
+  }
+  dirSubmitting.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        StudentClassID: Number(dirForm.value.studentClassId),
+        SessionDate: dirForm.value.date,
+        StartTime: dirForm.value.startTime + ':00',
+        EndTime: dirForm.value.endTime + ':00',
+        Status: dirForm.value.status,
+        Memo: dirForm.value.memo || '',
+        mark_mode: 'arrival',
+      }),
+    });
+    if (res.ok) {
+      manualMsg.value = '已補建堂次並完成點名';
+      manualMsgType.value = 'success';
+      dirForm.value.studentId = '';
+      dirForm.value.studentClassId = '';
+      dirForm.value.memo = '';
+      dirCourses.value = [];
+      fetchRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      manualMsg.value = '補建失敗：' + (err.message || '未知錯誤');
+      manualMsgType.value = 'error';
+    }
+  } catch (e) {
+    manualMsg.value = '補建失敗：網路錯誤';
+    manualMsgType.value = 'error';
+  } finally {
+    dirSubmitting.value = false;
+  }
+}
+
+// ── Teacher: quick-attend inline form ─────────────────────────────────
+const quickAttendOpen = ref(false);
+const quickSubmitting = ref(false);
+const quickTimeError = ref('');
+const teacherCourses = ref([]);
+const teacherCoursesLoading = ref(false);
+const teacherCoursesError = ref('');
+
+const roundToHalfHour = () => {
+  const d = new Date();
+  const mins = d.getMinutes();
+  const rounded = mins < 30 ? 0 : 30;
+  return `${String(d.getHours()).padStart(2,'0')}:${String(rounded).padStart(2,'0')}`;
+};
+const halfHourLater = () => {
+  const d = new Date();
+  const mins = d.getMinutes();
+  if (mins < 30) { return `${String(d.getHours()).padStart(2,'0')}:30`; }
+  const next = (d.getHours() + 1) % 24;
+  return `${String(next).padStart(2,'0')}:00`;
+};
+
+const quickForm = ref({
+  studentClassId: '',
+  startTime: roundToHalfHour(),
+  endTime: halfHourLater(),
+  status: 'present',
+});
+
+const teacherCourseOptions = computed(() =>
+  teacherCourses.value.map(c => ({
+    value: String(c.ID || c.id),
+    label: `${c.student_name || ''}・${c.subject_name || c.subject || ''}`,
+  }))
+);
+
+async function fetchTeacherCourses() {
+  if (!isTeacher.value) return;
+  teacherCoursesLoading.value = true;
+  teacherCoursesError.value = '';
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/student-classes?per_page=200&status=active', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      teacherCourses.value = data.data || data || [];
+    } else {
+      teacherCoursesError.value = '課程載入失敗，請重試';
+    }
+  } catch (e) {
+    teacherCoursesError.value = '課程載入失敗：網路錯誤';
+  } finally {
+    teacherCoursesLoading.value = false;
+  }
+}
+
+async function submitQuickAttend() {
+  quickTimeError.value = '';
+  if (!quickForm.value.studentClassId) {
+    quickTimeError.value = '請選擇課程';
+    return;
+  }
+  if (quickForm.value.startTime >= quickForm.value.endTime) {
+    quickTimeError.value = '結束時間須晚於開始時間';
+    return;
+  }
+  quickSubmitting.value = true;
+  try {
+    const token = await getToken();
+    const today = localTodayYmd();
+    const res = await fetch('/api/v1/attendance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        StudentClassID: Number(quickForm.value.studentClassId),
+        SessionDate: today,
+        StartTime: quickForm.value.startTime + ':00',
+        EndTime: quickForm.value.endTime + ':00',
+        Status: quickForm.value.status,
+        mark_mode: 'arrival',
+      }),
+    });
+    if (res.ok) {
+      quickAttendOpen.value = false;
+      quickForm.value.studentClassId = '';
+      quickForm.value.startTime = roundToHalfHour();
+      quickForm.value.endTime = halfHourLater();
+      quickForm.value.status = 'present';
+      showDiscrepancyToast('已補建堂次並完成點名', 'success');
+      fetchRecords();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      quickTimeError.value = '補建失敗：' + (err.message || '未知錯誤');
+    }
+  } catch (e) {
+    quickTimeError.value = '補建失敗：網路錯誤';
+  } finally {
+    quickSubmitting.value = false;
+  }
+}
 
 const getToken = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -1078,8 +1502,119 @@ const refreshAll = () => {
   batchResults.value = [];
   fetchRecords();
   fetchPendingSessions();
+  fetchMyDiscrepanciesMap();
   if (!isTeacher.value) fetchPending();
 };
+
+// ── Schedule-discrepancy reporting (課表出入回報) ────────────────────
+// Map of class_session_id → most recent active/resolved discrepancy authored by this user.
+// Drives the "已回報" badge and the duplicate-guard behaviour on the report button.
+const discrepancyMap = ref({});
+const discrepancyModal = reactive({
+  visible: false,
+  mode: 'session',         // 'session' | 'missing'
+  sessionId: null,
+  sessionContext: null,
+  existing: null,
+});
+const discrepancyToast = reactive({ visible: false, text: '', tone: 'success' });
+let toastTimer = null;
+
+function showDiscrepancyToast(text, tone = 'success') {
+  if (toastTimer) clearTimeout(toastTimer);
+  discrepancyToast.text = text;
+  discrepancyToast.tone = tone;
+  discrepancyToast.visible = true;
+  toastTimer = setTimeout(() => { discrepancyToast.visible = false; }, 3000);
+}
+
+async function fetchMyDiscrepanciesMap() {
+  if (!isTeacher.value && !props.branchId) return;
+  try {
+    const branchId = props.branchId ? Number(props.branchId) : null;
+    const resp = await fetchMyDiscrepancies({ branchId, perPage: 100 });
+    const rows = Array.isArray(resp?.data) ? resp.data : [];
+    const map = {};
+    rows.forEach((r) => {
+      const sid = Number(r?.class_session_id || 0);
+      if (!sid) return;
+      // Only the most recent active report (pending/acknowledged/resolved) per session.
+      // Withdrawn / archived reports should not block a new report.
+      if (r.status === 'withdrawn' || r.archived_at) return;
+      const existing = map[sid];
+      const created = new Date(r.created_at || 0).getTime();
+      if (!existing || created > new Date(existing.created_at || 0).getTime()) {
+        map[sid] = r;
+      }
+    });
+    discrepancyMap.value = map;
+  } catch (e) {
+    console.warn('fetchMyDiscrepanciesMap', e);
+  }
+}
+
+function getSessionDiscrepancy(sessionId) {
+  return discrepancyMap.value[Number(sessionId) || 0] || null;
+}
+
+function openReportModalForSession(session) {
+  const existing = getSessionDiscrepancy(session.class_session_id);
+  discrepancyModal.mode = 'session';
+  discrepancyModal.sessionId = session.class_session_id;
+  discrepancyModal.sessionContext = {
+    date: session.session_date || localTodayYmd(),
+    time: `${session.start_time || ''}${session.end_time ? '–' + session.end_time : ''}`,
+    subject: session.subject_name || '',
+    student: session.student_name || '',
+  };
+  discrepancyModal.existing = existing;
+  discrepancyModal.visible = true;
+}
+
+function openReportModalMissing() {
+  discrepancyModal.mode = 'missing';
+  discrepancyModal.sessionId = null;
+  discrepancyModal.sessionContext = null;
+  discrepancyModal.existing = null;
+  discrepancyModal.visible = true;
+}
+
+function closeDiscrepancyModal() {
+  discrepancyModal.visible = false;
+}
+
+function onDiscrepancySubmitted(result) {
+  // Server returns { duplicate: bool, discrepancy | existing }
+  const record = result?.discrepancy || result?.existing || null;
+  if (record && record.class_session_id) {
+    discrepancyMap.value = { ...discrepancyMap.value, [Number(record.class_session_id)]: record };
+  }
+  if (result?.duplicate) {
+    showDiscrepancyToast('此堂次已有待處理回報', 'info');
+  } else {
+    showDiscrepancyToast('已送出回報，主任會盡快處理', 'success');
+  }
+  closeDiscrepancyModal();
+  // Refresh map to pick up reports that don't have a class_session_id (missing_session case).
+  fetchMyDiscrepanciesMap();
+}
+
+function onDiscrepancyWithdrawn(result) {
+  const existing = discrepancyModal.existing;
+  const sid = Number(result?.discrepancy?.class_session_id || existing?.class_session_id || 0);
+  if (sid) {
+    const next = { ...discrepancyMap.value };
+    delete next[sid];
+    discrepancyMap.value = next;
+  }
+  showDiscrepancyToast('已撤銷回報', 'success');
+  closeDiscrepancyModal();
+}
+
+function discrepancyBadgeLabel(disc) {
+  if (!disc) return '';
+  return DISCREPANCY_STATUS_LABELS[disc.status] || '已回報';
+}
 
 const formatTime = (dt) => {
   if (!dt) return '—';
@@ -1112,9 +1647,12 @@ onMounted(() => {
   fetchRecords();
   fetchPendingSessions();
   fetchMakeupSessions();
+  fetchMyDiscrepanciesMap();
   if (!isTeacher.value) {
     fetchPending();
     fetchStudents();
+  } else {
+    fetchTeacherCourses();
   }
   refreshTimer = setInterval(() => {
     fetchRecords();
@@ -1129,6 +1667,7 @@ watch(() => props.branchId, () => {
   fetchRecords();
   fetchPendingSessions();
   fetchMakeupSessions();
+  fetchMyDiscrepanciesMap();
   if (!isTeacher.value) {
     fetchPending();
   }
@@ -1361,6 +1900,118 @@ watch(() => props.branchId, () => {
   .att-card { padding: 12px; }
   .att-status-group-mobile .att-status-btn { padding: 8px 2px; font-size: 12px; }
 }
+
+/* ── Missing CTA actions ─────────────────────────────────────── */
+.att-missing-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.att-build-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  min-height: 44px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.att-build-btn:hover { background: var(--primary-hover, #1d4ed8); }
+.att-build-btn.active { background: var(--primary-hover, #1d4ed8); }
+.att-build-btn .material-symbols-outlined { font-size: 17px; }
+
+/* ── Teacher quick-attend inline form ───────────────────────── */
+.att-quick-attend-wrap {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.15s ease;
+}
+.att-quick-attend-wrap.open {
+  max-height: 500px;
+}
+.att-quick-attend-form {
+  border: 1px solid var(--border-soft, #cbd5e1);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 10px;
+  background: var(--surface-muted, #f8fafc);
+}
+.att-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 14px;
+  margin-bottom: 12px;
+}
+.att-quick-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.att-field-err {
+  font-size: 12px;
+  color: var(--danger, #dc2626);
+  margin: 4px 0 0;
+}
+.att-skeleton-bar {
+  height: 36px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: att-shimmer 1.2s infinite;
+  border-radius: 6px;
+}
+@keyframes att-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.att-spin {
+  animation: att-spin-anim 0.8s linear infinite;
+  font-size: 16px;
+  vertical-align: middle;
+}
+@keyframes att-spin-anim { to { transform: rotate(360deg); } }
+
+/* ── Director mode tabs ─────────────────────────────────────── */
+.att-dir-mode-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+.att-dir-mode-tab {
+  padding: 6px 16px;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  transition: background 0.12s, color 0.12s;
+  min-height: 36px;
+}
+.att-dir-mode-tab + .att-dir-mode-tab { border-left: 1px solid var(--border-color, #ddd); }
+.att-dir-mode-tab.active { background: var(--primary, #2563eb); color: #fff; font-weight: 600; }
+
+@media (max-width: 768px) {
+  .att-quick-grid { grid-template-columns: 1fr; }
+  .att-missing-cta { flex-wrap: wrap; }
+  .att-missing-cta-actions { width: 100%; justify-content: flex-end; }
+}
+@media (max-width: 480px) {
+  .att-missing-cta-actions { flex-direction: column; align-items: stretch; }
+  .att-build-btn, .att-missing-link { width: 100%; justify-content: center; }
+}
 </style>
 
 <!-- Non-scoped: Teleport'd confirm dialog renders outside component root -->
@@ -1386,5 +2037,141 @@ watch(() => props.branchId, () => {
 @media (min-width: 769px) {
   .att-confirm-overlay { align-items: center; }
   .att-confirm-sheet { border-radius: 16px; }
+}
+
+/* ── Schedule-discrepancy UI ─────────────────────────────────── */
+.att-ops-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.att-report-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  min-height: 36px;
+  border: 1px solid var(--warning-border, #fde68a);
+  background: var(--warning-soft, #fffbeb);
+  color: var(--warning-strong, #b45309);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.att-report-btn:hover { background: var(--warning-soft-hover, #fef3c7); }
+.att-report-btn .material-symbols-outlined { font-size: 16px; }
+.att-report-btn-active {
+  border-color: var(--warning, #f59e0b);
+  background: var(--warning, #f59e0b);
+  color: #fff;
+}
+.att-report-btn-active:hover { background: #d97706; border-color: #d97706; }
+
+.att-report-btn-mobile {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.att-card-cta-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.att-report-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.att-report-badge .material-symbols-outlined { font-size: 13px; }
+.att-report-badge-pending,
+.att-report-badge-acknowledged {
+  background: var(--warning-soft, #fffbeb);
+  color: var(--warning-strong, #b45309);
+  border-color: var(--warning-border, #fde68a);
+}
+.att-report-badge-acknowledged {
+  background: var(--info-soft, #eff6ff);
+  color: var(--info-strong, #1d4ed8);
+  border-color: var(--info-border, #bfdbfe);
+}
+.att-report-badge-resolved {
+  background: var(--success-soft, #ecfdf5);
+  color: var(--success-strong, #047857);
+  border-color: var(--success-border, #a7f3d0);
+}
+.att-report-badge-mobile {
+  margin-left: 0;
+  margin-top: 4px;
+  display: inline-flex;
+}
+
+.att-missing-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-soft, #cbd5e1);
+  border-radius: 8px;
+  background: var(--surface-muted, #f8fafc);
+  color: var(--text-light, #64748b);
+  font-size: 13px;
+}
+.att-missing-cta .material-symbols-outlined { font-size: 18px; color: var(--warning, #f59e0b); }
+.att-missing-link {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--primary, #2563eb);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 10px;
+  min-height: 44px;
+  text-decoration: underline;
+}
+.att-missing-link:hover { color: var(--primary-hover, #1d4ed8); }
+
+/* Toast */
+.sd-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 10060;
+  background: var(--success-strong, #047857);
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  max-width: calc(100vw - 48px);
+}
+.sd-toast-error { background: var(--danger, #ef4444); }
+.sd-toast-info { background: var(--info-strong, #1d4ed8); }
+.sd-toast .material-symbols-outlined { font-size: 20px; }
+.sd-toast-enter-active,
+.sd-toast-leave-active { transition: all 200ms ease; }
+.sd-toast-enter-from { opacity: 0; transform: translateY(-8px); }
+.sd-toast-leave-to { opacity: 0; transform: translateY(-8px); }
+
+@media (max-width: 480px) {
+  .sd-toast { top: 12px; right: 12px; left: 12px; }
 }
 </style>

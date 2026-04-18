@@ -52,6 +52,31 @@
       <p class="pp-error" v-if="loginError">{{ loginError }}</p>
     </div>
 
+    <!-- Skeleton loader while dashboard is loading (token exists but no data yet) -->
+    <template v-if="token && !dashboard && !liffLoading">
+      <div class="pp-card pp-skeleton-card">
+        <div class="pp-skel-row pp-skel-row--avatar">
+          <div class="pp-skel pp-skel--circle"></div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:8px;">
+            <div class="pp-skel" style="height: 18px; width: 55%;"></div>
+            <div class="pp-skel" style="height: 12px; width: 80%;"></div>
+          </div>
+        </div>
+        <div class="pp-skel" style="height: 90px; border-radius: 10px; margin-top: 14px;"></div>
+      </div>
+      <div class="pp-card pp-skeleton-card">
+        <div class="pp-skel" style="height: 16px; width: 30%;"></div>
+        <div class="pp-skel" style="height: 60px; border-radius: 8px; margin-top: 10px;"></div>
+        <div class="pp-skel" style="height: 60px; border-radius: 8px; margin-top: 10px;"></div>
+      </div>
+      <div class="pp-card pp-skeleton-card">
+        <div class="pp-skel" style="height: 16px; width: 25%;"></div>
+        <div class="pp-skel" style="height: 44px; border-radius: 8px; margin-top: 10px;"></div>
+        <div class="pp-skel" style="height: 44px; border-radius: 8px; margin-top: 8px;"></div>
+        <div class="pp-skel" style="height: 44px; border-radius: 8px; margin-top: 8px;"></div>
+      </div>
+    </template>
+
     <!-- ═══ Dashboard (logged in) ═══ -->
     <template v-if="token && dashboard">
 
@@ -313,7 +338,7 @@
         </div>
       </div>
 
-      <!-- Attendance Timeline -->
+      <!-- Attendance Timeline (FR-B-003) -->
       <div class="pp-card" v-if="token && dashboard">
         <div class="pp-section-header">
           <span class="material-symbols-outlined pp-section-icon" style="color:#00897b;">fact_check</span>
@@ -321,13 +346,23 @@
         </div>
         <template v-if="(dashboard.attendance_history || []).length">
           <div class="pp-timeline">
-            <div v-for="a in dashboard.attendance_history.slice(0, showAllAttendance ? undefined : 10)" :key="a.id" class="pp-timeline-item">
-              <div class="pp-timeline-dot" :class="a.Status === 'present' ? 'present' : 'absent'">
-                <span class="material-symbols-outlined">{{ a.Status === 'present' ? 'check' : 'close' }}</span>
+            <div v-for="a in dashboard.attendance_history.slice(0, showAllAttendance ? undefined : 10)"
+                 :key="a.id"
+                 class="pp-timeline-item"
+                 :class="attendanceRowClass(a.Status)">
+              <div class="pp-timeline-dot" :class="attendanceDotClass(a.Status)">
+                <span class="material-symbols-outlined">{{ attendanceIcon(a.Status) }}</span>
               </div>
               <div class="pp-timeline-content">
-                <span class="pp-timeline-date">{{ formatDateTime(a.SignInDT) }}</span>
-                <span :class="['pp-timeline-status', a.Status]">{{ a.Status === 'present' ? '出席' : a.Status === 'absent' ? '缺席' : a.Status }}</span>
+                <div class="pp-timeline-head">
+                  <span class="pp-timeline-date">{{ a.date || (a.SignInDT ? a.SignInDT.substring(0, 10) : '') }}</span>
+                  <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
+                </div>
+                <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
+                  <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon">schedule</span>{{ a.time }}</span>
+                  <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon">menu_book</span>{{ a.subject }}</span>
+                  <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon">person</span>{{ a.teacher_name }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -339,7 +374,8 @@
         </template>
         <div class="pp-empty" v-else>
           <span class="material-symbols-outlined">event_busy</span>
-          <p>尚無出缺勤紀錄</p>
+          <p>目前無出缺勤記錄</p>
+          <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
         </div>
       </div>
 
@@ -445,17 +481,19 @@ const autoLineMode = ref(false);
 const lineLinked = computed(() => !!dashboard.value?.student?.line_linked);
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
+// PRD-B 追加修正（2026-04-18 晚間）：家長端仍會看到舊版「相同 Phone」帶出的兄弟姊妹名單，
+// 根因為 localStorage 的 parent_portal_students 舊快取未清。改用「伺服器回應為唯一來源」，
+// 登入/dashboard/切換成功後 setStudents() 一律以最新回應覆寫；不再從 localStorage 初始化。
+// 同時於 mount 時主動清除舊 key，確保所有舊版客戶端一上線即失效。
 const studentsKey = 'parent_portal_students';
-const students = ref(JSON.parse(localStorage.getItem(studentsKey) || 'null'));
+try { localStorage.removeItem(studentsKey); } catch (_) {}
+const students = ref(null);
 const switchingStudent = ref(false);
 
 const setStudents = (list) => {
-  students.value = list;
-  if (list && list.length > 1) {
-    localStorage.setItem(studentsKey, JSON.stringify(list));
-  } else {
-    localStorage.removeItem(studentsKey);
-  }
+  const next = Array.isArray(list) && list.length > 1 ? list : null;
+  students.value = next;
+  try { localStorage.removeItem(studentsKey); } catch (_) {}
 };
 
 const lrPage = ref(1);
@@ -586,7 +624,9 @@ const loadDashboard = async () => {
     lrSubjectFilter.value = '';
     const data = await getParentDashboard(token.value, { lrPage: 1, lrPerPage });
     dashboard.value = data;
-    if (data.students && data.students.length > 1) setStudents(data.students);
+    // PRD-B hotfix：以後端為唯一真相，伺服器沒回 students 即表示本人無關聯學生；
+    // 主動 null 覆寫以清除舊版本殘留的 localStorage 快取。
+    setStudents(data.students || null);
     allLearningRecords.value = [...(data.learning_records || [])];
     const meta = data.learning_records_meta || {};
     lrHasMore.value = !!meta.has_more;
@@ -629,7 +669,7 @@ const login = async () => {
     const result = await parentLogin(loginForm.value);
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
-    if (result.students) setStudents(result.students);
+    setStudents(result.students || null);
     await loadDashboard();
   } catch (error) {
     loginError.value = error.message || '登入失敗，請確認學生姓名及手機號碼是否正確';
@@ -654,12 +694,44 @@ const loginWithLine = async () => {
     const result = await parentLoginLine(profile.userId);
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
-    if (result.students) setStudents(result.students);
+    setStudents(result.students || null);
     await loadDashboard();
   } catch (e) {
     console.error('LINE auto-login error:', e);
     loginError.value = e.message || 'LINE 登入失敗';
   }
+};
+
+const attendanceStatusClass = (status) => {
+  const s = String(status || '').toLowerCase();
+  if (s === 'present') return 'present';
+  if (s === 'late') return 'late';
+  if (s === 'absent') return 'absent';
+  if (s === 'leave' || s === 'excused') return 'leave';
+  return 'other';
+};
+
+const attendanceDotClass = (status) => attendanceStatusClass(status);
+const attendanceRowClass = (status) => attendanceStatusClass(status);
+
+const attendanceIcon = (status) => {
+  const s = attendanceStatusClass(status);
+  return ({
+    present: 'check',
+    late: 'schedule',
+    absent: 'close',
+    leave: 'event_busy',
+  })[s] || 'help';
+};
+
+const attendanceLabel = (status) => {
+  const s = attendanceStatusClass(status);
+  return ({
+    present: '到班',
+    late: '遲到',
+    absent: '缺席',
+    leave: '請假',
+  })[s] || String(status || '—');
 };
 
 const remainingPillColor = (count) => {
@@ -1118,21 +1190,50 @@ onMounted(async () => {
   content: ''; position: absolute; left: 11px; top: 8px; bottom: 8px;
   width: 2px; background: #e0e0e0;
 }
-.pp-timeline-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; position: relative; }
+.pp-timeline-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; position: relative; min-height: 44px; }
+.pp-timeline-item.absent { background: linear-gradient(90deg, rgba(229,57,53,0.06) 0%, transparent 50%); border-radius: 6px; padding-left: 4px; margin-left: -4px; }
 .pp-timeline-dot {
-  position: absolute; left: -28px;
+  position: absolute; left: -28px; top: 10px;
   width: 22px; height: 22px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  z-index: 1;
+  z-index: 1; background: #90a4ae;
 }
 .pp-timeline-dot .material-symbols-outlined { font-size: 14px; color: #fff; }
 .pp-timeline-dot.present { background: #43a047; }
+.pp-timeline-dot.late { background: #fb8c00; }
 .pp-timeline-dot.absent { background: #e53935; }
-.pp-timeline-content { display: flex; align-items: center; gap: 8px; flex: 1; }
-.pp-timeline-date { font-size: 0.85em; color: #607d8b; min-width: 100px; }
-.pp-timeline-status { font-size: 0.85em; font-weight: 600; }
-.pp-timeline-status.present { color: #2e7d32; }
-.pp-timeline-status.absent { color: #c62828; }
+.pp-timeline-dot.leave { background: #757575; }
+.pp-timeline-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.pp-timeline-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pp-timeline-date { font-size: 0.88em; color: #455a64; font-weight: 600; }
+.pp-timeline-status { font-size: 0.82em; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.pp-timeline-status.present { color: #2e7d32; background: #e8f5e9; }
+.pp-timeline-status.late { color: #e65100; background: #fff3e0; }
+.pp-timeline-status.absent { color: #c62828; background: #ffebee; }
+.pp-timeline-status.leave { color: #424242; background: #eeeeee; }
+.pp-timeline-sub { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.8em; color: #607d8b; }
+.pp-timeline-sub span { display: inline-flex; align-items: center; gap: 3px; }
+.pp-mini-icon { font-size: 13px !important; vertical-align: middle; }
+.pp-empty-hint { font-size: 0.78em !important; color: #b0bec5; margin-top: 4px; }
+
+/* ═══ Skeleton Loader ═══ */
+.pp-skeleton-card { padding: 18px; }
+.pp-skel {
+  background: linear-gradient(90deg, #f0f0f0 0%, #e0e0e0 50%, #f0f0f0 100%);
+  background-size: 200% 100%;
+  animation: pp-skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: 4px;
+}
+.pp-skel--circle { width: 48px; height: 48px; border-radius: 50%; }
+.pp-skel-row { display: flex; align-items: center; gap: 12px; }
+@keyframes pp-skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ═══ Fade In Animation on dashboard render ═══ */
+.pp-profile-card, .pp-alert-card { animation: pp-card-fade-in 0.25s ease-out; }
+@keyframes pp-card-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ═══ Announcements ═══ */
 .pp-announcement {

@@ -2,6 +2,209 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-18 — PRD-E：SmartCalendar 多日多時段課程基底格被單一 scheduled 例外抹除修正（8c1673b9）
+
+### Problem
+
+興隆主任回報：鄭翔祐 × 吳艾潼 2026-04-19（日）15:00-17:00 堂次在班級行事曆/課表上未顯示。資料端 `ClassSession` 與 `/api/v1/class-sessions` 均正確返回該堂次，卻在 SmartCalendar 畫面被整格吃掉。
+
+### Root cause
+
+`frontend/src/pages/SmartCalendar.vue` 的 `filteredCourses` computed 第 1885–1902 行以 `hasScheduledExc`（boolean）檢查該日該課程是否存在任何 status='scheduled' 的 schedules 例外：若為 true 即整個日期的基底 weekly pattern 都不渲染。
+
+SC#382 `week=3/time=16:00` + `week1=7/time1=15:00` 是多日多時段課程：週日 15:00 是基底 weekly slot，同日 17:00-19:00 是由 4/22（三）調過來的 scheduled 例外（schedules #622↔#623）。舊邏輯將 17:00 例外的存在視為「此日所有基底格都已被例外接手」，連帶把週日 15:00 的基底格也抹掉 → 吳艾潼 15:00 未渲染。但在「add extras」迴圈只會把 schedules 例外渲染出來（17:00 有、15:00 沒有），導致週日 15:00 堂次完全消失。
+
+### Change
+
+- **`frontend/src/pages/SmartCalendar.vue`**（filteredCourses 邏輯修正，無樣式變動）
+  - 將 `hasScheduledExc`（boolean）改為 `scheduledExcStartSet`（Set<HH:MM>）收集該日該課程全部 scheduled 例外的 start_time。
+  - 渲染基底 weekly 時段時，改為逐一比對：只有當基底 `start_time` 與例外 `start_time` 完全重疊才跳過（代表那格由例外接手）；其他時段照常渲染。
+  - 移除原本整日抹除的跳過條件（`!hasScheduledExc`），保留 `hasReschedule`（rescheduled-from）原語意。
+- **`backend/tests/Feature/MultiSlotCourseWithExceptionTest.php`** 新增資料契約測試（1 test / 12 assertions）：驗證多日 SC 同日同時具 weekly 基底與 scheduled 例外時，`/api/v1/class-sessions`、`/api/v1/schedules`、`/api/v1/student-classes` 三條 API 皆提供前端渲染所需完整資料，防止後端回歸把資料吃掉的情況。
+
+### Impact
+
+- 修復：吳艾潼 2026-04-19 15:00-17:00 堂次正常顯示於 SmartCalendar；類似 `days_of_week=[a,b]` 多日多時段課程遇到 scheduled 例外時基底格不再消失。
+- 不影響：單日課程、純 rescheduled 例外、leave 例外、absent/completed 堂次渲染；chaotic reschedule stack 仍維持既有 sessionSet / hasReschedule 判定。
+- 無後端 API 變動；backend 現有 `/api/v1/class-sessions`、`/api/v1/schedules`、`/api/v1/student-classes` 契約不變。
+
+### Auto-verification
+
+1. `php artisan test tests/Feature/MultiSlotCourseWithExceptionTest.php` → 1 test / 12 assertions PASS。
+2. `GET /api/v1/class-sessions?branch_id=16&start=2026-04-19&end=2026-04-19` 回傳 CS#3070（吳艾潼 15:00-17:00）與 CS#2145（陳嘉軒 15:00-17:00）雙堂次。
+3. `npm run deploy` 完成後 browser-use agent 於 `https://daan.lifenet.com.tw/smart-calendar` 切到 2026-04-19，確認日檢視下 15:00 欄位同時看到陳嘉軒與吳艾潼兩格；17:00 欄位吳艾潼（schedules 例外接手）仍正常顯示。
+4. 回歸檢查：`php artisan test tests/Feature/ClassSessionApiTest.php` 全 PASS。
+
+### Resolution classification
+
+UI-RENDER-FIX（純前端邏輯），Root cause 限於 SmartCalendar.vue filteredCourses 對多時段基底的抹除，無資料損失；無需後端資料回補或遷移。
+
+### Rollback plan
+
+若前端邏輯造成回歸，於 `SmartCalendar.vue` 將 `scheduledExcStartSet` 改回舊版 `hasScheduledExc` boolean 檢查並在 `if (!hasReschedule)` 加回 `&& !hasScheduledExc`；重新 `npm run deploy` 即可恢復舊行為。`MultiSlotCourseWithExceptionTest.php` 保留（回歸守護仍有效）。
+
+---
+
+## 2026-04-18 — PRD-D：平板檢視 SmartCalendar toggle 文字溢出修正（8c1673b9）
+
+### Problem
+
+興隆主任於 iPad / Android 平板（768–1024px 寬度）打開「日檢視」SmartCalendar 時，工具列右上「只顯示今日有課老師」toggle 文字會溢出 toggle 格子邊界，造成：
+
+- 文字可能被裁切（視 grid 左欄實際寬度）
+- 操作體驗差，使用者不確定是否點到 checkbox
+
+### Root cause
+
+`frontend/src/pages/SmartCalendar.vue` 的 `.toolbar-filters .toolbar-hide-empty-toggle` 使用固定 `height: 38px` + `white-space: nowrap`。在平板的 `.toolbar-secondary-line--filters`（`grid-template-columns: minmax(0, 1fr) auto`）中，左欄 `1fr` 必須同時容納室內選單、老師搜尋、學生搜尋、老師請假按鈕，再加上 toggle，寬度不足時 toggle 因 `flex-shrink: 0` 不縮小、`nowrap` 不換行 → 文字撐出邊界。
+
+### Change
+
+- **`frontend/src/pages/SmartCalendar.vue`**（style block only）
+  - `.toolbar-hide-empty-toggle`：`height: 38px` → `min-height: 38px`（允許自然撐高）；`white-space: nowrap` → `white-space: normal` + `word-break: keep-all` + `overflow-wrap: anywhere` 讓中文於容器邊界自然斷行；新增 `max-width: 100%` 防止水平溢出父 grid。
+  - 子 `> span` 顯式 `display: inline-block; max-width: 100%` 讓文字遵守 toggle 邊界。
+  - checkbox 明確 `flex-shrink: 0` 讓核取方塊在 wrap 情境仍保持完整。
+  - 新增 `@media (max-width: 1024px)`：toggle 於平板寬度下 `flex: 1 1 100%` 佔獨立一行，`min-height: 44px`（WCAG / iOS touch target）。
+
+### Impact
+
+- 修復：768–1024px 平板下 toggle 文字完整顯示、不再裁切；換行時 toggle 自動撐高，checkbox 與文字仍可點擊。
+- 桌機（≥1025px）：toggle 維持原本 inline 外觀（38px 高、單行文字），無視覺退化。
+- 無 JS 邏輯變動，`hideEmptyTeacherColumns` 綁定與 `localStorage` 持久化完全不受影響。
+
+### Auto-verification
+
+- ✓ `frontend && npx vite build` 成功（TypeScript / template lint 綠燈）
+- ✓ cursor-ide-browser 於 768px / 900px / 1024px 截圖 SmartCalendar 日檢視，toggle 文字完整可見、checkbox 可點擊、toggle 高度 ≥ 44px；1280px 桌機視圖 toggle 仍為 inline 38px 高。
+- ✓ `diff` 比對 `backend/public/index.html` 的 JS chunk hash 與 `backend/public/assets/` 目錄檔名一致（npm run deploy 產生物同步）
+
+---
+
+## 2026-04-18 — PRD-C：興隆分校兼職薪資偵錯（8c1673b9, no code change）
+
+### Complaint
+
+興隆分校主任回報「游靜鈴 (ID 83) 兼職薪資有誤、Ruth 蔣 (ID 146) 計算結果正確」。
+
+### Investigation
+
+AI Agent 逐項檢查 PRD-C FR-C-001 ~ FR-C-004：
+
+| 檢查項 | 游靜鈴 (ID 83) | Ruth 蔣 (ID 146) | 結論 |
+|---|---|---|---|
+| `LearningRecord.SessionDate` 完整 | ✓ 所有已核准 LR 皆填 | ✓ | 無異常 |
+| `StudentClass.SessionDuration` ≥ 30 | ✓ 所有 sc 皆為 120 分鐘 | ✓ | 無異常 |
+| `duration1~6 / week1~6` 設定 | sc#619/#730 有設 week1=5/7、duration1=120；其餘僅 fallback `SessionDuration` | sc#620/#621/#622 同模式 | 兩人資料結構一致 |
+| `payroll_teacher_branch_rules` 個人費率 | 無 | 無 | 兩人同 fallback 至 branch_default (rule id 24) |
+| `payroll_branch_rules` 分校預設 (branch_id=17) | `base_rates={high:400, junior:350, elementary:350, tutoring:200}`, `headcount_bonus=50` | 同上 | ✓ 完全一致 |
+| 相同 class_type + grade_level 的 effective_rate | junior 700/2h、high 800/2h | 同左 | ✓ DoD 滿足 |
+
+AI Agent 透過 reflection 呼叫 `FinanceController::buildParttimePayrollData` 重跑 2026-03 與 2026-04：
+
+- 2026-03：游 NT$4,900 / Ruth NT$7,000
+- 2026-04：游 NT$8,400 / Ruth NT$6,200
+
+每筆 `session_salary` 均符合 `round(base_rate × contracted_hours) + concurrency_bonus_amount`；兩位老師經過完全相同的計算路徑（branch_default rule + `buildConcurrencyBonusMap` v1.4 tie-break + v1.5 `CONCURRENCY_START_TOLERANCE_MINUTES=15`），無邏輯分支差異。
+
+### Root cause of perceived discrepancy
+
+Ruth 教的 StudentClasses 恰好是兄弟姊妹（張家 sc#620/#621/#622 同排 Fri 19:30；陳則佑/張靖禹 sc#559/#573 同排 17:30）且 LR 實登時間都精確對齊排定時段，觸發 `buildConcurrencyBonusMap` tie-break（primary +headcount_bonus、其餘 net=0）。游教的 one_on_two/one_on_three 班次排定時段不同（17:30、18:30、19:30、16:30、09:30），LR 時間也各自不同，故每堂都屬獨立課次（無併堂）——這是符合 v1.5 PRD 薪資計算與調課按鈕修正「錯開排課不應扣薪」的預期行為。
+
+主任的主觀「游比 Ruth 高」來自：游全都是獨立課次各 700 / 800 元全額，Ruth 幾堂併堂被 tie-break 歸零只留 primary 800。這不是 bug，是兩種排課型態的自然結果；費率與邏輯完全一致。
+
+### Conclusion
+
+**無程式錯誤、無資料錯誤；PRD-C 結案為「NOT A BUG / AS DESIGNED」**。AI Agent 評估後未變更任何程式碼或資料，以避免回歸 2026-04-18 稍早 PRD `薪資計算與調課按鈕修正` 剛剛修好的「錯開 session 誤扣薪」問題。
+
+### Auto-verification
+
+- ✓ `GET /api/v1/finance/parttime-payroll/sessions?branch_id=17&month=2026-04&teacher_id=83` 每筆 `session_salary = round(base_rate × hours) + concurrency_bonus_amount`
+- ✓ 相同 `class_type + grade_level` 對照：游 one_on_two junior (GradeID 7/8) effective_rate=350，Ruth 同 one_on_two junior 也為 350
+- ✓ 回歸：`php artisan test tests/Feature/PayrollConcurrencyTest.php`、`ParttimePayrollTest.php`、`PayrollRulesTest.php`、`PayrollTeacherOverrideTest.php` 全綠（詳見 §PRD-C automation block）
+
+### Follow-up recommendation (out of scope)
+
+若主任仍希望游的 sc#178/sc#730（兩位排定 Sun 09:30 的 one_on_three 學生）在「makeup 日 LR 時間錯開」的情境下被視為同一組併堂，須由業務端建立新 PRD 推翻 v1.5「錯開 >15min 視為獨立」規則，再以 `StudentClass.time` 排定時段作為併堂鍵重做邏輯。不在本 PRD 範圍內。
+
+---
+
+## 2026-04-18 — PRD-B：家長端登入隔離與資料顯示完善（8c1673b9）
+
+### Problem
+
+家長端存在跨家庭 PII 洩漏風險：當兩戶不同家庭的 `Student.Phone` 相同（例如代班老師誤填、舊資料殘留），家長以姓名 + 手機登入後可能透過 `login` 回傳或 `dashboard` 回傳的 `students` 清單看到另一家學生；`switch-student` 也僅以相同手機就放行。此外家長端出缺勤顯示資訊不足（缺少科目、老師、時段）。
+
+### Change（後端）
+
+- **`backend/app/Http/Controllers/ParentPortalController.php`**
+  - `login()`：改為嚴格「姓名 + Phone 精確單筆配對」。找不到回 `404`；姓名相同但手機不同且有空手機欄位時提示分校補登；姓名 + 手機同時精確配到兩筆以上（極罕見）回 `409` 並引導改用 LINE 綁定或 StudentID。移除「自動帶出相同手機的其他學生」，改為只有當登入學生有 `StudentLineBinding` 且該 LINE 帳號已明確綁定其他學生時才在回傳中帶 `students`。成功登入寫入 `parent.login.success` info log（含 student_id、ip）。
+  - `switchStudent()`：移除「相同手機即放行」分支，僅允許透過共享 `line_user_id` 的 `StudentLineBinding` 切換。
+  - `dashboard()`：siblings 一律只透過 LINE 綁定解析；不再以 `Student.Phone` 比對其他學生作為 siblings。
+  - `dashboard()`：attendance_history 的每筆 `StudentSignIn` 新增 `date`、`time`、`subject`、`teacher_name` 欄位（FR-B-003），以符合家長端顯示「日期 / 時間 / 科目 / 老師 / 狀態」格式；`ClassSession` 批次查詢避免 N+1。
+- **`backend/routes/api.php`**
+  - `POST /api/v1/parent/login` 綁 `throttle:5,10`（5 次 / 10 分鐘，per IP + route）。
+  - `POST /api/v1/parent/login-line` 綁 `throttle:30,10`（LIFF 重試友善）。
+- **`backend/app/Http/Middleware/ThrottleRequestsByIp.php`（新增）+ `Http/Kernel.php`**
+  - 本專案未配置 Laravel auth guard，內建 `ThrottleRequests` 會在 `resolveRequestSignature` 呼叫 `Auth::user()` 失敗。新增 `ThrottleRequestsByIp` 繼承並改以 `route + ip` 作為 signature；註冊為 `throttle` 別名，供家長/LINE 登入與未來其他公開路由使用。
+
+### Change（前端）
+
+- **`frontend/src/pages/ParentPortal.vue`**
+  - 出缺勤卡片改採 FR-B-003 格式：每列顯示日期 + 狀態徽章 + 次行「時段 / 科目 / 老師」；新增狀態色彩 `present` 綠 / `late` 橘 / `absent` 紅 / `leave` 灰；缺席列加淡紅底色提示。
+  - Token 存在但 dashboard 尚未載入時顯示 skeleton loader（三張佔位卡），避免空白畫面與 layout shift。
+  - Attendance 空狀態：新增圖示 + 輔助文字「老師完成點名後將自動顯示於此」。
+  - 首張卡片淡入動畫 0.25s，切換學生時有視覺過場。
+
+### Impact
+
+- 修復：兩戶不同家庭填寫同一手機時，彼此不再互見；跨家庭 PII 洩漏路徑已關閉。
+- 相容：合法家長以 LINE 綁定多位孩子的情境完全不受影響，`students` 清單改透過 `StudentLineBinding` 正確解析。
+- 測試：`tests/Feature/ParentPortalLoginIsolationTest.php`（7 tests）涵蓋：未提供姓名時 422；同手機不同家庭不互見；姓名錯但手機對回 404；dashboard 不漏 siblings；switch-student 跨家庭 403；LINE 綁定 siblings 正常；dashboard attendance_history schema。
+- 回歸：既有 `AttendanceStatusReconcileTest`、`AuthLoginThrottleTest`、`Attendance*` 全家族測試綠燈。
+
+### Auto-verification checklist（本 commit）
+
+- [x] Pest 新測試 `ParentPortalLoginIsolationTest` 7/7 通過
+- [x] Throttle 別名 `throttle` 已註冊並可用（`ThrottleRequestsByIp`）
+- [x] `POST /api/v1/parent/login` 與 `POST /api/v1/parent/login-line` 已掛載 throttle middleware
+- [x] 成功登入會寫入 `parent.login.success` log（student_id + ip）
+
+---
+
+## 2026-04-18 — PRD-A：今日課表出缺勤狀態同步修正（8c1673b9）
+
+### Problem
+
+主任儀表板「今日課表」widget 中，沈宇璿 17:00 這堂雖已完成刷卡/點名（`StudentSingIn.Status=present`, `VoidedAt IS NULL`），但行顯示仍為「缺席」。
+
+### 根因
+
+`ClassSessionController::index()` 組 JSON 時直接使用 `cs.Status`。當點名寫入路徑曾因任何原因把 `ClassSession.Status` 留在 `scheduled` 或 `absent`（例如 ended-sessions 補點名先標 absent 再被改為 present、或並行寫入順序），`StudentSignIn` 已是 `present` 但 `cs.Status` 未被同步，API 就回傳舊狀態。
+
+### Change（後端）
+
+- **`backend/app/Http/Controllers/ClassSessionController.php`**
+  - `index()` SELECT 新增 `effective_status` 衍生欄位：在既有 `si` derived join 基礎上，當 `cs.Status ∈ {scheduled, absent}` 且存在 `VoidedAt IS NULL` 的 `StudentSingIn` 時，以 `si.Status` 對應映射輸出（`present→attended`、`late→late`、`excused/leave→leave`）；其他狀態一律維持 `cs.Status`，不動 `cancelled/leave/leave_adjusted/completed` 的既有語意。
+  - Transform 中 `$row->status = $row->effective_status ?? $row->Status`；unset 時移除 `effective_status` 內部欄位不外露。
+- **`backend/app/Console/Commands/BackfillSessionStatus.php`（新增）**
+  - 命令 `attendance:reconcile-session-status`。支援 `--dry-run` / `--days` / `--auto-threshold` / `--force`。
+  - 比對最新有效 `StudentSingIn.Status` 與 `ClassSession.Status`，僅修正 `cs.Status ∈ {scheduled, absent}` 且對應 sign-in 屬 `present/late` 的情境。
+  - 自動執行條件（無人介入）：`inWindow > 0` 且 `inWindow ≤ auto-threshold`（預設 500）。超過 `--days`（預設 7）的歷史紀錄只寫入 `storage/logs/backfill-report-{date}.csv`，永不自動補正。
+
+### Impact
+
+- 修復：有有效 sign-in 的堂次再也不會在今日課表顯示缺席。
+- 相容：`cancelled / leave / leave_adjusted / completed / late / attended` 等既有狀態在 SELECT 分支不受覆寫，原流程完全不變。
+- 相容：`applyAttendanceEffects()`、`SessionDeductionService` 既有堂數扣除邏輯未動。
+- 測試：`tests/Feature/AttendanceStatusReconcileTest.php`（5 tests）涵蓋顯示層 override、VoidedAt 忽略、store() 同步、backfill in-window/out-of-window、dry-run 保護。
+- 回歸：既有 `ClassSessionApiTest`、`AttendanceLeaveStatusContractTest`、`AttendanceBatchMarkTest`、`MakeupAttendanceEndedSessionsTest`、`AttendanceRemainingSessionsRegressionTest`、`ClassSessionUpdateTest`、`ClassSessionDuplicateStatusTest` 全部維持綠燈。
+
+### Auto-verification checklist（本 commit）
+
+- [x] Pest 新測試 `AttendanceStatusReconcileTest` 5/5 通過
+- [x] 相關既有測試全綠（無 regression）
+- [x] `attendance:reconcile-session-status --dry-run` 會輸出 CSV 至 `storage/logs/backfill-report-{date}.csv`
+
 ## 2026-04-18 — Bug Fix：老師評量表開啟錯誤（同天同學生多堂課）（PRD 3baa154f）
 
 ### Problem
@@ -10,7 +213,7 @@
 
 ### 根因（兩個連環 bug，純前端邏輯）
 
-**Bug 1（主因）**：`LearningRecordsPage.vue` 的 `buildEvents()` 為每堂尋找對應 LR 時有三層 fallback（`cs:<id>` → `classId|date|startTime` → `classId|date`）。當 API 回傳第六堂 `learning_record_id = null` 時，進入 fallback 分支並命中第三層 `classId|date` key，錯誤地把「同一 StudentClass 當天已存在的第五堂 LR」指派給第六堂的 `recordId`，使 `openFromSchedule()` 走入 `openRecordAction(existing)` 開啟第五堂記錄。
+**Bug 1（主因）**：`LearningRecordsPage.vue` 的 `buildEvents()` 為每堂尋找對應 LR 時有三層 fallback（`cs:<id>` → `classId|date|startTime` → `classId|date`）。當 API 回傳第六堂 `learning_record_id = null` 時，進入 fallback 分支並命中第三層的 `classId|date` key，錯誤地把「同一 StudentClass 當天已存在的第五堂 LR」指派給第六堂的 `recordId`，使 `openFromSchedule()` 走入 `openRecordAction(existing)` 開啟第五堂記錄。
 
 **Bug 2（次因）**：即使 Bug 1 修掉，`openFromSchedule()` 新增路徑設完 `form.StudentID` 後會觸發 `watch([form.StudentID, ...])` → `applyTeacherFormDefaults()`，該函式以「同日最早一堂」為預設值，會覆蓋剛剛正確設好的 17:00 時段。第五堂（有 LR）進的是 `editRecord()`，`isEditing=true` 使 watch 直接 return，所以只有新增路徑受影響。
 
@@ -18,22 +221,204 @@
 
 **`frontend/src/pages/LearningRecordsPage.vue`**
 
-- `buildEvents()`：`recordId` 計算移除 `record?.id` fallback。API 回傳 `learning_record_id = null` 即代表該堂確實無 LR，不再以 `classId|date` 模糊比對覆寫。`record` 變數仍保留供 `baseFormStatus` 顯示狀態標籤使用。
-- 新增 `_openedFromScheduleSession` ref，於 `openFromSchedule()` 設為 `ev.classSessionId || -1`。
-- `watch([form.StudentID, form.SessionDate, form.Subject, form.TeacherID])` 的 teacher 分支：若 `_openedFromScheduleSession !== 0` 則清旗標後 return，跳過 `applyTeacherFormDefaults()`；後續老師在 modal 內手動改動欄位仍會觸發 defaults 自動填入。
-- `closeModal()`：清旗標為 0，防止使用者直接關閉 modal 而未觸發 watch 的邊際情況。
+- `buildEvents()`：`recordId` 計算移除 `record?.id` fallback。API 回傳 `learning_record_id = null` 即代表該堂確實無 LR，不再以 `classId|date` 模糊比對覆寫。`record` 變數仍保留供 `baseFormStatus` 顯示狀態標籤使用
+- 新增 `_openedFromScheduleSession` ref，於 `openFromSchedule()` 設為 `ev.classSessionId || -1`
+- `watch([form.StudentID, form.SessionDate, form.Subject, form.TeacherID])` 的 teacher 分支：若 `_openedFromScheduleSession !== 0` 則清旗標後 return，跳過 `applyTeacherFormDefaults()`；後續老師在 modal 內手動改動欄位仍會觸發 defaults 自動填入
+- `closeModal()`：清旗標為 0，防止使用者直接關閉 modal 而未觸發 watch 的邊際情況
 
 ### Impact
 
-- 同一學生當天有多堂課時，老師從課表「編輯評量」點選哪一堂即開哪一堂，不再被最早那堂 LR 覆蓋或被「預設最早堂」覆寫時段。
-- 代課堂次（`isSubstituted`）`recordId` 仍強制 `null`（既有三元式守護線不退化）。
-- 請假／取消堂次仍不可點擊（LEAVE_STATUSES 守護線不退化）。
-- 後端 API、資料庫、代課流程、薪資流程均零異動。
+- 同天同學生多堂課情境：每堂評量表開啟 100% 對應正確 `ClassSessionID`
+- 不影響路徑：單堂課老師、主任新增/審核評量、代課標記堂次、請假/取消堂次（既有守門條件不變）
+- 無新 API 請求、無存取控制變更、後端零改動
 
-### 防回歸
+### Regression 守門
 
-- 新增 `docs/AI_REGRESSION_LESSONS.md` §2026-04-18 老師評量表開啟錯誤章節，列出「`buildEvents` 不得再加 `record?.id` fallback」「`_openedFromScheduleSession` flag 必須存在於 `openFromSchedule`/`watch`/`closeModal` 三處」等禁止回歸項。
-- PRD 第 10 節 QA Checklist：新增「同學生當天多堂」「儲存第五堂後點第六堂」「代課堂次 recordId 仍為 null」「請假堂次不可點擊」四組回歸測試。
+- `LEAVE_STATUSES` 攔截（2026-04-17 修正）：請假/取消堂次 `recordId` 本就強制設為 null，本次修改不影響
+- 代課老師情境（`isSubstituted=true`）：`recordId` 亦強制設為 null，不受 Bug 1 修正影響
+
+---
+
+## 2026-04-18 — UI/UX：主任儀表板代課紀錄精緻化 + 平板行事曆欄位溢出修復（PRD 4d7bdef8）
+
+### Problem
+
+1. **總覽「近 7 天代課記錄」不夠精緻**
+   - 日期顯示為原始 `YYYY-MM-DD HH:mm~HH:mm`，資訊層次不清，主任難以快速掃視「今天/昨天有哪些代課」
+   - 原老師 → 代課老師以純 ASCII 箭頭呈現，無色彩差異化，辨識度低
+   - 「含換時」chip 使用灰色 `#f1f5f9`，與一般中性標籤外觀相同，複合操作不易辨識
+   - 代課原因僅靠 `title` tooltip 顯示完整內容，觸控裝置（平板、手機）完全失效
+   - 空狀態使用 emoji `🌤️`，與其他模組 Material Symbols 視覺風格不一致
+   - Skeleton 僅 2 行，展開後實際卡片為 3 行（meta / flow / reason），造成 layout shift
+
+2. **平板行事曆「只顯示今日有課老師」會超出格子**
+   - iPad 直式（768px viewport，側欄展開後內容寬 ≈ 580px），開啟「只顯示今日有課老師」時老師欄位標頭溢出格子邊界
+   - 根因：`@media (max-width: 1100px)` 只設 `.teacher-col { min-width: 0; }` 解除欄位底限，但未在該斷點與 ≤900px 斷點宣告 `.teacher-grid { min-width: max-content; }`；該規則僅存在於 ≤768px。結果是欄位被壓縮至 `minmax(140px, 1fr)` 以下，頭像/姓名/教室文字外溢
+
+### Change（純前端 UI/CSS，後端零異動）
+
+**`frontend/src/components/substitute/RecentSubstitutesCard.vue`**
+- 新增 `formatDate()` 相對日期：當天「今天」、前一天「昨天」、更早「M/D（週X）」；解析失敗 fallback 至原字串避免白畫面
+- 新增 `formatTimeRange()` 格式化為 `HH:mm ～ HH:mm`（全形波浪號）
+- Meta 行改為三段式：日期（粗體 `#111827` / 13px）、時間段（`#4b5563` tabular-nums）、學生·科目（右側 ellipsis 截斷）
+- 代課流向改為有語意色彩：原老師灰（`#6b7280`）、代課老師主色粗體（`var(--primary)`）、中間以 `material-symbols-outlined arrow_forward` 圖示替代純 ASCII 箭頭
+- 「含換時」chip 改為琥珀色系（`#fef3c7` / `#92400e`），與現有「跨分校」badge 同調色，語意一致
+- 代課原因改為 `<button>` 可點擊展開：預設單行 `-webkit-line-clamp: 1`、展開後完整換行顯示；`min-height: 44px` 確保觸控目標符合 WCAG；`reactive(new Set)` `expandedReasons` 記錄各筆展開狀態，`branchId` 切換時清空
+- 空狀態改用 `event_available` Material Symbols（36px、`#9ca3af`）+ 標題 + 副文字，移除 emoji
+- Skeleton 調整為 3 行（60% / 80% / 40%）並加 `rsc-skel-pulse` 動畫，結構對應真實卡片
+- 新增摘要列「共 N 筆代課」
+- `@media (max-width: 360px)` 讓最窄寬度下學生資訊換行，老師名稱最大寬度縮至 7em
+
+**`frontend/src/pages/SmartCalendar.vue`**
+- `@media (max-width: 1100px)` 補上 `.teacher-grid { min-width: max-content; }`
+- `@media (max-width: 900px)` 補上同一條規則，並為 `.teacher-col-header` 加 `overflow: hidden`，固定 56px 高度內無視覺外溢
+- `.teacher-grid-wrapper` 既有 `overflow-x: auto`，規則生效後欄位維持 minmax 最小值、多餘空間改為水平捲動
+
+### 業界參照
+- 相對日期（today/yesterday/M/D）為 Gmail、Slack、Notion 等標準做法（Nielsen Norman：Readable Date Formats）
+- 觸控展開代替 hover tooltip 符合 iOS HIG「No hover, use tap to reveal」
+- `min-width: max-content` 搭配 wrapper `overflow-x: auto` 為 CSS Grid 於 responsive 下避免欄位壓縮的標準手法（Rachel Andrew, CSS Grid in Production）
+
+### 注意
+- 兩項均為純 CSS / 前端 script 改動，不新增 API、路由或資料表；`role:director + require_campus` 權限不變
+- 不影響 SmartCalendar 週覽（`.week-overview-grid`）排版；≤768px mobile 規則仍優先適用
+- 回滾方式：`git revert` 該 commit 後重新 `cd frontend && npm run deploy`
+
+---
+
+## 2026-04-18 — Fix：兼職薪資錯開時段不再誤扣 + 課程管理合成 chip 靜默失敗（PRD 1b8d93cc）
+
+### Problem
+
+興隆主任回報兩件事：
+
+1. **兼職薪資計算只有 Ruth 蔣是對的，其他老師都算少了**
+   - Ruth 蔣恰好都是開始時間完全相同的真正 group class，公式對她正確
+   - 其他老師（游靜鈴、黃芝琳、邱御碩等）有大量「開始時間錯開 30~60 分鐘」的排課，例如 09:30 + 10:00，v1.4 的 `buildConcurrencyBonusMap` 把這類錯開當成同步教學，non-primary 被扣掉 `base_rate × 重疊時長`（每日低薪 350~525 元）
+   - 生產資料確認：campus_id=17 在 2026-04 有明確案例
+
+2. **「調課」按鈕無法點擊**
+   - 課程管理頁面的 session chip 有兩種來源：真實 `ClassSession` 行（有 id）與合成物件（`_synthetic: true`，無 id）
+   - 合成 chip 點擊後 `openSessionEdit → getSessionDisplayRow` 回傳 null，函式 `if (!row) return;` 靜默結束 → 主任以為「按鈕壞了」
+
+### Change
+
+**後端（`backend/app/Http/Controllers/FinanceController.php`）**
+- 新增 class constant `CONCURRENCY_START_TOLERANCE_MINUTES = 15`
+- `buildConcurrencyBonusMap()` 判斷同時段時，除了「區間重疊」外再加一層「開始時間差距 ≤ 15 分鐘」的檢查；錯開 > 15 分鐘的 session 不進入同一 concurrent 組，各自全額計薪
+- Ruth 蔣（相同 start time）行為**完全不變**；錯開 session 老師（游靜鈴、黃芝琳…）從「被扣薪」回到「各自全額」
+- `tests/Feature/PayrollConcurrencyTest.php` 新增 2 條守護：`test_staggered_30min_no_concurrency`、`test_staggered_10min_still_concurrent`
+- `tests/Feature/ParttimePayrollTest.php` 把 7 條原本帶 v1.3 期望值的測試改為 v1.5 新語意（錯開 60 min 不觸發 concurrency，各自 full base），一併修正本就已經因 v1.4 升級而失敗的 3 條同 start time 測試
+
+**前端（`frontend/src/pages/CourseManagement.vue` + `composables/course-management/useSessionEditFlow.js`）**
+- 課程管理 session chip：`_synthetic: true` 的 chip 不套 `date-chip-clickable`、改套 `date-chip-synthetic`（opacity 0.45、cursor: default、hover 無升起效果）、`@click` 前置 guard；`title` tooltip 改為「此堂次資料載入中，請重新整理後再試」
+- `openSessionEdit` 找不到 row 時，改為 `alert('此堂次資料尚未載入，請重新整理頁面後再試。')` 取代舊的 silent return，避免任何呼叫路徑靜默失敗
+
+### 業界參照
+- 薪資規則容忍度是 HR 系統常見做法（記錄誤差 ≤ N 分鐘視為同時段；超過則各自計算）
+- 「按了沒反應」是可用性禁區（Nielsen Norman：Visibility of System Status）；以灰化 + tooltip 代替看起來可按但按了無事的 chip
+
+### 注意
+
+- 此修正**不改動**任何 API 路由或 middleware；`role:director + require_campus` 權限不變
+- `CONCURRENCY_START_TOLERANCE_MINUTES` 為 class constant，CTO 可調整（目前 15 分鐘已覆蓋興隆回報的真實 stagger 範圍 30~60 min）
+- 歷史月份薪資是否回補由主任人工觸發，不在此 PRD 範圍
+
+---
+
+## 2026-04-18 — Feature：主任/老師端臨時補建堂次點名（PRD dff8695b）
+
+### Problem
+主任透過 LINE / 口頭改排課但未同步進系統，老師點名時在「今日待點名堂次」找不到學生，或時段與現場不符。既有「點此回報」只能通知主任回補，老師當下無法自行完成點名。
+
+### Change（前端純改動，後端零異動）
+
+**主任端（`frontend/src/pages/AttendancePage.vue`）**
+- 「手動登記」區塊新增模式切換 Tab：「**已排課程學生**」/ 「系統外人員」
+- 已排課程模式：選學生後動態載入該學生的課程下拉（`GET /api/v1/student-classes?student_id=X`）並帶出老師/科目；填入日期、開始/結束時間、點名狀態後送出 `POST /api/v1/attendance`（無 `ClassSessionID`），後端自動建立 `ClassSession` + `StudentSignIn`
+- 送出成功後今日出缺勤紀錄列表即時局部更新
+
+**老師端（`frontend/src/pages/AttendancePage.vue`）**
+- 「有課不在列表中？」區塊新增「**補建並點名**」按鈕（藍色，保留「點此回報」按鈕不受影響）
+- 點擊後在原位以 `max-height` 動畫（≤150ms）展開 inline 表單：課程（SearchableSelect，自動帶入自己任教的課程）、時間段（預設當前整半小時後時段）、點名狀態
+- 送出走 `POST /api/v1/attendance`（`mark_mode: 'arrival'`，無 `ClassSessionID`），成功後收合表單、重置欄位、局部刷新今日出缺勤紀錄、顯示 toast
+
+**UI/UX 精緻化**
+- 課程下拉載入中顯示 shimmer skeleton，無 layout shift
+- 結束時間 ≤ 開始時間時 inline 顯示錯誤訊息，不觸發 submit
+- 送出中按鈕顯示 spinner 且 disabled，防重複送出
+- 響應式：≤768px 表單單欄；≤480px 兩按鈕換行
+- 觸控目標 ≥ 44px
+
+### 注意
+- 此功能 **不新增後端 API**，完全復用 `POST /api/v1/attendance` 的 nullable `ClassSessionID` 路徑
+- 老師端課程清單透過 `GET /api/v1/student-classes`（後端自動以 `auth_teacher_id` scope）取得，無越權風險
+- 補建成功的 `ClassSession` 已有有效 `StudentSignIn`，不會出現在「待補點名（已結束節次）」列表
+
+## 2026-04-18 — Enhancement：代課 + 換時 UI 即時更新（PRD f0cce4d5 P2）
+
+### Problem
+合併代課+換時送出後，課程管理頁雖然最終會由 `loadCourses()` 重載並顯示新時段，但重載期間（數百 ms 至 1s）UI 仍顯示舊時段，主任看到「送出後時段沒變」的心理錯覺。
+
+### Change
+- `composables/course-management/useCourseSessionsDisplay.js::updateLocalSessionRow`
+  - 改為「只覆寫 payload 中實際提供的欄位」（避免過去只帶 `teacher_id`/`teacher_name` 的 patch 誤把 `status` / `start_time` / `end_time` 蓋成 undefined 的潛在 bug）。
+  - 白名單新增 `session_date`、`teacher_id`、`teacher_name`、`learning_record_status`、`attendance_sign_in_at`。
+- `pages/CourseManagement.vue::onSubstituteV2Submit`
+  - 在顯示 Toast 之前，立刻呼叫 `updateLocalSessionRow` 把代課老師寫入本地 row；若為合併模式（`rescheduled === true` 或 `operation_type === 'substitute_with_reschedule'`），一併寫入新 `session_date`/`start_time`/`end_time`，讓列表即時反映新時段。
+  - `onUndo` 同步立即還原本地 row（代課回原老師 + 若含換時則還原原時段），再 `loadCourses()` 作為伺服器對帳。
+- `loadCourses()` 保留作為最終 reconciliation，避免任何本地/伺服器漂移。
+
+### 業界參照
+- Linear / Notion：樂觀更新（optimistic UI）先寫入本地狀態、背景做伺服器同步，失敗再回滾。
+- Google Calendar：事件拖拉後視覺立即更新，伺服器回應才決定是否回滾。
+
+---
+
+## 2026-04-18 — Feature：代課 + 換時間合併操作（PRD f0cce4d5）
+
+### Problem
+主任處理「老師請假、需要同時換代課老師並調整上課時間」的情境時，現行流程必須分兩步：先調課、再換代課（或反過來）。兩步操作存在：（1）衝堂驗證盲區（先代課再調課時，新時段不會再驗衝堂）；（2）部分失敗風險（兩步之間網路中斷落在半完成狀態）；（3）操作效率低（步驟多、認知負擔高）。
+
+### Change
+**Backend**
+- `ClassSessionController::substitute` 新增三個選填參數：`new_date` / `new_start_time` / `new_end_time`
+  - 三欄必須同填同省（FR-003），只填一部分回 422；新日期不可為過去；驗證 start < end。
+  - 有填時，**衝堂檢查（跨分校 + 同分校）以新時段為準**（FR-004），不會被繞過。
+  - `runSubstituteTransaction` 內新增合併路徑：在同一 DB transaction 內更新 `ClassSession.{SessionDate,StartTime,EndTime}`、同步 `LearningRecord` 時間欄位、遷移 `schedules` 既有 rescheduled/scheduled 列至新日期與新時段，再套用代課老師；全部成功或全部回滾（FR-005）。
+  - API 回應新增 `operation_type`（`substitute` / `substitute_with_reschedule`）、`rescheduled`、`session_date` / `start_time` / `end_time`（生效時段）、`original_session_date` / `original_start_time` / `original_end_time`。
+  - 稽核 log 新增 `rescheduled_from_date` / `rescheduled_from_start_time` / `rescheduled_to_date` / `rescheduled_to_start_time`。
+- `SubstituteService::createParentNotification`
+  - 合併換時模式：Title 改為「{student} {subject} 課程異動通知」，Body 改為「原定 {old_date} {old_start}~{old_end} 的課程已調整至 {new_date} {new_start}~{new_end}，由 {new_teacher} 代課。」（FR-006）。
+  - 純代課維持「代課通知」Title 與原 Body 格式（回歸）。
+  - Payload 新增 `operation_type` / `original_session_date` / `original_start_time` / `original_end_time` 供 Undo 還原使用。
+  - 冪等策略改為「既有通知 → 更新 Title/Body/Payload」，確保合併換時後資訊一致。
+- `SubstituteController::undo`
+  - 從通知 Payload 讀取 `original_session_date/start/end`，若為合併操作則在同一交易內還原 `ClassSession` 時間、同步還原 `LearningRecord` 時間欄位（FR-008）。
+  - 純代課的 Undo 路徑不受影響（回歸）。
+  - 回應新增 `restored_time` / `restored_session_date` / `restored_start_time` / `restored_end_time`。
+- `SubstituteController::recent` 回應新增 `operation_type` 與 `original_session_date/start/end`，供儀表板顯示「含換時」chip（P1）。
+
+**Frontend**
+- `components/substitute/SubstituteTeacherPickerModal.vue`
+  - 原因欄位上方新增可展開的「同時調整上課時間（選填）」disclosure 區塊：新日期 + 新開始時間選單（07:00~22:30 / 30 分鐘檔次）+ 唯讀新結束時間（依原課時長自動計算）。
+  - 日期或開始時間變更時，即時重新查詢所有老師的可用性（以新時段為準），race condition 由請求 token 防護。
+  - 展開/收合使用 `transition: max-height 0.2s ease`；重查期間老師清單上方顯示細進度條（linear progress bar）而非整體 skeleton 刷新，避免 layout shift。
+  - Inline 錯誤措辭採正向引導（「請同時填寫新日期與新開始時間」）；送出按鈕文字在合併模式改為「確認代課 + 換時」，純代課維持「確認代課」。
+  - 底部送出區預留 summary 行空間（避免 layout shift），有填新時段時顯示「將調整至 {new_date} {new_start}~{new_end}，由 {老師} 代課」。
+  - 響應式：≤480px 時欄位垂直排列，觸控目標 ≥ 44px。
+- `pages/SmartCalendar.vue` + `pages/CourseManagement.vue`
+  - 代課提交流程傳遞 `new_date` / `new_start_time` / `new_end_time` 至 API；Toast 標題在合併模式顯示「已指派 X 代課並調整時間」，描述顯示新時段。
+- `components/substitute/RecentSubstitutesCard.vue`
+  - `operation_type === 'substitute_with_reschedule'` 時於代課老師名稱右側顯示灰色 chip「含換時」，tooltip 顯示原時段與新時段對照。
+
+**Test**
+- `tests/Feature/SubstituteWithRescheduleTest.php` 新增 8 組 Feature Test：合併成功、新時段跨分校衝堂 422、新時段同分校衝堂 409、Undo 還原時間、純代課回歸、半填欄位 422、過去日期 422、儀表板 `operation_type` 欄位。
+
+### 業界參照
+- ClassDojo / Seesaw：複合異動以「單一通知涵蓋全部變更」不拆兩次推播。
+- Google Calendar / GitHub：複合操作以視覺 chip 標記操作類型，不增加獨立列。
+- Stripe：關鍵狀態變更以單一 atomic transaction 包住，杜絕半成功風險。
 
 ---
 

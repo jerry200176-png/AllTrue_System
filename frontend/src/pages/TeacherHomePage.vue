@@ -167,6 +167,18 @@
                 <span class="material-symbols-outlined">edit_note</span>
               </button>
               <span v-else-if="ev.formStatus === 'approved'" class="th-check-icon material-symbols-outlined">check_circle</span>
+              <button
+                class="th-report-btn"
+                :class="{ 'th-report-btn--active': activeReportMap[ev.id] }"
+                :title="activeReportMap[ev.id] ? '查看課表回報' : '回報課表有誤'"
+                @click.stop="openReport(ev)"
+              >
+                <span
+                  v-if="reportFetching && reportModalSession?.sessionId === ev.id"
+                  class="material-symbols-outlined th-report-loading"
+                >hourglass_empty</span>
+                <span v-else class="material-symbols-outlined">flag</span>
+              </button>
             </div>
           </div>
         </details>
@@ -175,6 +187,14 @@
 
     <!-- C. Quick Links -->
     <div class="th-links card" data-guide="teacher-home-links">
+      <!-- Chat entry card -->
+      <button class="th-link-btn th-chat-btn" @click="$emit('navigate', 'chat')" style="position:relative">
+        <span class="material-symbols-outlined" style="color:var(--primary)">forum</span>
+        <span>內部聊天</span>
+        <span v-if="chatUnreadLoading" class="th-chat-badge-skeleton"></span>
+        <span v-else-if="chatUnreadCount > 0" class="th-chat-badge">{{ chatUnreadCount > 99 ? '99+' : chatUnreadCount }}</span>
+        <span v-else class="th-link-sub">目前沒有未讀訊息</span>
+      </button>
       <button class="th-link-btn" @click="$emit('navigate', 'subject-units')">
         <span class="material-symbols-outlined">calculate</span>
         <span>科目數統計</span>
@@ -186,6 +206,17 @@
       </button>
     </div>
   </div>
+
+  <ReportDiscrepancyModal
+    v-if="reportModalOpen"
+    :branch-id="reportModalSession?.branchId"
+    :class-session-id="reportModalSession?.sessionId"
+    :session-context="reportModalSession"
+    :existing="reportModalExisting"
+    @close="reportModalOpen = false"
+    @submitted="handleReportSubmitted"
+    @withdrawn="handleReportWithdrawn"
+  />
 </template>
 
 <script setup>
@@ -193,6 +224,9 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from '../supabase';
 import { branches, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions } from '../lib/classSessionsApi';
+import { fetchChatUnreadCount } from '../lib/chatApi';
+import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
+import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -209,6 +243,26 @@ const getToken = async () => {
 };
 
 const refreshing = ref(false);
+
+// ── Report discrepancy modal ──
+const reportModalOpen = ref(false);
+const reportModalSession = ref(null); // { sessionId, date, time, subject, student, branchId }
+const reportModalExisting = ref(null);
+const activeReportMap = ref({});      // { [sessionId]: discrepancy | null }
+const reportFetching = ref(false);
+
+// ── Chat unread count ──
+const chatUnreadCount   = ref(0);
+const chatUnreadLoading = ref(false);
+
+async function fetchChatUnread() {
+  chatUnreadLoading.value = true;
+  try {
+    const data = await fetchChatUnreadCount(props.branchId);
+    chatUnreadCount.value = data?.unread_count ?? 0;
+  } catch { chatUnreadCount.value = 0; }
+  finally { chatUnreadLoading.value = false; }
+}
 
 // ── Today's pending attendance ──
 const loadingAttendance = ref(true);
@@ -485,6 +539,7 @@ const weekDays = computed(() => {
         studentClassId: s.student_class_id,
         studentName: s.student_name || '—',
         subject: s.teacher_name ? `${s.teacher_name}` : '—',
+        date: s.session_date || dateStr,
         startTime: s.start_time || '—',
         endTime: s.end_time || '',
         branchId: s.branch_id || 0,
@@ -579,10 +634,63 @@ function onVisibilityChange() {
   }
 }
 
+// ── Report discrepancy helpers ──
+async function refreshActiveReport(sessionId) {
+  if (!sessionId) return;
+  try {
+    const result = await fetchActiveForSession(sessionId);
+    activeReportMap.value = { ...activeReportMap.value, [sessionId]: result?.discrepancy ?? null };
+  } catch {
+    activeReportMap.value = { ...activeReportMap.value, [sessionId]: null };
+  }
+}
+
+async function openReport(ev) {
+  const sessionId = ev.id;
+  reportModalSession.value = {
+    sessionId,
+    date: ev.date,
+    time: `${ev.startTime}~${ev.endTime}`,
+    subject: ev.subject,
+    student: ev.studentName,
+    branchId: ev.branchId,
+  };
+
+  // Lazy-load active report if not yet cached
+  if (activeReportMap.value[sessionId] === undefined) {
+    reportFetching.value = true;
+    try {
+      const result = await fetchActiveForSession(sessionId);
+      activeReportMap.value = { ...activeReportMap.value, [sessionId]: result?.discrepancy ?? null };
+    } catch {
+      activeReportMap.value = { ...activeReportMap.value, [sessionId]: null };
+    } finally {
+      reportFetching.value = false;
+    }
+  }
+
+  reportModalExisting.value = activeReportMap.value[sessionId] ?? null;
+  reportModalOpen.value = true;
+}
+
+function handleReportSubmitted() {
+  const sessionId = reportModalSession.value?.sessionId;
+  reportModalOpen.value = false;
+  if (sessionId) refreshActiveReport(sessionId);
+}
+
+function handleReportWithdrawn() {
+  const sessionId = reportModalSession.value?.sessionId;
+  reportModalOpen.value = false;
+  if (sessionId) refreshActiveReport(sessionId);
+}
+
 onMounted(() => {
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
+  // Refresh chat badge when app emits the badge refresh event
+  window.addEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
 
 watch(weekOffset, () => loadWeekSchedule());
@@ -597,6 +705,7 @@ onBeforeUnmount(() => {
   if (weekAbort) weekAbort.abort();
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
 </script>
 
@@ -780,6 +889,18 @@ onBeforeUnmount(() => {
 }
 .th-fill-btn:hover { background: var(--accent); color: #fff; }
 
+.th-report-btn {
+  background: transparent; border: none; border-radius: 8px;
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; color: var(--text-light); transition: var(--transition); flex-shrink: 0;
+  font-size: 20px;
+}
+.th-report-btn:hover { background: #fef2f2; color: #ef4444; }
+.th-report-btn--active { color: #ef4444; }
+.th-report-btn--active:hover { background: #fee2e2; }
+.th-report-loading { animation: spin-once 0.8s linear infinite; font-size: 18px; }
+@keyframes spin-once { to { transform: rotate(360deg); } }
+
 .th-check-icon { color: var(--success); font-size: 22px; flex-shrink: 0; }
 
 /* ──────── C. Quick Links ──────── */
@@ -795,6 +916,22 @@ onBeforeUnmount(() => {
 .th-link-btn:hover { border-color: var(--accent); }
 .th-link-btn .material-symbols-outlined { font-size: 26px; color: var(--accent); }
 .th-link-sub { font-size: 11px; color: var(--text-light); font-weight: 400; }
+
+/* Chat entry card */
+.th-chat-btn { border-color: var(--primary, #1976d2); }
+.th-chat-btn:hover { border-color: var(--primary, #1976d2); background: rgba(25,118,210,0.05); box-shadow: 0 2px 8px rgba(25,118,210,0.10); }
+.th-chat-badge {
+  position: absolute; top: 6px; right: 8px;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 10px; background: var(--danger, #e53935);
+  color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.th-chat-badge-skeleton {
+  position: absolute; top: 6px; right: 8px;
+  width: 20px; height: 20px; border-radius: 10px;
+  background: var(--border); animation: skeleton-pulse 1.2s infinite;
+}
 
 /* ──────── Responsive ──────── */
 @media (max-width: 480px) {

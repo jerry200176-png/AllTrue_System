@@ -170,21 +170,80 @@ class SubstituteService
             $oldName = (string) ($payload['old_teacher_name'] ?? '');
             $newName = (string) ($payload['new_teacher_name'] ?? '');
 
-            $title = sprintf('%s %s 代課通知', $studentName !== '' ? $studentName : '學生', $subject !== '' ? $subject : '課程');
-            $body = sprintf(
-                '%s %s~%s 原老師 %s 由 %s 代課。',
-                $dateLabel,
-                $startTime,
-                $endTime,
-                $oldName !== '' ? $oldName : '—',
-                $newName !== '' ? $newName : '未指派'
-            );
+            // PRD f0cce4d5 FR-006：合併代課+換時使用「課程異動通知」措辭
+            $operationType = (string) ($payload['operation_type'] ?? 'substitute');
+            $origDate = (string) ($payload['original_session_date'] ?? '');
+            $origStart = (string) ($payload['original_start_time'] ?? '');
+            $origEnd = (string) ($payload['original_end_time'] ?? '');
+            $isCombined = $operationType === 'substitute_with_reschedule'
+                && $origDate !== '' && $origStart !== '' && $origEnd !== ''
+                && ($origDate !== $dateLabel || $origStart !== $startTime || $origEnd !== $endTime);
 
-            // FR-010 / 冪等：同一堂次若已有未撤銷的 substitute 通知，直接回現有紀錄
-            // （避免 SourceKey unique 衝突，同時保留 Undo 可撤銷原始通知的語意）。
+            if ($isCombined) {
+                $title = sprintf(
+                    '%s %s 課程異動通知',
+                    $studentName !== '' ? $studentName : '學生',
+                    $subject !== '' ? $subject : '課程'
+                );
+                $body = sprintf(
+                    '原定 %s %s~%s 的課程已調整至 %s %s~%s，由 %s 代課。',
+                    $origDate,
+                    $origStart,
+                    $origEnd,
+                    $dateLabel,
+                    $startTime,
+                    $endTime,
+                    $newName !== '' ? $newName : '未指派'
+                );
+            } else {
+                $title = sprintf('%s %s 代課通知', $studentName !== '' ? $studentName : '學生', $subject !== '' ? $subject : '課程');
+                $body = sprintf(
+                    '%s %s~%s 原老師 %s 由 %s 代課。',
+                    $dateLabel,
+                    $startTime,
+                    $endTime,
+                    $oldName !== '' ? $oldName : '—',
+                    $newName !== '' ? $newName : '未指派'
+                );
+            }
+
+            $payloadData = [
+                'student_id' => $payload['student_id'] ?? null,
+                'student_class_id' => $payload['student_class_id'] ?? null,
+                'student_name' => $studentName,
+                'subject' => $subject,
+                'session_date' => $dateLabel,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'old_teacher_id' => $payload['old_teacher_id'] ?? null,
+                'old_teacher_name' => $oldName,
+                'new_teacher_id' => $payload['new_teacher_id'] ?? null,
+                'new_teacher_name' => $newName,
+                'reason' => $payload['reason'] ?? null,
+                'cross_campus' => (bool) ($payload['cross_campus'] ?? false),
+                'operator_id' => $payload['operator_id'] ?? null,
+                // PRD f0cce4d5：保留原始時間以供 Undo 還原 ClassSession.{SessionDate,StartTime,EndTime}
+                'operation_type' => $isCombined ? 'substitute_with_reschedule' : 'substitute',
+                'original_session_date' => $origDate ?: $dateLabel,
+                'original_start_time' => $origStart ?: $startTime,
+                'original_end_time' => $origEnd ?: $endTime,
+                'created_at_ms' => (int) round(microtime(true) * 1000),
+            ];
+
+            // FR-010 / 冪等：同一堂次若已有未撤銷的 substitute 通知，更新 Title/Body/Payload 以反映最新狀態。
             $sourceKey = 'substitute:'.$classSessionId;
             $existing = Notification::where('SourceKey', $sourceKey)->first();
             if ($existing) {
+                $existing->Title = mb_substr($title, 0, 120, 'UTF-8');
+                $existing->Body = mb_substr($body, 0, 400, 'UTF-8');
+                // 合併既有 Payload 與新資料（保留既有 voided / created_at_ms 等不重要差異）
+                $merged = is_array($existing->Payload) ? $existing->Payload : [];
+                foreach ($payloadData as $k => $v) {
+                    $merged[$k] = $v;
+                }
+                $existing->Payload = $merged;
+                $existing->save();
+
                 return $existing;
             }
 
@@ -197,23 +256,7 @@ class SubstituteService
                 'SourceType' => 'ClassSession',
                 'SourceID' => $classSessionId > 0 ? $classSessionId : null,
                 'SourceKey' => $sourceKey,
-                'Payload' => [
-                    'student_id' => $payload['student_id'] ?? null,
-                    'student_class_id' => $payload['student_class_id'] ?? null,
-                    'student_name' => $studentName,
-                    'subject' => $subject,
-                    'session_date' => $dateLabel,
-                    'start_time' => $startTime,
-                    'end_time' => $endTime,
-                    'old_teacher_id' => $payload['old_teacher_id'] ?? null,
-                    'old_teacher_name' => $oldName,
-                    'new_teacher_id' => $payload['new_teacher_id'] ?? null,
-                    'new_teacher_name' => $newName,
-                    'reason' => $payload['reason'] ?? null,
-                    'cross_campus' => (bool) ($payload['cross_campus'] ?? false),
-                    'operator_id' => $payload['operator_id'] ?? null,
-                    'created_at_ms' => (int) round(microtime(true) * 1000),
-                ],
+                'Payload' => $payloadData,
                 'OccurredAt' => now(),
             ]);
         } catch (\Throwable $e) {

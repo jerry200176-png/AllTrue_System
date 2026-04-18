@@ -36,50 +36,81 @@ class ParentPortalController extends Controller
             return response()->json(['message' => '請輸入手機號碼'], 422);
         }
 
+        $rawName = trim((string) ($data['Name'] ?? ''));
+        $hasStudentId = !empty($data['StudentID']) && (int) $data['StudentID'] > 0;
+
+        // PRD-B FR-B-001: require precise single-row match. Either:
+        //   (a) StudentID + Phone (exact match), or
+        //   (b) Name + Phone (must return exactly one matching Student).
+        // 「相同 Phone 的所有學生均列出」邏輯已於 2026-04-18 移除以避免跨家庭 PII 洩漏。
+        if (!$hasStudentId && $rawName === '') {
+            return response()->json(['message' => '請輸入學生姓名與手機號碼'], 422);
+        }
+
         $student = null;
 
-        if (!empty($data['StudentID']) && (int) $data['StudentID'] > 0) {
-            $student = Student::find((int) $data['StudentID']);
-            if ($student && empty(trim($student->Phone ?? ''))) {
+        if ($hasStudentId) {
+            $candidate = Student::find((int) $data['StudentID']);
+            if ($candidate && empty(trim($candidate->Phone ?? ''))) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
-        } elseif (!empty(trim($data['Name'] ?? ''))) {
-            $name = trim($data['Name']);
-            $candidates = Student::whereRaw('TRIM(name) = ?', [$name])->get();
-            foreach ($candidates as $s) {
-                if (!empty($s->Phone) && $this->normalizePhone($s->Phone) === $phoneNorm) {
-                    $student = $s;
-                    break;
-                }
+            if ($candidate
+                && !empty($candidate->Phone)
+                && $this->normalizePhone($candidate->Phone) === $phoneNorm
+                && ($rawName === '' || trim((string) $candidate->name) === $rawName)) {
+                $student = $candidate;
             }
-            // 有找到同名學生但手機都不符時，若其中有人未填手機，提示請分校補登
-            if (!$student && $candidates->isNotEmpty()) {
-                $hasEmptyPhone = $candidates->contains(fn ($s) => empty(trim($s->Phone ?? '')));
-                if ($hasEmptyPhone) {
+        } else {
+            $candidates = Student::whereRaw('TRIM(name) = ?', [$rawName])
+                ->get()
+                ->filter(fn ($s) => !empty($s->Phone) && $this->normalizePhone($s->Phone) === $phoneNorm)
+                ->values();
+
+            if ($candidates->count() === 1) {
+                $student = $candidates->first();
+            } elseif ($candidates->count() > 1) {
+                // 極罕見：姓名 + 手機完全相同但不同 Student 記錄。業界作法為不自動登入，
+                // 要求使用者改以 LINE 綁定或 StudentID 精確登入，避免誤選他家庭學生。
+                return response()->json([
+                    'message' => '找到多筆相符資料，請改以 LINE 綁定或提供學生代號登入',
+                ], 409);
+            } else {
+                // Hint to front desk if name matched but phone didn't for any row with empty phone
+                $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
+                if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($s->Phone ?? '')))) {
                     return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
                 }
             }
         }
 
-        if (!$student || empty($student->Phone)) {
-            return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 401);
+        if (!$student) {
+            return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 404);
         }
 
-        if ($this->normalizePhone($student->Phone) !== $phoneNorm) {
-            return response()->json(['message' => '查無此學生或手機號碼不符，請確認姓名與手機是否正確'], 401);
-        }
+        \Illuminate\Support\Facades\Log::info('parent.login.success', [
+            'student_id' => $student->id,
+            'ip' => $request->ip(),
+        ]);
 
         $result = $this->createSession($student);
 
-        // Find siblings: other students with the same phone number
-        $siblings = Student::where('id', '!=', $student->id)
-            ->get()
-            ->filter(fn ($s) => !empty($s->Phone) && $this->normalizePhone($s->Phone) === $phoneNorm);
-        $allStudents = collect([['id' => $student->id, 'name' => $student->name]])
-            ->concat($siblings->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
-            ->values();
-        if ($allStudents->count() > 1) {
-            $result['students'] = $allStudents;
+        // Only attach additional students if they share an explicit LINE binding.
+        // 不再以「相同 Phone」自動帶出 siblings，避免跨家庭 PII 洩漏。
+        $lineUserIds = StudentLineBinding::where('student_id', $student->id)->pluck('line_user_id');
+        if ($lineUserIds->isNotEmpty()) {
+            $siblingIds = StudentLineBinding::whereIn('line_user_id', $lineUserIds)
+                ->where('student_id', '!=', $student->id)
+                ->pluck('student_id')
+                ->unique();
+            if ($siblingIds->isNotEmpty()) {
+                $siblings = Student::whereIn('id', $siblingIds)->get();
+                $allStudents = collect([['id' => $student->id, 'name' => $student->name]])
+                    ->concat($siblings->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
+                    ->values();
+                if ($allStudents->count() > 1) {
+                    $result['students'] = $allStudents;
+                }
+            }
         }
 
         return response()->json($result);
@@ -167,11 +198,8 @@ class ParentPortalController extends Controller
                     ->whereIn('line_user_id', $currentLineIds)
                     ->exists();
             }
-            // Same phone
-            if (!$allowed && !empty($currentStudent->Phone) && !empty($targetStudent->Phone)
-                && $this->normalizePhone($currentStudent->Phone) === $this->normalizePhone($targetStudent->Phone)) {
-                $allowed = true;
-            }
+            // PRD-B FR-B-001: 不再以「相同 Phone」允許切換，避免跨家庭 PII 洩漏。
+            // 若需共用入口，家長需透過 LINE 綁定明確連結多位學生。
         }
 
         if (!$allowed) {
@@ -254,23 +282,57 @@ class ParentPortalController extends Controller
             $lrHasMore = ($lrPage * $lrPerPage) < $lrTotal;
         }
 
-        // Attendance history
-        $attendance = StudentSignIn::where('StudentID', $student->id)
+        // Attendance history — FR-B-003: date / time / subject / teacher / status
+        $signIns = StudentSignIn::where('StudentID', $student->id)
             ->orderBy('SignInDT', 'desc')
             ->limit(100)
-            ->get()
-            ->map(function ($row) {
-                $status = (string) ($row->Status ?? '');
-                $row->status_label = match ($status) {
-                    'present' => '到班',
-                    'late' => '遲到',
-                    'absent' => '缺席',
-                    'leave', 'excused' => '請假',
-                    default => $status,
-                };
-                $row->is_late = $status === 'late';
-                return $row;
-            });
+            ->get();
+        $sessionIds = $signIns->pluck('ClassSessionID')->filter()->unique()->values()->all();
+        $sessionsById = !empty($sessionIds)
+            ? ClassSession::whereIn('id', $sessionIds)->get()->keyBy('id')
+            : collect();
+        $attendance = $signIns->map(function ($row) use ($classes, $sessionsById) {
+            $status = (string) ($row->Status ?? '');
+            $row->status_label = match ($status) {
+                'present' => '到班',
+                'late' => '遲到',
+                'absent' => '缺席',
+                'leave', 'excused' => '請假',
+                default => $status,
+            };
+            $row->is_late = $status === 'late';
+
+            $session = $row->ClassSessionID ? $sessionsById->get($row->ClassSessionID) : null;
+            $studentClass = $session ? $classes->firstWhere('ID', $session->StudentClassID) : null;
+
+            $date = null;
+            $time = null;
+            if ($session) {
+                $date = $session->SessionDate;
+                $start = $this->trimToHM($session->StartTime);
+                $end = $this->trimToHM($session->EndTime);
+                $time = $start !== '' && $end !== '' ? "$start-$end" : $start;
+            } elseif ($row->SignInDT) {
+                try {
+                    $dt = Carbon::parse($row->SignInDT);
+                    $date = $dt->toDateString();
+                    $time = $dt->format('H:i');
+                } catch (\Throwable $e) {
+                }
+            }
+            $row->date = $date;
+            $row->time = $time;
+            $row->subject = $studentClass ? $this->resolveSubjectName($studentClass) : null;
+
+            $teacherName = null;
+            if ($studentClass && !empty($studentClass->TeacherID)) {
+                $teacher = User::find($studentClass->TeacherID);
+                $teacherName = $teacher ? $teacher->Name : null;
+            }
+            $row->teacher_name = $teacherName;
+
+            return $row;
+        });
 
         // Per-course breakdown — 家長端「進行中」：堂數制僅顯示尚有剩餘堂數者
         $perCourse = $classes
@@ -416,7 +478,7 @@ class ParentPortalController extends Controller
             $campusName = $campus ? $campus->name : null;
         } catch (\Exception $e) {}
 
-        // Find all students this parent can access (shared LINE binding or same phone)
+        // PRD-B FR-B-001: Siblings 僅透過 LINE 綁定解析，不再以相同 Phone 自動帶出。
         $lineUserIds = StudentLineBinding::where('student_id', $student->id)
             ->pluck('line_user_id');
         $siblingIdsByLine = $lineUserIds->isNotEmpty()
@@ -426,20 +488,9 @@ class ParentPortalController extends Controller
                 ->unique()
             : collect();
 
-        $siblingStudents = Student::where('id', '!=', $student->id)
-            ->where(function ($q) use ($student, $siblingIdsByLine) {
-                if ($siblingIdsByLine->isNotEmpty()) {
-                    $q->orWhereIn('id', $siblingIdsByLine);
-                }
-                if (!empty($student->Phone)) {
-                    $phoneNorm = $this->normalizePhone($student->Phone);
-                    if ($phoneNorm !== '') {
-                        $q->orWhere('Phone', $student->Phone)
-                          ->orWhere('Phone', $phoneNorm);
-                    }
-                }
-            })
-            ->get();
+        $siblingStudents = $siblingIdsByLine->isNotEmpty()
+            ? Student::whereIn('id', $siblingIdsByLine)->get()
+            : collect();
         $allStudents = collect([['id' => $student->id, 'name' => $student->name]])
             ->concat($siblingStudents->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
             ->values();

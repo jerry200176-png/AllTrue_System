@@ -37,6 +37,8 @@
 ## Git 與 PR
 
 - 協作主分支：**`jerry-sync-main`**（非任意 `main`／備份分支）。
+- 未經需求方明示同意，禁止版本回朔（rollback/revert-to-old-state）與「用舊覆新」。
+- 涉及高風險檔案（如 `routes/api.php`）時，提交前需驗證關鍵路由／功能未被靜默移除。
 - 提交前請確認前端若有改動已執行 `cd frontend && npm run deploy`（見 `AGENTS.md`）。
 - 觸及評量、繳費提醒、通知 sync 時，請執行相關 PHPUnit 測試（見 `docs/AI_REGRESSION_LESSONS.md` 文末檢查清單）。
 - **`git pull` 或新 clone 後**：請再掃一眼 **`docs/CHANGELOG.md` 最上方數則**，GitHub／其他 AI 協作時以變更紀錄為單一真相來源（與 `AGENTS.md` First-read 一致）。

@@ -164,12 +164,24 @@ class SubstituteController extends Controller
         $courseId = (int) $studentClass->ID;
         $startTime = $this->hhmm($session->StartTime);
 
+        // PRD f0cce4d5 FR-008：若本次代課含「換時間」，需同時還原 ClassSession 的原始日期/時間。
+        // 原始時間由 createParentNotification 在成功時寫入 Payload；無此欄位時視為純代課（回歸）。
+        $operationType = (string) ($payload['operation_type'] ?? 'substitute');
+        $origDate = trim((string) ($payload['original_session_date'] ?? ''));
+        $origStart = $this->hhmm($payload['original_start_time'] ?? '');
+        $origEnd = $this->hhmm($payload['original_end_time'] ?? '');
+        $shouldRestoreTime = $operationType === 'substitute_with_reschedule'
+            && $origDate !== '' && $origStart !== '' && $origEnd !== ''
+            && ($origDate !== $sessionDate || $origStart !== $startTime || $origEnd !== $this->hhmm($session->EndTime));
+
         try {
             $result = DB::transaction(function () use (
                 $session, $courseId, $sessionDate, $startTime, $oldTeacherId, $newTeacherId,
-                $lastNotification, $currentOperatorId, $payload
+                $lastNotification, $currentOperatorId, $payload,
+                $shouldRestoreTime, $origDate, $origStart, $origEnd
             ) {
                 // 找當前代課 scheduled row：以 rescheduled anchor + 新老師為特徵
+                // 注意：合併代課+換時情境下，這些列已位於「新日期」（= 目前 session->SessionDate）。
                 $rescheduled = Schedule::where('student_course_id', $courseId)
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'rescheduled')
@@ -200,10 +212,17 @@ class SubstituteController extends Controller
                 }
                 $lrRow = $lrRowQuery->first();
                 if ($lrRow && $oldTeacherId > 0) {
-                    DB::table($lrTable)->where('id', (int) $lrRow->id)->update([
+                    $lrUpdate = [
                         'TeacherID' => $oldTeacherId,
                         'updated_at' => now(),
-                    ]);
+                    ];
+                    // 合併代課+換時的 Undo：同步還原 LR 的時間欄位
+                    if ($shouldRestoreTime) {
+                        $lrUpdate['SessionDate'] = $origDate;
+                        $lrUpdate['StartTime'] = $origStart;
+                        $lrUpdate['EndTime'] = $origEnd;
+                    }
+                    DB::table($lrTable)->where('id', (int) $lrRow->id)->update($lrUpdate);
                     if (Schema::hasTable('learning_record_teacher_changes')) {
                         try {
                             LearningRecordTeacherChange::create([
@@ -211,12 +230,28 @@ class SubstituteController extends Controller
                                 'old_teacher_id' => $newTeacherId > 0 ? $newTeacherId : null,
                                 'new_teacher_id' => $oldTeacherId > 0 ? $oldTeacherId : null,
                                 'changed_by' => $currentOperatorId,
-                                'reason' => '代課撤銷（Undo）',
+                                'reason' => $shouldRestoreTime ? '代課+換時撤銷（Undo）' : '代課撤銷（Undo）',
                             ]);
                         } catch (\Throwable $e) {
                             Log::warning('substitute_undo: audit write skipped', ['message' => $e->getMessage()]);
                         }
                     }
+                } elseif ($lrRow && $shouldRestoreTime) {
+                    // 沒有換老師的還原需求但仍需還原時間（理論上不會到此分支，但 defensive）
+                    DB::table($lrTable)->where('id', (int) $lrRow->id)->update([
+                        'SessionDate' => $origDate,
+                        'StartTime' => $origStart,
+                        'EndTime' => $origEnd,
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                // PRD f0cce4d5 FR-008：還原 ClassSession 時間欄位
+                if ($shouldRestoreTime) {
+                    $session->SessionDate = $origDate;
+                    $session->StartTime = $origStart;
+                    $session->EndTime = $origEnd;
+                    $session->save();
                 }
 
                 // 作廢通知（FR-011）
@@ -232,6 +267,10 @@ class SubstituteController extends Controller
                     'reverted_scheduled_id' => $scheduledRow ? (int) $scheduledRow->id : null,
                     'reverted_rescheduled_id' => $rescheduled ? (int) $rescheduled->id : null,
                     'restored_teacher_id' => $oldTeacherId,
+                    'restored_time' => $shouldRestoreTime,
+                    'restored_session_date' => $shouldRestoreTime ? $origDate : null,
+                    'restored_start_time' => $shouldRestoreTime ? $origStart : null,
+                    'restored_end_time' => $shouldRestoreTime ? $origEnd : null,
                     'voided_notification_id' => (int) $lastNotification->id,
                 ];
             });
@@ -354,6 +393,11 @@ class SubstituteController extends Controller
                 'new_teacher_name' => (string) ($p['new_teacher_name'] ?? ''),
                 'reason' => (string) ($p['reason'] ?? ''),
                 'cross_campus' => (bool) ($p['cross_campus'] ?? false),
+                // PRD f0cce4d5 P1：儀表板顯示「含換時」chip 的資料來源
+                'operation_type' => (string) ($p['operation_type'] ?? 'substitute'),
+                'original_session_date' => (string) ($p['original_session_date'] ?? ''),
+                'original_start_time' => (string) ($p['original_start_time'] ?? ''),
+                'original_end_time' => (string) ($p['original_end_time'] ?? ''),
                 'created_at' => optional($n->created_at)->toIso8601String(),
             ];
         })->values()->all();
