@@ -27,6 +27,7 @@ class PaymentReport extends Model
         'voided_by',
         'voided_at',
         'void_reason',
+        'backfill_note',
     ];
 
     protected $casts = [

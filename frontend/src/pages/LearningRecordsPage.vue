@@ -221,12 +221,34 @@
 
     <!-- Filters -->
     <div class="card lr-filters" data-guide="learning-filters">
-      <div class="lr-filters-grid">
-        <div class="form-group">
-          <label>搜尋學生</label>
-          <input v-model="filters.student_name" type="text" placeholder="輸入學生姓名...">
+      <div class="lr-filters-header">
+        <div class="lr-filters-title">
+          <svg class="lr-filters-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>篩選條件</span>
+          <span v-if="activeFilterCount > 0" class="lr-filters-badge" :title="`共 ${activeFilterCount} 個篩選條件已啟用`">{{ activeFilterCount }}</span>
         </div>
-        <div v-if="!isTeacher" class="form-group">
+        <button
+          v-if="hasActiveFilters"
+          type="button"
+          class="lr-filters-clear-link"
+          @click="clearAllFilters"
+        >清除全部</button>
+      </div>
+
+      <div class="lr-filters-grid">
+        <div class="form-group lr-field">
+          <label>搜尋學生</label>
+          <input
+            v-model="filters.student_name"
+            type="text"
+            class="lr-input"
+            placeholder="輸入學生姓名..."
+            @keyup.enter="fetchRecords"
+          >
+        </div>
+        <div v-if="!isTeacher" class="form-group lr-field">
           <label>篩選老師</label>
           <SearchableSelect
             v-model="filters.teacher_id"
@@ -234,34 +256,121 @@
             placeholder="選擇老師..."
           />
         </div>
-        <div class="form-group">
-          <label>審核狀態</label>
-          <select v-model="filters.status">
-            <option value="">全部</option>
-            <option value="pending">待審核</option>
-            <option value="approved">已核准</option>
-            <option value="rejected">已退回</option>
-            <option value="changes_requested">需修改</option>
+        <div class="form-group lr-field lr-field-wide">
+          <label>日期範圍</label>
+          <div class="lr-date-range-wrap">
+            <input v-model="filters.start_date" type="date" class="lr-input lr-date-input" aria-label="起始日期" @change="onDateRangeChange">
+            <span class="lr-date-range-dash" aria-hidden="true">～</span>
+            <input v-model="filters.end_date" type="date" class="lr-input lr-date-input" aria-label="結束日期" @change="onDateRangeChange">
+            <button
+              v-if="filters.start_date || filters.end_date"
+              type="button"
+              class="lr-date-clear"
+              title="清除日期篩選"
+              aria-label="清除日期篩選"
+              @click="filters.start_date = ''; filters.end_date = ''; fetchRecords()"
+            >✕</button>
+          </div>
+          <div v-if="dateRangeError" class="lr-date-range-error" role="alert">{{ dateRangeError }}</div>
+        </div>
+        <div class="form-group lr-field">
+          <label>科目</label>
+          <select
+            v-model="filters.subject"
+            class="lr-input lr-subject-select"
+            :disabled="availableSubjects.length === 0"
+            :title="availableSubjects.length === 0 ? '目前無科目資料' : '篩選範圍：目前已載入的記錄'"
+          >
+            <option value="">全部科目</option>
+            <option v-for="s in availableSubjects" :key="s" :value="s">{{ s }}</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>指定日期</label>
-          <div class="lr-date-filter-wrap">
-            <input v-model="filters.date" type="date" class="lr-date-input" @change="fetchRecords">
-            <button v-if="filters.date" class="ghost xs lr-date-clear" @click="filters.date = ''; fetchRecords()" title="清除日期篩選">✕</button>
-          </div>
-        </div>
-        <div class="form-group lr-filter-btn-wrap">
-          <label>&nbsp;</label>
-          <button class="ghost" @click="fetchRecords">搜尋</button>
-        </div>
       </div>
+
+      <div class="lr-filters-actions">
+        <button
+          class="primary lr-filters-search"
+          type="button"
+          :disabled="loadingAll"
+          :title="loadingAll ? '正在載入全部記錄，請稍候' : ''"
+          @click="fetchRecords"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>搜尋</span>
+        </button>
+        <button
+          v-if="hasActiveFilters"
+          class="ghost lr-filters-reset"
+          type="button"
+          :disabled="loadingAll"
+          @click="clearAllFilters"
+        >清除篩選</button>
+      </div>
+    </div>
+
+    <!-- Default time-window banner (Jira / Salesforce "Last N days" pattern).
+         Shown whenever the page auto-applies the 90-day window. Offers a text-link
+         escape ("查看全部歷史") that lifts the restriction for this session. -->
+    <div v-if="isUsingDefaultWindow" class="lr-window-banner" role="status">
+      <svg class="lr-window-banner__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"></circle>
+        <polyline points="12 7 12 12 15 14"></polyline>
+      </svg>
+      <div class="lr-window-banner__text">
+        <span>目前顯示 <strong>近 {{ defaultWindowDays }} 天</strong> 的評量記錄</span>
+        <span class="lr-window-banner__sep">·</span>
+        <span class="lr-window-banner__hint">較早記錄已暫時隱藏以加快載入</span>
+      </div>
+      <button
+        type="button"
+        class="lr-window-banner__cta"
+        :disabled="recordsPagination.loading || loadingAll"
+        @click="clearDefaultWindow"
+      >查看全部歷史 →</button>
+    </div>
+
+    <!-- Hidden-by-tab info banner (GitHub Issues / Notion filter banner pattern) -->
+    <div v-if="hiddenByTabCount > 0" class="lr-tab-filter-banner" role="status">
+      <svg class="lr-tab-filter-banner__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="16" x2="12" y2="12"></line>
+        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+      </svg>
+      <div class="lr-tab-filter-banner__text">
+        <span>目前僅顯示 <strong>{{ currentTabLabel }}</strong> 狀態</span>
+        <span class="lr-tab-filter-banner__sep">·</span>
+        <span>另有 <strong>{{ hiddenByTabCount }}</strong> 筆其他狀態被隱藏</span>
+      </div>
+      <button
+        type="button"
+        class="lr-tab-filter-banner__cta"
+        @click="showAllStatuses"
+      >顯示全部狀態 →</button>
     </div>
 
     <!-- ===== Records Grouped By Student ===== -->
     <div class="card lr-table-card" data-guide="learning-table">
-      <div v-if="filteredGroupedRecords.length === 0" class="empty-text" style="padding: 24px;">
-        {{ isDirectorRole && reviewTab === 'pending' ? '目前沒有待審評量 🎉' : '尚無評量資料' }}
+      <div v-if="filteredGroupedRecords.length === 0" class="lr-empty-state">
+        <div class="lr-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="28" cy="28" r="16"></circle>
+            <line x1="41" y1="41" x2="54" y2="54"></line>
+            <line x1="22" y1="28" x2="34" y2="28"></line>
+          </svg>
+        </div>
+        <div class="lr-empty-title">
+          <template v-if="hasActiveFilters">找不到符合條件的評量記錄</template>
+          <template v-else-if="isUsingDefaultWindow">近 {{ defaultWindowDays }} 天無評量記錄</template>
+          <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待審評量</template>
+          <template v-else>尚無評量資料</template>
+        </div>
+        <div v-if="hasActiveFilters" class="lr-empty-desc">試著調整日期範圍、科目或清除篩選條件</div>
+        <div v-else-if="isUsingDefaultWindow" class="lr-empty-desc">若要查看更早的記錄，請點擊下方按鈕。</div>
+        <button v-if="hasActiveFilters" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
+        <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
       </div>
 
       <div v-else class="lr-groups">
@@ -273,87 +382,184 @@
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">
-              <span class="lr-group-student">{{ group.student_name }}</span>
+              <button
+                type="button"
+                class="lr-group-student lr-group-student-btn"
+                :title="`點此只載入 ${group.student_name} 的全部記錄`"
+                @click.stop.prevent="filterByStudent(group.student_name)"
+              >{{ group.student_name }}</button>
               <span class="lr-group-count">{{ group.records.length }} 筆</span>
               <span v-if="group.pending_count > 0" class="lr-group-pending">{{ group.pending_count }} 待處理</span>
               <span v-if="group.unfilled_body_count > 0" class="lr-group-unfilled">{{ group.unfilled_body_count }} 未填</span>
+              <span v-if="group.oldest_date" class="lr-group-date-range" :title="'本學生已載入評量日期範圍'">
+                <span class="lr-group-date-range-label">日期</span>
+                <span v-if="group.oldest_date === group.newest_date">{{ group.oldest_date }}</span>
+                <span v-else>{{ group.oldest_date }} ～ {{ group.newest_date }}</span>
+              </span>
             </div>
             <span class="lr-group-hint">展開 / 收合</span>
           </summary>
 
-          <div class="lr-table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
-                    <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
-                  </th>
-                  <th>日期</th>
-                  <th>學生 / 班級</th>
-                  <th>科目</th>
-                  <th v-if="!isTeacher">授課老師</th>
-                  <th>填寫</th>
-                  <th>狀態</th>
-                  <th style="text-align:right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="record in group.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing' }" @click="viewRecord(record)">
-                  <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
-                    <input
-                      v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
-                      type="checkbox"
-                      :checked="selectedRecordIds.has(record.id)"
-                      @change="toggleRecordSelection(record.id)"
-                    >
-                  </td>
-                  <td>
-                    <span class="lr-date">{{ record.SessionDate }}</span>
-                    <span class="lr-time">{{ record.StartTime }}</span>
-                    <span v-if="record.session_number" class="lr-session-num">第{{ record.session_number }}堂</span>
-                  </td>
-                  <td>
-                    <div class="lr-student-name">{{ record.student_name }}</div>
-                    <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
-                  </td>
-                  <td>
-                    <span class="tag">{{ record.student_class_label || record.Subject }}</span>
-                  </td>
-                  <td v-if="!isTeacher">{{ record.teacher_name }}</td>
-                  <td>
-                    <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
-                    <span v-else class="fill-badge-na">—</span>
-                  </td>
-                  <td>
-                    <span :class="statusTagClass(record.Status)" class="status-tag">
-                      {{ statusLabel(record.Status) }}
-                    </span>
-                  </td>
-                  <td class="lr-actions" @click.stop>
-                    <div class="lr-actions-inner">
-                      <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
-                      <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
-                      <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
-                      <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
-                      <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
-                      <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
-                      <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
-                      <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="lr-subject-subgroups">
+            <div
+              v-for="sg in group.subjectGroups"
+              :key="sg.subject"
+              class="lr-subject-subgroup"
+              :class="{ 'lr-subject-uncategorized': sg.subject === '未分類' }"
+            >
+              <div class="lr-subject-header">
+                <span class="lr-subject-name">{{ sg.subject }}</span>
+                <span class="lr-subject-count" :title="`目前顯示 ${sg.count} 筆`">{{ sg.count }}</span>
+                <div v-if="sg.statusCounts" class="lr-status-chips" aria-label="本科目狀態分佈">
+                  <span
+                    v-if="sg.statusCounts.approved"
+                    class="lr-status-chip chip-approved"
+                    :class="{ 'chip-muted': !isStatusInCurrentTab('approved') }"
+                  >
+                    <span class="lr-chip-dot"></span>已核准 {{ sg.statusCounts.approved }}
+                  </span>
+                  <span
+                    v-if="sg.statusCounts.pending"
+                    class="lr-status-chip chip-pending"
+                    :class="{ 'chip-muted': !isStatusInCurrentTab('pending') }"
+                  >
+                    <span class="lr-chip-dot"></span>待審 {{ sg.statusCounts.pending }}
+                  </span>
+                  <span
+                    v-if="sg.statusCounts.changes_requested"
+                    class="lr-status-chip chip-changes"
+                    :class="{ 'chip-muted': !isStatusInCurrentTab('changes_requested') }"
+                  >
+                    <span class="lr-chip-dot"></span>需修改 {{ sg.statusCounts.changes_requested }}
+                  </span>
+                  <span
+                    v-if="sg.statusCounts.rejected"
+                    class="lr-status-chip chip-rejected"
+                    :class="{ 'chip-muted': !isStatusInCurrentTab('rejected') }"
+                  >
+                    <span class="lr-chip-dot"></span>退回 {{ sg.statusCounts.rejected }}
+                  </span>
+                </div>
+                <button
+                  v-if="sg.hiddenCount > 0"
+                  type="button"
+                  class="lr-subject-show-all"
+                  :title="`切換至「全部」tab 以顯示本科目另外 ${sg.hiddenCount} 筆`"
+                  @click.stop="showAllStatuses"
+                >
+                  另有 {{ sg.hiddenCount }} 筆未顯示 →
+                </button>
+              </div>
+              <div class="lr-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" style="width:36px">
+                        <input type="checkbox" :checked="allSelected" @change="toggleSelectAll" title="全選">
+                      </th>
+                      <th>日期</th>
+                      <th>學生 / 班級</th>
+                      <th>科目</th>
+                      <th v-if="!isTeacher">授課老師</th>
+                      <th>填寫</th>
+                      <th>狀態</th>
+                      <th style="text-align:right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing' }" @click="viewRecord(record)">
+                      <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
+                        <input
+                          v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
+                          type="checkbox"
+                          :checked="selectedRecordIds.has(record.id)"
+                          @change="toggleRecordSelection(record.id)"
+                        >
+                      </td>
+                      <td>
+                        <span class="lr-date">{{ record.SessionDate }}</span>
+                        <span class="lr-time">{{ record.StartTime }}</span>
+                        <span v-if="record.session_number" class="lr-session-num">第{{ record.session_number }}堂</span>
+                      </td>
+                      <td>
+                        <div class="lr-student-name">{{ record.student_name }}</div>
+                        <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
+                      </td>
+                      <td>
+                        <span class="tag">{{ record.student_class_label || record.Subject }}</span>
+                      </td>
+                      <td v-if="!isTeacher">{{ record.teacher_name }}</td>
+                      <td>
+                        <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                        <span v-else class="fill-badge-na">—</span>
+                      </td>
+                      <td>
+                        <span :class="statusTagClass(record.Status)" class="status-tag">
+                          {{ statusLabel(record.Status) }}
+                        </span>
+                      </td>
+                      <td class="lr-actions" @click.stop>
+                        <div class="lr-actions-inner">
+                          <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                          <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
+                          <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
+                          <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
+                          <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                          <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
+                          <button v-if="canRollbackApproval(record)" class="ghost xs" @click="rollbackApproval(record)">退回待審</button>
+                          <button v-if="canDelete(record)" class="danger xs" @click="deleteRecord(record)">刪除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </details>
       </div>
 
-      <!-- Load More -->
-      <div v-if="recordsPagination.currentPage < recordsPagination.lastPage" class="lr-load-more">
-        <button class="ghost" :disabled="recordsPagination.loading" @click="loadMoreRecords">
-          {{ recordsPagination.loading ? '載入中...' : `載入更多（已顯示 ${records.length} / ${recordsPagination.total} 筆）` }}
-        </button>
-      </div>
+      <!-- Load More / Load All (slide-up fade once fully loaded). -->
+      <transition name="lr-loadmore-slide">
+        <div v-if="records.length < recordsPagination.total || loadingAll" class="lr-load-more">
+          <div class="lr-load-more-actions">
+            <button
+              type="button"
+              class="lr-load-more-btn"
+              :disabled="recordsPagination.loading || loadingAll"
+              :title="loadingAll ? '正在載入全部記錄，請稍候' : ''"
+              @click="loadMoreRecords"
+            >
+              <span class="lr-load-more-title">
+                {{ recordsPagination.loading && !loadingAll ? '載入中…' : '載入下一頁' }}
+              </span>
+              <span v-if="!(recordsPagination.loading && !loadingAll)" class="lr-load-more-sub">
+                +{{ Math.min(Math.max(recordsPagination.total - records.length, 0), 200) }} 筆
+              </span>
+            </button>
+            <button
+              type="button"
+              class="lr-load-all-btn"
+              :disabled="recordsPagination.loading && !loadingAll"
+              :title="loadingAll ? '正在載入全部記錄，請稍候' : `一次載入全部 ${recordsPagination.total} 筆`"
+              @click="loadAllRecords"
+            >
+              <span class="lr-load-all-title">
+                {{ loadingAll ? `載入中… (${records.length} / ${recordsPagination.total})` : '載入全部記錄' }}
+              </span>
+              <span v-if="!loadingAll" class="lr-load-more-sub">
+                全部 {{ recordsPagination.total }} 筆
+              </span>
+            </button>
+          </div>
+          <div class="lr-load-more-hint">
+            已顯示 <strong>{{ records.length }}</strong> / {{ recordsPagination.total }} 筆<span v-if="loadedOldestDate"> · 最早 <strong>{{ loadedOldestDate }}</strong></span>
+          </div>
+          <div v-if="recordsPagination.loading || loadingAll" class="lr-skeleton-rows" aria-hidden="true">
+            <div v-for="i in 3" :key="i" class="lr-skeleton-row"></div>
+          </div>
+        </div>
+      </transition>
     </div>
 
     <div v-if="showChangeTeacherModal" class="modal-overlay">
@@ -711,7 +917,7 @@ import SearchableSelect from '../components/SearchableSelect.vue';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
-import perfFlags from '../lib/perfFlags';
+import perfFlags, { loadRemoteFlags } from '../lib/perfFlags';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -758,6 +964,8 @@ const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].inclu
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
+/** 是否正在執行「載入全部」的自動多頁輪詢。 */
+const loadingAll = ref(false);
 const showModal = ref(false);
 const isEditing = ref(false);
 // 從課表點選堂次開啟評量表時設為該 ClassSessionID（無 csId 則為 -1），用於阻擋 form watch 的 applyTeacherFormDefaults 覆蓋（Bug fix 2026-04-18）
@@ -778,7 +986,102 @@ const sessionDatesByClassId = ref({});
 const directorSessionsByClassId = ref({});
 /** Director 新增：時間已由課程／堂次帶入，與 ClassSessionID>0 一併鎖定。 */
 const formTimesFromBinding = ref(false);
-const filters = reactive({ status: '', student_name: '', teacher_id: '', date: '' });
+const filters = reactive({ student_name: '', teacher_id: '', start_date: '', end_date: '', subject: '' });
+
+/**
+ * 使用者是否已明確點「查看全部歷史」解除預設時間窗口（近 90 天）。
+ * 一旦解除即不再自動注入 start_date，直到使用者清除篩選條件或重新整理。
+ */
+const defaultWindowDisabled = ref(false);
+
+/**
+ * 計算當下應注入的預設時間窗口 start_date（YYYY-MM-DD），若不套用窗口則回 ''。
+ * 套用條件（所有條件同時成立時才套用）：
+ *   1) perfFlags.LR_DEFAULT_WINDOW_DAYS > 0（.env 可關閉）
+ *   2) 使用者尚未手動設定 filters.start_date
+ *   3) 使用者尚未點「查看全部歷史」解除窗口（defaultWindowDisabled=false）
+ *   4) 目前 tab 不是「待審」或「需修改」（pending / changes_requested）——
+ *      豁免規則參考 Jira Kanban：未完成工作永不受時間窗口隱藏。
+ */
+const resolvedDefaultWindowStart = computed(() => {
+  const days = Number(perfFlags.LR_DEFAULT_WINDOW_DAYS || 0);
+  if (!(days > 0)) return '';
+  if (filters.start_date) return '';
+  if (defaultWindowDisabled.value) return '';
+  const tabBlocksWindow = isTeacher.value
+    ? (teacherFilterTab.value === 'pending' || teacherFilterTab.value === 'changes_requested')
+    : (reviewTab.value === 'pending' || reviewTab.value === 'changes_requested');
+  if (tabBlocksWindow) return '';
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return formatLocalDate(d);
+});
+
+/** 當下是否正在套用預設時間窗口（用於顯示 badge）。 */
+const isUsingDefaultWindow = computed(() => !!resolvedDefaultWindowStart.value);
+
+/** Badge 顯示用的天數文案。 */
+const defaultWindowDays = computed(() => Number(perfFlags.LR_DEFAULT_WINDOW_DAYS || 0));
+
+/**
+ * 解除預設時間窗口：點「查看全部歷史」或空狀態「查看更早記錄」時呼叫。
+ * 保持其他 filter 不變，只讓本次 session 不再自動注入 start_date。
+ */
+const clearDefaultWindow = () => {
+  defaultWindowDisabled.value = true;
+  fetchRecords();
+};
+
+/**
+ * 科目取值 — 按優先序 fallback（與 ParentPortal.vue 一致），空值歸類為「未分類」。
+ */
+const recordSubjectKey = (record) => {
+  const raw = record?.student_class_label ?? record?.Subject ?? record?.subject ?? record?.SubjectName ?? '';
+  const key = String(raw).trim();
+  return key || '未分類';
+};
+
+/** 日期 range 防呆：起始 > 結束時不送 API。 */
+const dateRangeError = computed(() => {
+  if (filters.start_date && filters.end_date && filters.start_date > filters.end_date) {
+    return '起始日期需早於或等於結束日期';
+  }
+  return '';
+});
+
+/** 科目下拉選項：以目前已載入的 records 去重，zh-Hant 排序（「未分類」排最後）。 */
+const availableSubjects = computed(() => {
+  const set = new Set();
+  for (const r of records.value || []) set.add(recordSubjectKey(r));
+  const collator = new Intl.Collator('zh-Hant');
+  return Array.from(set).sort((a, b) => {
+    if (a === '未分類' && b !== '未分類') return 1;
+    if (b === '未分類' && a !== '未分類') return -1;
+    return collator.compare(a, b);
+  });
+});
+
+/** 目前已載入 records 的最舊 SessionDate，供「載入更多」提示用。 */
+const loadedOldestDate = computed(() => {
+  const dates = (records.value || []).map(r => String(r?.SessionDate || '')).filter(Boolean);
+  if (!dates.length) return '';
+  return dates.reduce((min, d) => (d < min ? d : min));
+});
+
+/** 是否有啟用中的篩選條件，供空狀態 CTA 與清除按鈕用。 */
+const hasActiveFilters = computed(() =>
+  !!(filters.student_name || filters.teacher_id || filters.start_date || filters.end_date || filters.subject)
+);
+
+/** 啟用中的篩選項目數，顯示在標題列 badge（不計 status，已由上方 tab 處理）。 */
+const activeFilterCount = computed(() => {
+  let n = 0;
+  if (filters.student_name) n++;
+  if (filters.teacher_id) n++;
+  if (filters.start_date || filters.end_date) n++;
+  if (filters.subject) n++;
+  return n;
+});
 
 const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
@@ -859,34 +1162,121 @@ const filteredRecords = computed(() => {
   return list;
 });
 
+/**
+ * 兩層分組：學生 → 科目子分組；並計算每位學生已載入評量的最舊/最新日期。
+ * 科目排序：zh-Hant 字母排序；「未分類」永遠排最後。
+ */
 const filteredGroupedRecords = computed(() => {
+  const subjectFilter = String(filters.subject || '').trim();
   const groups = new Map();
+  const collator = new Intl.Collator('zh-Hant');
+  // Memoize hasLearningRecordBody per record (stable for loaded records).
+  const bodyCache = new WeakMap();
+  const hasBody = (r) => {
+    if (!r) return false;
+    if (bodyCache.has(r)) return bodyCache.get(r);
+    const v = hasLearningRecordBody(r);
+    bodyCache.set(r, v);
+    return v;
+  };
+  const sortRecords = (list) => {
+    list.sort((a, b) => {
+      const isPendingA = (a?.Status === 'pending' || a?.Status === 'changes_requested') && !hasBody(a) ? 0 : 1;
+      const isPendingB = (b?.Status === 'pending' || b?.Status === 'changes_requested') && !hasBody(b) ? 0 : 1;
+      if (isPendingA !== isPendingB) return isPendingA - isPendingB;
+      const aDate = String(a?.SessionDate || '');
+      const bDate = String(b?.SessionDate || '');
+      if (aDate !== bDate) return bDate.localeCompare(aDate);
+      return String(b?.StartTime || '').localeCompare(String(a?.StartTime || ''));
+    });
+    return list;
+  };
+
+  // Precompute per-(student,subject) status counts from raw records.value (ignores reviewTab).
+  const rawCounts = new Map();
+  for (const record of records.value || []) {
+    if (subjectFilter && recordSubjectKey(record) !== subjectFilter) continue;
+    const sid = Number(record?.student_id || 0) || null;
+    const sname = String(record?.student_name || '').trim() || '未命名學生';
+    const skey = sid ? `student-${sid}` : `name-${sname}`;
+    const subj = recordSubjectKey(record);
+    const ck = `${skey}::${subj}`;
+    let c = rawCounts.get(ck);
+    if (!c) {
+      c = { approved: 0, pending: 0, changes_requested: 0, rejected: 0, unfilled: 0, total: 0 };
+      rawCounts.set(ck, c);
+    }
+    c.total += 1;
+    const s = record?.Status;
+    if (s === 'approved') c.approved += 1;
+    else if (s === 'rejected') c.rejected += 1;
+    else if (s === 'changes_requested') c.changes_requested += 1;
+    else if (s === 'pending') c.pending += 1;
+    if ((s === 'pending' || s === 'changes_requested') && !hasBody(record)) c.unfilled += 1;
+  }
+
   for (const record of filteredRecords.value) {
+    if (subjectFilter && recordSubjectKey(record) !== subjectFilter) continue;
     const studentId = Number(record?.student_id || 0) || null;
     const studentName = String(record?.student_name || '').trim() || '未命名學生';
     const key = studentId ? `student-${studentId}` : `name-${studentName}`;
     if (!groups.has(key)) {
-      groups.set(key, { key, student_id: studentId, student_name: studentName, pending_count: 0, unfilled_body_count: 0, records: [] });
+      groups.set(key, {
+        key,
+        student_id: studentId,
+        student_name: studentName,
+        pending_count: 0,
+        unfilled_body_count: 0,
+        records: [],
+        subjectMap: new Map(),
+        oldest_date: '',
+        newest_date: '',
+      });
     }
     const group = groups.get(key);
     group.records.push(record);
     if (record?.Status === 'pending' || record?.Status === 'changes_requested') {
       group.pending_count += 1;
-      if (!hasLearningRecordBody(record)) group.unfilled_body_count += 1;
+      if (!hasBody(record)) group.unfilled_body_count += 1;
+    }
+    const subjKey = recordSubjectKey(record);
+    if (!group.subjectMap.has(subjKey)) group.subjectMap.set(subjKey, []);
+    group.subjectMap.get(subjKey).push(record);
+    const d = String(record?.SessionDate || '');
+    if (d) {
+      if (!group.oldest_date || d < group.oldest_date) group.oldest_date = d;
+      if (!group.newest_date || d > group.newest_date) group.newest_date = d;
     }
   }
-  const collator = new Intl.Collator('zh-Hant');
+
   return Array.from(groups.values())
     .map(group => {
-      group.records.sort((a, b) => {
-        const isPendingA = (a?.Status === 'pending' || a?.Status === 'changes_requested') && !hasLearningRecordBody(a) ? 0 : 1;
-        const isPendingB = (b?.Status === 'pending' || b?.Status === 'changes_requested') && !hasLearningRecordBody(b) ? 0 : 1;
-        if (isPendingA !== isPendingB) return isPendingA - isPendingB;
-        const aDate = String(a?.SessionDate || '');
-        const bDate = String(b?.SessionDate || '');
-        if (aDate !== bDate) return bDate.localeCompare(aDate);
-        return String(b?.StartTime || '').localeCompare(String(a?.StartTime || ''));
-      });
+      const subjectGroups = Array.from(group.subjectMap.entries())
+        .map(([subject, list]) => {
+          const counts = rawCounts.get(`${group.key}::${subject}`) || null;
+          let shown = 0;
+          if (counts) {
+            if (isStatusInCurrentTab('approved')) shown += counts.approved;
+            if (isStatusInCurrentTab('pending')) shown += counts.pending;
+            if (isStatusInCurrentTab('changes_requested')) shown += counts.changes_requested;
+            if (isStatusInCurrentTab('rejected')) shown += counts.rejected;
+          }
+          const hiddenCount = counts ? Math.max(0, counts.total - shown) : 0;
+          return {
+            subject,
+            count: list.length,
+            records: sortRecords(list.slice()),
+            statusCounts: counts,
+            hiddenCount,
+          };
+        })
+        .sort((a, b) => {
+          if (a.subject === '未分類' && b.subject !== '未分類') return 1;
+          if (b.subject === '未分類' && a.subject !== '未分類') return -1;
+          return collator.compare(a.subject, b.subject);
+        });
+      group.subjectGroups = subjectGroups;
+      delete group.subjectMap;
       return group;
     })
     .sort((a, b) => collator.compare(a.student_name, b.student_name));
@@ -896,6 +1286,107 @@ const pendingCount = computed(() => (records.value || []).filter(r => r.Status =
 const changesRequestedCount = computed(() => (records.value || []).filter(r => r.Status === 'changes_requested').length);
 const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
+
+/**
+ * 目前頂部 tab（reviewTab / teacherFilterTab）隱藏了幾筆「否則會顯示」的記錄。
+ * 當此值 > 0 時，在畫面上方顯示 info banner，提示使用者資料未遺失。
+ * 參考：GitHub Issues / Notion filter banner、Nielsen "Visibility of system status"。
+ */
+const hiddenByTabCount = computed(() => {
+  const all = records.value || [];
+  if (isTeacher.value) {
+    if (teacherFilterTab.value === 'changes_requested') {
+      return all.length - all.filter(r => r.Status === 'changes_requested').length;
+    }
+    if (teacherFilterTab.value === 'approved') {
+      return all.length - all.filter(r => r.Status === 'approved').length;
+    }
+    if (teacherFilterTab.value === 'pending') {
+      return all.length - all.filter(r => r.Status === 'pending').length;
+    }
+    return 0;
+  }
+  if (isDirectorRole.value) {
+    if (reviewTab.value === 'pending') {
+      return all.length - all.filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length;
+    }
+    if (reviewTab.value === 'changes_requested') {
+      return all.length - all.filter(r => r.Status === 'changes_requested').length;
+    }
+    if (reviewTab.value === 'approved') {
+      return all.length - all.filter(r => r.Status === 'approved').length;
+    }
+    if (reviewTab.value === 'rejected') {
+      return all.length - all.filter(r => r.Status === 'rejected').length;
+    }
+    return 0;
+  }
+  return 0;
+});
+
+/** 目前 tab 的人類可讀名稱，用於 banner 文案。 */
+const currentTabLabel = computed(() => {
+  if (isTeacher.value) {
+    return ({
+      pending: '待審核',
+      changes_requested: '需修改',
+      approved: '已核准',
+    })[teacherFilterTab.value] || '';
+  }
+  if (isDirectorRole.value) {
+    return ({
+      pending: '待審佇列',
+      changes_requested: '需修改追蹤',
+      approved: '已核准',
+      rejected: '已退回',
+    })[reviewTab.value] || '';
+  }
+  return '';
+});
+
+/**
+ * 判斷某個 status 是否落在目前 tab 的顯示範圍內。
+ * 回傳 true 代表該 status 的記錄不會被 tab 隱藏。
+ */
+const isStatusInCurrentTab = (status) => {
+  if (isTeacher.value) {
+    const t = teacherFilterTab.value;
+    if (t === 'all') return true;
+    return t === status;
+  }
+  if (isDirectorRole.value) {
+    const t = reviewTab.value;
+    if (t === 'all') return true;
+    if (t === 'pending') return status === 'pending' || status === 'changes_requested';
+    return t === status;
+  }
+  return true;
+};
+
+/**
+ * 點選學生姓名後，把該姓名寫入 `filters.student_name` 並重新抓取。
+ * 後端依 student_name 過濾，能回傳該生全部記錄（避免受跨學生分頁限制）。
+ * 參考 Airtable / Linear 的「點值過濾到該值」群組互動模式。
+ */
+const filterByStudent = (name) => {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return;
+  if (filters.student_name === trimmed && defaultWindowDisabled.value) return;
+  filters.student_name = trimmed;
+  // 點學生姓名 = 我想看「這個學生的全部歷史」，同步解除預設時間窗口（FR-005）
+  defaultWindowDisabled.value = true;
+  fetchRecords();
+};
+
+/** 一鍵切回「全部」tab，供 banner CTA 使用。 */
+const showAllStatuses = () => {
+  if (isTeacher.value) {
+    teacherFilterTab.value = 'all';
+  } else if (isDirectorRole.value) {
+    reviewTab.value = 'all';
+  }
+  selectedRecordIds.value = new Set();
+};
 
 const allSelected = computed(() => {
   const selectable = filteredRecords.value.filter(r => r.Status === 'pending' || r.Status === 'changes_requested');
@@ -1743,17 +2234,57 @@ const openFromScheduleMaybe = (ev) => {
 };
 
 // ── Fetch Records ──
-const _buildRecordsParams = (page = 1) => {
+/**
+ * 建構 GET /api/v1/learning-records 的查詢參數。
+ *
+ * 特殊 options：
+ *   - beforeId (number)：若指定，以 keyset 模式發送（`before_id=N`，不帶 `page`）；
+ *     用於 loadAllRecords 避免 OFFSET 分頁的 sliding window 問題（Slack pagination 規範）。
+ *
+ * 時間窗口（預設 90 天）：當使用者未設定 start_date、未點「查看全部歷史」、
+ * 且目前 tab 不是待審/需修改時，自動注入 `start_date = today - WINDOW_DAYS`。
+ */
+const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
   const params = new URLSearchParams();
   if (props.branchId) params.set('branch_id', props.branchId);
   if (filters.student_name) params.set('student_name', filters.student_name);
   if (filters.teacher_id) params.set('teacher_id', filters.teacher_id);
-  if (filters.status) params.set('status', filters.status);
-  if (filters.date) { params.set('start_date', filters.date); params.set('end_date', filters.date); }
+  // 起始 > 結束時不送 API，由 dateRangeError 顯示 inline 錯誤
+  if (!dateRangeError.value) {
+    if (filters.start_date) {
+      params.set('start_date', filters.start_date);
+    } else {
+      const auto = resolvedDefaultWindowStart.value;
+      if (auto) params.set('start_date', auto);
+    }
+    if (filters.end_date) params.set('end_date', filters.end_date);
+  }
   params.set('sort', 'session_date');
   params.set('per_page', String(perfFlags.LR_DEFAULT_PER_PAGE));
-  params.set('page', String(page));
+  if (beforeId != null && beforeId > 0) {
+    // Keyset branch — backend 嚴格忽略 page 參數，前端亦不送 page 以避免誤解
+    params.set('before_id', String(beforeId));
+  } else {
+    params.set('page', String(page));
+  }
   return params;
+};
+
+/** 日期 range 變更 handler：僅在無防呆錯誤時送出 API。 */
+const onDateRangeChange = () => {
+  if (dateRangeError.value) return;
+  fetchRecords();
+};
+
+/** 清除所有篩選條件，常用於空狀態 CTA。預設時間窗口一併恢復。 */
+const clearAllFilters = () => {
+  filters.student_name = '';
+  filters.teacher_id = '';
+  filters.start_date = '';
+  filters.end_date = '';
+  filters.subject = '';
+  defaultWindowDisabled.value = false;
+  fetchRecords();
 };
 
 const fetchRecords = async () => {
@@ -1781,32 +2312,135 @@ const fetchRecords = async () => {
   }
 };
 
+/**
+ * 抓取指定頁或指定 before_id 的記錄並合併到 records.value，回傳載入結果統計。
+ * 抽出為共用函式，供 loadMoreRecords（OFFSET）與 loadAllRecords（keyset）使用。
+ *
+ * @param {number} targetPage - OFFSET 模式下的頁數（忽略於 keyset 模式）
+ * @param {{ beforeId?: number|null }} opts - beforeId 非空時改用 keyset 模式
+ */
+const _fetchRecordsPage = async (targetPage, { beforeId = null } = {}) => {
+  const token = await getToken();
+  if (!token) return { ok: false, reason: 'no-token' };
+
+  const params = _buildRecordsParams(targetPage, { beforeId });
+  const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('[LR] fetch page failed:', res.status, body);
+    return { ok: false, reason: 'http', status: res.status };
+  }
+
+  const data = await res.json();
+  const newRows = data.data || [];
+  const existingIds = new Set(records.value.map(r => r.id));
+  const deduped = newRows.filter(r => !existingIds.has(r.id));
+  records.value = [...records.value, ...deduped];
+  const pg = recordsPagination.value;
+  // Keyset 回應無 current_page/last_page/total，僅推算已載入筆數與 next_before_id
+  const isKeyset = data.pagination === 'keyset' || beforeId != null;
+  if (!isKeyset) {
+    pg.currentPage = data.current_page || targetPage;
+    pg.lastPage = data.last_page || pg.lastPage;
+    pg.total = data.total || pg.total;
+  }
+  const minIdInPage = newRows.length > 0
+    ? newRows.reduce((min, r) => (Number(r.id) < min ? Number(r.id) : min), Number.POSITIVE_INFINITY)
+    : null;
+  return {
+    ok: true,
+    added: deduped.length,
+    returned: newRows.length,
+    minId: Number.isFinite(minIdInPage) ? minIdInPage : null,
+    nextBeforeId: data.next_before_id ?? (Number.isFinite(minIdInPage) ? minIdInPage : null),
+    isKeyset,
+    data,
+  };
+};
+
 const loadMoreRecords = async () => {
   const pg = recordsPagination.value;
   if (pg.loading || pg.currentPage >= pg.lastPage) return;
   pg.loading = true;
-
   try {
-    const token = await getToken();
-    if (!token) return;
-
-    const params = _buildRecordsParams(pg.currentPage + 1);
-    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error('Load more failed');
-
-    const data = await res.json();
-    const newRows = data.data || [];
-    const existingIds = new Set(records.value.map(r => r.id));
-    const deduped = newRows.filter(r => !existingIds.has(r.id));
-    records.value = [...records.value, ...deduped];
-    pg.currentPage = data.current_page || pg.currentPage + 1;
-    pg.lastPage = data.last_page || pg.lastPage;
-    pg.total = data.total || pg.total;
+    const result = await _fetchRecordsPage(pg.currentPage + 1);
+    if (!result.ok) {
+      if (result.reason === 'http') alert(`載入更早記錄失敗（HTTP ${result.status}），請稍後再試`);
+      return;
+    }
+    if (result.added === 0 && result.returned === 0) {
+      // 真正沒有更多資料；更新 lastPage 以避免使用者再次點擊
+      pg.lastPage = pg.currentPage;
+    } else if (result.added === 0 && result.returned > 0) {
+      // 後端回傳了記錄但 ID 全部重複——通常是瀏覽器/CDN 快取舊頁。
+      // 更新 currentPage 推進而不顯示誤導的「沒有更多」alert。
+      console.warn('[LR] 載入更多回傳重複資料，可能為快取問題；推進 currentPage');
+    } else {
+      console.log(`[LR] 載入 ${result.added} 筆更早記錄（目前共 ${records.value.length} / ${pg.total}）`);
+    }
   } catch (e) {
-    console.error(e);
+    console.error('[LR] load more error:', e);
+    alert('載入更早記錄時發生錯誤，請稍後再試');
   } finally {
+    pg.loading = false;
+  }
+};
+
+/**
+ * 一鍵載入全部剩餘記錄——使用 keyset（before_id）pagination 避免 OFFSET sliding window 問題。
+ *
+ * 演算法（對齊 Slack Engineering "Evolving API Pagination at Slack" 的 next_cursor 規範）：
+ *   1) 以目前已載入記錄中最小的 id 作為起始 anchor。
+ *   2) 每次呼叫 API 時帶 `before_id=anchor`，後端回傳 id < anchor 的下一批。
+ *   3) 以「data 陣列為空」為唯一的終止條件，不以 current_page/last_page 判斷。
+ *   4) 每輪更新 anchor = 該批最小 id；若 anchor 未前進（重覆或異常）立即中斷避免死循環。
+ *   5) MAX_ROUNDS 安全上限 100 輪（即 100 × per_page = 20,000 筆）——超過時提示使用者。
+ */
+const loadAllRecords = async () => {
+  const pg = recordsPagination.value;
+  if (pg.loading || loadingAll.value) return;
+  if (records.value.length === 0) return;
+  loadingAll.value = true;
+  pg.loading = true;
+  const MAX_ROUNDS = 100;
+  let rounds = 0;
+  try {
+    // 起始 anchor：目前已載入記錄裡最小的 id（API 將回傳 id < anchor 的更早記錄）
+    let anchor = records.value.reduce((min, r) => {
+      const id = Number(r.id) || 0;
+      return id > 0 && id < min ? id : min;
+    }, Number.POSITIVE_INFINITY);
+    if (!Number.isFinite(anchor) || anchor <= 0) {
+      console.warn('[LR] load-all: 找不到有效的 anchor id，已中斷');
+      return;
+    }
+
+    while (rounds < MAX_ROUNDS) {
+      rounds += 1;
+      const result = await _fetchRecordsPage(0, { beforeId: anchor });
+      if (!result.ok) {
+        if (result.reason === 'http') alert(`載入全部記錄失敗（HTTP ${result.status}，已載入 ${records.value.length} 筆）`);
+        break;
+      }
+      // Slack next_cursor 規範：data 為空 → 已到資料集終點
+      if (result.returned === 0) break;
+      const nextAnchor = result.nextBeforeId || result.minId;
+      if (!nextAnchor || nextAnchor >= anchor) {
+        console.warn('[LR] load-all: anchor 未前進（可能是 API 版本不支援 before_id），中斷以避免死循環');
+        break;
+      }
+      anchor = nextAnchor;
+    }
+    if (rounds >= MAX_ROUNDS) {
+      alert(`安全上限：已載入 ${records.value.length} 筆，如需更多請手動再按一次「載入全部」`);
+    }
+  } catch (e) {
+    console.error('[LR] load all error:', e);
+    alert('載入全部記錄時發生錯誤');
+  } finally {
+    loadingAll.value = false;
     pg.loading = false;
   }
 };
@@ -2811,6 +3445,10 @@ onMounted(async () => {
   migrateLegacyDrafts();
   if (props.userId) pruneOldDrafts(props.userId);
 
+  // Pull backend perf_flags (lr_default_window_days 等) before first fetch so that
+  // _buildRecordsParams injects the authoritative window in the initial request.
+  await perf.trackAsync('loadRemoteFlags', () => loadRemoteFlags().catch(() => {}));
+
   await perf.trackAsync('ensurePastRecords', () => ensurePastRecords());
   await perf.trackAsync('fetchRecords', () => fetchRecords());
 
@@ -2846,6 +3484,17 @@ watch(() => props.branchId, () => {
   fetchCourses();
   fetchStudents();
   if (isTeacher.value) fetchTeacherClasses();
+});
+
+/**
+ * 當 reviewTab / teacherFilterTab 切換導致預設時間窗口生效狀態改變（pending↔其他），
+ * 自動重抓記錄以確保資料集與 tab 語意一致（Jira Kanban：未完成工作永不受窗口限制）。
+ * 以 resolvedDefaultWindowStart 字串值為追蹤源，只在值真正變動時觸發。
+ */
+watch(resolvedDefaultWindowStart, (next, prev) => {
+  if (next === prev) return;
+  // 初始 fetch 已在 onMounted 處理，這裡只針對使用者互動造成的窗口狀態變化。
+  fetchRecords();
 });
 </script>
 
@@ -3441,42 +4090,225 @@ watch(() => props.branchId, () => {
 
 /* ── Filters ── */
 .lr-filters {
-  padding: 20px 24px;
-}
-
-.lr-filters-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px 16px;
-  align-items: end;
-}
-
-.lr-filter-btn-wrap {
+  padding: 18px 22px 16px;
   display: flex;
   flex-direction: column;
+  gap: 14px;
 }
 
-.lr-filter-btn-wrap button {
-  width: 100%;
-}
-
-.lr-date-filter-wrap {
+/* Filter card header */
+.lr-filters-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+.lr-filters-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+.lr-filters-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+.lr-filters-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.lr-filters-clear-link {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.lr-filters-clear-link:hover {
+  background: #f1f5f9;
+  color: #334155;
+  text-decoration: underline;
 }
 
-.lr-date-input {
-  flex: 1;
+/* Filter fields grid */
+.lr-filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px 16px;
+  align-items: start;
+}
+.lr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-width: 0;
+  margin: 0;
+}
+.lr-field > label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.2;
+  margin: 0;
+}
+/* Date range occupies 2 grid columns to avoid cramped inputs */
+.lr-field-wide {
+  grid-column: span 2;
+  min-width: 260px;
 }
 
+/* Unified input appearance across the filter bar */
+.lr-input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 1.2;
+  color: #1e293b;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.lr-input::placeholder {
+  color: #94a3b8;
+}
+.lr-input:hover:not(:disabled) {
+  border-color: #94a3b8;
+}
+.lr-input:focus,
+.lr-input:focus-visible {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+.lr-input:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+  border-color: #e2e8f0;
+}
+/* native select chevron */
+select.lr-input {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
+  cursor: pointer;
+}
+
+/* Date range group */
+.lr-date-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.lr-date-range-wrap .lr-date-input {
+  flex: 1 1 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.lr-date-range-dash {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  user-select: none;
+}
 .lr-date-clear {
   flex-shrink: 0;
-  padding: 4px 8px !important;
-  font-size: 12px !important;
-  line-height: 1;
-  color: #888;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.lr-date-clear:hover {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.lr-date-range-error {
+  font-size: 12px;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 4px 8px;
+  line-height: 1.4;
+}
+
+/* Subject select (kept for legacy) */
+.lr-subject-select:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* Action bar at the bottom of the filter card */
+.lr-filters-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+.lr-filters-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+.lr-filters-search svg {
+  flex-shrink: 0;
+}
+.lr-filters-reset {
+  height: 38px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+/* SearchableSelect inside filter grid — align visual height with siblings */
+.lr-field :deep(.searchable-select),
+.lr-field :deep(.searchable-select-input) {
+  min-height: 38px;
 }
 
 /* ── Table ── */
@@ -3535,6 +4367,24 @@ watch(() => props.branchId, () => {
   font-size: 14px;
 }
 
+.lr-group-student-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  margin-left: -6px;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.lr-group-student-btn:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
 .lr-group-count {
   display: inline-flex;
   align-items: center;
@@ -3571,8 +4421,481 @@ watch(() => props.branchId, () => {
   color: var(--text-light);
 }
 
+.lr-group-date-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-variant-numeric: tabular-nums;
+}
+.lr-group-date-range-label {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 .lr-group[open] .lr-group-summary {
   background: #eff6ff;
+}
+
+/* ── Subject Subgroup (FR-004) ── */
+.lr-subject-subgroups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 12px 14px;
+  background: var(--card-bg);
+}
+.lr-subject-subgroup {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card-bg);
+}
+.lr-subject-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f1f5f9;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.lr-subject-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lr-subject-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+.lr-subject-uncategorized .lr-subject-header {
+  background: #fff7ed;
+}
+.lr-subject-uncategorized .lr-subject-name {
+  color: #9a3412;
+  font-style: italic;
+}
+
+/* ── Status distribution chips inside subject sub-header ── */
+.lr-status-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.lr-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  transition: opacity 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.lr-status-chip .lr-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lr-status-chip.chip-approved {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+.lr-status-chip.chip-approved .lr-chip-dot {
+  background: #16a34a;
+}
+.lr-status-chip.chip-pending {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.lr-status-chip.chip-pending .lr-chip-dot {
+  background: #f59e0b;
+}
+.lr-status-chip.chip-changes {
+  background: #ffedd5;
+  color: #9a3412;
+  border-color: #fed7aa;
+}
+.lr-status-chip.chip-changes .lr-chip-dot {
+  background: #ea580c;
+}
+.lr-status-chip.chip-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+.lr-status-chip.chip-rejected .lr-chip-dot {
+  background: #dc2626;
+}
+/* 狀態不在目前 tab 範圍內 → 淡化，但仍可見（Gmail 模式） */
+.lr-status-chip.chip-muted {
+  opacity: 0.55;
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+.lr-status-chip.chip-muted .lr-chip-dot {
+  background: #94a3b8;
+}
+
+.lr-subject-show-all {
+  margin-left: auto;
+  padding: 4px 10px;
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.lr-subject-show-all:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+}
+
+/* ── Top-level "hidden by tab" info banner (GitHub Issues / Notion pattern) ── */
+.lr-tab-filter-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.4;
+}
+.lr-tab-filter-banner__icon {
+  flex-shrink: 0;
+  color: #d97706;
+}
+.lr-tab-filter-banner__text {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lr-tab-filter-banner__text strong {
+  color: #78350f;
+  font-variant-numeric: tabular-nums;
+}
+.lr-tab-filter-banner__sep {
+  color: #d97706;
+  opacity: 0.6;
+}
+.lr-tab-filter-banner__cta {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  background: #f59e0b;
+  border: none;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.lr-tab-filter-banner__cta:hover {
+  background: #d97706;
+}
+
+@media (max-width: 640px) {
+  .lr-tab-filter-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .lr-tab-filter-banner__cta {
+    width: 100%;
+    text-align: center;
+  }
+  .lr-subject-show-all {
+    margin-left: 0;
+  }
+}
+
+/* ── Default time-window banner (FR-002) ──
+   Shares the amber visual language with .lr-tab-filter-banner so both banners feel
+   like the same family: a benign, dismissible "you are looking at a filtered slice"
+   hint. CTA is a text link (underline on hover) rather than a filled button to avoid
+   competing with the primary 搜尋 action above. */
+.lr-window-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #78350f;
+  line-height: 1.4;
+}
+.lr-window-banner__icon {
+  flex-shrink: 0;
+  color: #d97706;
+}
+.lr-window-banner__text {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lr-window-banner__text strong {
+  color: #78350f;
+  font-variant-numeric: tabular-nums;
+}
+.lr-window-banner__sep {
+  color: #d97706;
+  opacity: 0.6;
+}
+.lr-window-banner__hint {
+  color: #92400e;
+  opacity: 0.85;
+}
+.lr-window-banner__cta {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  background: transparent;
+  border: none;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+  min-height: 44px;
+}
+.lr-window-banner__cta:hover:not(:disabled) {
+  color: #78350f;
+}
+.lr-window-banner__cta:disabled {
+  color: #b45309;
+  opacity: 0.5;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .lr-window-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .lr-window-banner__cta {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Load-more slide-up fade — plays when records.length === total (everything loaded).
+   Keeps record list layout stable (no jump) and signals "you are done" in a subtle
+   way rather than an abrupt disappearance. Reduced-motion users skip the motion. */
+.lr-loadmore-slide-enter-active,
+.lr-loadmore-slide-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s ease, max-height 0.32s ease;
+  overflow: hidden;
+}
+.lr-loadmore-slide-enter-from,
+.lr-loadmore-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+}
+.lr-loadmore-slide-enter-to,
+.lr-loadmore-slide-leave-from {
+  opacity: 1;
+  transform: translateY(0);
+  max-height: 320px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lr-loadmore-slide-enter-active,
+  .lr-loadmore-slide-leave-active {
+    transition: opacity 0.15s ease;
+  }
+  .lr-loadmore-slide-enter-from,
+  .lr-loadmore-slide-leave-to {
+    transform: none;
+    max-height: none;
+  }
+}
+
+/* ── Empty State (FR-007) ── */
+.lr-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  text-align: center;
+}
+.lr-empty-icon {
+  color: #94a3b8;
+}
+.lr-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #334155;
+}
+.lr-empty-desc {
+  font-size: 13px;
+  color: var(--text-light);
+  max-width: 360px;
+  line-height: 1.5;
+}
+.lr-empty-cta {
+  margin-top: 4px;
+  min-width: 160px;
+}
+
+/* ── Load More Hint & Skeleton (FR-002) ── */
+.lr-load-more {
+  flex-direction: column;
+  gap: 10px;
+}
+.lr-load-more-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.lr-load-more-btn,
+.lr-load-all-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 220px;
+  padding: 12px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+  font: inherit;
+}
+.lr-load-more-btn {
+  background: var(--card-bg);
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+.lr-load-more-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #60a5fa;
+}
+.lr-load-all-btn {
+  background: #1d4ed8;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
+}
+.lr-load-all-btn:hover:not(:disabled) {
+  background: #1e40af;
+  border-color: #1e40af;
+}
+.lr-load-all-btn .lr-load-more-sub {
+  color: rgba(255, 255, 255, 0.85);
+}
+.lr-load-more-btn:active:not(:disabled),
+.lr-load-all-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.lr-load-more-btn:disabled,
+.lr-load-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.lr-load-more-title,
+.lr-load-all-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.lr-load-more-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+.lr-load-more-hint strong {
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.lr-load-more-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-light);
+  font-weight: 400;
+  line-height: 1.5;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.lr-load-more-sub strong {
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.lr-load-more-dot {
+  color: #cbd5e1;
+}
+.lr-skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 640px;
+  padding: 8px 0;
+}
+.lr-skeleton-row {
+  height: 44px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+  background-size: 200% 100%;
+  animation: lrSkeletonShimmer 1.2s ease-in-out infinite;
+}
+@keyframes lrSkeletonShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .lr-table-scroll {
@@ -4149,8 +5472,51 @@ watch(() => props.branchId, () => {
 }
 
 @media (max-width: 768px) {
+  .lr-filters {
+    padding: 14px 16px;
+  }
   .lr-filters-grid {
     grid-template-columns: 1fr;
+  }
+  .lr-field-wide {
+    grid-column: auto;
+    min-width: 0;
+  }
+  .lr-input {
+    height: 44px;
+    font-size: 16px;
+  }
+  select.lr-input {
+    background-position: right 14px center;
+  }
+  .lr-date-range-wrap {
+    flex-wrap: nowrap;
+  }
+  .lr-date-range-wrap .lr-date-input {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .lr-date-clear {
+    width: 40px;
+    height: 40px;
+  }
+  .lr-filters-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .lr-filters-search,
+  .lr-filters-reset {
+    width: 100%;
+    height: 44px;
+    justify-content: center;
+  }
+  .lr-empty-state {
+    padding: 32px 16px;
+  }
+  .lr-subject-subgroups {
+    padding: 8px 8px 12px;
+    gap: 10px;
   }
   .lr-form-grid {
     grid-template-columns: 1fr;

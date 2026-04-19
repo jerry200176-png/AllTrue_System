@@ -14,7 +14,7 @@
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
       <div class="tc-summary">
-        <div class="tc-card tc-card--skeleton" v-for="i in 4" :key="i">
+        <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
           <span class="skel skel-num"></span>
           <span class="skel skel-label"></span>
         </div>
@@ -48,16 +48,27 @@
           <span class="tc-card-label">筆提醒</span>
         </div>
         <div class="tc-card tc-card--danger">
-          <span class="tc-card-num">{{ statusCounts.unpaid }}</span>
+          <span class="tc-card-num">{{ statusCounts.unpaid + statusCounts.partial }}</span>
           <span class="tc-card-label">未繳費</span>
         </div>
+        <div class="tc-card tc-card--overdue">
+          <span class="tc-card-num">{{ overdueRows.length }}</span>
+          <span class="tc-card-label">逾期</span>
+          <span class="tc-card-sub">{{ formatCurrency(overdueTotal) }}</span>
+        </div>
         <div class="tc-card tc-card--warn">
-          <span class="tc-card-num">{{ statusCounts.partial + statusCounts.pending_report }}</span>
-          <span class="tc-card-label">部分付款／待核帳</span>
+          <span class="tc-card-num">{{ statusCounts.pending_report }}</span>
+          <span class="tc-card-label">待核帳</span>
         </div>
         <div class="tc-card tc-card--outstanding">
           <span class="tc-card-num">{{ formatCurrency(totalOutstanding) }}</span>
-          <span class="tc-card-label">未結清總額</span>
+          <span class="tc-card-label">
+            未結清
+            <span v-if="collectionRate !== null" class="tc-rate" :style="{ color: collectionRateColor(collectionRate) }">
+              收款率 {{ collectionRate }}%
+            </span>
+            <span v-else class="tc-rate">收款率 —</span>
+          </span>
         </div>
       </div>
 
@@ -68,7 +79,21 @@
       </div>
 
       <div v-else>
-        <!-- Search -->
+        <!-- Status Tabs -->
+        <div class="tc-tabs">
+          <button
+            v-for="tab in TAB_DEFS"
+            :key="tab.key"
+            class="tc-tab"
+            :class="{ 'tc-tab--active': activeTab === tab.key }"
+            @click="activeTab = tab.key"
+          >
+            {{ tab.label }}
+            <span class="tc-tab-badge">{{ tabCounts[tab.key] }}</span>
+          </button>
+        </div>
+
+        <!-- Toolbar: Search + CSV export -->
         <div class="tc-toolbar">
           <div class="tc-search-wrap">
             <span class="material-symbols-outlined tc-search-icon">search</span>
@@ -86,16 +111,31 @@
           <span v-if="searchQuery" class="tc-search-hint">
             {{ filteredRows.length }} 筆符合「{{ searchQuery }}」
           </span>
-          <div v-if="loading" class="tc-inline-loading">
-            <span class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
-            更新中…
+          <div class="tc-toolbar-right">
+            <div v-if="loading" class="tc-inline-loading">
+              <span class="material-symbols-outlined spin" style="font-size:16px">progress_activity</span>
+              更新中…
+            </div>
+            <button
+              class="tc-btn tc-btn--csv"
+              @click="exportCSV"
+              :disabled="!filteredRows.length || csvExporting"
+              :title="!filteredRows.length ? '目前無資料可匯出' : '匯出 CSV'"
+            >
+              <span class="material-symbols-outlined" :class="{ spin: csvExporting }" style="font-size:16px">download</span>
+              匯出 CSV
+            </button>
           </div>
         </div>
 
-        <div v-if="searchQuery && !filteredRows.length" class="tc-empty" style="padding:32px 0">
-          <span class="material-symbols-outlined" style="font-size:40px;color:var(--text-light)">person_search</span>
-          <p>找不到包含「{{ searchQuery }}」的學生</p>
-          <button class="tc-cta-btn tc-cta-btn--ghost" @click="searchQuery = ''">清除搜尋</button>
+        <!-- Empty state for current tab -->
+        <div v-if="!filteredRows.length" class="tc-empty" style="padding:32px 0">
+          <span v-if="searchQuery" class="material-symbols-outlined" style="font-size:40px;color:var(--text-light)">person_search</span>
+          <span v-else class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">inbox</span>
+          <p v-if="searchQuery">找不到包含「{{ searchQuery }}」的學生</p>
+          <p v-else>此分類目前無資料</p>
+          <button v-if="searchQuery" class="tc-cta-btn tc-cta-btn--ghost" @click="searchQuery = ''">清除搜尋</button>
+          <button v-else-if="activeTab !== 'all'" class="tc-cta-btn tc-cta-btn--ghost" @click="activeTab = 'all'">查看全部</button>
         </div>
 
         <!-- Table -->
@@ -103,15 +143,30 @@
           <table class="tc-table">
             <thead>
               <tr>
-                <th>學生</th>
-                <th>科目</th>
+                <th class="tc-th-sort" @click="toggleSort('student_name')">
+                  學生
+                  <span v-if="sortKey === 'student_name'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
+                <th class="tc-th-sort" @click="toggleSort('subject')">
+                  科目
+                  <span v-if="sortKey === 'subject'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-col-mode">模式</th>
                 <th>狀態</th>
-                <th class="tc-col-currency">應繳</th>
+                <th class="tc-col-currency tc-th-sort" @click="toggleSort('charge')">
+                  應繳
+                  <span v-if="sortKey === 'charge'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-col-currency">已繳</th>
-                <th class="tc-col-currency">未結清</th>
+                <th class="tc-col-currency tc-th-sort" @click="toggleSort('outstanding')">
+                  未結清
+                  <span v-if="sortKey === 'outstanding'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-col-date">最近付款</th>
-                <th class="tc-col-date">到期／逾期</th>
+                <th class="tc-col-date tc-th-sort" @click="toggleSort('due_date')">
+                  到期／逾期
+                  <span v-if="sortKey === 'due_date'" class="tc-sort-arrow">{{ sortDir === 'asc' ? '▲' : '▼' }}</span>
+                </th>
                 <th class="tc-col-actions">操作</th>
               </tr>
             </thead>
@@ -370,6 +425,34 @@ const slipOpen = ref(false);
 const slipInvoiceId = ref(null);
 const slipStudentClassId = ref(null);
 
+// ═══ Tab Filter ═══
+const activeTab = ref('all');
+const TAB_DEFS = [
+  { key: 'all', label: '全部' },
+  { key: 'unpaid', label: '未繳' },
+  { key: 'overdue', label: '逾期' },
+  { key: 'pending_report', label: '待核帳' },
+  { key: 'paid', label: '已繳' },
+];
+
+function isOverdue(r) {
+  return (r.days_until_settlement != null && r.days_until_settlement < 0) &&
+    ['unpaid', 'partial', 'pending_report'].includes(r.payment_status);
+}
+
+const tabCounts = computed(() => {
+  const c = { all: 0, unpaid: 0, overdue: 0, pending_report: 0, paid: 0 };
+  rows.value.forEach(r => {
+    c.all++;
+    const ps = r.payment_status;
+    if (isOverdue(r)) c.overdue++;
+    if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
+    else if (ps === 'pending_report') c.pending_report++;
+    else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.paid++;
+  });
+  return c;
+});
+
 const statusCounts = computed(() => {
   const c = { unpaid: 0, partial: 0, pending_report: 0, paid: 0, renew_needed: 0, monthly_due_soon: 0 };
   rows.value.forEach(r => {
@@ -386,11 +469,109 @@ const totalOutstanding = computed(() => {
     .reduce((sum, r) => sum + (r.outstanding || 0), 0);
 });
 
-const filteredRows = computed(() => {
-  const q = searchQuery.value.trim();
-  if (!q) return rows.value;
-  return rows.value.filter(r => r.student_name && r.student_name.includes(q));
+// ═══ Summary Computed ═══
+const overdueRows = computed(() => rows.value.filter(isOverdue));
+const overdueTotal = computed(() => overdueRows.value.reduce((s, r) => s + (r.outstanding || 0), 0));
+const totalCharge = computed(() => rows.value.reduce((s, r) => s + (r.charge || 0), 0));
+const totalPaid = computed(() => rows.value.reduce((s, r) => s + (r.paid_amount || 0), 0));
+const collectionRate = computed(() => {
+  if (totalCharge.value === 0) return null;
+  return Math.round((totalPaid.value / totalCharge.value) * 100);
 });
+function collectionRateColor(rate) {
+  if (rate === null) return '';
+  if (rate === 0) return 'var(--danger)';
+  if (rate < 80) return '#D97706';
+  return 'var(--success)';
+}
+
+// ═══ Sort ═══
+const sortKey = ref('');
+const sortDir = ref('');
+const SORTABLE_COLS = [
+  { key: 'student_name', label: '學生' },
+  { key: 'subject', label: '科目' },
+  { key: 'charge', label: '應繳' },
+  { key: 'outstanding', label: '未結清' },
+  { key: 'due_date', label: '到期／逾期' },
+];
+
+function toggleSort(key) {
+  if (sortKey.value !== key) {
+    sortKey.value = key;
+    sortDir.value = 'asc';
+  } else if (sortDir.value === 'asc') {
+    sortDir.value = 'desc';
+  } else {
+    sortKey.value = '';
+    sortDir.value = '';
+  }
+}
+
+// ═══ Filtered + Sorted Rows (3-layer pipeline) ═══
+const tabFilteredRows = computed(() => {
+  const tab = activeTab.value;
+  if (tab === 'all') return rows.value;
+  if (tab === 'overdue') return rows.value.filter(isOverdue);
+  if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
+  if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
+  if (tab === 'paid') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
+  return rows.value;
+});
+
+const searchFilteredRows = computed(() => {
+  const q = searchQuery.value.trim();
+  if (!q) return tabFilteredRows.value;
+  return tabFilteredRows.value.filter(r => r.student_name && r.student_name.includes(q));
+});
+
+const filteredRows = computed(() => {
+  const list = [...searchFilteredRows.value];
+  if (!sortKey.value) return list;
+  const k = sortKey.value;
+  const dir = sortDir.value === 'desc' ? -1 : 1;
+  list.sort((a, b) => {
+    let va = a[k], vb = b[k];
+    if (va == null) va = k === 'charge' || k === 'outstanding' ? -Infinity : '';
+    if (vb == null) vb = k === 'charge' || k === 'outstanding' ? -Infinity : '';
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+    return String(va).localeCompare(String(vb), 'zh-TW') * dir;
+  });
+  return list;
+});
+
+// ═══ CSV Export ═══
+const csvExporting = ref(false);
+function exportCSV() {
+  const data = filteredRows.value;
+  if (!data.length) return;
+  csvExporting.value = true;
+  const headers = ['學生姓名', '科目', '模式', '狀態', '應繳', '已繳', '未結清', '最近付款日', '到期日', '逾期天數'];
+  const csvRows = data.map(r => [
+    r.student_name || '',
+    r.subject || '',
+    r.schedule_mode === 'date' ? '月結' : '堂數',
+    statusLabel(r),
+    r.charge ?? '',
+    r.paid_amount ?? '',
+    r.outstanding ?? '',
+    r.last_paid_at || '',
+    r.due_date || '',
+    (r.days_until_settlement != null && r.days_until_settlement < 0) ? Math.abs(r.days_until_settlement) : '',
+  ]);
+  const bom = '\uFEFF';
+  const csv = bom + [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  a.href = url;
+  a.download = `催繳名單_${ymd}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  setTimeout(() => { csvExporting.value = false; }, 500);
+}
 
 function openSlip(row) {
   slipInvoiceId.value = null;
@@ -568,18 +749,14 @@ async function confirmVoid() {
 async function findConfirmedReportForClass(row) {
   try {
     const token = getToken();
-    const params = new URLSearchParams();
-    if (props.branchId != null && props.branchId !== '') {
+    const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
+    if (props.branchId != null && props.branchId !== '')
       params.set('branch_id', String(Number(props.branchId)));
-    }
-    params.set('status', 'confirmed');
     const resp = await fetch(`/api/v1/payment-reports?${params}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     if (!resp.ok) return null;
-    const json = await resp.json();
-    const reports = json.data || [];
-    const match = reports.find(r => r.student_class_id === row.id && r.status === 'confirmed');
+    const match = ((await resp.json()).data || [])[0];
     return match?.id || null;
   } catch {
     return null;
@@ -593,22 +770,20 @@ const receiptReportId = ref(null);
 async function viewReceiptForClass(row) {
   try {
     const token = getToken();
-    const params = new URLSearchParams();
-    if (props.branchId != null && props.branchId !== '') {
+    const params = new URLSearchParams({ student_class_id: String(row.id), status: 'confirmed' });
+    if (props.branchId != null && props.branchId !== '')
       params.set('branch_id', String(Number(props.branchId)));
-    }
     const resp = await fetch(`/api/v1/payment-reports?${params}`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     if (!resp.ok) return;
-    const json = await resp.json();
-    const reports = json.data || [];
-    const match = reports.find(r => r.student_class_id === row.id && r.status === 'confirmed');
+    const match = ((await resp.json()).data || [])[0];
     if (match) {
       receiptReportId.value = match.id;
       receiptOpen.value = true;
     } else {
-      showToast('找不到此課程的核帳收據', 'error');
+      const isPaid = row.payment_status === 'paid' || row.payment_status === 'renew_needed' || row.payment_status === 'monthly_due_soon';
+      showToast(isPaid ? '此課程透過舊系統繳費，無電子收據紀錄' : '找不到此課程的核帳收據', 'warning');
     }
   } catch {
     showToast('查詢收據失敗', 'error');
@@ -739,8 +914,12 @@ loadAlerts();
 .tc-card--danger .tc-card-num { color: var(--danger); }
 .tc-card--warn { background: #FFFBEB; border-color: #FDE68A; }
 .tc-card--warn .tc-card-num { color: #D97706; }
+.tc-card--overdue { background: #FFF5F5; border-color: #FECACA; }
+.tc-card--overdue .tc-card-num { color: var(--danger); }
+.tc-card-sub { font-size: 12px; color: var(--danger); font-weight: 500; margin-left: 2px; }
 .tc-card--outstanding { background: #FFF5F5; border-color: #FECACA; }
 .tc-card--outstanding .tc-card-num { color: #DC2626; font-size: 18px; }
+.tc-rate { display: block; font-size: 12px; font-weight: 600; margin-top: 2px; }
 
 /* ─── Skeleton ─── */
 .tc-card--skeleton {
@@ -812,6 +991,54 @@ loadAlerts();
 .tc-cta-btn--ghost:hover {
   background: rgba(37,99,235,0.05);
 }
+
+/* ─── Tabs ─── */
+.tc-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.tc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-light);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  font-family: inherit;
+  min-height: 44px;
+}
+.tc-tab:hover { color: var(--text); background: var(--bg); }
+.tc-tab--active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--primary-light, rgba(37,99,235,0.06));
+}
+.tc-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg);
+  color: var(--text-light);
+}
+.tc-tab--active .tc-tab-badge { background: var(--primary); color: #fff; }
 
 /* ─── Search toolbar ─── */
 .tc-toolbar {
@@ -909,6 +1136,32 @@ loadAlerts();
 .tc-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+.tc-th-sort {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+.tc-th-sort:hover { background: var(--bg); }
+.tc-sort-arrow {
+  font-size: 10px;
+  margin-left: 3px;
+  transition: opacity 0.15s;
+}
+
+.tc-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tc-btn--csv {
+  color: var(--text);
+  font-weight: 500;
+}
+.tc-btn--csv:hover:not(:disabled) { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
+.tc-btn--csv:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .tc-cell-name { font-weight: 500; }
 
@@ -1204,5 +1457,10 @@ loadAlerts();
   .tc-card-num { font-size: 18px; }
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
+}
+@media (max-width: 640px) {
+  .tc-tabs { overflow-x: auto; white-space: nowrap; }
+  .tc-toolbar { flex-direction: column; align-items: stretch; }
+  .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
 }
 </style>

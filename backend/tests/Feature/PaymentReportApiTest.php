@@ -528,6 +528,94 @@ class PaymentReportApiTest extends TestCase
         $res->assertStatus(403);
     }
 
+    // ── FR-001: student_class_id precise filter ─────────────────────
+
+    public function test_student_class_id_filter_finds_confirmed_report_beyond_page_1(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $targetSc = $this->createCountModeClass($student->id, ['Charge' => 9999]);
+
+        for ($i = 0; $i < 34; $i++) {
+            $sc = $this->createCountModeClass($student->id);
+            PaymentReport::create([
+                'StudentID' => $student->id,
+                'StudentClassID' => $sc->ID,
+                'reported_by_name' => $student->name,
+                'payment_date' => Carbon::today(),
+                'payment_method' => 'cash',
+                'reported_amount' => 1000,
+                'status' => 'pending',
+                'report_token_hash' => hash('sha256', 'bulk-' . $i . '-' . uniqid()),
+                'token_expires_at' => Carbon::now()->addDay(),
+            ]);
+        }
+
+        PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $targetSc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'transfer',
+            'reported_amount' => 9999,
+            'account_last5' => '11111',
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'target-report-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/payment-reports?student_class_id=' . $targetSc->ID . '&status=confirmed');
+
+        $res->assertOk();
+        $data = $res->json('data');
+        $this->assertCount(1, $data);
+        $this->assertEquals($targetSc->ID, $data[0]['student_class_id']);
+        $this->assertEquals('confirmed', $data[0]['status']);
+    }
+
+    public function test_student_class_id_cross_campus_returns_403(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'report_token_hash' => hash('sha256', 'cross-sc-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/payment-reports?student_class_id=' . $sc->ID . '&status=confirmed');
+
+        $res->assertStatus(403);
+    }
+
+    public function test_student_class_id_filter_nonexistent_returns_404(): void
+    {
+        $token = $this->createDirectorToken([1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/payment-reports?student_class_id=999999');
+
+        $res->assertStatus(404);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private function assertStringContains(string $needle, string $haystack): void

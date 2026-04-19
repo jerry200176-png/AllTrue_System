@@ -151,6 +151,7 @@ class ParentPortalController extends Controller
     {
         $data = $request->validate([
             'line_user_id' => 'required|string',
+            'campus_id'    => 'nullable|integer',
         ]);
 
         $studentIds = StudentLineBinding::where('line_user_id', $data['line_user_id'])
@@ -160,6 +161,14 @@ class ParentPortalController extends Controller
             : collect();
         if ($students->isEmpty()) {
             return response()->json(['message' => '尚未綁定學生帳號（此入口僅供家長/學生）。請透過 LINE 官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定'], 404);
+        }
+
+        // If a campus_id was provided (e.g. from a branch-specific portal link),
+        // prioritise students from that campus so the first session matches the link's branch.
+        // Families with the same child enrolled in multiple campuses benefit from this ordering.
+        $preferredCampusId = !empty($data['campus_id']) ? (int) $data['campus_id'] : null;
+        if ($preferredCampusId) {
+            $students = $students->sortByDesc(fn ($s) => (int) $s->CampusID === $preferredCampusId)->values();
         }
 
         // Create session for the first student (frontend can switch later)
@@ -526,6 +535,7 @@ class ParentPortalController extends Controller
                 'grade'       => $student->ClassID ?? null,
                 'school'      => $student->SchoolName ?? null,
                 'campus_name' => $campusName,
+                'campus_id'   => (int) ($student->CampusID ?? 0),
                 'line_linked' => StudentLineBinding::where('student_id', $student->id)->exists(),
             ],
             'students' => $allStudents->count() > 1 ? $allStudents->toArray() : null,

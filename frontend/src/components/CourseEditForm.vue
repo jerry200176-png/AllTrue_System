@@ -1,185 +1,221 @@
 <template>
-  <div class="course-form-grid">
-    <div class="form-group">
-      <label>科目</label>
-      <select v-model="form.subject">
-        <option v-for="s in subjects" :key="s.value" :value="s.value">{{ s.label }}</option>
-      </select>
-    </div>
+  <div class="course-form-wrapper">
+    <p v-if="contextTitle" class="edit-context-title">{{ contextTitle }}</p>
 
-    <div class="form-group">
-      <label>老師</label>
-      <select v-model="form.teacher_id">
-        <option value="">請選擇</option>
-        <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
-      </select>
-      <div v-if="form.teacher_id" class="teacher-schedule-hint">
-        <span v-if="teacherScheduleLoading" class="teacher-schedule-meta">載入排課中…</span>
-        <template v-else-if="teacherSchedule.length">
-          <span class="teacher-schedule-meta">近兩週排課：</span>
-          <span v-for="s in teacherScheduleDisplay" :key="s.key" class="teacher-busy-chip">{{ s.label }}</span>
-        </template>
-        <span v-else class="teacher-schedule-meta teacher-schedule-empty">近兩週無排課</span>
+    <div v-if="packageInfo" class="package-info-banner">
+      <span class="package-info-icon">📦</span>
+      <div>
+        <strong>{{ packageInfo.name || '共用方案' }}</strong>
+        <span class="package-info-pool">方案池剩餘 {{ packageInfo.remaining_sessions ?? 0 }} / {{ packageInfo.total_sessions ?? 0 }} 堂</span>
       </div>
     </div>
 
-    <div v-if="scopeWarning" class="scope-warning-banner" style="grid-column: 1 / -1;">
+    <div v-if="scopeWarning" class="scope-warning-banner">
       ⚠️ {{ scopeWarning }}（仍可儲存）
     </div>
 
-    <div class="form-group">
-      <label>開課日</label>
-      <input v-model="form.first_class_date" type="date" />
-    </div>
-
-    <div class="form-group">
-      <label>類型</label>
-      <select v-model="form.class_type">
-        <option value="one_on_one">一對一</option>
-        <option value="one_on_two">一對二</option>
-        <option value="one_on_three">一對三</option>
-        <option value="tutoring">輔導</option>
-        <option value="trial">試聽</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label>{{ hasPerDayDuration ? '每小時費用（元）' : '單堂費用（元）' }}</label>
-      <input v-model.number="form.rate_per_30min" type="number" min="0" step="1" placeholder="1500" />
-    </div>
-
-    <div class="form-group">
-      <label>預設上課時長（小時）</label>
-      <select v-model.number="form.duration_hours">
-        <option :value="1">1 小時</option>
-        <option :value="1.5">1.5 小時</option>
-        <option :value="2">2 小時</option>
-        <option :value="2.5">2.5 小時</option>
-        <option :value="3">3 小時</option>
-      </select>
-    </div>
-
-    <div class="form-group">
-      <label>繳費方式</label>
-      <select v-model="form.payment_type">
-        <option value="session">堂數制</option>
-        <option value="monthly">月結</option>
-      </select>
-    </div>
-
-    <div v-if="form.payment_type === 'session'" class="form-group">
-      <label>購買堂數</label>
-      <input v-model.number="form.sessions_purchased" type="number" min="0" placeholder="8" />
-    </div>
-
-    <template v-if="form.payment_type === 'monthly'">
-      <div class="form-group">
-        <label>結算日（每月幾號）</label>
-        <select v-model.number="form.settlement_day">
-          <option :value="null">請選擇</option>
-          <option v-for="d in settlementDayOptions" :key="d" :value="d">每月 {{ d }} 號</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>每月堂數（選填）</label>
-        <input v-model.number="form.monthly_sessions" type="number" min="0" placeholder="依學生個案" />
-      </div>
-    </template>
-
-    <div class="form-group">
-      <label>繳費日期（選填）</label>
-      <input v-model="form.paid_at" type="date" />
-      <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
-      <p v-else class="field-hint field-hint--warning">清空繳費日期儲存後，將改為未繳費</p>
-    </div>
-
-    <div v-if="showRemaining" class="form-group">
-      <label>剩餘堂數</label>
-      <input v-model.number="form.remaining_sessions" type="number" />
-    </div>
-
-    <div class="form-group span-full">
-      <label>固定排課日（可多選）</label>
-      <div class="day-checkbox-group">
-        <label
-          v-for="d in dayOptions"
-          :key="d.value"
-          :class="['day-chip', { selected: selectedDaySet.has(d.value) }]"
-        >
-          <input
-            type="checkbox"
-            :value="d.value"
-            v-model="form.days_of_week"
-            style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;"
-          />
-          {{ d.label }}
-        </label>
-      </div>
-      <div v-if="(form.days_of_week || []).length > 0" class="day-time-slots">
-        <div
-          v-for="(slot, idx) in (form.day_time_slots || [])"
-          :key="`slot-${idx}-${slot.day}-${slot.start_time}`"
-          class="day-time-slot-row per-day-row"
-        >
-          <select
-            v-if="sortedSelectedDays.length > 1"
-            class="day-inline-select"
-            :value="Number(slot.day)"
-            @change="updateSlotDay(idx, $event.target.value)"
-          >
-            <option v-for="d in sortedSelectedDays" :key="`opt-${idx}-${d}`" :value="d">週{{ dayLabelMap[d] }}</option>
+    <!-- Section 1: 課程基本資訊 -->
+    <section class="form-section">
+      <h4 class="form-section-title">課程基本資訊</h4>
+      <div class="form-section-grid">
+        <div class="form-group" :class="{ 'field-has-error': fieldErrors.subject }">
+          <label>科目 <span class="required-star">*</span></label>
+          <select v-model="form.subject">
+            <option v-for="s in subjects" :key="s.value" :value="s.value">{{ s.label }}</option>
           </select>
-          <span v-else class="day-time-slot-label">週{{ dayLabelMap[Number(slot.day)] || '?' }}</span>
-          <select
-            :value="String(slot.start_time || form.start_time).slice(0, 5)"
-            @change="updateSlotTime(idx, $event.target.value)"
-          >
-            <option v-for="t in timeOptions" :key="`${idx}-${t}`" :value="t">{{ t }}</option>
-          </select>
-          <input
-            type="number"
-            class="per-day-dur"
-            :value="Number(slot.duration_hours ?? form.duration_hours)"
-            min="0.5"
-            step="0.5"
-            inputmode="decimal"
-            @change="updateSlotDuration(idx, $event.target.value)"
-          />
-          <span class="day-time-slot-end">~ {{ computeEndTime(slot.start_time || form.start_time, slot.duration_hours ?? form.duration_hours) || '—' }}</span>
-          <button
-            v-if="(form.day_time_slots || []).length > 1"
-            type="button"
-            class="btn-remove-slot"
-            @click="removeSlot(idx)"
-          >
-            移除
-          </button>
+          <span v-if="fieldErrors.subject" class="field-error">{{ fieldErrors.subject }}</span>
         </div>
-        <button
-          v-if="(form.day_time_slots || []).length < 7"
-          type="button"
-          class="btn-add-slot"
-          @click="addTimeSlot"
-        >
-          ＋ 新增時段（同日可排多段，最多 7 段）
-        </button>
+
+        <div class="form-group" :class="{ 'field-has-error': fieldErrors.teacher_id }">
+          <label>老師 <span class="required-star">*</span></label>
+          <select v-model="form.teacher_id">
+            <option value="">請選擇</option>
+            <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
+          </select>
+          <span v-if="fieldErrors.teacher_id" class="field-error">{{ fieldErrors.teacher_id }}</span>
+          <div v-if="form.teacher_id" class="teacher-schedule-hint">
+            <span v-if="teacherScheduleLoading" class="teacher-schedule-meta">載入排課中…</span>
+            <template v-else-if="teacherSchedule.length">
+              <span class="teacher-schedule-meta">近兩週排課：</span>
+              <span v-for="s in teacherScheduleDisplay" :key="s.key" class="teacher-busy-chip">{{ s.label }}</span>
+            </template>
+            <span v-else class="teacher-schedule-meta teacher-schedule-empty">近兩週無排課</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>開課日</label>
+          <input v-model="form.first_class_date" type="date" />
+        </div>
+
+        <div class="form-group">
+          <label>類型</label>
+          <select v-model="form.class_type">
+            <option value="one_on_one">一對一</option>
+            <option value="one_on_two">一對二</option>
+            <option value="one_on_three">一對三</option>
+            <option value="tutoring">輔導</option>
+            <option value="trial">試聽</option>
+          </select>
+        </div>
+
+        <div class="form-group span-full">
+          <label>上課地點（教室）</label>
+          <select v-model="form.room_id">
+            <option :value="null">請選擇教室</option>
+            <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}{{ r.memo ? ' — ' + r.memo : '' }}</option>
+          </select>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- start_time auto-derived from first day_time_slot -->
+    <!-- Section 2: 費用與繳費 -->
+    <section class="form-section">
+      <h4 class="form-section-title">費用與繳費</h4>
+      <div class="form-section-grid">
+        <div class="form-group">
+          <label>{{ hasPerDayDuration ? '每小時費用（元）' : '單堂費用（元）' }}</label>
+          <input v-model.number="form.rate_per_30min" type="number" min="0" step="1" placeholder="1500" />
+        </div>
 
-    <div class="form-group span-full">
-      <label>上課地點（教室）</label>
-      <select v-model="form.room_id">
-        <option :value="null">請選擇教室</option>
-        <option v-for="r in rooms" :key="r.id" :value="r.id">{{ r.name }}{{ r.memo ? ' — ' + r.memo : '' }}</option>
-      </select>
-    </div>
+        <div class="form-group">
+          <label>預設上課時長（小時）</label>
+          <select v-model.number="form.duration_hours">
+            <option :value="1">1 小時</option>
+            <option :value="1.5">1.5 小時</option>
+            <option :value="2">2 小時</option>
+            <option :value="2.5">2.5 小時</option>
+            <option :value="3">3 小時</option>
+          </select>
+        </div>
 
-    <div class="form-group span-full">
-      <label>備註（選填）</label>
-      <textarea v-model="form.memo" rows="2" placeholder="課程或地點補充"></textarea>
-    </div>
+        <div class="form-group">
+          <label>繳費方式</label>
+          <select v-model="form.payment_type">
+            <option value="session">堂數制</option>
+            <option value="monthly">月結</option>
+          </select>
+        </div>
+
+        <div v-if="form.payment_type === 'session'" class="form-group">
+          <label>購買堂數</label>
+          <input
+            v-model.number="form.sessions_purchased"
+            type="number"
+            min="0"
+            placeholder="8"
+            :disabled="!!packageInfo"
+          />
+          <span v-if="packageInfo" class="field-hint field-hint--info">此欄位由共用方案管理，不可直接修改</span>
+        </div>
+
+        <template v-if="form.payment_type === 'monthly'">
+          <div class="form-group" :class="{ 'field-has-warning': fieldWarnings.settlement_day }">
+            <label>結算日（每月幾號）</label>
+            <select v-model.number="form.settlement_day">
+              <option :value="null">請選擇</option>
+              <option v-for="d in settlementDayOptions" :key="d" :value="d">每月 {{ d }} 號</option>
+            </select>
+            <span v-if="fieldWarnings.settlement_day" class="field-warning">{{ fieldWarnings.settlement_day }}</span>
+          </div>
+          <div class="form-group">
+            <label>每月堂數（選填）</label>
+            <input v-model.number="form.monthly_sessions" type="number" min="0" placeholder="依學生個案" />
+          </div>
+        </template>
+
+        <div class="form-group">
+          <label>繳費日期（選填）</label>
+          <input v-model="form.paid_at" type="date" />
+          <p v-if="form.paid_at" class="field-hint field-hint--success">已填寫繳費日期，儲存後將自動標示為已繳費</p>
+          <p v-else class="field-hint field-hint--warning">清空繳費日期儲存後，將改為未繳費</p>
+        </div>
+
+        <div v-if="showRemaining && !packageInfo" class="form-group">
+          <label>剩餘堂數</label>
+          <input v-model.number="form.remaining_sessions" type="number" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: 排課時段 -->
+    <section class="form-section">
+      <h4 class="form-section-title">排課時段</h4>
+      <div class="form-section-grid">
+        <div class="form-group span-full">
+          <label>固定排課日（可多選）</label>
+          <div class="day-checkbox-group">
+            <label
+              v-for="d in dayOptions"
+              :key="d.value"
+              :class="['day-chip', { selected: selectedDaySet.has(d.value) }]"
+            >
+              <input
+                type="checkbox"
+                :value="d.value"
+                v-model="form.days_of_week"
+                style="position:absolute;opacity:0;width:0;height:0;pointer-events:none;"
+              />
+              {{ d.label }}
+            </label>
+          </div>
+          <div v-if="(form.days_of_week || []).length > 0" class="day-time-slots">
+            <div
+              v-for="(slot, idx) in (form.day_time_slots || [])"
+              :key="`slot-${idx}-${slot.day}-${slot.start_time}`"
+              class="day-time-slot-row per-day-row"
+            >
+              <select
+                v-if="sortedSelectedDays.length > 1"
+                class="day-inline-select"
+                :value="Number(slot.day)"
+                @change="updateSlotDay(idx, $event.target.value)"
+              >
+                <option v-for="d in sortedSelectedDays" :key="`opt-${idx}-${d}`" :value="d">週{{ dayLabelMap[d] }}</option>
+              </select>
+              <span v-else class="day-time-slot-label">週{{ dayLabelMap[Number(slot.day)] || '?' }}</span>
+              <select
+                :value="String(slot.start_time || form.start_time).slice(0, 5)"
+                @change="updateSlotTime(idx, $event.target.value)"
+              >
+                <option v-for="t in timeOptions" :key="`${idx}-${t}`" :value="t">{{ t }}</option>
+              </select>
+              <input
+                type="number"
+                class="per-day-dur"
+                :value="Number(slot.duration_hours ?? form.duration_hours)"
+                min="0.5"
+                step="0.5"
+                inputmode="decimal"
+                @change="updateSlotDuration(idx, $event.target.value)"
+              />
+              <span class="day-time-slot-end">~ {{ computeEndTime(slot.start_time || form.start_time, slot.duration_hours ?? form.duration_hours) || '—' }}</span>
+              <button
+                v-if="(form.day_time_slots || []).length > 1"
+                type="button"
+                class="btn-remove-slot"
+                @click="removeSlot(idx)"
+              >
+                移除
+              </button>
+            </div>
+            <button
+              v-if="(form.day_time_slots || []).length < 7"
+              type="button"
+              class="btn-add-slot"
+              @click="addTimeSlot"
+            >
+              ＋ 新增時段（同日可排多段，最多 7 段）
+            </button>
+          </div>
+        </div>
+
+        <div class="form-group span-full">
+          <label>備註（選填）</label>
+          <textarea v-model="form.memo" rows="2" placeholder="課程或地點補充"></textarea>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -197,6 +233,8 @@ const props = defineProps({
   settlementDayOptions: { type: Array, default: () => [] },
   showRemaining: { type: Boolean, default: false },
   studentGrade: { type: [String, Number], default: null },
+  packageInfo: { type: Object, default: null },
+  contextTitle: { type: String, default: '' },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -259,7 +297,6 @@ const dayLabelMap = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六'
 const sortedSelectedDays = computed(() => (
   [...new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b)
 ));
-/** 與 checkbox :value 皆用數字比對（API 可能回字串，避免 includes 對不起來／同步順序造成 UI 錯亂） */
 const selectedDaySet = computed(() => new Set(sortedSelectedDays.value));
 const hasPerDayDuration = computed(() => {
   const vals = (form.day_time_slots || [])
@@ -268,6 +305,25 @@ const hasPerDayDuration = computed(() => {
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
 });
+
+const fieldErrors = computed(() => {
+  const errors = {};
+  if (!form.subject) errors.subject = '科目為必填';
+  if (!form.teacher_id) errors.teacher_id = '老師為必填';
+  return errors;
+});
+
+const fieldWarnings = computed(() => {
+  const warnings = {};
+  if (form.payment_type === 'monthly' && !form.settlement_day) {
+    warnings.settlement_day = '月結方式建議設定結算日';
+  }
+  return warnings;
+});
+
+const hasErrors = computed(() => Object.keys(fieldErrors.value).length > 0);
+
+defineExpose({ hasErrors, fieldErrors });
 
 watch(
   () => form.teacher_id,
@@ -312,8 +368,6 @@ watch(
     if (!Array.isArray(form.days_of_week)) form.days_of_week = [];
     if (!Array.isArray(form.day_time_slots)) form.day_time_slots = [];
     syncDayTimeSlotsFromSelection();
-    // Keep parent-sync guard for this microtask so deep form watcher
-    // does not emit immediately and bounce the same payload back.
     nextTick(() => {
       syncingFromParent = false;
     });
@@ -321,7 +375,6 @@ watch(
   { immediate: true }
 );
 
-/** 必須先於下方 deep form watcher 註冊：取消勾選星期時要先 sync 時段，再 emit，否則父層會短暫拿到「已取消勾選但 day_time_slots 仍含該日」的不一致 payload */
 watch(
   () => form.days_of_week,
   () => {
@@ -369,13 +422,11 @@ function syncDayTimeSlotsFromSelection() {
   );
   let slots = [...(form.day_time_slots || [])];
 
-  // API 偶爾只回 day_time_slots、days_of_week 為空：勿把多段時段整批刪掉；從時段還原勾選的星期
   if (chipDays.size === 0 && slots.length > 0 && syncingFromParent) {
     form.days_of_week = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
     chipDays = new Set(form.days_of_week);
   }
 
-  // 從父層載入且已有時段：強制星期與時段一致（避免 days_of_week 多餘時補出假列，與列表顯示不符）
   if (syncingFromParent && slots.length > 0) {
     const fromSlots = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
     form.days_of_week = fromSlots;
@@ -422,7 +473,6 @@ function removeSlot(idx) {
   const targetDay = Number(target.day || 0);
   const sameDayCount = slots.filter((s) => Number(s?.day || 0) === targetDay).length;
   form.day_time_slots = slots.filter((_, i) => i !== idx);
-  // 如果是該天最後一個時段，一併取消勾選該星期
   if (sameDayCount <= 1 && targetDay >= 1 && targetDay <= 7) {
     form.days_of_week = (form.days_of_week || []).filter((d) => Number(d) !== targetDay);
   }
@@ -468,7 +518,55 @@ function computeEndTime(startRaw, durHours) {
 </script>
 
 <style scoped>
-.course-form-grid {
+.course-form-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.edit-context-title {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.package-info-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #166534;
+}
+.package-info-icon { font-size: 18px; }
+.package-info-pool {
+  display: block;
+  font-size: 12px;
+  color: #15803d;
+  margin-top: 2px;
+}
+
+.form-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fff;
+}
+
+.form-section-title {
+  margin: 0 0 14px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.form-section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px 16px;
@@ -476,6 +574,33 @@ function computeEndTime(startRaw, durHours) {
 
 .span-full {
   grid-column: 1 / -1;
+}
+
+.required-star {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.field-has-error select,
+.field-has-error input {
+  border-color: #dc2626 !important;
+}
+.field-error {
+  display: block;
+  font-size: 12px;
+  color: #dc2626;
+  margin-top: 4px;
+}
+
+.field-has-warning select,
+.field-has-warning input {
+  border-color: #f59e0b !important;
+}
+.field-warning {
+  display: block;
+  font-size: 12px;
+  color: #b45309;
+  margin-top: 4px;
 }
 
 .day-checkbox-group {
@@ -589,9 +714,10 @@ function computeEndTime(startRaw, durHours) {
 .field-hint { font-size: 12px; margin-top: 4px; line-height: 1.4; }
 .field-hint--success { color: #2e7d32; }
 .field-hint--warning { color: #b26a00; }
+.field-hint--info { color: #1e40af; font-style: italic; }
 
 @media (max-width: 720px) {
-  .course-form-grid {
+  .form-section-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -135,9 +135,10 @@ Route::prefix('v1')->group(function () {
             'status' => 'ok',
             'timestamp' => now()->toIso8601String(),
             'perf_flags' => [
-                'throttle_notif_sync' => config('perfflags.throttle_notification_sync'),
-                'lr_default_per_page' => config('perfflags.learning_records_default_per_page'),
-                'lr_max_per_page'     => config('perfflags.learning_records_max_per_page'),
+                'throttle_notif_sync'     => config('perfflags.throttle_notification_sync'),
+                'lr_default_per_page'     => config('perfflags.learning_records_default_per_page'),
+                'lr_max_per_page'         => config('perfflags.learning_records_max_per_page'),
+                'lr_default_window_days'  => config('perfflags.learning_records_default_window_days'),
             ],
             'log_pipeline' => $logPipeline,
         ]);
@@ -300,6 +301,7 @@ Route::prefix('v1')->group(function () {
         Route::get('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'show']);
         Route::put('course-packages/{id}', [\App\Http\Controllers\CoursePackageController::class, 'update']);
         Route::post('course-packages/{id}/recompute', [\App\Http\Controllers\CoursePackageController::class, 'recompute']);
+        Route::post('course-packages/{id}/rebuild-ledger', [\App\Http\Controllers\CoursePackageController::class, 'rebuildLedger']);
         Route::post('course-packages/{id}/bind-courses', [\App\Http\Controllers\CoursePackageController::class, 'bindCourses']);
 
         Route::get('attendance', [AttendanceController::class, 'index']);

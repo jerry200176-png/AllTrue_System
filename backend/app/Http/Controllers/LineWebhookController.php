@@ -440,14 +440,18 @@ class LineWebhookController extends Controller
 
     private function getPortalUrl(object $campus): string
     {
+        $campusParam = 'campus_id=' . (int) $campus->id;
+
         if (!empty($campus->LIFF_URL)) {
-            return $campus->LIFF_URL;
+            $base = rtrim((string) $campus->LIFF_URL, '/');
+            $sep = (strpos($base, '?') !== false) ? '&' : '?';
+            return $base . $sep . $campusParam;
         }
         if (!empty($campus->LIFFID)) {
-            return "https://liff.line.me/{$campus->LIFFID}";
+            return "https://liff.line.me/{$campus->LIFFID}?{$campusParam}";
         }
         $baseUrl = $this->resolveCampusBaseUrl($campus, null);
-        return $baseUrl . '/#/parent';
+        return $baseUrl . '/?' . $campusParam . '#/parent';
     }
 
     private function resolveCampusBaseUrl(object $campus, ?Request $request = null): string

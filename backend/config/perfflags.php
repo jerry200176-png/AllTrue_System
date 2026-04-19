@@ -25,6 +25,11 @@ return [
     // Max per_page cap for learning records (safety limit)
     'learning_records_max_per_page' => (int) env('PERF_LR_MAX_PER_PAGE', 200),
 
+    // Default time window (in days) for initial LearningRecords fetch when caller omits start_date.
+    // Prevents the page from having to render years of historical records as the cram school ages.
+    // 0 = disabled (old behavior: no default window). Recommended: 90 (≈ one typical course cycle).
+    'learning_records_default_window_days' => (int) env('PERF_LR_DEFAULT_WINDOW_DAYS', 90),
+
     // Course packages (multi-subject shared session pool).
     // false = feature hidden, package ledger hooks are no-ops.
     'course_packages_enabled' => (bool) env('PERF_COURSE_PACKAGES', true),

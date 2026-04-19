@@ -29,11 +29,13 @@ export async function getParentDashboard(token, { lrPage = 1, lrPerPage = 10 } =
   return data;
 }
 
-export async function parentLoginLine(lineUserId) {
+export async function parentLoginLine(lineUserId, campusId = null) {
+  const payload = { line_user_id: lineUserId };
+  if (campusId) payload.campus_id = Number(campusId);
   const res = await fetch(`${API_BASE}/parent/login-line`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ line_user_id: lineUserId }),
+    body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || 'LINE 登入失敗');

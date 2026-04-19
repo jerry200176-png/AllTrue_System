@@ -233,6 +233,8 @@
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
+                            <p class="action-section-label">日常操作</p>
+                            <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
                             <button
                               v-if="isSessionMode(c)"
                               class="action-dropdown-item action-dropdown-add-session-mobile"
@@ -240,18 +242,19 @@
                               :disabled="!canQuickAddSession(c)"
                               :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            >+ 新增堂次</button>
-                            <button class="action-dropdown-item" @click="editCourse(c); closeActionMenu()">編輯</button>
+                            ><span class="action-icon">＋</span> 新增堂次</button>
                             <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }]"
                               @click="openPurchaseModal(c); closeActionMenu()"
-                            >{{ isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 ? '⚡ 續報加購' : '加購堂數' }}</button>
-                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()">暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()">恢復課程</button>
-                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()">結案（不續報）</button>
-                            <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()">換師複製</button>
+                            ><span class="action-icon">⚡</span> {{ isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數' }}</button>
+                            <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                            <p class="action-section-label">狀態管理</p>
+                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
+                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                            <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
                             <hr class="action-dropdown-divider" />
-                            <button class="action-dropdown-item action-dropdown-danger" @click="deleteCourse(c); closeActionMenu()">刪除課程</button>
+                            <p class="action-section-label action-section-label--danger">危險操作</p>
+                            <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
                           </div>
                         </div>
                       </div>
@@ -334,11 +337,14 @@
                     <div class="action-menu-wrapper">
                       <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(hc.id)" title="更多操作">操作 ▾</button>
                       <div v-if="activeActionMenu === hc.id" class="action-dropdown" @click.stop>
-                        <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()">編輯</button>
-                        <button class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(hc); closeActionMenu()">恢復課程</button>
-                        <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()">換師複製</button>
+                        <p class="action-section-label">日常操作</p>
+                        <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
+                        <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
+                        <p class="action-section-label">狀態管理</p>
+                        <button class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(hc); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
-                        <button class="action-dropdown-item action-dropdown-danger" @click="deleteCourse(hc); closeActionMenu()">刪除課程</button>
+                        <p class="action-section-label action-section-label--danger">危險操作</p>
+                        <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
                       </div>
                     </div>
                   </div>
@@ -408,6 +414,7 @@
         <h3 class="modal-title">編輯課程</h3>
         <div class="form-section">
           <CourseEditForm
+            ref="editFormRef"
             v-model="editForm"
             :teachers="teachers"
             :rooms="rooms"
@@ -416,6 +423,8 @@
             :time-options="TIME_OPTIONS_30"
             :settlement-day-options="settlementDayOptions"
             :show-remaining="true"
+            :package-info="editPackageInfo"
+            :context-title="editContextTitle"
           />
         </div>
         <div
@@ -427,7 +436,7 @@
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
-          <button class="primary" @click="submitEdit">儲存</button>
+          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitEdit">儲存</button>
         </div>
       </div>
     </div>
@@ -569,7 +578,26 @@
       :fetch-availability="fetchTeacherAvailability"
       @submit="onSubstituteV2Submit"
     />
-    <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
+    <ToastWithUndo ref="toastRef" />
+
+    <!-- Delete Confirm Modal (FR-013) -->
+    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="confirmDeleteTarget = null">
+      <div class="modal" style="width: 420px;">
+        <h3 class="modal-title" style="color: #dc2626;">確認刪除課程</h3>
+        <div style="margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">
+          <p>確定要刪除以下課程？</p>
+          <p style="margin: 8px 0;">
+            <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
+            <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
+          </p>
+          <p style="color: #dc2626; font-size: 13px;">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+        </div>
+        <div class="actions">
+          <button class="ghost" @click="confirmDeleteTarget = null">取消</button>
+          <button class="danger" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">確認刪除</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -1164,7 +1192,26 @@ function handleSchedulerDuplicateCM(evt) {
 const showEditModal = ref(false);
 const editingId = ref(null);
 const editingCourseFromLaravel = ref(false);
+const editingCourseRaw = ref(null);
+const editFormRef = ref(null);
 const editForm = ref({});
+const editPackageInfo = computed(() => {
+  const c = editingCourseRaw.value;
+  if (!c?.PackageID) return null;
+  return {
+    id: c.PackageID,
+    name: c.package_name || '共用方案',
+    total_sessions: c.package_total_sessions ?? 0,
+    remaining_sessions: c.package_remaining_sessions ?? 0,
+  };
+});
+const editContextTitle = computed(() => {
+  const c = editingCourseRaw.value;
+  if (!c) return '';
+  const subjectLabel = c.subject_name || c.subject || '';
+  const studentName = c.student_name || '';
+  return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
+});
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -2445,6 +2492,7 @@ function scheduleFingerprintForEdit(form) {
 
 const editCourse = (c) => {
   editingId.value = c.id;
+  editingCourseRaw.value = c;
   editingCourseFromLaravel.value = !!(
     c.data_source === 'laravel'
     || c.branch_name != null
@@ -2505,6 +2553,7 @@ const submitEdit = async () => {
       const token = sess?.access_token;
       if (token) {
         const endTime = computeEndTime(form.start_time, form.duration_hours);
+        const isPackageCourse = !!editingCourseRaw.value?.PackageID;
         const body = {
           subject: form.subject,
           teacher_id: form.teacher_id || null,
@@ -2512,7 +2561,7 @@ const submitEdit = async () => {
           rate_per_30min: form.rate_per_30min,
           duration_hours: form.duration_hours,
           sessions_purchased: form.sessions_purchased,
-          remaining_sessions: form.remaining_sessions,
+          ...(isPackageCourse ? {} : { remaining_sessions: form.remaining_sessions }),
           days_of_week: (form.days_of_week || []).length ? form.days_of_week : [],
           start_time: form.start_time,
           day_time_slots: (form.day_time_slots || [])
@@ -2598,11 +2647,11 @@ const submitEdit = async () => {
           }
           showEditModal.value = false;
           await loadCourses();
-          alert(successMsg);
+          toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
           return;
         }
         const err = await res.json().catch(() => ({}));
-        alert(err?.message || '更新失敗');
+        toastRef.value?.show?.({ title: '儲存失敗', description: err?.message || '更新失敗', variant: 'error', durationMs: 5000 });
         return;
       }
     } catch (e) {
@@ -2628,8 +2677,11 @@ const submitEdit = async () => {
   alert('課程已更新。');
 };
 
-const deleteCourse = async (c) => {
-  if (!confirm('確定要刪除此課程？刪除後無法復原。')) return;
+const confirmDeleteTarget = ref(null);
+const executeDeleteCourse = async () => {
+  const c = confirmDeleteTarget.value;
+  if (!c) return;
+  confirmDeleteTarget.value = null;
   const fromLaravel = c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null;
   if (fromLaravel) {
     try {
@@ -2643,14 +2695,15 @@ const deleteCourse = async (c) => {
         });
         if (res.ok) {
           courses.value = courses.value.filter(x => x.id !== c.id);
+          toastRef.value?.show?.({ title: '已刪除', description: `${c.subject_name || c.subject || ''} 課程已刪除`, variant: 'success', durationMs: 3000 });
           return;
         }
         const err = await res.json().catch(() => ({}));
-        alert(err?.message || '刪除失敗');
+        toastRef.value?.show?.({ title: '刪除失敗', description: err?.message || '刪除失敗', variant: 'error', durationMs: 5000 });
         return;
       }
     } catch (e) {
-      alert('刪除失敗：' + (e?.message || '請稍後再試'));
+      toastRef.value?.show?.({ title: '刪除失敗', description: e?.message || '請稍後再試', variant: 'error', durationMs: 5000 });
       return;
     }
   }
@@ -3588,6 +3641,26 @@ onUnmounted(() => {
 
 .action-dropdown-danger:hover {
   background: #fef2f2;
+}
+
+.action-section-label {
+  margin: 0;
+  padding: 6px 14px 4px;
+  font-size: 0.7em;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.action-section-label--danger {
+  color: #f87171;
+}
+.action-icon {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: 4px;
+  font-size: 13px;
 }
 
 button.danger {

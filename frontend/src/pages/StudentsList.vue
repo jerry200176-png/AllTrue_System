@@ -230,7 +230,7 @@
                         <span class="tag">{{ getSubjectLabel(course.subject) }}</span>
                         <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
                         <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
-                        <span v-else-if="course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 && !effectiveClosedReason(course)" class="tag tag-expiring">即將用完</span>
+                        <span v-else-if="course.payment_type === 'session' && !course.PackageID && (course.remaining_sessions ?? 0) <= 2 && !effectiveClosedReason(course)" class="tag tag-expiring">即將用完</span>
                       </td>
                       <td>{{ course.teacher_name || '待指派' }}</td>
                       <td>
@@ -244,12 +244,13 @@
                           <div class="mini-progress">
                             <div class="mini-progress-fill" :style="{
                               width: Math.min(100, Math.round(((course.used_sessions || 0) / Math.max(course.sessions_purchased || 1, 1)) * 100)) + '%',
-                              background: (course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32'
+                              background: course.PackageID ? '#2e7d32' : ((course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
                             }"></div>
                           </div>
-                          <span :class="{ 'text-red': course.remaining_sessions <= 2 }">
+                          <span :class="{ 'text-red': !course.PackageID && course.remaining_sessions <= 2 }">
                             <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
                             <span v-if="course.PackageID" class="tag tag-package-hint">（方案共用）</span>
+                            <span v-if="course.package_total_sessions" class="package-pool-hint">方案池 {{ course.package_remaining_sessions ?? 0 }} / {{ course.package_total_sessions }} 堂</span>
                           </span>
                         </div>
                         <span v-else class="hint">
@@ -442,6 +443,7 @@
       <div class="modal" style="width: 520px;">
         <h3>編輯課程</h3>
         <CourseEditForm
+          ref="editFormRef"
           v-model="courseForm"
           :teachers="teachers"
           :rooms="rooms"
@@ -450,6 +452,8 @@
           :time-options="TIME_OPTIONS_30"
           :settlement-day-options="settlementDayOptions"
           :student-grade="selectedStudent?.grade || selectedStudent?.ClassID || null"
+          :package-info="editPackageInfo"
+          :context-title="editContextTitle"
         />
 
         <div v-if="courseForm.payment_type === 'session'" class="quick-add-session-link" style="margin: 12px 0 4px; text-align: right;">
@@ -458,10 +462,12 @@
 
         <div class="actions">
           <button class="ghost" @click="closeCourseModal">取消</button>
-          <button class="primary" @click="submitCourse">儲存</button>
+          <button class="primary" :disabled="editFormRef?.hasErrors" @click="submitCourse">儲存</button>
         </div>
       </div>
     </div>
+
+    <ToastWithUndo ref="toastRef" />
 
     <QuickAddSessionModal
       :show="showQuickAddSession"
@@ -606,6 +612,7 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
+import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 
@@ -633,6 +640,9 @@ const lineBindingsLoading = ref(false);
 const showCourseModal = ref(false);
 const editingCourseId = ref(null);
 const editingCourseFromLaravel = ref(false);
+const editingCourseRaw = ref(null);
+const editFormRef = ref(null);
+const toastRef = ref(null);
 const selectedStudent = ref(null);
 const isLaravelCourse = (course) => (
   course?.data_source === 'laravel'
@@ -803,9 +813,12 @@ const parseCourseNumber = (value) => {
 const getCourseRemainingSessions = (course) => (
   parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
 );
-/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷 */
+/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷
+ *  共用方案課程（PackageID）以方案共用池計數，個別 StudentClass 行的 remaining 可能暫時為 0（ledger 資料修復前），
+ *  不應據此誤報「即將用完」— 僅在明確停課（status=inactive）時由其他 UI 標示（FR-002）。 */
 const isSessionPaymentLowRemaining = (course) => {
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') return false;
+  if (course?.PackageID) return false;
   const r = getCourseRemainingSessions(course);
   if (r == null) return false;
   return r <= 2;
@@ -831,6 +844,12 @@ function effectiveClosedReason(course) {
   return null;
 }
 const isHistoricalCourse = (course) => {
+  // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
+  // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
+  // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
+  if (course?.PackageID && String(course?.status || '').toLowerCase() !== 'inactive') {
+    return false;
+  }
   const remaining = getCourseRemainingSessions(course);
   if (remaining == null) return false;
   return remaining <= 0 && isCourseSettled(course);
@@ -1695,6 +1714,7 @@ const interceptGoToPurchase = (conflict) => {
 const editCourse = (course) => {
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   editingCourseId.value = course.id;
+  editingCourseRaw.value = course;
   editingCourseFromLaravel.value = isLaravelCourse(course);
   courseForm.value = {
     subject: course.subject,
@@ -1743,9 +1763,28 @@ const editCourse = (course) => {
   showCourseModal.value = true;
 };
 
+const editPackageInfo = computed(() => {
+  const c = editingCourseRaw.value;
+  if (!c?.PackageID) return null;
+  return {
+    id: c.PackageID,
+    name: c.package_name || '共用方案',
+    total_sessions: c.package_total_sessions ?? 0,
+    remaining_sessions: c.package_remaining_sessions ?? 0,
+  };
+});
+const editContextTitle = computed(() => {
+  const c = editingCourseRaw.value;
+  if (!c) return '';
+  const subjectLabel = c.subject_name || c.subject || '';
+  const studentName = selectedStudent.value?.name || c.student_name || '';
+  return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
+});
+
 const closeCourseModal = () => {
   showCourseModal.value = false;
   editingCourseId.value = null;
+  editingCourseRaw.value = null;
   editingCourseFromLaravel.value = false;
 };
 
@@ -1883,6 +1922,7 @@ const submitCourse = async () => {
         alert('請重新登入後再試');
         return;
       }
+      const isPackageCourse = !!editingCourseRaw.value?.PackageID;
       const body = {
         subject: form.subject,
         teacher_id: form.teacher_id || null,
@@ -1909,6 +1949,7 @@ const submitCourse = async () => {
         monthly_sessions: form.payment_type === 'monthly' ? form.monthly_sessions : null,
         Memo: form.memo || null
       };
+      if (isPackageCourse) delete body.remaining_sessions;
       body.paid_at = form.paid_at ? form.paid_at : null;
       const res = await fetch(`/api/v1/student-classes/${editingCourseId.value}`, {
         method: 'PUT',
@@ -1946,13 +1987,13 @@ const submitCourse = async () => {
           successMsg += `\n\n⚠️ 學段提示：${payload.scope_warning}`;
         }
         closeCourseModal();
-        alert(successMsg);
+        toastRef.value?.show?.({ title: '已儲存', description: successMsg, variant: 'success', durationMs: 4000 });
         await loadAllStudentCourses();
         await loadStudentCourses(student.id);
         return;
       }
       const err = await res.json().catch(() => ({}));
-      alert(parseApiErrorMessage(err, '更新課程失敗'));
+      toastRef.value?.show?.({ title: '儲存失敗', description: parseApiErrorMessage(err, '更新課程失敗'), variant: 'error', durationMs: 5000 });
       return;
     } catch (_) {}
   }
@@ -2843,6 +2884,13 @@ table th { font-size: 12.5px; }
   font-size: 0.7em;
   color: #6d28d9;
   font-weight: 400;
+}
+.package-pool-hint {
+  display: block;
+  font-size: 0.7em;
+  color: #7c3aed;
+  font-weight: 400;
+  margin-top: 2px;
 }
 .tag-paused-sm {
   background: #ffedd5;

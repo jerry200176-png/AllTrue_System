@@ -501,6 +501,8 @@ const props = defineProps({
 
 const tokenKey = 'parent_portal_token';
 const token = ref(localStorage.getItem(tokenKey) || '');
+// campus_id from the URL (injected by LINE webhook portal link via ?campus_id=X)
+const urlCampusId = new URLSearchParams(window.location.search).get('campus_id') || '';
 const loginForm = ref({ Name: '', Phone: '' });
 const loginError = ref('');
 const loginLoading = ref(false);
@@ -743,7 +745,7 @@ const loginWithLine = async () => {
       return;
     }
     const profile = await window.liff.getProfile();
-    const result = await parentLoginLine(profile.userId);
+    const result = await parentLoginLine(profile.userId, urlCampusId || null);
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
@@ -837,7 +839,21 @@ onMounted(async () => {
   if (token.value) {
     try {
       await loadDashboard();
-      if (dashboard.value) return;
+      if (dashboard.value) {
+        // If URL specifies a campus that doesn't match the cached token's student campus,
+        // the user likely opened a different branch's link — clear the stale token and
+        // fall through to LIFF auto-login so the correct binding is used.
+        if (urlCampusId && String(dashboard.value.student?.campus_id) !== String(urlCampusId)) {
+          token.value = '';
+          localStorage.removeItem(tokenKey);
+          dashboard.value = null;
+          setStudents(null);
+          allLearningRecords.value = [];
+          // Fall through to LIFF login below
+        } else {
+          return;
+        }
+      }
     } catch { /* token expired, continue to LIFF login */ }
   }
 
