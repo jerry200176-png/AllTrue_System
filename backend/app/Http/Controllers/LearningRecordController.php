@@ -174,20 +174,72 @@ class LearningRecordController extends Controller
         $defaultPerPage = config('perfflags.learning_records_default_per_page', 50);
         $maxPerPage = config('perfflags.learning_records_max_per_page', 200);
         $perPage = min((int) $request->input('per_page', $defaultPerPage), $maxPerPage);
+
+        // Keyset (cursor) pagination branch: when `before_id` is supplied the caller is walking the
+        // dataset backwards using a stable anchor (the smallest `id` seen so far). This avoids
+        // the OFFSET "sliding window" problem when rows are inserted between calls
+        // (see Slack Engineering: "Evolving API Pagination at Slack"). When this branch is taken
+        // the `page` parameter is completely ignored — the two pagination modes never share state.
+        //
+        // Ordering is `id DESC` (not SessionDate DESC) because the anchor lives on `id` alone.
+        // Using SessionDate as primary sort would break keyset semantics for back-dated rows
+        // (e.g. director backdoor-creating an old record gets a new id with an old SessionDate),
+        // where `min(id)` of a page would leave gaps. Callers (frontend loadAllRecords) re-sort
+        // the merged set client-side by SessionDate, so API-side ordering has no UX impact.
+        if ($request->filled('before_id')) {
+            $beforeId = (int) $request->input('before_id');
+            if ($beforeId > 0) {
+                $query->where('id', '<', $beforeId);
+            }
+
+            $rows = $query->with('studentClass.student')
+                ->orderBy('id', 'desc')
+                ->limit($perPage)
+                ->get();
+
+            $this->decorateRecords($rows);
+
+            $minId = $rows->isNotEmpty() ? (int) $rows->min('id') : null;
+            return response()->json([
+                'data'          => $rows->values(),
+                'per_page'      => $perPage,
+                'pagination'    => 'keyset',
+                'before_id'     => $beforeId,
+                'next_before_id' => $minId,
+                'has_more'      => $rows->count() === $perPage,
+            ]);
+        }
+
+        // Legacy OFFSET pagination path (used by the standard "load next page" flow).
         $records = $query->with('studentClass.student')
             ->orderBy('SessionDate', 'desc')
             ->orderBy('id', 'desc')
             ->paginate($perPage);
 
         $collection = $records->getCollection();
+        $this->decorateRecords($collection);
 
-        // Batch-load subject names (avoid N+1)
+        return response()->json($records);
+    }
+
+    /**
+     * Attach derived fields (student_name, subject label, teacher name, session_number) to a
+     * collection of LearningRecords in a single pass, avoiding per-record N+1 queries.
+     * Shared by the OFFSET and keyset pagination paths.
+     */
+    private function decorateRecords($collection): void
+    {
+        if ($collection->isEmpty()) {
+            return;
+        }
+
+        $collection->loadMissing('studentClass.student');
+
         $subjectIds = $collection->pluck('studentClass.SubjectID')->filter()->unique()->values();
         $subjectMap = $subjectIds->isNotEmpty()
             ? DB::table('Subject')->whereIn('id', $subjectIds)->pluck('Subject_Name', 'id')
             : collect();
 
-        // Batch-load teacher names (avoid N+1 — previously queried per-record)
         $teacherIds = $collection->pluck('TeacherID')->filter()->unique()->values();
         $teacherNameMap = collect();
         if ($teacherIds->isNotEmpty()) {
@@ -212,8 +264,6 @@ class LearningRecordController extends Controller
             $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
             return $record;
         });
-
-        return response()->json($records);
     }
 
     public function store(Request $request)

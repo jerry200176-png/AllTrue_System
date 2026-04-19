@@ -2,6 +2,252 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-19 (D) — 舊系統繳費收據補建（Legacy Payment Backfill）
+
+### Problem
+
+172 筆已繳課程（`Paid=1`、`Charge>0`）透過舊系統直接標記付款（無 PaymentReport 流程），點「收據」顯示「此課程透過舊系統繳費，無電子收據紀錄」。這些課程佔所有可補建已繳有金額課程的 88%（172/196）。黃秉澤數學課（SC #460，Charge=13200）為典型案例。
+
+### Change
+
+- **`backend/database/migrations/2026_04_19_200000_add_backfill_note_to_payment_reports_table.php`**（新增）：
+  - `payment_reports` 表加 `backfill_note` nullable string(500) 欄位，預設 null。
+- **`backend/app/Models/PaymentReport.php`**：
+  - `backfill_note` 加入 `$fillable`。
+- **`backend/app/Console/Commands/BackfillLegacyPayments.php`**（新增）：
+  - Artisan Command `payments:backfill-legacy`，支援 `--dry-run`（不寫 DB，輸出計畫）。
+  - 查詢條件（冪等核心）：`Paid=1` + `Charge>0` + `NOT EXISTS confirmed PaymentReport`，使用 `->chunk(50)` 批次處理。
+  - 每筆在 `DB::transaction()` 內建立 `Invoice`（Status=paid、Note=[系統補建]）、`Payment`（Method=cash）、`PaymentReport`（status=confirmed、backfill_note 記錄日期來源、token_expires_at=now() 立即過期）。
+  - 付款日期優先序：`PayDate` → `StartDate` → `today()`，來源記入 `backfill_note`。
+  - 執行結果：172 backfilled, 0 skipped；SC #460（黃秉澤數學課）smoke test 通過。
+- **`backend/app/Http/Controllers/PaymentReportController.php`**：
+  - `receipt()` 方法回傳新增 `is_backfilled`（`bool`）與 `backfill_note`（nullable string）欄位。
+- **`frontend/src/components/ReceiptModal.vue`**：
+  - `METHOD_ZH` 新增 `backfill: '現金（補建）'` 項目。
+  - Canvas 繳費方式文字：`is_backfilled=true` 時顯示「現金（補建）」。
+  - 補建提示條：`is_backfilled=true` 時在 `.receipt-header` 下方顯示黃色警告條（背景 `#FFFBEB`、邊框 `#FDE68A`、文字 `#92400E`），說明「此收據由系統依舊繳費記錄補建，原始付款方式與日期可能不精確。」
+  - 正常收據（`is_backfilled=false`）外觀完全不變。
+- **`backend/tests/Feature/BackfillLegacyPaymentsTest.php`**（新增）：
+  - 6 個 Pest Feature Tests：dry-run 不寫 DB、冪等（第二次 0 backfilled）、`is_backfilled=true` 出現在 receipt endpoint、Charge=0 不補建、既有 confirmed report 不被覆蓋、StartDate 作為 payDate 來源。
+
+### Security Review
+
+- `NOT EXISTS confirmed` 雙重防護，不可覆蓋既有 24 筆正常收據 ✅
+- `->chunk(50)` 而非 `chunkById`（StudentClass PK 為大寫 `ID`）✅
+- `token_expires_at=now()` 立即過期，parent portal 無法使用補建 token ✅
+- `Charge=0` 過濾（46 筆免費課程不補建）✅
+
+---
+
+## 2026-04-19 (C) — 催繳名單升級：收據查詢修正 + 狀態篩選/排序/CSV 匯出/收款率
+
+### Problem
+
+1. **收據「找不到」Bug**：點「收據」按鈕顯示「找不到此課程的核帳收據」，即使款項已確認入帳。根因：前端僅查詢第一頁（30 筆，按 pending 優先排序），已確認收據排到後頁時無法被找到。
+2. **缺乏快速篩選**：催繳名單無狀態篩選 tab，主任需逐行掃描才能識別逾期帳款。
+3. **無匯出功能**：會計需手動抄錄催繳資料。
+4. **缺少收款率 KPI**：未顯示整體收款率，主任無法一眼掌握應收狀況。
+
+### Change
+
+- **`backend/app/Http/Controllers/PaymentReportController.php`**：
+  - `index()` 新增可選 `student_class_id` query param，傳入時精準查詢該課程報告；後端驗證該 StudentClassID 所屬學生的 CampusID 在 caller 的 `auth_campus_ids` 內，不符返回 403，不存在返回 404。向後完全相容。
+- **`frontend/src/pages/TuitionCollectionPage.vue`**：
+  - `viewReceiptForClass` / `findConfirmedReportForClass` 改用 `student_class_id=<id>&status=confirmed` 精準查詢，不再依賴分頁遍歷。
+  - 新增 5 個狀態篩選 tabs（全部/未繳/逾期/待核帳/已繳），各 tab 顯示筆數 badge，純前端 computed 無 API 重打。
+  - 「逾期」定義：`days_until_settlement < 0` 且 `payment_status ∈ {unpaid, partial, pending_report}`。
+  - 5 個欄位可排序（學生姓名/科目/應繳/未結清/到期日），asc → desc → 清除三態切換，標頭顯示 ▲/▼ 箭頭。
+  - 「匯出 CSV」按鈕，匯出當前篩選結果，UTF-8 BOM，10 欄，檔名 `催繳名單_YYYYMMDD.csv`，0 筆時 disabled。
+  - Summary cards 升級至 5 張：總筆數、未繳費、逾期（筆數+金額）、待核帳、未結清總額+收款率百分比。收款率色彩：0% 紅 / <80% 黃 / ≥80% 綠 / 分母 0 時顯示 —。
+  - 空狀態設計（inbox icon + 說明 + 「查看全部」CTA），tab/排序/搜尋響應式支援。
+- **`backend/tests/Feature/PaymentReportApiTest.php`**：
+  - 新增 3 個測試：35 筆跨頁精準查詢命中、跨校 student_class_id 返回 403、不存在返回 404。
+
+## 2026-04-19 (B) — PRD：共用方案顯示修正 + 課程編輯表單全面改善
+
+### Problem
+
+1. **共用方案「購買堂數」顯示方案總堂數**：`StudentClassController.php` L364–374 的 override block 用 `pkg->total_sessions` 覆蓋個別課程的 `sessions_purchased`（如 12 堂分 2 科，每科顯示 12 堂而非 6 堂），且導致 `remaining_sessions` 均顯示 0。
+2. **SessionCount 資料損壞**：override 期間行政開啟 edit 表單存檔，會將 `SessionCount` 靜默覆蓋為 `pkg->total_sessions`。
+3. **課程編輯表單 UX 混亂**：扁平 16 欄位無分組、無情境標頭、驗證靠 `alert()`、存檔回饋不一致。
+4. **操作下拉選單不直覺**：動作無分群、無 icon、刪除用原生 `window.confirm()`。
+
+### Change
+
+- **`backend/app/Http/Controllers/StudentClassController.php`**：
+  - FR-001: GET index 移除 `sessions_purchased/sessions_used/remaining_sessions` 的 package override；改為僅注入 `package_remaining_sessions`、`package_total_sessions`、`package_used_sessions` 三個輔助欄位。
+  - FR-002: PUT `update()` 當 `isPartOfPackage()` 為 true 時 `unset($mapped['RemainingSessions'])`。
+- **`frontend/src/components/CourseEditForm.vue`**：
+  - FR-004: 新增 `packageInfo` prop；方案課程顯示 banner、購買堂數 disabled、隱藏剩餘堂數。
+  - FR-007: 新增 `contextTitle` prop，顯示「正在編輯：科目 ／ 學生姓名」。
+  - FR-008: 表單重構為三個 `<section>`：課程基本資訊 / 費用與繳費 / 排課時段。
+  - FR-009: 行內驗證（科目/老師必填紅框提示），儲存按鈕 disabled until valid。
+- **`frontend/src/pages/CourseManagement.vue`**：
+  - FR-005/006: 傳入 `packageInfo`/`contextTitle`；PUT body 移除 `remaining_sessions`（方案課程）。
+  - FR-010: 存檔成功/失敗改用 `ToastWithUndo` 非阻擋式 toast 取代 `alert()`。
+  - FR-012: 操作下拉分三群（日常操作/狀態管理/危險操作）+ 前置 icon +「編輯」置首。
+  - FR-013: 刪除課程改用行內 ConfirmModal（課程名+學生+警告）取代 `window.confirm()`。
+- **`frontend/src/pages/StudentsList.vue`**：
+  - FR-003: 方案池小字提示（`方案池 X / Y 堂`）。
+  - FR-005: 傳入 `packageInfo`/`contextTitle`。
+  - FR-010: 引入 `ToastWithUndo`，存檔改用 toast。
+- **資料修復 FR-011**：85 筆 `SessionCount` 從 `pkg->total_sessions` 還原為 `total_sessions / member_count`；三個校區 ledger 全部 rebuild。
+
+## 2026-04-19 — PRD：共用方案剩餘堂數與學生管理科目顯示修正
+
+### Problem
+
+1. **大直共用方案剩餘堂數全部顯示 0**：一對三方案每堂課每位學生都有獨立的 `ClassSession` row；`PackageDeductionService::syncFromStudentClassDeduction` 對每位成員的出席各自寫一筆 `-1` ledger delta，3 位學生 × 4 堂 = 12 筆扣點，將 `total_sessions=12` 的方案耗盡到 `remaining_sessions=0`。
+2. **學生管理補習科目欄誤顯「尚未設定」**：前端 `isHistoricalCourse` 以 `remaining_sessions <= 0 && isCourseSettled` 判定歷史課程；痛點 1 導致 `remaining=0`，方案建立時 `Paid=1`（繳費）同時成立，active 方案課程被誤判為歷史並過濾，畫面回傳 `getStudentCourses=[]` → 顯示「尚未設定」。
+
+### Change
+
+- **`backend/app/Services/PackageDeductionService.php`** — `syncFromStudentClassDeduction` 加入群組課去重（FR-003）：
+  - 新增 `groupSessionAlreadyDeducted($packageId, $classSessionId)` 私有方法。僅對 `class_type` 屬於 `one_on_two / one_on_three / one_on_many / tutoring` 的 package 生效；1:1 package 保留原逐筆扣點行為。
+  - 以 `(package_id, SessionDate, StartTime)` 三元組作為去重鍵（ClassPass / Gympass「group session = 1 credit」模型），同一時段不論班上幾位學生只扣一次；同天不同時段（Math 16:00 vs English 18:00）仍各自獨立扣點（風險-3 守護）。
+  - 檢測到重複時跳過 `deductForSession`，但仍呼叫 `recomputeCounters` 保持計數一致。
+- **`backend/app/Services/PackageDeductionService.php`** — 新增 `rebuildLedgerFromSessions($packageId, $dryRun)` 資料修復服務方法（FR-004）：
+  - Stripe-style replay-from-source-of-truth：以 `ClassSession WHERE Status='attended'` 為權威來源重建 ledger。
+  - DB transaction 包覆 delete + insert，失敗整體 rollback（原子性）。
+  - 依 `(SessionDate, StartTime)` 分組，每組建立 1 筆 `-1` ledger，選最小 `class_session_id` 作代表；呼叫 `recomputeCounters` 同步 `remaining_sessions` / `used_sessions`，並寫回每位成員 StudentClass 的 `RemainingSessions`（UI 相容）。
+  - 冪等：連續執行結果相同（Feature Test 驗證 + 三次手動 dry-run 驗證）。
+  - Dry-run 回傳預估差異但不寫入 DB。
+- **`backend/app/Console/Commands/RebuildPackageLedger.php`**（新增）— Artisan 指令 `php artisan packages:rebuild-ledger {campus_id?} {--package-id=} {--all} {--dry-run}`：
+  - 預設只處理「疑似 over-deducted」（`billing_mode=count AND remaining_sessions<=0 AND used_sessions>=total_sessions`），避免誤動正常方案（風險-1 守護）。
+  - `--all` 放寬為該 campus 全部 count 模式方案；`--package-id` 鎖定單一方案。
+  - 輸出 `id / name / total / remaining before→after / used before→after / ledger rows before→after / status` 表格。
+- **`backend/app/Http/Controllers/CoursePackageController.php`** — 新增 `rebuildLedger(Request, int $id)` action（FR-005）：
+  - `POST /api/v1/course-packages/{id}/rebuild-ledger`，body `{ "dry_run": bool? }`。
+  - 授權：director / admin / super_admin。非 super_admin 額外驗證 `auth_campus_ids` 包含 package 的 `campus_id`（campus scoping，防 IDOR 跨分校修改）。
+  - 回傳 `{message, package_id, total_sessions, remaining_sessions, used_sessions, rebuilt_entries, deleted_entries, dry_run}`；Log 記錄操作者 / 校區 / 結果。
+- **`backend/routes/api.php`** — 新增 `POST course-packages/{id}/rebuild-ledger`，掛在既有的 auth:sanctum + RequireRole:director,teacher 中介層下（與 `/recompute` 同級）。
+- **`frontend/src/pages/StudentsList.vue`** — Student 管理補習科目顯示豁免邏輯（FR-001 / FR-002）：
+  - `isHistoricalCourse(course)`：當 `course.PackageID` 存在且 `status !== 'inactive'` 時直接 `return false`，不再用 `remaining_sessions` 判定（Jira / Asana / Linear 的「只以明確 status=Done 隱藏」模式）。
+  - `isSessionPaymentLowRemaining(course)`：有 `PackageID` 直接 `return false`，不誤報「即將用完」紅底 pill。
+  - 展開列「即將用完」badge（L233）與剩餘堂數紅字（L250）加 `!course.PackageID` 條件；mini-progress bar 顏色對 package 課程強制綠色。
+- **`backend/tests/Feature/PackageRebuildLedgerTest.php`**（新增）— 8 項 Feature Test（26 assertions）：
+  - FR-003 群組去重：一對三同堂 3 位學生只扣 1 筆、同天不同時段各自扣點、1:1 回歸不受影響。
+  - FR-004 rebuild-ledger：從 12 筆誤扣修復為 4 筆正確、dry-run 不寫入、兩次執行冪等、`Status!=attended` 正確忽略。
+  - 端點授權：未授權呼叫回 401/403。
+
+### Data Repair
+
+- **大直分校（campus_id=3）13 個 count 模式 CoursePackage 已修復**：
+  - 先 `--dry-run` 6 個疑似 over-deducted 方案（remaining=0 且 used>=total），再以 `--all` 擴及全 13 個 count-mode 方案（發現其餘 7 個亦有部分多扣但未達 0）。
+  - 代表性修復：吳樂瞳的國英數（12 堂）`remaining 0 → 5, used 12 → 7, ledger rows 13 → 7`；周宏謙數學自然方案 `ledger rows 24 → 13`（重建後 remaining 仍為 0 但係因實際已上 13 堂、真正用完）。
+  - 第三次執行 `--dry-run` 所有 before→after 均相等，證明冪等。
+
+### Rollback plan
+
+- 前端：`git revert` + `npm run deploy`，不影響 DB。
+- 後端 deduct 修改：`git revert` 後既有已修復的 ledger 保持正確，無倒退風險。
+- 資料修復：無法自動回滾（ledger 已重建）；若單一 package 需回復，可再次執行 `rebuild-ledger --package-id=N`（冪等）。
+
+### Affected files
+
+- `backend/app/Services/PackageDeductionService.php`
+- `backend/app/Http/Controllers/CoursePackageController.php`
+- `backend/app/Console/Commands/RebuildPackageLedger.php`（new）
+- `backend/routes/api.php`
+- `backend/tests/Feature/PackageRebuildLedgerTest.php`（new）
+- `frontend/src/pages/StudentsList.vue`
+
+### Validation
+
+- Feature tests: `PackageRebuildLedgerTest` 8/8 通過（26 assertions）；`PackageReconciliationTest / PackageE2EFlowTest / PackageConcurrencyTest` 4/4 通過，無回歸。
+- 資料：大直分校 13 個 count 模式方案的 `remaining_sessions` 與 `total_sessions - actual_attended_sessions` 誤差為 0（idempotency dry-run 驗證）。
+- 路由：`php artisan route:list --path=course-packages` 確認 `POST /api/v1/course-packages/{id}/rebuild-ledger` 已受 RequireRole:director,teacher + RequireCampus + RequirePasswordChange 保護。
+
+## 2026-04-19 — PRD：評量表分頁穩定性與長期資料管控
+
+### Problem
+
+1. **「載入全部記錄」只載到 200 筆就停**：後端每頁上限 200 筆，前端 `loadAllRecords` 原以 OFFSET（`page=N`）翻頁。兩次 API 呼叫之間若有新的 LearningRecord 寫入，MySQL OFFSET 分頁會位移（sliding window），第 2 頁回傳與第 1 頁重疊的 ID，前端 dedup 後 `added=0 && returned>0` 觸發防護中斷，使用者永遠只看得到第 1 頁。
+2. **頁面長期資料累積將塞爆**：一位學生購買 8 堂結算後再購 8 堂，LearningRecord 無限累積；後端無預設時間限制，每次進評量頁都撈全部歷史，隨補習班開業時間拉長，老師/主任的初始載入量線性成長，終將卡頓。
+
+### Change
+
+- **`backend/app/Http/Controllers/LearningRecordController.php`** — `GET /api/v1/learning-records` 新增 **keyset（cursor-based）分頁**：
+  - 新增可選 `before_id` 查詢參數。存在時走獨立 keyset 分支：`WHERE id < before_id ORDER BY id DESC LIMIT per_page`，並完全忽略 `page` 參數（與 Slack Engineering "Evolving API Pagination at Slack" 的 strict-branching 規範對齊）。
+  - Keyset 回應格式：`{ data, per_page, pagination: 'keyset', before_id, next_before_id, has_more }`。Callers 以 `data === []` 作為終止條件（Slack `next_cursor` 模式）。
+  - OFFSET 路徑（舊「載入下一頁」）完全保留相容，兩個分支不共享狀態。
+  - 抽出 `decorateRecords()` 私有方法，兩個分支共用 N+1-free 的 student_name / subject / teacher / session_number 裝飾邏輯。
+  - Campus/role 過濾在分支前套用於 `$query`，keyset 不繞過授權範圍。
+- **`backend/config/perfflags.php` + `backend/.env.example`** — 新增 `learning_records_default_window_days`（env: `PERF_LR_DEFAULT_WINDOW_DAYS`，預設 **90**，0=停用）。
+- **`backend/routes/api.php`** — `/api/v1/health` 的 `perf_flags` 回傳新增 `lr_default_window_days`，供前端在 mount 時同步取得。
+- **`frontend/src/lib/perfFlags.js`** — 新增 `LR_DEFAULT_WINDOW_DAYS=90` compile-time 預設；新增 `loadRemoteFlags()` 一次性 fetch `/api/v1/health` 覆蓋 `LR_DEFAULT_WINDOW_DAYS`（GitHub/Stripe 運行時設定端點模式），fetch 失敗時 fallback compile-time 值。
+- **`frontend/src/pages/LearningRecordsPage.vue`** — 前端全面改寫分頁與時間窗口邏輯：
+  - **FR-001 / FR-002**：新增 `resolvedDefaultWindowStart` computed，當 (1) `LR_DEFAULT_WINDOW_DAYS > 0`、(2) 使用者未設 `filters.start_date`、(3) 未點「查看全部歷史」解除、(4) 目前 tab 非 `pending` / `changes_requested` 時，`_buildRecordsParams` 自動注入 `start_date = today - 90d`。記錄列表上方新增琥珀色 **時間窗口 badge**（`lr-window-banner`）與 text-link「查看全部歷史」CTA。
+  - **FR-003 / FR-004**：`loadAllRecords` 改用 keyset 翻頁——以已載入記錄中最小 `id` 為起始 anchor，每輪以 `before_id=anchor` 呼叫 API，以 `data===[]` 或 anchor 未前進作為終止條件；`MAX_ROUNDS=100` 安全上限。徹底解決 OFFSET sliding window bug。
+  - **FR-005**：`filterByStudent`（點學生姓名）同時設 `defaultWindowDisabled.value = true`，拿掉時間窗口限制顯示該生完整歷史（Airtable / Linear 的「點值過濾」模式）。
+  - **FR-006**：`onMounted` 呼叫 `loadRemoteFlags()` 再 `fetchRecords()`，確保初始請求即套用權威窗口值。
+  - **FR-007**：空狀態 branch 新增「近 N 天無評量記錄 + 查看全部歷史 CTA」分支，保留原有 hasActiveFilters 分支。
+  - **風險 2 — Jira Kanban 豁免規則**：pending / changes_requested tab 下 `resolvedDefaultWindowStart === ''`，待審記錄無論多早都不被時間窗口隱藏（Jira "Hide completed issues older than N weeks" 的典型豁免）。
+  - **UI/UX 精緻化（5b）**：`lr-window-banner` 色彩／間距／邊框與既有 `lr-tab-filter-banner` 對齊；`loadAllRecords` 執行中「載入下一頁」「搜尋」按鈕 disabled + tooltip「正在載入全部記錄，請稍候」；進度文字 `載入中… (X / Y)`；完成後整個 Load More 區塊以 `<transition name="lr-loadmore-slide">` slide-up fade（`prefers-reduced-motion` 降級為 fade）。
+  - 新增 `watch(resolvedDefaultWindowStart, ...)` 觸發 tab 切換時的自動 refetch（僅在 window 狀態真正改變時）。
+- **`backend/tests/Feature/LearningRecordsKeysetTest.php`** — 新增 7 個 Feature Test，全綠：
+  - `test_before_id_returns_only_records_with_smaller_id`
+  - `test_before_id_ignores_page_parameter`（strict branching 驗證）
+  - `test_iterating_before_id_terminates_on_empty_data`（7 筆 × per_page=3 完整走訪）
+  - `test_mid_iteration_insert_does_not_affect_earlier_keyset_pages`（sliding window 防禦）
+  - `test_health_endpoint_exposes_lr_default_window_days_flag`
+  - `test_before_id_respects_role_and_campus_scoping`（IDOR 防護）
+  - `test_has_more_flag_flips_off_on_final_page`
+
+### Impact
+
+- **修復**：使用者點「載入全部記錄」後最終顯示筆數 = API 回報的 `total`，一致率 100%；兩次呼叫之間有新記錄插入不再中斷 load-all 迴圈。
+- **長期效能**：初始載入（90 天窗口）API 回應時間預期較全量查詢顯著改善，頁面載入量不再隨補習班開業時間線性成長。
+- **UX**：待審（pending/changes_requested）tab 豁免時間窗口——主任打開評量頁仍能看到所有待處理記錄，不會誤以為「90 天前的待審不見了」。點學生姓名一鍵解鎖該生完整歷史。
+- **回滾**：前端 `git revert` + `npm run deploy`；後端 `.env` 移除 `PERF_LR_DEFAULT_WINDOW_DAYS` 即回到「無窗口」舊行為；`before_id` 為可選參數，舊前端 fallback 至 OFFSET 無縫相容。
+
+### First-read / Related
+
+- `.cursor/plans/評量表分頁穩定性與長期資料管控_c5a6be38.plan.md`（本次 PRD，含業界做法引用：Slack next_cursor、Jira Kanban 豁免、Salesforce/Zendesk 時間窗口、MySQL InnoDB AUTO_INCREMENT 單調遞增保證）
+- 前次 PRD：`.cursor/plans/評量表日期與科目分類改善_73c0e2e3.plan.md`（日期 range + 科目分組，本次在其基礎上延伸）
+- 防回歸：**勿再將 `loadAllRecords` 改回以 `currentPage >= lastPage` 判斷終止**（會重新引入 sliding window bug）；**勿在 keyset 分支加回 `SessionDate DESC` 排序**（會讓 `min(id)` anchor 漏掉尚未列舉的 rows）。
+
+## 2026-04-19 — PRD：評量表日期可視性與科目分類改善
+
+### Problem
+
+1. 主任在「學習評量表」頁檢視學生評量時，若學生前幾堂課是 1–2 個月前，該筆常落在分頁第 2 頁以後，主任若未刻意搜尋日期容易誤以為「系統邏輯有問題、資料不見了」。
+2. 同學生累積多科目的評量記錄時，accordion 內的所有評量以「日期 desc」單層排列、不同科目交錯出現，與「課程管理」頁依科目分類的呈現不一致，主任/老師難以按科目脈絡閱讀。
+3. 原日期篩選器僅能指定「單日」(`filters.date`)，老師想查一段期間的評量必須逐日切換。
+
+### Change
+
+- **`frontend/src/pages/LearningRecordsPage.vue`** — 主任/老師學習評量表頁全面調整：
+  - **FR-003**：`filters.date`（單日）改為 `filters.start_date` + `filters.end_date` 日期 range；新增 `dateRangeError` computed，起始 > 結束時 inline 錯誤提示「起始日期需早於或等於結束日期」並阻擋送出 API（後端維持向下相容，已穩定處理反序 range 回空集合）。
+  - **FR-004 / FR-006**：`filteredGroupedRecords` computed 由「學生」單層分組改為「學生 → 科目」兩層分組；新增 `subjectGroups[]` 結構，每個科目子區塊帶 `科目名稱 + 筆數` 小標頭；`student_class_label` → `Subject` → `subject` → `SubjectName` fallback（與 `ParentPortal.vue` 的 `recordSubjectKey` 一致），空值歸入「未分類」並排最後。
+  - **FR-001**：學生 accordion summary 新增「日期範圍 chip」顯示已載入評量的最舊/最新 `SessionDate`（同日時顯示單一日期）。
+  - **FR-002**：「載入更多」按鈕文字改為「載入更早的記錄（已顯示 N / M 筆）」並在下方提示「目前已載入至 YYYY-MM-DD」（由 `loadedOldestDate` computed 取最舊一筆），避免使用者以為「系統只有到那個日期」。
+  - **FR-005**：篩選器新增「科目」下拉（`availableSubjects` computed 從已載入 records 去重、zh-Hant 排序、「未分類」排最後），前端過濾不觸發 API；下拉 `title` 提示「篩選範圍：目前已載入的記錄」避免 NN/G 指出的「可預期性」誤解；無資料時下拉 disabled。
+  - **FR-007**：空狀態改為插圖（inline SVG 搜尋放大鏡）+ 標題 + 描述 + 「清除篩選條件」CTA 按鈕；原純文字空狀態僅在「無篩選條件且真無資料」時呈現。
+  - **UI/UX 精緻化（5b 節）**：
+    - 科目子標題列使用 `#f1f5f9` 淡色背景帶 + 13px semi-bold 字；「未分類」子標題用 `#fff7ed` 淡橘並 italic 強化識別。
+    - 載入中顯示 3 條 skeleton row（shimmer 動畫），無 layout shift。
+    - 日期 range 錯誤狀態 inline 紅色警示框（`#fef2f2` 背景 + `#fecaca` 邊框）。
+    - 響應式：< 768px 日期 range 兩欄折行、觸控目標 ≥ 44px；科目子區塊內距縮減避免水平 overflow。
+  - 新增 `hasActiveFilters` / `clearAllFilters` / `onDateRangeChange` helper；原 `filters.date` 相關 template 與 `_buildRecordsParams` 分支完全移除。
+- **`backend/tests/Feature/LearningRecordsPerformanceTest.php`** — 新增 2 個 Feature Test：
+  - `test_date_range_with_start_greater_than_end_returns_empty_result`：後端遇反序 range 穩定回空集合、不 5xx。
+  - `test_date_range_filter_returns_only_records_in_range`：日期 range 正確濾出區間內記錄。
+  - 全檔 9 tests 全綠。
+
+### Impact
+
+- 主任打開學習評量表時，每個學生 accordion 標頭直接顯示「日期 YYYY-MM-DD ～ YYYY-MM-DD」chip 與科目分組，不再需要逐筆掃描判斷科目；舊評量（2 個月以前）也有「載入至 YYYY-MM-DD」明確提示，減少「以為系統有 bug」的客服回報。
+- 日期 range 篩選讓跨月查詢一次完成，替代舊的「指定單日」流程。
+- 後端 API 無改動，現有 `GET /api/v1/learning-records` 的 `start_date`/`end_date` 參數照舊運作；純前端改動，回滾只需 `git revert` + `npm run deploy`。
+
+### First-read / Related
+
+- `.cursor/plans/評量表日期與科目分類改善_73c0e2e3.plan.md`（本次 PRD）
+- `frontend/src/pages/ParentPortal.vue`（家長端科目分組的參考實作，`recordSubjectKey` helper）
+- `backend/app/Http/Controllers/LearningRecordController.php`（`index` 已支援 `start_date`/`end_date`，無需改動）
+- 防回歸：**勿再回退** `filters.date` 為單日欄位，勿再把 accordion 內 records 改回單層渲染（會讓科目再次交錯顯示）。
+
 ## 2026-04-18 — PRD-H：家長端月結課程顯示「本月已上 X 堂」＋月費預估；nightly 備份強化
 
 ### Problem

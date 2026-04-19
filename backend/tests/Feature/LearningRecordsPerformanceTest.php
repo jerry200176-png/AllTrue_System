@@ -114,6 +114,47 @@ class LearningRecordsPerformanceTest extends TestCase
         $this->assertEquals('ok', $response->json('status'));
     }
 
+    /**
+     * PRD 評量表日期可視性改善 — FR-003 日期 range 篩選 edge case：
+     * start_date > end_date 時後端回傳空集合，不應 5xx。
+     * 前端已有 dateRangeError 防呆避免送出此類參數，但後端仍須穩定處理。
+     */
+    public function test_date_range_with_start_greater_than_end_returns_empty_result(): void
+    {
+        [$token] = $this->createTeacherWithRecords(3);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?start_date=2099-12-31&end_date=2000-01-01&per_page=20');
+
+        $response->assertOk();
+        $this->assertCount(0, $response->json('data'));
+    }
+
+    /**
+     * PRD 評量表日期可視性改善 — FR-003 日期 range 篩選 Happy Path：
+     * 指定合法的 start_date ～ end_date 僅回傳區間內記錄。
+     */
+    public function test_date_range_filter_returns_only_records_in_range(): void
+    {
+        [$token, $setup] = $this->createTeacherWithRecords(3);
+        // 將其中一筆改成 2020-01-01 以外範圍
+        DB::table('LearningRecord')
+            ->whereIn('id', array_slice($setup['record_ids'], 0, 1))
+            ->update(['SessionDate' => '2020-01-01']);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?start_date=2019-12-01&end_date=2020-01-31&per_page=20');
+
+        $response->assertOk();
+        $data = $response->json('data');
+        $this->assertCount(1, $data);
+        $this->assertEquals('2020-01-01', $data[0]['SessionDate']);
+    }
+
     public function test_server_timing_header_is_present(): void
     {
         [$token] = $this->createTeacherWithRecords(1);

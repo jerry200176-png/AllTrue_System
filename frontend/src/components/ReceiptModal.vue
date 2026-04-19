@@ -19,6 +19,10 @@
       </div>
 
       <template v-else-if="data">
+        <div v-if="data && data.is_backfilled" class="receipt-backfill-notice">
+          <span class="material-symbols-outlined" style="font-size:16px;flex-shrink:0;margin-top:1px">info</span>
+          <span>此收據由系統依舊繳費記錄補建，原始付款方式與日期可能不精確。</span>
+        </div>
         <div class="receipt-preview-wrap">
           <canvas ref="canvasRef" class="receipt-canvas"></canvas>
         </div>
@@ -61,7 +65,7 @@ function getToken() {
   return session?.access_token;
 }
 
-const METHOD_ZH = { transfer: '匯款', cash: '現金' };
+const METHOD_ZH = { transfer: '匯款', cash: '現金', backfill: '現金（補建）' };
 const MODE_ZH = { count: '堂數制', date: '月結制' };
 const TYPE_ZH = { one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導' };
 
@@ -115,7 +119,7 @@ function drawReceipt(canvas, d) {
     { label: '計費模式', value: MODE_ZH[d.schedule_mode] || d.schedule_mode || '—' },
     d.session_count ? { label: '已購堂數', value: `${d.session_count} 堂` } : null,
     { label: '繳費日期', value: d.payment_date || '—' },
-    { label: '繳費方式', value: METHOD_ZH[d.payment_method] || d.payment_method },
+    { label: '繳費方式', value: d.is_backfilled ? '現金（補建）' : (METHOD_ZH[d.payment_method] || d.payment_method) },
     { label: '核帳日期', value: d.confirmed_at || '—' },
     { label: '核帳人員', value: d.confirmed_by || '—' },
   ].filter(Boolean);
@@ -333,6 +337,18 @@ async function copyToClipboard() {
 }
 @keyframes rotate { to { transform: rotate(360deg); } }
 
+.receipt-backfill-notice {
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
 .receipt-preview-wrap {
   background: var(--bg);
   border-radius: 12px;

@@ -365,12 +365,9 @@ class StudentClassController extends Controller
 
             if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
                 $pkg = $packageMap[$class->PackageID];
-                $class->remaining_sessions        = max(0, (int) $pkg->remaining_sessions);
-                $class->RemainingSessions          = max(0, (int) $pkg->remaining_sessions);
-                $class->sessions_used              = (int) $pkg->used_sessions;
-                $class->UsedSessions               = (int) $pkg->used_sessions;
-                $class->sessions_purchased         = (int) $pkg->total_sessions;
-                $class->package_remaining_sessions = (int) $pkg->remaining_sessions;
+                $class->package_remaining_sessions = max(0, (int) $pkg->remaining_sessions);
+                $class->package_total_sessions     = (int) $pkg->total_sessions;
+                $class->package_used_sessions      = (int) $pkg->used_sessions;
             }
 
             $directPaidAt = $class->PayDate ? substr($class->PayDate, 0, 10) : null;
@@ -956,6 +953,10 @@ class StudentClassController extends Controller
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
         unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['RoomID'], $mapped['by1']);
+
+        if ($studentClass->isPartOfPackage()) {
+            unset($mapped['RemainingSessions']);
+        }
 
         if (!empty($campusIds) && !empty($mapped['room_id'])) {
             $roomCampusId = DB::table('rooms')->where('id', (int) $mapped['room_id'])->value('campus_id');

@@ -198,6 +198,19 @@ class PaymentReportController extends Controller
             $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
         }
 
+        if ($request->filled('student_class_id')) {
+            $scId = (int) $request->input('student_class_id');
+            $sc = \App\Models\StudentClass::with('student')->find($scId);
+            if (!$sc || !$sc->student) {
+                return response()->json(['message' => 'Not found'], 404);
+            }
+            $studentCampus = (int) ($sc->student->CampusID ?? 0);
+            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($studentCampus, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $query->where('StudentClassID', $scId);
+        }
+
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
@@ -594,6 +607,8 @@ class PaymentReportController extends Controller
             'confirmed_by'     => $report->confirmedByUser?->Name ?? '系統',
             'class_type'       => $sc?->ClassType,
             'schedule_mode'    => $sc?->ScheduleMode,
+            'is_backfilled'    => !empty($report->backfill_note),
+            'backfill_note'    => $report->backfill_note,
         ]);
     }
 }

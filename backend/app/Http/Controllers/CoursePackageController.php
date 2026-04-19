@@ -377,6 +377,61 @@ class CoursePackageController extends Controller
     }
 
     /**
+     * POST /api/v1/course-packages/{id}/rebuild-ledger
+     *
+     * FR-005 — Rebuild package_session_ledger from attended ClassSession records.
+     * Use when a package's remaining_sessions is visibly wrong (e.g. group-class
+     * over-deduction before the FR-003 dedup was shipped) and cannot be fixed by
+     * /recompute alone (which only re-reads existing ledger rows).
+     *
+     * Body:
+     *   { "dry_run": true|false }   optional; default false
+     *
+     * Auth: director / admin / super_admin only, and the package must belong to a
+     * campus the caller has access to.
+     */
+    public function rebuildLedger(Request $request, int $id): JsonResponse
+    {
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $pkg = CoursePackage::find($id);
+        if (!$pkg) {
+            return response()->json(['message' => 'Package not found'], 404);
+        }
+
+        if ($role !== 'super_admin') {
+            $campusIds = $request->attributes->get('auth_campus_ids', []);
+            if (!empty($campusIds) && !in_array((int) $pkg->campus_id, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        $data = $request->validate([
+            'dry_run' => 'nullable|boolean',
+        ]);
+        $dryRun = (bool) ($data['dry_run'] ?? false);
+
+        $result = PackageDeductionService::rebuildLedgerFromSessions($id, $dryRun);
+        if (isset($result['error'])) {
+            return response()->json(['message' => $result['error']], 404);
+        }
+
+        Log::info('CoursePackage rebuildLedger', [
+            'package_id' => $id,
+            'campus_id'  => $pkg->campus_id,
+            'dry_run'    => $dryRun,
+            'by_user'    => $request->attributes->get('auth_user')?->id ?? 0,
+            'result'     => $result,
+        ]);
+
+        $message = $dryRun ? 'Dry-run 完成（未寫入）' : 'Ledger 已重建';
+        return response()->json(array_merge(['message' => $message], $result));
+    }
+
+    /**
      * POST /api/v1/course-packages/{id}/bind-courses
      * Bind existing StudentClass rows into a package (migration tool).
      */
