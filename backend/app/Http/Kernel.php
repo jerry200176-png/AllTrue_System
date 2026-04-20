@@ -17,6 +17,7 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
         'api' => [
+            'throttle:200,1',
             \App\Http\Middleware\LogSlowRequests::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\AttachAuthUser::class,
