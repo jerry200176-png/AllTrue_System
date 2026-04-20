@@ -2,6 +2,45 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-20 — 試聽（trial）課型老師容量守衛修正（Bug Fix）
+
+### Problem
+
+主任反映：想把試聽學生（彭宥勛）排入既有正式學生（余潔）的 Monday 18:00–20:00 時段一起上課，系統錯誤攔截：
+> 「調課失敗：老師此時段已有 1 位學生，試聽 上限為 1 位學生。」
+
+根因為 `ScheduleGuardService::buildTeacherCapacityConflict()` 的雙攔截：
+1. Branch 1（L339 before patch）：`existingCount(=1) >= newCapacity(trial=1)` 觸發 `teacher_capacity` 衝突。
+2. Branch 2（L358 before patch）：逐一檢查既有 overlap，發現 `existingCount(=1) >= existingCapacity(one_on_one=1)` 再次阻擋。
+
+兩層攔截使試聽完全無法加入任何有人的時段，與補習班「試聽 = 旁聽既有課堂」的業務意圖相反。
+
+### Change
+
+- **`backend/app/Services/ScheduleGuardService.php::buildTeacherCapacityConflict()`**：
+  - 新增 `$newClassType === 'trial'` 的早期分支（L343–365）。
+  - 試聽課型直接繞過 Branch 1 與 Branch 2 的容量檢查。
+  - 仍以「距該時段既有 trial 學生人數」為唯一上限：若同一時段已有 1 位試聽學生，仍返回 `teacher_capacity` 衝突，訊息「老師此時段已有 N 位試聽學生，試聽 上限為 1 位學生。」（FR-002）。
+  - 正式課型（`one_on_one` / `one_on_two` / `one_on_three` / `tutoring`）邏輯完全不變（FR-003）。
+- **`backend/tests/Feature/ScheduleGuardrailsTest.php`**：新增 2 個測試案例：
+  - `test_trial_can_join_slot_with_existing_one_on_one_student`：直接寫入 `schedules` 建立既有一對一，改以 `POST /api/v1/schedules` 送出 `class_type=trial` → 應回 201（不再誤攔截）。
+  - `test_two_trial_students_same_slot_are_blocked`：已有 1 位試聽學生後再送 1 位試聽 → 應回 409（FR-002）。
+
+### Result
+
+- 主任可正常將試聽學生排入任何既有課堂。
+- `ScheduleGuardrailsTest` 新增 2 個 case 全部通過；既有以直接 DB 寫入的案例（`test_duplicate_schedules_of_same_student_count_as_one_for_capacity`）未受影響。
+- 其餘既有 5 個 case 的 410 失敗為既有環境問題（依賴已退役的 `POST /api/v1/student-classes` 端點），與本次修正無關。
+- 無 migration、無前端變更；回滾僅需 `git revert` 即恢復修正前行為。
+
+### Regression Guard
+
+- Trial 豁免**僅對 `class_type === 'trial'` 生效**，其他課型邏輯零變更。
+- 第二位試聽仍被攔截（避免無限堆疊試聽學生）。
+- 響應格式（`type`/`message`/`current_students`/`allowed_students`/`overlap_*`）與既有 teacher_capacity 衝突一致，前端提示無需更新。
+
+---
+
 ## 2026-04-20 — 多科共用方案排課設定與管理頁 UX 優化
 
 ### Problem

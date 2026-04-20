@@ -336,6 +336,34 @@ class ScheduleGuardService
         $overlapDetails = $this->buildOverlapDetails($overlaps);
         $overlapSummary = $this->buildOverlapSummary($overlapDetails);
 
+        // Trial classes are a director-arranged add-on to existing sessions
+        // (試聽學生旁聽正式課堂). They bypass both the new-type capacity check
+        // and the existing-type capacity check, but we still enforce at most
+        // one trial student per teacher slot (FR-002).
+        if ($newClassType === 'trial') {
+            $trialOverlaps = array_values(array_filter($overlaps, function ($entry) {
+                return (string) ($entry['class_type'] ?? '') === 'trial';
+            }));
+            $existingTrialCount = $this->countDistinctStudents($trialOverlaps);
+            if ($existingTrialCount >= 1) {
+                return [
+                    'type' => 'teacher_capacity',
+                    'day_of_week' => (int) ($slot['day_of_week'] ?? 0),
+                    'start_time' => (string) ($slot['start_time'] ?? ''),
+                    'end_time' => (string) ($slot['end_time'] ?? ''),
+                    'current_students' => $existingTrialCount,
+                    'allowed_students' => 1,
+                    'message' => sprintf(
+                        '老師此時段已有 %d 位試聽學生，試聽 上限為 1 位學生。',
+                        $existingTrialCount
+                    ),
+                    'overlap_summary' => $overlapSummary,
+                    'overlap_details' => $overlapDetails,
+                ];
+            }
+            return null;
+        }
+
         if ($existingCount >= $newCapacity) {
             return [
                 'type' => 'teacher_capacity',

@@ -326,6 +326,112 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertCreated();
     }
 
+    public function test_trial_can_join_slot_with_existing_one_on_one_student(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-trial-a@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-a@example.com');
+
+        $studentA = $this->createStudent(1, '學生余潔');
+        $studentB = $this->createStudent(1, '學生彭宥勛');
+
+        // Existing one-on-one student occupies the teacher slot on Monday 2026-04-13 18:00-20:00.
+        // Insert directly into schedules to exercise validateScheduleOccurrence overlap logic
+        // without depending on the retired POST /api/v1/student-classes endpoint.
+        DB::table('schedules')->insert([
+            'student_id' => $studentA->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 1,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-13',
+            'student_course_id' => null,
+            'original_schedule_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Trial student joins the same Monday 18:00-20:00 slot — should succeed with fix.
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentB->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 1,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'trial',
+            'status' => 'scheduled',
+            'type' => 'trial',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-13',
+        ]);
+
+        $res->assertCreated();
+    }
+
+    public function test_two_trial_students_same_slot_are_blocked(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-trial-b@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-trial-b@example.com');
+
+        $studentA = $this->createStudent(1, '試聽生甲');
+        $studentB = $this->createStudent(1, '試聽生乙');
+
+        // First trial student occupies the slot.
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentA->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 2,
+            'start_time' => '19:00',
+            'end_time' => '21:00',
+            'duration_hours' => 2,
+            'class_type' => 'trial',
+            'status' => 'scheduled',
+            'type' => 'trial',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-14',
+        ])->assertCreated();
+
+        // Second trial student attempting the same slot should be blocked.
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentB->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Physics',
+            'day_of_week' => 2,
+            'start_time' => '19:00',
+            'end_time' => '21:00',
+            'duration_hours' => 2,
+            'class_type' => 'trial',
+            'status' => 'scheduled',
+            'type' => 'trial',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-14',
+        ]);
+
+        $res->assertStatus(409)
+            ->assertJsonPath('conflicts.0.type', 'teacher_capacity');
+    }
+
     /**
      * @param  array<int>  $campusIds
      */
