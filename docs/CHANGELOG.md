@@ -2,6 +2,48 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-20 — 多科共用方案排課設定與管理頁 UX 優化
+
+### Problem
+
+1. 主任建立多科共用方案時，僅能填「科目／老師／時長」，無法一次設定各科「上課星期 + 時間」，建立後必須跑到學生列表逐科補排，N 科方案需要 N 次額外操作。
+2. `createMultiSubject` API 已驗證 `days_of_week`/`day_time_slots`/`start_time`，但 `$weekSlots` 建出來之後完全沒有寫入 `StudentClass`，也不呼叫 `extendSessionsIfNeeded`，屬於接收後靜默丟棄（死碼）。更嚴重的是 `$weekSlots[] = ['weekday' => ((int) $dow + 6) % 7, ...]` 把 ISO 1–7 硬轉 0–6，若未來想啟用會與 `resolveScheduleSlotsForRebuild`（讀 1–7）完全對不上。
+3. 方案管理頁成員格只顯示「科目 + 老師」，無法一眼辨識「哪些科已排齊、哪些還未排定」，主任必須跨頁查詢。
+
+### Change
+
+- **後端 API**：`backend/app/Http/Controllers/CoursePackageController.php::createMultiSubject()` 正式啟用排課欄位。
+  - **GAP-01 修正**：刪除 `((int) $dow + 6) % 7` bug，`days_of_week` 的 ISO 1–7 原始值直接寫入 `StudentClass.week` / `week1~week6`；`start_time` 寫入 `time` / `time1~time6`。
+  - 寫入規則：`day_time_slots` 優先（按 slot[0]→week1/time1 ... 最多 6 個，超過截斷並 `Log::warning` — RISK-002）；否則依 `days_of_week` + `start_time` 展開，單日寫 `week/time`、多日寫 `week1/time1 … weekN/timeN`。
+  - `DB::transaction` 內在 `StudentClass::create` 後呼叫 `app()->make(StudentClassController::class)->extendSessionsIfNeeded($sc->fresh(), $totalSessions)` 補排（Append-Only，RISK-001 — `currentCount` 包含 attended，與 `confirmed_dates` 預建並存不衝突）。
+  - 月結方案（`billing_mode = date`）完全跳過排課補排（FR-008 回歸保護）。
+  - API 回應新增 `members_scheduled: [{ student_class_id, subject, scheduled_count, first_session_date, has_schedule }]`；`Log::info('CoursePackage createMultiSubject', ...)` 含每科補排統計。
+  - Validation 強化：`days_of_week` `array|max:6` + 每項 `integer|min:1|max:7`；`day_time_slots.*.weekday` 同規格；`start_time` 格式 `H:i`。
+- **後端 API**：`CoursePackageController::index()` — 批次預載 members/scheduled_count/next_sessions/has_schedule，避免 N+1（RISK-003）。
+  - 所有 packages 的 `StudentClass`、`ClassSession.COUNT` groupBy、未來 3 堂日期、老師名稱，各以一次查詢完成。
+  - members 回應新增三個欄位：`scheduled_count`（排除 cancelled/leave/leave_adjusted）、`has_schedule`（`week` ∈ 1–7）、`next_sessions`（未來最多 3 堂 Y-m-d 陣列）。
+  - package 本體回應新增 `billing_mode` 欄位（前端判月結）。
+- **前端建立方案 modal**：`frontend/src/pages/CoursePackagesPage.vue`。
+  - 每個科目行新增「上課星期（7 個 chip 多選，最多 6 個）」+「上課時間（30 分鐘間距 06:00–22:00 下拉）」；chip 選中後 var(--primary) 高亮，hover `scale 1.05`，超過 6 個自動 disabled。
+  - `submitCreate` payload 加入 `days_of_week`（ISO 1–7 原始值）+ `start_time`；送出期間 button disabled + loading spinner。
+  - 建立成功後顯示「排課摘要 dialog」：每科列「已排 N 堂（首堂 YYYY-MM-DD）」或「尚未設定排課時段（+前往設定連結）」；全部未填時顯示空狀態圖示 + CTA 按鈕「前往課程管理設定」。
+- **前端方案管理頁**：`CoursePackagesPage.vue`（同檔）。
+  - 成員格（member-chip）改為雙行：第一行科目+老師；第二行排課狀態 tag（`已排 N/T` 綠 / `已排 n/T` 黃 / `未排定` 橘）+ 最近 3 堂日期（以 `·` 分隔，窄版面 < 480px 隱藏）。「未排定」tag 可點擊，`confirm` 後導向 `/course-management?student_class_id={id}`。
+  - 方案卡片 header 新增健康度 badge（18px 圓形，綠 ✓ / 橘 ⚠ / 紅 ✗），hover tooltip 顯示「X 科已排齊 / Y 科未排齊」。
+  - `packages-header-card` 下方新增 slide-down 統計列：橘底「N 個方案排課不完整」可點擊切換 `scheduleHealthFilter = 'incomplete'`（與 `statusFilter` 疊加）；全綠時改顯示「✓ 所有方案排課已完整設定」。
+- **測試**：`backend/tests/Feature/PackageCreateWithScheduleTest.php`（新增，7 案例全綠）。
+  - `test_create_with_days_of_week_generates_class_sessions`、`test_create_without_schedule_no_sessions`、`test_create_partial_schedule`、`test_create_with_confirmed_dates_plus_schedule`、`test_create_schedule_writes_week_fields`（GAP-01 迴歸：`week=1` 不被寫成 0、`week=7` 不被寫成 6）、`test_create_multi_days_writes_week1_week2`、`test_monthly_package_ignores_schedule`。
+- **回歸**：`SessionCountWarningTest` + `CoursePackageTest` + `PackageTotalSessionsSyncTest` 共 26/26 全綠；`PackageCreateWithScheduleTest` 7/7；`PackageDisplayAndGuardTest` 3 個 `by1 default value` errors 為 HEAD 既有 test-fixture 問題，與本次變更無關。
+
+### Files Changed
+
+- `backend/app/Http/Controllers/CoursePackageController.php`（`createMultiSubject` 排課寫入 + `extendSessionsIfNeeded` + `index` 批次預載）
+- `frontend/src/pages/CoursePackagesPage.vue`（建立 modal 時段欄位 + 摘要 dialog + 成員格狀態 + 健康度 badge + 統計列）
+- `backend/tests/Feature/PackageCreateWithScheduleTest.php`（新增）
+- `docs/CHANGELOG.md`（本條目）
+
+---
+
 ## 2026-04-20 — 方案共用課程堂數同步與剩餘顯示修正
 
 ### Problem

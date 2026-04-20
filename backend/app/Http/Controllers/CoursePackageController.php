@@ -51,19 +51,69 @@ class CoursePackageController extends Controller
 
         $packages = $query->orderByDesc('id')->get();
 
-        $result = $packages->map(function (CoursePackage $pkg) {
-            $members = StudentClass::where('PackageID', $pkg->id)
-                ->select(['ID', 'SubjectID', 'TeacherID', 'ClassType', 'Stop'])
+        // ── RISK-003：批次預載所有 members + scheduled_count + next_sessions + has_schedule，避免 N+1 ──
+        $packageIds = $packages->pluck('id')->all();
+        $allMembers = empty($packageIds)
+            ? collect()
+            : StudentClass::whereIn('PackageID', $packageIds)
+                ->select(['ID', 'PackageID', 'SubjectID', 'TeacherID', 'ClassType', 'Stop', 'week'])
                 ->get();
 
-            $subjectNames = [];
-            $teacherNames = [];
-            foreach ($members as $m) {
-                $subjectNames[$m->ID] = $m->displaySubjectName();
-                $teacherNames[$m->ID] = DB::table('User')
-                    ->where('id', (int) $m->TeacherID)
-                    ->value('Name') ?? '';
+        $memberIds = $allMembers->pluck('ID')->map(fn ($v) => (int) $v)->all();
+        $membersByPackage = $allMembers->groupBy('PackageID');
+
+        // scheduled_count（排除 cancelled/leave/leave_adjusted）
+        $scheduledCountMap = [];
+        if (!empty($memberIds)) {
+            $rows = ClassSession::whereIn('StudentClassID', $memberIds)
+                ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                ->select('StudentClassID', DB::raw('COUNT(*) as cnt'))
+                ->groupBy('StudentClassID')
+                ->get();
+            foreach ($rows as $r) {
+                $scheduledCountMap[(int) $r->StudentClassID] = (int) $r->cnt;
             }
+        }
+
+        // next_sessions（未來最多 3 堂 scheduled 日期）
+        $nextSessionsMap = [];
+        if (!empty($memberIds)) {
+            $today = Carbon::now()->toDateString();
+            $futureRows = ClassSession::whereIn('StudentClassID', $memberIds)
+                ->where('Status', 'scheduled')
+                ->where('SessionDate', '>=', $today)
+                ->orderBy('SessionDate')
+                ->orderBy('StartTime')
+                ->get(['StudentClassID', 'SessionDate']);
+            $grouped = $futureRows->groupBy('StudentClassID');
+            foreach ($grouped as $scid => $items) {
+                $nextSessionsMap[(int) $scid] = $items
+                    ->take(3)
+                    ->map(fn ($r) => substr((string) $r->SessionDate, 0, 10))
+                    ->values()
+                    ->all();
+            }
+        }
+
+        // 科目/老師名稱批次預載
+        $teacherIds = $allMembers->pluck('TeacherID')->map(fn ($v) => (int) $v)->unique()->filter()->all();
+        $teacherNameMap = empty($teacherIds)
+            ? []
+            : DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id')->all();
+
+        $subjectNameByMember = [];
+        foreach ($allMembers as $m) {
+            $subjectNameByMember[(int) $m->ID] = $m->displaySubjectName();
+        }
+
+        $result = $packages->map(function (CoursePackage $pkg) use (
+            $membersByPackage,
+            $scheduledCountMap,
+            $nextSessionsMap,
+            $teacherNameMap,
+            $subjectNameByMember
+        ) {
+            $members = $membersByPackage[$pkg->id] ?? collect();
 
             return [
                 'id'                 => $pkg->id,
@@ -72,6 +122,7 @@ class CoursePackageController extends Controller
                 'campus_id'          => $pkg->campus_id,
                 'campus_name'        => $pkg->campus?->name ?? '',
                 'name'               => $pkg->name,
+                'billing_mode'       => $pkg->billing_mode,
                 'total_sessions'     => $pkg->total_sessions,
                 'remaining_sessions' => $pkg->remaining_sessions,
                 'used_sessions'      => $pkg->used_sessions,
@@ -83,13 +134,25 @@ class CoursePackageController extends Controller
                 'stop'               => $pkg->stop,
                 'closed_reason'      => $pkg->closed_reason,
                 'enabled'            => $pkg->enabled,
-                'members'            => $members->map(fn ($m) => [
-                    'student_class_id' => $m->ID,
-                    'subject'          => $subjectNames[$m->ID] ?? '',
-                    'teacher_name'     => $teacherNames[$m->ID] ?? '',
-                    'class_type'       => $m->ClassType,
-                    'stop'             => (bool) $m->Stop,
-                ]),
+                'members'            => $members->map(function ($m) use (
+                    $scheduledCountMap,
+                    $nextSessionsMap,
+                    $teacherNameMap,
+                    $subjectNameByMember
+                ) {
+                    $id = (int) $m->ID;
+                    $week = (int) ($m->week ?? 0);
+                    return [
+                        'student_class_id' => $id,
+                        'subject'          => $subjectNameByMember[$id] ?? '',
+                        'teacher_name'     => $teacherNameMap[(int) $m->TeacherID] ?? '',
+                        'class_type'       => $m->ClassType,
+                        'stop'             => (bool) $m->Stop,
+                        'scheduled_count'  => $scheduledCountMap[$id] ?? 0,
+                        'has_schedule'     => $week >= 1 && $week <= 7,
+                        'next_sessions'    => $nextSessionsMap[$id] ?? [],
+                    ];
+                })->values(),
                 'created_at' => $pkg->created_at?->toIso8601String(),
             ];
         });
@@ -176,8 +239,11 @@ class CoursePackageController extends Controller
             'subjects.*.start_date'      => 'nullable|date',
             'subjects.*.confirmed_dates'   => 'nullable|array',
             'subjects.*.confirmed_dates.*' => 'date',
-            'subjects.*.days_of_week'    => 'nullable|array',
-            'subjects.*.day_time_slots'  => 'nullable|array',
+            'subjects.*.days_of_week'    => 'nullable|array|max:6',
+            'subjects.*.days_of_week.*'  => 'integer|min:1|max:7',
+            'subjects.*.day_time_slots'  => 'nullable|array|max:6',
+            'subjects.*.day_time_slots.*.weekday'   => 'nullable|integer|min:1|max:7',
+            'subjects.*.day_time_slots.*.start_time' => 'nullable|date_format:H:i',
             'subjects.*.start_time'      => 'nullable|date_format:H:i',
             'subjects.*.duration_hours'  => 'nullable|numeric|min:0.5|max:8',
         ]);
@@ -249,6 +315,8 @@ class CoursePackageController extends Controller
             ]);
 
             $createdMembers = [];
+            $membersScheduled = [];
+            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
 
             foreach ($data['subjects'] as $subjectSpec) {
                 $subjectId = (int) $subjectSpec['subject_id'];
@@ -256,20 +324,67 @@ class CoursePackageController extends Controller
                 $durationHours = (float) ($subjectSpec['duration_hours'] ?? 2);
                 $durationMinutes = (int) round($durationHours * 60);
 
-                $weekSlots = [];
-                if (!empty($subjectSpec['days_of_week'])) {
-                    $startTime = $subjectSpec['start_time'] ?? '16:00';
-                    foreach ($subjectSpec['days_of_week'] as $dow) {
-                        $weekSlots[] = ['weekday' => ((int) $dow + 6) % 7, 'time' => $startTime];
-                    }
-                }
-
                 $startDate = !empty($subjectSpec['start_date'])
                     ? $subjectSpec['start_date']
                     : Carbon::today()->toDateString();
                 $startTimeStr = $subjectSpec['start_time'] ?? '16:00';
 
-                $sc = StudentClass::create([
+                // ── 排課欄位計算（寫入 StudentClass.week / week1~week6 / time / time1~time6）──
+                // 月結方案不涉及堂數排課延伸（FR-008），但仍允許寫入 week/time 讓日曆可見。
+                // GAP-01：days_of_week 的值使用 ISO 1–7（1=Mon, 7=Sun），與 resolveScheduleSlotsForRebuild 口徑一致，不做任何 mod 轉換。
+                $scheduleFields = [];
+                $hasSchedule = false;
+
+                if (!$isMonthly) {
+                    $dayTimeSlots = $subjectSpec['day_time_slots'] ?? [];
+                    $daysOfWeek = $subjectSpec['days_of_week'] ?? [];
+
+                    // 取得實際要寫入的 (weekday, time) pairs
+                    $scheduleSlots = [];
+                    if (!empty($dayTimeSlots)) {
+                        foreach ($dayTimeSlots as $slot) {
+                            $wd = (int) ($slot['weekday'] ?? 0);
+                            if ($wd < 1 || $wd > 7) {
+                                continue;
+                            }
+                            $t = (string) ($slot['start_time'] ?? $slot['time'] ?? $startTimeStr);
+                            $scheduleSlots[] = ['weekday' => $wd, 'time' => $t];
+                        }
+                    } elseif (!empty($daysOfWeek)) {
+                        foreach ($daysOfWeek as $dow) {
+                            $wd = (int) $dow;
+                            if ($wd < 1 || $wd > 7) {
+                                continue;
+                            }
+                            $scheduleSlots[] = ['weekday' => $wd, 'time' => $startTimeStr];
+                        }
+                    }
+
+                    // RISK-002 守護：StudentClass 最多支援 week1~week6（6 個 slot）
+                    if (count($scheduleSlots) > 6) {
+                        Log::warning('CoursePackage createMultiSubject schedule slots truncated to 6', [
+                            'subject_id' => $subjectId,
+                            'original'   => count($scheduleSlots),
+                        ]);
+                        $scheduleSlots = array_slice($scheduleSlots, 0, 6);
+                    }
+
+                    if (!empty($scheduleSlots)) {
+                        $hasSchedule = true;
+                        if (count($scheduleSlots) === 1) {
+                            $scheduleFields['week'] = $scheduleSlots[0]['weekday'];
+                            $scheduleFields['time'] = $scheduleSlots[0]['time'];
+                        } else {
+                            foreach ($scheduleSlots as $idx => $slot) {
+                                $n = $idx + 1;
+                                $scheduleFields["week{$n}"] = $slot['weekday'];
+                                $scheduleFields["time{$n}"] = $slot['time'];
+                            }
+                        }
+                    }
+                }
+
+                $createPayload = [
                     'StudentID'         => (int) $data['student_id'],
                     'GradeID'           => 1,
                     'SubjectID'         => $subjectId,
@@ -296,7 +411,10 @@ class CoursePackageController extends Controller
                     'PackageID'            => $pkg->id,
                     'PackageTotalSessions' => $totalSessions,
                     'PackageName'          => $data['name'],
-                ]);
+                ];
+                $createPayload = array_merge($createPayload, $scheduleFields);
+
+                $sc = StudentClass::create($createPayload);
 
                 $confirmedDates = $subjectSpec['confirmed_dates'] ?? [];
                 foreach ($confirmedDates as $cDate) {
@@ -325,6 +443,29 @@ class CoursePackageController extends Controller
                     ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val')
                     ?? '課程';
 
+                // ── FR-003：對有排課欄位的成員呼叫 extendSessionsIfNeeded 補排 ──
+                // 月結方案不走堂數制補排（FR-008 回歸保護）
+                $scheduledCount = 0;
+                $firstSessionDate = null;
+
+                if (!$isMonthly && $hasSchedule && $totalSessions > 0) {
+                    $member = $sc->fresh();
+                    // RISK-001：extendSessionsIfNeeded 的 currentCount 已包含 attended 堂；
+                    // 此處補排數 = totalSessions - (confirmed_dates 數)
+                    $scController->extendSessionsIfNeeded($member, $totalSessions);
+                }
+
+                // 統計補排後實際 ClassSession 數量與首堂日期
+                $sessionAgg = ClassSession::where('StudentClassID', $sc->ID)
+                    ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                    ->orderBy('SessionDate')
+                    ->orderBy('StartTime')
+                    ->get(['SessionDate']);
+                $scheduledCount = $sessionAgg->count();
+                if ($scheduledCount > 0) {
+                    $firstSessionDate = substr((string) $sessionAgg->first()->SessionDate, 0, 10);
+                }
+
                 $createdMembers[] = [
                     'student_class_id' => $sc->ID,
                     'subject_id'       => $subjectId,
@@ -332,9 +473,30 @@ class CoursePackageController extends Controller
                     'teacher_id'       => $teacherId,
                     'confirmed_count'  => count($confirmedDates),
                 ];
+
+                $membersScheduled[] = [
+                    'student_class_id'   => (int) $sc->ID,
+                    'subject'            => $subjectName,
+                    'scheduled_count'    => $scheduledCount,
+                    'first_session_date' => $firstSessionDate,
+                    'has_schedule'       => $hasSchedule,
+                ];
             }
 
             $pkg->recomputeCounters();
+
+            Log::info('CoursePackage createMultiSubject', [
+                'package_id'       => $pkg->id,
+                'campus_id'        => $pkg->campus_id,
+                'total_sessions'   => $pkg->total_sessions,
+                'billing_mode'     => $pkg->billing_mode,
+                'member_count'     => count($createdMembers),
+                'members_scheduled' => array_map(fn ($m) => [
+                    'student_class_id' => $m['student_class_id'],
+                    'scheduled_count'  => $m['scheduled_count'],
+                    'has_schedule'     => $m['has_schedule'],
+                ], $membersScheduled),
+            ]);
 
             return response()->json([
                 'message'    => '方案已建立',
@@ -346,7 +508,8 @@ class CoursePackageController extends Controller
                     'remaining_sessions' => $pkg->remaining_sessions,
                     'used_sessions'      => $pkg->used_sessions,
                 ],
-                'members' => $createdMembers,
+                'members'           => $createdMembers,
+                'members_scheduled' => $membersScheduled,
             ], 201);
         });
     }
