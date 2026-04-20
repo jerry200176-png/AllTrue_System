@@ -42,8 +42,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-secret}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # ports removed: PostgreSQL should only be reachable via Docker internal network
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME:-alltrue} -d ${DB_DATABASE:-alltrue}" ]
       interval: 5s

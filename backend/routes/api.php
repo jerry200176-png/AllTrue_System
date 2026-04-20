@@ -37,41 +37,43 @@ use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleDiscrepancyController;
 
 
-Route::get('/fix-db', function () {
-    try {
-        if (!\Illuminate\Support\Facades\Schema::hasTable('schedules')) {
-            \Illuminate\Support\Facades\Schema::create('schedules', function (\Illuminate\Database\Schema\Blueprint $table) {
-                $table->id();
-                $table->integer('student_id');
-                $table->integer('teacher_id')->nullable();
-                $table->string('subject')->nullable();
-                $table->integer('day_of_week');
-                $table->string('start_time');
-                $table->string('end_time');
-                $table->decimal('duration_hours', 5, 2)->nullable();
-                $table->string('class_type')->nullable();
-                $table->string('status'); // scheduled, leave, rescheduled
-                $table->string('type'); // normal, extra
-                $table->integer('deduction')->default(1);
-                $table->integer('branch_id');
-                $table->date('schedule_date')->nullable();
-                $table->integer('student_course_id')->nullable();
-                $table->integer('original_schedule_id')->nullable();
-                $table->timestamps();
-            });
-        }
+if (app()->environment('local')) {
+    Route::get('/fix-db', function () {
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('schedules')) {
+                \Illuminate\Support\Facades\Schema::create('schedules', function (\Illuminate\Database\Schema\Blueprint $table) {
+                    $table->id();
+                    $table->integer('student_id');
+                    $table->integer('teacher_id')->nullable();
+                    $table->string('subject')->nullable();
+                    $table->integer('day_of_week');
+                    $table->string('start_time');
+                    $table->string('end_time');
+                    $table->decimal('duration_hours', 5, 2)->nullable();
+                    $table->string('class_type')->nullable();
+                    $table->string('status');
+                    $table->string('type');
+                    $table->integer('deduction')->default(1);
+                    $table->integer('branch_id');
+                    $table->date('schedule_date')->nullable();
+                    $table->integer('student_course_id')->nullable();
+                    $table->integer('original_schedule_id')->nullable();
+                    $table->timestamps();
+                });
+            }
 
-        \Illuminate\Support\Facades\DB::statement("ALTER TABLE User MODIFY PSW VARCHAR(255)");
-        $columns = \Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM User");
-        return response()->json([
-            'message' => 'DB fixed successfully (PSW updated, schedules table checked/created)',
-            'columns' => $columns,
-            'schedules_exists' => \Illuminate\Support\Facades\Schema::hasTable('schedules')
-        ]);
-    } catch (\Exception $e) {
-        return response()->json(['error' => $e->getMessage()]);
-    }
-});
+            \Illuminate\Support\Facades\DB::statement("ALTER TABLE User MODIFY PSW VARCHAR(255)");
+            $columns = \Illuminate\Support\Facades\DB::select("SHOW COLUMNS FROM User");
+            return response()->json([
+                'message' => 'DB fixed successfully (PSW updated, schedules table checked/created)',
+                'columns' => $columns,
+                'schedules_exists' => \Illuminate\Support\Facades\Schema::hasTable('schedules')
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()]);
+        }
+    });
+}
 
 Route::get('/health', fn() => response()->json(['ok' => true, 'message' => 'Laravel routing OK']));
 
