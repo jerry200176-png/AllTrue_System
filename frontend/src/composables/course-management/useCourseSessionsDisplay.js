@@ -363,7 +363,12 @@ export function useCourseSessionsDisplay({
    */
   const sessionCountWarning = (course) => {
     if (!isSessionMode(course)) return null;
-    const purchased = getPurchasedSessions(course);
+    // 方案課程：以方案池總購買數作為比較基準，避免 SessionCount 脫鉤誤報。
+    // 排課延伸口徑是以 SessionCount 為上限，但 SessionCount 舊資料可能停留在建立時的值，
+    // 造成「排程列數與購買堂數不一致」誤報。統一改用 package_total_sessions。
+    const purchased = course?.PackageID
+      ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0)
+      : getPurchasedSessions(course);
     if (purchased <= 0) return null;
     const effective = effectiveSessionCount(course);
     if (effective === purchased) return null;
@@ -436,6 +441,11 @@ export function useCourseSessionsDisplay({
 
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
+    // 方案課程：剩餘數以「方案池剩餘」為準，非 per-course 拆分值。
+    // 同方案下多科課程應顯示相同的池剩餘數字。
+    if (course?.PackageID) {
+      return Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0);
+    }
     const purchased = getPurchasedSessions(course);
     const cid = String(course?.id ?? '');
     const rows = classSessionsByCourse.value[cid];

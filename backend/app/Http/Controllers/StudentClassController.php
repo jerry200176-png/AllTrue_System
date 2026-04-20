@@ -2768,8 +2768,12 @@ class StudentClassController extends Controller
     /**
      * When SessionCount is reduced, cancel scheduled sessions beyond the new limit.
      * Only cancels sessions whose Status is 'scheduled'; attended/late/absent sessions are untouched.
+     *
+     * NOTE: public for cross-controller invocation (e.g. CoursePackageController::update
+     * synchronising SessionCount across shared-package members). Do not integrate through
+     * StudentClassController::update() to avoid triggering Charge preserved_delta path.
      */
-    private function cancelExcessScheduledSessions(int $classId, int $newCount): void
+    public function cancelExcessScheduledSessions(int $classId, int $newCount): void
     {
         $allActive = ClassSession::where('StudentClassID', $classId)
             ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
@@ -2794,8 +2798,11 @@ class StudentClassController extends Controller
     /**
      * 當 SessionCount 增加時，補建不足的 ClassSession 堂次。
      * 從現有最後一堂的隔日開始，按固定星期往後排，直到補足差額。
+     *
+     * NOTE: public for cross-controller invocation (see cancelExcessScheduledSessions).
+     * Must remain Append-Only：只補差額，絕不整刪重建（AI_REGRESSION_LESSONS §2026-04-12）。
      */
-    private function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
+    public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
     {
         $classId = (int) $studentClass->ID;
 
