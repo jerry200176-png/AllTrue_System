@@ -26,6 +26,34 @@ else
 fi
 
 echo "[git-sync] Branch: $branch"
+
+# ── Pre-sync security scan: abort if suspicious binaries detected ──
+_abort_if_suspicious() {
+  local found=""
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    bname=$(basename "$f")
+    if [[ "$bname" == .* ]] && [ "${#bname}" -gt 15 ]; then
+      case "$bname" in .xsession-errors*|.bash_history|.lesshst|.wget-hsts|.phpunit.result.cache) ;; *)
+        found="$found\n  SUSPICIOUS_HIDDEN: $f"
+      ;; esac
+    fi
+    case "$f" in *.sh|*.py|*.php|*.js|*.ts|*.vue|*.json|*.md|*.sql|*.gz|*.css|*.html|*.yml|*.yaml|*.xml|*.txt|*.log|*.png|*.jpg|*.svg|*.ico|*.woff|*.woff2|*.ttf|*.eot|*.map) continue ;; esac
+    if [ -x "$f" ] && file "$f" 2>/dev/null | grep -qiE 'ELF|ARM|Mach-O|executable'; then
+      found="$found\n  SUSPICIOUS_BINARY: $f"
+    fi
+  done < <(git ls-files --others --exclude-standard 2>/dev/null)
+
+  if [ -n "$found" ]; then
+    echo "[SECURITY-ABORT] Suspicious files detected, backup HALTED:" >&2
+    printf '%b\n' "$found" >&2
+    echo "[SECURITY-ABORT] Remove these files before backup can proceed." >&2
+    exit 99
+  fi
+  echo "[git-sync] Security scan passed."
+}
+_abort_if_suspicious
+
 echo "[git-sync] Staging changes..."
 git add -A
 

@@ -1,0 +1,31 @@
+Xsession: X session started for admin at Fri 17 Apr 15:37:42 CST 2026
+dbus-update-activation-environment: setting DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1002/bus
+dbus-update-activation-environment: setting DISPLAY=:0
+dbus-update-activation-environment: setting XAUTHORITY=/home/admin/.Xauthority
+localuser:admin being added to access control list
+dbus-update-activation-environment: setting USER=admin
+dbus-update-activation-environment: setting TEXTDOMAIN=Linux-PAM
+dbus-update-activation-environment: setting XDG_SESSION_TYPE=x11
+dbus-update-activation-environment: setting HOME=/home/admin
+dbus-update-activation-environment: setting DESKTOP_SESSION=LXDE-pi-x
+dbus-update-activation-environment: setting XDG_SEAT_PATH=/org/freedesktop/DisplayManager/Seat0
+dbus-update-activation-environment: setting DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1002/bus
+dbus-update-activation-environment: setting LOGNAME=admin
+dbus-update-activation-environment: setting XDG_SESSION_CLASS=user
+dbus-update-activation-environment: setting PATH=/home/admin/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
+dbus-update-activation-environment: setting XDG_SESSION_PATH=/org/freedesktop/DisplayManager/Session0
+dbus-update-activation-environment: setting XDG_RUNTIME_DIR=/run/user/1002
+dbus-update-activation-environment: setting DISPLAY=:0
+dbus-update-activation-environment: setting LANG=en_GB.UTF-8
+dbus-update-activation-environment: setting XDG_SESSION_DESKTOP=LXDE-pi-x
+dbus-update-activation-environment: setting XAUTHORITY=/home/admin/.Xauthority
+dbus-update-activation-environment: setting XDG_GREETER_DATA_DIR=/var/lib/lightdm/data/admin
+dbus-update-activation-environment: setting SHELL=/bin/bash
+dbus-update-activation-environment: setting GDMSESSION=LXDE-pi-x
+dbus-update-activation-environment: setting NO_AT_BRIDGE=1
+dbus-update-activation-environment: setting GPG_AGENT_INFO=/run/user/1002/gnupg/S.gpg-agent:0:1
+dbus-update-activation-environment: setting PWD=/home/admin
+** Message: 15:37:42.336: main.vala:103: Session is LXDE-pi
+** Message: 15:37:42.336: main.vala:104: DE is LXDE
+** Message: 15:37:42.397: main.vala:135: log directory: /home/admin/.cache/lxsession/LXDE-pi
+** Message: 15:37:42.397: main.vala:136: log path: /home/admin/.cache/lxsession/LXDE-pi/run.log
