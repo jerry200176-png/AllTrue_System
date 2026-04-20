@@ -1551,6 +1551,16 @@ const submitStudent = async () => {
                 body: JSON.stringify({ rfid: payload.rfid })
               });
             }
+            // Dual-source sync: Laravel (primary) succeeded — mirror to Supabase so
+            // loadStudents() fallback path reads the same cleared/updated values
+            // (especially for notes clear operations). Fire-and-forget.
+            supabase
+              .from('students')
+              .update(payload)
+              .eq('id', editingStudentId.value)
+              .then(({ error }) => {
+                if (error) console.warn('Supabase mirror update failed (non-blocking):', error?.message);
+              });
             closeStudentModal();
             loadStudents();
             loadAllStudentCourses();

@@ -201,7 +201,9 @@ class StudentController extends Controller
         if (isset($input['Phone']))        $student->Phone = $input['Phone'];
         if (isset($input['parent_name']))  $student->parent_name = $input['parent_name'];
         if (isset($input['parent_phone'])) $student->parent_phone = $input['parent_phone'];
-        if (isset($input['notes']))        $student->notes = $input['notes'];
+        // Use array_key_exists so a payload of {"notes": null} is treated as "clear the field"
+        // rather than "skip update" (isset($x) is false when $x is null).
+        if (array_key_exists('notes', $input)) $student->notes = $input['notes'] ?? '';
         if (isset($input['status']))       $student->status = $input['status'];
         if (isset($input['rfid']))         $student->RFID = $input['rfid'];
 

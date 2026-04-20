@@ -2,6 +2,47 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-20 — 學生備註清除仍顯示舊值修正（雙資料源同步 Bug Fix）
+
+### Problem
+
+老師反映：【學生管理】中，若備註欄位原本有值，清除後儲存，畫面仍顯示原先填寫的內容。
+
+根因為系統雙資料源（Laravel 主、Supabase 備援）同步缺口 + PHP `isset()` 對 `null` 的語意陷阱：
+
+1. **前端**：`StudentsList.vue` `submitStudent` 編輯路徑 L1546–1558，Laravel PUT 成功後直接 `return`，永不執行後面（L1562）的 `supabase.from('students').update(payload)`。後續 `loadStudents()` 若走 Supabase fallback（token 短暫失效／Laravel 暫時不可用），就會讀回 Supabase 裡未同步的舊備註。
+2. **後端**：`StudentController::update` L204 使用 `isset($input['notes'])`，`isset(null)` 回傳 `false` → 若前端（或 JSON 序列化邊界）送出 `{"notes": null}`，該行靜默跳過，DB 不更新。
+
+### Change
+
+- **`frontend/src/pages/StudentsList.vue` submitStudent res.ok 分支（L1554–1563）**：
+  - Laravel PUT 成功後，在 `closeStudentModal()` 前加入 `supabase.from('students').update(payload).eq('id', editingStudentId.value).then(...)`。
+  - Fire-and-forget（不 `await`）：不阻塞 UI 關閉與列表重新載入。
+  - `.then(({ error }) => { if (error) console.warn(...) })` 保留可偵錯性，不中斷成功流程。
+- **`backend/app/Http/Controllers/StudentController.php::update` L204–206**：
+  - `isset($input['notes'])` → `array_key_exists('notes', $input)`。
+  - 賦值改為 `$student->notes = $input['notes'] ?? ''`，確保 `{"notes": null}` 也能正確清空為空字串。
+  - 其他欄位（name/phone/school/parent_*/status/rfid/grade）邏輯不變。
+- **`backend/tests/Feature/StudentNotesUpdateTest.php`** 新增 4 個測試案例：
+  - `test_notes_can_be_cleared_with_empty_string`：送 `""` → DB 為 `""`。
+  - `test_notes_can_be_cleared_with_null`：送 `null` → DB 為 `""`（FR-002）。
+  - `test_notes_untouched_when_key_omitted_from_payload`：不含 `notes` 鍵 → DB 值不變。
+  - `test_notes_can_be_updated_to_new_value`：送新值 → DB 為新值。
+
+### Result
+
+- 主任清除備註後儲存，列表、重新整理、重新開啟編輯彈窗皆顯示為空。
+- 雙資料源同步一致，Supabase fallback 讀取時不再顯示舊值。
+- 後端 4 個測試 100% 通過（11 assertions）。
+
+### Regression Guard
+
+- 修改僅限 `notes` 單一欄位判斷，其他欄位 `isset()` 寫法零變更。
+- Supabase mirror update 失敗不會中斷主操作（`console.warn` 提示，UI 正常關閉）。
+- 後端 PUT body 若不含 `notes` 鍵，行為與修正前完全一致（由新增測試 `test_notes_untouched_when_key_omitted_from_payload` 守護）。
+
+---
+
 ## 2026-04-20 — 試聽（trial）課型老師容量守衛修正（Bug Fix）
 
 ### Problem
