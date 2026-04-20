@@ -37,6 +37,32 @@
       </div>
     </div>
 
+    <transition name="slide-down">
+      <div
+        v-if="!loading && packages.length && incompletePackageCount > 0"
+        class="health-stats-bar incomplete"
+        role="button"
+        tabindex="0"
+        @click="toggleHealthFilter"
+        @keydown.enter="toggleHealthFilter"
+        @keydown.space.prevent="toggleHealthFilter"
+        :aria-pressed="scheduleHealthFilter === 'incomplete'"
+      >
+        <span class="material-symbols-outlined">warning</span>
+        <span>{{ incompletePackageCount }} 個方案排課不完整</span>
+        <span class="stats-bar-hint">
+          {{ scheduleHealthFilter === 'incomplete' ? '（已篩選，點擊清除）' : '（點擊僅顯示）' }}
+        </span>
+      </div>
+      <div
+        v-else-if="!loading && packages.length"
+        class="health-stats-bar complete"
+      >
+        <span class="material-symbols-outlined">check_circle</span>
+        <span>所有方案排課已完整設定</span>
+      </div>
+    </transition>
+
     <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
       <span>載入中...</span>
@@ -57,6 +83,14 @@
         <div class="package-header" @click="toggleExpand(pkg.id)">
           <div class="package-info">
             <span class="package-name">{{ pkg.name }}</span>
+            <span
+              v-if="pkg.billing_mode !== 'date'"
+              class="health-badge"
+              :class="`health-${healthLevel(pkg)}`"
+              :title="healthTooltip(pkg)"
+            >
+              <span class="material-symbols-outlined">{{ healthIcon(healthLevel(pkg)) }}</span>
+            </span>
             <span class="student-tag">{{ pkg.student_name }}</span>
             <span v-if="pkg.stop" class="badge badge-warning">已暫停</span>
             <span v-else-if="pkg.remaining_sessions <= 2 && pkg.remaining_sessions > 0" class="badge badge-alert">剩餘不足</span>
@@ -88,9 +122,26 @@
               <h4>科目與老師</h4>
               <div class="members-grid">
                 <div v-for="m in pkg.members" :key="m.student_class_id" class="member-chip">
-                  <span class="member-subject">{{ m.subject || '未設定科目' }}</span>
-                  <span class="member-teacher">{{ m.teacher_name }}</span>
-                  <span v-if="m.stop" class="badge badge-warning badge-sm">停</span>
+                  <div class="member-chip-row">
+                    <span class="member-subject">{{ m.subject || '未設定科目' }}</span>
+                    <span class="member-teacher">{{ m.teacher_name }}</span>
+                    <span v-if="m.stop" class="badge badge-warning badge-sm">停</span>
+                  </div>
+                  <div v-if="pkg.billing_mode !== 'date'" class="member-chip-row member-chip-status-row">
+                    <span
+                      class="member-status-tag"
+                      :class="`status-${memberStatusLevel(m, pkg)}`"
+                      :title="memberStatusTooltip(m, pkg)"
+                      :style="memberStatusLevel(m, pkg) === 'unscheduled' ? 'cursor:pointer;' : ''"
+                      @click.stop="memberStatusLevel(m, pkg) === 'unscheduled' ? goSetSchedule(m) : null"
+                    >
+                      {{ memberStatusLabel(m, pkg) }}
+                    </span>
+                    <span v-if="(m.next_sessions ?? []).length" class="member-next-sessions">
+                      {{ (m.next_sessions ?? []).join(' · ') }}
+                    </span>
+                    <span v-else class="member-next-sessions member-next-empty">-</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -190,28 +241,59 @@
             </div>
 
             <h4 class="section-label">科目與老師設定</h4>
-            <div v-for="(subj, idx) in form.subjects" :key="idx" class="subject-row">
-              <div class="form-group flex-1">
-                <label>科目</label>
-                <select v-model="subj.subject_id" class="form-control">
-                  <option value="">請選擇</option>
-                  <option v-for="s in subjectOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
-                </select>
+            <div v-for="(subj, idx) in form.subjects" :key="idx" class="subject-block">
+              <div class="subject-row">
+                <div class="form-group flex-1">
+                  <label>科目</label>
+                  <select v-model="subj.subject_id" class="form-control">
+                    <option value="">請選擇</option>
+                    <option v-for="s in subjectOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
+                  </select>
+                </div>
+                <div class="form-group flex-1">
+                  <label>老師</label>
+                  <select v-model="subj.teacher_id" class="form-control">
+                    <option value="">請選擇</option>
+                    <option v-for="t in teacherOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
+                  </select>
+                </div>
+                <div class="form-group" style="width:100px">
+                  <label>時長(小時)</label>
+                  <input v-model.number="subj.duration_hours" type="number" class="form-control" min="0.5" step="0.5" />
+                </div>
+                <button v-if="form.subjects.length > 1" class="btn btn-icon btn-danger-text" @click="removeSubject(idx)">
+                  <span class="material-symbols-outlined">remove_circle</span>
+                </button>
               </div>
-              <div class="form-group flex-1">
-                <label>老師</label>
-                <select v-model="subj.teacher_id" class="form-control">
-                  <option value="">請選擇</option>
-                  <option v-for="t in teacherOptions" :key="t.id" :value="t.id">{{ t.name }}</option>
-                </select>
+              <div class="schedule-row">
+                <div class="form-group">
+                  <label>上課星期（可選填，可複選，最多 6 個）</label>
+                  <div class="weekday-chips">
+                    <button
+                      v-for="d in dayOptions"
+                      :key="d.value"
+                      type="button"
+                      class="weekday-chip"
+                      :class="{ selected: (subj.days_of_week ?? []).includes(d.value) }"
+                      :disabled="!(subj.days_of_week ?? []).includes(d.value) && (subj.days_of_week ?? []).length >= 6"
+                      @click="toggleSubjectDay(subj, d.value)"
+                    >
+                      {{ d.label }}
+                    </button>
+                  </div>
+                </div>
+                <div class="form-group" style="width:140px">
+                  <label>上課時間</label>
+                  <select v-model="subj.start_time" class="form-control">
+                    <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
               </div>
-              <div class="form-group" style="width:100px">
-                <label>時長(小時)</label>
-                <input v-model.number="subj.duration_hours" type="number" class="form-control" min="0.5" step="0.5" />
-              </div>
-              <button v-if="form.subjects.length > 1" class="btn btn-icon btn-danger-text" @click="removeSubject(idx)">
-                <span class="material-symbols-outlined">remove_circle</span>
-              </button>
+              <p class="schedule-hint">
+                {{ (subj.days_of_week ?? []).length
+                  ? `此科將於每週${formatDaysLabel(subj.days_of_week)} ${subj.start_time || '16:00'} 自動產生排課`
+                  : '未填上課星期時，建立後不產生排課（可稍後至課程管理頁補填）。' }}
+              </p>
             </div>
             <button class="btn btn-text btn-sm" @click="addSubject">
               <span class="material-symbols-outlined">add_circle</span>
@@ -278,6 +360,54 @@
         </div>
       </div>
     </teleport>
+
+    <!-- Schedule Summary Dialog (after createMultiSubject) -->
+    <teleport to="body">
+      <div v-if="showSummaryModal" class="modal-overlay" @click.self="closeSummary">
+        <div class="modal-box modal-lg">
+          <div class="modal-header">
+            <h3>方案建立完成</h3>
+            <button class="modal-close" @click="closeSummary">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div v-if="allSummariesEmpty" class="summary-empty">
+              <span class="material-symbols-outlined summary-empty-icon">event_busy</span>
+              <p>所有科目未設定上課時段，因此未自動產生排課。</p>
+              <p class="summary-empty-sub">您可以至「課程管理」為每科設定排課時段；設定後系統會自動補排。</p>
+              <button class="btn btn-primary btn-sm" @click="goCourseManagement">
+                <span class="material-symbols-outlined">arrow_forward</span>
+                前往課程管理設定
+              </button>
+            </div>
+            <div v-else class="summary-list">
+              <p class="summary-intro">以下是各科排課結果：</p>
+              <ul>
+                <li v-for="(item, i) in createSummaryData" :key="i" class="summary-item">
+                  <div class="summary-subject">{{ item.subject || '未設定科目' }}</div>
+                  <div v-if="item.scheduled_count > 0" class="summary-detail ok">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    已排 {{ item.scheduled_count }} 堂
+                    <span v-if="item.first_session_date" class="summary-first-date">
+                      （首堂 {{ item.first_session_date }}）
+                    </span>
+                  </div>
+                  <div v-else class="summary-detail warn">
+                    <span class="material-symbols-outlined">info</span>
+                    尚未設定排課時段
+                    <a class="summary-link" href="javascript:void(0)" @click="goSetScheduleById(item.student_class_id)">
+                      前往設定
+                    </a>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" @click="closeSummary">完成</button>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -303,9 +433,30 @@ const showCreateModal = ref(false);
 const creating = ref(false);
 const studentSearch = ref('');
 const statusFilter = ref('active');
+const scheduleHealthFilter = ref(null); // null | 'incomplete'
 const studentOptions = ref([]);
 const teacherOptions = ref([]);
 const subjectOptions = ref([]);
+
+const showSummaryModal = ref(false);
+const createSummaryData = ref([]);
+
+// ISO 1=Mon … 7=Sun，沿用 StudentsList.vue 的規格
+const dayOptions = [
+  { value: 1, label: '一' }, { value: 2, label: '二' }, { value: 3, label: '三' },
+  { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' }, { value: 7, label: '日' },
+];
+
+function buildTimeOptions() {
+  const out = [];
+  for (let h = 6; h <= 22; h++) {
+    for (const m of [0, 30]) {
+      out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  return out;
+}
+const timeOptions = buildTimeOptions();
 
 const form = ref(emptyForm());
 
@@ -389,6 +540,16 @@ async function submitEdit() {
   }
 }
 
+function emptySubject() {
+  return {
+    subject_id: '',
+    teacher_id: '',
+    duration_hours: 2,
+    days_of_week: [],
+    start_time: '16:00',
+  };
+}
+
 function emptyForm() {
   return {
     student_id: '',
@@ -396,18 +557,33 @@ function emptyForm() {
     total_sessions: 24,
     rate: 0,
     class_type: 'one_on_one',
-    subjects: [
-      { subject_id: '', teacher_id: '', duration_hours: 2 },
-    ],
+    subjects: [emptySubject()],
   };
 }
 
 function addSubject() {
-  form.value.subjects.push({ subject_id: '', teacher_id: '', duration_hours: 2 });
+  form.value.subjects.push(emptySubject());
 }
 
 function removeSubject(idx) {
   form.value.subjects.splice(idx, 1);
+}
+
+function toggleSubjectDay(subject, value) {
+  if (!Array.isArray(subject.days_of_week)) subject.days_of_week = [];
+  const i = subject.days_of_week.indexOf(value);
+  if (i >= 0) {
+    subject.days_of_week.splice(i, 1);
+  } else if (subject.days_of_week.length < 6) {
+    subject.days_of_week.push(value);
+    subject.days_of_week.sort((a, b) => a - b);
+  }
+}
+
+function formatDaysLabel(days) {
+  if (!Array.isArray(days) || !days.length) return '';
+  const map = { 1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '日' };
+  return days.slice().sort((a, b) => a - b).map(d => map[d] ?? '').join('、');
 }
 
 const filteredPackages = computed(() => {
@@ -421,8 +597,96 @@ const filteredPackages = computed(() => {
   } else if (statusFilter.value === 'stopped') {
     list = list.filter(p => p.stop);
   }
+  if (scheduleHealthFilter.value === 'incomplete') {
+    list = list.filter(p => p.billing_mode !== 'date' && healthLevel(p) !== 'green');
+  }
   return list;
 });
+
+// ── 排課健康度 / 成員狀態 helpers ──
+function memberStatusLevel(m, pkg) {
+  const total = Number(pkg.total_sessions ?? 0);
+  const scheduled = Number(m.scheduled_count ?? 0);
+  if (total <= 0) return 'ok';
+  if (scheduled >= total) return 'ok';
+  if (scheduled > 0) return 'partial';
+  return 'unscheduled';
+}
+
+function memberStatusLabel(m, pkg) {
+  const level = memberStatusLevel(m, pkg);
+  const scheduled = Number(m.scheduled_count ?? 0);
+  const total = Number(pkg.total_sessions ?? 0);
+  if (level === 'ok') return `已排 ${scheduled}/${total}`;
+  if (level === 'partial') return `已排 ${scheduled}/${total}`;
+  return '未排定';
+}
+
+function memberStatusTooltip(m, pkg) {
+  const level = memberStatusLevel(m, pkg);
+  if (level === 'unscheduled') return '點擊前往設定排課時段';
+  if (level === 'partial') return '排課未達總堂數，可至課程管理頁補排';
+  return '排課已完整';
+}
+
+function healthLevel(pkg) {
+  if (!pkg || pkg.billing_mode === 'date') return 'green';
+  const members = Array.isArray(pkg.members) ? pkg.members : [];
+  if (!members.length) return 'green';
+  const total = Number(pkg.total_sessions ?? 0);
+  if (total <= 0) return 'green';
+  let allReady = true;
+  let allZero = true;
+  for (const m of members) {
+    const s = Number(m.scheduled_count ?? 0);
+    if (s < total) allReady = false;
+    if (s > 0) allZero = false;
+  }
+  if (allReady) return 'green';
+  if (allZero) return 'red';
+  return 'orange';
+}
+
+function healthIcon(level) {
+  if (level === 'green') return 'check';
+  if (level === 'red') return 'close';
+  return 'priority_high';
+}
+
+function healthTooltip(pkg) {
+  const members = Array.isArray(pkg.members) ? pkg.members : [];
+  const total = Number(pkg.total_sessions ?? 0);
+  const ready = members.filter(m => Number(m.scheduled_count ?? 0) >= total).length;
+  const unready = members.length - ready;
+  return `${ready} 科已排齊 / ${unready} 科未排齊`;
+}
+
+const incompletePackageCount = computed(() => {
+  return (packages.value || []).filter(p => {
+    if (p.billing_mode === 'date') return false;
+    if (p.stop || !p.enabled) return false;
+    return healthLevel(p) !== 'green';
+  }).length;
+});
+
+function toggleHealthFilter() {
+  scheduleHealthFilter.value = scheduleHealthFilter.value === 'incomplete' ? null : 'incomplete';
+}
+
+function goSetSchedule(m) {
+  if (!m?.student_class_id) return;
+  if (!confirm('即將前往課程管理頁，是否繼續？')) return;
+  window.location.href = `/course-management?student_class_id=${m.student_class_id}`;
+}
+
+function goSetScheduleById(studentClassId) {
+  if (!studentClassId) return;
+  window.location.href = `/course-management?student_class_id=${studentClassId}`;
+}
+
+function goCourseManagement() {
+  window.location.href = '/course-management';
+}
 
 function progressPct(pkg) {
   if (!pkg.total_sessions) return 0;
@@ -548,22 +812,41 @@ async function submitCreate() {
       total_sessions: form.value.total_sessions,
       rate: form.value.rate || 0,
       class_type: form.value.class_type,
-      subjects: validSubjects.map(s => ({
-        subject_id: Number(s.subject_id),
-        teacher_id: Number(s.teacher_id),
-        duration_hours: Number(s.duration_hours) || 2,
-      })),
+      subjects: validSubjects.map(s => {
+        const item = {
+          subject_id: Number(s.subject_id),
+          teacher_id: Number(s.teacher_id),
+          duration_hours: Number(s.duration_hours) || 2,
+        };
+        const days = Array.isArray(s.days_of_week) ? s.days_of_week.filter(d => d >= 1 && d <= 7) : [];
+        if (days.length) {
+          item.days_of_week = days;
+          item.start_time = s.start_time || '16:00';
+        }
+        return item;
+      }),
     };
     const res = await createMultiSubjectPackage(payload);
-    alert(`方案已建立（ID: ${res.package_id}）`);
+    createSummaryData.value = Array.isArray(res?.members_scheduled) ? res.members_scheduled : [];
     showCreateModal.value = false;
     form.value = emptyForm();
+    showSummaryModal.value = true;
     await loadPackages();
   } catch (e) {
     alert('建立失敗：' + e.message);
   } finally {
     creating.value = false;
   }
+}
+
+const allSummariesEmpty = computed(() => {
+  if (!createSummaryData.value.length) return true;
+  return createSummaryData.value.every(m => Number(m.scheduled_count ?? 0) === 0);
+});
+
+function closeSummary() {
+  showSummaryModal.value = false;
+  createSummaryData.value = [];
 }
 
 watch(() => props.branchId, () => {
@@ -631,9 +914,62 @@ onMounted(() => {
 
 .members-section h4 { font-size: 0.8rem; font-weight: 600; color: #64748b; margin: 0 0 8px; }
 .members-grid { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.member-chip { display: flex; align-items: center; gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; }
+.member-chip { display: flex; flex-direction: column; gap: 3px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 12px; min-width: 180px; }
+.member-chip-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.member-chip-status-row { margin-top: 2px; }
 .member-subject { font-weight: 600; font-size: 0.85rem; }
 .member-teacher { color: #64748b; font-size: 0.8rem; }
+
+.member-status-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.72rem; font-weight: 600;
+  padding: 2px 6px; border-radius: 4px;
+  transition: opacity 0.15s;
+}
+.member-status-tag.status-ok { background: #d1fae5; color: #065f46; }
+.member-status-tag.status-partial { background: #fef3c7; color: #92400e; }
+.member-status-tag.status-unscheduled { background: #fed7aa; color: #9a3412; }
+.member-status-tag.status-unscheduled:hover { opacity: 0.8; }
+
+.member-next-sessions { font-size: 0.72rem; color: #64748b; }
+.member-next-empty { color: #cbd5e1; }
+
+@media (max-width: 480px) {
+  .member-next-sessions { display: none; }
+}
+
+/* ── Health badge on package header ── */
+.health-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.health-badge .material-symbols-outlined { font-size: 14px; }
+.health-badge.health-green { background: #22c55e; color: #fff; }
+.health-badge.health-orange { background: #f59e0b; color: #fff; }
+.health-badge.health-red { background: #ef4444; color: #fff; }
+
+/* ── Health stats bar ── */
+.health-stats-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem; font-weight: 600;
+  margin-bottom: 12px;
+  cursor: pointer; user-select: none;
+  transition: opacity 0.15s;
+}
+.health-stats-bar:not([role]) { cursor: default; }
+.health-stats-bar:hover { opacity: 0.9; }
+.health-stats-bar.incomplete { background: #f59e0b; color: #fff; }
+.health-stats-bar.complete { background: #d1fae5; color: #065f46; cursor: default; }
+.health-stats-bar .material-symbols-outlined { font-size: 1.1rem; }
+.stats-bar-hint { font-weight: 400; font-size: 0.78rem; opacity: 0.92; margin-left: auto; }
+
+.slide-down-enter-active, .slide-down-leave-active { transition: max-height 0.2s ease, opacity 0.2s ease; overflow: hidden; }
+.slide-down-enter-from, .slide-down-leave-to { max-height: 0; opacity: 0; }
+.slide-down-enter-to, .slide-down-leave-from { max-height: 80px; opacity: 1; }
 
 .progress-bar-wrap { margin-bottom: 12px; }
 .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
@@ -684,7 +1020,40 @@ onMounted(() => {
 .required { color: #ef4444; }
 
 .section-label { font-size: 0.85rem; font-weight: 700; color: #334155; margin: 16px 0 8px; }
+.subject-block { padding: 10px; margin-bottom: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafbfc; }
 .subject-row { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.schedule-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.schedule-hint { font-size: 0.72rem; color: #64748b; margin: 6px 0 0; }
+
+.weekday-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.weekday-chip {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #d1d5db; background: #f1f5f9; color: #475569;
+  border-radius: 6px; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; padding: 0;
+  transition: transform 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.weekday-chip:hover:not(:disabled) { transform: scale(1.05); border-color: var(--primary, #4f46e5); }
+.weekday-chip.selected { background: var(--primary, #4f46e5); color: #fff; border-color: var(--primary, #4f46e5); }
+.weekday-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Summary dialog ── */
+.summary-empty { text-align: center; padding: 18px 8px; }
+.summary-empty-icon { font-size: 3rem; color: #f59e0b; opacity: 0.8; }
+.summary-empty p { margin: 8px 0; color: #334155; }
+.summary-empty-sub { font-size: 0.85rem; color: #64748b; }
+
+.summary-intro { font-size: 0.85rem; color: #475569; margin: 0 0 10px; }
+.summary-list ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.summary-item { padding: 10px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; }
+.summary-subject { font-weight: 600; color: #1e293b; font-size: 0.9rem; }
+.summary-detail { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; margin-top: 4px; }
+.summary-detail .material-symbols-outlined { font-size: 1rem; }
+.summary-detail.ok { color: #065f46; }
+.summary-detail.warn { color: #9a3412; }
+.summary-first-date { color: #64748b; font-size: 0.78rem; }
+.summary-link { color: var(--primary, #4f46e5); margin-left: 6px; text-decoration: underline; font-size: 0.8rem; cursor: pointer; }
 
 .inline-hint { font-size: 0.72rem; color: #94a3b8; margin: 4px 0 0; }
 .inline-warn { font-size: 0.76rem; color: #ea580c; margin: 4px 0 0; font-weight: 600; }
