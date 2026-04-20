@@ -167,7 +167,7 @@
                     <template v-else>月結</template>
                   </template>
                   <template v-else>
-                    <strong>{{ course.remaining_sessions ?? 0 }}</strong>堂
+                    <strong>{{ course.PackageID ? (course.package_remaining_sessions ?? 0) : (course.remaining_sessions ?? 0) }}</strong>堂
                   </template>
                 </span>
               </div>
@@ -230,7 +230,7 @@
                         <span class="tag">{{ getSubjectLabel(course.subject) }}</span>
                         <span v-if="course.PackageID" class="tag tag-package" :title="course.PackageName || '多科方案'">方案</span>
                         <span v-if="course.status === 'inactive'" class="tag tag-paused-sm">已暫停</span>
-                        <span v-else-if="course.payment_type === 'session' && !course.PackageID && (course.remaining_sessions ?? 0) <= 2 && !effectiveClosedReason(course)" class="tag tag-expiring">即將用完</span>
+                        <span v-else-if="course.payment_type === 'session' && !effectiveClosedReason(course) && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2)" class="tag tag-expiring">即將用完</span>
                       </td>
                       <td>{{ course.teacher_name || '待指派' }}</td>
                       <td>
@@ -243,14 +243,22 @@
                         <div v-if="course.payment_type === 'session'" class="sessions-cell">
                           <div class="mini-progress">
                             <div class="mini-progress-fill" :style="{
-                              width: Math.min(100, Math.round(((course.used_sessions || 0) / Math.max(course.sessions_purchased || 1, 1)) * 100)) + '%',
-                              background: course.PackageID ? '#2e7d32' : ((course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
+                              width: course.PackageID
+                                ? Math.min(100, Math.round(((course.package_used_sessions ?? 0) / Math.max(course.package_total_sessions ?? 1, 1)) * 100)) + '%'
+                                : Math.min(100, Math.round(((course.used_sessions || 0) / Math.max(course.sessions_purchased || 1, 1)) * 100)) + '%',
+                              background: course.PackageID
+                                ? ((course.package_remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.package_remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
+                                : ((course.remaining_sessions ?? 0) <= 2 ? '#c62828' : (course.remaining_sessions ?? 0) <= 4 ? '#f57c00' : '#2e7d32')
                             }"></div>
                           </div>
-                          <span :class="{ 'text-red': !course.PackageID && course.remaining_sessions <= 2 }">
-                            <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
-                            <span v-if="course.PackageID" class="tag tag-package-hint">（方案共用）</span>
-                            <span v-if="course.package_total_sessions" class="package-pool-hint">方案池 {{ course.package_remaining_sessions ?? 0 }} / {{ course.package_total_sessions }} 堂</span>
+                          <span :class="{ 'text-red': course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : course.remaining_sessions <= 2 }">
+                            <template v-if="course.PackageID">
+                              <strong>{{ course.package_remaining_sessions ?? 0 }}</strong> / {{ course.package_total_sessions ?? 0 }} 堂
+                              <span class="tag tag-package-hint">（方案共用）</span>
+                            </template>
+                            <template v-else>
+                              <strong>{{ course.remaining_sessions ?? 0 }}</strong> / {{ course.sessions_purchased || 0 }} 堂
+                            </template>
                           </span>
                         </div>
                         <span v-else class="hint">
@@ -300,9 +308,9 @@
                         </button>
                         <span v-if="course.last_paid_at" class="paid-date-hint">{{ course.last_paid_at }}</span>
                         <button
-                          :class="['small', course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 ? 'btn-renew-warn' : 'ghost']"
+                          :class="['small', course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? 'btn-renew-warn' : 'ghost']"
                           @click="openAddSessionsForCourse(course)"
-                        >{{ course.payment_type === 'session' && (course.remaining_sessions ?? 0) <= 2 ? '續報加購' : '加購' }}</button>
+                        >{{ course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? '續報加購' : '加購' }}</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
                         <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -504,10 +512,10 @@
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
         </div>
         <div class="form-group">
-          <label>目前剩餘（此課程）</label>
-          <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.remaining_sessions ?? 0) <= 2 ? '#e65100' : 'var(--primary)' }">
-            {{ selectedCourse?.remaining_sessions ?? 0 }} 堂
-            <span v-if="(selectedCourse?.remaining_sessions ?? 0) <= 2" style="font-size: 13px; color: #e65100;">（即將用完，建議盡快加購）</span>
+          <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
+          <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2 ? '#e65100' : 'var(--primary)' }">
+            {{ selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0) }} 堂
+            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" style="font-size: 13px; color: #e65100;">（即將用完，建議盡快加購）</span>
           </p>
         </div>
         <p class="hint" style="color: #666; margin-bottom: 8px;">此加購會延續原課程，不會建立新的課程。</p>
@@ -813,12 +821,16 @@ const parseCourseNumber = (value) => {
 const getCourseRemainingSessions = (course) => (
   parseCourseNumber(course?.remaining_sessions ?? course?.RemainingSessions)
 );
-/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷
- *  共用方案課程（PackageID）以方案共用池計數，個別 StudentClass 行的 remaining 可能暫時為 0（ledger 資料修復前），
- *  不應據此誤報「即將用完」— 僅在明確停課（status=inactive）時由其他 UI 標示（FR-002）。 */
+/** 列表小徽章：僅堂數制用「剩餘 ≤2」標紅；月結制不以 RemainingSessions（常為 0）判斷。
+ *  方案課程（PackageID）改以 package_remaining_sessions（方案池剩餘）判斷，
+ *  與主要「剩餘堂數」顯示一致。 */
 const isSessionPaymentLowRemaining = (course) => {
   if (String(course?.payment_type || '').toLowerCase() === 'monthly') return false;
-  if (course?.PackageID) return false;
+  if (course?.PackageID) {
+    const pr = Number(course?.package_remaining_sessions ?? NaN);
+    if (!Number.isFinite(pr)) return false;
+    return pr <= 2;
+  }
   const r = getCourseRemainingSessions(course);
   if (r == null) return false;
   return r <= 2;

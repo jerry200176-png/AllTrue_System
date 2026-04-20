@@ -109,6 +109,10 @@
                 <span class="material-symbols-outlined">visibility</span>
                 詳細
               </button>
+              <button v-if="pkg.billing_mode !== 'date'" class="btn btn-primary btn-xs" @click="openEditModal(pkg)">
+                <span class="material-symbols-outlined">edit</span>
+                編輯 / 加購堂數
+              </button>
               <button class="btn btn-outline btn-xs" @click="triggerRecompute(pkg.id)">
                 <span class="material-symbols-outlined">refresh</span>
                 重算餘額
@@ -223,6 +227,57 @@
         </div>
       </div>
     </teleport>
+
+    <!-- Edit Package Modal -->
+    <teleport to="body">
+      <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
+        <div class="modal-box modal-lg">
+          <div class="modal-header">
+            <h3>編輯方案 — {{ editPkgSnapshot?.name }}</h3>
+            <button class="modal-close" @click="closeEditModal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label>方案名稱</label>
+                <input v-model="editForm.name" class="form-control" />
+              </div>
+              <div class="form-group flex-1">
+                <label>總堂數 <span class="required">*</span></label>
+                <input v-model.number="editForm.total_sessions" type="number" class="form-control" min="1" />
+                <p class="inline-hint">
+                  目前已用 {{ editPkgSnapshot?.used_sessions ?? 0 }} 堂。修改後剩餘將重新計算。
+                </p>
+                <p v-if="editTotalBelowUsed" class="inline-warn">
+                  新總堂數不可小於已使用堂數（{{ editPkgSnapshot?.used_sessions ?? 0 }} 堂）
+                </p>
+                <p v-else-if="editTotalWillDecrease" class="inline-note">
+                  減少堂數將取消最後 {{ editDecreaseDelta }} 堂未來排課，儲存前會再次確認。
+                </p>
+                <p v-else-if="editTotalWillIncrease" class="inline-ok">
+                  加購 {{ editIncreaseDelta }} 堂：儲存後所有科目的排課會自動補排。
+                </p>
+              </div>
+              <div class="form-group flex-1">
+                <label>每堂費率</label>
+                <input v-model.number="editForm.rate" type="number" class="form-control" min="0" step="10" />
+                <p class="inline-hint">費率僅影響未來計費，不會覆寫已手動調整的金額。</p>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" @click="closeEditModal" :disabled="saving">取消</button>
+            <button
+              class="btn btn-primary"
+              :disabled="saving || editTotalBelowUsed || !editForm.total_sessions"
+              @click="submitEdit"
+            >
+              {{ saving ? '儲存中...' : '儲存' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -253,6 +308,86 @@ const teacherOptions = ref([]);
 const subjectOptions = ref([]);
 
 const form = ref(emptyForm());
+
+const showEditModal = ref(false);
+const saving = ref(false);
+const editPkgSnapshot = ref(null);
+const editForm = ref({ name: '', total_sessions: 0, rate: 0 });
+
+const editTotalBelowUsed = computed(() => {
+  const used = Number(editPkgSnapshot.value?.used_sessions ?? 0);
+  const nv = Number(editForm.value.total_sessions);
+  return Number.isFinite(nv) && nv > 0 && nv < used;
+});
+const editTotalWillDecrease = computed(() => {
+  const oldV = Number(editPkgSnapshot.value?.total_sessions ?? 0);
+  const nv = Number(editForm.value.total_sessions);
+  return Number.isFinite(nv) && nv > 0 && nv < oldV;
+});
+const editTotalWillIncrease = computed(() => {
+  const oldV = Number(editPkgSnapshot.value?.total_sessions ?? 0);
+  const nv = Number(editForm.value.total_sessions);
+  return Number.isFinite(nv) && nv > oldV;
+});
+const editDecreaseDelta = computed(() => {
+  const oldV = Number(editPkgSnapshot.value?.total_sessions ?? 0);
+  const nv = Number(editForm.value.total_sessions);
+  return Math.max(0, oldV - (Number.isFinite(nv) ? nv : oldV));
+});
+const editIncreaseDelta = computed(() => {
+  const oldV = Number(editPkgSnapshot.value?.total_sessions ?? 0);
+  const nv = Number(editForm.value.total_sessions);
+  return Math.max(0, (Number.isFinite(nv) ? nv : oldV) - oldV);
+});
+
+function openEditModal(pkg) {
+  editPkgSnapshot.value = { ...pkg };
+  editForm.value = {
+    name: pkg.name || '',
+    total_sessions: Number(pkg.total_sessions ?? 0),
+    rate: Number(pkg.rate ?? 0),
+  };
+  showEditModal.value = true;
+}
+
+function closeEditModal() {
+  if (saving.value) return;
+  showEditModal.value = false;
+  editPkgSnapshot.value = null;
+}
+
+async function submitEdit() {
+  if (!editPkgSnapshot.value) return;
+  if (editTotalBelowUsed.value) return;
+
+  if (editTotalWillDecrease.value) {
+    const msg = `減少後將取消 ${editDecreaseDelta.value} 堂未來排課，確認繼續？`;
+    if (!confirm(msg)) return;
+  }
+
+  saving.value = true;
+  try {
+    const payload = {
+      name: editForm.value.name,
+      total_sessions: Number(editForm.value.total_sessions),
+      rate: Number(editForm.value.rate || 0),
+    };
+    const res = await updatePackage(editPkgSnapshot.value.id, payload);
+    const extended = Number(res?.extended_count ?? 0);
+    const cancelled = Array.isArray(res?.cancelled_sessions) ? res.cancelled_sessions.length : 0;
+    let summary = '方案已更新，排課同步完成';
+    if (extended > 0) summary += `（補排 ${extended} 堂）`;
+    if (cancelled > 0) summary += `（取消 ${cancelled} 堂未來排課，請手動通知家長）`;
+    alert(summary);
+    showEditModal.value = false;
+    editPkgSnapshot.value = null;
+    await loadPackages();
+  } catch (e) {
+    alert('儲存失敗：' + (e?.message || e));
+  } finally {
+    saving.value = false;
+  }
+}
 
 function emptyForm() {
   return {
@@ -550,6 +685,11 @@ onMounted(() => {
 
 .section-label { font-size: 0.85rem; font-weight: 700; color: #334155; margin: 16px 0 8px; }
 .subject-row { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+
+.inline-hint { font-size: 0.72rem; color: #94a3b8; margin: 4px 0 0; }
+.inline-warn { font-size: 0.76rem; color: #ea580c; margin: 4px 0 0; font-weight: 600; }
+.inline-note { font-size: 0.76rem; color: #d97706; margin: 4px 0 0; }
+.inline-ok { font-size: 0.76rem; color: #16a34a; margin: 4px 0 0; }
 
 .slide-enter-active, .slide-leave-active { transition: all 0.2s ease; }
 .slide-enter-from, .slide-leave-to { opacity: 0; max-height: 0; overflow: hidden; }

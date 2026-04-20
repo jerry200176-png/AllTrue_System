@@ -2,6 +2,59 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-20 — 方案共用課程堂數同步與剩餘顯示修正
+
+### Problem
+
+1. 學生列表與課程管理頁，方案共用課程的「剩餘堂數」顯示 per-course 的 `SessionCount`（建立時拆分值），與主任認知的「方案池剩餘」脫鉤，造成「4 / 4 堂（方案共用） / 方案池 8/8 堂」矛盾小字。
+2. `PUT /api/v1/course-packages/{id}` 未支援修改 `total_sessions`，方案加購堂數後所有成員 `StudentClass.SessionCount` 不會自動同步，`extendSessionsIfNeeded` 無法延伸補排，必須逐科手動調整。
+3. `sessionCountWarning` 以 per-course `SessionCount` 為基準，`SessionCount` 脫鉤後持續誤報「排程列數與購買堂數不一致」。
+
+### Change
+
+- **後端 API**：`backend/app/Http/Controllers/CoursePackageController.php::update()` 新增 `total_sessions` 欄位支援。
+  - 422 guard：月結方案（`billing_mode != count`）不允許修改；新總堂數不可 < `used_sessions`。
+  - `DB::transaction` 內對所有成員 bulk update `SessionCount` + `PackageTotalSessions`（**嚴格限定兩欄**，避免觸發 `preserved_delta` 路徑洗掉 `Charge` — RISK-002 守護）。
+  - 對每個成員呼叫 `cancelExcessScheduledSessions` + `extendSessionsIfNeeded`，縮減則取消多餘 scheduled 排課、加購則 Append-Only 補排（RISK-001 守護）。
+  - `remaining_sessions` 冪等公式：`new_total - used_sessions`，不走差量累積。
+  - `Log::info('CoursePackage totalSessions changed', ...)` 記錄 before/after/member_count/extended_count/cancelled_count/by_user。
+  - API 回應新增 `cancelled_sessions: [{student_class_id, session_id}]` 與 `extended_count`。
+- **後端存取修飾子**：`backend/app/Http/Controllers/StudentClassController.php`。
+  - `cancelExcessScheduledSessions` / `extendSessionsIfNeeded` 從 `private` 改為 `public` 以支援跨 Controller 呼叫。方法本體未動，保持 Append-Only 語意。
+- **前端 composable**：`frontend/src/composables/course-management/useCourseSessionsDisplay.js`。
+  - `displayRemainingSessions()`：方案課程（`PackageID` 存在）優先回傳 `package_remaining_sessions`，非方案課程邏輯不變。
+  - `sessionCountWarning()`：方案課程的比較基準改用 `package_total_sessions`，消除 `SessionCount` 脫鉤誤報。`effectiveSessionCount` 與 `SESSION_NOT_OCCUPYING_QUOTA` 不動（保留請假假陽性修正，AI_REGRESSION_LESSONS §2026-04-15）。
+- **前端學生列表**：`frontend/src/pages/StudentsList.vue`。
+  - 剩餘堂數主顯示、進度條、加購按鈕警示、加購 modal、「即將用完」tag、小徽章 `isSessionPaymentLowRemaining`，方案課程全部切換為 `package_remaining_sessions` / `package_total_sessions`。
+  - 移除「方案池 X/Y 堂」次要小字（主要數字已統整）。
+- **前端方案管理**：`frontend/src/pages/CoursePackagesPage.vue`。
+  - 新增 Edit Modal，支援 `total_sessions` 欄位（number input）與 inline guard（< used_sessions 時橘色警告 + submit disabled）。
+  - 減少堂數送出前 `confirm()` 二次確認；加購時顯示「加購 N 堂：儲存後自動補排」提示。
+  - `month` 方案隱藏「編輯 / 加購堂數」按鈕。
+- **Artisan backfill**：`backend/app/Console/Commands/SyncPackageSessionCounts.php`（新增，`php artisan packages:sync-session-counts [--dry-run] [--package=]`）。
+  - 找出 `SessionCount != total_sessions` 的方案成員，dry-run 僅列差異；正式執行以 bulk update 修正兩欄，並對 current < correct 的成員呼叫 `extendSessionsIfNeeded` 補排。
+- **測試**：`backend/tests/Feature/PackageTotalSessionsSyncTest.php`（新增，7 案例全綠）。
+  - 加購補排、縮減取消、冪等 no-op、< used_sessions 422、三科全補、同步不動 `Charge`（RISK-002）、月結 422。
+- **回歸**：`SessionCountWarningTest`（5/5）+ `PackageTotalSessionsSyncTest`（7/7）共 12/12 全綠。
+
+### Files Changed
+
+- `backend/app/Http/Controllers/CoursePackageController.php`
+- `backend/app/Http/Controllers/StudentClassController.php`（僅存取修飾子）
+- `backend/app/Console/Commands/SyncPackageSessionCounts.php`（新增）
+- `backend/tests/Feature/PackageTotalSessionsSyncTest.php`（新增）
+- `frontend/src/composables/course-management/useCourseSessionsDisplay.js`
+- `frontend/src/pages/StudentsList.vue`
+- `frontend/src/pages/CoursePackagesPage.vue`
+- 無 migration（`total_sessions` / `SessionCount` / `PackageTotalSessions` 欄位已存在）
+
+### Operational Notes
+
+- 部署後建議執行 `php artisan packages:sync-session-counts --dry-run` 檢查歷史差異；驗證後以 `php artisan packages:sync-session-counts` 正式修復。
+- 前端需 `cd frontend && npm run deploy` 同步 `index.html` 與 `assets/`。
+
+---
+
 ## 2026-04-19 (D) — 舊系統繳費收據補建（Legacy Payment Backfill）
 
 ### Problem

@@ -526,7 +526,27 @@ class CoursePackageController extends Controller
             'closed_reason'  => 'nullable|string|max:32',
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'rate'           => 'nullable|numeric|min:0',
+            'total_sessions' => 'nullable|integer|min:1|max:999',
         ]);
+
+        // ── total_sessions guard：月結方案不支援修改總堂數 (RISK-005) ──
+        $wantTotalChange = array_key_exists('total_sessions', $data)
+            && $data['total_sessions'] !== null
+            && (int) $data['total_sessions'] !== (int) $pkg->total_sessions;
+
+        if ($wantTotalChange && (string) ($pkg->billing_mode ?? 'count') !== 'count') {
+            return response()->json(['message' => '月結方案不支援修改總堂數'], 422);
+        }
+
+        if ($wantTotalChange) {
+            $newTotal = (int) $data['total_sessions'];
+            $usedSessions = (int) ($pkg->used_sessions ?? 0);
+            if ($newTotal < $usedSessions) {
+                return response()->json([
+                    'message' => "新總堂數不可小於已使用堂數（{$usedSessions} 堂）",
+                ], 422);
+            }
+        }
 
         if (array_key_exists('name', $data) && $data['name'] !== null) {
             $pkg->name = $data['name'];
@@ -560,6 +580,90 @@ class CoursePackageController extends Controller
             StudentClass::where('PackageID', $pkg->id)->update($cascadeToMembers);
         }
 
-        return response()->json(['message' => '已更新', 'package' => $pkg]);
+        // ── total_sessions 同步：僅當值有變動時執行 ──
+        $cancelledSessions = [];
+        $extendedCount = 0;
+        if ($wantTotalChange) {
+            $newTotal = (int) $data['total_sessions'];
+            $oldTotal = (int) $pkg->total_sessions;
+
+            DB::transaction(function () use ($pkg, $newTotal, &$cancelledSessions, &$extendedCount) {
+                // RISK-002 守護：bulk update 僅更新 SessionCount 與 PackageTotalSessions，
+                // 絕不碰 Charge / Rate / RemainingSessions（這些由 preserved_delta 與 ledger 保護）
+                StudentClass::where('PackageID', $pkg->id)
+                    ->update([
+                        'SessionCount'         => $newTotal,
+                        'PackageTotalSessions' => $newTotal,
+                    ]);
+
+                $members = StudentClass::where('PackageID', $pkg->id)->get();
+                $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
+
+                foreach ($members as $member) {
+                    if ((string) ($member->ScheduleMode ?? 'count') !== 'count') {
+                        continue;
+                    }
+
+                    // 先快照「被取消的 scheduled 排課 id list」：在呼叫 cancelExcessScheduledSessions
+                    // 之前找出所有 non-terminal sessions 超過 newTotal 的 scheduled 列。
+                    $beforeAll = ClassSession::where('StudentClassID', $member->ID)
+                        ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                        ->orderBy('SessionDate')
+                        ->orderBy('StartTime')
+                        ->orderBy('id')
+                        ->get();
+                    $candidateCancelIds = [];
+                    if ($beforeAll->count() > $newTotal) {
+                        foreach ($beforeAll->slice($newTotal) as $excess) {
+                            if ($excess->Status === 'scheduled') {
+                                $candidateCancelIds[] = (int) $excess->id;
+                            }
+                        }
+                    }
+
+                    $beforeActive = $beforeAll->count();
+
+                    $scController->cancelExcessScheduledSessions((int) $member->ID, $newTotal);
+                    $scController->extendSessionsIfNeeded($member, $newTotal);
+
+                    $afterActive = ClassSession::where('StudentClassID', $member->ID)
+                        ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+                        ->count();
+                    if ($afterActive > $beforeActive) {
+                        $extendedCount += ($afterActive - $beforeActive);
+                    }
+
+                    foreach ($candidateCancelIds as $sid) {
+                        $cancelledSessions[] = [
+                            'student_class_id' => (int) $member->ID,
+                            'session_id'       => $sid,
+                        ];
+                    }
+                }
+
+                // remaining_sessions 冪等公式（NFR-003）：任何時候重算結果都一致
+                $pkg->total_sessions     = $newTotal;
+                $pkg->remaining_sessions = max(0, $newTotal - (int) $pkg->used_sessions);
+                $pkg->save();
+            });
+
+            Log::info('CoursePackage totalSessions changed', [
+                'package_id'       => $pkg->id,
+                'campus_id'        => $pkg->campus_id,
+                'before'           => $oldTotal,
+                'after'            => $newTotal,
+                'member_count'     => StudentClass::where('PackageID', $pkg->id)->count(),
+                'extended_count'   => $extendedCount,
+                'cancelled_count'  => count($cancelledSessions),
+                'by_user'          => $request->attributes->get('auth_user')?->id ?? 0,
+            ]);
+        }
+
+        return response()->json([
+            'message'            => '已更新',
+            'package'            => $pkg,
+            'cancelled_sessions' => $cancelledSessions,
+            'extended_count'     => $extendedCount,
+        ]);
     }
 }
