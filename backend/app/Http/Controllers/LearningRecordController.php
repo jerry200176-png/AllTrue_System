@@ -1306,6 +1306,9 @@ class LearningRecordController extends Controller
             return;
         }
 
+        // The `rescheduled` row stays on the OLD date — it marks
+        // "this original slot was rescheduled away."  Only the
+        // linked `scheduled` row moves to the new date.
         $rescheduledRow = Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $oldDate)
             ->where('status', 'rescheduled')
@@ -1317,11 +1320,6 @@ class LearningRecordController extends Controller
         }
 
         $newDayOfWeek = (int) Carbon::parse($newDate)->dayOfWeekIso;
-
-        $rescheduledRow->update([
-            'schedule_date' => $newDate,
-            'day_of_week'   => $newDayOfWeek,
-        ]);
 
         $scheduledRow = Schedule::where('student_course_id', $courseId)
             ->where('original_schedule_id', $rescheduledRow->id)
@@ -1337,6 +1335,8 @@ class LearningRecordController extends Controller
                 'end_time'      => $endTime   ?: $scheduledRow->end_time,
             ]);
 
+            // Purge any duplicate scheduled rows on the target date
+            // (from race conditions or stale frontend POSTs).
             Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $newDate)
                 ->where('status', 'scheduled')

@@ -246,6 +246,9 @@ class SubstituteTeacherTest extends TestCase
         $this->assertSame($subTeacherId, (int) ($row['teacher_id'] ?? 0));
         $this->assertSame('代課2', $row['teacher_name'] ?? '');
 
+        // After the 2026-04-21 bug fix, the regular teacher should NO LONGER
+        // see a session that has been substituted.  Only the substitute teacher
+        // is shown the session in their roll-call list.
         $regToken = $this->createTeacherToken($regularTeacherId);
         $idxReg = $this->withHeaders([
             'Authorization' => "Bearer {$regToken}",
@@ -253,9 +256,7 @@ class SubstituteTeacherTest extends TestCase
         ])->getJson('/api/v1/class-sessions?start=2026-04-20&end=2026-04-20&per_page=100');
         $idxReg->assertOk();
         $rowReg = collect($idxReg->json('data'))->firstWhere('id', $session->id);
-        $this->assertNotNull($rowReg, 'Regular teacher should still see the session');
-        $this->assertSame($subTeacherId, (int) ($rowReg['teacher_id'] ?? 0));
-        $this->assertSame('代課2', $rowReg['teacher_name'] ?? '');
+        $this->assertNull($rowReg, 'Regular teacher must NOT see a substituted session');
     }
 
     /** 學習評量頁老師課表：依 GET student-classes 建 classIds；代課-only 課程須列入。 */
