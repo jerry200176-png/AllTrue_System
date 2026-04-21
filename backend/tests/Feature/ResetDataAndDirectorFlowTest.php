@@ -15,8 +15,6 @@ class ResetDataAndDirectorFlowTest extends TestCase
 {
     use RefreshDatabase;
 
-    protected $connectionsToTransact = [];
-
     /**
      * @test
      */

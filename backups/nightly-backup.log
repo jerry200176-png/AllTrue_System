@@ -769,3 +769,13 @@ To github.com:jerry200176-png/AllTrue_System.git
 
   SUSPICIOUS_BINARY: bin/rclone
 [SECURITY-ABORT] Remove these files before backup can proceed.
+[2026-04-22 05:00:01] [6h] === 6-hour backup start ===
+[2026-04-22 05:00:01] [6h] === 6-hour backup start ===
+[2026-04-22 05:00:01] [6h] Dumping 'AllTrue' → /home/admin/backups/sixhour/alltrue_6h_2026-04-22_0500.sql.gz ...
+[2026-04-22 05:00:01] [6h] Dumping 'AllTrue' → /home/admin/backups/sixhour/alltrue_6h_2026-04-22_0500.sql.gz ...
+[2026-04-22 05:00:01] [6h] Dump complete: 412K
+[2026-04-22 05:00:01] [6h] Dump complete: 412K
+[2026-04-22 05:00:01] [6h] Pruning old 6h dumps (keep latest 12) ...
+[2026-04-22 05:00:01] [6h] Pruning old 6h dumps (keep latest 12) ...
+[2026-04-22 05:00:01] [6h] === 6-hour backup done ===
+[2026-04-22 05:00:01] [6h] === 6-hour backup done ===
