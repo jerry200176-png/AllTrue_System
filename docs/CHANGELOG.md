@@ -2,6 +2,24 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-22 — fix(P1): retroLeave 補請假重複 INSERT StudentSignIn 導致 500
+
+### 根因
+
+`ScheduleController::retroLeave` void 舊出席記錄後，以 `StudentSignIn::create()` 新增 Status='leave' 記錄，但 `studentsingin_classsessionid_unique` 唯一約束不區分 `VoidedAt`，導致 `SQLSTATE[23000] Duplicate entry 1062`，整筆 transaction rollback，補請假完全無法使用。
+
+### 修復
+
+- `app/Http/Controllers/ScheduleController.php`：`retroLeave()` 改用 `StudentSignIn::updateOrCreate(['ClassSessionID' => $session->id], [...])` 並在 update payload 加入 `VoidedAt=null`，確保 voided 記錄正確復活為有效 leave 記錄
+- `tests/Feature/ScheduleLeaveCascadeTest.php`：取消 `test_retro_leave_voids_attendance_and_reverses_deduction` 的 `markTestSkipped()`
+
+### 關聯
+
+- GitHub Issue #2
+- Plan: `b8_retroLeave_duplicate_StudentSignIn_af3e9c12.plan.md`
+
+---
+
 ## 2026-04-22 — ops: 備份與 CI 安全強化至業界標準
 
 ### 背景
