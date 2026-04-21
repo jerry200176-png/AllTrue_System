@@ -22,7 +22,7 @@
         <server name="BCRYPT_ROUNDS" value="4"/>
         <server name="CACHE_DRIVER" value="array"/>
         <server name="DB_CONNECTION" value="mysql"/>
-        <server name="DB_HOST" value="localhost"/>
+        <server name="DB_HOST" value="127.0.0.1"/>
         <server name="DB_PORT" value="3306"/>
         <server name="DB_DATABASE" value="AllTrue_test"/>
         <server name="DB_USERNAME" value="admin"/>
