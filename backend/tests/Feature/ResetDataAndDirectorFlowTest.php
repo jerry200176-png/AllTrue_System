@@ -130,10 +130,7 @@ class ResetDataAndDirectorFlowTest extends TestCase
      */
     public function test_directors_pending_excludes_pending_teachers(): void
     {
-        // TODO: /directors/pending 仍把 pending teacher 一起列出（預期 1 但回傳 2）。
-        // Controller 已 whereIn('type',['U','A'])，需實際除錯為何 teacher (type='T') 仍出現。
-        // 用戶 P0 禁止改 production；另開計畫。
-        $this->markTestSkipped('Pending: /directors/pending teacher-exclusion not behaving as expected');
+        // Regression: pending teachers must never appear on directors/pending.
 
         $campus = CampusFactory::new()->create();
         $superAdmin = UserFactory::new()->superAdmin()->create();
