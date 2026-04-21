@@ -21,6 +21,23 @@
 
 ---
 
+## 2026-04-22 — fix(P2): directors/pending 排除教師帳號（Issue #6）
+
+### 根因
+
+`DirectorAccountController::pending` 僅用 `User.type IN (U,A)` 判斷待審主任，但歷史/誤標資料可能讓教師帳號以 U/A 形式存在；單靠 type 會讓 pending 清單混入教師。
+
+### 修復
+
+- `app/Http/Controllers/DirectorAccountController.php`：在 pending 查詢中額外排除 `Teacher` 表已有對應記錄的 user，避免教師被錯誤列入。
+- `tests/Feature/ResetDataAndDirectorFlowTest.php`：解封 `test_directors_pending_excludes_pending_teachers`，恢復回歸檢查。
+
+### 關聯
+
+- GitHub Issue #6
+
+---
+
 ## 2026-04-22 — fix(P1): retroLeave 補請假重複 INSERT StudentSignIn 導致 500
 
 ### 根因
