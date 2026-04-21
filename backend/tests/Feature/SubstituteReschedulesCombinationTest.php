@@ -36,6 +36,18 @@ class SubstituteReschedulesCombinationTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-04-18 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_substitute_then_reschedule_shows_substitute_teacher(): void
     {
         [$dirToken, $regularTeacherId, $subTeacherId, $session] = $this->seedScenario('sub-then-res');

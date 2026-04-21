@@ -12,6 +12,7 @@ use App\Models\StudentClass;
 use App\Models\SystemSetting;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -33,6 +34,18 @@ use Tests\TestCase;
 class SubstituteUxV2Test extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-04-18 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     // ───────────────────────────────────────────────────────────
     // 1. 單堂代課成功 + 家長 Notification 於同一交易建立
