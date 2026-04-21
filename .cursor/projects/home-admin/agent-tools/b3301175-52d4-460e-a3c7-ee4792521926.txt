@@ -1,0 +1,652 @@
+MySQL CURRENT_TIME(): Practical Guide to Precision, Pitfalls, and Production Patterns – TheLinuxCode 
+
+ 
+
+ 
+
+A few years ago I debugged a production issue that looked impossible: orders were “late” only between 11:58 PM and 12:07 AM. The data was correct, the jobs were running, and yet the alerting kept firing in that narrow window. The root cause wasn’t a fancy distributed-systems problem—it was a simple, time-only comparison that crossed midnight.
+
+That experience is why I treat MySQL’s`CURRENT_TIME()` as a small function with big consequences. It’s incredibly handy when you only need the server’s current time-of-day (hours, minutes, seconds) without dragging the date into every query. But because it returns a`TIME` value (not a full timestamp), you need to think clearly about precision, time zones, and edge cases like overnight ranges.
+
+I’ll walk you through how`CURRENTTIME()` behaves, how fractional seconds precision works, how it compares to`NOW()`/`CURRENTTIMESTAMP`, and how I like to use it in schemas, queries, and operational checks—without stepping on the classic traps.
+
+## What CURRENT_TIME() Actually Returns
+
+`CURRENT_TIME()` returns the current time-of-day as a MySQL`TIME` value—typically formatted as`HH:MM:SS`. You can write it with or without parentheses:
+
+- `CURRENT_TIME`(keyword form)
+- `CURRENT_TIME()`(function form)
+
+In practice, I prefer the parentheses form in codebases because it reads consistently next to other functions and avoids confusion in generated SQL.
+
+A few details that matter in real systems:
+
+1) Type matters: the result is a`TIME`, not a`DATETIME` or`TIMESTAMP`. That means:
+
+- There’s no date component.
+- Comparisons are time-only comparisons.
+- Indexing strategies differ from timestamp columns.
+
+2) It’s “now” from the database’s point of view: this is useful when you have multiple app servers, containers, or worker nodes and you want a single source of truth for time-of-day.
+
+3) It’s not a duration, even though`TIME` can represent durations: MySQL’s`TIME` type can store values beyond`23:59:59`(and even negatives) to represent elapsed time, but`CURRENT_TIME()` always returns the current clock time-of-day.
+
+Basic example:
+
+```
+SELECT CURRENTTIME() AS currtime;
+
+```
+
+If your output looks like`14:03:29`, that’s expected: hours, minutes, seconds.
+
+## Syntax and Fractional Seconds Precision (The Part People Skip)
+
+The function also supports fractional seconds precision:
+
+- `CURRENT_TIME()`
+- `CURRENT_TIME(fsp)`
+
+Where`fsp` is the fractional seconds precision (commonly`0` to`6`). If you omit it, you usually get seconds precision.
+
+Example with microseconds (5 digits shown here):
+
+```
+SELECT CURRENTTIME(5) AS currtime;
+
+```
+
+You might see:`14:07:10.02423`.
+
+A few practical notes from my day-to-day work:
+
+- Rounding happens. If you store a higher-precision time into a lower-precision`TIME` column (or cast), MySQL will round or truncate based on settings and context.
+- Choose precision intentionally. I default to`fsp=3`(milliseconds) when I need ordering within a second for logs, and`fsp=6`(microseconds) only when I know the storage and downstream tooling will keep it.
+- Schema alignment is key. If your column is`TIME(0)` but you query`CURRENT_TIME(6)`, you’ll lose precision when inserting.
+
+Here’s a “clean alignment” pattern for a table that stores time-of-day with milliseconds:
+
+```
+CREATE TABLE api_heartbeat (
+id BIGINT NOT NULL AUTO_INCREMENT,service_name VARCHAR(100) NOT NULL,beat_time TIME(3) NOT NULL,beat_date DATE NOT NULL,PRIMARY KEY (id),KEY idxservicedate (servicename, beatdate));INSERT INTO apiheartbeat (servicename, beattime, beatdate)VALUES (‘payments-worker‘, CURRENTTIME(3), CURRENTDATE());
+```
+
+I store both date and time because time-of-day alone is rarely enough for auditing.
+
+## CURRENTTIME() vs CURTIME() vs NOW() vs CURRENTTIMESTAMP
+
+I see teams mix these interchangeably and then wonder why reports disagree.
+
+Here’s how I frame it:
+
+- `CURRENT_TIME()`/`CURTIME()`→ time-of-day only (`TIME`)
+- `CURRENT_DATE()`/`CURDATE()`→ date only (`DATE`)
+- `NOW()`/`CURRENT_TIMESTAMP()`→ date + time (`DATETIME` or`TIMESTAMP` depending on context)
+- `UTC_TIMESTAMP()`→ date + time in UTC
+
+If you only need time-of-day,`CURRENTTIME()` is the right tool. If you’re logging events, you almost always want`NOW(3)` or`UTCTIMESTAMP(3)` instead.
+
+A quick comparison query I run when validating behavior:
+
+```
+SELECT
+CURRENTTIME(6)      AS localtime,CURTIME(6)           AS localtimealias,CURRENTDATE()       AS localdate,NOW(6)               AS local_datetime,CURRENTTIMESTAMP(6) AS localdatetime_alias,UTCTIMESTAMP(6)     AS utcdatetime;
+```
+
+### Traditional vs modern pattern (what I recommend in 2026)
+
+When teams are containerized, running multiple regions, or doing cross-service event correlation, the decision of “where does time come from?” shows up fast.
+
+What happens
+
+—
+
+Each host decides “now”
+
+Single source of truth per DB
+
+Uniform across regions
+
+Date-free clock time
+
+My rule: if a human will ever ask “when did this happen?”, store a full timestamp in UTC. Use`CURRENT_TIME()` for schedules, cutoffs, and “what time is it right now” logic.
+
+## Practical Query Patterns (Schedules, SLAs, and Cutoffs)
+
+Time-of-day queries are common in commerce, operations, and reporting. This is where`CURRENT_TIME()` shines—if you handle midnight correctly.
+
+### 1) “Office hours” routing
+
+Example: route support tickets to “live chat” only from 09:00 to 17:30.
+
+```
+SELECT
+CASEWHEN CURRENT_TIME() BETWEEN ‘09:00:00‘ AND ‘17:30:00‘THEN ‘live_chat‘ELSE ‘async_email‘END AS support_channel;
+```
+
+This is straightforward because the range doesn’t cross midnight.
+
+### 2) Ranges that cross midnight (the classic bug)
+
+Example: “night shift” is 22:00 to 06:00.`BETWEEN` will fail here because`22:00` is greater than`06:00` in a same-day comparison.
+
+Correct approach: split into two conditions.
+
+```
+SELECT
+CASEWHEN CURRENTTIME() >= ‘22:00:00‘ OR CURRENTTIME() < '06:00:00'THEN ‘night_shift‘ELSE ‘day_shift‘END AS shift;
+```
+
+That`OR` is the difference between a stable system and a pager at midnight.
+
+### 3) “Due today by time-of-day” checks
+
+A pattern I like: store a due date plus a due time (time-of-day), then compare against a composed datetime.
+
+```
+-- Example table
+CREATE TABLE invoice (id BIGINT NOT NULL AUTO_INCREMENT,customer_name VARCHAR(120) NOT NULL,due_date DATE NOT NULL,due_time TIME(0) NOT NULL,paid_at DATETIME(3) NULL,PRIMARY KEY (id),KEY idxdue (duedate, due_time));-- Find invoices that are overdue right now (server-local)SELECT id, customer_nameFROM invoiceWHERE paid_at IS NULLAND TIMESTAMP(duedate, duetime) < NOW(3);
+```
+
+Notice what I’m doing:
+
+- I keep the “business concept” (date + time cutoff) in separate columns.
+- I compare using`TIMESTAMP(duedate, duetime)` against`NOW(3)`.
+
+This avoids the “time-only with no date” trap.
+
+### 4) Numeric format (useful, but I rarely recommend it)
+
+MySQL lets you coerce`TIME` to a number via arithmetic:
+
+```
+SELECT CURRENTTIME() + 0 AS currtime_numeric;
+
+```
+
+You might get something like`140917` for`14:09:17`.
+
+This can be handy for compact reporting or legacy systems, but I avoid persisting this because it’s ambiguous (no separators, no padding guarantees in every context) and it makes time math unpleasant.
+
+## Using CURRENT_TIME() in Table Design (Defaults, Inserts, and Generated Values)
+
+If you’re recording “delivered at” or “checked in at” times, you can set the time column from the server using`CURRENT_TIME()`.
+
+Here’s a clean, runnable example in the style I’d ship:
+
+```
+CREATE TABLE delivery_details (
+deliveryid BIGINT NOT NULL AUTOINCREMENT,product_id BIGINT NOT NULL,product_name VARCHAR(80) NOT NULL,delivered_at TIME(0) NOT NULL,delivered_on DATE NOT NULL,PRIMARY KEY (delivery_id),KEY idxdeliveredon (delivered_on));INSERT INTO deliverydetails (productid, productname, deliveredat, delivered_on)VALUES (101, ‘Let Us C‘, CURRENTTIME(), CURRENTDATE());SELECT * FROM delivery_details;
+```
+
+### Default values: when they help and when they hurt
+
+You can also define a default:
+
+```
+CREATE TABLE checkin_log (
+id BIGINT NOT NULL AUTO_INCREMENT,employee_email VARCHAR(190) NOT NULL,checkintime TIME(0) NOT NULL DEFAULT (CURRENTTIME()),checkindate DATE NOT NULL DEFAULT (CURRENTDATE()),PRIMARY KEY (id));
+```
+
+I like defaults when:
+
+- The column should almost always be set to “now”.
+- Multiple services write to the table and I want consistent behavior.
+
+I avoid defaults when:
+
+- The time must represent an external event (device time, scanned timestamp, partner event time).
+- Backfills are common and “now” would be wrong more often than right.
+
+### Generated columns (a practical bridge)
+
+Sometimes you want both: store separate`DATE` and`TIME`, but also have an indexed combined value for range queries.
+
+```
+CREATE TABLE storehoursevent (
+id BIGINT NOT NULL AUTO_INCREMENT,store_id BIGINT NOT NULL,event_date DATE NOT NULL,event_time TIME(3) NOT NULL,eventdt DATETIME(3) AS (TIMESTAMP(eventdate, event_time)) STORED,PRIMARY KEY (id),KEY idxstoredt (storeid, eventdt));
+```
+
+Now you can filter by`event_dt` efficiently while keeping the business semantics in separate fields.
+
+## Time Zones and Distributed Systems (Where People Get Surprised)
+
+Time zones are the part that turns “simple time function” into production surprises.
+
+Key idea:`CURRENT_TIME()` returns a time-of-day that reflects the MySQL session’s notion of “current time”. If you run a global system, you need a clear policy:
+
+- If reports are regional, you might want session time zones set per connection.
+- If data is shared globally, storing UTC timestamps is safer.
+
+### Safer time zone conversions (don’t convert a bare TIME and hope)
+
+A`TIME` value has no date, and time zone offsets can change with daylight saving time rules. Converting time zones correctly usually needs a date.
+
+If you truly need “current time in another zone” for display or logic, I recommend converting a full datetime and then taking the time portion:
+
+```
+-- Example: show current time in America/Los_Angeles
+SELECTTIME(CONVERTTZ(NOW(), @@session.timezone, ‘America/LosAngeles‘)) AS latime;
+```
+
+If you prefer working from UTC (my usual choice for reliability across environments):
+
+```
+SELECT
+TIME(CONVERTTZ(UTCTIMESTAMP(), ‘UTC‘, ‘America/LosAngeles‘)) AS latime;
+```
+
+For this to work, MySQL needs time zone tables loaded (a deployment detail teams sometimes miss). In 2026, I typically catch this early by adding a startup check in migrations or health checks that validates a known`CONVERT_TZ()` conversion returns non-`NULL`.
+
+Example “is time zone data installed?” probe:
+
+```
+SELECT
+CONVERTTZ(‘2026-01-15 12:00:00‘, ‘UTC‘, ‘America/LosAngeles‘) AS tz_test;
+```
+
+If`tz_test` is`NULL`, you don’t have usable time zone tables, and any “convert then`TIME()`” approach will silently fail.
+
+### My recommendation for multi-region apps
+
+- Store event timestamps in UTC (`UTC_TIMESTAMP(3)` into a`DATETIME(3)` column, or`TIMESTAMP(3)` if you want automatic UTC handling).
+- Use`CURRENT_TIME()` only for local business rules like “is the store open right now in this region?” and do that calculation in a region-aware way.
+
+## Common Mistakes I See (and the Fix I Recommend)
+
+These show up constantly in code review.
+
+### Mistake 1: Logging with CURRENT_TIME()
+
+If you store only time-of-day, you can’t answer basic questions:
+
+- Which day did this happen?
+- Which time zone was it?
+- Did two events occur in the same second across different days?
+
+Fix: store a real timestamp.
+
+```
+ALTER TABLE event_log
+ADD COLUMN createdatutc DATETIME(3) NOT NULL DEFAULT (UTC_TIMESTAMP(3));
+```
+
+### Mistake 2: Comparing a TIME column to CURRENT_TIME() for deadlines
+
+Time-only deadlines break across midnight and don’t age well.
+
+Fix: store`deadline_dt` as`DATETIME`(or store date+time and compose) and compare to`NOW()`.
+
+### Mistake 3: Relying on app-server time for database state
+
+If one service writes`created_at` from its host clock and another service compares to DB time, your system can become inconsistent.
+
+Fix: let the database set timestamps for DB-owned records.
+
+### Mistake 4: Fractional seconds mismatch
+
+Teams query`CURRENT_TIME(6)` but store into`TIME(0)` and later wonder why two events “tie”.
+
+Fix: decide on precision, then align query, schema, and application parsing.
+
+### Mistake 5: Assuming TIME is always a time-of-day
+
+`TIME` can represent durations. If you subtract times, you can get negative or large values.
+
+Fix: be explicit in naming (`openedattime` vs`elapsed_time`) and validate ranges.
+
+## Performance and Indexing Notes (How to Keep Queries Fast)
+
+Time-of-day logic can be quick or painfully slow depending on how you write it.
+
+### 1) Avoid wrapping indexed columns in functions
+
+This is the most common reason a query stops using an index.
+
+If you have an indexed datetime column`created_at`, this is usually fine:
+
+```
+SELECT id
+FROM api_requestWHERE created_at >= NOW() - INTERVAL 15 MINUTE;
+```
+
+But this often becomes slower than necessary:
+
+```
+-- Often prevents index range scans
+SELECT idFROM api_requestWHERE TIME(createdat) >= CURRENTTIME();
+```
+
+Recommendation: compare datetimes to datetimes when you can. If the business rule is time-of-day, store time-of-day in a separate column (or use a stored generated column) and index it.
+
+### 2) Time-of-day filters are rarely selective
+
+Filtering “between 09:00 and 17:00” can match a large fraction of rows. If the dataset is big, add another condition that reduces the search space:
+
+- date partition/range (`createdon = CURRENTDATE()`)
+- store/tenant id
+- status
+
+### 3) Precision impacts storage and sorting
+
+`TIME(6)` stores microseconds and costs more space than`TIME(0)`. The overhead is usually worth it only when you truly need ordering inside a second.
+
+As a rough rule of thumb:
+
+- For human-facing schedules:`TIME(0)` is enough.
+- For event timing: use`DATETIME(3)` or`DATETIME(6)` and store UTC.
+
+## Statement Time vs “Wall Clock” Time (Why CURRENT_TIME() Can Surprise You)
+
+There’s a subtle behavior that matters when you do multi-row updates or long-running statements: MySQL’s “current time” functions like`NOW()` and`CURRENT_TIME()` are typically constant within a single statement. That’s usually what you want (all rows updated by the same statement get the same time), but it can confuse you if you expect the value to “tick” during execution.
+
+For example, if you run a single`INSERT ... SELECT` that takes a few seconds to complete, every inserted row will usually get the same`CURRENT_TIME()`.
+
+This is usually good:
+
+- It makes your data internally consistent.
+- It keeps writes deterministic within a statement.
+
+But if you truly need the actual wall-clock time at the moment a function is evaluated, MySQL has`SYSDATE()`(and`SYSDATE(fsp)`), which can return a time that changes during statement execution.
+
+I treat this as a policy decision:
+
+- Auditing / event ordering: prefer statement-consistent time (`NOW()`,`UTCTIMESTAMP()`,`CURRENTTIME()`).
+- Measuring elapsed work inside one statement: only consider`SYSDATE()` if you understand the implications.
+
+A quick “feel it” demo:
+
+```
+SELECT
+NOW(6)           AS now_stmt,SYSDATE(6)       AS sysdate_wall,CURRENTTIME(6)  AS curtime_stmt;
+```
+
+In most applications,`CURRENT_TIME()` being statement-consistent is exactly what makes it safe to use in bulk updates.
+
+## TIME Semantics: Time-of-Day vs Duration (Name Things Like You Mean Them)
+
+One of the biggest sources of confusion is that the MySQL`TIME` type pulls double duty:
+
+- As a clock time-of-day (`14:30:00`)
+- As a duration (`36:00:00`,`-01:15:00`)
+
+`CURRENT_TIME()` always returns a clock time-of-day, but the moment you start doing arithmetic, it’s easy to accidentally drift into duration semantics.
+
+For example:
+
+```
+SELECT
+CURRENT_TIME() AS t1,ADDTIME(CURRENTTIME(), ‘02:00:00‘) AS plus2h;
+```
+
+If the current time is`23:30:00`,`plus_2h` can become`25:30:00`. That is a valid`TIME` value as a duration, but it is not a valid time-of-day.
+
+My practical rule:
+
+- If a column stores a time-of-day, I name it`time` or`at_time` and enforce`00:00:00`–`23:59:59`.
+- If a column stores a duration, I name it`duration` or`elapsed` and allow larger ranges.
+
+### Enforcing a time-of-day range
+
+On modern MySQL versions that support`CHECK` constraints, you can enforce time-of-day values. It’s not perfect in every migration environment, but it’s a strong guardrail.
+
+```
+CREATE TABLE store_hours (
+store_id BIGINT NOT NULL,open_time TIME(0) NOT NULL,close_time TIME(0) NOT NULL,CHECK (opentime >= ‘00:00:00‘ AND opentime <= '23:59:59'),CHECK (closetime >= ‘00:00:00‘ AND closetime <= '23:59:59'),PRIMARY KEY (store_id));
+```
+
+This won’t solve the midnight-crossing logic by itself, but it prevents invalid “25:00:00” values from leaking into a time-of-day column.
+
+## Safer “Open Now?” Logic With Overnight Hours
+
+“Is the store open right now?” is a classic place to use`CURRENT_TIME()`. The tricky part is supporting:
+
+- Standard same-day ranges:`09:00`–`18:00`
+- Overnight ranges:`22:00`–`06:00`
+
+I like to encode the logic explicitly so it’s readable and testable.
+
+### Table design
+
+```
+CREATE TABLE store_schedule (
+store_id BIGINT NOT NULL,weekday TINYINT NOT NULL, -- 1=Monday ... 7=Sunday (choose a convention and stick to it)open_time TIME(0) NOT NULL,close_time TIME(0) NOT NULL,is_closed TINYINT(1) NOT NULL DEFAULT 0,PRIMARY KEY (store_id, weekday));
+```
+
+### Query: open now for today’s schedule
+
+The exact weekday function varies by convention. Here’s one pattern:
+
+```
+SELECT s.store_id
+FROM store_schedule sWHERE s.weekday = WEEKDAY(CURRENT_DATE()) + 1AND s.is_closed = 0AND (-- Non-overnight(s.opentime <= s.closetime AND CURRENTTIME() >= s.opentime AND CURRENTTIME() < s.closetime)OR-- Overnight(s.opentime > s.closetime AND (CURRENTTIME() >= s.opentime OR CURRENTTIME() < s.closetime)));
+```
+
+What I like about this:
+
+- It handles both cases without special tables.
+- It’s explicit about the overnight condition (`opentime > closetime`).
+
+What I don’t like about this:
+
+- It assumes today’s schedule is the only source of truth for overnight hours. Depending on your business rules, “overnight hours” might belong to the day the store opens (e.g., Friday 22:00 to Saturday 06:00). If you need that nuance, you may want to join both today and yesterday schedules and decide based on your convention.
+
+## Implicit Casting and Comparison Traps (Strings, Numbers, and “It Worked In Dev”)
+
+`CURRENT_TIME()` returns a`TIME`, but MySQL is famously permissive about implicit conversions. That’s convenient until it isn’t.
+
+### Trap 1: Comparing TIME to a string without realizing it
+
+This is usually safe:
+
+```
+SELECT CURRENTTIME() > ‘09:00:00‘ AS after9am;
+
+```
+
+But the moment you start storing times as strings (e.g.,`VARCHAR`) in a table, comparisons can become lexicographic instead of time-based, depending on how the expression is typed.
+
+Bad pattern:
+
+```
+-- schedule_time is VARCHAR
+SELECT *FROM legacy_scheduleWHERE scheduletime < CURRENTTIME();
+```
+
+Fix: normalize the schema (best), or cast intentionally:
+
+```
+SELECT *
+FROM legacy_scheduleWHERE CAST(scheduletime AS TIME) < CURRENTTIME();
+```
+
+### Trap 2: “Numeric time” values
+
+Teams sometimes store`93000` for 09:30:00. It can work, but it’s brittle.
+
+If you inherit this design, decide quickly:
+
+- Either migrate to`TIME`, or
+- Standardize your conversion functions and never compare the raw numbers directly.
+
+Example conversion for a six-digit`HHMMSS` integer:
+
+```
+SELECT
+MAKETIME(FLOOR(t/10000), FLOOR((t % 10000)/100), (t % 100))FROM (SELECT 93000 AS t) x;
+```
+
+If you can’t migrate yet, at least use`MAKETIME()` consistently so comparisons are actually time comparisons.
+
+## Operational Uses: Health Checks, Cutoffs, and Database-Side Scheduling
+
+I’m careful about putting “business logic” in the database, but`CURRENT_TIME()` can be genuinely useful for operational controls—especially when you want the database to be the authority.
+
+### 1) “Are we inside the maintenance window?”
+
+If you do maintenance that should only run during a time window (and you want it to be enforced centrally), a lightweight check can work:
+
+```
+SELECT
+CASEWHEN CURRENTTIME() >= ‘01:00:00‘ AND CURRENTTIME() < '03:00:00'THEN 1ELSE 0END AS inmaintenancewindow;
+```
+
+If the window crosses midnight, use the overnight pattern.
+
+### 2) Rate-limiting expensive jobs by time-of-day
+
+Sometimes you want a job to run all day, but do “heavy mode” only at night.
+
+```
+SELECT
+CASEWHEN CURRENTTIME() >= ‘22:00:00‘ OR CURRENTTIME() < '05:00:00'THEN ‘heavy‘ELSE ‘light‘END AS job_mode;
+```
+
+Then your app can branch its work based on the DB’s notion of time.
+
+### 3) Using the MySQL Event Scheduler (with caution)
+
+If you use MySQL’s event scheduler, you’ll often think in terms of “run at a certain time.” Even then, I still recommend storing full timestamps for event execution logs.
+
+Example: record a daily heartbeat row when an event runs:
+
+```
+CREATE TABLE dbeventrun_log (
+id BIGINT NOT NULL AUTO_INCREMENT,event_name VARCHAR(128) NOT NULL,ranatutc DATETIME(3) NOT NULL,PRIMARY KEY (id),KEY idxeventran (eventname, ranat_utc));-- Inside your event bodyINSERT INTO dbeventrunlog (eventname, ranatutc)VALUES (‘dailyrollup‘, UTCTIMESTAMP(3));
+```
+
+Even if the scheduling logic uses time-of-day, the audit record should not.
+
+## Testing and Debugging Time-of-Day Logic (Without Changing Server Time)
+
+A frustrating part of time functions is that they’re hard to test deterministically. My go-to approach is: don’t hardcode`CURRENTTIME()` inside logic you need to unit test. Instead, pass “current time” in as a parameter, and use`CURRENTTIME()` only at the outermost layer.
+
+### Pattern: a stored function that accepts “now”
+
+This makes midnight-crossing logic testable.
+
+```
+DELIMITER //
+CREATE FUNCTION istimein_window(now_t TIME,start_t TIME,end_t TIME) RETURNS TINYINTDETERMINISTICBEGIN-- Non-overnightIF startt <= endt THENRETURN (nowt >= startt AND nowt < endt);END IF;-- OvernightRETURN (nowt >= startt OR nowt < endt);END//DELIMITER ;
+```
+
+Now you can test it with fixed values:
+
+```
+SELECT istimeinwindow(‘23:30:00‘, ‘22:00:00‘, ‘06:00:00‘) AS shouldbe_1;
+SELECT istimeinwindow(‘05:30:00‘, ‘22:00:00‘, ‘06:00:00‘) AS shouldbe_1;SELECT istimeinwindow(‘12:00:00‘, ‘22:00:00‘, ‘06:00:00‘) AS shouldbe_0;
+```
+
+Then, in production queries, you still use the real current time:
+
+```
+SELECT istimeinwindow(CURRENTTIME(), ‘22:00:00‘, ‘06:00:00‘) AS open_now;
+
+```
+
+This separation (pure logic + real clock) is one of the best “practical value” upgrades you can make.
+
+## Choosing Between TIME, DATETIME, and TIMESTAMP (My Decision Checklist)
+
+When I’m designing schema around time, I ask a few questions that quickly converge on the right type.
+
+### Use TIME when
+
+- The value represents a time-of-day, not a moment in history.
+- Examples: store opening time, cutoff time, daily SLA threshold, “quiet hours”.
+
+### Use DATETIME when
+
+- You want an absolute date+time without automatic time zone conversions.
+- You control how the app interprets it (often as UTC).
+- You want wider range and predictability.
+
+### Use TIMESTAMP when
+
+- You want MySQL to handle UTC conversions based on session time zone.
+- You’re confident your session time zone is set correctly everywhere.
+
+My bias in production systems is:
+
+- `DATETIME(3)` storing UTC for event logs.
+- `TIME(0)` or`TIME(3)` for schedules.
+
+`CURRENT_TIME()` naturally belongs to the schedule category.
+
+## A Practical “Policy” I Apply to Avoid Midnight Bugs
+
+Midnight bugs happen because humans think “22:00 to 06:00” is one range, but`TIME` comparisons think in a single-day ordering.
+
+Here’s the policy I use:
+
+1) If a range can cross midnight, I never write it with`BETWEEN`.
+
+2) I encode the logic in the “two-case” pattern:
+
+– If`start <= end`: same-day range.
+
+– Else: overnight range.
+
+3) If I need reporting over historical data, I store a real datetime (`event_dt`) and do datetime comparisons.
+
+When I follow those rules, I stop getting surprised.
+
+## Next Steps You Can Apply This Week
+
+If you take one thing from my approach, make it this: treat`CURRENT_TIME()` as a schedule tool, not an audit tool. It’s perfect for “what time is it right now on the database server?” and for rules based on time-of-day. It’s a trap for anything that needs a real point in time.
+
+Here’s what I’d do next in a typical MySQL 8.4+ codebase:
+
+1) Pick a clear policy for timestamps. If multiple services write data, I strongly recommend storing event timestamps in UTC using`UTC_TIMESTAMP(3)` and reading them as UTC all the way up the stack.
+
+2) Audit your schema for time-only columns. If a`TIME` column is really a “time-of-day schedule,” keep it as`TIME` but name it clearly (`opentime`,`cutofftime`). If it’s really “when something happened,” migrate it to`DATETIME(3)`.
+
+3) Standardize fractional seconds precision. Pick one (I usually choose milliseconds) and align:
+
+- Column types (`TIME(3)`,`DATETIME(3)`)
+- Functions (`CURRENTTIME(3)`,`NOW(3)`,`UTCTIMESTAMP(3)`)
+- Application parsing/serialization
+
+4) Fix midnight-crossing ranges with an explicit pattern. Replace`BETWEEN` with:
+
+```
+(nowt >= startt AND nowt < endt)
+OR(startt > endt AND (nowt >= startt OR nowt < endt))
+```
+
+5) Add one “time zone sanity check” to your deploy/health checks if you rely on`CONVERT_TZ()`. Catch`NULL` conversions before you ship.
+
+If you apply those five steps,`CURRENT_TIME()` stays a sharp tool instead of a source of midnight mysteries.
+
+ 
+
+ 
+
+## Related Posts
+
+You can run a Git repository for years and still get bitten by two tiny files: .gitignore and .gitattributes. I see this constantly when teams…
+
+Most performance problems I see in Python services aren’t “Python is slow” problems—they’re “we’re waiting on the network” problems. You call an HTTP API, the…
+
+I still see experienced Python developers lose time to one tiny operator: is. The bug usually looks harmless: a conditional that “obviously” should be true,…
+
+I still remember the first time a custom object surprised me by behaving like a list. I typed order[0] out of habit and it just…
+
+Your All-in-One Learning Portal: GeeksforGeeks is a comprehensive educational platform that empowers learners across domains-spanning computer science and programming, school education, upskilling, commerce, software tools,…
+
+Your All-in-One Learning Portal: GeeksforGeeks is a comprehensive educational platform that empowers learners across domains-spanning computer science and programming, school education, upskilling, commerce, software tools,…
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+

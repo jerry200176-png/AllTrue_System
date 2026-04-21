@@ -1,0 +1,4 @@
+[2026-04-21 19:31:37] CODE_REVERT_GUARD triggered by: NET_DELETE(-180):backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;DELETE:backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;
+[2026-04-21 19:32:55] CODE_REVERT_GUARD triggered by: NET_DELETE(-180):backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;DELETE:backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;
+[2026-04-21 19:33:28] CODE_REVERT_GUARD triggered by: NET_DELETE(-180):backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;DELETE:backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php;
+test_data
