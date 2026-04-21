@@ -1,0 +1,33 @@
+[2026-04-21 18:54:25] === Restore drill start ===
+[2026-04-21 18:54:25] 選定 dump: /home/admin/backups/monthly/alltrue_monthly_2026-04.sql.gz (來源: monthly)
+[2026-04-21 18:54:25] 驗證 gzip 完整性 ...
+[2026-04-21 18:54:25] gzip -t OK
+[2026-04-21 18:54:25] DROP + CREATE AllTrue_test ...
+[2026-04-21 18:54:25] 還原 dump 至 AllTrue_test ...
+[2026-04-21 18:54:26] 還原完成
+[2026-04-21 18:54:26] 比對 row count ...
+[2026-04-21 18:54:26]   Student: prod=392  test=392  ✓
+[2026-04-21 18:54:26]   User: prod=83  test=83  ✓
+[2026-04-21 18:54:26]   Campus: prod=22  test=22  ✓
+[2026-04-21 18:54:26]   ClassSession: prod=5275  test=5274  DIFF=1
+[2026-04-21 18:54:27] Telegram 已發送
+[2026-04-21 18:54:27] === Restore drill done (MISMATCH) ===
+[2026-04-21 18:54:54] === Restore drill start ===
+[2026-04-21 18:54:54] 選定 dump: /home/admin/backups/monthly/alltrue_monthly_9999-99.sql.gz (來源: monthly)
+[2026-04-21 18:54:54] 驗證 gzip 完整性 ...
+[2026-04-21 18:54:54] ERROR: dump 檔案 gzip 完整性驗證失敗: /home/admin/backups/monthly/alltrue_monthly_9999-99.sql.gz
+[2026-04-21 18:54:56] Telegram 已發送
+[2026-04-21 18:55:00] === Restore drill start ===
+[2026-04-21 18:55:00] 選定 dump: /home/admin/backups/alltrue_nightly_2026-04-21_1840.sql.gz (來源: nightly (fallback))
+[2026-04-21 18:55:00] 驗證 gzip 完整性 ...
+[2026-04-21 18:55:00] gzip -t OK
+[2026-04-21 18:55:00] DROP + CREATE AllTrue_test ...
+[2026-04-21 18:55:00] 還原 dump 至 AllTrue_test ...
+[2026-04-21 18:55:01] 還原完成
+[2026-04-21 18:55:01] 比對 row count ...
+[2026-04-21 18:55:01]   Student: prod=392  test=392  ✓
+[2026-04-21 18:55:01]   User: prod=83  test=83  ✓
+[2026-04-21 18:55:01]   Campus: prod=22  test=22  ✓
+[2026-04-21 18:55:01]   ClassSession: prod=5275  test=5274  DIFF=1
+[2026-04-21 18:55:04] Telegram 已發送
+[2026-04-21 18:55:04] === Restore drill done (MISMATCH) ===
