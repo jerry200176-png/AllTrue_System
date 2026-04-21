@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -36,10 +37,11 @@ class BackfillLegacyPaymentsTest extends TestCase
 
         $beforeCount = PaymentReport::count();
 
-        $this->artisan('payments:backfill-legacy', ['--dry-run' => true])
-            ->assertExitCode(0)
-            ->expectsOutputToContain('[DRY-RUN]')
-            ->expectsOutputToContain('Would backfill: 1 records');
+        $exitCode = Artisan::call('payments:backfill-legacy', ['--dry-run' => true]);
+        $this->assertSame(0, $exitCode);
+        $output = Artisan::output();
+        $this->assertStringContainsString('[DRY-RUN]', $output);
+        $this->assertStringContainsString('Would backfill: 1 records', $output);
 
         $this->assertEquals($beforeCount, PaymentReport::count(), 'Dry-run must not write any PaymentReport');
         $this->assertEquals(0, Invoice::count(), 'Dry-run must not write any Invoice');
@@ -54,17 +56,17 @@ class BackfillLegacyPaymentsTest extends TestCase
         $this->createLegacyPaidClass($student->id, ['Charge' => 9600, 'PayDate' => '2025-07-15']);
 
         // 第一次執行
-        $this->artisan('payments:backfill-legacy')
-            ->assertExitCode(0)
-            ->expectsOutputToContain('Backfill complete: 1 backfilled, 0 skipped');
+        $exit1 = Artisan::call('payments:backfill-legacy');
+        $this->assertSame(0, $exit1);
+        $this->assertStringContainsString('Backfill complete: 1 backfilled, 0 skipped', Artisan::output());
 
         $firstCount = PaymentReport::whereNotNull('backfill_note')->count();
         $this->assertEquals(1, $firstCount);
 
         // 第二次執行（冪等驗證）
-        $this->artisan('payments:backfill-legacy')
-            ->assertExitCode(0)
-            ->expectsOutputToContain('Backfill complete: 0 backfilled, 0 skipped');
+        $exit2 = Artisan::call('payments:backfill-legacy');
+        $this->assertSame(0, $exit2);
+        $this->assertStringContainsString('Backfill complete: 0 backfilled, 0 skipped', Artisan::output());
 
         // DB 記錄數不增加
         $this->assertEquals(1, PaymentReport::whereNotNull('backfill_note')->count());
@@ -104,9 +106,9 @@ class BackfillLegacyPaymentsTest extends TestCase
         $student = $this->createStudent(1);
         $this->createLegacyPaidClass($student->id, ['Charge' => 0, 'PayDate' => '2025-08-01']);
 
-        $this->artisan('payments:backfill-legacy')
-            ->assertExitCode(0)
-            ->expectsOutputToContain('Backfill complete: 0 backfilled, 0 skipped');
+        $exitCode = Artisan::call('payments:backfill-legacy');
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Backfill complete: 0 backfilled, 0 skipped', Artisan::output());
 
         $this->assertEquals(0, PaymentReport::count(), 'Charge=0 course must not be backfilled');
     }
@@ -134,9 +136,9 @@ class BackfillLegacyPaymentsTest extends TestCase
 
         $existingUpdatedAt = PaymentReport::where('StudentClassID', $sc->ID)->value('updated_at');
 
-        $this->artisan('payments:backfill-legacy')
-            ->assertExitCode(0)
-            ->expectsOutputToContain('Backfill complete: 0 backfilled, 0 skipped');
+        $exitCode = Artisan::call('payments:backfill-legacy');
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('Backfill complete: 0 backfilled, 0 skipped', Artisan::output());
 
         $this->assertEquals(1, PaymentReport::where('StudentClassID', $sc->ID)->count(), 'Must not create a second report for an already-confirmed class');
         $this->assertNull(PaymentReport::where('StudentClassID', $sc->ID)->value('backfill_note'), 'Existing report backfill_note must remain null');
