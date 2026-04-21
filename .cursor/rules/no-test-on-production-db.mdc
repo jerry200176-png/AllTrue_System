@@ -1,0 +1,52 @@
+---
+description: 禁止測試連接生產資料庫 — P0 事故防再犯（2026-04-21）
+alwaysApply: true
+---
+
+# ⛔ 嚴禁：測試環境連接生產資料庫 AllTrue
+
+## 事故背景（P0 / 2026-04-21）
+
+`.env.testing` 錯誤設定 `DB_DATABASE=AllTrue`（生產），導致 Pest 測試的 `RefreshDatabase` trait 對生產資料庫執行 `migrate:fresh`，**清空所有資料表**（User / Student / StudentClass / ClassSession / LearningRecord 等），造成全系統 401 停機約 20 分鐘，需從備份恢復。
+
+## 強制規則（任何 AI 不得違反）
+
+### 修改測試相關設定前必確認
+
+```
+backend/.env.testing      DB_DATABASE=AllTrue_test   ✅（不可改回 AllTrue）
+backend/phpunit.xml        <env name="DB_DATABASE" value="AllTrue_test"/>  ✅（必須用 <env>，不是 <server>）
+```
+
+### 為何 `<server>` 無效
+
+`phpunit.xml` 的 `<server>` 設定 PHP `$_SERVER`，但 Laravel `env()` / `getenv()` 讀的是 DotEnv 載入的環境變數，**完全不看 `$_SERVER`**。必須用 `<env>` 才能覆蓋 `.env.testing`。
+
+### 新增測試前必讀
+
+- 使用 `RefreshDatabase` 或 `DatabaseMigrations` trait 的測試，**必須確保測試資料庫為 `AllTrue_test`**
+- `tests/TestCase.php` 的 production DB guard 若觸發（拋出 `RuntimeException`），代表設定錯誤，**立刻停止並修正設定，禁止繞過 guard**
+
+### 執行測試前自我檢查
+
+```bash
+# 確認測試環境指向正確 DB
+APP_ENV=testing php artisan tinker --execute="echo config('database.connections.mysql.database');"
+# 必須輸出 AllTrue_test，否則不可執行任何測試
+```
+
+### 生產 DB 守衛（TestCase.php 已內建）
+
+```php
+// tests/TestCase.php — 連到生產 DB 時立即 abort
+if (in_array($dbName, ['AllTrue', 'alltrue'], true)) {
+    throw new \RuntimeException("[SAFETY ABORT] 測試指向生產資料庫！");
+}
+```
+
+## 禁止事項
+
+- ❌ 不可將 `.env.testing` 的 `DB_DATABASE` 改回 `AllTrue`
+- ❌ 不可把 `phpunit.xml` 的 `<env>` 改回 `<server>`
+- ❌ 不可移除或 bypass `TestCase.php` 的 production DB guard
+- ❌ 不可在未確認測試 DB 的情況下，對有 `RefreshDatabase` trait 的測試執行 `php artisan test`

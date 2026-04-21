@@ -1477,3 +1477,76 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 4. 僅改 SessionCount（8 → 10，Rate 不變 1100）→ `Charge = 11000`
 5. 月結制課程修改 Rate → `Charge` 不應被清零
 6. 時數制課程修改 Rate → `Charge = Rate × TotalHours`
+
+---
+
+## 2026-04-21 — 測試環境誤連生產資料庫導致全資料庫清空（P0 停機事故）
+
+### 事故概述
+
+| 項目 | 說明 |
+|------|------|
+| **發生時間** | 2026-04-21 約 16:36–16:53 |
+| **停機影響** | 全系統 401 Unauthorized，無法登入，所有使用者工作中斷 |
+| **資料損失** | 11:21 備份後的約 5 小時操作（從備份恢復後需手動補登） |
+| **觸發方式** | 從 Cursor IDE 執行 `php artisan test` |
+
+### 根本原因
+
+三個設定缺陷同時存在，產生連鎖失效：
+
+1. **`.env.testing` 設定錯誤**：`DB_DATABASE=AllTrue`（生產資料庫），應為 `AllTrue_test`
+2. **`phpunit.xml` 覆蓋失效**：使用 `<server name="DB_DATABASE" value="AllTrue_test"/>` — `<server>` 設定 PHP `$_SERVER`，但 Laravel `env()` 讀的是 DotEnv 環境變數，`$_SERVER` **完全無效**；必須用 `<env>`
+3. **無安全防護**：測試 base class 沒有檢查是否連到生產 DB
+
+### 毀滅機制
+
+```
+php artisan test
+  → APP_ENV=testing 載入 .env.testing（DB=AllTrue 生產）
+  → phpunit.xml <server> 覆蓋失效
+  → RefreshDatabase trait 執行 migrate:fresh
+  → DROP + CREATE 全部資料表
+  → User / Student / StudentClass / ClassSession / LearningRecord ... 全部歸零
+  → 所有 token 失效 → 全系統 401
+```
+
+### 修復方案（三層防護，已全部部署）
+
+| 層級 | 檔案 | 修復內容 |
+|------|------|------|
+| 層1 | `backend/.env.testing` | `DB_DATABASE=AllTrue_test` |
+| 層2 | `backend/phpunit.xml` | 全部 `<server>` 改為 `<env>`（讓 getenv() 生效）|
+| 層3 | `backend/tests/TestCase.php` | 加入 production DB guard：若 DB 為 `AllTrue`，立即拋出 `RuntimeException` 並說明修復方式 |
+
+### 嚴禁事項（任何 AI 不得違反）
+
+- ❌ **不可**將 `.env.testing` 的 `DB_DATABASE` 改回 `AllTrue`
+- ❌ **不可**把 `phpunit.xml` 的 `<env>` 改回 `<server>`
+- ❌ **不可**移除 `TestCase.php` 的 production DB guard
+- ❌ **未確認 DB 指向 `AllTrue_test` 前**，不可執行任何含 `RefreshDatabase` 的測試
+
+### 執行測試前必做確認
+
+```bash
+APP_ENV=testing php artisan tinker --execute="echo config('database.connections.mysql.database');"
+# 必須輸出 AllTrue_test，否則禁止跑測試
+```
+
+### 附加維運強化（同日部署）
+
+- **6小時備份**：`scripts/sixhour-backup.sh`，cron `0 5,11,17,23 * * *`，保留最新 8 份
+- **DB 健康監控**：`scripts/db-health-check.sh`，cron `*/15 * * * *`，關鍵表筆數低於警戒線或暴跌時發 alert
+- **MySQL general log**：已即時開啟（`/var/lib/mysql/general_query.log`）
+
+### 相關檔案
+
+| 檔案 | 說明 |
+|------|------|
+| `backend/.env.testing` | 測試環境 DB 設定（必須為 `AllTrue_test`）|
+| `backend/phpunit.xml` | PHPUnit 環境覆蓋（必須用 `<env>` 標籤）|
+| `backend/tests/TestCase.php` | Production DB guard |
+| `scripts/sixhour-backup.sh` | 6 小時備份腳本 |
+| `scripts/db-health-check.sh` | DB 健康監控 alert 腳本 |
+| `.cursor/rules/no-test-on-production-db.mdc` | AI 強制規則（alwaysApply: true）|
+

@@ -51,6 +51,15 @@ Keep the AllTrue system stable while delivering small, verifiable changes.
 
 ## Common pitfalls
 
+> ### 🚨 P0 事故防再犯（2026-04-21）— 測試清空生產資料庫
+> **任何 AI 在執行測試前，必須先確認：**
+> 1. `backend/.env.testing` 的 `DB_DATABASE=AllTrue_test`（**不是 AllTrue**）
+> 2. `backend/phpunit.xml` 所有 DB 相關設定使用 `<env>` tag（**不是 `<server>`**，`<server>` 對 Laravel env() 無效）
+> 3. `tests/TestCase.php` 的 production DB guard 存在且未被 bypass
+> 4. 執行前驗證：`APP_ENV=testing php artisan tinker` → `config('database.connections.mysql.database')` 必須回傳 `AllTrue_test`
+>
+> **違反後果**：`RefreshDatabase` trait 對生產 DB 執行 `migrate:fresh` → 全部資料表清空 → 全系統 401 停機。詳見 `docs/AI_REGRESSION_LESSONS.md`（2026-04-21）與 `.cursor/rules/no-test-on-production-db.mdc`
+
 - **核准評量 = 點名扣堂**（2026-04-11 架構級變更）：`ApprovalSessionSyncService` / `SessionDeductionService` / `LearningRecordController`（approve / batchApprove / rollbackApproval）為高風險檔案，**改動前必須先詢問使用者**。禁止將核准改回「不扣堂」。詳見 `docs/AI_REGRESSION_LESSONS.md`、`docs/OPERATIONS_RUNBOOK.md` §K
 - **請假與評量**（2026-04-12）：待審列表不能只靠 `VoidedAt`；須保留 **`excludeLeaveSessionPendingReview`**（堂次 `leave`/`excused`/`leave_adjusted` 不顯示 pending）、**`ensurePastRecords`** 不對請假堂補建、讀取財務／家長端仍要 **`active()`**。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-12 — 請假與學習評量）
 - **調課後評量「消失」**（2026-04-13）：請假 cascade 作廢 LR 後，同一 `ClassSession` 經 `reschedule-session` 改日並標已上時，**`ensurePastRecords` 須能 un-void**；**`leave→attended`** 須 **`restoreVoidedLearningRecord`**。勿改回「有作廢列就永遠跳過」。詳見 **`docs/AI_REGRESSION_LESSONS.md`**（2026-04-13 — 調課／請假 cascade 後評量表作廢未恢復）、**`docs/CHANGELOG.md`（2026-04-13 (Q)）**
