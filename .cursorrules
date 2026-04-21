@@ -11,7 +11,7 @@
 `DROP + migrate:fresh`。Student 395→1, StudentClass 633→0, ClassSession 5446→0。
 幸好 sixhour 備份恢復，但有約 1 小時 42 分鐘資料損失視窗
 
-**任何 AI 在執行下列操作前，必須先讀完 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
+**任何 AI 在執行下列操作前，必須先讀完 `docs/DANGEROUS_OPERATIONS.md` 與 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
 
 1. 任何 `git push`（尤其是 `--force` / `-f`）
 2. 任何 `git checkout <branch_or_tag> -- <path>`
