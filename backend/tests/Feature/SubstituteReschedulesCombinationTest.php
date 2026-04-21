@@ -72,7 +72,8 @@ class SubstituteReschedulesCombinationTest extends TestCase
         ])->getJson("/api/v1/class-sessions?student_class_id={$courseId}&per_page=100");
         $idx->assertOk();
         $row = collect($idx->json('data'))->first(function ($r) {
-            return str_starts_with((string) ($r['SessionDate'] ?? ''), '2026-04-22');
+            $sessionDate = (string) ($r['session_date'] ?? ($r['SessionDate'] ?? ''));
+            return str_starts_with($sessionDate, '2026-04-22');
         });
         $this->assertNotNull($row);
         $this->assertSame($subTeacherId, (int) ($row['teacher_id'] ?? 0),
