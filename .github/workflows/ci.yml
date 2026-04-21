@@ -80,7 +80,7 @@ jobs:
 
       - name: Run PHPUnit
         working-directory: backend
-        run: php artisan test --stop-on-failure
+        run: php artisan test
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
