@@ -21,6 +21,24 @@ KEEP_TAGS=60
 
 mkdir -p "$MONTHLY_DIR"
 
+# ── Telegram 通知（讀取統一設定檔）──
+MONITOR_ENV="$REPO_ROOT/.env.monitor"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+if [ -f "$MONITOR_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$MONITOR_ENV"
+fi
+
+send_telegram() {
+    local msg="$1"
+    [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ] && return 0
+    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":$(printf '%s' "$msg" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+        > /dev/null 2>&1 || true
+}
+
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
@@ -63,6 +81,8 @@ log "Backup integrity: INSERT INTO count = ${BACKUP_INSERT_COUNT}"
 if [ "${BACKUP_INSERT_COUNT}" -lt 20 ]; then
   log "CRITICAL: backup may be empty or corrupt! INSERT count=${BACKUP_INSERT_COUNT} < threshold 20"
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] [db-alert] CRITICAL: nightly dump INSERT count=${BACKUP_INSERT_COUNT} (expected >=20). File: $(basename "$DUMP_FILE")" >> "$REPO_ROOT/backups/db-alert.log"
+  send_telegram "$(printf '🚨 AllTrue 夜備告警\n備份檔可能為空或損壞！\nINSERT 行數：%s（門檻 20）\n檔案：%s\n時間：%s' \
+    "$BACKUP_INSERT_COUNT" "$(basename "$DUMP_FILE")" "$(date '+%Y-%m-%d %H:%M')")"
 else
   log "Backup integrity OK (INSERT count=${BACKUP_INSERT_COUNT})"
 fi
@@ -123,3 +143,8 @@ for t in "${OLD_TAGS[@]}"; do
 done
 
 log "=== Nightly backup done ==="
+
+# --- 最終通知：備份完成 ---
+DUMP_SIZE=$(du -sh "$DUMP_FILE" 2>/dev/null | cut -f1 || echo "?")
+send_telegram "$(printf '✅ AllTrue 夜備完成\n檔案：%s\n大小：%s\nINSERT 行數：%s\n時間：%s' \
+  "$(basename "$DUMP_FILE")" "$DUMP_SIZE" "$BACKUP_INSERT_COUNT" "$(date '+%Y-%m-%d %H:%M')")"
