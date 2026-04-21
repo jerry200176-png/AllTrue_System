@@ -216,6 +216,8 @@ class NotificationApiTest extends TestCase
         $unpaidClass = $this->createStudentClass($student->id, 0, 1, 5);
         $paidLowSessionsClass = $this->createStudentClass($student->id, 1, 1, 1);
         $paidNormalClass = $this->createStudentClass($student->id, 1, 1, 6);
+        $paidNormalClass->SubjectID = 2;
+        $paidNormalClass->save();
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
