@@ -201,9 +201,11 @@ class SessionDeductionService
                 $sc->UsedSessions      = $usedSessions;
                 $sc->RemainingSessions  = max(0, $sessionCount - $usedSessions);
                 // Do not auto-set Stop when remaining hits 0; pause is manual (StudentClassController pause/resume).
-                if ($sc->RemainingSessions <= 2) {
-                    $sc->Paid = 0;
-                }
+                // NOTE: Paid/PayDate must NOT be touched here. Session counting is independent of
+                // payment status. Paid is only written via three authorised paths:
+                // 1. POST /api/v1/class-sessions/batch (EnrollmentService::store)
+                // 2. PUT /api/v1/student-classes/:id (StudentClassController::mapFrontendPayload)
+                // 3. POST /api/v1/invoices/:id/payments
             } else {
                 $sc->UsedSessions      = $usedByAttendance;
                 $sc->RemainingSessions  = 0;

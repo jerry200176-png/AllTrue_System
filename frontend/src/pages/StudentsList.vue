@@ -503,6 +503,13 @@
       @duplicate-course="handleSchedulerDuplicate"
     />
 
+    <RenewMonthlyModal
+      :show="showRenewMonthlyModal"
+      :form="renewMonthlyForm"
+      @close="showRenewMonthlyModal = false"
+      @submit="submitRenewMonthly"
+    />
+
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" @click.self="showSessionsModal = false">
       <div class="modal">
@@ -620,6 +627,7 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
+import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 
 const props = defineProps({ branchId: [String, Number] });
@@ -728,6 +736,9 @@ const showGradePromotion = ref(false);
 const showSessionsModal = ref(false);
 const addSessionCount = ref(8);
 const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
+const showRenewMonthlyModal = ref(false);
+const renewMonthlyTargetCourse = ref(null);
+const renewMonthlyForm = ref({});
 const selectedCourse = ref(null);
 
 // Duplicate course intercept modal
@@ -851,6 +862,11 @@ function effectiveClosedReason(course) {
     && isCourseSettled(course)
     && getCourseRemainingSessions(course) != null
     && getCourseRemainingSessions(course) <= 0) {
+    return 'completed';
+  }
+  // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
+  if (String(course?.status || '').toLowerCase() === 'inactive'
+    && course?.payment_type !== 'session') {
     return 'completed';
   }
   return null;
@@ -2171,6 +2187,20 @@ async function submitQuickAddSession() {
 
 // --- Add Sessions (per-course) ---
 const openAddSessionsForCourse = (course) => {
+  if (course?.payment_type === 'monthly') {
+    renewMonthlyTargetCourse.value = course;
+    renewMonthlyForm.value = {
+      student_name: students.value.find(s => s.id === course.student_id)?.name || '—',
+      subject: course?.subject || 'Math',
+      settlement_day: course?.settlement_day ?? null,
+      monthly_sessions: course?.monthly_sessions ?? null,
+      current_end_date: course?.end_date || course?.EndDate || null,
+      months: 1,
+      end_date: '',
+    };
+    showRenewMonthlyModal.value = true;
+    return;
+  }
   selectedStudent.value = students.value.find(s => s.id === course.student_id);
   selectedCourse.value = course;
   addSessionCount.value = 8;
@@ -2229,6 +2259,38 @@ const submitAddSessions = async () => {
   }
 };
 
+const submitRenewMonthly = async (endDate) => {
+  const course = renewMonthlyTargetCourse.value;
+  if (!course?.id) return;
+  if (!endDate) { alert('請選擇新到期日或延長月數'); return; }
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入後再試'); return; }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ end_date: endDate }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+      alert(details || json?.message || '續約失敗');
+      return;
+    }
+    showRenewMonthlyModal.value = false;
+    alert('月結續約成功，到期日已更新為 ' + endDate);
+    await loadAllStudentCourses();
+  } catch (e) {
+    alert('續約失敗：' + (e?.message || '請稍後再試'));
+  }
+};
+
 // --- Toggle Payment Status ---
 const togglePaymentStatus = async (course, studentName = '') => {
   const courseId = course?.id;
@@ -2247,6 +2309,10 @@ const togglePaymentStatus = async (course, studentName = '') => {
     const token = sess?.access_token;
     let apiOk = false;
     if (token) {
+      const payload = { payment_status: newStatus };
+      if (newStatus === 'unpaid') {
+        payload.paid_at = null;
+      }
       const res = await fetch(`/api/v1/student-classes/${courseId}`, {
         method: 'PUT',
         credentials: 'include',
@@ -2254,7 +2320,7 @@ const togglePaymentStatus = async (course, studentName = '') => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ payment_status: newStatus })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         apiOk = true;
@@ -2275,6 +2341,10 @@ const togglePaymentStatus = async (course, studentName = '') => {
     }
 
     course.payment_status = newStatus;
+    if (newStatus === 'unpaid') {
+      course.last_paid_at = null;
+      course.paid_at = null;
+    }
   } catch (e) {
     alert('更新繳費狀態失敗：' + (e?.message || '請稍後再試'));
   } finally {
