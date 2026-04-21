@@ -19,6 +19,18 @@ class SubstituteTeacherTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-04-18 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_substitute_creates_schedules_and_updates_lr(): void
     {
         [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();
