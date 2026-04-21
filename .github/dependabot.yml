@@ -1,0 +1,31 @@
+version: 2
+updates:
+  # PHP / Composer (backend)
+  - package-ecosystem: "composer"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Taipei"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "php"
+    ignore:
+      # Laravel 8 是 EOL，不自動升級主版本
+      - dependency-name: "laravel/framework"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  # JavaScript / npm (frontend)
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Taipei"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "javascript"

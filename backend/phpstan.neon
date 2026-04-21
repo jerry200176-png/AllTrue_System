@@ -1,0 +1,17 @@
+includes:
+    - phpstan-baseline.neon
+
+parameters:
+    paths:
+        - app
+    level: 3
+    checkMissingIterableValueType: false
+    ignoreErrors:
+        # Laravel facades / magic methods (no Larastan extension)
+        - '#Call to an undefined (static )?method (Illuminate|App)\\#'
+        - '#Access to an undefined property App\\Models\\.+::\$#'
+    excludePaths:
+        - app/Console/Kernel.php
+        - app/Exceptions/Handler.php
+    parallel:
+        maximumNumberOfProcesses: 1
