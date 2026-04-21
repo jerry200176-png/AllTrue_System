@@ -2,6 +2,25 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-22 — fix(P1): 代課後調課 schedules 表未同步導致代課老師顯示錯誤
+
+### 根因
+
+`LearningRecordController::rescheduleSession` 只移動 `ClassSession.SessionDate`，完全不同步 `schedules` 表的 `rescheduled` / `scheduled(substitute)` 列。導致「先代課、後獨立調課」時代課相關列停留在舊日期，`class-sessions` index 仍顯示原班老師。
+
+### 修復
+
+- `app/Http/Controllers/LearningRecordController.php`：新增 `syncSchedulesAfterReschedule()` 私有方法，在 session 移動後同步遷移代課 schedules 列至新日期（FR-001），並清除 race condition 植入的重複列（FR-002）
+- `tests/Feature/SubstituteReschedulesCombinationTest.php`：取消 2 個 `markTestSkipped`
+- `tests/Feature/SubstituteTeacherTest.php`：取消 1 個 `markTestSkipped`
+
+### 關聯
+
+- GitHub Issue #3
+- Plan: `b9_schedules_sync_after_reschedule_c7a1e903.plan.md`
+
+---
+
 ## 2026-04-22 — fix(P1): retroLeave 補請假重複 INSERT StudentSignIn 導致 500
 
 ### 根因

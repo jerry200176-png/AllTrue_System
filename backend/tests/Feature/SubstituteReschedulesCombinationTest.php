@@ -50,7 +50,6 @@ class SubstituteReschedulesCombinationTest extends TestCase
 
     public function test_substitute_then_reschedule_shows_substitute_teacher(): void
     {
-        $this->markTestSkipped('Pending: FR-001/FR-002 substitute+reschedule sync edge case - see plan for dedicated fix');
         [$dirToken, $regularTeacherId, $subTeacherId, $session] = $this->seedScenario('sub-then-res');
         $courseId = (int) $session->StudentClassID;
 
@@ -113,7 +112,6 @@ class SubstituteReschedulesCombinationTest extends TestCase
         // sitting on the NEW date under the SAME anchor. After
         // reschedule-session runs, FR-002 must leave exactly one scheduled
         // row pointing to the substitute teacher.
-        $this->markTestSkipped('Pending: FR-002 duplicate purge race condition - see plan for dedicated fix');
         [$dirToken, $regularTeacherId, $subTeacherId, $session] = $this->seedScenario('purge');
         $courseId = (int) $session->StudentClassID;
         $studentId = (int) $session->studentClass->StudentID;
