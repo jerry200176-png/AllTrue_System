@@ -1155,6 +1155,15 @@ class LearningRecordController extends Controller
                 'StartTime' => $session->StartTime,
                 'EndTime' => $session->EndTime,
             ]);
+
+            $this->syncSchedulesAfterReschedule(
+                $classId,
+                $oldDate,
+                $newDate,
+                $session->StartTime,
+                $session->EndTime
+            );
+
             return response()->json([
                 'message' => $resetApplied ? '已調課至未來並重置為未上' : '已同步更新評量表日期',
                 'session_id' => $session->id,
@@ -1280,6 +1289,61 @@ class LearningRecordController extends Controller
 
         SessionDeductionService::recomputeCounters($classId);
         return !$wasAlreadyScheduled || $hadDeductedSignIn || $approvedRecords->count() > 0;
+    }
+
+    /**
+     * FR-001/FR-002: 調課後同步 schedules 表的代課相關列至新日期，
+     * 並清除 race condition 植入的重複 scheduled 列。
+     */
+    private function syncSchedulesAfterReschedule(
+        int $courseId,
+        ?string $oldDate,
+        string $newDate,
+        ?string $startTime,
+        ?string $endTime
+    ): void {
+        if (!$oldDate || $oldDate === $newDate) {
+            return;
+        }
+
+        $rescheduledRow = Schedule::where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $oldDate)
+            ->where('status', 'rescheduled')
+            ->lockForUpdate()
+            ->first();
+
+        if (!$rescheduledRow) {
+            return;
+        }
+
+        $newDayOfWeek = (int) Carbon::parse($newDate)->dayOfWeekIso;
+
+        $rescheduledRow->update([
+            'schedule_date' => $newDate,
+            'day_of_week'   => $newDayOfWeek,
+        ]);
+
+        $scheduledRow = Schedule::where('student_course_id', $courseId)
+            ->where('original_schedule_id', $rescheduledRow->id)
+            ->where('status', 'scheduled')
+            ->lockForUpdate()
+            ->first();
+
+        if ($scheduledRow) {
+            $scheduledRow->update([
+                'schedule_date' => $newDate,
+                'day_of_week'   => $newDayOfWeek,
+                'start_time'    => $startTime ?: $scheduledRow->start_time,
+                'end_time'      => $endTime   ?: $scheduledRow->end_time,
+            ]);
+
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $newDate)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $rescheduledRow->id)
+                ->where('id', '!=', $scheduledRow->id)
+                ->delete();
+        }
     }
 
     public function requestChanges(Request $request, LearningRecord $learningRecord)
