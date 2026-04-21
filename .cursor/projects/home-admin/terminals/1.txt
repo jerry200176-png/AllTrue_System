@@ -1,0 +1,170 @@
+---
+pid: 164377
+cwd: /home/admin
+last_command: |
+  /home/admin/bin/rclone config reconnect g-drive:
+last_exit_code: 0
+---
+   \ (putio)
+50 / QingCloud Object Storage
+   \ (qingstor)
+51 / Quatrix by Maytech
+   \ (quatrix)
+52 / Read archives
+   \ (archive)
+53 / SMB / CIFS
+   \ (smb)
+54 / SSH/SFTP
+   \ (sftp)
+55 / Shade FS
+   \ (shade)
+56 / Sia Decentralized Cloud
+   \ (sia)
+57 / Storj Decentralized Cloud Storage
+   \ (storj)
+58 / Sugarsync
+   \ (sugarsync)
+59 / Transparently chunk/split large files
+   \ (chunker)
+60 / Uloz.to
+   \ (ulozto)
+61 / Union merges the contents of several upstream fs
+   \ (union)
+62 / WebDAV
+   \ (webdav)
+63 / Yandex Disk
+   \ (yandex)
+64 / Zoho
+   \ (zoho)
+65 / iCloud Drive
+   \ (iclouddrive)
+66 / premiumize.me
+   \ (premiumizeme)
+67 / seafile
+   \ (seafile)
+Storage> drive
+
+Option client_id.
+Google Application Client Id
+Setting your own is recommended.
+See https://rclone.org/drive/#making-your-own-client-id for how to create your own.
+If you leave this blank, it will use an internal key which is low performance.
+Enter a value. Press Enter to leave empty.
+client_id> 
+
+Option client_secret.
+OAuth Client Secret.
+Leave blank normally.
+Enter a value. Press Enter to leave empty.
+client_secret> 
+
+Option scope.
+Comma separated list of scopes that rclone should use when requesting access from drive.
+Choose a number from below, or type in your own value.
+Press Enter to leave empty.
+ 1 / Full access all files, excluding Application Data Folder.
+   \ (drive)
+ 2 / Read-only access to file metadata and file contents.
+   \ (drive.readonly)
+   / Access to files created by rclone only.
+ 3 | These are visible in the drive website.
+   | File authorization is revoked when the user deauthorizes the app.
+   \ (drive.file)
+   / Allows read and write access to the Application Data folder.
+ 4 | This is not visible in the drive website.
+   \ (drive.appfolder)
+   / Allows read-only access to file metadata but
+ 5 | does not allow any access to read or download file content.
+   \ (drive.metadata.readonly)
+scope> 2
+
+Option service_account_file.
+Service Account Credentials JSON file path.
+Leave blank normally.
+Needed only if you want use SA instead of interactive login.
+Leading `~` will be expanded in the file name as will environment variables such as `${RCLONE_CONFIG_DIR}`.
+Enter a value. Press Enter to leave empty.
+service_account_file> 
+
+Edit advanced config?
+y) Yes
+n) No (default)
+y/n> n
+
+Use web browser to automatically authenticate rclone with remote?
+ * Say Y if the machine running rclone has a web browser you can use
+ * Say N if running rclone on a (remote) machine without web browser access
+If not sure try Y. If Y failed, try N.
+
+y) Yes (default)
+n) No
+y/n> n
+
+Option config_token.
+For this to work, you will need rclone available on a machine that has
+a web browser available.
+For more help and alternate methods see: https://rclone.org/remote_setup/
+Execute the following on the machine with the web browser (same rclone
+version recommended):
+        rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLnJlYWRvbmx5In0"
+Then paste the result.
+Enter a value.
+config_token> eyJ0b2tlbiI6IntcImFjY2Vzc190b2tlblwiOlwieWEyOS5hMEFhN01ZaXJ2N0thNjJ5R0EzUFVHaElRZXJQNGdqYjlDVGZYakc3OFFsRmJqQW9ibkNjbm
+
+Couldn't decode response - try again (make sure you are using a matching version of rclone on both sides: invalid character 'e' looking for beginning of value
+
+
+Configure this as a Shared Drive (Team Drive)?
+
+y) Yes
+n) No (default)
+y/n> n
+
+Configuration complete.
+Options:
+- type: drive
+- scope: drive.readonly
+- team_drive: 
+Keep this "g-drive" remote?
+y) Yes this is OK (default)
+e) Edit this remote
+d) Delete this remote
+y/e/d> y
+
+Current remotes:
+
+Name                 Type
+====                 ====
+g-drive              drive
+gdrive               drive
+
+e) Edit existing remote
+n) New remote
+d) Delete remote
+r) Rename remote
+c) Copy remote
+s) Set configuration password
+q) Quit config
+e/n/d/r/c/s/q> q
+admin@Pi5:~ $ /home/admin/bin/rclone config reconnect g-drive:
+Use web browser to automatically authenticate rclone with remote?
+ * Say Y if the machine running rclone has a web browser you can use
+ * Say N if running rclone on a (remote) machine without web browser access
+If not sure try Y. If Y failed, try N.
+
+y) Yes (default)
+n) No
+y/n> y
+
+2026/04/22 00:32:11 NOTICE: Make sure your Redirect URL is set to "http://127.0.0.1:53682/" in your custom config.
+2026/04/22 00:32:11 NOTICE: If your browser doesn't open automatically go to the following link: http://127.0.0.1:53682/auth?state=PDqmf329W0EJZGTKa-JgMA
+2026/04/22 00:32:11 NOTICE: Log in and authorize rclone for access
+2026/04/22 00:32:11 NOTICE: Waiting for code...
+2026/04/22 00:32:15 NOTICE: Got code
+Configure this as a Shared Drive (Team Drive)?
+
+y) Yes
+n) No (default)
+y/n> n
+
+admin@Pi5:~ $

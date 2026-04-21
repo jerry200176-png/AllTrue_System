@@ -5,6 +5,166 @@
 
 ---
 
+## §2026-04-22 — ⛔⛔⛔ P0 最高級事故：AI 在 production backend 跑 `php artisan test` 把生產 DB 清空
+
+### 事故時間軸
+
+- **00:40** AI 為了 debug GitHub Actions CI 失敗，在 `/home/admin/backend/` 執行 `php artisan test`
+- **00:42** `RefreshDatabase` trait 對 `.env` 指向的 DB（= production `AllTrue`）執行 `migrate:fresh`
+  - `DROP TABLE` 所有生產資料表
+  - 重新 migrate + seed 測試 fixture
+  - 產出 `testing.INFO: parent.login.success {"student_id":35}` 等 log
+- **00:45** `db-alert` cron 偵測到 `ClassSession 暴跌：5446 → 0`、`StudentClass 633 → 0`、`Student 395 → 1` → 寫入 CRITICAL log
+- **00:47** 使用者回報 401 登入失敗
+- **00:48** AI 發現 DB 被清空，立即快照現狀 → 從 `sixhour/alltrue_6h_2026-04-21_2300.sql.gz` 還原
+- **00:50** DB 還原完成，行數回到 395/633/5446，系統恢復
+- **資料損失視窗**：2026-04-21 23:00 → 2026-04-22 00:42（約 1 小時 42 分鐘）
+
+### 根本原因
+
+AI 的 `backend/tests/bootstrap.php` 嘗試用 `putenv('APP_ENV=testing')` 強制環境為 testing，但**完全沒保護 `DB_DATABASE`**：
+
+- `phpunit.xml` 的 `<env name="DB_DATABASE" value="AllTrue_test" force="true"/>` 確實生效
+- **但是** Laravel 的 DB connection manager 在 bootstrap 階段可能已用 `.env` 的 `DB_DATABASE=AllTrue` 建立連線
+- 更關鍵：**AI 在 production 檔案系統上執行 `php artisan test`，`.env` 就是 production `.env`**
+- 任何防護層（`<env force="true">`、`bootstrap.php`）都是「軟防護」，只要一個環節失誤就直接打中 production DB
+
+### 二次原因（AI 不該犯的判斷錯誤）
+
+1. **違反了 2026-04-22 凌晨剛寫的 `config:clear` 禁令**：規則檔明明寫「要 debug Laravel 行為必須用獨立 clone」，AI 一小時後還是直接在 production 目錄跑 `php artisan test`
+2. AI 把 `php artisan test` 誤認為「無害的本機測試」，忽略 `RefreshDatabase` = `DROP ALL TABLES` 的破壞性
+3. AI 為了「讓 CI 通過」，連續多次修改 production 的 `phpunit.xml`、`tests/bootstrap.php`、`TestCase.php` — 每次修改都累積風險
+4. **AI 當天已經炸兩次**：18:22 改 `.env` 刪 `DEPLOY_SECRET`、00:40 跑 `config:clear`，第三次直接清空 DB。應該在第一次事故後就停手
+
+### 防再犯規則（⛔⛔⛔ 最高級，任何 AI 違反 = 立即停止）
+
+1. **絕對禁止**在 `/home/admin/backend/` 執行 `php artisan test`、`phpunit`、`vendor/bin/phpunit` 或任何會載入 `RefreshDatabase` / `DatabaseTransactions` / `DatabaseMigrations` trait 的指令。**沒有例外**。
+   
+   **要跑測試 = 用獨立 clone + 獨立 `.env`**：
+   ```bash
+   # 安全 debug 流程
+   cp -r /home/admin/backend /tmp/backend-test
+   cd /tmp/backend-test
+   cat > .env.test-override <<EOF
+   APP_ENV=testing
+   DB_DATABASE=AllTrue_test
+   EOF
+   # 用 .env.test-override 覆蓋 .env
+   cp .env.test-override .env
+   php artisan test
+   # 測完整個 /tmp/backend-test 丟掉
+   rm -rf /tmp/backend-test
+   ```
+
+2. **CI debug 一律在 GitHub Actions 端完成**：
+   - 修 `.github/workflows/ci.yml` + push → 看 CI log
+   - **不要嘗試「先本機跑通再 push」**，Pi 的檔案系統就是 production
+   - CI runner 是一次性 Ubuntu，跑 `RefreshDatabase` 不會影響任何 production 資料
+
+3. **任何一個 PHP 檔案在 production 目錄下運行時，必須視為 production 代碼**：
+   - `phpunit.xml` 的 `<env>` 值只是 hint，不是 guarantee
+   - `tests/bootstrap.php` 的 `putenv` 只是 hint，不是 guarantee
+   - **唯一的 guarantee 是：不要在 production 目錄跑測試**
+
+4. **每天發生 1 次 production 事故 = 立刻停止所有 production 操作**：
+   - 告知使用者「我今天已經出過 X 次包，剩下的工作請明天做」
+   - 不要試圖「補救」自己造成的問題 — 補救通常會造成第二個問題
+   - 進入「只讀 + 告知」模式，除非使用者明確授權
+
+### AI 執行指令前必答清單（硬性）
+
+每次在 `/home/admin/backend/` 下執行 `php` / `php artisan` / `composer` 指令前，必須明確回答：
+
+- [ ] 這個指令是否會讀 `.env`？→ 是 → **該指令一定作用在 production**
+- [ ] 這個指令是否會寫入任何資料表？→ 是 → **停，除非部署或使用者明確授權**
+- [ ] 這個指令是否會 DROP / TRUNCATE / migrate fresh？→ **絕對停**
+- [ ] 這個指令是否是為了「我自己 debug」？→ 是 → **停，改用 `/tmp` clone**
+- [ ] 使用者是否明確要求「現在就在 production 上跑這個指令」？→ 否 → **停**
+
+### 事故代價
+
+- 生產 DB 被清空 1 小時 42 分鐘的資料損失視窗（萬幸 sixhour 備份還在）
+- 使用者當天遭遇 3 次 P0（`.env` 被改壞 + `config:clear` + DB 清空）
+- AI 信任基本歸零
+- 備份機制（sixhour + nightly）經過真實考驗 → 證明 2026-04-21 建立的 `gdrive-backup-sync.sh` + `sixhour` 備份確實救了這次
+
+### 正面後果
+
+- 備份機制經過真實災難驗證，恢復時間 < 10 分鐘
+- 事故紀錄讓未來所有 AI 讀到這份檔案時會被強制擋住同類操作
+
+---
+
+## §2026-04-22 — P0 事故：AI 在 production backend 跑 `config:clear` 導致全站 5 分鐘 401
+
+### 事故時間軸
+
+- **00:40** AI 為了在本機 debug GitHub Actions CI 失敗，在 `/home/admin/backend/` 執行 `php artisan config:clear`
+- **00:41** 使用者瀏覽器收到大量 401 錯誤（`/api/v1/auth/login`、`notifications/unread-count`、`chat/unread-count`、`bugs/unread-badge`、`schedule-discrepancies/summary`、`directors/pending`）
+- **00:43** 使用者回報事故
+- **00:43** AI 執行 `config:cache` + `route:cache` + OPcache flush，系統恢復
+- **停機時間**：約 5 分鐘
+
+### 根本原因
+
+**AI 混淆了「本機 debug 環境」與「production backend」**。
+
+Pi 的檔案系統上，`/home/admin/backend/` **就是**正在服務生產流量的 Laravel app；不是 clone 出來的測試副本。任何 `php artisan` 指令直接對生產環境生效：
+- `config:clear` 清掉 `bootstrap/cache/config.php`
+- Laravel 8 在 production 模式下依賴 config cache 才能正確解析 `session.driver`、`sanctum.stateful`、`auth.guards` 等設定
+- cache 消失瞬間，登入流程的 session 解析出錯 → `/api/v1/auth/login` 變成 302 redirect（被路由到 web routes 而非 API routes），前端收到 HTML 無法解析 → 登入失敗 → 所有需要 token 的 endpoint 全變 401
+
+### 二次原因（本次事故加重因素）
+
+1. 今天稍早（2026-04-21）AI 已經在 `.env` 修改中「不明原因刪除 DEPLOY_SECRET 一行」被當場抓到（見 b7 事件後續對話）。當時未正式寫入此規則檔，是重要警訊被忽略。
+2. AI 為了 debug CI 問題，已經在同一輪對話中對 production 檔案做過多次非必要修改（phpunit.xml、tests/bootstrap.php、TestCase.php），累積風險。
+3. `config:clear` 被當作「無害的診斷指令」執行，未事先評估對 production 的影響。
+
+### 防再犯規則（⛔ P0 強制）
+
+1. **絕對禁止**在 `/home/admin/backend/` 執行任何會寫入 `bootstrap/cache/` 的 artisan 指令用於「debug 目的」。包括但不限於：
+   - `php artisan config:clear`
+   - `php artisan config:cache`（除非是部署流程的一部分）
+   - `php artisan route:clear`
+   - `php artisan route:cache`
+   - `php artisan optimize:clear`
+   - `php artisan cache:clear`
+   
+   這些指令只能在兩種情境下執行：
+   - **部署流程**：deploy script 明確包含這些步驟作為完整部署序列
+   - **事故恢復**：已經發生故障，清快取+重建快取作為恢復手段
+
+2. **AI 要 debug Laravel 測試、config、route 行為時**，必須用獨立 clone：
+   ```bash
+   git clone /home/admin/backend /tmp/backend-debug
+   cd /tmp/backend-debug
+   cp /home/admin/backend/.env .env.debug  # 複製後改 DB_DATABASE=AllTrue_test
+   # 在此環境測試
+   rm -rf /tmp/backend-debug  # 完成後清理
+   ```
+
+3. **凡涉及 production config / cache / env 的操作**，AI 必須在執行前：
+   - 明確宣告「這是 production 操作」
+   - 說明這個操作的恢復方法
+   - 詢問使用者是否授權（類似 P0 force-push 規則）
+
+4. **CI debug 一律在 CI 端完成**：GitHub Actions 失敗時，透過修改 `.github/workflows/ci.yml` 和相關測試檔案 → push 觸發新 CI run → 看 CI log。**不在 Pi 上「先本機跑通再 push」**，因為 Pi 的 backend 狀態（config cache、session、env 實際值）與 GitHub Actions Ubuntu runner 根本不同。
+
+### 檢查清單（AI 執行 artisan 指令前必問自己）
+
+- [ ] 這個指令是否會寫入 `bootstrap/cache/`？→ 是 → **停，除非部署或事故恢復**
+- [ ] 這個指令是否依賴 `.env` 當前狀態？→ 是 → **停，改用獨立 clone**
+- [ ] 這個指令在生產流量中執行是否會造成瞬時不一致？→ 是 → **停，先評估**
+- [ ] 使用者是否明確要求「現在就在 production 上跑」？→ 否 → **停**
+
+### 事故代價
+
+- 使用者對 AI 信任受損（當天已發生兩次 P0：.env 誤刪 DEPLOY_SECRET + 本次 config:clear）
+- 5 分鐘停機（雖短但發生在晚間使用者工作時段）
+- 需花費額外時間做事故恢復與 post-mortem
+
+---
+
 ## §2026-04-21 — b3 月結制 inactive 課程的歷史判斷必須與堂數制對稱
 
 ### 根本原因

@@ -24,8 +24,10 @@
     20 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
     21 => 'Carbon\\Laravel\\ServiceProvider',
     22 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
-    23 => 'App\\Providers\\AppServiceProvider',
-    24 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+    23 => 'Sentry\\Laravel\\ServiceProvider',
+    24 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
+    25 => 'App\\Providers\\AppServiceProvider',
+    26 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
   ),
   'eager' => 
   array (
@@ -42,8 +44,10 @@
     10 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
     11 => 'Carbon\\Laravel\\ServiceProvider',
     12 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
-    13 => 'App\\Providers\\AppServiceProvider',
-    14 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+    13 => 'Sentry\\Laravel\\ServiceProvider',
+    14 => 'Sentry\\Laravel\\Tracing\\ServiceProvider',
+    15 => 'App\\Providers\\AppServiceProvider',
+    16 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
   ),
   'deferred' => 
   array (

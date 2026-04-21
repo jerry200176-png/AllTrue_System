@@ -16,6 +16,7 @@ abstract class TestCase extends BaseTestCase
         $this->seedSubjectsIfNeeded();
     }
 
+
     private function seedSubjectsIfNeeded(): void
     {
         if (!Schema::hasTable('Subject')) {
