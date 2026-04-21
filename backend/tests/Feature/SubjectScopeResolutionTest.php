@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -13,6 +14,19 @@ use Tests\TestCase;
 class SubjectScopeResolutionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // 凍結在週一，確保 now()+7 依然是週一（符合 days_of_week=[1] ISO 週一）
+        Carbon::setTestNow(Carbon::parse('2026-04-20 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     /**
      * When Subject table has only English names (e.g. 'Math'), the resolver
