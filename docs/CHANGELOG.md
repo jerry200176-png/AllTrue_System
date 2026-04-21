@@ -2,6 +2,200 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-21 — b7 調課失敗修復：試聽容量誤判 + OPcache 陳舊 + 孤兒資料補救
+
+### Problem
+
+主任操作「課程管理」將學生吳品荅（ID 290）、陳儀倩（ID 284）的 4/25（六）課程調至 5/1（五）時，前端顯示「調課失敗：老師此時段已有 1 位學生，試聽上限為 1 位學生。」，或在後續嘗試中出現「目標日期尚無課堂紀錄」422 錯誤，導致調課完全無法完成。
+
+### Root Cause（三層）
+
+1. **試聽容量誤判**：`ScheduleGuardService::buildTeacherCapacityConflict()` 在計算 `trial` 上限時，將 `one_on_three` 課型的學生也算入試聽名額，導致誤拒正式課型調課（commit `9aa1f6f`，2026-04-20 已修正）。
+2. **PHP OPcache 快取舊版 bytecode**：修正後的 `ScheduleController.php` 尚未被 PHP-FPM workers 重新載入，舊版邏輯（缺少 `$isSameDaySubstitute` 跨日判斷）仍被執行，跨日調課誤觸 FR-001 `no_class_session` 422。修改原始碼檔案後 OPcache 自動失效。
+3. **孤兒資料**：多次失敗後，`schedules` 表留下無配對的 `rescheduled` 列（吳品荅 ID 1205、陳儀倩 ID 1232），對應 `scheduled` 列與 ClassSession 移動均未完成。
+
+### Change
+
+**後端（已部署）**
+- `ScheduleGuardService::buildTeacherCapacityConflict()`：`trial` 課型早期豁免分支，僅統計 `class_type='trial'` 的學生進入試聽上限；非 trial 課型（含 `one_on_three`）走正常容量邏輯。（commit `9aa1f6f`）
+- `routes/api.php`：新增 `POST /api/internal/opcache-reset` 保護端點（`X-Deploy-Secret` header 驗證），讓 PHP-FPM 自行清除 OPcache bytecode，無需 sudo。
+- `config/app.php`：新增 `deploy_secret` 設定讀取 `DEPLOY_SECRET` 環境變數。
+
+**部署腳本**
+- `scripts/deploy-to-pi.sh`：新增步驟 4/5，部署後自動呼叫 opcache-reset 端點。
+- `frontend/scripts/copy-to-backend.cjs`：`npm run deploy` 結束後同步呼叫 opcache-reset，確保前端部署也觸發後端快取刷新。
+
+**前端**
+- `useRescheduleAndMakeup.js`：調課流程新增 `createdNewRescheduled` 旗標，若 `scheduled` 記錄建立失敗，補償刪除本次剛建立的 `rescheduled` 列，防止孤兒資料殘留（FR-004）。
+
+**資料修補（API hotfix）**
+- 吳品荅（course 879）：建立 `scheduled` 列 ID 1231（5/1），移動 ClassSession 7724 → 5/1。
+- 陳儀倩（course 241）：建立 `rescheduled` 列 ID 1232（4/25）與 `scheduled` 列 ID 1233（5/1），移動 ClassSession 1974 → 5/1。
+
+**測試**
+- `tests/Feature/ScheduleGuardrailsTest.php`：`createCourseViaApi()` helper 改用 `POST /api/v1/schedules` 替代已退役的 `POST /api/v1/student-classes`（410），確保 8 個容量守衛測試全部通過。
+
+### Acceptance Criteria（已驗收）
+
+- `one_on_three` 跨日調課 → API 回傳 201，無試聽容量誤判
+- OPcache reset 端點 → `{"ok":true,"opcache_cleared":true}` HTTP 200
+- 吳品荅 / 陳儀倩資料修補完整（schedules 配對 + ClassSession 日期正確）
+- `ScheduleGuardrailsTest` 8 tests / 27 assertions → OK
+- Revert-proof：git stash 後 5 tests FAIL（確認測試覆蓋了 bug）
+
+---
+
+## 2026-04-21 — b6 課表回報管理：主任頁面自動刷新 + Nav Badge 定期更新
+
+### Problem
+
+老師送出課表回報後，主任已開著「課表回報管理」頁面保持空白（stale state），無法看到新回報；Nav Badge 也不主動提示待處理筆數。
+
+### Root Cause
+
+1. `ScheduleDiscrepancyPage.vue` 資料只在 `onMounted` 及 `props.branchId` 變更時載入一次，缺少頁面層級輪詢機制。
+2. `App.vue` 的 `chatBadgePollingTimer` callback 未包含 `mergeScheduleDiscrepancyBadge()`，導致 Nav Badge 不隨其他 badge 一起每 60 秒更新。
+
+### Change（前端修復，無後端異動）
+
+**`frontend/src/pages/ScheduleDiscrepancyPage.vue`**
+- 新增 `startPagePolling()` / `stopPagePolling()` helper，`pending` tab → 30s interval，其他 tab → 60s interval
+- `setInterval` callback 內部套用 `hasBranch` + `document.visibilityState` 雙重守護（FR-004, FR-006）
+- `onMounted` 啟動輪詢並監聽 `visibilitychange`；`onBeforeUnmount` 清除計時器並移除事件監聽（FR-003）
+- `setTab()` 切換 tab 時重啟輪詢（FR-002）
+
+**`frontend/src/App.vue`**
+- `chatBadgePollingTimer` setInterval callback 補上 `mergeScheduleDiscrepancyBadge()`（FR-005）
+
+### Acceptance Criteria（已驗收）
+
+- AC-001：主任進入 pending tab 後，每 30s 自動呼叫 `load()`
+- AC-002：Nav Badge 最遲 60s 顯示待處理筆數
+- FR-001 ~ FR-006 逐條 code review 通過
+
+---
+
+## 2026-04-21 — b5 歷史堂數制課程 Charge 欄位修正（陳昱愷 · 數學 ID=171）
+
+### Problem
+
+家長收到繳費通知單顯示「數學（堂數制）8 堂 NT$24,000」，金額為正確費用的 2 倍。課程管理 UI 顯示 12,000（因 `getCourseTotalFee` 重新計算 Rate×Sessions），但 tuition slip API 直接讀取 DB `Charge` 欄位回傳 24,000，造成前後台金額不一致。
+
+### Root Cause
+
+b4 code fix 部署前，`purchase-batch` 計算 `Charge` 時使用 `Rate × (SessionDuration/60) × SessionCount`（1500 × 2 × 8 = 24,000），應為 `Rate × SessionCount`（1500 × 8 = 12,000）。DB 舊資料殘留錯誤 Charge 值。
+
+### Change（純資料修正，無程式碼異動）
+
+- `StudentClass ID=171`（陳昱愷 · 數學，興隆分校）：`Charge` 由 24,000 修正為 12,000
+- 稽核軌跡寫入 `Memo` 欄：`[FIX 2026-04-21] ticket=INC-2026-04-21-001`
+- 影響範圍：僅此 1 筆；全校清查 SQL 確認無其他同型態殘留
+
+### 後續注意
+
+- Tuition slip（`GET /api/v1/alerts/tuition-slip/{id}`）直接讀 `Charge`，後續新批次由 b4 fix 保護不再誤算
+- 如需全校掃描，使用 runbook：`.cursor/plans/runbook_月結誤轉堂數_清查與修正.md`
+
+## 2026-04-21 — b3 月結制課程無法進入歷史課程修正
+
+### Problem
+
+月結制課程（`ScheduleMode='date'`）停用（`status=inactive`）後，無法在課程管理「歷史課程」摺疊區或學生管理歷史課程清單中出現，始終留在「進行中」或「暫停」區。
+
+### Root Cause
+
+1. **前端 `effectiveClosedReason`**：邏輯僅對堂數制（`isSessionMode(c)` 為 true）的 inactive 課程自動推斷 `'completed'`；月結制分支缺漏，永遠回傳 `null`，導致 `isHistoryCourse` 判斷失敗。
+2. **後端 `togglePause`**：停用月結課時未自動寫入 `closed_reason`，現有及新停用的月結課 `closed_reason` 均為 `NULL`，前端 fallback 推斷無法命中。
+
+### Change
+
+- `backend/app/Http/Controllers/StudentClassController.php`：`togglePause` 新增月結分支 — 停用月結課（`ScheduleMode !== 'count'`）且無明確 reason 時，自動設定 `closed_reason = 'completed'`
+- `frontend/src/pages/CourseManagement.vue`：`effectiveClosedReason` 新增月結 inactive 推斷：`status === 'inactive' && !isSessionMode(c)` → return `'completed'`（兼容現有 `closed_reason IS NULL` 歷史資料）
+- `frontend/src/pages/StudentsList.vue`：`effectiveClosedReason` 同步月結推斷分支（`inactive && payment_type !== 'session'` → `'completed'`）
+- `backend/tests/Feature/MonthlyHistoryCourseTest.php`：3 條守護測試（月結停用自動補 `closed_reason` / 明確 reason 不被覆蓋 / 堂數制有堂不誤觸）
+
+### Impact
+
+- 月結停用課程出現在「歷史課程」區，與堂數制行為一致（AC-001 ～ AC-004）
+- 歷史髒資料（`closed_reason IS NULL` 的舊月結停用課）無需 DB migration，前端 fallback 直接覆蓋
+- 測試：3/3 綠；revert-proof：stash controller 後 1 case failure
+
+## 2026-04-21 — b4 月結制課程加購/續報變堂數制修正
+
+### Problem
+
+主任對月結制課程（`ScheduleMode='date'`）按「加購」時，後端 `StudentClassController::purchaseBatch` 無條件寫入 `ScheduleMode='count'`，產生一筆新的**堂數制**課程，破壞月結計費語意；舊月結課不結案，同一學生同一科目出現兩筆 active 課程並存，影響點名、評量、科目數統計。
+
+### Root Cause
+
+`purchaseBatch` 方法內 `$newPayload['ScheduleMode'] = 'count'` 寫死為堂數制，未偵測來源課程模式；前端 `StudentsList.vue::openAddSessionsForCourse` 及 `CourseManagement.vue::openPurchaseModal` 也未分流月結/堂數。
+
+### Change
+
+- `backend/app/Http/Controllers/StudentClassController.php`：
+  - 新增 `renewMonthly` 方法：以 `UPDATE` 延長原 `StudentClass.EndDate`，不新建記錄、不建 `ClassSession`；保持 `ScheduleMode='date'`、`settlement_day`、`monthly_sessions` 不變
+  - `purchaseBatch` 首行增加守衛：`ScheduleMode='date'` 時回 HTTP 422，防止 API 直連繞過前端保護
+- `backend/routes/api.php`：新增 `POST /student-classes/{id}/renew-monthly` 路由
+- `frontend/src/components/course-management/RenewMonthlyModal.vue`：新增續約 modal（延長月數 / 指定到期日雙模式；顯示當前 `settlement_day` / `monthly_sessions`）
+- `frontend/src/pages/StudentsList.vue`：`openAddSessionsForCourse` 檢查 `payment_type === 'monthly'` → 開續約 modal
+- `frontend/src/pages/CourseManagement.vue`：`openPurchaseModal` 檢查 `!isSessionMode(course)` → 開續約 modal
+- `backend/tests/Feature/MonthlyRenewTest.php`：5 條守護測試（續約 happy / 拒堂數制 / 拒過去日期 / purchaseBatch 拒月結 / 堂數制 purchaseBatch 不變）
+
+### Impact
+
+- 月結續約後只剩 1 筆 active `StudentClass`（AC-005）；堂數制 `purchaseBatch` 行為與修改前完全相同（AC-001-b / AC-003-b / FR-006）
+- 測試：5/5 綠；revert-proof 驗證：stash controller 後 5 test 中 4 個 failure
+
+## 2026-04-21 — 繳費狀態切換未清除 paid_at 修正（StudentsList + SessionDeductionService）
+
+### Problem
+
+主任在 `StudentsList.vue` 點擊切換「未繳費」後，課程管理仍顯示「未繳費」但 `PayDate` 殘留舊日期（`Paid=0 / PayDate IS NOT NULL` 不一致）。新建課程填繳費日期後，`SessionDeductionService::recomputeCounters` 在 `RemainingSessions <= 2` 時仍清零 `Paid=0`，導致已繳費課程顯示未繳費。
+
+### Root Cause
+
+1. **前端 Bug B**：`StudentsList.vue::togglePaymentStatus` 切換至 `unpaid` 時，payload 只送 `{ payment_status: 'unpaid' }` 而未附帶 `paid_at: null`，後端 `mapFrontendPayload` 正確設 `Paid=0` 但未清 `PayDate`。
+2. **SessionDeductionService 殘留邏輯**：`recomputeCounters` 內 `if ($sc->RemainingSessions <= 2) { $sc->Paid = 0; }` 在新建課程（total_classes=1）後被呼叫，將剛設好的 `Paid=1` 再次清零。
+
+### Change
+
+- `frontend/src/pages/StudentsList.vue`：`togglePaymentStatus` 補送 `paid_at: null`，成功後同步清 `course.last_paid_at`
+- `backend/app/Http/Controllers/StudentClassController.php`：`mapFrontendPayload` 加入後端保底邏輯：`payment_status=unpaid` 且 payload 未帶 `paid_at` 時強制清 `PayDate=NULL`
+- `backend/app/Services/SessionDeductionService.php`：移除 `recomputeCounters` 中 `RemainingSessions <= 2 → Paid=0` 的錯誤邏輯；`Paid/PayDate` 只能由三條授權路徑寫入
+- `backend/database/migrations/2026_04_21_..._backfill_paid_status_where_paydate_not_null.php`：Backfill 27 筆 `Paid=0 AND PayDate IS NOT NULL` → `Paid=1`（主任確認均為已繳費誤觸）
+- `backend/tests/Feature/StudentClassPaidStatusTest.php`：新增 3 條守護測試（toggle 清 PayDate、batch+paid_at、batch 無 paid_at）
+
+### Impact
+
+- 修復後 `SELECT COUNT(*) FROM StudentClass WHERE Paid=0 AND PayDate IS NOT NULL` 恆為 0
+- 全套測試：15/15（StudentClassPaidStatusTest），回歸測試無新增失敗
+
+## 2026-04-21 — C1 代課後單堂檢視顯示原老師（start_time 格式容錯）
+
+### Problem
+
+課程管理「單堂檢視」Modal 的「老師」欄在代課後仍顯示契約老師（鄭翔祐）而非代課老師（陳章華），但同一堂次在行事曆卻正確顯示代課老師。
+
+### Root Cause
+
+`ClassSessionController::index` 的 `sub_sched` 衍生表 LEFT JOIN 條件 `sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)` 期望 `schedules.start_time` 為 HH:MM 格式（len=5）。實測發現 1 筆代課記錄（`schedules.id=611`，游家豫數學課 2026-04-22 18:30）意外存為 `'18:30:00'`（HH:MM:SS，len=8），導致 `'18:30:00' ≠ '18:30'`、join 失效、`sub_sched` 為 `NULL`，`COALESCE(subt.T_Name, subu.Name, lrt.T_Name, lru.Name, t.T_Name, u.Name, "")` 跌回契約老師。行事曆以 `schedules.teacher_id → teacherNameMap` 路徑顯示，繞過此 COALESCE，故不受影響。
+
+### Change
+
+- **修改** [`backend/app/Http/Controllers/ClassSessionController.php`](backend/app/Http/Controllers/ClassSessionController.php)：`sub_sched` LEFT JOIN 條件改為 `SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)`，兩側都取前 5 碼，使 HH:MM 與 HH:MM:SS 格式皆能命中（防禦性程式碼）
+- **新增** [`backend/database/migrations/2026_04_21_000002_normalize_schedules_start_time.php`](backend/database/migrations/2026_04_21_000002_normalize_schedules_start_time.php)：將 `schedules.start_time` 與 `end_time` 中 `LENGTH > 5` 的記錄 `UPDATE` 為 `SUBSTRING(...,1,5)`；完成後再查一次 `LENGTH > 5` 必為 0 否則 throw；`down()` 為 no-op（舊格式無還原價值）
+- **新增** [`backend/tests/Feature/ClassSessionsSubstituteStartTimeFormatTest.php`](backend/tests/Feature/ClassSessionsSubstituteStartTimeFormatTest.php)（3 tests, 13 assertions）：覆蓋 HH:MM:SS 格式代課、HH:MM 格式 regression、無代課回契約老師三情境
+- 不動行事曆、`StudentClassController::index`（course-level teacher_name）、`AttendanceController::endedSessions`、前端
+
+### Regression Guard
+
+- `./vendor/bin/phpunit tests/Feature/ClassSessionsSubstituteStartTimeFormatTest.php` → `OK (3 tests, 13 assertions)`
+- `./vendor/bin/phpunit tests/Feature/ClassSessionsTeacherVisibilityAfterSubstituteTest.php tests/Feature/AttendanceEndedSessionsSubstituteTest.php` → `OK (8 tests, 25 assertions)`（B1 不受影響）
+- Revert-proof：單側 SUBSTRING 狀態下 `test_substitute_with_hhmmss_start_time_returns_substitute_teacher_name` failure（teacher_id 回契約老師 id 而非代課老師 id），修正後恢復 pass
+- 資料驗證：migration 後 `SELECT COUNT(*) FROM schedules WHERE LENGTH(start_time)>5 AND status='scheduled' AND original_schedule_id IS NOT NULL` → `0`；`schedules.id=611.start_time` → `'18:30'`
+
+---
+
 ## 2026-04-21 — B1 代點名代課可見性復發修復 + git-sync 守衛強化
 
 ### Incident 摘要
