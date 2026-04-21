@@ -1323,6 +1323,47 @@ class StudentClassController extends Controller
     }
 
     /**
+     * 月結制課程續約：延長 EndDate，不建立新批次。
+     * POST /api/v1/student-classes/{studentClass}/renew-monthly
+     */
+    public function renewMonthly(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') === 'count') {
+            return response()->json([
+                'message' => '此課程為堂數制，請使用「加購堂數」功能。',
+                'errors' => ['mode' => ['堂數制課程不支援月結續約，請使用 purchase-batch 端點。']],
+            ], 422);
+        }
+
+        $data = $request->validate([
+            'end_date'    => 'required|date|after:today',
+            'months'      => 'nullable|integer|min:1|max:24',
+        ]);
+
+        $newEndDate = Carbon::parse($data['end_date'])->toDateString();
+
+        $studentClass->EndDate = $newEndDate;
+        $studentClass->save();
+
+        return response()->json([
+            'message'  => '月結課程已續約，到期日更新為 ' . $newEndDate,
+            'end_date' => $newEndDate,
+            'course'   => [
+                'id'                => (int) $studentClass->ID,
+                'end_date'          => $newEndDate,
+                'settlement_day'    => $studentClass->settlement_day,
+                'monthly_sessions'  => $studentClass->monthly_sessions,
+                'schedule_mode'     => $studentClass->ScheduleMode,
+            ],
+        ]);
+    }
+
+    /**
      * 新增堂數批次（不併入舊課程）。
      * POST /api/v1/student-classes/{studentClass}/purchase-batch
      */
@@ -1331,6 +1372,14 @@ class StudentClassController extends Controller
         $auth = $this->authorizeStudentClassAccess($studentClass);
         if ($auth !== null) {
             return $auth;
+        }
+
+        // 月結制課程不支援加購堂數，應使用 renew-monthly 端點
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+            return response()->json([
+                'message' => '月結制課程請使用「月結續約」功能延長課程，不支援加購堂數。',
+                'errors'  => ['mode' => ['月結制課程不支援此操作，請使用 renew-monthly 端點。']],
+            ], 422);
         }
 
         $data = $request->validate([
@@ -2057,8 +2106,15 @@ class StudentClassController extends Controller
             $mappedData['Paid'] = !empty($input['paid_at']) ? 1 : 0;
         }
         // Explicit payment_status still wins over paid_at (e.g. 列表按鈕切換狀態).
+        // Guard: when toggling to unpaid and NO paid_at key is present in the payload,
+        // also clear PayDate to prevent Paid=0 / PayDate IS NOT NULL inconsistency.
+        // (If paid_at was explicitly sent alongside payment_status, the paid_at block above
+        // already controls PayDate and takes precedence.)
         if (isset($input['payment_status'])) {
             $mappedData['Paid'] = $input['payment_status'] === 'paid' ? 1 : 0;
+            if ($input['payment_status'] === 'unpaid' && !array_key_exists('paid_at', $input)) {
+                $mappedData['PayDate'] = null;
+            }
         }
         if (array_key_exists('room_id', $input)) $mappedData['room_id'] = $input['room_id'] ? (int) $input['room_id'] : null;
         if (array_key_exists('settlement_day', $input)) $mappedData['settlement_day'] = $input['settlement_day'] !== null && $input['settlement_day'] !== '' ? (int) $input['settlement_day'] : null;
@@ -3463,6 +3519,11 @@ class StudentClassController extends Controller
             && (int) ($sc->Paid ?? 0) === 1
             && (int) ($sc->RemainingSessions ?? 0) <= 0
         ) {
+            $reason = 'completed';
+        }
+
+        // 月結制課程停用時，無論剩餘堂數，一律視為完課（completed）
+        if (!$reason && (string) ($sc->ScheduleMode ?? 'count') !== 'count') {
             $reason = 'completed';
         }
 

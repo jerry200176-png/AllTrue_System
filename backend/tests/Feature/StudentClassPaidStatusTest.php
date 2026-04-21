@@ -347,6 +347,105 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame('paid', $match['payment_status'], 'payment_status should be paid when invoice has payment');
     }
 
+    /**
+     * FR-002 backend guard: toggle to unpaid without paid_at must also clear PayDate.
+     * Regression for Bug B: StudentsList.vue previously sent only { payment_status: 'unpaid' }
+     * without paid_at: null, leaving PayDate stale while Paid was set to 0.
+     */
+    public function test_toggle_to_unpaid_without_paid_at_clears_paydate(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid'    => 1,
+            'PayDate' => '2026-03-01',
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['payment_status' => 'unpaid'],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, 'Paid must be 0 after toggling to unpaid');
+        $this->assertNull($sc->PayDate, 'PayDate must be cleared when toggling to unpaid without paid_at');
+    }
+
+    /**
+     * FR-004 batch create with paid_at: course must show payment_status = "paid".
+     */
+    public function test_batch_create_with_paid_at_sets_payment_status_paid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $teacher = $this->createTeacher();
+
+        $future = now()->addWeek()->toDateString();
+
+        $res = $this->postJson('/api/v1/class-sessions/batch', [
+            'branch_id'       => 1,
+            'student_id'      => $student->id,
+            'teacher_id'      => $teacher,
+            'subject'         => 'Math',
+            'class_type'      => 'one_on_one',
+            'confirmed_dates' => [],
+            'future_dates'    => [$future],
+            'start_time'      => '16:00',
+            'duration_minutes' => 60,
+            'price_per_session' => 500,
+            'payment_type'    => 'session',
+            'total_classes'   => 1,
+            'paid_at'         => '2026-03-02',
+        ], ['Authorization' => "Bearer {$token}"]);
+
+        $res->assertCreated();
+        $studentClassId = (int) ($res->json('student_class_id') ?? 0);
+        $this->assertGreaterThan(0, $studentClassId);
+
+        $sc = \App\Models\StudentClass::find($studentClassId);
+        $this->assertNotNull($sc, 'StudentClass must be created');
+        $this->assertSame(1, (int) $sc->Paid, 'Paid must be 1 when paid_at is provided');
+        $this->assertStringStartsWith('2026-03-02', (string) $sc->PayDate, 'PayDate must match paid_at');
+    }
+
+    /**
+     * FR-004 batch create without paid_at: course must show payment_status = "unpaid".
+     */
+    public function test_batch_create_without_paid_at_sets_payment_status_unpaid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $teacher = $this->createTeacher();
+
+        $future = now()->addWeek()->toDateString();
+
+        $res = $this->postJson('/api/v1/class-sessions/batch', [
+            'branch_id'       => 1,
+            'student_id'      => $student->id,
+            'teacher_id'      => $teacher,
+            'subject'         => 'Math',
+            'class_type'      => 'one_on_one',
+            'confirmed_dates' => [],
+            'future_dates'    => [$future],
+            'start_time'      => '16:00',
+            'duration_minutes' => 60,
+            'price_per_session' => 500,
+            'payment_type'    => 'session',
+            'total_classes'   => 1,
+        ], ['Authorization' => "Bearer {$token}"]);
+
+        $res->assertCreated();
+        $studentClassId = (int) ($res->json('student_class_id') ?? 0);
+        $this->assertGreaterThan(0, $studentClassId);
+
+        $sc = \App\Models\StudentClass::find($studentClassId);
+        $this->assertNotNull($sc, 'StudentClass must be created');
+        $this->assertSame(0, (int) $sc->Paid, 'Paid must be 0 when no paid_at is provided');
+        $this->assertNull($sc->PayDate, 'PayDate must be NULL when no paid_at is provided');
+    }
+
     // ── Helpers ──
 
     private function createDirectorToken(array $campusIds): string
@@ -416,5 +515,25 @@ class StudentClassPaidStatusTest extends TestCase
         ];
 
         return StudentClass::create(array_merge($defaults, $overrides));
+    }
+
+    private function createTeacher(int $campusId = 1): int
+    {
+        $teacher = User::create([
+            'LoginName' => 'teacher-paid-test-' . uniqid() . '@example.com',
+            'Name' => '測試老師',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0922000000',
+        ]);
+
+        UserCampus::create([
+            'CampusID' => $campusId,
+            'UserID' => $teacher->id,
+            'Admin' => 0,
+            'Approved' => 1,
+        ]);
+
+        return (int) $teacher->id;
     }
 }
