@@ -145,9 +145,32 @@ for (const [name, fn] of methods) {
     fn();
     console.log('Done (' + name + ').');
     console.log('Refresh the app in the browser.');
+    flushOpcache();
     process.exit(0);
   } catch (e) {
     lastErr = e;
   }
 }
 fail(lastErr);
+
+/** FR-003: 呼叫保護端點讓 PHP-FPM 自行清除 OPcache bytecode cache */
+function flushOpcache() {
+  try {
+    const envPath = path.resolve(__dirname, '..', '..', 'backend', '.env');
+    if (!fs.existsSync(envPath)) return;
+    const secret = fs
+      .readFileSync(envPath, 'utf8')
+      .split('\n')
+      .find((l) => l.startsWith('DEPLOY_SECRET='))
+      ?.split('=')[1]
+      ?.trim();
+    if (!secret) return;
+    execSync(
+      `curl -sf -X POST https://daan.lifenet.com.tw/api/internal/opcache-reset -H "X-Deploy-Secret: ${secret}" -H "Content-Type: application/json"`,
+      { stdio: 'pipe', shell: true }
+    );
+    console.log('OPcache flushed.');
+  } catch (_) {
+    console.warn('[warn] OPcache flush failed (non-fatal). Run: sudo service php8.2-fpm reload');
+  }
+}

@@ -35,4 +35,6 @@ return [
     'aliases' => [
         'Excel' => Maatwebsite\Excel\Facades\Excel::class,
     ],
+
+    'deploy_secret' => env('DEPLOY_SECRET', ''),
 ];
