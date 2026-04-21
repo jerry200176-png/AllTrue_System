@@ -34,7 +34,10 @@ _abort_if_suspicious() {
     [ -z "$f" ] && continue
     bname=$(basename "$f")
     if [[ "$bname" == .* ]] && [ "${#bname}" -gt 15 ]; then
-      case "$bname" in .xsession-errors*|.bash_history|.lesshst|.wget-hsts|.phpunit.result.cache) ;; *)
+      case "$bname" in \
+        .xsession-errors*|.bash_history|.lesshst|.wget-hsts|.phpunit.result.cache| \
+        .env.*.example|.env.example| \
+        .cursor-managed-skills-manifest.json|.sync-manifest.json) ;; *)
         found="$found\n  SUSPICIOUS_HIDDEN: $f"
       ;; esac
     fi

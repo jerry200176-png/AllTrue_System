@@ -1,0 +1,77 @@
+---
+description: 寫 plan 時自動以 PM 視角產出 PRD，供 AI Agent 跨功能自動執行（全程無需人工介入）
+globs: "**/.cursor/plans/**"
+alwaysApply: true
+---
+
+# PRD 強制規則（AI Agent 必須遵守）
+
+**觸發條件**：收到「寫計畫 / 規劃 / plan / PRD / 設計方案 / 分析」指令，立即套用。
+
+> 寫 PRD 前，先讀詳細章節模板：`.cursor/rules/prd-section-guide.mdc`
+
+---
+
+## ⛔ 必填章節清單（缺任何一節 = 不合格）
+
+| # | 章節 | 關鍵約束 |
+|---|---|---|
+| 1 | 文件資訊 | 功能名稱 / 版本 / 狀態 / 目標角色 |
+| 2 | 目標與業務背景 | 痛點（非技術語言）/ 業務價值 / 可量化 KPI |
+| 3 | 範圍 | In Scope + Out of Scope 明確分開 |
+| 4 | RACI | **所有 R/A = AI Agent**；人類最多 I |
+| 4b | Dependencies | 前置 PR / 外部服務 / 環境前提；無依賴也必須明寫 |
+| 5 | User Stories | As a…/I want…/so that… + 可 pass/fail 的 AC |
+| 5b | UI/UX 精緻化 | **涉及前端必填**；含版面/色彩/互動/空狀態/loading/防呆/響應式/無障礙 |
+| 6 | 功能需求 FR | 編號 FR-001…；每條可測試可驗收 |
+| 7 | 非功能需求 NFR | 效能數字 + 降級策略 |
+| 8 | 技術方向 | 只列頁面/API/表名稱 + 架構取捨理由；**禁止出現任何 code** |
+| 8b | Decision Log | 每個架構決策：日期 + 替代方案 + 選擇理由 |
+| 9 | 資安與存取控制 | role / PII / STRIDE 六維度快評 |
+| 10 | QA 驗收 | Happy Path / Edge / Error + UI/UX 驗收清單 |
+| 11 | 上線與維運 | 部署步驟 + Feature Flag 策略 + Observability 表 + 回滾方案 |
+| 12 | 里程碑與優先級 | P0 / P1 / P2 + 執行 Agent 標記 |
+| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch`** 查業界解法 |
+| 14 | Definition of Done | **所有項目必須是 AI 可自動驗證的客觀指標** |
+
+**Todos 必須含 9 類**：後端 API / 前端 UI / UI/UX 精緻化 / 測試與自動 QA / 資安靜態審查 / Code Review / 文件更新 / 部署與 health check（不適用者明確標注原因）
+
+---
+
+## ❌ 強制禁止
+
+- 禁止跳到「要改哪個檔案 / 加什麼函式」的工程細節
+- 禁止 todos 只放工程任務（必須含跨功能動作）
+- 禁止技術方向節出現 code / pseudo-code / 函式名稱
+- 禁止「只做防呆 = UI 完成」：必須有視覺精緻化規格
+- 禁止 DoD / todos 出現人工節點（PM sign-off / Designer sign-off / 等待確認）
+- 禁止第 13 節憑空填寫業界解法：必須先 `WebSearch` 再填
+- 禁止開放問題標記 `[TODO: 需人工確認]`：改用 `[AI-RESOLVABLE]` 或 `[BLOCKED: 原因]`
+
+---
+
+## Todos 類別對照表
+
+| 類別 | 執行 Agent |
+|---|---|
+| 後端 API / 資料（Controller / migration） | `[FEATURE]` |
+| 前端 UI 功能（Vue 元件 / API 串接） | `[FEATURE]` |
+| UI/UX 精緻化（依第 5b 節規格） | `[FEATURE]` |
+| 測試設計與自動執行（Pest Feature Test） | `[TEST]` |
+| 自動化 QA 驗收（執行第 10 節所有情境） | `[TEST]` |
+| 資安靜態審查（STRIDE / 存取控制） | `[REVIEW]` |
+| Code Review（逐條對照 FR） | `[REVIEW]` |
+| 文件更新（CHANGELOG） | `[DOCS]` |
+| 部署與 health check（build / curl health） | `[OPS]` |
+
+---
+
+## DoD 格式規則
+
+每條 DoD 必須寫明驗證方式：
+
+```
+- [ ] [功能描述]：驗證方式：`[命令]` 回傳 `[預期結果]`
+```
+
+禁止出現「PM sign-off」「人工確認」「Designer 確認」等字樣。

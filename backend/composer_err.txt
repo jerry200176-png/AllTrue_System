@@ -1,0 +1,7 @@
+Loading composer repositories with package information
+Updating dependencies
+Your requirements could not be resolved to an installable set of packages.
+
+  Problem 1
+    - Root composer.json requires laravel/framework ^8.75, found laravel/framework[v8.75.0, ..., v8.83.29] but these were not loaded, because they are affected by security advisories ("PKSA-8qx3-n5y5-vvnd", "PKSA-w7xr-vk7n-rstm"). Go to https://packagist.org/security-advisories/ to find advisory details. To ignore the advisories, add them to the audit "ignore" config. To turn the feature off entirely, you can set "block-insecure" to false in your "audit" config.
+

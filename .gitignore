@@ -1,63 +1,87 @@
-.cursor/
-.cursor-server/
-.tmp-alltrue/
-.claude/
+# Secrets
+.env
+.env.pre_*
+.env.broken.*
+.env.fixed
+
+# Dependencies (any depth)
+vendor/
+vendor.bak/
+node_modules/
+
+# Data / cache
+/data/postgres
+backend/bootstrap/cache/*.php
+!backend/bootstrap/cache/.gitignore
+backend/storage/logs/*.log
+backend/storage/logs/*.json
+backend/storage/logs/*.csv
+backend/storage/framework/cache/
+backend/storage/framework/sessions/
+backend/storage/framework/views/
+backend/storage/framework/testing/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# Emergency backups (too large for git)
+backups/emergency/code_*.tar.gz
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# System dotfiles in $HOME (this repo is at /home/admin)
+.Xauthority
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.sudo_as_admin_successful
+.lesshst
+.viminfo
+.wget-hsts
+.python_history
+
+# Cache / runtime data
 .cache/
 .config/
 .local/
 .npm/
-.vscode/
+.cursor-server/
+.cursor/projects/
+.cursor/data/
+.cursor/skills-cursor/.cursor-managed-skills-manifest.json
+.cursor/skills-cursor/.sync-manifest.json
+.claude/
+.cloudflared/
+.docker/
 .ssh/
-.gitconfig
-.bash_history
-.bashrc
-.bash_logout
-.profile
-.Xauthority
-.face
-.face.icon
-.cursorrules
 
-# Logs and runtime files
-*.log
-access.log
-error.log
+# DB health state
+backups/.db-health-state
 
-# Environment and secrets
-**/.env
-**/.env.*
-!**/.env.example
+# Pi / infra runtime
+.nvm/
+.nodenv/
+.pyenv/
+.composer/
 
-# Dependencies / build artifacts
-backend/vendor/
-backend/vendor.bak/
-frontend/node_modules/
-frontend/dist/
-frontend/dist_build/
-backend/public/assets/
+# Root-level temp
+*.pid
+*.sock
+*.lock
+!package-lock.json
+!composer.lock
 
-# User uploads (avatars, bug screenshots) — do not commit to git
-backend/storage/app/public/avatars/
-backend/storage/app/public/bug-reports/
-
-# Local data volumes
-data/
-
-# Database dumps / backups (keep out of git; use mysqldump + secure storage)
-docs/AllTrue_backup.sql
-**/*_backup.sql
-
-# OS/editor artifacts
-.DS_Store
-Thumbs.db
-
-# Test/runtime cache files
-backend/.phpunit.result.cache
-backend/storage/framework/testing/
-backend/storage/framework/views/*.php
-
-# Local machine artifacts
+# Large binaries / logs (GitHub 100MB limit)
+/cloudflared-windows-amd64.exe
+/cloudflared*.exe
+/access.log
+/*.log
+logs/*.log
 *.exe
-.claude.json
-*.arm*
-.[A-Za-z0-9]*[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*

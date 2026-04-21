@@ -2,36 +2,6 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
-## 2026-04-21 — 代課可見性修正 B2 + A + B（P1 Bug Fix）
-
-### Problem
-
-代課（substitute）記錄存在後，原老師（契約 TeacherID）仍可在以下路徑看到被代課的課堂：
-1. **B2（已於當日稍早上線）**：`GET /api/v1/class-sessions`（role=teacher 分支）— 老師手機首頁「待點名」badge 與列表
-2. **A**：`GET /api/v1/class-sessions?teacher_id=X`（director 衝堂檢查路徑）— 被代課堂被誤判為原老師衝堂
-3. **B**：`GET /api/v1/attendance/ended-sessions`（teacher role 補點名）— 原老師看到被代課的已結束堂；代課老師可能看到同課程其他非代課時段
-
-根因：查詢條件使用 `sc.TeacherID = ? OR sub_sched.teacher_id = ?`，代課記錄存在時第一分支仍命中契約老師。
-
-### Change
-
-- **B2**（ClassSessionController::index role=teacher 分支 line 152–162）：改為 `(sub_sched.teacher_id IS NULL AND sc.TeacherID = ?) OR (sub_sched.teacher_id = ?)`
-- **A**（ClassSessionController::index teacher_id query 參數 line 169–177）：同上口徑對稱修改
-- **B**（AttendanceController::endedSessions line 269–300）：拆出 `$sessionsBuilder`，追加堂次級 `whereExists` / `whereNotExists` 精確過濾；`whereColumn` 直接比較 schedule_date = SessionDate（皆為 DATE 型別，命中索引）
-- **Migration**：新增 `schedules` 複合索引 `idx_sched_course_date_time_status`（`student_course_id, schedule_date, start_time, status, original_schedule_id`），支援 whereExists 子查詢效能
-
-### Tests
-
-- `ClassSessionsTeacherVisibilityAfterSubstituteTest`（4 tests, 15 assertions）：B2 role=teacher 正反 + A teacher_id 參數正反
-- `AttendanceEndedSessionsSubstituteTest`（4 tests, 10 assertions）：原老師不可見被代課堂 / 代課老師可見 / 無代課堂仍可見 / 代課老師不多看非代課堂
-- Revert-proof：git stash 後 4 failures 確認
-
-### Regression Guard
-
-Director / super_admin 路徑不受影響（不進入 teacher 分支）。B2 + A + B 三處修改邏輯對稱。
-
----
-
 ## 2026-04-20 — ClassSession 時間異動同步 schedules exception（FR-A）
 
 ### Problem
