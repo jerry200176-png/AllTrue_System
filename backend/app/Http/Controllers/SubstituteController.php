@@ -76,13 +76,19 @@ class SubstituteController extends Controller
         }
 
         $svc = app(SubstituteService::class);
-        $busy = $svc->collectTeacherBusySlots($teacherId, $data['date']);
 
-        // PRD 第 9 節 Info Disclosure：只回 {start_time, end_time, campus_id}
+        // FR-005: use capacity-aware method so frontend can distinguish
+        // "teacher has room" vs "teacher is truly full" without holding its own capacity map.
+        $busy = $svc->collectTeacherBusySlotsWithCapacity($teacherId, $data['date']);
+
+        // PRD 第 9 節 Info Disclosure：不含學生姓名 / 課程 ID 等 PII。
+        // 新增 class_type（enum，無 PII）與 remaining_capacity（整數）供前端容量判斷。
         $response = array_map(static fn ($s) => [
-            'start_time' => $s['start_time'],
-            'end_time' => $s['end_time'],
-            'campus_id' => (int) $s['campus_id'],
+            'start_time'         => $s['start_time'],
+            'end_time'           => $s['end_time'],
+            'campus_id'          => (int) $s['campus_id'],
+            'class_type'         => (string) ($s['class_type'] ?? 'one_on_one'),
+            'remaining_capacity' => (int) ($s['remaining_capacity'] ?? 0),
         ], $busy);
 
         return response()->json([

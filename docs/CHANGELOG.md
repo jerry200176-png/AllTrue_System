@@ -2,6 +2,74 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-20 — ClassSession 時間異動同步 schedules exception（FR-A）
+
+### Problem
+
+主任在課程管理把某堂課時間從 18:00-20:00 改成 18:30-20:30 後，課程管理的顯示正確（ClassSession 已更新），但行事曆點開仍顯示 18:00-20:00。根因：`ClassSessionController::applyTimeAndNoteUpdates` 只更新 `ClassSession.StartTime/EndTime`，未同步更新同一 (student_course_id, schedule_date) 的 `schedules` exception 列（status=scheduled / rescheduled），造成資料漂移。全系統 audit 發現 16 筆 drift。
+
+### Change
+
+- **後端**：`ClassSessionController::applyTimeAndNoteUpdates` 在 `$session->save()` 後呼叫新增的 `syncScheduleExceptionTime()`，以 **(student_course_id, schedule_date, OLD start, OLD end)** 精準匹配更新對應 `schedules` 列；同日多堂課時僅更新吻合舊時間的那一列，避免誤傷其他堂。
+- **資料修正**：以時間感知匹配（NOT EXISTS 驗證 schedules 不符任何該日的 active CS）一次性同步 16 筆歷史 drift，另 4 筆同日多 CS 的 cartesian 假陽性已確認正確無漂移。備份存於 `storage/logs/schedules-time-drift-backup-*.json`。
+- **測試**：新增 `ClassSessionTimeSyncSchedulesTest`（3 case）：相同舊時間的 rescheduled 列被同步、不同時間的 exception 列不動、`status=leave` 列不動。
+
+### Regression Guard
+
+`ClassSessionUpdateTest`（7）、`ClassSessionApiTest` 全過。sync 只更新精準吻合舊時間的列，不影響請假（leave）或其他非關聯列。
+
+---
+
+## 2026-04-20 — 排課例外入口驗證 + 衝堂誤判根本修復（FR-001 / FR-002 / FR-004~006）
+
+### Problem
+
+1. **孤兒 schedules 列**：`POST /api/v1/schedules`（代課/調課標記）在目標日期無 ClassSession 時仍可靜默寫入，造成行事曆顯示幽靈課堂。
+2. **假陽性衝堂**：更換代課老師時，即將被替換的舊 `scheduled` 列被計入占用，導致同一課堂的第二次代課指派誤判衝堂（HTTP 409）。
+3. **前端容量誤判**：`SubstituteTeacherPickerModal` 對 `availability` API 的任何時段重疊都標為「衝堂（不可選）」，即使課程尚有剩餘容量（如 one_on_two 只有 1 位學生），造成不必要的操作阻擋。
+
+### Change
+
+**後端（FR-001）**：`ScheduleController::store`
+- 在衝堂偵測前加入 ClassSession 存在性驗證：`status=scheduled + original_schedule_id > 0 + student_course_id > 0 + schedule_date 非空` 時，以 `EXISTS` 查詢確認目標日期有活躍 ClassSession。
+- 不存在時回傳 `HTTP 422`，body 含 `{"code": "no_class_session"}`。不洩漏 DB 內部 row ID（STRIDE Minimum Disclosure）。
+
+**後端（FR-002）**：`ScheduleController::store`
+- 衝堂偵測 payload 加入 `exclude_schedule_id`：先查詢同一 `(student_course_id, schedule_date, original_schedule_id)` 的既有 `scheduled` 列，找到則傳入 `ScheduleGuardService`，排除自我參照衝突。
+
+**後端（FR-005）**：`SubstituteService::collectTeacherBusySlotsWithCapacity`（新增方法）
+- 新增獨立方法，不使用 `mergeBusySlots`，保留每個 slot 的 `class_type`。
+- 以 `capacity_for_class_type - student_count` 計算 `remaining_capacity`（後端 Single Source of Truth）。
+- `SubstituteController::availability` 改用此方法，回應加入 `class_type`（enum，非 PII）與 `remaining_capacity`（整數，非 PII）。
+
+**前端（FR-004）**：`SmartCalendar.vue` `onSubstituteV2Submit`
+- 偵測 HTTP 422 + `code === "no_class_session"` 時，呼叫 `setError(..., 'warning')` 顯示橘色 inline 提示（不用 toast）。
+- 提示文字：「此日期尚未建立課堂，請先在課程管理確認課堂日期，再重新指派代課。」
+
+**前端（FR-006 / 衝堂邏輯修正）**：`SubstituteTeacherPickerModal.vue`
+- 衝堂判斷改為：重疊 slot 的 `remaining_capacity === 0` 才標為 conflict（不可選）；`remaining_capacity > 0` 設 `capacityWarn=true`（可選，顯示橘色警示）。
+- 向下相容：若 API 回應無 `remaining_capacity` 欄位，預設視為 0（保守 fallback）。
+
+**前端（FR-006 / 容量標籤 UI）**：`SubstituteTeacherPickerModal.vue`
+- 老師卡片加入三態容量標籤：「有空 ✓」（綠）/ 「尚有容量 ⚠」（橘）/ 「已滿 ✗」（紅）。
+- `remaining_capacity === 0` 的老師按鈕 disabled，hover 顯示 tooltip。
+- `availability` 查詢中顯示 skeleton，失敗時顯示「─」不阻擋操作。
+- 375px 寬度下縮為單字（「空」「有」「滿」）。
+
+### Tests
+
+- **`ScheduleStoreOrphanPreventionTest`**（新增）：3 cases — 有 ClassSession→201 / 無 ClassSession→422+code / leave 路徑→201（FR-001/FR-003）。
+- **`AvailabilityCapacityTest`**（新增）：3 cases — one_on_two/1 學生→remaining=1 / one_on_one/1 學生→remaining=0 / 無課→busy_slots=[]（FR-005）。
+- **`SubstituteUxV2Test::test_availability_returns_cross_campus_busy_slots`**（更新）：驗收擴充欄位，確認無 PII（STRIDE）。
+- 全套 phpunit：新增 6 tests，23 assertions，無新增失敗（pre-existing failures 不受本次影響）。
+
+### Regression Guard
+
+- FR-001 僅對 `status=scheduled + original_schedule_id 非空` 路徑生效；leave / rescheduled / 無 origId 路徑行為不變（FR-003）。
+- `collectTeacherBusySlotsWithCapacity` 為新增方法，原有 `collectTeacherBusySlots` 與 `mergeBusySlots` 不受影響，跨分校衝堂偵測邏輯零變更。
+
+---
+
 ## 2026-04-20 — 學生備註清除仍顯示舊值修正（雙資料源同步 Bug Fix）
 
 ### Problem

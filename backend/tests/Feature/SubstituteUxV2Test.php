@@ -321,11 +321,18 @@ class SubstituteUxV2Test extends TestCase
         $slots = $res->json('busy_slots');
         $this->assertGreaterThanOrEqual(1, count($slots));
         foreach ($slots as $slot) {
-            // 只應揭露 start/end/campus_id，不得夾帶學生姓名等敏感資訊
-            $this->assertEqualsCanonicalizing(
-                ['start_time', 'end_time', 'campus_id'],
-                array_keys($slot)
-            );
+            // FR-005: 必須包含 start_time / end_time / campus_id / class_type / remaining_capacity
+            $this->assertArrayHasKey('start_time', $slot);
+            $this->assertArrayHasKey('end_time', $slot);
+            $this->assertArrayHasKey('campus_id', $slot);
+            $this->assertArrayHasKey('class_type', $slot);
+            $this->assertArrayHasKey('remaining_capacity', $slot);
+            // STRIDE：不得夾帶學生姓名、學生 ID、課程 ID 等 PII
+            $this->assertArrayNotHasKey('student_name', $slot);
+            $this->assertArrayNotHasKey('student_id', $slot);
+            $this->assertArrayNotHasKey('course_id', $slot);
+            $this->assertArrayNotHasKey('class_session_id', $slot);
+            $this->assertIsInt($slot['remaining_capacity']);
         }
     }
 

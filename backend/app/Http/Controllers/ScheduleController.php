@@ -186,16 +186,55 @@ class ScheduleController extends Controller
             $data['status'] = 'scheduled';
         }
 
+        // Extract origId early so FR-001/FR-002 guards can use it.
+        $origId = $data['original_schedule_id'] ?? null;
+
+        // FR-001: When creating a substitute/reschedule exception (status=scheduled +
+        // original_schedule_id present), verify a live ClassSession exists on that date.
+        // Prevents orphaned schedules rows from being written in the first place.
+        if (($data['status'] ?? 'scheduled') === 'scheduled'
+            && (int) ($origId ?? 0) > 0
+            && $courseId > 0
+            && !empty($data['schedule_date'])
+        ) {
+            $sessionExists = ClassSession::where('StudentClassID', $courseId)
+                ->whereDate('SessionDate', $data['schedule_date'])
+                ->whereNotIn('Status', ['cancelled', 'voided'])
+                ->exists();
+            if (!$sessionExists) {
+                return response()->json([
+                    'message' => '目標日期尚無課堂紀錄，請先確認課堂已建立再指派代課。',
+                    'code'    => 'no_class_session',
+                ], 422);
+            }
+        }
+
+        // FR-002: When replacing an existing substitute row, look up its id so we can
+        // pass it as exclude_schedule_id to the guard — preventing self-referential conflicts.
+        $excludeScheduledId = null;
+        if (($data['status'] ?? 'scheduled') === 'scheduled'
+            && (int) ($origId ?? 0) > 0
+            && $courseId > 0
+            && !empty($data['schedule_date'])
+        ) {
+            $excludeScheduledId = Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $data['schedule_date'])
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $origId)
+                ->value('id');
+        }
+
         if (($data['status'] ?? 'scheduled') === 'scheduled') {
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
-                'teacher_id'         => $effectiveTeacherId,
-                'class_type'         => $effectiveClassType,
-                'room_id'            => $effectiveRoomId,
-                'branch_id'          => $branchId,
-                'schedule_date'      => $data['schedule_date'] ?? null,
-                'start_time'         => $data['start_time'] ?? null,
-                'end_time'           => $data['end_time'] ?? null,
-                'exclude_student_id' => (int) ($data['student_id'] ?? 0),
+                'teacher_id'          => $effectiveTeacherId,
+                'class_type'          => $effectiveClassType,
+                'room_id'             => $effectiveRoomId,
+                'branch_id'           => $branchId,
+                'schedule_date'       => $data['schedule_date'] ?? null,
+                'start_time'          => $data['start_time'] ?? null,
+                'end_time'            => $data['end_time'] ?? null,
+                'exclude_student_id'  => (int) ($data['student_id'] ?? 0),
+                'exclude_schedule_id' => $excludeScheduledId,
             ]);
 
             if (!empty($guardConflicts)) {
@@ -279,7 +318,7 @@ class ScheduleController extends Controller
 
         // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
         // If an identical row already exists, update it instead of creating a new one.
-        $origId = $data['original_schedule_id'] ?? null;
+        // ($origId was already extracted above for FR-001/FR-002 guards.)
         if ($status === 'scheduled' && $courseId > 0 && !empty($data['schedule_date']) && $origId) {
             $existing = Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $data['schedule_date'])

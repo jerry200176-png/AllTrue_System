@@ -563,6 +563,10 @@ class ClassSessionController extends Controller
         $hasTimeChange = !empty($data['start_time']) || !empty($data['end_time']);
         $oldSessionCharge = $session->session_charge;
 
+        // 保留舊時間以便精準匹配 schedules exception 列（避免多堂同日時誤傷他堂）
+        $oldStartHm = substr((string) $session->StartTime, 0, 5);
+        $oldEndHm   = substr((string) $session->EndTime, 0, 5);
+
         if (!empty($data['start_time'])) {
             $session->StartTime = substr($data['start_time'], 0, 5);
         }
@@ -578,6 +582,49 @@ class ClassSessionController extends Controller
         }
 
         $session->save();
+
+        // ClassSession 是權威來源；同步更新對應 schedules exception 列的時間，
+        // 避免「課程管理 18:30，行事曆還顯示 18:00」的顯示漂移。
+        if ($hasTimeChange) {
+            $this->syncScheduleExceptionTime($session, $oldStartHm, $oldEndHm);
+        }
+    }
+
+    /**
+     * 當 ClassSession 時間有異動時，同步更新對應 schedules exception 列的 start_time / end_time。
+     *
+     * 匹配策略：只更新 (student_course_id, schedule_date, OLD start_time, OLD end_time) 精準吻合
+     * 的 schedules 列，避免同日多堂課時誤傷其他堂次。
+     */
+    private function syncScheduleExceptionTime(ClassSession $session, string $oldStartHm, string $oldEndHm): void
+    {
+        $newStart = substr((string) $session->StartTime, 0, 5);
+        $newEnd   = substr((string) $session->EndTime, 0, 5);
+        if ($newStart === $oldStartHm && $newEnd === $oldEndHm) {
+            return;
+        }
+        if ($oldStartHm === '' || $oldEndHm === '') {
+            return;
+        }
+
+        $scheduleDate = $session->SessionDate
+            ? substr((string) $session->SessionDate, 0, 10)
+            : null;
+        if (!$scheduleDate) {
+            return;
+        }
+
+        DB::table('schedules')
+            ->where('student_course_id', (int) $session->StudentClassID)
+            ->whereDate('schedule_date', $scheduleDate)
+            ->whereIn('status', ['scheduled', 'rescheduled'])
+            ->where('start_time', $oldStartHm)
+            ->where('end_time', $oldEndHm)
+            ->update([
+                'start_time' => $newStart,
+                'end_time'   => $newEnd,
+                'updated_at' => now(),
+            ]);
     }
 
     /**
