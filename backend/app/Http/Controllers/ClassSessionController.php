@@ -90,10 +90,14 @@ class ClassSessionController extends Controller
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             // Substitute teacher: pick latest scheduled substitute per (course, date, start_time).
             // Derived table prevents row multiplication when multiple substitute rows exist.
+            // Bug fix C1 (2026-04-21)：join 兩側都取 SUBSTRING(...,1,5)，容錯 schedules.start_time
+            // 意外存成 HH:MM:SS（len=8）的歷史資料（schedules.id=611 遺留狀況）；
+            // 只做單側 SUBSTRING 時 'HH:MM:SS' ≠ 'HH:MM' 會使 sub_sched 為 NULL，
+            // COALESCE 跌回契約老師，導致課程管理單堂檢視顯示錯師。
             ->leftJoin(DB::raw('(SELECT sub_inner.* FROM `schedules` sub_inner INNER JOIN (SELECT student_course_id, DATE(schedule_date) AS sched_date, start_time, MAX(id) AS max_id FROM `schedules` WHERE status = "scheduled" AND original_schedule_id IS NOT NULL GROUP BY student_course_id, sched_date, start_time) sub_latest ON sub_inner.id = sub_latest.max_id) AS sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)');
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin('Teacher as subt', 'subt.id', '=', 'sub_sched.teacher_id')
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
