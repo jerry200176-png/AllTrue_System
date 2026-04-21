@@ -257,14 +257,49 @@ class AttendanceController extends Controller
         }
 
         $now = Carbon::now()->format('Y-m-d H:i:s');
-        $sessions = ClassSession::with(['studentClass.student'])
+        $sessionsBuilder = ClassSession::with(['studentClass.student'])
             ->whereIn('StudentClassID', $classIds)
             ->whereBetween('SessionDate', [$startDate, $endDate])
             ->whereDoesntHave('signIns', function ($q) {
                 $q->whereNull('VoidedAt');
             })
             ->whereIn('Status', ['scheduled', 'absent'])
-            ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now])
+            ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now]);
+
+        // Bug fix (2026-04-21)：堂次級精確過濾——代課後原老師不應在補點名看到被代課堂
+        // classIds 是保守超集合（課程級）；此處補做堂次級（session × date × time）確認
+        if ($role === 'teacher' && isset($teacherId) && $teacherId > 0) {
+            $sessionsBuilder->where(function ($outer) use ($teacherId) {
+                $outer->whereExists(function ($q) use ($teacherId) {
+                    $q->select(DB::raw(1))
+                        ->from('schedules as sub_s')
+                        ->whereColumn('sub_s.student_course_id', 'ClassSession.StudentClassID')
+                        ->whereColumn('sub_s.schedule_date', 'ClassSession.SessionDate')
+                        ->whereRaw('sub_s.start_time = SUBSTRING(ClassSession.StartTime, 1, 5)')
+                        ->where('sub_s.status', 'scheduled')
+                        ->whereNotNull('sub_s.original_schedule_id')
+                        ->where('sub_s.teacher_id', $teacherId);
+                });
+                $outer->orWhere(function ($noSub) use ($teacherId) {
+                    $noSub->whereNotExists(function ($q) {
+                        $q->select(DB::raw(1))
+                            ->from('schedules as sub_s2')
+                            ->whereColumn('sub_s2.student_course_id', 'ClassSession.StudentClassID')
+                            ->whereColumn('sub_s2.schedule_date', 'ClassSession.SessionDate')
+                            ->whereRaw('sub_s2.start_time = SUBSTRING(ClassSession.StartTime, 1, 5)')
+                            ->where('sub_s2.status', 'scheduled')
+                            ->whereNotNull('sub_s2.original_schedule_id');
+                    })->whereExists(function ($q) use ($teacherId) {
+                        $q->select(DB::raw(1))
+                            ->from('StudentClass as sc_self')
+                            ->whereColumn('sc_self.ID', 'ClassSession.StudentClassID')
+                            ->where('sc_self.TeacherID', $teacherId);
+                    });
+                });
+            });
+        }
+
+        $sessions = $sessionsBuilder
             ->orderBy('SessionDate', 'desc')
             ->orderBy('StartTime', 'desc')
             ->paginate($perPage);
