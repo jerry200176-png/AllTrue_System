@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
 use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -26,13 +28,49 @@ class PackageDisplayAndGuardTest extends TestCase
 
     private function makeUser(): User
     {
-        return User::create([
+        $user = User::create([
             'LoginName' => $this->uniq() . '@test.com',
             'Name' => '測試主任',
             'PSW' => 'x',
             'type' => 'D',
             'phone' => 900000000 + $this->seq,
         ]);
+        UserCampus::create([
+            'CampusID' => 1,
+            'UserID' => $user->id,
+            'Admin' => 1,
+            'Approved' => 1,
+        ]);
+
+        return $user;
+    }
+
+    private function makeToken(User $user): string
+    {
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $user->id,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
+    }
+
+    private function authGet(User $user, string $url)
+    {
+        return $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->makeToken($user),
+            'Accept' => 'application/json',
+        ])->getJson($url);
+    }
+
+    private function authPut(User $user, string $url, array $payload)
+    {
+        return $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->makeToken($user),
+            'Accept' => 'application/json',
+        ])->putJson($url, $payload);
     }
 
     private function makeStudent(): Student
@@ -97,8 +135,7 @@ class PackageDisplayAndGuardTest extends TestCase
     {
         $s = $this->createPackageSetup();
 
-        $resp = $this->actingAs($s['user'], 'sanctum')
-            ->getJson('/api/v1/student-classes?branch_id=1');
+        $resp = $this->authGet($s['user'], '/api/v1/student-classes?branch_id=1');
 
         $resp->assertOk();
 
@@ -117,10 +154,9 @@ class PackageDisplayAndGuardTest extends TestCase
         $s = $this->createPackageSetup();
         $before = $s['sc']->RemainingSessions;
 
-        $resp = $this->actingAs($s['user'], 'sanctum')
-            ->putJson("/api/v1/student-classes/{$s['sc']->ID}", [
-                'remaining_sessions' => 99,
-            ]);
+        $resp = $this->authPut($s['user'], "/api/v1/student-classes/{$s['sc']->ID}", [
+            'remaining_sessions' => 99,
+        ]);
 
         $resp->assertOk();
         $s['sc']->refresh();
@@ -154,10 +190,9 @@ class PackageDisplayAndGuardTest extends TestCase
             'CampusID'          => 1,
         ]);
 
-        $resp = $this->actingAs($user, 'sanctum')
-            ->putJson("/api/v1/student-classes/{$sc->ID}", [
-                'remaining_sessions' => 99,
-            ]);
+        $resp = $this->authPut($user, "/api/v1/student-classes/{$sc->ID}", [
+            'remaining_sessions' => 99,
+        ]);
 
         $resp->assertOk();
         $sc->refresh();
