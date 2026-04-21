@@ -189,23 +189,34 @@ class ScheduleController extends Controller
         // Extract origId early so FR-001/FR-002 guards can use it.
         $origId = $data['original_schedule_id'] ?? null;
 
-        // FR-001: When creating a substitute/reschedule exception (status=scheduled +
-        // original_schedule_id present), verify a live ClassSession exists on that date.
-        // Prevents orphaned schedules rows from being written in the first place.
+        // FR-001: When creating a same-day substitute exception (status=scheduled +
+        // original_schedule_id present, and the new schedule_date matches the original
+        // schedule's date), verify a live ClassSession exists on that date.
+        // Prevents orphaned schedules rows from being written for pure substitute assignments.
+        //
+        // NOTE: This guard must NOT fire for cross-date reschedule (調課) operations where
+        // schedule_date (new date) differs from the original schedule's date. In that case,
+        // the ClassSession is still on the original date and will be moved to the new date
+        // by the subsequent reschedule-session API call. Firing here would block valid 調課.
         if (($data['status'] ?? 'scheduled') === 'scheduled'
             && (int) ($origId ?? 0) > 0
             && $courseId > 0
             && !empty($data['schedule_date'])
         ) {
-            $sessionExists = ClassSession::where('StudentClassID', $courseId)
-                ->whereDate('SessionDate', $data['schedule_date'])
-                ->whereNotIn('Status', ['cancelled', 'voided'])
-                ->exists();
-            if (!$sessionExists) {
-                return response()->json([
-                    'message' => '目標日期尚無課堂紀錄，請先確認課堂已建立再指派代課。',
-                    'code'    => 'no_class_session',
-                ], 422);
+            $origSched = Schedule::where('id', (int) $origId)->first();
+            $isSameDaySubstitute = $origSched && $origSched->schedule_date === $data['schedule_date'];
+
+            if ($isSameDaySubstitute) {
+                $sessionExists = ClassSession::where('StudentClassID', $courseId)
+                    ->whereDate('SessionDate', $data['schedule_date'])
+                    ->whereNotIn('Status', ['cancelled', 'voided'])
+                    ->exists();
+                if (!$sessionExists) {
+                    return response()->json([
+                        'message' => '目標日期尚無課堂紀錄，請先確認課堂已建立再指派代課。',
+                        'code'    => 'no_class_session',
+                    ], 422);
+                }
             }
         }
 
