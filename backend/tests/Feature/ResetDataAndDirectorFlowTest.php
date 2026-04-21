@@ -145,6 +145,7 @@ class ResetDataAndDirectorFlowTest extends TestCase
         DB::table('Teacher')->insert([
             'id' => $pendingTeacher->id,
             'T_Name' => 'Pending Teacher',
+            'CampusID' => $campus->id,
         ]);
         UserCampusFactory::new()->create([
             'UserID' => $pendingTeacher->id,
