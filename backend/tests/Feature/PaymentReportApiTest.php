@@ -30,6 +30,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_director_can_generate_report_link(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report/generate-link public endpoints removed (reconciliation is now director-only via /api/v1/payment-reports/director-record)');
+
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, ['Charge' => 8800]);
@@ -51,6 +53,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_parent_can_fetch_form_data_with_valid_token(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report public endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, ['Charge' => 9600, 'SessionCount' => 8]);
 
@@ -67,6 +71,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_expired_token_returns_403(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report public endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id);
 
@@ -83,6 +89,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_parent_can_submit_transfer_report(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report submit endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, ['Charge' => 8800]);
 
@@ -110,6 +118,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_parent_can_submit_cash_report_without_last5(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report submit endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id, ['Charge' => 5000]);
 
@@ -131,6 +141,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_transfer_without_last5_returns_422(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report submit endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id);
 
@@ -150,6 +162,8 @@ class PaymentReportApiTest extends TestCase
 
     public function test_duplicate_submit_returns_409(): void
     {
+        $this->markTestSkipped('Deprecated: pay-report submit endpoint removed');
+
         $student = $this->createStudent(1);
         $sc = $this->createCountModeClass($student->id);
 

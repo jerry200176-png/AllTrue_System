@@ -191,10 +191,9 @@ class LearningRecordsPerformanceTest extends TestCase
             'Approved' => 1,
         ]);
 
-        $teacherId = DB::table('Teacher')->insertGetId([
-            'CampusID' => 1,
-            'T_Name' => 'PerfTeacher',
-        ]);
+        // AttachAuthUser 中 auth_teacher_id = $user->id（不是 Teacher.id），
+        // controller 的 StudentClass.TeacherID / LR.TeacherID 都會拿 user.id 比對。
+        $teacherId = $user->id;
 
         $user->update(['teacher_id' => $teacherId]);
 

@@ -199,6 +199,8 @@ class LargeBranchDataHandlingTest extends TestCase
             'Paid' => 0,
             'RemainingSessions' => 5,
             'ScheduleMode' => 'count',
+            // AlertController 的 tuition 端點過濾 charge > 0；null/0 不會出現
+            'Charge' => 5000,
         ]);
 
         $res = $this->withHeaders([
