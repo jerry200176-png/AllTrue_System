@@ -5,6 +5,100 @@
 
 ---
 
+## §TEST-001 — AI 寫測試時遺漏 NOT NULL 欄位導致反覆 CI 失敗
+
+### 問題模式
+
+AI 在寫 Feature Test 時用 `DB::table()->insert()`、`Model::create()` 或 Factory 插入測試資料，但**漏填 NOT NULL 且無預設值的欄位**，導致：
+- `SQLSTATE[HY000]: General error: 1364 Field '...' doesn't have a default value`
+- 每修一個 CI 才能發現下一個缺漏欄位，造成多次「fix: add XXX to insert」的無效 commit
+
+### 已知反覆出現的欄位缺漏（2026-04 統計）
+
+| 表 | 必填欄位（無預設） | 常見最小值 |
+|---|---|---|
+| `Teacher` | `CampusID`, `T_Name`, `TelegramID` | `CampusID` 用 Campus.id；`TelegramID` 給 `''` |
+| `StudentClass` | `StudentID`, `GradeID`, `SubjectID`, `TeacherID`, `by1`, `StartDate`, `RoomID` | `by1=1`, `RoomID='1'`, `StartDate=now()` |
+| `Student` | `name`, `CampusID`, `ClassID`, `TelegramID` | `ClassID=1`, `TelegramID=''` |
+| `ClassSession` | `StudentClassID`, `SessionDate`, `StartTime`, `EndTime` | 皆為業務欄位，無法給假值 |
+| `LearningRecord` | `StudentClassID`, `ClassSessionID`, `TeacherID`, `Content` | `Content='test'` |
+| `schedules` | `student_id`, `day_of_week`, `start_time`, `end_time`, `status`, `type`, `branch_id` | `status='scheduled'`, `type='normal'` |
+| `User` | `LoginName`, `Name` | 給唯一 email |
+| `UserCampus` | `CampusID`, `UserID` | 皆為關聯鍵 |
+| `Campus` | `name`, `LineNotifyID`, `Client_ID`, `Client_Secret`, `LIFFID`, `LIFF_URL`, `URL`, `TelegramURL`, `TeachLIFFID`, `TeachLIFF_URL` | 如非測試 Campus 業務，用 Factory |
+
+### 防再犯規則
+
+1. **寫測試前先查 NOT NULL 欄位**：
+   ```sql
+   SELECT COLUMN_NAME, DATA_TYPE, COLUMN_DEFAULT
+   FROM information_schema.COLUMNS
+   WHERE TABLE_SCHEMA='AllTrue'
+     AND TABLE_NAME='<表名>'
+     AND IS_NULLABLE='NO'
+     AND EXTRA NOT LIKE '%auto_increment%'
+   ORDER BY ORDINAL_POSITION;
+   ```
+
+2. **禁止只填「看起來夠用的欄位」再 push CI 觀察錯誤**：
+   - 每次插入新表之前，先確認所有 NOT NULL 且無預設的欄位都已填入
+   - 看到 `SQLSTATE 1364` = 立刻往上查表結構，一次補齊所有缺欄，不要一次只補一個
+
+3. **用 Eloquent Model::create() 時先確認 `$fillable`**：
+   - `$fillable` 沒列的欄位 create 時會被忽略 → 若是 NOT NULL 會炸
+   - 檢查 `$fillable` 清單 vs 表的 NOT NULL 欄位是否完全對齊
+
+4. **TeacherID / teacher_id / CampusID 是最常漏的三個**：
+   - 建立 `Teacher` row 必須含 `CampusID` + `TelegramID`（char not null）
+   - 建立 `StudentClass` row 必須含 `by1=1`, `RoomID='1'`（含舊欄位）
+
+5. **Campus 若非測試必要，用 `CampusFactory::new()->create()`**，不要 raw insert（Campus 有 10 個以上的 NOT NULL 欄位）。
+
+### 根本記憶點
+
+> **一筆 DB::table()->insert() 或 Model::create()，必須和 `SHOW COLUMNS FROM <表>` 對照，NOT NULL + 無預設 = 必填。沒有例外。**
+
+---
+
+## §TEST-002 — Factory 建出的 User 不一定有對應 Teacher/Director 表 row
+
+### 問題模式
+
+`UserFactory::teacher()->create()` 只設 `User.type='T'`，**不會**在 `Teacher` 表建行。  
+任何依賴「`User.type='T'` → 必有對應 `Teacher` row」的查詢（例如 `whereNotExists` 排除 Teacher 的 SQL）在 Factory 資料下**不會觸發**，導致測試結果與 production 不符。
+
+### 實際發生案例（Issue #6, 2026-04-22）
+
+- `DirectorAccountController::pending()` 加了：
+  ```php
+  ->whereNotExists(fn($q) => $q->select(DB::raw(1))->from('Teacher')->whereColumn('Teacher.id','User.id'))
+  ```
+- 測試用 `UserFactory::teacher()->create()` 建了一個 `type=T` 的 pending teacher
+- 因為 Factory 沒有在 `Teacher` 表建行，`whereNotExists` 沒有觸發 → pending teacher 仍出現在回應裡
+- 測試繼續失敗，直到明確用 `DB::table('Teacher')->insert(...)` 補上 Teacher row
+
+### 防再犯規則
+
+1. **任何 Feature Test 中用 `User` Factory 建 teacher / director 帳號，必須同步確認對應的跨表 row 是否存在**：
+
+   | UserFactory method | 需要同步建立 |
+   |---|---|
+   | `::teacher()->create()` | `Teacher` table（需 `id`, `CampusID`, `T_Name`, `TelegramID`） |
+   | `::director()->create()` 或 `::admin()->create()` | `UserCampus` table（需 `UserID`, `CampusID`, `Approved`） |
+   | `::student()->create()` | 依業務：`Student` table 或 `StudentClass` |
+
+2. **寫涉及跨表 JOIN / whereNotExists 的查詢，測試資料必須真實反映 production 的資料格局**：
+   - production 所有 `type=T` User 都有 Teacher row → 測試裡 type=T 的 User 也要有 Teacher row
+   - production 所有 approved 的 director 都有 UserCampus row → 測試裡也要建
+
+3. **AI 如果要加一個 `whereNotExists(teacher)` 的控制器改動，必須同步評估所有現有測試中的 type=T User 是否有 Teacher row，否則這些測試會靜默誤判**。
+
+### 根本記憶點
+
+> **Factory 只建 User 表的那一行。跨表的業務資料（Teacher、UserCampus、Student、StudentClass）一律要手動補建或用更完整的 Seeder。**
+
+---
+
 ## §2026-04-22 — ⛔⛔⛔ P0 最高級事故：AI 在 production backend 跑 `php artisan test` 把生產 DB 清空
 
 ### 事故時間軸
