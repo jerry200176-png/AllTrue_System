@@ -53,7 +53,7 @@ class TuitionAlertsApiTest extends TestCase
 
     public function test_monthly_unpaid_excluded_when_five_or_more_days_before_due(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-04-10', 'Asia/Taipei'));
+        Carbon::setTestNow(Carbon::parse('2026-04-09', 'Asia/Taipei')); // 6 days before Apr-15, satisfies daysLeft > 5
 
         $token = $this->createDirectorToken([1]);
         $student = Student::create([
@@ -540,7 +540,7 @@ class TuitionAlertsApiTest extends TestCase
             'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
         $course = $this->createCountModeClass($student->id, [
-            'Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 0,
+            'Paid' => 0, 'RemainingSessions' => 3, 'Charge' => 5000,
         ]);
 
         $res = $this->withHeaders([
@@ -595,7 +595,7 @@ class TuitionAlertsApiTest extends TestCase
             'EndDate' => null,
             'TotalHours' => 20,
             'Memo' => null,
-            'Charge' => null,
+            'Charge' => 5000,
             'Pay' => null,
             'PayDate' => null,
             'Paid' => 0,
@@ -627,7 +627,7 @@ class TuitionAlertsApiTest extends TestCase
             'EndDate' => null,
             'TotalHours' => 20,
             'Memo' => null,
-            'Charge' => null,
+            'Charge' => 5000,
             'Pay' => null,
             'PayDate' => null,
             'Paid' => 0,
