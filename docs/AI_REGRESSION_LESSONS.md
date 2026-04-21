@@ -5,6 +5,59 @@
 
 ---
 
+## §2026-04-21 — 代課後原老師仍看到被代課課程（P1）
+
+### 根本原因
+
+`ClassSessionController::index` 與 `AttendanceController::endedSessions` 對 teacher 角色的可見性查詢使用 `sc.TeacherID = ? OR sub_sched.teacher_id = ?`。代課記錄（`schedules` 表，`original_schedule_id IS NOT NULL`）存在後，`sc.TeacherID` 仍為契約老師 ID 不變（StudentClass 表本身不改動），導致 OR 第一分支命中，原老師繼續看到該堂課。
+
+### 正確語意（修改後）
+
+> 若該堂次有代課記錄（`sub_sched.teacher_id IS NOT NULL`），**僅代課老師**看得到；  
+> 若無代課記錄，才由契約老師（`sc.TeacherID`）看到。
+
+邏輯模式：
+```sql
+(sub_sched.teacher_id IS NULL AND sc.TeacherID = ?)
+OR (sub_sched.teacher_id = ?)
+```
+
+### 禁止回歸項
+
+1. **ClassSessionController::index 的 teacher 分支禁止用 bare OR**
+   - 檔案：`backend/app/Http/Controllers/ClassSessionController.php` lines 152–162
+   - 禁止寫回 `->where('sc.TeacherID', $tid)->orWhere('sub_sched.teacher_id', $tid)`
+   - 必須保持外層 `where(function)` 包裹兩個互斥分支
+
+2. **teacher_id query 參數過濾必須與 role=teacher 分支保持對稱**
+   - 檔案：同上，lines 169–177
+   - 兩處邏輯結構必須一致，任何一處修改時另一處必須同步審查
+
+3. **AttendanceController::endedSessions 的堂次級過濾不可移除**
+   - 檔案：`backend/app/Http/Controllers/AttendanceController.php` lines 269–300
+   - `classIds` 的粗篩只是前置條件，不可用它替代 `whereExists` / `whereNotExists` 的堂次精確過濾
+   - 修改 schedules 表結構（改名、加欄位）時須同步更新子查詢的 column 引用
+
+### 高風險區塊（修改前必對照）
+
+| 檔案 | 方法 / 行號 | 注意 |
+|------|-------------|------|
+| `ClassSessionController.php` | `index()` L152–162 | role=teacher 可見性：外層 `where(function)` 包兩個互斥分支 |
+| `ClassSessionController.php` | `index()` L169–177 | teacher_id query 參數：同口徑邏輯，改一處必改另一處 |
+| `AttendanceController.php` | `endedSessions()` L269–300 | whereExists 子查詢；修改 schedules 欄位名時須同步 |
+| `schedules` 表 | 複合索引 `idx_sched_course_date_time_status` | 子查詢效能依賴此索引；增刪欄位時檢查覆蓋率 |
+
+### QA 驗收情境
+
+1. 為某堂課指定代課老師 → 原老師「待點名」列表不出現該堂
+2. 代課老師「待點名」列表出現被代課的堂
+3. 主任以 `?teacher_id=原老師` 查詢 → 被代課堂不出現
+4. 原老師「補點名（ended-sessions）」不出現被代課的已結束堂
+5. 代課老師「補點名」出現被代課的已結束堂
+6. 取消代課後 → 原老師重新看到該堂
+
+---
+
 ## §2026-04-18 — 老師評量表開啟錯誤：同天同學生多堂課（PRD 3baa154f）
 
 ### 根本原因（兩個連環 bug）
