@@ -98,6 +98,117 @@ class SubstituteService
     }
 
     /**
+     * FR-005：含容量資訊的忙碌時段查詢，供 availability 端點使用。
+     *
+     * 每個 slot 額外帶有 class_type / student_count / remaining_capacity，
+     * 讓前端判斷「重疊是否真的超過容量」，而非任何重疊都標為衝堂。
+     *
+     * 設計原則：不使用 mergeBusySlots（保留每個 slot 的完整 metadata），
+     * 與原有 collectTeacherBusySlots 互相獨立，向下相容不受影響。
+     *
+     * @param  int[]  $excludeScheduleIds
+     * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,remaining_capacity:int}>
+     */
+    public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = []): array
+    {
+        if ($teacherId <= 0) {
+            return [];
+        }
+        $ymd = Carbon::parse($date)->toDateString();
+        $excludeScheduleIds = array_values(array_unique(array_filter(array_map('intval', $excludeScheduleIds))));
+
+        // 來源 1：ClassSession（含 ClassType，用於計算容量）
+        $sessionRows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
+            ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
+            ->where('sc.TeacherID', $teacherId)
+            ->whereDate('cs.SessionDate', $ymd)
+            ->whereNotIn('cs.Status', ['cancelled', 'leave'])
+            ->select(
+                'cs.StartTime as start_time',
+                'cs.EndTime as end_time',
+                'sc.ClassType as class_type',
+                'st.CampusID as campus_id'
+            )
+            ->get();
+
+        // 來源 2：schedules (status=scheduled)，透過 StudentClass 取得 ClassType
+        $scheduleQuery = Schedule::query()
+            ->where('schedules.teacher_id', $teacherId)
+            ->whereDate('schedules.schedule_date', $ymd)
+            ->where('schedules.status', 'scheduled')
+            ->leftJoin('StudentClass as sc2', 'sc2.ID', '=', 'schedules.student_course_id')
+            ->select(
+                'schedules.id',
+                'schedules.start_time',
+                'schedules.end_time',
+                'schedules.branch_id',
+                DB::raw("COALESCE(sc2.ClassType, 'one_on_one') as class_type")
+            );
+        if (!empty($excludeScheduleIds)) {
+            $scheduleQuery->whereNotIn('schedules.id', $excludeScheduleIds);
+        }
+        $scheduleRows = $scheduleQuery->get();
+
+        // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
+        $rawSlots = [];
+        foreach ($sessionRows as $row) {
+            $start = $this->hhmm($row->start_time);
+            $end   = $this->hhmm($row->end_time);
+            if ($start === '' || $end === '') {
+                continue;
+            }
+            $rawSlots[] = [
+                'start_time' => $start,
+                'end_time'   => $end,
+                'campus_id'  => (int) ($row->campus_id ?? 0),
+                'class_type' => (string) ($row->class_type ?: 'one_on_one'),
+            ];
+        }
+        foreach ($scheduleRows as $row) {
+            $start = $this->hhmm($row->start_time);
+            $end   = $this->hhmm($row->end_time);
+            if ($start === '' || $end === '') {
+                continue;
+            }
+            $rawSlots[] = [
+                'start_time' => $start,
+                'end_time'   => $end,
+                'campus_id'  => (int) ($row->branch_id ?? 0),
+                'class_type' => (string) ($row->class_type ?: 'one_on_one'),
+            ];
+        }
+
+        if (empty($rawSlots)) {
+            return [];
+        }
+
+        // 對每個 slot 計算 student_count（與自身重疊的所有 slot 數，含自身）
+        // 並以該 slot 的 class_type 容量計算 remaining_capacity。
+        $result = [];
+        foreach ($rawSlots as $slot) {
+            $studentCount = 0;
+            foreach ($rawSlots as $other) {
+                if ($this->overlaps($slot['start_time'], $slot['end_time'], $other['start_time'], $other['end_time'])) {
+                    $studentCount++;
+                }
+            }
+            $capacity          = $this->capacityForClassType($slot['class_type']);
+            $remainingCapacity = max(0, $capacity - $studentCount);
+            $result[] = [
+                'start_time'         => $slot['start_time'],
+                'end_time'           => $slot['end_time'],
+                'campus_id'          => $slot['campus_id'],
+                'class_type'         => $slot['class_type'],
+                'student_count'      => $studentCount,
+                'remaining_capacity' => $remainingCapacity,
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * 跨分校衝堂檢查：若老師在該時段於任一分校已有課，回 conflicts 陣列。
      *
      * 回應只含 campus_id 與時段，不含學生/科目/教室明細。
@@ -341,5 +452,20 @@ class SubstituteService
         }
 
         return $aStart < $bEnd && $bStart < $aEnd;
+    }
+
+    /**
+     * 與 ScheduleGuardService::capacityForClassType 保持同步的容量對應表。
+     * Single Source of Truth：後端計算後以 remaining_capacity 整數下傳前端，
+     * 前端無需持有此 map。
+     */
+    private function capacityForClassType(?string $classType): int
+    {
+        return match ((string) ($classType ?: 'one_on_one')) {
+            'one_on_two'   => 2,
+            'one_on_three' => 3,
+            'tutoring'     => 4,
+            default        => 1,
+        };
     }
 }

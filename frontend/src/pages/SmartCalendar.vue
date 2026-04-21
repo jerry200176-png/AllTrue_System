@@ -2984,9 +2984,18 @@ const onSubstituteV2Submit = async (submitPayload) => {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg = json.message || res.statusText || '代課設定失敗';
-      substituteV2PickerRef.value?.setError?.(msg);
-      throw new Error(msg);
+      // FR-004: no_class_session 是「目標日期尚無課堂紀錄」的資料前提錯誤，
+      // 以 warning 色系提示用戶先到課程管理確認課堂，而不是當作紅色硬錯誤。
+      if (res.status === 422 && json?.code === 'no_class_session') {
+        substituteV2PickerRef.value?.setError?.(
+          '此日期尚未建立課堂，請先在課程管理確認課堂日期，再重新指派代課。',
+          'warning'
+        );
+      } else {
+        const msg = json.message || res.statusText || '代課設定失敗';
+        substituteV2PickerRef.value?.setError?.(msg);
+      }
+      throw new Error(json.message || res.statusText || '代課設定失敗');
     }
     showSubstituteV2Modal.value = false;
     const teacherName = json.substitute_teacher_name || teacherDisplayName(substitute_teacher_id);

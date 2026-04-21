@@ -72,7 +72,8 @@
             :class="[
               selectedTeacherId === t.id && 'stp-card--selected',
               t.conflict && 'stp-card--conflict',
-              t.crossCampusWarn && !t.conflict && 'stp-card--cross',
+              t.capacityWarn && !t.conflict && 'stp-card--warn',
+              t.crossCampusWarn && !t.conflict && !t.capacityWarn && 'stp-card--cross',
               t.conflict && 'stp-card--disabled',
             ]"
             :tabindex="t.conflict ? -1 : 0"
@@ -87,11 +88,46 @@
             <div class="stp-card__body">
               <div class="stp-card__name">{{ t.name }}</div>
               <div class="stp-card__tags">
+                <!-- FR-006 容量狀態標籤：三態顯示，availability 查詢中不顯示 -->
+                <template v-if="!loadingAvailability && t.hasAvailabilityData">
+                  <span
+                    v-if="t.conflict"
+                    class="stp-tag stp-cap-tag stp-cap-tag--full"
+                    :title="t.conflictTooltip || '此時段老師已達上限，無法安排'"
+                  >
+                    <span class="stp-cap-tag__long">已滿 ✗</span>
+                    <span class="stp-cap-tag__short">滿</span>
+                  </span>
+                  <span
+                    v-else-if="t.capacityWarn"
+                    class="stp-tag stp-cap-tag stp-cap-tag--warn"
+                    title="此時段尚有容量，可繼續"
+                  >
+                    <span class="stp-cap-tag__long">尚有容量 ⚠</span>
+                    <span class="stp-cap-tag__short">有</span>
+                  </span>
+                  <span
+                    v-else
+                    class="stp-tag stp-cap-tag stp-cap-tag--ok"
+                    title="此時段老師有空"
+                  >
+                    <span class="stp-cap-tag__long">有空 ✓</span>
+                    <span class="stp-cap-tag__short">空</span>
+                  </span>
+                </template>
+                <span
+                  v-else-if="!loadingAvailability && !t.hasAvailabilityData"
+                  class="stp-tag stp-cap-tag stp-cap-tag--unknown"
+                  title="無法取得可用性資訊"
+                >─</span>
                 <span class="stp-tag stp-tag--branch" :title="t.branchLabel">
                   {{ t.branchLabel || '未綁分校' }}
                 </span>
                 <span v-if="t.conflict" class="stp-tag stp-tag--conflict" :title="t.conflictTooltip">
                   衝堂
+                </span>
+                <span v-else-if="t.capacityWarn" class="stp-tag stp-tag--capacity-warn">
+                  此時段有重疊
                 </span>
                 <span v-else-if="t.crossCampusWarn" class="stp-tag stp-tag--cross">
                   跨分校協調
@@ -177,7 +213,13 @@
         />
       </section>
 
-      <div v-if="inlineError" class="stp-error" role="alert">{{ inlineError }}</div>
+      <!-- FR-004: warning type for no_class_session, red error for other failures -->
+      <div
+        v-if="inlineError"
+        class="stp-error"
+        :class="{ 'stp-error--warning': inlineErrorType === 'warning' }"
+        role="alert"
+      >{{ inlineError }}</div>
 
       </div><!-- /stp-body -->
 
@@ -231,8 +273,9 @@ const reason = ref('');
 const selectedTeacherId = ref(null);
 const submitting = ref(false);
 const inlineError = ref('');
+const inlineErrorType = ref('error'); // 'error' | 'warning' — controls colour of inline message
 const loadingAvailability = ref(false);
-const teacherBusyMap = ref({}); // teacherId -> busy_slots
+const teacherBusyMap = ref({}); // teacherId -> busy_slots (now includes remaining_capacity)
 
 // PRD f0cce4d5：「同時調整上課時間」狀態
 const showReschedule = ref(false);
@@ -366,14 +409,25 @@ const enriched = computed(() => {
       const crossCampusWarn =
         sessionCampus > 0 && branchIds.length > 0 && !branchIds.includes(sessionCampus);
 
+      // FR-006: capacity-aware conflict detection.
+      // - conflict=true → ALL overlapping busy_slots are fully booked (remaining_capacity === 0)
+      // - capacityWarn=true → at least one overlapping slot has remaining_capacity > 0
+      //   (teacher has room; allow selection with orange warning)
+      // Backward compat: if remaining_capacity is missing, treat as 0 (full) to be safe.
       const slots = teacherBusyMap.value[t.id] || [];
+      const hasAvailabilityData = teacherBusyMap.value[t.id] !== undefined;
       let conflict = false;
+      let capacityWarn = false;
       let conflictCampusId = 0;
       for (const s of slots) {
         if (overlaps(checkStart, checkEnd, s.start_time, s.end_time)) {
-          conflict = true;
-          conflictCampusId = Number(s.campus_id || 0);
-          break;
+          const rc = s.remaining_capacity !== undefined ? Number(s.remaining_capacity) : 0;
+          if (rc <= 0) {
+            conflict = true;
+            conflictCampusId = Number(s.campus_id || 0);
+          } else {
+            capacityWarn = true;
+          }
         }
       }
       const conflictTooltip = conflict
@@ -395,6 +449,8 @@ const enriched = computed(() => {
         crossCampusWarn,
         conflict,
         conflictTooltip,
+        capacityWarn,
+        hasAvailabilityData,
         teachesSubject,
       };
     });
@@ -526,8 +582,11 @@ async function submit() {
   }
 }
 
-function setError(message) {
+// FR-004: setError now accepts type so SmartCalendar can surface no_class_session as a warning
+// ('warning' → orange/amber) rather than as a hard error ('error' → red).
+function setError(message, type = 'error') {
   inlineError.value = message || '';
+  inlineErrorType.value = type === 'warning' ? 'warning' : 'error';
 }
 
 function avatarColor(id) {
@@ -660,6 +719,7 @@ defineExpose({ setError });
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 .stp-card--cross { border-color: #f59e0b; }
+.stp-card--warn { border-color: #f59e0b; background: #fffbeb; }
 .stp-card--conflict { border-color: #ef4444; background: #fef2f2; }
 .stp-card--disabled {
   cursor: not-allowed;
@@ -695,9 +755,22 @@ defineExpose({ setError });
 }
 .stp-tag--branch { background: #eef2ff; color: #3730a3; }
 .stp-tag--conflict { background: #fee2e2; color: #b91c1c; font-weight: 600; }
+.stp-tag--capacity-warn { background: #fef3c7; color: #92400e; font-weight: 600; }
 .stp-tag--cross { background: #fef3c7; color: #92400e; }
 .stp-tag--subject { background: #d1fae5; color: #065f46; }
 .stp-tag--subject-muted { background: #f3f4f6; color: #6b7280; }
+/* FR-006 三態容量標籤 */
+.stp-cap-tag { font-weight: 600; min-width: 56px; text-align: center; }
+.stp-cap-tag--ok { background: #d1fae5; color: #065f46; }
+.stp-cap-tag--warn { background: #fef3c7; color: #92400e; }
+.stp-cap-tag--full { background: #fee2e2; color: #b91c1c; }
+.stp-cap-tag--unknown { background: #f3f4f6; color: #6b7280; }
+.stp-cap-tag__short { display: none; }
+@media (max-width: 375px) {
+  .stp-cap-tag { min-width: 28px; }
+  .stp-cap-tag__long { display: none; }
+  .stp-cap-tag__short { display: inline; }
+}
 .stp-pick {
   color: #2563eb;
   font-size: 12px;
@@ -859,6 +932,12 @@ defineExpose({ setError });
   color: #b91c1c;
   border-radius: 8px;
   font-size: 13px;
+}
+/* FR-004：no_class_session 屬資料前提錯誤，用 warning 色系區別於紅色衝堂 */
+.stp-error--warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
 }
 .stp-actions {
   padding: 10px 20px 16px 20px;
