@@ -406,12 +406,15 @@ class ScheduleController extends Controller
                 }
 
                 // ── Void attendance records ──
-                $signIns = StudentSignIn::where('ClassSessionID', $session->id)
-                    ->active()
+                // Query ALL sign-ins (including already-voided) to decide whether
+                // to create a new leave record or just void the active one.
+                $allSignIns = StudentSignIn::where('ClassSessionID', $session->id)
                     ->lockForUpdate()
                     ->get();
 
-                foreach ($signIns as $si) {
+                $activeSignIns = $allSignIns->filter(fn ($si) => $si->VoidedAt === null);
+
+                foreach ($activeSignIns as $si) {
                     $si->VoidedAt = now();
                     $si->VoidedByUserID = $authUserId;
                     $si->VoidReason = $reason ?: '補請假：已上課改請假';
@@ -449,13 +452,16 @@ class ScheduleController extends Controller
                 // ── Recompute counters from ledger ──
                 SessionDeductionService::recomputeCounters($courseId);
 
-                $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
-                StudentSignIn::updateOrCreate(
-                    ['ClassSessionID' => (int) $session->id],
-                    [
+                // Only create a new leave sign-in if no sign-in record exists at
+                // all for this ClassSession.  Avoids unique-key collision on
+                // ClassSessionID while keeping the voided audit trail intact.
+                if ($allSignIns->isEmpty()) {
+                    $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
+                    StudentSignIn::create([
                         'StudentClassID'   => $courseId,
                         'StudentID'        => (int) $course->StudentID,
                         'TeacherID'        => (int) ($course->TeacherID ?? 0) ?: null,
+                        'ClassSessionID'   => (int) $session->id,
                         'RecordedByUserID' => $authUserId ?: null,
                         'GradeID'          => $course->GradeID,
                         'SubjectID'        => $course->SubjectID,
@@ -467,8 +473,8 @@ class ScheduleController extends Controller
                         'MDT'              => now(),
                         'Status'           => 'leave',
                         'SessionDeducted'  => 0,
-                    ]
-                );
+                    ]);
+                }
 
                 return response()->json([
                     'message'             => '補請假完成：堂數已沖回、堂次標記請假、後續課程已順延',
