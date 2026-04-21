@@ -18,3 +18,6 @@
 
   SUSPICIOUS_BINARY: bin/gh
 [SECURITY-ABORT] Remove these files before backup can proceed.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
