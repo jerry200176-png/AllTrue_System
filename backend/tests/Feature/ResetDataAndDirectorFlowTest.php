@@ -8,6 +8,7 @@ use Database\Factories\StudentFactory;
 use Database\Factories\UserCampusFactory;
 use Database\Factories\UserFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ResetDataAndDirectorFlowTest extends TestCase
@@ -139,6 +140,11 @@ class ResetDataAndDirectorFlowTest extends TestCase
             'LoginName' => 'teacher.pending@example.com',
             'Name' => 'Pending Teacher',
             'status' => 'pending',
+        ]);
+        // Teacher accounts are expected to have a matching Teacher row in production.
+        DB::table('Teacher')->insert([
+            'id' => $pendingTeacher->id,
+            'T_Name' => 'Pending Teacher',
         ]);
         UserCampusFactory::new()->create([
             'UserID' => $pendingTeacher->id,
