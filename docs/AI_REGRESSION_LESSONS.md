@@ -5,6 +5,140 @@
 
 ---
 
+## §2026-04-21 — b3 月結制 inactive 課程的歷史判斷必須與堂數制對稱
+
+### 根本原因
+
+`effectiveClosedReason` 與 `isHistoryCourse` 等前端課程狀態推斷函式，過去只為「堂數制」（`isSessionMode` / `payment_type === 'session'`）添加了 inactive→completed 的 fallback 分支；月結制（`ScheduleMode='date'`）被靜默排除，`effectiveClosedReason` 永遠回傳 `null`，導致 `historyCourses`／`getHistoryStudentCourses` 過濾不到月結停用課。
+
+### 防再犯規則
+
+1. **任何課程狀態推斷函式（`effectiveClosedReason`、`isHistoryCourse` 等）新增或修改判斷分支時，必須同時驗証月結（`!isSessionMode`）與堂數（`isSessionMode`）兩個路徑均有預期回傳值。**
+2. **後端停用（`togglePause` / 任何設 `Stop=1` 的路徑）月結課時，必須同步設定 `closed_reason`**（`'completed'` 或明確原因）。不得讓 `closed_reason IS NULL` 與 `Stop=1` 並存於月結課程。
+3. **「月結 inactive = 永久結束」語意前提**：目前系統無月結臨時暫停→恢復語意。若未來需要此語意，必須以明確 `closed_reason = 'paused'` 標記，並同步更新前端推斷邏輯（不可繼續用 inactive 無條件 → completed）。
+
+### 授權入口對照（課程歷史判斷）
+
+| 課程模式 | 前端推斷 | DB 狀態 |
+|---|---|---|
+| 堂數制（`ScheduleMode='count'`） | `isSessionMode=true` + `RemainingSessions ≤ 0` 時 → `'completed'` | `closed_reason` 可為 null，前端 fallback 覆蓋 |
+| 月結制（`ScheduleMode='date'`） | `!isSessionMode` + `status='inactive'` 時 → `'completed'` | 後端 `togglePause` 補寫 `'completed'`；歷史髒資料由前端 fallback 覆蓋 |
+
+### 診斷查詢
+
+```sql
+-- 月結停用課有無 closed_reason 缺漏（應為 0）
+SELECT COUNT(*) FROM StudentClass
+WHERE ScheduleMode = 'date' AND Stop = 1 AND closed_reason IS NULL;
+```
+
+---
+
+## §2026-04-21 — b4 月結制與堂數制的加購入口必須分流，不得共用 purchaseBatch
+
+### 根本原因
+
+「加購」是**堂數制語意**（新建一筆批次 `StudentClass`），對月結制課程（`ScheduleMode='date'`）呼叫時會產生錯誤的堂數制新課程，破壞計費模式且舊月結課不結案。
+
+### 授權入口對照
+
+| 課程模式 | 前端入口 | 後端路由 | 操作語意 |
+|---|---|---|---|
+| 堂數制（`ScheduleMode='count'`） | StudentsList「加購」/ CourseManagement「加購堂數」 | `POST /student-classes/{id}/purchase-batch` | 新建批次 `StudentClass`（INSERT） |
+| 月結制（`ScheduleMode='date'`） | StudentsList「加購」分流 / CourseManagement「加購堂數」分流 → `RenewMonthlyModal` | `POST /student-classes/{id}/renew-monthly` | 延長原 `EndDate`（UPDATE），不新建記錄 |
+
+### 防再犯規則
+
+1. **新增任何「新建 `StudentClass` 批次」的後端路徑時，必須在方法首行 guard `ScheduleMode !== 'count'` → 422**（`purchaseBatch` 已示範）
+2. **前端新增「加購／續約」入口時，必須先分流 `payment_type` / `ScheduleMode`**，不同模式送不同 API，不可共用 payload
+3. **`renewMonthly` 不得建立任何 `ClassSession`**：月結排課依 `settlement_day`/`monthly_sessions` 動態生成，續約只更新 `EndDate`
+
+### 診斷查詢
+
+```sql
+-- 若 > 0，表示月結課又被誤建為堂數制（同學生同科目同時有 date + count 兩筆 active）
+SELECT StudentID, SubjectID, COUNT(*) AS n
+FROM StudentClass
+WHERE Stop = 0
+GROUP BY StudentID, SubjectID
+HAVING SUM(ScheduleMode='date') > 0 AND SUM(ScheduleMode='count') > 0;
+```
+
+---
+
+## §2026-04-21 — 繳費狀態前端切換必須同步 paid_at：null，後端不得在 recomputeCounters 清零 Paid
+
+### 根本原因
+
+1. **前端切換 unpaid 未清 paid_at**：任何前端元件的「切換繳費狀態→未繳費」邏輯，payload 除了 `payment_status: 'unpaid'` 外，**必須附帶 `paid_at: null`**，否則後端 `mapFrontendPayload` 只設 `Paid=0` 而不清 `PayDate`，形成 `Paid=0 / PayDate IS NOT NULL` 矛盾記錄。
+
+2. **recomputeCounters 不得異動 Paid**：`SessionDeductionService::recomputeCounters`（含 `syncCounters`）的職責僅為重算 `UsedSessions` 和 `RemainingSessions`。任何在此方法中寫入 `Paid` 或 `PayDate` 的邏輯均屬錯誤（歷史曾有 `RemainingSessions <= 2 → Paid=0` 的殘留，已於 2026-04-21 移除）。
+
+### 授權寫入 Paid/PayDate 的唯三路徑
+
+1. `POST /api/v1/class-sessions/batch`（EnrollmentService::store，新建課程時帶 paid_at）
+2. `PUT /api/v1/student-classes/:id`（StudentClassController::mapFrontendPayload，編輯或切換）
+3. `POST /api/v1/invoices/:id/payments`（Invoice 付款）
+
+**以外任何路徑一律不得寫入 Paid / PayDate。**
+
+### 診斷查詢
+
+```sql
+-- 應恆為 0；若 > 0 代表有新的 bug 產生髒資料
+SELECT COUNT(*) FROM StudentClass WHERE Paid=0 AND PayDate IS NOT NULL;
+```
+
+### 防再犯規則
+
+- 新增任何前端「切換繳費狀態→未繳費」邏輯時，強制 code review 確認 payload 含 `paid_at: null`
+- 修改 `SessionDeductionService` 時，先 grep `Paid` 欄位，確認無新增寫入點
+- `mapFrontendPayload` 已有後端保底：`payment_status=unpaid` 且未帶 `paid_at` 時強制清 PayDate，但前端仍應主動送 `paid_at: null`（Defense-in-Depth）
+
+---
+
+## §2026-04-21 — C1 schedules.start_time 格式不一致造成 join 失效
+
+### 根本原因
+
+`schedules.start_time` 為 VARCHAR 欄位，全系統**約定**以 HH:MM（len=5）儲存。`ClassSessionController::index` 的 `sub_sched` LEFT JOIN 條件之前寫為 `sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)`（只對一側做 SUBSTRING）。若有任何寫入路徑繞過 `normalizeSessionTimeForSchedule()` 把 HH:MM:SS（len=8）寫入，join 會變成 `'18:30:00' = '18:30'` → 失敗 → `sub_sched` NULL → `COALESCE(...teacher_name)` 跌回契約老師，造成課程管理單堂檢視顯示錯師。
+
+### 影響表現
+
+- 課程管理「單堂檢視」Modal 顯示錯師，**但行事曆正確**（這是關鍵診斷訊號——行事曆走 `schedules.teacher_id → teacherNameMap`，不經過 COALESCE）
+- 實際代課資料（`schedules.status='scheduled' + original_schedule_id + teacher_id=代課老師`）完全正確
+- `class-sessions` API 的 `row.teacher_name` 與 `row.teacher_id` 回傳錯師（COALESCE 的 fallback）
+
+### 防再犯規則
+
+1. **VARCHAR 時間欄位跨表 join 必須兩側都 SUBSTRING(1,5)**  
+   - 反例：`a.start_time = SUBSTRING(b.time, 1, 5)` — 單側截斷、格式不一致即失敗  
+   - 正例：`SUBSTRING(a.start_time, 1, 5) = SUBSTRING(b.time, 1, 5)` — 永久防禦  
+   - 這是「資料修正 + 程式碼防禦」雙保險的業界標準（MySQL docs 2026, StackOverflow time format mismatch）
+
+2. **寫入 `schedules.start_time` / `end_time` 必須用 `normalizeSessionTimeForSchedule()`**  
+   - 路徑：`ClassSessionController::normalizeSessionTimeForSchedule()` 會產出 HH:MM  
+   - 若新增 `schedules` 寫入點（例如從前端 Supabase 直接 insert），務必先經此函式或等價 regex 轉換
+
+3. **診斷「行事曆對、課管錯」類型的 bug 時，先查兩個資料路徑**  
+   - 行事曆：`fetchClassSessions` 或 `schedules + teacherNameMap`  
+   - 課管：`GET /api/v1/student-classes`（course-level teacher_name）+ `GET /api/v1/class-sessions`（session-level COALESCE teacher_name）  
+   - 若只有某一路徑錯 → 先看該路徑特有的 join / COALESCE / aggregation
+
+4. **搜尋關鍵字**  
+   - `SUBSTRING(sub_sched.start_time, 1, 5)`（修正後的 join 條件）  
+   - `normalizeSessionTimeForSchedule`（唯一合法的時間正規化函式）  
+   - `ClassSessionsSubstituteStartTimeFormatTest`（對應測試檔）  
+   - `normalize_schedules_start_time`（修正歷史壞資料 migration）
+
+### 已修 + 測試覆蓋
+
+- Commit： ClassSessionController 第 96 行 join 兩側都 `SUBSTRING(...,1,5)`  
+- Migration：`2026_04_21_000002_normalize_schedules_start_time.php`  
+- 測試：`ClassSessionsSubstituteStartTimeFormatTest`（3 tests：HH:MM:SS 命中 / HH:MM regression / 無代課不過度排除）
+
+---
+
 ## §2026-04-21 — nightly auto-backup 覆蓋已 commit 修正（B1 代課可見性復發 incident）
 
 ### 根本原因
@@ -22,23 +156,53 @@
 
 1. **`scripts/git-sync.sh` 已加入 CODE_REVERT_GUARD**（2026-04-21）  
    - 偵測 `backend/app/Http/Controllers/`、`backend/database/migrations/`、`backend/tests/` 路徑下的**檔案刪除**或**單一檔案淨刪除行數 ≥ 30 行**時，預設 exit 1 拒絕 commit  
-   - 繞過方式：`ALLOW_CODE_REVERT=1 ./scripts/git-sync.sh "message"`  
+   - 繞過方式：`ALLOW_CODE_REVERT=1 ./scripts/git-sync.sh "message"`（需明確 export）  
    - 觸發事件自動寫入 `backups/code-revert-guard.log`
 
 2. **任何 incident recovery 流程都不應直接覆蓋 working tree 再 commit**  
    - 正確做法：先 `git pull --rebase`（或 `git fetch && git reset --hard origin/main`）讓 working tree 對齊最新 HEAD，再處理個別差異  
-   - 若需真實回退：`git revert <hash>` 建立明確 revert commit，並加 `ALLOW_CODE_REVERT=1`
+   - 若 incident 需要真實回退程式碼（例如 hotfix rollback），必須用 `git revert <hash>` 建立明確的 revert commit，並加 `ALLOW_CODE_REVERT=1` 旗標
 
 3. **修改 `ClassSessionController::index` 或 `AttendanceController::endedSessions` 前必讀**  
    - teacher 分支的代課過濾語意：`(sub_sched.teacher_id IS NULL AND sc.TeacherID = ?) OR sub_sched.teacher_id = ?`  
    - endedSessions 的堂次級守衛：`whereExists`（命中代課老師）/ `orWhere + whereNotExists + whereExists`（無代課走契約老師）  
    - 任何簡化（改回 `sc.TeacherID = ? OR sub_sched.teacher_id = ?`）都會觸發已知 bug
 
-4. **搜尋關鍵字**：`CODE_REVERT_GUARD`（git-sync.sh）、`idx_sched_course_date_time_status`（schedules 複合索引）、`ClassSessionsTeacherVisibilityAfterSubstituteTest`、`AttendanceEndedSessionsSubstituteTest`
+4. **搜尋關鍵字**  
+   - `CODE_REVERT_GUARD`（git-sync.sh）  
+   - `idx_sched_course_date_time_status`（schedules 複合索引）  
+   - `ClassSessionsTeacherVisibilityAfterSubstituteTest`、`AttendanceEndedSessionsSubstituteTest`（對應測試檔）
 
 ### QA 必跑
 
-修改上述任一 controller 後：`./vendor/bin/phpunit tests/Feature/ClassSessionsTeacherVisibilityAfterSubstituteTest.php tests/Feature/AttendanceEndedSessionsSubstituteTest.php` → `OK (8 tests, 25 assertions)`, 0 failures
+- 修改上述任一 controller 後：`./vendor/bin/phpunit tests/Feature/ClassSessionsTeacherVisibilityAfterSubstituteTest.php tests/Feature/AttendanceEndedSessionsSubstituteTest.php` → `OK (8 tests, 25 assertions)`, 0 failures
+
+---
+
+## §2026-04-21 — 備份還原演練（monthly-restore-drill.sh）
+
+### 背景
+系統原本只有「備份」沒有「還原驗證」。新增 [`scripts/monthly-restore-drill.sh`](scripts/monthly-restore-drill.sh)，每月 1 日 02:00 跑，還原到 `AllTrue_test` 並發 Telegram。
+
+### 禁止回歸項
+
+1. **還原目標資料庫必須是 `AllTrue_test`，絕不可指向 `AllTrue`**  
+   - 腳本中 `TEST_DB="AllTrue_test"` 為常數，DROP / CREATE / 還原皆使用此變數；若有人為了「省資源」改指 `AllTrue` 會直接砍掉生產資料。
+   - 修改前請確認：`grep 'DROP DATABASE' scripts/monthly-restore-drill.sh` 只針對 `AllTrue_test`。
+
+2. **row count 差異 ≠ 備份壞掉**  
+   - 比對的是 live `AllTrue` vs point-in-time dump，時間差 1 分鐘就可能多 1 列 `ClassSession`；diff 小於 schema row 總數 1% 屬正常漂移。
+   - **紅色警訊**：`Student` 或 `Campus` 出現 diff（這兩表變動極少）、或 diff 方向是 `test > prod`（代表生產被誤刪）。
+
+3. **修改備份檔命名規則要同步更新此腳本**  
+   - 腳本寫死 `alltrue_monthly_*.sql.gz` 與 `alltrue_nightly_*.sql.gz` 兩個 glob；`nightly-backup.sh` / `sixhour-backup.sh` 改名稱時務必 grep `alltrue_` 確保此處一致。
+
+4. **Telegram 憑證放在 `/home/admin/.env.monitor`，與 `backend/.env` 分離**  
+   - 不要把 `TELEGRAM_BOT_TOKEN` 加到 `backend/.env`（會被 Laravel env dump、Sentry breadcrumb 意外外洩）。
+
+### QA 必跑
+- 手動執行 `bash /home/admin/scripts/monthly-restore-drill.sh`，確認 Telegram 收到訊息且 `AllTrue_test` row count > 0。
+- 驗證 crontab：`crontab -l | grep monthly-restore-drill` 回傳 `0 2 1 * *` 條目。
 
 ---
 
