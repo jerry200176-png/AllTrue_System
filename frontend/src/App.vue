@@ -701,6 +701,7 @@ function _startBadgePolling() {
     mergeChatUnreadBadge();
     mergeBugUnreadBadge();
     mergeDirectorPendingBadge();
+    mergeScheduleDiscrepancyBadge();
   }, badgeInterval);
 }
 
