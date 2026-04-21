@@ -413,3 +413,38 @@ php artisan tinker
 - LINE Notify 已於 2025-03-31 下線，此系統使用 LINE Messaging API Push Message（不同 API，需 Bot Channel Token）
 - LINE Push 失敗**不阻擋**課表出入回報的提交與處理流程
 
+
+## L. Nightly Backup Crontab 還原 SOP
+
+系統重新安裝、安全事件清理、或其他原因導致 crontab 遺失後，務必重新建立以下排程：
+
+```bash
+# 檢查目前 crontab
+crontab -l
+
+# 若回傳 "no crontab for admin"，執行下方指令還原：
+(crontab -l 2>/dev/null; echo "0 1 * * * /home/admin/scripts/nightly-backup.sh >> /home/admin/backups/nightly-backup.log 2>&1") | crontab -
+
+# 驗證
+crontab -l
+```
+
+預期輸出：
+```
+0 1 * * * /home/admin/scripts/nightly-backup.sh >> /home/admin/backups/nightly-backup.log 2>&1
+```
+
+**補跑漏掉的備份（手動立即執行）：**
+```bash
+bash /home/admin/scripts/nightly-backup.sh
+```
+
+**確認備份正常的三個指標：**
+1. `/home/admin/backups/` 有今天日期的 `.sql.gz` 檔案
+2. `backups/nightly-backup.log` 最後一行為 `=== Nightly backup done ===`
+3. GitHub `jerry-sync-main` 有對應的 `chore(nightly): auto backup` commit 與 `nightly-*` tag
+
+**事故紀錄（2026-04-21）：**
+- 根本原因：2026-04-18 系統遭 ARM Mirai 殭屍惡意程式感染（`.UoQsjidhe2CBXLdnWKmw9Yx4`）。
+  安全清理（2026-04-20 16:01 重啟）過程中 admin crontab 被清除，導致 2026-04-21 01:00 備份未執行。
+- 修復：重建 crontab + 手動補跑備份。
