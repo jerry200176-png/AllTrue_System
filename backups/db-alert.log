@@ -10,3 +10,5 @@
 [2026-04-21 18:15:01] OK — all tables above threshold
 [2026-04-21 18:15:01] OK — all tables above threshold
 /bin/sh: 1: /home/admin/scripts/db-health-check.sh: not found
+[2026-04-21 19:15:01] OK — all tables above threshold
+[2026-04-21 19:15:01] OK — all tables above threshold
