@@ -190,7 +190,8 @@ class PackageE2EFlowTest extends TestCase
         $scId = $res->json('members.0.student_class_id');
 
         // Manually set low remaining (simulating deductions)
-        StudentClass::where('ID', $scId)->update(['RemainingSessions' => 1, 'Paid' => 0]);
+        // AlertController.tuition 過濾 charge > 0；create-multi-subject 未設 Charge 時預設 null
+        StudentClass::where('ID', $scId)->update(['RemainingSessions' => 1, 'Paid' => 0, 'Charge' => 5000]);
 
         $alertRes = $this->withHeaders($this->authHeaders())->getJson('/api/v1/alerts/tuition?branch_id=1');
         $alertRes->assertOk();

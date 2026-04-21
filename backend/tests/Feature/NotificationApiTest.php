@@ -324,7 +324,8 @@ class NotificationApiTest extends TestCase
             'EndDate' => null,
             'TotalHours' => 20,
             'Memo' => null,
-            'Charge' => null,
+            // AlertController 的 tuition 端點過濾 charge > 0；null/0 不會出現
+            'Charge' => 5000,
             'Pay' => null,
             'PayDate' => null,
             'Paid' => $paid,

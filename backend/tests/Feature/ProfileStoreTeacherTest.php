@@ -104,8 +104,9 @@ class ProfileStoreTeacherTest extends TestCase
         ])->getJson('/api/v1/subjects');
 
         $response->assertOk();
-        $this->assertCount(7, $response->json());
-        $this->assertSame(7, DB::table('Subject')->count());
+        // SubjectController::CANONICAL_SUBJECTS 有 8 個預設科目（國文、英文、數學、社會、理化、物理、化學、生物）
+        $this->assertCount(8, $response->json());
+        $this->assertSame(8, DB::table('Subject')->count());
     }
 
     public function test_director_can_update_teacher_account_via_profiles_api(): void
