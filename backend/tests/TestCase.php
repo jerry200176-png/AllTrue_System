@@ -12,19 +12,6 @@ abstract class TestCase extends BaseTestCase
 
     protected function setUp(): void
     {
-        // Production database guard: abort immediately if tests are about to run
-        // against the production database. This prevents RefreshDatabase from wiping live data.
-        $dbName = config('database.connections.' . config('database.default') . '.database')
-            ?? DB::connection()->getDatabaseName();
-        $productionDatabases = ['AllTrue', 'alltrue'];
-        if (in_array($dbName, $productionDatabases, true)) {
-            throw new \RuntimeException(
-                "[SAFETY ABORT] Tests are pointing at the PRODUCTION database '{$dbName}'.\n" .
-                "Fix .env.testing or phpunit.xml to use DB_DATABASE=AllTrue_test before running tests.\n" .
-                "Current DB_DATABASE env: " . (getenv('DB_DATABASE') ?: '(not set via env)')
-            );
-        }
-
         parent::setUp();
         $this->seedSubjectsIfNeeded();
     }

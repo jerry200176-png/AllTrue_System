@@ -1,0 +1,87 @@
+2025-12-30 19:58:45Array
+(
+    [message_id] => 6197
+    [from] => Array
+        (
+            [id] => 8215713557
+            [is_bot] => 
+            [first_name] => 曉惠
+            [last_name] => 鄧
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8215713557
+            [first_name] => 曉惠
+            [last_name] => 鄧
+            [type] => private
+        )
+
+    [date] => 1767095924
+    [text] => 怎麼沒有楷熹的簽到？？？
+)
+
+2025-12-30 19:58:45select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-12-30 19:58:45Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-12-30 19:58:45select id, LineID, TelegramID, TelegramID1 from Student where name = '怎麼沒有楷熹的簽到？？？' and enable = 1 and CampusID = 11
+2025-12-30 19:58:45 boolean 
+2025-12-30 19:58:45string查無此學生怎麼沒有楷熹的簽到？？？
+2025-12-30 19:59:32Array
+(
+    [message_id] => 6199
+    [from] => Array
+        (
+            [id] => 8215713557
+            [is_bot] => 
+            [first_name] => 曉惠
+            [last_name] => 鄧
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8215713557
+            [first_name] => 曉惠
+            [last_name] => 鄧
+            [type] => private
+        )
+
+    [date] => 1767095971
+    [text] => 盧楷熹
+)
+
+2025-12-30 19:59:32select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-12-30 19:59:32Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-12-30 19:59:32select id, LineID, TelegramID, TelegramID1 from Student where name = '盧楷熹' and enable = 1 and CampusID = 11
+2025-12-30 19:59:32 array Array
+(
+    [id] => 267
+    [LineID] => 
+    [TelegramID] => 8215713557
+    [TelegramID1] => 
+)
+
+2025-12-30 19:59:32盧楷熹 此學生已綁定

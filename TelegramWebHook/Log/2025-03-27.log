@@ -1,0 +1,373 @@
+2025-03-27 07:48:01Array
+(
+    [message_id] => 168
+    [from] => Array
+        (
+            [id] => 7629712440
+            [is_bot] => 
+            [first_name] => 青玟
+            [last_name] => 吳
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7629712440
+            [first_name] => 青玟
+            [last_name] => 吳
+            [type] => private
+        )
+
+    [date] => 1743032880
+    [text] => /start
+    [entities] => Array
+        (
+            [0] => Array
+                (
+                    [offset] => 0
+                    [length] => 6
+                    [type] => bot_command
+                )
+
+        )
+
+)
+
+2025-03-27 07:48:01select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 07:48:01Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 07:48:12Array
+(
+    [message_id] => 170
+    [from] => Array
+        (
+            [id] => 7629712440
+            [is_bot] => 
+            [first_name] => 青玟
+            [last_name] => 吳
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7629712440
+            [first_name] => 青玟
+            [last_name] => 吳
+            [type] => private
+        )
+
+    [date] => 1743032892
+    [text] => 林子皓
+)
+
+2025-03-27 07:48:12select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 07:48:12Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 07:48:12select id, LineID, TelegramID, TelegramID1 from Student where name = '林子皓' and enable = 1 and CampusID = 11
+2025-03-27 07:48:12 array Array
+(
+    [id] => 179
+    [LineID] => Ua6b31a07db1aef843f31b7459a265387
+    [TelegramID] => 
+    [TelegramID1] => 
+)
+
+2025-03-27 07:48:12update Student  set MDT = now() , TelegramID = :TelegramID  where id = :StudentID 
+2025-03-27 07:48:12林子皓 此學生綁定成功
+2025-03-27 07:48:12Token : \n2025-03-27 07:48:12Array
+(
+    [update_id] => 692720093
+    [message] => Array
+        (
+            [message_id] => 170
+            [from] => Array
+                (
+                    [id] => 7629712440
+                    [is_bot] => 
+                    [first_name] => 青玟
+                    [last_name] => 吳
+                    [language_code] => zh-hans
+                )
+
+            [chat] => Array
+                (
+                    [id] => 7629712440
+                    [first_name] => 青玟
+                    [last_name] => 吳
+                    [type] => private
+                )
+
+            [date] => 1743032892
+            [text] => 林子皓
+        )
+
+)
+\n2025-03-27 11:33:12Array
+(
+    [message_id] => 172
+    [from] => Array
+        (
+            [id] => 7164107195
+            [is_bot] => 
+            [first_name] => SHAN
+            [last_name] => sHEN
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7164107195
+            [first_name] => SHAN
+            [last_name] => sHEN
+            [type] => private
+        )
+
+    [date] => 1743046391
+    [text] => /start
+    [entities] => Array
+        (
+            [0] => Array
+                (
+                    [offset] => 0
+                    [length] => 6
+                    [type] => bot_command
+                )
+
+        )
+
+)
+
+2025-03-27 11:33:12select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 11:33:12Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 11:33:30Array
+(
+    [message_id] => 174
+    [from] => Array
+        (
+            [id] => 7164107195
+            [is_bot] => 
+            [first_name] => SHAN
+            [last_name] => sHEN
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7164107195
+            [first_name] => SHAN
+            [last_name] => sHEN
+            [type] => private
+        )
+
+    [date] => 1743046410
+    [text] => 周亮妘
+)
+
+2025-03-27 11:33:30select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 11:33:30Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 11:33:30select id, LineID, TelegramID, TelegramID1 from Student where name = '周亮妘' and enable = 1 and CampusID = 11
+2025-03-27 11:33:30 array Array
+(
+    [id] => 197
+    [LineID] => U2ce8af8d460fb423e57d79ffa77bf9d3
+    [TelegramID] => 
+    [TelegramID1] => 
+)
+
+2025-03-27 11:33:30update Student  set MDT = now() , TelegramID = :TelegramID  where id = :StudentID 
+2025-03-27 11:33:30周亮妘 此學生綁定成功
+2025-03-27 11:33:30Token : \n2025-03-27 11:33:30Array
+(
+    [update_id] => 692720095
+    [message] => Array
+        (
+            [message_id] => 174
+            [from] => Array
+                (
+                    [id] => 7164107195
+                    [is_bot] => 
+                    [first_name] => SHAN
+                    [last_name] => sHEN
+                    [language_code] => zh-hans
+                )
+
+            [chat] => Array
+                (
+                    [id] => 7164107195
+                    [first_name] => SHAN
+                    [last_name] => sHEN
+                    [type] => private
+                )
+
+            [date] => 1743046410
+            [text] => 周亮妘
+        )
+
+)
+\n2025-03-27 21:17:58Array
+(
+    [message_id] => 187
+    [from] => Array
+        (
+            [id] => 7605262774
+            [is_bot] => 
+            [first_name] => Tsai
+            [last_name] => Kevin
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7605262774
+            [first_name] => Tsai
+            [last_name] => Kevin
+            [type] => private
+        )
+
+    [date] => 1743081477
+    [text] => /start
+    [entities] => Array
+        (
+            [0] => Array
+                (
+                    [offset] => 0
+                    [length] => 6
+                    [type] => bot_command
+                )
+
+        )
+
+)
+
+2025-03-27 21:17:58select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 21:17:58Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 21:18:12Array
+(
+    [message_id] => 189
+    [from] => Array
+        (
+            [id] => 7605262774
+            [is_bot] => 
+            [first_name] => Tsai
+            [last_name] => Kevin
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7605262774
+            [first_name] => Tsai
+            [last_name] => Kevin
+            [type] => private
+        )
+
+    [date] => 1743081492
+    [text] => 蔡丞皓
+)
+
+2025-03-27 21:18:12select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-03-27 21:18:12Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-03-27 21:18:12select id, LineID, TelegramID, TelegramID1 from Student where name = '蔡丞皓' and enable = 1 and CampusID = 11
+2025-03-27 21:18:12 array Array
+(
+    [id] => 59
+    [LineID] => Ucc7d3323d1e4291d2f0abc14e9e34716
+    [TelegramID] => 
+    [TelegramID1] => 
+)
+
+2025-03-27 21:18:12update Student  set MDT = now() , TelegramID = :TelegramID  where id = :StudentID 
+2025-03-27 21:18:12蔡丞皓 此學生綁定成功
+2025-03-27 21:18:12Token : \n2025-03-27 21:18:12Array
+(
+    [update_id] => 692720097
+    [message] => Array
+        (
+            [message_id] => 189
+            [from] => Array
+                (
+                    [id] => 7605262774
+                    [is_bot] => 
+                    [first_name] => Tsai
+                    [last_name] => Kevin
+                    [language_code] => zh-hans
+                )
+
+            [chat] => Array
+                (
+                    [id] => 7605262774
+                    [first_name] => Tsai
+                    [last_name] => Kevin
+                    [type] => private
+                )
+
+            [date] => 1743081492
+            [text] => 蔡丞皓
+        )
+
+)
+\n

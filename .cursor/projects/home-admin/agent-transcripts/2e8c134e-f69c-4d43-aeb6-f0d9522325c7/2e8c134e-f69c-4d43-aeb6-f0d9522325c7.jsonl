@@ -1,0 +1,29 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<user_query>\n「請幫我優化系統中『課程管理』與『學生管理』兩個模組的顯示與過濾邏輯：\n\n1. 課程管理 (Course Management) - 資料分組：\n請將列表依據『學生』進行分組（Group by Student）。如果同一個學生有多筆課程紀錄，請將它們在 UI 上合併顯示（例如使用 Accordion 折疊面板，或是在同一個卡片/表格列中展開），讓單一學生的所有課程能一目了然。\n\n2. 學生管理 (Student Management) - 預設列表過濾：\n為了避免名單隨時間無限增長，請加入預設的隱藏邏輯。\n條件：當該學生的某筆課程同時滿足 剩餘堂數為 0 且 已完成繳費/結清 時，請將該筆紀錄從預設列表中隱藏。\n注意：如果剩餘堂數為 0 但『尚未繳費』，則必須保留顯示，以便後續追帳。\n另外，請幫我加一個『顯示已結業/歷史課程』的切換按鈕 (Toggle)，讓使用者需要時還是能查閱這些被隱藏的歷史資料。」\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"先直接檢查 `CourseManagement.vue` 與 `StudentsList.vue` 現有的資料來源、篩選與列表渲染方式，確認最小改動就能完成「依學生分組」和「預設隱藏已結業課程 + toggle」這兩件事。接著我會直接改檔並幫你把行為接上。\n\n**Planning frontend inspection**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning partial file read**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Identifying course loading sections**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Reviewing state definitions in references**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"我已定位到課程管理目前是「每筆課程一列」模式，下一步會看學生管理目前的展開清單，接著把兩邊的分組/隱藏條件統一成可維護的計算邏輯。\n\n**Reviewing student list template structure**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning script around key functions**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Inspecting course filtering and payment toggling**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning course grouping and hiding logic**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Inspecting course data usage**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Reviewing function usage context**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning student filtering and selection sync**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Inspecting payment status mapping**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Designing course grouping with accordion**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Identifying teacher filter functions**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"我會先改 `CourseManagement.vue`：把目前單一大表改成「每位學生一個可展開群組」的列表，並保留你現有每筆課程的所有操作按鈕與日期展開功能。改完再接著做學生管理的隱藏/切換邏輯。\n\n**Planning grouped courses and history toggle**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning careful class patching**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning lint and data key checks**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Considering build and test verification**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Verifying grouped functions placement**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Checking insertion conflict**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Verifying computed order and watchers**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Checking variable duplication**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Checking student course loading**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Analyzing watch trigger frequency**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Reviewing displayStudents behavior and course row visibility**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"**Planning file tail inspection**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"兩個頁面的主要邏輯都已接上，接下來我會跑一次前端建置確認模板與計算屬性沒有語法問題，然後再回報你具體行為變化。\n\n**Verifying unchanged core components**\n**Planning long-running build task**"}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"已完成兩個模組的顯示/過濾優化，行為如下：\n\n### 課程管理（`frontend/src/pages/CourseManagement.vue`）\n\n- 把原本「每筆課程一列」改成「**依學生分組**」顯示。\n- 每位學生現在是一個可展開/收合的群組（Accordion 風格），標頭會顯示學生姓名與課程筆數。\n- 展開後可看到該學生所有課程，原本的操作都保留：\n  - 請假、調課、編輯、刪除\n  - 繳費狀態切換\n  - 上課日期展開查看\n- 分組在每次 `loadCourses()` 後會自動重建，預設展開所有學生群組。\n\n### 學生管理（`frontend/src/pages/StudentsList.vue`）\n\n- 新增「**顯示已結業/歷史課程**」切換按鈕（在篩選區）。\n- 預設（toggle 關閉）會隱藏符合以下條件的課程紀錄：\n  - `remaining_sessions <= 0`\n  - 且已結清/已繳費（`payment_status === 'paid'`，或 `Paid/Charge` 判斷為已結清）\n- 若剩餘堂數為 0 但未繳費，**仍會保留顯示**（符合你的追帳需求）。\n- 為避免名單持續膨脹，預設模式下：\n  - 若某學生只有上述「歷史課程」，該學生不顯示於目前列表\n  - 但「沒有任何課程的新學生」仍會顯示\n- 切換按鈕打開後，可查看被隱藏的歷史課程/學生。\n\n### 我額外做的穩定化\n\n- `loadAllStudentCourses()` 改為優先走 Laravel API 載入課程（含 `payment_status` / `remaining_sessions`），讓隱藏判斷更準確。\n- 已加入列表同步處理：切換顯示模式時，會同步清理勾選與展開狀態，避免 UI 殘留。\n\n### 驗證\n\n- 已檢查兩檔 lint：無錯誤。\n- 已執行前端建置：`npm run build` 成功。\n\n**Summarizing build and feature changes**"}]}}

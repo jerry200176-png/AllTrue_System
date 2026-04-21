@@ -1,0 +1,16 @@
+2025-05-13 18:37:09select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-05-13 18:37:09Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-05-13 18:37:09select id, LineID, TelegramID, TelegramID1 from Student where name = '' and enable = 1 and CampusID = 11
+2025-05-13 18:37:09 boolean 
+2025-05-13 18:37:09NULL查無此學生

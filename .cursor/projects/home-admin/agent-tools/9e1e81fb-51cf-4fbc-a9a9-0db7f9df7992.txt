@@ -1,0 +1,2828 @@
+ backend/app/Http/Controllers/AlertController.php   |   46 +-
+ .../Http/Controllers/NotificationController.php    |    5 +-
+ .../Http/Controllers/StudentClassController.php    |   33 +-
+ backend/app/Services/EnrollmentService.php         |   12 +-
+ backend/app/Services/NotificationSyncService.php   |   60 +-
+ backend/app/Services/TeacherScopeService.php       |   10 +-
+ backend/bootstrap/cache/packages.php               |    7 -
+ backend/bootstrap/cache/services.php               |   10 +-
+ backend/public/index.html                          |    4 +-
+ backend/tests/Feature/EnrollmentApiTest.php        |   46 +
+ backend/tests/Feature/NotificationApiTest.php      |   59 +-
+ docs/OPERATIONS_RUNBOOK.md                         |   25 +
+ frontend/src/components/CourseEditForm.vue         |    5 +-
+ .../src/components/UniversalClassScheduler.vue     |   19 +-
+ frontend/src/lib/coursePricing.js                  |   11 +-
+ frontend/src/pages/CourseManagement.vue            |   11 +
+ frontend/src/pages/DirectorDashboard.vue           | 1389 +++++++++++++-------
+ frontend/src/pages/LearningRecordsPage.vue         |  280 +++-
+ 18 files changed, 1493 insertions(+), 539 deletions(-)
+diff --git a/backend/app/Http/Controllers/AlertController.php b/backend/app/Http/Controllers/AlertController.php
+index 984bc6a..8cca624 100644
+--- a/backend/app/Http/Controllers/AlertController.php
++++ b/backend/app/Http/Controllers/AlertController.php
+@@ -10,7 +10,7 @@ class AlertController extends Controller
+ {
+     /**
+      * GET /api/v1/alerts/tuition
+-     * Returns courses with low remaining sessions or unpaid status.
++     * Returns unpaid or low-session courses for reminders.
+      */
+     public function tuition(Request $request)
+     {
+@@ -27,28 +27,40 @@ class AlertController extends Controller
+ 
+         $studentIds = empty($campusIds) ? null : Student::whereIn('CampusID', $campusIds)->pluck('id');
+ 
++        // Keep active count-mode classes in scope, then derive alert type below.
+         $query = StudentClass::where('Stop', 0)
+-            ->where('ScheduleMode', 'count')
+-            // Tuition alert list should only include unpaid classes.
+-            ->where('Paid', 0);
++            ->where('ScheduleMode', 'count');
+ 
+         if ($studentIds !== null) {
+             $query->whereIn('StudentID', $studentIds);
+         }
+ 
+-        $classes = $query->with('student')->get()->map(function ($c) {
+-            return [
+-                'id'                 => $c->ID,
+-                'student_id'         => (int) $c->StudentID,
+-                'student_name'       => $c->student->name ?? 'Unknown',
+-                'campus_id'          => (int) ($c->student->CampusID ?? 0),
+-                'subject'            => $c->Subject,
+-                'schedule_mode'      => $c->ScheduleMode,
+-                'remaining_sessions' => (int) ($c->RemainingSessions ?? 0),
+-                'sessions_purchased' => (int) ($c->SessionCount ?? 0),
+-                'paid'               => (bool) $c->Paid,
+-            ];
+-        });
++        $classes = $query->with('student')->get()
++            ->map(function ($c) {
++                $remaining = (int) ($c->RemainingSessions ?? 0);
++                $isPaid = (int) ($c->Paid ?? 0) === 1;
++                $isUnpaid = !$isPaid;
++                $isLowSessions = $remaining > 0 && $remaining <= 2;
++
++                if (!$isUnpaid && !$isLowSessions) {
++                    return null;
++                }
++
++                return [
++                    'id'                 => $c->ID,
++                    'student_id'         => (int) $c->StudentID,
++                    'student_name'       => $c->student->name ?? 'Unknown',
++                    'campus_id'          => (int) ($c->student->CampusID ?? 0),
++                    'subject'            => $c->Subject,
++                    'schedule_mode'      => $c->ScheduleMode,
++                    'remaining_sessions' => $remaining,
++                    'sessions_purchased' => (int) ($c->SessionCount ?? 0),
++                    'paid'               => $isPaid,
++                    'alert_type'         => $isLowSessions ? 'low_sessions' : 'unpaid',
++                ];
++            })
++            ->filter()
++            ->values();
+ 
+         return response()->json($classes);
+     }
+diff --git a/backend/app/Http/Controllers/NotificationController.php b/backend/app/Http/Controllers/NotificationController.php
+index b5b35b0..31ef824 100644
+--- a/backend/app/Http/Controllers/NotificationController.php
++++ b/backend/app/Http/Controllers/NotificationController.php
+@@ -204,12 +204,15 @@ class NotificationController extends Controller
+ 
+     public function unreadCount(Request $request)
+     {
+-        [$campusIds] = $this->resolveCampusScope($request);
++        [$campusIds, , $branchId] = $this->resolveCampusScope($request);
+         $userId = $this->resolveAuthUserId($request);
+         if (!$userId) {
+             return response()->json(['message' => 'Unauthorized'], 401);
+         }
+ 
++        // Keep badge counters fresh by reconciling source data first.
++        NotificationSyncService::sync($campusIds, $branchId);
++
+         $byType = $this->countUnreadByType($userId, $campusIds);
+ 
+         $pendingQuery = DB::table('User')
+diff --git a/backend/app/Http/Controllers/StudentClassController.php b/backend/app/Http/Controllers/StudentClassController.php
+index ef9a855..d0782d1 100755
+--- a/backend/app/Http/Controllers/StudentClassController.php
++++ b/backend/app/Http/Controllers/StudentClassController.php
+@@ -159,8 +159,18 @@ class StudentClassController extends Controller
+                 '理化' => 'Science',
+                 '生物' => 'Biology',
+                 '地科' => 'Science',
++                // Subject table may already store English keys.
++                'Chinese' => 'Chinese',
++                'English' => 'English',
++                'Math' => 'Math',
++                'Physics' => 'Physics',
++                'Chemistry' => 'Chemistry',
++                'Science' => 'Science',
++                'Biology' => 'Biology',
++                'Social' => 'Social',
+             ];
+-            $class->subject = $reverseSubjectMap[$class->subject_name] ?? 'Math';
++            $subjectNameKey = trim((string) ($class->subject_name ?? ''));
++            $class->subject = $reverseSubjectMap[$subjectNameKey] ?? 'Math';
+             $class->class_type = $class->ClassType ?? 'one_on_one';
+             $class->rate_per_30min = $class->Rate ?? 0;
+             $class->duration_hours = $class->SessionDuration ? round($class->SessionDuration / 60, 1) : 2;
+@@ -1560,7 +1570,11 @@ class StudentClassController extends Controller
+             return $input;
+         }
+ 
+-        $subjectMap = [
++        // Subject name resolution: frontend sends English key (e.g. 'Math').
++        // Subject table stores English names (Chinese, Math, English…) with IDs 64–71.
++        // teacher_subject_levels also uses Subject table IDs, so we MUST resolve to those.
++        // Old code translated to Chinese then queried Subject (miss) → BaseData (different IDs) → fallback 1.
++        $subjectChineseMap = [
+             'Chinese' => '國文',
+             'English' => '英文',
+             'Math' => '數學',
+@@ -1568,12 +1582,19 @@ class StudentClassController extends Controller
+             'Chemistry' => '化學',
+             'Science' => '理化',
+             'Biology' => '生物',
+-            'Social' => '社會'
++            'Social' => '社會',
+         ];
+         $frontendSubject = $input['subject'] ?? 'Math';
+-        $subjectName = $subjectMap[$frontendSubject] ?? $frontendSubject;
+-        $subjectId = DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id') ??
+-            DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id') ?? 1;
++        $subjectName = $subjectChineseMap[$frontendSubject] ?? $frontendSubject;
++        // Priority: exact English match in Subject table → Chinese LIKE in Subject → Chinese LIKE in BaseData → null
++        $subjectId = DB::table('Subject')->where('Subject_Name', $frontendSubject)->value('id')
++            ?? DB::table('Subject')->where('Subject_Name', 'like', "%$subjectName%")->value('id')
++            ?? DB::table('BaseData')->where('Name', '課程')->where('Val', 'like', "%$subjectName%")->value('id')
++            ?? null;
++        if (!$subjectId) {
++            \Log::warning("[StudentClassController] Cannot resolve SubjectID for subject='{$frontendSubject}' (mapped='{$subjectName}')");
++            $subjectId = 66; // fallback: Math (Subject id=66) instead of non-existent id=1
++        }
+ 
+         $mappedData = [];
+         if (isset($input['student_id'])) $mappedData['StudentID'] = $input['student_id'];
+diff --git a/backend/app/Services/EnrollmentService.php b/backend/app/Services/EnrollmentService.php
+index 7abb5f1..e9f4b54 100644
+--- a/backend/app/Services/EnrollmentService.php
++++ b/backend/app/Services/EnrollmentService.php
+@@ -297,16 +297,12 @@ class EnrollmentService
+             $monthlySessions = !$isSessionMode ? (int) ($data['monthly_sessions'] ?? $plannedSessions) : null;
+             $chargeUnits = $isSessionMode ? $sessionCount : max(1, $monthlySessions ?: $plannedSessions);
+ 
+-            $hasPerDayDuration = false;
+-            foreach ($dayTimeSlotMap as $slot) {
+-                if (!empty($slot['duration_minutes'])) {
+-                    $hasPerDayDuration = true;
+-                    break;
+-                }
+-            }
++            // Pricing contract:
++            // - price_per_session is per class session by default (session mode)
++            // - only explicit rate_unit=hour enables hourly pricing
+             $rateUnit = (!empty($data['rate_unit']) && $data['rate_unit'] === 'hour')
+                 ? 'hour'
+-                : ($hasPerDayDuration ? 'hour' : 'session');
++                : 'session';
+ 
+             $totalHours = 0;
+             $charge = 0;
+diff --git a/backend/app/Services/NotificationSyncService.php b/backend/app/Services/NotificationSyncService.php
+index f5cdc49..41621bb 100644
+--- a/backend/app/Services/NotificationSyncService.php
++++ b/backend/app/Services/NotificationSyncService.php
+@@ -21,9 +21,10 @@ class NotificationSyncService
+     public static function sync(array $campusIds = [], ?int $branchId = null): array
+     {
+         $scopedCampusIds = self::resolveCampusScope($campusIds, $branchId);
+-        $managedTypes = ['tuition', 'learning_review', 'pending_swipe'];
++        $managedTypes = ['tuition', 'learning_review', 'pending_swipe', 'low_sessions'];
+         $activeByKey = array_merge(
+             self::buildTuitionNotifications($scopedCampusIds),
++            self::buildLowSessionsNotifications($scopedCampusIds),
+             self::buildInvoiceOverdueNotifications($scopedCampusIds),
+             self::buildLearningNotifications($scopedCampusIds),
+             self::buildPendingSwipeNotifications($scopedCampusIds)
+@@ -153,6 +154,63 @@ class NotificationSyncService
+         return $rows;
+     }
+ 
++    /**
++     * @param  array<int>  $campusIds
++     * @return array<string, array<string, mixed>>
++     */
++    private static function buildLowSessionsNotifications(array $campusIds): array
++    {
++        $query = StudentClass::query()
++            ->with('student')
++            ->where('Stop', 0)
++            ->where('ScheduleMode', 'count')
++            ->where('RemainingSessions', '<=', 2)
++            ->where('RemainingSessions', '>', 0); // 0 堂已由 Stop=1 處理，此處只提醒 1–2 堂
++
++        if (!empty($campusIds)) {
++            $query->whereHas('student', function ($sub) use ($campusIds) {
++                $sub->whereIn('CampusID', $campusIds);
++            });
++        }
++
++        $rows = [];
++        foreach ($query->get() as $class) {
++            $student = $class->student;
++            if (!$student) {
++                continue;
++            }
++
++            $campusId  = (int) ($student->CampusID ?? 0);
++            $remaining = (int) ($class->RemainingSessions ?? 0);
++            $subject   = (string) ($class->Subject ?: '課程');
++            $severity  = $remaining <= 1 ? 'high' : 'medium';
++
++            $sourceKey = "low_sessions:{$campusId}:{$class->ID}";
++            $rows[$sourceKey] = [
++                'CampusID'   => $campusId,
++                'Type'       => 'low_sessions',
++                'Severity'   => $severity,
++                'Title'      => "⚠️ {$student->name} {$subject} 剩餘堂數不足",
++                'Body'       => "剩餘 {$remaining} 堂，請盡快安排續課或加購堂數。",
++                'SourceType' => 'StudentClass',
++                'SourceID'   => (string) $class->ID,
++                'SourceKey'  => $sourceKey,
++                'Payload'    => [
++                    'student_id'         => (int) $student->id,
++                    'student_name'       => (string) $student->name,
++                    'class_id'           => (int) $class->ID,
++                    'subject'            => $subject,
++                    'remaining_sessions' => $remaining,
++                    'paid'               => (bool) $class->Paid,
++                ],
++                'OccurredAt' => now(),
++                'ResolvedAt' => null,
++            ];
++        }
++
++        return $rows;
++    }
++
+     /**
+      * @param  array<int>  $campusIds
+      * @return array<string, array<string, mixed>>
+diff --git a/backend/app/Services/TeacherScopeService.php b/backend/app/Services/TeacherScopeService.php
+index be88dec..e446788 100644
+--- a/backend/app/Services/TeacherScopeService.php
++++ b/backend/app/Services/TeacherScopeService.php
+@@ -70,7 +70,15 @@ class TeacherScopeService
+ 
+         $warnings = [];
+ 
+-        $subjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name') ?? "科目#{$subjectId}";
++        $rawSubjectName = DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
++            ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val');
++        $subjectDisplayNames = [
++            'Chinese' => '國文', 'English' => '英文', 'Math' => '數學',
++            'Physics' => '物理', 'Chemistry' => '化學', 'Science' => '理化',
++            'Biology' => '生物', 'Social' => '社會',
++        ];
++        $subjectName = ($rawSubjectName ? ($subjectDisplayNames[$rawSubjectName] ?? $rawSubjectName) : null)
++            ?? "科目#{$subjectId}";
+         $teacherName = DB::table('User')->where('id', $teacherId)->value('Name') ?? "老師#{$teacherId}";
+         $levelLabel = $level ? (self::LEVEL_LABELS[$level] ?? $level) : '未知學段';
+ 
+diff --git a/backend/bootstrap/cache/packages.php b/backend/bootstrap/cache/packages.php
+index d9d090e..8662ff2 100755
+--- a/backend/bootstrap/cache/packages.php
++++ b/backend/bootstrap/cache/packages.php
+@@ -31,11 +31,4 @@
+       0 => 'Carbon\\Laravel\\ServiceProvider',
+     ),
+   ),
+-  'nunomaduro/collision' => 
+-  array (
+-    'providers' => 
+-    array (
+-      0 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+-    ),
+-  ),
+ );
+\ No newline at end of file
+diff --git a/backend/bootstrap/cache/services.php b/backend/bootstrap/cache/services.php
+index 5363119..e44461b 100755
+--- a/backend/bootstrap/cache/services.php
++++ b/backend/bootstrap/cache/services.php
+@@ -23,9 +23,8 @@
+     19 => 'Laravel\\Tinker\\TinkerServiceProvider',
+     20 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+     21 => 'Carbon\\Laravel\\ServiceProvider',
+-    22 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+-    23 => 'App\\Providers\\AppServiceProvider',
+-    24 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
++    22 => 'App\\Providers\\AppServiceProvider',
++    23 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+   ),
+   'eager' => 
+   array (
+@@ -41,9 +40,8 @@
+     9 => 'Laravel\\Sanctum\\SanctumServiceProvider',
+     10 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+     11 => 'Carbon\\Laravel\\ServiceProvider',
+-    12 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
+-    13 => 'App\\Providers\\AppServiceProvider',
+-    14 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
++    12 => 'App\\Providers\\AppServiceProvider',
++    13 => 'Maatwebsite\\Excel\\ExcelServiceProvider',
+   ),
+   'deferred' => 
+   array (
+diff --git a/backend/public/index.html b/backend/public/index.html
+index 8ffd0c0..d36fb05 100644
+--- a/backend/public/index.html
++++ b/backend/public/index.html
+@@ -10,8 +10,8 @@
+     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+     <!-- LINE LIFF SDK (only loaded when parent portal is opened via LINE) -->
+     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+-    <script type="module" crossorigin src="./assets/index-DyU68Qw5.js"></script>
+-    <link rel="stylesheet" crossorigin href="./assets/index-CPIT8nov.css">
++    <script type="module" crossorigin src="./assets/index-H9am4LkW.js"></script>
++    <link rel="stylesheet" crossorigin href="./assets/index-VyMzq3yY.css">
+   </head>
+   <body>
+     <div id="app"></div>
+diff --git a/backend/tests/Feature/EnrollmentApiTest.php b/backend/tests/Feature/EnrollmentApiTest.php
+index eaa7daa..64d4e7b 100644
+--- a/backend/tests/Feature/EnrollmentApiTest.php
++++ b/backend/tests/Feature/EnrollmentApiTest.php
+@@ -218,6 +218,52 @@ class EnrollmentApiTest extends TestCase
+         $this->assertEquals(3, (int) $sc->TotalHours);
+     }
+ 
++    public function test_enrollment_defaults_to_session_pricing_without_explicit_rate_unit(): void
++    {
++        $token = $this->createDirectorToken([1], 'director-enrollment-default-rate@example.com');
++        $teacherId = $this->createTeacher(1, 'teacher-enrollment-default-rate@example.com');
++
++        $tue = now()->addDays(1);
++        while ((int) $tue->dayOfWeekIso !== 2) { $tue->addDay(); }
++        $thu = $tue->copy()->addDays(2);
++
++        $response = $this->withHeaders([
++            'Authorization' => "Bearer {$token}",
++            'Accept' => 'application/json',
++        ])->postJson('/api/v1/enrollments', [
++            'branch_id' => 1,
++            'student' => [
++                'name' => '預設堂費測試',
++                'grade' => 'J2',
++            ],
++            'teacher_id' => $teacherId,
++            'subject' => 'Math',
++            'class_type' => 'one_on_one',
++            'confirmed_dates' => [],
++            'future_dates' => [$tue->toDateString(), $thu->toDateString()],
++            'days_of_week' => [2, 4],
++            'day_time_slots' => [
++                ['day' => 2, 'start_time' => '16:00', 'duration_minutes' => 120],
++                ['day' => 4, 'start_time' => '16:00', 'duration_minutes' => 60],
++            ],
++            'start_time' => '16:00',
++            'duration_minutes' => 120,
++            // no rate_unit on purpose: should stay session pricing
++            'price_per_session' => 600,
++            'payment_type' => 'session',
++            'total_classes' => 2,
++            'mode' => 'enrollment',
++        ]);
++
++        $response->assertCreated();
++        $studentClassId = (int) ($response->json('student_class_id') ?? 0);
++        $this->assertTrue($studentClassId > 0);
++
++        $sc = \App\Models\StudentClass::find($studentClassId);
++        $this->assertEquals('session', $sc->rate_unit);
++        $this->assertEquals(1200, (int) $sc->Charge);
++    }
++
+     /**
+      * @param  array<int>  $campusIds
+      */
+diff --git a/backend/tests/Feature/NotificationApiTest.php b/backend/tests/Feature/NotificationApiTest.php
+index cdd5836..a0039e3 100644
+--- a/backend/tests/Feature/NotificationApiTest.php
++++ b/backend/tests/Feature/NotificationApiTest.php
+@@ -196,7 +196,7 @@ class NotificationApiTest extends TestCase
+             ->assertJsonCount(1, 'data');
+     }
+ 
+-    public function test_tuition_alert_endpoint_excludes_paid_classes_even_with_zero_remaining_sessions(): void
++    public function test_tuition_alert_endpoint_includes_low_sessions_even_when_paid(): void
+     {
+         $token = $this->createDirectorToken([1], 'director-alerts@example.com');
+ 
+@@ -209,8 +209,9 @@ class NotificationApiTest extends TestCase
+             'Notify_Token' => '',
+         ]);
+ 
+-        $unpaidClass = $this->createStudentClass($student->id, 0, 1, 0);
+-        $paidClass = $this->createStudentClass($student->id, 1, 1, 0);
++        $unpaidClass = $this->createStudentClass($student->id, 0, 1, 5);
++        $paidLowSessionsClass = $this->createStudentClass($student->id, 1, 1, 1);
++        $paidNormalClass = $this->createStudentClass($student->id, 1, 1, 6);
+ 
+         $res = $this->withHeaders([
+             'Authorization' => "Bearer {$token}",
+@@ -223,7 +224,57 @@ class NotificationApiTest extends TestCase
+ 
+         $ids = collect($data)->pluck('id')->map(fn ($id) => (int) $id)->all();
+         $this->assertContains((int) $unpaidClass->ID, $ids);
+-        $this->assertNotContains((int) $paidClass->ID, $ids);
++        $this->assertContains((int) $paidLowSessionsClass->ID, $ids);
++        $this->assertNotContains((int) $paidNormalClass->ID, $ids);
++    }
++
++    public function test_unread_count_sync_resolves_paid_tuition_notifications(): void
++    {
++        $token = $this->createDirectorToken([1], 'director-unread-sync@example.com');
++
++        $student = Student::create([
++            'name' => '同步學生',
++            'CampusID' => 1,
++            'ClassID' => 1,
++            'enable' => 1,
++            'MDT' => now(),
++            'Notify_Token' => '',
++        ]);
++
++        $class = $this->createStudentClass($student->id, 0, 1, 5);
++        Notification::create([
++            'CampusID' => 1,
++            'Type' => 'tuition',
++            'Severity' => 'high',
++            'Title' => '舊的催繳通知',
++            'Body' => '尚未同步前的舊通知',
++            'SourceType' => 'StudentClass',
++            'SourceID' => (string) $class->ID,
++            'SourceKey' => "tuition:1:{$class->ID}",
++            'Payload' => ['class_id' => (int) $class->ID],
++            'OccurredAt' => now(),
++            'ResolvedAt' => null,
++        ]);
++
++        $class->Paid = 1;
++        $class->save();
++
++        $response = $this->withHeaders([
++            'Authorization' => "Bearer {$token}",
++            'Accept' => 'application/json',
++        ])->getJson('/api/v1/notifications/unread-count?branch_id=1');
++
++        $response->assertOk();
++        $response->assertJsonPath('unread_count', 0);
++        $response->assertJsonMissingPath('by_type.tuition');
++
++        $this->assertDatabaseHas('Notifications', [
++            'SourceKey' => "tuition:1:{$class->ID}",
++        ]);
++        $this->assertDatabaseMissing('Notifications', [
++            'SourceKey' => "tuition:1:{$class->ID}",
++            'ResolvedAt' => null,
++        ]);
+     }
+ 
+     private function createDirectorToken(array $campusIds, string $loginName = 'director@example.com'): string
+diff --git a/docs/OPERATIONS_RUNBOOK.md b/docs/OPERATIONS_RUNBOOK.md
+index 7b9c198..f5c22e0 100644
+--- a/docs/OPERATIONS_RUNBOOK.md
++++ b/docs/OPERATIONS_RUNBOOK.md
+@@ -31,6 +31,7 @@ From previous incidents:
+ - Missing `server.php` or `public/.htaccess` broke API routing/runtime.
+ - Wrong DB credentials in `backend/.env` caused full API failure.
+ - Wrong file ownership in frontend build dirs caused deploy/build failures.
++- `GET /api/v1/alerts/tuition` 曾被誤改成只回傳「未繳費」，導致主任儀表板看不到「剩餘 <= 2 堂」提醒（regression）。
+ 
+ **2026-04-10 事故教訓（分校選單 / 學生資料消失 / 全 API 500）**：
+ - `Campus.id` 在 DB 中不是從 1 連續排列（興隆=17, 新店=9, 大安=15, 木柵=16…），**任何修改分校 ID 前必須先查 DB**。
+@@ -38,6 +39,16 @@ From previous incidents:
+ - `「資料消失」通常不是真的被刪除`：先查 DB 筆數 (`SELECT COUNT(*) FROM Student`)，再確認前端 `branch_id` 與真實 `Campus.id` 對應是否正確。
+ - **全 API 500 的第一步永遠是清 bootstrap cache**（見下方 H 節）。
+ 
++**2026-04-10 事故教訓（剩餘堂數提醒消失）**：
++- `GET /api/v1/alerts/tuition` 的契約不可縮減：必須同時涵蓋
++  - `alert_type = unpaid`（未繳費）
++  - `alert_type = low_sessions`（`RemainingSessions > 0 && <= 2`）
++- `frontend/src/pages/DirectorDashboard.vue` 的「繳費提醒」區塊依賴上述兩種提醒；若 API 只剩其中一種，畫面會出現「通知消失」誤判。
++- 修改 `AlertController` 或 `NotificationSyncService` 的提醒條件後，務必做以下回歸：
++  1. unpaid + 剩餘堂數正常（應顯示）
++  2. paid + 剩餘 1–2 堂（應顯示）
++  3. paid + 剩餘 >2 堂（不顯示）
++
+ ## D. Recovery SOP (website looks old / API broken)
+ 
+ 1. Confirm current code branch and latest commit:
+@@ -161,3 +172,17 @@ ls -la backend/.env
+ - `docs/INCIDENT_2026-04-10_GITHUB_AND_SITE_ROLLBACK.md`
+ - `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`（分校選單 / 學生消失 / 全 API 500）
+ 
++---
++
++## J. Pricing Contract（避免每堂費用再次誤算）
++
++**2026-04-10 回歸教訓（課程費用）**：
++- `price_per_session` / `rate_per_30min` 在課程管理預設語意是「每堂費用」，不是每小時費用。
++- 只有在 API 請求明確傳入 `rate_unit=hour` 時，才可使用時薪計價。
++- 不可依 `day_time_slots` 是否有 `duration_minutes` 自動推斷成時薪，否則會把堂費再次乘上時數，造成總費用膨脹。
++
++**開發檢查點（改排課/收費前必看）**：
++1. 若是堂數制：`Charge = 每堂費用 × SessionCount`。
++2. 若是時薪制（需明確 `rate_unit=hour`）：`Charge = 時薪 × 各堂時數總和`。
++3. PR 必須包含至少一個 regression test，覆蓋「未傳 `rate_unit` 時維持堂費」情境。
++
+diff --git a/frontend/src/components/CourseEditForm.vue b/frontend/src/components/CourseEditForm.vue
+index e3b2bd7..5991aea 100644
+--- a/frontend/src/components/CourseEditForm.vue
++++ b/frontend/src/components/CourseEditForm.vue
+@@ -288,7 +288,10 @@ function syncDayTimeSlotsFromSelection() {
+       .filter(([day]) => day >= 1 && day <= 7)
+   );
+   const firstSlot = existing.size > 0 ? [...existing.values()][0] : null;
+-  const baseTime = firstSlot ? String(firstSlot.start_time || '16:00').slice(0, 5) : '16:00';
++  const parentStartTime = String(form.start_time || '').slice(0, 5);
++  const baseTime = firstSlot
++    ? String(firstSlot.start_time || '16:00').slice(0, 5)
++    : (parentStartTime || '16:00');
+   form.day_time_slots = sortedSelectedDays.value.map((day) => {
+     const ex = existing.get(day);
+     return {
+diff --git a/frontend/src/components/UniversalClassScheduler.vue b/frontend/src/components/UniversalClassScheduler.vue
+index dd2350f..295b523 100644
+--- a/frontend/src/components/UniversalClassScheduler.vue
++++ b/frontend/src/components/UniversalClassScheduler.vue
+@@ -866,14 +866,17 @@ async function submit() {
+ }
+ 
+ .weekday-chip {
++  position: relative;
+   display: inline-flex;
+   align-items: center;
+-  gap: 6px;
++  justify-content: center;
++  min-width: 58px;
+   padding: 7px 11px;
+   border-radius: 999px;
+   border: 1px solid #d6deeb;
+   background: #fff;
+   cursor: pointer;
++  text-align: center;
+ }
+ 
+ .weekday-chip.selected {
+@@ -881,6 +884,20 @@ async function submit() {
+   border-color: #6ea8fe;
+ }
+ 
++.weekday-chip input[type='checkbox'] {
++  position: absolute;
++  width: 0;
++  height: 0;
++  opacity: 0;
++  pointer-events: none;
++}
++
++.weekday-chip span {
++  display: inline-block;
++  white-space: nowrap;
++  line-height: 1;
++}
++
+ .weekday-slot-grid {
+   margin-top: 12px;
+   display: grid;
+diff --git a/frontend/src/lib/coursePricing.js b/frontend/src/lib/coursePricing.js
+index f150497..78c8f57 100644
+--- a/frontend/src/lib/coursePricing.js
++++ b/frontend/src/lib/coursePricing.js
+@@ -53,9 +53,18 @@ export const getRateLabel = (course) => {
+ 
+ export const getCourseTotalFee = (course) => {
+   if (!course) return 0;
++  const paymentType = String(course?.payment_type || '').toLowerCase();
++  const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
++
++  // AllTrue pricing contract:
++  // session payment mode always treats Rate as per-session fee.
++  if (paymentType === 'session') {
++    const perSession = getPerSessionFee(course);
++    return perSession * purchased;
++  }
++
+   const rateUnit = getRateUnit(course);
+   const rate = toNumber(course.rate_per_30min ?? course.Rate) ?? 0;
+-  const purchased = Math.max(0, Number(course?.sessions_purchased ?? course?.SessionCount ?? 0) || 0);
+ 
+   if (rateUnit === 'hour' && rate > 0) {
+     const slots = Array.isArray(course.day_time_slots) ? course.day_time_slots : [];
+diff --git a/frontend/src/pages/CourseManagement.vue b/frontend/src/pages/CourseManagement.vue
+index f62e33f..efbdbb4 100755
+--- a/frontend/src/pages/CourseManagement.vue
++++ b/frontend/src/pages/CourseManagement.vue
+@@ -2782,6 +2782,16 @@ const editCourse = (c) => {
+   const existingDays = Array.isArray(c.days_of_week) && c.days_of_week.length
+     ? c.days_of_week.map(Number)
+     : (c.day_of_week ? [Number(c.day_of_week)] : []);
++  const existingSlots = Array.isArray(c.day_time_slots)
++    ? c.day_time_slots
++        .map((slot) => ({
++          day: Number(slot?.day || 0),
++          start_time: normalizeTo30Min(slot?.start_time || c.start_time || '16:00'),
++          duration_hours: Number(slot?.duration_hours || c.duration_hours || 2),
++        }))
++        .filter((slot) => slot.day >= 1 && slot.day <= 7)
++        .sort((a, b) => a.day - b.day)
++    : [];
+   editForm.value = {
+     subject: c.subject,
+     teacher_id: c.teacher_id || '',
+@@ -2791,6 +2801,7 @@ const editCourse = (c) => {
+     sessions_purchased: c.sessions_purchased ?? 8,
+     remaining_sessions: c.remaining_sessions ?? 0,
+     days_of_week: existingDays,
++    day_time_slots: existingSlots,
+     start_time: normalizeTo30Min(c.start_time || '16:00'),
+     end_time: c.end_time || '',
+     payment_type: c.payment_type || 'session',
+diff --git a/frontend/src/pages/DirectorDashboard.vue b/frontend/src/pages/DirectorDashboard.vue
+index 1210a7e..f8638e4 100755
+--- a/frontend/src/pages/DirectorDashboard.vue
++++ b/frontend/src/pages/DirectorDashboard.vue
+@@ -1,145 +1,276 @@
+ <template>
+   <div>
+-    <!-- 主任尚未有分校權限時提示 -->
+-    <div v-if="branchId == null" class="card" style="max-width: 480px; margin: 2rem auto; padding: 2rem; text-align: center;">
+-      <h2 style="margin-bottom: 1rem;">📌 尚無分校資料</h2>
+-      <p style="color: var(--text-light);">系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
+-      <p style="margin-top: 1rem; font-size: 0.9rem;">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
++    <div v-if="branchId == null" class="card no-branch-card">
++      <h2>尚無分校資料</h2>
++      <p>系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
++      <p class="hint">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
+     </div>
+ 
+     <template v-else>
+-    <div class="dashboard-container">
+-      <div class="card summary-stats" data-guide="director-summary">
+-        <h3>{{ branchName }} — 總覽 (Overview)</h3>
+-        <div class="stats-grid">
+-          <div class="stat-item danger-glow">
+-            <div class="stat-icon">⚠️</div>
+-            <label>未繳費提醒</label>
+-            <div class="value red">{{ lowBalanceStudents.length }}</div>
+-          </div>
+-          <div class="stat-item">
+-            <div class="stat-icon">📊</div>
+-            <label>今日課程</label>
+-            <div class="value">{{ todaySchedules.length }}</div>
+-            <div class="value-sub">待到班：{{ pendingAttendanceCount }}</div>
+-          </div>
+-          <div class="stat-item">
+-            <div class="stat-icon">📝</div>
+-            <label>待審核評量</label>
+-            <div class="value">{{ pendingEvaluations.length }}</div>
+-          </div>
+-          <div class="stat-item">
+-            <div class="stat-icon">📊</div>
+-            <label>本月總科目數（含輔導）</label>
+-            <div class="value">{{ monthlySubjectCountWith }}</div>
+-            <div class="value-sub">不含輔導：{{ monthlySubjectCountWithout }}</div>
+-          </div>
++      <div class="dash">
++        <!-- ===== Header ===== -->
++        <div class="dash-header">
++          <h2 class="dash-title">{{ branchName }}</h2>
++          <span class="dash-date">{{ todayDisplay }}</span>
+         </div>
+-      </div>
+ 
+-      <div class="dashboard-columns">
+-        <!-- Left: Payment Alerts & Attendance -->
+-        <div class="column">
+-          <h3>1. 繳費通知與排課</h3>
+-
+-          <div class="section-box" data-guide="director-alerts">
+-            <h4>⚠️ 未繳費提醒（已繳費不通知）</h4>
+-            <div v-if="lowBalanceStudents.length === 0" class="empty-text">無</div>
+-            <div v-for="s in lowBalanceStudents" :key="s.id" class="alert-item">
+-              <span>{{ s.name }}</span>
+-              <span class="badge-red">{{ s.remaining_lessons }} 堂</span>
+-              <button class="copy-btn" :title="'複製 ' + s.name + ' 的繳費通知'" @click="copyPaymentMessage(s)">📋 複製</button>
++        <!-- ===== Layer 1: Action Lane ===== -->
++        <section class="action-lane" data-guide="director-summary">
++          <div v-if="pendingAttendanceCount > 0"
++               class="ac ac--attend" tabindex="0"
++               @click="goToAttendance" @keydown.enter="goToAttendance">
++            <span class="material-symbols-outlined ac__icon">schedule</span>
++            <div class="ac__body">
++              <span class="ac__count">{{ pendingAttendanceCount }}</span>
++              <span class="ac__label">堂待到班</span>
+             </div>
++            <button class="ac__cta" @click.stop="goToAttendance">前往點名</button>
+           </div>
+ 
+-          <div class="section-box">
+-            <h4>🔔 通知中心摘要</h4>
+-            <div class="summary-row">
+-              <span>未讀通知</span>
+-              <span class="badge-orange">{{ unreadNotificationCount }}</span>
++          <div v-if="lowBalanceStudents.length > 0"
++               class="ac ac--pay" tabindex="0"
++               @click="scrollTo('payments')" @keydown.enter="scrollTo('payments')">
++            <span class="material-symbols-outlined ac__icon">payments</span>
++            <div class="ac__body">
++              <span class="ac__count">{{ lowBalanceStudents.length }}</span>
++              <span class="ac__label">筆待催繳</span>
+             </div>
+-            <div v-if="notificationSummary.length === 0" class="empty-text">目前無未讀通知</div>
+-            <div v-for="n in notificationSummary" :key="n.id" class="alert-item">
+-              <span>{{ n.title }}</span>
+-              <span class="badge-blue">{{ n.typeLabel }}</span>
++            <button class="ac__cta" @click.stop="scrollTo('payments')">查看催繳</button>
++          </div>
++
++          <div v-if="pendingEvaluations.length > 0"
++               class="ac ac--eval" tabindex="0"
++               @click="scrollTo('evals')" @keydown.enter="scrollTo('evals')">
++            <span class="material-symbols-outlined ac__icon">rate_review</span>
++            <div class="ac__body">
++              <span class="ac__count">{{ pendingEvaluations.length }}</span>
++              <span class="ac__label">筆待審核</span>
+             </div>
+-            <div class="summary-actions">
+-              <button class="primary xs" @click="goToNotifications">前往通知中心</button>
++            <button class="ac__cta" @click.stop="scrollTo('evals')">去審核</button>
++          </div>
++
++          <div class="ac ac--import" tabindex="0"
++               @click="triggerImport" @keydown.enter="triggerImport">
++            <span class="material-symbols-outlined ac__icon">upload_file</span>
++            <div class="ac__body">
++              <span class="ac__label">匯入學生</span>
++              <span class="ac__sub">CSV / Excel</span>
+             </div>
++            <button class="ac__cta" :disabled="importState === 'uploading'" @click.stop="triggerImport">
++              {{ importState === 'uploading' ? '上傳中...' : '選擇檔案' }}
++            </button>
++            <input ref="importFileInput" type="file" accept=".csv,.xlsx,.txt"
++                   style="display:none" @change="handleImportFile" />
+           </div>
+ 
+-          <div class="section-box">
+-            <h4>📅 今日課表與到班處理</h4>
+-            <p class="hint">這裡顯示今天所有課程；「到班」代表已報到，「請假」代表該堂取消。</p>
+-            <div v-if="todaySchedules.length === 0" class="empty-text">無課程</div>
+-            <div v-for="schedule in todaySchedules" :key="schedule.id" class="mini-task-card">
+-              <div class="row">
+-                <strong>{{ formatTime(schedule.start_time) }}</strong>
+-                <span>{{ schedule.student_name || schedule.student?.name || '—' }}</span>
+-                <span class="tag">{{ schedule.subject || schedule.subject_name || '課程' }}</span>
++          <div v-if="allClearActionLane" class="ac ac--clear">
++            <span class="material-symbols-outlined ac__icon">check_circle</span>
++            <div class="ac__body">
++              <span class="ac__label">今日待辦已處理完畢</span>
++            </div>
++          </div>
++        </section>
++
++        <!-- ===== Import Result Banner ===== -->
++        <div v-if="importState === 'done' || importState === 'error'"
++             class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
++          <div class="import-banner__head">
++            <strong>{{ importState === 'error' ? '匯入失敗' : '匯入完成' }}</strong>
++            <button class="import-banner__x" @click="dismissImport">&times;</button>
++          </div>
++          <div v-if="importState === 'done'" class="import-banner__stats">
++            <span class="ib-chip ib-chip--ok">新增 {{ importResult.created }}</span>
++            <span class="ib-chip ib-chip--info">更新 {{ importResult.updated }}</span>
++            <span class="ib-chip">略過 {{ importResult.skipped }}</span>
++            <span v-if="importResult.low_confidence" class="ib-chip ib-chip--warn">
++              低信心 {{ importResult.low_confidence }}
++            </span>
++            <span v-if="importResult.errors.length" class="ib-chip ib-chip--err">
++              錯誤 {{ importResult.errors.length }}
++            </span>
++          </div>
++          <div v-if="importResult.errors.length" class="import-banner__list">
++            <div v-for="(e, i) in importResult.errors.slice(0, 5)" :key="i">{{ e }}</div>
++          </div>
++          <div v-if="importResult.warnings.length" class="import-banner__list import-banner__list--warn">
++            <div v-for="(w, i) in importResult.warnings.slice(0, 3)" :key="'w'+i">{{ w }}</div>
++          </div>
++          <div v-if="importState === 'error'" class="import-banner__list import-banner__list--err">
++            {{ importErrorMsg }}
++          </div>
++          <div class="import-banner__foot">
++            <button class="btn-o btn-xs" @click="triggerImport">重新匯入</button>
++            <button class="btn-o btn-xs" @click="dismissImport">關閉</button>
++          </div>
++        </div>
++
++        <!-- ===== Layer 2: Progress Board ===== -->
++        <section class="progress-board">
++          <div class="pb">
++            <span class="pb__label">今日到班</span>
++            <span class="pb__val"><strong>{{ attendedCount }}</strong><small> / {{ todaySchedules.length }}</small></span>
++            <div class="pb__bar"><div class="pb__fill" :style="{ width: attendancePct + '%' }"></div></div>
++          </div>
++          <div class="pb">
++            <span class="pb__label">待審評量</span>
++            <span class="pb__val"><strong>{{ pendingEvaluations.length }}</strong> <small>筆</small></span>
++          </div>
++          <div class="pb">
++            <span class="pb__label">未讀通知</span>
++            <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
++          </div>
++          <div class="pb">
++            <span class="pb__label">本月科目數</span>
++            <span class="pb__val"><strong>{{ monthlySubjectCountWith }}</strong></span>
++          </div>
++        </section>
++
++        <!-- ===== Work Area (detail panels) ===== -->
++        <div class="work-grid">
++          <div class="work-col">
++            <!-- Today Schedule -->
++            <section class="wp" id="schedule-sec">
++              <header class="wp__head">
++                <span class="material-symbols-outlined wp__hi">calendar_today</span>
++                <h3>今日課表</h3>
++                <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
++              </header>
++              <div v-if="!todaySchedules.length" class="wp__empty">今日無課程</div>
++              <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
++                <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
++                <span class="sched-row__name">{{ s.student_name || '—' }}</span>
++                <span class="sched-row__subj">{{ s.subject || s.subject_name || '' }}</span>
++                <span class="sched-row__tchr">{{ s.teacher_name || '' }}</span>
++                <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
++              </div>
++              <footer v-if="pendingAttendanceCount > 0" class="wp__foot">
++                <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
++              </footer>
++            </section>
++
++            <!-- Payment Alerts -->
++            <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
++              <header class="wp__head">
++                <span class="material-symbols-outlined wp__hi">warning</span>
++                <h3>繳費提醒</h3>
++                <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
++              </header>
++              <div v-if="!lowBalanceStudents.length" class="wp__empty">全數已繳，無需催繳</div>
++              <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
++                <div class="pay-row__info">
++                  <span class="pay-row__name">{{ s.name }}</span>
++                  <span :class="s.alert_type === 'low_sessions' ? 'badge-orange' : 'badge-red'">
++                    {{ s.remaining_lessons }} 堂
++                  </span>
++                </div>
++                <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
+               </div>
+-              <div class="row right" v-if="schedule.status === 'scheduled'">
+-                <button class="primary xs" @click="goToAttendance">前往出缺勤處理</button>
++              <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="wp__foot">
++                <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
++                  {{ showAllPayments ? '收合' : `顯示全部 (${lowBalanceStudents.length})` }}
++                </button>
++              </footer>
++            </section>
++          </div>
++
++          <div class="work-col">
++            <!-- Pending Evaluations -->
++            <section class="wp" id="evals-sec" data-guide="director-pending-evals">
++              <header class="wp__head">
++                <span class="material-symbols-outlined wp__hi">assignment</span>
++                <h3>待審核評量</h3>
++                <span v-if="pendingEvaluations.length" class="wp__badge">{{ pendingEvaluations.length }}</span>
++              </header>
++              <p class="wp__hint">核准後老師科目數自動累計</p>
++              <div v-if="!pendingEvaluations.length" class="wp__empty">無待審核評量</div>
++              <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
++                <div class="eval-card__top">
++                  <strong>{{ ev.student_name }}</strong>
++                  <span class="eval-card__tag">{{ ev.Subject }}</span>
++                  <span class="eval-card__tchr">{{ ev.teacher_name }}</span>
++                </div>
++                <div class="eval-card__mid">
++                  <span>{{ ev.SessionDate }}</span>
++                  <span v-if="ev.Progress"> &middot; {{ ev.Progress }}</span>
++                </div>
++                <div v-if="ev.Comment" class="eval-card__comment">{{ ev.Comment }}</div>
++                <div class="eval-card__acts">
++                  <button class="btn-p btn-sm" @click="approveEvaluation(ev)">核准</button>
++                  <button class="btn-d btn-sm" @click="rejectEvaluation(ev)">退回</button>
++                </div>
+               </div>
+-              <div class="row right" v-else>
+-                <span class="status-text">{{ formatScheduleStatus(schedule.status) }}</span>
++              <footer v-if="pendingEvaluations.length" class="wp__foot">
++                <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
++              </footer>
++            </section>
++
++            <!-- Notifications -->
++            <section class="wp">
++              <header class="wp__head">
++                <span class="material-symbols-outlined wp__hi">notifications</span>
++                <h3>通知摘要</h3>
++                <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
++              </header>
++              <div v-if="!notificationSummary.length" class="wp__empty">目前無未讀通知</div>
++              <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
++                <span>{{ n.title }}</span>
++                <span class="badge-blue">{{ n.typeLabel }}</span>
+               </div>
+-            </div>
++              <footer class="wp__foot">
++                <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
++              </footer>
++            </section>
+           </div>
+         </div>
+ 
+-        <!-- Center: Evaluation Review -->
+-        <div class="column" data-guide="director-pending-evals">
+-          <h3>2. 待審核學習評量</h3>
+-          <p class="hint">核准後老師科目數自動累計。</p>
+-          <div v-if="pendingEvaluations.length === 0" class="empty-text">無待審核評量</div>
+-          <div v-for="evalItem in pendingEvaluations" :key="evalItem.id" class="review-card">
+-            <div class="card-header">
+-              <strong>{{ evalItem.student_name }}</strong>
+-              <span class="tag">{{ evalItem.Subject }}</span>
+-              <span class="teacher-name">{{ evalItem.teacher_name }}</span>
+-            </div>
+-            <div class="card-body">
+-              <p><strong>日期:</strong> {{ evalItem.SessionDate }}</p>
+-              <p v-if="evalItem.Progress"><strong>進度:</strong> {{ evalItem.Progress }}</p>
+-              <p v-if="evalItem.Comment"><strong>評語:</strong> {{ evalItem.Comment }}</p>
++        <!-- ===== Layer 3: KPI Panel (collapsed by default) ===== -->
++        <details class="kpi" data-guide="director-teacher-stats">
++          <summary class="kpi__sum">
++            <span class="material-symbols-outlined kpi__sum-icon">analytics</span>
++            <span>經營指標 — 本月科目數統計</span>
++            <span class="kpi__sum-hint">{{ monthlySubjectCountWith }} 科目數</span>
++            <span class="kpi__chev">&#x25BE;</span>
++          </summary>
++          <div class="kpi__body">
++            <div class="kpi-totals">
++              <div class="kpi-t">
++                <div class="kpi-t__label">含輔導科目數</div>
++                <div class="kpi-t__val">{{ monthlySubjectCountWith }}</div>
++              </div>
++              <div class="kpi-t">
++                <div class="kpi-t__label">不含輔導</div>
++                <div class="kpi-t__val">{{ monthlySubjectCountWithout }}</div>
++              </div>
+             </div>
+-            <div class="card-actions">
+-              <button class="primary small" @click="approveEvaluation(evalItem)">核准</button>
+-              <button class="danger small" style="margin-left:6px;" @click="rejectEvaluation(evalItem)">退回</button>
++
++            <table v-if="teacherStats.length" class="kpi-table">
++              <thead>
++                <tr><th>老師</th><th>含輔導</th><th>不含輔導</th><th>時數</th></tr>
++              </thead>
++              <tbody>
++                <tr v-for="t in teacherStats" :key="t.id">
++                  <td>{{ t.name }}</td>
++                  <td><strong>{{ t.subjectCountWith }}</strong></td>
++                  <td>{{ t.subjectCountWithout }}</td>
++                  <td>{{ t.totalHours }}h</td>
++                </tr>
++              </tbody>
++            </table>
++
++            <div v-if="levelBreakdownTotals.length" class="level-chips">
++              <span v-for="lb in levelBreakdownTotals" :key="'lv-'+lb.level" class="level-chip">
++                {{ lb.levelLabel }}：{{ lb.totalHours }}h / {{ lb.unitsWith }} 科目數
++              </span>
+             </div>
+-          </div>
+-        </div>
+ 
+-        <!-- Right: Teacher Stats -->
+-        <div class="column" data-guide="director-teacher-stats">
+-          <h3>3. 老師科目數統計 (Stats)</h3>
+-          <p class="hint">本月累計（詳細請至「科目數統計」頁面）</p>
+-          <table class="simple-table">
+-            <thead>
+-              <tr>
+-                <th>老師</th>
+-                <th>含輔導科目數</th>
+-                <th>不含輔導科目數</th>
+-              </tr>
+-            </thead>
+-            <tbody>
+-              <tr v-for="stat in teacherStats" :key="stat.id">
+-                <td>{{ stat.name }}</td>
+-                <td><strong>{{ stat.subjectCountWith }}</strong></td>
+-                <td><strong>{{ stat.subjectCountWithout }}</strong></td>
+-              </tr>
+-            </tbody>
+-          </table>
+-
+-          <div v-if="levelBreakdownTotals.length > 0" class="level-chips">
+-            <span v-for="lb in levelBreakdownTotals" :key="'lv-'+lb.level" class="level-chip">
+-              {{ lb.levelLabel }}：{{ lb.totalHours }}h / {{ lb.unitsWith }} 科目數
+-            </span>
++            <div class="kpi__link">
++              <button class="btn-o btn-sm" @click="emit('navigate', { target: 'subject-units' })">
++                前往科目數統計頁面
++              </button>
++            </div>
+           </div>
+-        </div>
++        </details>
+       </div>
+-    </div>
+     </template>
+   </div>
+ </template>
+@@ -158,38 +289,68 @@ const emit = defineEmits(['navigate']);
+ const todaySchedules = ref([]);
+ const pendingEvaluations = ref([]);
+ const teacherStats = ref([]);
+-const subjectTotals = ref({
+-  subjectCountWith: 0,
+-  subjectCountWithout: 0,
+-});
++const subjectTotals = ref({ subjectCountWith: 0, subjectCountWithout: 0 });
+ const levelBreakdownTotals = ref([]);
+ const lowBalanceStudents = ref([]);
+ const unreadNotificationCount = ref(0);
+ const notificationSummary = ref([]);
++const showAllPayments = ref(false);
++const paymentAlertLimit = 5;
+ 
+-const branchName = computed(() => {
+-  return getBranchName(props.branchId);
++const importFileInput = ref(null);
++const importState = ref('idle');
++const importResult = ref({ created: 0, updated: 0, skipped: 0, errors: [], warnings: [], low_confidence: 0 });
++const importErrorMsg = ref('');
++
++const branchName = computed(() => getBranchName(props.branchId));
++
++const todayDisplay = computed(() => {
++  const d = new Date();
++  const days = ['日', '一', '二', '三', '四', '五', '六'];
++  const y = d.getFullYear();
++  const m = String(d.getMonth() + 1).padStart(2, '0');
++  const day = String(d.getDate()).padStart(2, '0');
++  return `${y}/${m}/${day} (${days[d.getDay()]})`;
+ });
+ 
+-const pendingAttendanceCount = computed(() => {
+-  return todaySchedules.value.filter(s => s.status === 'scheduled').length;
++const pendingAttendanceCount = computed(() =>
++  todaySchedules.value.filter(s => s.status === 'scheduled').length
++);
++
++const attendedCount = computed(() =>
++  todaySchedules.value.filter(s => s.status === 'attended').length
++);
++
++const attendancePct = computed(() => {
++  const total = todaySchedules.value.length;
++  return total ? Math.round((attendedCount.value / total) * 100) : 0;
+ });
+ 
+-const monthlySubjectCountWith = computed(() => Number(subjectTotals.value.subjectCountWith || 0).toFixed(2));
+-const monthlySubjectCountWithout = computed(() => Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2));
++const monthlySubjectCountWith = computed(() =>
++  Number(subjectTotals.value.subjectCountWith || 0).toFixed(2)
++);
++const monthlySubjectCountWithout = computed(() =>
++  Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2)
++);
+ 
+-const formatTime = (timeStr) => {
+-  // start_time is already a simple "HH:MM" string
+-  return timeStr || '--:--';
+-};
++const allClearActionLane = computed(() =>
++  pendingAttendanceCount.value === 0
++  && lowBalanceStudents.value.length === 0
++  && pendingEvaluations.value.length === 0
++);
++
++const displayPaymentAlerts = computed(() =>
++  showAllPayments.value
++    ? lowBalanceStudents.value
++    : lowBalanceStudents.value.slice(0, paymentAlertLimit)
++);
++
++const formatTime = (timeStr) => timeStr || '--:--';
+ 
+ const formatScheduleStatus = (status) => {
+   const map = {
+-    scheduled: '待到班',
+-    attended: '已到班',
+-    completed: '已下課',
+-    cancelled: '已取消',
+-    leave: '已請假',
++    scheduled: '待到班', attended: '已到班', completed: '已下課',
++    cancelled: '已取消', leave: '已請假',
+   };
+   return map[String(status || '').toLowerCase()] || String(status || '—');
+ };
+@@ -202,32 +363,30 @@ const localTodayYmd = () => {
+   return `${y}-${m}-${day}`;
+ };
+ 
++const getToken = () => {
++  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
++  return session?.access_token || '';
++};
++const getBaseUrl = () => import.meta.env.VITE_API_BASE || '/api';
++
+ const loadData = async () => {
+   if (!props.branchId) return;
+ 
+-  // Load unpaid tuition alerts directly from the AlertController backend
+-  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+-  const token = session?.access_token || '';
+-  const baseUrl = import.meta.env.VITE_API_BASE || '/api';
++  const token = getToken();
++  const baseUrl = getBaseUrl();
+ 
+   try {
+     const alertsParams = new URLSearchParams({ branch_id: String(props.branchId) });
+-    const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams.toString()}`, {
+-      headers: {
+-        'Authorization': `Bearer ${token}`,
+-        'Accept': 'application/json',
+-      }
++    const alertsResp = await fetch(`${baseUrl}/v1/alerts/tuition?${alertsParams}`, {
++      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+     });
+-
+     if (alertsResp.ok) {
+       const alertsJson = await alertsResp.json();
+-      // AlertController returns a plain array; support both array and { low_balance: [...] }
+       const alertList = Array.isArray(alertsJson) ? alertsJson : (alertsJson.low_balance || []);
+       const currentBranchId = Number(props.branchId) || 0;
+       lowBalanceStudents.value = alertList
+         .filter(c => {
+           if (!c.student_name) return false;
+-          // Defensive frontend guard: keep current-branch data only.
+           const campusId = Number(c.campus_id ?? c.CampusID ?? 0);
+           return !currentBranchId || !campusId || campusId === currentBranchId;
+         })
+@@ -236,7 +395,8 @@ const loadData = async () => {
+           student_id: c.student_id || null,
+           raw_name: c.student_name,
+           name: `${c.student_name} — ${c.subject || getSubjectLabel(c.SubjectID) || ''}`,
+-          remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0
++          remaining_lessons: c.remaining_sessions ?? c.RemainingSessions ?? 0,
++          alert_type: c.alert_type || 'unpaid',
+         }));
+     }
+   } catch (err) {
+@@ -245,27 +405,19 @@ const loadData = async () => {
+ 
+   await loadNotificationSummary(token, baseUrl);
+ 
+-  // Today's schedules: use ClassSession as source of truth (no time-gating).
+-  // If API fails, fallback to legacy schedules table.
+   const today = localTodayYmd();
+   try {
+     const params = new URLSearchParams({
+-      branch_id: String(props.branchId),
+-      start: today,
+-      end: today,
+-      per_page: '500',
++      branch_id: String(props.branchId), start: today, end: today, per_page: '500',
+     });
+-    const res = await fetch(`${baseUrl}/v1/class-sessions?${params.toString()}`, {
+-      headers: {
+-        'Authorization': `Bearer ${token}`,
+-        'Accept': 'application/json',
+-      }
++    const res = await fetch(`${baseUrl}/v1/class-sessions?${params}`, {
++      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+     });
+     if (res.ok) {
+       const json = await res.json().catch(() => ({}));
+       const rows = Array.isArray(json?.data) ? json.data : [];
+       todaySchedules.value = rows
+-        .map((row) => ({
++        .map(row => ({
+           id: Number(row?.id || 0),
+           class_session_id: Number(row?.id || 0),
+           student_class_id: Number(row?.student_class_id || 0),
+@@ -277,29 +429,23 @@ const loadData = async () => {
+           subject: row?.subject || '',
+           subject_name: row?.subject_name || '',
+         }))
+-        .filter((s) => s.id > 0 && !['cancelled', 'leave'].includes(s.status))
++        .filter(s => s.id > 0 && !['cancelled', 'leave'].includes(s.status))
+         .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+     } else {
+       todaySchedules.value = [];
+     }
+   } catch (_) {
+-    const todayDow = new Date().getDay() || 7; // 1=Mon..7=Sun
++    const todayDow = new Date().getDay() || 7;
+     const { data: dateSchedules } = await supabase
+-      .from('schedules')
+-      .select('*')
+-      .eq('branch_id', props.branchId)
+-      .eq('schedule_date', today);
+-
++      .from('schedules').select('*')
++      .eq('branch_id', props.branchId).eq('schedule_date', today);
+     const { data: dowSchedules } = await supabase
+-      .from('schedules')
+-      .select('*')
+-      .eq('branch_id', props.branchId)
+-      .eq('day_of_week', todayDow)
++      .from('schedules').select('*')
++      .eq('branch_id', props.branchId).eq('day_of_week', todayDow)
+       .is('schedule_date', null);
+-
+-    const allTodaySchedules = [...(dateSchedules || []), ...(dowSchedules || [])];
++    const allToday = [...(dateSchedules || []), ...(dowSchedules || [])];
+     const seenIds = new Set();
+-    todaySchedules.value = allTodaySchedules
++    todaySchedules.value = allToday
+       .filter(s => {
+         if (seenIds.has(s.id)) return false;
+         seenIds.add(s.id);
+@@ -308,14 +454,14 @@ const loadData = async () => {
+       .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+   }
+ 
+-  // Pending evaluations from learning-records API
+   try {
+-    const pendingRes = await fetch(`${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending&only_due=1&per_page=50&sort=session_date`, {
+-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+-    });
++    const pendingRes = await fetch(
++      `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending&only_due=1&per_page=50&sort=session_date`,
++      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
++    );
+     if (pendingRes.ok) {
+       const pendingJson = await pendingRes.json();
+-      pendingEvaluations.value = (pendingJson.data || []);
++      pendingEvaluations.value = pendingJson.data || [];
+     }
+   } catch (err) {
+     console.error('Failed to load pending evaluations:', err);
+@@ -325,56 +471,38 @@ const loadData = async () => {
+ };
+ 
+ const notificationTypeLabel = (type) => {
+-  const map = {
+-    tuition: '繳費',
+-    learning_review: '評量',
+-    pending_swipe: '刷卡',
+-  };
++  const map = { tuition: '繳費', learning_review: '評量', pending_swipe: '刷卡', low_sessions: '堂數不足' };
+   return map[type] || '通知';
+ };
+ 
+ const loadNotificationSummary = async (token, baseUrl) => {
+   try {
+     const params = new URLSearchParams({
+-      branch_id: String(props.branchId),
+-      read: 'unread',
+-      per_page: '3',
++      branch_id: String(props.branchId), read: 'unread', per_page: '3',
+     });
+-    const res = await fetch(`${baseUrl}/v1/notifications?${params.toString()}`, {
++    const res = await fetch(`${baseUrl}/v1/notifications?${params}`, {
+       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+     });
+-    if (!res.ok) {
+-      unreadNotificationCount.value = 0;
+-      notificationSummary.value = [];
+-      return;
+-    }
++    if (!res.ok) { unreadNotificationCount.value = 0; notificationSummary.value = []; return; }
+     const json = await res.json();
+     unreadNotificationCount.value = Number(json.unread_count || 0);
+-    notificationSummary.value = (json.data || []).map((item) => ({
+-      id: item.id,
+-      title: item.Title || '通知',
+-      typeLabel: notificationTypeLabel(item.Type),
++    notificationSummary.value = (json.data || []).map(item => ({
++      id: item.id, title: item.Title || '通知', typeLabel: notificationTypeLabel(item.Type),
+     }));
+   } catch (err) {
+     console.error('Failed to load notification summary:', err);
+-    unreadNotificationCount.value = 0;
+-    notificationSummary.value = [];
++    unreadNotificationCount.value = 0; notificationSummary.value = [];
+   }
+ };
+ 
+-const goToNotifications = () => {
+-  emit('navigate', { target: 'notifications' });
+-};
+-
+-const goToAttendance = () => {
+-  emit('navigate', { target: 'attendance' });
+-};
++const goToNotifications = () => emit('navigate', { target: 'notifications' });
++const goToAttendance = () => emit('navigate', { target: 'attendance' });
+ 
+ const getSubjectLabel = (val) => {
+   const map = {
+     '1': '國文', '2': '英文', '3': '數學', '4': '理化', '5': '社會',
+-    'Chinese': '國文', 'English': '英文', 'Math': '數學',
+-    'Science': '理化', 'Physics': '物理', 'Chemistry': '化學', 'Biology': '生物', 'Social': '社會'
++    Chinese: '國文', English: '英文', Math: '數學',
++    Science: '理化', Physics: '物理', Chemistry: '化學', Biology: '生物', Social: '社會',
+   };
+   return map[val] || getSubjectText(val);
+ };
+@@ -385,49 +513,33 @@ const calculateTeacherStats = async () => {
+     const startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+     const endDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+-
+-    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+-    const token = session?.access_token || '';
+-    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+-
++    const token = getToken();
++    const baseUrl = getBaseUrl();
+     const params = new URLSearchParams({
+-      start: startDate,
+-      end: endDate,
+-      branch_id: String(props.branchId),
+-      include_level: '1',
++      start: startDate, end: endDate, branch_id: String(props.branchId), include_level: '1',
+     });
+     const res = await fetch(`${baseUrl}/v1/finance/subject-units?${params}`, {
+-      headers: {
+-        'Authorization': `Bearer ${token}`,
+-        'Accept': 'application/json',
+-      }
++      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+     });
+-
+     if (!res.ok) {
+       teacherStats.value = [];
+       subjectTotals.value = { subjectCountWith: 0, subjectCountWithout: 0 };
+       return;
+     }
+     const json = await res.json();
+-
+     subjectTotals.value = {
+       subjectCountWith: Number(json?.totals?.subject_count_with || 0),
+       subjectCountWithout: Number(json?.totals?.subject_count_without || 0),
+     };
+-
+     teacherStats.value = (json.teachers || []).map(t => ({
+-      id: t.teacher_id,
+-      name: t.teacher_name,
++      id: t.teacher_id, name: t.teacher_name,
+       subjectCountWith: Number(t.subject_count_with || 0).toFixed(2),
+       subjectCountWithout: Number(t.subject_count_without || 0).toFixed(2),
+       totalHours: Number(t.total_hours || 0),
+     })).sort((a, b) => Number(b.subjectCountWith) - Number(a.subjectCountWith));
+-
+     levelBreakdownTotals.value = (json.level_breakdown_totals || []).map(lb => ({
+-      level: lb.level,
+-      levelLabel: lb.level_label,
+-      totalHours: lb.total_hours,
+-      unitsWith: lb.subject_count_with,
++      level: lb.level, levelLabel: lb.level_label,
++      totalHours: lb.total_hours, unitsWith: lb.subject_count_with,
+     }));
+   } catch (e) {
+     console.error('Failed to load teacher stats:', e);
+@@ -439,359 +551,750 @@ const calculateTeacherStats = async () => {
+ 
+ const approveEvaluation = async (evalItem) => {
+   if (!confirm('確認核准此評量？')) return;
++  const token = getToken();
++  const baseUrl = getBaseUrl();
+   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+-  const token = session?.access_token || '';
+-  const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+   try {
+     const res = await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/approve`, {
+       method: 'POST',
+-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+-      body: JSON.stringify({ DirectorID: session?.user?.id })
++      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
++      body: JSON.stringify({ DirectorID: session?.user?.id }),
+     });
+-    if (res.ok) {
+-      loadData();
+-    } else {
+-      const err = await res.json();
+-      alert('核准失敗: ' + (err.message || ''));
+-    }
+-  } catch (e) { alert('核准失敗'); }
++    if (res.ok) { loadData(); }
++    else { const err = await res.json(); alert('核准失敗: ' + (err.message || '')); }
++  } catch { alert('核准失敗'); }
+ };
+ 
+ const rejectEvaluation = async (evalItem) => {
+   const note = prompt('退回原因：');
+   if (!note) return;
+-  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+-  const token = session?.access_token || '';
+-  const baseUrl = import.meta.env.VITE_API_BASE || '/api';
++  const token = getToken();
++  const baseUrl = getBaseUrl();
+   try {
+     await fetch(`${baseUrl}/v1/learning-records/${evalItem.id}/reject`, {
+       method: 'POST',
+-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+-      body: JSON.stringify({ ReviewNote: note })
++      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
++      body: JSON.stringify({ ReviewNote: note }),
+     });
+     loadData();
+   } catch (e) { console.error(e); }
+ };
+ 
+ const copyPaymentMessage = async (student) => {
+-  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+-  const token = session?.access_token || '';
+-  const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+-
+-  // Extract student id from the alert item (id field is the class_id, we need student id)
+-  // The lowBalanceStudents are mapped from alerts which include student_id or class_id
++  const token = getToken();
++  const baseUrl = getBaseUrl();
+   const studentId = student.student_id;
++
+   if (!studentId) {
+-    // Build a generic message from local data
+     const msg = `親愛的家長您好，\n\n${student.raw_name || student.name.split(' — ')[0]} 同學的課程剩餘 ${student.remaining_lessons} 堂，請盡速繳費，以免影響上課。\n\n如有疑問，歡迎聯繫補習班，謝謝！`;
+-    try {
+-      await navigator.clipboard.writeText(msg);
+-      alert('繳費通知已複製到剪貼簿！');
+-    } catch {
+-      prompt('請手動複製以下訊息：', msg);
+-    }
++    try { await navigator.clipboard.writeText(msg); alert('繳費通知已複製到剪貼簿！'); }
++    catch { prompt('請手動複製以下訊息：', msg); }
+     return;
+   }
+ 
+   try {
+     const res = await fetch(`${baseUrl}/v1/parent/payment-message/${studentId}`, {
+-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
++      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
+     });
+     const data = await res.json();
+     if (!res.ok) throw new Error(data.message || '取得失敗');
+-    const msg = data.message;
+-    try {
+-      await navigator.clipboard.writeText(msg);
+-      alert('繳費通知已複製到剪貼簿！');
+-    } catch {
+-      prompt('請手動複製以下訊息：', msg);
+-    }
++    try { await navigator.clipboard.writeText(data.message); alert('繳費通知已複製到剪貼簿！'); }
++    catch { prompt('請手動複製以下訊息：', data.message); }
+   } catch (e) {
+     alert('無法取得繳費通知：' + (e.message || ''));
+   }
+ };
+ 
++const triggerImport = () => {
++  if (importState.value === 'uploading') return;
++  importFileInput.value?.click();
++};
++
++const handleImportFile = async (event) => {
++  const file = event.target.files[0];
++  if (!file) return;
++  if (!props.branchId) { alert('請先選擇分校'); event.target.value = ''; return; }
++
++  importState.value = 'uploading';
++  importErrorMsg.value = '';
++  const token = getToken();
++  const baseUrl = getBaseUrl();
++
++  try {
++    const fd = new FormData();
++    fd.append('file', file);
++    fd.append('branch_id', String(props.branchId));
++    const res = await fetch(`${baseUrl}/v1/students/import`, {
++      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
++    });
++    const json = await res.json().catch(() => ({}));
++    if (!res.ok) {
++      importState.value = 'error';
++      importErrorMsg.value = json?.message || json?.error || '匯入失敗';
++      return;
++    }
++    const r = json?.result || {};
++    importResult.value = {
++      created: Number(r.created || 0), updated: Number(r.updated || 0),
++      skipped: Number(r.skipped || 0),
++      errors: Array.isArray(r.errors) ? r.errors : [],
++      warnings: Array.isArray(r.warnings) ? r.warnings : [],
++      low_confidence: Number(r.low_confidence_matches || 0),
++    };
++    importState.value = 'done';
++  } catch (e) {
++    importState.value = 'error';
++    importErrorMsg.value = e?.message || '匯入失敗';
++  } finally {
++    event.target.value = '';
++  }
++};
++
++const dismissImport = () => { importState.value = 'idle'; };
++
++const scrollTo = (section) => {
++  const el = document.getElementById(section + '-sec');
++  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
++};
++
+ watch(() => props.branchId, loadData);
+ onMounted(loadData);
+ </script>
+ 
+ <style scoped>
+-.dashboard-container {
++/* ===== Layout ===== */
++.dash {
+   display: flex;
+   flex-direction: column;
+-  gap: 20px;
++  gap: 18px;
++  max-width: 1200px;
++  margin: 0 auto;
+ }
+ 
+-.summary-stats .stats-grid {
+-  display: grid;
+-  grid-template-columns: repeat(4, 1fr);
+-  gap: 16px;
+-  margin-top: 16px;
++.no-branch-card {
++  max-width: 480px;
++  margin: 2rem auto;
++  padding: 2rem;
++  text-align: center;
+ }
++.no-branch-card h2 { margin-bottom: 1rem; }
++.no-branch-card .hint { margin-top: 1rem; font-size: 0.9rem; color: var(--text-light); }
+ 
+-.stat-item {
+-  background: #FAFAFA;
+-  border: 1px solid var(--border);
+-  padding: 16px;
+-  border-radius: 10px;
+-  text-align: center;
+-  transition: var(--transition);
++/* ===== Header ===== */
++.dash-header {
++  display: flex;
++  align-items: baseline;
++  gap: 12px;
++  flex-wrap: wrap;
++}
++.dash-title {
++  font-size: 20px;
++  font-weight: 800;
++  color: var(--text, #0f172a);
++  margin: 0;
++}
++.dash-date {
++  font-size: 13px;
++  color: var(--text-light, #64748b);
+ }
+ 
+-.stat-item:hover {
+-  transform: translateY(-2px);
+-  box-shadow: var(--shadow-hover);
++/* ===== Action Lane ===== */
++.action-lane {
++  display: flex;
++  gap: 12px;
++  overflow-x: auto;
++  padding-bottom: 4px;
++  scroll-snap-type: x mandatory;
+ }
+ 
+-.stat-item.danger-glow {
+-  background: #FFF8E1;
+-  border-color: #FFE082;
++.ac {
++  flex: 1 1 0;
++  min-width: 170px;
++  max-width: 260px;
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  padding: 14px 16px;
++  border-radius: 12px;
++  border-left: 4px solid transparent;
++  background: #fff;
++  box-shadow: 0 1px 4px rgba(15,23,42,0.07);
++  cursor: pointer;
++  transition: transform 0.15s ease, box-shadow 0.15s ease;
++  scroll-snap-align: start;
+ }
++.ac:hover { transform: translateY(-2px); box-shadow: 0 4px 14px rgba(15,23,42,0.12); }
++.ac:focus-visible { outline: 2px solid var(--primary, #3b82f6); outline-offset: 2px; }
++
++.ac--attend { border-left-color: #ef4444; }
++.ac--pay    { border-left-color: #f97316; }
++.ac--eval   { border-left-color: #3b82f6; }
++.ac--import { border-left-color: #10b981; }
++.ac--clear  {
++  border-left-color: #22c55e;
++  background: #f0fdf4;
++  cursor: default;
++}
++.ac--clear:hover { transform: none; box-shadow: 0 1px 4px rgba(15,23,42,0.07); }
+ 
+-.stat-icon {
+-  font-size: 24px;
+-  margin-bottom: 6px;
++.ac__icon {
++  font-size: 28px;
++  flex-shrink: 0;
+ }
++.ac--attend .ac__icon { color: #ef4444; }
++.ac--pay    .ac__icon { color: #f97316; }
++.ac--eval   .ac__icon { color: #3b82f6; }
++.ac--import .ac__icon { color: #10b981; }
++.ac--clear  .ac__icon { color: #22c55e; }
+ 
+-.stat-item label {
++.ac__body {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  min-width: 0;
++  flex: 1;
++}
++.ac__count {
++  font-size: 22px;
++  font-weight: 800;
++  line-height: 1.1;
++  color: var(--text, #0f172a);
++}
++.ac__label {
+   font-size: 12px;
+-  color: var(--text-light);
+-  text-align: center;
++  font-weight: 600;
++  color: var(--text-light, #64748b);
++  white-space: nowrap;
++}
++.ac__sub {
++  font-size: 11px;
++  color: #94a3b8;
+ }
+ 
+-.stat-item .value {
+-  font-size: 28px;
+-  font-weight: 800;
+-  color: var(--text);
+-  margin-top: 4px;
++.ac__cta {
++  flex-shrink: 0;
++  padding: 6px 12px;
++  font-size: 12px;
++  font-weight: 600;
++  border: none;
++  border-radius: 8px;
++  cursor: pointer;
++  white-space: nowrap;
++  transition: background 0.15s;
+ }
++.ac--attend .ac__cta { background: #fef2f2; color: #dc2626; }
++.ac--attend .ac__cta:hover { background: #fee2e2; }
++.ac--pay .ac__cta    { background: #fff7ed; color: #ea580c; }
++.ac--pay .ac__cta:hover { background: #ffedd5; }
++.ac--eval .ac__cta   { background: #eff6ff; color: #2563eb; }
++.ac--eval .ac__cta:hover { background: #dbeafe; }
++.ac--import .ac__cta { background: #ecfdf5; color: #059669; }
++.ac--import .ac__cta:hover { background: #d1fae5; }
++.ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
++
++/* ===== Import Banner ===== */
++.import-banner {
++  background: #f0fdf4;
++  border: 1px solid #bbf7d0;
++  border-radius: 10px;
++  padding: 14px 16px;
++}
++.import-banner--err {
++  background: #fef2f2;
++  border-color: #fecaca;
++}
++.import-banner__head {
++  display: flex;
++  justify-content: space-between;
++  align-items: center;
++  margin-bottom: 8px;
++}
++.import-banner__head strong { font-size: 14px; }
++.import-banner__x {
++  border: none;
++  background: none;
++  font-size: 20px;
++  cursor: pointer;
++  color: #94a3b8;
++  line-height: 1;
++  padding: 0 4px;
++}
++.import-banner__x:hover { color: #475569; }
+ 
+-.stat-item .value.red {
+-  color: var(--danger);
++.import-banner__stats {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  margin-bottom: 6px;
+ }
++.ib-chip {
++  display: inline-flex;
++  align-items: center;
++  padding: 3px 10px;
++  border-radius: 20px;
++  font-size: 12px;
++  font-weight: 600;
++  background: #f1f5f9;
++  color: #475569;
++}
++.ib-chip--ok   { background: #dcfce7; color: #166534; }
++.ib-chip--info { background: #dbeafe; color: #1e40af; }
++.ib-chip--warn { background: #fef9c3; color: #854d0e; }
++.ib-chip--err  { background: #fee2e2; color: #991b1b; }
+ 
+-.value-sub {
+-  margin-top: 4px;
++.import-banner__list {
+   font-size: 12px;
+-  color: var(--text-light);
++  color: #64748b;
++  padding: 6px 0;
++  border-top: 1px solid #e2e8f0;
++  margin-top: 6px;
++}
++.import-banner__list > div { padding: 2px 0; }
++.import-banner__list--warn { color: #92400e; }
++.import-banner__list--err  { color: #991b1b; }
++.import-banner__foot {
++  display: flex;
++  gap: 8px;
++  justify-content: flex-end;
++  margin-top: 8px;
+ }
+ 
+-.dashboard-columns {
++/* ===== Progress Board ===== */
++.progress-board {
+   display: grid;
+-  grid-template-columns: repeat(3, 1fr);
+-  gap: 20px;
++  grid-template-columns: repeat(4, 1fr);
++  gap: 12px;
++  background: #fff;
++  border-radius: 12px;
++  padding: 14px 18px;
++  box-shadow: 0 1px 4px rgba(15,23,42,0.06);
+ }
+ 
+-.column {
+-  background: var(--card-bg);
+-  border-radius: var(--radius);
+-  padding: 20px;
+-  box-shadow: var(--shadow);
+-  overflow-y: auto;
+-  max-height: 600px;
++.pb {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
+ }
+-
+-.column h3 {
++.pb__label {
++  font-size: 11px;
++  font-weight: 600;
++  color: var(--text-light, #64748b);
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++}
++.pb__val {
+   font-size: 15px;
+-  font-weight: 700;
+-  border-bottom: 2px solid var(--accent);
+-  padding-bottom: 10px;
+-  margin-bottom: 16px;
+-  color: var(--primary);
++  color: var(--text, #0f172a);
++}
++.pb__val strong { font-weight: 800; font-size: 18px; }
++.pb__val small  { font-weight: 400; color: var(--text-light, #94a3b8); }
++.pb__bar {
++  height: 4px;
++  border-radius: 2px;
++  background: #e2e8f0;
++  overflow: hidden;
++  margin-top: 2px;
++}
++.pb__fill {
++  height: 100%;
++  border-radius: 2px;
++  background: linear-gradient(90deg, #3b82f6, #60a5fa);
++  transition: width 0.4s ease;
+ }
+ 
+-.section-box {
+-  margin-bottom: 20px;
++/* ===== Work Grid ===== */
++.work-grid {
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: 18px;
++}
++.work-col {
++  display: flex;
++  flex-direction: column;
++  gap: 18px;
+ }
+ 
+-.section-box h4 {
+-  font-size: 13px;
+-  color: var(--text);
+-  background: #FAFAFA;
+-  padding: 8px 10px;
+-  border-radius: 6px;
+-  margin-bottom: 8px;
+-  font-weight: 600;
++/* ===== Work Panel ===== */
++.wp {
++  background: #fff;
++  border-radius: 12px;
++  box-shadow: 0 1px 4px rgba(15,23,42,0.06);
++  overflow: hidden;
+ }
++.wp--warn { border-top: 3px solid #f97316; }
+ 
+-.alert-item {
++.wp__head {
+   display: flex;
+-  justify-content: space-between;
+   align-items: center;
+-  padding: 10px 8px;
+-  border-bottom: 1px solid #F5F5F5;
++  gap: 8px;
++  padding: 14px 16px 10px;
++  border-bottom: 1px solid #f1f5f9;
++}
++.wp__head h3 {
+   font-size: 14px;
++  font-weight: 700;
++  color: var(--text, #0f172a);
++  margin: 0;
++  flex: 1;
+ }
+-
+-.summary-row {
+-  display: flex;
+-  justify-content: space-between;
++.wp__hi {
++  font-size: 20px;
++  color: var(--text-light, #64748b);
++}
++.wp__badge {
++  display: inline-flex;
+   align-items: center;
+-  padding: 4px 0 8px 0;
+-  color: var(--text-light);
+-  font-size: 13px;
++  justify-content: center;
++  min-width: 22px;
++  height: 22px;
++  padding: 0 6px;
++  font-size: 11px;
++  font-weight: 700;
++  border-radius: 11px;
++  background: #eff6ff;
++  color: #2563eb;
+ }
++.wp__badge--danger { background: #fef2f2; color: #dc2626; }
+ 
+-.summary-actions {
+-  margin-top: 10px;
++.wp__hint {
++  margin: 0;
++  padding: 0 16px 8px;
++  font-size: 12px;
++  color: #94a3b8;
++}
++.wp__empty {
++  padding: 20px 16px;
++  text-align: center;
++  font-size: 13px;
++  color: #94a3b8;
++}
++.wp__foot {
++  padding: 10px 16px;
++  border-top: 1px solid #f1f5f9;
+   display: flex;
+   justify-content: flex-end;
+ }
+ 
+-.badge-blue {
+-  background: #e3f2fd;
+-  color: #1565c0;
++/* ===== Schedule Row ===== */
++.sched-row {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  padding: 9px 16px;
++  font-size: 13px;
++  border-bottom: 1px solid #f8fafc;
++  transition: background 0.1s;
++}
++.sched-row:hover { background: #f8fafc; }
++.sched-row__time {
++  font-weight: 700;
++  color: var(--text, #0f172a);
++  min-width: 44px;
++  flex-shrink: 0;
++}
++.sched-row__name {
++  flex: 1;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.sched-row__subj {
+   font-size: 11px;
+   padding: 2px 8px;
+   border-radius: 10px;
+-  margin-left: 8px;
++  background: #f1f5f9;
++  color: #475569;
++  white-space: nowrap;
++}
++.sched-row__tchr {
++  font-size: 11px;
++  color: #94a3b8;
++  white-space: nowrap;
+ }
++.sched-row__st {
++  font-size: 11px;
++  font-weight: 600;
++  white-space: nowrap;
++}
++.st--scheduled { color: #f97316; }
++.st--attended  { color: #22c55e; }
++.st--completed { color: #64748b; }
+ 
+-.mini-task-card {
+-  padding: 10px 8px;
+-  border-bottom: 1px solid #F5F5F5;
++/* ===== Payment Row ===== */
++.pay-row {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  padding: 10px 16px;
++  border-bottom: 1px solid #f8fafc;
++}
++.pay-row:hover { background: #fffbeb; }
++.pay-row__info {
++  flex: 1;
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  min-width: 0;
++}
++.pay-row__name {
+   font-size: 13px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+ 
+-.mini-task-card .row {
++/* ===== Eval Card ===== */
++.eval-card {
++  padding: 12px 16px;
++  border-bottom: 1px solid #f1f5f9;
++}
++.eval-card:last-of-type { border-bottom: none; }
++.eval-card__top {
+   display: flex;
+-  gap: 8px;
+   align-items: center;
++  gap: 8px;
++  flex-wrap: wrap;
+   margin-bottom: 4px;
+ }
+-
+-.mini-task-card .right {
+-  justify-content: flex-end;
++.eval-card__top strong { font-size: 13px; }
++.eval-card__tag {
++  font-size: 11px;
++  padding: 2px 8px;
++  border-radius: 10px;
++  background: #eff6ff;
++  color: #2563eb;
+ }
+-
+-.review-card {
+-  border: 1px solid var(--border);
+-  border-radius: 8px;
+-  padding: 14px;
+-  margin-bottom: 12px;
+-  background: #FAFAFA;
+-  transition: var(--transition);
++.eval-card__tchr {
++  font-size: 11px;
++  color: #94a3b8;
++  margin-left: auto;
+ }
+-
+-.review-card:hover {
+-  box-shadow: var(--shadow);
++.eval-card__mid {
++  font-size: 12px;
++  color: #64748b;
++  margin-bottom: 4px;
++}
++.eval-card__comment {
++  font-size: 12px;
++  color: #475569;
++  background: #f8fafc;
++  padding: 6px 8px;
++  border-radius: 6px;
++  margin-bottom: 6px;
++  line-height: 1.5;
++}
++.eval-card__acts {
++  display: flex;
++  gap: 6px;
++  justify-content: flex-end;
+ }
+ 
+-.card-header {
++/* ===== Notification Row ===== */
++.notif-row {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+-  margin-bottom: 8px;
+-  flex-wrap: wrap;
+-  gap: 6px;
++  gap: 8px;
++  padding: 10px 16px;
++  font-size: 13px;
++  border-bottom: 1px solid #f8fafc;
+ }
+ 
+-.teacher-name {
++/* ===== KPI Panel ===== */
++.kpi {
++  background: #fff;
++  border-radius: 12px;
++  box-shadow: 0 1px 4px rgba(15,23,42,0.06);
++  overflow: hidden;
++}
++.kpi__sum {
++  list-style: none;
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  padding: 14px 18px;
++  cursor: pointer;
++  user-select: none;
++  font-size: 14px;
++  font-weight: 600;
++  color: var(--text, #0f172a);
++  transition: background 0.15s;
++}
++.kpi__sum::-webkit-details-marker { display: none; }
++.kpi__sum:hover { background: #f8fafc; }
++.kpi__sum-icon { font-size: 20px; color: #6d28d9; }
++.kpi__sum-hint {
++  margin-left: auto;
+   font-size: 12px;
+-  color: var(--text-light);
++  font-weight: 400;
++  color: #94a3b8;
+ }
++.kpi__chev {
++  font-size: 14px;
++  color: #94a3b8;
++  transition: transform 0.2s ease;
++}
++.kpi[open] .kpi__chev { transform: rotate(180deg); }
+ 
+-.card-body p {
+-  margin: 4px 0;
+-  font-size: 13px;
+-  color: #555;
++.kpi__body {
++  padding: 0 18px 18px;
+ }
+ 
+-.card-actions {
+-  margin-top: 10px;
++.kpi-totals {
+   display: flex;
+-  justify-content: flex-end;
++  gap: 24px;
++  margin-bottom: 16px;
++  padding-bottom: 14px;
++  border-bottom: 1px solid #f1f5f9;
++}
++.kpi-t__label {
++  font-size: 11px;
++  font-weight: 600;
++  color: var(--text-light, #64748b);
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++}
++.kpi-t__val {
++  font-size: 26px;
++  font-weight: 800;
++  color: var(--text, #0f172a);
++  margin-top: 2px;
+ }
+ 
+-.simple-table {
++.kpi-table {
+   width: 100%;
+   border-collapse: collapse;
+   font-size: 13px;
++  margin-bottom: 12px;
+ }
+-
+-.simple-table th {
++.kpi-table th {
+   text-align: left;
+   font-size: 11px;
+-  padding: 8px 6px;
++  font-weight: 600;
++  color: var(--text-light, #64748b);
++  padding: 8px 8px;
++  border-bottom: 2px solid #f1f5f9;
++}
++.kpi-table td {
++  padding: 8px 8px;
++  border-bottom: 1px solid #f8fafc;
+ }
++.kpi-table tr:hover td { background: #f8fafc; }
+ 
+-.simple-table td {
+-  padding: 8px 6px;
++.kpi__link {
++  margin-top: 14px;
++  display: flex;
++  justify-content: flex-end;
+ }
+ 
+-.status-text {
++/* ===== Level Chips ===== */
++.level-chips {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 8px;
++  margin-top: 10px;
++}
++.level-chip {
++  display: inline-block;
++  background: #f5f3ff;
++  color: #6d28d9;
++  padding: 4px 12px;
++  border-radius: 12px;
+   font-size: 12px;
+-  color: var(--text-light);
+-  font-style: italic;
++  font-weight: 600;
++  border: 1px solid #ddd6fe;
+ }
+ 
+-.copy-btn {
+-  font-size: 11px;
+-  padding: 2px 8px;
++/* ===== Badges ===== */
++.badge-blue {
++  display: inline-block;
+   background: #e3f2fd;
+   color: #1565c0;
+-  border: 1px solid #90caf9;
+-  border-radius: 4px;
+-  cursor: pointer;
+-  margin-left: auto;
+-  white-space: nowrap;
+-  flex-shrink: 0;
++  font-size: 11px;
++  padding: 2px 8px;
++  border-radius: 10px;
+ }
+-.copy-btn:hover {
+-  background: #bbdefb;
++.badge-red {
++  display: inline-block;
++  background: #fde8e8;
++  color: #c0392b;
++  font-size: 11px;
++  padding: 2px 8px;
++  border-radius: 10px;
++  font-weight: 600;
++}
++.badge-orange {
++  display: inline-block;
++  background: #fff3e0;
++  color: #e65100;
++  font-size: 11px;
++  padding: 2px 8px;
++  border-radius: 10px;
++  font-weight: 600;
+ }
+ 
+-@media (max-width: 1024px) {
+-  .dashboard-columns {
+-    grid-template-columns: 1fr 1fr;
+-  }
+-  .dashboard-columns .column:last-child {
+-    grid-column: 1 / -1;
+-  }
++/* ===== Buttons ===== */
++.btn-p {
++  border: none;
++  border-radius: 8px;
++  font-weight: 600;
++  cursor: pointer;
++  background: var(--primary, #3b82f6);
++  color: #fff;
++  transition: opacity 0.15s;
++}
++.btn-p:hover { opacity: 0.88; }
++.btn-d {
++  border: none;
++  border-radius: 8px;
++  font-weight: 600;
++  cursor: pointer;
++  background: #ef4444;
++  color: #fff;
++  transition: opacity 0.15s;
++}
++.btn-d:hover { opacity: 0.88; }
++.btn-o {
++  border: 1px solid #cbd5e1;
++  border-radius: 8px;
++  font-weight: 600;
++  cursor: pointer;
++  background: #fff;
++  color: #475569;
++  transition: background 0.15s;
+ }
++.btn-o:hover { background: #f8fafc; }
+ 
+-@media (max-width: 768px) {
+-  .summary-stats .stats-grid {
+-    grid-template-columns: repeat(2, 1fr);
+-    gap: 10px;
+-  }
+-  .dashboard-columns {
+-    grid-template-columns: 1fr;
+-  }
+-  .dashboard-columns .column:last-child {
+-    grid-column: auto;
+-  }
+-  .column {
+-    max-height: none;
+-  }
++.btn-sm { padding: 6px 14px; font-size: 12px; }
++.btn-xs { padding: 4px 10px; font-size: 11px; }
++
++/* ===== Responsive ===== */
++@media (max-width: 900px) {
++  .work-grid { grid-template-columns: 1fr; }
++  .progress-board { grid-template-columns: repeat(2, 1fr); }
+ }
+ 
+-@media (max-width: 480px) {
+-  .summary-stats .stats-grid {
+-    grid-template-columns: 1fr;
++@media (max-width: 600px) {
++  .action-lane {
++    gap: 10px;
+   }
+-  .stat-item {
+-    padding: 12px;
++  .ac {
++    min-width: 150px;
++    padding: 10px 12px;
+   }
+-  .column {
+-    padding: 14px;
++  .ac__count { font-size: 18px; }
++  .ac__icon  { font-size: 22px; }
++  .progress-board {
++    grid-template-columns: 1fr 1fr;
++    padding: 12px 14px;
+   }
++  .dash { gap: 14px; }
+ }
+ 
+-.level-chips {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 8px;
+-  margin-top: 12px;
+-}
+-.level-chip {
+-  display: inline-block;
+-  background: #f5f3ff;
+-  color: #6d28d9;
+-  padding: 4px 12px;
+-  border-radius: 12px;
+-  font-size: 12px;
+-  font-weight: 600;
+-  border: 1px solid #ddd6fe;
++@media (max-width: 420px) {
++  .progress-board { grid-template-columns: 1fr; }
++  .ac { min-width: 130px; }
++  .ac__cta { display: none; }
+ }
+ </style>
+diff --git a/frontend/src/pages/LearningRecordsPage.vue b/frontend/src/pages/LearningRecordsPage.vue
+index c199db5..278cf5f 100755
+--- a/frontend/src/pages/LearningRecordsPage.vue
++++ b/frontend/src/pages/LearningRecordsPage.vue
+@@ -7,12 +7,19 @@
+         <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
+       </div>
+       <div style="display:flex; gap:8px; flex-wrap:wrap;">
+-        <button v-if="!isTeacher" class="ghost" @click="openBulkBackfill">一鍵補登</button>
+         <button class="ghost" @click="openExportModal">匯出評量圖</button>
+-        <button class="primary" @click="openModal()">+ 新增評量</button>
++        <button v-if="isTeacher" class="primary" @click="focusTeacherSchedule">從課表填寫</button>
+       </div>
+     </div>
+ 
++    <div v-if="!isTeacher" class="card lr-teacher-entry" data-guide="learning-teacher-login-entry">
++      <div class="lr-teacher-entry__text">
++        <h3>老師填寫入口</h3>
++        <p>評量與課程綁定，老師登入後可直接從課表點堂次填寫，不需手動輸入學生、老師與時段。</p>
++      </div>
++      <button class="primary" @click="switchToTeacherLogin">切換到老師登入</button>
++    </div>
++
+     <!-- ===== TEACHER: Week Schedule Widget ===== -->
+     <div v-if="isTeacher" class="teacher-schedule card" data-guide="learning-teacher-schedule">
+       <div class="ts-header">
+@@ -305,17 +312,25 @@
+             <div class="lr-form-section-title">基本資訊</div>
+             <div class="lr-form-grid">
+               <div class="form-group">
+-                <label>選擇學生 <span class="lr-required">*</span></label>
++                <label>{{ isTeacher ? '學生' : '選擇學生' }} <span class="lr-required">*</span></label>
++                <template v-if="isTeacher">
++                  <div class="lr-readonly-field">{{ currentStudentName }}</div>
++                </template>
+                 <SearchableSelect
++                  v-else
+                   v-model="form.StudentID"
+                   :options="studentOptions"
+                   :disabled="isReadOnly || isEditing"
+                   placeholder="搜尋並選擇學生..."
+                 />
+               </div>
+-              <div class="form-group" v-if="!isTeacher">
++              <div class="form-group">
+                 <label>授課老師 <span class="lr-required">*</span></label>
++                <template v-if="isTeacher">
++                  <div class="lr-readonly-field">{{ currentTeacherName }}</div>
++                </template>
+                 <SearchableSelect
++                  v-else
+                   v-model="form.TeacherID"
+                   :options="teacherOptions"
+                   :disabled="isReadOnly"
+@@ -324,25 +339,29 @@
+               </div>
+               <div class="form-group">
+                 <label>授課科目 <span class="lr-required">*</span></label>
+-                <select v-model="form.Subject" :disabled="isReadOnly">
++                <div v-if="isTeacher" class="lr-readonly-field">{{ form.Subject || '—' }}</div>
++                <select v-else v-model="form.Subject" :disabled="isReadOnly">
+                   <option value="">請選擇科目</option>
+                   <option v-for="s in subjectList" :key="s" :value="s">{{ s }}</option>
+                 </select>
+               </div>
+               <div class="form-group">
+                 <label>上課日期 <span class="lr-required">*</span></label>
+-                <input v-model="form.SessionDate" type="date" :disabled="isReadOnly || isSessionDateLocked">
++                <div v-if="isTeacher" class="lr-readonly-field">{{ form.SessionDate || '—' }}</div>
++                <input v-else v-model="form.SessionDate" type="date" :disabled="isReadOnly || isSessionDateLocked">
+               </div>
+               <template v-if="isSessionTimeLocked">
+                 <div class="form-group">
+-                  <label>開始時間</label>
++                  <label>開始時間 <span class="lr-lock-badge"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-1px">lock</span> 已帶入</span></label>
+                   <div class="lr-readonly-time" :title="formatTimeForDisplay(form.StartTime)">
++                    <span class="material-symbols-outlined" style="font-size:15px;color:#FB8C00;flex-shrink:0">schedule</span>
+                     {{ formatTimeForDisplay(form.StartTime) }}
+                   </div>
+                 </div>
+                 <div class="form-group">
+-                  <label>結束時間</label>
++                  <label>結束時間 <span class="lr-lock-badge"><span class="material-symbols-outlined" style="font-size:12px;vertical-align:-1px">lock</span> 已帶入</span></label>
+                   <div class="lr-readonly-time" :title="formatTimeForDisplay(form.EndTime)">
++                    <span class="material-symbols-outlined" style="font-size:15px;color:#FB8C00;flex-shrink:0">schedule</span>
+                     {{ formatTimeForDisplay(form.EndTime) }}
+                   </div>
+                 </div>
+@@ -350,22 +369,17 @@
+               <template v-else>
+                 <div class="form-group">
+                   <label>開始時間</label>
+-                  <select v-model="form.StartTime" @change="onStartTimeChange" :disabled="isReadOnly">
+-                    <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
+-                  </select>
++                  <input type="time" v-model="form.StartTime" @change="onStartTimeChange" :disabled="isReadOnly">
+                 </div>
+                 <div class="form-group">
+                   <label>結束時間</label>
+-                  <select v-model="form.EndTime" :disabled="isReadOnly">
+-                    <option v-for="t in timeOptions" :key="t" :value="t">{{ t }}</option>
+-                  </select>
++                  <input type="time" v-model="form.EndTime" :disabled="isReadOnly">
+                 </div>
+               </template>
+-              <div v-if="isSessionTimeLocked" class="form-group" style="grid-column: 1 / -1;">
+-                <p class="lr-time-lock-note" style="margin-top: 0;">
+-                  上課時間已依課程／排課堂次帶入，無法手動更改。
+-                </p>
+-              </div>
++              <p v-if="isSessionTimeLocked" class="lr-time-lock-note lr-time-lock-note--inline">
++                <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px;margin-right:3px">info</span>
++                上課時間已依課程／排課堂次帶入，無法手動更改。
++              </p>
+             </div>
+           </div>
+ 
+@@ -374,11 +388,11 @@
+             <div class="lr-form-section-title">作業與進度</div>
+             <div class="form-group">
+               <label>上次作業</label>
+-              <div class="lr-radio-group">
+-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"> 已完成</label>
+-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"> 部分完成</label>
+-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"> 未完成</label>
+-                <label class="lr-radio"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"> 未攜帶</label>
++              <div class="lr-radio-group" data-group="homework">
++                <label class="lr-radio" data-value="completed"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"><span class="lr-radio-emoji">✓</span> 已完成</label>
++                <label class="lr-radio" data-value="partial"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"><span class="lr-radio-emoji">◐</span> 部分完成</label>
++                <label class="lr-radio" data-value="incomplete"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"><span class="lr-radio-emoji">✕</span> 未完成</label>
++                <label class="lr-radio" data-value="missing"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"><span class="lr-radio-emoji">?</span> 未攜帶</label>
+               </div>
+             </div>
+             <div class="form-group">
+@@ -406,10 +420,10 @@
+             <div class="lr-form-section-title">上課狀況與評語</div>
+             <div class="form-group">
+               <label>上課狀況</label>
+-              <div class="lr-radio-group">
+-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"> 良好</label>
+-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"> 普通</label>
+-                <label class="lr-radio"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"> 不良</label>
++              <div class="lr-radio-group" data-group="performance">
++                <label class="lr-radio" data-value="good"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"><span class="lr-radio-emoji">😊</span> 良好</label>
++                <label class="lr-radio" data-value="average"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"><span class="lr-radio-emoji">😐</span> 普通</label>
++                <label class="lr-radio" data-value="bad"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"><span class="lr-radio-emoji">😟</span> 不良</label>
+               </div>
+             </div>
+             <div class="form-group">
+@@ -599,14 +613,8 @@ const bulkExistingDates = ref([]);
+ const bulkDatesLoading = ref(false);
+ const bulkSubmitting = ref(false);
+ 
+-const subjectList = ['國文', '英文', '數學', '自然', '社會'];
++const subjectList = ['國文', '英文', '數學', '自然', '理化', '物理', '化學', '生物', '社會'];
+ 
+-const timeOptions = [];
+-for (let h = 8; h <= 23; h++) {
+-  const hr = h.toString().padStart(2, '0');
+-  timeOptions.push(`${hr}:00`);
+-  timeOptions.push(`${hr}:30`);
+-}
+ 
+ const form = reactive({
+   id: null,
+@@ -685,6 +693,19 @@ const studentOptions = computed(() =>
+   })
+ );
+ 
++const currentStudentName = computed(() => {
++  const studentId = String(form.StudentID || '');
++  if (!studentId) return '未綁定堂次';
++  return studentList.value.find((item) => String(item.id) === studentId)?.name || `學生 #${studentId}`;
++});
++
++const currentTeacherName = computed(() => {
++  const teacherId = String(form.TeacherID || props.userId || '');
++  if (!teacherId) return '未指派老師';
++  const matched = teacherList.value.find((item) => String(item.id) === teacherId);
++  return matched?.username || matched?.T_Name || matched?.Name || `老師 #${teacherId}`;
++});
++
+ const bulkStudentOptions = computed(() => {
+   const students = Array.isArray(studentList.value) ? studentList.value : [];
+   const courses = Array.isArray(courseList.value) ? courseList.value : [];
+@@ -1292,7 +1313,7 @@ const _fillForm = (record) => {
+     StudentID: Number(record.student_id) || '',
+     TeacherID: Number(record.TeacherID),
+     ClassSessionID: Number(record.ClassSessionID) || 0,
+-    Subject: record.Subject,
++    Subject: canonicalSubjectLabel(record.Subject) || record.Subject || '',
+     SessionDate: record.SessionDate,
+     StartTime: normalizeTime(record.StartTime) || String(record.StartTime || '').match(/(\d{1,2}:\d{2})/)?.[1] || '',
+     EndTime: normalizeTime(record.EndTime) || String(record.EndTime || '').match(/(\d{1,2}:\d{2})/)?.[1] || '',
+@@ -1333,7 +1354,22 @@ const _clearForm = () => {
+   }
+ };
+ 
++const _attachTextareaResize = () => {
++  nextTick(() => {
++    document.querySelectorAll('.lr-modal textarea').forEach(el => {
++      el.addEventListener('input', function () {
++        this.style.height = 'auto';
++        this.style.height = this.scrollHeight + 'px';
++      });
++    });
++  });
++};
++
+ const openModal = (record = null) => {
++  if (!record && isTeacher.value) {
++    alert('請從上方課表點選堂次後填寫評量。');
++    return;
++  }
+   forceReadOnly.value = false;
+   if (record) {
+     _fillForm(record);
+@@ -1346,22 +1382,43 @@ const openModal = (record = null) => {
+       syncFormTimesFromCourseSchedule();
+     }
+   });
++  _attachTextareaResize();
+ };
+ 
+ const viewRecord = (record) => {
+   forceReadOnly.value = true;
+   _fillForm(record);
+   showModal.value = true;
++  _attachTextareaResize();
+ };
+ 
+ const editRecord = (record) => {
+   forceReadOnly.value = false;
+   _fillForm(record);
+   showModal.value = true;
++  _attachTextareaResize();
+ };
+ 
+ const closeModal = () => { showModal.value = false; };
+ 
++const focusTeacherSchedule = () => {
++  const scheduleEl = document.querySelector('[data-guide="learning-teacher-schedule"]');
++  if (!scheduleEl) return;
++  scheduleEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
++};
++
++const switchToTeacherLogin = async () => {
++  const confirmed = window.confirm('將先登出目前帳號，並回到登入頁供老師登入。是否繼續？');
++  if (!confirmed) return;
++  try {
++    await supabase.auth.signOut();
++  } catch (e) {
++    console.error('signOut failed', e);
++  }
++  localStorage.removeItem('alltrue_session');
++  window.location.reload();
++};
++
+ const submitForm = async () => {
+   if (timeLockMessage.value) {
+     alert(timeLockMessage.value);
+@@ -1937,6 +1994,32 @@ watch(() => props.branchId, () => {
+   white-space: nowrap;
+ }
+ 
++.lr-teacher-entry {
++  margin-bottom: 16px;
++  padding: 16px 20px;
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 14px;
++  border-left: 4px solid #f59e0b;
++  background: #fff7ed;
++}
++
++.lr-teacher-entry h3 {
++  margin: 0 0 4px;
++  font-size: 15px;
++}
++
++.lr-teacher-entry p {
++  margin: 0;
++  color: var(--text-light);
++  font-size: 13px;
++}
++
++.lr-teacher-entry__text {
++  flex: 1;
++}
++
+ /* ── Teacher Schedule Widget ── */
+ .teacher-schedule {
+   padding: 16px 20px;
+@@ -2010,6 +2093,19 @@ watch(() => props.branchId, () => {
+   padding: 8px 0;
+ }
+ 
++.lr-readonly-field {
++  width: 100%;
++  min-height: 40px;
++  padding: 10px 12px;
++  border: 1px solid var(--border);
++  border-radius: 8px;
++  background: #f8fafc;
++  color: var(--text);
++  font-size: 14px;
++  display: flex;
++  align-items: center;
++}
++
+ /* Today view */
+ .ts-today {
+   display: flex;
+@@ -2380,15 +2476,43 @@ watch(() => props.branchId, () => {
+   min-height: 38px;
+   display: flex;
+   align-items: center;
++  gap: 6px;
+   padding: 8px 12px;
+-  border: 1px solid #e2e8f0;
++  border: 1px solid #fed7aa;
++  border-left: 3px solid #FB8C00;
+   border-radius: 8px;
+-  background: #f8fafc;
+-  color: #334155;
++  background: #fffbf7;
++  color: #92400e;
+   font-size: 14px;
++  font-weight: 600;
+   font-variant-numeric: tabular-nums;
+ }
+ 
++.lr-lock-badge {
++  display: inline-flex;
++  align-items: center;
++  gap: 2px;
++  font-size: 11px;
++  font-weight: 600;
++  color: #92400e;
++  background: #fff7ed;
++  border: 1px solid #fed7aa;
++  border-radius: 4px;
++  padding: 1px 5px;
++  margin-left: 6px;
++  vertical-align: middle;
++}
++
++.lr-time-lock-note--inline {
++  grid-column: 1 / -1;
++  margin-top: -2px;
++}
++
++/* emoji 圖示預設隱藏，手機版才顯示 */
++.lr-radio-emoji {
++  display: none;
++}
++
+ /* Status tag variant */
+ .status-tag.rejected {
+   background: var(--danger-bg);
+@@ -2893,7 +3017,9 @@ watch(() => props.branchId, () => {
+   }
+ 
+   .form-group textarea {
+-    min-height: 80px;
++    min-height: 90px;
++    resize: vertical;
++    field-sizing: content; /* Chrome 123+ / iOS 17.4+ auto-height */
+   }
+ 
+   .lr-radio-group {
+@@ -2909,7 +3035,81 @@ watch(() => props.branchId, () => {
+     text-align: center;
+   }
+ 
++  /* HomeworkStatus：2x2 大卡片 */
++  .lr-radio-group[data-group="homework"] {
++    display: grid;
++    grid-template-columns: 1fr 1fr;
++    gap: 8px;
++  }
++
++  .lr-radio-group[data-group="homework"] .lr-radio {
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    gap: 4px;
++    padding: 12px 8px;
++    min-height: 64px;
++    font-size: 13px;
++    border-radius: 10px;
++  }
++
++  /* Performance：3 欄橫排 */
++  .lr-radio-group[data-group="performance"] {
++    display: grid;
++    grid-template-columns: 1fr 1fr 1fr;
++    gap: 8px;
++  }
++
++  .lr-radio-group[data-group="performance"] .lr-radio {
++    flex-direction: column;
++    align-items: center;
++    justify-content: center;
++    gap: 4px;
++    padding: 12px 6px;
++    min-height: 64px;
++    font-size: 13px;
++    border-radius: 10px;
++  }
++
++  /* Emoji 圖示手機版顯示 */
++  .lr-radio-emoji {
++    display: block;
++    font-size: 22px;
++    line-height: 1;
++  }
++
++  /* 選中語意顏色 */
++  .lr-radio-group[data-group="homework"] .lr-radio[data-value="completed"]:has(input:checked),
++  .lr-radio-group[data-group="performance"] .lr-radio[data-value="good"]:has(input:checked) {
++    border-color: var(--success);
++    background: #f0fdf4;
++    color: var(--success);
++  }
++
++  .lr-radio-group[data-group="homework"] .lr-radio[data-value="partial"]:has(input:checked),
++  .lr-radio-group[data-group="performance"] .lr-radio[data-value="average"]:has(input:checked) {
++    border-color: #FB8C00;
++    background: #fff7ed;
++    color: #92400e;
++  }
++
++  .lr-radio-group[data-group="homework"] .lr-radio[data-value="incomplete"]:has(input:checked),
++  .lr-radio-group[data-group="homework"] .lr-radio[data-value="missing"]:has(input:checked),
++  .lr-radio-group[data-group="performance"] .lr-radio[data-value="bad"]:has(input:checked) {
++    border-color: var(--danger);
++    background: #fff0f0;
++    color: var(--danger);
++  }
++
++  /* Sticky 提交按鈕 */
+   .lr-form-actions {
++    position: sticky;
++    bottom: 0;
++    background: var(--card-bg);
++    margin: 0 -20px;
++    padding: 12px 20px env(safe-area-inset-bottom, 12px);
++    border-top: 1px solid var(--border);
++    z-index: 10;
+     flex-direction: column-reverse;
+     gap: 10px;
+   }

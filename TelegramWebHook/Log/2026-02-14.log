@@ -1,0 +1,77 @@
+2026-02-14 08:20:59Array
+(
+    [message_id] => 7138
+    [from] => Array
+        (
+            [id] => 8531473310
+            [is_bot] => 
+            [first_name] => Cindy
+            [last_name] => Wu
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8531473310
+            [first_name] => Cindy
+            [last_name] => Wu
+            [type] => private
+        )
+
+    [date] => 1771028458
+    [text] => 潘熙叡
+)
+
+2026-02-14 08:20:59select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2026-02-14 08:20:59Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2026-02-14 08:20:59select id, LineID, TelegramID, TelegramID1 from Student where name = '潘熙叡' and enable = 1 and CampusID = 11
+2026-02-14 08:20:59 array Array
+(
+    [id] => 271
+    [LineID] => 
+    [TelegramID] => 
+    [TelegramID1] => 
+)
+
+2026-02-14 08:20:59update Student  set MDT = now() , TelegramID = :TelegramID  where id = :StudentID 
+2026-02-14 08:20:59潘熙叡 此學生綁定成功
+2026-02-14 08:20:59Token : \n2026-02-14 08:20:59Array
+(
+    [update_id] => 692720181
+    [message] => Array
+        (
+            [message_id] => 7138
+            [from] => Array
+                (
+                    [id] => 8531473310
+                    [is_bot] => 
+                    [first_name] => Cindy
+                    [last_name] => Wu
+                    [language_code] => zh-hans
+                )
+
+            [chat] => Array
+                (
+                    [id] => 8531473310
+                    [first_name] => Cindy
+                    [last_name] => Wu
+                    [type] => private
+                )
+
+            [date] => 1771028458
+            [text] => 潘熙叡
+        )
+
+)
+\n

@@ -1,0 +1,108 @@
+---
+description: PRD 各章節的詳細格式說明與寫作範例（由 plan-as-prd-cross-functional.mdc 引用）
+globs: "**/.cursor/plans/**"
+alwaysApply: false
+---
+
+# PRD 章節格式指南
+
+## 4. RACI
+
+所有 R/A 角色必須是 AI Agent；人類最多 I（可閱讀，不阻擋 DoD）。
+
+| 角色 | 代表 | R/A/C/I |
+|---|---|---|
+| AI Agent（實作） | `[FEATURE]` Agent | R |
+| AI Agent（測試） | `[TEST]` Agent | R |
+| AI Agent（審查） | `[REVIEW]` Agent | R |
+| AI Agent（文件） | `[DOCS]` Agent | R |
+| AI Agent（部署） | `[OPS]` Agent | R |
+| 人類（可選閱讀） | PM / CTO / Designer | I |
+
+## 4b. Dependencies
+
+| 類型 | 說明 | 狀態 |
+|---|---|---|
+| 前置 Ticket / PR | 必須先合併的功能 | 待完成 / 已完成 |
+| 外部服務 / API | 第三方 API、其他微服務 | 可用 / 需確認 |
+| 環境 / 資料前提 | DB migration、env 變數 | 需執行 / 已存在 |
+
+> 無依賴時，明確寫「本次無外部依賴」。
+
+## 5b. UI/UX 精緻化需求
+
+每個受影響的頁面 / 元件各填一張表：
+
+| 面向 | 規格（具體到頁面名稱） |
+|---|---|
+| 版面層次 | 字體大小 / 粗細 / 顏色分層；卡片間距標準 |
+| 色彩一致性 | 使用 `--color-warning` 還是 `--color-danger`；沿用既有 design token |
+| 互動回饋 | 按鈕 loading spinner；toast 位置與持續時間；hover/active 狀態 |
+| 空狀態設計 | 圖示 + 說明文字 + 引導 CTA；禁止只顯示空白或「無資料」 |
+| 載入狀態 | skeleton loader 或 spinner 時機；避免 layout shift |
+| 防呆設計 | asterisk 位置；inline 錯誤訊息正向引導；危險操作二次確認 |
+| 響應式 | 是否需考慮手機；斷點規格 |
+| 無障礙 | Tab 順序；顏色對比度 ≥ 4.5:1；觸控目標 ≥ 44px；aria-label |
+
+## 8b. Decision Log
+
+| 日期 | 決策 | 考慮過的替代方案 | 選擇理由 |
+|---|---|---|---|
+| YYYY-MM-DD | 架構取捨描述 | 替代方案 A / B | 選擇原因 |
+
+> 技術方向節的每個架構取捨，都必須有對應的 Decision Log 條目。
+
+## 10. UI/UX 驗收清單（涉及前端的 FR 必填）
+
+- [ ] 空狀態有圖示 + 說明 + CTA，非空白或純文字
+- [ ] 所有非同步操作有 loading 狀態（skeleton / spinner），無 layout shift
+- [ ] 成功 / 失敗操作有明確 toast 或 inline 回饋（位置、持續時間符合規格）
+- [ ] 表單防呆：必填欄位有 asterisk、inline 錯誤訊息正向引導
+- [ ] 色彩 / 間距 / 字型層次符合既有 design token
+- [ ] 危險操作有二次確認 dialog
+- [ ] 行動裝置（如適用）：觸控目標 ≥ 44px，無水平 overflow
+- [ ] 無障礙：顏色對比度 ≥ 4.5:1，鍵盤可操作
+
+## 11. 上線與維運
+
+**部署步驟**：含 `npm run deploy`、migration 順序、env 變數設定
+
+**Feature Flag 策略**：
+- 有風險功能：說明 flag 名稱與上線順序（內部 → 部分分校 → 全量），各階段觀察期
+- 無 feature flag：說明理由（如純後端 guard、無前端入口）
+
+**Observability**：
+
+| 監控項目 | 指標 / log 關鍵字 | 告警閾值 | 負責 Agent |
+|---|---|---|---|
+| （具體監控項） | （log keyword 或 metric name） | （數字閾值） | `[OPS]` |
+
+**回滾**：`git revert` 範圍 + 是否需 migration rollback + 預估時間
+
+## 13. 風險 / 假設 / 開放問題
+
+**⚠️ 必須先 `WebSearch` 業界解法再填表：**
+
+| 風險 | 等級 | 業界標準解法（來源公司） | 本專案採行方式 |
+|---|---|---|---|
+| （具體風險） | 高/中/低 | （WebSearch 結果 + 公司名） | （本次選擇及理由） |
+
+**假設**：每條說明「若假設不成立，AI 如何自動偵測並回退」。
+
+**開放問題**：`[AI-RESOLVABLE]`（Agent 可查詢解決）或 `[BLOCKED: 原因]`（真正需外部資訊）。
+
+## 14. Definition of Done 格式
+
+```
+- [ ] [功能]：驗證方式：`./vendor/bin/phpunit` 輸出 0 failures
+- [ ] [功能]：驗證方式：`curl GET /api/v1/health` 回傳 `{"status":"ok"}`
+- [ ] UI/UX 精緻化：驗證方式：[REVIEW] Agent 逐條對照第 5b 節，無 ❌
+- [ ] STRIDE 審查：驗證方式：[REVIEW] Agent 靜態分析，無 HIGH 風險
+- [ ] CHANGELOG：驗證方式：[DOCS] Agent 確認 diff 含版本條目
+```
+
+## 寫作品質規則
+
+- 用「系統應…」「使用者可…」等可測試句型
+- 數字要具體：`< 500ms` 不是「很快」；`最多 5 筆` 不是「少量」
+- 缺資訊時標 `[AI-RESOLVABLE]` 或 `[BLOCKED]`，禁止猜測後直接跳實作

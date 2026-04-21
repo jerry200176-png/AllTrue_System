@@ -1,0 +1,156 @@
+2026-02-10 18:07:33Array
+(
+    [message_id] => 7095
+    [from] => Array
+        (
+            [id] => 8484931629
+            [is_bot] => 
+            [first_name] => 素菁
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8484931629
+            [first_name] => 素菁
+            [type] => private
+        )
+
+    [date] => 1770718052
+    [text] => /start
+    [entities] => Array
+        (
+            [0] => Array
+                (
+                    [offset] => 0
+                    [length] => 6
+                    [type] => bot_command
+                )
+
+        )
+
+)
+
+2026-02-10 18:07:33select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2026-02-10 18:07:33Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2026-02-10 18:07:46Array
+(
+    [message_id] => 7097
+    [from] => Array
+        (
+            [id] => 8484931629
+            [is_bot] => 
+            [first_name] => 素菁
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8484931629
+            [first_name] => 素菁
+            [type] => private
+        )
+
+    [date] => 1770718066
+    [text] => 陳其碩
+)
+
+2026-02-10 18:07:46select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2026-02-10 18:07:46Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2026-02-10 18:07:46select id, LineID, TelegramID, TelegramID1 from Student where name = '陳其碩' and enable = 1 and CampusID = 11
+2026-02-10 18:07:46 array Array
+(
+    [id] => 270
+    [LineID] => 
+    [TelegramID] => 
+    [TelegramID1] => 
+)
+
+2026-02-10 18:07:46update Student  set MDT = now() , TelegramID = :TelegramID  where id = :StudentID 
+2026-02-10 18:07:46陳其碩 此學生綁定成功
+2026-02-10 18:07:46Token : \n2026-02-10 18:07:46Array
+(
+    [update_id] => 692720178
+    [message] => Array
+        (
+            [message_id] => 7097
+            [from] => Array
+                (
+                    [id] => 8484931629
+                    [is_bot] => 
+                    [first_name] => 素菁
+                    [language_code] => zh-hans
+                )
+
+            [chat] => Array
+                (
+                    [id] => 8484931629
+                    [first_name] => 素菁
+                    [type] => private
+                )
+
+            [date] => 1770718066
+            [text] => 陳其碩
+        )
+
+)
+\n2026-02-10 22:03:48Array
+(
+    [message_id] => 7109
+    [from] => Array
+        (
+            [id] => 8484931629
+            [is_bot] => 
+            [first_name] => 素菁
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8484931629
+            [first_name] => 素菁
+            [type] => private
+        )
+
+    [date] => 1770725989
+    [text] => 收到🫡謝謝
+)
+
+2026-02-10 22:03:48select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2026-02-10 22:03:48Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2026-02-10 22:03:48select id, LineID, TelegramID, TelegramID1 from Student where name = '收到🫡謝謝' and enable = 1 and CampusID = 11
+2026-02-10 22:03:48 boolean 
+2026-02-10 22:03:48string查無此學生收到🫡謝謝

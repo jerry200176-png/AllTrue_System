@@ -1,0 +1,52 @@
+2025-09-13 08:33:54Array
+(
+    [message_id] => 3716
+    [from] => Array
+        (
+            [id] => 7553628002
+            [is_bot] => 
+            [first_name] => Jenny
+            [last_name] => Chen
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 7553628002
+            [first_name] => Jenny
+            [last_name] => Chen
+            [type] => private
+        )
+
+    [date] => 1757723634
+    [text] => 老師好，抱歉，line帳號出現問題，所以資料都重置，沒有您的資料
+
+姮蓁對於數學課提不太起興趣，剛好最近很忙，爸爸常出差，我常週末上班，她自己也要一直團練，數學課就沒辦法準時去上
+
+剛剛看到收費袋，發現她上了一課還有教材費，覺得老是請假跟出勤不正常對老師也不好意思，我們會找時間去繳這一堂課的費用和講義費，之後數學課的部分，若她心態調整好，再去找老師報到，謝謝您
+)
+
+2025-09-13 08:33:54select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2025-09-13 08:33:54Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+
+2025-09-13 08:33:54select id, LineID, TelegramID, TelegramID1 from Student where name = '老師好，抱歉，line帳號出現問題，所以資料都重置，沒有您的資料
+
+姮蓁對於數學課提不太起興趣，剛好最近很忙，爸爸常出差，我常週末上班，她自己也要一直團練，數學課就沒辦法準時去上
+
+剛剛看到收費袋，發現她上了一課還有教材費，覺得老是請假跟出勤不正常對老師也不好意思，我們會找時間去繳這一堂課的費用和講義費，之後數學課的部分，若她心態調整好，再去找老師報到，謝謝您' and enable = 1 and CampusID = 11
+2025-09-13 08:33:54 boolean 
+2025-09-13 08:33:54string查無此學生老師好，抱歉，line帳號出現問題，所以資料都重置，沒有您的資料
+
+姮蓁對於數學課提不太起興趣，剛好最近很忙，爸爸常出差，我常週末上班，她自己也要一直團練，數學課就沒辦法準時去上
+
+剛剛看到收費袋，發現她上了一課還有教材費，覺得老是請假跟出勤不正常對老師也不好意思，我們會找時間去繳這一堂課的費用和講義費，之後數學課的部分，若她心態調整好，再去找老師報到，謝謝您

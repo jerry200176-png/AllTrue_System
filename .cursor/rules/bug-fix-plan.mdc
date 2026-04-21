@@ -1,0 +1,140 @@
+---
+description: 寫 Bug Fix Plan 時以工程師視角產出結構化修復計畫，供 AI Agent 跨功能自動執行
+globs: "**/.cursor/plans/**"
+alwaysApply: true
+---
+
+# Bug Fix Plan 強制規則（AI Agent 必須遵守）
+
+**觸發條件**：收到「寫 bug fix plan / 修復計畫 / bug plan / 寫計畫修 bug」指令，立即套用。
+
+> 寫 Bug Fix Plan 前，先確認 B1 偵查已完成且根因已確認。
+
+---
+
+## ⛔ 必填章節清單（缺任何一節 = 不合格）
+
+| # | 章節 | 關鍵約束 |
+|---|---|---|
+| 0 | **根因確認（Root Cause）** | B1 偵查的結論摘要；**Bug Fix Plan 專屬章節，PRD 沒有** |
+| 1 | 文件資訊 | 功能名稱 / 版本 / 狀態 / **嚴重度（P0～P3）** / 目標角色 / 關聯 Bug |
+| 2 | 業務背景與影響 | 說明 bug 造成的痛點與錯誤行為；**不需要 KPI，改為「修復後預期行為」** |
+| 3 | 範圍 | In Scope（本次修什麼）+ Out of Scope（明確不動什麼） |
+| 4 | RACI | **所有 R/A = AI Agent**；人類最多 I |
+| 4b | Dependencies | 前置 PR / migration 前提；**無依賴也必須明寫** |
+| 5 | Acceptance Criteria | 每條 AC 對應一個可 pass/fail 的測試；**不需要 As a…/I want… 格式，直接寫 AC** |
+| 6 | 功能需求 FR | 編號 FR-001…；**每條描述「修復後系統應該…」，可測試可驗收** |
+| 7 | 非功能需求 NFR | **效能型 bug 必填**；純邏輯 bug 填「不適用，說明理由」 |
+| 8 | 技術方向 | 涉及檔案與方法名稱 + 架構取捨理由；**禁止出現任何 code** |
+| 8b | Decision Log | 每個修復選擇：日期 + 替代方案 + 選擇理由 |
+| 9 | 資安與存取控制 | **涉及 auth / PII / 權限邊界的 bug 必填**；純 UI bug 填「不適用」 |
+| 10 | QA 驗收 | Happy Path / Edge / Error + **Revert-proof 驗證（git stash 後測試應 fail）** |
+| 11 | 上線與維運 | 部署步驟 + **有無 migration** + Observability + 回滾方案（含時間估計） |
+| 12 | 優先級 | P0/P1/P2 + 執行 Agent 標記；**不需要里程碑時程** |
+| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch` 查業界解法**（同 PRD 規則） |
+| 14 | Definition of Done | **所有項目必須是 AI 可自動驗證的客觀指標**（命令 + 預期輸出） |
+
+---
+
+## 📌 第 0 節格式（Bug Fix Plan 專屬）
+
+```markdown
+## 0. 根因確認（Root Cause）
+
+| 欄位 | 內容 |
+|---|---|
+| 嚴重度 | P0 / P1 / P2 / P3 |
+| 根因類型 | 邏輯錯誤 / 欄位缺失 / Query 條件錯誤 / 權限邊界 / 效能 / 其他 |
+| 根因摘要 | [一句話：哪個方法 / 哪個條件 / 為什麼錯] |
+| 錯誤行為 | [系統現在做什麼] |
+| 預期行為 | [系統應該做什麼] |
+| 影響範圍 | [哪些角色 / 哪些 API / 哪些資料受影響] |
+| B1 偵查來源 | [引用 B1 報告的根因候選編號，或「本計畫整合 B1 內容」] |
+```
+
+---
+
+## 📌 第 5 節格式（AC 直接列，不用 User Story 格式）
+
+```markdown
+## 5. Acceptance Criteria
+
+### AC-001：[情境名稱]
+- AC-001-a：[角色] 執行 [操作]，系統 [預期結果]
+- AC-001-b：[角色] 執行 [操作]，系統 [預期結果]（反向驗證）
+
+### AC-002：[情境名稱]
+...
+```
+
+---
+
+## 📌 第 10 節必含 Revert-proof 驗證
+
+```markdown
+### Revert-proof 驗證
+- [ ] git stash 後重跑測試，各新增測試至少 1 case failure（確認測試真正覆蓋了 bug，而非誤綠）
+```
+
+---
+
+## ❌ 強制禁止
+
+- 禁止跳到「要加什麼函式 / 怎麼改行數」的工程細節（第 8 節只列檔案 + 方法名 + 取捨，不寫 code）
+- 禁止 DoD 出現「人工確認」「PM sign-off」等人工節點
+- 禁止第 13 節憑空填寫業界解法：**必須先 `WebSearch` 再填**
+- 禁止 Out of Scope 留空：**必須明確列出不動的模組 / 路由 / 角色**
+- 禁止忽略 Revert-proof 驗證：**每份 Bug Fix Plan 都必須有此項 DoD**
+- 禁止純後端 bug 的第 5 節寫 UI 互動描述（AC 只描述 API 回傳行為）
+- 禁止把「修復前的錯誤行為」寫入 AC（AC 只描述修復後的正確行為）
+
+---
+
+## Todos 類別對照表（Bug Fix 專用，比 PRD 少）
+
+| 類別 | 執行 Agent | 條件 |
+|---|---|---|
+| 後端修復（Controller / Service / Query） | `[DEV]` | 必填 |
+| 前端修復（Vue 元件 / API 串接） | `[DEV]` | 僅當 bug 涉及前端 |
+| Migration（新欄位 / 索引） | `[DEV]` | 僅當 bug fix 需要 DB 異動 |
+| Regression Tests（新增 + 現有測試全綠） | `[TEST]` | 必填 |
+| Revert-proof 驗證 | `[TEST]` | 必填 |
+| 資安靜態審查（涉及 auth / PII / 權限） | `[REVIEW]` | 條件性必填（見下） |
+| Code Review（逐條對照 FR） | `[REVIEW]` | 必填 |
+| CHANGELOG + AI_REGRESSION_LESSONS 更新 | `[DOCS]` | 必填 |
+| 部署（migration + cache + health check） | `[OPS]` | 必填 |
+
+**`[REVIEW]` 資安審查觸發條件（滿足任一即必填）：**
+- Bug 涉及 auth / middleware / token 驗證
+- Bug 涉及角色邊界（teacher / director / super_admin 可見性）
+- Bug 涉及 PII（學生電話、LineID、家長資料）
+- Bug 涉及 RFID 刷卡或 LINE Webhook 公開端點
+
+---
+
+## DoD 格式規則
+
+每條 DoD 必須寫明驗證命令與預期輸出：
+
+```markdown
+- [ ] [FR 編號] ([說明])：驗證方式：`[命令]` 回傳 `[預期結果]`
+- [ ] Revert-proof：驗證方式：`git stash && [測試命令]` 各新增 case 至少 1 failure
+- [ ] CHANGELOG：驗證方式：`git diff docs/CHANGELOG.md` 含 `[日期]` 新增條目
+- [ ] Health check：驗證方式：`curl -sk [URL]/health` 回傳 `{"status":"ok",...}` HTTP 200
+```
+
+---
+
+## Bug Fix Plan vs PRD 差異速查
+
+| 面向 | PRD（功能） | Bug Fix Plan |
+|---|---|---|
+| 第 0 節 | 無 | ✅ **根因確認（必填）** |
+| 第 2 節 | 業務價值 + KPI | **修復痛點 + 預期行為（不需 KPI）** |
+| 第 5 節 | As a…/I want… | **直接列 AC（不用 User Story 格式）** |
+| 第 5b 節 UI/UX | 前端必填 | **後端 bug 填「不適用」** |
+| 第 7 節 NFR | 效能數字必填 | **非效能 bug 填「不適用，說明理由」** |
+| 第 10 節 | UI/UX 驗收清單 | **Revert-proof 驗證（必填）** |
+| 第 12 節 | 里程碑時程 | **只列優先級（P0/P1/P2），不排時程** |
+| Todos | 9 類 | **6～9 類（依 bug 類型，前端/資安可省）** |
+| WebSearch | §13 必做 | ✅ **§13 仍必須 WebSearch** |

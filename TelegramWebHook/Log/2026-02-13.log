@@ -1,0 +1,48 @@
+2026-02-13 17:35:57Array
+(
+    [message_id] => 7129
+    [from] => Array
+        (
+            [id] => 8531473310
+            [is_bot] => 
+            [first_name] => Cindy
+            [last_name] => Wu
+            [language_code] => zh-hans
+        )
+
+    [chat] => Array
+        (
+            [id] => 8531473310
+            [first_name] => Cindy
+            [last_name] => Wu
+            [type] => private
+        )
+
+    [date] => 1770975356
+    [text] => /start
+    [entities] => Array
+        (
+            [0] => Array
+                (
+                    [offset] => 0
+                    [length] => 6
+                    [type] => bot_command
+                )
+
+        )
+
+)
+
+2026-02-13 17:35:57select id, name, LIFFID, Client_ID, LIFF_URL, URL, TelegramToken, TelegramChatID from Campus where current = 1 
+2026-02-13 17:35:57Array
+(
+    [id] => 11
+    [name] => 新莊分校
+    [LIFFID] => 1656795001-8nkzg6Xw
+    [Client_ID] => Wt5N1ZlJrgKkRQwY6pueWp
+    [LIFF_URL] => https://liff.line.me/1656795001-8nkzg6Xw
+    [URL] => https://alltrue.xinzhuang.lifenet.com.tw
+    [TelegramToken] => 7742222418:AAHkG0zeCVCuSOUcsCIuuw2F7z3LVq8dvh0
+    [TelegramChatID] => -4730742630
+)
+

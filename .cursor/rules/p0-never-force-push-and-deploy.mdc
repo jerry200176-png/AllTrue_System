@@ -1,0 +1,151 @@
+---
+description: P0 最高優先級 — 嚴禁任何 AI 觸發自動部署或破壞生產環境的危險操作
+alwaysApply: true
+---
+
+# ⛔ P0 最高優先級規則 — 任何 AI 都不得違反
+
+## 事故背景（2026-04-21 生產事故）
+
+AI 執行 `git push --force origin main` 後，觸發 GitHub Actions `deploy.yml` 自動部署，
+將 `backend/.env`、`routes/api.php`、`.htaccess`、多個 Controller 覆蓋為 Docker 版本，
+導致生產網站全站掛掉約 15 分鐘。**資料庫幸運未遺失**，但此事故應永遠不再發生。
+
+根因：
+1. AI 不知道 repo 裡有 GitHub Actions deploy workflow（每次 push main 會自動部署）
+2. AI 用 `force push` 覆蓋了遠端的完整歷史
+3. AI 沒有先備份、沒有先在測試環境驗證
+
+---
+
+## ⛔ 絕對禁止清單（任何 AI 都不得做）
+
+### 1. 禁止任何形式的 force push
+
+- ❌ `git push --force`
+- ❌ `git push -f`
+- ❌ `git push --force-with-lease`（除非使用者在同一訊息明確寫出這六個字）
+
+**唯一例外**：使用者在**當次訊息**中明確用文字寫「我授權 force push」或等效中文，且使用者同時說明「已確認不會觸發 deploy workflow」。
+
+### 2. 禁止任何形式觸發 deploy workflow
+
+任何會推送到 `main` 分支的操作前，**必須先確認**：
+
+```bash
+# 強制檢查是否有 deploy workflow
+ls /home/admin/.github/workflows/*.yml
+cat /home/admin/.github/workflows/deploy.yml 2>/dev/null | grep -E "on:|push:|branches:"
+```
+
+如果有 push 觸發的 workflow，**必須先停用**（重新命名為 `.disabled`）或改推到 feature branch，
+**絕對不可**直接 push 到 main。
+
+### 3. 禁止直接操作 `backend/.env`
+
+- ❌ 不可覆蓋 `backend/.env`（包含任何形式的 `cp`、`mv`、`Write`、`>` 重導向）
+- ❌ 不可在 git 操作中讓 `.env` 被 checkout 覆蓋
+- ❌ 不可執行 `git checkout <任何> -- backend/.env`
+
+**唯一例外**：使用者明確說「我要修改 .env 的 XXX 欄位」時，先讀取、改一行、再寫回。
+
+### 4. 禁止跨分支 / 跨 tag 的大範圍 checkout
+
+- ❌ `git checkout <tag_or_branch> -- backend/`
+- ❌ `git checkout <tag_or_branch> -- <大目錄>`
+- ❌ `git reset --hard <任何>`
+
+**原因**：這類操作會覆蓋生產中的最新檔案，且不可逆。
+
+**唯一例外**：使用者在事故恢復時明確要求，且 AI 已先用 `cp` 備份當前狀態到 `backend.emergency_backup.$(date +%s)`。
+
+### 5. 禁止在未備份前執行任何寫入生產 DB 的操作
+
+任何會修改 `AllTrue` 資料庫的操作（migration、seeder、artisan db:*、TRUNCATE、DELETE、
+UPDATE 無 WHERE）前，**必須先執行**：
+
+```bash
+TS=$(date '+%Y-%m-%d_%H%M%S')
+mysqldump -h 127.0.0.1 -u admin -p'<密碼從.env>' --single-transaction AllTrue | \
+  gzip > /home/admin/backups/emergency/pre_write_${TS}.sql.gz
+```
+
+---
+
+## ✅ 強制執行流程（任何涉及 git / 部署 / env / DB 的操作）
+
+### Step 0 — 事前檢查（不可跳過）
+
+```bash
+# 1. 是否在 git repo 根目錄
+cd /home/admin && git status
+
+# 2. 是否有 deploy workflow
+ls .github/workflows/ 2>/dev/null
+
+# 3. 當前 branch
+git branch --show-current
+
+# 4. 是否有未提交變更
+git status --short
+```
+
+### Step 1 — 高風險操作前先備份
+
+```bash
+TS=$(date '+%Y-%m-%d_%H%M%S')
+
+# DB 備份（資料類操作必做）
+mysqldump -h 127.0.0.1 -u admin -p'<密碼>' --single-transaction AllTrue \
+  | gzip > /home/admin/backups/emergency/db_pre_${TS}.sql.gz
+
+# 程式碼備份（git 操作必做）
+tar czf /home/admin/backups/emergency/code_pre_${TS}.tar.gz \
+  --exclude='backend/vendor' --exclude='frontend/node_modules' \
+  -C /home/admin backend scripts
+
+# .env 備份
+cp /home/admin/backend/.env /home/admin/backend/.env.pre_${TS}
+```
+
+### Step 2 — 只做最小必要變更
+
+- 改 1 行就改 1 行
+- 不要「順便」重構
+- 不要用 `--replace-all` 除非已精確評估影響範圍
+
+### Step 3 — 操作後立即驗證
+
+```bash
+curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+# 必須看到 status: ok + log_pipeline.driver: daily + perf_flags 非 null
+```
+
+---
+
+## ✅ 推送到 GitHub 的唯一合法流程
+
+```bash
+# 1. 先檢查 deploy workflow 狀態
+ls .github/workflows/
+
+# 2. 如果有 deploy workflow 且使用者沒確認過可推 main，一律推到 feature branch
+git checkout -b feature/your-change
+git add <specific-files-only>  # 禁止 git add -A / git add .
+git commit -m "..."
+git push -u origin feature/your-change
+
+# 3. 永遠不用 --force，除非使用者明確授權
+```
+
+---
+
+## AI 必須背誦的口訣
+
+1. **任何 git push 前，檢查 workflows**
+2. **任何覆蓋 .env 的操作，立刻停**
+3. **任何 checkout <branch> -- <dir> 的操作，先備份**
+4. **任何 force push 的請求，拒絕並提醒使用者風險**
+5. **任何修改生產 DB 的操作，先 mysqldump**
+
+**如果 AI 違反上述任何一條，視為 P0 故障，事後必須寫入 AI_REGRESSION_LESSONS。**

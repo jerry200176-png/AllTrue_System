@@ -1,0 +1,30 @@
+---
+description: 修改前端後自動執行 npm run deploy 上線到 backend/public（無須使用者提醒）
+alwaysApply: true
+---
+
+# 前端變更後自動上線（AllTrue）
+
+## 必做時機
+
+在本對話中，若你**曾修改**下列任一類路徑（並將變更留在工作區），在**回覆使用者、結束任務之前**必須執行：
+
+```bash
+cd /home/admin/frontend && npm run deploy
+```
+
+- `frontend/src/**`（Vue、JS、CSS、資源）
+- `frontend/index.html`
+- `frontend/vite.config.js`
+- `frontend/scripts/**`（若影響 build／copy）
+
+## 不必執行時
+
+- 僅修改 `backend/**`、文件、測試且**未**動到上述前端路徑
+- 使用者明確表示「不要 deploy／先不要上線」
+
+## 說明
+
+- `npm run deploy` = `vite build` + 複製到 `backend/public`，供 Raspberry Pi／nginx 提供 SPA。
+- 執行後可在回覆簡短註明「已 deploy」；若指令失敗，說明錯誤並修復或回報。
+- 使用者說「更新／上線／deploy」時，若前端有未打包的變更，同樣應執行上述指令。
