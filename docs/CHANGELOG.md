@@ -2,6 +2,43 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-22 — ops: 備份與 CI 安全強化至業界標準
+
+### 背景
+
+2026-04-22 凌晨發生 P0 事故：AI 在 production 目錄 `/home/admin/backend/` 執行 `php artisan test`，`RefreshDatabase` trait 把 `AllTrue`（production DB）整個 DROP + migrate:fresh，導致 Student 395→1、StudentClass 633→0、ClassSession 5446→0。靠 23:00 的 sixhour 備份救回，資料損失視窗約 1 小時 42 分鐘。
+
+### Changes
+
+**備份強化**
+- `scripts/sixhour-backup.sh`：保留份數 `KEEP=8`（2 天）→ `KEEP=12`（3 天），降低災難發生時的 RPO 視窗
+- `scripts/nightly-backup.sh`：dump 完成後自動統計 INSERT INTO 行數，< 20 條寫入 CRITICAL 告警至 `db-alert.log`
+- `scripts/gdrive-backup-sync.sh`：
+  - 啟動前加入 `sleep 15` 退讓邏輯，避免與其他凌晨 cron 碰撞觸發 Google API 403 rate limit
+  - transfers 從 2 降為 1，retries 從 3 提升至 5，retries-sleep 30s
+  - 新增同步 sixhour 最新 2 份到 `g-drive:AllTrue-Backups/sixhour/`（6h 異地快照）
+  - 遠端清理 sixhour/ 保留 2 天
+- crontab：gdrive-sync 從 `02:30` 改為 `03:00`（距 nightly 01:00 和 restore-drill 02:00 各有 1 小時緩衝）
+- `monthly-restore-drill.sh`：首次手動驗證通過（59 tables, 395 students, PASSED）
+
+**CI 安全防護**
+- `.gitignore`：新增 `bin/rclone` 排除 ARM64 ELF binary，修復每小時 git-sync 因 SECURITY-ABORT 卡死的問題
+- `backend/tests/bootstrap.php`：加入 DB_DATABASE 斷路器，若 `.env` 的 `DB_DATABASE=AllTrue`（production）且未被環境變數覆蓋，立即 `exit(1)` 並顯示明確錯誤訊息，防止任何測試誤操作 production DB
+
+**規則強化**
+- `.cursorrules`：P0 警告區新增事故 B/C 記錄，明確禁止在 `/home/admin/backend/` 跑 artisan cache/config/route 指令（事故 B）及 `php artisan test`（事故 C）
+- `.cursor/rules/p0-never-force-push-and-deploy.mdc`：新增 §5a（禁止在 production 跑測試）、§5b（禁止跑 cache/config 指令）
+- `docs/AI_REGRESSION_LESSONS.md`：新增兩則事故完整 post-mortem 記錄
+
+### Verification
+
+- restore drill: `cat /home/admin/backups/restore-drill.log | grep PASSED` → 有輸出
+- gdrive sync: `cat /home/admin/backups/gdrive-sync.log | tail -5` → `sync done`，無 403
+- git-sync: `bash /home/admin/scripts/git-sync.sh` → Security scan passed
+- DB 安全: `.env DB_DATABASE=AllTrue` 啟動 bootstrap.php → exit(1)
+
+---
+
 ## 2026-04-21 — b7 調課失敗修復：試聽容量誤判 + OPcache 陳舊 + 孤兒資料補救
 
 ### Problem

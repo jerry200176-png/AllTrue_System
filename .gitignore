@@ -85,3 +85,6 @@ backups/.db-health-state
 /*.log
 logs/*.log
 *.exe
+
+# Third-party binaries installed locally (not to be tracked in git)
+bin/rclone

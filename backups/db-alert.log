@@ -14,3 +14,79 @@
 [2026-04-21 19:15:01] OK — all tables above threshold
 [2026-04-21 19:30:01] OK — all tables above threshold
 [2026-04-21 19:30:01] OK — all tables above threshold
+[2026-04-21 19:45:01] OK — all tables above threshold
+[2026-04-21 19:45:01] OK — all tables above threshold
+[2026-04-21 20:00:02] OK — all tables above threshold
+[2026-04-21 20:00:02] OK — all tables above threshold
+[2026-04-21 20:15:01] OK — all tables above threshold
+[2026-04-21 20:15:01] OK — all tables above threshold
+[2026-04-21 20:30:01] OK — all tables above threshold
+[2026-04-21 20:30:01] OK — all tables above threshold
+[2026-04-21 20:45:01] OK — all tables above threshold
+[2026-04-21 20:45:01] OK — all tables above threshold
+[2026-04-21 21:00:01] OK — all tables above threshold
+[2026-04-21 21:00:01] OK — all tables above threshold
+[2026-04-21 21:15:01] OK — all tables above threshold
+[2026-04-21 21:15:01] OK — all tables above threshold
+[2026-04-21 21:30:01] OK — all tables above threshold
+[2026-04-21 21:30:01] OK — all tables above threshold
+[2026-04-21 21:45:01] OK — all tables above threshold
+[2026-04-21 21:45:01] OK — all tables above threshold
+[2026-04-21 22:00:01] OK — all tables above threshold
+[2026-04-21 22:00:01] OK — all tables above threshold
+[2026-04-21 22:15:02] OK — all tables above threshold
+[2026-04-21 22:15:02] OK — all tables above threshold
+[2026-04-21 22:30:01] OK — all tables above threshold
+[2026-04-21 22:30:01] OK — all tables above threshold
+[2026-04-21 22:45:01] OK — all tables above threshold
+[2026-04-21 22:45:01] OK — all tables above threshold
+[2026-04-21 23:00:01] OK — all tables above threshold
+[2026-04-21 23:00:01] OK — all tables above threshold
+[2026-04-21 23:15:01] OK — all tables above threshold
+[2026-04-21 23:15:01] OK — all tables above threshold
+[2026-04-21 23:30:01] OK — all tables above threshold
+[2026-04-21 23:30:01] OK — all tables above threshold
+[2026-04-21 23:45:01] OK — all tables above threshold
+[2026-04-21 23:45:01] OK — all tables above threshold
+[2026-04-22 00:00:01] OK — all tables above threshold
+[2026-04-22 00:00:01] OK — all tables above threshold
+[2026-04-22 00:15:02] OK — all tables above threshold
+[2026-04-22 00:15:02] OK — all tables above threshold
+[2026-04-22 00:30:01] OK — all tables above threshold
+[2026-04-22 00:30:01] OK — all tables above threshold
+[2026-04-22 00:45:01] ALERT: ClassSession=0 < threshold 50
+[2026-04-22 00:45:01] ALERT: ClassSession=0 < threshold 50
+[2026-04-22 00:45:01] ALERT: StudentClass=0 < threshold 10
+[2026-04-22 00:45:01] ALERT: StudentClass=0 < threshold 10
+[2026-04-22 00:45:01] ALERT: Teacher=0 < threshold 3
+[2026-04-22 00:45:01] ALERT: Teacher=0 < threshold 3
+[2026-04-22 00:45:01] ALERT: Student=1 < threshold 10
+[2026-04-22 00:45:01] ALERT: Student=1 < threshold 10
+[2026-04-22 00:45:01] CRITICAL DROP: ClassSession 5446 -> 0
+[2026-04-22 00:45:01] CRITICAL DROP: ClassSession 5446 -> 0
+[2026-04-22 00:45:01] CRITICAL DROP: StudentClass 633 -> 0
+[2026-04-22 00:45:01] CRITICAL DROP: StudentClass 633 -> 0
+[2026-04-22 00:45:01] CRITICAL DROP: Student 395 -> 1
+[2026-04-22 00:45:01] CRITICAL DROP: Student 395 -> 1
+[2026-04-22 00:45:01] Sending alert: 
+[AllTrue DB Alert]
+⚠️ ClassSession 剩 0 筆（警戒線 50）
+⚠️ StudentClass 剩 0 筆（警戒線 10）
+⚠️ Teacher 剩 0 筆（警戒線 3）
+⚠️ Student 剩 1 筆（警戒線 10）
+🚨 ClassSession 暴跌：5446 → 0（可能遭清空！）
+🚨 StudentClass 暴跌：633 → 0（可能遭清空！）
+🚨 Student 暴跌：395 → 1（可能遭清空！）
+時間: 2026-04-22 00:45:01
+[2026-04-22 00:45:01] Sending alert: 
+[AllTrue DB Alert]
+⚠️ ClassSession 剩 0 筆（警戒線 50）
+⚠️ StudentClass 剩 0 筆（警戒線 10）
+⚠️ Teacher 剩 0 筆（警戒線 3）
+⚠️ Student 剩 1 筆（警戒線 10）
+🚨 ClassSession 暴跌：5446 → 0（可能遭清空！）
+🚨 StudentClass 暴跌：633 → 0（可能遭清空！）
+🚨 Student 暴跌：395 → 1（可能遭清空！）
+時間: 2026-04-22 00:45:01
+[2026-04-22 01:00:01] OK — all tables above threshold
+[2026-04-22 01:00:01] OK — all tables above threshold

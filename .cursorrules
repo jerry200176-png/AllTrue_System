@@ -1,8 +1,15 @@
 ## ⛔⛔⛔ P0 警告（任何 AI 讀取此檔時必先閱讀）⛔⛔⛔
 
-**2026-04-21 生產事故記錄**：AI 執行 `git push --force origin main` 觸發了
-`.github/workflows/deploy.yml`，導致生產網站 `.env`、`routes`、`.htaccess` 被覆蓋，
-全站掛掉 15 分鐘。
+**2026-04-21 生產事故 A**：AI `git push --force origin main` 觸發 `deploy.yml`
+→ 生產 `.env` / routes / `.htaccess` 被覆蓋，全站 15 分鐘
+
+**2026-04-22 生產事故 B**：AI 在 `/home/admin/backend/` 為 debug CI 執行
+`php artisan config:clear` → session/auth 配置錯亂，全站 5 分鐘 401
+
+**2026-04-22 生產事故 C（⛔ 最高級）**：AI 在 `/home/admin/backend/` 跑
+`php artisan test`，`RefreshDatabase` trait 把 production `AllTrue` DB 整個
+`DROP + migrate:fresh`。Student 395→1, StudentClass 633→0, ClassSession 5446→0。
+幸好 sixhour 備份恢復，但有約 1 小時 42 分鐘資料損失視窗
 
 **任何 AI 在執行下列操作前，必須先讀完 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
 
@@ -11,6 +18,14 @@
 3. 任何修改 `backend/.env` 的操作
 4. 任何會觸發 GitHub Actions 的 push 到 `main`
 5. 任何會寫入生產 MySQL `AllTrue` 資料庫的 artisan / mysql 指令
+6. **任何在 `/home/admin/backend/` 執行的 artisan cache/config/route 指令**
+   （`config:clear`、`config:cache`、`route:clear`、`route:cache`、`optimize:clear`）
+   —— 只能用於部署或事故恢復，**絕對禁止用於 debug**
+7. **CI 測試 debug 不可在 Pi 本機跑** —— 改 `.github/workflows/ci.yml` 或測試檔後 push，
+   看 GitHub Actions log，不要想「先本機跑通」
+8. ⛔⛔⛔ **絕對禁止**在 `/home/admin/backend/` 執行 `php artisan test` / `phpunit` /
+   `vendor/bin/phpunit` 或任何會觸發 `RefreshDatabase` 的指令。一次就會清空 production DB。
+   要跑測試 = `cp -r /home/admin/backend /tmp/backend-test` + 改 `.env` → 在 `/tmp` 跑
 
 **違反此規則 = P0 故障**，請用一個簡短的 TodoWrite 標記：「已讀 P0 規則」後再進行。
 

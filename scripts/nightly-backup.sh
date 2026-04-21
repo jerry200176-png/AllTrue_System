@@ -57,6 +57,16 @@ mysqldump \
 
 log "Dump complete: $(du -sh "$DUMP_FILE" | cut -f1)"
 
+# --- Step 1c: 備份完整性驗證 ---
+BACKUP_INSERT_COUNT=$(zcat "$DUMP_FILE" 2>/dev/null | grep -c "^INSERT INTO" || echo "0")
+log "Backup integrity: INSERT INTO count = ${BACKUP_INSERT_COUNT}"
+if [ "${BACKUP_INSERT_COUNT}" -lt 20 ]; then
+  log "CRITICAL: backup may be empty or corrupt! INSERT count=${BACKUP_INSERT_COUNT} < threshold 20"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [db-alert] CRITICAL: nightly dump INSERT count=${BACKUP_INSERT_COUNT} (expected >=20). File: $(basename "$DUMP_FILE")" >> "$REPO_ROOT/backups/db-alert.log"
+else
+  log "Backup integrity OK (INSERT count=${BACKUP_INSERT_COUNT})"
+fi
+
 # --- Step 1b: 月首（每月 1 號）產生月備，或在當月沒有月備時補一份 ---
 MONTHLY_FILE="$MONTHLY_DIR/alltrue_monthly_${TODAY_YM}.sql.gz"
 if [ "$TODAY_DOM" = "01" ] || [ ! -f "$MONTHLY_FILE" ]; then

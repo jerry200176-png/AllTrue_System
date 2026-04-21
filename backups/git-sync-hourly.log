@@ -1,0 +1,5 @@
+[git-sync] Branch: main
+[SECURITY-ABORT] Suspicious files detected, backup HALTED:
+
+  SUSPICIOUS_BINARY: bin/rclone
+[SECURITY-ABORT] Remove these files before backup can proceed.
