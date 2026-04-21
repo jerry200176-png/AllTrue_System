@@ -59,7 +59,74 @@ cat /home/admin/.github/workflows/deploy.yml 2>/dev/null | grep -E "on:|push:|br
 
 **唯一例外**：使用者在事故恢復時明確要求，且 AI 已先用 `cp` 備份當前狀態到 `backend.emergency_backup.$(date +%s)`。
 
-### 5. 禁止在未備份前執行任何寫入生產 DB 的操作
+### 5a. ⛔⛔⛔ 禁止在 production backend 跑 `php artisan test` / `phpunit`（2026-04-22 事故 C）
+
+**背景**：AI 為了 debug CI，在 `/home/admin/backend/` 跑 `php artisan test`。
+`RefreshDatabase` trait 對 `.env` 的 `DB_DATABASE=AllTrue`（production）執行 `DROP TABLE + migrate:fresh`。
+Student 395 → 1，StudentClass 633 → 0，ClassSession 5446 → 0。
+
+**為什麼 phpunit.xml `<env force="true">` 救不了你**：
+- Laravel 在 bootstrap 階段可能已用 `.env` 建立 DB 連線
+- PHPUnit 的 `<env>` 只在 PHPUnit 進程中生效，但 artisan 指令是先 bootstrap Laravel
+- `force="true"` 只覆蓋 `$_ENV`，不覆蓋已建立的 DB connection
+
+**絕對禁止**（沒有例外）：
+- ❌ `php artisan test`
+- ❌ `vendor/bin/phpunit`
+- ❌ `vendor/bin/pest`
+- ❌ 任何 `php artisan test:*` 子指令
+
+**要跑測試的唯一安全方式**：
+```bash
+# 1. Clone 到 /tmp
+cp -r /home/admin/backend /tmp/backend-test-$$
+cd /tmp/backend-test-$$
+
+# 2. 強制改 .env 到測試 DB（雙重保險）
+sed -i 's/^DB_DATABASE=.*/DB_DATABASE=AllTrue_test/' .env
+sed -i 's/^APP_ENV=.*/APP_ENV=testing/' .env
+
+# 3. 再次確認 .env 不會連到 production
+grep DB_DATABASE .env  # 必須是 AllTrue_test
+grep APP_ENV .env       # 必須是 testing
+
+# 4. 才能跑測試
+php artisan test
+
+# 5. 丟掉整個 clone
+cd / && rm -rf /tmp/backend-test-*
+```
+
+**CI debug 路線（優先）**：
+修 `.github/workflows/ci.yml` → `git push` → 看 GitHub Actions log。
+不要「我先本機跑通再 push」— Pi 就是 production。
+
+---
+
+### 5b. 禁止在 production backend 跑會動 cache/config 的 artisan 指令（2026-04-22 事故 B）
+
+**背景**：`/home/admin/backend/` **就是** production Laravel app，不是 clone 副本。
+AI 為了 debug 本機測試跑 `php artisan config:clear`，導致 5 分鐘全站 401。
+
+**絕對禁止（非部署／非事故恢復時）**：
+- ❌ `php artisan config:clear` / `config:cache`
+- ❌ `php artisan route:clear` / `route:cache`
+- ❌ `php artisan optimize:clear` / `optimize`
+- ❌ `php artisan cache:clear`
+- ❌ `php artisan view:clear`
+- ❌ 任何 `php artisan test`、`php artisan tinker --execute` 有可能 trigger migration 或寫入 cache 的操作
+
+**要 debug Laravel 行為，必須用獨立 clone**：
+```bash
+git clone /home/admin/backend /tmp/backend-debug
+cd /tmp/backend-debug
+# 改 .env 到測試 DB，再跑 tinker / test
+```
+
+**CI debug 一律在 CI 端**：修 `.github/workflows/*.yml` 和測試檔 → push → 看 GitHub Actions log。
+**不要**在 Pi 上「先本機跑通再 push」。
+
+### 6. 禁止在未備份前執行任何寫入生產 DB 的操作
 
 任何會修改 `AllTrue` 資料庫的操作（migration、seeder、artisan db:*、TRUNCATE、DELETE、
 UPDATE 無 WHERE）前，**必須先執行**：
@@ -147,5 +214,7 @@ git push -u origin feature/your-change
 3. **任何 checkout <branch> -- <dir> 的操作，先備份**
 4. **任何 force push 的請求，拒絕並提醒使用者風險**
 5. **任何修改生產 DB 的操作，先 mysqldump**
+6. **在 `/home/admin/backend/` 執行 artisan cache/config/route 指令前，立刻停** — 2026-04-22 事故 B
+7. ⛔ **在 `/home/admin/backend/` 執行 `php artisan test` / `phpunit` 前，立刻停** — 2026-04-22 事故 C（清空 production DB）
 
 **如果 AI 違反上述任何一條，視為 P0 故障，事後必須寫入 AI_REGRESSION_LESSONS。**

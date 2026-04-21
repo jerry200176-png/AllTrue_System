@@ -1,10 +1,10 @@
 # Plan 主題索引（自動生成）
 
-> 產生時間（UTC）：2026-04-21 10:40 UTC
+> 產生時間（UTC）：2026-04-21 17:00 UTC
 > 範圍：plans/ 根目錄 active *.plan.md
 > **請勿手動編輯本檔。** 更新請執行：`python3 list-plans-by-topic.py --write-index`
 
-## 繳費／學收／催繳／核帳 (18)
+## 繳費／學收／催繳／核帳 (19)
 
 - `package-remaining-sessions-fix_747eac32.plan.md`
 - `package_remaining_fix_e6cfe9da.plan.md`
@@ -23,11 +23,15 @@
 - `繳費單圖片輸出規格_08da3204.plan.md`
 - `繳費單費用更新修正_741128e7.plan.md`
 - `繳費清除與聊天搜尋修復_b56a5efb.plan.md`
+- `繳費狀態切換未清除paid_at修正_c2f8a1d9.plan.md`
 - `顯示當期繳費日期_62881d82.plan.md`
 
-## 調課／代課／排課／行事曆 (32)
+## 調課／代課／排課／行事曆 (35)
 
 - `a+b_代課可見性修正_d2f91b5e.plan.md`
+- `b6_課表回報主任看不到_a3f8c201.plan.md`
+- `b7_調課失敗_試聽容量誤判與孤兒資料_4676d71c.plan.md`
+- `c1_代課單堂顯示原老師_c6f76dc8.plan.md`
 - `calendar_teacher_sort_d029a16b.plan.md`
 - `dashboard_&_calendar_polish_4d7bdef8.plan.md`
 - `duplicate-course-guard-fix_b1be7921.plan.md`
@@ -94,8 +98,9 @@
 - `評量表日期與科目分類改善_73c0e2e3.plan.md`
 - `請假與評量一致性修復_d15f952b.plan.md`
 
-## 薪資／兼職 (13)
+## 薪資／兼職 (14)
 
+- `b3_月結制歷史課程無法顯示_7cce099d.plan.md`
 - `parttime-payroll-implementation_6a097427.plan.md`
 - `parttime-teacher-payroll-prd_496b5335.plan.md`
 - `兼職併堂加給_pr_b990efe0.plan.md`
@@ -120,8 +125,9 @@
 - `student-name-binding-fix_85bea622.plan.md`
 - `家長入口登入修復_a6046dc1.plan.md`
 
-## 課程管理／契約／堂次 (11)
+## 課程管理／契約／堂次 (12)
 
+- `b4_月結加購續報變堂數制_2fe4f562.plan.md`
 - `course_management_refactor_4eacb4f6.plan.md`
 - `course_start_date_ux_fix_8f346e42.plan.md`
 - `schedules_post_契約修復_63e24a34.plan.md`
@@ -154,9 +160,10 @@
 - `修正_opcache_讓_v1.4_生效_7907aeb6.plan.md`
 - `內部聊天強化_2f8985bf.plan.md`
 
-## 其他／通用修正 (31)
+## 其他／通用修正 (32)
 
 - `b2_驗收與收尾_92798602.plan.md`
+- `b5_月結歷史誤轉堂數資料清理_data-ops.plan.md`
 - `bug回報列表優化_d17f2fa4.plan.md`
 - `dashboard-replan-discussion_12ddf9cd.plan.md`
 - `fix_receipt_lookup_5953ce89.plan.md`

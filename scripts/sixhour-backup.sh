@@ -10,7 +10,7 @@ REPO_ROOT="/home/admin"
 BACKUP_DIR="$REPO_ROOT/backups/sixhour"
 ENV_FILE="$REPO_ROOT/backend/.env"
 LOG_FILE="$REPO_ROOT/backups/nightly-backup.log"
-KEEP=8   # 保留最新 8 份 = 2 天
+KEEP=12  # 保留最新 12 份 = 3 天（RPO 視窗降至最差 3 天可回溯）
 
 mkdir -p "$BACKUP_DIR"
 
