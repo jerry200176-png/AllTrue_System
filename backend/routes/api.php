@@ -77,6 +77,20 @@ if (app()->environment('local')) {
 
 Route::get('/health', fn() => response()->json(['ok' => true, 'message' => 'Laravel routing OK']));
 
+// FR-003: Post-deploy OPcache flush — protected by DEPLOY_SECRET, localhost-only preferred.
+// Call: curl -s -X POST http://localhost/api/internal/opcache-reset -H "X-Deploy-Secret: <token>"
+Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) {
+    $secret = config('app.deploy_secret', '');
+    if (empty($secret) || $req->header('X-Deploy-Secret') !== $secret) {
+        return response()->json(['error' => 'Forbidden'], 403);
+    }
+    $cleared = false;
+    if (function_exists('opcache_reset')) {
+        $cleared = opcache_reset();
+    }
+    return response()->json(['ok' => true, 'opcache_cleared' => $cleared]);
+});
+
 // Debug: frontend sends log lines so we can read them on the server (storage/logs is writable)
 Route::post('/debug-log', function (\Illuminate\Http\Request $req) {
     $path = storage_path('logs/debug-b5f8bc.log');
@@ -292,6 +306,7 @@ Route::prefix('v1')->group(function () {
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
+        Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
         Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);

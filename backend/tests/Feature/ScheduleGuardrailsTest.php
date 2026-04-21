@@ -152,7 +152,7 @@ class ScheduleGuardrailsTest extends TestCase
             'type' => 'normal',
             'deduction' => 1,
             'branch_id' => 1,
-            'schedule_date' => '2026-04-06',
+            'schedule_date' => '2026-03-30',
         ]);
 
         $res->assertStatus(409)
@@ -499,30 +499,88 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * POST /api/v1/student-classes was retired (410).
+     * Redirect guard tests to POST /api/v1/schedules with a concrete schedule_date,
+     * because ScheduleGuardService::validateScheduleOccurrence (the live code path)
+     * reads the `schedules` table, not recurring StudentClass records.
+     *
      * @param  array<string, mixed>  $overrides
      */
     private function createCourseViaApi(string $token, int $studentId, int $teacherId, array $overrides = []): \Illuminate\Testing\TestResponse
     {
-        $payload = array_merge([
-            'student_id' => $studentId,
-            'subject' => 'Math',
-            'teacher_id' => $teacherId,
-            'class_type' => 'one_on_one',
-            'rate_per_30min' => 500,
-            'duration_hours' => 2,
-            'payment_type' => 'session',
-            'sessions_purchased' => 8,
-            'sessions_used' => 0,
-            'remaining_sessions' => 8,
+        $opts = array_merge([
+            'class_type'       => 'one_on_one',
+            'duration_hours'   => 2,
             'first_class_date' => '2026-03-30',
-            'days_of_week' => [1],
-            'start_time' => '16:00',
-            'Memo' => '測試課程',
+            'days_of_week'     => [1],
+            'start_time'       => '16:00',
+            'room_id'          => null,
         ], $overrides);
+
+        $days        = array_values((array) ($opts['days_of_week'] ?? [1]));
+        $dayOfWeek   = (int) ($days[0] ?? 1);
+        $startTime   = (string) $opts['start_time'];
+        $durationH   = (float) ($opts['duration_hours'] ?? 2);
+        $endMinutes  = (int) ($durationH * 60);
+        [$h, $m]     = array_map('intval', explode(':', $startTime));
+        $totalMinutes = $h * 60 + $m + $endMinutes;
+        $endTime      = sprintf('%02d:%02d', intdiv($totalMinutes, 60), $totalMinutes % 60);
+
+        // When a room_id is provided, we must create a StudentClass so the guard
+        // can resolve room_id via student_course_id (schedules table has no room_id column).
+        $studentCourseId = null;
+        if (!empty($opts['room_id'])) {
+            $studentCourseId = DB::table('StudentClass')->insertGetId([
+                'StudentID'       => $studentId,
+                'TeacherID'       => $teacherId,
+                'ClassType'       => $opts['class_type'],
+                'GradeID'         => 1,
+                'SubjectID'       => 1,
+                'by1'             => 0,
+                'TotalHours'      => 16,
+                'RoomID'          => '',
+                'week'            => $dayOfWeek,
+                'time'            => $startTime,
+                'StartDate'       => $opts['first_class_date'],
+                'SessionDuration' => (int) ($durationH * 60),
+                'room_id'         => $opts['room_id'],
+                'Stop'            => 0,
+                'RemainingSessions' => 8,
+                'SessionCount'    => 8,
+                'UsedSessions'    => 0,
+                'Rate'            => 500,
+                'Charge'          => 0,
+                'Paid'            => 0,
+                'Memo'            => '測試課程',
+                'MDate'           => now(),
+            ]);
+        }
+
+        $payload = [
+            'student_id'    => $studentId,
+            'teacher_id'    => $teacherId,
+            'subject'       => 'Math',
+            'day_of_week'   => $dayOfWeek,
+            'start_time'    => $startTime,
+            'end_time'      => $endTime,
+            'duration_hours' => $durationH,
+            'class_type'    => $opts['class_type'],
+            'status'        => 'scheduled',
+            'type'          => 'normal',
+            'deduction'     => 1,
+            'branch_id'     => 1,
+            'schedule_date' => $opts['first_class_date'],
+        ];
+        if ($studentCourseId) {
+            $payload['student_course_id'] = $studentCourseId;
+        }
+        if (!empty($opts['room_id'])) {
+            $payload['room_id'] = $opts['room_id'];
+        }
 
         return $this->withHeaders([
             'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/student-classes', $payload);
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/schedules', $payload);
     }
 }

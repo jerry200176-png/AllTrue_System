@@ -111,6 +111,7 @@ export function useRescheduleAndMakeup({
       const token = sess?.access_token;
       if (token) {
         let originalId = null;
+        let createdNewRescheduled = false;
         const existingRes = await fetch(
           `/api/v1/schedules?branch_id=${bid}&student_course_id=${form.course_id}&schedule_date=${form.original_date}&status=rescheduled&__limit=1`,
           { credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }
@@ -129,6 +130,7 @@ export function useRescheduleAndMakeup({
           if (!r1.ok) { const err = await r1.json().catch(() => ({})); alert('調課失敗：' + (err.message || '無法寫入原堂次紀錄')); return; }
           const created = await r1.json();
           originalId = created?.id ?? null;
+          createdNewRescheduled = true;
         }
         const r2 = await fetch('/api/v1/schedules', {
           method: 'POST', credentials: 'include',
@@ -144,6 +146,13 @@ export function useRescheduleAndMakeup({
               const names = details.map((d) => d.student_name || `#${d.student_id}`).join('、');
               errMsg += `\n衝突學生：${names}`;
             }
+          }
+          // FR-004: 補償刪除本次剛建立的 rescheduled 列，防止孤兒資料
+          if (createdNewRescheduled && originalId) {
+            fetch(`/api/v1/schedules/${originalId}`, {
+              method: 'DELETE', credentials: 'include',
+              headers: { Authorization: `Bearer ${token}` },
+            }).catch(() => {});
           }
           alert('調課失敗：' + errMsg);
           return;

@@ -43,7 +43,7 @@ else
 fi
 
 # 3) Laravel 快取清除
-echo "[3/4] 清除 Laravel 快取..."
+echo "[3/5] 清除 Laravel 快取..."
 if command -v php &>/dev/null && [ -f "backend/artisan" ]; then
   (cd backend && php artisan optimize:clear)
   echo "  OK"
@@ -51,8 +51,26 @@ else
   echo "  [略過] 未找到 php 或 backend/artisan"
 fi
 
+# 3b) PHP-FPM OPcache 刷新（FR-003）
+# 透過保護端點讓 FPM 自行清除 bytecode cache，避免舊版程式碼繼續被服務。
+echo "[4/5] 刷新 PHP-FPM OPcache..."
+DEPLOY_SECRET_VAL="$(grep '^DEPLOY_SECRET=' backend/.env 2>/dev/null | cut -d= -f2)"
+if [ -n "$DEPLOY_SECRET_VAL" ]; then
+  OPCACHE_RESP="$(curl -sf -X POST https://daan.lifenet.com.tw/api/internal/opcache-reset \
+    -H "X-Deploy-Secret: ${DEPLOY_SECRET_VAL}" \
+    -H "Content-Type: application/json" 2>/dev/null || echo 'CURL_FAIL')"
+  if echo "$OPCACHE_RESP" | grep -q '"ok":true'; then
+    echo "  OK (OPcache cleared)"
+  else
+    echo "  [警告] OPcache 端點回應: $OPCACHE_RESP"
+    echo "  請手動執行: sudo service php8.2-fpm reload"
+  fi
+else
+  echo "  [略過] DEPLOY_SECRET 未設定，請確認 backend/.env 有 DEPLOY_SECRET"
+fi
+
 # 4) 權限（可選，依實際執行身份調整）
-echo "[4/4] 檢查權限..."
+echo "[5/5] 檢查權限..."
 if [ -d "backend/public/assets" ]; then
   chmod -R a+r backend/public/assets 2>/dev/null || true
   chmod a+r backend/public/index.html 2>/dev/null || true
