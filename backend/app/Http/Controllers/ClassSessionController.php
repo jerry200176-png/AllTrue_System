@@ -150,15 +150,9 @@ class ClassSessionController extends Controller
             ]);
 
         if ($role === 'teacher') {
-            // Bug fix (2026-04-21)：代課後原老師仍看到待點名課程
-            // 正確語意：若該堂有代課記錄 (sub_sched.teacher_id IS NOT NULL)，僅代課老師看得到；
-            // 若無代課記錄，才由契約老師 (sc.TeacherID) 看到。
-            // 舊版以 `sc.TeacherID = ? OR sub_sched.teacher_id = ?` 合併，導致代課後原老師仍命中第一分支。
             $query->where(function ($q) use ($teacherId) {
-                $q->where(function ($inner) use ($teacherId) {
-                    $inner->whereNull('sub_sched.teacher_id')
-                        ->where('sc.TeacherID', $teacherId);
-                })->orWhere('sub_sched.teacher_id', $teacherId);
+                $q->where('sc.TeacherID', $teacherId)
+                    ->orWhere('sub_sched.teacher_id', $teacherId);
             });
         }
 
@@ -169,10 +163,8 @@ class ClassSessionController extends Controller
         if ($request->filled('teacher_id')) {
             $filterTid = (int) $request->input('teacher_id');
             $query->where(function ($q) use ($filterTid) {
-                $q->where(function ($inner) use ($filterTid) {
-                    $inner->whereNull('sub_sched.teacher_id')
-                        ->where('sc.TeacherID', $filterTid);
-                })->orWhere('sub_sched.teacher_id', $filterTid);
+                $q->where('sc.TeacherID', $filterTid)
+                    ->orWhere('sub_sched.teacher_id', $filterTid);
             });
         }
 

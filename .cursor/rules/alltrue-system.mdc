@@ -1,0 +1,156 @@
+---
+description: AllTrue 補習班管理系統參考文件
+alwaysApply: true
+---
+
+# AllTrue 補習班管理系統
+
+台灣補教業管理系統。四間分校：興隆、新店、大安、木柵。
+
+## 技術架構
+
+| | |
+|---|---|
+| 前端 | Vue 3.4 + Vite 5，`<script setup>`，無 Vue Router（用 `active` ref 切頁） |
+| 後端 | Laravel (PHP 8+)，MySQL（database: `alltrue`） |
+| 部署 | Raspberry Pi，指令：`cd frontend && npm run deploy`（build + copy 到 backend/public）；**Agent 修改 `frontend/src` 等後應自動執行，見規則 `auto-frontend-deploy.mdc`** |
+| 認證 | 自建 Bearer token，存 `localStorage.alltrue_session`，**非真實 Supabase** |
+| 刷卡 | RFID 讀卡機 → `POST /api/v1/swipe-rfid` |
+| 通知 | LINE Webhook / LINE Login |
+
+> `frontend/src/supabase.js` 是模擬 Supabase 介面的自建 client，實際打 Laravel `/api/v1/*`。大部分頁面用 `supabase.auth.getSession()` 取 token；`SubjectUnitsPage` 和 `DirectorDashboard` 直接讀 `localStorage.getItem('alltrue_session')`，兩者等價。
+
+## 防再犯（AI 必讀）
+
+- **`docs/AI_REGRESSION_LESSONS.md`**：已踩過的坑（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI 不明顯、**老師教學工作台 TeacherHome** 等）。
+- **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：`AlertController::tuition`／主任「繳費／續課提醒」規則（**變更前必問使用者**，見該檔）。
+
+## 角色與權限
+
+| 角色 | 可見功能 |
+|------|---------|
+| `super_admin` | 全部 + 主任審核、清空資料 |
+| `admin` / `director` | 全部（除主任審核） |
+| `teacher` | **教學工作台**（預設首頁）、出缺勤、學習評量表、行事曆、科目數、帳號設定 |
+| 家長 | ParentPortal 獨立入口（學生姓名+手機 或 LINE 登入） |
+
+## 前端頁面（`frontend/src/pages/`）
+
+| 頁面 active key | 檔案 | 功能 |
+|---|---|---|
+| `teacher-home` | TeacherHomePage.vue | 老師預設：今日待辦、跨分校本週課表、捷徑 |
+| `director` | DirectorDashboard.vue | 總覽：繳費／續課提醒、今日排課、待審評量、堂數統計 |
+| `calendar` | SmartCalendar.vue | 智慧排課：週/日課表、拖曳、衝堂偵測、請假/調課 |
+| `students` | StudentsList.vue | 學生管理、課程建立、加購堂數、CSV 匯入 |
+| `teachers` | TeachersList.vue | 老師管理、RFID 綁定、跨校支援設定 |
+| `course-mgmt` | CourseManagement.vue | 課程管理：費率、排課、請假、調課、補課空檔查詢 |
+| `classroom` | ClassroomManagement.vue | 教室管理（名稱、容量、停用） |
+| `subject-units` | SubjectUnitsPage.vue | 科目數統計（依月份切換） |
+| `attendance` | AttendancePage.vue | 出缺勤點名、刷卡記錄 |
+| `learning` | LearningRecordsPage.vue | 學習評量表（填寫、審核） |
+| `parent` | ParentPortal.vue | 家長入口（獨立，無側欄） |
+| `director-accounts` | DirectorAccountsPage.vue | 主任申請審核（super_admin 限定） |
+
+**共用元件**：`HelpGuide.vue`（可折疊說明欄）、`SearchableSelect.vue`（可搜尋下拉）  
+**Lib**：`constants.js`（常數）、`sessionDates.js`（排課日期計算）、`useBranches.js`（分校 store）
+
+## 分校（Branch / Campus）
+
+- `currentBranch` ref 存目前分校 ID，持久化 `localStorage.app_branch`
+- 所有子頁面以 `:branch-id="currentBranch"` prop 接收
+- 後端 middleware `require_campus` 從 token 解析所屬分校
+
+## 資料庫核心表格
+
+### Student（學生）
+`id`, `name`, `CampusID`, `ClassID`, `SchoolName`, `RFID`, `Phone`, `LineID`, `enable`
+
+### StudentClass（學生課程）
+`ID`, `StudentID`, `GradeID`, `SubjectID`, `TeacherID`  
+`ClassType` (one_on_one / one_on_two / one_on_three / tutoring)  
+`RemainingSessions`, `UsedSessions`, `SessionCount`, `SessionDuration`  
+`StartDate`, `EndDate`, `Rate`, `Charge`, `Pay`, `Paid`  
+`room_id`→rooms, `settlement_day`, `monthly_sessions`, `Memo`, `Stop`
+
+### ClassSession（排課堂次）
+`id`, `StudentClassID`, `SessionDate`, `StartTime`, `EndTime`  
+`Status`: scheduled / attended / cancelled / leave
+
+### schedules（請假 / 調課 / 補課 記錄）
+`id`, `student_id`, `teacher_id`, `subject`, `branch_id`  
+`schedule_date`, `day_of_week`, `start_time`, `end_time`, `duration_hours`, `class_type`  
+`status`: scheduled / leave / rescheduled / attended / cancelled  
+`type`: normal / extra  
+`deduction`, `student_course_id`, `original_schedule_id`（補課關聯原堂次）
+
+### LearningRecord（學習評量）
+`id`, `StudentClassID`, `ClassSessionID`, `TeacherID`  
+`Subject`, `SessionDate`, `StartTime`, `EndTime`  
+`Content`, `HomeworkStatus`, `QuizScore`, `Progress`, `NextHomework`, `Performance`, `Comment`  
+`Status`: pending / approved / rejected / changes_requested  
+`ApprovedBy`, `ApprovedAt`, `ReviewNote`
+
+### User（老師 / 主任）
+`id`, `LoginName`(email), `Name`, `PSW`, `type`(U/T/A), `status`, `employment_type`, `phone`
+
+### Campus（分校）
+`id`, `name`, `code`, `SwipeWindowMinutes`  
+LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
+
+### rooms（教室）
+`id`, `campus_id`, `name`, `capacity`, `memo`, `is_active`
+
+### StudentSingIn（出缺勤，注意 typo: Sing≠Sign）
+`id`, `StudentClassID`, `StudentID`, `TeacherID`, `CampusID`  
+`SignInDT`, `SignOutDT`, `Status`(present/absent), `SessionDeducted`
+
+## API 路由 (`/api/v1/`)
+
+### 公開（無認證）
+`POST auth/login` · `POST auth/register` · `GET branches`  
+`POST swipe-rfid` · `POST directors/register`  
+`POST parent/login` · `POST parent/login-line` · `POST line/webhook`
+
+### director + teacher 共用
+`GET/PUT me` · `GET students` · `GET/POST/PUT/DELETE student-classes`  
+`GET/POST/PUT/DELETE schedules` · `GET/POST learning-records`  
+`POST learning-records/{id}/approve` · `POST learning-records/reschedule-session`  
+`GET/POST attendance` · `GET/POST/PUT/DELETE rooms`
+
+### director 限定
+`POST students` · `PUT students/{id}` · `POST/GET invoices`  
+`GET finance/summary|revenue|outstanding|teacher-payroll|subject-units`  
+`GET/POST/DELETE pending-swipes` · `GET/POST profiles` · `GET campuses`
+
+## 商業邏輯
+
+### 科目數統計（SubjectUnitsPage → `GET /api/v1/finance/subject-units?start&end&branch_id`）
+加權規則：一對一×1.5、一對二×0.75、一對三×0.5、輔導×0.5  
+科目數 = 各老師加權總分 ÷ 8  
+前端期望回傳：`{ teachers: [{ teacher_name, one_on_one_hours, …, subject_count_with, subject_count_without, share_pct }], totals: {…} }`  
+**⚠️ 已知問題**：後端 `FinanceController::subjectUnits` 目前只回傳 `TeacherID/Subject/unit_count`（approved LearningRecord 分組），格式與前端期望不符，導致頁面顯示空白。
+
+### 補課空檔演算法（CourseManagement.vue `fetchMakeupSlots`）
+容量：`one_on_one=1, one_on_two=2, one_on_three=3, tutoring=4`  
+- `occMap[date][slotIdx] = count`：每 30 分鐘格子的在場人數
+- `slotStudentsMap[date][slotIdx] = [name, …]`：在場學生名單
+- 請假/調課(原日) → 不計入；補課(新日) → +1 人
+- 掃描 09:00-21:00，`count < capacity` 的連續足夠長區間 → 補課候選
+- 輸出每筆含 `currentStudentCount`, `capacity`, `existingStudents`
+
+## 常數
+
+| 類別 | 值 |
+|---|---|
+| 科目 | Chinese/English/Math/Physics/Chemistry/Science/Social |
+| 年級 | P1-P6（國小）、J1-J3（國中）、H1-H3（高中） |
+| 課程類型 | one_on_one / one_on_two / one_on_three / tutoring |
+| 排課狀態 | scheduled / leave / rescheduled / attended / cancelled |
+| 評量狀態 | pending / approved / rejected / changes_requested |
+
+## 命名慣例
+
+- DB 混用 PascalCase / snake_case（歷史遺留，勿改）
+- `StudentSingIn` / `TeacherSingIn` 是 typo，實際表名就是這樣
+- 前端 `student_course_id` = 後端 `StudentClassID`
+- API path `student-classes` = DB table `StudentClass`

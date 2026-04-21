@@ -1,0 +1,12 @@
+[2026-04-21 17:07:54] OK — all tables above threshold
+[2026-04-21 17:15:01] OK — all tables above threshold
+[2026-04-21 17:15:01] OK — all tables above threshold
+[2026-04-21 17:30:01] OK — all tables above threshold
+[2026-04-21 17:30:01] OK — all tables above threshold
+[2026-04-21 17:45:01] OK — all tables above threshold
+[2026-04-21 17:45:01] OK — all tables above threshold
+[2026-04-21 18:00:01] OK — all tables above threshold
+[2026-04-21 18:00:01] OK — all tables above threshold
+[2026-04-21 18:15:01] OK — all tables above threshold
+[2026-04-21 18:15:01] OK — all tables above threshold
+/bin/sh: 1: /home/admin/scripts/db-health-check.sh: not found
