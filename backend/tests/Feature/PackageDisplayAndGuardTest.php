@@ -139,7 +139,8 @@ class PackageDisplayAndGuardTest extends TestCase
 
         $resp->assertOk();
 
-        $course = collect($resp->json())
+        $list = $resp->json('data') ?? $resp->json();
+        $course = collect($list)
             ->first(fn ($c) => ($c['ID'] ?? $c['id'] ?? null) == $s['sc']->ID);
 
         $this->assertNotNull($course, 'Package course should appear in list');
