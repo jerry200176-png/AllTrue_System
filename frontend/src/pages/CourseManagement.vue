@@ -448,6 +448,13 @@
       @submit="submitPurchaseSessions"
     />
 
+    <RenewMonthlyModal
+      :show="showRenewMonthlyModal"
+      :form="renewMonthlyForm"
+      @close="showRenewMonthlyModal = false"
+      @submit="submitRenewMonthly"
+    />
+
     <!-- Duplicate Course Intercept Modal -->
     <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
       <div class="modal" style="width: 480px;">
@@ -616,6 +623,7 @@ import { useSessionEditFlow } from '../composables/course-management/useSessionE
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import PurchaseSessionsModal from '../components/course-management/PurchaseSessionsModal.vue';
+import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import LeaveModal from '../components/course-management/LeaveModal.vue';
 import BulkLeaveModal from '../components/course-management/BulkLeaveModal.vue';
@@ -1219,6 +1227,9 @@ const rooms = ref([]);
 const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const showPurchaseModal = ref(false);
 const purchaseCourse = ref(null);
+const showRenewMonthlyModal = ref(false);
+const renewMonthlyCourse = ref(null);
+const renewMonthlyForm = ref({});
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
@@ -1346,6 +1357,20 @@ function duplicateCourseForTeacher(course) {
 }
 
 function openPurchaseModal(course) {
+  if (!isSessionMode(course)) {
+    renewMonthlyCourse.value = course;
+    renewMonthlyForm.value = {
+      student_name: course?.student_name || '—',
+      subject: course?.subject || 'Math',
+      settlement_day: course?.settlement_day ?? null,
+      monthly_sessions: course?.monthly_sessions ?? null,
+      current_end_date: course?.end_date || course?.EndDate || null,
+      months: 1,
+      end_date: '',
+    };
+    showRenewMonthlyModal.value = true;
+    return;
+  }
   purchaseCourse.value = course;
   purchaseForm.value = {
     sessions: 8,
@@ -1399,6 +1424,41 @@ async function submitPurchaseSessions() {
     await loadCourses();
   } catch (e) {
     alert('加購失敗：' + (e?.message || '請稍後再試'));
+  }
+}
+
+async function submitRenewMonthly(endDate) {
+  const course = renewMonthlyCourse.value;
+  if (!course?.id) return;
+  if (!endDate) {
+    alert('請選擇新到期日或延長月數');
+    return;
+  }
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入後再試'); return; }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/renew-monthly`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ end_date: endDate }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
+      alert(details || json?.message || '續約失敗');
+      return;
+    }
+    showRenewMonthlyModal.value = false;
+    alert('月結續約成功，到期日已更新為 ' + endDate);
+    await loadCourses();
+  } catch (e) {
+    alert('續約失敗：' + (e?.message || '請稍後再試'));
   }
 }
 
@@ -1743,6 +1803,10 @@ watch(() => leaveForm.value.schedule_date, (date) => {
 function effectiveClosedReason(c) {
   if (c.closed_reason) return c.closed_reason;
   if (c.status === 'inactive' && isSessionMode(c) && c.payment_status === 'paid' && Number(c.remaining_sessions ?? 0) <= 0) {
+    return 'completed';
+  }
+  // 月結制課程停用即視為完課（DB 無 closed_reason 的歷史髒資料也走此分支）
+  if (c.status === 'inactive' && !isSessionMode(c)) {
     return 'completed';
   }
   return null;

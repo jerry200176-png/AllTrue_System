@@ -254,7 +254,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { fetchDiscrepancies, fetchDiscrepancySummary, updateDiscrepancyStatus, STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 
 const props = defineProps({
@@ -322,10 +322,39 @@ function showToast(text, tone = 'success') {
   toastTimer = setTimeout(() => { toast.visible = false; }, 3000);
 }
 
+// ── Page-level polling (FR-001 ~ FR-004, FR-006) ─────────────────────────────
+// pending tab → 30s; other tabs → 60s. Pauses when page is hidden.
+let _pagePollingTimer = null;
+
+const POLL_INTERVAL_PENDING = 30_000;
+const POLL_INTERVAL_OTHER   = 60_000;
+
+function _pollInterval() {
+  return activeTab.value === 'pending' ? POLL_INTERVAL_PENDING : POLL_INTERVAL_OTHER;
+}
+
+function startPagePolling() {
+  stopPagePolling();
+  _pagePollingTimer = setInterval(() => {
+    if (!hasBranch.value || document.visibilityState !== 'visible') return;
+    load();
+  }, _pollInterval());
+}
+
+function stopPagePolling() {
+  if (_pagePollingTimer) { clearInterval(_pagePollingTimer); _pagePollingTimer = null; }
+}
+
+function _onVisibilityChange() {
+  if (document.visibilityState === 'visible' && hasBranch.value) load();
+}
+
 function setTab(v) {
   activeTab.value = v;
   expandedId.value = null;
+  stopPagePolling();
   load();
+  startPagePolling();
 }
 
 function toggleExpand(row) {
@@ -448,8 +477,20 @@ async function refreshSummary() {
   } catch { /* non-fatal */ }
 }
 
-watch(() => props.branchId, () => load());
-onMounted(load);
+watch(() => props.branchId, () => {
+  stopPagePolling();
+  load();
+  startPagePolling();
+});
+onMounted(() => {
+  load();
+  startPagePolling();
+  document.addEventListener('visibilitychange', _onVisibilityChange);
+});
+onBeforeUnmount(() => {
+  stopPagePolling();
+  document.removeEventListener('visibilitychange', _onVisibilityChange);
+});
 </script>
 
 <style scoped>

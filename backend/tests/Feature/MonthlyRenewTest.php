@@ -1,0 +1,283 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\Student;
+use App\Models\StudentClass;
+use App\Models\User;
+use App\Models\UserCampus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * b4：月結制課程續約機制。
+ *
+ * 修復前行為：purchaseBatch 對月結課（ScheduleMode='date'）也會新建一筆堂數制課程，
+ * 破壞月結計費語意，且舊月結課不被結案，造成重複課程列。
+ *
+ * 修復後行為：
+ * 1. 新增 renewMonthly 端點：延長原月結課程的 EndDate，不新建課程。
+ * 2. purchaseBatch 對月結課回傳 422，防止誤用。
+ * 3. 堂數制 purchaseBatch 流程完全不受影響。
+ */
+class MonthlyRenewTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_renew_monthly_extends_end_date_without_creating_new_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-renew@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'EndDate'          => '2026-04-30',
+            'Paid'             => 1,
+        ]);
+
+        $newEndDate = '2026-06-30';
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => $newEndDate,
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('end_date', $newEndDate)
+            ->assertJsonPath('course.schedule_mode', 'date')
+            ->assertJsonPath('course.id', (int) $course->ID);
+
+        $course->refresh();
+
+        // EndDate 應被更新
+        $this->assertStringStartsWith($newEndDate, (string) $course->EndDate);
+        // 月結欄位保持不變
+        $this->assertSame('date', (string) $course->ScheduleMode);
+        $this->assertSame(15, (int) $course->settlement_day);
+        $this->assertSame(8, (int) $course->monthly_sessions);
+        // 不應被結案
+        $this->assertSame(0, (int) $course->Stop);
+
+        // 不應新建 StudentClass
+        $this->assertSame(
+            1,
+            StudentClass::where('StudentID', $student->id)
+                ->where('SubjectID', 1)
+                ->where('Stop', 0)
+                ->count(),
+            '月結續約不應新建 StudentClass 記錄'
+        );
+
+        // 不應建立任何 ClassSession
+        $this->assertSame(
+            0,
+            ClassSession::where('StudentClassID', $course->ID)->count(),
+            '月結續約不應建立 ClassSession 預排堂次'
+        );
+    }
+
+    public function test_renew_monthly_rejects_session_mode_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-renew-reject@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 8,
+            'RemainingSessions' => 2,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2099-12-31',
+        ]);
+
+        $res->assertStatus(422)
+            ->assertJsonValidationErrors(['mode']);
+    }
+
+    public function test_renew_monthly_rejects_past_date(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-renew-past@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'settlement_day'   => 10,
+            'monthly_sessions' => 4,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2020-01-01',
+        ]);
+
+        $res->assertStatus(422)
+            ->assertJsonValidationErrors(['end_date']);
+    }
+
+    public function test_purchase_batch_rejects_monthly_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-pb-monthly@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 20,
+            'monthly_sessions' => 6,
+            'EndDate'          => '2026-05-31',
+            'Rate'             => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/purchase-batch", [
+            'sessions'   => 8,
+            'start_date' => '2026-06-01',
+            'mode'       => 'new_purchase',
+        ]);
+
+        $res->assertStatus(422)
+            ->assertJsonValidationErrors(['mode']);
+
+        // 舊課程未變更
+        $course->refresh();
+        $this->assertSame('date', (string) $course->ScheduleMode);
+        $this->assertSame(0, (int) $course->Stop);
+
+        // 沒有新 StudentClass 被建立
+        $this->assertSame(
+            1,
+            StudentClass::where('StudentID', $student->id)->count(),
+            'purchaseBatch 對月結課應被拒絕，不應新建任何課程'
+        );
+    }
+
+    public function test_purchase_batch_still_works_for_session_mode(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-pb-session@example.com');
+        $student = $this->createStudent();
+
+        $source = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions'      => 7,
+            'Paid'              => 1,
+            'Rate'              => 500,
+            'SessionDuration'   => 120,
+            'Charge'            => 4000,
+            'StartDate'         => '2026-03-01',
+            'week'              => 2,
+            'time'              => '20:00:00',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+            'sessions'   => 6,
+            'start_date' => '2026-04-07',
+            'mode'       => 'new_purchase',
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('mode', 'new_purchase')
+            ->assertJsonPath('new_course.session_count', 6);
+
+        // 確認真的有新課程建立（堂數制不受影響）
+        $this->assertSame(
+            2,
+            StudentClass::where('StudentID', $student->id)->count(),
+            '堂數制 purchase-batch 應正常新建課程'
+        );
+    }
+
+    private function createDirectorToken(array $campusIds, string $loginName): string
+    {
+        $user = User::create([
+            'LoginName' => $loginName,
+            'Name'      => '主任測試',
+            'PSW'       => 'secret',
+            'type'      => 'A',
+            'phone'     => '0912345678',
+        ]);
+
+        foreach ($campusIds as $campusId) {
+            UserCampus::create([
+                'CampusID' => $campusId,
+                'UserID'   => $user->id,
+                'Admin'    => 1,
+                'Approved' => 1,
+            ]);
+        }
+
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token'      => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
+    }
+
+    private function createStudent(): Student
+    {
+        return Student::create([
+            'name'         => '月結續約學生',
+            'CampusID'     => 1,
+            'ClassID'      => 1,
+            'enable'       => 1,
+            'MDT'          => now(),
+            'Notify_Token' => '',
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    private function createStudentClass(int $studentId, array $overrides = []): StudentClass
+    {
+        $defaults = [
+            'StudentID'        => $studentId,
+            'GradeID'          => 1,
+            'SubjectID'        => 1,
+            'TeacherID'        => 99,
+            'by1'              => 1,
+            'Period'           => 4,
+            'StartDate'        => now()->toDateString(),
+            'EndDate'          => null,
+            'TotalHours'       => 20,
+            'Charge'           => 0,
+            'Paid'             => 0,
+            'Rate'             => 0,
+            'RoomID'           => 'R1',
+            'MDate'            => now(),
+            'Stop'             => 0,
+            'ScheduleMode'     => 'count',
+            'SessionCount'     => 8,
+            'SessionDuration'  => 60,
+            'RemainingSessions' => 8,
+            'ClassType'        => 'one_on_one',
+            'UsedSessions'     => 0,
+        ];
+
+        return StudentClass::create(array_merge($defaults, $overrides));
+    }
+}
