@@ -17,6 +17,21 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // seedCourseWithHistory() 把「未來」sessions 放在 2026-04-19 起，
+        // 若執行日期已經跨過 4/19，那筆 session 會被 sync 視為過去而不更新，
+        // 導致 scheduled 集合裡仍出現舊時間。統一凍結到 4/12。
+        Carbon::setTestNow(Carbon::parse('2026-04-12 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     /**
      * When immutable history exists and future sessions ARE scheduled,
      * syncFutureScheduledSessionTimes should update them, and reconcile
