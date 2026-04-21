@@ -257,23 +257,7 @@ class AttendanceController extends Controller
         }
 
         $now = Carbon::now()->format('Y-m-d H:i:s');
-        $sessions = ClassSession::with(['studentClass.student'])
-            ->whereIn('StudentClassID', $classIds)
-            ->whereBetween('SessionDate', [$startDate, $endDate])
-            ->whereDoesntHave('signIns', function ($q) {
-                $q->whereNull('VoidedAt');
-            })
-            ->whereIn('Status', ['scheduled', 'absent'])
-            ->whereRaw("CONCAT(ClassSession.SessionDate, ' ', COALESCE(ClassSession.EndTime, '23:59:59')) <= ?", [$now])
-            ->orderBy('SessionDate', 'desc')
-            ->orderBy('StartTime', 'desc')
-            ->paginate($perPage);
-
-        $items = $sessions->getCollection();
-
-        $subjectIds = $items->pluck('studentClass.SubjectID')->filter()->unique()->values();
-        $subjectNames = [];
-        if ($subjectIds->isNotEmpty() && \Illuminate\Support\Facades\Schema::hasTable('Subject')) {
+        $sessionsBuilder = ClassSession::with(['studentClass.student'])
             $subjectNames = \Illuminate\Support\Facades\DB::table('Subject')
                 ->whereIn('id', $subjectIds)
                 ->pluck('Subject_Name', 'id')

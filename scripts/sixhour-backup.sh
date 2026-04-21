@@ -12,6 +12,48 @@ ENV_FILE="$REPO_ROOT/backend/.env"
 LOG_FILE="$REPO_ROOT/backups/nightly-backup.log"
 KEEP=8   # 保留最新 8 份 = 2 天
 
+# --- Telegram EXIT notification -----------------------------------------------
+# 備份結束（成功或失敗）時發送 Telegram 告警。
+# .env.monitor 不存在或 Token/Chat ID 未填寫時靜默降級，不影響備份主流程。
+on_exit() {
+  local exit_code="$1"
+  local script_id="6h-backup"
+  local env_file="/home/admin/.env.monitor"
+  local token=""
+  local chat_id=""
+
+  if [ -f "$env_file" ]; then
+    local TELEGRAM_BOT_TOKEN=""
+    local TELEGRAM_CHAT_ID=""
+    # shellcheck source=/dev/null
+    source "$env_file" 2>/dev/null || true
+    token="${TELEGRAM_BOT_TOKEN:-}"
+    chat_id="${TELEGRAM_CHAT_ID:-}"
+  fi
+
+  if [ -z "$token" ] || [ -z "$chat_id" ]; then
+    return 0
+  fi
+
+  local timestamp
+  timestamp="$(date '+%Y-%m-%d %H:%M')"
+  local message
+  if [ "$exit_code" = "0" ]; then
+    message="✅ ${script_id} 備份成功 @ ${timestamp}"
+  else
+    message="🚨 ${script_id} 備份失敗 (exit=${exit_code}) @ ${timestamp}"
+  fi
+
+  local payload
+  payload="$(printf '%s' "$message" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')"
+
+  curl -s -X POST "https://api.telegram.org/bot${token}/sendMessage" \
+    -H "Content-Type: application/json" \
+    -d "{\"chat_id\":\"${chat_id}\",\"text\":${payload}}" \
+    > /dev/null 2>&1 || true
+}
+trap 'on_exit $?' EXIT
+
 mkdir -p "$BACKUP_DIR"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [6h] $*" | tee -a "$LOG_FILE"; }

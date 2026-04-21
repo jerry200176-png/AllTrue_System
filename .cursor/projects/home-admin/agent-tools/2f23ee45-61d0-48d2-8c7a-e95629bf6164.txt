@@ -1,0 +1,945 @@
+Effortless Mailcow Sync-Failover: My Real-Time Backup Method - Hostbor - Tech Reviews, Home Labs & AI Computing Guide
+
+#### Press ESC to close
+
+Email downtime is something I simply can’t afford in my business operations.
+
+After experiencing a catastrophic server failure that left my [Mailcow installation](https://docs.mailcow.email/getstarted/install/) completely inaccessible for nearly 48 hours, I knew I needed a better solution than standard backups.
+
+The problem was finding a reliable way to maintain an exact mirror of my production Mailcow server that I could switch to immediately if disaster struck again.
+
+I searched for existing tools and scripts, but nothing quite fit my requirements for a true real-time sync that would keep all mail data, configurations, and Docker volumes perfectly matched between servers.
+
+Most solutions I found were either too simplistic (just backing up configuration files) or overly complex (requiring specialized clustering software).
+
+So I decided to develop my own synchronization script that would be both comprehensive and straightforward to implement.
+
+What makes this solution particularly valuable is that it’s completely “set and forget” — once configured, it silently maintains your backup server as an [exact replica](https://hostbor.com/automate-cyberpanel-sync/) of your primary Mailcow installation.
+
+And if disaster strikes? I simply point my domain’s DNS to the backup server’s IP, and I’m back in business within minutes instead of hours or days.
+
+In this post, I’ll walk you through my entire setup process and share the complete script I’ve been using successfully for over a year.
+
+## The Complete Mailcow Synchronization Solution
+
+REAL-TIME SYNC PROCESS
+
+MAILCOW SERVER MIRRORING
+
+Mailcow Synchronization Architecture
+
+The sync script creates an exact mirror of your primary Mailcow server with virtually no manual setup required on the backup server.
+
+PRIMARY SERVER
+
+/opt/mailcow-dockerized
+
+Docker volumes
+
+BACKUP SERVER
+
+/opt/mailcow-dockerized
+
+Docker volumes
+
+Synchronization Process
+
+All data synchronized via SSH
+
+Config
+
+Data
+
+Volumes
+
+1. Zero-Prep Installation
+
+Docker & Docker Compose setup
+
+2. Stop Backup Server Docker
+
+Prevents data conflicts
+
+3. Sync Mailcow Directory
+
+/opt/mailcow-dockerized
+
+4. Sync Docker Volumes
+
+With intelligent exclusions
+
+5. Restart Backup Services
+
+Ready for immediate failover
+
+Technical Highlights:
+
+This synchronization approach preserves all critical elements including file permissions, ownership, and Docker volumes. The carefully ordered sequence ensures data integrity while maintaining an operational standby server.
+
+Mailcow synchronization process visualization | Created by hostbor
+
+Before diving into the details, let me explain what my solution actually does.
+
+This script performs a complete synchronization of your primary Mailcow server to a backup server, ensuring that all data, configurations, and [Docker](https://hostbor.com/gpu-passthrough-in-lxc-containers/) volumes are perfectly mirrored.
+
+Here's what the synchronization process includes:
+
+- Installation of Docker and Docker Compose on the backup server (if needed)
+- Stopping Docker on the backup server before synchronization
+- Syncing the entire Mailcow directory structure
+- Syncing all Docker volumes (with specific exclusions where necessary)
+- Restarting Docker and Mailcow containers on the backup server
+- Robust error handling with notifications via Pushover
+
+Let's break down the synchronization script step by step.
+
+## Setting Up The Script - Initial Configuration
+
+First, I'll show you the configuration section of my script, where I define all the variables needed for synchronization.
+
+To ensure the script connects to the right backup server, I set the `TARGET_SERVER` variable. You'll need to change this:
+
+```
+TARGET_SERVER=""    # Backup server's hostname or IP
+```
+
+Replace the placeholder with your actual backup server's IP address or hostname.
+
+Next, I define the SSH user for connecting to the backup server:
+
+```
+TARGET_USER="root"                          # SSH user on the backup server
+```
+
+I use root in my setup because the script needs to access system-level directories and restart services, but you could use another user with sudo privileges if you prefer.
+
+Then I specify the standard Mailcow directory and Docker volumes locations:
+
+```
+MAILCOW_DIR="/opt/mailcow-dockerized"
+DOCKER_VOLUMES="/var/lib/docker/volumes"
+```
+
+In my experience, these are the default locations for most Mailcow installations, but you should adjust them if you've installed Mailcow elsewhere.
+
+One important exclusion I needed to add was for the rspamd volume:
+
+```
+EXCLUDES="--exclude rspamd-vol-1"            # Exclude Rspamd volume if needed
+```
+
+I found that rspamd can sometimes cause issues when synced between servers with [different architectures](https://hostbor.com/web-hosting-battle/), so excluding it was a safer option in my setup.
+
+For security, I use a non-standard SSH port and a dedicated SSH key:
+
+```
+SSH_PORT=47825                              # SSH port for the backup server
+SSH_KEY="/root/.ssh/id_ed25519_mailcow"      # Path to the custom SSH key
+```
+
+I strongly recommend using a dedicated SSH key and non-standard port for added security, especially since this script will be running automatically.
+
+The rsync options I use ensure that permissions, ownership, and hard links are preserved:
+
+```
+RSYNC_OPTS="-aHhP --numeric-ids --delete -e 'ssh -i $SSH_KEY -p $SSH_PORT'"
+```
+
+The `--numeric-ids` flag was particularly important in my testing, as it ensures user and group IDs match exactly [between servers](https://hostbor.com/digitalocean-vs-hetzner/).
+
+For error notifications, I set up Pushover integration:
+
+```
+PUSHOVER_API_KEY=""
+PUSHOVER_USER_KEY=""
+```
+
+You'll need to replace these with your own Pushover keys to receive notifications.
+
+Finally, I specify a log file location:
+
+```
+LOG_FILE="/var/log/sync_mailcow.log"
+```
+
+This keeps a record of all synchronization activities, which has been invaluable for troubleshooting.
+
+## Robust Error Handling & Notifications
+
+After several iterations of my script, I realized that proper error handling is absolutely critical for an automated process like this.
+
+When running the script via cron, there's no one watching the terminal output, so I needed a way to catch any failures and be notified immediately.
+
+First, I created a function to send notifications via [Pushover](https://pushover.net/):
+
+```
+send_pushover_notification() {
+	local message="$1"
+	curl -s \
+		--form-string "token=$PUSHOVER_API_KEY" \
+		--form-string "user=$PUSHOVER_USER_KEY" \
+		--form-string "message=$message" \
+		https://api.pushover.net/1/messages.json > /dev/null
+}
+```
+
+This function uses curl to send a message to the Pushover API whenever it's called.
+
+For logging, I created a simple log function:
+
+```
+log() {
+	echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+```
+
+This adds timestamps to all log entries and outputs them both to the terminal and the log file.
+
+The heart of my error handling system is the `handle_error` function:
+
+```
+handle_error() {
+	local last_command="$1"
+	log "ERROR: Command failed: $last_command"
+	send_pushover_notification "Mailcow Sync Error: Command failed: $last_command"
+	exit 1
+}
+```
+
+This function takes the failing command as an argument, logs the error, sends a notification, and then exits the script with a status code of 1.
+
+But the most powerful part is how I trap errors throughout the script:
+
+```
+trap 'handle_error "$BASH_COMMAND"' ERR
+```
+
+This `trap` command is like a safety net that automatically catches any command within the script that fails (exits with a non-zero status) and immediately executes my custom `handle_error` function.
+
+I found this approach particularly useful because it uses the built-in `$BASH_COMMAND` variable to tell me exactly which command failed, making troubleshooting much easier.
+
+When an error occurs, the script immediately stops, logs the error, and sends me a notification – preventing potentially cascading failures or incomplete syncs.
+
+💡
+
+In production, you must replace the placeholder `PUSHOVER_API_KEY` and `PUSHOVER_USER_KEY` variables with your own keys for notifications to work. You can also adapt this function to use other notification methods if you prefer.
+
+## SSH Key Preparation
+
+Before the main synchronization tasks begin, I ensure the SSH key has the correct permissions:
+
+```
+log "Setting correct permissions for SSH key..."
+chmod 600 "$SSH_KEY"
+```
+
+This is a security best practice I always follow - SSH private keys should only be readable by the owner.
+
+I learned this the hard way when my script initially failed because my SSH key had incorrect permissions after I had copied it from [another system](https://hostbor.com/minisforum-bd790i-x3d-review/).
+
+💪
+
+Before running this script for the first time, you need to generate an SSH key pair and copy the public key to your backup server. I recommend using a dedicated key pair for this script.
+
+You can generate a new key pair with this command:
+
+```
+ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519_mailcow -C "mailcow-sync"
+```
+
+Then copy the public key to your backup server:
+
+```
+ssh-copy-id -i /root/.ssh/id_ed25519_mailcow.pub -p  root@
+```
+
+I recommend testing the SSH connection before running the full script, to make sure everything is set up correctly:
+
+```
+ssh -i /root/.ssh/id_ed25519_mailcow -p  root@ "echo Connection successful"
+```
+
+## Docker and Docker Compose Setup on the Backup Server
+
+The next part of my script ensures that Docker and Docker Compose are properly installed on the backup server:
+
+```
+log "Installing Docker and Docker Compose on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" <<'EOF'
+  # Install Docker using the recommended method
+  curl -sSL https://get.docker.com/ | CHANNEL=stable sh
+  # Enable and start Docker service
+  systemctl enable --now docker
+  # Install the latest Docker Compose
+  curl -L https://github.com/docker/compose/releases/download/v$(curl -Ls https://www.servercow.de/docker-compose/latest.php)/docker-compose-$(uname -s)-$(uname -m) > /usr/local/bin/docker-compose
+  chmod +x /usr/local/bin/docker-compose
+  # Verify installations
+  docker --version || { echo "Docker installation failed!" >&2; exit 1; }
+  docker-compose --version || { echo "Docker Compose installation failed!" >&2; exit 1; }
+EOF
+```
+
+This section is incredibly powerful because it enables what I call a "zero-prep" backup server setup.
+
+It automatically installs Docker and the correct Docker Compose version if they aren't already present on the backup server.
+
+Creating this "zero-prep" capability was a significant goal for me when developing this script.
+
+It means your backup server requires almost no manual preparation before running the sync script for the first time.
+
+All you need is a base OS install – I've personally tested and confirmed this works smoothly on recent versions of [Ubuntu and Debian](https://hostbor.com/wireguard-vpn-on-ubuntu/)– and SSH access configured. That's it! No need to manually install Docker, set up Docker Compose, or worry about version compatibility.
+
+This approach saves considerable time and effort during initial deployment compared to manually setting up Docker environments on both servers.
+
+This section uses a heredoc (EOF) to execute multiple commands on the remote server in a single SSH session.
+
+I first install Docker using the official installation script, then enable and start the Docker service.
+
+Next, I install the latest Docker Compose version compatible with Mailcow, using Servercow's version check to ensure compatibility.
+
+Finally, I verify that both Docker and Docker Compose are installed correctly by checking their versions.
+
+I added the verification step after experiencing a frustrating issue where Docker seemed to install but wasn't actually working properly.
+
+✔️
+
+This approach means you can take a fresh server with nothing but SSH access, run this script, and end up with a fully-functioning Mailcow backup server with no other manual configuration steps. This has saved me countless hours when setting up new backup environments!
+
+## Stopping Docker on the Backup Server
+
+Before syncing any data, I stop Docker on the backup server to prevent any conflicts:
+
+```
+log "Stopping Docker on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "systemctl stop docker.service && docker ps -a" || handle_error "Stop Docker"
+```
+
+I found this step essential because attempting to sync Docker volumes while containers are running can lead to data corruption.
+
+The `docker ps -a` command is included to verify that no containers are running after the service is stopped.
+
+I also added a short delay to ensure Docker has fully stopped before proceeding:
+
+```
+log "Waiting for Docker to stop..."
+sleep 10
+```
+
+This pause has prevented several race condition issues I experienced in early versions of my script.
+
+## Syncing the Mailcow Directory
+
+Next, I synchronize the entire Mailcow directory to the backup server:
+
+```
+log "Syncing /opt/mailcow-dockerized..."
+rsync -aHhP --numeric-ids --delete -e "ssh -i $SSH_KEY -p $SSH_PORT" "$MAILCOW_DIR/" "$TARGET_USER@$TARGET_SERVER:$MAILCOW_DIR/" || handle_error "Sync /opt/mailcow-dockerized"
+```
+
+This rsync command uses several important flags:
+
+- `-a`: Archive mode, which preserves permissions, ownership, timestamps, etc.
+- `-H`: Preserves hard links
+- `-h`: Human-readable output
+- `-P`: Shows progress and keeps partial transfers
+- `--numeric-ids`: Preserves user and group IDs
+- `--delete`: Removes files on the destination that don't exist on the source
+
+The `--numeric-ids` flag is particularly important for Docker-related files, as it ensures that user and group IDs match exactly between servers.
+
+The trailing slashes in the paths are crucial - they tell rsync to copy the contents of the directory rather than the directory itself.
+
+## Syncing Docker Volumes
+
+After the Mailcow directory, I sync all Docker volumes:
+
+```
+log "Syncing /var/lib/docker/volumes..."
+rsync -aHhP --numeric-ids --delete --exclude="rspamd-vol-1" -e "ssh -i $SSH_KEY -p $SSH_PORT" "$DOCKER_VOLUMES/" "$TARGET_USER@$TARGET_SERVER:$DOCKER_VOLUMES/" || handle_error "Sync /var/lib/docker/volumes"
+```
+
+This command is similar to the previous rsync, but with one important addition: the `--exclude="rspamd-vol-1"` flag.
+
+I found that rspamd can sometimes cause issues when synced between servers with different architectures, so excluding it was safer in my setup.
+
+💪
+
+If you run other Docker containers on the same server as Mailcow, you might want to add more exclusions to prevent syncing those containers' volumes.
+
+You could modify the command to only include Mailcow-related volumes, but I found that excluding specific problematic volumes was simpler and more reliable in my case.
+
+## Starting Docker and Initializing Mailcow
+
+Once the synchronization is complete, I start Docker on the backup server:
+
+```
+log "Starting Docker on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "systemctl start docker.service" || handle_error "Start Docker"
+```
+
+After starting Docker, I wait a short time for it to initialize:
+
+```
+log "Waiting for Docker to initialize..."
+sleep 15
+```
+
+This delay is crucial - I found that attempting to interact with Docker too soon after starting the service often led to errors.
+
+Next, I pull the latest Mailcow Docker images on the backup server:
+
+```
+log "Pulling Mailcow Docker images on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "cd $MAILCOW_DIR && docker-compose pull" || handle_error "Pull Mailcow Docker images"
+```
+
+This ensures that all containers are using the correct images before starting.
+
+Finally, I start the Mailcow stack on the backup server:
+
+```
+log "Starting Mailcow stack on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "cd $MAILCOW_DIR && docker-compose up -d" || handle_error "Start Mailcow containers"
+```
+
+This brings up all the Mailcow containers, making the backup server fully operational and ready to take over if needed.
+
+I complete the script with a final log entry:
+
+```
+log "Backup server synchronization and Docker restart completed successfully!"
+```
+
+## Setting Up Automation with Cron
+
+For this synchronization to be truly "set and forget," I needed to automate it with cron.
+
+First, I saved my script to a file (I named mine `/root/C-mailcow_sync_and_reboot_backup_nf.sh`) and made it executable:
+
+```
+chmod +x /root/C-mailcow_sync_and_reboot_backup_nf.sh
+```
+
+Then I added a cron job to run it daily at 2 AM:
+
+```
+crontab -e
+```
+
+And added this line:
+
+```
+0 2 * * * /root/C-mailcow_sync_and_reboot_backup_nf.sh > /dev/null 2>&1
+```
+
+In my [production environment](https://hostbor.com/25-must-have-home-server-services/), I actually run the sync twice daily to ensure minimal data loss if a failure occurs:
+
+```
+0 2,14 * * * /root/C-mailcow_sync_and_reboot_backup_nf.sh > /dev/null 2>&1
+```
+
+✔️
+
+The `> /dev/null 2>&1` redirection suppresses all output from the cron job, since notifications about errors are handled by Pushover, and all important information is written to the log file.
+
+You could also run the sync more frequently if your mail volume is high and you want to minimize potential data loss.
+
+## Firewall Considerations
+
+For this synchronization to work, you need to ensure that your backup server allows SSH connections on the port you've specified.
+
+If you're using UFW (Uncomplicated Firewall), you can add a rule like this on your backup server:
+
+```
+ufw allow from  to any port  proto tcp
+```
+
+This only allows SSH connections from your main server's IP address to the specified port, enhancing security.
+
+In my setup, I also restrict SSH access further by using SSH key authentication only (disabling password authentication).
+
+## The Complete Synchronization Script
+
+Here's the complete script with placeholders for sensitive information:
+
+```
+#!/bin/bash
+# --- Configuration ---
+# --- Replace placeholders below with your actual values ---
+TARGET_SERVER="" # Backup server's hostname or IP address
+TARGET_USER="root"                                  # SSH user on the backup server (ensure this user has necessary permissions)
+MAILCOW_DIR="/opt/mailcow-dockerized"               # Default Mailcow installation directory (adjust if different)
+DOCKER_VOLUMES="/var/lib/docker/volumes"            # Default Docker volumes directory (adjust if different)
+EXCLUDES="--exclude rspamd-vol-1"                   # Volumes to exclude from sync (add more --exclude flags if needed, e.g., --exclude plausible_event-data)
+SSH_PORT=                            # SSH port for the backup server (e.g., 22 or a custom port)
+SSH_KEY=""            # Full path to the SSH private key for connecting to the backup server (e.g., /root/.ssh/id_ed25519_mailcow)
+PUSHOVER_API_KEY=""          # Your Pushover Application API Key/Token (leave empty or comment out Pushover lines if not used)
+PUSHOVER_USER_KEY=""        # Your Pushover User Key (leave empty or comment out Pushover lines if not used)
+LOG_FILE="/var/log/sync_mailcow.log"                # Path to the log file for this script
+RSYNC_OPTS="-aHhP --numeric-ids --delete -e 'ssh -i $SSH_KEY -p $SSH_PORT'" # Default rsync options
+# Temporary file for capturing rsync stderr for detailed error reporting
+RSYNC_ERR_LOG="/tmp/sync_mailcow_rsync_error.log"
+# --- Functions ---
+# Function to send Pushover notifications (used only on errors)
+# Modify or replace this function if you use a different notification method
+send_pushover_notification() {
+    # Check if keys are set before attempting to send
+    if [ -n "$PUSHOVER_API_KEY" ] && [ -n "$PUSHOVER_USER_KEY" ]; then
+        local message="$1"
+        curl -s \
+            --form-string "token=$PUSHOVER_API_KEY" \
+            --form-string "user=$PUSHOVER_USER_KEY" \
+            --form-string "message=$message" \
+            https://api.pushover.net/1/messages.json > /dev/null
+    else
+        log "Pushover keys not set, skipping notification."
+    fi
+}
+# Log function: Adds timestamp and writes to log file and console
+log() {
+    echo "$(date +'%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+# Error handler: Logs error, sends notification, cleans up temp file, and exits
+handle_error() {
+    local exit_code=$? # Capture the exit code of the failed command
+    local last_command="$1"
+    local error_message # Variable to hold the final message for Pushover
+    log "ERROR: Command '$last_command' failed with exit code $exit_code." # Log the failed command and exit code
+    # Check if the specific rsync error log file exists and has content
+    if [[ -s "$RSYNC_ERR_LOG" ]]; then
+        # Read the first few lines (e.g., 5) from the error file to keep the notification concise
+        local specific_error=$(head -n 5 "$RSYNC_ERR_LOG")
+        log "Specific Error Details: $specific_error" # Log the captured details
+        # Prepare the detailed Pushover message
+        error_message="Mailcow Sync Error: '$last_command' failed. Details: $specific_error"
+    else
+        # Prepare the generic Pushover message if no details were captured
+        error_message="Mailcow Sync Error: '$last_command' failed (Exit Code: $exit_code). No specific rsync details captured."
+        log "No specific rsync error details captured in $RSYNC_ERR_LOG."
+    fi
+    # Send the notification
+    send_pushover_notification "$error_message"
+    # Clean up the temporary error file
+    rm -f "$RSYNC_ERR_LOG"
+    exit 1 # Exit the script
+}
+# --- Main Script ---
+# Trap errors and call the error handler
+# The 'trap' command ensures that if any command fails (exits with a non-zero status),
+# the 'handle_error' function is called automatically, passing the failed command ($BASH_COMMAND)
+trap 'handle_error "$BASH_COMMAND"' ERR
+# Ensure SSH key exists and has correct permissions
+if [ ! -f "$SSH_KEY" ]; then
+    log "ERROR: SSH Key file not found at $SSH_KEY"
+    # Send notification even if log function fails later
+    send_pushover_notification "Mailcow Sync Error: SSH Key file not found at $SSH_KEY"
+    exit 1
+fi
+log "Setting correct permissions for SSH key..."
+chmod 600 "$SSH_KEY"
+if [ $? -ne 0 ]; then
+    # Handle chmod failure specifically as trap might not catch it if script exits here
+    log "ERROR: Failed to set permissions on SSH key $SSH_KEY"
+    send_pushover_notification "Mailcow Sync Error: Failed to set permissions on SSH key $SSH_KEY"
+    exit 1
+fi
+log "Starting Mailcow synchronization process..."
+# Ensure Docker and Docker Compose are installed on the backup server
+# This uses a heredoc (<<'EOF') to run multiple commands on the remote server via SSH.
+# It installs Docker, enables/starts the service, installs the latest compatible Docker Compose,
+# and verifies both installations. This allows the backup server to be set up automatically.
+log "Ensuring Docker and Docker Compose are installed on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" <<'EOF'
+  # Install Docker using the recommended method
+  echo "Checking and installing Docker if needed..."
+  if ! command -v docker > /dev/null; then
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm get-docker.sh
+  else
+    echo "Docker already installed."
+  fi
+  # Enable and start Docker service
+  echo "Ensuring Docker service is enabled and running..."
+  sudo systemctl enable --now docker
+  # Install the latest Docker Compose compatible with Mailcow
+  echo "Checking and installing Docker Compose if needed..."
+  COMPOSE_URL="https://github.com/docker/compose/releases/download/v$(curl -Ls https://www.servercow.de/docker-compose/latest.php)/docker-compose-$(uname -s)-$(uname -m)"
+  COMPOSE_DEST="/usr/local/bin/docker-compose"
+  if ! command -v docker-compose > /dev/null || ! docker-compose version | grep -q "$(curl -Ls https://www.servercow.de/docker-compose/latest.php)"; then
+      echo "Downloading Docker Compose from $COMPOSE_URL..."
+      sudo curl -L "$COMPOSE_URL" -o "$COMPOSE_DEST"
+      sudo chmod +x "$COMPOSE_DEST"
+  else
+      echo "Docker Compose already installed and seems up-to-date for Mailcow."
+  fi
+  # Verify installations
+  echo "Verifying installations..."
+  docker --version || { echo "Docker verification failed!" >&2; exit 1; }
+  docker-compose --version || { echo "Docker Compose verification failed!" >&2; exit 1; }
+  echo "Docker and Docker Compose setup verified."
+EOF
+# Note: The trap ERR will catch failures within the SSH command itself (like connection refused)
+# or if the remote script invoked by SSH exits with a non-zero status (due to the 'exit 1' in the heredoc).
+# Stop Docker on the backup server before syncing volumes
+log "Stopping Docker on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "sudo systemctl stop docker.service && docker ps -a" # docker ps -a confirms no containers are running
+# Wait for a moment to ensure Docker has fully stopped
+log "Waiting for Docker to stop..."
+sleep 10
+# Sync /opt/mailcow-dockerized directory (configurations, etc.)
+log "Syncing $MAILCOW_DIR..."
+# Using $RSYNC_OPTS defined above. Preserves permissions, numeric IDs, deletes extra files on target.
+rsync $RSYNC_OPTS "$MAILCOW_DIR/" "$TARGET_USER@$TARGET_SERVER:$MAILCOW_DIR/"
+# Sync /var/lib/docker/volumes directory (mail data, databases, etc.)
+log "Syncing $DOCKER_VOLUMES..."
+# Clear previous rsync error log
+> "$RSYNC_ERR_LOG"
+# Using $RSYNC_OPTS and $EXCLUDES defined above. Redirects stderr for detailed error reporting.
+rsync $RSYNC_OPTS $EXCLUDES "$DOCKER_VOLUMES/" "$TARGET_USER@$TARGET_SERVER:$DOCKER_VOLUMES/" 2> "$RSYNC_ERR_LOG"
+# Error handling for this specific rsync is done via the || and trap mechanism, using the captured stderr
+# Remove the temp error log if rsync was successful (optional, handle_error also removes it on failure)
+if [ $? -eq 0 ]; then
+    rm -f "$RSYNC_ERR_LOG"
+fi
+log "Synchronization completed successfully!"
+# Start Docker on the backup server
+log "Starting Docker on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "sudo systemctl start docker.service"
+# Wait for Docker to initialize properly
+log "Waiting for Docker to initialize..."
+sleep 15
+# Pull latest Mailcow Docker images on the backup server
+log "Pulling Mailcow Docker images on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "cd '$MAILCOW_DIR' && docker-compose pull"
+# Start Mailcow containers on the backup server
+log "Starting Mailcow stack on the backup server..."
+ssh -i "$SSH_KEY" -p "$SSH_PORT" "$TARGET_USER@$TARGET_SERVER" "cd '$MAILCOW_DIR' && docker-compose up -d"
+log "Backup server synchronization and Docker restart completed successfully!"
+```
+
+The complete script is also available on our GitHub at [https://github.com/hostbor/mailcowsync/](https://github.com/hostbor/mailcowsync/) for easy reference and updates.
+
+## Failover Strategy
+
+SWIFT FAILOVER STRATEGY
+
+MINIMAL DOWNTIME APPROACH
+
+BEFORE FAILOVER
+
+DNS RECORDS
+
+PRIMARY
+
+BACKUP
+
+DNS records point to primary server. Mail traffic flows normally. Backup server is kept in sync but idle.
+
+AFTER FAILOVER
+
+DNS RECORDS
+
+(DOWN)
+
+PRIMARY
+
+(ACTIVE)
+
+BACKUP
+
+DNS records updated to point to backup server. Identical environment ensures users experience minimal disruption during the transition.
+
+Failover Timeline
+
+0:00
+
+Primary Server Down
+
+Alert triggered by monitoring system or user reports
+
+0:02
+
+Initial Assessment
+
+Quick troubleshooting to determine if quick fix is possible
+
+0:05
+
+Decision to Failover
+
+Determine extended downtime is likely, initiate failover procedure
+
+0:06
+
+DNS Update
+
+Update A/AAAA records for mail domains to point to backup server
+
+0:15
+
+Services Restored
+
+Mail service accessible again as DNS changes propagate to users
+
+Key Advantages:
+
+This approach delivers restoration times of 5-15 minutes in most cases, depending on DNS TTL settings. Since the backup server contains an exact replica of all mail data and configurations, users experience a seamless transition with zero data loss.
+
+Mailcow failover strategy visualization | Created by hostbor
+
+The real value of this setup becomes apparent when your main server goes down.
+
+Here's my failover process:
+
+1. When [I detect](https://hostbor.com/jetkvm-review/) that the main server is down (either through monitoring alerts or user reports), I first try basic troubleshooting.
+2. If the issue can't be quickly resolved, I log into my DNS provider's control panel.
+3. I update the A/AAAA records for my mail domain(s) to point to the backup server's IP address.
+4. Depending on your DNS provider and TTL settings, the change propagates within minutes to hours.
+5. Mail service is restored once DNS propagation completes.
+
+In my experience, with properly configured DNS TTLs, service can be restored within 5-15 minutes of making the DNS change.
+
+✔️
+
+For even faster failover, you could use a floating IP address that can be quickly reassigned from one server to another, eliminating the need to wait for DNS propagation.
+
+## Frequently Asked Questions
+
+### What if I run other Docker containers on the same server where Mailcow runs?
+
+If you run other Docker containers on the same server, you should exclude their volumes from the sync to avoid potential issues.
+
+You can add more exclusions to the rsync command, similar to how we excluded the rspamd volume:
+
+```
+rsync -aHhP --numeric-ids --delete --exclude="rspamd-vol-1" --exclude="other-container-vol" --exclude="another-container-vol" -e "ssh -i $SSH_KEY -p $SSH_PORT" "$DOCKER_VOLUMES/" "$TARGET_USER@$TARGET_SERVER:$DOCKER_VOLUMES/"
+```
+
+Alternatively, you could modify the script to only sync specific Mailcow-related volumes, but this would require more maintenance as Mailcow updates might add new volumes.
+
+### Can I use different notifications than Pushover?
+
+Yes, you can easily modify the script to use different notification methods.
+
+For example, to use email notifications instead, you could replace the `send_pushover_notification` function with something like:
+
+```
+send_email_notification() {
+    local message="$1"
+    echo "$message" | mail -s "Mailcow Sync Error" [email protected]
+}
+```
+
+Or for Telegram notifications:
+
+```
+send_telegram_notification() {
+    local message="$1"
+    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -d chat_id="${TELEGRAM_CHAT_ID}" \
+        -d text="$message"
+}
+```
+
+Just remember to update the `handle_error` function to call your new notification function.
+
+### What if a new update of Mailcow comes up?
+
+When a new Mailcow update is available, I recommend updating your backup server first to check if everything works correctly.
+
+Once you've verified that the update works properly on the backup server, you can update your main server.
+
+The sync crontab can remain as it is - during the next sync, any updated configuration files or Docker images will be automatically synced to the backup server.
+
+This approach minimizes the [risk of downtime](https://www.reddit.com/r/webhosting/comments/1hiiqgr/how_much_downtime_is_really_acceptableunacceptable/) if an update causes issues.
+
+### How to handle database credentials and other sensitive information?
+
+The script automatically syncs all configuration files, including database credentials and other sensitive information.
+
+This is intentional and necessary for the backup server to function correctly.
+
+To ensure security:
+
+- Use strong, unique passwords for all services
+- Restrict access to both servers with proper firewall rules
+- Use SSH key authentication only (disable password authentication)
+- Ensure both servers have up-to-date security patches
+
+💪
+
+Remember that your backup server has the same level of access to your mail data as your main server, so it should be secured accordingly.
+
+### How does this script handle large mail volumes?
+
+The script uses rsync, which is extremely efficient at transferring only the changes since the last sync.
+
+In my production environment with several gigabytes of mail data, the initial sync took about an hour, but subsequent syncs typically complete in just a few minutes.
+
+If you have very large mail volumes, you might want to:
+
+- Perform the initial sync manually to monitor its progress
+- Consider using a dedicated network interface or increased bandwidth between your servers
+- Run the sync more frequently to reduce the amount of data transferred in each run
+
+## Conclusion
+
+After implementing this synchronization script, I've experienced a significant improvement in my peace of mind regarding my mail infrastructure.
+
+Knowing that I have an exact replica of my production Mailcow server ready to take over at a moment's notice has been invaluable.
+
+MAILCOW SYNC
+
+KEY BENEFITS & OUTCOMES
+
+Minimal Downtime
+
+With synchronized servers, recovery time is reduced to just minutes instead of hours or days, minimizing business impact during outages.
+
+Zero Data Loss
+
+Complete synchronization ensures all emails and configurations are preserved, eliminating the risk of losing important communications.
+
+Simple Setup
+
+The automated script requires minimal configuration and handles all Docker and volume synchronization with intelligent defaults.
+
+Performance Metrics
+
+Average Recovery Time
+
+5-15 min
+
+vs. 24-48 hours with standard backup
+
+Data Accuracy
+
+100%
+
+Exact mirror of primary server
+
+Maintenance Effort
+
+Near Zero
+
+Once set up, runs automatically
+
+Sync Frequency
+
+Configurable
+
+Typically 1-2 times daily
+
+Long-Term Resilience Roadmap
+
+IMMEDIATE
+
+Implement Regular Sync
+
+Set up automated synchronization using the provided script with twice daily scheduling.
+
+SHORT-TERM
+
+Test Failover Process
+
+Conduct regular planned failover tests during maintenance windows to validate processes.
+
+MID-TERM
+
+Automatic Monitoring
+
+Implement monitoring system that can automatically detect primary server failure.
+
+LONG-TERM
+
+Automatic Failover
+
+Extend the system with automatic DNS updates triggered by server health checks.
+
+Personal Experience:
+
+"After implementing this synchronization script, I've experienced a significant improvement in my peace of mind regarding my mail infrastructure. When my main server's provider experienced an extended outage, the transition to the backup was seamless from my users' perspective."
+
+Mailcow synchronization benefits summary | Created by hostbor
+
+The script has been running reliably for over a year, and I've successfully tested the failover process multiple times during scheduled maintenance windows.
+
+I've even had to use it in a real emergency situation when my [main server's](https://hostbor.com/home-lab-for-beginners/) provider experienced an extended outage, and the transition was seamless from my users' perspective.
+
+This solution strikes a perfect balance between simplicity and comprehensiveness - it's easy to set up and maintain, yet it ensures that all critical components of your Mailcow installation are properly synchronized.
+
+Whether you're running Mailcow for a small business or a large organization, having a reliable backup strategy is essential, and I hope this script helps you achieve that goal as effectively as it has for me.
+
+Keep your email flowing, even when disaster strikes!
+
+Categorized in:
+
+[AI & Automation](https://hostbor.com/category/ai-automation/), [HomeLab & Self-Hosting](https://hostbor.com/category/homelab-self-hosting/), [Tutorials & How-Tos](https://hostbor.com/category/tutorials-howtos/),
+
+### About the Author
+
+#### Otabek Djuraev
+
+Tech Enthusiast & HomeLab Expert
+
+A tech enthusiast, Otabek focuses on mini PCs, laptops, and hardware, especially loving homelabs and self-hosted solutions. Here on /hostbor, find his hands-on guides, benchmarks, and tutorials for tasks like picking PC parts, optimizing NAS setups, managing Proxmox, and securing remote access. Ideal for readers interested in SFF PCs, self-hosting adventures, or home server projects.
+
+Previous Article
+
+#### RTX 5090 vs Apple M4 Max: Which One Creators Should Buy? | Benchmarks, AI, 3D, Video/photo Editing
+
+Next Article
+
+#### Asus NUC 15 Pro+ Review: My Honest Take on Intel’s Comeback
+
+1
+
+#### UniFi Slow? 14 Critical Networking Mistakes to Fix Now
+
+2
+
+#### Top 10 Synology NAS Alternatives 2025: Escape Drive Lock-In
+
+3
+
+#### Best VPS in Uzbekistan: My Airnet vs Servercore Benchmarks
+
+4
+
+#### Mac Mini M4 Home Server: Worth It or Better Intel/AMD PC?
+
+#### GMKtec K12 MiniPC Review: Big Upgrades, But Not for Everyone
+
+#### UniFi Slow? 14 Critical Networking Mistakes to Fix Now
+
+#### IMEI Registration Guide Uzbekistan: Don’t Make This Mistake
+
+#### Minisforum AI X1 Review: Exceptional Power, One Catch
+
+#### Core Ultra 5 235 vs 245K: Why Pricey Doesn’t Mean Better
+
+#### Top 10 Synology NAS Alternatives 2025: Escape Drive Lock-In
+
+#### Why the MINIX U8K-Ultra Is the 8K Android TV Box You’ve Been Waiting For
+
+#### Minisforum N5 Pro NAS Coming—Why Should Synology/QNAP Worry?
+
+#### Minisforum UM870 Slim Mini PC review: A Detailed Look at the Ryzen 8745H
+
+#### RTX 5060 Ti vs 5070: Gamers & Creators—Avoid This Mistake
+
+#### AI Tools That Saved My Time for Creativity: My Real-World Experience
+
+#### Cursor vs Windsurf IDE: 6 Reasons I Chose Windsurf
+
+#### GMKtec K12 MiniPC Review: Big Upgrades, But Not for Everyone
+
+#### UniFi Slow? 14 Critical Networking Mistakes to Fix Now
+
+#### IMEI Registration Guide Uzbekistan: Don’t Make This Mistake
+
+#### Minisforum AI X1 Review: Exceptional Power, One Catch
+
+Manage consentManage consent
+

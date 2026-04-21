@@ -1,0 +1,19 @@
+---
+pid: 300555
+cwd: "/home/admin"
+command: "cd /home/admin/backend && php artisan migrate 2>&1"
+started_at: 2026-04-21T11:07:41.129Z
+running_for_ms: 60002    
+---
+**************************************
+*     Application In Production!     *
+**************************************
+
+ Do you really wish to run this command? (yes/no) [no]:
+ > Command Canceled!
+
+---
+exit_code: 1
+elapsed_ms: 60257
+ended_at: 2026-04-21T11:08:41.386Z
+---

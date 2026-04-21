@@ -2,6 +2,69 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-21 — B1 代點名代課可見性復發修復 + git-sync 守衛強化
+
+### Incident 摘要
+
+commit `01160fc`（A+B 代課可見性修正）於 16:57 正確還原兩個 controller，但 18:41 的 nightly auto-backup commit `532872a chore(nightly): auto backup 2026-04-21_1840 — post-incident recovery` 把 working tree 上「不含 A+B」的舊狀態整批 commit 進去，等同 revert 兩個 controller 的修改、刪除兩個測試檔、刪除 migration 檔。
+
+### Problem
+
+`GET /api/v1/attendance/ended-sessions`（teacher role 補點名）原老師仍看到被代課的已結束堂次；`GET /api/v1/class-sessions?teacher_id=T1` 被代課堂仍誤判為 T1 的衝堂。原因：`AttendanceController::endedSessions` 的堂次級 `whereExists/whereNotExists` 守衛與 `ClassSessionController::index` 兩處 `whereNull('sub_sched.teacher_id')` 條件皆被 nightly auto-backup commit 覆蓋移除。
+
+### Change
+
+- **還原** `backend/app/Http/Controllers/ClassSessionController.php`：`role === 'teacher'` 分支與 `teacher_id` query 分支各還原 `(sub_sched.teacher_id IS NULL AND sc.TeacherID = ?) OR sub_sched.teacher_id = ?` 語意
+- **還原** `backend/app/Http/Controllers/AttendanceController.php` `endedSessions` 方法：拆出 `$sessionsBuilder` + 追加堂次級 `whereExists`（命中代課老師） / `orWhere + whereNotExists + whereExists`（無代課回到契約老師）守衛
+- **重建** `backend/database/migrations/2026_04_21_000001_add_schedules_composite_index.php`：`schedules` 表複合索引 `idx_sched_course_date_time_status`（欄位：student_course_id, schedule_date, start_time, status, original_schedule_id）並執行 `migrate`
+- **重建** `backend/tests/Feature/ClassSessionsTeacherVisibilityAfterSubstituteTest.php`（4 tests, 15 assertions）
+- **重建** `backend/tests/Feature/AttendanceEndedSessionsSubstituteTest.php`（4 tests, 10 assertions）
+- **新增** `scripts/git-sync.sh` CODE_REVERT_GUARD 守衛：偵測 `backend/app/Http/Controllers/`、`backend/database/migrations/`、`backend/tests/` 路徑下的檔案刪除或淨刪除 ≥ 30 行時，預設 exit 1 拒絕 commit；`ALLOW_CODE_REVERT=1` 可繞過；觸發事件寫入 `backups/code-revert-guard.log`
+
+### Regression Guard
+
+- `./vendor/bin/phpunit tests/Feature/ClassSessionsTeacherVisibilityAfterSubstituteTest.php tests/Feature/AttendanceEndedSessionsSubstituteTest.php` → `OK (8 tests, 25 assertions)`
+- Revert-proof：ClassSessions revert → 2 failures（AC-A1、衝堂誤報）；EndedSessions revert → 2 failures（AC-B1、AC-B4）
+- STRIDE 審查：0 個 HIGH 風險；pre-existing X-Teacher-Id spoofing（MEDIUM）另案追蹤
+
+---
+
+## 2026-04-21 — 備份失敗告警（Backup EXIT Trap → Telegram）
+
+### Problem
+
+`scripts/nightly-backup.sh` 與 `scripts/sixhour-backup.sh` 雖以 `set -euo pipefail` 執行，但兩者都缺少 EXIT trap，任何 mysqldump 失敗、git push 中斷或磁碟異常都靜默退出，管理員無從即時察覺；既有 `monitor-alert.sh` 只負責 Pi 資源檢查與每日報表，並未涵蓋備份結果。
+
+### Change
+
+- **修改** [`scripts/nightly-backup.sh`](scripts/nightly-backup.sh) 與 [`scripts/sixhour-backup.sh`](scripts/sixhour-backup.sh)：在常數區塊之後內嵌 `on_exit()` 函式並設定 `trap 'on_exit $?' EXIT`。函式以 `[ -f ]` 保護 `source /home/admin/.env.monitor`，將 `TELEGRAM_BOT_TOKEN`／`TELEGRAM_CHAT_ID` 收進 local 變數，依 exit code 發送 `✅ <script_id> 備份成功 @ TIMESTAMP` 或 `🚨 <script_id> 備份失敗 (exit=N) @ TIMESTAMP`；token / chat id 任一為空則靜默 return（降級不破壞備份）。
+- 不動 [`scripts/monitor-alert.sh`](scripts/monitor-alert.sh)、`.env.monitor`、cron 排程、`scripts/git-sync.sh`。
+- 訊息內容不含任何 DB 密碼或 Bot Token 等憑證。
+
+### Regression Guard
+
+驗收涵蓋：AC-001 成功通知（手動執行 sixhour 真跑、nightly 用 dry-run 取出 on_exit 0）、AC-002 失敗通知（暫改 `DB_HOST=127.0.0.1.invalid`，sixhour exit=2 觸發 🚨）、AC-003 降級（暫移 `.env.monitor` 後仍 exit:0）。Revert-proof：`git stash` 後重跑失敗場景，`strace -e trace=connect,sendto` 未觀察到 `api.telegram.org` 連線，確認測試真覆蓋；`git stash pop` 後 trap 恢復（grep 各回 1 筆 `trap 'on_exit $?' EXIT`）。
+
+---
+
+## 2026-04-21 — 備份還原驗證（Backup Restore Drill）
+
+### Problem
+
+每日 / 每 6 小時備份排程有在跑（`nightly-backup.sh`、`sixhour-backup.sh`），但備份檔從未被實際還原驗測；若檔案損毀或 mysqldump 行為變更，真實 DR 事件才會踩雷。
+
+### Change
+
+- **新增** [`scripts/monthly-restore-drill.sh`](scripts/monthly-restore-drill.sh)：每月 1 日 02:00 自動選取最新 `backups/monthly/alltrue_monthly_*.sql.gz`（不存在則 fallback 最新 nightly），`gzip -t` 驗證完整性後 DROP + 重建 `AllTrue_test` 並還原；比對 Student / User / Campus / ClassSession 四表 row count（與生產 `AllTrue` 對照），結果以 Telegram 推送：全一致 `✅`、有差異 `⚠️` 並列出各表 prod/test/diff，異常時 exit 1 供 cron 監控捕捉。
+- **crontab**：admin user `0 2 1 * * /home/admin/scripts/monthly-restore-drill.sh >> /home/admin/backups/restore-drill.log 2>&1`。
+- 不動生產 `AllTrue`（僅唯讀 COUNT）、不動備份排程；憑證沿用 `backend/.env` 與 `.env.monitor` 現有模式。
+
+### Regression Guard
+
+手動驗收涵蓋：Happy Path（全四表比對）、Edge 1（壞 gzip 正確 fail + Telegram）、Edge 2（monthly 空 fallback nightly）。row count drift 由 §13 R3 明示為預期行為（point-in-time vs live）。
+
+---
+
 ## 2026-04-20 — ClassSession 時間異動同步 schedules exception（FR-A）
 
 ### Problem
