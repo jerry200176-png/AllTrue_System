@@ -28,15 +28,26 @@ DB_PORT=$(get_env DB_PORT)
 DB_DATABASE=$(get_env DB_DATABASE)
 DB_USERNAME=$(get_env DB_USERNAME)
 DB_PASSWORD=$(get_env DB_PASSWORD)
-LINE_TOKEN=$(get_env LINE_NOTIFY_TOKEN 2>/dev/null || echo "")
+# ── 讀取 Telegram 設定（統一從 .env.monitor 取）──
+MONITOR_ENV="$REPO_ROOT/.env.monitor"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+if [ -f "$MONITOR_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$MONITOR_ENV"
+fi
 
-send_line_alert() {
+send_telegram_alert() {
     local msg="$1"
-    # LINE Notify
-    if [ -n "$LINE_TOKEN" ]; then
-        curl -s -X POST https://notify-api.line.me/api/notify \
-            -H "Authorization: Bearer $LINE_TOKEN" \
-            -F "message=$msg" >/dev/null 2>&1 || true
+    # Telegram
+    if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+        curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":$(printf '%s' "$msg" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+            > /dev/null 2>&1 || true
+        echo "[NOTIFY] Telegram 已發送"
+    else
+        echo "[WARN] Telegram 未設定（請確認 $MONITOR_ENV 中有 TELEGRAM_BOT_TOKEN 與 TELEGRAM_CHAT_ID）"
     fi
     # 也寫到 Laravel log
     local laravel_log="$REPO_ROOT/backend/storage/logs/laravel-$(date '+%Y-%m-%d').log"
@@ -78,7 +89,7 @@ echo "$CURRENT_STATE" > "$STATE_FILE"
 if [ ${#ALERTS[@]} -gt 0 ]; then
     MSG=$'\n[AllTrue DB Alert]\n'"$(printf '%s\n' "${ALERTS[@]}")"$'\n'"時間: $(date '+%Y-%m-%d %H:%M:%S')"
     log "Sending alert: $MSG"
-    send_line_alert "$MSG"
+    send_telegram_alert "$MSG"
 else
     log "OK — all tables above threshold"
 fi

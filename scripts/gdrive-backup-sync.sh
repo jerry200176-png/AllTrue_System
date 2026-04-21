@@ -20,7 +20,27 @@ REMOTE="g-drive:AllTrue-Backups"
 BACKUP_DIR="/home/admin/backups"
 LOG="/home/admin/backups/gdrive-sync.log"
 
+# ── Telegram 通知（讀取統一設定檔）──
+MONITOR_ENV="/home/admin/.env.monitor"
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+if [ -f "$MONITOR_ENV" ]; then
+    # shellcheck source=/dev/null
+    source "$MONITOR_ENV"
+fi
+
+send_telegram() {
+    local msg="$1"
+    [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ] && return 0
+    curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+        -H "Content-Type: application/json" \
+        -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":$(printf '%s' "$msg" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+        > /dev/null 2>&1 || true
+}
+
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [gdrive-sync] $*" | tee -a "$LOG"; }
+
+SYNC_ERRORS=0
 
 log "=== Google Drive sync start ==="
 
@@ -37,7 +57,7 @@ log "Syncing nightly dumps to ${REMOTE}/db/ ..."
   --low-level-retries 10 \
   --log-level ERROR \
   "$BACKUP_DIR" \
-  "${REMOTE}/db/" 2>&1 | tee -a "$LOG" || log "WARN: nightly sync had errors (non-fatal)"
+  "${REMOTE}/db/" 2>&1 | tee -a "$LOG" || { log "WARN: nightly sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
 
 # ── 月份快照 → monthly/ ──
 sleep 10
@@ -49,7 +69,7 @@ log "Syncing monthly snapshots to ${REMOTE}/monthly/ ..."
   --retries-sleep 30s \
   --log-level ERROR \
   "$BACKUP_DIR/monthly" \
-  "${REMOTE}/monthly/" 2>&1 | tee -a "$LOG" || log "WARN: monthly sync had errors (non-fatal)"
+  "${REMOTE}/monthly/" 2>&1 | tee -a "$LOG" || { log "WARN: monthly sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
 
 # ── 最新 2 份 sixhour → sixhour/（6h 異地快照）──
 sleep 10
@@ -97,6 +117,15 @@ log "Pruning old remote backups..."
 # ── Log 檔大小控管（超過 500KB 截頭）──
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 512000 ]; then
   tail -c 256000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+fi
+
+# ── 同步結果通知 ──
+if [ "$SYNC_ERRORS" -gt 0 ]; then
+  send_telegram "$(printf '⚠️ AllTrue Google Drive 備份異常\n%d 個同步任務失敗，請檢查 gdrive-sync.log\n時間：%s' \
+    "$SYNC_ERRORS" "$(date '+%Y-%m-%d %H:%M')")"
+  log "WARN: $SYNC_ERRORS sync error(s) — Telegram notified"
+else
+  log "All syncs completed successfully"
 fi
 
 log "=== Google Drive sync done ==="
