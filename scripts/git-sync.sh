@@ -37,7 +37,8 @@ _abort_if_suspicious() {
       case "$bname" in \
         .xsession-errors*|.bash_history|.lesshst|.wget-hsts|.phpunit.result.cache| \
         .env.*.example|.env.example| \
-        .cursor-managed-skills-manifest.json|.sync-manifest.json) ;; *)
+        .cursor-managed-skills-manifest.json|.sync-manifest.json| \
+        .phpunit.result.cache|.DS_Store|.gitkeep) ;; *)
         found="$found\n  SUSPICIOUS_HIDDEN: $f"
       ;; esac
     fi
@@ -152,10 +153,8 @@ echo "[git-sync] Committing..."
 git commit -m "$commit_msg"
 
 echo "[git-sync] Pushing..."
-# Local `main` tracks collaboration branch `jerry-sync-main` on origin (see README).
-if [[ "$branch" == "main" ]]; then
-  git push origin HEAD:jerry-sync-main
-elif git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
+# deploy.yml 已移除，直接 push origin main（不再需要 jerry-sync-main 隔離層）
+if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
   git push
 else
   git push -u origin "$branch"
