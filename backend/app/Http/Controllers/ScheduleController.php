@@ -450,28 +450,23 @@ class ScheduleController extends Controller
                 SessionDeductionService::recomputeCounters($courseId);
 
                 $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
-                StudentSignIn::updateOrCreate(
-                    ['ClassSessionID' => (int) $session->id],
-                    [
-                        'StudentClassID'   => $courseId,
-                        'StudentID'        => (int) $course->StudentID,
-                        'TeacherID'        => (int) ($course->TeacherID ?? 0) ?: null,
-                        'RecordedByUserID' => $authUserId ?: null,
-                        'GradeID'          => $course->GradeID,
-                        'SubjectID'        => $course->SubjectID,
-                        'CampusID'         => $campusId,
-                        'SignInDT'         => $session->StartTime
-                            ? Carbon::parse($sessionDate . ' ' . $session->StartTime)
-                            : Carbon::parse($sessionDate),
-                        'SignOutDT'        => null,
-                        'MDT'              => now(),
-                        'Status'           => 'leave',
-                        'SessionDeducted'  => 0,
-                        'VoidedAt'         => null,
-                        'VoidedByUserID'   => null,
-                        'VoidReason'       => null,
-                    ]
-                );
+                StudentSignIn::create([
+                    'StudentClassID'   => $courseId,
+                    'StudentID'        => (int) $course->StudentID,
+                    'TeacherID'        => (int) ($course->TeacherID ?? 0) ?: null,
+                    'ClassSessionID'   => (int) $session->id,
+                    'RecordedByUserID' => $authUserId ?: null,
+                    'GradeID'          => $course->GradeID,
+                    'SubjectID'        => $course->SubjectID,
+                    'CampusID'         => $campusId,
+                    'SignInDT'         => $session->StartTime
+                        ? Carbon::parse($sessionDate . ' ' . $session->StartTime)
+                        : Carbon::parse($sessionDate),
+                    'SignOutDT'        => null,
+                    'MDT'              => now(),
+                    'Status'           => 'leave',
+                    'SessionDeducted'  => 0,
+                ]);
 
                 return response()->json([
                     'message'             => '補請假完成：堂數已沖回、堂次標記請假、後續課程已順延',
