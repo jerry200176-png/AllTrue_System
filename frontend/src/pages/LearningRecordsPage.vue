@@ -378,7 +378,7 @@
           v-for="(group, groupIndex) in filteredGroupedRecords"
           :key="group.key"
           class="lr-group"
-          :open="groupIndex === 0 || filteredGroupedRecords.length <= 5"
+          :open="filteredGroupedRecords.length === 1"
         >
           <summary class="lr-group-summary">
             <div class="lr-group-title">

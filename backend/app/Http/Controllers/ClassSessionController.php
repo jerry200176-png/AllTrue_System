@@ -49,6 +49,8 @@ class ClassSessionController extends Controller
             'day_time_slots.*.start_time' => 'required_with:day_time_slots|date_format:H:i',
             'day_time_slots.*.duration_minutes' => 'nullable|integer|min:30|max:480',
             'day_time_slots.*.subject' => 'nullable|string|max:64',
+            'day_time_slots.*.teacher_id' => 'nullable|integer|exists:User,id',
+            'allow_multi_teacher' => 'nullable|boolean',
             'duration_minutes' => 'required|integer|min:30|max:480',
             'rate_unit' => 'nullable|in:session,hour',
             'price_per_session' => 'required|numeric|min:0',

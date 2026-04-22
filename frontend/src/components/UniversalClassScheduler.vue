@@ -471,6 +471,31 @@
                     @change="updateSlotDur(globalIdx, $event.target.value)"
                   />
                   <small class="field-note">~ {{ computeSessionEndTime(form.day_time_slots[globalIdx].start_time, form.day_time_slots[globalIdx].duration_hours) }}</small>
+                  <!-- Per-slot teacher override -->
+                  <div class="slot-teacher-wrap">
+                    <template v-if="form.day_time_slots[globalIdx].teacher_id">
+                      <span class="slot-teacher-badge">
+                        {{ teacherLabelById(form.day_time_slots[globalIdx].teacher_id) }}
+                        <button type="button" class="slot-teacher-clear" title="清除，改用主責老師" @click="clearSlotTeacher(globalIdx)">✕</button>
+                      </span>
+                    </template>
+                    <template v-else>
+                      <button type="button" class="slot-teacher-add-btn" @click="openSlotTeacherPicker(globalIdx)">
+                        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">person_add</span>
+                        換老師
+                      </button>
+                    </template>
+                  </div>
+                  <!-- Inline teacher picker (shown when editing) -->
+                  <div v-if="slotTeacherPickerIdx === globalIdx" class="slot-teacher-picker">
+                    <SearchableSelect
+                      :model-value="form.day_time_slots[globalIdx].teacher_id || ''"
+                      :options="teacherOptions"
+                      placeholder="選擇老師..."
+                      @update:model-value="setSlotTeacher(globalIdx, $event)"
+                    />
+                    <button type="button" class="slot-teacher-cancel" @click="slotTeacherPickerIdx = null">取消</button>
+                  </div>
                   <button
                     v-if="getSlotIndicesForDay(day).length > 1"
                     type="button"
@@ -1199,12 +1224,15 @@ const futureSessionOccurrences = computed(() => {
       }];
       for (const slot of slotList) {
         if (selected.length >= remaining) break;
-        selected.push({
+        const entry = {
           ymd,
           start_time: slot.start_time,
           duration_minutes: slot.duration_minutes,
           subject: slot.subject || form.subject,
-        });
+        };
+        const slotObj = slot.index != null ? (form.day_time_slots[slot.index] || {}) : {};
+        if (slotObj.teacher_id) entry.teacher_id = Number(slotObj.teacher_id);
+        selected.push(entry);
       }
     }
     cursor.setDate(cursor.getDate() + 1);
@@ -1492,6 +1520,33 @@ function addSlotForDay(day) {
   form.day_time_slots = [...(form.day_time_slots || []), slot];
 }
 
+// ── Per-slot teacher override ──
+const slotTeacherPickerIdx = ref(null);
+
+function teacherLabelById(id) {
+  const t = teacherOptions.value.find((o) => o.value === Number(id));
+  return t ? t.label : `老師#${id}`;
+}
+
+function openSlotTeacherPicker(idx) {
+  slotTeacherPickerIdx.value = slotTeacherPickerIdx.value === idx ? null : idx;
+}
+
+function setSlotTeacher(idx, teacherId) {
+  const slots = [...(form.day_time_slots || [])];
+  if (!slots[idx]) return;
+  slots[idx] = { ...slots[idx], teacher_id: Number(teacherId) || null };
+  form.day_time_slots = slots;
+  slotTeacherPickerIdx.value = null;
+}
+
+function clearSlotTeacher(idx) {
+  const slots = [...(form.day_time_slots || [])];
+  if (!slots[idx]) return;
+  slots[idx] = { ...slots[idx], teacher_id: null };
+  form.day_time_slots = slots;
+}
+
 function removeSlotAt(index) {
   const idx = Number(index);
   if (!Number.isInteger(idx) || idx < 0) return;
@@ -1727,12 +1782,14 @@ async function submit() {
     if (indices.length > 0) {
       for (const idx of indices) {
         const s = form.day_time_slots[idx];
-        sessionPlan.push({
+        const entry = {
           session_date: ymd,
           start_time: normalizeHalfHourTime(s.start_time),
           kind,
           subject: String(s.subject || form.subject),
-        });
+        };
+        if (s.teacher_id) entry.teacher_id = Number(s.teacher_id);
+        sessionPlan.push(entry);
       }
     } else {
       // 手動日期不在固定上課星期，使用全域預設時間建立
@@ -1745,12 +1802,14 @@ async function submit() {
     }
   }
   for (const fs of futureSessionOccurrences.value) {
-    sessionPlan.push({
+    const fsEntry = {
       session_date: fs.ymd,
       start_time: fs.start_time,
       kind: 'future',
       subject: String(fs.subject || form.subject),
-    });
+    };
+    if (fs.teacher_id) fsEntry.teacher_id = Number(fs.teacher_id);
+    sessionPlan.push(fsEntry);
   }
   sessionPlan.sort((a, b) => {
     const c = a.session_date.localeCompare(b.session_date);
@@ -1761,21 +1820,28 @@ async function submit() {
   submitting.value = true;
   try {
     const normalizedStartTime = normalizeHalfHourTime(form.start_time);
+    const globalTeacherId = Number(form.teacher_id);
     const normalizedDaySlots = [];
     for (const day of selectedDays.value) {
       for (const slot of orderedSlotsForWeekday(day)) {
+        const slotObj = form.day_time_slots[slot.index] || {};
+        const slotTeacherId = slotObj.teacher_id ? Number(slotObj.teacher_id) : null;
         normalizedDaySlots.push({
           day,
           start_time: slot.start_time,
           duration_minutes: slot.duration_minutes,
           subject: String(slot.subject || form.subject),
+          ...(slotTeacherId ? { teacher_id: slotTeacherId } : {}),
         });
       }
     }
+    const hasMultiTeacher = normalizedDaySlots.some(
+      (s) => s.teacher_id && s.teacher_id !== globalTeacherId
+    );
     const payload = {
       branch_id: branchId,
       student_id: Number(form.student_id),
-      teacher_id: Number(form.teacher_id),
+      teacher_id: globalTeacherId,
       subject: form.subject,
       class_type: form.class_type,
       confirmed_dates: [],
@@ -1795,6 +1861,7 @@ async function submit() {
       paid_at: form.paid_at || null,
       course_start_date: form.course_start_date || null,
       mode: props.mode,
+      ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
     };
 
     if (form.payment_type === 'session') {
@@ -1962,6 +2029,65 @@ async function submit() {
 }
 .weekday-slot-row.per-day-row {
   grid-template-columns: 56px minmax(88px, 120px) minmax(88px, 130px) 70px auto minmax(28px, 32px);
+  align-items: start;
+}
+
+/* Teacher override section — auto-flows to second row in the per-day grid */
+.slot-teacher-wrap {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+.slot-teacher-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #e0f2fe;
+  color: #0369a1;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.slot-teacher-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #0369a1;
+  font-size: 11px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.slot-teacher-add-btn {
+  background: none;
+  border: 1px dashed #94a3b8;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.slot-teacher-add-btn:hover { border-color: var(--primary); color: var(--primary); }
+.slot-teacher-picker {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+.slot-teacher-cancel {
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 .slot-subject-select {
   min-width: 0;

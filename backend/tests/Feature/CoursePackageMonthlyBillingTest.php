@@ -455,6 +455,74 @@ class CoursePackageMonthlyBillingTest extends TestCase
         }
     }
 
+    // ─── Bug fix：已繳費方案 payment_status 應為 monthly_due_soon ─────
+
+    public function test_paid_monthly_package_shows_monthly_due_soon_not_unpaid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $t1 = $this->makeTeacher();
+        $t2 = $this->makeTeacher();
+        $this->ensureSubjects();
+
+        $settlementDay = (int) Carbon::today()->day;
+        $rate = 700;
+
+        $createRes = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/course-packages/create-multi-subject', [
+                'student_id'     => $student->id,
+                'branch_id'      => 1,
+                'name'           => '已繳費方案測試',
+                'payment_type'   => 'monthly',
+                'rate'           => $rate,
+                'settlement_day' => $settlementDay,
+                'subjects'       => [
+                    ['subject_id' => 1, 'teacher_id' => $t1->id, 'duration_hours' => 2],
+                    ['subject_id' => 2, 'teacher_id' => $t2->id, 'duration_hours' => 2],
+                ],
+            ]);
+        $createRes->assertStatus(201);
+        $pkgId = (int) $createRes->json('package_id');
+
+        // 加入出席堂數讓 charge > 0
+        $members = StudentClass::where('PackageID', $pkgId)->get();
+        $today = Carbon::today();
+        ClassSession::create([
+            'StudentClassID' => $members[0]->ID,
+            'SessionDate'    => $today->copy()->startOfMonth()->toDateString(),
+            'StartTime'      => '16:00',
+            'EndTime'        => '18:00',
+            'Status'         => 'attended',
+        ]);
+
+        // 未繳費時應顯示 unpaid
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1');
+        $res->assertOk();
+        $unpaidRow = collect($res->json())->firstWhere('package_id', $pkgId);
+        $this->assertNotNull($unpaidRow);
+        $this->assertEquals('unpaid', $unpaidRow['payment_status'], '未繳費方案應為 unpaid');
+        $this->assertFalse($unpaidRow['paid']);
+        $this->assertGreaterThan(0, $unpaidRow['outstanding']);
+
+        // 標記已繳費
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/course-packages/{$pkgId}", [
+                'paid'    => true,
+                'paid_at' => $today->toDateString(),
+            ])->assertOk();
+
+        // 已繳費時應顯示 monthly_due_soon，outstanding 應為 0
+        $res2 = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->getJson('/api/v1/alerts/tuition?branch_id=1');
+        $res2->assertOk();
+        $paidRow = collect($res2->json())->firstWhere('package_id', $pkgId);
+        $this->assertNotNull($paidRow, '已繳費方案若在繳費日前 5 天內仍應出現於提醒（monthly_due_soon）');
+        $this->assertEquals('monthly_due_soon', $paidRow['payment_status'], '已繳費方案 payment_status 應為 monthly_due_soon');
+        $this->assertTrue($paidRow['paid']);
+        $this->assertEquals(0, $paidRow['outstanding'], '已繳費方案 outstanding 應為 0');
+    }
+
     // ─── 回歸：update 同步 settlement_day / rate 到成員 ─────────
 
     public function test_update_monthly_package_cascades_settlement_day_and_rate_to_members(): void
