@@ -837,3 +837,33 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[git-sync] Committing...
+[main 3a14ef4] chore(nightly): auto backup 2026-04-23_0100
+ 5 files changed, 49 insertions(+), 3 deletions(-)
+ create mode 100644 backups/alltrue_nightly_2026-04-23_0100.sql.gz
+[main 3a14ef4] chore(nightly): auto backup 2026-04-23_0100
+ 5 files changed, 49 insertions(+), 3 deletions(-)
+ create mode 100644 backups/alltrue_nightly_2026-04-23_0100.sql.gz
+[git-sync] Pushing...
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+To github.com:jerry200176-png/AllTrue_System.git
+   eddb809..3a14ef4  main -> main
+   eddb809..3a14ef4  main -> main
+[git-sync] Done.
+[git-sync] Done.
+[2026-04-23 01:00:05] Tagging commit as nightly-2026-04-23_0100 ...
+[2026-04-23 01:00:05] Tagging commit as nightly-2026-04-23_0100 ...
+To github.com:jerry200176-png/AllTrue_System.git
+To github.com:jerry200176-png/AllTrue_System.git
+ * [new tag]         nightly-2026-04-23_0100 -> nightly-2026-04-23_0100
+ * [new tag]         nightly-2026-04-23_0100 -> nightly-2026-04-23_0100
+[2026-04-23 01:00:09] Tag pushed.
+[2026-04-23 01:00:09] Tag pushed.
+[2026-04-23 01:00:09] Pruning nightly tags (keep latest 60) ...
+[2026-04-23 01:00:09] Pruning nightly tags (keep latest 60) ...
+[2026-04-23 01:00:09] === Nightly backup done ===
+[2026-04-23 01:00:09] === Nightly backup done ===
