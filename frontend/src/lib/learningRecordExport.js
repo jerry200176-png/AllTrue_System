@@ -228,7 +228,7 @@ function drawRecordSection(ctx, startY, record, index) {
   y = drawLabelValue('授課進度', record.Progress);
 
   // Next homework
-  y = drawLabelValue('下次作業', record.NextHomework);
+  y = drawLabelValue('本次作業', record.NextHomework);
 
   // Next week test scope
   y = drawLabelValue('下次週考範圍', record.NextWeekTestScope);
