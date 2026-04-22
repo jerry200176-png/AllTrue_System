@@ -204,7 +204,13 @@
                     </span>
                   </template>
                   <template v-else-if="r.schedule_mode === 'count'">
-                    <span class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
+                    <button
+                      v-if="r.id"
+                      class="tc-sessions-link"
+                      @click="openSessionDetail(r)"
+                      :title="'點入查看上課明細'"
+                    >剩 {{ r.remaining_sessions }} 堂 <span class="material-symbols-outlined" style="font-size:13px;vertical-align:middle">open_in_new</span></button>
+                    <span v-else class="text-light">剩 {{ r.remaining_sessions }} 堂</span>
                   </template>
                   <span v-else class="text-light">—</span>
                 </td>
@@ -339,6 +345,76 @@
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
             </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Session Detail Modal -->
+    <Transition name="fade">
+      <div v-if="sessionDetailOpen" class="tc-overlay" @click.self="sessionDetailOpen = false">
+        <div class="tc-dialog tc-dialog--wide">
+          <div class="tc-dialog-header">
+            <div>
+              <h3 class="tc-dialog-title" style="margin-bottom:2px">
+                <span class="material-symbols-outlined" style="font-size:20px;color:var(--primary)">history_edu</span>
+                上課紀錄查核
+              </h3>
+              <div v-if="sessionDetailRow" style="font-size:13px;color:var(--text-light)">
+                {{ sessionDetailRow.student_name }} — {{ sessionDetailRow.subject }}
+              </div>
+            </div>
+            <button class="tc-dialog-close" @click="sessionDetailOpen = false">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+
+          <!-- Summary bar -->
+          <div v-if="sessionDetailRow" class="tc-session-summary">
+            <span class="tc-ss-item tc-ss-attended">
+              <strong>{{ sessionDetailAttended }}</strong> 堂已上
+            </span>
+            <span class="tc-ss-sep">／</span>
+            <span class="tc-ss-item">購買 <strong>{{ sessionDetailRow.sessions_purchased }}</strong> 堂</span>
+            <span class="tc-ss-sep">·</span>
+            <span class="tc-ss-item">剩餘 <strong>{{ sessionDetailRow.remaining_sessions }}</strong> 堂</span>
+          </div>
+
+          <!-- Loading -->
+          <div v-if="sessionDetailLoading" class="tc-session-loading">
+            <span class="material-symbols-outlined spin">progress_activity</span>
+            載入中…
+          </div>
+
+          <!-- Empty -->
+          <div v-else-if="!sessionDetailList.length" class="tc-session-empty">
+            尚無上課紀錄
+          </div>
+
+          <!-- Table -->
+          <div v-else class="tc-session-table-wrap">
+            <table class="tc-session-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>時間</th>
+                  <th>老師</th>
+                  <th>狀態</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in sessionDetailList" :key="s.id" :class="sessionRowClass(s.status)">
+                  <td>{{ s.session_date }}</td>
+                  <td class="tc-session-time">{{ s.start_time }}–{{ s.end_time }}</td>
+                  <td>{{ s.teacher_name || '—' }}</td>
+                  <td><span class="tc-session-status" :class="'ss-' + s.status">{{ sessionStatusLabel(s.status) }}</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="tc-dialog-btns" style="margin-top:12px">
+            <button class="tc-btn tc-btn--ghost" @click="sessionDetailOpen = false">關閉</button>
           </div>
         </div>
       </div>
@@ -822,6 +898,63 @@ async function confirmSettle() {
     showToast(e.message || '結案失敗，請重試', 'error');
   } finally {
     settleLoading.value = null;
+  }
+}
+
+// ═══ Session Detail Modal ═══
+const sessionDetailOpen = ref(false);
+const sessionDetailRow = ref(null);
+const sessionDetailList = ref([]);
+const sessionDetailLoading = ref(false);
+
+const SESSION_STATUS_LABELS = {
+  attended:  '已上課',
+  completed: '已上課',
+  late:      '遲到',
+  leave:     '請假',
+  absent:    '未到',
+  scheduled: '待上課',
+  cancelled: '已取消',
+};
+
+function sessionStatusLabel(s) {
+  return SESSION_STATUS_LABELS[s] || s;
+}
+
+function sessionRowClass(s) {
+  if (['attended', 'completed', 'late'].includes(s)) return 'srow-attended';
+  if (s === 'absent') return 'srow-absent';
+  if (s === 'cancelled') return 'srow-cancelled';
+  return '';
+}
+
+const sessionDetailAttended = computed(() =>
+  sessionDetailList.value.filter(s => ['attended', 'completed', 'late'].includes(s.status)).length
+);
+
+async function openSessionDetail(row) {
+  sessionDetailRow.value = row;
+  sessionDetailList.value = [];
+  sessionDetailLoading.value = true;
+  sessionDetailOpen.value = true;
+  try {
+    const token = getToken();
+    const params = new URLSearchParams({ student_class_id: String(row.id), per_page: '200' });
+    const resp = await fetch(`/api/v1/class-sessions?${params}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    const rows = (data.data ?? data) || [];
+    sessionDetailList.value = [...rows].sort((a, b) => {
+      const d = (b.session_date || '').localeCompare(a.session_date || '');
+      return d !== 0 ? d : (b.start_time || '').localeCompare(a.start_time || '');
+    });
+  } catch {
+    showToast('載入上課紀錄失敗，請重試', 'error');
+    sessionDetailOpen.value = false;
+  } finally {
+    sessionDetailLoading.value = false;
   }
 }
 
@@ -1418,6 +1551,81 @@ loadAlerts();
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ─── Sessions link ─── */
+.tc-sessions-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--primary);
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.tc-sessions-link:hover { color: #1d4ed8; }
+
+/* ─── Session Detail Dialog ─── */
+.tc-dialog--wide { max-width: 620px; width: 95vw; max-height: 80vh; display: flex; flex-direction: column; }
+.tc-dialog-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.tc-dialog-close { background: none; border: none; cursor: pointer; color: var(--text-light); display: flex; align-items: center; padding: 2px; border-radius: 6px; }
+.tc-dialog-close:hover { color: var(--text); background: var(--hover-bg, #f1f5f9); }
+.tc-session-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg, #f8fafc);
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.tc-ss-attended strong { color: #16a34a; }
+.tc-ss-sep { color: var(--text-light); }
+.tc-session-loading, .tc-session-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-light);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.tc-session-table-wrap { overflow-y: auto; flex: 1; border: 1px solid var(--border, #e2e8f0); border-radius: 8px; }
+.tc-session-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tc-session-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg, #f8fafc);
+  padding: 8px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-light);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  font-size: 12px;
+}
+.tc-session-table tbody tr { border-bottom: 1px solid var(--border, #e2e8f0); }
+.tc-session-table tbody tr:last-child { border-bottom: none; }
+.tc-session-table td { padding: 7px 10px; }
+.tc-session-time { white-space: nowrap; color: var(--text-light); font-size: 12px; }
+.srow-cancelled td { opacity: 0.45; }
+.srow-absent td { background: #fff5f5; }
+.tc-session-status {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ss-attended, .ss-completed { background: #dcfce7; color: #16a34a; }
+.ss-late      { background: #fef9c3; color: #ca8a04; }
+.ss-leave     { background: #e0f2fe; color: #0369a1; }
+.ss-absent    { background: #fee2e2; color: #dc2626; }
+.ss-scheduled { background: #f1f5f9; color: #64748b; }
+.ss-cancelled { background: #f1f5f9; color: #94a3b8; }
 
 /* ─── Toast ─── */
 .tc-toast {

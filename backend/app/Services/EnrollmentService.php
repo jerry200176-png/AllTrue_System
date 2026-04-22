@@ -339,19 +339,24 @@ class EnrollmentService
             }
         }
 
-        $subjectGroups = $this->groupSessionRowsBySubject($sessionRows);
+        $globalTeacherId = (int) $data['teacher_id'];
+        $allowMultiTeacher = !empty($data['allow_multi_teacher']);
+        $subjectGroups = $this->groupSessionRowsBySubjectAndTeacher($sessionRows, $globalTeacherId);
+        // subjectMeta keyed by group key (subject::teacherId); subject extracted for resolver
         $subjectMeta = [];
-        foreach (array_keys($subjectGroups) as $subKey) {
-            $rid = FrontendSubjectIdResolver::resolve($subKey);
+        foreach (array_keys($subjectGroups) as $groupKey) {
+            $subjectOnly = $this->subjectFromGroupKey($groupKey);
+            $rid = FrontendSubjectIdResolver::resolve($subjectOnly);
             if ($rid === null) {
                 return response()->json([
-                    'message' => "無法將科目「{$subKey}」對應到 Subject 主檔，請檢查科目設定。",
-                    'errors' => ['subject' => ["找不到對應的科目 ID：{$subKey}"]],
+                    'message' => "無法將科目「{$subjectOnly}」對應到 Subject 主檔，請檢查科目設定。",
+                    'errors' => ['subject' => ["找不到對應的科目 ID：{$subjectOnly}"]],
                 ], 422);
             }
-            $subjectMeta[$subKey] = [
-                'id' => $rid,
-                'name' => FrontendSubjectIdResolver::resolveName($rid, $subKey),
+            $subjectMeta[$groupKey] = [
+                'id'      => $rid,
+                'name'    => FrontendSubjectIdResolver::resolveName($rid, $subjectOnly),
+                'subject' => $subjectOnly,
             ];
         }
 
@@ -362,10 +367,11 @@ class EnrollmentService
         } elseif (!empty($data['student']['grade'])) {
             $gradeForScope = (string) $data['student']['grade'];
         }
-        foreach (array_keys($subjectGroups) as $subKey) {
+        foreach ($subjectGroups as $groupKey => $groupRows) {
+            $groupTeacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
             $scopeResult = TeacherScopeService::check(
-                (int) $data['teacher_id'],
-                (int) $subjectMeta[$subKey]['id'],
+                $groupTeacherId,
+                (int) $subjectMeta[$groupKey]['id'],
                 $gradeForScope ?: null
             );
             if (!empty($scopeResult['warnings'])) {
@@ -382,13 +388,14 @@ class EnrollmentService
             if ($existingActive->isNotEmpty()) {
                 $conflicts = [];
                 $newClassType = $data['class_type'] ?? '';
-                foreach ($subjectGroups as $subjectKey => $rows) {
-                    $sId = (int) $subjectMeta[$subjectKey]['id'];
+                foreach ($subjectGroups as $groupKey => $rows) {
+                    $sId = (int) $subjectMeta[$groupKey]['id'];
+                    $subjectOnly = $subjectMeta[$groupKey]['subject'];
                     foreach ($existingActive as $sc) {
                         if ((int) $sc->SubjectID === $sId && ($sc->ClassType ?? '') === $newClassType) {
                             $conflicts[] = [
                                 'existing_course_id' => $sc->ID,
-                                'subject' => $subjectKey,
+                                'subject' => $subjectOnly,
                                 'class_type' => $sc->ClassType ?? '',
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                             ];
@@ -417,7 +424,9 @@ class EnrollmentService
             $globalDuration,
             $dayTimeSlotGroups,
             $subjectGroups,
-            $subjectMeta
+            $subjectMeta,
+            $globalTeacherId,
+            $allowMultiTeacher
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -453,10 +462,12 @@ class EnrollmentService
             $studentClassIds = [];
             $firstStudentClassId = null;
 
-            foreach ($subjectGroups as $subjectKey => $rowsForSubject) {
-                $meta = $subjectMeta[$subjectKey];
+            foreach ($subjectGroups as $groupKey => $rowsForSubject) {
+                $meta = $subjectMeta[$groupKey];
                 $subjectId = (int) $meta['id'];
                 $subjectName = (string) $meta['name'];
+                $subjectKey = $meta['subject'];
+                $effectiveTeacherId = $this->teacherFromGroupKey($groupKey, $globalTeacherId);
 
                 $filteredSlotGroups = $this->filterSlotGroupsBySubject($dayTimeSlotGroups, $subjectKey);
                 if (empty($filteredSlotGroups)) {
@@ -537,7 +548,7 @@ class EnrollmentService
 
                 $studentClassPayload = array_merge([
                     'StudentID' => (int) $student->id,
-                    'TeacherID' => (int) $data['teacher_id'],
+                    'TeacherID' => $effectiveTeacherId,
                     'SubjectID' => $subjectId,
                     'ClassType' => (string) $data['class_type'],
                     'by1' => $by1Map[$data['class_type']] ?? 1,
@@ -586,7 +597,9 @@ class EnrollmentService
                     $others = $existingSiblings->map(function ($s) use ($teacherNames) {
                         return ($teacherNames[(int) $s->TeacherID] ?? '老師#' . $s->TeacherID) . '（課程#' . $s->ID . '）';
                     })->implode('、');
-                    $dualTeacherWarnings[] = "「{$subjectKey}」：此學生同科目已有其他課程：{$others}。若為雙師排課屬正常情況。";
+                    if (!$allowMultiTeacher) {
+                        $dualTeacherWarnings[] = "「{$subjectKey}」：此學生同科目已有其他課程：{$others}。若為多師排課屬正常情況。";
+                    }
                 }
 
                 foreach ($rowsForSubject as $row) {
@@ -624,7 +637,7 @@ class EnrollmentService
                         $syncResult = $this->syncApprovedLearningRecord(
                             $studentClass,
                             $classSession,
-                            (int) $data['teacher_id'],
+                            $effectiveTeacherId,
                             $subjectName,
                             $approvedByUserId > 0 ? $approvedByUserId : null,
                             $hasSessionDeductedColumn
@@ -666,7 +679,7 @@ class EnrollmentService
                         $syncResult = $this->syncApprovedLearningRecord(
                             $studentClass,
                             $classSession,
-                            (int) $data['teacher_id'],
+                            $effectiveTeacherId,
                             $subjectName,
                             $approvedByUserId > 0 ? $approvedByUserId : null,
                             $hasSessionDeductedColumn
@@ -805,13 +818,17 @@ class EnrollmentService
             if ($slotSubject === '') {
                 $slotSubject = $defaultSubject;
             }
+            $slotTeacherId = isset($slot['teacher_id']) && (int) $slot['teacher_id'] > 0
+                ? (int) $slot['teacher_id']
+                : null;
             if (!isset($result[$day])) {
                 $result[$day] = [];
             }
             $result[$day][] = [
-                'start_time' => $this->normalizeTime(substr($time, 0, 5)),
+                'start_time'       => $this->normalizeTime(substr($time, 0, 5)),
                 'duration_minutes' => $durMin,
-                'subject' => $slotSubject,
+                'subject'          => $slotSubject,
+                'teacher_id'       => $slotTeacherId,
             ];
         }
         foreach ($result as &$list) {
@@ -883,11 +900,12 @@ class EnrollmentService
                 ? $planSub
                 : $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $slotStartTime, $defaultSubject);
             $rows[] = [
-                'date' => $date,
-                'start_time' => $slotStartTime,
+                'date'             => $date,
+                'start_time'       => $slotStartTime,
                 'duration_minutes' => $dur,
-                'kind' => $kind,
-                'subject' => $subject,
+                'kind'             => $kind,
+                'subject'          => $subject,
+                'teacher_id'       => $this->inferTeacherIdFromSlotGroups($dayTimeSlotGroups, $weekday, $slotStartTime),
             ];
         }
         usort($rows, function ($a, $b) {
@@ -919,26 +937,47 @@ class EnrollmentService
             $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
             [$st, $dur] = $this->firstSlotStartAndDuration($weekday, $dayTimeSlotGroups, $dayTimeSlotMap, $globalDuration, $fallbackStart);
             $rows[] = [
-                'date' => $date,
-                'start_time' => $st,
+                'date'             => $date,
+                'start_time'       => $st,
                 'duration_minutes' => $dur,
-                'kind' => 'confirmed',
-                'subject' => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
+                'kind'             => 'confirmed',
+                'subject'          => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
+                'teacher_id'       => $this->inferTeacherIdFromSlotGroups($dayTimeSlotGroups, $weekday, $st),
             ];
         }
         foreach ($futureDates as $date) {
             $weekday = (int) Carbon::parse($date)->dayOfWeekIso;
             [$st, $dur] = $this->firstSlotStartAndDuration($weekday, $dayTimeSlotGroups, $dayTimeSlotMap, $globalDuration, $fallbackStart);
             $rows[] = [
-                'date' => $date,
-                'start_time' => $st,
+                'date'             => $date,
+                'start_time'       => $st,
                 'duration_minutes' => $dur,
-                'kind' => 'future',
-                'subject' => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
+                'kind'             => 'future',
+                'subject'          => $this->inferSubjectFromSlotGroups($dayTimeSlotGroups, $weekday, $st, $defaultSubject),
+                'teacher_id'       => $this->inferTeacherIdFromSlotGroups($dayTimeSlotGroups, $weekday, $st),
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * Return the slot-specific teacher_id (null = inherit global teacher).
+     */
+    private function inferTeacherIdFromSlotGroups(array $dayTimeSlotGroups, int $weekday, string $startTimeHms): ?int
+    {
+        if (!empty($dayTimeSlotGroups[$weekday])) {
+            foreach ($dayTimeSlotGroups[$weekday] as $s) {
+                if ($s['start_time'] === $startTimeHms) {
+                    $tid = isset($s['teacher_id']) ? (int) $s['teacher_id'] : 0;
+                    return $tid > 0 ? $tid : null;
+                }
+            }
+            $first = $dayTimeSlotGroups[$weekday][0];
+            $tid = isset($first['teacher_id']) ? (int) $first['teacher_id'] : 0;
+            return $tid > 0 ? $tid : null;
+        }
+        return null;
     }
 
     /**
@@ -1059,6 +1098,60 @@ class EnrollmentService
         unset($gRows);
 
         return $groups;
+    }
+
+    /**
+     * Group session rows by (subject + effective teacher_id).
+     * Key format: "{subject}::{teacherId}" so that same subject with different teachers → separate StudentClass.
+     * When all rows share the same teacher (or none specify a teacher), the key is "{subject}::{globalTeacherId}",
+     * which is backwards-compatible with the single-teacher flow.
+     *
+     * @return array<string, list<array{date:string,start_time:string,duration_minutes:int,kind:string,subject:string,teacher_id:int|null}>>
+     */
+    private function groupSessionRowsBySubjectAndTeacher(array $sessionRows, int $globalTeacherId): array
+    {
+        $groups = [];
+        foreach ($sessionRows as $row) {
+            $subject = (string) ($row['subject'] ?? '');
+            if ($subject === '') {
+                $subject = 'Math';
+            }
+            $tid = isset($row['teacher_id']) && (int) $row['teacher_id'] > 0
+                ? (int) $row['teacher_id']
+                : $globalTeacherId;
+            $key = $subject . '::' . $tid;
+            $groups[$key][] = $row;
+        }
+        foreach ($groups as &$gRows) {
+            usort($gRows, function ($a, $b) {
+                $c = strcmp($a['date'], $b['date']);
+                if ($c !== 0) {
+                    return $c;
+                }
+                return strcmp($a['start_time'], $b['start_time']);
+            });
+        }
+        unset($gRows);
+
+        return $groups;
+    }
+
+    /** Extract subject part from a group key of format "subject::teacherId". */
+    private function subjectFromGroupKey(string $key): string
+    {
+        $pos = strrpos($key, '::');
+        return $pos !== false ? substr($key, 0, $pos) : $key;
+    }
+
+    /** Extract effective teacher_id from a group key; falls back to $globalTeacherId. */
+    private function teacherFromGroupKey(string $key, int $globalTeacherId): int
+    {
+        $pos = strrpos($key, '::');
+        if ($pos === false) {
+            return $globalTeacherId;
+        }
+        $tid = (int) substr($key, $pos + 2);
+        return $tid > 0 ? $tid : $globalTeacherId;
     }
 
     /**
