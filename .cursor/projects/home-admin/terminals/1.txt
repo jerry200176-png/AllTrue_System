@@ -1,27 +1,5 @@
 ---
-pid: 444443
+pid: 526319
 cwd: /home/admin
-active_command: gh auth login
 ---
-admin@Pi5:~ $ gh auth login
-? Where do you use GitHub? GitHub.com
-? What is your preferred protocol for Git operations on this host? HTTPS
-? Authenticate Git with your GitHub credentials? Yes
-? How would you like to authenticate GitHub CLI? Login with a web browser
-
-! First copy your one-time code: 2E51-546D
-Press Enter to open https://github.com/login/device in your browser... 
-
-✓ Authentication complete.
-- gh config set -h github.com git_protocol https
-✓ Configured git protocol
-! Authentication credentials saved in plain text
-✓ Logged in as jerry200176-png
-admin@Pi5:~ $ 
-admin@Pi5:~ $ gh auth login
-? Where do you use GitHub? GitHub.com
-? What is your preferred protocol for Git operations on this host? HTTPS
-? How would you like to authenticate GitHub CLI? Paste an authentication token
-Tip: you can generate a Personal Access Token here https://github.com/settings/tokens
-The minimum required scopes are 'repo', 'read:org', 'workflow'.
-? Paste your authentication token:
+admin@Pi5:~ $

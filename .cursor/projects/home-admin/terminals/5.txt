@@ -1,7 +1,0 @@
----
-pid: 485777
-cwd: /home/admin
-active_command: sudo service php8.2-fpm reload
----
-admin@Pi5:~ $ sudo service php8.2-fpm reload
-[sudo] password for admin:

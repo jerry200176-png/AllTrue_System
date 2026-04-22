@@ -64,11 +64,17 @@ check_resources() {
     TEMP="N/A"
     if command -v vcgencmd &> /dev/null; then
         TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -oP '[0-9]+\.[0-9]+' || echo "N/A")
-        if [ "$TEMP" != "N/A" ]; then
-            TEMP_INT=${TEMP%.*}
-            if [ "$TEMP_INT" -gt "$TEMP_ALERT_C" ]; then
-                alerts="${alerts}\n🌡️ CPU 溫度 ${TEMP}°C（門檻 ${TEMP_ALERT_C}°C）"
-            fi
+    fi
+    if [ "$TEMP" = "N/A" ] && [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -n "$RAW" ] && [ "$RAW" -gt 0 ] 2>/dev/null; then
+            TEMP=$(awk "BEGIN {printf \"%.1f\", $RAW/1000}")
+        fi
+    fi
+    if [ "$TEMP" != "N/A" ]; then
+        TEMP_INT=${TEMP%.*}
+        if [ "$TEMP_INT" -gt "$TEMP_ALERT_C" ] 2>/dev/null; then
+            alerts="${alerts}\n🌡️ CPU 溫度 ${TEMP}°C（門檻 ${TEMP_ALERT_C}°C）"
         fi
     fi
 
@@ -83,9 +89,8 @@ check_resources() {
     fi
 
     if [ -n "$alerts" ]; then
+        echo "[ALERT] $(date '+%Y-%m-%d %H:%M') 資源異常，發送通知"
         send_notify "$(printf '🖥️ AllTrue Pi 資源告警\n%s' "$alerts")"
-    else
-        echo "[OK] 所有資源正常（磁碟 ${DISK}%，溫度 ${TEMP}°C，RAM ${RAM_PCT}%，API ${HTTP_STATUS}）"
     fi
 }
 
@@ -98,6 +103,12 @@ daily_report() {
     TEMP="N/A"
     if command -v vcgencmd &> /dev/null; then
         TEMP=$(vcgencmd measure_temp 2>/dev/null | grep -oP '[0-9]+\.[0-9]+' || echo "N/A")
+    fi
+    if [ "$TEMP" = "N/A" ] && [ -f /sys/class/thermal/thermal_zone0/temp ]; then
+        RAW=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null)
+        if [ -n "$RAW" ] && [ "$RAW" -gt 0 ] 2>/dev/null; then
+            TEMP=$(awk "BEGIN {printf \"%.1f\", $RAW/1000}")
+        fi
     fi
     HTTP_STATUS=$(curl -sk -o /dev/null -w "%{http_code}" "$HEALTH_URL" --max-time 10 || echo "000")
 
