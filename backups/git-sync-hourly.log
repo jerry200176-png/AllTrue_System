@@ -259,3 +259,24 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main b5f1a95] chore(hourly): auto sync 2026-04-22 23:30
+ 20 files changed, 387 insertions(+), 210 deletions(-)
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/1bd78e94-d41a-4e6b-bd17-e17ad2fb6f84/subagents/58a6edc4-a749-472f-aa9e-1b2fdfbd7c7d.jsonl
+ create mode 100644 backend/public/assets/index-B-H8AZoB.js
+ create mode 100644 backend/public/assets/index-B8yw4KsR.css
+ delete mode 100644 backend/public/assets/index-CtNQMGk2.css
+ delete mode 100644 backend/public/assets/index-rDjXXdz0.js
+ create mode 100644 backups/sixhour/alltrue_6h_2026-04-22_2300.sql.gz
+ create mode 100644 frontend/dist_build/assets/index-B-H8AZoB.js
+ create mode 100644 frontend/dist_build/assets/index-B8yw4KsR.css
+ delete mode 100644 frontend/dist_build/assets/index-CtNQMGk2.css
+ delete mode 100644 frontend/dist_build/assets/index-rDjXXdz0.js
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   5901a96..b5f1a95  main -> main
+[git-sync] Done.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
