@@ -159,7 +159,7 @@ class ChatEnhancementTest extends TestCase
      */
     public function test_read_count_is_zero_before_recipient_reads(): void
     {
-        $this->markTestSkipped('Pending: chat messages API does not expose read_count key yet');
+        // FR-003: read_count added to messageToArray; computed from chat_thread_members.
 
         [$tokenA, $userA] = $this->makeUserToken([1], 'rc-a@test.com', 'A');
         [$tokenB, $userB] = $this->makeUserToken([1], 'rc-b@test.com', 'T');
@@ -191,7 +191,7 @@ class ChatEnhancementTest extends TestCase
      */
     public function test_read_count_is_one_after_recipient_reads(): void
     {
-        $this->markTestSkipped('Pending: chat messages API does not expose read_count key yet');
+        // FR-003: after markRead, last_read_message_id is updated; read_count reflects it.
 
         [$tokenA, $userA] = $this->makeUserToken([1], 'rc2-a@test.com', 'A');
         [$tokenB, $userB] = $this->makeUserToken([1], 'rc2-b@test.com', 'T');
@@ -227,7 +227,7 @@ class ChatEnhancementTest extends TestCase
      */
     public function test_thread_member_can_send_typing_event(): void
     {
-        $this->markTestSkipped('Pending: /chat/threads/{id}/typing endpoint not yet implemented');
+        // FR-004: POST /chat/threads/{id}/typing implemented; members get 200.
 
         [$tokenA, $userA] = $this->makeUserToken([1], 'typ-a@test.com', 'A');
         [$tokenB, $userB] = $this->makeUserToken([1], 'typ-b@test.com', 'T');
@@ -252,7 +252,7 @@ class ChatEnhancementTest extends TestCase
      */
     public function test_non_member_cannot_send_typing_event(): void
     {
-        $this->markTestSkipped('Pending: typing endpoint not yet implemented');
+        // FR-004: non-members receive 403 from typing endpoint.
 
         [$tokenA, $userA] = $this->makeUserToken([1], 'typ-nm-a@test.com', 'A');
         [$tokenB, $userB] = $this->makeUserToken([1], 'typ-nm-b@test.com', 'T');
@@ -277,7 +277,7 @@ class ChatEnhancementTest extends TestCase
      */
     public function test_typing_stop_event_is_accepted(): void
     {
-        $this->markTestSkipped('Pending: typing endpoint not yet implemented');
+        // FR-004: typing=false is also accepted by members.
 
         [$tokenA, $userA] = $this->makeUserToken([1], 'typ-stop-a@test.com', 'A');
         [$tokenB, $userB] = $this->makeUserToken([1], 'typ-stop-b@test.com', 'T');
