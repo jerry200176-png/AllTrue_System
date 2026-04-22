@@ -1202,7 +1202,8 @@ const loadStudentCourses = async (studentId) => {
           duration_hours: c.duration_hours,
           payment_type: c.payment_type,
           sessions_purchased: c.sessions_purchased,
-          remaining_sessions: c.remaining_sessions,
+          remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
+          sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
           start_time: c.start_time,
           end_time: c.end_time,
           days_of_week: c.days_of_week,
@@ -1216,6 +1217,15 @@ const loadStudentCourses = async (studentId) => {
           settlement_day: c.settlement_day,
           monthly_sessions: c.monthly_sessions,
           memo: c.memo ?? c.Memo,
+          PackageID: c.PackageID ?? c.package_id ?? null,
+          PackageName: c.PackageName ?? c.package_name ?? null,
+          package_remaining_sessions: c.package_remaining_sessions ?? null,
+          package_total_sessions: c.package_total_sessions ?? null,
+          package_used_sessions: c.package_used_sessions ?? null,
+          status: c.status ?? null,
+          closed_reason: c.closed_reason ?? null,
+          paid_at: c.paid_at ?? null,
+          last_paid_at: c.last_paid_at ?? null,
           data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
@@ -1268,6 +1278,7 @@ const loadAllStudentCourses = async () => {
             payment_type: c.payment_type,
             sessions_purchased: c.sessions_purchased,
             remaining_sessions: c.remaining_sessions ?? c.RemainingSessions ?? null,
+            sessions_used: c.sessions_used ?? c.UsedSessions ?? null,
             start_time: c.start_time,
             end_time: c.end_time,
             days_of_week: c.days_of_week,
@@ -1284,6 +1295,15 @@ const loadAllStudentCourses = async () => {
             Paid: c.Paid,
             Charge: c.Charge,
             Pay: c.Pay,
+            PackageID: c.PackageID ?? c.package_id ?? null,
+            PackageName: c.PackageName ?? c.package_name ?? null,
+            package_remaining_sessions: c.package_remaining_sessions ?? null,
+            package_total_sessions: c.package_total_sessions ?? null,
+            package_used_sessions: c.package_used_sessions ?? null,
+            status: c.status ?? null,
+            closed_reason: c.closed_reason ?? null,
+            paid_at: c.paid_at ?? null,
+            last_paid_at: c.last_paid_at ?? null,
             data_source: 'laravel'
           });
         });
