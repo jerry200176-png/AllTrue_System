@@ -461,6 +461,14 @@ class FinanceController extends Controller
         $role = $request->attributes->get('auth_role');
         if ($role === 'teacher') {
             $authTeacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            // Defensive: if auth_teacher_id could not be resolved, every row (including self)
+            // would be redacted. Log a warning so this is detectable in production logs.
+            if ($authTeacherId === 0) {
+                \Illuminate\Support\Facades\Log::warning(
+                    '[FinanceController::subjectUnits] role=teacher but auth_teacher_id resolved to 0; ' .
+                    'all teacher rows will be redacted. Check AttachAuthUser middleware.'
+                );
+            }
             $redactedFields = [
                 'one_on_one_hours',
                 'one_on_two_hours',

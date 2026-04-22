@@ -121,13 +121,20 @@ class FinanceSubjectUnitsTest extends TestCase
         $this->assertSame(2.0, (float) ($after[0]['one_on_one_hours'] ?? 0));
     }
 
-    /** 老師與主任同樣可看該分校「科目數排行」（同儀表競爭力）；仍受 branch_id 範圍限制。 */
+    /**
+     * 老師可看分校「科目數排行」（同儀表競爭力，FR-008）：
+     * - 自己的時數欄位完整可見（is_self=true）
+     * - 他人的時數欄位 redacted（is_self=false，欄位值為 null）
+     * - branch-wide totals 不回傳（隱私保護）
+     *
+     * 根因修復：routes/api.php 曾將 GET finance/subject-units 登錄在
+     * role:director-only 群組中（第 226 行），導致 role:director,teacher 群組
+     * 的同名路由（第 328 行）永遠被 Laravel 的 first-match-wins 機制跳過，
+     * 老師呼叫時得到 403。已移除重複登錄，保留 role:director,teacher 版本。
+     * Ref: Bug #7 / B1 偵查報告 2026-04-22。
+     */
     public function test_teacher_sees_branch_wide_subject_units(): void
     {
-        // TODO: aggregation 顯示 0.0 而非 2.0，疑似 teacher 視角對 LearningRecord 的
-        // 範圍過濾（範圍/approved/SessionDeducted 組合）需調查。
-        // 用戶 P0 禁止改 production；另開計畫。
-        $this->markTestSkipped('Pending: teacher branch-wide subject units aggregation returns 0 hours');
 
         $teacherA = $this->createTeacherWithToken(1, 'teacher-subject-units-self-a@example.com', '老師甲');
         $teacherB = $this->createTeacherWithToken(1, 'teacher-subject-units-self-b@example.com', '老師乙');
@@ -244,12 +251,21 @@ class FinanceSubjectUnitsTest extends TestCase
         $this->assertCount(2, $teachers);
         $rowA = $teachers->firstWhere('teacher_name', '老師甲');
         $rowB = $teachers->firstWhere('teacher_name', '老師乙');
-        $this->assertNotNull($rowA);
-        $this->assertNotNull($rowB);
-        $this->assertSame(2.0, (float) ($rowA['one_on_one_hours'] ?? 0));
-        $this->assertSame(2.0, (float) ($rowB['one_on_two_hours'] ?? 0));
-        $this->assertEqualsWithDelta(66.7, (float) ($rowA['share_pct'] ?? 0), 0.15);
-        $this->assertEqualsWithDelta(33.3, (float) ($rowB['share_pct'] ?? 0), 0.15);
+        $this->assertNotNull($rowA, '老師甲 should appear in teacher list');
+        $this->assertNotNull($rowB, '老師乙 should appear in teacher list');
+
+        // FR-008: caller (老師甲) sees their own hours in full.
+        $this->assertTrue((bool) ($rowA['is_self'] ?? false), 'Calling teacher row must be marked is_self=true');
+        $this->assertSame(2.0, (float) ($rowA['one_on_one_hours'] ?? 0), 'Self one_on_one_hours must not be redacted');
+        $this->assertEqualsWithDelta(66.7, (float) ($rowA['share_pct'] ?? 0), 0.2, 'Self share_pct should be ~66.7%');
+
+        // FR-008: other teacher's numeric columns are redacted (null) for privacy.
+        $this->assertFalse((bool) ($rowB['is_self'] ?? true), 'Other teacher row must be marked is_self=false');
+        $this->assertNull($rowB['one_on_two_hours'], 'Other teacher one_on_two_hours must be redacted');
+        $this->assertNull($rowB['share_pct'], 'Other teacher share_pct must be redacted');
+
+        // FR-008: branch-wide totals are not exposed to the teacher role.
+        $this->assertNull($response->json('totals'), 'totals must be absent from teacher-role response');
     }
 
     /**

@@ -223,7 +223,8 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/revenue', [FinanceController::class, 'revenue']);
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
-        Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
+        // finance/subject-units is intentionally registered in the role:director,teacher group below
+        // so that teachers can also call this endpoint for their own hours view (FR-008).
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
         Route::get('finance/branch-monthly-tuition/export', [FinanceController::class, 'branchMonthlyTuitionExport']);
         Route::get('finance/duplicate-courses', [FinanceController::class, 'duplicateCourses']);
