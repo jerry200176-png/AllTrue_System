@@ -37,9 +37,12 @@ class LearningRecord extends Model
     }
 
     /**
-     * 堂次已請假 (ClassSession.Status in leave/leave_adjusted) 時，
+     * 堂次已請假 (ClassSession.Status in leave / leave_adjusted / excused) 時，
      * pending / changes_requested 評量不應出現在待填／待審清單。
      * 已核准等狀態仍保留可查詢。
+     *
+     * FR-005 (2026-04-22): 新增 'excused' — 與 AttendanceController::LEAVE_STATUSES 及
+     * 前端 SmartCalendar LEAVE_STATUSES 對齊。
      */
     public function scopeExcludeLeaveSessionPendingReview($query)
     {
@@ -48,7 +51,7 @@ class LearningRecord extends Model
         return $query->where(function ($outer) use ($t) {
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhereDoesntHave('classSession', function ($cs) {
-                    $cs->whereIn('Status', ['leave', 'leave_adjusted']);
+                    $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
                 });
         });
     }
