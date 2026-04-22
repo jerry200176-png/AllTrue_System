@@ -141,7 +141,7 @@ class EnrollmentApiTest extends TestCase
 
     public function test_enrollment_with_per_day_duration_creates_varied_sessions(): void
     {
-        $this->markTestSkipped('Pending: enrollments 驗證規則現要求 confirmed_dates 非空，測試需重設或 production 放寬');
+        // FR-008: confirmed_dates is now present (not required), allowing future-only enrollments.
         $token = $this->createDirectorToken([1], 'director-enrollment-dur@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-enrollment-dur@example.com');
 
@@ -205,7 +205,7 @@ class EnrollmentApiTest extends TestCase
 
     public function test_enrollment_with_hour_rate_unit_calculates_charge_proportionally(): void
     {
-        $this->markTestSkipped('Pending: enrollments 驗證規則現要求 confirmed_dates 非空，測試需重設或 production 放寬');
+        // FR-008: confirmed_dates is now present (not required), allowing future-only enrollments.
         $token = $this->createDirectorToken([1], 'director-enrollment-rate@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-enrollment-rate@example.com');
 
@@ -254,10 +254,8 @@ class EnrollmentApiTest extends TestCase
 
     public function test_enrollment_defaults_to_session_pricing_without_explicit_rate_unit(): void
     {
-        // TODO: 此測試現在回 422 而非 201，可能與 day_time_slots 雙日不同 duration（120 vs 60）+
-        // 未指定 rate_unit 時的驗證邏輯互動有關。需分析 EnrollmentService / validation 規則。
-        // 用戶 P0 禁止改 production；另開計畫。
-        $this->markTestSkipped('Pending: enrollment default rate_unit + heterogeneous day durations returns 422');
+        // FR-008: root cause was confirmed_dates required validation; now relaxed to present.
+        // rate_unit defaults to 'session' in EnrollmentService when omitted.
 
         $token = $this->createDirectorToken([1], 'director-enrollment-default-rate@example.com');
         $teacherId = $this->createTeacher(1, 'teacher-enrollment-default-rate@example.com');
