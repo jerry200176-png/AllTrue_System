@@ -36,7 +36,8 @@ class DailyScheduleMonthlyStudentTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Carbon::setTestNow(Carbon::parse('2026-05-07 09:00:00', 'Asia/Taipei'));
+        // Set to a Tuesday so nextWeekday(3) lands on Wednesday (tomorrow)
+        Carbon::setTestNow(Carbon::parse('2026-04-21 09:00:00', 'Asia/Taipei'));
 
         $this->token   = $this->makeDirectorToken();
         $this->teacher = $this->makeTeacher();
@@ -53,8 +54,8 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     public function test_monthly_billing_enrollment_creates_class_sessions(): void
     {
-        $date1 = '2026-05-14'; // next Wednesday
-        $date2 = '2026-05-21'; // week after
+        $date1 = $this->nextWeekday(3);                               // next Wednesday
+        $date2 = Carbon::parse($date1)->addWeek()->toDateString();    // week after
 
         $res = $this->postBatch([
             'payment_type'    => 'monthly',
@@ -85,7 +86,7 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     public function test_monthly_billing_sessions_appear_in_daily_schedule_query(): void
     {
-        $targetDate = '2026-05-14';
+        $targetDate = $this->nextWeekday(3); // next Wednesday
 
         // Create monthly billing enrollment
         $this->postBatch([
@@ -115,13 +116,13 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     public function test_count_mode_and_monthly_mode_students_both_appear_in_daily_schedule(): void
     {
-        $targetDate = '2026-05-14';
+        $targetDate = $this->nextWeekday(3); // next Wednesday
 
-        // Student A: count-mode (session-based billing)
+        // Student A: count-mode (session-based billing) — inserted directly to bypass enrollment validation
         $studentA = $this->makeStudent('計次制學生');
         $this->createDirectSessionInDB($studentA->id, $targetDate, 'count');
 
-        // Student B (main student): monthly billing
+        // Student B (main student): monthly billing via enrollment API
         $this->postBatch([
             'payment_type'   => 'monthly',
             'settlement_day' => 15,
@@ -144,8 +145,8 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     public function test_session_outside_date_range_does_not_appear(): void
     {
-        $targetDate  = '2026-05-14';
-        $outsideDate = '2026-05-21';
+        $targetDate  = $this->nextWeekday(3);
+        $outsideDate = Carbon::parse($targetDate)->addWeek()->toDateString();
 
         $this->postBatch([
             'payment_type'   => 'monthly',
@@ -170,7 +171,7 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     public function test_monthly_student_class_api_returns_required_fields(): void
     {
-        $targetDate = '2026-05-14';
+        $targetDate = $this->nextWeekday(3); // next Wednesday
 
         $this->postBatch([
             'payment_type'   => 'monthly',
@@ -205,6 +206,9 @@ class DailyScheduleMonthlyStudentTest extends TestCase
 
     private function postBatch(array $overrides = [])
     {
+        $wed1 = $this->nextWeekday(3);
+        $wed2 = Carbon::parse($wed1)->addWeek()->toDateString();
+
         return $this->withHeaders($this->headers())
             ->postJson('/api/v1/class-sessions/batch', array_merge([
                 'branch_id'         => 1,
@@ -214,7 +218,7 @@ class DailyScheduleMonthlyStudentTest extends TestCase
                 'class_type'        => 'one_on_one',
                 'total_classes'     => 2,
                 'confirmed_dates'   => [],
-                'future_dates'      => ['2026-05-14', '2026-05-21'],
+                'future_dates'      => [$wed1, $wed2],
                 'days_of_week'      => [3],
                 'start_time'        => '16:00',
                 'duration_minutes'  => 120,
@@ -222,6 +226,19 @@ class DailyScheduleMonthlyStudentTest extends TestCase
                 'payment_type'      => 'monthly',
                 'settlement_day'    => 15,
             ], $overrides));
+    }
+
+    /** 取下一個符合 ISO weekday（1=週一 … 7=週日）的未來日期 */
+    private function nextWeekday(int $isoDow): string
+    {
+        $d = Carbon::now()->addDay();
+        for ($i = 0; $i < 14; $i++) {
+            if ((int) $d->dayOfWeekIso === $isoDow) {
+                return $d->toDateString();
+            }
+            $d->addDay();
+        }
+        throw new \RuntimeException("Cannot find weekday {$isoDow} in next 14 days");
     }
 
     /** Directly insert a StudentClass + ClassSession for a given date (bypasses enrollment API). */
