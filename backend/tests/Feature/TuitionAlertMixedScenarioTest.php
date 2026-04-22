@@ -83,12 +83,12 @@ class TuitionAlertMixedScenarioTest extends TestCase
         // 計次制：未付款
         $countCourse = $this->makeCountModeClass($student->id, ['Paid' => 0, 'RemainingSessions' => 1]);
 
-        // 月結方案：本月已付款，settlement_day=15，距到期 8 天 → 在 5 天窗口外，不顯示
-        // 所以用 settlement_day=5（逾期）確保方案顯示，但標記已付
+        // 月結方案：本月已付款，settlement_day=10（May 10 = 3 天後）→ 在 5 天窗口內 → 顯示
+        // paid=true 的方案：只有下次繳費日 ≤ 5 天內才顯示
         $pkg = $this->makeMonthlyPackage($student->id, [
-            'settlement_day' => 5,
+            'settlement_day' => 10,
             'paid'           => true,
-            'paid_at'        => '2026-05-05 10:00:00',
+            'paid_at'        => '2026-04-10 10:00:00',
         ]);
 
         $res = $this->getAlerts($token);
