@@ -78,9 +78,11 @@ jobs:
           DB_USERNAME: admin
           DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
 
-      - name: Run PHPUnit
+      - name: Run PHPUnit (with JUnit XML report)
         working-directory: backend
-        run: php artisan test
+        run: |
+          mkdir -p storage/test-results
+          ./vendor/bin/phpunit --log-junit=storage/test-results/junit.xml
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
@@ -88,3 +90,79 @@ jobs:
           DB_USERNAME: admin
           DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
           APP_ENV: testing
+
+      - name: Skipped test report
+        if: always()
+        working-directory: backend
+        run: |
+          XML=storage/test-results/junit.xml
+          if [ ! -f "$XML" ]; then
+            echo "JUnit XML not found — skipping report." && exit 0
+          fi
+
+          SKIPPED=$(python3 - <<'PYEOF'
+          import xml.etree.ElementTree as ET, sys
+          tree = ET.parse("storage/test-results/junit.xml")
+          count = len(tree.findall(".//skipped"))
+          print(count)
+          PYEOF
+          )
+
+          echo "### 🧪 PHPUnit — Skipped Tests: ${SKIPPED}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${SKIPPED}" -gt "0" ]; then
+            python3 - <<'PYEOF' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          tree = ET.parse("storage/test-results/junit.xml")
+          rows = []
+          for tc in tree.findall(".//testcase"):
+              if tc.find("skipped") is not None:
+                  rows.append(f"| `{tc.get('classname', '')}` | `{tc.get('name', '')}` |")
+          if rows:
+              print("\n| Class | Test |")
+              print("|---|---|")
+              for r in rows:
+                  print(r)
+          PYEOF
+            echo "::warning::${SKIPPED} test(s) skipped. Review markTestSkipped() calls listed above."
+          else
+            echo "All tests passed with no skips. ✅" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload JUnit test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-test-results
+          path: backend/storage/test-results/junit.xml
+          if-no-files-found: warn
+
+  vite-build:
+    name: Vite Frontend Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Vite build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Verify dist output
+        working-directory: frontend
+        run: |
+          test -f dist_build/index.html || (echo "❌ index.html missing from dist_build" && exit 1)
+          echo "✅ dist_build/index.html exists"
+          ls -lh dist_build/
