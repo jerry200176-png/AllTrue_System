@@ -411,6 +411,7 @@ Route::prefix('v1')->group(function () {
         Route::post('chat/threads/{threadId}/leave', [ChatController::class, 'leaveThread']);
         Route::post('chat/threads/{threadId}/transfer-owner', [ChatController::class, 'transferOwner']);
         Route::post('chat/threads/{threadId}/pin', [ChatController::class, 'pinThread']);
+        Route::post('chat/threads/{threadId}/typing', [ChatController::class, 'typing']);
         Route::delete('chat/messages/{messageId}', [ChatController::class, 'deleteMessage']);
         Route::get('chat/unread-count', [ChatController::class, 'unreadCount']);
     });

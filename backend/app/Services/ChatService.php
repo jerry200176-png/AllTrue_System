@@ -38,11 +38,13 @@ class ChatService
     /**
      * @param  string|null  $senderAvatarUrl  Pre-resolved URL to avoid extra query.
      * @param  array|null   $replyToData      Pre-fetched reply_to payload (avoids N+1).
+     * @param  int          $readCount        Number of non-sender members who have read this message.
      */
     public static function messageToArray(
         ChatMessage $m,
         ?string $senderAvatarUrl = null,
-        ?array $replyToData = null
+        ?array $replyToData = null,
+        int $readCount = 0
     ): array {
         if ($senderAvatarUrl === null) {
             $sender = User::find($m->sender_user_id);
@@ -64,6 +66,7 @@ class ChatService
             'media_name'           => $isDeleted ? null : $m->media_name,
             'reply_to_message_id'  => $m->reply_to_message_id,
             'reply_to'             => $replyToData,
+            'read_count'           => $readCount,
             'is_deleted'           => $isDeleted,
             'deleted_at'           => $m->deleted_at?->toIso8601String(),
             'created_at'           => $m->created_at?->toIso8601String(),
@@ -273,11 +276,20 @@ class ChatService
             }
         }
 
+        // Batch-load member read positions for read_count calculation (one query).
+        $members = ChatThreadMember::where('thread_id', $threadId)
+            ->whereNull('left_at')
+            ->get(['user_id', 'last_read_message_id']);
+
         return $messages
             ->map(fn ($m) => self::messageToArray(
                 $m,
                 $avatarByUserId[$m->sender_user_id] ?? null,
-                isset($m->reply_to_message_id) ? ($replyMap[$m->reply_to_message_id] ?? null) : null
+                isset($m->reply_to_message_id) ? ($replyMap[$m->reply_to_message_id] ?? null) : null,
+                $members->filter(
+                    fn ($mbr) => $mbr->user_id !== $m->sender_user_id
+                        && ($mbr->last_read_message_id ?? 0) >= $m->id
+                )->count()
             ))
             ->values()
             ->all();
