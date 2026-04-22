@@ -234,3 +234,28 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main 1928759] chore(hourly): auto sync 2026-04-22 22:30
+ 32 files changed, 2326 insertions(+), 257 deletions(-)
+ create mode 100644 ".cursor/plans/\351\233\231\345\270\253\346\216\222\350\252\262\345\212\237\350\203\275_5fd36f97.plan.md"
+ create mode 100644 .cursor/projects/home-admin/agent-tools/5d842080-3d93-4349-b57c-90324974a544.txt
+ create mode 100644 .cursor/projects/home-admin/agent-tools/7e37f88e-3d7c-434f-8925-8b75d01d1d0f.txt
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/1bd78e94-d41a-4e6b-bd17-e17ad2fb6f84/1bd78e94-d41a-4e6b-bd17-e17ad2fb6f84.jsonl
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/1bd78e94-d41a-4e6b-bd17-e17ad2fb6f84/subagents/c732af0a-8320-4c8c-9aa8-640f21858691.jsonl
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/9badf1f3-bf0b-4b50-9637-c47169bc6ce8/9badf1f3-bf0b-4b50-9637-c47169bc6ce8.jsonl
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/a59c008e-cced-445f-9765-c6f034f7f40e/a59c008e-cced-445f-9765-c6f034f7f40e.jsonl
+ rename backend/public/assets/{index-BfDOHAaO.css => index-CtNQMGk2.css} (60%)
+ delete mode 100644 backend/public/assets/index-Dwo6gyeX.js
+ create mode 100644 backend/public/assets/index-rDjXXdz0.js
+ create mode 100644 backups/emergency/pre_classsession_insert_2026-04-22_214855.sql.gz
+ rename frontend/dist_build/assets/{index-BfDOHAaO.css => index-CtNQMGk2.css} (60%)
+ delete mode 100644 frontend/dist_build/assets/index-Dwo6gyeX.js
+ create mode 100644 frontend/dist_build/assets/index-rDjXXdz0.js
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   29b324f..1928759  main -> main
+[git-sync] Done.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
