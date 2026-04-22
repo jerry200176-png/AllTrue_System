@@ -320,16 +320,18 @@ class TuitionAlertMixedScenarioTest extends TestCase
     private function makeMonthlyPackage(int $studentId, array $overrides = []): CoursePackage
     {
         return CoursePackage::create(array_merge([
-            'student_id'     => $studentId,
-            'campus_id'      => 1,
-            'name'           => '月結方案' . uniqid(),
-            'billing_mode'   => CoursePackage::BILLING_MODE_MONTHLY,
-            'payment_type'   => 'monthly',
-            'rate'           => 500,
-            'settlement_day' => 5,
-            'stop'           => false,
-            'paid'           => false,
-            'paid_at'        => null,
+            'student_id'        => $studentId,
+            'campus_id'         => 1,
+            'name'              => '月結方案' . uniqid(),
+            'billing_mode'      => CoursePackage::BILLING_MODE_MONTHLY,
+            'rate'              => 500,
+            'settlement_day'    => 5,
+            'total_sessions'    => 0,
+            'remaining_sessions'=> 0,
+            'used_sessions'     => 0,
+            'stop'              => false,
+            'paid'              => false,
+            'paid_at'           => null,
         ], $overrides));
     }
 
