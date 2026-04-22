@@ -76,3 +76,15 @@
 `alerts/tuition` 回傳的 `payment_status`（六種值）為**顯示用補充欄位**，由 `AlertController::computePaymentStatus()` 計算。此欄位**不影響列入條件**——即使 `payment_status = paid`，只要課程符合上述堂數制或月結制的列入條件，仍會出現在名單中。
 
 修改 `computePaymentStatus()` 時，不得連帶修改列入條件的 query；反之亦然。兩者為獨立邏輯，以避免互相干擾。
+
+## CoursePackage 月結方案的 payment_status（2026-04-22 Bug Fix）
+
+`AlertController::tuition` 的月結多科方案（`CoursePackage.billing_mode = 'monthly'`）路徑中，`payment_status` 與 `outstanding` 需正確反映 `$pkg->paid`：
+
+| `pkg->paid` | `payment_status` | `outstanding` |
+|---|---|---|
+| `false`（未繳）| `unpaid` | `$charge`（應收金額）|
+| `true`（已繳）| `monthly_due_soon` | `0` |
+
+**曾犯錯誤**：`payment_status` 被硬編碼為 `'unpaid'`，導致已繳費方案仍顯示在「未繳費」tab（`paid = true` 但 `payment_status = 'unpaid'` 衝突）。  
+**測試**：`CoursePackageMonthlyBillingTest::test_paid_monthly_package_shows_monthly_due_soon_not_unpaid`。
