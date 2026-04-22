@@ -477,6 +477,25 @@ class ChatController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    // ── Typing indicator ──────────────────────────────────────────
+
+    public function typing(Request $request, $threadId)
+    {
+        $request->validate(['typing' => 'required|boolean']);
+
+        $userId = $this->resolveUserId($request);
+        if (!$userId) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $threadId = (int) $threadId;
+        if (!ChatService::isMember($threadId, $userId)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function resolveUserId(Request $request): ?int
