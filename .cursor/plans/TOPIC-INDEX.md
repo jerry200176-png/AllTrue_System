@@ -1,6 +1,6 @@
 # Plan 主題索引（自動生成）
 
-> 產生時間（UTC）：2026-04-21 17:00 UTC
+> 產生時間（UTC）：2026-04-22 17:00 UTC
 > 範圍：plans/ 根目錄 active *.plan.md
 > **請勿手動編輯本檔。** 更新請執行：`python3 list-plans-by-topic.py --write-index`
 
@@ -26,11 +26,12 @@
 - `繳費狀態切換未清除paid_at修正_c2f8a1d9.plan.md`
 - `顯示當期繳費日期_62881d82.plan.md`
 
-## 調課／代課／排課／行事曆 (35)
+## 調課／代課／排課／行事曆 (37)
 
 - `a+b_代課可見性修正_d2f91b5e.plan.md`
 - `b6_課表回報主任看不到_a3f8c201.plan.md`
 - `b7_調課失敗_試聽容量誤判與孤兒資料_4676d71c.plan.md`
+- `b9_schedules_sync_after_reschedule_c7a1e903.plan.md`
 - `c1_代課單堂顯示原老師_c6f76dc8.plan.md`
 - `calendar_teacher_sort_d029a16b.plan.md`
 - `dashboard_&_calendar_polish_4d7bdef8.plan.md`
@@ -63,6 +64,7 @@
 - `課表點名狀態標示_5dfd6621.plan.md`
 - `調課代課顯示與科目數視野修正_f6e57b1f.plan.md`
 - `請假調課警示修正_74315283.plan.md`
+- `雙師排課功能_5fd36f97.plan.md`
 
 ## 出缺勤／點名／手機 (15)
 
@@ -160,10 +162,11 @@
 - `修正_opcache_讓_v1.4_生效_7907aeb6.plan.md`
 - `內部聊天強化_2f8985bf.plan.md`
 
-## 其他／通用修正 (32)
+## 其他／通用修正 (34)
 
 - `b2_驗收與收尾_92798602.plan.md`
 - `b5_月結歷史誤轉堂數資料清理_data-ops.plan.md`
+- `b8_retroLeave_duplicate_StudentSignIn_af3e9c12.plan.md`
 - `bug回報列表優化_d17f2fa4.plan.md`
 - `dashboard-replan-discussion_12ddf9cd.plan.md`
 - `fix_receipt_lookup_5953ce89.plan.md`
@@ -174,6 +177,7 @@
 - `mobile-learning-lag-fix_cc85ef32.plan.md`
 - `mobile-scroll-flicker-audit_fe142bd2.plan.md`
 - `multi-slot_course_display_alignment_ad092a72.plan.md`
+- `ops_備份強化至業界標準_2026-04-22.plan.md`
 - `orphan_prevention_&_conflict_fix_3ae885c0.plan.md`
 - `package_schedule_setup_fc1ee505.plan.md`
 - `prd_教師多選篩選_e95c2187.plan.md`
