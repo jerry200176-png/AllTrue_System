@@ -1127,13 +1127,13 @@ class LearningRecordController extends Controller
             if ($oldStartTime) {
                 $normalized = $this->normalizeProjectionTime($oldStartTime);
                 if ($normalized) {
-                    $exact = (clone $query)->where('StartTime', $normalized)->first();
-                    if ($exact) {
-                        $session = $exact;
-                    }
+                    $session = (clone $query)->where('StartTime', $normalized)->first();
                 }
-            }
-            if (!$session) {
+                // old_start_time was explicitly provided but no session matched → strict 422
+                if (!$session) {
+                    return response()->json(['message' => '找不到指定堂次'], 422);
+                }
+            } else {
                 $session = $query->first();
             }
         }
@@ -1302,13 +1302,14 @@ class LearningRecordController extends Controller
         ?string $startTime,
         ?string $endTime
     ): void {
-        if (!$oldDate || $oldDate === $newDate) {
+        if (!$oldDate) {
             return;
         }
 
-        // The `rescheduled` row stays on the OLD date — it marks
-        // "this original slot was rescheduled away."  Only the
-        // linked `scheduled` row moves to the new date.
+        $sameDayTimeChange = ($oldDate === $newDate);
+
+        // The `rescheduled` anchor row stays on the OLD date as a historical marker.
+        // Only the linked `scheduled` (substitute) row follows the session to its new slot.
         $rescheduledRow = Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $oldDate)
             ->where('status', 'rescheduled')
@@ -1319,8 +1320,6 @@ class LearningRecordController extends Controller
             return;
         }
 
-        $newDayOfWeek = (int) Carbon::parse($newDate)->dayOfWeekIso;
-
         $scheduledRow = Schedule::where('student_course_id', $courseId)
             ->where('original_schedule_id', $rescheduledRow->id)
             ->where('status', 'scheduled')
@@ -1328,21 +1327,29 @@ class LearningRecordController extends Controller
             ->first();
 
         if ($scheduledRow) {
-            $scheduledRow->update([
-                'schedule_date' => $newDate,
-                'day_of_week'   => $newDayOfWeek,
-                'start_time'    => $startTime ?: $scheduledRow->start_time,
-                'end_time'      => $endTime   ?: $scheduledRow->end_time,
-            ]);
+            $updates = [
+                'start_time' => $startTime ?: $scheduledRow->start_time,
+                'end_time'   => $endTime   ?: $scheduledRow->end_time,
+            ];
 
-            // Purge any duplicate scheduled rows on the target date
-            // (from race conditions or stale frontend POSTs).
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $newDate)
-                ->where('status', 'scheduled')
-                ->where('original_schedule_id', $rescheduledRow->id)
-                ->where('id', '!=', $scheduledRow->id)
-                ->delete();
+            if (!$sameDayTimeChange) {
+                // Moving to a different date: also update date and day_of_week.
+                $updates['schedule_date'] = $newDate;
+                $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
+            }
+
+            $scheduledRow->update($updates);
+
+            if (!$sameDayTimeChange) {
+                // Purge any duplicate scheduled rows on the target date
+                // (from race conditions or stale frontend POSTs).
+                Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $newDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', $rescheduledRow->id)
+                    ->where('id', '!=', $scheduledRow->id)
+                    ->delete();
+            }
         }
     }
 
