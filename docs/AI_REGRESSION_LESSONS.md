@@ -1879,3 +1879,27 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 4. 僅改 SessionCount（8 → 10，Rate 不變 1100）→ `Charge = 11000`
 5. 月結制課程修改 Rate → `Charge` 不應被清零
 6. 時數制課程修改 Rate → `Charge = Rate × TotalHours`
+
+---
+
+## §FRONTEND-005 — StudentsList.vue 明確欄位 mapper 遺漏方案欄位，方案分支靜默失效
+
+### 問題模式
+
+`StudentsList.vue` 的 `loadStudentCourses()` / `loadAllStudentCourses()` 在將 Laravel API 回應 map 成本地 course 物件時，**採用明確欄位列舉（而非 `...spread`）**。
+當後端新增欄位（如 `PackageID`、`package_remaining_sessions`）後，若未同步更新這兩個 mapper，前端 `course.PackageID` = `undefined`（falsy），模板的 `v-if="course.PackageID"` 分支靜默跳到 `v-else`，顯示個別課程的 `remaining_sessions` 而非方案共用池的 `package_remaining_sessions`。
+
+**沒有任何 runtime error**，是典型的「資料正確、顯示邏輯走錯分支」的無聲 bug。
+
+### 已知遺漏欄位（2026-04-22 修復）
+
+| mapper 函式 | 補充欄位 |
+|---|---|
+| `loadStudentCourses` | `PackageID`, `PackageName`, `package_remaining_sessions`, `package_total_sessions`, `package_used_sessions`, `status`, `closed_reason`, `paid_at`, `last_paid_at`, `sessions_used` |
+| `loadAllStudentCourses` | 同上 |
+
+### 防再犯規則
+
+1. **修改 `StudentClassController::index()` 回傳欄位時，必須同步檢查 `StudentsList.vue` 兩個 mapper**。
+2. **方案相關欄位（`PackageID` 前綴、`package_*` 前綴）新增時，必須同步更新所有明確 mapper**。
+3. 如未來重構 mapper，優先考慮改為 `{ ...c, data_source: 'laravel' }` 並在必要時覆蓋特定欄位，以避免此類靜默遺漏。

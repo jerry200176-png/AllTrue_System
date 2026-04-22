@@ -2,6 +2,22 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-22 — fix(P2): StudentsList 方案課程剩餘堂數顯示錯誤
+
+### 根因
+
+`StudentsList.vue` 的 `loadStudentCourses` / `loadAllStudentCourses` mapper 遺漏 `PackageID`、`package_remaining_sessions`、`package_total_sessions` 等欄位，導致 `course.PackageID = undefined`，模板走 `v-else` 分支顯示個別課程的 `remaining_sessions=9` 而非方案共用池剩餘 `3`。
+
+### 修復
+
+- `frontend/src/pages/StudentsList.vue`：兩個 mapper 函式各補 10 個欄位（PackageID, PackageName, package_remaining_sessions, package_total_sessions, package_used_sessions, status, closed_reason, paid_at, last_paid_at, sessions_used）
+
+### 關聯
+
+- `docs/AI_REGRESSION_LESSONS.md §FRONTEND-005`
+
+---
+
 ## 2026-04-22 — fix(P1): 代課後調課 schedules 表未同步導致代課老師顯示錯誤
 
 ### 根因
