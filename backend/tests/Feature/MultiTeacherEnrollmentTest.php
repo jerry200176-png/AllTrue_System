@@ -57,7 +57,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'        => $teacher->id,
                 'subject'           => 'Math',
                 'class_type'        => 'one_on_one',
-                'total_classes'     => 4,
+                'total_classes'     => 2,
                 'confirmed_dates'   => [],
                 'future_dates'      => [$futureWed, $futureFri],
                 'days_of_week'      => [3, 5],
@@ -75,7 +75,7 @@ class MultiTeacherEnrollmentTest extends TestCase
 
         $sc = StudentClass::where('StudentID', $student->id)->first();
         $this->assertSame((int) $teacher->id, (int) $sc->TeacherID, '單師排課的 TeacherID 應正確');
-        $this->assertSame(4, (int) $sc->SessionCount, 'SessionCount 應等於 total_classes');
+        $this->assertSame(2, (int) $sc->SessionCount, 'SessionCount 應等於 total_classes');
     }
 
     // ── FR-002：兩位老師分別帶不同 slot → 建立兩個 StudentClass ──────
@@ -97,7 +97,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'         => $teacher1->id,
                 'subject'            => 'English',
                 'class_type'         => 'one_on_one',
-                'total_classes'      => 4,
+                'total_classes'      => 2,
                 'confirmed_dates'    => [],
                 'future_dates'       => [$futureWed, $futureSun],
                 'days_of_week'       => [3, 7],
@@ -142,7 +142,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'          => $teacher1->id,
                 'subject'             => 'Math',
                 'class_type'          => 'one_on_one',
-                'total_classes'       => 4,
+                'total_classes'       => 2,
                 'confirmed_dates'     => [],
                 'future_dates'        => [$futureWed, $futureSun],
                 'days_of_week'        => [3, 7],
@@ -181,7 +181,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'          => $teacher->id,
                 'subject'             => 'Math',
                 'class_type'          => 'one_on_one',
-                'total_classes'       => 2,
+                'total_classes'       => 1,
                 'confirmed_dates'     => [],
                 'future_dates'        => [$futureWed],
                 'days_of_week'        => [3],
@@ -217,7 +217,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'          => $teacher1->id,
                 'subject'             => 'Chemistry',
                 'class_type'          => 'one_on_one',
-                'total_classes'       => 4,
+                'total_classes'       => 2,
                 'confirmed_dates'     => [],
                 'future_dates'        => [$futureWed, $futureSun],
                 'days_of_week'        => [3, 7],
@@ -266,7 +266,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'         => $teacher1->id,
                 'subject'            => 'Physics',
                 'class_type'         => 'one_on_one',
-                'total_classes'      => 4,
+                'total_classes'      => 2,
                 'confirmed_dates'    => [],
                 'future_dates'       => [$futureWed, $futureSun],
                 'days_of_week'       => [3, 7],
@@ -311,7 +311,7 @@ class MultiTeacherEnrollmentTest extends TestCase
                 'teacher_id'          => $teacher1->id,
                 'subject'             => 'Biology',
                 'class_type'          => 'one_on_one',
-                'total_classes'       => 6,
+                'total_classes'       => 3,
                 'confirmed_dates'     => [],
                 'future_dates'        => [$futureMon, $futureWed, $futureFri],
                 'days_of_week'        => [1, 3, 5],
