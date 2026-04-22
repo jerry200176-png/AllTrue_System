@@ -63,12 +63,7 @@ class LearningRecordLeaveExclusionTest extends TestCase
 
     public function test_pending_lr_on_excused_session_is_excluded(): void
     {
-        // TODO(FR-005): LearningRecord::scopeExcludeLeaveSessionPendingReview 目前僅含
-        // ['leave', 'leave_adjusted']，未納入 'excused'。production 邏輯需同步擴充才能通過。
-        // 用戶 P0 守則禁止此次改 production，另開計畫處理。
-        $this->markTestSkipped('FR-005 pending: excused status not yet included in leave-exclusion scope');
-
-        // 守護 FR-005：2026-04-17 將 excused 納入請假類判斷。
+        // 守護 FR-005：excused 納入請假類判斷（2026-04-22 修復，Bug #5）。
         [$token, $teacherId, $studentId] = $this->bootActors('excused-hidden');
         $courseId = $this->seedCourse($studentId, $teacherId);
 
