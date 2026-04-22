@@ -58,12 +58,11 @@ class DailyScheduleMonthlyStudentTest extends TestCase
         $date2 = Carbon::parse($date1)->addWeek()->toDateString();    // week after
 
         $res = $this->postBatch([
-            'payment_type'    => 'monthly',
-            'settlement_day'  => 15,
-            'monthly_sessions'=> 4,
-            'total_classes'   => 2,
-            'future_dates'    => [$date1, $date2],
-            'days_of_week'    => [3],
+            'payment_type'   => 'monthly',
+            'settlement_day' => 15,
+            'total_classes'  => 2,
+            'future_dates'   => [$date1, $date2],
+            'days_of_week'   => [3],
         ]);
 
         $res->assertCreated();
