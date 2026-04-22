@@ -329,7 +329,7 @@
               <div class="pp-report-field" v-if="record.NextHomework">
                 <div class="pp-report-field-label">
                   <span class="material-symbols-outlined">edit_note</span>
-                  下次作業
+                  本次作業
                 </div>
                 <div class="pp-report-field-value">{{ record.NextHomework }}</div>
               </div>
