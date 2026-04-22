@@ -159,9 +159,7 @@ class MultiTeacherEnrollmentTest extends TestCase
 
         $res->assertCreated();
 
-        $warnings = $res->json('warnings') ?? [];
-        $hasDualWarning = collect($warnings)->contains(fn ($w) => str_contains((string) ($w['type'] ?? $w), 'dual_teacher'));
-        $this->assertFalse($hasDualWarning, 'allow_multi_teacher=true 時不應出現 dual_teacher_warning');
+        $this->assertNull($res->json('dual_teacher_warning'), 'allow_multi_teacher=true 時不應出現 dual_teacher_warning');
     }
 
     // ── FR-004：teacher_id 非存在 User → 422 ──────────────────────────
@@ -283,11 +281,7 @@ class MultiTeacherEnrollmentTest extends TestCase
 
         // 仍應成功建立（警示不阻擋建立），但 response 中有 dual_teacher_warning
         $res->assertCreated();
-        $warnings = $res->json('warnings') ?? [];
-        $hasDualWarning = collect($warnings)->contains(
-            fn ($w) => str_contains((string) ($w['type'] ?? $w), 'dual_teacher')
-        );
-        $this->assertTrue($hasDualWarning, '未帶 allow_multi_teacher 時應產生 dual_teacher_warning');
+        $this->assertNotNull($res->json('dual_teacher_warning'), '未帶 allow_multi_teacher 時應產生 dual_teacher_warning');
     }
 
     // ── FR-007：三位老師（N師）每師各一個 StudentClass ───────────────
@@ -337,9 +331,7 @@ class MultiTeacherEnrollmentTest extends TestCase
             ->map(fn ($id) => (int) $id)->sort()->values()->all();
         $this->assertSame($expected, $teacherIds, '三個 StudentClass 各自對應正確老師');
 
-        $warnings = $res->json('warnings') ?? [];
-        $hasDualWarning = collect($warnings)->contains(fn ($w) => str_contains((string) ($w['type'] ?? $w), 'dual_teacher'));
-        $this->assertFalse($hasDualWarning, 'allow_multi_teacher=true 三師時不應出現 dual_teacher_warning');
+        $this->assertNull($res->json('dual_teacher_warning'), 'allow_multi_teacher=true 三師時不應出現 dual_teacher_warning');
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
