@@ -155,6 +155,18 @@ LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
 - 前端 `student_course_id` = 後端 `StudentClassID`
 - API path `student-classes` = DB table `StudentClass`
 
+## 📝 實作後記錄原則（每次完成任務後執行）
+
+| 發現了什麼 | 記在哪裡 | 格式 |
+|---|---|---|
+| 非直覺的 DB / 流程行為 | `alltrue-system.mdc` §Gotchas | `G-NNN: 一句話 + 後果` |
+| AI 犯的錯誤（行為/流程） | `docs/AI_REGRESSION_LESSONS.md` | `§XXX-NNN + 強制規則` |
+| 新功能 / bug 修復上線 | `docs/CHANGELOG.md` | **一行原則** (Added/Fixed/Changed/Security) |
+| 技術債發現 | `docs/TECH_DEBT.md` | TD-NNN 表格 |
+| 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` | 對應節補充（延伸閱讀，非必讀） |
+
+**CHANGELOG 寫法**：`- 一句話說明`（含受影響 PR/Issue 編號），不寫實作細節。
+
 ## ⚠️ 高頻 Gotchas（bug 偵查前必讀）
 
 ### G-001：Teacher.id === User.id（同一個人，兩張表 ID 相同）
