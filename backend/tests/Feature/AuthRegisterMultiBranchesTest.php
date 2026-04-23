@@ -20,7 +20,7 @@ class AuthRegisterMultiBranchesTest extends TestCase
         $this->postJson('/api/v1/auth/register', [
             'name' => 'Multi Branch Teacher',
             'email' => 'mbt@example.com',
-            'password' => 'secret',
+            'password' => 'secret12',
             'role' => 'teacher',
             'branch_id' => $home->id,
             'multi_branches' => [$other->id],
@@ -57,7 +57,7 @@ class AuthRegisterMultiBranchesTest extends TestCase
         $this->postJson('/api/v1/auth/register', [
             'name' => 'Bad Multi',
             'email' => 'badmb@example.com',
-            'password' => 'secret',
+            'password' => 'secret12',
             'role' => 'teacher',
             'branch_id' => $home->id,
             'multi_branches' => [999_999],
@@ -73,7 +73,7 @@ class AuthRegisterMultiBranchesTest extends TestCase
         $this->postJson('/api/v1/auth/register', [
             'name' => 'Director Only',
             'email' => 'dironly@example.com',
-            'password' => 'secret',
+            'password' => 'secret12',
             'role' => 'director',
             'branch_id' => $a->id,
             'multi_branches' => [$b->id],

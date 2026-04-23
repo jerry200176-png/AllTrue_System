@@ -23,6 +23,7 @@ use App\Http\Controllers\TempRfidController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
@@ -108,12 +109,15 @@ Route::post('/debug-log', function (\Illuminate\Http\Request $req) {
 Route::prefix('v1')->group(function () {
     // ── Auth (public) ───────────────────────────────────────────────
     Route::post('auth/login', [AuthController::class, 'login']);
-    Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store']);
+    // SEC-003: 5 req/IP/60 min — prevents email bombing & account enumeration.
+    Route::post('auth/forgot-password', [PasswordResetRequestController::class, 'store'])
+        ->middleware('throttle:5,60');
 
     // ── LINE Webhook (public, verified by campus channel secret) ──
     // Domain-based URL (no id): match Host to Campus.URL — must be registered before the {campusId} route
     Route::post('line/webhook', [LineWebhookController::class, 'handleDomainBased']);
     Route::post('line/webhook/{campusId}', [LineWebhookController::class, 'handle'])->where('campusId', '[0-9]+');
+    Route::post('telegram/webhook/{code}', [TelegramWebhookController::class, 'handle']);
 
     // ── Parent Portal: LIFF & LINE-based login ─────────────────────────
     Route::get('parent/resolve-liff', [ParentPortalController::class, 'resolveLiff']);
@@ -161,11 +165,17 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
-    Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe']);
-    Route::post('auth/register', [AuthController::class, 'register']);
+    // SEC-006: 30 req/IP/1 min — blocks RFID brute-force enumeration.
+    Route::post('swipe-rfid', [SwipeRfidController::class, 'swipe'])
+        ->middleware('throttle:30,1');
+    // SEC-002: 10 req/IP/10 min — prevents bulk account creation.
+    Route::post('auth/register', [AuthController::class, 'register'])
+        ->middleware('throttle:10,10');
 
     // ── Director self-registration (public) ───────────────────────────────
-    Route::post('directors/register', [DirectorAccountController::class, 'register']);
+    // SEC-002: same throttle as auth/register.
+    Route::post('directors/register', [DirectorAccountController::class, 'register'])
+        ->middleware('throttle:10,10');
 
     // ── Current user profile (any authenticated user: director, teacher, super_admin) ──
     Route::get('me', [AuthController::class, 'me']);
