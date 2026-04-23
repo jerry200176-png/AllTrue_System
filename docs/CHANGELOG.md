@@ -2,6 +2,41 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — security: 資安強化 HIGH v1.0（security-hardening-v1）
+
+### 背景
+
+系統資安稽核後，針對 HIGH severity 的 5 個問題進行修補（SEC-002 ~ SEC-006）。
+
+### 主要變更
+
+**路由 throttle（`routes/api.php`）：**
+- **SEC-002**：`POST auth/register`、`POST directors/register` 加 `throttle:10,10`（10 req/IP/10 min），防止批量創帳號。
+- **SEC-003**：`POST auth/forgot-password` 加 `throttle:5,60`（5 req/IP/60 min），防止 email bombing。
+- **SEC-006**：`POST swipe-rfid` 加 `throttle:30,1`（30 req/IP/1 min），防止 RFID brute-force。
+
+**密碼最低長度（`AuthController`、`DirectorAccountController`、`ProfileController`）：**
+- **SEC-004**：所有建立/更新帳號入口的 `min:4` 或 `min:6` 統一升為 `min:8`。現有短密碼帳號的 login 不受影響（login 驗 PSW hash，不驗 min:8）。
+
+**HTTP 安全標頭（`backend/public/.htaccess`）：**
+- **SEC-005**：加入 5 個 OWASP 建議標頭：`Strict-Transport-Security`（HSTS 1 年）、`X-Frame-Options: SAMEORIGIN`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Permissions-Policy`（封鎖 camera/mic/geo/payment）。
+- **Content-Security-Policy** 暫緩：Vue SPA 使用 inline script 做 i18n，須改用 nonce/hash 機制，留待獨立任務處理。
+
+**Throttle 實作 bug 修正（`app/Http/Kernel.php`）：**
+- 全局 `throttle:200,1` 與 route-specific throttle 原本共用相同 RateLimiter key，導致每次 request 計數兩次，實際有效限制僅宣告值的一半。加上 `global-api` prefix 後兩者使用獨立 key，互不干擾。
+
+### 測試
+
+- 新增 `tests/Feature/SecurityHardeningTest.php`：12 個測試涵蓋所有 throttle 邊界值（10/5/30）與密碼驗證（4 個入口 × min:8），含舊短密碼帳號 login regression 測試。
+- CI（GitHub Actions）全部 pass。
+
+### 注意事項
+
+- **Production 部署**：需確認 Apache 已啟用 `mod_headers`（`a2enmod headers && systemctl reload apache2`）。
+- **現有用戶**：密碼未強制過期，下次修改密碼時才會受 min:8 限制。
+
+---
+
 ## 2026-04-23 — feat: 學生 Presence Window 自動點名 v2.0（student-presence-window）
 
 ### 功能摘要
