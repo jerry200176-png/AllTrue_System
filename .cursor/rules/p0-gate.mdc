@@ -1,0 +1,82 @@
+---
+description: >-
+  🚪 AllTrue 記憶宮殿入口 — 每次任務開始必讀。5 條紅線 + 3 條黃線 + 完整 SOP 流程，違反紅線 = P0 故障。
+alwaysApply: true
+---
+
+# 🚪 Palace Gate — 開工前 60 秒必讀
+
+> 詳細說明在 `docs/AI_REGRESSION_LESSONS.md`。本檔只列**觸發條件 → 行動**。
+
+---
+
+## ⛔ 5 條紅線（違反 = P0 故障，零容忍）
+
+| # | 觸發情境 | 強制行動 |
+|---|---------|---------|
+| R1 | 要修改 `/home/admin/backend/` 或 `frontend/` 的**既有**檔案 | ❌ 停。先寫測試、CI 綠才能改。新增 migration / test / Export class 例外 |
+| R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions CI |
+| R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
+| R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` 完整還原，禁止部分還原 |
+| R5 | 要執行 `php artisan migrate` | ✅ 先在 PR CI 跑完，merge 後才 `migrate --force`。查 §MIGRATION-001/002 |
+
+---
+
+## ⚠️ 3 條黃線（違反 = CI 反覆失敗）
+
+| # | 觸發情境 | 強制行動 |
+|---|---------|---------|
+| Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
+| Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
+| Y3 | 要前端上線 | CI 全綠 → PR merge → `git pull` → **才**執行 `npm run deploy` |
+
+---
+
+## 📋 完整 SOP 工作流程（每個任務都要走完）
+
+### 任務類型判斷
+```
+收到新功能需求  → 寫 PRD（plan-as-prd-cross-functional.mdc）
+收到 Bug 報告   → 寫 Bug Fix Plan（bug-fix-plan.mdc）
+兩者都需要 14 節章節 + Todos 9 類 + WebSearch §13
+```
+
+### 執行順序（不可跳步）
+```
+Phase 1 [PLAN]   → 寫 PRD 或 Bug Fix Plan → 存入 .cursor/plans/
+Phase 2 [DEV]    → 新 branch → 寫測試(RED) → 改 code → CI GREEN
+Phase 3 [TEST]   → 自動 QA：跑所有 AC
+Phase 4 [SEC]    → STRIDE 審查（涉及 auth/PII/權限才做）
+Phase 5 [REVIEW] → Code review：逐條對照 FR
+Phase 6 [DOCS]   → 更新 CHANGELOG + AI_REGRESSION_LESSONS.md
+Phase 7 [OPS]    → merge PR → git pull → migrate → npm run deploy → health check
+```
+
+### PRD 必填 14 節（缺任何一節 = 不合格）
+```
+1.文件資訊  2.目標/KPI  3.範圍(In/Out)  4.RACI  4b.Dependencies
+5.User Stories+AC  5b.UI/UX(前端必填)  6.FR  7.NFR
+8.技術方向(禁code)  8b.Decision Log  9.資安  10.QA驗收
+11.上線維運  12.優先級  13.風險(先WebSearch)  14.DoD(AI可驗證)
+```
+
+### Bug Fix Plan 額外要求
+```
++ 第 0 節：根因確認（根因類型 / 錯誤行為 / 預期行為）
+- 第 5 節：直接列 AC，不用 As a…格式
+- 第 7 節：非效能 bug → 填「不適用，說明理由」
++ 第 10 節：Revert-proof 驗證（git stash 後測試應 fail）
+```
+
+---
+
+## 🗺️ 宮殿各房間（進對應房間前讀對應 .mdc）
+
+```
+觸碰 backend/database/migrations/  → 讀 module-migration.mdc
+觸碰 backend/tests/                → 讀 module-test.mdc
+觸碰 frontend/src/                 → 讀 module-frontend.mdc
+寫新 PRD / Bug Fix Plan            → 讀 plan-as-prd-cross-functional.mdc
+                                      + prd-section-guide.mdc
+                                      + bug-fix-plan.mdc
+```

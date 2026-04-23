@@ -1,0 +1,77 @@
+---
+description: >-
+  🏠 Room D：前端房間 — 觸碰 frontend/src/ 時必讀。deploy 時機、自修顯示、token 取法、bundle 快取。
+globs: "frontend/src/**"
+alwaysApply: false
+---
+
+# 🏠 前端房間
+
+## ⛔ 最重要：deploy 時機（§P0-005，已犯多次）
+
+```
+❌ 禁止：PR 還沒 merge 就 npm run deploy
+❌ 禁止：merge 後忘了 npm run deploy（功能做完但使用者看不到）
+
+✅ 正確順序：
+  1. CI 全綠
+  2. gh pr merge / GitHub UI merge
+  3. git checkout main && git pull origin main
+  4. cd /home/admin/frontend && npm run deploy
+  5. curl /api/v1/health 確認 + 確認 /public/version.json 時間戳更新
+```
+
+---
+
+## 📋 前端架構快速參考
+
+| 項目 | 說明 |
+|------|------|
+| 框架 | Vue 3.4 + Vite 5，`<script setup>`，**無 Vue Router**（用 `active` ref 切頁）|
+| Token 取法 | `supabase.auth.getSession()` 或 `localStorage.getItem('alltrue_session')` |
+| 分校 | `currentBranch` ref，持久化 `localStorage.app_branch` |
+| 部署指令 | `cd /home/admin/frontend && npm run deploy`（build + copy 到 backend/public/）|
+
+---
+
+## 📋 出缺勤模組（AttendancePage.vue）特殊規則
+
+### 自修（self_study）顯示規則
+```
+資料庫沒有 'self_study' ENUM 值 → 以 Memo='self_study' + Status='present' 表示
+顯示時：record.Memo === 'self_study' → 標籤顯示「自修」
+編輯時：PATCH { status: 'self_study' } → 後端設 Memo='self_study', Status='present'
+從自修改回 → 後端清空 Memo
+```
+
+### 老師出勤狀態標籤
+```javascript
+const TEACHER_STATUS_LABEL = {
+  normal:         '正常',
+  late:           '遲到',
+  source_only:    '行政出勤',   // ← 無排課時刷卡
+  pending_review: '系統待確認', // ← 例外fallback，正常不應出現
+  adjusted:       '已調整',
+};
+```
+
+---
+
+## ⚠️ Bundle 快取問題（使用者看到舊版）
+
+```
+症狀：功能做完、CI 綠、merge 了，但使用者看不到
+原因：npm run deploy 沒跑，或使用者瀏覽器有快取
+診斷：cat backend/public/version.json  ← 確認時間戳是否最新
+修復：npm run deploy → 通知使用者 Ctrl+Shift+R 強制刷新
+```
+
+---
+
+## ❌ 禁止事項
+
+```
+❌ 禁止在 feature branch 上執行 npm run deploy（必須在 main branch）
+❌ 禁止修改 frontend/dist_build/ 裡的 JS/CSS（那是 build 產物，只能重新 build）
+❌ 禁止在 .vue 檔直接 hard-code token（從 supabase.auth.getSession() 取）
+```
