@@ -302,7 +302,7 @@ class TeacherAttendanceController extends Controller
 
     /**
      * GET /api/v1/teacher-attendance/export-monthly?year_month=YYYY-MM
-     * 主任匯出整月老師出缺勤 XLSX（月報摘要 + 明細記錄兩個工作表）
+     * 主任匯出整月老師出缺勤 XLSX（每位老師獨立 Sheet，格式對應刷卡清單參考檔）
      */
     public function exportMonthly(Request $request)
     {
@@ -377,27 +377,23 @@ class TeacherAttendanceController extends Controller
             });
         }
 
-        // 取補卡記錄
-        $signinIds   = $records->pluck('id')->all();
-        $adjustments = ! empty($signinIds)
-            ? DB::table('teacher_signin_adjustments')
-                ->whereIn('teacher_signin_id', $signinIds)
-                ->select('teacher_signin_id', 'adjust_reason', 'new_signin_dt', 'created_at')
-                ->orderBy('id', 'desc')
-                ->get()
-                ->unique('teacher_signin_id')
-            : collect();
+        // 取分校名稱（用於 Excel 標題，優先取第一筆記錄的 campus_name）
+        $campusName = $records->first()?->campus_name ?? '';
+        if (! $campusName && ! empty($campusIds)) {
+            $campusName = DB::table('Campus')->where('id', $campusIds[0])->value('name') ?? '';
+        }
 
         Log::info('[teacher-monthly-export]', [
-            'user_id'    => $request->attributes->get('auth_user')?->id,
-            'year_month' => $yearMonth,
-            'campus_ids' => $campusIds,
-            'count'      => $records->count(),
+            'user_id'     => $request->attributes->get('auth_user')?->id,
+            'year_month'  => $yearMonth,
+            'campus_ids'  => $campusIds,
+            'campus_name' => $campusName,
+            'count'       => $records->count(),
         ]);
 
         $filename = "teacher-attendance-{$yearMonth}.xlsx";
         return Excel::download(
-            new TeacherMonthlyAttendanceExport($records, $adjustments, $yearMonth),
+            new TeacherMonthlyAttendanceExport($records, $yearMonth, $campusName),
             $filename
         );
     }

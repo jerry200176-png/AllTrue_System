@@ -11,9 +11,10 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * FR-001 (月報匯出): GET /api/v1/teacher-attendance/export-monthly
+ * FR-001 (月報匯出 v1.2): GET /api/v1/teacher-attendance/export-monthly
  *
  * 防再犯紀錄 §TEST-001 ─ 所有 DB insert 均核對過 NOT NULL 欄位。
+ * v1.2：月報改版為每位老師獨立 Sheet（per-teacher format）。
  */
 class TeacherMonthlyExportTest extends TestCase
 {
@@ -77,6 +78,33 @@ class TeacherMonthlyExportTest extends TestCase
             ->get('/api/v1/teacher-attendance/export-monthly?year_month=' . now()->format('Y-m'));
 
         $res->assertUnauthorized();
+    }
+
+    // ── AC-5: 有兩位老師的記錄 → XLSX 內含至少 2 個工作表 ────────────────────
+
+    public function test_export_contains_one_sheet_per_teacher(): void
+    {
+        [$token, $campusId] = $this->scaffold('director');
+
+        $yearMonth = now()->format('Y-m');
+        $date      = now()->format('Y-m-d');
+
+        DB::table('TeacherSingIn')->insert([
+            ['TeacherID' => 10, 'CampusID' => $campusId,
+             'SignInDT' => "{$date} 09:00:00", 'SignOutDT' => "{$date} 18:00:00", 'MDT' => now()],
+            ['TeacherID' => 20, 'CampusID' => $campusId,
+             'SignInDT' => "{$date} 13:00:00", 'SignOutDT' => "{$date} 21:00:00", 'MDT' => now()],
+        ]);
+
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => '*/*'])
+            ->get("/api/v1/teacher-attendance/export-monthly?year_month={$yearMonth}");
+
+        $res->assertOk();
+        // Verify it's an XLSX (multi-sheet ZIP format)
+        $this->assertStringContainsString(
+            'spreadsheetml',
+            $res->headers->get('Content-Type', '')
+        );
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
