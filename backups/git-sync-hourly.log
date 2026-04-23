@@ -507,3 +507,16 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main 9c63071] chore(hourly): auto sync 2026-04-23 20:30
+ 7 files changed, 645 insertions(+), 14 deletions(-)
+ create mode 100644 .cursor/plans/bugfix_swipe_attendance_sync_2026-04-23.md
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/d63886f2-5313-421a-8e99-a736ca553f3b/d63886f2-5313-421a-8e99-a736ca553f3b.jsonl
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   e4a05bf..9c63071  main -> main
+[git-sync] Done.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...

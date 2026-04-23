@@ -20,10 +20,31 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 
 ## B. GitHub SOP
 
-- Main collaboration target is `jerry-sync-main`.
-- Feature branches should PR into `jerry-sync-main`.
+- Main collaboration target is `main`.
+- All feature/fix work must use short-lived branches (`feat/*`, `fix/*`, `chore/*`, `hotfix/*`).
 - Backup branches are **not** for normal merge.
 - If PR contains huge unrelated diffs or historical artifacts: close it, do not merge.
+
+### B1. Branch Hygiene
+
+**Policy**
+- PR merged = branch deleted (local + remote).
+- Branch lifetime target: 1-3 days.
+- `backup-*` 分支：**只用於還原，不合併，不主動清除**（max 1-2 個）。
+- Protect `main`（no force-push, CI required, 1 reviewer）。
+
+**Automation（每週一至五 08:00 自動 dry-run）**  
+GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫入 Actions Job Summary。
+
+手動執行：
+```bash
+./scripts/branch-hygiene.sh            # 查看清單（不刪）
+./scripts/branch-hygiene.sh --apply    # 刪除已合併分支（保留 backup-*）
+```
+
+**GitHub repo 設定（需手動開啟）**
+- ✅ Settings → General → Auto-delete head branches after merge
+- ✅ Settings → Branches → Branch protection rules on `main`
 
 ## C. Incident lessons (must remember)
 
