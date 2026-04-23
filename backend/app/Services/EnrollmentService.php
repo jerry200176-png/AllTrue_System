@@ -14,6 +14,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class EnrollmentService
@@ -27,6 +28,73 @@ class EnrollmentService
     {
         $confirmedDates = $this->normalizeDateArray($data['confirmed_dates'] ?? []);
         $futureDates = $this->normalizeDateArray($data['future_dates'] ?? []);
+
+        $isMonthlyRecurring = false;
+        $endDateOverride = null;
+        $paymentType = (string) ($data['payment_type'] ?? 'session');
+        $endDateRaw = $data['end_date'] ?? null;
+        $daysOfWeekRaw = $data['days_of_week'] ?? [];
+
+        if ($paymentType === 'monthly' && !empty($endDateRaw) && !empty($daysOfWeekRaw)) {
+            $courseStart = $data['course_start_date'] ?? Carbon::today()->toDateString();
+            $endDate = $endDateRaw;
+
+            if ($endDate < $courseStart) {
+                return response()->json([
+                    'message' => '結束日不可早於開課日',
+                    'errors' => ['end_date' => ['結束日不可早於開課日。']],
+                ], 422);
+            }
+
+            $maxEnd = Carbon::today()->addDays(730)->toDateString();
+            if ($endDate > $maxEnd) {
+                return response()->json([
+                    'message' => '結束日不可超過 2 年（730 天）',
+                    'errors' => ['end_date' => ['結束日距今不可超過 730 天。']],
+                ], 422);
+            }
+
+            $isMonthlyRecurring = true;
+            $endDateOverride = $endDate;
+
+            $weekdays = $this->normalizeWeekdayArray((array) $daysOfWeekRaw);
+            $startTimeStr = $this->normalizeTime((string) ($data['start_time'] ?? '16:00'));
+            $durationMinutes = (int) $data['duration_minutes'];
+
+            $slots = [];
+            foreach ($weekdays as $wd) {
+                $slots[] = ['weekday' => $wd, 'time' => $startTimeStr];
+            }
+
+            $scController = app()->make(\App\Http\Controllers\StudentClassController::class);
+            $generatedSessions = $scController->buildSessionsFromWeeklySchedule(
+                0,
+                $courseStart,
+                $endDate,
+                $slots,
+                $durationMinutes
+            );
+
+            $futureDates = array_map(fn ($s) => $s['SessionDate'], $generatedSessions);
+            $futureDates = array_values(array_unique($futureDates));
+            sort($futureDates);
+
+            if (empty($futureDates) && empty($confirmedDates)) {
+                return response()->json([
+                    'message' => '此期間無符合的課堂日期，請調整固定星期或日期範圍',
+                    'errors' => ['end_date' => ['指定期間內無任何排課日。']],
+                ], 422);
+            }
+
+            $data['monthly_sessions'] = count($confirmedDates) + count($futureDates);
+
+            Log::info('monthly_recurring: auto-generated sessions', [
+                'course_start' => $courseStart,
+                'end_date' => $endDate,
+                'days_of_week' => $weekdays,
+                'generated_count' => count($futureDates),
+            ]);
+        }
 
         $defaultSubject = trim((string) ($data['subject'] ?? ''));
         if ($defaultSubject === '') {
@@ -51,7 +119,7 @@ class EnrollmentService
 
         $sessionPlanRaw = $data['session_plan'] ?? null;
         $sessionRows = [];
-        if (!empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
+        if (!$isMonthlyRecurring && !empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
             $sessionRows = $this->buildRowsFromSessionPlan(
                 $sessionPlanRaw,
                 $dayTimeSlotGroups,
@@ -190,18 +258,20 @@ class EnrollmentService
                 ], 422);
             }
 
-            $allDatesForMonthly = array_column($sessionRows, 'date');
-            if (!empty($allDatesForMonthly)) {
-                sort($allDatesForMonthly);
-                $anchorYm = substr($allDatesForMonthly[0], 0, 7);
-                $crossMonth = array_values(array_filter($allDatesForMonthly, fn ($d) => substr((string) $d, 0, 7) !== $anchorYm));
-                if (!empty($crossMonth)) {
-                    return response()->json([
-                        'message' => '月結課程僅可建立在同一月份，請調整日期',
-                        'errors' => [
-                            'future_dates' => ['月結課程的日期不可跨月份。'],
-                        ],
-                    ], 422);
+            if (!$isMonthlyRecurring) {
+                $allDatesForMonthly = array_column($sessionRows, 'date');
+                if (!empty($allDatesForMonthly)) {
+                    sort($allDatesForMonthly);
+                    $anchorYm = substr($allDatesForMonthly[0], 0, 7);
+                    $crossMonth = array_values(array_filter($allDatesForMonthly, fn ($d) => substr((string) $d, 0, 7) !== $anchorYm));
+                    if (!empty($crossMonth)) {
+                        return response()->json([
+                            'message' => '月結課程僅可建立在同一月份，請調整日期',
+                            'errors' => [
+                                'future_dates' => ['月結課程的日期不可跨月份。'],
+                            ],
+                        ], 422);
+                    }
                 }
             }
         }
@@ -426,7 +496,8 @@ class EnrollmentService
             $subjectGroups,
             $subjectMeta,
             $globalTeacherId,
-            $allowMultiTeacher
+            $allowMultiTeacher,
+            $endDateOverride
         ) {
             $student = $studentId > 0
                 ? Student::find($studentId)
@@ -567,7 +638,7 @@ class EnrollmentService
                     'SessionDuration' => $groupGlobalDur,
                     'TotalHours' => $totalHours,
                     'StartDate' => $allDates[0],
-                    'EndDate' => $allDates[count($allDates) - 1],
+                    'EndDate' => $endDateOverride ?? $allDates[count($allDates) - 1],
                     'week' => $primaryWeekday,
                     'time' => $startTimeForGroup,
                     'Memo' => $data['memo'] ?? null,

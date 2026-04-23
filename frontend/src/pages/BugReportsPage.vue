@@ -13,30 +13,41 @@
       <!-- Quick filter tabs -->
       <div class="card quick-filter-card" data-guide="bugs-quick-filter">
         <div class="quick-tabs">
-          <button
-            class="quick-tab"
-            :class="{ active: quickFilter === 'pending' }"
-            @click="setQuickFilter('pending')"
-          >
-            <span class="material-symbols-outlined tab-icon">pending_actions</span>
-            待處理
-          </button>
-          <button
-            class="quick-tab"
-            :class="{ active: quickFilter === 'all' }"
-            @click="setQuickFilter('all')"
-          >
-            <span class="material-symbols-outlined tab-icon">list</span>
-            全部
-          </button>
-          <button
-            class="quick-tab"
-            :class="{ active: quickFilter === 'closed' }"
-            @click="setQuickFilter('closed')"
-          >
-            <span class="material-symbols-outlined tab-icon">check_circle</span>
-            已關閉
-          </button>
+          <!-- Super admin tabs: 待處理 first (their default action queue) -->
+          <template v-if="isSuperAdmin">
+            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+              <span class="material-symbols-outlined tab-icon">pending_actions</span>
+              待處理
+            </button>
+            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+              <span class="material-symbols-outlined tab-icon">list</span>
+              全部
+            </button>
+            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+              <span class="material-symbols-outlined tab-icon">check_circle</span>
+              已關閉
+            </button>
+          </template>
+          <!-- Reporter tabs: 全部 first (see all progress), then filtering by status -->
+          <template v-else>
+            <button class="quick-tab" :class="{ active: quickFilter === 'all' }" @click="setQuickFilter('all')">
+              <span class="material-symbols-outlined tab-icon">list</span>
+              全部
+              <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
+            </button>
+            <button class="quick-tab" :class="{ active: quickFilter === 'pending' }" @click="setQuickFilter('pending')">
+              <span class="material-symbols-outlined tab-icon">pending_actions</span>
+              處理中
+            </button>
+            <button class="quick-tab" :class="{ active: quickFilter === 'resolved' }" @click="setQuickFilter('resolved')">
+              <span class="material-symbols-outlined tab-icon">task_alt</span>
+              已解決
+            </button>
+            <button class="quick-tab" :class="{ active: quickFilter === 'closed' }" @click="setQuickFilter('closed')">
+              <span class="material-symbols-outlined tab-icon">check_circle</span>
+              已關閉
+            </button>
+          </template>
         </div>
       </div>
 
@@ -152,14 +163,18 @@
               v-for="bug in bugs"
               :key="bug.id"
               class="bug-item"
-              :class="{ active: activeBug?.id === bug.id }"
+              :class="{ active: activeBug?.id === bug.id, unread: isUnread(bug) }"
               @click="selectBug(bug)"
             >
               <span class="severity-dot" :class="bug.severity"></span>
               <div class="bug-item-info">
-                <div class="bug-title">{{ bug.title }}</div>
+                <div class="bug-title">
+                  {{ bug.title }}
+                  <span v-if="isUnread(bug)" class="unread-dot" title="有新動態"></span>
+                </div>
                 <div class="bug-meta">
                   <span class="status-tag" :class="bug.status">{{ statusLabel(bug.status) }}</span>
+                  <span v-if="isUnread(bug) && !isSuperAdmin" class="new-activity-tag">新動態</span>
                   <span v-if="bug.attachments_count > 0" class="bug-attach-hint" title="含截圖">
                     <span class="material-symbols-outlined">attach_file</span>
                     {{ bug.attachments_count }}
@@ -213,6 +228,24 @@
 
         <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
         <template v-else-if="detail">
+          <!-- Resolved / closed banner — shown to all roles so reporter sees resolution clearly -->
+          <div v-if="detail.status === 'resolved'" class="resolution-banner resolution-banner--resolved">
+            <span class="material-symbols-outlined">task_alt</span>
+            <div class="resolution-content">
+              <strong>已解決</strong>
+              <span v-if="resolutionNote" class="resolution-note">{{ resolutionNote }}</span>
+              <span v-else class="resolution-note resolution-note--empty">管理員已標記為解決，如仍有問題請在留言中說明。</span>
+            </div>
+          </div>
+          <div v-else-if="detail.status === 'closed'" class="resolution-banner resolution-banner--closed">
+            <span class="material-symbols-outlined">lock</span>
+            <div class="resolution-content">
+              <strong>已關閉</strong>
+              <span v-if="resolutionNote" class="resolution-note">{{ resolutionNote }}</span>
+              <span v-else class="resolution-note resolution-note--empty">此問題已關閉，如需重新開啟請聯繫管理員。</span>
+            </div>
+          </div>
+
           <div class="detail-grid">
             <div><strong>狀態：</strong><span class="status-tag" :class="detail.status">{{ statusLabel(detail.status) }}</span></div>
             <div><strong>嚴重度：</strong><span class="severity-tag" :class="detail.severity">{{ severityLabel(detail.severity) }}</span></div>
@@ -326,7 +359,9 @@ const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
 
-const quickFilter = ref('pending');
+// Reporters default to 'all' so they see progress on their submitted bugs.
+// Super-admins default to 'pending' because they need an action queue.
+const quickFilter = ref('pending'); // recalculated in onMounted after isSuperAdmin is known
 const filterStatus = ref('');
 const filterSeverity = ref('');
 const filterReporter = ref('');
@@ -345,12 +380,54 @@ const newComment = ref('');
 const commentIsInternal = ref(false);
 const updatingCommentVisibilityIds = ref(new Set());
 
+// ── Unread tracking ──────────────────────────────────────────────────────
+// localStorage key → { [bugId]: ISO timestamp of last view }
+const READ_STORAGE_KEY = 'alltrue_bug_read_times';
+
+function getReadTimes() {
+  try {
+    return JSON.parse(localStorage.getItem(READ_STORAGE_KEY) || '{}');
+  } catch { return {}; }
+}
+
+function markBugRead(bugId) {
+  try {
+    const map = getReadTimes();
+    map[bugId] = new Date().toISOString();
+    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify(map));
+  } catch { /* ignore quota errors */ }
+}
+
+function isUnread(bug) {
+  // For super_admin the unread concept is less relevant (they manage all bugs)
+  if (isSuperAdmin.value) return false;
+  // Bug has activity after submission (status change, comment, etc.)
+  if (!bug.updated_at || bug.updated_at === bug.created_at) return false;
+  const map = getReadTimes();
+  const lastRead = map[bug.id];
+  if (!lastRead) return true; // never viewed while there is activity
+  return new Date(bug.updated_at) > new Date(lastRead);
+}
+
+const unreadCount = computed(() => bugs.value.filter(isUnread).length);
+
 const showBackToTop = ref(false);
 const listCardRef = ref(null);
 
 let debounceTimer = null;
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
+
+// The most recent status_log note when a bug reaches resolved/closed — shown in banner
+const resolutionNote = computed(() => {
+  if (!detail.value?.status_logs?.length) return '';
+  const terminal = ['resolved', 'closed'];
+  const log = [...detail.value.status_logs]
+    .reverse()
+    .find(l => terminal.includes(l.to_status));
+  return log?.note || '';
+});
+
 const pageTitle = computed(() => {
   if (isSuperAdmin.value) return 'Bug 回報（處理中心）';
   return '我的 Bug 回報';
@@ -428,7 +505,7 @@ function clearAllFilters() {
   filterSort.value = '';
   filterDateFrom.value = '';
   filterDateTo.value = '';
-  quickFilter.value = 'pending';
+  quickFilter.value = isSuperAdmin.value ? 'pending' : 'all';
   currentPage.value = 1;
   loadBugs();
 }
@@ -443,6 +520,8 @@ function goToPage(p) {
 }
 
 onMounted(() => {
+  // Set role-based default: reporters want to see all their bugs; admins want the action queue
+  quickFilter.value = isSuperAdmin.value ? 'pending' : 'all';
   loadBugs();
   window.addEventListener('scroll', handleScroll);
 });
@@ -462,8 +541,9 @@ watch(() => props.branchId, () => {
 function buildStatusFilter() {
   if (filterStatus.value) return filterStatus.value;
   if (quickFilter.value === 'pending') return 'new,triaged,in_progress';
+  if (quickFilter.value === 'resolved') return 'resolved,closed';
   if (quickFilter.value === 'closed') return 'closed';
-  return '';
+  return ''; // 'all' → no filter
 }
 
 async function loadBugs() {
@@ -505,6 +585,8 @@ async function selectBug(bug) {
   newComment.value = '';
   try {
     detail.value = await fetchBugDetail(bug.id);
+    // Mark as read so unread dot clears after opening
+    markBugRead(bug.id);
   } catch (e) {
     console.error('[Bugs] fetchDetail:', e);
   } finally {
@@ -590,17 +672,25 @@ function formatDate(iso) {
 
 /* Quick filter tabs */
 .quick-filter-card { padding: 8px 16px; }
-.quick-tabs { display: flex; gap: 4px; }
+.quick-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .quick-tab {
   display: flex; align-items: center; gap: 4px;
   padding: 8px 16px; border: none; border-radius: 8px;
   background: transparent; color: var(--text-light);
   font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s; position: relative;
 }
 .quick-tab:hover { background: var(--primary-bg); color: var(--text); }
 .quick-tab.active { background: var(--primary); color: #fff; }
 .tab-icon { font-size: 18px; }
+
+/* Unread badge on "全部" tab */
+.unread-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px;
+  background: var(--danger, #e53935); color: #fff;
+  border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1;
+}
 
 /* ── Filter bar ─────────────────────────────────────────────── */
 .controls-card { padding: 12px 16px; }
@@ -776,7 +866,24 @@ function formatDate(iso) {
 .severity-dot.medium { background: #2196F3; }
 .severity-dot.low { background: #9E9E9E; }
 
-.bug-title { font-weight: 600; font-size: 14px; }
+.bug-item.unread { border-left: 3px solid var(--primary); padding-left: 9px; }
+
+.bug-title { font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+
+/* Unread dot — inline with title */
+.unread-dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--danger, #e53935); flex-shrink: 0;
+}
+
+/* "新動態" tag in meta row */
+.new-activity-tag {
+  display: inline-block; padding: 1px 7px; border-radius: 10px;
+  font-size: 10px; font-weight: 700;
+  background: color-mix(in srgb, var(--danger, #e53935) 12%, transparent);
+  color: var(--danger, #e53935); white-space: nowrap;
+}
+
 .bug-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
 .bug-date { font-size: 12px; color: var(--text-light); }
 .bug-updated { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--text-light); }
@@ -851,6 +958,26 @@ function formatDate(iso) {
 .detail-header { display: flex; justify-content: space-between; align-items: flex-start; }
 .detail-header h3 { margin: 0; font-size: 18px; }
 .btn-close-detail { background: none; border: none; cursor: pointer; color: var(--text-light); }
+
+/* Resolution banner */
+.resolution-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-radius: 10px; margin: 12px 0 4px;
+  font-size: 14px;
+}
+.resolution-banner .material-symbols-outlined { font-size: 24px; flex-shrink: 0; margin-top: 1px; }
+.resolution-banner--resolved {
+  background: color-mix(in srgb, var(--success, #43a047) 10%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--success, #43a047) 35%, transparent);
+  color: var(--success, #2e7d32);
+}
+.resolution-banner--closed {
+  background: #ECEFF1; border: 1.5px solid #CFD8DC; color: #546E7A;
+}
+.resolution-content { display: flex; flex-direction: column; gap: 4px; }
+.resolution-content strong { font-size: 15px; }
+.resolution-note { font-size: 13px; line-height: 1.5; }
+.resolution-note--empty { opacity: 0.7; font-style: italic; }
 
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; font-size: 14px; }
 .detail-description { margin: 12px 0; }
