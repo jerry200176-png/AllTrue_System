@@ -1,0 +1,162 @@
+name: Presubmit Gate
+
+# Google-style presubmit checks — 任何 PR 合進 main 前必須全過
+# 規則來源：.cursor/rules/module-industry-standards.mdc
+# 違反任何一項 = PR 被擋，必須修正才能 merge
+
+on:
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  gate:
+    name: Presubmit Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout（含完整歷史，用於 diff）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ─────────────────────────────────────────────
+      # CHECK 1：Branch 命名規範
+      # 合法格式：feat/* fix/* td-batchN-* hotfix/* chore/* exp/*
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 1] Branch naming convention"
+        run: |
+          BRANCH="${GITHUB_HEAD_REF}"
+          echo "Branch: $BRANCH"
+
+          if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp)/.' \
+            || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' ; then
+            echo "✅ Branch name OK: $BRANCH"
+          else
+            echo "❌ Invalid branch name: $BRANCH"
+            echo ""
+            echo "Allowed formats:"
+            echo "  feat/<slug>           新功能"
+            echo "  fix/<slug>            Bug 修復"
+            echo "  td-batch<N>-<slug>    技術債清償"
+            echo "  hotfix/<date>-<slug>  緊急修復"
+            echo "  chore/<slug>          文件/維護"
+            echo "  exp/<slug>            實驗性"
+            exit 1
+          fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 2：PR 大小（推薦 ≤ 400 行，強制 ≤ 700 行）
+      # 排除：lock files, migration seed 純資料
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
+        run: |
+          # 計算加減總行數，排除 lock 檔和純資料檔
+          TOTAL=$(git diff --numstat origin/main...HEAD \
+            -- ':!*.lock' ':!package-lock.json' ':!composer.lock' \
+               ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
+            | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
+
+          echo "PR size: $TOTAL lines changed (excluding lock/data files)"
+          echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
+
+          if [ "$TOTAL" -gt 700 ]; then
+            echo "❌ PR too large: $TOTAL lines (hard limit: 700)"
+            echo ""
+            echo "Please split into smaller PRs. Each PR should cover one independent feature."
+            echo "Reference: .cursor/rules/module-industry-standards.mdc"
+            exit 1
+          elif [ "$TOTAL" -gt 400 ]; then
+            echo "::warning title=Large PR::PR is $TOTAL lines (recommended ≤ 400). Consider splitting if possible."
+          else
+            echo "✅ PR size OK: $TOTAL lines"
+          fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 3：alwaysApply 規則總行數（≤ 500 行）
+      # 防止 AI context 膨脹導致「失憶」
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 3] alwaysApply rule size (≤ 500 lines)"
+        run: |
+          TOTAL=0
+          echo "=== alwaysApply rules ==="
+          for f in .cursor/rules/*.mdc; do
+            if grep -q "alwaysApply: true" "$f" 2>/dev/null; then
+              LINES=$(wc -l < "$f")
+              TOTAL=$((TOTAL + LINES))
+              echo "  🔴 $LINES lines — $(basename $f)"
+            fi
+          done
+          echo ""
+          echo "Total alwaysApply lines: $TOTAL / 500"
+
+          if [ "$TOTAL" -gt 500 ]; then
+            echo "❌ alwaysApply rules too large: $TOTAL lines (max 500)"
+            echo ""
+            echo "AI context bloat detected. Move non-critical rules to glob-based triggers."
+            echo "Reference: .cursor/rules/p0-gate.mdc"
+            exit 1
+          else
+            echo "✅ alwaysApply size OK: $TOTAL lines"
+          fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 4：CHANGELOG 更新（有改 production code 時）
+      # 若改了 backend/app/ backend/routes/ frontend/src/ 但沒更新 CHANGELOG → 警告
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 4] CHANGELOG updated check"
+        run: |
+          CHANGED_PROD=$(git diff --name-only origin/main...HEAD \
+            | grep -cE '^(backend/app/|backend/routes/|frontend/src/)' || true)
+          CHANGED_LOG=$(git diff --name-only origin/main...HEAD \
+            | grep -cE '^docs/CHANGELOG\.md$' || true)
+
+          echo "Production files changed: $CHANGED_PROD"
+          echo "CHANGELOG.md updated: $CHANGED_LOG"
+
+          if [ "$CHANGED_PROD" -gt 0 ] && [ "$CHANGED_LOG" -eq 0 ]; then
+            echo "::warning title=Missing CHANGELOG::Production code changed ($CHANGED_PROD files) but docs/CHANGELOG.md not updated."
+            echo "::warning::Please add an entry per SOP Phase 6 [DOCS]: ## YYYY-MM-DD — feat/fix: title"
+          else
+            echo "✅ CHANGELOG check OK"
+          fi
+
+      # ─────────────────────────────────────────────
+      # CHECK 5：禁止 CI workflow 內含 ssh/rsync/deploy 指令
+      # 防止意外新增自動部署到生產環境的步驟
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 5] No deploy steps in CI workflows"
+        run: |
+          VIOLATIONS=$(grep -rn \
+            -e 'ssh.*daan' -e 'rsync.*daan' -e 'scp.*daan' \
+            -e 'ssh.*lifenet' -e 'npm run deploy' \
+            -e 'appleboy/ssh-action' \
+            .github/workflows/ 2>/dev/null | grep -v "^Binary" || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ Deploy steps detected in CI workflow!"
+            echo ""
+            echo "$VIOLATIONS"
+            echo ""
+            echo "CI must not deploy to production. Deployment is manual (SOP Phase 7)."
+            echo "Reference: .cursor/rules/auto-frontend-deploy.mdc"
+            exit 1
+          else
+            echo "✅ No deploy steps in CI workflows"
+          fi
+
+      # ─────────────────────────────────────────────
+      # Summary
+      # ─────────────────────────────────────────────
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Presubmit Gate Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Check | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch naming | See step log |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PR size | ${PR_SIZE:-?} lines |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| alwaysApply rules | See step log |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CHANGELOG | See step log |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| No deploy in CI | See step log |" >> "$GITHUB_STEP_SUMMARY"

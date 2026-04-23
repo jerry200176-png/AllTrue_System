@@ -1,6 +1,10 @@
 ---
-description: P0 最高優先級 — 嚴禁任何 AI 觸發自動部署或破壞生產環境的危險操作
-alwaysApply: true
+description: >-
+  【歷史事故詳細程序】P0 禁止清單 — force push / artisan test / cache clear / DB 備份。
+  規則摘要已整合至 p0-gate.mdc。本文件為完整操作程序參考，觸發時機：緊急事故處理或操作 .github/workflows/。
+globs:
+  - ".github/**"
+alwaysApply: false
 ---
 
 # ⛔ P0 最高優先級規則 — 任何 AI 都不得違反

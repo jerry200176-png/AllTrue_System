@@ -1,6 +1,12 @@
 ---
-description: P0 — AI 未經 CI 測試通過，嚴禁修改任何現有 production 系統檔案
-alwaysApply: true
+description: >-
+  【歷史事故詳細程序】P0 — 未通過 CI 禁止動現有系統。含 .htaccess 安全標頭 checklist、
+  大公司 presubmit 參考、部分還原警告。規則已整合至 p0-gate.mdc R1。
+  觸發時機：修改 .htaccess / Nginx config / HTTP headers 時。
+globs:
+  - "backend/public/.htaccess"
+  - "backend/public/**"
+alwaysApply: false
 ---
 
 # ⛔ P0 — 未通過 CI 禁止動現有系統
