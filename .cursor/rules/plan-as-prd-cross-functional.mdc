@@ -1,7 +1,10 @@
 ---
-description: 寫 plan 時自動以 PM 視角產出 PRD，供 AI Agent 跨功能自動執行（全程無需人工介入）
-globs: "**/.cursor/plans/**"
-alwaysApply: true
+description: >-
+  寫 PRD 時以 PM 視角產出結構化計畫，供 AI Agent 跨功能自動執行（全程無需人工介入）。
+  觸發：收到「寫計畫 / 規劃 / plan / PRD / 設計方案」指令，或開啟 .cursor/plans/ 下的檔案。
+globs:
+  - ".cursor/plans/**"
+alwaysApply: false
 ---
 
 # PRD 強制規則（AI Agent 必須遵守）

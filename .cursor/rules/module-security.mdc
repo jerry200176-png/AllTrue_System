@@ -1,0 +1,74 @@
+---
+description: >-
+  Phase 4 [SEC] 安全審查 — 涉及 auth/PII/RFID/Webhook 時必讀。STRIDE 速查表 + 常見弱點清單。
+globs:
+  - "backend/app/Http/Controllers/**"
+  - "backend/routes/**"
+  - "backend/app/Models/**"
+alwaysApply: false
+---
+
+# Phase 4 [SEC] — 安全審查房間
+
+## 何時觸發 SEC 審查
+```
+觸發：任何改動涉及以下任一項目
+  - 登入/驗證/Token（auth middleware, JWT, Sanctum）
+  - 個人資訊（學生姓名/RFID/聯絡方式/出缺勤記錄）
+  - RFID 刷卡接收（SwipeRfidController）
+  - Webhook / 外部 callback
+  - 角色/權限判斷（director, super_admin, teacher）
+
+不觸發：只改 Excel Export 格式、前端顯示文字、測試資料工廠
+```
+
+---
+
+## STRIDE 速查表（每項 1 分鐘內掃完）
+
+| 威脅 | 問題 | 本專案常見點 |
+|------|------|------------|
+| **S**poofing（偽造身分）| 是否驗 Token 簽發者？角色能否偽造？ | Sanctum Bearer Token；teacher 角色不可冒充 director |
+| **T**ampering（竄改資料）| 輸入是否 validated？update 有無防止越權欄位修改？ | `$request->validate()`；禁止 Mass Assignment（`$fillable` 限制）|
+| **R**epudiation（否認）| 關鍵操作有無 log？ | `Log::warning()` 在 SwipeRfidController catch 區 |
+| **I**nformation Disclosure（資訊洩漏）| 錯誤訊息是否包含 stack trace？ | 生產環境 `APP_DEBUG=false`；API 只回 `message` |
+| **D**enial of Service（拒絕服務）| 有無 rate limit？批次操作有無上限？ | `RateLimiter::for('api')` 60次/分；匯出需分頁 |
+| **E**levation of Privilege（提權）| middleware 是否在每支 route 都套用？ | `auth:sanctum + role:director` 強制加在敏感 route |
+
+---
+
+## 必查項目清單（SEC Review Checklist）
+
+### 輸入驗證
+- [ ] 所有 POST/PATCH body 都有 `$request->validate()`
+- [ ] RFID 欄位只接受英數字（不含 SQL 特殊字元）
+- [ ] 日期範圍有上限（月報不超過 12 個月跨度）
+
+### 授權控制
+- [ ] Campus 隔離：查詢時必帶 `CampusID = auth()->user()->CampusID`
+- [ ] 學生資料的 delete/patch：只有 `director` / `super_admin` 可操作
+- [ ] `teacher` 角色不可存取其他 Campus 的出缺勤資料
+
+### 資料保護
+- [ ] Soft delete 用 `VoidedAt`；物理刪除限 `super_admin` 且需二次確認
+- [ ] Export XLSX 不包含密碼、Token、內部 ID
+
+### 常見歷史漏洞（本專案已發生）
+```
+§SEC-001：SwipeRfidController catch 未 Log → silent pending_review（v1.2 已補 Log::warning）
+§SEC-002：RefreshDatabase 在生產 Pi 執行 → 清空 DB（R2 紅線）
+§SEC-003：feature branch npm run deploy → 未過 CI 就上線（auto-frontend-deploy.mdc 已修正）
+```
+
+---
+
+## SEC 審查輸出格式
+
+在 PRD / Bug Fix Plan 的「9. 資安」節填入：
+```markdown
+**SEC 審查結果（Phase 4）**
+- 觸發原因：[auth/PII/RFID/Webhook]
+- STRIDE 掃描：[S-無疑慮 / T-已驗 / R-已Log / I-已隱藏 / D-已限速 / E-已加 middleware]
+- 發現問題：[無 / §SEC-XXX: 描述]
+- 處置方式：[已修 / 登記 TECH_DEBT / 接受風險（說明原因）]
+```

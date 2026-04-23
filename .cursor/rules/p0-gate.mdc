@@ -1,12 +1,10 @@
 ---
 description: >-
-  🚪 AllTrue 記憶宮殿入口 — 每次任務開始必讀。5 條紅線 + 3 條黃線 + 完整 SOP 流程，違反紅線 = P0 故障。
+  🚪 AllTrue 記憶宮殿入口 — 每次任務開始必讀。5紅線+3黃線+完整SOP+CI自驗。違反紅線=P0故障。
 alwaysApply: true
 ---
 
-# 🚪 Palace Gate — 開工前 60 秒必讀
-
-> 詳細說明在 `docs/AI_REGRESSION_LESSONS.md`。本檔只列**觸發條件 → 行動**。
+# 🚪 Palace Gate — 開工前必讀（60 秒）
 
 ---
 
@@ -14,11 +12,11 @@ alwaysApply: true
 
 | # | 觸發情境 | 強制行動 |
 |---|---------|---------|
-| R1 | 要修改 `/home/admin/backend/` 或 `frontend/` 的**既有**檔案 | ❌ 停。先寫測試、CI 綠才能改。新增 migration / test / Export class 例外 |
-| R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions CI |
+| R1 | 要修改 `/home/admin/` 內**既有** `.php` / `.vue` / config 檔 | ❌ 停。先寫測試 → CI 綠 → 才改。新增 migration / test / Export class 例外 |
+| R2 | 要在 Pi 執行任何含 `test` / `phpunit` / `config:clear` 的指令 | ❌ 停。測試只走 GitHub Actions。詳見 `DANGEROUS_OPERATIONS.md` |
 | R3 | 要執行 `git push --force` / `-f` / 直接 push main | ❌ 停。一律推 feature branch，等 PR merge |
-| R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` 完整還原，禁止部分還原 |
-| R5 | 要執行 `php artisan migrate` | ✅ 先在 PR CI 跑完，merge 後才 `migrate --force`。查 §MIGRATION-001/002 |
+| R4 | 要還原出錯的檔案 | ✅ `git checkout HEAD -- <file>` **完整**還原，禁止部分還原 |
+| R5 | 要執行 `php artisan migrate` | ✅ PR merge 後才可 `migrate --force`。查 §MIGRATION-001/002 |
 
 ---
 
@@ -28,55 +26,109 @@ alwaysApply: true
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
-| Y3 | 要前端上線 | CI 全綠 → PR merge → `git pull` → **才**執行 `npm run deploy` |
+| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → `git pull` → `npm run deploy` → 驗 version.json |
 
 ---
 
-## 📋 完整 SOP 工作流程（每個任務都要走完）
+## 📋 完整 SOP（Phase 1 → 7，不可跳步）
 
 ### 任務類型判斷
 ```
 收到新功能需求  → 寫 PRD（plan-as-prd-cross-functional.mdc）
 收到 Bug 報告   → 寫 Bug Fix Plan（bug-fix-plan.mdc）
-兩者都需要 14 節章節 + Todos 9 類 + WebSearch §13
+收到技術債清償  → 輕量流程：ARCH評估→DEV→TEST→REVIEW（tech-debt.mdc）
 ```
 
-### 執行順序（不可跳步）
+### 執行順序
 ```
-Phase 1 [PLAN]   → 寫 PRD 或 Bug Fix Plan → 存入 .cursor/plans/
-Phase 2 [DEV]    → 新 branch → 寫測試(RED) → 改 code → CI GREEN
-Phase 3 [TEST]   → 自動 QA：跑所有 AC
-Phase 4 [SEC]    → STRIDE 審查（涉及 auth/PII/權限才做）
-Phase 5 [REVIEW] → Code review：逐條對照 FR
-Phase 6 [DOCS]   → 更新 CHANGELOG + AI_REGRESSION_LESSONS.md
-Phase 7 [OPS]    → merge PR → git pull → migrate → npm run deploy → health check
-```
-
-### PRD 必填 14 節（缺任何一節 = 不合格）
-```
-1.文件資訊  2.目標/KPI  3.範圍(In/Out)  4.RACI  4b.Dependencies
-5.User Stories+AC  5b.UI/UX(前端必填)  6.FR  7.NFR
-8.技術方向(禁code)  8b.Decision Log  9.資安  10.QA驗收
-11.上線維運  12.優先級  13.風險(先WebSearch)  14.DoD(AI可驗證)
+Phase 1 [PLAN]   → 存 .cursor/plans/<slug>_<date>.md
+Phase 2 [DEV]    → git checkout -b <type>/<slug>
+                   → 寫測試(RED) → push → CI RED 確認
+                   → 改 production code → push → CI GREEN（自己等，自己驗）
+Phase 3 [TEST]   → 跑所有 AC，自動驗收
+Phase 4 [SEC]    → STRIDE 審查（涉及 auth/PII/RFID/webhook 才做，見 module-security.mdc）
+Phase 5 [REVIEW] → 逐條對照 FR；Minor 問題登記 docs/TECH_DEBT.md（tech-debt.mdc）
+Phase 6 [DOCS]   → 更新 docs/CHANGELOG.md（格式：## YYYY-MM-DD — feat/fix: 標題）
+Phase 7 [OPS]    → PR merge → git pull → migrate --force（有migration才做）
+                   → npm run deploy（有前端改動才做）
+                   → curl health check → 才回報使用者「完成」
 ```
 
-### Bug Fix Plan 額外要求
-```
-+ 第 0 節：根因確認（根因類型 / 錯誤行為 / 預期行為）
-- 第 5 節：直接列 AC，不用 As a…格式
-- 第 7 節：非效能 bug → 填「不適用，說明理由」
-+ 第 10 節：Revert-proof 驗證（git stash 後測試應 fail）
+### ⛔ CI 自驗規則（不要叫使用者去看）
+```bash
+gh run list --limit 1       # 看最新 run ID
+gh run view <run_id>        # 等到 completed
+# success → 繼續下一步
+# failure → 自己看 log 修，不要說「請你去 GitHub 看」
 ```
 
 ---
 
-## 🗺️ 宮殿各房間（進對應房間前讀對應 .mdc）
+## 📋 PRD 必填 14 節（缺任何一節 = 不合格）
+```
+0.根因(BugFix專屬)  1.文件資訊  2.目標/KPI  3.範圍(In/Out)
+4.RACI  4b.Dependencies  5.User Stories+AC  5b.UI/UX(前端必填)
+6.FR  7.NFR  8.技術方向(禁code)  8b.Decision Log
+9.資安  10.QA驗收  11.上線維運  12.優先級  13.風險(先WebSearch)  14.DoD(AI可驗證)
+```
+
+---
+
+## 📋 Branch 命名規範
+```
+feat/<slug>          新功能
+fix/<slug>           Bug 修復
+td-batch<N>-<slug>   技術債清償
+chore/<slug>         文件/規則/維護
+```
+
+---
+
+## 🗺️ 宮殿各房間
 
 ```
-觸碰 backend/database/migrations/  → 讀 module-migration.mdc
-觸碰 backend/tests/                → 讀 module-test.mdc
-觸碰 frontend/src/                 → 讀 module-frontend.mdc
-寫新 PRD / Bug Fix Plan            → 讀 plan-as-prd-cross-functional.mdc
+觸碰 backend/database/migrations/  → module-migration.mdc（chunkById / DEFAULT回填）
+觸碰 backend/tests/                → module-test.mdc（NOT NULL / Factory / 時間敏感）
+觸碰 frontend/src/                 → module-frontend.mdc（deploy時機 / 自修顯示）
+涉及 auth/PII/RFID/Webhook         → module-security.mdc（STRIDE速查）
+寫新 PRD / Bug Fix Plan            → plan-as-prd-cross-functional.mdc
                                       + prd-section-guide.mdc
                                       + bug-fix-plan.mdc
+[REVIEW] 完成有 Minor 問題          → tech-debt.mdc → 登記 docs/TECH_DEBT.md
+緊急事故 / 危險操作                 → docs/DANGEROUS_OPERATIONS.md
+```
+
+---
+
+## ✅ OPS 驗收清單（Phase 7 必做）
+```bash
+# 1. Health check
+curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+# 必須看到 {"status":"ok",...}
+
+# 2. 前端版本確認（有 deploy 才做）
+cat /home/admin/backend/public/version.json  # 時間戳應為剛才的時間
+
+# 3. Migration 確認（有 migration 才做）
+cd /home/admin/backend && php artisan migrate:status | tail -5
+```
+
+---
+
+## 🆘 緊急備份指令（高風險操作前必做）
+
+```bash
+TS=$(date '+%Y-%m-%d_%H%M%S')
+
+# DB 備份（任何 migration / DELETE / UPDATE 前）
+mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+  --single-transaction AllTrue | gzip > /home/admin/backups/emergency/db_pre_${TS}.sql.gz
+
+# 測試安全路徑（唯一合法的跑測試方式）— 不得在 /home/admin/backend/ 直接跑
+cp -r /home/admin/backend /tmp/backend-test-$$
+sed -i 's/^DB_DATABASE=.*/DB_DATABASE=AllTrue_test/' /tmp/backend-test-$$/.env
+cd /tmp/backend-test-$$ && php artisan test
+cd / && rm -rf /tmp/backend-test-$$
+
+# 詳細程序見：docs/DANGEROUS_OPERATIONS.md
 ```

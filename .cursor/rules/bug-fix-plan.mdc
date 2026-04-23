@@ -1,7 +1,10 @@
 ---
-description: 寫 Bug Fix Plan 時以工程師視角產出結構化修復計畫，供 AI Agent 跨功能自動執行
-globs: "**/.cursor/plans/**"
-alwaysApply: true
+description: >-
+  寫 Bug Fix Plan 時以工程師視角產出結構化修復計畫，供 AI Agent 跨功能自動執行。
+  觸發：收到「寫 bug fix plan / 修復計畫 / bug plan」指令，或開啟 .cursor/plans/ 下的檔案。
+globs:
+  - ".cursor/plans/**"
+alwaysApply: false
 ---
 
 # Bug Fix Plan 強制規則（AI Agent 必須遵守）
