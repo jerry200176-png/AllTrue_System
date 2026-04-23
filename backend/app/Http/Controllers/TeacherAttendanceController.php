@@ -388,7 +388,7 @@ class TeacherAttendanceController extends Controller
                 ->unique('teacher_signin_id')
             : collect();
 
-        \Log::info('[teacher-monthly-export]', [
+        Log::info('[teacher-monthly-export]', [
             'user_id'    => $request->attributes->get('auth_user')?->id,
             'year_month' => $yearMonth,
             'campus_ids' => $campusIds,
