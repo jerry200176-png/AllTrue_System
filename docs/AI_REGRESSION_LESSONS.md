@@ -2022,6 +2022,38 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 
 ---
 
+## §SEC-001 — DB::table() raw queries 不受 Eloquent global scope 保護，campus 過濾必須手動加
+
+### 問題模式（2026-04-23，PR #34）
+
+`TeacherAttendanceController` 的 `index()` / `unclosed()` / `export()` / `exportMonthly()` 全用 `DB::table()` 而非 Eloquent Model。前端傳入 `campus_id`（代表 UI 選定分校），但後端完全忽略，只用 `auth_campus_ids`（用戶所屬**所有**分校）。多分校 director 會看到其他分校的老師出勤記錄。
+
+### 禁止回歸
+
+```php
+// ❌ 舊寫法：frontend 傳的 campus_id 被忽略
+if ($role !== 'super_admin' && ! empty($campusIds)) {
+    $query->whereIn('ts.CampusID', $campusIds); // 所有分校，無視選定分校
+}
+
+// ✅ 正確：使用 resolveEffectiveCampusIds() 統一驗證
+$effectiveCampusIds = $this->resolveEffectiveCampusIds($request);
+if ($effectiveCampusIds instanceof JsonResponse) return $effectiveCampusIds;
+if ($effectiveCampusIds !== null) $query->whereIn('ts.CampusID', $effectiveCampusIds);
+```
+
+### 強制規則
+
+1. **任何 `DB::table()` 涉及分校資料的方法**：必須同時驗證 `campus_id` 參數是否在 `auth_campus_ids` 子集內
+2. **空 `auth_campus_ids` 非 super_admin**：必須回 403，不能 bypass 顯示全部
+3. **前端送的 `branch_id` / `campus_id`**：後端有責任驗證，不能盲目信任，但也不能完全忽略
+
+### 業界根因（WebSearch 2026-04-23）
+
+> "Global scopes only protect Eloquent queries. Any raw SQL, DB::table() calls will not apply the tenant filter. Audit every raw query." — IGC Laravel Multi-tenant Guide
+
+---
+
 ## §TEST-003 — AI 對自訂 VoidedAt（非 Laravel SoftDeletes）使用 withTrashed() 導致 CI 崩潰
 
 ### 問題模式
