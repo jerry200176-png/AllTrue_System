@@ -32,27 +32,31 @@
       <div class="att-stats">
         <div class="att-stat-card">
           <div class="att-stat-num">{{ teacherStats.total }}</div>
-          <div class="att-stat-label">今日已打卡</div>
+          <div class="att-stat-label">今日到班</div>
+        </div>
+        <div class="att-stat-card">
+          <div class="att-stat-num">{{ teacherOnDuty.length }}</div>
+          <div class="att-stat-label">行政出勤</div>
         </div>
         <div class="att-stat-card stat-late">
           <div class="att-stat-num">{{ teacherStats.late }}</div>
           <div class="att-stat-label">遲到</div>
         </div>
         <div class="att-stat-card stat-absent">
-          <div class="att-stat-num">{{ teacherStats.pending }}</div>
-          <div class="att-stat-label">待核對</div>
+          <div class="att-stat-num">{{ teacherStats.anomaly }}</div>
+          <div class="att-stat-label">課表異常</div>
         </div>
       </div>
 
-      <!-- Anomaly List -->
+      <!-- Anomaly List：只顯示 late / missed（真正需要人工介入的） -->
       <div class="card att-checkin-card">
         <div class="att-checkin-header">
-          <div class="att-section-title">異常待處理</div>
+          <div class="att-section-title">課表異常待處理</div>
           <span v-if="teacherAnomalies.length" class="att-badge">{{ teacherAnomalies.length }}</span>
         </div>
         <div v-if="teacherLoading" class="att-empty">載入中…</div>
         <div v-else-if="teacherAnomalies.length === 0" class="att-empty">
-          今日無老師打卡異常 ✓
+          今日無課表異常 ✓
         </div>
         <div v-else class="ta-anomaly-list">
           <div v-for="r in teacherAnomalies" :key="r.id" class="ta-anomaly-row">
@@ -63,6 +67,25 @@
             </div>
             <button class="primary small" @click="openAdjust(r)">補卡</button>
           </div>
+        </div>
+
+        <!-- 行政出勤區：有刷卡但無排課，正常到班，不需處理 -->
+        <div v-if="!teacherLoading && teacherOnDuty.length" class="ta-onduty-section">
+          <div class="ta-onduty-title">
+            <span class="material-symbols-outlined" style="font-size:15px;vertical-align:-3px">badge</span>
+            行政出勤（{{ teacherOnDuty.length }} 人，無排課，自動記錄）
+          </div>
+          <div class="ta-onduty-list">
+            <span v-for="r in teacherOnDuty" :key="r.id" class="ta-onduty-chip">
+              {{ r.teacher_name }} {{ r.sign_in_dt?.slice(11, 16) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 系統待確認：排課資料查詢失敗，不是人工缺失 -->
+        <div v-if="!teacherLoading && teacherSystemPending.length" class="ta-sys-pending">
+          <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-3px">info</span>
+          {{ teacherSystemPending.length }} 筆排課資料待比對（系統自動確認，無需人工操作）
         </div>
       </div>
 
@@ -786,26 +809,37 @@ const teacherUnclosed = ref([]);
 const teacherLoading  = ref(false);
 const teacherDate     = ref(new Date().toISOString().slice(0, 10));
 
+// 真正需要人工介入的異常：有課表但遲到 / 有課表但完全未刷
 const teacherAnomalies = computed(() =>
-  teacherRecords.value.filter(r => !['normal', 'adjusted'].includes(r.status))
+  teacherRecords.value.filter(r => ['late', 'missed'].includes(r.status))
+);
+
+// 行政出勤：有刷卡但當天無排課，屬正常到班，不需人工處理
+const teacherOnDuty = computed(() =>
+  teacherRecords.value.filter(r => r.status === 'source_only')
+);
+
+// 系統待確認：排課查詢失敗（資料問題），與人工異常分開顯示
+const teacherSystemPending = computed(() =>
+  teacherRecords.value.filter(r => r.status === 'pending_review')
 );
 
 const teacherStats = computed(() => ({
   total:   teacherRecords.value.length,
   late:    teacherRecords.value.filter(r => r.status === 'late').length,
-  pending: teacherRecords.value.filter(r => ['source_only', 'pending_review', 'missed'].includes(r.status)).length,
+  anomaly: teacherAnomalies.value.length,   // 課表異常（需人工確認）
 }));
 
 const adjustModal = reactive({ visible: false, record: null });
 
 const TEACHER_STATUS_LABEL = {
-  normal:         '正常',
+  normal:         '準時到班',
   late:           '遲到',
   early_leave:    '早退',
   missed:         '漏刷',
   adjusted:       '已補卡',
-  pending_review: '待確認',
-  source_only:    '待核對',
+  pending_review: '系統待確認',
+  source_only:    '行政出勤',
   no_record:      '未打卡',
 };
 const TEACHER_STATUS_CLASS = {
@@ -814,8 +848,8 @@ const TEACHER_STATUS_CLASS = {
   early_leave:    'ts-badge-warn',
   missed:         'ts-badge-error',
   adjusted:       'ts-badge-muted',
-  pending_review: 'ts-badge-warn',
-  source_only:    'ts-badge-warn',
+  pending_review: 'ts-badge-muted',
+  source_only:    'ts-badge-ok',
 };
 
 function teacherStatusLabel(s) { return TEACHER_STATUS_LABEL[s] ?? s; }
@@ -2478,4 +2512,38 @@ watch(() => props.branchId, () => {
 .ts-badge-warn  { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .ts-badge-error { background: #fce8e6; color: #c62828; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .ts-badge-muted { background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+/* 行政出勤區（source_only — 到班但無排課，正常狀態） */
+.ta-onduty-section {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border-radius: 8px;
+  border: 1px solid #bbf7d0;
+}
+.ta-onduty-title {
+  font-size: 12px;
+  color: #15803d;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.ta-onduty-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ta-onduty-chip {
+  font-size: 12px;
+  background: #dcfce7;
+  color: #166534;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+/* 系統待確認提示（pending_review — 資料問題，非人工缺失） */
+.ta-sys-pending {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #64748b;
+}
 </style>
