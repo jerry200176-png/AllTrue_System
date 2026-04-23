@@ -154,3 +154,31 @@ LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
 - `StudentSingIn` / `TeacherSingIn` 是 typo，實際表名就是這樣
 - 前端 `student_course_id` = 後端 `StudentClassID`
 - API path `student-classes` = DB table `StudentClass`
+
+## ⚠️ 高頻 Gotchas（bug 偵查前必讀）
+
+### G-001：Teacher.id === User.id（同一個人，兩張表 ID 相同）
+`StudentClass.TeacherID`、`StudentSingIn.TeacherID` 存的都是 `User.id`。  
+`auth_teacher_id` = `User.id`（`AttachAuthUser.php`）。  
+查詢 `Teacher` 或 `User` table 用同一個 ID 都能命中同一個人。
+
+### G-002：TeacherID = NULL → 老師查不到該記錄
+`AttendanceController::index()` 過濾：`WHERE si.TeacherID = auth_teacher_id`。  
+`NULL = X` → false → 記錄從老師視角消失（但 director 可見，因為用 CampusID 過濾）。  
+成因：`StudentClass.TeacherID` 為 null 時，刷卡記錄繼承 null。  
+**修補 SQL**：`UPDATE StudentSingIn si JOIN ClassSession cs ... JOIN StudentClass sc ... SET si.TeacherID = sc.TeacherID WHERE si.TeacherID IS NULL AND sc.TeacherID IS NOT NULL`
+
+### G-003：ClassSession.Status 不由刷卡自動更新（2026-04-23 前的歷史記錄）
+2026-04-23 前刷卡建立的 StudentSingIn，ClassSession.Status 仍為 `scheduled`。  
+修復（PR #23）只對新刷卡有效，歷史記錄需手動 UPDATE。  
+`AttendanceEffectsService::applySessionStatus()` 有 guard：只更新 `scheduled`，不覆寫人工決策。
+
+### G-004：SwipeRfidController 時間窗口硬寫 30 分鐘，不讀 Campus.SwipeWindowMinutes
+`findMatchingClass()` 的窗口是 hardcoded 30min。  
+`AttendanceController::resolveSwipeWindowMinutes()` 有讀 campus 設定，但刷卡路徑沒用到（TD 待清償）。
+
+### G-005：Memo 欄位識別記錄來源
+- `'swipe-rfid'`：刷卡且比對到 StudentClass  
+- `'self_study'`：刷卡但無匹配課程  
+- `'presence-window'`：刷退時 backfill 補建  
+- `NULL`：老師手動點名或 legacy 記錄（不含 Memo 欄位）
