@@ -548,3 +548,23 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main 0a04856] chore(hourly): auto sync 2026-04-23 23:30
+ 20 files changed, 2356 insertions(+), 33 deletions(-)
+ create mode 100644 .cursor/plans/teacher_attendance_campus_filter_bugfix_2026-04-23.md
+ create mode 100644 .cursor/projects/home-admin/agent-tools/baa0300f-338a-4a72-b80c-1a2bdfb53c7d.txt
+ create mode 100644 .cursor/projects/home-admin/agent-tools/e90f7ffb-6867-4308-bb8f-83de0e33e96e.txt
+ create mode 100644 .cursor/projects/home-admin/agent-tools/fce92b7e-7c95-4b18-8ba1-7a7a4c9b1d79.txt
+ rename backend/public/assets/{index-D6dC5f9U.css => index-DKHJx5ts.css} (98%)
+ rename backend/public/assets/{index-xr45U8zo.js => index-oHdvdKbd.js} (99%)
+ create mode 100644 backups/sixhour/alltrue_6h_2026-04-23_2300.sql.gz
+ rename frontend/dist_build/assets/{index-D6dC5f9U.css => index-DKHJx5ts.css} (98%)
+ rename frontend/dist_build/assets/{index-xr45U8zo.js => index-oHdvdKbd.js} (99%)
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   017b269..0a04856  main -> main
+[git-sync] Done.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
