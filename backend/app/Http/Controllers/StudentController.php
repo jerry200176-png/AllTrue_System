@@ -429,7 +429,22 @@ class StudentController extends Controller
             'rfid' => 'required|string|max:64',
         ]);
 
-        $student->RFID = $data['rfid'];
+        $rfid = trim($data['rfid']);
+
+        // TD-010: 同分校不允許重複綁定相同 RFID
+        $conflict = Student::where('RFID', $rfid)
+            ->where('CampusID', $student->CampusID)
+            ->where('id', '!=', $student->id)
+            ->first();
+
+        if ($conflict) {
+            return response()->json([
+                'message' => "RFID [{$rfid}] 已綁定至同分校另一位學生（ID: {$conflict->id}），請先解除原有綁定",
+                'error'   => 'rfid_already_bound',
+            ], 422);
+        }
+
+        $student->RFID = $rfid;
         $student->save();
 
         return response()->json(['message' => '已綁定卡號', 'student_id' => $student->id]);
