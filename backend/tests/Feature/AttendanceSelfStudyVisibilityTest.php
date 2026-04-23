@@ -10,6 +10,7 @@ use App\Models\StudentSignIn;
 use App\Models\Subject;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -21,6 +22,19 @@ use Tests\TestCase;
 class AttendanceSelfStudyVisibilityTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Pin to 10:00 AM: now()->subHours(4) = 06:00, same date, no midnight crossing.
+        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     // ── FR-001: self_study 記錄出現在 API response ───────────────────────────
 
