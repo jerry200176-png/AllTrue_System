@@ -1,0 +1,46 @@
+---
+description: >-
+  文件寫作原則（記憶宮殿 + 省 token + 自動化優先）。
+  寫任何 .md / .mdc / rule 前先讀，避免重複內容、手動步驟腳本化、AI 失憶。
+globs:
+  - "docs/**"
+  - ".cursor/rules/**"
+  - "AGENTS.md"
+  - ".cursorrules"
+alwaysApply: false
+---
+
+# 文件寫作原則（記憶宮殿）
+
+## 寫之前先問三個問題
+
+1. **業界標準已知？** → 只寫 `參照 XXX`，不展開。AI 知道 GitHub Flow / OWASP / REST。
+2. **現有文件已有？** → 補充現有文件，不新建一份。
+3. **能寫成腳本？** → 先寫腳本，文件只記 `./scripts/xxx.sh --參數`，不列手動步驟。
+
+## 記憶宮殿架構（什麼放哪）
+
+| 層 | 檔案 | 放什麼 | 不放什麼 |
+|---|---|---|---|
+| 導航層（自動載入）| `.cursorrules` | 入口索引 + P0 事故 + 一行引用 | 細節、手動步驟、冗長清單 |
+| 規則層（按需）| `.cursor/rules/*.mdc` | Phase / 模組規格 | 業界已知的通用準則 |
+| 事件層（按需）| `AI_REGRESSION_LESSONS.md`、`CHANGELOG.md` | 已犯過的錯、歷史異動 | 操作 SOP |
+| 操作層（按需）| `OPERATIONS_RUNBOOK.md`、`docs/*.md` | SOP、業務規則 | 複製自腳本的手動步驟 |
+
+## 寫文件的強制規則
+
+- **一個主題一個出處**：同內容兩處 = 遲早有一處過時。
+- **頂層只引用不複製**：`.cursorrules` 用 `→ 見 docs/XXX.md §Y` 取代貼細節。
+- **可發現性**：新文件必須在 `.cursorrules` 或 `AGENTS.md` 加一行引用，否則 AI 找不到。
+- **刪勝於留**：問自己「三個月後 AI 還需要這行嗎？」不確定就刪。
+- **腳本優先**：重複超過 2 次的手動操作 → 寫腳本 → CI/排程自動跑 → 文件只寫腳本路徑。
+
+## 常見反模式（禁止）
+
+| 反模式 | 正確做法 |
+|---|---|
+| `.cursorrules` 貼整個 Phase 輸出模板 | 放 `.mdc`，`.cursorrules` 只引用 |
+| 文件列 `git fetch --prune` 等手動步驟 | 寫進 `scripts/xxx.sh`，文件只說「執行腳本」 |
+| 新建 `how-to-xxx.md` 而不更新既有文件 | 找到最相關的現有文件，補在裡面 |
+| 解釋 GitHub Flow / OWASP 細節 | 一句帶過，AI 已知 |
+| 兩個文件都寫同一個 API 的欄位定義 | 選一個出處，另一個用連結 |
