@@ -409,3 +409,16 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main f9cd3bf] chore(hourly): auto sync 2026-04-23 11:30
+ 8 files changed, 238 insertions(+), 13 deletions(-)
+ create mode 100644 backups/sixhour/alltrue_6h_2026-04-23_1100.sql.gz
+ create mode 100644 backups/sixhour/alltrue_pre_teacher_attendance_migrate_20260423_1048.sql.gz
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   c7b77e4..f9cd3bf  main -> main
+[git-sync] Done.
+[git-sync] Branch: feature/student-presence-window
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
