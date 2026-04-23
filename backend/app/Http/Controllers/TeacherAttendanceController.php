@@ -100,7 +100,9 @@ class TeacherAttendanceController extends Controller
         $campusIds = $request->attributes->get('auth_campus_ids', []);
 
         if ($role === 'super_admin') {
-            return null;
+            // super_admin 可選傳 campus_id 限縮查詢，不傳則看全部
+            $reqCampusId = $request->query('campus_id') ? (int) $request->query('campus_id') : null;
+            return $reqCampusId !== null ? [$reqCampusId] : null;
         }
 
         if (empty($campusIds)) {
@@ -215,9 +217,11 @@ class TeacherAttendanceController extends Controller
                 'new_signout_dt'      => $request->input('new_signout_dt'),
             ]);
 
-            // 只更新 Status，原始 SignInDT/SignOutDT 保持不變
-            $signin->Status = 'adjusted';
-            $signin->MDT    = now();
+            // 原始值已保存至 audit 表；主表改為補卡後的有效時間，前端才能正確顯示
+            $signin->SignInDT  = $request->input('new_signin_dt');
+            $signin->SignOutDT = $request->input('new_signout_dt'); // null 代表未補簽退
+            $signin->Status    = 'adjusted';
+            $signin->MDT       = now();
             $signin->save();
 
             return [$adj, $signin];
