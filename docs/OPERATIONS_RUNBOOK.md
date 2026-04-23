@@ -273,7 +273,41 @@ ORDER BY branch_id, course_id;
 
 ---
 
-## L. Log 管理與 Tmpfs 緩衝（2026-04-16）
+## L. 效能優化上線操作（mobile-learning-lag-fix）
+
+### 變更摘要
+
+| 項目 | 新值 | 回退方式 |
+|------|------|----------|
+| badge 輪詢間隔 | 60s 統一，背景頁暫停 | `perfFlags.js` → `BADGE_POLL_INTERVAL: 25000` → rebuild |
+| 評量頁 per_page | 50（含載入更多）| `.env` `PERF_LR_DEFAULT_PER_PAGE=200` |
+| 學生/class-sessions per_page | 200 / 500 | `perfFlags.js` 改回舊值 → rebuild |
+| 通知 sync | 每分校 5min throttle | `.env` `PERF_THROTTLE_NOTIF_SYNC=false` |
+| 手機 backdrop-filter | 640px 以下停用 | 移除 `styles.css` 中 `MOBILE PERF RELIEF` 區塊 → rebuild |
+| DB indexes | 4 組複合索引 | `php artisan migrate:rollback --step=1` |
+
+### 後端回退（5 分鐘內）
+```bash
+echo "PERF_THROTTLE_NOTIF_SYNC=false" >> /home/admin/backend/.env
+echo "PERF_LR_DEFAULT_PER_PAGE=200" >> /home/admin/backend/.env
+cd /home/admin/backend && php artisan config:clear
+# 如需回退索引：php artisan migrate:rollback --step=1
+```
+
+### SLO 門檻
+| 端點 | P95 目標 | P99 上限 |
+|------|----------|----------|
+| `GET /api/v1/learning-records` | ≤ 1200ms | ≤ 2000ms |
+| `GET /api/v1/notifications/unread-count` | ≤ 300ms | ≤ 600ms |
+| `GET /api/v1/class-sessions` | ≤ 800ms | ≤ 1500ms |
+
+### Go / No-Go
+- **Go**：卡頓回報下降 ≥ 50%，無核心回歸
+- **No-Go**：任一核心回歸，或 SLO 30 分鐘持續超標
+
+---
+
+## M. Log 管理與 Tmpfs 緩衝（2026-04-16）
 
 ### 1) 現況
 
@@ -340,7 +374,7 @@ bash /home/admin/scripts/infra/baseline-capture.sh
 
 ---
 
-## M. LINE 課表回報推播設定（`staff_line_group_id`）（2026-04-18 新增）
+## N. LINE 課表回報推播設定（`staff_line_group_id`）（2026-04-18 新增）
 
 ### 背景
 

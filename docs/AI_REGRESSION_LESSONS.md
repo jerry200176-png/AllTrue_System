@@ -5,6 +5,122 @@
 
 ---
 
+# ⛔⛔⛔ 開工前必讀摘要（30 秒讀完）⛔⛔⛔
+
+> **本檔超過 2000 行。你不需要全部讀完，但這一節必須讀完。**
+> 下面是從 33 條歷史事故濃縮出的 **5 條紅線** 和 **3 條黃線**。
+> 違反紅線 = P0 故障。違反黃線 = 高概率 CI 失敗浪費時間。
+
+## 紅線（⛔ 違反 = P0 故障，零容忍）
+
+### R1. `/home/admin` 就是 production — 改檔案 = 改線上
+
+```
+/home/admin/backend/  ← nginx 直接 serve 的 document root
+/home/admin/frontend/ ← npm run deploy 後 copy 到 backend/public/
+```
+
+- **feature branch 上修改既有 .php/.vue 檔案 = 即時影響 production**
+- git checkout -b 不會隔離 working tree
+- 唯一安全的寫入：**新增** test file（`tests/` 目錄）、新增 Export class、新增 migration
+- 事故：§P0-005（2026-04-23）、§事故F（2026-04-23）
+
+### R2. 禁止在 Pi 上跑測試（已發生 3 次 DB 清空事故）
+
+```
+❌ cd /home/admin/backend && php artisan test     ← 會 DROP production DB
+❌ cd /home/admin/backend && vendor/bin/phpunit   ← 同上
+❌ cd /home/admin/backend && php artisan config:clear  ← 全站 401
+```
+
+- 測試只能在 GitHub Actions CI 跑
+- debug CI 失敗 → 改檔案 → push → 看 CI log，不要本機跑
+- **包括「只跑單一測試檔」也禁止** — `RefreshDatabase` trait 不管你跑幾個檔案都會 DROP 全部表
+- 事故：§2026-04-22 P0 最高級（DB 清空）、§2026-04-22 config:clear（全站 401）、§2026-04-23 事故E（全站 500）、**§P0-006（2026-04-23 二次 DB 清空）**
+
+### R3. CI 全綠前禁止改 production 既有檔案
+
+```
+✅ 正確順序：
+   1. 新增 test file → push → CI RED
+   2. 改 production code → push → CI GREEN
+   3. PR merge → git checkout main → git pull
+   4. 前端有改才 npm run deploy
+
+❌ 錯誤：直接改 Controller/Route/Config 再補測試
+❌ 錯誤：CI 還在跑就通知使用者
+❌ 錯誤：PR 還沒 merge 就 npm run deploy
+```
+
+- 事故：§P0-005、§事故D（.htaccess）、§事故F
+
+### R4. 還原必須完全還原
+
+```
+❌ 部分還原（「看起來有問題的先拿掉，其他留著」）→ 二次故障
+✅ git checkout HEAD -- <file>  完整還原
+```
+
+- 事故：§事故D（移除 CSP 保留 nosniff → 第二次破壞）
+
+### R5. 禁止 git push --force / 禁止直接 push main
+
+- 見 `.cursor/rules/p0-never-force-push-and-deploy.mdc`
+- 事故：§2026-04-21 事故A（force push 覆蓋 production）
+
+---
+
+## 黃線（⚠️ 違反 = CI 反覆失敗、浪費時間）
+
+### Y1. 寫測試前先查 NOT NULL 欄位
+
+```sql
+SELECT COLUMN_NAME FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA='AllTrue' AND TABLE_NAME='<表名>'
+  AND IS_NULLABLE='NO' AND EXTRA NOT LIKE '%auto_increment%'
+  AND COLUMN_DEFAULT IS NULL;
+```
+
+- 常漏：`schedules` 的 **S.D.B.**（`student_id`, `day_of_week`, `branch_id`）
+- `Campus` 有 10+ 個 NOT NULL 欄位，用 `firstOrCreate` 別 raw insert
+- 事故：§TEST-001（反覆出現 4+ 次）、§TEST-004
+
+### Y2. PhpSpreadsheet sheet 名稱不能為空
+
+- 動態 sheet name 必須 guard 空字串，fallback 到 `"Sheet"` 或 `"老師{$id}"`
+- 事故：§EXPORT-001
+
+### Y3. 前端改了必須 build 才生效
+
+- `npm run deploy` 只能在 **main branch + PR merged 後** 執行
+- 忘記 deploy ≠ 功能消失，只是前端還在用舊 JS bundle
+- 事故：§P0-005（功能做完但使用者看不到）
+
+---
+
+## 模組對照索引（改特定模組前讀對應條目）
+
+| 模組 | 必讀條目 |
+|------|----------|
+| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程 |
+| 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction |
+| 評量 | §同天多堂課 buildEvents、§請假後不填評量 |
+| 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
+| 排課 | §start_time 格式、§智慧排課誤標取消 |
+| 出缺勤 | §分校隔離後端強制、§老師端敏感遮蔽 |
+| 月結制 | §b3 inactive 歷史、§b4 加購分流 |
+| routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
+| 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
+| 老師管理 / 聊天 | §AttachAuthUser teacher_branches |
+
+---
+
+# 以下為完整事故紀錄（33 條）
+
+---
+
 ## §TEST-001 — AI 寫測試時遺漏 NOT NULL 欄位導致反覆 CI 失敗
 
 ### 問題模式
@@ -2041,6 +2157,90 @@ $this->sheetTitle = $sanitized !== '' ? $sanitized : 'Sheet';
    - 最多 31 字元（multibyte 需用 `mb_substr`）
 3. **寫 DB 查詢做 export 時**，`COALESCE(..., '')` 的最後一個 fallback 應改為有意義的字串，或在 Export class 層再做 fallback
 4. **Export 測試資料**若沒有完整的 Teacher/User join 記錄，要手動補 teacher_name，或在 test 中直接插入 Teacher 記錄
+
+---
+
+## §P0-006 — AI 在 production 跑 `php artisan test`（第三次 DB 清空事故）
+
+### 事故（2026-04-23 17:17，fix/self-study-status-edit）
+
+AI 為了驗證自修狀態編輯的測試（RED→GREEN），在 `/home/admin/backend` 直接執行：
+
+```bash
+cd /home/admin/backend && php artisan test tests/Feature/AttendanceSelfStudyStatusTest.php
+```
+
+`RefreshDatabase` trait 對 production `AllTrue` DB 執行 `migrate:fresh`，**清空所有資料表**。
+
+### 影響
+
+- User: 87→0、Student: 544→0、ClassSession: 5665→0
+- 全站無法登入（User 表空）
+- 從 `sixhour/alltrue_6h_2026-04-23_1700.sql.gz` 還原，資料損失窗口約 30 分鐘
+
+### 根因
+
+1. **AI 明知 R2 紅線仍違反**：本對話稍早才剛寫完「開工前必讀摘要」中的 R2（禁止在 Pi 上跑測試），幾分鐘後就自己違反
+2. **誤以為「只跑一個測試檔」比較安全** — `RefreshDatabase` 不分測試數量，一律 `DROP ALL TABLES`
+3. **這是同一 workspace 第三次發生 DB 清空**（§2026-04-22 P0 最高級、§2026-04-23 事故E、本次）
+
+### 加嚴規則
+
+- R2 紅線新增「包括只跑單一測試檔也禁止」
+- `.cursorrules` 第 8 條（⛔⛔⛔ 絕對禁止 php artisan test）已是最高級警告，但 AI 仍執行
+- **任何涉及 `php artisan test`、`phpunit`、`vendor/bin/phpunit` 的指令，AI 必須在執行前停下來，確認「我是不是在 /home/admin/backend？」，答案是 YES 就絕對不執行**
+
+---
+
+## §P0-005 — AI 在 feature branch 直接修改 production 檔案，違反 CI-first 規則
+
+### 事故（2026-04-23，fix/self-study-status-edit）
+
+AI 在 `/home/admin` 建立 feature branch `fix/self-study-status-edit` 後，**直接編輯了 production 伺服器上的檔案**：
+
+- `backend/app/Http/Controllers/AttendanceController.php`（後端 API）
+- `frontend/src/pages/AttendancePage.vue`（前端頁面）
+
+由於 `/home/admin/backend` **就是 production 伺服器的 document root**，任何本地檔案修改會**即時影響線上服務**。
+
+### 影響
+
+- `AttendanceController::update()` 的 validation rule 被改動，可能導致使用者操作時收到非預期的 422 或行為異常
+- `AttendancePage.vue` 為前端 source，雖需 build 才生效，但先前已執行過 `npm run deploy`，若再次 deploy 會把未經 CI 驗證的程式碼推上線
+- 同一時段 `npm run deploy` 重建前端 bundle，造成瀏覽器 JS hash 不匹配、auth token 狀態丟失，使用者看到全站 401
+
+### 根因
+
+1. **忘記 `/home/admin` 即 production**：在 feature branch 上修改檔案等同直接改 production
+2. **未遵守 RED-GREEN-REFACTOR on CI**：正確流程是只寫測試（新檔案），push 到 GitHub 讓 CI 跑 RED，再改 code push GREEN — 全程不改 production working tree 的既有檔案
+3. **`npm run deploy` 執行時機錯誤**：應在 CI 全綠、PR merge 後才 deploy，不是發現問題就先 build
+
+### 正確流程（必遵守）
+
+```
+1. git checkout -b fix/xxx        ← 建 branch（OK，但不改既有檔案）
+2. 只新增 test 檔案               ← 新增不影響 production
+3. git add tests/ && git commit && git push
+4. CI RED 確認 → 修改 production code → commit → push
+5. CI GREEN → PR review → squash merge
+6. git checkout main && git pull   ← production 才更新
+7. npm run deploy                  ← 前端才重建
+```
+
+### 禁止事項（加入 P0 清單）
+
+| 編號 | 禁止行為 |
+|------|----------|
+| P0-005a | 在 feature branch 上修改 `backend/app/`、`backend/routes/`、`backend/config/` 等既有 production 檔案 |
+| P0-005b | 在 PR merge 前執行 `npm run deploy` |
+| P0-005c | 在沒有使用者明確要求的情況下執行 `npm run deploy`（auto-deploy rule 僅限「本對話中曾修改前端 + 已 merge 到 main」的情境） |
+
+### 防再犯
+
+- 每次要修改既有後端 / 前端檔案前，先問自己：**「這個檔案改了會不會直接影響 production？」**
+- 答案永遠是 **YES**（因為 workspace = production）
+- **唯一安全的寫入**：新增測試檔案（`tests/`）、新增 Export class、新增 migration — 這些不會被既有 route 載入
+- 參考 `§2026-04-22 P0 最高級事故` 和 `p0-no-system-changes-before-ci.mdc`
 
 ---
 

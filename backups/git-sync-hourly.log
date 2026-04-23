@@ -449,3 +449,32 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: td-batch1-swipe-tests
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Branch: fix/self-study-status-edit
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[fix/self-study-status-edit e108f60] chore(hourly): auto sync 2026-04-23 17:30
+ 28 files changed, 2053 insertions(+), 217 deletions(-)
+ create mode 100644 .cursor/projects/home-admin/agent-tools/2cfadebc-ecee-442d-9184-e8feca89fcd8.txt
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/f6bf92a5-f49b-402b-a4db-3750697b68e6/f6bf92a5-f49b-402b-a4db-3750697b68e6.jsonl
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/f6bf92a5-f49b-402b-a4db-3750697b68e6/subagents/6dec1a21-c951-43c5-b1da-8b4ad80d599c.jsonl
+ create mode 100644 backend/public/assets/index-CYaJx_t2.css
+ create mode 100644 backend/public/assets/index-DARkLEXT.js
+ delete mode 100644 backend/public/assets/index-DIW9Eqj4.js
+ delete mode 100644 backend/public/assets/index-LjYS4mLc.css
+ create mode 100644 backend/tests/Feature/AttendanceSelfStudyStatusTest.php
+ create mode 100644 backups/sixhour/alltrue_6h_2026-04-23_1700.sql.gz
+ create mode 100644 frontend/dist_build/assets/index-CYaJx_t2.css
+ create mode 100644 frontend/dist_build/assets/index-DARkLEXT.js
+ delete mode 100644 frontend/dist_build/assets/index-DIW9Eqj4.js
+ delete mode 100644 frontend/dist_build/assets/index-LjYS4mLc.css
+[git-sync] Pushing...
+remote: 
+remote: Create a pull request for 'fix/self-study-status-edit' on GitHub by visiting:        
+remote:      https://github.com/jerry200176-png/AllTrue_System/pull/new/fix/self-study-status-edit        
+remote: 
+To github.com:jerry200176-png/AllTrue_System.git
+ * [new branch]      fix/self-study-status-edit -> fix/self-study-status-edit
+branch 'fix/self-study-status-edit' set up to track 'origin/fix/self-study-status-edit'.
+[git-sync] Done.
