@@ -35,7 +35,8 @@ class TeacherMonthlyAttendanceExport implements WithMultipleSheets
         $usedNames = [];
 
         foreach ($grouped as $teacherId => $teacherRecords) {
-            $teacherName = $teacherRecords->first()->teacher_name ?? "老師{$teacherId}";
+            $raw = $teacherRecords->first()->teacher_name ?? '';
+            $teacherName = $raw !== '' ? $raw : "老師{$teacherId}";
 
             // Deduplicate sheet names (Excel requires unique sheet titles)
             $sheetName = $this->uniqueSheetName($teacherName, $usedNames);

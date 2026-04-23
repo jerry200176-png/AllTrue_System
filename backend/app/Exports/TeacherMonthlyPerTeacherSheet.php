@@ -47,8 +47,9 @@ class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles,
         $this->records     = $records;
         $this->yearMonth   = $yearMonth;
         $this->campusName  = $campusName;
-        // Excel sheet name ≤ 31 chars, strip forbidden chars
-        $this->sheetTitle  = $this->sanitizeSheetName($teacherName);
+        // Excel sheet name ≤ 31 chars, strip forbidden chars; must not be empty
+        $sanitized = $this->sanitizeSheetName($teacherName);
+        $this->sheetTitle = $sanitized !== '' ? $sanitized : 'Sheet';
     }
 
     public function title(): string
