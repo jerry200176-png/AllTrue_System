@@ -2,6 +2,14 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — fix(batch3): TD-010 RFID 唯一性約束（PR #18）
+
+- **Migration** `2026_04_23_300000`：DROP 舊單欄位 `student_rfid_unique`，ADD composite unique index `students_rfid_campus_unique (RFID, CampusID)`；同分校同卡不再靜默覆蓋，不同分校允許相同卡號
+- **StudentController::bindCard**：綁卡前檢查同分校是否已有相同 RFID，重複時回傳 422 + 明確錯誤訊息（`rfid_already_bound`）
+- **測試**：`RfidUniqueConstraintTest`（3 tests）— 同分校重複 422、不同分校允許、NULL 不衝突
+
+---
+
 ## 2026-04-23 — feat: 出缺勤管理改善 v1.1（老師月報匯出 + 記錄刪除 + 自修轉到班）
 
 ### 背景

@@ -212,7 +212,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Done** 2026-04-23 |
 | 優先級 | P2 |
 | 發現日期 | 2026-04-23 |
 | 發現來源 | [REVIEW] 出缺勤邊界分析 |
@@ -221,6 +221,7 @@
 | 建議做法 | 加 DB migration 建立 `unique index`（`Student.RFID` + `CampusID`）；綁定入口加後端唯一性驗證，返回明確錯誤訊息。 |
 | 清償成本估計 | 低（< 2hr） |
 | 不做的代價 | 資料錯誤時系統不警告，某個學生的刷卡永遠不被記錄，直到人工發現才知道卡片被佔用。 |
+| 清償記錄 | migration `2026_04_23_300000`：DROP 舊單欄位 `student_rfid_unique`，ADD composite `students_rfid_campus_unique (RFID, CampusID)`；`StudentController::bindCard` 加唯一性驗證回傳 422；3 個 feature tests (PR #18 CI green) |
 
 ---
 
