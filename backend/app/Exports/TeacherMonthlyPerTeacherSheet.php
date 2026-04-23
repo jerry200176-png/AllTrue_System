@@ -5,7 +5,6 @@ namespace App\Exports;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -27,7 +26,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
  *   I  下班（當日 max SignOutDT）
  *   J  加班（本版空白）
  */
-class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles, ShouldAutoSize
+class TeacherMonthlyPerTeacherSheet implements FromArray, WithTitle, WithStyles
 {
     private static array $weekdayMap = ['日', '一', '二', '三', '四', '五', '六'];
 
