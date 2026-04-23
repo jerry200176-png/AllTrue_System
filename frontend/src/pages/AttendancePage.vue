@@ -1185,10 +1185,10 @@ async function fetchTeacherRecords() {
     const { data: { session } } = await supabase.auth.getSession();
     const token = session?.access_token;
     const [recRes, unclosedRes] = await Promise.all([
-      fetch(`/api/v1/teacher-attendance?date=${teacherDate.value}&branch_id=${props.branchId}&per_page=100`, {
+      fetch(`/api/v1/teacher-attendance?date=${teacherDate.value}&campus_id=${props.branchId}&per_page=100`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
-      fetch(`/api/v1/teacher-attendance/unclosed?date=${teacherDate.value}`, {
+      fetch(`/api/v1/teacher-attendance/unclosed?date=${teacherDate.value}&campus_id=${props.branchId}`, {
         headers: { Authorization: `Bearer ${token}` },
       }),
     ]);
@@ -1209,7 +1209,7 @@ async function exportTeacherCsv() {
   if (!props.branchId) return;
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
-  const url = `/api/v1/teacher-attendance/export?date_from=${teacherDate.value}&date_to=${teacherDate.value}&format=csv`;
+  const url = `/api/v1/teacher-attendance/export?date_from=${teacherDate.value}&date_to=${teacherDate.value}&format=csv&campus_id=${props.branchId}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) return;
   const blob = await res.blob();

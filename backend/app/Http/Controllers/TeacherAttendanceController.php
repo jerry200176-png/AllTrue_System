@@ -80,13 +80,55 @@ class TeacherAttendanceController extends Controller
     }
 
     /**
+     * 解析本次請求的有效分校 ID 清單。
+     *
+     * 回傳值語意：
+     *   null            → super_admin，不限校
+     *   array<int>      → 使用此清單做 CampusID 過濾
+     *   JsonResponse    → 403，呼叫端應直接 return
+     *
+     * 邏輯：
+     *   1. super_admin → null（不過濾）
+     *   2. 非 super_admin 且 auth_campus_ids 為空 → 403（帳號未指派分校）
+     *   3. 傳入 campus_id 且在 auth_campus_ids 內 → [campus_id]
+     *   4. 傳入 campus_id 但不在 auth_campus_ids 內 → 403
+     *   5. 未傳 campus_id → fallback 為 auth_campus_ids 全部
+     */
+    private function resolveEffectiveCampusIds(Request $request): array|\Illuminate\Http\JsonResponse|null
+    {
+        $role      = $request->attributes->get('auth_role');
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+
+        if ($role === 'super_admin') {
+            return null;
+        }
+
+        if (empty($campusIds)) {
+            return response()->json(['message' => 'Forbidden: no campus assignment'], 403);
+        }
+
+        $reqCampusId = $request->query('campus_id') ? (int) $request->query('campus_id') : null;
+
+        if ($reqCampusId !== null) {
+            if (! in_array($reqCampusId, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            return [$reqCampusId];
+        }
+
+        return $campusIds;
+    }
+
+    /**
      * GET /api/v1/teacher-attendance
      * 主任查詢所屬分校老師打卡總覽
      */
     public function index(Request $request)
     {
-        $role      = $request->attributes->get('auth_role');
-        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $effectiveCampusIds = $this->resolveEffectiveCampusIds($request);
+        if ($effectiveCampusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $effectiveCampusIds;
+        }
 
         $date      = $request->query('date', now()->toDateString());
         $teacherId = $request->query('teacher_id') ? (int) $request->query('teacher_id') : null;
@@ -108,9 +150,8 @@ class TeacherAttendanceController extends Controller
             ])
             ->whereDate('ts.SignInDT', $date);
 
-        // 分校隔離
-        if ($role !== 'super_admin' && ! empty($campusIds)) {
-            $query->whereIn('ts.CampusID', $campusIds);
+        if ($effectiveCampusIds !== null) {
+            $query->whereIn('ts.CampusID', $effectiveCampusIds);
         }
 
         if ($teacherId) {
@@ -196,8 +237,10 @@ class TeacherAttendanceController extends Controller
      */
     public function unclosed(Request $request)
     {
-        $role      = $request->attributes->get('auth_role');
-        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $effectiveCampusIds = $this->resolveEffectiveCampusIds($request);
+        if ($effectiveCampusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $effectiveCampusIds;
+        }
 
         $date        = $request->query('date', now()->toDateString());
         $cutoffTime  = $request->query('cutoff_time', '20:00');
@@ -218,8 +261,8 @@ class TeacherAttendanceController extends Controller
             ->whereNull('ts.SignOutDT')
             ->where('ts.SignInDT', '<=', $cutoffDT);
 
-        if ($role !== 'super_admin' && ! empty($campusIds)) {
-            $query->whereIn('ts.CampusID', $campusIds);
+        if ($effectiveCampusIds !== null) {
+            $query->whereIn('ts.CampusID', $effectiveCampusIds);
         }
 
         return response()->json(['data' => $query->get()]);
@@ -237,8 +280,10 @@ class TeacherAttendanceController extends Controller
             'format'    => 'nullable|in:csv,json',
         ]);
 
-        $role      = $request->attributes->get('auth_role');
-        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $effectiveCampusIds = $this->resolveEffectiveCampusIds($request);
+        if ($effectiveCampusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $effectiveCampusIds;
+        }
 
         $dateFrom = $request->query('date_from');
         $dateTo   = $request->query('date_to');
@@ -261,8 +306,8 @@ class TeacherAttendanceController extends Controller
             ->whereDate('ts.SignInDT', '<=', $dateTo)
             ->orderBy('ts.SignInDT');
 
-        if ($role !== 'super_admin' && ! empty($campusIds)) {
-            $query->whereIn('ts.CampusID', $campusIds);
+        if ($effectiveCampusIds !== null) {
+            $query->whereIn('ts.CampusID', $effectiveCampusIds);
         }
 
         $records = $query->get();
@@ -310,7 +355,11 @@ class TeacherAttendanceController extends Controller
             'year_month' => 'required|date_format:Y-m',
         ]);
 
-        $role      = $request->attributes->get('auth_role');
+        $effectiveCampusIds = $this->resolveEffectiveCampusIds($request);
+        if ($effectiveCampusIds instanceof \Illuminate\Http\JsonResponse) {
+            return $effectiveCampusIds;
+        }
+
         $campusIds = $request->attributes->get('auth_campus_ids', []);
         $yearMonth = $request->query('year_month');
 
@@ -340,8 +389,8 @@ class TeacherAttendanceController extends Controller
             ->orderBy('ts.TeacherID')
             ->orderBy('ts.SignInDT');
 
-        if ($role !== 'super_admin' && ! empty($campusIds)) {
-            $query->whereIn('ts.CampusID', $campusIds);
+        if ($effectiveCampusIds !== null) {
+            $query->whereIn('ts.CampusID', $effectiveCampusIds);
         }
 
         $records = $query->get();
@@ -379,8 +428,8 @@ class TeacherAttendanceController extends Controller
 
         // 取分校名稱（用於 Excel 標題，優先取第一筆記錄的 campus_name）
         $campusName = $records->first()?->campus_name ?? '';
-        if (! $campusName && ! empty($campusIds)) {
-            $campusName = DB::table('Campus')->where('id', $campusIds[0])->value('name') ?? '';
+        if (! $campusName && ! empty($effectiveCampusIds)) {
+            $campusName = DB::table('Campus')->where('id', $effectiveCampusIds[0])->value('name') ?? '';
         }
 
         Log::info('[teacher-monthly-export]', [

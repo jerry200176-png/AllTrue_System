@@ -130,6 +130,25 @@ class TeacherAttendanceApiTest extends TestCase
             ->assertJsonPath('status', 'no_record'); // Teacher A has no record
     }
 
+    private function makeDirectorMultiCampus(array $campusIds): array
+    {
+        static $n = 0; $n++;
+        $user = User::create([
+            'LoginName'          => "ta-dir-multi-{$n}@test.com",
+            'Name'               => "多校主任{$n}",
+            'PSW'                => 'secret',
+            'type'               => 'A',
+            'phone'              => '0900099001',
+            'MustChangePassword' => false,
+        ]);
+        foreach ($campusIds as $cid) {
+            UserCampus::create(['CampusID' => $cid, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        }
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+        return ['user' => $user, 'token' => $raw];
+    }
+
     // ──────────────────────────────────────────────
     //  FR-003: Director overview
     // ──────────────────────────────────────────────
@@ -173,6 +192,98 @@ class TeacherAttendanceApiTest extends TestCase
         $this->withHeaders($this->authHeaders($teacher['token']))
             ->getJson('/api/v1/teacher-attendance')
             ->assertForbidden();
+    }
+
+    // ──────────────────────────────────────────────
+    //  Bug Fix: campus_id 參數過濾（AC-001~005）
+    // ──────────────────────────────────────────────
+
+    /** @test AC-001-a：多分校 director + campus_id 只看指定分校 */
+    public function multi_campus_director_with_campus_id_only_sees_that_campus(): void
+    {
+        $director  = $this->makeDirectorMultiCampus([1, 2]);
+        $teacherC1 = $this->makeTeacherUser(1);
+        $teacherC2 = $this->makeTeacherUser(2);
+        $this->makeSignIn($teacherC1['user']->id, 1);
+        $this->makeSignIn($teacherC2['user']->id, 2);
+
+        $res = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance?date=' . now()->toDateString() . '&campus_id=1');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('teacher_id')->all();
+        $this->assertContains($teacherC1['user']->id, $ids);
+        $this->assertNotContains($teacherC2['user']->id, $ids);
+    }
+
+    /** @test AC-001-b：director 傳非所屬 campus_id → 403 */
+    public function director_with_foreign_campus_id_gets_403(): void
+    {
+        $director = $this->makeDirector(1); // only campus 1
+
+        $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance?date=' . now()->toDateString() . '&campus_id=99')
+            ->assertForbidden();
+    }
+
+    /** @test AC-001-c：director 不傳 campus_id → fallback 顯示所有所屬分校 */
+    public function multi_campus_director_without_campus_id_sees_all_own_campuses(): void
+    {
+        $director  = $this->makeDirectorMultiCampus([1, 2]);
+        $teacherC1 = $this->makeTeacherUser(1);
+        $teacherC2 = $this->makeTeacherUser(2);
+        $this->makeSignIn($teacherC1['user']->id, 1);
+        $this->makeSignIn($teacherC2['user']->id, 2);
+
+        $res = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance?date=' . now()->toDateString());
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('teacher_id')->all();
+        $this->assertContains($teacherC1['user']->id, $ids);
+        $this->assertContains($teacherC2['user']->id, $ids);
+    }
+
+    /** @test AC-002：director 無 UserCampus 記錄 → 403 */
+    public function director_with_no_campus_assignment_gets_403(): void
+    {
+        static $n = 0; $n++;
+        $user = User::create([
+            'LoginName'          => "no-campus-dir-{$n}@test.com",
+            'Name'               => "無分校主任{$n}",
+            'PSW'                => 'secret',
+            'type'               => 'A',
+            'phone'              => '0977000001',
+            'MustChangePassword' => false,
+        ]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $raw, 'expires_at' => now()->addDay()]);
+
+        $this->withHeaders($this->authHeaders($raw))
+            ->getJson('/api/v1/teacher-attendance?date=' . now()->toDateString())
+            ->assertForbidden();
+    }
+
+    /** @test AC-003-a：unclosed 也受 campus_id 過濾 */
+    public function unclosed_respects_campus_id_param(): void
+    {
+        $director  = $this->makeDirectorMultiCampus([1, 2]);
+        $teacherC1 = $this->makeTeacherUser(1);
+        $teacherC2 = $this->makeTeacherUser(2);
+        $this->makeSignIn($teacherC1['user']->id, 1, [
+            'SignInDT' => now()->setTime(8, 0)->toDateTimeString(), 'SignOutDT' => null,
+        ]);
+        $this->makeSignIn($teacherC2['user']->id, 2, [
+            'SignInDT' => now()->setTime(8, 0)->toDateTimeString(), 'SignOutDT' => null,
+        ]);
+
+        $res = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance/unclosed?date=' . now()->toDateString() . '&campus_id=1');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('teacher_id')->all();
+        $this->assertContains($teacherC1['user']->id, $ids);
+        $this->assertNotContains($teacherC2['user']->id, $ids);
     }
 
     // ──────────────────────────────────────────────
