@@ -110,4 +110,134 @@
 
 ---
 
-*最後更新：2026-04-22*
+---
+
+### TD-004：請假後刷卡 — 同一堂課產生兩筆記錄，堂數補回後又被扣回
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::findMatchingClass`、`SessionDeductionService` |
+| 描述 | `findMatchingClass` 查詢 `ClassSession` 時不過濾 `Status = 'leave'` 的堂次。學生請假後（leave `StudentSignIn` 已建立、堂數已補回），當天若又到補習班刷卡，系統仍會比對到那堂 leave session，再建一筆 `Memo='swipe-rfid'` 的 `StudentSignIn`，並執行 `deductOnAttendance`。淨效果：leave 補回一堂，swipe 再扣一堂 = 兩相抵消，堂數「看起來」正確，但同一堂出現兩筆記錄（一筆 leave、一筆 present），前端顯示混亂，查帳困難。 |
+| 建議做法 | 在 `findMatchingClass` 的 ClassSession query 加 `->where('Status', '!=', 'leave')` 過濾，讓請假堂次不被刷卡邏輯重新命中。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 請假後補到校的學生，出缺勤頁面同一堂出現兩筆，報表雙重計算，家長查帳時困惑。 |
+
+---
+
+### TD-005：前端修改出缺勤狀態只更新 ClassSession，StudentSignIn.Status 不同步
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `AttendancePage.vue::saveStatusEdit`、`ClassSessionController::update` |
+| 描述 | `saveStatusEdit` 發送 `PATCH /api/v1/class-sessions/:id`，只更新 `ClassSession.status`，不更新 `StudentSingIn.Status`。前端本地更新 `record.Status` 讓畫面看起來有效，但 30 秒後 `fetchRecords` 重新拉 API（`si.Status`），顯示又回到修改前的舊值。出缺勤狀態修改對老師來說是「虛假成功」。 |
+| 建議做法 | `ClassSessionController::update` 或後端對應路由，在更新 `ClassSession.status` 時一併更新該 ClassSession 對應的 active `StudentSingIn.Status`；或在 `AttendancePage.vue` 的 `saveStatusEdit` 後立即 `fetchRecords()`。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 老師修改出缺勤狀態後 30 秒會自動還原，每次都需要手動刷新才能看到「真實狀態」，嚴重影響老師信任度。 |
+
+---
+
+### TD-006：學生刷卡無 debounce — RFID 讀卡機 bounce 可能造成秒速 sign_in + sign_out
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::handleStudentSwipe` |
+| 描述 | 老師刷卡有 60 秒 debounce（`TEACHER_SWIPE_DEBOUNCE_SECONDS`），學生刷卡沒有。硬體 RFID 讀卡機偶爾會在一次實體刷卡後連發兩個訊號（RF bounce），第一個訊號建立 `openRecord`，第二個訊號（幾百毫秒後）看到 openRecord 就執行 sign_out，觸發 `backfillPresenceWindow`。整個在場時間幾乎為零，導致 Presence Window 不補建任何課程記錄，等同於這次刷卡完全無效。 |
+| 建議做法 | 在 `handleStudentSwipe` 加入和老師相同的 debounce 機制（建議 30～60 秒）：sign_out 前檢查 `openRecord` 的 `SignInDT` 距離 `swipeAt` 是否小於閾值，是則忽略本次刷卡。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 讀卡機 bounce 時學生刷卡記錄無效，刷進後立刻刷出，家長收到的到離通知毫無意義。 |
+
+---
+
+### TD-007：老師手動點名後學生又刷卡 — 同一 ClassSession 出現兩筆 StudentSignIn
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::handleStudentSwipe`、`findMatchingClass` |
+| 描述 | 老師已手動點名（建立 `StudentSignIn`，`ClassSessionID = X`），學生隨後又刷卡。`findMatchingClass` 找到同一 ClassSession（不檢查是否已有 `StudentSignIn`），建立第二筆 `StudentSignIn`。`deductForSession` 的冪等保護（按 `class_session_id` 去重）防止重複扣堂，但 DB 和前端都出現兩筆記錄。`AttendanceController::swipe`（另一個 endpoint）有 `lockForUpdate` 防重複，但 `SwipeRfidController` 沒有。 |
+| 建議做法 | 在 `findMatchingClass` 傳回 session 前，或在 `handleStudentSwipe` sign_in 分支中，先檢查該 ClassSession 是否已有 active（non-voided）`StudentSignIn`；若有則跳過建立，或回傳「已點名」訊息。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 出缺勤頁面同一堂課顯示兩筆，老師看不懂，也容易被誤報為 bug。 |
+
+---
+
+### TD-008：學生跨日忘刷退 — 昨日孤兒 SignIn 永不自動關閉
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::handleStudentSwipe`、`StudentSingIn` |
+| 描述 | `openRecord` 查詢條件是 `whereDate('SignInDT', $today)`，只找今日開放記錄。學生昨天刷進沒刷退，今天刷卡走 sign_in 流程（因昨日 openRecord 不在查詢範圍），昨日那筆 `SignOutDT = null` 的記錄永遠懸空。`Presence Window` 基於當日 `SignInDT～SignOutDT` 窗口，也不會回溯昨日。老師手動補點名是目前唯一 fallback，但需要人工發現。 |
+| 建議做法 | 新增 Laravel Scheduler 每日凌晨掃描「昨日 `SignOutDT = null` 且超過 N 小時」的孤兒記錄，自動設定 `SignOutDT = 當日最後一堂課 EndTime`（或補習班關門時間），並觸發 `backfillPresenceWindow`。 |
+| 清償成本估計 | 中（半天） |
+| 不做的代價 | 忘刷退的學生，昨日出缺勤記錄中 `SignOutDT` 永遠 null，報表無法計算在場時長，課程也不會被 Presence Window 補建。 |
+
+---
+
+### TD-009：backfillPresenceWindow 中 ClassSession.EndTime 為 null 時 SignOutDT 靜默錯誤
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::backfillPresenceWindow` |
+| 描述 | `Carbon::parse($today . ' ' . $session->EndTime)` 在 `EndTime = null` 時，解析結果為 `$today 00:00:00`（午夜）。補建的 `StudentSignIn.SignOutDT` 會是當天 00:00，語義完全錯誤，但不丟 exception，靜默寫入 DB。 |
+| 建議做法 | 在 `backfillPresenceWindow` 的 foreach 中，加入 `if (!$session->EndTime) { continue; }` 跳過 EndTime 為 null 的 session；或 fallback 為 `$session->StartTime + 1 小時`。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | EndTime 缺值的堂次補建後，`SignOutDT = 00:00`，報表在場時長負值，家長 Telegram 通知顯示異常時間。 |
+
+---
+
+### TD-010：RFID 欄位無 DB 唯一性約束 — 同一 RFID 可綁多個學生
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `Student` 表、`SwipeRfidController` |
+| 描述 | `Student.RFID` 欄位沒有 `UNIQUE` 約束（已確認 migration 無此條件）。若管理員誤將同一張卡綁兩個學生，刷卡時 `Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first()` 只取第一筆，沈默地跳過另一個學生，不觸發任何錯誤或警告。 |
+| 建議做法 | 加 DB migration 建立 `unique index`（`Student.RFID` + `CampusID`）；綁定入口加後端唯一性驗證，返回明確錯誤訊息。 |
+| 清償成本估計 | 低（< 2hr） |
+| 不做的代價 | 資料錯誤時系統不警告，某個學生的刷卡永遠不被記錄，直到人工發現才知道卡片被佔用。 |
+
+---
+
+### TD-011：findMatchingClass 30 分鐘固定窗口不考慮課程時長 — 短課可能永遠無法刷卡匹配
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-04-23 |
+| 發現來源 | [REVIEW] 出缺勤邊界分析 |
+| 影響模組 | `SwipeRfidController::findMatchingClass` |
+| 描述 | 匹配窗口固定為 `$windowMinutes = 30`（刷卡時間距課程 StartTime ≤ 30 分鐘才匹配）。30 分鐘課程中，若學生遲到 31 分鐘，完全無法匹配，被歸類為 self_study。另外，多堂連排時（如 10:00-11:00、11:00-12:00），學生 11:25 到，距第一堂 StartTime 85 分鐘（不匹配），距第二堂 StartTime 25 分鐘（匹配），行為正確；但若學生 10:35 到，距第一堂 35 分鐘（不匹配），也距第二堂 25 分鐘（匹配），會被算入第二堂而非第一堂。 |
+| 建議做法 | 窗口可改為「課程時長的 50%」或改成「StartTime 前後 N 分鐘 OR StartTime 至 EndTime 之間均可」的課中刷卡匹配邏輯。需配合 one-in-one-out 架構評估。 |
+| 清償成本估計 | 中（半天） |
+| 不做的代價 | 短課或連排課學生遲到時，刷卡記錄歸入錯誤課堂或變成 self_study，扣錯堂數。 |
+
+---
+
+*最後更新：2026-04-23*
