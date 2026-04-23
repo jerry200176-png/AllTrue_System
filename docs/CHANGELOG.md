@@ -2,6 +2,16 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — fix: Batch 1 Tech Debt — TD-004/006/007/009 SwipeRfidController 邊界修正
+
+- **TD-004** `findMatchingClass`：ClassSession 查詢加 `Status != 'leave'`，請假學生補到校刷卡不再命中請假堂次
+- **TD-006** `handleStudentSwipe`：加入 60 秒 debounce（`STUDENT_SWIPE_DEBOUNCE_SECONDS`），防 RF bounce 造成秒速 sign_out
+- **TD-007** `handleStudentSwipe`：sign_in 前先檢查 ClassSession 是否已有 active StudentSignIn，有則回傳 `duplicate_ignored` 而非 DB 500
+- **TD-009** `backfillPresenceWindow`：加 null EndTime guard（skip + warning log），防止舊資料寫入 SignOutDT=00:00
+- 新增測試：`SwipeRfidEdgeCaseTest.php`（4 個測試，CI 綠燈通過）
+
+---
+
 ## 2026-04-23 — feat: 學生自修記錄可視化 Phase 2b（self-study-visibility）
 
 ### 背景
