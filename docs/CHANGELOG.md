@@ -2,6 +2,45 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat/fix: v1.2 老師出勤管理 — 行政出勤狀態修復 + 月報格式改版（PR #19 squash）
+
+### 背景
+PRD：`.cursor/plans/teacher_attendance_v1.2_status_fix_report_format_prd_2026-04-23.md`
+（與 Batch 4 TD-008/011 合併在同一 PR #19）
+
+### Bug Fix — 行政出勤顯示「系統待確認」
+
+- **根因**：`add_source_status_to_teacher_sing_in` migration 以 `DEFAULT 'pending_review'` 新增 `Status` 欄位，MySQL 自動將所有歷史記錄回填為 `pending_review`，行政出勤（無課老師）也被誤標
+- **修復**：新增 `2026_04_23_200000_backfill_teacher_signin_status.php`
+  - 對所有 `Status='pending_review'` 記錄重新查 `schedules` 表判斷：無課 → `source_only`；有課且刷卡 ≤ 首堂 +10 分 → `normal`；超過 → `late`
+  - `chunk(200)` 批次處理，有進度 log，`down()` 為 no-op
+- **次因**：`resolveTeacherSignInStatus()` catch block 已在 batch4 加入 `Log::warning`（本次確認即止）
+
+### 月報格式改版（對照 `新莊中平分校_2025-12_刷卡清單.xlsx`）
+
+- **移除**：`TeacherMonthlySummarySheet.php`（摘要符號表）、`TeacherMonthlyDetailSheet.php`（舊明細表）
+- **新增**：`TeacherMonthlyPerTeacherSheet.php`
+  - **每位老師獨立 Sheet**，Sheet 名稱 = 老師姓名（≤ 31 字，過濾非法字元，空字串 fallback 為 `"老師{ID}"`）
+  - **左側（A-D）**：原始刷卡流水帳，每筆 `TeacherSingIn` 展開為兩行（SignInDT 行 + SignOutDT 行）
+  - **右側（F-J）**：月曆摘要，每日一行；H = 當日 min(SignInDT)、I = 當日 max(SignOutDT)；星期格式 `YYYY-MM-DD(一)`；時間格式 `hh:MM AM/PM`
+  - Row 1：標題合併 A1:J1，背景深藍（`#2F5496`），白色粗體；Row 2：淡藍（`#D9E1F2`）粗體表頭
+- **更新**：`TeacherMonthlyAttendanceExport` — 動態 sheets（按老師名排序），重名自動加序號
+- **更新**：`TeacherAttendanceController::exportMonthly` — 取分校名稱（用於 Excel 標題），移除舊的 `$adjustments` 參數
+
+### 測試（CI ✅）
+
+| 測試類別 | 涵蓋項目 |
+|---|---|
+| `TeacherSigninStatusBackfillTest` (×4) | source_only / normal / late / cancelled 排課判斷 |
+| `TeacherMonthlyExportTest` (+1 = 共 5 cases) | multi-teacher XLSX export |
+
+### 已知限制（後版處理）
+
+- G 欄「跑校」本版空白（需定義「主校」概念）
+- J 欄「加班」本版空白（需定義下班時間基準）
+
+---
+
 ## 2026-04-23 — fix(batch3): TD-010 RFID 唯一性約束（PR #18）
 
 - **Migration** `2026_04_23_300000`：DROP 舊單欄位 `student_rfid_unique`，ADD composite unique index `students_rfid_campus_unique (RFID, CampusID)`；同分校同卡不再靜默覆蓋，不同分校允許相同卡號

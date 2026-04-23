@@ -1952,3 +1952,133 @@ $this->assertNotNull($voidedAt, 'VoidedAt 應被寫入');
 2. **VoidedAt ≠ deleted_at**：有 `VoidedAt` 欄位的 Model，查詢時一律用 `DB::table()` 繞過 scope，或用 `Model::withoutGlobalScopes()->find()`
 3. **`scopeActive()` 的 Model**：永遠記得 `find()` 只回傳 `VoidedAt IS NULL` 的記錄
 
+---
+
+## §MIGRATION-001 — MySQL 新增帶 DEFAULT 的欄位會自動回填所有舊記錄，導致業務狀態被污染
+
+### 問題模式（2026-04-23 發現）
+
+執行以下 Migration：
+
+```php
+$table->enum('Status', ['normal', 'late', 'source_only', 'pending_review'])
+      ->default('pending_review')
+      ->after('Source');
+```
+
+MySQL 的行為：**對已存在的所有資料列，自動填入 `'pending_review'`**（即使這些記錄的實際業務狀態是 `source_only` 或 `normal`）。
+
+結果：所有歷史打卡記錄的 `Status` 都變成 `pending_review`，老師的行政出勤全部顯示「系統待確認」，主任誤以為系統異常。
+
+### 根因
+
+這是 MySQL 的標準行為，**不是 Bug**。DDL `ADD COLUMN ... DEFAULT 'X'` 在 MySQL 8 中是 instant operation，但舊有行的值會被設為 DEFAULT，無論業務語義為何。
+
+### 防再犯規則
+
+1. **新增「狀態類」欄位時，必須同步判斷：舊記錄的 DEFAULT 值在業務上是否合理。**
+   - 若 `pending_review` 意為「尚待計算」，舊記錄填此值語義不對
+   - 解法：default 改用 `null`（允許 NULL），或 default 改用最安全的已知正確狀態，或同步新增回填 Migration
+
+2. **凡 Migration 加欄位帶 DEFAULT 的，必須立即評估是否需要回填 Migration**：
+   ```php
+   // 緊接著加一個回填 migration，重新依業務規則計算舊記錄
+   // 範例：2026_04_23_200000_backfill_teacher_signin_status.php
+   ```
+
+3. **回填 Migration 必須**：
+   - 用 `->chunk(200)` 避免 lock timeout
+   - 記錄 `Log::info('... start/progress/done ...')`
+   - `down()` 為 no-op（回填後無法安全還原）
+
+4. **在 ARCH 設計階段就標明**：「此欄位新增後，存量資料需要回填」（參考本 PRD §10 技術方向標記）
+
+---
+
+## §EXPORT-001 — PhpSpreadsheet 動態 Sheet 名稱為空字串時拋 Invalid parameters 例外
+
+### 問題模式（2026-04-23 發現）
+
+以老師姓名作為 Excel Sheet 名稱（動態命名）：
+
+```php
+class TeacherMonthlyPerTeacherSheet implements WithTitle
+{
+    public function title(): string
+    {
+        return $this->teacherName; // ← 若 teacherName 為 '' 則 PhpSpreadsheet 拋例外
+    }
+}
+```
+
+當 `TeacherSingIn` 記錄的老師在 `Teacher` / `User` 表均無對應行時，`COALESCE(t.T_Name, u.Name, '')` 回傳空字串，`title()` 傳回 `''`，觸發：
+
+```
+PhpOffice\PhpSpreadsheet\Writer\Exception: Invalid parameters passed.
+  in PhpOffice/PhpSpreadsheet/Writer/Xlsx/Workbook.php:211
+```
+
+CI 出現 HTTP 500，整個 XLSX 下載失敗。
+
+### 正確做法
+
+```php
+// ✅ 在 Export 層加空字串防護
+$raw = $teacherRecords->first()->teacher_name ?? '';
+$teacherName = $raw !== '' ? $raw : "老師{$teacherId}";
+
+// ✅ 在 Sheet 層 sanitize 後也加防護
+$sanitized = $this->sanitizeSheetName($teacherName);
+$this->sheetTitle = $sanitized !== '' ? $sanitized : 'Sheet';
+```
+
+### 防再犯規則
+
+1. **凡用動態字串作為 Sheet 名稱**，一律在 `title()` 傳出前加 non-empty guard
+2. **PhpSpreadsheet Sheet 名稱的限制**：
+   - 不可為空字串
+   - 不可含 `/ \ ? * : [ ]`
+   - 最多 31 字元（multibyte 需用 `mb_substr`）
+3. **寫 DB 查詢做 export 時**，`COALESCE(..., '')` 的最後一個 fallback 應改為有意義的字串，或在 Export class 層再做 fallback
+4. **Export 測試資料**若沒有完整的 Teacher/User join 記錄，要手動補 teacher_name，或在 test 中直接插入 Teacher 記錄
+
+---
+
+## §TEST-004 — schedules 表必填欄位再次漏填（二次違反 §TEST-001）
+
+### 問題（2026-04-23，TeacherSigninStatusBackfillTest）
+
+`§TEST-001` 已列明 `schedules` 表的必填欄位，但本次仍漏填：
+
+```php
+// ❌ 只給了 teacher_id / schedule_date / start_time / end_time / status
+DB::table('schedules')->insert([
+    'teacher_id'    => 888,
+    'schedule_date' => $date,
+    'start_time'    => '09:00',
+    'end_time'      => '11:00',
+    'status'        => 'scheduled',
+]);
+// 錯誤：Field 'student_id' doesn't have a default value
+```
+
+### 正確最小插入（`schedules`）
+
+```php
+DB::table('schedules')->insert([
+    'student_id'    => 1,          // NOT NULL
+    'teacher_id'    => 888,
+    'day_of_week'   => 1,          // NOT NULL（0=Sun, 1=Mon...）
+    'branch_id'     => 1,          // NOT NULL
+    'schedule_date' => $date,
+    'start_time'    => '09:00',
+    'end_time'      => '11:00',
+    'status'        => 'scheduled',
+    'type'          => 'normal',   // 有 DEFAULT 'normal'，可省略，但建議明寫
+]);
+```
+
+### 防再犯
+
+- `§TEST-001` 的 `schedules` 行已列出必填欄位，**每次寫涉及 schedules 的測試必須對照該表格**
+- 速記口訣：**S.D.B.**（`student_id`, `day_of_week`, `branch_id`）— schedules 三巨頭必填
