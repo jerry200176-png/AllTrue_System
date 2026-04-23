@@ -14,7 +14,7 @@ return new class extends Migration
     {
         Schema::table('TeacherSingIn', function (Blueprint $table) {
             if (!Schema::hasColumn('TeacherSingIn', 'Memo')) {
-                $table->string('Memo', 512)->nullable()->after('Hours');
+                $table->string('Memo', 512)->nullable();
             }
         });
     }
