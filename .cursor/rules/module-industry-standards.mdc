@@ -1,0 +1,167 @@
+---
+description: >-
+  業界標準對齊規則 — PR 大小、Rollback SLA、Coverage 門檻、Code Review 準則。
+  與 p0-gate.mdc 搭配使用，縮小與業界的差距。
+  觸發時機：REVIEW/DOCS/OPS phase，或使用者問「PR 多大」「如何 rollback」時讀入。
+globs:
+  - ".cursor/plans/**"
+alwaysApply: false
+---
+
+# 業界標準對齊規則
+
+## PR 大小限制（Industry Standard: ≤ 400 行）
+
+```
+✅ 合格：單一 PR 改動 ≤ 400 行（不含 migration/test seed 純資料）
+⚠️ 警告：400–700 行 → 說明為何無法拆分（寫在 PR description）
+❌ 拒絕：> 700 行 → 拆成多個 PR，每個 PR 對應一個可獨立測試的功能
+```
+
+### 如何計算
+```bash
+git diff main...HEAD --stat | tail -1
+# 看 insertions + deletions 總和
+```
+
+---
+
+## Rollback 流程與 SLA
+
+### 判斷 Rollback 時機
+```
+OPS 驗收後 health check 失敗  → 立即 rollback（SLA: 5 分鐘內）
+使用者回報功能壞掉             → 先診斷 3 分鐘，仍無頭緒 → rollback（SLA: 10 分鐘）
+```
+
+### Rollback 步驟（Backend）
+```bash
+# 1. 找到上一個穩定版本
+git log --oneline -10
+
+# 2. 建立 hotfix branch
+git checkout -b hotfix/rollback-<date>
+git revert HEAD  # 或指定 commit hash
+
+# 3. PR merge 後執行
+php artisan migrate:rollback --step=1  # 只有有 migration 才做
+# 絕對禁止 git push --force 到 main
+```
+
+### Rollback 步驟（Frontend）
+```bash
+# 前端沒有 git rollback 機制 — 用 git revert 修掉問題 commit 後重新 deploy
+cd /home/admin/frontend && npm run deploy
+```
+
+### 記錄
+Rollback 後必須在 `docs/CHANGELOG.md` 新增：
+```markdown
+## YYYY-MM-DD — revert: [描述被 revert 的功能]
+- 原因：[一句話]
+- 恢復時間：[HH:MM]
+- 後續修復計劃：見 [issue/PR link 或 Bug Fix Plan 路徑]
+```
+
+---
+
+## 測試覆蓋率門檻
+
+```
+每個新 Feature / Bug Fix PR 必須：
+  - 新增或修改的 public method → 至少 1 個對應測試
+  - AC（驗收條件）中的每個 Happy Path → 至少 1 個測試
+  - 發現的 Edge Case → 至少 1 個 Regression Test
+
+目標覆蓋率（本專案當前務實目標）：
+  - Happy Path：100%（所有 AC 必須有測試）
+  - Edge Case：≥ 70%（盡力覆蓋）
+  - 不要求 Branch Coverage 100%（過度追求會製造噪音）
+```
+
+---
+
+## Code Review 準則（Phase 5 [REVIEW]）
+
+### 評分標準
+```
+Major（必須修才能 merge）：
+  - 邏輯錯誤 / 安全弱點
+  - 未被測試覆蓋的 Happy Path
+  - 直接操作生產 DB（違反 R2）
+
+Minor（登記 Tech Debt 即可）：
+  - 命名不一致
+  - 缺少 docblock
+  - 可優化但不影響正確性的邏輯
+
+Nit（選擇性修）：
+  - 空白、縮排
+  - 注釋措辭
+```
+
+### PR Description 必填格式
+```markdown
+## 這個 PR 做了什麼
+[1–3 句話說明]
+
+## 測試方式
+- [ ] CI 全綠
+- [ ] 手動 AC 驗收（列出哪幾條）
+
+## Rollback 方式
+[說明如何 revert，或「無 migration 可直接 revert commit」]
+
+## 相關文件
+- PRD / Bug Fix Plan: .cursor/plans/<slug>.md
+- CHANGELOG: 見 docs/CHANGELOG.md
+```
+
+---
+
+## CHANGELOG 格式（Phase 6 [DOCS] 必填）
+
+```markdown
+## YYYY-MM-DD — <type>: <標題>
+
+### 變更內容
+- feat: [新功能描述]
+- fix: [修復描述]
+
+### 技術細節
+- 影響檔案：[Controller / Vue / Migration]
+- DB 異動：[有/無，有則說明 migration 名稱]
+- 前端 Deploy：[有/無]
+
+### 驗證
+- CI：✅ GitHub Actions 全綠
+- Health Check：✅ /api/v1/health 回傳 ok
+```
+
+---
+
+## 分支命名規範（完整版）
+
+```
+feat/<slug>              新功能（PRD 驅動）
+fix/<slug>               Bug 修復（Bug Fix Plan 驅動）
+td-batch<N>-<slug>       技術債批次清償
+hotfix/<date>-<slug>     緊急生產修復（直接從 main 分支）
+chore/<slug>             文件 / 規則 / CI 設定 / 維護
+exp/<slug>               實驗性（不一定 merge，禁止影響生產）
+```
+
+---
+
+## 與業界差距追蹤
+
+| 項目 | 業界標準 | 本專案當前狀態 | 目標 |
+|------|---------|--------------|------|
+| Staging 環境 | 有獨立 staging | ❌ 無（直接 production）| 長期：用 Docker Compose 建本地 staging |
+| Feature Flags | LaunchDarkly / 自製 | ❌ 無 | 中期：可用 `.env` flag 做 on/off |
+| PR Size Limit | ≤ 400 行 | ⚠️ 無強制 | ✅ 已寫入此規則 |
+| Rollback SLA | 5–10 分鐘 | ⚠️ 未明確 | ✅ 已寫入此規則 |
+| 測試覆蓋率 | ≥ 80% | ⚠️ 不穩定 | ✅ 已定義門檻 |
+| Security Review | STRIDE / OWASP | ⚠️ 無系統化 | ✅ module-security.mdc |
+| CHANGELOG | 每次 deploy 更新 | ⚠️ 偶爾遺漏 | ✅ SOP Phase 6 強制 |
+| Health Check | 每次 deploy 後驗 | ⚠️ 未強制 | ✅ Phase 7 OPS 清單 |
