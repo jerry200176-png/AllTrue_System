@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\TeacherMonthlyAttendanceExport;
 use App\Models\TeacherSignIn;
 use App\Models\TeacherSignInAdjustment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class TeacherAttendanceController extends Controller
 {
@@ -295,5 +298,107 @@ class TeacherAttendanceController extends Controller
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * GET /api/v1/teacher-attendance/export-monthly?year_month=YYYY-MM
+     * 主任匯出整月老師出缺勤 XLSX（月報摘要 + 明細記錄兩個工作表）
+     */
+    public function exportMonthly(Request $request)
+    {
+        $request->validate([
+            'year_month' => 'required|date_format:Y-m',
+        ]);
+
+        $role      = $request->attributes->get('auth_role');
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $yearMonth = $request->query('year_month');
+
+        $from = Carbon::createFromFormat('Y-m', $yearMonth)->startOfMonth();
+        $to   = Carbon::createFromFormat('Y-m', $yearMonth)->endOfMonth();
+
+        // 不匯出未來日期（若為當月，截至今日）
+        if ($to->isAfter(now())) {
+            $to = now()->endOfDay();
+        }
+
+        $query = DB::table('TeacherSingIn as ts')
+            ->leftJoin('Teacher as t', 't.id', '=', 'ts.TeacherID')
+            ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
+            ->leftJoin('Campus as c', 'c.id', '=', 'ts.CampusID')
+            ->select([
+                'ts.id',
+                'ts.TeacherID as teacher_id',
+                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                'ts.CampusID as campus_id',
+                'c.name as campus_name',
+                'ts.SignInDT as sign_in_dt',
+                'ts.SignOutDT as sign_out_dt',
+                'ts.Status as status',
+            ])
+            ->whereBetween('ts.SignInDT', [$from, $to])
+            ->orderBy('ts.TeacherID')
+            ->orderBy('ts.SignInDT');
+
+        if ($role !== 'super_admin' && ! empty($campusIds)) {
+            $query->whereIn('ts.CampusID', $campusIds);
+        }
+
+        $records = $query->get();
+
+        // 計算遲到分鐘：JOIN schedules 取每位老師每日首堂 start_time
+        if ($records->isNotEmpty()) {
+            $teacherIds = $records->pluck('teacher_id')->unique()->values()->all();
+            $firstClasses = DB::table('schedules')
+                ->selectRaw('teacher_id, DATE(schedule_date) as sdate, MIN(start_time) as first_start')
+                ->whereIn('teacher_id', $teacherIds)
+                ->whereBetween('schedule_date', [$from->toDateString(), $to->toDateString()])
+                ->where('status', '!=', 'cancelled')
+                ->groupBy('teacher_id', DB::raw('DATE(schedule_date)'))
+                ->get()
+                ->keyBy(fn ($r) => $r->teacher_id . '_' . $r->sdate);
+
+            $records = $records->map(function ($rec) use ($firstClasses) {
+                $signInDate  = substr((string) $rec->sign_in_dt, 0, 10);
+                $key         = $rec->teacher_id . '_' . $signInDate;
+                $firstClass  = $firstClasses->get($key);
+
+                if ($firstClass) {
+                    $classStart     = Carbon::parse($signInDate . ' ' . $firstClass->first_start);
+                    $signIn         = Carbon::parse($rec->sign_in_dt);
+                    // For adjusted records ideally we'd use adjustment time; use SignInDT as fallback
+                    $lateMinutes    = max(0, (int) $signIn->diffInMinutes($classStart, false) * -1);
+                    $rec->late_minutes = $lateMinutes > 0 ? $lateMinutes : 0;
+                } else {
+                    $rec->late_minutes = null;
+                }
+
+                return $rec;
+            });
+        }
+
+        // 取補卡記錄
+        $signinIds   = $records->pluck('id')->all();
+        $adjustments = ! empty($signinIds)
+            ? DB::table('teacher_signin_adjustments')
+                ->whereIn('teacher_signin_id', $signinIds)
+                ->select('teacher_signin_id', 'adjust_reason', 'new_signin_dt', 'created_at')
+                ->orderBy('id', 'desc')
+                ->get()
+                ->unique('teacher_signin_id')
+            : collect();
+
+        Log::info('[teacher-monthly-export]', [
+            'user_id'    => $request->attributes->get('auth_user')?->id,
+            'year_month' => $yearMonth,
+            'campus_ids' => $campusIds,
+            'count'      => $records->count(),
+        ]);
+
+        $filename = "teacher-attendance-{$yearMonth}.xlsx";
+        return Excel::download(
+            new TeacherMonthlyAttendanceExport($records, $adjustments, $yearMonth),
+            $filename
+        );
     }
 }

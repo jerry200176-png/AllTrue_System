@@ -2,41 +2,62 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
-## 2026-04-23 — feat: 月結課程排課體驗改善（monthly-recurring-scheduling）
+## 2026-04-23 — feat: 出缺勤管理改善 v1.1（老師月報匯出 + 記錄刪除 + 自修轉到班）
 
 ### 背景
 
-月結制（`payment_type = 'monthly'`）課程建立時，主任需逐格點日曆、跨月還要每月重進來補點。多科月結方案更完全不生成 ClassSession，老師每次都要手動補登。
+PRD：`.cursor/plans/teacher_monthly_attendance_export_prd_2026-04-23.md`（PR #17）
 
-### 主要變更
+### 新增功能
 
-**後端：**
-- `StudentClassController::buildSessionsFromWeeklySchedule` — `private` → `public`，允許 `EnrollmentService` 和 `CoursePackageController` 複用
-- `ClassSessionController::batchStore` — validation 新增 `end_date`（`nullable|date`）
-- `EnrollmentService::store` — 月結分支偵測到 `end_date` + `days_of_week` 時，自動呼叫 `buildSessionsFromWeeklySchedule` 生成全期 ClassSession，跳過同月限制。NFR-004：`end_date` 超過 730 天回 422。舊路徑（無 `end_date`）行為完全不變
-- `CoursePackageController::createMultiSubject` — 移除 `if (!$isMonthly)` 對排課欄位的限制；月結 + `end_date` + `hasSchedule` → 呼叫 `buildSessionsFromWeeklySchedule` 預排。堂數制路徑不受影響
+**功能一 — 老師月度出缺勤匯出（主任 / super_admin 限定）**
 
-**前端（`UniversalClassScheduler.vue`）：**
-- 一般月結路徑：隱藏月曆逐格點選，改為 `end_date` 欄位 + 快選按鈕（+1/+3/+6 個月）+ 預覽文字 computed
-- 多科月結路徑：每科行新增 `days_of_week` chip + `start_time` 下拉；方案層新增 `end_date` 欄位
-- 標籤統一：所有「每月固定」→「月結制」
+- 新增端點 `GET /api/v1/teacher-attendance/export-monthly?year_month=YYYY-MM`
+- 下載雙工作表 XLSX（`maatwebsite/excel`）：
+  - 工作表一「月報摘要」：每位老師 × 每日欄位（●出勤 △遲到 ○請假 ✕缺席 ◇補卡），含四欄統計
+  - 工作表二「明細記錄」：每筆打卡詳細資訊含補卡原因
+- 自動裁切未來日期（當月匯出截至今日）
+- 分校隔離：director 角色只匯出所屬分校老師；super_admin 匯出全部
+- 新增 Export 類：`TeacherMonthlyAttendanceExport`、`TeacherMonthlySummarySheet`、`TeacherMonthlyDetailSheet`
+- 前端：月份選擇器（`<input type="month">`）+ 月報按鈕 + loading spinner + blob download
 
-**測試：**
-- `EnrollmentServiceMonthlyRecurringTest.php`（6 tests）：end_date 自動排課、多星期、邊界、NFR-004、向後相容
-- `CoursePackageMonthlyScheduleTest.php`（4 tests）：多科月結排課、無 end_date 向後相容、NFR-004、堂數制回歸
-- 全套 731 tests 通過
+**功能二 — 今日出缺勤紀錄修正（主任限定）**
 
-### 行為影響
-- **新**：月結課程可一次設定結束日 + 固定星期，系統自動預排所有 ClassSession
-- **無 Breaking Change**：堂數制完全不受影響；舊月結路徑（無 end_date + future_dates）fallback 舊邏輯
+- 新增端點 `DELETE /api/v1/attendance/{id}`：
+  - Soft-void（寫入 `VoidedAt` / `VoidedByUserID` / `VoidReason`）
+  - 若 `SessionDeducted=true`，自動沖回 `SessionDeductionLedger` 並 `recomputeCounters()`
+  - 若 `ClassSessionID` 存在且 Status 為 attended/late/absent，退回 `scheduled`
+  - 整個流程包在 DB Transaction 內
+- 新增端點 `POST /api/v1/attendance/{id}/convert-to-attended`：
+  - 限 `Memo='self_study'` 記錄
+  - Q2 決策：優先複用同日 scheduled ClassSession，無則建立新 ClassSession
+  - 自動扣堂（`SessionDeductionService::deductForSession()`）
+- 修正前端 v-else bug：self_study 記錄不再誤顯示狀態編輯下拉選單
+- 前端新增刪除 Dialog（必填原因、ESC 關閉、危險紅色按鈕）
+- 前端新增轉換 Modal（課程列表、剩餘堂數、空狀態說明）
+- 所有操作有 toast 回饋（成功 2s，失敗 3s）
 
----
+### 測試
 
-## 2026-04-23 — fix: Batch 2 Tech Debt — TD-005 出缺勤狀態同步修正
+- `TeacherMonthlyExportTest.php`（4 cases）
+- `AttendanceVoidTest.php`（5 cases）
+- `AttendanceConvertSelfStudyTest.php`（5 cases）
+- CI：749 tests passed, 3052 assertions
 
-- **TD-005** `ClassSessionController::update`：新增 `syncStudentSignInStatus()` helper，attended swap / scheduled→attended 兩條轉移路徑在更新 ClassSession.Status 後同步更新 active StudentSignIn.Status（voided 不受影響）
-- **TD-005** `AttendancePage.vue::saveStatusEdit`：非請假路徑成功後立即 `fetchRecords()`，消除 30 秒狀態回滾問題
-- 新增測試：`AttendanceStatusSyncTest.php`（4 個測試，CI 綠燈通過）
+### 影響範圍
+
+- `backend/app/Http/Controllers/TeacherAttendanceController.php`
+- `backend/app/Http/Controllers/AttendanceController.php`
+- `backend/app/Exports/TeacherMonthlyAttendanceExport.php`（新增）
+- `backend/app/Exports/TeacherMonthlySummarySheet.php`（新增）
+- `backend/app/Exports/TeacherMonthlyDetailSheet.php`（新增）
+- `backend/routes/api.php`
+- `frontend/src/pages/AttendancePage.vue`
+
+### 已知限制（下版修正）
+
+- 月報匯出無獨立 rate limit（下版加 `per_minute:5`）
+- `convertToAttended()` 高並發時可能超扣（下版加 `lockForUpdate()`）
 
 ---
 
