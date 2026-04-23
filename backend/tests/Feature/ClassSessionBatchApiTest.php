@@ -146,8 +146,8 @@ class ClassSessionBatchApiTest extends TestCase
             'confirmed_dates' => $confirmedDates,
             'future_dates' => $futureDates,
             'days_of_week' => [4],
-            'start_time' => '16:00',
-            'duration_minutes' => 120,
+            'start_time' => '23:00',
+            'duration_minutes' => 30,
             'price_per_session' => 500,
             'payment_type' => 'session',
         ]);
@@ -226,8 +226,8 @@ class ClassSessionBatchApiTest extends TestCase
             'confirmed_dates' => [$confYmd],
             'future_dates' => $futurePair,
             'days_of_week' => [2, 4],
-            'start_time' => '16:00',
-            'duration_minutes' => 120,
+            'start_time' => '23:00',
+            'duration_minutes' => 30,
             'price_per_session' => 500,
             'payment_type' => 'session',
         ]);
