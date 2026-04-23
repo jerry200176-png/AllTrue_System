@@ -16,13 +16,16 @@ use Tests\TestCase;
  *
  * Covers: FR-001 ~ FR-006 (bugfix_swipe_attendance_sync_2026-04-23.md)
  *
- * AC-001: 刷卡在窗口內 → ClassSession.Status 更新為 attended
+ * AC-001: 刷卡在窗口內（≤15min after StartTime）→ ClassSession.Status = attended
  * AC-002: 刷卡遲到（>15min after StartTime）→ ClassSession.Status = late
  * AC-003: ClassSession.Status 已非 scheduled 時不覆寫（guard）
  * AC-004: StudentSingIn.TeacherID 正確填入（非 null）
  * AC-005: 無匹配課程（self_study）→ ClassSession 不更新
  *
  * ⚠️ CI only — 不可在 /home/admin/backend 直接執行（RefreshDatabase 會清 production DB）
+ *
+ * Timing note: swipe_at is always now() in the controller (no override param).
+ * Sessions are built relative to now() so the controller's own clock matches.
  */
 class SwipeClassSessionSyncTest extends TestCase
 {
@@ -95,29 +98,36 @@ class SwipeClassSessionSyncTest extends TestCase
         ], $attrs));
     }
 
-    private function makeClassSession(
-        int     $studentClassId,
-        string  $date,
-        string  $start,
-        string  $end,
-        string  $status = 'scheduled'
+    /**
+     * Build a ClassSession relative to now().
+     *
+     * @param  int     $startedMinutesAgo  Positive = started N minutes ago (ongoing session)
+     * @param  int     $durationMinutes    Session length in minutes
+     * @param  string  $status
+     */
+    private function makeOngoingSession(
+        int    $studentClassId,
+        int    $startedMinutesAgo,
+        int    $durationMinutes = 120,
+        string $status = 'scheduled'
     ): ClassSession {
+        $start = now()->subMinutes($startedMinutesAgo);
+        $end   = $start->copy()->addMinutes($durationMinutes);
+
         return ClassSession::create([
             'StudentClassID' => $studentClassId,
-            'SessionDate'    => $date,
-            'StartTime'      => $start,
-            'EndTime'        => $end,
+            'SessionDate'    => $start->toDateString(),
+            'StartTime'      => $start->format('H:i:s'),
+            'EndTime'        => $end->format('H:i:s'),
             'Status'         => $status,
         ]);
     }
 
-    /** POST /api/v1/swipe-rfid with a fixed swipe_at timestamp */
-    private function swipeAt(string $rfid, string $swipeAt): \Illuminate\Testing\TestResponse
+    private function swipe(string $rfid): \Illuminate\Testing\TestResponse
     {
         return $this->postJson('/api/v1/swipe-rfid', [
             'branch_code' => (string) $this->campus->id,
             'rfid'        => $rfid,
-            'swipe_at'    => $swipeAt,
         ], [
             'Authorization' => 'Bearer sync-test-token-xyz',
         ]);
@@ -127,7 +137,7 @@ class SwipeClassSessionSyncTest extends TestCase
 
     /**
      * @test
-     * FR-001, FR-002：學生在 StartTime-30min ～ StartTime+15min 之間刷卡
+     * FR-001, FR-002：學生在 StartTime-30min ～ StartTime+15min 之間刷卡（準時）
      * → ClassSession.Status 應更新為 'attended'
      */
     public function swipe_on_time_updates_class_session_to_attended(): void
@@ -135,19 +145,18 @@ class SwipeClassSessionSyncTest extends TestCase
         $student = $this->makeStudent();
         $sc      = $this->makeStudentClass($student->id);
 
-        $sessionDate = now()->toDateString();
-        $startTime   = '10:00:00';
-        $endTime     = '12:00:00';
-        $session     = $this->makeClassSession($sc->ID, $sessionDate, $startTime, $endTime);
+        // Session started 10 min ago → still within 15-min grace → on-time
+        $session = $this->makeOngoingSession($sc->ID, startedMinutesAgo: 10);
 
-        // swipe 10 minutes after start → on-time (≤ 15 min grace)
-        $swipeAt = $sessionDate . ' 10:10:00';
-
-        $res = $this->swipeAt($student->RFID, $swipeAt);
+        $res = $this->swipe($student->RFID);
         $res->assertStatus(201);
 
         $session->refresh();
-        $this->assertEquals('attended', $session->Status, 'ClassSession.Status should be attended after on-time swipe');
+        $this->assertEquals(
+            'attended',
+            $session->Status,
+            'ClassSession.Status should be attended after on-time swipe (within 15-min grace)'
+        );
     }
 
     // ── AC-002: late swipe → ClassSession.Status = late ──────────────────────
@@ -162,19 +171,18 @@ class SwipeClassSessionSyncTest extends TestCase
         $student = $this->makeStudent();
         $sc      = $this->makeStudentClass($student->id);
 
-        $sessionDate = now()->toDateString();
-        $startTime   = '10:00:00';
-        $endTime     = '12:00:00';
-        $session     = $this->makeClassSession($sc->ID, $sessionDate, $startTime, $endTime);
+        // Session started 20 min ago → past 15-min grace → late
+        $session = $this->makeOngoingSession($sc->ID, startedMinutesAgo: 20);
 
-        // swipe 20 minutes after start → late (> 15 min grace)
-        $swipeAt = $sessionDate . ' 10:20:00';
-
-        $res = $this->swipeAt($student->RFID, $swipeAt);
+        $res = $this->swipe($student->RFID);
         $res->assertStatus(201);
 
         $session->refresh();
-        $this->assertEquals('late', $session->Status, 'ClassSession.Status should be late when swipe is > 15min after StartTime');
+        $this->assertEquals(
+            'late',
+            $session->Status,
+            'ClassSession.Status should be late when swipe is > 15min after StartTime'
+        );
     }
 
     // ── AC-003: guard — do not overwrite non-scheduled status ────────────────
@@ -183,23 +191,26 @@ class SwipeClassSessionSyncTest extends TestCase
      * @test
      * FR-003：若 ClassSession.Status 已為 'attended'（老師已手動點名）
      * → 學生刷卡後 ClassSession.Status 應維持 'attended'，不被覆寫
+     *
+     * Scenario: session status pre-set to 'attended' (no existing StudentSingIn),
+     * student swipes → new StudentSingIn created, but ClassSession.Status unchanged.
      */
     public function swipe_does_not_overwrite_already_attended_session(): void
     {
         $student = $this->makeStudent();
         $sc      = $this->makeStudentClass($student->id);
 
-        $sessionDate = now()->toDateString();
-        $startTime   = '10:00:00';
-        $endTime     = '12:00:00';
-        $session     = $this->makeClassSession($sc->ID, $sessionDate, $startTime, $endTime, 'attended');
+        // Already attended (e.g., director manually set it)
+        $session = $this->makeOngoingSession($sc->ID, startedMinutesAgo: 10, status: 'attended');
 
-        $swipeAt = $sessionDate . ' 10:05:00';
-
-        $res = $this->swipeAt($student->RFID, $swipeAt);
+        $this->swipe($student->RFID);
 
         $session->refresh();
-        $this->assertEquals('attended', $session->Status, 'ClassSession.Status must not be overwritten when already attended');
+        $this->assertEquals(
+            'attended',
+            $session->Status,
+            'ClassSession.Status must not be overwritten when already attended'
+        );
     }
 
     // ── AC-004: TeacherID is correctly set ───────────────────────────────────
@@ -214,17 +225,15 @@ class SwipeClassSessionSyncTest extends TestCase
         $student = $this->makeStudent();
         $sc      = $this->makeStudentClass($student->id, ['TeacherID' => 42]);
 
-        $sessionDate = now()->toDateString();
-        $startTime   = '14:00:00';
-        $endTime     = '16:00:00';
-        $this->makeClassSession($sc->ID, $sessionDate, $startTime, $endTime);
+        // Ongoing session started 5 min ago
+        $this->makeOngoingSession($sc->ID, startedMinutesAgo: 5);
 
-        $swipeAt = $sessionDate . ' 14:05:00';
-        $res     = $this->swipeAt($student->RFID, $swipeAt);
+        $res = $this->swipe($student->RFID);
         $res->assertStatus(201);
 
         $signIn = StudentSignIn::where('StudentID', $student->id)->latest('id')->first();
         $this->assertNotNull($signIn, 'StudentSingIn record should be created');
+        $this->assertNotNull($signIn->TeacherID, 'TeacherID should not be null');
         $this->assertEquals(42, (int) $signIn->TeacherID, 'TeacherID should match StudentClass.TeacherID');
     }
 
@@ -232,28 +241,30 @@ class SwipeClassSessionSyncTest extends TestCase
 
     /**
      * @test
-     * FR-001：無匹配課程（self_study）→ ClassSession 不更新；Memo = 'self_study'
+     * FR-001：無匹配課程（時間窗口外）→ Memo = 'self_study'，ClassSession 不更新
      *
-     * 學生刷卡但今日無排課（或時間在窗口外）→ 建立 self_study 記錄
-     * → 已存在的任何 ClassSession 狀態不改變
+     * Session ended 3 hours ago — swipeAt (now) is past EndTime, outside window.
      */
     public function swipe_with_no_matching_class_does_not_update_any_session(): void
     {
         $student = $this->makeStudent();
         $sc      = $this->makeStudentClass($student->id);
 
-        // Session at 10:00, but student swipes at 23:00 — far outside any window
-        $sessionDate = now()->toDateString();
-        $session     = $this->makeClassSession($sc->ID, $sessionDate, '10:00:00', '12:00:00');
+        // Session ended 3 hours ago: startedMinutesAgo=300 (5h ago), duration=120min → ended 3h ago
+        $session = $this->makeOngoingSession($sc->ID, startedMinutesAgo: 300, durationMinutes: 120);
 
-        $swipeAt = $sessionDate . ' 23:00:00';
-        $res     = $this->swipeAt($student->RFID, $swipeAt);
+        $res = $this->swipe($student->RFID);
         $res->assertStatus(201);
 
         $signIn = StudentSignIn::where('StudentID', $student->id)->latest('id')->first();
-        $this->assertEquals('self_study', $signIn->Memo, 'Late-night swipe with no window match should be self_study');
+        $this->assertNotNull($signIn, 'A StudentSingIn should still be created (self_study)');
+        $this->assertEquals('self_study', $signIn->Memo, 'Swipe outside window should be self_study');
 
         $session->refresh();
-        $this->assertEquals('scheduled', $session->Status, 'ClassSession.Status must remain scheduled for self_study swipe');
+        $this->assertEquals(
+            'scheduled',
+            $session->Status,
+            'ClassSession.Status must remain scheduled when no matching session found'
+        );
     }
 }
