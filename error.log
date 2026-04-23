@@ -782,3 +782,4 @@
 [Wed Apr 22 07:10:02.045814 2026] [core:error] [pid 401881:tid 401886] [client 45.187.193.10:47106] AH10244: invalid URI path (/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh)
 [Wed Apr 22 16:07:54.159292 2026] [core:error] [pid 401880:tid 401922] [client 8.222.225.103:44730] AH10244: invalid URI path (/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh)
 [Wed Apr 22 18:51:22.231912 2026] [core:error] [pid 401881:tid 401917] [client 110.35.80.116:47070] AH10244: invalid URI path (/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh)
+[Thu Apr 23 11:13:32.903517 2026] [core:error] [pid 633215:tid 633230] [client 101.47.8.187:47660] AH10244: invalid URI path (/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh)
