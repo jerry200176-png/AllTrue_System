@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
 /**
@@ -19,9 +20,11 @@ use Tests\TestCase;
  *   SEC-006  FR-004/005  swipe-rfid throttle
  *   Regression FR-011    existing short-password accounts can still login
  *
- * Throttle tests each use a unique spoofed IP so cross-test cache state
- * never pollutes sibling tests. Cache::flush() is intentionally NOT used
- * because it is unreliable when the file cache driver is active.
+ * Throttle strategy: before each throttle test we explicitly clear the
+ * RateLimiter key for the target route + default test IP (127.0.0.1),
+ * so other tests that hit the same endpoint never pollute our counter.
+ * Key format mirrors ThrottleRequestsByIp::resolveRequestSignature:
+ *   sha1($route->getDomain() . '|' . $route->uri() . '|' . $request->ip())
  */
 class SecurityHardeningTest extends TestCase
 {
@@ -55,20 +58,17 @@ class SecurityHardeningTest extends TestCase
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /**
-     * Return a unique RFC-5737 test IP so each throttle test gets its own
-     * rate-limiter bucket and never inherits counts from another test.
+     * Clear the ThrottleRequestsByIp rate-limiter key for a given route URI.
+     * Must be called before each throttle test to avoid cross-test pollution.
+     *
+     * Key formula (ThrottleRequestsByIp::resolveRequestSignature):
+     *   sha1($route->getDomain() . '|' . $route->uri() . '|' . $request->ip())
+     * In tests: domain=null → '', uri=e.g. 'api/v1/auth/register', ip='127.0.0.1'
      */
-    private function uniqueIp(): string
+    private function clearThrottle(string $routeUri, string $ip = '127.0.0.1'): void
     {
-        static $n = 0;
-        $n++;
-        // 192.0.2.0/24 is reserved for documentation/testing (RFC 5737)
-        return '192.0.2.' . ($n % 254 + 1);
-    }
-
-    private function jsonWithIp(string $ip): self
-    {
-        return $this->withServerVariables(['REMOTE_ADDR' => $ip]);
+        $key = sha1('|' . $routeUri . '|' . $ip);
+        RateLimiter::clear($key);
     }
 
     private function makeDirectorToken(): array
@@ -102,10 +102,10 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function register_throttle_blocks_after_10_requests(): void
     {
-        $ip = $this->uniqueIp();
+        $this->clearThrottle('api/v1/auth/register');
 
         for ($i = 1; $i <= 10; $i++) {
-            $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/register', [
+            $res = $this->postJson('/api/v1/auth/register', [
                 'account'  => "throttle-reg-{$i}@x.com",
                 'password' => 'Password1!',
                 'name'     => "U{$i}",
@@ -113,7 +113,7 @@ class SecurityHardeningTest extends TestCase
             $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/register', [
+        $res = $this->postJson('/api/v1/auth/register', [
             'account'  => 'throttle-reg-11@x.com',
             'password' => 'Password1!',
             'name'     => 'U11',
@@ -127,10 +127,10 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function directors_register_throttle_blocks_after_10_requests(): void
     {
-        $ip = $this->uniqueIp();
+        $this->clearThrottle('api/v1/directors/register');
 
         for ($i = 1; $i <= 10; $i++) {
-            $res = $this->jsonWithIp($ip)->postJson('/api/v1/directors/register', [
+            $res = $this->postJson('/api/v1/directors/register', [
                 'account'   => "dir-throttle-{$i}@x.com",
                 'password'  => 'Password1!',
                 'name'      => "D{$i}",
@@ -139,7 +139,7 @@ class SecurityHardeningTest extends TestCase
             $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->jsonWithIp($ip)->postJson('/api/v1/directors/register', [
+        $res = $this->postJson('/api/v1/directors/register', [
             'account'   => 'dir-throttle-11@x.com',
             'password'  => 'Password1!',
             'name'      => 'D11',
@@ -153,16 +153,16 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function forgot_password_throttle_blocks_after_5_requests(): void
     {
-        $ip = $this->uniqueIp();
+        $this->clearThrottle('api/v1/auth/forgot-password');
 
         for ($i = 1; $i <= 5; $i++) {
-            $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/forgot-password', [
+            $res = $this->postJson('/api/v1/auth/forgot-password', [
                 'account' => "fp-{$i}@x.com",
             ]);
             $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/forgot-password', [
+        $res = $this->postJson('/api/v1/auth/forgot-password', [
             'account' => 'fp-6@x.com',
         ]);
         $res->assertStatus(429);
@@ -173,24 +173,22 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function swipe_rfid_throttle_blocks_after_30_requests(): void
     {
-        $ip = $this->uniqueIp();
+        $this->clearThrottle('api/v1/swipe-rfid');
 
         for ($i = 1; $i <= 30; $i++) {
-            $res = $this->jsonWithIp($ip)->withHeaders([
-                'Authorization' => 'Bearer sec-test-token-abc',
-            ])->postJson('/api/v1/swipe-rfid', [
-                'branch_code' => (string) $this->campus->id,
-                'rfid'        => "RFID-{$i}",
-            ]);
+            $res = $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
+                ->postJson('/api/v1/swipe-rfid', [
+                    'branch_code' => (string) $this->campus->id,
+                    'rfid'        => "RFID-{$i}",
+                ]);
             $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->jsonWithIp($ip)->withHeaders([
-            'Authorization' => 'Bearer sec-test-token-abc',
-        ])->postJson('/api/v1/swipe-rfid', [
-            'branch_code' => (string) $this->campus->id,
-            'rfid'        => 'RFID-31',
-        ]);
+        $res = $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
+            ->postJson('/api/v1/swipe-rfid', [
+                'branch_code' => (string) $this->campus->id,
+                'rfid'        => 'RFID-31',
+            ]);
         $res->assertStatus(429);
     }
 
@@ -216,6 +214,7 @@ class SecurityHardeningTest extends TestCase
             'password' => 'Abc1234!',   // 8 chars
             'name'     => 'OkPwd',
         ]);
+        // Not 422 due to password (may be 422 for other reasons, 201 on success)
         if ($res->status() === 422) {
             $this->assertArrayNotHasKey('password', $res->json('errors') ?? []);
         }
