@@ -55,7 +55,10 @@ class TeacherSigninStatusBackfillTest extends TestCase
         $date = '2026-04-21';
 
         DB::table('schedules')->insert([
+            'student_id'    => 1,
             'teacher_id'    => 888,
+            'day_of_week'   => 1,
+            'branch_id'     => 1,
             'schedule_date' => $date,
             'start_time'    => '09:00',
             'end_time'      => '11:00',
@@ -84,7 +87,10 @@ class TeacherSigninStatusBackfillTest extends TestCase
         $date = '2026-04-22';
 
         DB::table('schedules')->insert([
+            'student_id'    => 1,
             'teacher_id'    => 777,
+            'day_of_week'   => 2,
+            'branch_id'     => 1,
             'schedule_date' => $date,
             'start_time'    => '14:00',
             'end_time'      => '16:00',
@@ -113,7 +119,10 @@ class TeacherSigninStatusBackfillTest extends TestCase
         $date = '2026-04-23';
 
         DB::table('schedules')->insert([
+            'student_id'    => 1,
             'teacher_id'    => 666,
+            'day_of_week'   => 3,
+            'branch_id'     => 1,
             'schedule_date' => $date,
             'start_time'    => '10:00',
             'end_time'      => '12:00',
