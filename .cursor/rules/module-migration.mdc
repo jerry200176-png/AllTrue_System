@@ -1,0 +1,55 @@
+---
+description: >-
+  🏠 Room B：Migration 房間 — 觸碰 database/migrations/ 時必讀。chunkById、MySQL DEFAULT、migrate 時機。
+globs: "backend/database/migrations/**"
+alwaysApply: false
+---
+
+# 🏠 Migration 房間
+
+## ⛔ 3 條 Migration 專屬規則
+
+### M1. `chunk()` 改 Status 欄位 → 必須用 `chunkById()`（§MIGRATION-002）
+
+```php
+// ❌ 危險：chunk() 用 OFFSET，修改 WHERE 條件欄位後 OFFSET 漂移，跳過 row
+DB::table('T')->where('Status','pending')->chunk(200, fn($rows) => ...update Status...);
+
+// ✅ 安全：chunkById() 用 WHERE id > last_id，mutation 安全
+DB::table('T')->where('Status','pending')->chunkById(200, fn($rows) => ...update Status...);
+```
+
+**歷史血案**：2026-04-23 backfill migration 用 chunk()，600 筆 pending_review 未被修正。
+
+---
+
+### M2. 新增帶 DEFAULT 的欄位 → MySQL 自動回填所有舊記錄（§MIGRATION-001）
+
+```php
+// 新增 Status 欄位帶 DEFAULT 'pending_review'
+// → MySQL 把所有既有 row 回填為 'pending_review'
+// → 必須搭配 backfill migration 修正歷史資料
+$table->enum('Status', [...])->default('pending_review');
+```
+
+**規則**：新增帶 DEFAULT 的欄位，**同 PR 必須附一個 backfill migration**，用 chunkById 修正歷史資料。
+
+---
+
+### M3. Migration 執行時機
+
+```
+❌ 禁止：CI 還在跑就執行 migrate
+❌ 禁止：直接在 feature branch 跑 migrate --force
+✅ 正確：PR merge → git pull origin main → php artisan migrate --force
+```
+
+---
+
+## 📋 Migration 寫作清單
+
+- [ ] 是否需要 chunkById？（任何在 callback 內 UPDATE 迭代基準的 migration）
+- [ ] 新欄位有 DEFAULT？→ 需要 backfill migration
+- [ ] down() 是否合理？（backfill 通常是 no-op）
+- [ ] 有寫 `if (Schema::hasTable(...))` guard？
+- [ ] timestamp 命名正確？（`2026_04_23_NNNNNN_描述.php`，N 依序不衝突）

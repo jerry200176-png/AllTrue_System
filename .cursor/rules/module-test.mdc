@@ -1,0 +1,71 @@
+---
+description: >-
+  🏠 Room C：測試房間 — 觸碰 backend/tests/ 時必讀。NOT NULL 欄位、Factory 用法、時間敏感、chunk 驗證。
+globs: "backend/tests/**"
+alwaysApply: false
+---
+
+# 🏠 測試房間
+
+## ⚠️ 寫任何測試前必做：查 NOT NULL 欄位（§TEST-001，已犯 4+ 次）
+
+```sql
+-- 先跑這個，找出必填欄位
+SELECT COLUMN_NAME FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA='AllTrue' AND TABLE_NAME='<你要 insert 的表名>'
+  AND IS_NULLABLE='NO' AND EXTRA NOT LIKE '%auto_increment%'
+  AND COLUMN_DEFAULT IS NULL;
+```
+
+---
+
+## 📋 高頻地雷表
+
+| 表名 | 地雷必填欄位 | 正確做法 |
+|------|------------|---------|
+| `Campus` | 10+ 個 NOT NULL | ✅ 用 `CampusFactory::new()->create()` |
+| `schedules` | **S.D.B.**：`student_id`, `day_of_week`, `branch_id` | ✅ 每次 insert 都填這三個 |
+| `StudentClass` | `StudentID`, `TeacherID`, `GradeID`, `SubjectID`, `Rate` | ✅ 用 Factory 或確認 |
+| `Student` | `name`, `CampusID`, `SchoolName`（≤32 chars）| ✅ `mb_substr(faker->company(), 0, 32)` |
+
+---
+
+## ⚠️ 時間敏感測試（§TEST-005）
+
+```php
+// ❌ 危險：CI 在 18:00+ 後跑，今日 Thursday 的 future session 被 isEndedAtCreateTime=true
+'start_time' => '16:00', 'duration_minutes' => 120  // 下課 18:00 UTC+8
+
+// ✅ 安全：23:30 才下課，CI 全天都不會觸發
+'start_time' => '23:00', 'duration_minutes' => 30
+```
+
+**規則**：測試中含「今日日期」的 future session，`start_time` 一律用 `23:00`。
+
+---
+
+## ⚠️ chunkById vs chunk 驗證（§MIGRATION-002）
+
+當你要測試一個 backfill/migration 邏輯，必須包含：
+
+```php
+// AC-N：大量資料跨 chunk 邊界，全部被處理（不跳行）
+public function test_chunk_mutation_does_not_skip_records(): void
+{
+    // 插入超過 chunk size 的資料（如 250 筆）
+    // 執行邏輯
+    // 驗證 0 筆留在原狀態
+    $remaining = DB::table('T')->where('Status','pending')->count();
+    $this->assertEquals(0, $remaining, "chunk mutation bug detected");
+}
+```
+
+---
+
+## ❌ 禁止事項
+
+```
+❌ 禁止在 /home/admin/backend/ 執行 php artisan test（R2 紅線）
+❌ 禁止 use withTrashed() 在自訂 VoidedAt 欄位（用 DB::table() 查）（§TEST-003）
+❌ 禁止測試檔 push 前沒有跑 CI（測試只能在 GitHub Actions 跑）
+```
