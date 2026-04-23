@@ -85,12 +85,26 @@ WHERE TABLE_SCHEMA='AllTrue' AND TABLE_NAME='<表名>'
 - `Campus` 有 10+ 個 NOT NULL 欄位，用 `firstOrCreate` 別 raw insert
 - 事故：§TEST-001（反覆出現 4+ 次）、§TEST-004
 
-### Y2. PhpSpreadsheet sheet 名稱不能為空
+### Y2. 測試用 `now()` + `addHours(N)` 跨午夜 → CI 22:00+ TWN 之後失敗
+
+```php
+// ❌ 危險：now() + 2h 在 22:01 TWN = 00:01 次日，EndTime "00:01" < "22:01" → session 窗口失敗
+$endTime = now()->addHours(2)->format('H:i:s');
+
+// ✅ 正確：setUp() 固定 10:00 AM，EndTime 永遠落在中午
+Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
+```
+
+- 同理：`start_time='23:00'` + `duration_minutes=30` → EndTime=23:30；CI 在 23:31 跑時 session 已結束 → 計數差一
+- **修法**：任何需要「當下時間」的測試，在 `setUp()` 加 `Carbon::setTestNow(Carbon::today()->setTime(10, 0))`；`tearDown()` 加 `Carbon::setTestNow()`
+- 事故：§TEST-FLAKY-001（2026-04-23，PR #36，影響 7 個測試跨 4 個 class）
+
+### Y3. PhpSpreadsheet sheet 名稱不能為空
 
 - 動態 sheet name 必須 guard 空字串，fallback 到 `"Sheet"` 或 `"老師{$id}"`
 - 事故：§EXPORT-001
 
-### Y3. 前端改了必須 build 才生效
+### Y4. 前端改了必須 build 才生效
 
 - `npm run deploy` 只能在 **main branch + PR merged 後** 執行
 - 忘記 deploy ≠ 功能消失，只是前端還在用舊 JS bundle
