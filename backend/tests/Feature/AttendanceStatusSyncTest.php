@@ -117,7 +117,7 @@ class AttendanceStatusSyncTest extends TestCase
         ]);
     }
 
-    private function patch(string $token, int $sessionId, string $csStatus): \Illuminate\Testing\TestResponse
+    private function patchSession(string $token, int $sessionId, string $csStatus): \Illuminate\Testing\TestResponse
     {
         return $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -143,7 +143,7 @@ class AttendanceStatusSyncTest extends TestCase
         $session = $this->makeClassSession($sc->ID, 'attended');
         $signIn  = $this->makeStudentSignIn($student->id, $sc->ID, $session->id, 'present');
 
-        $this->patch($token, $session->id, 'late')->assertOk();
+        $this->patchSession($token, $session->id, 'late')->assertOk();
 
         $signIn->refresh();
         $this->assertSame('late', $signIn->Status,
@@ -166,7 +166,7 @@ class AttendanceStatusSyncTest extends TestCase
         $session = $this->makeClassSession($sc->ID, 'attended');
         $signIn  = $this->makeStudentSignIn($student->id, $sc->ID, $session->id, 'present');
 
-        $this->patch($token, $session->id, 'absent')->assertOk();
+        $this->patchSession($token, $session->id, 'absent')->assertOk();
 
         $signIn->refresh();
         $this->assertSame('absent', $signIn->Status,
@@ -189,7 +189,7 @@ class AttendanceStatusSyncTest extends TestCase
         $session = $this->makeClassSession($sc->ID, 'absent');
         $signIn  = $this->makeStudentSignIn($student->id, $sc->ID, $session->id, 'absent');
 
-        $this->patch($token, $session->id, 'attended')->assertOk();
+        $this->patchSession($token, $session->id, 'attended')->assertOk();
 
         $signIn->refresh();
         $this->assertSame('present', $signIn->Status,
@@ -226,7 +226,7 @@ class AttendanceStatusSyncTest extends TestCase
             'VoidedAt'        => now(),
         ]);
 
-        $this->patch($token, $session->id, 'late')->assertOk();
+        $this->patchSession($token, $session->id, 'late')->assertOk();
 
         $voided->refresh();
         $this->assertSame('present', $voided->Status,
