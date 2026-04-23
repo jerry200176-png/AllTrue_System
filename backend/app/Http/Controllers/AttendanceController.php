@@ -989,56 +989,6 @@ class AttendanceController extends Controller
     }
 
     /**
-     * PATCH /api/v1/attendance/{id}
-     * 直接更新出缺勤記錄的 Status。
-     * 主要用途：自修記錄（ClassSessionID = null）的狀態修正，不觸發堂數邏輯。
-     * 限主任／super_admin；不同步 ClassSession（自修無堂次）。
-     */
-    public function update(Request $request, int $id)
-    {
-        $request->validate([
-            'status' => 'required|in:present,late,absent,leave,excused',
-        ]);
-
-        $role      = $request->attributes->get('auth_role');
-        $campusIds = $request->attributes->get('auth_campus_ids', []);
-
-        $signin = StudentSignIn::whereNull('VoidedAt')->find($id);
-        if (! $signin) {
-            return response()->json(['message' => '記錄不存在或已刪除'], 404);
-        }
-
-        if ($role !== 'super_admin' && ! empty($campusIds)) {
-            $campusId = (int) ($signin->CampusID ?? 0);
-            if (! $campusId || ! in_array($campusId, $campusIds, true)) {
-                return response()->json(['message' => 'Forbidden'], 403);
-            }
-        }
-
-        $newStatus = $request->input('status');
-        if ($newStatus === 'excused') {
-            $newStatus = 'leave';
-        }
-
-        $signin->Status = $newStatus;
-        $signin->save();
-
-        $labelMap = [
-            'present' => '到班',
-            'late'    => '遲到',
-            'absent'  => '缺席',
-            'leave'   => '請假',
-        ];
-
-        return response()->json([
-            'ok'           => true,
-            'id'           => $signin->id,
-            'status'       => $newStatus,
-            'status_label' => $labelMap[$newStatus] ?? $newStatus,
-        ]);
-    }
-
-    /**
      * POST /api/v1/attendance/{id}/convert-to-attended
      * 將自修記錄（Memo='self_study'）轉換為正式到班並扣堂。
      * Q2 決策：同日已有 scheduled ClassSession 則複用，無則建立新的。
