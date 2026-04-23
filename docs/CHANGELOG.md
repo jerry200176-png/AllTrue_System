@@ -41,6 +41,26 @@ PRD：`.cursor/plans/teacher_attendance_v1.2_status_fix_report_format_prd_2026-0
 
 ---
 
+## 2026-04-23 — fix(batch4): TD-008 孤兒 SignIn 自動關閉 + TD-011 刷卡匹配窗口優化（PR #19）
+
+- **TD-008 — CloseOrphanStudentSignIns Command**
+  - 新增 `App\Console\Commands\CloseOrphanStudentSignIns`（signature: `student-signin:close-orphans`）
+  - 每日掃描 `SignOutDT = null` 且 `SignInDT < today` 的孤兒記錄
+  - 策略：找該學生當日最後一堂 `ClassSession.EndTime` → 設 `SignOutDT`；無堂次則 fallback 到 `22:00`
+  - `SignOutDT ≤ SignInDT` 時自動延長 1 小時（防呆）
+  - 記錄 `Log::info('orphan_signin_autoclosed', ...)` 含 source 欄位（`class_session_end_time` / `fallback_2200`）
+  - 排程：`Kernel::schedule` 每日 `02:30` 執行（在 `reconcile:nightly` 之後）
+
+- **TD-011 — findMatchingClass 匹配窗口擴展**
+  - 舊邏輯：`|swipeAt - startTime| ≤ 30 min`（遲到 31 分鐘即歸自修）
+  - 新邏輯：`(startTime - 30min) ≤ swipeAt ≤ endTime`（課中到場均可匹配）
+  - 優先選 **ongoing sessions**（`startTime ≤ swipeAt`）over upcoming；ongoing 中取最近啟動的；upcoming 中取最近開始的
+  - 解決連排課遲到場景：10:50 刷卡在 10:00-11:00 和 11:00-12:00 同時符合時，正確選擇第一堂（ongoing）
+
+- **測試**：`CloseOrphanStudentSignInsTest`（3 tests）、`FindMatchingClassWindowTest`（3 tests）— CI ✅
+
+---
+
 ## 2026-04-23 — fix(batch3): TD-010 RFID 唯一性約束（PR #18）
 
 - **Migration** `2026_04_23_300000`：DROP 舊單欄位 `student_rfid_unique`，ADD composite unique index `students_rfid_campus_unique (RFID, CampusID)`；同分校同卡不再靜默覆蓋，不同分校允許相同卡號
