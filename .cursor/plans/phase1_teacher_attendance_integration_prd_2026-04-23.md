@@ -2,8 +2,8 @@
 
 ## 1. 文件資訊
 - 功能名稱：老師出缺勤打卡整合（併入現有出缺勤管理頁）
-- 版本：v1.6 (NFR-003 升格本版實作)
-- 狀態：**🔄 Phase 5 [REVIEW] 完成；NFR-003 防重複刷卡整合進 Phase 3 → 重新進入 DEV**
+- 版本：v1.7 (OPS 部署完成)
+- 狀態：**✅ Phase 7 [OPS] 完成 — 功能已部署，等待 PR #10 merge 後正式上線**
 - 目標角色：老師、主任、超級管理員
 - 文件日期：2026-04-23
 - 關聯文件：[`.cursor/plans/arch_teacher_attendance_2026-04-23.md`](./arch_teacher_attendance_2026-04-23.md)
@@ -19,8 +19,8 @@
 | Phase 4 [TEST] | QA 工程師 | 🔄 v1.0 全綠；v1.6 新測試待補 |
 | Phase 4b [SEC] | Security Engineer | ✅ 完成（STRIDE 靜態審查，詳見 §9） |
 | Phase 5 [REVIEW] | Staff Engineer | ✅ v1.0 LGTM；v1.6 待重審 |
-| Phase 6 [DOCS] | Technical Writer | ⬜ 未開始 |
-| Phase 7 [OPS] | DevOps Engineer | ⬜ 未開始 |
+| Phase 6 [DOCS] | Technical Writer | ✅ 完成（CHANGELOG + PRD v1.7 更新） |
+| Phase 7 [OPS] | DevOps Engineer | ✅ 完成（migrate + deploy + smoke test 通過） |
 
 ## 2. 目標與業務背景
 - 目前系統已能透過 RFID 寫入老師打卡（`TeacherSingIn`），但尚未形成完整的「可查、可補、可稽核」老師出缺勤流程。
@@ -287,6 +287,7 @@
 | v1.4 | 2026-04-23 | Phase 3 [DEV] 完成；npm run deploy 已執行 |
 | v1.5 | 2026-04-23 | CI 全綠（PHPUnit 689/689 pass，Vite 成功）；Phase 4b [SEC] STRIDE 靜態審查完成；Phase 5 [REVIEW] 啟動，PR #10 Code Review 進行中 |
 | v1.6 | 2026-04-23 | NFR-003 升格本版實作：FR-010 新增、Decision Log 補充、Priority 更新、DoD 新增驗收項；DEV/TEST 重新開啟 |
+| v1.7 | 2026-04-23 | Phase 7 [OPS] 完成：migration 執行（TeacherSingIn + teacher_signin_adjustments）、npm run deploy、route:cache 更新、smoke test 全通過 |
 
 ---
 
