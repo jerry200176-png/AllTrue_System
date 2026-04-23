@@ -336,11 +336,14 @@ Route::prefix('v1')->group(function () {
         Route::get('attendance/ended-sessions', [AttendanceController::class, 'endedSessions']);
         Route::post('attendance', [AttendanceController::class, 'store']);
         Route::post('attendance/batch-mark', [AttendanceController::class, 'batchMark']);
+        Route::delete('attendance/{id}', [AttendanceController::class, 'destroy'])->middleware('role:director,super_admin')->whereNumber('id');
+        Route::post('attendance/{id}/convert-to-attended', [AttendanceController::class, 'convertToAttended'])->middleware('role:director,super_admin')->whereNumber('id');
 
         // ── Teacher Attendance (teacher-attendance-v1) ────────────────────
         Route::get('teacher-attendance/today', [\App\Http\Controllers\TeacherAttendanceController::class, 'today']);
         Route::get('teacher-attendance/unclosed', [\App\Http\Controllers\TeacherAttendanceController::class, 'unclosed'])->middleware('role:director,super_admin');
         Route::get('teacher-attendance/export', [\App\Http\Controllers\TeacherAttendanceController::class, 'export'])->middleware('role:director,super_admin');
+        Route::get('teacher-attendance/export-monthly', [\App\Http\Controllers\TeacherAttendanceController::class, 'exportMonthly'])->middleware('role:director,super_admin');
         Route::get('teacher-attendance', [\App\Http\Controllers\TeacherAttendanceController::class, 'index'])->middleware('role:director,super_admin');
         Route::post('teacher-attendance/{id}/adjust', [\App\Http\Controllers\TeacherAttendanceController::class, 'adjust'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);

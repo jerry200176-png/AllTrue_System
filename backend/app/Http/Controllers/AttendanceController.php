@@ -15,6 +15,7 @@ use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
 {
@@ -168,7 +169,7 @@ class AttendanceController extends Controller
                     $records->getCollection()->push(...$leaveRows->all());
                 }
             } catch (\Exception $e) {
-                \Log::warning('AttendanceController supplemental query failed: ' . $e->getMessage());
+                Log::warning('AttendanceController supplemental query failed: ' . $e->getMessage());
             }
         }
 
@@ -598,7 +599,7 @@ class AttendanceController extends Controller
         $results = [];
         $savedInput = $request->all();
 
-        \Illuminate\Support\Facades\Log::info('attendance.batch_mark', [
+        Log::info('attendance.batch_mark', [
             'user_id' => $request->attributes->get('auth_user')?->id ?? null,
             'role' => $request->attributes->get('auth_role'),
             'count' => count($items),
@@ -851,6 +852,202 @@ class AttendanceController extends Controller
             'SwipeAt' => $swipeAt,
             'Reason' => $reason,
             'Payload' => json_encode($payload),
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/attendance/{id}
+     * 主任軟刪除（Void）出缺勤記錄。
+     * 若已扣堂自動沖回；若 ClassSession 為出勤狀態則退回 scheduled。
+     */
+    public function destroy(Request $request, int $id)
+    {
+        $request->validate([
+            'void_reason' => 'required|string|min:2|max:500',
+        ]);
+
+        $role      = $request->attributes->get('auth_role');
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $authUser  = $request->attributes->get('auth_user');
+        $voidReason = $request->input('void_reason');
+
+        $signin = StudentSignIn::whereNull('VoidedAt')->find($id);
+        if (! $signin) {
+            return response()->json(['message' => '記錄不存在或已刪除'], 404);
+        }
+
+        // 分校隔離
+        if ($role !== 'super_admin' && ! empty($campusIds)) {
+            $campusId = $signin->CampusID;
+            if (! $campusId || ! in_array($campusId, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        $sessionReversed       = false;
+        $classSessionReverted  = false;
+
+        try {
+            DB::transaction(function () use ($signin, $authUser, $voidReason, &$sessionReversed, &$classSessionReverted) {
+                // ① Soft-delete
+                $signin->VoidedAt        = now();
+                $signin->VoidedByUserID  = $authUser?->id;
+                $signin->VoidReason      = $voidReason;
+                $signin->save();
+
+                // ② 若已扣堂，沖回堂數
+                if ($signin->SessionDeducted && $signin->StudentClassID) {
+                    SessionDeductionService::reverseForSession(
+                        (int) $signin->StudentClassID,
+                        $signin->ClassSessionID ? (int) $signin->ClassSessionID : null,
+                        'void_attendance',
+                        $authUser?->id,
+                        $voidReason
+                    );
+                    SessionDeductionService::recomputeCounters((int) $signin->StudentClassID);
+                    $sessionReversed = true;
+                }
+
+                // ③ 若 ClassSession 為出勤狀態，退回 scheduled
+                if ($signin->ClassSessionID) {
+                    $session = ClassSession::find($signin->ClassSessionID);
+                    if ($session && in_array($session->Status, ['attended', 'late', 'absent'], true)) {
+                        $session->Status = 'scheduled';
+                        $session->save();
+                        $classSessionReverted = true;
+                    }
+                }
+            });
+        } catch (\Throwable $e) {
+            Log::error('[attendance-void] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['message' => '刪除失敗，請稍後再試'], 500);
+        }
+
+        Log::info('[attendance-void]', [
+            'voided_id'      => $id,
+            'by_user'        => $authUser?->id,
+            'void_reason'    => $voidReason,
+            'session_reversed'      => $sessionReversed,
+            'class_session_reverted' => $classSessionReverted,
+        ]);
+
+        return response()->json([
+            'ok'                     => true,
+            'voided_id'              => $id,
+            'session_reversed'       => $sessionReversed,
+            'class_session_reverted' => $classSessionReverted,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/attendance/{id}/convert-to-attended
+     * 將自修記錄（Memo='self_study'）轉換為正式到班並扣堂。
+     * Q2 決策：同日已有 scheduled ClassSession 則複用，無則建立新的。
+     */
+    public function convertToAttended(Request $request, int $id)
+    {
+        $request->validate([
+            'student_class_id' => 'required|integer',
+        ]);
+
+        $role      = $request->attributes->get('auth_role');
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        $authUser  = $request->attributes->get('auth_user');
+        $studentClassId = (int) $request->input('student_class_id');
+
+        $signin = StudentSignIn::whereNull('VoidedAt')
+            ->where('Memo', 'self_study')
+            ->find($id);
+
+        if (! $signin) {
+            return response()->json(['message' => '此記錄不存在或非自修記錄'], 422);
+        }
+
+        $studentClass = StudentClass::find($studentClassId);
+        if (! $studentClass) {
+            return response()->json(['message' => '課程不存在'], 404);
+        }
+
+        // 分校隔離：透過 Student → CampusID
+        if ($role !== 'super_admin' && ! empty($campusIds)) {
+            $studentCampusId = (int) (Student::where('id', $studentClass->StudentID)->value('CampusID') ?? 0);
+            if (! in_array($studentCampusId, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
+        if ((int) ($studentClass->RemainingSessions ?? 0) <= 0) {
+            return response()->json(['message' => '此課程剩餘堂數不足'], 422);
+        }
+
+        $sessionDate = Carbon::parse($signin->SignInDT)->toDateString();
+        $startTime   = Carbon::parse($signin->SignInDT)->format('H:i:s');
+
+        $classSessionId    = null;
+        $remainingSessions = 0;
+
+        try {
+            DB::transaction(function () use (
+                $signin, $studentClass, $studentClassId, $sessionDate, $startTime,
+                $authUser, &$classSessionId, &$remainingSessions
+            ) {
+                // ① 複用同日 scheduled ClassSession，或建立新的（Q2: 選項 A）
+                $existing = ClassSession::where('StudentClassID', $studentClassId)
+                    ->whereDate('SessionDate', $sessionDate)
+                    ->where('Status', 'scheduled')
+                    ->first();
+
+                if ($existing) {
+                    $existing->Status = 'attended';
+                    $existing->save();
+                    $classSessionId = $existing->id;
+                } else {
+                    $endTime = Carbon::parse($signin->SignInDT)->addHour()->format('H:i:s');
+                    $session = ClassSession::create([
+                        'StudentClassID' => $studentClassId,
+                        'SessionDate'    => $sessionDate,
+                        'StartTime'      => $startTime,
+                        'EndTime'        => $endTime,
+                        'Status'         => 'attended',
+                    ]);
+                    $classSessionId = $session->id;
+                }
+
+                // ② 更新 StudentSingIn
+                $signin->ClassSessionID  = $classSessionId;
+                $signin->StudentClassID  = $studentClassId;
+                $signin->Memo            = null;
+                $signin->SessionDeducted = true;
+                $signin->save();
+
+                // ③ 扣堂
+                SessionDeductionService::deductForSession(
+                    $studentClassId,
+                    $classSessionId,
+                    'convert_self_study',
+                    $authUser?->id,
+                    '自修轉到班'
+                );
+                SessionDeductionService::recomputeCounters($studentClassId);
+
+                $remainingSessions = (int) (StudentClass::find($studentClassId)?->RemainingSessions ?? 0);
+            });
+        } catch (\Throwable $e) {
+            Log::error('[attendance-convert] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
+            return response()->json(['message' => '轉換失敗，請稍後再試'], 500);
+        }
+
+        Log::info('[attendance-convert]', [
+            'signin_id'        => $id,
+            'student_class_id' => $studentClassId,
+            'class_session_id' => $classSessionId,
+            'by_user'          => $authUser?->id,
+        ]);
+
+        return response()->json([
+            'ok'                => true,
+            'class_session_id'  => $classSessionId,
+            'remaining_sessions' => $remainingSessions,
         ]);
     }
 
