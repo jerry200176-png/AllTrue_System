@@ -11,6 +11,7 @@ use App\Models\StudentSignIn;
 use App\Models\Teacher;
 use App\Models\TeacherSignIn;
 use App\Models\UserCampus;
+use App\Services\AttendanceEffectsService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -210,25 +211,50 @@ class SwipeRfidController extends Controller
                 }
             }
 
+            // FR-005: TeacherID fallback — if StudentClass.TeacherID is null but we have
+            // a ClassSession, try to get TeacherID from the ClassSession's StudentClass.
+            $resolvedTeacherId = $studentClass?->TeacherID;
+            if ($resolvedTeacherId === null && $classSessionId !== null) {
+                $fallbackSc = ClassSession::find($classSessionId)?->studentClass;
+                $resolvedTeacherId = $fallbackSc?->TeacherID ?? null;
+                if ($resolvedTeacherId === null) {
+                    Log::warning('[swipe] TeacherID resolved to null', [
+                        'student_id'       => $student->id,
+                        'class_session_id' => $classSessionId,
+                        'student_class_id' => $studentClass?->ID,
+                    ]);
+                }
+            }
+
             $signIn = StudentSignIn::create([
-                'StudentClassID'  => $studentClass?->ID,
+                'StudentClassID'   => $studentClass?->ID,
                 'StudentID'        => $student->id,
-                'TeacherID'       => $studentClass?->TeacherID,
+                'TeacherID'        => $resolvedTeacherId,
                 'RecordedByUserID' => null,
-                'GradeID'         => $studentClass?->GradeID,
-                'SubjectID'      => $studentClass?->SubjectID,
-                'Get1byID'       => $studentClass?->by1,
-                'Hours'          => $hours,
-                'Memo'           => $studentClass ? 'swipe-rfid' : 'self_study',
-                'SignInDT'       => $swipeAt,
-                'SignOutDT'      => null,
-                'MDT'            => $swipeAt,
-                'ClassSessionID' => $classSessionId,
-                'Status'         => 'present',
-                'CampusID'       => $campusId,
-                'PersonType'     => 'student',
-                'SessionDeducted' => false,
+                'GradeID'          => $studentClass?->GradeID,
+                'SubjectID'        => $studentClass?->SubjectID,
+                'Get1byID'         => $studentClass?->by1,
+                'Hours'            => $hours,
+                'Memo'             => $studentClass ? 'swipe-rfid' : 'self_study',
+                'SignInDT'         => $swipeAt,
+                'SignOutDT'        => null,
+                'MDT'              => $swipeAt,
+                'ClassSessionID'   => $classSessionId,
+                'Status'           => 'present',
+                'CampusID'         => $campusId,
+                'PersonType'       => 'student',
+                'SessionDeducted'  => false,
             ]);
+
+            // FR-001/FR-002: Sync ClassSession.Status after successful swipe.
+            // Only updates when Status = 'scheduled' (guard prevents overwriting human decisions).
+            if ($classSessionId !== null) {
+                $classSession = ClassSession::find($classSessionId);
+                if ($classSession) {
+                    $swipeStatus = AttendanceEffectsService::resolveSwipeStatus($classSession, $swipeAt);
+                    AttendanceEffectsService::applySessionStatus($classSession, $swipeStatus);
+                }
+            }
 
             // Deduct session on sign-in (點名成功才扣堂)
             if ($studentClass && !$signIn->SessionDeducted) {
@@ -399,7 +425,7 @@ class SwipeRfidController extends Controller
 
             $newSignIn = StudentSignIn::create([
                 'StudentClassID'   => $sc->ID,
-                'StudentID'         => $student->id,
+                'StudentID'        => $student->id,
                 'TeacherID'        => $sc->TeacherID,
                 'RecordedByUserID' => null,
                 'GradeID'          => $sc->GradeID,
@@ -416,6 +442,11 @@ class SwipeRfidController extends Controller
                 'PersonType'       => 'student',
                 'SessionDeducted'  => false,
             ]);
+
+            // FR-004: sync ClassSession.Status for backfilled records.
+            // Backfill sessions use session StartTime as SignInDT (not actual swipe time),
+            // so we treat them as 'attended' (not late).
+            AttendanceEffectsService::applySessionStatus($session, 'present');
 
             SessionDeductionService::deductOnAttendance($sc, $newSignIn);
 
