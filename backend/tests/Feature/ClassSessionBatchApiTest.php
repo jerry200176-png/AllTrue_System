@@ -17,6 +17,21 @@ class ClassSessionBatchApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Pin to 10:00 AM. Tests that need a specific time override with their own
+        // Carbon::setTestNow() call. This default prevents midnight-crossing EndTime
+        // values when tests use start_time='23:00' with short durations.
+        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_director_can_batch_create_sessions_and_only_past_dates_create_learning_records(): void
     {
         $token = $this->createUserToken('A', [1], 'director-batch-a@example.com');

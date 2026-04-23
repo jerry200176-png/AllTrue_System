@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -29,6 +30,9 @@ class SwipeRfidEdgeCaseTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Pin time to 10:00 AM — same reason as SwipeClassSessionSyncTest.
+        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
 
         $this->campus = Campus::create([
             'name'           => 'EdgeCampus',
@@ -54,6 +58,12 @@ class SwipeRfidEdgeCaseTest extends TestCase
             'Subject_Name' => 'EdgeSubject',
         ]);
         $this->subjectId = $subject->id;
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
