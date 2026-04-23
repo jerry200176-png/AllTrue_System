@@ -4,31 +4,31 @@ overview: 在出缺勤管理頁面顯示學生自修記錄，修復 AttendanceCo
 todos:
   - id: backend-left-join
     content: "[FEATURE] AttendanceController::index() L24：->join 改為 ->leftJoin，確認所有 sc.* 欄位有 null fallback"
-    status: pending
+    status: completed
   - id: backend-smoke
     content: "[FEATURE] 確認 API response 每筆 record 含 Memo 欄位（si.* 已涵蓋，跑 CI smoke test 驗證）"
-    status: pending
+    status: completed
   - id: frontend-badge
     content: "[FEATURE] AttendancePage.vue：表格狀態欄加自修 badge 判斷（record.Memo === 'self_study' → 橘色 badge）"
-    status: pending
+    status: completed
   - id: frontend-filter
     content: "[FEATURE] AttendancePage.vue：篩選器加「自修」選項；filteredRecords computed 補 self_study 匹配邏輯（P1）"
-    status: pending
+    status: completed
   - id: frontend-ux
     content: "[FEATURE] UI/UX：自修空狀態設計（圖示 + 說明文字）；手機版響應式驗證"
-    status: pending
+    status: completed
   - id: test-regression
     content: "[TEST] Pest Feature Test：LEFT JOIN 不破壞現有課堂出勤查詢；self_study 記錄出現在 API 回傳"
-    status: pending
+    status: completed
   - id: review-security
     content: "[REVIEW] Code Review：LEFT JOIN 授權邊界不變；Vue template Memo 無 XSS 風險"
-    status: pending
+    status: completed
   - id: docs-changelog
     content: "[DOCS] CHANGELOG 更新版本條目"
-    status: pending
+    status: completed
   - id: ops-deploy
     content: "[OPS] npm run deploy（前端）；smoke test GET /api/v1/attendance 含 self_study 記錄"
-    status: pending
+    status: completed
 isProject: false
 ---
 
