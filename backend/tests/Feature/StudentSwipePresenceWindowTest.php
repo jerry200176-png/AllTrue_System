@@ -27,7 +27,7 @@ class StudentSwipePresenceWindowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->campus = Campus::create([
+        $this->campus = Campus::factory()->create([
             'name'  => 'TestCampus',
             'Token' => 'test-token-123',
         ]);
