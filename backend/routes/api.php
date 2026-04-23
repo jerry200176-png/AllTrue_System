@@ -336,6 +336,8 @@ Route::prefix('v1')->group(function () {
         Route::get('attendance/ended-sessions', [AttendanceController::class, 'endedSessions']);
         Route::post('attendance', [AttendanceController::class, 'store']);
         Route::post('attendance/batch-mark', [AttendanceController::class, 'batchMark']);
+        Route::patch('attendance/{id}', [AttendanceController::class, 'update'])->middleware('role:director,super_admin')->whereNumber('id');
+        Route::patch('attendance/{id}', [AttendanceController::class, 'update'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::delete('attendance/{id}', [AttendanceController::class, 'destroy'])->middleware('role:director,super_admin')->whereNumber('id');
         Route::post('attendance/{id}/convert-to-attended', [AttendanceController::class, 'convertToAttended'])->middleware('role:director,super_admin')->whereNumber('id');
 
