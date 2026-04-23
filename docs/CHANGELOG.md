@@ -9,6 +9,9 @@
 ## 2026-04-23
 
 ### Fixed (cont.)
+- Tests: 7 個 time-sensitive tests 加入 `Carbon::setTestNow(today 10:00)` 修復午夜跨日 flaky（CI 22:00+ TWN 後 EndTime 變 "01:xx" 導致 session 窗口失敗）（PR #36）
+
+### Fixed (cont.)
 - Teacher attendance: 補卡後主表 `SignInDT`/`SignOutDT` 同步更新，前端不再顯示「未簽退」；`unclosed` 清單也正確排除已補卡記錄（PR #35）
 - Teacher attendance: super_admin 傳入 `campus_id` 時現在會過濾至指定分校（不傳則維持看全部）（PR #35）
 
