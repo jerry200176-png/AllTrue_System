@@ -19,7 +19,7 @@ class TeacherSignIn extends Model
         'Status',
     ];
 
-    public function adjustment(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function adjustments(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(TeacherSignInAdjustment::class, 'teacher_signin_id');
     }

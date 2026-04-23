@@ -29,14 +29,6 @@ class SwipeRfidController extends Controller
      */
     public function swipe(Request $request)
     {
-        // #region agent log
-        $log = function($msg, $d) {
-            $j = json_encode(['sessionId'=>'afe6bc','location'=>'SwipeRfidController.php:swipe','message'=>$msg,'data'=>$d,'timestamp'=>time()*1000])."\n";
-            @file_put_contents(base_path('../debug-afe6bc.log'), $j, FILE_APPEND);
-            @file_put_contents(storage_path('logs/debug-afe6bc.log'), $j, FILE_APPEND);
-        };
-        $log('swipe entry', ['branch_code'=>$request->input('branch_code'),'rfid'=>$request->input('rfid')]);
-        // #endregion
         try {
             $data = $request->validate([
                 'branch_code' => 'required|string|max:32',
@@ -56,9 +48,6 @@ class SwipeRfidController extends Controller
                     $campus = Campus::where('name', 'like', "%{$branchCode}%")->first();
                 }
             }
-            // #region agent log
-            $log('campus lookup', ['found'=>!!$campus,'campusId'=>$campus?->id]);
-            // #endregion
             if (!$campus) {
                 return response()->json([
                     'ok'     => false,
@@ -83,9 +72,6 @@ class SwipeRfidController extends Controller
             $campusId = $campus->id;
 
             $student = Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first();
-            // #region agent log
-            $log('student lookup', ['found'=>!!$student,'studentId'=>$student?->id]);
-            // #endregion
             if ($student) {
                 return $this->handleStudentSwipe($student, $campus, $swipeAt);
             }
@@ -115,15 +101,6 @@ class SwipeRfidController extends Controller
                     $teacherInCampus = (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus;
                 }
             }
-            // #region agent log
-            $log('teacher lookup', [
-                'found' => (bool) $teacherInCampus,
-                'teacherId' => $teacher?->id,
-                'teacherCampusId' => $teacher?->CampusID,
-                'swipeCampusId' => $campusId,
-                'matchedUserCampus' => $matchedUserCampus,
-            ]);
-            // #endregion
             if ($teacherInCampus) {
                 return $this->handleTeacherSwipe($teacher, $campus, $swipeAt);
             }
@@ -142,9 +119,6 @@ class SwipeRfidController extends Controller
                 'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
             ], 404);
         } catch (\Throwable $e) {
-            // #region agent log
-            $log('swipe exception', ['error'=>$e->getMessage(),'trace'=>substr($e->getTraceAsString(),0,500)]);
-            // #endregion
             throw $e;
         }
     }

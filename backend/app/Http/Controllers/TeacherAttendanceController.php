@@ -33,6 +33,17 @@ class TeacherAttendanceController extends Controller
             return response()->json(['message' => 'teacher_id required'], 422);
         }
 
+        // director 分校隔離：不可跨校查別校老師
+        if ($role !== 'super_admin' && ! empty($campusIds)) {
+            $belongsToCampus = DB::table('UserCampus')
+                ->where('UserID', $teacherId)
+                ->whereIn('CampusID', $campusIds)
+                ->exists();
+            if (! $belongsToCampus) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
         $today = now()->toDateString();
 
         $record = TeacherSignIn::where('TeacherID', $teacherId)
@@ -149,26 +160,30 @@ class TeacherAttendanceController extends Controller
             return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        $adjustment = TeacherSignInAdjustment::create([
-            'teacher_signin_id'    => $signin->id,
-            'adjusted_by_user_id'  => $authUser->id,
-            'adjust_reason'        => $request->input('adjust_reason'),
-            'original_signin_dt'   => $signin->SignInDT,
-            'original_signout_dt'  => $signin->SignOutDT,
-            'new_signin_dt'        => $request->input('new_signin_dt'),
-            'new_signout_dt'       => $request->input('new_signout_dt'),
-        ]);
+        [$adjustment, $signin] = DB::transaction(function () use ($request, $signin, $authUser) {
+            $adj = TeacherSignInAdjustment::create([
+                'teacher_signin_id'   => $signin->id,
+                'adjusted_by_user_id' => $authUser->id,
+                'adjust_reason'       => $request->input('adjust_reason'),
+                'original_signin_dt'  => $signin->SignInDT,
+                'original_signout_dt' => $signin->SignOutDT,
+                'new_signin_dt'       => $request->input('new_signin_dt'),
+                'new_signout_dt'      => $request->input('new_signout_dt'),
+            ]);
 
-        // 只更新 Status，原始 SignInDT/SignOutDT 保持不變
-        $signin->Status = 'adjusted';
-        $signin->MDT    = now();
-        $signin->save();
+            // 只更新 Status，原始 SignInDT/SignOutDT 保持不變
+            $signin->Status = 'adjusted';
+            $signin->MDT    = now();
+            $signin->save();
+
+            return [$adj, $signin];
+        });
 
         return response()->json([
-            'ok'           => true,
-            'signin_id'    => $signin->id,
-            'adjustment_id'=> $adjustment->id,
-            'new_status'   => 'adjusted',
+            'ok'            => true,
+            'signin_id'     => $signin->id,
+            'adjustment_id' => $adjustment->id,
+            'new_status'    => 'adjusted',
         ]);
     }
 

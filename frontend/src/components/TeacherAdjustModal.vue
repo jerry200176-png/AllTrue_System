@@ -25,6 +25,7 @@
         <div class="ta-field-group">
           <label class="ta-label" for="ta-new-signout">新簽退時間</label>
           <input id="ta-new-signout" type="datetime-local" v-model="form.new_signout_dt" class="ta-input" />
+          <div v-if="errors.new_signout_dt" class="ta-error">{{ errors.new_signout_dt }}</div>
         </div>
 
         <div class="ta-field-group">
@@ -81,8 +82,16 @@ watch(() => props.record, (rec) => {
 
 function validate() {
   const e = {};
-  if (!form.value.new_signin_dt)  e.new_signin_dt  = '簽到時間必填';
-  if (!form.value.adjust_reason?.trim()) e.adjust_reason = '補卡原因必填';
+  if (!form.value.new_signin_dt) {
+    e.new_signin_dt = '簽到時間必填';
+  }
+  if (form.value.new_signout_dt && form.value.new_signin_dt &&
+      form.value.new_signout_dt <= form.value.new_signin_dt) {
+    e.new_signout_dt = '簽退時間必須晚於簽到時間';
+  }
+  if (!form.value.adjust_reason?.trim()) {
+    e.adjust_reason = '補卡原因必填';
+  }
   errors.value = e;
   return Object.keys(e).length === 0;
 }

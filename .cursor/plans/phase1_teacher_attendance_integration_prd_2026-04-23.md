@@ -2,8 +2,8 @@
 
 ## 1. 文件資訊
 - 功能名稱：老師出缺勤打卡整合（併入現有出缺勤管理頁）
-- 版本：v1.2 (ARCH 完成後修訂)
-- 狀態：**⏳ Phase 2 [ARCH] 完成，等待 Q1/Q2 決策後批准進入 Phase 2b [UX] + 2c [DBA]**
+- 版本：v1.5 (TEST + REVIEW 進行中)
+- 狀態：**🔍 Phase 5 [REVIEW] 進行中（CI 全綠，Code Review 執行中）**
 - 目標角色：老師、主任、超級管理員
 - 文件日期：2026-04-23
 - 關聯文件：[`.cursor/plans/arch_teacher_attendance_2026-04-23.md`](./arch_teacher_attendance_2026-04-23.md)
@@ -16,9 +16,9 @@
 | Phase 2b [UX] | UI/UX Designer | ✅ 完成 |
 | Phase 2c [DBA] | DBA | ✅ 完成（Migration 已建立，待非尖峰執行） |
 | Phase 3 [DEV] | 全端工程師 | ✅ 完成 |
-| Phase 4 [TEST] | QA 工程師 | ⬜ 未開始 |
-| Phase 4b [SEC] | Security Engineer | ⬜ 未開始 |
-| Phase 5 [REVIEW] | Staff Engineer | ⬜ 未開始 |
+| Phase 4 [TEST] | QA 工程師 | ✅ 完成（PHPUnit 689 tests 全綠，Vite build 成功） |
+| Phase 4b [SEC] | Security Engineer | ✅ 完成（STRIDE 靜態審查，詳見 §9） |
+| Phase 5 [REVIEW] | Staff Engineer | 🔍 進行中（PR #10 Code Review） |
 | Phase 6 [DOCS] | Technical Writer | ⬜ 未開始 |
 | Phase 7 [OPS] | DevOps Engineer | ⬜ 未開始 |
 
@@ -275,6 +275,7 @@
 | v1.2 | 2026-04-23 | ARCH Phase 完成：更新進度追蹤、Decision Log 新增 ARCH 決策、標記 Q1/Q2 待決、關聯 ARCH 設計文件 |
 | v1.3 | 2026-04-23 | Q1=B、Q2=A 確認；進入 Phase 3 [DEV] |
 | v1.4 | 2026-04-23 | Phase 3 [DEV] 完成；npm run deploy 已執行 |
+| v1.5 | 2026-04-23 | CI 全綠（PHPUnit 689/689 pass，Vite 成功）；Phase 4b [SEC] STRIDE 靜態審查完成；Phase 5 [REVIEW] 啟動，PR #10 Code Review 進行中 |
 
 ---
 
