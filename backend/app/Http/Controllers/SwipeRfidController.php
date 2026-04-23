@@ -15,6 +15,7 @@ use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -140,6 +141,13 @@ class SwipeRfidController extends Controller
                 $openRecord->MDT = $swipeAt;
                 $openRecord->save();
 
+                $this->backfillPresenceWindow(
+                    $student,
+                    Carbon::parse($openRecord->SignInDT),
+                    $swipeAt,
+                    $campus
+                );
+
                 return response()->json([
                     'ok'       => true,
                     'type'     => 'student',
@@ -167,7 +175,7 @@ class SwipeRfidController extends Controller
                 'SubjectID'      => $studentClass?->SubjectID,
                 'Get1byID'       => $studentClass?->by1,
                 'Hours'          => $hours,
-                'Memo'           => 'swipe-rfid',
+                'Memo'           => $studentClass ? 'swipe-rfid' : 'self_study',
                 'SignInDT'       => $swipeAt,
                 'SignOutDT'      => null,
                 'MDT'            => $swipeAt,
@@ -273,6 +281,73 @@ class SwipeRfidController extends Controller
         }
 
         return [null, null, null];
+    }
+
+    /**
+     * Presence Window：刷退時回溯在場時段，對缺漏的 ClassSession 補建 StudentSignIn 並扣堂。
+     * 幂等保護：已有 active StudentSignIn（含老師手動建立）的 ClassSession 會被 whereDoesntHave 排除。
+     */
+    private function backfillPresenceWindow(
+        Student $student,
+        Carbon  $signInDT,
+        Carbon  $signOutDT,
+        Campus  $campus
+    ): void {
+        $today       = $signInDT->toDateString();
+        $signInTime  = $signInDT->format('H:i:s');
+        $signOutTime = $signOutDT->format('H:i:s');
+
+        $sessions = ClassSession::query()
+            ->with('studentClass')
+            ->whereHas('studentClass', fn ($q) => $q
+                ->where('StudentID', $student->id)
+                ->where('Stop', 0)
+            )
+            ->whereDate('SessionDate', $today)
+            ->whereTime('StartTime', '>=', $signInTime)
+            ->whereTime('StartTime', '<=', $signOutTime)
+            ->whereDoesntHave('signIns', fn ($q) => $q->whereNull('VoidedAt'))
+            ->get();
+
+        foreach ($sessions as $session) {
+            $sc = $session->studentClass;
+            if (!$sc) {
+                continue;
+            }
+
+            $sessionSignInDT  = Carbon::parse($today . ' ' . $session->StartTime);
+            $sessionSignOutDT = Carbon::parse($today . ' ' . $session->EndTime);
+
+            $newSignIn = StudentSignIn::create([
+                'StudentClassID'   => $sc->ID,
+                'StudentID'         => $student->id,
+                'TeacherID'        => $sc->TeacherID,
+                'RecordedByUserID' => null,
+                'GradeID'          => $sc->GradeID,
+                'SubjectID'        => $sc->SubjectID,
+                'Get1byID'         => $sc->by1,
+                'Hours'            => $sc->TotalHours ? (int) $sc->TotalHours : null,
+                'Memo'             => 'presence-window',
+                'SignInDT'         => $sessionSignInDT,
+                'SignOutDT'        => $sessionSignOutDT,
+                'MDT'              => now(),
+                'ClassSessionID'   => $session->id,
+                'Status'           => 'present',
+                'CampusID'         => $campus->id,
+                'PersonType'       => 'student',
+                'SessionDeducted'  => false,
+            ]);
+
+            SessionDeductionService::deductOnAttendance($sc, $newSignIn);
+
+            Log::info('presence_window_backfill', [
+                'student_id'       => $student->id,
+                'student_name'     => $student->name,
+                'class_session_id' => $session->id,
+                'sign_in_dt'       => $sessionSignInDT->toDateTimeString(),
+                'sign_out_dt'      => $sessionSignOutDT->toDateTimeString(),
+            ]);
+        }
     }
 
     private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
