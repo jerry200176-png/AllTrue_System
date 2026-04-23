@@ -1,0 +1,62 @@
+name: Branch Hygiene Report (daily dry-run)
+
+on:
+  schedule:
+    # 08:00 台灣時間 = 00:00 UTC
+    - cron: "0 0 * * 1-5"
+  workflow_dispatch: {}
+
+# ⛔ 只讀報告，沒有任何刪除操作
+# ⛔ 禁止在此新增任何 git branch -d / git push --delete 步驟
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    name: Branch Hygiene Dry-Run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整 remote branch 資訊
+
+      - name: Run dry-run
+        id: hygiene
+        run: |
+          chmod +x scripts/branch-hygiene.sh
+          OUTPUT=$(./scripts/branch-hygiene.sh 2>&1)
+          echo "$OUTPUT"
+
+          # 把輸出存起來給 summary 用
+          echo "output<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$OUTPUT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          # 判斷是否有待清理的分支
+          if echo "$OUTPUT" | grep -q "eligible for deletion"; then
+            echo "has_stale=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write Job Summary
+        run: |
+          echo "## 🌿 Branch Hygiene Report ($(date +'%Y-%m-%d'))" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "${{ steps.hygiene.outputs.has_stale }}" == "true" ]]; then
+            echo "⚠️ **有已合併分支可清理** — 請確認後執行 \`./scripts/branch-hygiene.sh --apply\`" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "✅ 分支狀態乾淨，無需清理" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "<details><summary>詳細輸出</summary>" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.hygiene.outputs.output }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "</details>" >> "$GITHUB_STEP_SUMMARY"
