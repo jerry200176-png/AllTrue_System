@@ -124,7 +124,7 @@ class StudentSwipePresenceWindowTest extends TestCase
         $student = $this->makeStudent();
         $sc = $this->makeStudentClass($student->id);
         $today = now()->toDateString();
-        $startTime = now()->format('H:i:s');
+        $startTime = now()->subMinutes(5)->format('H:i:s'); // pcov-safe: session clearly started
         $endTime = now()->addHours(2)->format('H:i:s');
         $this->makeClassSession($sc->ID, $today, $startTime, $endTime);
 

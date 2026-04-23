@@ -16,6 +16,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('reconcile:nightly')->dailyAt('02:00');
         // TD-008: 補上跨日孤兒 StudentSignIn.SignOutDT（在 nightly reconcile 之後）
         $schedule->command('student-signin:close-orphans')->dailyAt('02:30');
+        $schedule->command('teacher-signin:close-orphans')->dailyAt('00:05');
     }
 
     protected function commands(): void
