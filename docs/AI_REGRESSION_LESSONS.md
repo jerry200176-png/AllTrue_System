@@ -2282,3 +2282,61 @@ DB::table('schedules')->insert([
 
 - `§TEST-001` 的 `schedules` 行已列出必填欄位，**每次寫涉及 schedules 的測試必須對照該表格**
 - 速記口訣：**S.D.B.**（`student_id`, `day_of_week`, `branch_id`）— schedules 三巨頭必填
+
+---
+
+## §MIGRATION-002 — chunk() 在 mutation 下跳行（600 筆 pending_review 未被修正）
+
+**發生日期**：2026-04-23  
+**PR**：#20 fix/teacher-pending-review-backfill
+
+### 事故經過
+`2026_04_23_200000_backfill_teacher_signin_status` 使用 `DB::table()->chunk()` 在 callback 內對同一張表 UPDATE Status，
+導致 OFFSET 分頁計算錯誤（row 被移出 WHERE 條件後，後續 batch 的 OFFSET 基準漂移），約 600 筆記錄被跳過，
+仍保留 `pending_review` 狀態。
+
+### 根本原因
+```sql
+-- chunk() 內部分頁方式：
+SELECT * FROM TeacherSingIn WHERE Status='pending_review' ORDER BY id LIMIT 200 OFFSET 0
+-- callback 更新 200 筆 Status → 這 200 筆消失於結果集
+SELECT * FROM TeacherSingIn WHERE Status='pending_review' ORDER BY id LIMIT 200 OFFSET 200
+-- 此 OFFSET 已跳過消失後移位的 200 筆！後 200 筆的前 N 筆被跳過
+```
+
+### 解決方法
+- 改用 `chunkById()`：以 `WHERE id > last_processed_id` 分頁，mutation 對分頁無影響
+- 新增 `2026_04_23_400000_fix_backfill_teacher_signin_chunkbyid.php` 補執行 600 筆
+- 生產執行後 `pending_review` 從 600 降為 0；所有記錄正確歸類為 `source_only` / `normal` / `late`
+
+### 防再犯規則
+> **⛔ 任何 migration 在 callback 內 UPDATE 迭代基準（WHERE 條件欄位）時，必須使用 `chunkById()` 而非 `chunk()`**
+
+```php
+// ❌ 危險：
+DB::table('T')->where('Status', 'pending')->chunk(200, fn($rows) => DB::table('T')->where('id', $r->id)->update(['Status' => 'done']));
+
+// ✅ 安全：
+DB::table('T')->where('Status', 'pending')->chunkById(200, fn($rows) => DB::table('T')->where('id', $r->id)->update(['Status' => 'done']));
+```
+
+---
+
+## §TEST-005 — 時間敏感 CI 測試：start_time 16:00 在 CI 18:00+ 後執行導致 isEndedAtCreateTime=true
+
+**發生日期**：2026-04-23  
+**PR**：#20 fix/teacher-pending-review-backfill  
+**受影響測試**：`ClassSessionBatchApiTest::test_batch_endpoint_recalculates_remaining_sessions_using_completed_status`
+              `ClassSessionBatchApiTest::test_recalculate_session_counters_counts_legacy_attended_for_compatibility`
+
+### 根本原因
+`EnrollmentService::batchStore()` 含邏輯：`future_date` 的下課時間已過 → 自動升格為 `completed`（`createdConfirmedSessions++`）。
+測試使用 `start_time: 16:00, duration_minutes: 120`（下課 18:00 UTC+8 = 10:00 UTC），
+當 CI 在 10:00 UTC 後執行時，今日 Thursday 的 future_date 被計為 confirmed，導致 count 4 ≠ 3。
+
+### 解決方法
+將 `start_time` 改為 `23:00, duration_minutes: 30`（下課 23:30 UTC+8 = 15:30 UTC），
+CI 在全天任意時間跑都不會觸發 `isEndedAtCreateTime`。
+
+### 防再犯規則
+> **⚠️ 測試中含「今日」日期的 future session 時，start_time 必須用 23:00 以後，確保 CI 在任意時間執行都不會觸發 isEndedAtCreateTime**
