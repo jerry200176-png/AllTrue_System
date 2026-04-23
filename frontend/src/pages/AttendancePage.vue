@@ -93,7 +93,24 @@
       <div class="card att-checkin-card" style="margin-top:12px">
         <div class="att-checkin-header">
           <div class="att-section-title">今日完整打卡記錄</div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input
+              type="month"
+              v-model="exportMonthRef"
+              class="att-date-input"
+              style="width:140px"
+              aria-label="選擇匯出月份"
+            />
+            <button
+              class="ghost small"
+              :disabled="exportMonthLoading"
+              @click="exportTeacherMonthly"
+              title="匯出老師月度出缺勤 XLSX"
+            >
+              <span v-if="!exportMonthLoading" class="material-symbols-outlined" style="font-size:18px">calendar_month</span>
+              <span v-else class="att-spinner" style="display:inline-block;width:16px;height:16px"></span>
+              月報
+            </button>
             <input type="date" v-model="teacherDate" class="att-date-input" @change="fetchTeacherRecords" />
             <button class="ghost small" @click="exportTeacherCsv" title="匯出 CSV">
               <span class="material-symbols-outlined" style="font-size:18px">download</span>
@@ -600,7 +617,34 @@
                 </span>
               </td>
               <td style="text-align:right">
-                <button v-if="!record._editing && record.Memo !== 'self_study'" class="ghost xs" @click="record._editing = true">修改</button>
+                <!-- 自修記錄 -->
+                <template v-if="record.Memo === 'self_study'">
+                  <button
+                    v-if="isDirectorOrAdmin"
+                    class="ghost xs"
+                    style="color:var(--color-primary)"
+                    @click="openConvertModal(record)"
+                  >轉換為到班</button>
+                  <button
+                    v-if="isDirectorOrAdmin"
+                    class="ghost xs"
+                    style="color:var(--color-danger,#d32f2f);margin-left:4px"
+                    :title="'刪除此記錄'"
+                    @click="openDeleteDialog(record)"
+                  ><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span></button>
+                </template>
+                <!-- 一般記錄，未進入編輯 -->
+                <template v-else-if="!record._editing">
+                  <button class="ghost xs" @click="record._editing = true; record._newStatus = record.Status">修改</button>
+                  <button
+                    v-if="isDirectorOrAdmin"
+                    class="ghost xs"
+                    style="color:var(--color-danger,#d32f2f);margin-left:4px"
+                    :title="'刪除此記錄'"
+                    @click="openDeleteDialog(record)"
+                  ><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span></button>
+                </template>
+                <!-- 編輯狀態 -->
                 <div v-else class="att-inline-edit">
                   <select v-model="record._newStatus" class="att-status-select">
                     <option value="present">到班</option>
@@ -785,6 +829,118 @@
         <span>{{ teacherToast.text }}</span>
       </div>
     </Transition>
+    <Transition name="sd-toast">
+      <div
+        v-if="attToast.visible"
+        class="sd-toast"
+        :class="`sd-toast-${attToast.tone}`"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">
+          {{ attToast.tone === 'success' ? 'check_circle' : 'error' }}
+        </span>
+        <span>{{ attToast.text }}</span>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <!-- ── Delete Attendance Dialog ── -->
+  <Teleport to="body">
+    <div v-if="deleteDialog.visible" class="att-overlay" @click.self="closeDeleteDialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+      <div class="att-dialog">
+        <h3 id="delete-dialog-title" style="margin:0 0 12px;font-size:16px;color:var(--color-danger,#d32f2f)">確認刪除出缺勤紀錄</h3>
+        <div class="att-dialog-summary">
+          <div><span class="att-dialog-label">學生：</span>{{ deleteDialog.record?.person_name ?? deleteDialog.record?.student_name ?? '—' }}</div>
+          <div><span class="att-dialog-label">時間：</span>{{ deleteDialog.record ? formatTime(deleteDialog.record.SignInDT) : '—' }}</div>
+          <div><span class="att-dialog-label">狀態：</span>{{ deleteDialog.record?.status_label ?? deleteDialog.record?.Memo ?? '—' }}</div>
+        </div>
+        <div class="att-dialog-field">
+          <label for="delete-reason" style="font-size:14px;font-weight:500">
+            刪除原因 <span style="color:var(--color-danger,#d32f2f)">*</span>
+          </label>
+          <textarea
+            id="delete-reason"
+            v-model="deleteDialog.reason"
+            rows="3"
+            class="att-dialog-textarea"
+            placeholder="請說明刪除原因，例如：測試資料、誤刷"
+            style="margin-top:6px"
+          ></textarea>
+        </div>
+        <div class="att-dialog-actions">
+          <button class="ghost small" @click="closeDeleteDialog" :disabled="deleteDialog.loading">取消</button>
+          <button
+            class="primary small danger"
+            :disabled="deleteDialog.reason.trim().length < 2 || deleteDialog.loading"
+            @click="confirmDelete"
+          >
+            {{ deleteDialog.loading ? '刪除中…' : '確認刪除' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+
+  <!-- ── Convert Self-Study Modal ── -->
+  <Teleport to="body">
+    <div v-if="convertModal.visible" class="att-overlay" @click.self="closeConvertModal" role="dialog" aria-modal="true" aria-labelledby="convert-modal-title">
+      <div class="att-dialog" style="max-width:480px">
+        <h3 id="convert-modal-title" style="margin:0 0 12px;font-size:16px">將自修轉換為到班</h3>
+        <div class="att-dialog-summary">
+          <div><span class="att-dialog-label">學生：</span>{{ convertModal.record?.person_name ?? '—' }}</div>
+          <div><span class="att-dialog-label">時間：</span>{{ convertModal.record ? formatTime(convertModal.record.SignInDT) : '—' }}</div>
+        </div>
+        <div v-if="convertModal.coursesLoading" class="att-empty" style="padding:24px 0">載入課程中…</div>
+        <template v-else-if="convertModal.courses.length === 0">
+          <div class="att-empty" style="flex-direction:column;padding:24px 0;gap:8px">
+            <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-secondary,#888)">book</span>
+            <div>此學生目前無進行中的課程合約</div>
+            <div style="font-size:13px;color:var(--text-secondary,#888)">請先在「學生課程」建立課程後再操作</div>
+          </div>
+        </template>
+        <template v-else>
+          <div style="font-size:14px;font-weight:500;margin-bottom:8px">請選擇要套用的課程：</div>
+          <div class="att-course-list">
+            <label
+              v-for="course in convertModal.courses"
+              :key="course.ID"
+              class="att-course-item"
+              :class="{ disabled: course.remaining_sessions <= 0 }"
+            >
+              <input
+                type="radio"
+                :value="course.ID"
+                v-model="convertModal.selectedId"
+                :disabled="course.remaining_sessions <= 0"
+              />
+              <div class="att-course-info">
+                <span class="att-course-name">{{ course.subject_name || '—' }}</span>
+                <span class="att-course-teacher">{{ course.teacher_name || '—' }}</span>
+                <span class="att-course-sessions" :class="{ 'sessions-empty': course.remaining_sessions <= 0 }">
+                  剩餘：{{ course.remaining_sessions }} 堂{{ course.remaining_sessions <= 0 ? '（堂數已滿）' : '' }}
+                </span>
+              </div>
+            </label>
+          </div>
+          <div style="font-size:13px;color:var(--color-warning,#e65100);margin-top:12px">
+            <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">warning</span>
+            轉換後將自動扣除一堂，此操作無法直接復原
+          </div>
+        </template>
+        <div class="att-dialog-actions" style="margin-top:16px">
+          <button class="ghost small" @click="closeConvertModal" :disabled="convertModal.loading">取消</button>
+          <button
+            v-if="convertModal.courses.length > 0"
+            class="primary small"
+            :disabled="!convertModal.selectedId || convertModal.loading"
+            @click="confirmConvert"
+          >
+            {{ convertModal.loading ? '轉換中…' : '確認轉換' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </Teleport>
 </template>
 
@@ -802,6 +958,7 @@ const props = defineProps({
   userId: [String, Number],
 });
 const isTeacher = computed(() => props.userRole === 'teacher');
+const isDirectorOrAdmin = computed(() => props.userRole === 'director' || props.userRole === 'super_admin');
 
 // ── Tab state ──
 const activeTab = ref('student');
@@ -882,6 +1039,143 @@ function showTeacherToast(text) {
   teacherToast.text    = text;
   teacherToast.visible = true;
   teacherToastTimer = setTimeout(() => { teacherToast.visible = false; }, 3000);
+}
+
+// ── 月報匯出 refs ──
+const exportMonthRef    = ref(new Date().toISOString().slice(0, 7));
+const exportMonthLoading = ref(false);
+
+async function exportTeacherMonthly() {
+  if (exportMonthLoading.value) return;
+  exportMonthLoading.value = true;
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const url = `/api/v1/teacher-attendance/export-monthly?year_month=${exportMonthRef.value}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      showAttToast('匯出失敗，請稍後再試', 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `teacher-attendance-${exportMonthRef.value}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch {
+    showAttToast('匯出失敗，請稍後再試', 'error');
+  } finally {
+    exportMonthLoading.value = false;
+  }
+}
+
+// ── 出缺勤記錄通用 toast ──
+const attToast = reactive({ visible: false, text: '', tone: 'success' });
+let attToastTimer = null;
+function showAttToast(text, tone = 'success') {
+  clearTimeout(attToastTimer);
+  attToast.text    = text;
+  attToast.tone    = tone;
+  attToast.visible = true;
+  attToastTimer = setTimeout(() => { attToast.visible = false; }, tone === 'error' ? 3000 : 2000);
+}
+
+// ── 刪除記錄 Dialog ──
+const deleteDialog = reactive({ visible: false, record: null, reason: '', loading: false });
+
+function openDeleteDialog(record) {
+  deleteDialog.record  = record;
+  deleteDialog.reason  = '';
+  deleteDialog.loading = false;
+  deleteDialog.visible = true;
+}
+function closeDeleteDialog() {
+  if (deleteDialog.loading) return;
+  deleteDialog.visible = false;
+}
+async function confirmDelete() {
+  if (deleteDialog.reason.trim().length < 2 || deleteDialog.loading) return;
+  deleteDialog.loading = true;
+  try {
+    const token = await getToken();
+    const res = await fetch(`/api/v1/attendance/${deleteDialog.record.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ void_reason: deleteDialog.reason.trim() }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      deleteDialog.visible = false;
+      showAttToast('已刪除記錄', 'success');
+      await fetchRecords();
+    } else {
+      showAttToast('刪除失敗：' + (json.message || '未知錯誤'), 'error');
+    }
+  } catch {
+    showAttToast('刪除失敗：網路錯誤', 'error');
+  } finally {
+    deleteDialog.loading = false;
+  }
+}
+
+// ── 自修轉到班 Modal ──
+const convertModal = reactive({
+  visible: false, record: null,
+  courses: [], coursesLoading: false,
+  selectedId: null, loading: false,
+});
+
+async function openConvertModal(record) {
+  convertModal.record       = record;
+  convertModal.selectedId   = null;
+  convertModal.loading      = false;
+  convertModal.courses      = [];
+  convertModal.coursesLoading = true;
+  convertModal.visible      = true;
+  try {
+    const token = await getToken();
+    const studentId = record.StudentID;
+    const res = await fetch(`/api/v1/student-classes?student_id=${studentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const list = json.data ?? json ?? [];
+      convertModal.courses = list.filter(c => (c.remaining_sessions ?? 0) >= 0);
+    }
+  } catch { /* ignore, empty list */ }
+  finally {
+    convertModal.coursesLoading = false;
+  }
+}
+function closeConvertModal() {
+  if (convertModal.loading) return;
+  convertModal.visible = false;
+}
+async function confirmConvert() {
+  if (!convertModal.selectedId || convertModal.loading) return;
+  convertModal.loading = true;
+  try {
+    const token = await getToken();
+    const res = await fetch(`/api/v1/attendance/${convertModal.record.id}/convert-to-attended`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ student_class_id: convertModal.selectedId }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      convertModal.visible = false;
+      showAttToast(`已轉換為到班，已扣除一堂（剩餘 ${json.remaining_sessions} 堂）`, 'success');
+      await fetchRecords();
+    } else {
+      showAttToast('轉換失敗：' + (json.message || '未知錯誤'), 'error');
+    }
+  } catch {
+    showAttToast('轉換失敗：網路錯誤', 'error');
+  } finally {
+    convertModal.loading = false;
+  }
 }
 
 async function fetchTeacherRecords() {
@@ -1701,6 +1995,8 @@ const saveStatusEdit = async (record) => {
       record.Status = record._newStatus;
       record.status_label = { present: '到班', late: '遲到', absent: '缺席' }[record._newStatus] || record._newStatus;
       record._editing = false;
+      // TD-005: re-fetch so si.Status from DB is in sync (avoids 30s rollback)
+      await fetchRecords();
     } else {
       const err = await res.json().catch(() => ({}));
       alert('修改失敗：' + (err.message || '未知錯誤'));
@@ -1935,6 +2231,7 @@ const reasonLabel = (reason) => {
 };
 
 onMounted(() => {
+  document.addEventListener('keydown', handleEsc);
   fetchRecords();
   fetchPendingSessions();
   fetchMakeupSessions();
@@ -1952,7 +2249,16 @@ onMounted(() => {
   }, 30000);
 });
 
-onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer); });
+function handleEsc(e) {
+  if (e.key !== 'Escape') return;
+  if (deleteDialog.visible) closeDeleteDialog();
+  else if (convertModal.visible) closeConvertModal();
+}
+
+onBeforeUnmount(() => {
+  if (refreshTimer) clearInterval(refreshTimer);
+  document.removeEventListener('keydown', handleEsc);
+});
 
 watch(() => props.branchId, () => {
   fetchRecords();
@@ -2558,4 +2864,73 @@ watch(() => props.branchId, () => {
   font-size: 12px;
   color: #64748b;
 }
+
+/* ── DeleteDialog / ConvertModal 共用 overlay ── */
+.att-overlay {
+  position: fixed; inset: 0; z-index: 10200;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.att-dialog {
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  padding: 24px;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.att-dialog-summary {
+  background: var(--bg-secondary, #f5f5f5);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 14px;
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 16px;
+}
+.att-dialog-label { font-weight: 600; margin-right: 6px; }
+.att-dialog-field { display: flex; flex-direction: column; gap: 4px; }
+.att-dialog-textarea {
+  width: 100%; resize: vertical; min-height: 72px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px; padding: 8px 10px;
+  font-size: 14px; font-family: inherit;
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #111);
+}
+.att-dialog-textarea:focus { outline: 2px solid var(--color-primary, #1a73e8); outline-offset: 1px; }
+.att-dialog-actions {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
+}
+button.danger { background: var(--color-danger, #d32f2f) !important; color: #fff !important; }
+button.danger:hover:not(:disabled) { background: #b71c1c !important; }
+
+/* ── 課程選擇列表 ── */
+.att-course-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 240px; overflow-y: auto;
+  padding: 4px 2px;
+}
+.att-course-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e0e0e0);
+  border-radius: 8px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.att-course-item:hover:not(.disabled) { border-color: var(--color-primary, #1a73e8); background: #f0f4ff; }
+.att-course-item.disabled { opacity: 0.5; cursor: not-allowed; }
+.att-course-info { display: flex; flex-direction: column; gap: 2px; }
+.att-course-name { font-size: 14px; font-weight: 500; }
+.att-course-teacher { font-size: 12px; color: var(--text-secondary, #666); }
+.att-course-sessions { font-size: 12px; color: var(--text-secondary, #666); }
+.att-course-sessions.sessions-empty { color: var(--color-danger, #d32f2f); }
+
+/* ── spinner for month export loading ── */
+.att-spinner {
+  border: 2px solid rgba(0,0,0,0.15);
+  border-top-color: var(--color-primary, #1a73e8);
+  border-radius: 50%; animation: spin .7s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
