@@ -1,0 +1,81 @@
+---
+description: P0 — AI 未經 CI 測試通過，嚴禁修改任何現有 production 系統檔案
+alwaysApply: true
+---
+
+# ⛔ P0 — 未通過 CI 禁止動現有系統
+
+## 事故背景（2026-04-23 事故 D）
+
+AI 在 SEC-005 安全強化任務中，未經任何 CI 驗證，直接修改 production `.htaccess`，
+加入 HTTP 安全標頭（含 CSP + nosniff）：
+
+- **第一次破壞**：`Content-Security-Policy: default-src 'self'` 阻擋前端 i18n inline script，全站頁面變英文
+- **第二次破壞**：「部分還原」保留 `X-Content-Type-Options: nosniff`，阻擋 MIME 類型異常的靜態資源，頁面退回未知舊版
+- **根本原因**：沒有先研究前端架構、沒有 CI 驗證、沒有測試通過就動了 production
+
+---
+
+## ⛔ 絕對禁止（任何 AI，沒有例外）
+
+### 禁止在 CI 通過前修改任何現有 production 檔案
+
+```
+❌ 禁止的行為：
+  寫測試 → CI 失敗 → 仍然繼續改 production 檔案
+  沒有寫測試 → 直接改 production 檔案
+  "先改再補測試" 的任何形式
+
+✅ 唯一合法的順序（參考 Google presubmit / Meta diff gate）：
+  1. 寫測試（紅燈，預期失敗）
+  2. 改 production 程式碼
+  3. 測試通過（綠燈）
+  4. CI pipeline 全綠
+  5. 才算 DEV 階段完成
+```
+
+### 改動 HTTP 標頭、`.htaccess`、Nginx config 前的強制清單
+
+在修改任何影響 HTTP response headers 的設定前，**必須先完成**：
+
+- [ ] 確認前端是否使用 inline script（Vue/React 打包通常有）
+- [ ] 確認靜態資源的 MIME 類型（Apache 是否正確設定）
+- [ ] 確認網站是純 HTTPS 還是 HTTP/HTTPS 混用（再決定是否啟用 HSTS）
+- [ ] 在測試環境（非 production）驗證標頭不破壞前端
+- [ ] CI 通過後才部署
+
+---
+
+## 大公司作法參考
+
+| 公司 | 機制 | 等效 SOP |
+|------|------|----------|
+| Google | Presubmit checks — 任何 CL 必須通過所有 unit/integration test 才能送 review | CI 全綠才能進入 REVIEW 階段 |
+| Meta | Automated test gate — diff 沒有通過測試不能 land | 測試通過才能合併 |
+| Netflix | Canary + automated rollback — 新部署如果 error rate 上升自動回滾 | 部署後立即驗證 `/health`，異常立刻還原 |
+| Amazon | "You build it, you run it" — 改動者負責完整驗證 | AI 改動的範圍，AI 必須完整驗證，不能「先改再看」 |
+
+---
+
+## 部分還原比完全還原更危險
+
+> 事故 D 的教訓：移除「明顯有問題」的 CSP，但保留其他標頭，造成第二次破壞。
+
+**規則：還原必須完全還原，不能只還原一部分。**
+
+```bash
+# 正確還原方式：用 git 還原到確定好用的 commit
+git diff HEAD -- backend/public/.htaccess  # 先確認 diff
+git checkout HEAD -- backend/public/.htaccess  # 完整還原
+# 驗證
+curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+```
+
+---
+
+## 違反此規則 = P0 故障
+
+違反者必須：
+1. 立刻完全還原（用 git，不要手動「部分修正」）
+2. 驗證 `/health` 端點回傳正常
+3. 寫事故報告並更新本文件

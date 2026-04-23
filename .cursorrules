@@ -11,6 +11,20 @@
 `DROP + migrate:fresh`。Student 395→1, StudentClass 633→0, ClassSession 5446→0。
 幸好 sixhour 備份恢復，但有約 1 小時 42 分鐘資料損失視窗
 
+**2026-04-23 生產事故 D**：AI 未經 CI 直接修改 `public/.htaccess`，
+加入 HTTP 安全標頭（CSP + nosniff）→ 前端全站頁面變英文（i18n inline script 被 CSP 擋）→
+「部分還原」移除 CSP 但保留 nosniff → 頁面退回不明舊版（MIME 類型錯誤的靜態資源被 nosniff 擋）。
+根本原因：**未通過 CI 就改 production 檔案，還原時只部分還原**。
+恢復：`git checkout HEAD -- backend/public/.htaccess` 完整還原。
+
+**2026-04-23 生產事故 E（全站 API 500）**：AI 在 production `/home/admin/backend/`
+直接跑 `vendor/bin/phpunit`（違反 P0 規則第 5a 條），phpunit 以 admin user 寫入
+`storage/framework/cache/data/` 建立新 hash 子目錄並污染 owner。
+之後 AI 又在 production 加 throttle middleware，新 cache key 映射到 www-data 無法
+寫入的目錄 → 所有使用 cache 的 API 全部 500，全站掛掉約 20 分鐘。
+根本原因：**在 production 跑 phpunit（兩次重犯，另一次是事故 C）**。
+恢復：`git checkout HEAD -- <production files>` + `chmod -R g+w storage/framework/cache/data/`。
+
 **任何 AI 在執行下列操作前，必須先讀完 `docs/DANGEROUS_OPERATIONS.md` 與 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
 
 1. 任何 `git push`（尤其是 `--force` / `-f`）
@@ -26,6 +40,9 @@
 8. ⛔⛔⛔ **絕對禁止**在 `/home/admin/backend/` 執行 `php artisan test` / `phpunit` /
    `vendor/bin/phpunit` 或任何會觸發 `RefreshDatabase` 的指令。一次就會清空 production DB。
    要跑測試 = `cp -r /home/admin/backend /tmp/backend-test` + 改 `.env` → 在 `/tmp` 跑
+9. ⛔⛔⛔ **CI 未通過前，絕對禁止修改任何現有 production 檔案**（含 `.htaccess`、routes、controllers、middleware、config）。
+   必須先寫測試、CI 全綠，才能動 production。詳見 `.cursor/rules/p0-no-system-changes-before-ci.mdc`。
+10. ⛔ **還原時必須完整還原**（`git checkout HEAD -- <file>`），禁止「部分還原」——部分還原會造成第二次破壞（事故 D 教訓）
 
 **違反此規則 = P0 故障**，請用一個簡短的 TodoWrite 標記：「已讀 P0 規則」後再進行。
 

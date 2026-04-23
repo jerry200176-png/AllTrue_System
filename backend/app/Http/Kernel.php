@@ -18,7 +18,7 @@ class Kernel extends HttpKernel
         ],
         'api' => [
             \App\Http\Middleware\DebugSwipeRfidRequest::class,
-            'throttle:200,1',
+            'throttle:200,1,global-api',
             \App\Http\Middleware\LogSlowRequests::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\AttachAuthUser::class,

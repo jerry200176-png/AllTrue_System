@@ -59,7 +59,16 @@ cat /home/admin/.github/workflows/deploy.yml 2>/dev/null | grep -E "on:|push:|br
 
 **唯一例外**：使用者在事故恢復時明確要求，且 AI 已先用 `cp` 備份當前狀態到 `backend.emergency_backup.$(date +%s)`。
 
-### 5a. ⛔⛔⛔ 禁止在 production backend 跑 `php artisan test` / `phpunit`（2026-04-22 事故 C）
+### 5a. ⛔⛔⛔ 禁止在 production backend 跑 `php artisan test` / `phpunit`（2026-04-22 事故 C + 2026-04-23 事故 E）
+
+**2026-04-23 事故 E 更新**：即便沒有 clean wipe DB，在 production backend 跑 `phpunit`
+還有**第二種殺傷**：phpunit 以 admin user 身份寫入 `storage/framework/cache/data/`，
+污染 cache 目錄的 owner 和權限。後續 Apache (www-data) 需要建立新 hash 子目錄時失敗，
+**全站所有使用 cache 的 API 500（事故 E：全站掛掉約 20 分鐘）**。
+
+修復：`chmod -R g+w /home/admin/backend/storage/framework/cache/data/`
+（owner 是 admin 的話不需要 sudo；group 必須是 www-data）。
+
 
 **背景**：AI 為了 debug CI，在 `/home/admin/backend/` 跑 `php artisan test`。
 `RefreshDatabase` trait 對 `.env` 的 `DB_DATABASE=AllTrue`（production）執行 `DROP TABLE + migrate:fresh`。

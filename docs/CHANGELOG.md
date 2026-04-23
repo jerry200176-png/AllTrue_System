@@ -2,6 +2,86 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — security: 資安強化 HIGH v1.0（security-hardening-v1）
+
+### 背景
+
+系統資安稽核後，針對 HIGH severity 的 5 個問題進行修補（SEC-002 ~ SEC-006）。
+
+### 主要變更
+
+**路由 throttle（`routes/api.php`）：**
+- **SEC-002**：`POST auth/register`、`POST directors/register` 加 `throttle:10,10`（10 req/IP/10 min），防止批量創帳號。
+- **SEC-003**：`POST auth/forgot-password` 加 `throttle:5,60`（5 req/IP/60 min），防止 email bombing。
+- **SEC-006**：`POST swipe-rfid` 加 `throttle:30,1`（30 req/IP/1 min），防止 RFID brute-force。
+
+**密碼最低長度（`AuthController`、`DirectorAccountController`、`ProfileController`）：**
+- **SEC-004**：所有建立/更新帳號入口的 `min:4` 或 `min:6` 統一升為 `min:8`。現有短密碼帳號的 login 不受影響（login 驗 PSW hash，不驗 min:8）。
+
+**HTTP 安全標頭（`backend/public/.htaccess`）：**
+- **SEC-005**：加入 5 個 OWASP 建議標頭：`Strict-Transport-Security`（HSTS 1 年）、`X-Frame-Options: SAMEORIGIN`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: strict-origin-when-cross-origin`、`Permissions-Policy`（封鎖 camera/mic/geo/payment）。
+- **Content-Security-Policy** 暫緩：Vue SPA 使用 inline script 做 i18n，須改用 nonce/hash 機制，留待獨立任務處理。
+
+**Throttle 實作 bug 修正（`app/Http/Kernel.php`）：**
+- 全局 `throttle:200,1` 與 route-specific throttle 原本共用相同 RateLimiter key，導致每次 request 計數兩次，實際有效限制僅宣告值的一半。加上 `global-api` prefix 後兩者使用獨立 key，互不干擾。
+
+### 測試
+
+- 新增 `tests/Feature/SecurityHardeningTest.php`：12 個測試涵蓋所有 throttle 邊界值（10/5/30）與密碼驗證（4 個入口 × min:8），含舊短密碼帳號 login regression 測試。
+- CI（GitHub Actions）全部 pass。
+
+### 注意事項
+
+- **Production 部署**：需確認 Apache 已啟用 `mod_headers`（`a2enmod headers && systemctl reload apache2`）。
+- **現有用戶**：密碼未強制過期，下次修改密碼時才會受 min:8 限制。
+
+---
+
+## 2026-04-23 — feat: 學生 Presence Window 自動點名 v2.0（student-presence-window）
+
+### 功能摘要
+
+學生只需在到班/離班各刷一次卡，系統於刷退時自動回溯在場時段（Presence Window），對所有已排課但缺漏出席記錄的 `ClassSession` 補建 `StudentSignIn` 並扣堂；與老師手動點名完全幂等共存。
+
+### 主要變更
+
+**後端（`SwipeRfidController.php`）：**
+- **FR-001 Self-study 標記**：刷進時若查無對應 `ClassSession`，`Memo` 改設為 `self_study`（原 `swipe-rfid`），便於前台過濾自修紀錄
+- **FR-002 Presence Window 回溯**：新增 `backfillPresenceWindow()` private 方法：
+  - 觸發時機：刷退（`sign_out`）後，在現有 `DB::transaction` 內執行
+  - 查詢邏輯：以 `SignInDT`～`SignOutDT` 為時間窗口，找出該日學生所有 `Stop=0` 的 `ClassSession`（`StartTime` 落在窗口內）
+  - 幂等保護：`whereDoesntHave('signIns', fn($q) => $q->whereNull('VoidedAt'))`，已有老師手動點名的課自動跳過
+  - 補建記錄：`Memo = 'presence-window'`，`SignInDT/SignOutDT` 採課程時段，立即呼叫 `SessionDeductionService::deductOnAttendance()`
+  - 操作日誌：每筆補建寫 `Log::info('presence_window_backfill', [...])`
+
+**測試（`StudentSwipePresenceWindowTest.php`）：**
+- 新增 9 個 Pest Feature Tests：
+  - `swipe_in_with_no_class_marks_self_study`（FR-001）
+  - `swipe_in_with_matching_class_keeps_swipe_rfid_memo`（FR-001 回歸）
+  - `presence_window_backfills_second_class_on_sign_out`（FR-002a）
+  - `presence_window_backfills_three_classes`（FR-002a 多堂）
+  - `presence_window_skips_class_already_marked_by_teacher`（FR-002b 幂等）
+  - `double_swipe_out_does_not_duplicate_backfill`（FR-002c 重複刷退）
+  - `single_class_sign_out_does_not_backfill`（Edge：單堂不多補）
+  - `presence_window_does_not_backfill_other_students_sessions`（Edge：跨生隔離）
+  - `teacher_swipe_is_not_affected`（NFR 回歸）
+- CI PHPUnit 全綠（702 tests, 含既有 693 + 新增 9）
+
+### 無需 Migration
+
+不新增 DB 欄位或資料表，無需執行 `php artisan migrate`。
+
+### API 向後相容
+
+`POST /api/v1/swipe-rfid` 輸入/輸出結構完全不變，RFID 裝置 firmware 無需更新。
+
+### 關聯文件
+
+- PRD v1.1：`.cursor/plans/phase2_student_smart_swipe_prd_2026-04-23.md`
+- ARCH：`.cursor/plans/arch_student_presence_window_2026-04-23.md`
+
+---
+
 ## 2026-04-23 — feat: 老師出缺勤打卡整合 v1.6（teacher-attendance-v1，PR #10）
 
 ### 功能摘要

@@ -409,3 +409,40 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main f9cd3bf] chore(hourly): auto sync 2026-04-23 11:30
+ 8 files changed, 238 insertions(+), 13 deletions(-)
+ create mode 100644 backups/sixhour/alltrue_6h_2026-04-23_1100.sql.gz
+ create mode 100644 backups/sixhour/alltrue_pre_teacher_attendance_migrate_20260423_1048.sql.gz
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   c7b77e4..f9cd3bf  main -> main
+[git-sync] Done.
+[git-sync] Branch: feature/student-presence-window
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[feature/student-presence-window 52a7a7d] chore(hourly): auto sync 2026-04-23 12:30
+ 8 files changed, 265 insertions(+), 14 deletions(-)
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/710a5aad-e5c3-46c8-aca3-97dd6ed89ac4/710a5aad-e5c3-46c8-aca3-97dd6ed89ac4.jsonl
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   261c13d..52a7a7d  feature/student-presence-window -> feature/student-presence-window
+[git-sync] Done.
+[git-sync] Branch: feature/student-presence-window
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[feature/student-presence-window 4b73b2d] chore(hourly): auto sync 2026-04-23 13:30
+ 5 files changed, 239 insertions(+), 13 deletions(-)
+ create mode 100755 TelegramWebHook/index.php
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   52a7a7d..4b73b2d  feature/student-presence-window -> feature/student-presence-window
+[git-sync] Done.
+[git-sync] Branch: feature/security-hardening-v1
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
