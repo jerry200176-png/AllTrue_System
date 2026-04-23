@@ -2,6 +2,31 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat: 學生自修記錄可視化 Phase 2b（self-study-visibility）
+
+### 背景
+
+Phase 2 Presence Window 已在 `StudentSingIn` 建立 `Memo = 'self_study'` 記錄，但後端使用 INNER JOIN 導致這些記錄永遠不出現在出缺勤頁面，前端也無對應的視覺區分。
+
+### 主要變更
+
+**後端（`AttendanceController.php`）：**
+- `index()` 第 24 行：`->join('StudentClass')` 改為 `->leftJoin('StudentClass')`，讓 `StudentClassID = null` 的自修記錄（`Memo = 'self_study'`）出現在 `GET /api/v1/attendance` 回傳中。所有依賴 `sc.*` 的 SELECT 欄位已有 COALESCE/null fallback，無需額外改動。
+
+**前端（`AttendancePage.vue`）：**
+- 狀態欄：偵測 `record.Memo === 'self_study'` 時顯示橘色 **自修** badge（`.att-self-study-tag`），取代標準狀態 tag；自修記錄的「修改」按鈕隱藏（無課堂狀態可修改）。
+- 篩選器：新增「自修」選項；選擇「自修」時僅顯示 self_study 記錄；選擇其他狀態時自動隱藏 self_study 記錄，語義清晰。
+- 空狀態：篩選「自修」無結果時顯示「今日暫無自修記錄」，而非通用空字串。
+
+**測試（`AttendanceSelfStudyVisibilityTest.php`）：**
+- 新增 4 個 Feature Test：self_study 記錄出現在 API、Memo 欄位存在、課堂出勤回歸、混合記錄並存。CI 全 green。
+
+### 行為影響
+- **新**：`self_study` 記錄出現在出缺勤頁面，橘色 badge 清楚標示，不扣堂、不產生費用（Phase 2 已保證）。
+- **無 Breaking Change**：現有課堂出勤、老師打卡、手動點名行為完全不受影響。
+
+---
+
 ## 2026-04-23 — security: 資安強化 HIGH v1.0（security-hardening-v1）
 
 ### 背景
