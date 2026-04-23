@@ -1903,3 +1903,52 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 1. **修改 `StudentClassController::index()` 回傳欄位時，必須同步檢查 `StudentsList.vue` 兩個 mapper**。
 2. **方案相關欄位（`PackageID` 前綴、`package_*` 前綴）新增時，必須同步更新所有明確 mapper**。
 3. 如未來重構 mapper，優先考慮改為 `{ ...c, data_source: 'laravel' }` 並在必要時覆蓋特定欄位，以避免此類靜默遺漏。
+
+---
+
+## §TEST-003 — AI 對自訂 VoidedAt（非 Laravel SoftDeletes）使用 withTrashed() 導致 CI 崩潰
+
+### 問題模式
+
+AI 寫測試時，看到模型有 `VoidedAt` 欄位，誤以為使用了 Laravel 內建 `SoftDeletes` trait，在 test assertion 中呼叫：
+
+```php
+StudentSignIn::withTrashed()->find($id)?->VoidedAt
+```
+
+但 `StudentSignIn` 用的是**自訂 soft-void 機制**（`VoidedAt` / `VoidedByUserID` / `VoidReason` 欄位 + `scopeActive()`），**沒有** `use SoftDeletes`，導致：
+
+```
+BadMethodCallException: Call to undefined method App\Models\StudentSignIn::withTrashed()
+```
+
+### 正確做法
+
+```php
+// ❌ 錯誤：假設 Model 有 SoftDeletes
+StudentSignIn::withTrashed()->find($id)?->VoidedAt;
+
+// ✅ 正確：直接用 DB::table 繞過 Model scope 查詢
+$voidedAt = \Illuminate\Support\Facades\DB::table('StudentSingIn')
+    ->where('id', $id)
+    ->value('VoidedAt');
+$this->assertNotNull($voidedAt, 'VoidedAt 應被寫入');
+```
+
+### 受影響模型清單（自訂 VoidedAt，無 SoftDeletes trait）
+
+| 模型 | 表名 | 備註 |
+|---|---|---|
+| `StudentSignIn` | `StudentSingIn` | `scopeActive()` 過濾 `VoidedAt IS NULL` |
+| `LearningRecord` | `LearningRecord` | 同上 |
+
+### 防再犯規則
+
+1. **寫測試前先確認 Model 是否有 `use SoftDeletes`**：
+   ```bash
+   grep "SoftDeletes" /home/admin/backend/app/Models/StudentSignIn.php
+   ```
+   若無輸出 → 禁止使用 `withTrashed()`、`onlyTrashed()`、`restore()`
+2. **VoidedAt ≠ deleted_at**：有 `VoidedAt` 欄位的 Model，查詢時一律用 `DB::table()` 繞過 scope，或用 `Model::withoutGlobalScopes()->find()`
+3. **`scopeActive()` 的 Model**：永遠記得 `find()` 只回傳 `VoidedAt IS NULL` 的記錄
+
