@@ -50,6 +50,16 @@ class TeacherMonthlyAttendanceExport implements WithMultipleSheets
             );
         }
 
+        if (empty($sheets)) {
+            // PhpSpreadsheet requires at least one sheet; return a placeholder
+            $sheets[] = new TeacherMonthlyPerTeacherSheet(
+                '無資料',
+                collect(),
+                $this->yearMonth,
+                $this->campusName
+            );
+        }
+
         return $sheets;
     }
 
