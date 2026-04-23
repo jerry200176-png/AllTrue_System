@@ -15,5 +15,12 @@ class TeacherSignIn extends Model
         'SignInDT',
         'SignOutDT',
         'MDT',
+        'Source',
+        'Status',
     ];
+
+    public function adjustment(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TeacherSignInAdjustment::class, 'teacher_signin_id');
+    }
 }

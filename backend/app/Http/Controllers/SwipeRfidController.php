@@ -330,12 +330,16 @@ class SwipeRfidController extends Controller
             ], 200);
         }
 
+        $status = $this->resolveTeacherSignInStatus($teacher->id, $swipeAt);
+
         $record = TeacherSignIn::create([
             'TeacherID'  => $teacher->id,
             'CampusID'   => $campusId,
             'SignInDT'   => $swipeAt,
             'SignOutDT'  => null,
             'MDT'        => $swipeAt,
+            'Source'     => 'rfid',
+            'Status'     => $status,
         ]);
 
         return response()->json([
@@ -349,5 +353,34 @@ class SwipeRfidController extends Controller
                 'TelegramToken'  => $campus->TelegramToken ?? null,
             ],
         ], 201);
+    }
+
+    /**
+     * 計算老師簽到的異常狀態。
+     * 失敗時 fallback 為 pending_review，不中斷打卡流程。
+     */
+    private function resolveTeacherSignInStatus(int $teacherId, Carbon $swipeAt): string
+    {
+        try {
+            $today = $swipeAt->toDateString();
+
+            $firstClass = DB::table('schedules')
+                ->where('teacher_id', $teacherId)
+                ->where('schedule_date', $today)
+                ->where('status', '!=', 'cancelled')
+                ->orderBy('start_time')
+                ->first();
+
+            if (! $firstClass) {
+                return 'source_only';
+            }
+
+            $classStart = Carbon::parse("{$today} {$firstClass->start_time}");
+            $threshold  = $classStart->copy()->addMinutes(10);
+
+            return $swipeAt->lte($threshold) ? 'normal' : 'late';
+        } catch (\Throwable $e) {
+            return 'pending_review';
+        }
     }
 }
