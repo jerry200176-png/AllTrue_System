@@ -241,4 +241,19 @@
 
 ---
 
-*最後更新：2026-04-23（Batch 4 complete — TD-008, TD-011 Done）*
+---
+
+## TD-012 — AttendanceController 私有方法與 AttendanceEffectsService 重複
+
+| 欄位 | 內容 |
+|---|---|
+| 發現來源 | [REVIEW] bugfix_swipe_attendance_sync_2026-04-23 Code Review |
+| 影響模組 | `AttendanceController::resolveSwipeStatus()`, `AttendanceController::applyAttendanceEffects()` |
+| 描述 | 修復學生刷卡未同步 ClassSession.Status 時，新建了 `AttendanceEffectsService` 並將邏輯移至其中。但 `AttendanceController` 仍保留 private `resolveSwipeStatus()` 和 `applyAttendanceEffects()` 方法，形成邏輯重複。目前 AttendanceController 內的手動點名路徑仍使用自己的 private 方法，未切換到 Service。 |
+| 建議做法 | 將 `AttendanceController` 的手動點名路徑也改為呼叫 `AttendanceEffectsService`，然後移除兩個 private 方法。 |
+| 清償成本估計 | 小（2小時） |
+| 不做的代價 | 未來如需調整 grace period（目前 15 分鐘）或狀態對應表，需同步修改兩處，有漏改風險。 |
+
+---
+
+*最後更新：2026-04-23（fix/swipe-classsession-sync — TD-012 登記）*

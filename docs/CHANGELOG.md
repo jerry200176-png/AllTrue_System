@@ -2,6 +2,24 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — fix: 學生刷卡點名未同步 ClassSession 狀態（PR #23）
+
+### 問題
+- 學生自行刷卡 RFID 後，`ClassSession.Status` 仍維持 `scheduled`，老師的「今日待點名」清單無法正確反映已刷卡的堂次
+- 部分刷卡記錄 `TeacherID = NULL`（因 `StudentClass.TeacherID` 為 null），老師查詢 `GET /api/v1/attendance` 時被過濾掉，記錄從老師視角消失
+
+### 修復內容
+- 新增 `AttendanceEffectsService`：提取 `resolveSwipeStatus()`（準時/遲到判斷，15分鐘 grace）與 `applySessionStatus()`（附 guard：僅更新 `scheduled` 狀態，不覆寫人工決策）
+- `SwipeRfidController::handleStudentSwipe()`：刷卡成功後同步更新 `ClassSession.Status`（`attended` 或 `late`）
+- `SwipeRfidController::backfillPresenceWindow()`：補建的出席記錄也同步更新對應 `ClassSession.Status`
+- TeacherID fallback：`StudentClass.TeacherID = null` 時嘗試從 `ClassSession→StudentClass` 回退取得，失敗才接受 null + Log::warning
+
+### 測試
+- AC-001～AC-005 PHPUnit 測試全綠（共 780 tests）
+- Presubmit Gate 通過
+
+---
+
 ## 2026-04-23 — feat: 教學工作台打卡狀態卡片手機 UI 改版（PR #22）
 
 ### 變更內容
