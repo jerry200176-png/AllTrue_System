@@ -2,6 +2,65 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat: 出缺勤管理改善 v1.1（老師月報匯出 + 記錄刪除 + 自修轉到班）
+
+### 背景
+
+PRD：`.cursor/plans/teacher_monthly_attendance_export_prd_2026-04-23.md`（PR #17）
+
+### 新增功能
+
+**功能一 — 老師月度出缺勤匯出（主任 / super_admin 限定）**
+
+- 新增端點 `GET /api/v1/teacher-attendance/export-monthly?year_month=YYYY-MM`
+- 下載雙工作表 XLSX（`maatwebsite/excel`）：
+  - 工作表一「月報摘要」：每位老師 × 每日欄位（●出勤 △遲到 ○請假 ✕缺席 ◇補卡），含四欄統計
+  - 工作表二「明細記錄」：每筆打卡詳細資訊含補卡原因
+- 自動裁切未來日期（當月匯出截至今日）
+- 分校隔離：director 角色只匯出所屬分校老師；super_admin 匯出全部
+- 新增 Export 類：`TeacherMonthlyAttendanceExport`、`TeacherMonthlySummarySheet`、`TeacherMonthlyDetailSheet`
+- 前端：月份選擇器（`<input type="month">`）+ 月報按鈕 + loading spinner + blob download
+
+**功能二 — 今日出缺勤紀錄修正（主任限定）**
+
+- 新增端點 `DELETE /api/v1/attendance/{id}`：
+  - Soft-void（寫入 `VoidedAt` / `VoidedByUserID` / `VoidReason`）
+  - 若 `SessionDeducted=true`，自動沖回 `SessionDeductionLedger` 並 `recomputeCounters()`
+  - 若 `ClassSessionID` 存在且 Status 為 attended/late/absent，退回 `scheduled`
+  - 整個流程包在 DB Transaction 內
+- 新增端點 `POST /api/v1/attendance/{id}/convert-to-attended`：
+  - 限 `Memo='self_study'` 記錄
+  - Q2 決策：優先複用同日 scheduled ClassSession，無則建立新 ClassSession
+  - 自動扣堂（`SessionDeductionService::deductForSession()`）
+- 修正前端 v-else bug：self_study 記錄不再誤顯示狀態編輯下拉選單
+- 前端新增刪除 Dialog（必填原因、ESC 關閉、危險紅色按鈕）
+- 前端新增轉換 Modal（課程列表、剩餘堂數、空狀態說明）
+- 所有操作有 toast 回饋（成功 2s，失敗 3s）
+
+### 測試
+
+- `TeacherMonthlyExportTest.php`（4 cases）
+- `AttendanceVoidTest.php`（5 cases）
+- `AttendanceConvertSelfStudyTest.php`（5 cases）
+- CI：749 tests passed, 3052 assertions
+
+### 影響範圍
+
+- `backend/app/Http/Controllers/TeacherAttendanceController.php`
+- `backend/app/Http/Controllers/AttendanceController.php`
+- `backend/app/Exports/TeacherMonthlyAttendanceExport.php`（新增）
+- `backend/app/Exports/TeacherMonthlySummarySheet.php`（新增）
+- `backend/app/Exports/TeacherMonthlyDetailSheet.php`（新增）
+- `backend/routes/api.php`
+- `frontend/src/pages/AttendancePage.vue`
+
+### 已知限制（下版修正）
+
+- 月報匯出無獨立 rate limit（下版加 `per_minute:5`）
+- `convertToAttended()` 高並發時可能超扣（下版加 `lockForUpdate()`）
+
+---
+
 ## 2026-04-23 — fix: Batch 1 Tech Debt — TD-004/006/007/009 SwipeRfidController 邊界修正
 
 - **TD-004** `findMatchingClass`：ClassSession 查詢加 `Status != 'leave'`，請假學生補到校刷卡不再命中請假堂次
