@@ -14,6 +14,34 @@
       </div>
     </div>
 
+    <!-- Clock-in Status Card -->
+    <div class="th-clockin-card card" @click="goAttendance" role="button" tabindex="0"
+      @keydown.enter="goAttendance" aria-label="查看今日打卡狀態">
+      <div class="th-clockin-header">
+        <span class="material-symbols-outlined th-clockin-icon">fingerprint</span>
+        <span class="th-clockin-title">今日打卡狀態</span>
+        <span class="th-clockin-badge" :class="clockinBadgeClass">{{ clockinBadgeLabel }}</span>
+      </div>
+      <div class="th-clockin-body" v-if="!clockinLoading">
+        <div class="th-clockin-time" v-if="clockinRecord.sign_in_dt">
+          <span class="th-clockin-label">簽到</span>
+          <span class="th-clockin-val">{{ formatTime(clockinRecord.sign_in_dt) }}</span>
+          <template v-if="clockinRecord.sign_out_dt">
+            <span class="th-clockin-sep">→</span>
+            <span class="th-clockin-label">簽退</span>
+            <span class="th-clockin-val">{{ formatTime(clockinRecord.sign_out_dt) }}</span>
+          </template>
+          <span v-else class="th-clockin-unsignout">未簽退</span>
+        </div>
+        <div class="th-clockin-empty" v-else>今日尚未打卡，請記得刷卡</div>
+        <div class="th-clockin-hint" v-if="clockinRecord.first_class_start_time">
+          第一堂課：{{ clockinRecord.first_class_start_time }}
+        </div>
+      </div>
+      <div class="th-clockin-body" v-else>載入中…</div>
+      <span class="material-symbols-outlined th-action-arrow" style="margin-left:auto">chevron_right</span>
+    </div>
+
     <!-- A. Today's Actions -->
     <div class="th-today card" data-guide="teacher-home-today">
       <h3 class="th-section-title">
@@ -243,6 +271,44 @@ const getToken = async () => {
 };
 
 const refreshing = ref(false);
+
+// ── Teacher clock-in status ──
+const clockinLoading = ref(true);
+const clockinRecord  = ref({});
+
+const clockinBadgeClass = computed(() => {
+  const s = clockinRecord.value.status;
+  if (!s || s === 'no_record') return 'th-badge-warn';
+  if (s === 'normal') return 'th-badge-ok';
+  if (s === 'late')   return 'th-badge-late';
+  return 'th-badge-warn';
+});
+
+const clockinBadgeLabel = computed(() => {
+  const s = clockinRecord.value.status;
+  if (!s || s === 'no_record') return '尚未打卡';
+  if (s === 'normal') return clockinRecord.value.sign_out_dt ? '已完成' : '上班中';
+  if (s === 'late')   return '遲到';
+  return '待確認';
+});
+
+async function fetchClockinStatus() {
+  clockinLoading.value = true;
+  try {
+    const token = await getToken();
+    const res = await fetch('/api/v1/teacher-attendance/today', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) clockinRecord.value = await res.json();
+  } catch (_) { /* silent */ } finally {
+    clockinLoading.value = false;
+  }
+}
+
+function formatTime(dt) {
+  if (!dt) return '';
+  return dt.length >= 16 ? dt.slice(11, 16) : dt;
+}
 
 // ── Report discrepancy modal ──
 const reportModalOpen = ref(false);
@@ -604,7 +670,7 @@ function goFillRecord(ev) {
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
-  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule()]);
+  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchClockinStatus()]);
   refreshing.value = false;
 }
 
@@ -686,7 +752,7 @@ function handleReportWithdrawn() {
 }
 
 onMounted(() => {
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   // Refresh chat badge when app emits the badge refresh event
@@ -955,4 +1021,38 @@ onBeforeUnmount(() => {
   width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; font-size: 18px; font-weight: 700; border-radius: 8px;
 }
+
+/* ──────── Clock-in Card ──────── */
+.th-clockin-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px;
+  transition: background 0.15s;
+  margin-bottom: 12px;
+}
+.th-clockin-card:hover { background: var(--bg-hover, #f5f5f5); }
+.th-clockin-card:focus-visible { outline: 2px solid var(--primary); }
+.th-clockin-header {
+  display: flex; align-items: center; gap: 8px; flex: 1;
+  flex-wrap: wrap;
+}
+.th-clockin-icon { font-size: 22px; color: var(--text-muted); }
+.th-clockin-title { font-weight: 600; font-size: 15px; }
+.th-clockin-badge {
+  padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600;
+}
+.th-badge-ok   { background: #e6f4ea; color: #1b7c3d; }
+.th-badge-warn { background: #fff3e0; color: #e65100; }
+.th-badge-late { background: #fce8e6; color: #c62828; }
+.th-clockin-body {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 14px; color: var(--text-secondary);
+  width: 100%;
+}
+.th-clockin-label { font-size: 12px; color: var(--text-muted); }
+.th-clockin-val   { font-weight: 600; color: var(--text-primary); }
+.th-clockin-sep   { color: var(--text-muted); }
+.th-clockin-unsignout { color: var(--color-warning, #e65100); font-size: 12px; }
+.th-clockin-empty { color: var(--color-warning, #e65100); font-weight: 500; }
+.th-clockin-hint  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 </style>

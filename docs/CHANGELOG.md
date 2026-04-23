@@ -2,6 +2,42 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat: 老師出缺勤打卡整合 v1.6（teacher-attendance-v1，PR #10）
+
+### 功能摘要
+
+將老師 RFID 打卡整合進現有出缺勤管理頁，提供可查、可補、可稽核的老師出缺勤流程。
+
+### 主要變更
+
+**後端（`feature/teacher-attendance-v1`）：**
+- `TeacherSingIn` 新增 `Source`（rfid/manual）、`Status`（normal/late/source_only/…）欄位
+- 新建 `teacher_signin_adjustments` 審計表（append-only，補卡留痕）
+- `TeacherAttendanceController`：5 支 API（today / index / adjust / unclosed / export）
+- `SwipeRfidController::handleTeacherSwipe()`：
+  - 簽到時自動計算 Status（比對 `schedules` 第一堂課，門檻 10 分鐘）
+  - **NFR-003 debounce**：60 秒內重複刷卡回傳 `action: duplicate_ignored`，不建立新紀錄、不自動簽退（防 RF bounce）
+- 5 條新 API 路由，`role:teacher` / `role:director` 分層
+
+**前端：**
+- `AttendancePage.vue`：學生/老師 Tab 切換（director 限定），老師 tab 含統計卡、異常清單、補卡按鈕、匯出
+- `TeacherHomePage.vue`：今日打卡狀態卡片（badge + 時間 + 導航）
+- `TeacherAdjustModal.vue`（新元件）：補卡 Modal，inline validate + loading + audit trail
+
+**測試：** 15 個 Feature Tests（Happy Path / Edge / Error / NFR / Regression）；CI PHPUnit 全綠
+
+### 上線前必做
+
+- ⚠️ 執行 `php artisan migrate`（`TeacherSingIn` + `teacher_signin_adjustments`）
+- 建議 21:00 後低峰執行，執行前備份
+
+### 關聯文件
+
+- PRD v1.6：`.cursor/plans/phase1_teacher_attendance_integration_prd_2026-04-23.md`
+- ARCH：`.cursor/plans/arch_teacher_attendance_2026-04-23.md`
+
+---
+
 ## 2026-04-22 — fix(P2): StudentsList 方案課程剩餘堂數顯示錯誤
 
 ### 根因

@@ -12,6 +12,132 @@
       </div>
     </div>
 
+    <!-- Tab Switcher（director/super_admin 才顯示） -->
+    <div v-if="!isTeacher" class="att-tabs">
+      <button
+        class="att-tab-btn"
+        :class="{ active: activeTab === 'student' }"
+        @click="switchTab('student')"
+      >學生出缺勤</button>
+      <button
+        class="att-tab-btn"
+        :class="{ active: activeTab === 'teacher' }"
+        @click="switchTab('teacher')"
+      >老師打卡</button>
+    </div>
+
+    <!-- ═══ Teacher Attendance Tab ═══ -->
+    <template v-if="activeTab === 'teacher' && !isTeacher">
+      <!-- Teacher Stats -->
+      <div class="att-stats">
+        <div class="att-stat-card">
+          <div class="att-stat-num">{{ teacherStats.total }}</div>
+          <div class="att-stat-label">今日已打卡</div>
+        </div>
+        <div class="att-stat-card stat-late">
+          <div class="att-stat-num">{{ teacherStats.late }}</div>
+          <div class="att-stat-label">遲到</div>
+        </div>
+        <div class="att-stat-card stat-absent">
+          <div class="att-stat-num">{{ teacherStats.pending }}</div>
+          <div class="att-stat-label">待核對</div>
+        </div>
+      </div>
+
+      <!-- Anomaly List -->
+      <div class="card att-checkin-card">
+        <div class="att-checkin-header">
+          <div class="att-section-title">異常待處理</div>
+          <span v-if="teacherAnomalies.length" class="att-badge">{{ teacherAnomalies.length }}</span>
+        </div>
+        <div v-if="teacherLoading" class="att-empty">載入中…</div>
+        <div v-else-if="teacherAnomalies.length === 0" class="att-empty">
+          今日無老師打卡異常 ✓
+        </div>
+        <div v-else class="ta-anomaly-list">
+          <div v-for="r in teacherAnomalies" :key="r.id" class="ta-anomaly-row">
+            <div class="ta-row-info">
+              <span class="ta-name">{{ r.teacher_name }}</span>
+              <span class="ta-time">{{ r.sign_in_dt?.slice(11, 16) ?? '—' }}</span>
+              <span class="att-status-badge" :class="teacherStatusClass(r.status)">{{ teacherStatusLabel(r.status) }}</span>
+            </div>
+            <button class="primary small" @click="openAdjust(r)">補卡</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Full Records Table -->
+      <div class="card att-checkin-card" style="margin-top:12px">
+        <div class="att-checkin-header">
+          <div class="att-section-title">今日完整打卡記錄</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="date" v-model="teacherDate" class="att-date-input" @change="fetchTeacherRecords" />
+            <button class="ghost small" @click="exportTeacherCsv" title="匯出 CSV">
+              <span class="material-symbols-outlined" style="font-size:18px">download</span>
+            </button>
+          </div>
+        </div>
+        <div v-if="teacherLoading" class="att-empty">載入中…</div>
+        <div v-else-if="teacherRecords.length === 0" class="att-empty">今日無老師打卡紀錄</div>
+        <div v-else class="att-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>老師</th>
+                <th>簽到</th>
+                <th>簽退</th>
+                <th>狀態</th>
+                <th>第一堂</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in teacherRecords" :key="r.id">
+                <td>{{ r.teacher_name }}</td>
+                <td>{{ r.sign_in_dt?.slice(11, 16) ?? '—' }}</td>
+                <td :class="{ 'ta-cell-warn': !r.sign_out_dt }">
+                  {{ r.sign_out_dt ? r.sign_out_dt.slice(11, 16) : '未簽退' }}
+                </td>
+                <td>
+                  <span class="att-status-badge" :class="teacherStatusClass(r.status)">
+                    {{ teacherStatusLabel(r.status) }}
+                  </span>
+                </td>
+                <td class="ta-cell-muted">{{ r.first_class_start_time ?? '—' }}</td>
+                <td>
+                  <button class="ghost small" @click="openAdjust(r)">補卡</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Unclosed reminder -->
+      <div v-if="teacherUnclosed.length" class="card" style="margin-top:12px;padding:14px 16px">
+        <div class="att-section-title" style="margin-bottom:8px">
+          <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;color:#e65100">warning</span>
+          截止時間前未簽退（{{ teacherUnclosed.length }}）
+        </div>
+        <div v-for="u in teacherUnclosed" :key="u.teacher_id" class="ta-unclosed-row">
+          {{ u.teacher_name }}
+          <span class="ta-time">簽到 {{ u.sign_in_dt?.slice(11, 16) }}</span>
+          <button class="ghost small" @click="openAdjust(u)">補卡</button>
+        </div>
+      </div>
+
+      <!-- Adjust Modal -->
+      <TeacherAdjustModal
+        :visible="adjustModal.visible"
+        :record="adjustModal.record"
+        @close="adjustModal.visible = false"
+        @submitted="onAdjustSubmitted"
+      />
+    </template>
+
+    <!-- ═══ Student Attendance Tab（原有內容） ═══ -->
+    <template v-if="activeTab === 'student' || isTeacher">
+
     <!-- Stats Summary -->
     <div class="att-stats">
       <div class="att-stat-card">
@@ -573,6 +699,7 @@
       </div>
     </div>
 
+    </template><!-- end student tab wrapper -->
   </div>
 
   <!-- Teleport to body so z-index beats the fixed bottom nav (z:10000) -->
@@ -620,6 +747,12 @@
         <span>{{ discrepancyToast.text }}</span>
       </div>
     </Transition>
+    <Transition name="sd-toast">
+      <div v-if="teacherToast.visible" class="sd-toast" role="status">
+        <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+        <span>{{ teacherToast.text }}</span>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -628,6 +761,7 @@ import { ref, computed, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
+import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
 
 const props = defineProps({
@@ -636,6 +770,118 @@ const props = defineProps({
   userId: [String, Number],
 });
 const isTeacher = computed(() => props.userRole === 'teacher');
+
+// ── Tab state ──
+const activeTab = ref('student');
+
+function switchTab(tab) {
+  if (activeTab.value === tab) return;
+  activeTab.value = tab;
+  if (tab === 'teacher') fetchTeacherRecords();
+}
+
+// ── Teacher Attendance state ──
+const teacherRecords  = ref([]);
+const teacherUnclosed = ref([]);
+const teacherLoading  = ref(false);
+const teacherDate     = ref(new Date().toISOString().slice(0, 10));
+
+const teacherAnomalies = computed(() =>
+  teacherRecords.value.filter(r => !['normal', 'adjusted'].includes(r.status))
+);
+
+const teacherStats = computed(() => ({
+  total:   teacherRecords.value.length,
+  late:    teacherRecords.value.filter(r => r.status === 'late').length,
+  pending: teacherRecords.value.filter(r => ['source_only', 'pending_review', 'missed'].includes(r.status)).length,
+}));
+
+const adjustModal = reactive({ visible: false, record: null });
+
+const TEACHER_STATUS_LABEL = {
+  normal:         '正常',
+  late:           '遲到',
+  early_leave:    '早退',
+  missed:         '漏刷',
+  adjusted:       '已補卡',
+  pending_review: '待確認',
+  source_only:    '待核對',
+  no_record:      '未打卡',
+};
+const TEACHER_STATUS_CLASS = {
+  normal:         'ts-badge-ok',
+  late:           'ts-badge-late',
+  early_leave:    'ts-badge-warn',
+  missed:         'ts-badge-error',
+  adjusted:       'ts-badge-muted',
+  pending_review: 'ts-badge-warn',
+  source_only:    'ts-badge-warn',
+};
+
+function teacherStatusLabel(s) { return TEACHER_STATUS_LABEL[s] ?? s; }
+function teacherStatusClass(s) { return TEACHER_STATUS_CLASS[s] ?? 'ts-badge-muted'; }
+
+function openAdjust(record) {
+  adjustModal.record  = record;
+  adjustModal.visible = true;
+}
+
+async function onAdjustSubmitted() {
+  adjustModal.visible = false;
+  showTeacherToast('補卡成功');
+  await fetchTeacherRecords();
+}
+
+const teacherToast = reactive({ visible: false, text: '' });
+let teacherToastTimer = null;
+function showTeacherToast(text) {
+  clearTimeout(teacherToastTimer);
+  teacherToast.text    = text;
+  teacherToast.visible = true;
+  teacherToastTimer = setTimeout(() => { teacherToast.visible = false; }, 3000);
+}
+
+async function fetchTeacherRecords() {
+  if (!props.branchId) return;
+  teacherLoading.value = true;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    const [recRes, unclosedRes] = await Promise.all([
+      fetch(`/api/v1/teacher-attendance?date=${teacherDate.value}&branch_id=${props.branchId}&per_page=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch(`/api/v1/teacher-attendance/unclosed?date=${teacherDate.value}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
+    if (recRes.ok) {
+      const json = await recRes.json();
+      teacherRecords.value = json.data ?? [];
+    }
+    if (unclosedRes.ok) {
+      const json = await unclosedRes.json();
+      teacherUnclosed.value = json.data ?? [];
+    }
+  } catch (_) { /* silent */ } finally {
+    teacherLoading.value = false;
+  }
+}
+
+async function exportTeacherCsv() {
+  if (!props.branchId) return;
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `/api/v1/teacher-attendance/export?date_from=${teacherDate.value}&date_to=${teacherDate.value}&format=csv`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `teacher-attendance-${teacherDate.value}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 const statusOptions = [
   { value: 'present', label: '到班', short: '到' },
@@ -1670,6 +1916,7 @@ watch(() => props.branchId, () => {
   fetchMyDiscrepanciesMap();
   if (!isTeacher.value) {
     fetchPending();
+    if (activeTab.value === 'teacher') fetchTeacherRecords();
   }
 });
 </script>
@@ -2174,4 +2421,61 @@ watch(() => props.branchId, () => {
 @media (max-width: 480px) {
   .sd-toast { top: 12px; right: 12px; left: 12px; }
 }
+
+/* ──────── Tab Switcher ──────── */
+.att-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 16px;
+}
+.att-tab-btn {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  min-height: 44px;
+}
+.att-tab-btn:hover { color: var(--text-primary, #0f172a); }
+.att-tab-btn.active {
+  color: var(--primary, #2563eb);
+  border-bottom-color: var(--primary, #2563eb);
+  font-weight: 700;
+}
+
+/* ──────── Teacher Tab Content ──────── */
+.ta-anomaly-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ta-anomaly-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--surface-muted, #f8fafc);
+  border-radius: 8px; gap: 8px;
+}
+.ta-row-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
+.ta-name { font-weight: 600; font-size: 14px; }
+.ta-time { font-size: 13px; color: var(--text-secondary, #475569); }
+.ta-cell-warn { color: var(--color-warning, #e65100); font-weight: 500; }
+.ta-cell-muted { color: var(--text-muted, #94a3b8); font-size: 13px; }
+.ta-unclosed-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.att-date-input {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 8px; font-size: 13px;
+}
+
+/* Teacher Status Badges */
+.ts-badge-ok    { background: #e6f4ea; color: #1b7c3d; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-late  { background: #fce8e6; color: #c62828; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-warn  { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-error { background: #fce8e6; color: #c62828; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-muted { background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 </style>
