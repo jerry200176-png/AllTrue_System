@@ -21,7 +21,7 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         $query = DB::table('StudentSingIn as si')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
+            ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
             ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
             ->leftJoin('Teacher as t', 't.id', '=', 'si.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
