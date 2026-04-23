@@ -925,3 +925,25 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main 25761c9] chore(nightly): auto backup 2026-04-24_0100
+ 7 files changed, 54 insertions(+), 200 deletions(-)
+ create mode 100644 backups/alltrue_nightly_2026-04-24_0100.sql.gz
+[main 25761c9] chore(nightly): auto backup 2026-04-24_0100
+ 7 files changed, 54 insertions(+), 200 deletions(-)
+ create mode 100644 backups/alltrue_nightly_2026-04-24_0100.sql.gz
+[git-sync] Pushing...
+[git-sync] Pushing...
+ssh: Could not resolve hostname github.com: Temporary failure in name resolution
+ssh: Could not resolve hostname github.com: Temporary failure in name resolution
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
