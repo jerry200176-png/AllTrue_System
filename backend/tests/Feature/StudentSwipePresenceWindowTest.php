@@ -7,6 +7,7 @@ use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -27,6 +28,12 @@ class StudentSwipePresenceWindowTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Pin time to 10:00 AM — prevents EndTime from crossing midnight when tests
+        // create sessions relative to now(). Without this, CI after 22:00 TWN produces
+        // EndTime values like "01:00:00" (next day) that the session-window check rejects.
+        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
+
         $this->campus = Campus::create([
             'name'          => 'TestCampus',
             'Token'         => 'test-token-123',
@@ -44,6 +51,12 @@ class StudentSwipePresenceWindowTest extends TestCase
             'TeachLIFFID'   => '',
             'TeachLIFF_URL' => '',
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     private function makeStudent(array $attrs = []): Student

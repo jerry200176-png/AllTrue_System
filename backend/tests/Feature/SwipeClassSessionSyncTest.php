@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -39,6 +40,11 @@ class SwipeClassSessionSyncTest extends TestCase
     {
         parent::setUp();
 
+        // Pin time to 10:00 AM so that sessions ending +2 h later (12:00) never cross
+        // midnight. Without this, CI running after 22:00 TWN generates EndTime values
+        // like "01:00:00" (next day) which the controller's window check rejects → self_study.
+        Carbon::setTestNow(Carbon::today()->setTime(10, 0));
+
         $this->campus = Campus::create([
             'name'           => 'SyncTestCampus',
             'Token'          => 'sync-test-token-xyz',
@@ -64,6 +70,12 @@ class SwipeClassSessionSyncTest extends TestCase
         ]);
         $this->subjectId = $subject->id;
         $this->teacherId = 42;
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
