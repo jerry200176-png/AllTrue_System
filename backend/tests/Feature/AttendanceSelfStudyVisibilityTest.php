@@ -7,6 +7,7 @@ use App\Models\Campus;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Models\Subject;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -90,12 +91,12 @@ class AttendanceSelfStudyVisibilityTest extends TestCase
 
     public function test_course_attendance_record_still_appears_with_left_join(): void
     {
-        [$token, $student, $teacherId] = $this->scaffold();
+        [$token, $student, $teacherId, $subjectId] = $this->scaffold();
 
         $course = StudentClass::create([
             'StudentID'         => $student->id,
             'GradeID'           => 1,
-            'SubjectID'         => null,
+            'SubjectID'         => $subjectId,
             'TeacherID'         => $teacherId,
             'by1'               => 1,
             'Period'            => 4,
@@ -145,12 +146,12 @@ class AttendanceSelfStudyVisibilityTest extends TestCase
 
     public function test_course_and_self_study_coexist_in_same_response(): void
     {
-        [$token, $student, $teacherId] = $this->scaffold();
+        [$token, $student, $teacherId, $subjectId] = $this->scaffold();
 
         $course = StudentClass::create([
             'StudentID'         => $student->id,
             'GradeID'           => 1,
-            'SubjectID'         => null,
+            'SubjectID'         => $subjectId,
             'TeacherID'         => $teacherId,
             'by1'               => 1,
             'Period'            => 4,
@@ -218,6 +219,12 @@ class AttendanceSelfStudyVisibilityTest extends TestCase
     {
         Campus::firstOrCreate(['id' => 1], ['name' => '測試分校', 'code' => 'T1', 'Current' => 1]);
 
+        $subject = Subject::create([
+            'School_id'    => 1,
+            'Grade_no'     => 0,
+            'Subject_Name' => 'Math',
+        ]);
+
         $user = User::create([
             'LoginName'          => 'dir-selfstudy@example.com',
             'Name'               => '主任',
@@ -250,6 +257,6 @@ class AttendanceSelfStudyVisibilityTest extends TestCase
             'Notify_Token' => '',
         ]);
 
-        return [$raw, $student, (int) $teacher->id];
+        return [$raw, $student, (int) $teacher->id, (int) $subject->id];
     }
 }
