@@ -23,6 +23,7 @@ use App\Http\Controllers\TempRfidController;
 use App\Http\Controllers\ResetDataController;
 use App\Http\Controllers\BackfillController;
 use App\Http\Controllers\LineWebhookController;
+use App\Http\Controllers\TelegramWebhookController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PasswordResetRequestController;
 use App\Http\Controllers\RoomController;
@@ -116,6 +117,7 @@ Route::prefix('v1')->group(function () {
     // Domain-based URL (no id): match Host to Campus.URL — must be registered before the {campusId} route
     Route::post('line/webhook', [LineWebhookController::class, 'handleDomainBased']);
     Route::post('line/webhook/{campusId}', [LineWebhookController::class, 'handle'])->where('campusId', '[0-9]+');
+    Route::post('telegram/webhook/{code}', [TelegramWebhookController::class, 'handle']);
 
     // ── Parent Portal: LIFF & LINE-based login ─────────────────────────
     Route::get('parent/resolve-liff', [ParentPortalController::class, 'resolveLiff']);

@@ -1,0 +1,1738 @@
+OWASP Secure Headers Project | OWASP Foundation
+
+# OWASP Secure Headers Project
+
+## Introduction
+
+⚠️ IMPORTANT: The OWASP Foundation has decided to migrate its content to a new CMS. As a result, OSHP content is frozen for the duration of the migration. You can find more information and explanations [here](https://github.com/OWASP/www-project-secure-headers/discussions/273).
+
+🎯 The OWASP Secure Headers Project (also called OSHP) describes HTTP response headers that your application can use to increase the security of your application. Once set, these HTTP response headers can restrict modern browsers from running into easily preventable vulnerabilities. The OWASP Secure Headers Project intends to raise awareness and use of these headers.
+
+🤔 HTTP headers are well known and also despised. Seeking a balance between usability and security, developers implement functionality through the headers that can make applications more versatile or secure. But in practice how are the headers being implemented? What sites follow the best implementation practices? Big companies, small, all or none?
+
+## Description
+
+📚 The OWASP Secure Headers Project aim to provide elements about the following aspects regarding HTTP security headers:
+
+- Guidance about the recommended HTTP security headers that can be leveraged (Best Practices tab).
+- Guidance about the HTTP headers that should be removed (Best Practices tab).
+- [Tools](https://github.com/OWASP/www-project-secure-headers/tree/master/subprojects/validator) to validate an HTTP security header configuration.
+- Code libraries that can be leveraged to configure recommended HTTP security headers (Technical Resources tab).
+- [Statistics](https://github.com/OWASP/www-project-secure-headers/tree/master/subprojects/statistics) about usage of the recommended HTTP security headers (Statistics tab).
+
+📺 A presentation of the project is available on the following locations:
+
+- [OWASP Spotlight Youtube playlists](https://www.youtube.com/watch?v=N4F3VWQYU9E).
+- [Application Security Podcast Youtube playlists](https://www.youtube.com/watch?v=0SNU9clVhKU).
+- [NoLimitSecu Podcast](https://www.nolimitsecu.fr/owasp-secure-headers-project/)(French).
+
+## Security headers usage statistics
+
+📈 We provide statistics, updated every month, about HTTP response security headers usage mentioned by the OWASP Secure Headers Project:
+
+- They are available through [this subproject](https://github.com/OWASP/www-project-secure-headers/tree/master/subprojects/statistics) and the tab named Statistics.
+
+## Security headers usage validator
+
+✅ We provide a [venom](https://github.com/ovh/venom) tests suite to validate an HTTP security response header configuration against OWASP Secure Headers Project recommendation:
+
+- It is available through [this subproject](https://github.com/OWASP/www-project-secure-headers/tree/master/subprojects/validator).
+
+🧪 We also provide a online mock endpoint returning an HTTP response, for which, all HTTP response headers recommended by the OSHP will be set:
+
+- It is automatically deployed on`https://oshp-validator-mock.onrender.com`
+- Technical details about this endpoint are [here](https://github.com/OWASP/www-project-secure-headers/tree/master/subprojects/validator#tests-suite-mock-service).
+
+## Security headers reference files
+
+📖 As mentioned in previous sections, we provide the collection of HTTP response security headers to add as well as HTTP response headers to remove, both in table form.
+
+💡 Additionally, we provide this information as two JSON files to enable automation in the context of a provisioning workflow:
+
+- Collection of [HTTP response security headers to add](https://github.com/OWASP/www-project-secure-headers/blob/master/ci/headers_add.json).
+- Collection of [HTTP response headers to remove](https://github.com/OWASP/www-project-secure-headers/blob/master/ci/headers_remove.json).
+
+📡 These json files are automatically updated.
+
+## Technical references health dashboard
+
+📍 We automatically generate and monitor this [dashboard](https://github.com/OWASP/www-project-secure-headers/blob/master/monitoring_technical_references_dashboard.md) to identify any dead project referenced in the Technical Resources tab.
+
+## Discussions, information and roadmap
+
+💬 We use the GitHub [discussions feature](https://github.com/OWASP/www-project-secure-headers/discussions) for discussions about the project as well as spreading global information about it.
+
+👩‍💻 The work on the OSHP projects and associated components is tracked using the GitHub [project feature](https://github.com/orgs/OWASP/projects/44).
+
+## Create a link to the OSHP site
+
+📖 This is documented into the Case Studies tab.
+
+## Contributors
+
+💌 Contributors to OSHP, before the migration of the project to [GitHub](https://github.com/OWASP/www-project-secure-headers):
+
+💌 Visit this [page](https://github.com/OWASP/www-project-secure-headers/graphs/contributors) for updated information about the contributors since the migration of the project to GitHub.
+
+## Licensing
+
+📑 This project content is free to use. It is licensed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
+
+---
+
+# Response Headers
+
+💡 The collection of HTTP response security headers mentioned in this section is applicable when the [user agent](https://developer.mozilla.org/en-US/docs/Glossary/User_agent) processing the HTTP response is a browser. The support for these headers by non-browser API clients (user agent), like for example an HTTP client in a programming language, is not standardized. So, it requires specific testing to identify if an HTTP response security header is supported or not by such HTTP client.
+
+🚦 Header lifecycle flow:
+
+📐 Working draft
+
+- Permissions-Policy
+
+✅ Active
+
+- Strict-Transport-Security
+- X-Frame-Options
+- X-Content-Type-Options
+- Content-Security-Policy
+- X-Permitted-Cross-Domain-Policies
+- Referrer-Policy
+- Clear-Site-Data
+- Cross-Origin-Embedder-Policy
+- Cross-Origin-Opener-Policy
+- Cross-Origin-Resource-Policy
+- Cache-Control
+- X-DNS-Prefetch-Control
+
+⏰ Almost deprecated
+
+None
+
+❌ Deprecated
+
+- Feature-Policy
+- Expect-CT
+- Public-Key-Pins
+- X-XSS-Protection
+- Pragma
+
+## Strict-Transport-Security
+
+HTTP Strict Transport Security (also named HSTS) is a browser security policy mechanism which helps to protect websites against protocol downgrade attacks and cookie hijacking. It allows web servers to declare that web browsers (or other complying user agents) should only interact with it using secure HTTPS connections, and within a defined timespan (max-age) not via the clear text HTTP protocol. HSTS is an IETF standard track protocol and is specified in [RFC 6797](https://www.rfc-editor.org/rfc/rfc6797). A server implements an HSTS policy by supplying a header (`Strict-Transport-Security`) over an HTTPS connection (HSTS headers over HTTP are ignored).
+
+📍 Important note about the behavior of the header over a HTTP connection (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security#description)):
+
+- The`Strict-Transport-Security` header is ignored by the browser when your site has only been accessed using HTTP.
+- Once your site is accessed over HTTPS with no certificate errors, the browser knows your site is HTTPS capable and will honor the`Strict-Transport-Security` header.
+
+💡 More information about Preloading Strict Transport Security can be found [here](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security#preloading_strict_transport_security).
+
+💡 The`preload` directive is not part of the RFC and its support/evolution is managed at browsers level. We explicitly decided to keep this directive out of the configuration proposed to be aligned with the advice specified by the`hstspreload.org` team ([source](https://hstspreload.org/#opt-in)):
+
+```
+If you maintain a project that provides HTTPS configuration advice or provides an option to enable HSTS, do not include the preload directive by default.
+
+We get regular emails from site operators who tried out HSTS this way, only to find themselves on the preload list without realizing that some subdomains cannot support HTTPS. 
+
+Removal tends to be slow and painful for those sites.
+
+```
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `max-age=SECONDS` | The time, in seconds, that the browser should remember that this site is only to be accessed using HTTPS. |
+| `includeSubDomains` | If this optional parameter is specified, this rule applies to all of the site’s subdomains as well. |
+| `preload` | If this optional parameter is specified, its instruct the browser to always access the site using HTTPS because the site is included into`Strict-Transport-Security` [preload list](https://www.chromium.org/hsts/). |
+
+### Example
+
+```
+Strict-Transport-Security: max-age=63072000
+
+```
+
+```
+Strict-Transport-Security: max-age=63072000 ; includeSubDomains
+
+```
+
+```
+Strict-Transport-Security: max-age=63072000 ; includeSubDomains ; preload
+
+```
+
+### References
+
+## X-Frame-Options
+
+The`X-Frame-Options` response header (also named XFO) improves the protection of web applications against [clickjacking](https://portswigger.net/web-security/clickjacking). It instructs the browser whether the content can be displayed within frames.
+
+The Content-Security-Policy (CSP) [frame-ancestors](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors) directive obsoletes the X-Frame-Options header. If a resource has both policies, the CSP frame-ancestors policy will be enforced and the X-Frame-Options policy will be ignored.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `deny` | No rendering within a frame. |
+| `sameorigin` | No rendering if origin mismatch. |
+| `allow-from: DOMAIN` | Allows rendering if framed by frame loaded from DOMAIN (not supported by modern browsers). |
+
+### Example
+
+```
+X-Frame-Options: deny
+
+```
+
+### References
+
+## X-Content-Type-Options
+
+Setting this header will prevent the browser from interpreting files as a different MIME type to what is specified in the`Content-Type` HTTP header (e.g. treating`text/plain` as`text/css`).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `nosniff` | Will prevent the browser from MIME-sniffing a response away from the declared content-type. |
+
+### Example
+
+```
+X-Content-Type-Options: nosniff
+
+```
+
+### References
+
+## Content-Security-Policy
+
+A Content Security Policy (also named CSP) requires careful tuning and testing after definition of the policy. A content security policy can have significant impact on the way browsers render pages (e.g., inline JavaScript or CSS can be disabled). A proper CSP can prevent a wide range of attacks, including cross-site scripting, other cross-site injections and click jacking.
+
+### Values
+
+💡 Source used was [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#directives).
+
+| Directive | Description |
+| --- | --- |
+| `base-uri` | Define the base URI for relative URIs. |
+| `default-src` | Define loading policy for all resources type in case a resource type’s dedicated directive is not defined (fallback). |
+| `script-src` | Define which scripts the protected resource can execute. |
+| `object-src` | Define from where the protected resource can load plugins. |
+| `style-src` | Define which styles (CSS) can be applied to the protected resource. |
+| `img-src` | Define from where the protected resource can load images. |
+| `media-src` | Define from where the protected resource can load video and audio. |
+| `frame-src` | (Deprecated and replaced by`child-src`) Define from where the protected resource can embed frames. |
+| `child-src` | Define from where the protected resource can embed frames. |
+| `frame-ancestors` | Define from where the protected resource can be embedded in frames. Useful against [click jacking](https://owasp.org/www-community/attacks/Clickjacking) |
+| `font-src` | Define from where the protected resource can load fonts. |
+| `connect-src` | Define which URIs the protected resource can load using script interfaces. |
+| `manifest-src` | Define from where the protected resource can load manifests. |
+| `form-action` | Define which URIs can be used as the action of HTML form elements. |
+| `sandbox` | Specifies an HTML sandbox policy that the user agent applies to the protected resource. |
+| `script-nonce` | Define script execution by requiring the presence of the specified nonce on script elements. |
+| `plugin-types` | Define the set of plugins that can be invoked by the protected resource by limiting the types of resources that can be embedded. |
+| `reflected-xss` | Instruct the user agent to activate or deactivate any heuristics used to filter or block reflected cross-site scripting attacks, equivalent to the effects of the non-standard`X-XSS-Protection` header. |
+| `block-all-mixed-content` | (Deprecated) Prevent the user agent from loading mixed content. |
+| `upgrade-insecure-requests` | Instruct the user agent to using HTTPS when trying to download insecure HTTP resources |
+| `referrer` | (Deprecated) Define information the user agent can send in the`Referer` header. |
+| `report-uri` | (Deprecated and replaced by`report-to`) Specifies a URI to which the user agent sends reports about policy violation. |
+| `report-to` | Specifies a group (defined in the`Report-To` header) to which the user agent sends reports about policy violation. |
+| `require-trusted-types-for` | Instructs user agents to control the data passed to [DOM XSS](https://portswigger.net/web-security/cross-site-scripting/dom-based) sink functions. |
+| `trusted-types` | Specify an allowlist of [Trusted Type policy names](https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API) that a website can create using`trustedTypes.createPolicy()`. |
+
+### Example
+
+```
+Content-Security-Policy: script-src 'self'
+
+```
+
+### Trusted Types feature
+
+[Trusted Types](https://developer.mozilla.org/en-US/docs/Web/API/Trusted_Types_API) is a security feature in the [Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/Security/CSP) header that stops the browser from accepting plain strings in dangerous functions (called sinks) like`.innerHTML` or`eval()`. Instead, it forces usage of Trusted Type objects that have been vetted by a defined policy.
+
+Browsers support level ([source](https://caniuse.com/trusted-types)):
+
+- Supported by default in Chromium based browsers.
+- Supported by default in Safari.
+- Supported by Firefox in its Nightly version.
+
+Below is an example of definition of a default Trusted Types policy leveraging [DOMPurify](https://github.com/cure53/DOMPurify) for the sanitization processing:
+
+📋`Content-Security-Policy` policy specifying Trusted Types via`require-trusted-types-for` and`trusted-types` directives.
+
+```
+default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types default dompurify;
+
+```
+
+🔒 Script defining the Trusted Types policy (file named`defineDefaultTrustedTypesPolicy.js`):
+
+```
+if (window.trustedTypes && window.trustedTypes.createPolicy) {
+    // Create the default policy and leverage DOMPurify to sanitize any HTML content created
+    trustedTypes.createPolicy("default", {
+        createHTML: (unsafeValue) => {
+            console.info("Default trusted types policy used.");
+            return DOMPurify.sanitize(unsafeValue);
+        }
+        // Functions createScript() and createScriptURL() implementation are missing here as it is an simple example
+        // See https://developer.mozilla.org/en-US/docs/Web/API/TrustedTypePolicyFactory/createPolicy
+    });
+} else {
+    console.warn("Trusted types not supported!");
+}
+
+```
+
+🐞 Script defining the dangerous behavior (file named`dangerousCode.js`):
+
+```
+const input = document.getElementById("userInput");
+const display = document.getElementById("display");
+const button = document.getElementById("renderBtn");
+button.addEventListener("click", () => {
+    const rawValue = input.value;
+    try {
+        display.innerHTML = rawValue;
+    } catch (e) {
+        display.innerText = "Blocked by Trusted Types! Check the console.";
+        console.error(e);
+    }
+});
+
+```
+
+📜 Test HTML page using elements above:
+
+```
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Sample</title>
+        <!-- Step 1: Load the DOMPurify library -->
+        <!-- Allow it to create its own Trusted Types policy named "dompurify" -->
+        <!-- See https://github.com/cure53/DOMPurify?tab=readme-ov-file#what-about-dompurify-and-trusted-types -->
+        <script src="purify.js"></script>
+        <!-- Step 2: Setup the Trusted Types policy named "default" referenced into the CSP header -->
+        <!-- Use the "default policy" to catch as much as possible dangerous sinks without the need to modify the existing code -->
+        <script src="defineDefaultTrustedTypesPolicy.js"></script>
+    </head>
+    <body>
+        <input type="text" id="userInput" value="Hello<script>alert(1)</script> Dominique!" size="40">
+        <button id="renderBtn">Render to DOM</button>
+        <div id="display"></div>
+        <script src="dangerousCode.js"></script>
+    </body>
+</html>
+
+```
+
+🔬 Execution into Chromium:
+
+Below is an example of definition of a custom Trusted Types policy leveraging [DOMPurify](https://github.com/cure53/DOMPurify) for the sanitization processing, both used in a function intended to centralize the loading of unsafe content from a remote location:
+
+📋`Content-Security-Policy` policy specifying Trusted Types via`require-trusted-types-for` and`trusted-types` directives.
+
+```
+default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types content_loader dompurify;
+
+```
+
+🔒 Script defining the Trusted Types policy as well as the content loading function (file named`defineContentLoader.js`):
+
+```
+// Made the function globally available
+let loadContent = null;
+if (window.trustedTypes && window.trustedTypes.createPolicy) {
+    // Create the policy and leverage DOMPurify to sanitize any HTML content created
+    const contentLoaderTrustedPolicy = trustedTypes.createPolicy("content_loader", {
+        createHTML: (unsafeValue) => {
+            console.info("'content_loader' trusted types policy used.");
+            return DOMPurify.sanitize(unsafeValue);
+        }
+        // createScript() and createScriptURL() functions implementation are missing here as it is an simple example
+        // See https://developer.mozilla.org/en-US/docs/Web/API/TrustedTypePolicyFactory/createPolicy
+    });
+    // Create the content loading function using the Trusted Types policy created
+    loadContent = function (apiPath, uiComponent) {
+        fetch(apiPath).then(response => response.text()).then(response => {
+            uiComponent.innerHTML = contentLoaderTrustedPolicy.createHTML(response);
+        });
+    };
+} else {
+    console.warn("Trusted types not supported!");
+}
+
+```
+
+🐞 Script defining the dangerous behavior (file named`dangerousCode.js`):
+
+```
+/*
+The content of the file "unsafe.txt" is:
+Hello<script>alert(1)</script> Dominique!
+*/
+loadContent("/unsafe.txt", document.getElementById("display"));
+
+```
+
+📜 Test HTML page using elements above:
+
+```
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>TEST</title>
+        <!-- Step 1: Load the DOMPurify library -->
+        <!-- Allow it to create its own Trusted Types policy named "dompurify" -->
+        <!-- See https://github.com/cure53/DOMPurify?tab=readme-ov-file#what-about-dompurify-and-trusted-types -->
+        <script src="purify.js"></script>
+        <!-- Step 2: Setup the content loading function creating the Trusted Types policy named "content_loader" referenced into the CSP header -->
+        <!-- Such content loader is used to retrieve unsafe from an API -->
+        <script src="defineContentLoader.js"></script>
+    </head>
+    <body>
+        <div id="display"></div>
+        <script src="dangerousCode.js"></script>
+    </body>
+</html>
+
+```
+
+🔬 Execution into Chromium:
+
+### References
+
+## X-Permitted-Cross-Domain-Policies
+
+A cross-domain policy file is an XML document that grants a web client, such as Adobe Flash Player or Adobe Acrobat (though not necessarily limited to these), permission to handle data across domains. When clients request content hosted on a particular source domain and that content makes requests directed towards a domain other than its own, the remote domain needs to host a cross-domain policy file that grants access to the source domain, allowing the client to continue the transaction. Normally a meta-policy is declared in the master policy file, but for those who can’t write to the root directory, they can also declare a meta-policy using the`X-Permitted-Cross-Domain-Policies` HTTP response header.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `none` | No policy files are allowed anywhere on the target server, including this master policy file. |
+| `master-only` | Only this master policy file is allowed. |
+| `by-content-type` | [HTTP/HTTPS only] Only policy files served with Content-Type: text/x-cross-domain-policy are allowed. |
+| `by-ftp-filename` | [FTP only] Only policy files whose file names are crossdomain.xml (i.e. URLs ending in /crossdomain.xml) are allowed. |
+| `all` | All policy files on this target domain are allowed. |
+
+### Example
+
+```
+X-Permitted-Cross-Domain-Policies: none
+
+```
+
+### References
+
+## Referrer-Policy
+
+The`Referrer-Policy` HTTP header governs which referrer information, sent in the`Referer` header, should be included with requests made.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `no-referrer` | The`Referer` header will be omitted entirely. No referrer information is sent along with requests. |
+| `no-referrer-when-downgrade` | This is the user agent’s default behavior if no policy is specified. The origin is sent as referrer to a-priori as-much-secure destination (HTTPS → HTTPS), but isn’t sent to a less secure destination (HTTPS → HTTP). |
+| `origin` | Only send the origin of the document as the referrer in all cases. (e.g. the document`https://example.com/page.html` will send the referrer`https://example.com/`.) |
+| `origin-when-cross-origin` | Send a full URL when performing a same-origin request, but only send the origin of the document for other cases. |
+| `same-origin` | A referrer will be sent for same-site origins, but cross-origin requests will contain no referrer information. |
+| `strict-origin` | Only send the origin of the document as the referrer to a-priori as-much-secure destination (HTTPS → HTTPS), but don’t send it to a less secure destination (HTTPS → HTTP). |
+| `strict-origin-when-cross-origin` | Send a full URL when performing a same-origin request, only send the origin of the document to a-priori as-much-secure destination (HTTPS → HTTPS), and send no header to a less secure destination (HTTPS → HTTP). |
+| `unsafe-url` | Send a full URL (stripped from parameters) when performing a same-origin or cross-origin request. |
+
+### Example
+
+```
+Referrer-Policy: no-referrer
+
+```
+
+### References
+
+## Clear-Site-Data
+
+The Clear-Site-Data header clears browsing data associated with the requesting website. It allows web developers to have more control over the data stored locally by a browser for their origins (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data)). This header is useful for example, during a logout process, in order to ensure that all stored content on the client side like cookies, storage and cache are removed.
+
+### Values
+
+| Value | Experimental? | Description |
+| --- | --- | --- |
+| `"cache"` | No | Indicates that the server wishes to remove locally cached data for the origin of the response URL. |
+| `"cookies"` | No | Indicates that the server wishes to remove all cookies for the origin of the response URL. HTTP authentication credentials are also cleared out. This affects the entire registered domain, including subdomains. |
+| `"storage"` | No | Indicates that the server wishes to remove all DOM storage for the origin of the response URL. |
+| `"executionContexts"` | Yes | Indicates that the server wishes to reload all browsing contexts for the origin of the response. |
+| `"prefetchCache"` | Yes | Indicates that the server wishes to remove all [speculation rules](https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API) prefetches that are scoped to the referrer origin. |
+| `"prerenderCache"` | Yes | Indicates that the server wishes to remove all [speculation rules](https://developer.mozilla.org/en-US/docs/Web/API/Speculation_Rules_API) prerenders that are scoped to the referrer origin. |
+| `"clientHints"` | Yes | Indicates that the server wishes to remove all [client hints](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Client_hints)(requested via [Accept-CH](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Accept-CH)) stored for the origin of the response URL. |
+| `"*"` | No | Indicates that the server wishes to clear all types of data for the origin of the response. |
+
+### Example
+
+```
+Clear-Site-Data: "cache","cookies","storage"
+
+```
+
+### References
+
+## Cross-Origin-Resource-Policy
+
+This response header (also named CORP) allows to define a policy that lets web sites and applications opt in to protection against certain requests from other origins (such as those issued with elements like` ` and` `), to mitigate speculative [side-channel attacks](https://en.wikipedia.org/wiki/Side-channel_attack), like [Spectre](https://spectreattack.com/), as well as [Cross-Site Script Inclusion (XSSI)](https://www.scip.ch/en/?labs.20160414) attacks (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Resource-Policy)).
+
+💡 To fully understand where CORP and COEP work:
+
+- CORP applies on the loaded resource side (resource owner).
+- COEP applies on the “loader” of the resource side (consumer of the resource).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `same-site` | Only requests from the same [Site](https://developer.mozilla.org/en-US/docs/Glossary/Site) can read the resource. |
+| `same-origin` | Only requests from the same [Origin](https://developer.mozilla.org/en-US/docs/Glossary/Origin)(i.e. scheme + host + port) can read the resource. |
+| `cross-origin` | Requests from any [Origin](https://developer.mozilla.org/en-US/docs/Glossary/Origin)(both`same-site` and`cross-site`) can read the resource. Browsers are using this policy when an [CORP header is not specified](https://resourcepolicy.fyi/#corp-and-isolation). |
+
+### Example
+
+```
+Cross-Origin-Resource-Policy: same-origin
+
+```
+
+### References
+
+## Cross-Origin-Embedder-Policy
+
+This response header (also named COEP) prevents a document from loading any cross-origin resources that don’t explicitly grant the document permission (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Embedder-Policy)).
+
+💡 To fully understand where CORP and COEP work:
+
+- CORP applies on the loaded resource side (resource owner).
+- COEP applies on the “loader” of the resource side (consumer of the resource).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `unsafe-none` | Allows the document to fetch cross-origin resources without giving explicit permission through the [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) protocol or the [Cross-Origin-Resource-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Cross-Origin_Resource_Policy) header (it is the default value). |
+| `require-corp` | A document can only load resources from the same origin, or resources explicitly marked as loadable from another origin. |
+
+### Example
+
+```
+Cross-Origin-Embedder-Policy: require-corp
+
+```
+
+### References
+
+## Cross-Origin-Opener-Policy
+
+This response header (also named COOP) allows you to ensure a top-level document does not share a browsing context group with cross-origin documents. COOP will process-isolate your document and potential attackers can’t access to your global object if they were opening it in a popup, preventing a set of cross-origin attacks dubbed [XS-Leaks](https://xsleaks.dev/)(source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cross-Origin-Opener-Policy)).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `unsafe-none` | Allows the document to be added to its opener’s browsing context group unless the opener itself has a COOP of`same-origin` or`same-origin-allow-popups`(it is the default value). |
+| `same-origin-allow-popups` | Retains references to newly opened windows or tabs which either don’t set COOP or which opt out of isolation by setting a COOP of`unsafe-none`. |
+| `same-origin` | Isolates the browsing context exclusively to same-origin documents. Cross-origin documents are not loaded in the same browsing context. |
+
+### Example
+
+```
+Cross-Origin-Opener-Policy: same-origin
+
+```
+
+### References
+
+## Cache-Control
+
+This header holds directives (instructions) for caching in both requests and responses. If a given directive is in a request, it does not mean this directive is in the response (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control)). Specify the capability of a resource to be cached is important to prevent [exposure of information via the cache](https://cwe.mitre.org/data/definitions/525.html).
+
+The headers named [Expires](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expires) and [Pragma](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma) can be used in addition to the [Cache-Control](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control) header. [Pragma](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma) header can be used for backwards compatibility with the HTTP/1.0 caches. However, Cache-Control is the recommended way to define the caching policy.
+
+### Values applicable for HTTP responses
+
+| Value | Description |
+| --- | --- |
+| `must-revalidate` | Indicates that once a resource becomes stale, caches do not use their stale copy without successful validation on the origin server. |
+| `no-cache` | The response may be stored by any cache, even if the response is normally non-cacheable. However, the stored response MUST always go through validation with the origin server first before using it. |
+| `no-store` | The response may not be stored in any cache. |
+| `no-transform` | An intermediate cache or proxy cannot edit the response body,`Content-Encoding`,`Content-Range`, or`Content-Type`. |
+| `public` | The response may be stored by any cache, even if the response is normally non-cacheable. |
+| `private` | The response may be stored only by a browser’s cache, even if the response is normally non-cacheable. |
+| `proxy-revalidate` | Like`must-revalidate`, but only for shared caches (e.g., proxies). Ignored by private caches. |
+| `max-age= ` | The maximum amount of time a resource is considered fresh. Unlike [Expires](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expires), this directive is relative to the time of the request. |
+| `s-maxage= ` | Overrides`max-age` or the [Expires](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Expires) header, but only for shared caches (e.g., proxies). Ignored by private caches. |
+
+### Extended values
+
+The following directives are not part of the core [HTTP caching standards document](https://datatracker.ietf.org/doc/html/rfc7234). Therefore, check this [table](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control#browser_compatibility) for their support.
+
+| Value | Description |
+| --- | --- |
+| `immutable` | Indicates that the response body will not change over time. |
+| `stale-while-revalidate= ` | Indicates the client can accept a stale response, while asynchronously checking in the background for a fresh one. The seconds value indicates how long the client can accept a stale response. |
+| `stale-if-error= ` | Indicates the client can accept a stale response if the check for a fresh one fails. The seconds value indicates how long the client can accept the stale response after the initial expiration. |
+
+### Example
+
+No caching allowed, clear any previously cached resources and include support for HTTP/1.0 caches:
+
+```
+Cache-Control: no-store, max-age=0
+Pragma: no-cache
+
+```
+
+Caching allowed with a cache duration of one week:
+
+```
+Cache-Control: public, max-age=604800
+
+```
+
+### References
+
+## X-DNS-Prefetch-Control
+
+⚠️ This header does not belong to any specification and is not standardized.
+
+The X-DNS-Prefetch-Control header controls [DNS prefetching](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/dns-prefetch), a feature by which browsers proactively perform domain name resolution on links that the user may choose to follow as well as URLs for items referenced by the document, including images, CSS, JavaScript, and so forth. The intention is that prefetching is performed in the background so that the DNS resolution is complete by the time the referenced items are needed by the browser. This reduces latency when the user clicks a link, for example (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-DNS-Prefetch-Control)).
+
+📍 Important note about the behavior of different browsers for this header based on [technical tests](https://github.com/OWASP/www-project-secure-headers/issues/201#issuecomment-3190756900) performed:
+
+- DNS prefetch seem only active on Chromium based browsers.
+- Setting X-DNS-Prefetch-Control to off is only honored by the Chrome browser.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `on` | Enables DNS prefetching. This is what browsers do if they support the feature when this header is not present. |
+| `off` | Disables DNS prefetching. This is useful if you don’t control the link on the pages or know that you don’t want to leak information to these domains. |
+
+### Example
+
+```
+X-DNS-Prefetch-Control: off
+
+```
+
+### References
+
+## Permissions Policy
+
+💻 Working draft.
+
+The Permissions-Policy header replaces the existing Feature-Policy header for controlling delegation of permissions and powerful features. The header uses a structured syntax, and allows sites to more tightly restrict which origins can be granted access to features (source [Chrome platform status](https://www.chromestatus.com/feature/5745992911552512)).
+
+### Values
+
+🧭 As the specification is still under development, it is better to consult this [page](https://github.com/w3c/webappsec-permissions-policy/blob/main/features.md) to obtain the current list of supported directives.
+
+### Example
+
+```
+Permissions-Policy: accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), unload=()
+
+```
+
+### References
+
+## Feature-Policy
+
+Deprecated: Replaced by the header Permissions-Policy.
+
+Feature Policy allows web developers to selectively enable, disable, and modify the behavior of certain features and APIs in the browser. It is similar to Content Security Policy but controls features instead of security behavior (Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Feature_Policy)).
+
+### Values
+
+Refer to this [page](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Feature-Policy#directives) to obtains the list of supported directives.
+
+### Example
+
+```
+Feature-Policy: vibrate 'none'; geolocation 'none'
+
+```
+
+### References
+
+## Expect-CT
+
+Deprecated.
+
+⚠️ Warning: This header will likely become obsolete in June 2021. Since May 2018 new certificates are expected to support SCTs by default. Certificates before March 2018 were allowed to have a lifetime of 39 months, those will all be expired in June 2021.
+
+The`Expect-CT` header is used by a server to indicate that browsers should evaluate connections to the host for Certificate Transparency compliance. In Chrome 61 (Aug 2017) Chrome enabled its enforcement via SCT by default ([source](https://www.chromestatus.com/feature/5677171733430272)). You can still use this header to specify an`report-uri`.
+
+This header comes from the (now expired) internet draft [Expect-CT Extension for HTTP](https://datatracker.ietf.org/doc/html/rfc9163).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `report-uri` | (Optional) Indicates the URL to which the browser should report Expect-CT failures. |
+| `enforce` | (Optional) A valueless directive that, if present, signals to the browser that compliance to the CT Policy should be enforced (rather than report-only) and that the browser should refuse future connections that violate its CT Policy. When both the`enforce` and`report-uri` directives are present, the configuration is referred to as an “enforce-and-report” configuration, signalling to the browser both that compliance to the CT Policy should be enforced and that violations should be reported. |
+| `max-age` | Specifies the number of seconds after the response is received the browser should remember and enforce certificate transparency compliance. |
+
+### Example
+
+```
+Expect-CT: max-age=86400, enforce, report-uri="https://foo.example/report"
+
+```
+
+### References
+
+## Public-Key-Pins
+
+Deprecated.
+
+⚠️ Warning: This header has been deprecated by all major browsers and is no longer recommended. Avoid using it, and update existing code if possible;
+
+HTTP Public Key Pinning (HPKP) is a security mechanism which allows HTTPS websites to resist impersonation by attackers using mis-issued or otherwise fraudulent certificates. (For example, sometimes attackers can compromise certificate authorities, and then can mis-issue certificates for a web origin.).
+
+The HTTPS web server serves a list of public key hashes, and on subsequent connections clients expect that server to use one or more of those public keys in its certificate chain. Deploying HPKP safely will require operational and organizational maturity due to the risk that hosts may make themselves unavailable by pinning to a set of public key hashes that becomes invalid. With care, host operators can greatly reduce the risk of man-in-the-middle (MITM) attacks and other false authentication problems for their users without incurring undue risk.
+
+### Deprecation Reason
+
+Criticism and concern revolved around malicious or human error scenarios known as [HPKP Suicide and Ransom PKP](https://scotthelme.co.uk/using-security-features-to-do-bad-things/). In such scenarios, a website owner would have their ability to publish new contents to their domain severely hampered by either losing access to their own keys or having new keys announced by a malicious attacker.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `pin-sha256=" "` | The quoted string is the Base64 encoded Subject Public Key Information (SPKI) fingerprint. It is possible to specify multiple pins for different public keys. Some browsers might allow other hashing algorithms than SHA-256 in the future. |
+| `max-age=SECONDS` | The time, in seconds, that the browser should remember that this site is only to be accessed using one of the pinned keys. |
+| `includeSubDomains` | If this optional parameter is specified, this rule applies to all of the site’s subdomains as well. |
+| `report-uri=" "` | If this optional parameter is specified, pin validation failures are reported to the given URL. |
+
+### Example
+
+```
+Public-Key-Pins: pin-sha256="d6qzRu9zOECb90Uez27xWltNsj0e1Md7GkYYkVoZWmM="; pin-sha256="E9CZ9INDbd+2eRQozYqqbQ2yXLVKB9+xcprMF+44U1g="; report-uri="http://example.com/pkp-report"; max-age=10000; includeSubDomains
+
+```
+
+### References
+
+## X-XSS-Protection
+
+Deprecated.
+
+⚠️ Warning: The X-XSS-Protection header has been deprecated by modern browsers and its use can introduce additional security issues on the client side. As such, it is recommended to set the header as`X-XSS-Protection: 0` in order to disable the XSS Auditor, and not allow it to take the default behavior of the browser handling the response. Please use`Content-Security-Policy` instead.
+
+This header enables the cross-site scripting (XSS) filter in your browser.
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `0` | Filter disabled. |
+| `1` | Filter enabled. If a cross-site scripting attack is detected, in order to stop the attack, the browser will sanitize the page. |
+| `1; mode=block` | Filter enabled. Rather than sanitize the page, when a XSS attack is detected, the browser will prevent rendering of the page. |
+| `1; report=http://[YOURDOMAIN]/your_report_URI` | Filter enabled. The browser will sanitize the page and report the violation. This is a Chromium function utilizing CSP violation reports to send details to a URI of your choice. |
+
+### Example
+
+```
+X-XSS-Protection: 0
+
+```
+
+### References
+
+## Pragma
+
+Deprecated.
+
+The`Pragma` HTTP/1.0 general header is an implementation-specific header that may have various effects along the request-response chain.
+
+This header serves for backwards compatibility with the HTTP/1.0 caches that do not have a Cache-Control HTTP/1.1 header (source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma)).
+
+### Values
+
+| Value | Description |
+| --- | --- |
+| `no-cache` | Same as`Cache-Control: no-cache`. Forces caches to submit the request to the origin server for validation before a cached copy is released. |
+
+### Example
+
+```
+Pragma: no-cache
+
+```
+
+### References
+
+---
+
+# Browser Support
+
+📚 A reference is provided, for each header, to a site always providing up-to-date information.
+
+---
+
+# Best Practices
+
+- Configuration proposal
+- Prevent information disclosure via HTTP headers
+- Prevent exposure to cross-site scripting when hosting uploaded files
+- Prevent CORS misconfiguration issues
+- Prevent information disclosure via the browser local cached files
+- Prevent CSP bypasses
+- Support for a large CSP policy
+
+## Configuration proposal
+
+Please note the best practices below suggest methods to change web server configuration to add headers. Security headers can also be successfully added to your application at the software level as well in almost every web language. Many web frameworks add some of these headers automatically.
+
+The following section proposes a configuration for the [actively supported and working draft security headers](https://owasp.org/www-project-secure-headers/#div-headers).
+
+💡 Additional information about HTTP security headers on [OpenCRE](https://opencre.org/cre/636-347?name=OWASP+Secure+Headers+Project&section=configuration&link=https%3A%2F%2Fowasp.org%2Fwww-project-secure-headers%2F%23div-bestpractices).
+
+📖 The headers proposed below can be applied both in the context of a classic web application and in that of a web API:
+
+- This [demonstration video](https://owasp.org/www-project-secure-headers/assets/misc/demo_csp_usefulness_in_api_context.mp4) as well as this [blog post](https://treblle.com/blog/api-escaping-output-importance) show how HTTP response security headers, like the`Content-Security-Policy` one, can be useful in the context of a web API.
+
+🚩 Regarding the header`Content-Security-Policy`, keep in mind that the policy applicability depends on the execution context. Technical details are available [here](https://www.w3.org/TR/CSP2/#which-policy-applies). Therefore, CSP usage in a web API application implies to define the CSP in the document consuming the content of the web API.
+
+🚩 The header`Clear-Site-Data` will cause the browser to take additional processing time for the HTTP response, so, set it to the logout function when possible. Additional information about the support for experimental values:
+
+- Experimental value`"executionContexts"` is not supported by Chromium version`140.0.7292.0`.
+- Experimental values`"executionContexts"`,`"prefetchCache"`,`"prerenderCache"` and`"clientHints"` are not supported by Firefox version`141.0.3`.
+
+🚩 The header`X-DNS-Prefetch-Control` seems currently only supported by [Chromium based browsers](https://github.com/OWASP/www-project-secure-headers/issues/201#issuecomment-3190756900) and more precisely Chrome for the`off` instruction. Therefore, as Chrome is highly used ([source](https://gs.statcounter.com/browser-market-share)), the proposal is to add the header on HTTP response which either:
+
+- Return sensitive or private content (commonly called [PII](https://en.wikipedia.org/wiki/Personal_data)).
+- Prone to HTML injection where an attacker can inject a tag` ` to exfiltrate data quietly via DNS or be notified via DNS when the victim rendered the response in a browser.
+
+🔬 For the header`Permissions-Policy`, as it is currently only supported by [Chromium based browsers](https://caniuse.com/permissions-policy), the proposed value was generated with this [site](https://www.permissionspolicy.com/) and tested against the version`140.0.7292.0` of [Chromium](https://chromium.woolyss.com/download/en/) to only specify supported features.
+
+💡 Content of the table below is also provided, as JSON, via this [file](https://github.com/OWASP/www-project-secure-headers/blob/master/ci/headers_add.json)(automatically updated).
+
+| Header name | Proposed value |
+| --- | --- |
+| Strict-Transport-Security | `max-age=63072000; includeSubDomains` |
+| X-Frame-Options | `deny` |
+| X-Content-Type-Options | `nosniff` |
+| Content-Security-Policy | `default-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests` |
+| X-Permitted-Cross-Domain-Policies | `none` |
+| Referrer-Policy | `no-referrer` |
+| Clear-Site-Data | `"cache","cookies","storage"` |
+| Cross-Origin-Embedder-Policy | `require-corp` |
+| Cross-Origin-Opener-Policy | `same-origin` |
+| Cross-Origin-Resource-Policy | `same-origin` |
+| Permissions-Policy | `accelerometer=(), autoplay=(), camera=(), cross-origin-isolated=(), display-capture=(), encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), keyboard-map=(), magnetometer=(), microphone=(), midi=(), payment=(), picture-in-picture=(), publickey-credentials-get=(), screen-wake-lock=(), sync-xhr=(self), usb=(), web-share=(), xr-spatial-tracking=(), clipboard-read=(), clipboard-write=(), gamepad=(), hid=(), idle-detection=(), interest-cohort=(), serial=(), unload=()` |
+| Cache-Control | `no-store, max-age=0` |
+| X-DNS-Prefetch-Control | `off` |
+
+## Prevent information disclosure via HTTP headers
+
+This section provides a collection of HTTP response headers to remove, when possible, from any HTTP response to prevent any [disclosure of technical information](https://cwe.mitre.org/data/definitions/200.html) about environment. The following list of headers can be used to configure a [reverse proxy](https://www.nginx.com/resources/glossary/reverse-proxy-server/) or a [web application firewall](https://en.wikipedia.org/wiki/Web_application_firewall) to handle removal operation of the mentioned headers.
+
+💡 Additional information about technical information disclosure in HTTP header on [OpenCRE](https://www.opencre.org/cre/403-005?name=OWASP+Secure+Headers+Project&section=Prevent+information+disclosure+via+HTTP+headers&link=https%3A%2F%2Fowasp.org%2Fwww-project-secure-headers%2F%23div-bestpractices_prevent-information-disclosure-via-http-headers).
+
+📖 When possible, a reference link about the documentation of the header is provided.
+
+🚩 The response header`Content-Type` can sometimes discloses the web framework used. It is the case for the following ones:
+
+- [Spring Boot Actuator REST API](https://docs.spring.io/spring-boot/api/rest/actuator/auditevents.html):`Content-Type: application/vnd.spring-boot.actuator.v3+json`.
+
+💡 Content of the table below is also provided, as JSON, via this [file](https://github.com/OWASP/www-project-secure-headers/blob/master/ci/headers_remove.json)(automatically updated).
+
+| Header name | Header value example | Description |
+| --- | --- | --- |
+| Server | `Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips` | Contain information about the server handling the request. |
+| Liferay-Portal | `Liferay Digital Experience Platform 7.2.10 GA1` | Contain the version of the [Liferay](https://www.liferay.com/) software in use. |
+| X-Turbo-Charged-By | `LiteSpeed/5.4.12 Enterprise` | Contain information about the server handling the request. |
+| [X-Powered-By](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Powered-By) | `PHP/5.3.3` | Contain information about hosting environments or other frameworks in use. |
+| X-Server-Powered-By | `Engintron` | Contain information about hosting environments or other frameworks in use. |
+| X-Powered-CMS | `Bitrix Site Manager (DEMO)` | Contain the information about the [CMS](https://en.wikipedia.org/wiki/Content_management_system) that generated the HTTP response. |
+| [SourceMap](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/SourceMap) | `https://mysite.com/js/mylib.js.map` | Links generated code to a [source map](https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map) file, enabling the browser to reconstruct the original source and present the reconstructed original in the debugger. |
+| [X-SourceMap](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/SourceMap) | `https://mysite.com/js/mylib.js.map` | Links generated code to a [source map](https://developer.mozilla.org/en-US/docs/Tools/Debugger/How_to/Use_a_source_map) file, enabling the browser to reconstruct the original source and present the reconstructed original in the debugger. |
+| X-AspNetMvc-Version | `5.2` | Contain the version of the ASP .Net MVC framework in use. |
+| X-AspNet-Version | `4.0.30319` | Contain the version of the ASP .Net framework Common Language Runtime (CLR) in use (see [here](https://github.com/OWASP/www-project-secure-headers/issues/215) for more details). |
+| X-SourceFiles | `=?UTF-8?B?QzpcVXNlcnN?=` | Contain information needed by the .Net SDK debugger during debugging operation on a project. |
+| X-Redirect-By | `TYPO3 Shortcut/Mountpoint` | Specifies the component that is responsible for a particular redirect (source [Wikipedia](https://en.wikipedia.org/wiki/List_of_HTTP_header_fields)). |
+| X-Generator | `Drupal 8` | Contain the information about the [CMS](https://en.wikipedia.org/wiki/Content_management_system) that generated the HTTP response. |
+| X-Generated-By | `Smartsite version 7.11.1.3` | Contain the information about the [CMS](https://en.wikipedia.org/wiki/Content_management_system) that generated the HTTP response. |
+| X-CMS | `Thinq CMS 1.7.0.0` | Contain the information about the [CMS](https://en.wikipedia.org/wiki/Content_management_system) that generated the HTTP response. |
+| X-Powered-By-Plesk | `PleskLin` or`PleskWin` | Indicate that the platform is based on the [Plesk](https://www.plesk.com/) software in addition to the underlying operating system. |
+| X-Php-Version | `7.4` | Indicate the version of [PHP](https://www.php.net/) technology used. |
+| Powered-By | `PrestaShop` | Indicate the name of the framework or platform used. |
+| X-Content-Encoded-By | `Joomla! 2.5` | Indicate the name of the framework or platform used. |
+| Product | `Z-BlogPHP 1.7.2` | Indicate the name of the framework or platform used. |
+| X-CF-Powered-By | `CF-Joomla 0.1.5` | Indicate the name of the framework or platform used. |
+| X-Framework | `JP/4.01` | Indicate the name of the framework or platform used. |
+| Host-Header | `owasp.org` | Indicate which virtual host of the web server the response is coming from. |
+| Pega-Host | `srv-pega11` | Indicate the internal host name of the server that handled the request in the context of usage of a software from the [PEGA](https://www.pega.com/) company. |
+| [X-Atmosphere-first-request](https://github.com/Atmosphere/atmosphere) | `true` | Indicate that the java framework [Atmosphere](https://github.com/Atmosphere/atmosphere) is used. |
+| [X-Atmosphere-tracking-id](https://github.com/Atmosphere/atmosphere) | `7852fcbf-f8a9-4667-9dcc-a0b5b162499c` | Indicate that the java framework [Atmosphere](https://github.com/Atmosphere/atmosphere) is used. |
+| [X-Atmosphere-error](https://github.com/Atmosphere/atmosphere) | `Websocket protocol not supported` | Indicate that the java framework [Atmosphere](https://github.com/Atmosphere/atmosphere) is used. |
+| [X-Mod-Pagespeed](https://www.modpagespeed.com/doc/configuration) | `1.13.35.2-0` | Indicate the presence of the Apache module [mod_pagespeed](https://github.com/apache/incubator-pagespeed-mod) in the call flow. |
+| [X-Page-Speed](https://www.modpagespeed.com/doc/configuration) | `1.13.35.2-0` | Indicate the presence of the Nginx module [mod_pagespeed](https://github.com/apache/incubator-pagespeed-ngx) in the call flow. |
+| X-Varnish-Backend | `pb01` | Indicate the name of the backend server from which the [Varnish](https://varnish-cache.org/) instance will accelerate the content. |
+| X-Varnish-Server | `proxy01` | Indicate the name of the [Varnish](https://varnish-cache.org/) server instance that provided the accelerated content. |
+| [X-Envoy-Upstream-Service-Time](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter) | `42` | Indicate the presence of the proxy software [Envoy](https://www.envoyproxy.io/) in the call flow. |
+| [X-Envoy-Attempt-Count](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_filters/router_filter) | `1` | Indicate the presence of the proxy software [Envoy](https://www.envoyproxy.io/) in the call flow. |
+| [X-Envoy-External-Address](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/headers) | `124.128.159.165` | Indicate the presence of the proxy software [Envoy](https://www.envoyproxy.io/) in the call flow. |
+| [X-Envoy-Internal](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/headers) | `true` | Indicate the presence of the proxy software [Envoy](https://www.envoyproxy.io/) in the call flow. |
+| [X-Envoy-Original-Dst-Host](https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/headers) | `10.195.16.237:8888` | Indicate the presence of the proxy software [Envoy](https://www.envoyproxy.io/) in the call flow. |
+| [X-B3-ParentSpanId](https://github.com/openzipkin/b3-propagation) | `dea3f6d0324583db` | Indicate the presence of the software [Zipkin](https://zipkin.io/) that is a distributed tracing system. |
+| [X-B3-Sampled](https://github.com/openzipkin/b3-propagation) | `0` | Indicate the presence of the software [Zipkin](https://zipkin.io/) that is a distributed tracing system. |
+| [X-B3-SpanId](https://github.com/openzipkin/b3-propagation) | `244753d494e83353` | Indicate the presence of the software [Zipkin](https://zipkin.io/) that is a distributed tracing system. |
+| [X-B3-TraceId](https://github.com/openzipkin/b3-propagation) | `11bef07b0f5c0468` | Indicate the presence of the software [Zipkin](https://zipkin.io/) that is a distributed tracing system. |
+| [K-Proxy-Request](https://knative.dev/docs/serving/istio-authorization/) | `activator` | Indicate the presence of the software [Knative](https://knative.dev/) that is an Open-Source Enterprise-level solution to build Serverless and Event Driven Applications in Kubernetes environments. |
+| X-Old-Content-Length | `135` | Indicate the presence of the software [WebSEAL](https://www.ibm.com/docs/en/samfm/8.0.1.2?topic=overview-webseal-introduction) that is a high performance, multithreaded web server by IBM. |
+| [$wsep](https://www.ibm.com/docs/en/was/8.5.5?topic=SSEQTP_8.5.5/com.ibm.websphere.nd.multiplatform.doc/ae/rweb_custom_props.htm) | `empty value` | Indicate the presence of the software [WebSphere Application Server](https://www.ibm.com/products/websphere-application-server) that is a JavaEE application server by IBM. |
+| X-Nextjs-Matched-Path | `/blog` | Indicate that the web framework [Next.js](https://nextjs.org/) is used. |
+| X-Nextjs-Page | `/articles` | Indicate that the web framework [Next.js](https://nextjs.org/) is used. |
+| X-Nextjs-Cache | `REVALIDATED` | Indicate that the web framework [Next.js](https://nextjs.org/) is used. |
+| [X-Nextjs-Redirect](https://github.com/search?q=repo%3Avercel%2Fnext.js%20X-Nextjs-Redirect&type=code) | `/home` | Indicate that the web framework [Next.js](https://nextjs.org/) is used. |
+| X-OneAgent-JS-Injection | `true` | Indicate that the [Dynatrace](https://www.dynatrace.com/) analytics and automation platform is used. |
+| X-ruxit-JS-Agent | `true` | Indicate that the [Dynatrace](https://www.dynatrace.com/) analytics and automation platform is used. |
+| [X-dtHealthCheck](https://www.dynatrace.com/support/help/platform-modules/digital-experience/web-applications/initial-setup/firewall-constraints-for-rum) | `Technical diagnostic data` | Indicate that the [Dynatrace](https://www.dynatrace.com/) analytics and automation platform is used. |
+| [X-dtAgentId](https://www.dynatrace.com/support/help/platform-modules/digital-experience/web-applications/initial-setup/firewall-constraints-for-rum) | `95b3121c36` | Indicate that the [Dynatrace](https://www.dynatrace.com/) analytics and automation platform is used. |
+| [X-dtInjectedServlet](https://www.dynatrace.com/support/help/platform-modules/digital-experience/web-applications/initial-setup/firewall-constraints-for-rum) | `com.company.ReportServlet` | Indicate that the [Dynatrace](https://www.dynatrace.com/) analytics and automation platform is used. |
+| [X-Litespeed-Cache-Control](https://docs.litespeedtech.com/lscache/devguide/controls/) | `no-cache` | Indicate the presence of the [LiteSpeed](https://litespeedtech.com/) web server. |
+| [X-LiteSpeed-Purge](https://docs.litespeedtech.com/lscache/devguide/controls/) | `/phpinfo.php` | Indicate the presence of the [LiteSpeed](https://litespeedtech.com/) web server. |
+| [X-LiteSpeed-Tag](https://docs.litespeedtech.com/lscache/devguide/controls/) | `pubtag1,pubtag2` | Indicate the presence of the [LiteSpeed](https://litespeedtech.com/) web server. |
+| [X-LiteSpeed-Vary](https://docs.litespeedtech.com/lscache/devguide/controls/) | `value=ismobile` | Indicate the presence of the [LiteSpeed](https://litespeedtech.com/) web server. |
+| [X-LiteSpeed-Cache](https://docs.litespeedtech.com/lscache/devguide/controls/) | `hit,litemage` | Indicate the presence of the [LiteSpeed](https://litespeedtech.com/) web server. |
+| X-Umbraco-Version | `4.7` | Indicate the usage of the [Umbraco CMS](https://umbraco.com/products/umbraco-cms/) software as well as its version. |
+| OracleCommerceCloud-Version | `23.08.01` | Indicate the usage of the [Oracle Commerce](https://www.oracle.com/cx/ecommerce/) software as well as its version. |
+| [X-BEServer](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/e11c906e-0a38-41e8-8b6d-571a4e84164f) | `EXSRV01` | Indicate the internal host name of the server that handled the request in the context of usage of the [Microsoft Exchange](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/08ad30b6-5b73-41bc-890b-1cab2cf49827) software. |
+| [X-DiagInfo](https://learn.microsoft.com/en-us/exchange/management/health/troubleshooting-autodiscover-health-set) | `EXSRV01` | Indicate the internal host name of the server that handled the request in the context of usage of the [Microsoft Exchange](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/08ad30b6-5b73-41bc-890b-1cab2cf49827) software. |
+| [X-FEServer](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/ea0b90c5-710a-4b23-823b-ddb86342b5ac) | `EXSRV01` | Indicate the internal host name of the server that handled the request in the context of usage of the [Microsoft Exchange](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/08ad30b6-5b73-41bc-890b-1cab2cf49827) software. |
+| [X-CalculatedBETarget](https://learn.microsoft.com/en-us/exchange/management/health/troubleshooting-autodiscover-health-set) | `exsrv01.mydomain.com` | Indicate the internal host name of the server that handled the request in the context of usage of the [Microsoft Exchange](https://learn.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-ashttp/08ad30b6-5b73-41bc-890b-1cab2cf49827) software. |
+| X-OWA-Version | `15.2.1258.27` | Indicate the version of the Microsoft Exchange software in use. |
+| X-Cocoon-Version | `2.1.13` | Indicate that the web framework [Apache Cocoon](https://cocoon.apache.org/) is used as well as the version used. |
+| [X-Kubernetes-PF-FlowSchema-UI](https://kubernetes.io/docs/reference/debug-cluster/flow-control) | `cf931e2d-5a5e-4c12-892c-9bafa71f30dc` | Indicate that the web application issuing the HTTP response is deployed on a [Kubernetes](https://kubernetes.io/) cluster. |
+| [X-Kubernetes-PF-PriorityLevel-UID](https://kubernetes.io/docs/reference/debug-cluster/flow-control) | `78b3face-e1cf-4fc6-a27e-08eb7f0f5b23` | Indicate that the web application issuing the HTTP response is deployed on a [Kubernetes](https://kubernetes.io/) cluster. |
+| X-Jitsi-Release | `5082` | Indicate the version of [Jitsi](https://github.com/jitsi/jitsi) software in use. |
+| X-Joomla-Version | `3.9.25` | Indicate that the CMS [Joomla](https://www.joomla.org/) is used as well as the version used. |
+| X-Backside-Transport | `OK OK` | Indicate the presence of the products [IBM WebSphere DataPower](https://www.ibm.com/products/datapower-gateway) in the call flow. |
+| [X-Woodpecker-Version](https://github.com/woodpecker-ci/woodpecker/blob/main/server/router/middleware/version.go) | `2.7.0` | Indicate the version of the products [Woodpecker CI](https://woodpecker-ci.org/) used. |
+
+## Prevent exposure to cross-site scripting when hosting uploaded files
+
+This section describes, how the HTTP response header named [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition), can be used to prevent exposure to cross-site scripting when hosting uploaded files and opening them in the same web browsing context than the application.
+
+It can happen a case in which an application allows a user to upload a file and then allow this file to be accessed by other users. If such feature allows uploading of HTML files (also apply for [SVG file](https://hackerone.com/reports/1276742)) then it can be used, as a vector, to store an HTML file containing JavaScript code. Therefore, the feature become prone to [stored cross-site scripting](https://portswigger.net/web-security/cross-site-scripting/stored) vulnerability.
+
+To prevent this exposure, the HTTP response header named [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition), can be used with the following value to instruct browsers to download the file instead of open it in the same web browsing context than the application:
+
+```
+Content-Disposition: attachment; filename="myfile.html"
+
+```
+
+## Prevent CORS misconfiguration issues
+
+📖 An excellent tutorial about [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)(called CORS) is provided on the [Mozilla MDN](https://developer.mozilla.org/en-US/). In addition, [Julien Cretel](https://jub0bs.com/about/) provided a great [blog post](https://jub0bs.com/posts/2023-02-08-fearless-cors/) about CORS pitfalls.
+
+This section proposes an approach to help preventing [CORS misconfiguration issues](https://portswigger.net/research/exploiting-cors-misconfigurations-for-bitcoins-and-bounties) using a simple idea: Provide the collection of [CORS related HTTP response headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#the_http_response_headers) to use according to different contexts.
+
+### Key points to consider
+
+💡 If the web framework/web server you are using provides CORS features then always leverage them instead of implements it manually:
+
+- [List of web framework/web server](https://enable-cors.org/server.html) supporting CORS.
+- [CORS middleware for Go](https://pkg.go.dev/github.com/jub0bs/cors) by Julien Cretel.
+
+🚩 Whatever the context, when the request is a HTTP OPTIONS ([preflight request](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#preflighted_requests)) then the value provided by the following headers must be validated against expected values. If the validation failed then return an HTTP 403 without any [CORS related HTTP response headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#the_http_response_headers):
+
+🚩 Validation of the`Origin`/`Access-Control-Request-Method`/`Access-Control-Request-Headers` request header value, against a list of allowed ones, must be performed using [strict case sensitive string comparison](https://jub0bs.com/posts/2023-02-08-fearless-cors/#violation-of-the-case-sensitivity-of-method-names) to prevent, as much as possible, the [presence of bypasses into the validation logic](https://portswigger.net/web-security/cors#errors-parsing-origin-headers). If possible, does not use regular expression for the implementation of the validation, see [here](https://jub0bs.com/posts/2023-02-08-fearless-cors/#disallow-dangerous-origin-patterns) for an explanation of the source of this recommendation.
+
+🚩 CORS scope is the access control aspect, from a browser perspective (client side), regarding [cross origins](https://developer.mozilla.org/en-US/docs/Glossary/Origin) access to a resource. Thus, it does NOT replace the requirement to implements access control on the server side too. CORS and server-side access controls are complementary.
+
+### Contexts
+
+#### Public without authentication
+
+💬 Context:
+
+Your endpoints are expected to be consumed, by a browser, from any origins without any authentication.
+
+💻 Configuration proposal:
+
+```
+Access-Control-Allow-Origin: *
+Access-Control-Max-Age: 3600
+Access-Control-Allow-Credentials: false
+
+```
+
+#### Public with authentication
+
+💬 Context:
+
+Your endpoints are expected to be consumed, by a browser, from any origins with authentication.
+
+🚩 The value`*`, for the response header`Access-Control-Allow-Origin`, cannot be used when the response header`Access-Control-Allow-Credentials` is allowed (`true`). Indeed, the browser raises the following error (tested on Chrome 118.x):
+
+```
+The value of the 'Access-Control-Allow-Origin' header in the response must not be 
+the wildcard '*' when the request's credentials mode is 'include'.
+
+```
+
+📖 It is explicitly mentioned, into the [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#simple_requests) documentation, as the following:
+
+```
+When responding to a "credentialed request" request, the server must specify an origin in the value 
+of the Access-Control-Allow-Origin header, instead of specifying the "*" wildcard.
+
+```
+
+Therefore, refer to the restricted with authentication case for the configuration to use.
+
+#### Restricted without authentication
+
+💬 Context:
+
+Your endpoints are expected to be consumed, by a browser, from a specific collection of origins without any authentication.
+
+💻 Configuration proposal:
+
+- 🚩 Never take the value of the request header [Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#origin) to add it into the response header [Access-Control-Allow-Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#access-control-allow-origin)(mirroring), see [here](https://portswigger.net/web-security/cors#server-generated-acao-header-from-client-specified-origin-header) for an explanation of the source of this recommendation. Indeed, always use a list of allowed origins when only a restricted collection of origins is expected to call your endpoints.
+- If the value of the request header [Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#origin) is present into the list of allowed Origins then:
+
+```
+Access-Control-Allow-Origin: [Value_Taken_From_The_List_Of_Allowed_Origins]
+Access-Control-Max-Age: 10
+Access-Control-Allow-Credentials: false
+
+```
+
+- Otherwise return an HTTP 403 without any [CORS related HTTP response headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#the_http_response_headers).
+
+#### Restricted with authentication
+
+💬 Context:
+
+Your endpoints are expected to be consumed, by a browser, from a specific collection of origins with authentication.
+
+💻 Configuration proposal:
+
+- If the value of the request header [Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#origin) is present into the list of allowed Origins then:
+
+```
+Access-Control-Allow-Origin: [Value_Taken_From_The_List_Of_Allowed_Origins]
+Access-Control-Max-Age: 10
+Access-Control-Allow-Credentials: true
+
+```
+
+- Otherwise return an HTTP 403 without any [CORS related HTTP response headers](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS#the_http_response_headers).
+
+### Test CORS configuration
+
+The tools [nuclei](https://github.com/projectdiscovery/nuclei) can be used, via the template named [cors-misconfig](https://github.com/projectdiscovery/nuclei-templates/blob/main/http/vulnerabilities/generic/cors-misconfig.yaml), to test a CORS configuration.
+
+💻 Command to use:
+
+```
+$ nuclei -silent -template-id cors-misconfig -u https://domain.com
+[cors-misconfig:arbitrary-origin] [http] [info] https://domain.com [...]
+
+```
+
+### References
+
+## Prevent information disclosure via the browser local cached files
+
+This section describes why it is important to specify a caching policy, via the [Cache-Control](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control) HTTP response header, when sensitive information is managed by a web-based application.
+
+### Context
+
+💬 The application allows a user to access to documents containing information, considered sensitive, from a confidentiality perspective.
+
+Let’s assume that the application returns the following HTTP response to a request, in which, no caching policy is defined:
+
+```
+HTTP/1.1 200 OK
+accept-ranges: bytes
+content-length: 433994
+content-type: application/pdf
+date: Sat, 30 Mar 2024 10:06:34 GMT
+server: LiteSpeed
+
+```
+
+So, the browser will store a copy of the file (here a PDF one) into its cache storage for a certain amount of time.
+
+🚩 Consequence: Any application running on the user’s computer, will be able to access to the file (at least if executed as the user identity or an administrator one) causing an exposure of the resource to non-expected entities.
+
+📺 This [demonstration video](https://owasp.org/www-project-secure-headers/assets/misc/demo_information_disclosure_via_browser_file_caching.mp4) show an example, of such information disclosure, via a file cached by the browser.
+
+### Configuration proposal
+
+💻 To prevent such issue, the following caching policy can be specified:
+
+```
+Cache-Control: no-store, max-age=0
+
+```
+
+👀 Where:
+
+- `no-store`: Is used to indicate that the response may not be stored in any cache.
+- `max-age=0`: Is used to force the expiration of any cached version of the resources associated to the response.
+
+💡 The HTTP response header [Clear-Site-Data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data) can also be leveraged, in addition, to instruct the browser to remove any cached data related to the application.
+
+### Other vulnerabilities related to caching
+
+📖 An excellent research and course content, about [web cache poisoning](https://portswigger.net/web-security/web-cache-poisoning), is provided by the [PortSwigger team](https://portswigger.net/).
+
+### References
+
+## Prevent CSP bypasses
+
+💡 This [online tool](https://cspbypass.com/) can be used to identify existing bypasses for a CSP policy.
+
+This section describes some points, to keep in mind, during the creation of a [Content-Security-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP)(called CSP) policy to prevent introducing bypasses.
+
+🚩 Not every [directives](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy#directives) fallback to the [default-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/default-src) directive when it is not specified in the CSP policy.
+
+### Directive form-action
+
+👀 It is the case for the [form-action](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/form-action) directive. Therefore, an html form can be used to bypass the CSP in place when the`form-action` is not defined.
+
+📺 This [demonstration video](https://owasp.org/www-project-secure-headers/assets/misc/demo_csp_bypass_due_to_no_form_action_directive.mp4) show an example.
+
+💡 Therefore, ensure to always specify the`form-action` directive in a CSP policy to at least, the`'self'` value, to allow forms only on the current domain.
+
+### Directive frame-ancestors
+
+👀 It is the case for the [frame-ancestors](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/frame-ancestors) directive. Therefore, IF it is not defined AND IF the header [X-Frame-Options](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Frame-Options) is not/incorrectly specified then the current domain can be embedded into a frame.
+
+📺 This [demonstration video](https://owasp.org/www-project-secure-headers/assets/misc/demo_csp_bypass_due_to_no_frame_ancestors_directive.mp4) show an example.
+
+💡 Therefore, ensure to always specify the`frame-ancestors` directive in a CSP policy to at least, the`'none'` value, to deny the current domain to be “framed”.
+
+### Directive base-uri
+
+👀 It is the case for the [base-uri](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/base-uri) directive.
+
+📺 This [demonstration video](https://owasp.org/www-project-secure-headers/assets/misc/demo_csp_bypass_due_to_no_base_uri_directive.mp4) show an example.
+
+💡 Therefore, ensure to always specify the`base-uri` directive in a CSP policy to at least, the`'self'` value, to only allow the current domain to be specified as the document’s base URI via a` ` html tag.
+
+## Support for a large CSP policy
+
+Tests were performed to identify if any limitation was in place, regarding the definition and usage of a large CSP policy. Tests were performed against the following browsers:
+
+- Firefox`132.0.2`.
+- Chromium`131.0.6755.0`.
+- Edge`131.0.2903.51`.
+
+💡 Based on tests performed, modern browsers supports a sufficient size to specify a large CSP policy in case of need.
+
+📊 Technical details can be found [here](https://github.com/oshp/oshp-tracking/discussions/29)([backup copy](https://owasp.org/www-project-secure-headers/assets/misc/backup_discussions_29.pdf)).
+
+---
+
+# Technical Resources
+
+📚 This section provides a list of tools as well as documents to understand, analyze, develop and administer HTTP secure headers to help achieving more secure and trustworthy web systems.
+
+👩‍💻 Development Libraries
+
+- DotNet
+- Go
+- Java
+- NodeJS
+- PHP
+- Python
+- Ruby
+- Swift
+- Rust
+
+## Presentations
+
+- [Trap bad guys in your browser with HTTP security headers](https://speakerdeck.com/righettod/trap-bad-guys-in-your-browser-with-http-security-headers).
+- [How the Content-Security-Policy HTTP response header can save your romantic evening?](https://speakerdeck.com/righettod/how-the-content-security-policy-http-response-header-can-save-your-romantic-evening)
+
+## Analysis Tools
+
+| Tool | Description | Ref |
+| --- | --- | --- |
+| hsecscan | A security scanner for HTTP response headers. | [👩‍💻](https://github.com/riramar/hsecscan) |
+| humble | A humble, and fast, security-oriented HTTP headers analyzer. | [👩‍💻](https://github.com/rfc-st/humble) |
+| testssl.sh | Easy to use shell script which tests not only SSL/TLS encryption but also checks common headers and analyzes those. Output is screen, JSON, CSV and HTML. | [👩‍💻](https://github.com/drwetter/testssl.sh) |
+| DrHEADer | DrHEADer helps with the audit of security headers received in response to a single request or a list of requests. | [👩‍💻](https://github.com/Santandersecurityresearch/DrHeader) |
+| csp-evaluator | NPM module allowing developers and security experts to check if a Content Security Policy serves as a strong mitigation against XSS attacks. | [👩‍💻](https://github.com/google/csp-evaluator) |
+| mdn-http-observatory | Service by Mozilla that checks web sites for security-relevant headers. | [👩‍💻](https://github.com/mdn/mdn-http-observatory) |
+| shcheck | A basic tool to check security headers of a website. | [👩‍💻](https://github.com/santoru/shcheck) |
+
+## Development Libraries
+
+### Java
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| Spring Security | Spring Security’s support for adding various security headers to the response. | [🌎](https://docs.spring.io/spring-security/reference/features/exploits/headers.html) |
+
+### DotNet
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| NetEscapades.AspNetCore.SecurityHeaders | Small package to allow adding security headers to ASP.NET Core websites. | [👩‍💻](https://github.com/andrewlock/NetEscapades.AspNetCore.SecurityHeaders) |
+| OwaspHeaders.Core | .NET Core middleware for injecting the OWASP recommended HTTP Headers for increased security | [👩‍💻](https://github.com/GaProgMan/OwaspHeaders.Core) |
+
+### Ruby
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| secure_headers | Security related headers all in one gem. | [👩‍💻](https://github.com/github/secure_headers) |
+
+### PHP
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| secure-headers | PHP Secure Headers for Laravel and non-Laravel projects. | [👩‍💻](https://github.com/bepsvpt/secure-headers) |
+| laravel-csp | Package to set content security policy headers in a Laravel app. | [👩‍💻](https://github.com/spatie/laravel-csp) |
+| security-headers | Provides an implementation for configuring HTTP security headers in web applications developed in PHP (Spanish). | [👩‍💻](https://github.com/OWASP/www-project-randomized-header-channel-for-csrf-protection/tree/main/resources/security-headers) |
+
+### NodeJS
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| helmet | Module to help secure Express apps with various HTTP headers. | [👩‍💻](https://github.com/helmetjs/helmet) |
+| ember-cli-content-security-policy | This addon makes it easy to use Content Security Policy (CSP) in your project. It can be deployed either via a Content-Security-Policy header sent from the Ember CLI Express server, or as a meta tag in the index.html file. | [👩‍💻](https://github.com/rwjblue/ember-cli-content-security-policy/) |
+| Next.js | Next.js’s support for adding various security headers to the response. | [🌎](https://nextjs.org/docs/pages/api-reference/config/next-config-js/headers) |
+
+### Python
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| django-csp and django-security | Content Security Policy for Django. A collection of models, views, middlewares, and forms to help secure a Django project. | [👩‍💻](https://github.com/mozilla/django-csp)/ [👩‍💻](https://github.com/sdelements/django-security) |
+| Secweb | Secweb is a pack of security middlewares for fastApi and starlette server it includes CSP, HSTS, and many more. | [👩‍💻](https://github.com/tmotagam/Secweb) |
+| secure | Lightweight library to add security headers to Django, Flask, FastAPI, and more. | [👩‍💻](https://github.com/TypeError/secure) |
+
+### Go
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| secure | HTTP middleware for Go that facilitates some quick security wins. | [👩‍💻](https://github.com/unrolled/secure) |
+
+### Swift
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| VaporSecurityHeaders | A Middleware library for adding security headers to your Vapor application. | [👩‍💻](https://github.com/brokenhandsio/VaporSecurityHeaders) |
+
+### Rust
+
+| Library | Description | Ref |
+| --- | --- | --- |
+| rust-helmet | HTTP security headers middleware for multiple Rust web frameworks. | [👩‍💻](https://github.com/danielkov/rust-helmet) |
+
+---
+
+# Code Snippets
+
+🧾 The following code collection provides various code snippets to make working with HTTP security headers easier.
+
+- Convert a Permissions-Policy back to Feature-Policy
+- Test locally a Content-Security-Policy for weaknesses
+- Generate configuration code using the OSHP headers reference files
+- Quickly check security HTTP headers
+- Syntax for adding HTTP response headers on different web or application servers
+
+## Convert a Permissions-Policy back to Feature-Policy
+
+As the [Permissions-Policy](https://github.com/w3c/webappsec-permissions-policy/blob/main/permissions-policy-explainer.md) header is still in development and is [not yet well supported](https://caniuse.com/permissions-policy), it can be interesting to use the two formats to increase the coverage of browsers according to their support level for Permissions-Policy and [Feature-Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Feature-Policy) policy headers.
+
+The following python3 code snippet can be useful to achieve such conversion.
+
+📑 Source for the conversion rules was this [one](https://github.com/w3c/webappsec-permissions-policy/blob/main/permissions-policy-explainer.md#appendix-big-changes-since-this-was-called-feature-policy).
+
+💻 Code snippet:
+
+```
+permissions_policy = 'fullscreen=(), geolocation=(self "https://game.com" "https://map.example.com"), gyroscope=(self), usb=*'
+feature_policy_directives = []
+# Collect directives
+permissions_policy_directives = permissions_policy.split(",")
+# Process each directive
+for permissions_policy_directive in permissions_policy_directives:
+    # Remove leading and trailing spaces
+    directive = permissions_policy_directive.strip(" ")
+    # Remove all double quotes
+    directive = directive.replace("\"", "")
+    # Replace disabling expression () by the corresponding one in Feature-Policy
+    directive = directive.replace("()", "'none'")
+    # Quote keywords: self
+    directive = directive.replace("self", "'self'")
+    # Replace the equals affectation character by a space
+    directive = directive.replace("=", " ")
+    # Remove parenthesis
+    directive = directive.replace("(", "").replace(")", "")
+    # Add the current directive to the collection
+    feature_policy_directives.append(directive)
+# Convert the collection of directives to a string with ; as directives separator
+feature_policy = "; ".join(feature_policy_directives)
+print(feature_policy)
+
+```
+
+💻 Execution example:
+
+```
+$ python code.py
+fullscreen 'none'; geolocation 'self' https://game.com https://map.example.com; gyroscope 'self'; usb *
+
+```
+
+## Test locally a Content-Security-Policy for weaknesses
+
+It can be interesting to validate locally a Content-Security-Policy for presence of weaknesses prior to apply it on deployed web applications.
+
+The following JavaScript code snippet can be useful to achieve such validation by leveraging the [csp-evaluator](https://github.com/google/csp-evaluator) NPM module provided by Google.
+
+💻 Code snippet:
+
+```
+import {CspEvaluator} from "csp_evaluator/dist/evaluator.js";
+import {CspParser} from "csp_evaluator/dist/parser.js";
+
+const args = process.argv.slice(2)
+if(args.length == 0){
+    console.error("[!] Missing CSP!");
+}else{
+    const csp = args[0]
+    console.info(`[+] CSP to evaluate:\n${csp}`);
+    const parsed = new CspParser(csp).csp;
+    console.info(`[+] Evaluation results:`);
+    const results = new CspEvaluator(parsed).evaluate();
+    results.forEach(elt => {
+        let info = `[Directive '${elt.directive}' - Severity ${elt.severity}]: ${elt.description}`;
+        console.info(info);
+    });
+}
+
+```
+
+💻 Execution example:
+
+```
+$ node code.js "default-src 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+[+] CSP to evaluate:
+default-src 'self'; object-src 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+[+] Evaluation results:
+[Directive 'default-src' - Severity 50]: 'self' can be problematic if you host JSONP, Angular or user uploaded files.
+
+```
+
+## Generate configuration code using the OSHP headers reference files
+
+The following bash code snippet, leveraging [jq](https://stedolan.github.io/jq/), can be used to generate configuration code using the OSHP headers reference files.
+
+💻 Code snippet and execution example:
+
+```
+# Generate the Nginx collection of instructions to add the recommended HTTP response headers
+$ curl -sk https://owasp.org/www-project-secure-headers/ci/headers_add.json | jq -r '.headers[] | "add_header \(.name) \(.value);"'
+add_header Cache-Control no-store, max-age=0;
+add_header Clear-Site-Data "cache","cookies","storage";
+add_header Cross-Origin-Embedder-Policy require-corp;
+...
+
+```
+
+## Quickly check security HTTP headers
+
+The portable cross-platform tool [Venom](https://github.com/ovh/venom) with the dedicated [OSHP Validator test suites aligned with the OWASP Secure Headers Project](https://github.com/oshp/oshp-validator) can be used.
+
+💻 Use the following example set of commands:
+
+```
+$ venom run --var="target_site=https://mozilla.org" --var="logout_url=/logout" tests_suite.yml
+• HTTP security response headers test suites
+    • Strict-Transport-Security SUCCESS
+    • X-Frame-Options SUCCESS
+    • X-Content-Type-Options SUCCESS
+    • Content-Security-Policy FAILURE
+    • X-Permitted-Cross-Domain-Policies SUCCESS
+    • Referrer-Policy SUCCESS
+    • Clear-Site-Data SUCCESS
+    • Cross-Origin-Embedder-Policy SUCCESS
+    • Cross-Origin-Opener-Policy SUCCESS
+    • Cross-Origin-Resource-Policy SUCCESS
+    • Permissions-Policy SUCCESS    
+    • Cache-Control SUCCESS    
+    • Feature-Policy SUCCESS
+        [info] This header was split into Permissions-Policy and Document-Policy and will be considered deprecated once all impacted features are moved off of feature policy.
+    • Public-Key-Pins SUCCESS
+        [info] This header has been deprecated by all major browsers and is no longer recommended. Avoid using it, and update existing code if possible!
+    • Expect-CT SUCCESS
+        [info] This header will likely become obsolete in June 2021. Since May 2018 new certificates are expected to support SCTs by default. Certificates before March 2018 were allowed to have a lifetime of 39 months, those will all be expired in June 2021.
+    • X-Xss-Protection SUCCESS
+        [info] The X-XSS-Protection header has been deprecated by modern browsers and its use can introduce additional security issues on the client side.
+
+```
+
+## Syntax for adding HTTP response headers on different web or application servers
+
+Use the following steps to leverage an “LLM as a Service” (LLMaaS) to generate corresponding configuration code snippet for the wanted web or application server:
+
+1. Download this [file](https://owasp.org/www-project-secure-headers/ci/headers_add.json).
+2. Join the json file above to the chat.
+3. Use this user prompt in the chat to ask the generation:
+
+```
+Generate a configuration code snippet to set HTTP response security headers for the '[TARGET_APPLICATION_OR_WEB_SERVER_NAME]'. Use only the information from the json file attached. Only provide the configuration code snippet. The configuration must overwrite any existing value for an HTTP response security header present into the json file attached.
+
+```
+
+🔬 The user prompt proposed was tested against [Google GEMINI](https://gemini.google.com/) model 2.5 Flash and the generated configuration code was submitted to [OpenAI ChatGPT](https://chatgpt.com/) model ChatGPT to indicates if it was valid for the intended web or application server. The following value for the`[TARGET_APPLICATION_OR_WEB_SERVER_NAME]` placeholder were used:
+
+- `apache web server`.
+- `nginx web server`.
+- `lighttpd web server`.
+- `litespeed web server`.
+- `caddy web server`.
+- `iis web server`.
+
+---
+
+# Miscellaneous
+
+💡 This section provides extra useful information about HTTP Security headers.
+
+- Fetch metadata request header
+- Local Network Access
+
+## Fetch metadata request headers
+
+A fetch metadata request header is an HTTP request header that provides additional information about the context from which the request originated. This allows the server to make decisions about whether a request should be allowed based on where the request came from and how the resource will be used .
+
+🔒 These headers are prefixed with`Sec-`, and hence have [forbidden header names](https://developer.mozilla.org/en-US/docs/Glossary/Forbidden_header_name). As such, they cannot be modified from JavaScript.
+
+📑 Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Glossary/Fetch_metadata_request_header).
+
+🎯 These headers can be leveraged to add protection measures against [XS-Leaks](https://xsleaks.dev/docs/defenses/opt-in/fetch-metadata/) attacks.
+
+### Sec-Fetch-Dest
+
+The`Sec-Fetch-Dest` fetch metadata request header indicates the request’s destination. That is the initiator of the original fetch request, which is where (and how) the fetched data will be used.
+
+📋 Possible values are detailed [here](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Dest#directives).
+
+📑 Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Dest).
+
+### Sec-Fetch-Mode
+
+The`Sec-Fetch-Mode` fetch metadata request header indicates the [mode](https://developer.mozilla.org/en-US/docs/Web/API/Request/mode) of the request: cors, no-cors, same-origin, navigate or websocket.
+
+Broadly speaking, this allows a server to distinguish between: requests originating from a user navigating between HTML pages, and requests to load images and other resources.
+
+📋 Possible values are detailed [here](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Mode#directives).
+
+📑 Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Mode).
+
+### Sec-Fetch-User
+
+The`Sec-Fetch-User` fetch metadata request header is only sent for requests initiated by user activation, and its value will always be`?1`.
+
+📑 Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-User).
+
+### Sec-Fetch-Site
+
+The`Sec-Fetch-Site` fetch metadata request header indicates the relationship between a request initiator’s origin and the origin of the requested resource.
+
+In other words, this header tells a server whether a request for a resource is coming from the same origin, the same site, a different site, or is a “user-initiated” request. The server can then use this information to decide if the request should be allowed.
+
+📋 Possible values are detailed [here](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site#directives).
+
+📑 Source [Mozilla MDN](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site).
+
+💡 Explanation about Site vs Origin can be found [here](https://web.dev/same-site-same-origin/).
+
+### Example
+
+```
+GET /www-project-secure-headers/
+Host: owasp.org
+User-Agent: Chrome/91.0.4472.124
+Sec-Fetch-Dest: document
+Sec-Fetch-Mode: navigate
+Sec-Fetch-Site: cross-site
+Sec-Fetch-User: ?1
+
+```
+
+### References
+
+## Local Network Access
+
+🤖 Gemini was used to obtain further details on this specification, in addition to the manual analysis that had been performed. Tests were performed on`Chromium 148.0.7735.0`.
+
+🎯 The purpose of Local Network Access (called LNA) is to prevent public websites from silently accessing devices on a user’s local network: The browser must ask the user for permission before allowing such requests.
+
+🖥️ The specification defines 3 spaces of IP addresses. Their description is taken from the specification itself ([source](https://wicg.github.io/local-network-access/#ip-address-space-section)):
+
+- loopback: Includes loopback addresses, which are only accessible on the local host.
+- local: Contains addresses that have meaning only within the current network.
+- public: Contains all other addresses.
+
+🔓 A LNA permission popup is triggered when the request targets a more private network that the one of the current site:
+
+| Origin | Target | Result |
+| --- | --- | --- |
+| public | local | Permission required |
+| public | loopback | Permission required |
+| local | loopback | Allowed |
+| loopback | local | Allowed |
+
+🧑‍💻 The following test was performed with a page hosted on GitHub trying to access to a resource (image here) hosted on a local domain bound to`127.0.0.1`:
+
+📄 File`index.html` hosted on github.io:
+
+```
+<!DOCTYPE html>
+<html>
+<header><title>Sandbox</title></header>
+<body>
+    It works.
+    <br>
+    <img src="https://righettod.local:8443/test.png"/>
+</body>
+</html>
+
+```
+
+🔓 2 permissions popups were raised by Chromium in the following sequence:
+
+💡 Explanation of the 2 permissions popup:
+
+The first popup`Access other apps and services on this device` is intended to ask permission to access the resource hosted on a loopback network as the domain was bound to`127.0.0.1`.
+
+- Flow: From a public network (`github.io`) to a loopback network (`righettod.local` bound to`127.0.0.1`).
+
+The second popup`Access other devices on your local network` is intended to ask permission to access a resource on a local network.
+
+- Flow: From a public network (`github.io`) to a local network (`righettod.local`). As the domain targeted was ending with`.local`, then Chromium identified that the local network was targeted.
+
+🔬 The only information, that the target site will have about the sender of the request, is the content of the request headers [Referer](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referer) for the base URL and [Sec-Fetch-Site](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site) to indicate that the request is a cross site one:
+
+📍 Therefore, it is the browser that control itself if the request is sent or not based on:
+
+1. The triggering of permission popups if the network of the target resource is more private than the network of the site initiating the request.
+2. The reply of the user to the permission popups if triggered.
+
+📍 The target site will only have the value of the request header [Referer](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referer) to check the corresponding IP address to see if it is part of the loopback, local or public IP addresses space.
+
+### References
+
+---
+
+# Statistic about HTTP security response headers usage
+
+📅 Last update: 04/03/2026 at 00:43:50 - Domains analyzed count: 150000.
+
+## Global usage of secure headers
+
+Provide the distribution of usage of secure headers across all domains analyzed.
+
+## Global usage of header ‘cache-control’
+
+Provide the distribution of usage of the header ‘cache-control’ across all domains analyzed.
+
+## Global usage of header ‘clear-site-data’
+
+Provide the distribution of usage of the header ‘clear-site-data’ across all domains analyzed.
+
+## Global usage of header ‘content-security-policy’
+
+Provide the distribution of usage of the header ‘content-security-policy’ across all domains analyzed.
+
+## Global usage of header ‘content-security-policy-report-only’
+
+Provide the distribution of usage of the header ‘content-security-policy-report-only’ across all domains analyzed.
+
+## Global usage of header ‘cross-origin-embedder-policy’
+
+Provide the distribution of usage of the header ‘cross-origin-embedder-policy’ across all domains analyzed.
+
+## Global usage of header ‘cross-origin-opener-policy’
+
+Provide the distribution of usage of the header ‘cross-origin-opener-policy’ across all domains analyzed.
+
+## Global usage of header ‘cross-origin-resource-policy’
+
+Provide the distribution of usage of the header ‘cross-origin-resource-policy’ across all domains analyzed.
+
+## Global usage of header ‘expect-ct’
+
+Provide the distribution of usage of the header ‘expect-ct’ across all domains analyzed.
+
+## Global usage of header ‘permissions-policy’
+
+Provide the distribution of usage of the header ‘permissions-policy’ across all domains analyzed.
+
+## Global usage of header ‘public-key-pins’
+
+Provide the distribution of usage of the header ‘public-key-pins’ across all domains analyzed.
+
+## Global usage of header ‘referrer-policy’
+
+Provide the distribution of usage of the header ‘referrer-policy’ across all domains analyzed.
+
+## Global usage of header ‘strict-transport-security’
+
+Provide the distribution of usage of the header ‘strict-transport-security’ across all domains analyzed.
+
+## Global usage of header ‘x-content-type-options’
+
+Provide the distribution of usage of the header ‘x-content-type-options’ across all domains analyzed.
+
+## Global usage of header ‘x-dns-prefetch-control’
+
+Provide the distribution of usage of the header ‘x-dns-prefetch-control’ across all domains analyzed.
+
+## Global usage of header ‘x-frame-options’
+
+Provide the distribution of usage of the header ‘x-frame-options’ across all domains analyzed.
+
+## Global usage of header ‘x-permitted-cross-domain-policies’
+
+Provide the distribution of usage of the header ‘x-permitted-cross-domain-policies’ across all domains analyzed.
+
+## Global usage of header ‘x-xss-protection’
+
+Provide the distribution of usage of the header ‘x-xss-protection’ across all domains analyzed.
+
+## Global usage of insecure framing configuration via the header ‘x-frame-options’
+
+Provide the distribution of usage of the header ‘x-frame-options’ across all domains analyzed with a insecure framing configuration: value different from`DENY` or`SAMEORIGIN` including unsupported values.
+
+## Global usage of insecure referrer configuration via the header ‘referrer-policy’
+
+Provide the distribution of usage of the header ‘referrer-policy’ across all domains analyzed with a insecure referrer configuration: value set to`unsafe-url` or`no-referrer-when-downgrade`.
+
+`no-referrer-when-downgrade` was included because it send origin, path, and querystring when the protocol security level stays the same (HTTPS is very often in place).
+
+## Global usage of the Strict Transport Security ‘preload’ feature
+
+Provide the distribution of usage of the ‘ [preload](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security#preloading_strict_transport_security)’ feature for the header ‘strict-transport-security’ across all domains analyzed.
+
+## Global common ‘max-age’ values of the Strict Transport Security header
+
+- Most common value used is 31536000 seconds (525600 minutes) across all domains analyzed.
+- Maximum value used is 100000000000 seconds (1666666667 minutes) across all domains analyzed.
+- Minimum value used is -326079834 seconds (-5434664 minutes) across all domains analyzed.
+
+## Global usage of content security policy with directives allowing unsafe expressions
+
+Provide the distribution of content security policy allowing unsafe expressions across all domains analyzed.
+
+Determine if a CSP policy contains`(default-src|script-src|script-src-elem|script-src-attr|style-src)` directives using`(unsafe-inline|unsafe-hashes|unsafe-eval)` expressions.
+
+Based on [Report-URI CSP](https://report-uri.com/home/generate) generator allowed instructions for CSP directives.
+
+---
+
+# Case Studies
+
+📋 This section list the entities referencing the [OWASP Secure Headers Project](https://owasp.org/www-project-secure-headers/).
+
+📩 Feel free to contact project leaders if your company or software (open source or not) was using the OSHP project.
+
+🔎 Google dork used to identity references was`allintext:"OWASP Secure Headers Project" -site:owasp.org -site:github.com -site:youtube.com -site:twitter.com -site:linkedin.com`.
+
+## How to create a link to the OSHP site?
+
+🌎 Use the following absolute URL syntax to create a reference link to a specific location of the OSHP site. The presence of the`index.html` file is mandatory otherwise any anchor specified is not effective:
+
+```
+https://owasp.org/www-project-secure-headers/index.html#[TAB-ID]_[HEADER-ID-INSIDE-TAB]
+
+```
+
+💡 Where:
+
+- `[TAB-ID]`: ID of the tab that can be obtained with the link to it.
+- `[HEADER-ID-INSIDE-TAB]`: Href value of the link to the section inside the tab.
+
+👀 Example of reference link to the section about the header Clear-Site-Data in the Response Headers tab:
+
+```
+https://owasp.org/www-project-secure-headers/index.html#div-headers_clear-site-data
+
+```
+
+👀 Example of reference link to the section PHP in the Technical Resources tab:
+
+```
+https://owasp.org/www-project-secure-headers/index.html#div-technical_php
+
+```
+
+## Companies and other legal entities
+
+## Software
+
+- [Nmap](https://github.com/nmap/nmap/blob/master/scripts/http-security-headers.nse).
+- [Spring Security](https://docs.spring.io/spring-security/reference/features/exploits/headers.html).
+
+---
+
+# Official project logo
+
+🤝 OWASP Secure Headers Project logos are free to use. All files are licensed under the [Apache 2.0 Licenses](https://www.apache.org/licenses/LICENSE-2.0).
+
+📦 A mirror of all the logo files are also stored into the [OWASP Swag](https://github.com/OWASP/owasp-swag/tree/master/projects/secure-headers-project) GitHub repository.
+
+## Mantra
+
+💬 The official project mantra is`Defense in depth as a credo`.
+
+## Set 1
+
+📐 Designed by [weperfectionist](https://www.fiverr.com/weperfectionist) using`Adobe Illustrator`.
+
+🧾 Source files are [logo-source.ai](https://owasp.org/www-project-secure-headers/logo/logo-source.ai) and [logo-source.eps](https://owasp.org/www-project-secure-headers/logo/logo-source.eps).
+
+📦 Different flavors are available.
+
+🎨 Transparent background ([PNG](https://en.wikipedia.org/wiki/PNG) format):
+
+- [Black foreground](https://owasp.org/www-project-secure-headers/logo/logo-black-on-transparent.png).
+- [Blue foreground](https://owasp.org/www-project-secure-headers/logo/logo-blue-on-transparent.png).
+- [White foreground](https://owasp.org/www-project-secure-headers/logo/logo-white-on-transparent.png).
+
+🎨 Non-transparent background ([JPEG](https://en.wikipedia.org/wiki/JPEG) format):
+
+- [Black foreground on white background](https://owasp.org/www-project-secure-headers/logo/logo-black-on-white.jpg).
+- [Blue foreground on white background](https://owasp.org/www-project-secure-headers/logo/logo-blue-on-white.jpg).
+- [White foreground on black background](https://owasp.org/www-project-secure-headers/logo/logo-white-on-black.jpg).
+
+📝 The file [logo-all.pdf](https://owasp.org/www-project-secure-headers/logo/logo-all.pdf) gathers the three non-transparent logo.
+
+## Set 2
+
+📦 The folder [generated-via-ai](https://github.com/OWASP/www-project-secure-headers/tree/master/logo/generated-via-ai) contains several base images that were generated via the following AI systems:
+
+- [ChatGPT](https://chatgpt.com/).
+- [Microsoft Copilot](https://copilot.microsoft.com/).
+
+🎨 To be transparent about its source, each image include the name of the AI systems used in its filename. They were all edited with [Paint.net](https://www.getpaint.net/) and saved into the [PNG](https://en.wikipedia.org/wiki/PNG) format:
+
+---
