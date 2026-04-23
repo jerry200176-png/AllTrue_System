@@ -8,6 +8,10 @@
 
 ## 2026-04-23
 
+### Fixed (cont.)
+- Teacher attendance: 補卡後主表 `SignInDT`/`SignOutDT` 同步更新，前端不再顯示「未簽退」；`unclosed` 清單也正確排除已補卡記錄（PR #35）
+- Teacher attendance: super_admin 傳入 `campus_id` 時現在會過濾至指定分校（不傳則維持看全部）（PR #35）
+
 ### Security / Fixed
 - Teacher attendance: `index`/`unclosed`/`export`/`exportMonthly` 四個 API 加入 `campus_id` 參數隔離，修復多分校 director 可看到其他分校老師出勤記錄的越界問題（PR #34）
 - Teacher attendance: `auth_campus_ids` 為空的非 super_admin 用戶改回 403，防止 bypass 全分校過濾（PR #34）
