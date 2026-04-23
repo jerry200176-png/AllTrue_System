@@ -4,6 +4,13 @@
 > 範圍：plans/ 根目錄 active *.plan.md
 > **請勿手動編輯本檔。** 更新請執行：`python3 list-plans-by-topic.py --write-index`
 
+---
+
+> **📦 Archive notice (2026-04-23)**
+> 165 completed plan files have been archived to `archive/2026-04/`.
+> Only actively referenced plans remain in the root directory.
+> To browse archived plans: `ls plans/archive/2026-04/`
+
 ## 繳費／學收／催繳／核帳 (19)
 
 - `package-remaining-sessions-fix_747eac32.plan.md`

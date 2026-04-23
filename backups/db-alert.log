@@ -394,3 +394,48 @@
 [2026-04-23 15:00:02] OK — all tables above threshold
 [2026-04-23 15:15:01] OK — all tables above threshold
 [2026-04-23 15:15:01] OK — all tables above threshold
+[2026-04-23 16:45:01] OK — all tables above threshold
+[2026-04-23 16:45:01] OK — all tables above threshold
+[2026-04-23 17:00:01] OK — all tables above threshold
+[2026-04-23 17:00:01] OK — all tables above threshold
+[2026-04-23 17:15:02] OK — all tables above threshold
+[2026-04-23 17:15:02] OK — all tables above threshold
+[2026-04-23 17:30:01] ALERT: ClassSession=0 < threshold 50
+[2026-04-23 17:30:01] ALERT: ClassSession=0 < threshold 50
+[2026-04-23 17:30:01] ALERT: StudentClass=0 < threshold 10
+[2026-04-23 17:30:01] ALERT: StudentClass=0 < threshold 10
+[2026-04-23 17:30:01] ALERT: Teacher=0 < threshold 3
+[2026-04-23 17:30:01] ALERT: Teacher=0 < threshold 3
+[2026-04-23 17:30:01] ALERT: User=0 < threshold 5
+[2026-04-23 17:30:01] ALERT: User=0 < threshold 5
+[2026-04-23 17:30:01] ALERT: Student=0 < threshold 10
+[2026-04-23 17:30:01] ALERT: Student=0 < threshold 10
+[2026-04-23 17:30:01] CRITICAL DROP: ClassSession 5681 -> 0
+[2026-04-23 17:30:01] CRITICAL DROP: ClassSession 5681 -> 0
+[2026-04-23 17:30:01] CRITICAL DROP: StudentClass 654 -> 0
+[2026-04-23 17:30:01] CRITICAL DROP: StudentClass 654 -> 0
+[2026-04-23 17:30:01] CRITICAL DROP: Student 544 -> 0
+[2026-04-23 17:30:01] CRITICAL DROP: Student 544 -> 0
+[2026-04-23 17:30:01] Sending alert: 
+[AllTrue DB Alert]
+⚠️ ClassSession 剩 0 筆（警戒線 50）
+⚠️ StudentClass 剩 0 筆（警戒線 10）
+⚠️ Teacher 剩 0 筆（警戒線 3）
+⚠️ User 剩 0 筆（警戒線 5）
+⚠️ Student 剩 0 筆（警戒線 10）
+🚨 ClassSession 暴跌：5681 → 0（可能遭清空！）
+🚨 StudentClass 暴跌：654 → 0（可能遭清空！）
+🚨 Student 暴跌：544 → 0（可能遭清空！）
+時間: 2026-04-23 17:30:01
+[2026-04-23 17:30:01] Sending alert: 
+[AllTrue DB Alert]
+⚠️ ClassSession 剩 0 筆（警戒線 50）
+⚠️ StudentClass 剩 0 筆（警戒線 10）
+⚠️ Teacher 剩 0 筆（警戒線 3）
+⚠️ User 剩 0 筆（警戒線 5）
+⚠️ Student 剩 0 筆（警戒線 10）
+🚨 ClassSession 暴跌：5681 → 0（可能遭清空！）
+🚨 StudentClass 暴跌：654 → 0（可能遭清空！）
+🚨 Student 暴跌：544 → 0（可能遭清空！）
+時間: 2026-04-23 17:30:01
+[NOTIFY] Telegram 已發送
