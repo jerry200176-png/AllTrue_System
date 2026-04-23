@@ -40,7 +40,7 @@ jobs:
         with:
           php-version: "8.2"
           extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
-          coverage: none
+          coverage: pcov
 
       - name: Cache Composer packages
         uses: actions/cache@v4
@@ -82,7 +82,10 @@ jobs:
         working-directory: backend
         run: |
           mkdir -p storage/test-results
-          ./vendor/bin/phpunit --log-junit=storage/test-results/junit.xml
+          ./vendor/bin/phpunit \
+            --coverage-text \
+            --coverage-clover=storage/test-results/coverage.xml \
+            --log-junit=storage/test-results/junit.xml
         env:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
@@ -128,12 +131,36 @@ jobs:
             echo "All tests passed with no skips. ✅" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload JUnit test results
+      - name: Coverage summary
+        if: always()
+        working-directory: backend
+        run: |
+          XML=storage/test-results/coverage.xml
+          if [ ! -f "$XML" ]; then echo "Coverage XML not found." && exit 0; fi
+          python3 - <<'PYEOF'
+          import xml.etree.ElementTree as ET
+          tree = ET.parse("storage/test-results/coverage.xml")
+          metrics = tree.find(".//project/metrics")
+          if metrics is None:
+              print("No metrics found in coverage.xml.")
+          else:
+              stmts   = int(metrics.get("statements", 0))
+              covered = int(metrics.get("coveredstatements", 0))
+              pct     = round(covered / stmts * 100, 1) if stmts else 0.0
+              summary = f"### 📊 Coverage: {pct}% ({covered}/{stmts} statements)"
+              print(summary)
+              with open("storage/test-results/coverage_summary.txt", "w") as f:
+                  f.write(summary + "\n")
+          PYEOF
+
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: junit-test-results
-          path: backend/storage/test-results/junit.xml
+          path: |
+            backend/storage/test-results/junit.xml
+            backend/storage/test-results/coverage.xml
           if-no-files-found: warn
 
   vite-build:
