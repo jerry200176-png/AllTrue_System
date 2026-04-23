@@ -29,14 +29,6 @@ class SwipeRfidController extends Controller
      */
     public function swipe(Request $request)
     {
-        // #region agent log
-        $log = function($msg, $d) {
-            $j = json_encode(['sessionId'=>'afe6bc','location'=>'SwipeRfidController.php:swipe','message'=>$msg,'data'=>$d,'timestamp'=>time()*1000])."\n";
-            @file_put_contents(base_path('../debug-afe6bc.log'), $j, FILE_APPEND);
-            @file_put_contents(storage_path('logs/debug-afe6bc.log'), $j, FILE_APPEND);
-        };
-        $log('swipe entry', ['branch_code'=>$request->input('branch_code'),'rfid'=>$request->input('rfid')]);
-        // #endregion
         try {
             $data = $request->validate([
                 'branch_code' => 'required|string|max:32',
@@ -56,9 +48,6 @@ class SwipeRfidController extends Controller
                     $campus = Campus::where('name', 'like', "%{$branchCode}%")->first();
                 }
             }
-            // #region agent log
-            $log('campus lookup', ['found'=>!!$campus,'campusId'=>$campus?->id]);
-            // #endregion
             if (!$campus) {
                 return response()->json([
                     'ok'     => false,
@@ -83,9 +72,6 @@ class SwipeRfidController extends Controller
             $campusId = $campus->id;
 
             $student = Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first();
-            // #region agent log
-            $log('student lookup', ['found'=>!!$student,'studentId'=>$student?->id]);
-            // #endregion
             if ($student) {
                 return $this->handleStudentSwipe($student, $campus, $swipeAt);
             }
@@ -115,15 +101,6 @@ class SwipeRfidController extends Controller
                     $teacherInCampus = (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus;
                 }
             }
-            // #region agent log
-            $log('teacher lookup', [
-                'found' => (bool) $teacherInCampus,
-                'teacherId' => $teacher?->id,
-                'teacherCampusId' => $teacher?->CampusID,
-                'swipeCampusId' => $campusId,
-                'matchedUserCampus' => $matchedUserCampus,
-            ]);
-            // #endregion
             if ($teacherInCampus) {
                 return $this->handleTeacherSwipe($teacher, $campus, $swipeAt);
             }
@@ -142,9 +119,6 @@ class SwipeRfidController extends Controller
                 'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
             ], 404);
         } catch (\Throwable $e) {
-            // #region agent log
-            $log('swipe exception', ['error'=>$e->getMessage(),'trace'=>substr($e->getTraceAsString(),0,500)]);
-            // #endregion
             throw $e;
         }
     }
@@ -301,6 +275,8 @@ class SwipeRfidController extends Controller
         return [null, null, null];
     }
 
+    private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
+
     private function handleTeacherSwipe(Teacher $teacher, Campus $campus, Carbon $swipeAt)
     {
         $campusId = $campus->id;
@@ -313,6 +289,22 @@ class SwipeRfidController extends Controller
             ->first();
 
         if ($openRecord) {
+            // NFR-003: RF bounce debounce — 60 秒內重複訊號直接忽略，不自動簽退
+            $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+            if ($ageSeconds <= self::TEACHER_SWIPE_DEBOUNCE_SECONDS) {
+                return response()->json([
+                    'ok'     => true,
+                    'type'   => 'teacher',
+                    'action' => 'duplicate_ignored',
+                    'record' => $openRecord,
+                    'teacher' => ['id' => $teacher->id, 'name' => $teacher->T_Name],
+                    'campus' => [
+                        'TelegramChatID' => $campus->TelegramChatID ?? null,
+                        'TelegramToken'  => $campus->TelegramToken ?? null,
+                    ],
+                ], 200);
+            }
+
             $openRecord->SignOutDT = $swipeAt;
             $openRecord->MDT = $swipeAt;
             $openRecord->save();
@@ -330,12 +322,16 @@ class SwipeRfidController extends Controller
             ], 200);
         }
 
+        $status = $this->resolveTeacherSignInStatus($teacher->id, $swipeAt);
+
         $record = TeacherSignIn::create([
             'TeacherID'  => $teacher->id,
             'CampusID'   => $campusId,
             'SignInDT'   => $swipeAt,
             'SignOutDT'  => null,
             'MDT'        => $swipeAt,
+            'Source'     => 'rfid',
+            'Status'     => $status,
         ]);
 
         return response()->json([
@@ -349,5 +345,34 @@ class SwipeRfidController extends Controller
                 'TelegramToken'  => $campus->TelegramToken ?? null,
             ],
         ], 201);
+    }
+
+    /**
+     * 計算老師簽到的異常狀態。
+     * 失敗時 fallback 為 pending_review，不中斷打卡流程。
+     */
+    private function resolveTeacherSignInStatus(int $teacherId, Carbon $swipeAt): string
+    {
+        try {
+            $today = $swipeAt->toDateString();
+
+            $firstClass = DB::table('schedules')
+                ->where('teacher_id', $teacherId)
+                ->where('schedule_date', $today)
+                ->where('status', '!=', 'cancelled')
+                ->orderBy('start_time')
+                ->first();
+
+            if (! $firstClass) {
+                return 'source_only';
+            }
+
+            $classStart = Carbon::parse("{$today} {$firstClass->start_time}");
+            $threshold  = $classStart->copy()->addMinutes(10);
+
+            return $swipeAt->lte($threshold) ? 'normal' : 'late';
+        } catch (\Throwable $e) {
+            return 'pending_review';
+        }
     }
 }

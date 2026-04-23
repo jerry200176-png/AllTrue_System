@@ -60,3 +60,7 @@
 {"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"swipe entry","data":{"branch_code":"daan","rfid":"C7B9F59D16"},"timestamp":1776566866000}
 {"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"campus lookup","data":{"found":true,"campusId":15},"timestamp":1776566866000}
 {"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"student lookup","data":{"found":true,"studentId":152},"timestamp":1776566866000}
+{"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"swipe entry","data":{"branch_code":"daan","rfid":"F41239BE61"},"timestamp":1776908475000}
+{"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"campus lookup","data":{"found":true,"campusId":15},"timestamp":1776908475000}
+{"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"student lookup","data":{"found":false,"studentId":null},"timestamp":1776908475000}
+{"sessionId":"afe6bc","location":"SwipeRfidController.php:swipe","message":"teacher lookup","data":{"found":false,"teacherId":null,"teacherCampusId":null,"swipeCampusId":15,"matchedUserCampus":false},"timestamp":1776908475000}
