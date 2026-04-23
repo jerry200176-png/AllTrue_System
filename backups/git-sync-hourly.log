@@ -520,3 +520,19 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: main
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+[main 9fb97b2] chore(hourly): auto sync 2026-04-23 21:30
+ 12 files changed, 520 insertions(+), 1158 deletions(-)
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/d63886f2-5313-421a-8e99-a736ca553f3b/subagents/0da14347-dadb-4af3-ad96-3be9bdec57f9.jsonl
+ create mode 100644 .cursor/rules/doc-writing.mdc
+ create mode 100644 .github/workflows/branch-hygiene.yml
+ create mode 100644 AGENTS.md
+ create mode 100755 scripts/branch-hygiene.sh
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   9c63071..9fb97b2  main -> main
+[git-sync] Done.
+[git-sync] Branch: feat/teacher-auto-signout
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
