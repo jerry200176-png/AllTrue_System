@@ -64,6 +64,7 @@ class ClassSessionController extends Controller
             'mode' => 'nullable|in:create,backfill',
             'force' => 'nullable|boolean',
             'course_start_date' => 'nullable|date',
+            'end_date' => 'nullable|date',
         ]);
 
         return app(EnrollmentService::class)->store($request, $data);

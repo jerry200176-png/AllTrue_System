@@ -1161,6 +1161,9 @@ class ProfileController extends Controller
     private function conflictingTypesForLoginName(string $type): array
     {
         return match ($type) {
+            // teacher/director can share login account with each other only
+            'T' => ['T', 'S', 'A', 'U'],
+            'D' => ['D', 'S', 'A', 'U'],
             default => ['T', 'D', 'S', 'A', 'U'],
         };
     }

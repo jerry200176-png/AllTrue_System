@@ -3385,7 +3385,7 @@ class StudentClassController extends Controller
         return $conflicts;
     }
 
-    private function buildSessionsFromWeeklySchedule(
+    public function buildSessionsFromWeeklySchedule(
         int $studentClassId,
         string $startDate,
         string $endDate,
