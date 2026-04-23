@@ -7,8 +7,8 @@ use App\Models\AuthToken;
 use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
-use Illuminate\Cache\RateLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -52,21 +52,14 @@ class SecurityHardeningTest extends TestCase
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /**
-     * Compute the ThrottleRequestsByIp cache key for a route URI and clear it.
-     * Key formula (must match ThrottleRequestsByIp::resolveRequestSignature):
-     *   sha1($route->getDomain() . '|' . $route->uri() . '|' . $request->ip())
-     *
-     * In tests: domain = null → ''; uri = 'api/v1/...'; ip = '127.0.0.1'
-     * Result  : sha1('|api/v1/<route>|127.0.0.1')
+     * Flush ALL cache to reset every rate-limiter counter.
+     * Using Cache::flush() instead of computing the key because TrustProxies(*')
+     * may cause $request->ip() to differ from '127.0.0.1' in CI, making
+     * key-based clearing unreliable.
      */
-    private function clearThrottle(string $routeUri, string $ip = '127.0.0.1'): void
+    private function clearThrottle(): void
     {
-        $key = sha1('|' . $routeUri . '|' . $ip);
-        app(RateLimiter::class)->clear($key);
-        // Verify the clear actually worked before proceeding.
-        $attempts = app(RateLimiter::class)->attempts($key);
-        $this->assertEquals(0, $attempts,
-            "clearThrottle failed for {$routeUri}: still {$attempts} attempts in cache");
+        Cache::flush();
     }
 
     private function makeDirectorToken(): array
@@ -100,7 +93,7 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function register_throttle_blocks_after_10_requests(): void
     {
-        $this->clearThrottle('api/v1/auth/register');
+        $this->clearThrottle();
 
         for ($i = 1; $i <= 10; $i++) {
             $res = $this->postJson('/api/v1/auth/register', [
@@ -123,7 +116,7 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function directors_register_throttle_blocks_after_10_requests(): void
     {
-        $this->clearThrottle('api/v1/directors/register');
+        $this->clearThrottle();
 
         for ($i = 1; $i <= 10; $i++) {
             $res = $this->postJson('/api/v1/directors/register', [
@@ -148,7 +141,7 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function forgot_password_throttle_blocks_after_5_requests(): void
     {
-        $this->clearThrottle('api/v1/auth/forgot-password');
+        $this->clearThrottle();
 
         for ($i = 1; $i <= 5; $i++) {
             $res = $this->postJson('/api/v1/auth/forgot-password', [
@@ -167,7 +160,7 @@ class SecurityHardeningTest extends TestCase
     /** @test */
     public function swipe_rfid_throttle_blocks_after_30_requests(): void
     {
-        $this->clearThrottle('api/v1/swipe-rfid');
+        $this->clearThrottle();
 
         for ($i = 1; $i <= 30; $i++) {
             $res = $this->withHeaders(['Authorization' => 'Bearer sec-test-token-abc'])
@@ -210,9 +203,8 @@ class SecurityHardeningTest extends TestCase
                 'password' => 'Abc1234!',
                 'name'     => 'OkPwd',
             ]);
-        if ($res->status() === 422) {
-            $this->assertArrayNotHasKey('password', $res->json('errors') ?? []);
-        }
+        // Password validation must NOT produce a password error (other errors are fine)
+        $this->assertArrayNotHasKey('password', $res->json('errors') ?? []);
     }
 
     // ─── SEC-004 / FR-008: directors/register rejects password < 8 ───────────
