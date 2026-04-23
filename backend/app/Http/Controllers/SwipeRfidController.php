@@ -275,6 +275,8 @@ class SwipeRfidController extends Controller
         return [null, null, null];
     }
 
+    private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
+
     private function handleTeacherSwipe(Teacher $teacher, Campus $campus, Carbon $swipeAt)
     {
         $campusId = $campus->id;
@@ -287,6 +289,22 @@ class SwipeRfidController extends Controller
             ->first();
 
         if ($openRecord) {
+            // NFR-003: RF bounce debounce — 60 秒內重複訊號直接忽略，不自動簽退
+            $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+            if ($ageSeconds <= self::TEACHER_SWIPE_DEBOUNCE_SECONDS) {
+                return response()->json([
+                    'ok'     => true,
+                    'type'   => 'teacher',
+                    'action' => 'duplicate_ignored',
+                    'record' => $openRecord,
+                    'teacher' => ['id' => $teacher->id, 'name' => $teacher->T_Name],
+                    'campus' => [
+                        'TelegramChatID' => $campus->TelegramChatID ?? null,
+                        'TelegramToken'  => $campus->TelegramToken ?? null,
+                    ],
+                ], 200);
+            }
+
             $openRecord->SignOutDT = $swipeAt;
             $openRecord->MDT = $swipeAt;
             $openRecord->save();

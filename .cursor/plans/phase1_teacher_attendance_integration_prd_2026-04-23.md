@@ -2,8 +2,8 @@
 
 ## 1. 文件資訊
 - 功能名稱：老師出缺勤打卡整合（併入現有出缺勤管理頁）
-- 版本：v1.5 (TEST + REVIEW 進行中)
-- 狀態：**🔍 Phase 5 [REVIEW] 進行中（CI 全綠，Code Review 執行中）**
+- 版本：v1.6 (NFR-003 升格本版實作)
+- 狀態：**🔄 Phase 5 [REVIEW] 完成；NFR-003 防重複刷卡整合進 Phase 3 → 重新進入 DEV**
 - 目標角色：老師、主任、超級管理員
 - 文件日期：2026-04-23
 - 關聯文件：[`.cursor/plans/arch_teacher_attendance_2026-04-23.md`](./arch_teacher_attendance_2026-04-23.md)
@@ -15,10 +15,10 @@
 | Phase 2 [ARCH] | Tech Lead | ✅ 完成（Q1=B, Q2=A 已確認） |
 | Phase 2b [UX] | UI/UX Designer | ✅ 完成 |
 | Phase 2c [DBA] | DBA | ✅ 完成（Migration 已建立，待非尖峰執行） |
-| Phase 3 [DEV] | 全端工程師 | ✅ 完成 |
-| Phase 4 [TEST] | QA 工程師 | ✅ 完成（PHPUnit 689 tests 全綠，Vite build 成功） |
+| Phase 3 [DEV] | 全端工程師 | 🔄 v1.0 完成；v1.6 NFR-003 DEV 進行中 |
+| Phase 4 [TEST] | QA 工程師 | 🔄 v1.0 全綠；v1.6 新測試待補 |
 | Phase 4b [SEC] | Security Engineer | ✅ 完成（STRIDE 靜態審查，詳見 §9） |
-| Phase 5 [REVIEW] | Staff Engineer | 🔍 進行中（PR #10 Code Review） |
+| Phase 5 [REVIEW] | Staff Engineer | ✅ v1.0 LGTM；v1.6 待重審 |
 | Phase 6 [DOCS] | Technical Writer | ⬜ 未開始 |
 | Phase 7 [OPS] | DevOps Engineer | ⬜ 未開始 |
 
@@ -105,11 +105,19 @@
 - FR-007：新增匯出 API（CSV/JSON）。
 - FR-008：所有老師出缺勤 API 必須有 role + campus 存取限制。
 - FR-009：所有修改動作必須可追溯（audit trail）。
+- FR-010：RFID 刷卡 debounce — `handleTeacherSwipe()` 偵測到 `open_record.SignInDT` 距 `swipeAt` ≤ 60 秒時，
+  回傳 `{ ok: true, action: "duplicate_ignored" }` 且不寫入任何資料庫紀錄。
 
 ## 7. 非功能需求 NFR
 - NFR-001：打卡寫入 API P95 < 500ms。
 - NFR-002：總覽查詢 API P95 < 800ms（1000 筆內）。
-- NFR-003：避免重複事件（同一老師短時間重複刷卡需防重入，窗口 60 秒）。
+- NFR-003：**防重複刷卡（Debounce）**：同一老師在 `SignInDT` 建立後 60 秒內若再次觸發刷卡，
+  系統必須識別為重複訊號並回傳 `action: duplicate_ignored`，**不得建立新紀錄、不得自動簽退**。
+  - 業界依據：K-12 RFID 硬體（Mifare/EM4100）可能因感應距離/噪訊送出多次訊號（RF bounce）；
+    RenWeb、Infinite Campus 等系統均有 30–120 秒 debounce 窗口。
+  - 窗口長度：60 秒（hard-code 為預設，未來可移至 Campus.settings）。
+  - 邊界：老師若真的在 60 秒內完成一進一出（極罕見），系統保守處理為「重複忽略」；
+    主任可透過補卡流程修正，符合「先記錄、可補救」原則。
 - NFR-004：當天排課資料不可用時，先落原始事件，異常狀態標記為 `pending_review`，不中斷打卡流程。
 - NFR-005：補卡審計資料不可被無痕覆蓋；原始事件保留，補卡另開 `teacher_signin_adjustments` 記錄。
 
@@ -160,6 +168,7 @@
 | 2026-04-23 | 異常判定在 `SwipeRfidController::handleTeacherSwipe()` 同步執行 | 非同步 Job | 批次判定延遲高；同步判定含防禦性 try/catch，失敗不中斷打卡 |
 | 2026-04-23 | Q1：本期不自動判定 `early_leave` | A. 最後一堂課 end_time 比較 | B（MVP 簡化）；避免補課調課誤判 |
 | 2026-04-23 | Q2：老師只能查自己打卡 | B. 可看同分校全部老師 | A（最小權限）；JWT 自動帶 teacher_id |
+| 2026-04-23 | NFR-003 debounce 窗口 60 秒 hard-code | 由 Campus.settings 可設定 | MVP 先固定；業界 K-12 常見值（RenWeb 30s, Infinite Campus 60s）；窗口太短易放行真重複，太長封鎖快速進出 |
 
 ## 9. 資安與存取控制
 - 老師僅可查本人資料（`/api/v1/teacher-attendance/today` 由 JWT 識別）。
@@ -218,9 +227,9 @@
 - 回滾：關閉 feature flag，前端隱藏入口；API 退回舊行為；`teacher_signin_adjustments` 表可保留（無害）。
 
 ## 12. 里程碑與優先級
-- **P0**：後端 migration + 老師 API + `AttendancePage` 老師 tab + 基本異常清單 + `TeacherHomePage` 打卡卡片
+- **P0**：後端 migration + 老師 API + `AttendancePage` 老師 tab + 基本異常清單 + `TeacherHomePage` 打卡卡片 + **RFID 刷卡 debounce 60 秒（FR-010 / NFR-003）**
 - **P1**：補卡審計 + 匯出 + 每日結班檢查 API
-- **P2**：遲到門檻 admin 可調整 + 代課/跨校進階規則 + Telegram 打卡通知
+- **P2**：遲到門檻 admin 可調整 + 代課/跨校進階規則 + Telegram 打卡通知 + debounce 窗口移至 `Campus.settings` 可設定（目前 hard-code 60 秒）
 
 ## 13. 風險 / 假設 / 開放問題
 | 風險 | 等級 | 業界標準解法 | 本專案採行方式 |
@@ -251,6 +260,7 @@
 - [ ] 文件更新完成：`docs/CHANGELOG.md` 含本功能條目
 - [ ] 監控可用：health 與關鍵監控項目可讀
 - [ ] CI 通過：PHPUnit 全綠 + Vite build 成功
+- [ ] NFR-003 驗收：同一老師 60 秒內連續兩次刷卡，第二次回傳 `action: duplicate_ignored`，資料庫無新增紀錄
 
 ---
 
@@ -276,6 +286,7 @@
 | v1.3 | 2026-04-23 | Q1=B、Q2=A 確認；進入 Phase 3 [DEV] |
 | v1.4 | 2026-04-23 | Phase 3 [DEV] 完成；npm run deploy 已執行 |
 | v1.5 | 2026-04-23 | CI 全綠（PHPUnit 689/689 pass，Vite 成功）；Phase 4b [SEC] STRIDE 靜態審查完成；Phase 5 [REVIEW] 啟動，PR #10 Code Review 進行中 |
+| v1.6 | 2026-04-23 | NFR-003 升格本版實作：FR-010 新增、Decision Log 補充、Priority 更新、DoD 新增驗收項；DEV/TEST 重新開啟 |
 
 ---
 
