@@ -46,14 +46,13 @@ class AttendanceVoidTest extends TestCase
 
         $res->assertOk()->assertJson(['ok' => true, 'voided_id' => $signin->id]);
 
-        $this->assertNotNull(
-            StudentSignIn::withTrashed()->find($signin->id)?->VoidedAt
-                ?? StudentSignIn::find($signin->id)?->VoidedAt
-                ?? StudentSignIn::where('id', $signin->id)->value('VoidedAt'),
-            'VoidedAt 應被寫入'
-        );
+        // 直接查 DB 確認 VoidedAt 被寫入（不走 Model scope）
+        $voidedAt = \Illuminate\Support\Facades\DB::table('StudentSingIn')
+            ->where('id', $signin->id)
+            ->value('VoidedAt');
+        $this->assertNotNull($voidedAt, 'VoidedAt 應被寫入');
 
-        // 再次查詢時應消失（active scope）
+        // 再次查詢時應消失（active scope 過濾掉 VoidedAt != null）
         $this->assertNull(StudentSignIn::whereNull('VoidedAt')->find($signin->id));
     }
 
