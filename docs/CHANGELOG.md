@@ -2,6 +2,44 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat: 月結課程排課體驗改善（monthly-recurring-scheduling）
+
+### 背景
+
+月結制（`payment_type = 'monthly'`）課程建立時，主任需逐格點日曆、跨月還要每月重進來補點。多科月結方案更完全不生成 ClassSession，老師每次都要手動補登。
+
+### 主要變更
+
+**後端：**
+- `StudentClassController::buildSessionsFromWeeklySchedule` — `private` → `public`，允許 `EnrollmentService` 和 `CoursePackageController` 複用
+- `ClassSessionController::batchStore` — validation 新增 `end_date`（`nullable|date`）
+- `EnrollmentService::store` — 月結分支偵測到 `end_date` + `days_of_week` 時，自動呼叫 `buildSessionsFromWeeklySchedule` 生成全期 ClassSession，跳過同月限制。NFR-004：`end_date` 超過 730 天回 422。舊路徑（無 `end_date`）行為完全不變
+- `CoursePackageController::createMultiSubject` — 移除 `if (!$isMonthly)` 對排課欄位的限制；月結 + `end_date` + `hasSchedule` → 呼叫 `buildSessionsFromWeeklySchedule` 預排。堂數制路徑不受影響
+
+**前端（`UniversalClassScheduler.vue`）：**
+- 一般月結路徑：隱藏月曆逐格點選，改為 `end_date` 欄位 + 快選按鈕（+1/+3/+6 個月）+ 預覽文字 computed
+- 多科月結路徑：每科行新增 `days_of_week` chip + `start_time` 下拉；方案層新增 `end_date` 欄位
+- 標籤統一：所有「每月固定」→「月結制」
+
+**測試：**
+- `EnrollmentServiceMonthlyRecurringTest.php`（6 tests）：end_date 自動排課、多星期、邊界、NFR-004、向後相容
+- `CoursePackageMonthlyScheduleTest.php`（4 tests）：多科月結排課、無 end_date 向後相容、NFR-004、堂數制回歸
+- 全套 731 tests 通過
+
+### 行為影響
+- **新**：月結課程可一次設定結束日 + 固定星期，系統自動預排所有 ClassSession
+- **無 Breaking Change**：堂數制完全不受影響；舊月結路徑（無 end_date + future_dates）fallback 舊邏輯
+
+---
+
+## 2026-04-23 — fix: Batch 2 Tech Debt — TD-005 出缺勤狀態同步修正
+
+- **TD-005** `ClassSessionController::update`：新增 `syncStudentSignInStatus()` helper，attended swap / scheduled→attended 兩條轉移路徑在更新 ClassSession.Status 後同步更新 active StudentSignIn.Status（voided 不受影響）
+- **TD-005** `AttendancePage.vue::saveStatusEdit`：非請假路徑成功後立即 `fetchRecords()`，消除 30 秒狀態回滾問題
+- 新增測試：`AttendanceStatusSyncTest.php`（4 個測試，CI 綠燈通過）
+
+---
+
 ## 2026-04-23 — fix: Batch 1 Tech Debt — TD-004/006/007/009 SwipeRfidController 邊界修正
 
 - **TD-004** `findMatchingClass`：ClassSession 查詢加 `Status != 'leave'`，請假學生補到校刷卡不再命中請假堂次
