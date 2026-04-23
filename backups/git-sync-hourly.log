@@ -391,3 +391,21 @@ To github.com:jerry200176-png/AllTrue_System.git
 [git-sync] Branch: feature/teacher-attendance-v1
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Code revert guard passed.
+[git-sync] Committing...
+Auto packing the repository in background for optimum performance.
+See "git help gc" for manual housekeeping.
+[feature/teacher-attendance-v1 56c7b2f] chore(hourly): auto sync 2026-04-23 10:30
+ 11 files changed, 671 insertions(+), 12 deletions(-)
+ create mode 100644 .cursor/projects/home-admin/agent-tools/f5ce2ee9-a382-4aab-93ed-4b086a1431d0.txt
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/0ac7ee37-352e-413e-82c3-6a66dfae91bb/0ac7ee37-352e-413e-82c3-6a66dfae91bb.jsonl
+ create mode 100644 .cursor/projects/home-admin/agent-transcripts/88bf99c3-185d-4728-ba4f-6fafdb34fb3c/88bf99c3-185d-4728-ba4f-6fafdb34fb3c.jsonl
+ create mode 100644 .cursor/skills-cursor/split-to-prs/SKILL.md
+ create mode 100755 backend/app/Http/Middleware/DebugSwipeRfidRequest.php
+[git-sync] Pushing...
+To github.com:jerry200176-png/AllTrue_System.git
+   47b8a49..56c7b2f  feature/teacher-attendance-v1 -> feature/teacher-attendance-v1
+[git-sync] Done.
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
