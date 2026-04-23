@@ -131,7 +131,7 @@ class AuthController extends Controller
             'name'      => 'required|string|max:64',
             'account'   => 'nullable|string|max:128|required_without:email',
             'email'     => 'nullable|string|max:128|required_without:account',
-            'password'  => 'required|string|min:4|max:128',
+            'password'  => 'required|string|min:8|max:128',
             'role'      => 'nullable|string|in:teacher,director',
             'branch_id' => 'nullable|integer',
             'phone'     => 'nullable|string|max:32',
@@ -314,7 +314,7 @@ class AuthController extends Controller
             'subject_level_scopes.*.subject_id' => 'required_with:subject_level_scopes|integer|min:1',
             'subject_level_scopes.*.level' => 'required_with:subject_level_scopes|string|in:elementary,junior,high',
             'current_password' => 'nullable|string|max:128',
-            'password' => 'nullable|string|min:6|max:128|confirmed',
+            'password' => 'nullable|string|min:8|max:128|confirmed',
         ]);
 
         if (!empty($data['name'])) {

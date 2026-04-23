@@ -64,4 +64,18 @@ $_ENV['APP_ENV']    = 'testing';
 $_SERVER['APP_ENV'] = 'testing';
 putenv('APP_ENV=testing');
 
+// ── Config Cache 斷路器 ──────────────────────────────────────────────────────
+// 若 bootstrap/cache/config.php 存在，其內的 APP_ENV=production 會被 Laravel
+// LoadEnvironmentVariables 當作 config cache 直接使用，導致 putenv 的 testing
+// 完全失效，ConfirmableTrait::confirmToProceed() 觸發互動確認，Mockery mock
+// 的 OutputStyle 拋出 BadMethodCallException。
+// 解法：在任何 Laravel 程式碼載入前，直接刪除 config cache 檔案。
+// CI 從不執行 config:cache，所以 CI 不會碰到此問題；本機就需要這段保護。
+(function () {
+    $configCache = __DIR__ . '/../bootstrap/cache/config.php';
+    if (file_exists($configCache)) {
+        @unlink($configCache);
+    }
+})();
+
 require __DIR__ . '/../vendor/autoload.php';

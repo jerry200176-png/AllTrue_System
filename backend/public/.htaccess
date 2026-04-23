@@ -19,3 +19,16 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# ── SEC-005: HTTP Security Headers ───────────────────────────────────────────
+# Requires Apache mod_headers (a2enmod headers).
+# NOTE: Content-Security-Policy is intentionally excluded — Vue SPA uses inline
+# scripts for i18n initialization which would be blocked by default-src 'self'.
+# CSP requires a dedicated task with nonce/hash support in Laravel middleware.
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+</IfModule>

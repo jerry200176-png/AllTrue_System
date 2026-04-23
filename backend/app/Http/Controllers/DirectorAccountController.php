@@ -25,7 +25,7 @@ class DirectorAccountController extends Controller
             'name'      => 'required|string|max:32',
             'account'   => 'nullable|string|max:64|required_without:email',
             'email'     => 'nullable|string|max:64|required_without:account',
-            'password'  => 'required|string|min:4',
+            'password'  => 'required|string|min:8',
             'campus_id' => 'required|integer',
         ]);
         $loginName = trim((string) ($data['account'] ?? $data['email'] ?? ''));
