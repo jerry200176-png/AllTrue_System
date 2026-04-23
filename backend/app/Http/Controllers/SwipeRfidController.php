@@ -137,6 +137,25 @@ class SwipeRfidController extends Controller
                 ->first();
 
             if ($openRecord) {
+                // TD-006: debounce — RF bounce 在 60 秒內的重複訊號直接忽略，不自動簽退
+                $ageSeconds = Carbon::parse($openRecord->SignInDT)->diffInSeconds($swipeAt);
+                if ($ageSeconds <= self::STUDENT_SWIPE_DEBOUNCE_SECONDS) {
+                    return response()->json([
+                        'ok'     => true,
+                        'type'   => 'student',
+                        'action' => 'duplicate_ignored',
+                        'record' => $openRecord,
+                        'student' => [
+                            'id'          => $student->id,
+                            'name'        => $student->name,
+                            'TelegramID'  => $student->TelegramID,
+                            'TelegramID1' => $student->TelegramID1,
+                            'TelegramID2' => $student->TelegramID2,
+                        ],
+                        'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
+                    ], 200);
+                }
+
                 $openRecord->SignOutDT = $swipeAt;
                 $openRecord->MDT = $swipeAt;
                 $openRecord->save();
@@ -165,6 +184,31 @@ class SwipeRfidController extends Controller
             }
 
             [$studentClass, $hours, $classSessionId] = $this->findMatchingClass($student, $swipeAt);
+
+            // TD-007: duplicate sign-in guard — 若同一個 ClassSession 當天已有未作廢的記錄則不重複建立
+            if ($classSessionId !== null) {
+                $existingSignIn = StudentSignIn::where('StudentID', $student->id)
+                    ->where('ClassSessionID', $classSessionId)
+                    ->whereNull('VoidedAt')
+                    ->first();
+
+                if ($existingSignIn) {
+                    return response()->json([
+                        'ok'     => true,
+                        'type'   => 'student',
+                        'action' => 'duplicate_ignored',
+                        'record' => $existingSignIn,
+                        'student' => [
+                            'id'          => $student->id,
+                            'name'        => $student->name,
+                            'TelegramID'  => $student->TelegramID,
+                            'TelegramID1' => $student->TelegramID1,
+                            'TelegramID2' => $student->TelegramID2,
+                        ],
+                        'campus' => ['TelegramToken' => $campus->TelegramToken ?? null],
+                    ], 200);
+                }
+            }
 
             $signIn = StudentSignIn::create([
                 'StudentClassID'  => $studentClass?->ID,
@@ -220,6 +264,7 @@ class SwipeRfidController extends Controller
     {
         $sessions = ClassSession::with('studentClass')
             ->whereDate('SessionDate', $swipeAt->toDateString())
+            ->where('Status', '!=', 'leave')
             ->whereHas('studentClass', function ($q) use ($student) {
                 $q->where('StudentID', $student->id)->where('Stop', 0);
             })
@@ -315,6 +360,15 @@ class SwipeRfidController extends Controller
                 continue;
             }
 
+            // TD-009: 防禦 EndTime=null（DB 有 NOT NULL 但舊資料可能例外），跳過避免 SignOutDT=00:00
+            if (!$session->EndTime) {
+                Log::warning('presence_window_skip_null_end_time', [
+                    'class_session_id' => $session->id,
+                    'student_id'       => $student->id,
+                ]);
+                continue;
+            }
+
             $sessionSignInDT  = Carbon::parse($today . ' ' . $session->StartTime);
             $sessionSignOutDT = Carbon::parse($today . ' ' . $session->EndTime);
 
@@ -350,6 +404,7 @@ class SwipeRfidController extends Controller
         }
     }
 
+    private const STUDENT_SWIPE_DEBOUNCE_SECONDS = 60;
     private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
 
     private function handleTeacherSwipe(Teacher $teacher, Campus $campus, Carbon $swipeAt)

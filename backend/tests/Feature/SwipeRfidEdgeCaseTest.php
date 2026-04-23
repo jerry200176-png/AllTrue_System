@@ -235,17 +235,18 @@ class SwipeRfidEdgeCaseTest extends TestCase
             'TD-007: ClassSession 已有 active StudentSignIn，刷卡不應再新增一筆');
     }
 
-    // ── TD-009: backfillPresenceWindow — EndTime=null 不應寫 SignOutDT=00:00 ──
+    // ── TD-009: backfillPresenceWindow — SignOutDT 必須等於 session EndTime ────
 
     /**
      * @test
-     * TD-009: ClassSession.EndTime 為 null 時，backfillPresenceWindow 應跳過，
-     * 不建立 SignOutDT='00:00:00' 的語義錯誤記錄。
+     * TD-009 回歸測試：backfillPresenceWindow 補建的 SignOutDT 必須精確等於
+     * ClassSession.EndTime，不可為午夜 00:00 或其他錯誤值。
      *
-     * 現況（紅燈）：Carbon::parse(null) → '00:00:00' 靜默寫入 DB
-     * 修復後（綠燈）：null EndTime 的 session 被跳過，不產生記錄
+     * 注意：DB 有 EndTime NOT NULL 約束，無法直接測試 null 場景。
+     * 本測試作為防禦性回歸測試，驗證 code 確實讀取 EndTime 而非使用預設值。
+     * production 修復會同步加入 `if (!$session->EndTime) continue;` null guard。
      */
-    public function backfill_skips_session_with_null_end_time(): void
+    public function backfill_sets_sign_out_dt_from_session_end_time(): void
     {
         $student = $this->makeStudent();
         $scA     = $this->makeStudentClass($student->id);
@@ -253,30 +254,33 @@ class SwipeRfidEdgeCaseTest extends TestCase
 
         $today = now()->toDateString();
 
-        // Session A: 正常，刷卡時間在 10:00 前後 30 分鐘內
+        // Session A: 10:00–12:00，刷進時配對
         $sessionA = $this->makeClassSession($scA->ID, $today, '10:00:00', '12:00:00');
 
-        // Session B: EndTime=null（壞資料），落在 sign-in 與 sign-out 之間
-        $sessionB = $this->makeClassSession($scB->ID, $today, '11:00:00', null);
+        // Session B: 12:00–14:00，落在刷進刷出窗口內，由 backfill 補建
+        $sessionB = $this->makeClassSession($scB->ID, $today, '12:00:00', '14:00:00');
 
-        // 10:00 刷進（配對 Session A）
+        // 10:00 刷進
         $this->travelTo(now()->setTime(10, 0));
         $resIn = $this->swipe($student->RFID);
         $resIn->assertStatus(201)->assertJsonPath('action', 'sign_in');
 
-        // 13:00 刷出（觸發 backfillPresenceWindow，Session B 落在窗口內）
-        $this->travelTo(now()->setTime(13, 0));
+        // 15:00 刷出（觸發 backfillPresenceWindow，Session B 在窗口內）
+        $this->travelTo(now()->setTime(15, 0));
         $resOut = $this->swipe($student->RFID);
         $resOut->assertOk()->assertJsonPath('action', 'sign_out');
 
-        // Session B 不應產生 SignOutDT='00:00:00' 的錯誤記錄
-        $badRecord = StudentSignIn::where('StudentID', $student->id)
+        $bSignIn = StudentSignIn::where('StudentID', $student->id)
             ->where('ClassSessionID', $sessionB->id)
             ->whereNull('VoidedAt')
-            ->where('SignOutDT', 'like', '%00:00:00')
             ->first();
 
-        $this->assertNull($badRecord,
-            'TD-009: EndTime=null 的 ClassSession 不應補建 SignOutDT=00:00 的記錄');
+        $this->assertNotNull($bSignIn, 'Session B 應被 Presence Window 補建');
+
+        // SignOutDT 必須為 14:00，不可為午夜 00:00
+        $this->assertStringContainsString('14:00', $bSignIn->SignOutDT,
+            'TD-009: backfill SignOutDT 必須等於 ClassSession.EndTime（14:00），不可為午夜或其他錯誤值');
+        $this->assertStringNotContainsString('00:00:00', $bSignIn->SignOutDT,
+            'TD-009: backfill SignOutDT 不應為午夜 00:00');
     }
 }
