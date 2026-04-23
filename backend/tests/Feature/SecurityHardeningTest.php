@@ -7,8 +7,10 @@ use App\Models\AuthToken;
 use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\RateLimiter;
+use Illuminate\Cache\Repository;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
@@ -29,6 +31,12 @@ class SecurityHardeningTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Replace the RateLimiter singleton with a fresh in-memory instance
+        // for every test. This guarantees zero throttle counts regardless of
+        // which cache driver is active in CI (file cache on disk persists
+        // across tests; re-binding the singleton avoids that entirely).
+        $this->app->instance(RateLimiter::class, new RateLimiter(new Repository(new ArrayStore())));
 
         $this->campus = Campus::create([
             'name'           => 'SecTestCampus',
@@ -52,14 +60,14 @@ class SecurityHardeningTest extends TestCase
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     /**
-     * Flush ALL cache to reset every rate-limiter counter.
-     * Using Cache::flush() instead of computing the key because TrustProxies(*')
-     * may cause $request->ip() to differ from '127.0.0.1' in CI, making
-     * key-based clearing unreliable.
+     * Reset the RateLimiter to a brand-new empty store before a throttle test.
+     * This is belt-and-suspenders on top of the setUp() re-binding; it ensures
+     * that requests made within the same test method (e.g., password tests that
+     * run before throttle tests in the same test method) don't accumulate counts.
      */
     private function clearThrottle(): void
     {
-        Cache::flush();
+        $this->app->instance(RateLimiter::class, new RateLimiter(new Repository(new ArrayStore())));
     }
 
     private function makeDirectorToken(): array
