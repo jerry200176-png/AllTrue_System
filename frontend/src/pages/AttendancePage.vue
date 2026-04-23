@@ -561,6 +561,7 @@
             <option value="late">遲到</option>
             <option value="leave">請假</option>
             <option value="absent">缺席</option>
+            <option value="self_study">自修</option>
           </select>
         </div>
       </div>
@@ -589,12 +590,17 @@
               <td>{{ record.teacher_name || record.course_teacher_name || '—' }}</td>
               <td>{{ record.campus_name || '—' }}</td>
               <td>
-                <span class="status-tag" :class="statusTagClass(record.Status)">
+                <span
+                  v-if="record.Memo === 'self_study'"
+                  class="status-tag att-self-study-tag"
+                  aria-label="自修記錄"
+                >自修</span>
+                <span v-else class="status-tag" :class="statusTagClass(record.Status)">
                   {{ record.status_label }}
                 </span>
               </td>
               <td style="text-align:right">
-                <button v-if="!record._editing" class="ghost xs" @click="record._editing = true">修改</button>
+                <button v-if="!record._editing && record.Memo !== 'self_study'" class="ghost xs" @click="record._editing = true">修改</button>
                 <div v-else class="att-inline-edit">
                   <select v-model="record._newStatus" class="att-status-select">
                     <option value="present">到班</option>
@@ -610,7 +616,10 @@
               </td>
             </tr>
             <tr v-if="filteredRecords.length === 0">
-              <td colspan="7" class="empty-text">今日尚無出缺勤紀錄</td>
+              <td colspan="7" class="empty-text">
+                <span v-if="filterStatus === 'self_study'">📚 今日暫無自修記錄</span>
+                <span v-else>今日尚無出缺勤紀錄</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1232,8 +1241,10 @@ const filteredRecords = computed(() => {
     const q = searchName.value.toLowerCase();
     list = list.filter(r => (r.person_name || '').toLowerCase().includes(q));
   }
-  if (filterStatus.value) {
-    list = list.filter(r => r.Status === filterStatus.value);
+  if (filterStatus.value === 'self_study') {
+    list = list.filter(r => r.Memo === 'self_study');
+  } else if (filterStatus.value) {
+    list = list.filter(r => r.Status === filterStatus.value && r.Memo !== 'self_study');
   }
   return list;
 });
@@ -2133,6 +2144,7 @@ watch(() => props.branchId, () => {
 /* Tags */
 .status-tag.excused, .status-tag.leave { background: #E3F2FD; color: #1565C0; }
 .status-tag.rejected { background: var(--danger-bg); color: var(--danger); }
+.att-self-study-tag { background: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
 
 /* Messages */
 .att-msg {
