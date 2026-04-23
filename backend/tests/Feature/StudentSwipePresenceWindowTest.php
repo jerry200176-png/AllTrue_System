@@ -90,7 +90,7 @@ class StudentSwipePresenceWindowTest extends TestCase
     private function swipe(string $rfid): \Illuminate\Testing\TestResponse
     {
         return $this->postJson('/api/v1/swipe-rfid', [
-            'branch_code' => $this->campus->id,
+            'branch_code' => (string) $this->campus->id,
             'rfid'        => $rfid,
         ], [
             'Authorization' => 'Bearer test-token-123',
