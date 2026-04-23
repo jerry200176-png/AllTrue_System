@@ -405,6 +405,9 @@ class ClassSessionController extends Controller
                         SessionDeductionService::deductOnAttendance($studentClass, null, (int) $session->id);
                     }
 
+                    // TD-005: sync active StudentSignIn.Status if one exists (e.g. RFID swipe already in)
+                    $this->syncStudentSignInStatus($session->id, $newStatus);
+
                     return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
                 }
 
@@ -413,6 +416,8 @@ class ClassSessionController extends Controller
                     $session->Status = $newStatus;
                     $this->applyTimeAndNoteUpdates($session, $data);
                     $session->save();
+                    // TD-005: sync active StudentSignIn.Status so fetchRecords reflects true state
+                    $this->syncStudentSignInStatus($session->id, $newStatus);
                     return $this->sessionUpdateResponse($session, '狀態已更新為' . $newStatus);
                 }
 
@@ -816,6 +821,30 @@ class ClassSessionController extends Controller
             'Status'         => 'scheduled',
             'Note'           => '請假自動順延',
         ]);
+    }
+
+    /**
+     * TD-005: 更新 ClassSession status 時同步 active StudentSignIn.Status。
+     * 只更新未作廢（VoidedAt IS NULL）的記錄。
+     * ClassSession status → StudentSignIn status 對照：
+     *   attended/completed → present | late → late | absent → absent
+     */
+    private function syncStudentSignInStatus(int $classSessionId, string $csStatus): void
+    {
+        $siStatus = match ($csStatus) {
+            'attended', 'completed' => 'present',
+            'late'                  => 'late',
+            'absent'                => 'absent',
+            default                 => null,
+        };
+
+        if ($siStatus === null) {
+            return;
+        }
+
+        StudentSignIn::where('ClassSessionID', $classSessionId)
+            ->whereNull('VoidedAt')
+            ->update(['Status' => $siStatus, 'MDT' => now()]);
     }
 
     private function sessionUpdateResponse(ClassSession $session, string $message)
