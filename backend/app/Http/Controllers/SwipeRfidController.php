@@ -271,23 +271,48 @@ class SwipeRfidController extends Controller
             ->get();
 
         if (!$sessions->isEmpty()) {
-            $windowMinutes = 30;
-            $closestSession = null;
-            $closestDiff = null;
+            // TD-011: 窗口從「距 StartTime ≤ 30 min」擴展為「StartTime-30min ≤ swipeAt ≤ EndTime」
+            // 優先選 ongoing sessions（startTime ≤ swipeAt ≤ endTime），再選最近的 upcoming session。
+            $ongoingSessions  = [];
+            $upcomingSessions = [];
 
             foreach ($sessions as $session) {
-                $startTime = Carbon::parse($session->SessionDate . ' ' . $session->StartTime);
-                $diff = abs($startTime->diffInMinutes($swipeAt));
-                if ($diff <= $windowMinutes && ($closestDiff === null || $diff < $closestDiff)) {
-                    $closestSession = $session;
-                    $closestDiff = $diff;
+                if (!$session->EndTime) {
+                    continue;
+                }
+                $startTime   = Carbon::parse($session->SessionDate . ' ' . $session->StartTime);
+                $endTime     = Carbon::parse($session->SessionDate . ' ' . $session->EndTime);
+                $windowStart = $startTime->copy()->subMinutes(30);
+
+                if (!$swipeAt->between($windowStart, $endTime)) {
+                    continue;
+                }
+
+                if ($swipeAt->greaterThanOrEqualTo($startTime)) {
+                    // Ongoing: startTime ≤ swipeAt ≤ endTime
+                    $ongoingSessions[] = ['session' => $session, 'start_ts' => $startTime->timestamp];
+                } else {
+                    // Upcoming: windowStart ≤ swipeAt < startTime
+                    $upcomingSessions[] = ['session' => $session, 'start_ts' => $startTime->timestamp];
                 }
             }
 
-            if ($closestSession) {
-                $sc = $closestSession->studentClass;
+            // Ongoing 優先：取最近啟動的（最大 startTime = 遲到最少）
+            if (!empty($ongoingSessions)) {
+                usort($ongoingSessions, fn ($a, $b) => $b['start_ts'] <=> $a['start_ts']);
+                $best = $ongoingSessions[0]['session'];
+            } elseif (!empty($upcomingSessions)) {
+                // 無 ongoing：取最近即將開始的（最小 startTime）
+                usort($upcomingSessions, fn ($a, $b) => $a['start_ts'] <=> $b['start_ts']);
+                $best = $upcomingSessions[0]['session'];
+            } else {
+                $best = null;
+            }
+
+            if ($best) {
+                $sc    = $best->studentClass;
                 $hours = $sc->TotalHours ? (int) $sc->TotalHours : null;
-                return [$sc, $hours, $closestSession->id];
+                return [$sc, $hours, $best->id];
             }
         }
 
@@ -502,6 +527,11 @@ class SwipeRfidController extends Controller
 
             return $swipeAt->lte($threshold) ? 'normal' : 'late';
         } catch (\Throwable $e) {
+            Log::warning('resolveTeacherSignInStatus failed, fallback to pending_review', [
+                'teacher_id' => $teacherId,
+                'swipe_at'   => $swipeAt->toIso8601String(),
+                'error'      => $e->getMessage(),
+            ]);
             return 'pending_review';
         }
     }
