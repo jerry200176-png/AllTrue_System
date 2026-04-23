@@ -53,6 +53,7 @@ class StudentSwipePresenceWindowTest extends TestCase
         return Student::create(array_merge([
             'name'     => "Student{$n}",
             'CampusID' => $this->campus->id,
+            'ClassID'  => 1,
             'RFID'     => "RFID-STU-{$n}",
             'enable'   => 1,
         ], $attrs));
@@ -65,8 +66,11 @@ class StudentSwipePresenceWindowTest extends TestCase
             'GradeID'      => 1,
             'SubjectID'    => 1,
             'TeacherID'    => 1,
-            'Stop'         => 0,
+            'by1'          => 0,
             'TotalHours'   => 2,
+            'RoomID'       => '',
+            'StartDate'    => now()->subYear(),
+            'Stop'         => 0,
             'SessionCount' => 10,
             'ScheduleMode' => 'count',
         ], $attrs));
