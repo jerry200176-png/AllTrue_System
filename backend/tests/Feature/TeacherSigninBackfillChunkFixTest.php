@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Campus;
 use Carbon\Carbon;
+use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -23,19 +25,9 @@ class TeacherSigninBackfillChunkFixTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function makeCampus(): object
+    private function makeCampus(): int
     {
-        return DB::table('Campus')->insertGetId([
-            'Name'          => 'TestCampus',
-            'BranchCode'    => 'TC',
-            'AdminEmail'    => 'tc@test.com',
-            'AdminPassword' => 'pw',
-            'TelegramChatID'=> '',
-            'TelegramToken' => '',
-            'LINEGroupID'   => '',
-            'LINEToken'     => '',
-            'MDT'           => now(),
-        ]);
+        return CampusFactory::new()->create()->id;
     }
 
     private function insertTeacherSignIn(int $teacherId, int $campusId, string $signInDT): int
