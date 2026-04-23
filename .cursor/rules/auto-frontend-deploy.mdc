@@ -1,30 +1,51 @@
 ---
-description: 修改前端後自動執行 npm run deploy 上線到 backend/public（無須使用者提醒）
+description: >-
+  前端變更後的 deploy 規則 — 必須經過 CI 全綠 + PR merge 才能執行 npm run deploy
 alwaysApply: true
 ---
 
-# 前端變更後自動上線（AllTrue）
+# 前端 Deploy 規則（SOP 優先）
 
-## 必做時機
+## ⛔ 唯一合法的 Deploy 順序
 
-在本對話中，若你**曾修改**下列任一類路徑（並將變更留在工作區），在**回覆使用者、結束任務之前**必須執行：
-
-```bash
-cd /home/admin/frontend && npm run deploy
+```
+1. 前端變更 → commit → push feature branch
+2. CI 全綠（自己等，自己驗，綠燈才報告）
+3. PR merge → git checkout main → git pull origin main
+4. cd /home/admin/frontend && npm run deploy
+5. 確認 backend/public/version.json 時間戳更新
+6. 才告訴使用者「已上線」
 ```
 
-- `frontend/src/**`（Vue、JS、CSS、資源）
-- `frontend/index.html`
-- `frontend/vite.config.js`
-- `frontend/scripts/**`（若影響 build／copy）
+## ❌ 禁止（違反 = 把未過 CI 的前端推上 production）
 
-## 不必執行時
+```
+❌ 在 feature branch 上執行 npm run deploy
+❌ CI 還在跑就 deploy
+❌ PR 未 merge 就 deploy
+❌ merge 後忘記 deploy（功能做完但使用者看不到）
+```
 
-- 僅修改 `backend/**`、文件、測試且**未**動到上述前端路徑
-- 使用者明確表示「不要 deploy／先不要上線」
+## ✅ CI 自驗流程（不要叫使用者去看）
 
-## 說明
+```bash
+# push 後自己輪詢，等結果
+gh run list --limit 1       # 看最新 run ID
+gh run view <run_id>        # 看狀態，直到 completed
+# success → 繼續 deploy
+# failure → 自己修，不要回報「請你去看 CI」
+```
 
-- `npm run deploy` = `vite build` + 複製到 `backend/public`，供 Raspberry Pi／nginx 提供 SPA。
-- 執行後可在回覆簡短註明「已 deploy」；若指令失敗，說明錯誤並修復或回報。
-- 使用者說「更新／上線／deploy」時，若前端有未打包的變更，同樣應執行上述指令。
+## 部署驗證
+
+```bash
+# deploy 後必做
+cat /home/admin/backend/public/version.json   # 確認時間戳
+curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+# 必須看到 {"status":"ok",...}
+```
+
+## 不必執行 deploy 的情況
+
+- 本次僅改 `backend/**`、文件、測試，完全未動 `frontend/src/**`
+- 使用者明確表示「先不要上線」
