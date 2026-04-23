@@ -2,6 +2,24 @@
 
 此檔記錄「已上線或已合併」的重要變更，讓後續 AI / 工程師可以快速理解最近的系統行為。
 
+## 2026-04-23 — feat: 教學工作台打卡狀態卡片手機 UI 改版（PR #22）
+
+### 變更內容
+- feat: 打卡狀態卡片改為兩段式佈局（header row + 雙 chip 並排）
+- feat: 依狀態顯示彩色左邊框與 icon 圈（灰/橘/綠/紅）
+- feat: 簽到/簽退各一個獨立 chip，16px 粗體時間，並排不折行
+- feat: 載入中顯示 skeleton 動畫，避免 layout shift
+- fix: 手機 390px 以下不再折行亂排，符合 Apple HIG 44px 觸控標準
+
+### 技術細節
+- 影響檔案：`frontend/src/pages/TeacherHomePage.vue`（template 17-66行、style）
+- DB 異動：無
+- 前端 Deploy：✅ 已執行
+
+### 驗證
+- CI：✅ Presubmit Gate + PHPUnit + Vite build 全綠
+- Health Check：✅ /api/v1/health 回傳 ok
+
 ## 2026-04-23 — feat/fix: v1.2 老師出勤管理 — 行政出勤狀態修復 + 月報格式改版（PR #19 squash）
 
 ### 背景
