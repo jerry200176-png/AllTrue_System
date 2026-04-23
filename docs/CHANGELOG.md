@@ -8,6 +8,10 @@
 
 ## 2026-04-23
 
+### Added
+- Teacher attendance: `teacher-signin:close-orphans` 每日 00:05 自動補登前日未簽退記錄（SignOutDT=23:59, Status=adjusted, Memo=系統自動補登簽退）（PR #25）
+- Migration: `TeacherSingIn.Memo varchar(512)` 補齊 migration 記錄（欄位本已存在 prod DB）（PR #25）
+
 ### Fixed
 - Swipe: RFID 刷卡後同步 `ClassSession.Status`（attended/late），修復老師「待點名」計數虛高（PR #23）
 - Swipe: `TeacherID=NULL` fallback 查詢，防止刷卡記錄從老師出缺勤視角消失（PR #23）

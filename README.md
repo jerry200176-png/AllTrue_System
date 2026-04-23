@@ -1,17 +1,19 @@
 # AllTrue 補習班管理系統
 
-AllTrue 是一套給補習班使用的全端管理系統，把「學生、課程、排課、點名、繳費、學習評量、家長通知」整合在同一個平台，降低人工行政成本。
+AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、課程、排課、點名、繳費、薪資、學習評量、家長通知」整合在同一個平台，大幅降低人工行政成本。
 
-> **部署環境**：Raspberry Pi 5（生產伺服器）+ Apache / Nginx + PHP-FPM  
+> **生產環境**：Raspberry Pi 5（/home/admin/）+ Apache / PHP-FPM，24 小時不停機  
 > **GitHub**：[jerry200176-png/AllTrue_System](https://github.com/jerry200176-png/AllTrue_System)
 
 ---
 
 ## 目錄
 
-- [專案功能](#專案功能)
+- [系統現況一覽](#系統現況一覽)
+- [功能模組](#功能模組)
 - [角色與使用情境](#角色與使用情境)
 - [技術架構](#技術架構)
+- [前端頁面清單](#前端頁面清單)
 - [目錄結構](#目錄結構)
 - [本地開發快速開始](#本地開發快速開始)
 - [部署方式](#部署方式)
@@ -22,70 +24,120 @@ AllTrue 是一套給補習班使用的全端管理系統，把「學生、課程
 
 ---
 
-## 專案功能
+## 系統現況一覽
+
+| 指標 | 現況 |
+|---|---|
+| **前端頁面** | 30 個 Vue 頁面（管理後台 + 家長入口） |
+| **API 端點** | 70+ RESTful routes（`/api/v1/*`） |
+| **資料庫** | MySQL，核心表 15+，含完整 FK 與索引 |
+| **部署平台** | Raspberry Pi 5，含自動備份 + Telegram 告警 |
+| **RFID 整合** | 刷卡自動點名，60s debounce 防重複，重複卡 422 保護 |
+| **LINE 整合** | 家長出缺勤通知、評量推播 |
+| **安全加固** | Route throttle、HTTP 安全標頭（HSTS/CSP/nosniff）、密碼最低 8 碼 |
+| **自動備份** | 每日 nightly + 每 6 小時快照 → Google Drive 異地同步 |
+
+---
+
+## 功能模組
 
 | 模組 | 說明 |
 |---|---|
-| **學生管理** | 建立學生資料、課程主約、加購堂數、歷程管理 |
-| **智慧排課** | 固定週期排課、調課、補課、請假、教室與老師時段協調 |
-| **出缺勤** | 櫃台點名、RFID 刷卡自動登記、缺勤補登、出勤紀錄查詢 |
-| **財務管理** | 課程收費、剩餘堂數追蹤、帳單與繳費狀態、月結報表 |
+| **學生管理** | 建立學生資料、課程主約、加購堂數、歷程管理、學生建立精靈（多步驟） |
+| **智慧排課** | 固定週期排課、調課、補課、請假、教室與老師時段協調、排課例外保護 |
+| **出缺勤** | 櫃台點名、RFID 刷卡自動登記、缺勤補登、自修記錄管理（含轉換為到班）、孤兒記錄自動清理 |
+| **財務管理** | 課程收費、剩餘堂數追蹤、帳單與繳費狀態、月結報表、繳費狀態管理 |
+| **方案管理** | 多科共用方案（Course Packages）、方案成員排課健康度、整包堂數同步調整 |
 | **學習評量** | 老師填寫評量、主任審核（approve/reject）、學習進度留存 |
-| **家長入口** | 家長可查課程排程、評量內容、繳費狀態與 LINE 通知 |
-| **教師管理** | 老師帳號、分校權限、週課表、代課管理 |
-| **校區管理** | 多分校隔離、教室管理、主任帳號管理 |
+| **家長入口** | 家長可查課程排程、評量內容、繳費狀態，LINE 推播通知 |
+| **教師工作台** | 老師個人課表、打卡狀態卡片、補課申請、月報 XLSX 匯出 |
+| **兼職薪資** | 兼職教師薪資計算（含個別覆寫規則）、薪資報表 |
+| **課表回報管理** | 老師回報課表異常、主任審核，30s 輪詢即時通知 |
+| **通知中心** | 站內通知 + LINE 訊息整合管理 |
+| **校區 / 教師管理** | 多分校隔離、教室管理、代課容量三態標籤（有空 ✓ / 尚有容量 ⚠ / 已滿 ✗） |
+| **系統管理** | 主任帳號、科目設定、LINE 整合、超級管理員 DB Migration |
 
 ---
 
 ## 角色與使用情境
 
-| 角色 | 主要使用裝置 | 主要操作 |
+| 角色 | 主要裝置 | 主要操作 |
 |---|---|---|
 | **主任 / 行政** | 電腦（桌面優先） | 建立學生與課程、統整排課、追蹤繳費、審核評量、查看營運總覽 |
-| **老師** | 平板 / 手機 | 查看個人課表、填寫學習評量、處理上課與補課紀錄 |
-| **櫃台** | 電腦 / 平板 | 處理到班點名、RFID 綁定、缺勤補登與家長通知 |
-| **家長** | 手機 | 查詢孩子課程進度、評量內容與繳費狀態 |
+| **老師** | 平板 / 手機 | 查看個人課表、填寫學習評量、打卡、補課申請、月報匯出 |
+| **櫃台** | 電腦 / 平板 | 到班點名、RFID 綁定、缺勤補登、家長通知 |
+| **家長** | 手機 | 查詢孩子課程進度、評量內容、繳費狀態（含 LINE 推播） |
 
 ---
 
 ## 技術架構
 
 ```
-前端（Vue 3 + Vite）
-  ├── 頁面：frontend/src/pages/*.vue
-  ├── API Client：frontend/src/supabase.js（模擬 Supabase 介面，實際打 Laravel API）
+前端（Vue 3 + Vite 5）
+  ├── 頁面：frontend/src/pages/*.vue（30 頁）
+  ├── API Client：frontend/src/supabase.js（自製 client，實際打 Laravel API）
   └── build → backend/public（SPA 靜態資產）
 
 後端（Laravel 8 / PHP 8+）
   ├── API Routes：backend/routes/api.php（/api/v1/*）
   ├── Controllers：backend/app/Http/Controllers/
-  ├── Models：backend/app/Models/（PascalCase 資料表命名，歷史遺留）
-  └── Auth：Laravel Sanctum + localStorage Bearer token
+  ├── Services：AttendanceEffectsService / SessionDeductionService…
+  ├── Models：backend/app/Models/（PascalCase 資料表命名）
+  └── Auth：Laravel Sanctum + localStorage Bearer token（alltrue_session）
 
 資料庫：MySQL（生產主用）
-  ├── 核心表：Student, StudentClass, ClassSession, StudentSingIn（注意拼字）
+  ├── 核心表：Student, StudentClass, ClassSession, StudentSingIn
   ├── 財務表：Invoice, InvoiceItem, Payment
   ├── 評量表：LearningRecord
-  └── 其他：User, Campus, Teacher, rooms, schedules …
+  ├── 方案表：CoursePackage, CoursePackageMember
+  └── 其他：User, Campus, Teacher, Room, Schedule, Notification…
+
+排程任務（Laravel Scheduler）
+  ├── 每日 02:30 — CloseOrphanStudentSignIns（清孤兒出缺勤）
+  └── 每月 1 日 02:00 — monthly-restore-drill（備份還原演練）
 
 部署
   ├── 伺服器：Raspberry Pi 5（/home/admin/）
   ├── Web Server：Apache / Nginx + PHP-FPM
-  ├── 前端 build → backend/public（npm run deploy）
+  ├── 前端 build → backend/public（npm run deploy + OPcache 自動重置）
   └── CI：GitHub Actions（.github/workflows/）
 ```
 
-**前端主要頁面：**
+---
+
+## 前端頁面清單
 
 | 頁面 | 功能 |
 |---|---|
 | `DirectorDashboard.vue` | 主任總覽（繳費提醒、今日排課、待審評量） |
-| `SmartCalendar.vue` | 智慧排課日曆 |
-| `StudentsList.vue` | 學生與課程管理 |
-| `AttendancePage.vue` | 出缺勤管理 |
-| `LearningRecordsPage.vue` | 學習評量 |
-| `BillingList.vue` | 帳單與繳費 |
+| `SmartCalendar.vue` | 智慧排課日曆（調課、補課、請假） |
+| `StudentsList.vue` | 學生與課程列表管理 |
+| `StudentWizard.vue` | 新學生建立精靈（多步驟） |
+| `CourseManagement.vue` | 課程與主約管理 |
+| `CoursePackagesPage.vue` | 多科共用方案管理 |
+| `ClassesList.vue` | 班級列表 |
+| `AttendancePage.vue` | 出缺勤管理（含自修記錄與轉換） |
+| `LearningRecordsPage.vue` | 學習評量（老師填寫 / 主任審核） |
+| `BillingList.vue` | 帳單列表 |
+| `TuitionCollectionPage.vue` | 收費管理 |
+| `TuitionReportPage.vue` | 月結繳費報表 |
+| `TeacherHomePage.vue` | 教學工作台（打卡卡片 + 個人課表） |
+| `TeachersList.vue` | 教師列表與帳號管理 |
+| `TeacherProfilePage.vue` | 老師個人資料與設定 |
+| `ParttimePayrollPage.vue` | 兼職薪資計算與報表 |
+| `PayReportPage.vue` | 薪資報表總覽 |
+| `ScheduleDiscrepancyPage.vue` | 課表回報管理（30s 輪詢） |
+| `NotificationsCenter.vue` | 通知中心 |
+| `ChatPage.vue` | 即時訊息 |
+| `BugReportsPage.vue` | 系統問題回報 |
 | `ParentPortal.vue` | 家長入口 |
+| `ClassroomManagement.vue` | 教室管理 |
+| `SubjectSettingsPage.vue` | 科目設定 |
+| `SubjectUnitsPage.vue` | 科目單元管理 |
+| `DirectorAccountsPage.vue` | 主任帳號管理 |
+| `LineIntegration.vue` | LINE 整合設定 |
+| `ProfileCenterPage.vue` | 個人設定中心 |
+| `Login.vue` / `Register.vue` / `DirectorRegister.vue` | 登入 / 註冊流程 |
 
 ---
 
@@ -93,7 +145,7 @@ AllTrue 是一套給補習班使用的全端管理系統，把「學生、課程
 
 ```
 /home/admin/
-├── frontend/          # Vue 3 + Vite 前端
+├── frontend/          # Vue 3 + Vite 5 前端
 ├── backend/           # Laravel 8 後端（含 public/ 存放前端 build）
 ├── docs/              # 所有技術文件與操作手冊
 ├── scripts/           # 維運腳本（備份、部署、git sync）
@@ -141,7 +193,7 @@ docker-compose up -d
 
 ```bash
 cd frontend
-npm run deploy    # build + 複製到 backend/public
+npm run deploy    # build + 複製到 backend/public + 自動觸發 OPcache 重置
 ```
 
 ### 生產環境（Raspberry Pi 遠端部署）
@@ -218,18 +270,22 @@ git push origin main:jerry-sync-main
 
 | 文件 | 說明 |
 |---|---|
-| `docs/CHANGELOG.md` | 功能異動歷程 |
+| `docs/CHANGELOG.md` | 功能異動歷程（最新） |
+| `docs/CHANGELOG_ARCHIVE_2026-04.md` | 歷史變更紀錄 |
+| `docs/SYSTEM_TECH_GUIDE.md` | 後端技術實作索引（Identity/Swipe/ClassSession/Service 職責） |
 | `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
 | `docs/GITHUB_SYNC_WORKFLOW.md` | GitHub 協作 SOP |
 | `docs/DEPLOYMENT.md` | 部署步驟 |
-| `docs/deploy-raspberry-pi.md` | Pi 部署指南 |
 | `docs/OPERATIONS_RUNBOOK.md` | 日常維運手冊 |
-| `docs/SECURITY_HARDENING_MIRAI.md` | 安全加固紀錄 |
-| `docs/使用說明_主任與超級管理員.md` | 使用者操作手冊（中文） |
+| `docs/SECURITY.md` | 安全設計說明 |
 | `docs/TECH_DEBT.md` | 技術債清單 |
 | `docs/FAQ.md` | 常見問題 |
+| `docs/使用說明_主任與超級管理員.md` | 使用者操作手冊（中文） |
+| `docs/PRD_PARTTIME_TEACHER_PAYROLL.md` | 兼職薪資功能 PRD |
+| `docs/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表回報審核流程 |
+| `docs/ROLE_PLAYBOOK.md` | 各角色操作手冊 |
 
 ---
 
@@ -249,4 +305,4 @@ git push origin main:jerry-sync-main
 
 ---
 
-*最後更新：2026-04-22*
+*最後更新：2026-04-23*
