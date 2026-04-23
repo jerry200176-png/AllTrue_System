@@ -1,10 +1,5 @@
 ---
-pid: 896109
-cwd: /home/admin/backend
-last_command: |
-  undefinedadmin@Pi5:~ $ cd /home/admin/backend && php artisan teacher-signin:close-orphans
-last_exit_code: 0
+pid: 922998
+cwd: /home/admin
 ---
-admin@Pi5:~ $ cd /home/admin/backend && php artisan teacher-signin:close-orphans
-Closed 1321 orphan TeacherSingIn record(s).
-admin@Pi5:~/backend $
+admin@Pi5:~ $
