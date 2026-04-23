@@ -311,16 +311,48 @@ class TeacherAttendanceApiTest extends TestCase
             ->assertJsonPath('ok', true)
             ->assertJsonPath('new_status', 'adjusted');
 
-        // NFR-005: original SignInDT must NOT change
+        // 主表改為補卡後有效值（原始值保留在 audit 表）
         $fresh = TeacherSignIn::find($signin->id);
-        $this->assertSame($signin->SignInDT, $fresh->SignInDT);
         $this->assertSame('adjusted', $fresh->Status);
+        $this->assertNotNull($fresh->SignOutDT, 'SignOutDT should be set after adjustment');
 
-        // FR-009: audit record created
+        // FR-009: audit record preserves originals
         $adj = TeacherSignInAdjustment::where('teacher_signin_id', $signin->id)->first();
         $this->assertNotNull($adj);
         $this->assertSame('RFID 未感應，人已到場（主任確認）', $adj->adjust_reason);
+        // original_signin_dt in audit should match what was there BEFORE adjustment
         $this->assertSame($signin->SignInDT, $adj->original_signin_dt);
+    }
+
+    /** @test 補卡後主表 SignOutDT 更新，unclosed 不再顯示 */
+    public function adjust_updates_main_table_and_disappears_from_unclosed(): void
+    {
+        $director = $this->makeDirector(1);
+        $teacher  = $this->makeTeacherUser(1);
+        $signin   = $this->makeSignIn($teacher['user']->id, 1, [
+            'SignInDT'  => now()->setTime(8, 0)->toDateTimeString(),
+            'SignOutDT' => null,
+        ]);
+
+        // 補卡
+        $this->withHeaders($this->authHeaders($director['token']))
+            ->postJson("/api/v1/teacher-attendance/{$signin->id}/adjust", [
+                'new_signin_dt'  => now()->setTime(8, 0)->format('Y-m-d H:i:s'),
+                'new_signout_dt' => now()->setTime(18, 0)->format('Y-m-d H:i:s'),
+                'adjust_reason'  => '補登簽退',
+            ])
+            ->assertOk();
+
+        // 主表 SignOutDT 應已更新
+        $fresh = TeacherSignIn::find($signin->id);
+        $this->assertNotNull($fresh->SignOutDT);
+
+        // 不再出現在 unclosed 清單
+        $res = $this->withHeaders($this->authHeaders($director['token']))
+            ->getJson('/api/v1/teacher-attendance/unclosed?date=' . now()->toDateString());
+
+        $ids = collect($res->json('data'))->pluck('teacher_id')->all();
+        $this->assertNotContains($teacher['user']->id, $ids);
     }
 
     /** @test */
