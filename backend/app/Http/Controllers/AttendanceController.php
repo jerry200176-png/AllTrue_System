@@ -15,6 +15,8 @@ use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
 {
@@ -168,7 +170,7 @@ class AttendanceController extends Controller
                     $records->getCollection()->push(...$leaveRows->all());
                 }
             } catch (\Exception $e) {
-                \Log::warning('AttendanceController supplemental query failed: ' . $e->getMessage());
+                Log::warning('AttendanceController supplemental query failed: ' . $e->getMessage());
             }
         }
 
@@ -598,7 +600,7 @@ class AttendanceController extends Controller
         $results = [];
         $savedInput = $request->all();
 
-        \Illuminate\Support\Facades\Log::info('attendance.batch_mark', [
+        Log::info('attendance.batch_mark', [
             'user_id' => $request->attributes->get('auth_user')?->id ?? null,
             'role' => $request->attributes->get('auth_role'),
             'count' => count($items),
@@ -918,11 +920,11 @@ class AttendanceController extends Controller
                 }
             });
         } catch (\Throwable $e) {
-            \Log::error('[attendance-void] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
+            Log::error('[attendance-void] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['message' => '刪除失敗，請稍後再試'], 500);
         }
 
-        \Log::info('[attendance-void]', [
+        Log::info('[attendance-void]', [
             'voided_id'      => $id,
             'by_user'        => $authUser?->id,
             'void_reason'    => $voidReason,
@@ -1032,11 +1034,11 @@ class AttendanceController extends Controller
                 $remainingSessions = (int) (StudentClass::find($studentClassId)?->RemainingSessions ?? 0);
             });
         } catch (\Throwable $e) {
-            \Log::error('[attendance-convert] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
+            Log::error('[attendance-convert] transaction failed', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['message' => '轉換失敗，請稍後再試'], 500);
         }
 
-        \Log::info('[attendance-convert]', [
+        Log::info('[attendance-convert]', [
             'signin_id'        => $id,
             'student_class_id' => $studentClassId,
             'class_session_id' => $classSessionId,
