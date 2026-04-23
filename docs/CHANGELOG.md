@@ -8,6 +8,10 @@
 
 ## 2026-04-23
 
+### Security / Fixed
+- Teacher attendance: `index`/`unclosed`/`export`/`exportMonthly` 四個 API 加入 `campus_id` 參數隔離，修復多分校 director 可看到其他分校老師出勤記錄的越界問題（PR #34）
+- Teacher attendance: `auth_campus_ids` 為空的非 super_admin 用戶改回 403，防止 bypass 全分校過濾（PR #34）
+
 ### Added
 - Teacher attendance: `teacher-signin:close-orphans` 每日 00:05 自動補登前日未簽退記錄（SignOutDT=23:59, Status=adjusted, Memo=系統自動補登簽退）（PR #25）
 - Migration: `TeacherSingIn.Memo varchar(512)` 補齊 migration 記錄（欄位本已存在 prod DB）（PR #25）
