@@ -77,7 +77,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 - **認證**：`localStorage.alltrue_session`（Bearer token），middleware `role:*` + `require_campus`
 - **測試**：Pest（⛔ **不可在 Pi 上跑**，見 P0 第 8 條）
 - **部署**：`cd frontend && npm run deploy` → build + 複製到 `backend/public`
-- 詳細架構：`docs/SYSTEM_TECH_GUIDE.md` ｜ API 路由：`backend/routes/api.php`
+- 詳細架構：`docs/SYSTEM_TECH_GUIDE.md`（按需讀對應章節，勿全讀）｜ API 路由：`backend/routes/api.php`
 
 ### AI／開發防再犯（修改相關功能前必讀）
 - **`.cursor/.local/test-credentials.md`**：各角色測試帳號 + Browser MCP 登入 SOP（fill/type 踩坑、家長入口用 `?parent=1`）
