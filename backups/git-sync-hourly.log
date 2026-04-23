@@ -481,3 +481,6 @@ branch 'fix/self-study-status-edit' set up to track 'origin/fix/self-study-statu
 [git-sync] Branch: fix/teacher-pending-review-backfill
 [git-sync] Security scan passed.
 [git-sync] Staging changes...
+[git-sync] Branch: main
+[git-sync] Security scan passed.
+[git-sync] Staging changes...
