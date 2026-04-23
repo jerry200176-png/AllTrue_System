@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.0.0"
+    "vite": "^8.0.10"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-arm64-gnu": "^4.0.0"
