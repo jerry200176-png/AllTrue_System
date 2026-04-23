@@ -131,6 +131,7 @@ jobs:
             -e 'ssh.*daan' -e 'rsync.*daan' -e 'scp.*daan' \
             -e 'ssh.*lifenet' -e 'npm run deploy' \
             -e 'appleboy/ssh-action' \
+            --exclude=presubmit.yml \
             .github/workflows/ 2>/dev/null | grep -v "^Binary" || true)
 
           if [ -n "$VIOLATIONS" ]; then
