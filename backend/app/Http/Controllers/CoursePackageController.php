@@ -246,6 +246,7 @@ class CoursePackageController extends Controller
             'subjects.*.day_time_slots.*.start_time' => 'nullable|date_format:H:i',
             'subjects.*.start_time'      => 'nullable|date_format:H:i',
             'subjects.*.duration_hours'  => 'nullable|numeric|min:0.5|max:8',
+            'end_date'                   => 'nullable|date',
         ]);
 
         $isMonthly = ($data['payment_type'] ?? 'session') === 'monthly';
@@ -263,6 +264,17 @@ class CoursePackageController extends Controller
                 return response()->json(['message' => '月結方案必須填寫結算日（settlement_day）'], 422);
             }
         }
+        $pkgEndDate = $data['end_date'] ?? null;
+        if ($pkgEndDate) {
+            $maxEnd = Carbon::today()->addDays(730)->toDateString();
+            if ($pkgEndDate > $maxEnd) {
+                return response()->json([
+                    'message' => '結束日不可超過 2 年（730 天）',
+                    'errors' => ['end_date' => ['結束日距今不可超過 730 天。']],
+                ], 422);
+            }
+        }
+
         $totalSessions = $isMonthly ? 0 : (int) $data['total_sessions'];
 
         foreach ($data['subjects'] as $i => $spec) {
@@ -295,7 +307,7 @@ class CoursePackageController extends Controller
             return response()->json(['message' => '學生不屬於該分校'], 422);
         }
 
-        return DB::transaction(function () use ($data, $branchId, $isMonthly, $totalSessions) {
+        return DB::transaction(function () use ($data, $branchId, $isMonthly, $totalSessions, $pkgEndDate) {
             $pkg = CoursePackage::create([
                 'student_id'         => (int) $data['student_id'],
                 'campus_id'          => $branchId,
@@ -329,57 +341,50 @@ class CoursePackageController extends Controller
                     : Carbon::today()->toDateString();
                 $startTimeStr = $subjectSpec['start_time'] ?? '16:00';
 
-                // ── 排課欄位計算（寫入 StudentClass.week / week1~week6 / time / time1~time6）──
-                // 月結方案不涉及堂數排課延伸（FR-008），但仍允許寫入 week/time 讓日曆可見。
-                // GAP-01：days_of_week 的值使用 ISO 1–7（1=Mon, 7=Sun），與 resolveScheduleSlotsForRebuild 口徑一致，不做任何 mod 轉換。
                 $scheduleFields = [];
                 $hasSchedule = false;
+                $scheduleSlots = [];
 
-                if (!$isMonthly) {
-                    $dayTimeSlots = $subjectSpec['day_time_slots'] ?? [];
-                    $daysOfWeek = $subjectSpec['days_of_week'] ?? [];
+                $dayTimeSlots = $subjectSpec['day_time_slots'] ?? [];
+                $daysOfWeek = $subjectSpec['days_of_week'] ?? [];
 
-                    // 取得實際要寫入的 (weekday, time) pairs
-                    $scheduleSlots = [];
-                    if (!empty($dayTimeSlots)) {
-                        foreach ($dayTimeSlots as $slot) {
-                            $wd = (int) ($slot['weekday'] ?? 0);
-                            if ($wd < 1 || $wd > 7) {
-                                continue;
-                            }
-                            $t = (string) ($slot['start_time'] ?? $slot['time'] ?? $startTimeStr);
-                            $scheduleSlots[] = ['weekday' => $wd, 'time' => $t];
+                if (!empty($dayTimeSlots)) {
+                    foreach ($dayTimeSlots as $slot) {
+                        $wd = (int) ($slot['weekday'] ?? 0);
+                        if ($wd < 1 || $wd > 7) {
+                            continue;
                         }
-                    } elseif (!empty($daysOfWeek)) {
-                        foreach ($daysOfWeek as $dow) {
-                            $wd = (int) $dow;
-                            if ($wd < 1 || $wd > 7) {
-                                continue;
-                            }
-                            $scheduleSlots[] = ['weekday' => $wd, 'time' => $startTimeStr];
+                        $t = (string) ($slot['start_time'] ?? $slot['time'] ?? $startTimeStr);
+                        $scheduleSlots[] = ['weekday' => $wd, 'time' => $t];
+                    }
+                } elseif (!empty($daysOfWeek)) {
+                    foreach ($daysOfWeek as $dow) {
+                        $wd = (int) $dow;
+                        if ($wd < 1 || $wd > 7) {
+                            continue;
                         }
+                        $scheduleSlots[] = ['weekday' => $wd, 'time' => $startTimeStr];
                     }
+                }
 
-                    // RISK-002 守護：StudentClass 最多支援 week1~week6（6 個 slot）
-                    if (count($scheduleSlots) > 6) {
-                        Log::warning('CoursePackage createMultiSubject schedule slots truncated to 6', [
-                            'subject_id' => $subjectId,
-                            'original'   => count($scheduleSlots),
-                        ]);
-                        $scheduleSlots = array_slice($scheduleSlots, 0, 6);
-                    }
+                if (count($scheduleSlots) > 6) {
+                    Log::warning('CoursePackage createMultiSubject schedule slots truncated to 6', [
+                        'subject_id' => $subjectId,
+                        'original'   => count($scheduleSlots),
+                    ]);
+                    $scheduleSlots = array_slice($scheduleSlots, 0, 6);
+                }
 
-                    if (!empty($scheduleSlots)) {
-                        $hasSchedule = true;
-                        if (count($scheduleSlots) === 1) {
-                            $scheduleFields['week'] = $scheduleSlots[0]['weekday'];
-                            $scheduleFields['time'] = $scheduleSlots[0]['time'];
-                        } else {
-                            foreach ($scheduleSlots as $idx => $slot) {
-                                $n = $idx + 1;
-                                $scheduleFields["week{$n}"] = $slot['weekday'];
-                                $scheduleFields["time{$n}"] = $slot['time'];
-                            }
+                if (!empty($scheduleSlots)) {
+                    $hasSchedule = true;
+                    if (count($scheduleSlots) === 1) {
+                        $scheduleFields['week'] = $scheduleSlots[0]['weekday'];
+                        $scheduleFields['time'] = $scheduleSlots[0]['time'];
+                    } else {
+                        foreach ($scheduleSlots as $idx => $slot) {
+                            $n = $idx + 1;
+                            $scheduleFields["week{$n}"] = $slot['weekday'];
+                            $scheduleFields["time{$n}"] = $slot['time'];
                         }
                     }
                 }
@@ -412,6 +417,9 @@ class CoursePackageController extends Controller
                     'PackageTotalSessions' => $totalSessions,
                     'PackageName'          => $data['name'],
                 ];
+                if ($isMonthly && $pkgEndDate) {
+                    $createPayload['EndDate'] = $pkgEndDate;
+                }
                 $createPayload = array_merge($createPayload, $scheduleFields);
 
                 $sc = StudentClass::create($createPayload);
@@ -443,15 +451,29 @@ class CoursePackageController extends Controller
                     ?? DB::table('BaseData')->where('Name', '課程')->where('id', $subjectId)->value('Val')
                     ?? '課程';
 
-                // ── FR-003：對有排課欄位的成員呼叫 extendSessionsIfNeeded 補排 ──
-                // 月結方案不走堂數制補排（FR-008 回歸保護）
                 $scheduledCount = 0;
                 $firstSessionDate = null;
 
-                if (!$isMonthly && $hasSchedule && $totalSessions > 0) {
+                if ($isMonthly && $hasSchedule && $pkgEndDate) {
+                    $sessions = $scController->buildSessionsFromWeeklySchedule(
+                        (int) $sc->ID,
+                        $startDate,
+                        $pkgEndDate,
+                        $scheduleSlots,
+                        $durationMinutes
+                    );
+                    if (!empty($sessions)) {
+                        ClassSession::insert($sessions);
+                        Log::info('monthly_recurring_package: auto-generated sessions', [
+                            'package_id'  => $pkg->id,
+                            'subject_id'  => $subjectId,
+                            'start_date'  => $startDate,
+                            'end_date'    => $pkgEndDate,
+                            'count'       => count($sessions),
+                        ]);
+                    }
+                } elseif (!$isMonthly && $hasSchedule && $totalSessions > 0) {
                     $member = $sc->fresh();
-                    // RISK-001：extendSessionsIfNeeded 的 currentCount 已包含 attended 堂；
-                    // 此處補排數 = totalSessions - (confirmed_dates 數)
                     $scController->extendSessionsIfNeeded($member, $totalSessions);
                 }
 

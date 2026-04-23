@@ -90,7 +90,7 @@
                 @click="setPkgPaymentType('monthly')"
               >
                 <span class="pkg-billing-title">月結制</span>
-                <span class="pkg-billing-tag badge-blue">每月固定月費</span>
+                <span class="pkg-billing-tag badge-blue">按實際出席堂數計費</span>
               </button>
             </div>
             <div class="scheduler-grid">
@@ -160,6 +160,19 @@
                 <input v-model="pkgForm.paid_at" type="date" />
                 <p v-if="pkgForm.paid_at" class="field-note" style="color:#2e7d32;">已填寫繳費日期，儲存後將自動標示為已繳費</p>
               </div>
+
+              <transition name="pkg-fade-slide">
+                <div v-if="pkgForm.payment_type === 'monthly'" class="form-group">
+                  <label>課程結束日</label>
+                  <input v-model="pkgForm.end_date" type="date" />
+                  <div class="monthly-quick-chips">
+                    <button type="button" class="quick-chip" @click="pkgForm.end_date = pkgQuickEndDate(1)">+1 個月</button>
+                    <button type="button" class="quick-chip" @click="pkgForm.end_date = pkgQuickEndDate(3)">+3 個月</button>
+                    <button type="button" class="quick-chip" @click="pkgForm.end_date = pkgQuickEndDate(6)">+6 個月</button>
+                  </div>
+                  <p class="field-note">設定結束日後，系統會依各科固定星期自動排好所有課堂。未設定則不自動排課。</p>
+                </div>
+              </transition>
             </div>
           </article>
 
@@ -196,6 +209,26 @@
                   @click.stop="pkgForm.subjects.splice(idx, 1); if (pkgActiveSubjectIdx >= pkgForm.subjects.length) pkgActiveSubjectIdx = Math.max(0, pkgForm.subjects.length - 1)"
                 >✕</button>
               </div>
+              <div v-if="pkgForm.payment_type === 'monthly'" class="pkg-card-schedule" @click.stop>
+                <div class="pkg-weekday-row">
+                  <label
+                    v-for="day in weekdayOptions"
+                    :key="'pkg-wd-' + idx + '-' + day.value"
+                    :class="['weekday-chip', 'weekday-chip-sm', { selected: (subj.days_of_week || []).includes(day.value) }]"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="day.value"
+                      :checked="(subj.days_of_week || []).includes(day.value)"
+                      @change="togglePkgSubjectDay(idx, day.value)"
+                    />
+                    <span>{{ day.label }}</span>
+                  </label>
+                </div>
+                <select v-model="subj.start_time" class="pkg-inline-time" title="上課時間" @click.stop>
+                  <option v-for="t in halfHourTimeOptions" :key="'pkg-t-' + idx + '-' + t" :value="t">{{ t }}</option>
+                </select>
+              </div>
               <div v-if="subj.confirmed_dates.length > 0" class="pkg-card-dates">
                 <span class="pkg-card-count">{{ subj.confirmed_dates.length }} 堂已補登</span>
                 <span
@@ -205,7 +238,7 @@
                   :style="{ borderColor: pkgSubjectColor(idx), color: pkgSubjectColor(idx) }"
                 >{{ d.slice(5) }}<button type="button" @click.stop="removePkgConfirmedDate(idx, di)">✕</button></span>
               </div>
-              <div v-else class="pkg-card-dates">
+              <div v-else-if="pkgForm.payment_type !== 'monthly'" class="pkg-card-dates">
                 <span class="field-note">點選右側月曆補登已上課日期</span>
               </div>
             </div>
@@ -370,7 +403,7 @@
                 <label>繳費方式 *</label>
                 <select v-model="form.payment_type">
                   <option value="session">按堂數</option>
-                  <option value="monthly">每月固定</option>
+                  <option value="monthly">月結制</option>
                 </select>
               </div>
 
@@ -389,11 +422,14 @@
                 </div>
 
                 <div class="form-group">
-                  <label>本月預排堂數 *</label>
-                  <input v-model.number="form.monthly_sessions" type="number" min="1" />
-                  <p class="field-note">月結課不扣購買堂數，這裡只決定本次要先建立幾堂課。</p>
-                  <p v-if="monthlyCapacityHint" class="field-note">{{ monthlyCapacityHint }}</p>
-                  <p v-if="monthlyCapacityWarning" class="field-note warning-text">{{ monthlyCapacityWarning }}</p>
+                  <label>課程結束日 *</label>
+                  <input v-model="form.end_date" type="date" :min="form.course_start_date" />
+                  <div class="monthly-quick-chips">
+                    <button type="button" class="quick-chip" @click="setEndDateQuickSelect(1)">+1 個月</button>
+                    <button type="button" class="quick-chip" @click="setEndDateQuickSelect(3)">+3 個月</button>
+                    <button type="button" class="quick-chip" @click="setEndDateQuickSelect(6)">+6 個月</button>
+                  </div>
+                  <p v-if="form.end_date && form.end_date < form.course_start_date" class="field-note warning-text">結束日不可早於開課日</p>
                 </div>
               </template>
 
@@ -519,7 +555,19 @@
           </article>
         </section>
 
-        <section class="panel-stack">
+        <section v-if="form.payment_type === 'monthly'" class="panel-stack">
+          <article class="scheduler-card">
+            <h4>排課預覽</h4>
+            <div class="monthly-preview-card" :class="{ 'preview-empty': !isMonthlyRecurring }">
+              <p class="monthly-preview-text">{{ monthlyPreviewText }}</p>
+            </div>
+            <p class="hint-text">
+              月結制：選擇固定星期 + 結束日，系統自動預排所有課堂。有到就點名紀錄堂數，每月依實際出席堂數計費。
+            </p>
+          </article>
+        </section>
+
+        <section v-else class="panel-stack">
           <article class="scheduler-card calendar-card">
             <div class="calendar-header">
               <button class="ghost small" type="button" @click="shiftMonth(-1)">上個月</button>
@@ -587,7 +635,6 @@
 
             <p class="hint-text">
               開課日前不會建立預排堂次。系統從開課日起，依固定上課星期自動補齊剩餘堂次。
-              <template v-if="form.payment_type === 'monthly'">月結課只會累積已使用堂次，不會扣剩餘堂數。</template>
             </p>
 
             <div class="calendar-actions">
@@ -761,7 +808,50 @@ const form = reactive({
   memo: '',
   paid_at: '',
   course_start_date: toYmd(new Date()),
+  end_date: '',
 });
+
+const isMonthlyRecurring = computed(() => {
+  return form.payment_type === 'monthly' && form.days_of_week.length > 0 && !!form.end_date;
+});
+
+function countWeekdayOccurrences(startStr, endStr, isoWeekdays) {
+  if (!startStr || !endStr || isoWeekdays.length === 0) return 0;
+  const start = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  if (end < start) return 0;
+  let count = 0;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const jsDay = d.getDay();
+    const isoDay = jsDay === 0 ? 7 : jsDay;
+    if (isoWeekdays.includes(isoDay)) count++;
+  }
+  return count;
+}
+
+const monthlyPreviewText = computed(() => {
+  if (form.payment_type !== 'monthly') return '';
+  const daysArr = (form.days_of_week || []).map(Number).filter((d) => d >= 1 && d <= 7);
+  if (daysArr.length === 0) return '請先選擇上課星期';
+  const startDate = form.course_start_date || '';
+  const endDate = form.end_date || '';
+  if (!endDate) return '請設定課程結束日';
+  if (endDate < startDate) return '結束日不可早於開課日';
+  const dayNames = ['', '一', '二', '三', '四', '五', '六', '日'];
+  const dayLabels = daysArr.map((d) => `週${dayNames[d]}`).join('、');
+  const n = countWeekdayOccurrences(startDate, endDate, daysArr);
+  if (n === 0) return '此期間無符合的課堂日期，請調整';
+  const slot = (form.day_time_slots || []).find(Boolean);
+  const timeStr = slot?.start_time || form.start_time || '16:00';
+  return `每${dayLabels} ${timeStr}，共 ${n} 堂（${startDate} ～ ${endDate}）`;
+});
+
+function setEndDateQuickSelect(months) {
+  const base = form.course_start_date || toYmd(new Date());
+  const d = new Date(base + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  form.end_date = toYmd(d);
+}
 
 const packageMode = ref(false);
 
@@ -834,10 +924,34 @@ const pkgForm = reactive({
   settlement_day: 5,
   class_type: 'one_on_one',
   paid_at: '',
+  end_date: '',
   subjects: [
-    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] },
+    { subject: 'Math', teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [], days_of_week: [], start_time: '16:00' },
   ],
 });
+
+function togglePkgSubjectDay(subjectIdx, dayValue) {
+  const subj = pkgForm.subjects[subjectIdx];
+  if (!subj) return;
+  if (!Array.isArray(subj.days_of_week)) subj.days_of_week = [];
+  const idx = subj.days_of_week.indexOf(dayValue);
+  if (idx >= 0) {
+    subj.days_of_week.splice(idx, 1);
+  } else {
+    subj.days_of_week.push(dayValue);
+    subj.days_of_week.sort((a, b) => a - b);
+  }
+}
+
+function pkgQuickEndDate(months) {
+  const base = pkgForm.subjects.reduce((earliest, s) => {
+    if (s.start_date && (!earliest || s.start_date < earliest)) return s.start_date;
+    return earliest;
+  }, '') || toYmd(new Date());
+  const d = new Date(base + 'T00:00:00');
+  d.setMonth(d.getMonth() + months);
+  return toYmd(d);
+}
 
 const pkgToast = reactive({ show: false, message: '', kind: 'success' });
 let pkgToastTimer = null;
@@ -956,7 +1070,7 @@ function addPkgSubject() {
   if (pkgForm.subjects.length >= 10) return;
   const existing = pkgForm.subjects.map((s) => s.subject);
   const next = ['English', 'Science', 'Chinese', 'Physics', 'Chemistry', 'Biology', 'Social'].find((s) => !existing.includes(s)) || 'English';
-  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [] });
+  pkgForm.subjects.push({ subject: next, teacher_id: '', duration_hours: 2, start_date: '', confirmed_dates: [], days_of_week: [], start_time: '16:00' });
 }
 
 function pkgSubjectColor(idx) {
@@ -1667,12 +1781,19 @@ async function submitPackage() {
         duration_hours: Number(s.duration_hours) || 2,
         start_date: s.start_date || null,
         confirmed_dates: (s.confirmed_dates || []).filter(Boolean),
+        ...(isMonthly && (s.days_of_week || []).length > 0
+          ? { days_of_week: s.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7), start_time: s.start_time || '16:00' }
+          : {}
+        ),
       })),
     };
     if (isMonthly) {
       payload.rate = Number(pkgForm.rate) || 0;
       payload.rate_unit = 'session';
       payload.settlement_day = Number(pkgForm.settlement_day);
+      if (pkgForm.end_date) {
+        payload.end_date = pkgForm.end_date;
+      }
     } else {
       payload.total_sessions = Number(pkgForm.total_sessions);
       payload.rate = Number(pkgForm.rate) || 0;
@@ -1681,7 +1802,10 @@ async function submitPackage() {
     const result = await createMultiSubjectPackage(payload);
     const memberCount = result?.members?.length ?? pkgForm.subjects.length;
     if (isMonthly) {
-      showPkgToast(`方案「${pkgForm.name}」已建立，每月 ${pkgForm.settlement_day} 日結算，按 $${Number(pkgForm.rate).toLocaleString('zh-TW')} 元/堂 × 當月實際出席堂數計費（含 ${memberCount} 科）。`);
+      const scheduled = (result?.members_scheduled || []);
+      const totalScheduled = scheduled.reduce((sum, m) => sum + (m.scheduled_count || 0), 0);
+      const schedulePart = totalScheduled > 0 ? `，已預排 ${totalScheduled} 堂` : '';
+      showPkgToast(`方案「${pkgForm.name}」已建立，每月 ${pkgForm.settlement_day} 日結算，按 $${Number(pkgForm.rate).toLocaleString('zh-TW')} 元/堂計費（含 ${memberCount} 科${schedulePart}）。`);
     } else {
       showPkgToast(`方案「${pkgForm.name}」已建立，包含 ${memberCount} 個科目，共 ${pkgForm.total_sessions} 堂。`);
     }
@@ -1733,45 +1857,67 @@ async function submit() {
     return;
   }
   const durationMinutes = maxSlotM;
-  if (manualSessionCount.value > safePlannedSessions.value) {
-    alert(`手動指定堂數不可超過${plannedCountLabel.value}`);
-    return;
-  }
 
   if (form.payment_type === 'monthly' && !form.settlement_day) {
     alert('月結課請先選擇結算日');
     return;
   }
-  const projectedFutureYmds = [...new Set(futureSessionOccurrences.value.map((o) => o.ymd))];
-  if (form.payment_type === 'monthly') {
-    const targetYm = toYmd(currentMonth.value).slice(0, 7);
-    const allDates = sortDates([...manualDates.value, ...projectedFutureYmds]);
-    const hasCrossMonth = allDates.some((date) => String(date).slice(0, 7) !== targetYm);
-    if (hasCrossMonth) {
-      alert('月結課程僅能建立在同一月份，請調整手動日期或月份。');
+
+  const useMonthlyRecurringPath = form.payment_type === 'monthly' && form.end_date && (form.days_of_week || []).length > 0;
+
+  if (useMonthlyRecurringPath) {
+    if (form.end_date < form.course_start_date) {
+      alert('結束日不可早於開課日');
+      return;
+    }
+    const previewCount = countWeekdayOccurrences(
+      form.course_start_date, form.end_date,
+      (form.days_of_week || []).map(Number).filter((d) => d >= 1 && d <= 7)
+    );
+    if (previewCount === 0) {
+      alert('此期間無符合的課堂日期，請調整固定星期或日期範圍');
       return;
     }
   }
 
-  const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
-  if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
-    alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
-    return;
-  }
-  if (selectedDays.value.length > 0) {
-    const missing = selectedDays.value.find((day) => !slotStartTimeByDay.value[day]);
-    if (missing) {
-      alert(`請設定週${weekdayLabelMap[missing]}的上課時間`);
+  if (!useMonthlyRecurringPath) {
+    if (manualSessionCount.value > safePlannedSessions.value) {
+      alert(`手動指定堂數不可超過${plannedCountLabel.value}`);
       return;
     }
+    if (form.payment_type === 'monthly') {
+      const projectedFutureYmds = [...new Set(futureSessionOccurrences.value.map((o) => o.ymd))];
+      const targetYm = toYmd(currentMonth.value).slice(0, 7);
+      const allDates = sortDates([...manualDates.value, ...projectedFutureYmds]);
+      const hasCrossMonth = allDates.some((date) => String(date).slice(0, 7) !== targetYm);
+      if (hasCrossMonth) {
+        alert('月結課程僅能建立在同一月份，請調整手動日期或月份。');
+        return;
+      }
+    }
   }
-  if (futureSessionOccurrences.value.some((o) => o.ymd < todayYmd)) {
-    alert('系統預排日期不可早於今天，請調整固定上課星期');
-    return;
-  }
-  if ((manualSessionCount.value + futureSessionOccurrences.value.length) !== safePlannedSessions.value) {
-    alert(`系統無法補齊至${plannedCountLabel.value}，請調整固定上課星期或手動指定日期`);
-    return;
+
+  if (!useMonthlyRecurringPath) {
+    const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
+    if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
+      alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
+      return;
+    }
+    if (selectedDays.value.length > 0) {
+      const missing = selectedDays.value.find((day) => !slotStartTimeByDay.value[day]);
+      if (missing) {
+        alert(`請設定週${weekdayLabelMap[missing]}的上課時間`);
+        return;
+      }
+    }
+    if (futureSessionOccurrences.value.some((o) => o.ymd < todayYmd)) {
+      alert('系統預排日期不可早於今天，請調整固定上課星期');
+      return;
+    }
+    if ((manualSessionCount.value + futureSessionOccurrences.value.length) !== safePlannedSessions.value) {
+      alert(`系統無法補齊至${plannedCountLabel.value}，請調整固定上課星期或手動指定日期`);
+      return;
+    }
   }
 
   const sessionPlan = [];
@@ -1838,6 +1984,7 @@ async function submit() {
     const hasMultiTeacher = normalizedDaySlots.some(
       (s) => s.teacher_id && s.teacher_id !== globalTeacherId
     );
+    const useMonthlyRecurring = form.payment_type === 'monthly' && form.end_date && (form.days_of_week || []).length > 0;
     const payload = {
       branch_id: branchId,
       student_id: Number(form.student_id),
@@ -1846,7 +1993,7 @@ async function submit() {
       class_type: form.class_type,
       confirmed_dates: [],
       future_dates: [],
-      session_plan: sessionPlan,
+      session_plan: useMonthlyRecurring ? [] : sessionPlan,
       days_of_week: [...(form.days_of_week || [])].map((d) => Number(d)).filter((d) => d >= 1 && d <= 7),
       day_time_slots: normalizedDaySlots,
       start_time: normalizedStartTime,
@@ -1862,6 +2009,7 @@ async function submit() {
       course_start_date: form.course_start_date || null,
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
+      ...(useMonthlyRecurringPath ? { end_date: form.end_date } : {}),
     };
 
     if (form.payment_type === 'session') {
@@ -1871,11 +2019,18 @@ async function submit() {
     const result = await createUniversalClassSchedule(payload);
     const createdConfirmed = Number(result?.created_confirmed_sessions ?? sessionPlan.filter((r) => r.kind === 'confirmed').length);
     const createdFuture = Number(result?.created_future_sessions ?? sessionPlan.filter((r) => r.kind === 'future').length);
+    const total = createdConfirmed + createdFuture;
     const autoBackfilled = Number(result?.auto_backfilled_sessions ?? 0);
     const autoBackfillSuffix = autoBackfilled > 0
       ? `，其中 ${autoBackfilled} 堂因新增時已過下課時間，系統已自動補登核准`
       : '';
-    let msg = `已建立 ${createdConfirmed + createdFuture} 堂課（已上課 ${createdConfirmed}、未來預排 ${createdFuture}）${autoBackfillSuffix}`;
+    let msg;
+    if (useMonthlyRecurringPath) {
+      const firstDate = result?.first_session_date || form.course_start_date || '';
+      msg = `已排 ${total} 堂（首堂 ${firstDate}）`;
+    } else {
+      msg = `已建立 ${total} 堂課（已上課 ${createdConfirmed}、未來預排 ${createdFuture}）${autoBackfillSuffix}`;
+    }
     if (result?.dual_teacher_warning) {
       msg += `\n\n⚠️ ${result.dual_teacher_warning}`;
     }
@@ -2962,6 +3117,78 @@ async function submit() {
 .pkg-toast-enter-to,
 .pkg-toast-leave-from { opacity: 1; transform: translateY(0); }
 
+/* ── Monthly recurring preview card ── */
+.monthly-preview-card {
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+.monthly-preview-card.preview-empty {
+  color: #94a3b8;
+}
+.monthly-preview-text {
+  margin: 0;
+  font-size: 15px;
+  color: #374151;
+  line-height: 1.5;
+}
+.preview-empty .monthly-preview-text {
+  color: #94a3b8;
+}
+
+/* ── Quick-select chips ── */
+.monthly-quick-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.quick-chip {
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f1f5f9;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: background 150ms, color 150ms, border-color 150ms;
+}
+.quick-chip:hover {
+  background: var(--primary, #4f46e5);
+  color: #fff;
+  border-color: var(--primary, #4f46e5);
+}
+
+/* ── Package monthly: per-subject weekday row ── */
+.pkg-card-schedule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+.pkg-weekday-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.weekday-chip-sm {
+  min-width: 28px;
+  min-height: 28px;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.pkg-inline-time {
+  min-width: 80px;
+  font-size: 13px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  padding: 2px 6px;
+}
+
 @media (max-width: 760px) {
   .package-layout {
     grid-template-columns: 1fr;
@@ -2979,6 +3206,15 @@ async function submit() {
   }
   .pkg-billing-switch {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .monthly-quick-chips {
+    flex-wrap: wrap;
+  }
+  .quick-chip {
+    flex: 0 0 auto;
   }
 }
 </style>
