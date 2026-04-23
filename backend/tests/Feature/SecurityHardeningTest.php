@@ -7,23 +7,21 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
 
 /**
  * Phase 4 [TEST] — Security Hardening v1.0
  *
  * Coverage:
- *   SEC-002  FR-001 / FR-002  register throttle (auth + directors)
- *   SEC-003  FR-003           forgot-password throttle
- *   SEC-004  FR-007~009       password min:8 (register / change / profile)
- *   SEC-006  FR-004 / FR-005  swipe-rfid throttle
- *   Regression FR-011         old short-password accounts can still login
+ *   SEC-002  FR-001/002  register throttle (auth + directors)
+ *   SEC-003  FR-003      forgot-password throttle
+ *   SEC-004  FR-007~010  password min:8
+ *   SEC-006  FR-004/005  swipe-rfid throttle
+ *   Regression FR-011    existing short-password accounts can still login
  *
- * NOTE: HTTP security headers (SEC-005) are set by Apache .htaccess and are
- * not forwarded by the Laravel test HTTP client (which bypasses Apache).
- * Header presence is verified in [OPS] via `curl -I`.
+ * Throttle tests each use a unique spoofed IP so cross-test cache state
+ * never pollutes sibling tests. Cache::flush() is intentionally NOT used
+ * because it is unreliable when the file cache driver is active.
  */
 class SecurityHardeningTest extends TestCase
 {
@@ -34,9 +32,6 @@ class SecurityHardeningTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Flush rate-limiter state between tests so throttle counters start fresh.
-        Cache::flush();
 
         $this->campus = Campus::create([
             'name'           => 'SecTestCampus',
@@ -57,151 +52,183 @@ class SecurityHardeningTest extends TestCase
         ]);
     }
 
-    // ─── SEC-002 / FR-001: auth/register throttle ────────────────────────────
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    /**
+     * Return a unique RFC-5737 test IP so each throttle test gets its own
+     * rate-limiter bucket and never inherits counts from another test.
+     */
+    private function uniqueIp(): string
+    {
+        static $n = 0;
+        $n++;
+        // 192.0.2.0/24 is reserved for documentation/testing (RFC 5737)
+        return '192.0.2.' . ($n % 254 + 1);
+    }
+
+    private function jsonWithIp(string $ip): self
+    {
+        return $this->withServerVariables(['REMOTE_ADDR' => $ip]);
+    }
+
+    private function makeDirectorToken(): array
+    {
+        static $n = 0;
+        $n++;
+        $user = User::create([
+            'LoginName'          => "sec-director-{$n}@example.com",
+            'Name'               => "SecDirector{$n}",
+            'PSW'                => password_hash('Password1!', PASSWORD_DEFAULT),
+            'type'               => 'A',
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create([
+            'CampusID' => $this->campus->id,
+            'UserID'   => $user->id,
+            'Admin'    => 1,
+            'Approved' => 1,
+        ]);
+        $token = bin2hex(random_bytes(32));
+        AuthToken::create([
+            'user_id'    => $user->id,
+            'token'      => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+        return [$token, $user];
+    }
+
+    // ─── SEC-002 / FR-001: auth/register throttle ─────────────────────────────
 
     /** @test */
     public function register_throttle_blocks_after_10_requests(): void
     {
-        // 10 requests should pass (422 or other, not 429)
+        $ip = $this->uniqueIp();
+
         for ($i = 1; $i <= 10; $i++) {
-            $res = $this->postJson('/api/v1/auth/register', [
-                'account'  => "throttle-test-{$i}@example.com",
+            $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/register', [
+                'account'  => "throttle-reg-{$i}@x.com",
                 'password' => 'Password1!',
-                'name'     => "User{$i}",
+                'name'     => "U{$i}",
             ]);
-            $this->assertNotEquals(429, $res->status(), "Request {$i} should not be throttled yet");
+            $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        // 11th request should be throttled
-        $res = $this->postJson('/api/v1/auth/register', [
-            'account'  => 'throttle-test-11@example.com',
+        $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/register', [
+            'account'  => 'throttle-reg-11@x.com',
             'password' => 'Password1!',
-            'name'     => 'User11',
+            'name'     => 'U11',
         ]);
         $res->assertStatus(429);
+        $this->assertNotNull($res->headers->get('Retry-After'));
     }
 
-    /** @test */
-    public function register_throttle_response_contains_retry_after_header(): void
-    {
-        for ($i = 1; $i <= 11; $i++) {
-            $res = $this->postJson('/api/v1/auth/register', [
-                'account'  => "hdr-test-{$i}@example.com",
-                'password' => 'Password1!',
-                'name'     => "Hdr{$i}",
-            ]);
-        }
-        $this->assertNotNull(
-            $res->headers->get('Retry-After'),
-            'HTTP 429 response must include Retry-After header'
-        );
-    }
-
-    // ─── SEC-002 / FR-002: directors/register throttle ───────────────────────
+    // ─── SEC-002 / FR-002: directors/register throttle ────────────────────────
 
     /** @test */
     public function directors_register_throttle_blocks_after_10_requests(): void
     {
+        $ip = $this->uniqueIp();
+
         for ($i = 1; $i <= 10; $i++) {
-            $res = $this->postJson('/api/v1/directors/register', [
-                'account'   => "dir-throttle-{$i}@example.com",
+            $res = $this->jsonWithIp($ip)->postJson('/api/v1/directors/register', [
+                'account'   => "dir-throttle-{$i}@x.com",
                 'password'  => 'Password1!',
-                'name'      => "Dir{$i}",
+                'name'      => "D{$i}",
                 'campus_id' => $this->campus->id,
             ]);
-            $this->assertNotEquals(429, $res->status(), "Request {$i} should not be throttled yet");
+            $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->postJson('/api/v1/directors/register', [
-            'account'   => 'dir-throttle-11@example.com',
+        $res = $this->jsonWithIp($ip)->postJson('/api/v1/directors/register', [
+            'account'   => 'dir-throttle-11@x.com',
             'password'  => 'Password1!',
-            'name'      => 'Dir11',
+            'name'      => 'D11',
             'campus_id' => $this->campus->id,
         ]);
         $res->assertStatus(429);
     }
 
-    // ─── SEC-003 / FR-003: forgot-password throttle ──────────────────────────
+    // ─── SEC-003 / FR-003: forgot-password throttle ───────────────────────────
 
     /** @test */
     public function forgot_password_throttle_blocks_after_5_requests(): void
     {
+        $ip = $this->uniqueIp();
+
         for ($i = 1; $i <= 5; $i++) {
-            $res = $this->postJson('/api/v1/auth/forgot-password', [
-                'email' => "fp-{$i}@example.com",
+            $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/forgot-password', [
+                'account' => "fp-{$i}@x.com",
             ]);
-            $this->assertNotEquals(429, $res->status(), "Request {$i} should not be throttled yet");
+            $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->postJson('/api/v1/auth/forgot-password', [
-            'email' => 'fp-6@example.com',
+        $res = $this->jsonWithIp($ip)->postJson('/api/v1/auth/forgot-password', [
+            'account' => 'fp-6@x.com',
         ]);
         $res->assertStatus(429);
     }
 
-    // ─── SEC-006 / FR-004: swipe-rfid throttle ───────────────────────────────
+    // ─── SEC-006 / FR-004: swipe-rfid throttle ────────────────────────────────
 
     /** @test */
     public function swipe_rfid_throttle_blocks_after_30_requests(): void
     {
-        $headers = [
-            'Authorization' => 'Bearer sec-test-token-abc',
-            'Accept'        => 'application/json',
-        ];
+        $ip = $this->uniqueIp();
 
         for ($i = 1; $i <= 30; $i++) {
-            $res = $this->withHeaders($headers)->postJson('/api/v1/swipe-rfid', [
+            $res = $this->jsonWithIp($ip)->withHeaders([
+                'Authorization' => 'Bearer sec-test-token-abc',
+            ])->postJson('/api/v1/swipe-rfid', [
                 'branch_code' => (string) $this->campus->id,
-                'rfid'        => "RFID-SCAN-{$i}",
+                'rfid'        => "RFID-{$i}",
             ]);
-            $this->assertNotEquals(429, $res->status(), "Request {$i} should not be throttled yet");
+            $this->assertNotEquals(429, $res->status(), "Request {$i} throttled early");
         }
 
-        $res = $this->withHeaders($headers)->postJson('/api/v1/swipe-rfid', [
+        $res = $this->jsonWithIp($ip)->withHeaders([
+            'Authorization' => 'Bearer sec-test-token-abc',
+        ])->postJson('/api/v1/swipe-rfid', [
             'branch_code' => (string) $this->campus->id,
-            'rfid'        => 'RFID-SCAN-31',
+            'rfid'        => 'RFID-31',
         ]);
         $res->assertStatus(429);
     }
 
-    // ─── SEC-004 / FR-007: auth/register rejects password < 8 chars ──────────
+    // ─── SEC-004 / FR-007: auth/register rejects password < 8 ────────────────
 
     /** @test */
     public function register_rejects_password_shorter_than_8(): void
     {
         $res = $this->postJson('/api/v1/auth/register', [
-            'account'  => 'shortpwd@example.com',
-            'password' => 'Abc123!',  // 7 chars
-            'name'     => 'ShortPwd',
+            'account'  => 'shortpwd@x.com',
+            'password' => 'Abc123!',   // 7 chars
+            'name'     => 'Short',
         ]);
         $res->assertStatus(422);
         $res->assertJsonValidationErrors(['password']);
     }
 
     /** @test */
-    public function register_accepts_password_exactly_8_chars(): void
+    public function register_accepts_password_of_8_chars(): void
     {
         $res = $this->postJson('/api/v1/auth/register', [
-            'account'  => 'exactpwd@example.com',
-            'password' => 'Abc1234!',  // exactly 8 chars
-            'name'     => 'ExactPwd',
+            'account'  => 'ok8pwd@x.com',
+            'password' => 'Abc1234!',   // 8 chars
+            'name'     => 'OkPwd',
         ]);
-        // 201 created or other non-422 (could be 422 for other validation, but NOT password)
-        $this->assertNotEquals(422, $res->status(),
-            'Should not reject an 8-char password');
         if ($res->status() === 422) {
             $this->assertArrayNotHasKey('password', $res->json('errors') ?? []);
         }
     }
 
-    // ─── SEC-004 / FR-008: directors/register rejects password < 8 chars ─────
+    // ─── SEC-004 / FR-008: directors/register rejects password < 8 ───────────
 
     /** @test */
     public function directors_register_rejects_password_shorter_than_8(): void
     {
         $res = $this->postJson('/api/v1/directors/register', [
-            'account'   => 'dir-short@example.com',
-            'password'  => 'Ab12345',  // 7 chars
+            'account'   => 'dir-short@x.com',
+            'password'  => 'Ab12345',   // 7 chars
             'name'      => 'DirShort',
             'campus_id' => $this->campus->id,
         ]);
@@ -209,56 +236,51 @@ class SecurityHardeningTest extends TestCase
         $res->assertJsonValidationErrors(['password']);
     }
 
-    // ─── SEC-004 / FR-009: PUT /api/v1/me rejects new password < 8 chars ─────
+    // ─── SEC-004 / FR-009: PUT /me rejects new password < 8 ──────────────────
 
     /** @test */
     public function update_me_rejects_password_shorter_than_8(): void
     {
         [$token] = $this->makeDirectorToken();
 
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept'        => 'application/json',
-        ])->putJson('/api/v1/me', [
-            'current_password' => 'Password1!',
-            'password'         => 'Short1!',        // 7 chars
-            'password_confirmation' => 'Short1!',
-        ]);
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson('/api/v1/me', [
+                'current_password'      => 'Password1!',
+                'password'              => 'Short1!',
+                'password_confirmation' => 'Short1!',
+            ]);
         $res->assertStatus(422);
         $res->assertJsonValidationErrors(['password']);
     }
 
-    // ─── SEC-004: ProfileController::store rejects password < 8 ─────────────
+    // ─── SEC-004: ProfileController::store rejects password < 8 ──────────────
 
     /** @test */
     public function profile_store_rejects_password_shorter_than_8(): void
     {
         [$token] = $this->makeDirectorToken();
 
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept'        => 'application/json',
-        ])->postJson('/api/v1/profiles', [
-            'account'  => 'new-teacher@example.com',
-            'password' => 'Short1!',   // 7 chars
-            'name'     => 'NewTeacher',
-            'role'     => 'teacher',
-        ]);
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->postJson('/api/v1/profiles', [
+                'account'  => 'new-teacher@x.com',
+                'password' => 'Short1!',
+                'name'     => 'NewTeacher',
+                'role'     => 'teacher',
+            ]);
         $res->assertStatus(422);
         $res->assertJsonValidationErrors(['password']);
     }
 
-    // ─── SEC-004: ProfileController::update rejects password < 8 ────────────
+    // ─── SEC-004: ProfileController::update rejects password < 8 ─────────────
 
     /** @test */
     public function profile_update_rejects_password_shorter_than_8(): void
     {
         [$token] = $this->makeDirectorToken();
 
-        // Create a teacher to update
         $teacher = User::create([
-            'LoginName' => 'teacher-to-update@x.com',
-            'Name'      => 'TeacherUpdate',
+            'LoginName' => 'teacher-upd@x.com',
+            'Name'      => 'TeacherUpd',
             'PSW'       => password_hash('Password1!', PASSWORD_DEFAULT),
             'type'      => 'T',
         ]);
@@ -269,71 +291,31 @@ class SecurityHardeningTest extends TestCase
             'Approved' => 1,
         ]);
 
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept'        => 'application/json',
-        ])->putJson("/api/v1/profiles/{$teacher->id}", [
-            'password' => 'Short1!',   // 7 chars
-        ]);
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->putJson("/api/v1/profiles/{$teacher->id}", [
+                'password' => 'Short1!',
+            ]);
         $res->assertStatus(422);
         $res->assertJsonValidationErrors(['password']);
     }
 
-    // ─── FR-011 (Regression): existing short-password accounts can still login
+    // ─── FR-011 Regression: existing short-password account can still login ───
 
     /** @test */
     public function existing_short_password_account_can_still_login(): void
     {
-        // Simulate a pre-existing account with a 4-char password (bcrypt of '1234')
         User::create([
-            'LoginName' => 'old-user@example.com',
+            'LoginName' => 'old-user@x.com',
             'Name'      => 'OldUser',
             'PSW'       => password_hash('1234', PASSWORD_DEFAULT),
             'type'      => 'A',
         ]);
 
-        // Login should succeed — password min:8 does NOT affect the login path
         $res = $this->postJson('/api/v1/auth/login', [
-            'account'  => 'old-user@example.com',
+            'account'  => 'old-user@x.com',
             'password' => '1234',
         ]);
         $res->assertStatus(200);
         $res->assertJsonPath('data.session.token_type', 'Bearer');
-    }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────
-
-    /**
-     * Create a director user + AuthToken for authenticated endpoint tests.
-     * Returns [$token, $user].
-     */
-    private function makeDirectorToken(): array
-    {
-        static $n = 0;
-        $n++;
-
-        $user = User::create([
-            'LoginName'          => "sec-director-{$n}@example.com",
-            'Name'               => "SecDirector{$n}",
-            'PSW'                => password_hash('Password1!', PASSWORD_DEFAULT),
-            'type'               => 'A',
-            'MustChangePassword' => false,
-        ]);
-
-        UserCampus::create([
-            'CampusID' => $this->campus->id,
-            'UserID'   => $user->id,
-            'Admin'    => 1,
-            'Approved' => 1,
-        ]);
-
-        $token = bin2hex(random_bytes(32));
-        AuthToken::create([
-            'user_id'    => $user->id,
-            'token'      => $token,
-            'expires_at' => now()->addDay(),
-        ]);
-
-        return [$token, $user];
     }
 }
