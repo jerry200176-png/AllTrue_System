@@ -15,7 +15,7 @@ class StudentFactory extends Factory
             'name' => $this->faker->name(),
             'CampusID' => 1,
             'ClassID' => 7,
-            'SchoolName' => $this->faker->company(),
+            'SchoolName' => mb_substr($this->faker->company(), 0, 32),
             'RFID' => null,
             'LineID' => null,
             'TelegramID' => '',
