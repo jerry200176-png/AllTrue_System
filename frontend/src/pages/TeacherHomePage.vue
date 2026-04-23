@@ -15,31 +15,54 @@
     </div>
 
     <!-- Clock-in Status Card -->
-    <div class="th-clockin-card card" @click="goAttendance" role="button" tabindex="0"
+    <div class="th-clockin-card card" :class="clockinCardClass"
+      @click="goAttendance" role="button" tabindex="0"
       @keydown.enter="goAttendance" aria-label="查看今日打卡狀態">
+
+      <!-- Header row: icon + title + badge + arrow -->
       <div class="th-clockin-header">
-        <span class="material-symbols-outlined th-clockin-icon">fingerprint</span>
-        <span class="th-clockin-title">今日打卡狀態</span>
-        <span class="th-clockin-badge" :class="clockinBadgeClass">{{ clockinBadgeLabel }}</span>
-      </div>
-      <div class="th-clockin-body" v-if="!clockinLoading">
-        <div class="th-clockin-time" v-if="clockinRecord.sign_in_dt">
-          <span class="th-clockin-label">簽到</span>
-          <span class="th-clockin-val">{{ formatTime(clockinRecord.sign_in_dt) }}</span>
-          <template v-if="clockinRecord.sign_out_dt">
-            <span class="th-clockin-sep">→</span>
-            <span class="th-clockin-label">簽退</span>
-            <span class="th-clockin-val">{{ formatTime(clockinRecord.sign_out_dt) }}</span>
-          </template>
-          <span v-else class="th-clockin-unsignout">未簽退</span>
+        <div class="th-clockin-icon-wrap" :class="clockinIconWrapClass" aria-hidden="true">
+          <span class="material-symbols-outlined">fingerprint</span>
         </div>
-        <div class="th-clockin-empty" v-else>今日尚未打卡，請記得刷卡</div>
-        <div class="th-clockin-hint" v-if="clockinRecord.first_class_start_time">
-          第一堂課：{{ clockinRecord.first_class_start_time }}
+        <div class="th-clockin-title-group">
+          <span class="th-clockin-title">今日打卡狀態</span>
+          <span class="th-clockin-badge" :class="clockinBadgeClass">{{ clockinBadgeLabel }}</span>
+        </div>
+        <span class="material-symbols-outlined th-clockin-arrow">chevron_right</span>
+      </div>
+
+      <!-- Body: two time chips side by side -->
+      <div class="th-clockin-chips" v-if="!clockinLoading">
+        <!-- 簽到 chip -->
+        <div class="th-clockin-chip">
+          <span class="th-chip-label">簽到</span>
+          <span class="th-chip-val" v-if="clockinRecord.sign_in_dt">
+            {{ formatTime(clockinRecord.sign_in_dt) }}
+          </span>
+          <span class="th-chip-val th-chip-empty" v-else>—</span>
+        </div>
+        <!-- 簽退 chip -->
+        <div class="th-clockin-chip">
+          <span class="th-chip-label">簽退</span>
+          <span class="th-chip-val" v-if="clockinRecord.sign_out_dt">
+            {{ formatTime(clockinRecord.sign_out_dt) }}
+          </span>
+          <span class="th-chip-val th-chip-warn" v-else-if="clockinRecord.sign_in_dt">未簽退</span>
+          <span class="th-chip-val th-chip-empty" v-else>—</span>
         </div>
       </div>
-      <div class="th-clockin-body" v-else>載入中…</div>
-      <span class="material-symbols-outlined th-action-arrow" style="margin-left:auto">chevron_right</span>
+
+      <!-- Skeleton while loading -->
+      <div class="th-clockin-chips" v-else aria-hidden="true">
+        <div class="th-clockin-chip th-chip-skeleton"></div>
+        <div class="th-clockin-chip th-chip-skeleton"></div>
+      </div>
+
+      <!-- Hint: first class time -->
+      <div class="th-clockin-hint" v-if="!clockinLoading && clockinRecord.first_class_start_time">
+        <span class="material-symbols-outlined" style="font-size:13px;vertical-align:-2px">schedule</span>
+        第一堂課：{{ clockinRecord.first_class_start_time }}
+      </div>
     </div>
 
     <!-- A. Today's Actions -->
@@ -290,6 +313,24 @@ const clockinBadgeLabel = computed(() => {
   if (s === 'normal') return clockinRecord.value.sign_out_dt ? '已完成' : '上班中';
   if (s === 'late')   return '遲到';
   return '待確認';
+});
+
+// Card-level status class: controls left border colour
+const clockinCardClass = computed(() => {
+  const s = clockinRecord.value.status;
+  if (!s || s === 'no_record') return 'th-ckin-empty';
+  if (s === 'late')   return 'th-ckin-late';
+  if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-ckin-done' : 'th-ckin-working';
+  return 'th-ckin-empty';
+});
+
+// Icon wrap colour class
+const clockinIconWrapClass = computed(() => {
+  const s = clockinRecord.value.status;
+  if (!s || s === 'no_record') return 'th-icon-empty';
+  if (s === 'late')   return 'th-icon-late';
+  if (s === 'normal') return clockinRecord.value.sign_out_dt ? 'th-icon-done' : 'th-icon-working';
+  return 'th-icon-empty';
 });
 
 async function fetchClockinStatus() {
@@ -1024,35 +1065,77 @@ onBeforeUnmount(() => {
 
 /* ──────── Clock-in Card ──────── */
 .th-clockin-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 16px; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 12px;
-  transition: background 0.15s;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; cursor: pointer; min-height: 72px;
+  border: 1px solid var(--border); border-left-width: 4px; border-radius: 12px;
+  transition: background 0.15s, transform 0.1s;
   margin-bottom: 12px;
 }
-.th-clockin-card:hover { background: var(--bg-hover, #f5f5f5); }
+.th-clockin-card:hover  { background: var(--bg-hover, #f5f5f5); }
+.th-clockin-card:active { transform: scale(0.99); }
 .th-clockin-card:focus-visible { outline: 2px solid var(--primary); }
+
+/* Status: left border colour */
+.th-ckin-empty   { border-left-color: var(--border); }
+.th-ckin-working { border-left-color: var(--primary); }
+.th-ckin-done    { border-left-color: var(--success); }
+.th-ckin-late    { border-left-color: #c62828; }
+
+/* Header row */
 .th-clockin-header {
-  display: flex; align-items: center; gap: 8px; flex: 1;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 10px;
 }
-.th-clockin-icon { font-size: 22px; color: var(--text-muted); }
-.th-clockin-title { font-weight: 600; font-size: 15px; }
+.th-clockin-icon-wrap {
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+}
+.th-icon-empty   { background: var(--bg, #f5f5f5); color: var(--text-light); }
+.th-icon-working { background: var(--primary-bg); color: var(--primary); }
+.th-icon-done    { background: var(--success-bg); color: var(--success); }
+.th-icon-late    { background: #fce8e6; color: #c62828; }
+[data-theme="dark"] .th-icon-late { background: #3b0c0c; color: #ef9a9a; }
+
+.th-clockin-title-group {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.th-clockin-title  { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.th-clockin-arrow  { color: var(--text-light); font-size: 22px; flex-shrink: 0; margin-left: auto; }
+
 .th-clockin-badge {
   padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600;
 }
-.th-badge-ok   { background: #e6f4ea; color: #1b7c3d; }
-.th-badge-warn { background: #fff3e0; color: #e65100; }
+.th-badge-ok   { background: var(--success-bg); color: var(--success); }
+.th-badge-warn { background: var(--primary-bg);  color: var(--primary); }
 .th-badge-late { background: #fce8e6; color: #c62828; }
-.th-clockin-body {
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  font-size: 14px; color: var(--text-secondary);
-  width: 100%;
+[data-theme="dark"] .th-badge-late { background: #3b0c0c; color: #ef9a9a; }
+
+/* Two chips row */
+.th-clockin-chips {
+  display: flex; gap: 8px;
 }
-.th-clockin-label { font-size: 12px; color: var(--text-muted); }
-.th-clockin-val   { font-weight: 600; color: var(--text-primary); }
-.th-clockin-sep   { color: var(--text-muted); }
-.th-clockin-unsignout { color: var(--color-warning, #e65100); font-size: 12px; }
-.th-clockin-empty { color: var(--color-warning, #e65100); font-weight: 500; }
-.th-clockin-hint  { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.th-clockin-chip {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; border-radius: 10px; min-height: 44px;
+  border: 1px solid var(--border); background: var(--card-bg, #fff);
+}
+.th-chip-label { font-size: 11px; color: var(--text-light); font-weight: 500; }
+.th-chip-val   { font-size: 16px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.th-chip-empty { color: var(--text-light); font-weight: 400; }
+.th-chip-warn  { color: var(--primary); font-size: 13px; font-weight: 600; }
+
+/* Skeleton animation */
+.th-chip-skeleton {
+  min-height: 44px; border: none;
+  background: var(--border); border-radius: 10px;
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+/* Hint row */
+.th-clockin-hint {
+  font-size: 12px; color: var(--text-light);
+  display: flex; align-items: center; gap: 4px;
+}
 </style>
