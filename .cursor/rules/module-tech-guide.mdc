@@ -1,0 +1,49 @@
+---
+description: >-
+  Backend 偵查指南入口 — 觸碰 PHP/Vue 程式碼、遇到出缺勤/刷卡/老師可見性/TeacherID/ClassSession bug 時，
+  先查 docs/SYSTEM_TECH_GUIDE.md，避免重複追蹤已記錄的非直覺行為。
+globs:
+  - "backend/app/**/*.php"
+  - "backend/tests/**/*.php"
+  - "frontend/src/pages/AttendancePage.vue"
+  - "frontend/src/pages/TeacherHomePage.vue"
+alwaysApply: false
+---
+
+# Backend 偵查前必查
+
+**觸發條件**：修改 `.php` 或 AttendancePage / TeacherHomePage 時自動載入。
+
+> **第一步**：遇到下列任一關鍵字，先 grep `docs/SYSTEM_TECH_GUIDE.md` 對應節：
+
+| 關鍵字 / 問題 | 查閱節 |
+|---|---|
+| `TeacherID`, `auth_teacher_id`, Teacher vs User table | §1 Identity & Auth |
+| 出缺勤不可見、teacher 查不到記錄 | §2.2、§6、G-003 |
+| `ClassSession.Status`、scheduled/attended/late | §3 ClassSession 狀態機 |
+| RFID 刷卡、`swipe-rfid`、`findMatchingClass` | §4 Swipe Flow |
+| 扣堂、`SessionDeductionService` | §5 |
+| `self_study`, `swipe-rfid`, `presence-window` Memo 值 | §2.3、§4 |
+| backfill、`backfillPresenceWindow` | §4.4、G-004 |
+| PHPUnit 測試 timing 問題 | G-005 |
+| `StudentSingIn` vs `StudentSingIn`（typo） | G-001 |
+| Service 職責、哪個 Service 管什麼 | §9 |
+
+## 必讀片段（每次開工前）
+
+```
+§1.1：Teacher.id === User.id（同一個人，兩張表 ID 相同）
+§2.2：老師查詢過濾：WHERE si.TeacherID = auth_teacher_id（null → 不可見）
+§3.2：Guard Rule：只更新 scheduled，不覆寫人工決策
+§9.1：AttendanceEffectsService vs AttendanceController 重複問題（TD-012）
+```
+
+## 發現新的非直覺行為時
+
+立即補到 `docs/SYSTEM_TECH_GUIDE.md` §8（Gotchas），格式：
+
+```markdown
+### G-NNN：[一句話標題]
+[說明：什麼情境、為什麼這樣、什麼後果]
+[發現來源：PR #N / bug fix date]
+```
