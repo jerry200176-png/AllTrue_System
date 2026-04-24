@@ -96,9 +96,9 @@ From previous incidents:
 
 ## E. Pre-merge checklist
 
-- PR target branch is correct (`jerry-sync-main`)
+- PR target branch is correct (`main`)
 - No accidental artifacts (`dist`, cache, local binaries, temp files)
-- Frontend changes have been deployed
+- Frontend changes have been deployed（PR merge 後 deploy.yml 自動處理）
 - No critical regressions in login, students, scheduling, attendance, finance pages
 
 ## F. High-risk areas
@@ -191,6 +191,66 @@ sudo systemctl status apache2
 # .env 是否存在
 ls -la backend/.env
 ```
+
+---
+
+## I. CI/CD 自動部署設定（2026-04-24）
+
+### 架構
+
+```
+WSL2 feature branch → git push → PR → CI pass → merge main → deploy.yml → Pi
+```
+
+### GitHub Secrets（必須存在）
+
+| Secret | 說明 | 最後更新 |
+|---|---|---|
+| `PI_SSH_KEY` | deploy key 私鑰（base64）| 2026-04-24 |
+| `PI_SSH_USER` | Pi 登入帳號（`admin`） | — |
+| `PI_SSH_HOST` | Pi 主機名稱 | — |
+| `CI_DB_PASSWORD` | CI 測試 DB 密碼 | 2026-04-24（新密碼，舊明碼已從程式碼移除） |
+
+### Pi authorized_keys
+
+`/home/admin/.ssh/authorized_keys` 含以下兩把 key：
+- `rsa-key-20230629`（原始管理 key）
+- `github-actions-deploy`（ED25519，指紋 `SHA256:Hvxcdzf6pN1vZeedRtCnx0JMbTjTT4QD5uZUA2lZd/M`）
+
+### ⏳ 待工程師處理（需 sudo）
+
+fail2ban 封鎖了 9 個 GitHub Actions IP，導致自動部署失敗。工程師需執行：
+
+**Step 1：解封**
+```bash
+sudo fail2ban-client set sshd unbanip \
+  135.232.208.147 172.184.204.108 132.196.32.49 \
+  172.183.132.70 20.163.83.244 172.202.100.52 \
+  64.236.177.112 64.236.200.115 20.62.207.243
+```
+
+**Step 2：永久白名單（加入 `/etc/fail2ban/jail.local` 的 `[sshd]` 區塊）**
+```ini
+ignoreip = 127.0.0.1/8 ::1 4.148.0.0/16 4.149.0.0/16 4.150.0.0/16 20.0.0.0/8 135.232.128.0/17 172.183.0.0/16 172.184.0.0/15 172.202.0.0/17 64.236.128.0/17
+```
+
+**Step 3：重新載入**
+```bash
+sudo fail2ban-client reload
+```
+
+**完成後**：告知開發者，觸發一次空 commit push 驗證部署：
+```bash
+cd /home/jerry/alltrue
+git checkout -b chore/verify-deploy
+git commit --allow-empty -m "chore: verify auto-deploy"
+./scripts/git-sync.sh "chore: verify auto-deploy"
+```
+
+### 驗證部署成功
+
+GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`  
+或：`curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool`
 
 ---
 
