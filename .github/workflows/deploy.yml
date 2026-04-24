@@ -38,7 +38,7 @@ jobs:
           git reset --hard origin/main
 
           echo "=== [2/7] Composer dependencies ==="
-          cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+          cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
           echo "✅ Composer 完成"
 
           echo "=== [3/7] Migration 備份 + 執行 ==="
