@@ -59,6 +59,19 @@
 ### R5. 禁止 git push --force / 禁止直接 push main
 
 - 見 `.cursor/rules/p0-never-force-push-and-deploy.mdc`
+- `scripts/git-sync.sh` 已加入守門：在 main branch 執行直接 abort（2026-04-24）
+
+### R6. deploy.yml 禁止用 `optimize:clear`，改用 `config:cache && route:cache`
+
+```bash
+# ❌ 危險：先清後不補，清除瞬間所有 API 可能 404/500
+php artisan optimize:clear
+
+# ✅ 正確：直接重建，無空白期
+php artisan config:cache && php artisan route:cache
+```
+
+- 事故記錄：`optimize:clear` 包含 config + route + view cache 複合清除，清除後若有任何延遲就會導致 API 失敗（2026-04-24 修正）
 
 ---
 
