@@ -316,13 +316,16 @@ class ParentPortalController extends Controller
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
                     $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
                     $rawSubject = trim((string) ($rec->Subject ?? ''));
-                    if ($fromCourse) {
-                        $rec->Subject = $fromCourse;
+                    // Prefer a meaningful course-level subject name (not the generic fallback '課程').
+                    // When the course has no subject configured, normalise the record's own Subject field.
+                    $meaningful = ($fromCourse && $fromCourse !== '課程') ? $fromCourse : null;
+                    if ($meaningful) {
+                        $rec->Subject = $meaningful;
                     } elseif ($rawSubject !== '') {
                         $mapped = $this->mapSubjectLabel($rawSubject);
                         $rec->Subject = $mapped !== '' ? $mapped : $rawSubject;
                     } else {
-                        $rec->Subject = '課程';
+                        $rec->Subject = $fromCourse ?: '課程';
                     }
                     $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
                     return $rec;

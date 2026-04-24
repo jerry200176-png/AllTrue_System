@@ -6,8 +6,8 @@ use App\Models\LearningRecord;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -18,6 +18,8 @@ use Tests\TestCase;
 class ParentPortalSubjectNameTest extends TestCase
 {
     use RefreshDatabase;
+
+    private static int $lrSeq = 900000;
 
     private function makeStudent(): Student
     {
@@ -39,12 +41,22 @@ class ParentPortalSubjectNameTest extends TestCase
         return $raw;
     }
 
-    private function makeLR(Student $student, string $subjectRaw): void
+    private function makeClassForStudent(Student $student): StudentClass
     {
-        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        return StudentClass::create([
+            'StudentID' => $student->id,
+            'TeacherID' => 1,
+            'StartDate' => now()->toDateString(),
+        ]);
+    }
+
+    private function makeLR(Student $student, StudentClass $sc, string $subjectRaw): void
+    {
+        $sessionId = self::$lrSeq++;
+        DB::statement('SET FOREIGN_KEY_CHECKS=0');
         $lr = new LearningRecord([
-            'StudentClassID' => 0,
-            'ClassSessionID' => 0,
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $sessionId,
             'TeacherID'      => 1,
             'Content'        => '',
             'Subject'        => $subjectRaw,
@@ -52,13 +64,14 @@ class ParentPortalSubjectNameTest extends TestCase
         ]);
         $lr->StudentID = $student->id;
         $lr->save();
-        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
     public function test_english_subject_normalized_to_chinese(): void
     {
         $s = $this->makeStudent();
-        $this->makeLR($s, 'English');
+        $sc = $this->makeClassForStudent($s);
+        $this->makeLR($s, $sc, 'English');
         $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
@@ -74,7 +87,8 @@ class ParentPortalSubjectNameTest extends TestCase
     public function test_chinese_course_suffix_normalized(): void
     {
         $s = $this->makeStudent();
-        $this->makeLR($s, '英文課');
+        $sc = $this->makeClassForStudent($s);
+        $this->makeLR($s, $sc, '英文課');
         $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
@@ -90,8 +104,9 @@ class ParentPortalSubjectNameTest extends TestCase
     public function test_both_variants_normalize_to_same_value(): void
     {
         $s = $this->makeStudent();
-        $this->makeLR($s, 'English');
-        $this->makeLR($s, '英文課');
+        $sc = $this->makeClassForStudent($s);
+        $this->makeLR($s, $sc, 'English');
+        $this->makeLR($s, $sc, '英文課');
         $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
