@@ -404,6 +404,16 @@
               <p v-if="teacherCoursesError" class="att-field-err">{{ teacherCoursesError }}</p>
             </div>
             <div class="form-group">
+              <label>上課日期 <span class="att-required">*</span></label>
+              <input
+                v-model="quickForm.date"
+                type="date"
+                :min="quickMinDate"
+                :max="localTodayYmd()"
+              />
+              <p v-if="quickForm.date < quickMinDate" class="att-field-err">超出可補登範圍（14 天），請聯絡管理員</p>
+            </div>
+            <div class="form-group">
               <label>開始時間 <span class="att-required">*</span></label>
               <input v-model="quickForm.startTime" type="time" step="1800" />
             </div>
@@ -566,11 +576,22 @@
       </details>
     </div>
 
-    <!-- Today's Records -->
+    <!-- Records (today or selected date) -->
     <div class="card att-records-card">
       <div class="att-records-header">
-        <div class="att-section-title">今日出缺勤紀錄</div>
+        <div class="att-section-title">
+          出缺勤紀錄
+          <span v-if="recordsDate !== localTodayYmd()" class="att-records-date-badge">{{ recordsDate }}</span>
+        </div>
         <div class="att-records-controls">
+          <input
+            v-model="recordsDate"
+            type="date"
+            :max="localTodayYmd()"
+            class="att-date-input"
+            @change="fetchRecords"
+            title="查詢指定日期的出缺勤紀錄"
+          />
           <input v-model="searchName" type="text" placeholder="搜尋姓名…" class="att-search-input" />
           <select v-model="filterStatus" class="att-filter-select">
             <option value="">全部</option>
@@ -1419,8 +1440,15 @@ const halfHourLater = () => {
   return `${String(next).padStart(2,'0')}:00`;
 };
 
+const quickMinDate = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 14);
+  return d.toISOString().slice(0, 10);
+})();
+
 const quickForm = ref({
   studentClassId: '',
+  date: localTodayYmd(),
   startTime: roundToHalfHour(),
   endTime: halfHourLater(),
   status: 'present',
@@ -1461,20 +1489,41 @@ async function submitQuickAttend() {
     quickTimeError.value = '請選擇課程';
     return;
   }
+  if (!quickForm.value.date) {
+    quickTimeError.value = '請選擇上課日期';
+    return;
+  }
+  if (quickForm.value.date < quickMinDate) {
+    quickTimeError.value = '超出可補登範圍（14 天），請聯絡管理員補建';
+    return;
+  }
   if (quickForm.value.startTime >= quickForm.value.endTime) {
     quickTimeError.value = '結束時間須晚於開始時間';
     return;
   }
+
+  // BUG-B fix: resolve StudentID from the selected course; required by backend.
+  const selectedCourse = teacherCourses.value.find(
+    c => String(c.ID || c.id) === String(quickForm.value.studentClassId)
+  );
+  const studentId = selectedCourse
+    ? Number(selectedCourse.StudentID || selectedCourse.student_id || 0)
+    : 0;
+  if (!studentId) {
+    quickTimeError.value = '缺少學生資訊，請重新選擇課程';
+    return;
+  }
+
   quickSubmitting.value = true;
   try {
     const token = await getToken();
-    const today = localTodayYmd();
     const res = await fetch('/api/v1/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
       body: JSON.stringify({
+        StudentID: studentId,
         StudentClassID: Number(quickForm.value.studentClassId),
-        SessionDate: today,
+        SessionDate: quickForm.value.date,   // BUG-C fix: use selected date, not hardcoded today
         StartTime: quickForm.value.startTime + ':00',
         EndTime: quickForm.value.endTime + ':00',
         Status: quickForm.value.status,
@@ -1484,6 +1533,7 @@ async function submitQuickAttend() {
     if (res.ok) {
       quickAttendOpen.value = false;
       quickForm.value.studentClassId = '';
+      quickForm.value.date = localTodayYmd();
       quickForm.value.startTime = roundToHalfHour();
       quickForm.value.endTime = halfHourLater();
       quickForm.value.status = 'present';
@@ -1491,7 +1541,7 @@ async function submitQuickAttend() {
       fetchRecords();
     } else {
       const err = await res.json().catch(() => ({}));
-      quickTimeError.value = '補建失敗：' + (err.message || '未知錯誤');
+      quickTimeError.value = '補建失敗：' + (err.message || `HTTP ${res.status}`);
     }
   } catch (e) {
     quickTimeError.value = '補建失敗：網路錯誤';
@@ -1571,12 +1621,14 @@ function setStatus(sessionId, status) {
 }
 
 // --- API calls ---
+// Design-limit fix: allow querying any past date, not just today.
+const recordsDate = ref(localTodayYmd());
+
 const fetchRecords = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const today = localTodayYmd();
-    const params = new URLSearchParams({ date: today, per_page: '200' });
+    const params = new URLSearchParams({ date: recordsDate.value, per_page: '200' });
     if (!isTeacher.value && props.branchId) params.set('branch_id', String(props.branchId));
     const res = await fetch(`/api/v1/attendance?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -2433,6 +2485,8 @@ watch(() => props.branchId, () => {
 .att-records-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .att-search-input { width: 150px; padding: 7px 12px; font-size: 13px; }
 .att-filter-select { width: 100px; padding: 7px 10px; font-size: 13px; }
+.att-date-input { width: 140px; padding: 7px 10px; font-size: 13px; }
+.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--color-primary, #4f46e5); background: #eef2ff; border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
 
 /* Table */
 .att-table-scroll { overflow-x: auto; }
