@@ -58,8 +58,14 @@ jobs:
             echo "✅ 無 pending migration，略過"
           fi
 
-          echo "=== [4/7] 前端 build + deploy ==="
-          cd /home/admin/frontend && npm run deploy
+          echo "=== [4/7] 前端變動偵測 ==="
+          FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
+          if [ "$FRONTEND_CHANGED" -gt 0 ]; then
+            echo "前端有 $FRONTEND_CHANGED 個檔案變動，執行 build + deploy..."
+            cd /home/admin/frontend && npm run deploy
+          else
+            echo "✅ 前端無變動，跳過 build（version.json 不更新，用戶不會看到更新通知）"
+          fi
 
           echo "=== [5/7] 重建 Laravel 快取 ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
@@ -86,7 +92,9 @@ jobs:
           cd /home/admin
           git reset --hard "$PREV_COMMIT" || echo "⚠️ git reset 失敗"
 
-          cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"
+          if [ "$FRONTEND_CHANGED" -gt 0 ]; then
+            cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"
+          fi
 
           cd /home/admin/backend
           php artisan optimize || echo "⚠️ optimize 失敗"
