@@ -168,6 +168,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R11. 家長入口評量科目名稱：LearningRecord.Subject 必須過 mapSubjectLabel
+- 歷史資料中 `LearningRecord.Subject` 可能存 `English` / `英文課` 等非標準值
+- **禁止**直接回傳 `$rec->Subject` 原始值給前端
+- 修法：優先用 `resolveSubjectName(StudentClass)` 課程名稱（非 '課程' 時）；課程無科目時用 `mapSubjectLabel` 轉換；最後才用原始值
+- `mapSubjectLabel` 需同時涵蓋英文 key (`English`) 和中文別名 (`英文課`)（PR #39，2026-04-24）
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
