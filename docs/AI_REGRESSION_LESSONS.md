@@ -176,6 +176,33 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R12. 出勤頁「已記錄出缺勤紀錄」只顯示今天 — 管理員無法查昨天是否已點名
+
+- `fetchRecords` 寫死 `date: localTodayYmd()`，查不到過去日期
+- 「待補點名」只顯示**尚未點名**的堂次；已點名的只能去行事曆看綠勾才知道
+- **修法**：加 `recordsDate` ref + 日期選擇器，讓管理員可查詢指定日期的出勤紀錄（2026-04-24，fix/makeup-attendance-flow）
+- **防再犯**：凡是「出勤確認」類 UI 新增任何日期查詢，都必須支援指定日期，不可寫死今天
+
+---
+
+### R13. ScheduleController::store 補課 schedule 不建立 ClassSession
+
+- `POST /api/v1/schedules`（status=rescheduled 或 type=extra）只寫 `schedules`，不建 `ClassSession`
+- 出勤（`GET /api/v1/class-sessions`）、評量（LearningRecordsPage）、待補點名 — 三處全部依賴 ClassSession，補課日完全不可見
+- **修法**：`ScheduleController::store` 在建立補課 schedule 後加 `ClassSession::firstOrCreate`（冪等）（2026-04-24）
+- **防再犯**：任何新增「補課/調課目標日期」的 API 都必須同步建立 ClassSession，不可只寫 schedules
+
+---
+
+### R14. submitQuickAttend 缺 StudentID + 日期寫死 today
+
+- `AttendancePage.vue` 的老師「補建並點名」送出的 body 沒有 `StudentID`，後端驗證必填 → 422 靜默失敗
+- `SessionDate` 寫死 `localTodayYmd()`，老師無法補登昨天的補課堂次
+- **修法**：從 teacherCourses 補上 StudentID；加日期選擇器（最多回溯 14 天）（2026-04-24）
+- **防再犯**：任何呼叫 `POST /api/v1/attendance` 的地方，都必須帶 StudentID；任何老師補登入口都必須支援選日期
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -183,11 +210,11 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程 |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession） |
 | 評量 | §同天多堂課 buildEvents、§請假後不填評量 |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制 |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID） |
 | 月結制 | §b3 inactive 歷史、§b4 加購分流 |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
