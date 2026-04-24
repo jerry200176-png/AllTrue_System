@@ -148,6 +148,65 @@ class ParentPortalLoginIsolationTest extends TestCase
         $this->assertIsArray($res->json('attendance_history'));
     }
 
+    // ── parent_phone regression（BUG: login only checked Phone, not parent_phone）────
+
+    public function test_login_succeeds_with_parent_phone_when_phone_is_empty(): void
+    {
+        // 模擬「家長手機」從 UI 填入 parent_phone，Phone 欄位空白的情況（大安商安禮 場景）
+        $this->createStudentWithParentPhone(15, '商安禮', null, '0933111222');
+
+        $res = $this->postJson('/api/v1/parent/login', [
+            'Name'  => '商安禮',
+            'Phone' => '0933111222',
+        ]);
+
+        $res->assertOk();
+    }
+
+    public function test_login_prefers_parent_phone_over_phone_when_both_set(): void
+    {
+        $this->createStudentWithParentPhone(15, '測試學生', '0911000000', '0933999888');
+
+        // parent_phone 優先，Phone 不符合也能登入
+        $res = $this->postJson('/api/v1/parent/login', [
+            'Name'  => '測試學生',
+            'Phone' => '0933999888',
+        ]);
+        $res->assertOk();
+
+        // 用舊 Phone 登入應失敗（parent_phone 已覆蓋）
+        $res2 = $this->postJson('/api/v1/parent/login', [
+            'Name'  => '測試學生',
+            'Phone' => '0911000000',
+        ]);
+        $res2->assertStatus(404);
+    }
+
+    public function test_login_falls_back_to_phone_when_parent_phone_empty(): void
+    {
+        // 舊資料：只有 Phone，沒有 parent_phone → 向下相容
+        $this->createStudent(15, '舊資料學生', '0922333444');
+
+        $res = $this->postJson('/api/v1/parent/login', [
+            'Name'  => '舊資料學生',
+            'Phone' => '0922333444',
+        ]);
+        $res->assertOk();
+    }
+
+    public function test_empty_contact_phone_returns_401_with_hint(): void
+    {
+        // 兩個欄位都空 → 應該提示分校補登
+        $this->createStudentWithParentPhone(15, '無手機學生', null, null);
+
+        $res = $this->postJson('/api/v1/parent/login', [
+            'Name'  => '無手機學生',
+            'Phone' => '0900000000',
+        ]);
+        $res->assertStatus(401);
+        $res->assertJsonFragment(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入']);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────
 
     private function createStudent(int $campusId, string $name, ?string $phone = null): Student
@@ -160,6 +219,24 @@ class ParentPortalLoginIsolationTest extends TestCase
             'MDT' => now(),
             'Notify_Token' => '',
             'Phone' => $phone,
+        ]);
+    }
+
+    private function createStudentWithParentPhone(
+        int $campusId,
+        string $name,
+        ?string $phone,
+        ?string $parentPhone
+    ): Student {
+        return Student::create([
+            'name'         => $name,
+            'CampusID'     => $campusId,
+            'ClassID'      => 1,
+            'enable'       => 1,
+            'MDT'          => now(),
+            'Notify_Token' => '',
+            'Phone'        => $phone,
+            'parent_phone' => $parentPhone,
         ]);
     }
 
