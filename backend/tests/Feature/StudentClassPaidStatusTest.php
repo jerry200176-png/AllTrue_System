@@ -164,9 +164,10 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
-     * Explicit payment_status=paid must set Paid=1 even without paid_at.
+     * Payment Gate (FR-3): payment_status=paid without paid_at must return 422.
+     * UI must use PaymentEntryModal (which requires a date) instead of direct toggle.
      */
-    public function test_explicit_payment_status_paid_sets_paid_one(): void
+    public function test_payment_status_paid_without_paid_at_returns_422(): void
     {
         $token = $this->createDirectorToken([1]);
         $student = $this->createStudent();
@@ -181,9 +182,57 @@ class StudentClassPaidStatusTest extends TestCase
             ['Authorization' => "Bearer {$token}"]
         );
 
+        $res->assertStatus(422);
+        $res->assertJsonFragment(['code' => 'paid_at_required']);
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, 'Paid must remain 0 when gate rejects the request');
+    }
+
+    /**
+     * Payment Gate: payment_status=paid WITH paid_at must still succeed.
+     */
+    public function test_payment_status_paid_with_paid_at_succeeds(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['payment_status' => 'paid', 'paid_at' => '2026-04-24'],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
         $res->assertOk();
         $sc->refresh();
-        $this->assertSame(1, (int) $sc->Paid);
+        $this->assertSame(1, (int) $sc->Paid, 'Paid must be 1 when paid_at is provided alongside payment_status=paid');
+    }
+
+    /**
+     * Payment Gate: paid_at alone (no payment_status) still upgrades Paid to 1.
+     * This is the path used by the edit form.
+     */
+    public function test_paid_at_alone_still_upgrades_paid(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 0,
+            'PayDate' => null,
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['paid_at' => '2026-04-24'],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid, 'paid_at alone must upgrade Paid to 1 (edit-form path not blocked by gate)');
     }
 
     /**

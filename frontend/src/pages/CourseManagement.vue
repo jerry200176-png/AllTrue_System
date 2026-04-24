@@ -587,6 +587,14 @@
     />
     <ToastWithUndo ref="toastRef" />
 
+    <!-- Payment Entry Modal — 核帳登記（未繳費→已繳費必須填繳款日期） -->
+    <PaymentEntryModal
+      :show="paymentEntryOpen"
+      :row="paymentEntryRow"
+      @close="paymentEntryOpen = false"
+      @confirmed="onPaymentEntryConfirmed"
+    />
+
     <!-- Delete Confirm Modal (FR-013) -->
     <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="confirmDeleteTarget = null">
       <div class="modal" style="width: 420px;">
@@ -631,6 +639,7 @@ import RescheduleModal from '../components/course-management/RescheduleModal.vue
 import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.vue';
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
+import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 
@@ -2356,31 +2365,35 @@ const onSubstituteV2Submit = async (submitPayload) => {
 
 const togglePaymentStatus = async (c) => {
   if (!c?.id) return;
-  const newStatus = c.payment_status === 'paid' ? 'unpaid' : 'paid';
-  const fromLabel = c.payment_status === 'paid' ? '已繳費' : '未繳費';
-  const toLabel = newStatus === 'paid' ? '已繳費' : '未繳費';
-  if (!confirm(`確定將「${c.student_name || '此學生'}」課程由「${fromLabel}」改為「${toLabel}」嗎？`)) {
+
+  // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
+  if (c.payment_status !== 'paid') {
+    paymentEntryRow.value = {
+      id: c.id,
+      student_name: c.student_name || '此學生',
+      subject: c.subject_name || c.subject || '',
+      charge: c.Charge ?? c.charge ?? 0,
+    };
+    paymentEntryOpen.value = true;
     return;
   }
+
+  // 已繳費 → 未繳費：保留原有 confirm 流程
+  if (!confirm(`確定將「${c.student_name || '此學生'}」課程改為「未繳費」嗎？`)) return;
+
   if (c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null) {
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
       if (token) {
-        const sendPaymentStatus = async (extra = {}) => {
-          const payload = { payment_status: newStatus, ...extra };
-          if (newStatus === 'unpaid') {
-            payload.paid_at = null;
-          }
-          return fetch(`/api/v1/student-classes/${c.id}`, {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify(payload)
-          });
-        };
-        let res = await sendPaymentStatus();
-        if (res.status === 409 && newStatus === 'unpaid') {
+        const sendUnpaid = async (extra = {}) => fetch(`/api/v1/student-classes/${c.id}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ payment_status: 'unpaid', paid_at: null, ...extra }),
+        });
+        let res = await sendUnpaid();
+        if (res.status === 409) {
           const errBody = await res.json().catch(() => ({}));
           const w = errBody?.warnings || {};
           const amount = Number(w.total_paid_amount || 0).toLocaleString();
@@ -2393,32 +2406,26 @@ const togglePaymentStatus = async (c) => {
             '仍要強制改為未繳費嗎？',
           ].join('\n');
           if (!confirm(msg)) return;
-          res = await sendPaymentStatus({ force_clear_paid: true });
+          res = await sendUnpaid({ force_clear_paid: true });
         }
         if (res.ok) {
-          c.payment_status = newStatus;
-          if (newStatus === 'unpaid') {
-            c.paid_at = null;
-            c.last_paid_at = null;
-          } else {
-            const json = await res.json().catch(() => null);
-            const next = json?.data || json;
-            if (next && typeof next === 'object') {
-              if ('paid_at' in next) c.paid_at = next.paid_at;
-              if ('last_paid_at' in next) c.last_paid_at = next.last_paid_at;
-            }
-          }
+          c.payment_status = 'unpaid';
+          c.paid_at = null;
+          c.last_paid_at = null;
           return;
         }
       }
     } catch (_) {}
   }
-  await supabase.from('student-classes').update({ payment_status: newStatus }).eq('id', c.id);
-  c.payment_status = newStatus;
-  if (newStatus === 'unpaid') {
-    c.paid_at = null;
-    c.last_paid_at = null;
-  }
+  await supabase.from('student-classes').update({ payment_status: 'unpaid' }).eq('id', c.id);
+  c.payment_status = 'unpaid';
+  c.paid_at = null;
+  c.last_paid_at = null;
+};
+
+const onPaymentEntryConfirmed = async () => {
+  paymentEntryOpen.value = false;
+  await loadCourses();
 };
 
 const loadStudents = async () => {
@@ -2742,6 +2749,8 @@ const submitEdit = async () => {
 };
 
 const confirmDeleteTarget = ref(null);
+const paymentEntryOpen = ref(false);
+const paymentEntryRow = ref(null);
 const executeDeleteCourse = async () => {
   const c = confirmDeleteTarget.value;
   if (!c) return;
