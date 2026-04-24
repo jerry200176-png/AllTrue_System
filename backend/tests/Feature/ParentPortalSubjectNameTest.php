@@ -46,7 +46,7 @@ class ParentPortalSubjectNameTest extends TestCase
         return StudentClass::create([
             'StudentID'       => $student->id,
             'GradeID'         => 1,
-            'SubjectID'       => 1,
+            'SubjectID'       => 0,
             'TeacherID'       => 1,
             'by1'             => 1,
             'Period'          => 4,
