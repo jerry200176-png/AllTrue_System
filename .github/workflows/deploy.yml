@@ -1,0 +1,56 @@
+name: Deploy to Pi
+
+# 只在 CI 全綠後才部署，不會自己亂跑
+on:
+  workflow_run:
+    workflows: ["CI — PHPUnit Tests"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PI_SSH_HOST }}
+          username: ${{ secrets.PI_SSH_USER }}
+          key: ${{ secrets.PI_SSH_KEY }}
+          script: |
+            set -e
+            cd /home/admin
+
+            echo "=== [1/5] git pull ==="
+            git pull origin main
+
+            echo "=== [2/5] 檢查 pending migrations ==="
+            PENDING=$(cd backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+            if [ "$PENDING" -gt 0 ]; then
+              echo "❌ 有 $PENDING 筆 pending migration，自動部署暫停。"
+              echo "請手動 SSH 進 Pi 執行："
+              echo "  cd /home/admin/backend && php artisan migrate --force"
+              exit 1
+            fi
+            echo "✅ 無 pending migration"
+
+            echo "=== [3/5] 前端 build + deploy ==="
+            cd /home/admin/frontend && npm run deploy
+
+            echo "=== [4/5] 清除 Laravel 快取 ==="
+            cd /home/admin/backend && php artisan optimize:clear
+
+            echo "=== [5/5] Health check ==="
+            HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null || echo "error")
+            if [ "$HEALTH" = "ok" ]; then
+              echo "✅ Health check passed"
+            else
+              echo "⚠️  Health check 回應: $HEALTH"
+              exit 1
+            fi
+
+            echo ""
+            echo "🚀 部署完成"
