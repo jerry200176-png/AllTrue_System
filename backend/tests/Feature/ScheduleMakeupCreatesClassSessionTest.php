@@ -38,11 +38,13 @@ class ScheduleMakeupCreatesClassSessionTest extends TestCase
         $this->sc       = $this->createStudentClass(self::CAMPUS_ID);
     }
 
-    // ── AC-001-a: status=rescheduled + student_course_id → ClassSession created ──
+    // ── AC-001-a: type=extra (補課目標日) → ClassSession created ──────────────
 
-    public function test_rescheduled_schedule_creates_class_session(): void
+    public function test_extra_type_schedule_with_rescheduled_status_creates_class_session(): void
     {
+        // type=extra marks the *destination* makeup date — ClassSession must be created.
         $this->postSchedule([
+            'type'              => 'extra',
             'status'            => 'rescheduled',
             'schedule_date'     => self::DATE,
             'student_course_id' => $this->sc->ID,
@@ -94,7 +96,8 @@ class ScheduleMakeupCreatesClassSessionTest extends TestCase
     public function test_duplicate_post_does_not_create_duplicate_class_session(): void
     {
         $payload = [
-            'status'            => 'rescheduled',
+            'type'              => 'extra',
+            'status'            => 'scheduled',
             'schedule_date'     => self::DATE,
             'student_course_id' => $this->sc->ID,
         ];
