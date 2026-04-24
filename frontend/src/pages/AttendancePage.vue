@@ -1,4 +1,4 @@
-<template><!-- AttendancePage v1.2 -->
+<template>
   <div class="att-page">
     <div class="page-header att-header">
       <div>
@@ -607,7 +607,6 @@
               title="查詢指定日期的出缺勤紀錄"
             />
           </template>
-          <!-- Teacher: single date picker (unchanged) -->
           <input
             v-else
             v-model="recordsDate"
@@ -1648,7 +1647,7 @@ function setStatus(sessionId, status) {
 // --- API calls ---
 const recordsDate = ref(localTodayYmd());
 // Admin/Director default: show last 7 days. Teacher: always single-date.
-const recordsMode = ref<'week' | 'day'>('week');
+const recordsMode = ref('week');
 
 const fetchRecords = async () => {
   try {
