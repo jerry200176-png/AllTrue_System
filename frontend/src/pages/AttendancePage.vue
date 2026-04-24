@@ -576,15 +576,40 @@
       </details>
     </div>
 
-    <!-- Records (today or selected date) -->
+    <!-- Records (today / last 7 days / selected date) -->
     <div class="card att-records-card">
       <div class="att-records-header">
         <div class="att-section-title">
           出缺勤紀錄
-          <span v-if="recordsDate !== localTodayYmd()" class="att-records-date-badge">{{ recordsDate }}</span>
+          <span v-if="!isTeacher && recordsMode === 'week'" class="att-records-date-badge">最近 7 天</span>
+          <span v-else-if="recordsDate !== localTodayYmd()" class="att-records-date-badge">{{ recordsDate }}</span>
         </div>
         <div class="att-records-controls">
+          <!-- Admin/Director: 最近 7 天 | 今天 quick-switch + optional date picker -->
+          <template v-if="!isTeacher">
+            <div class="att-mode-toggle">
+              <button
+                :class="['att-mode-btn', { active: recordsMode === 'week' }]"
+                @click="recordsMode = 'week'; recordsDate = localTodayYmd(); fetchRecords()"
+              >最近 7 天</button>
+              <button
+                :class="['att-mode-btn', { active: recordsMode === 'day' }]"
+                @click="recordsMode = 'day'; recordsDate = localTodayYmd(); fetchRecords()"
+              >今天</button>
+            </div>
+            <input
+              v-if="recordsMode === 'day'"
+              v-model="recordsDate"
+              type="date"
+              :max="localTodayYmd()"
+              class="att-date-input"
+              @change="fetchRecords"
+              title="查詢指定日期的出缺勤紀錄"
+            />
+          </template>
+          <!-- Teacher: single date picker (unchanged) -->
           <input
+            v-else
             v-model="recordsDate"
             type="date"
             :max="localTodayYmd()"
@@ -1621,15 +1646,34 @@ function setStatus(sessionId, status) {
 }
 
 // --- API calls ---
-// Design-limit fix: allow querying any past date, not just today.
 const recordsDate = ref(localTodayYmd());
+// Admin/Director default: show last 7 days. Teacher: always single-date.
+const recordsMode = ref<'week' | 'day'>('week');
 
 const fetchRecords = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ date: recordsDate.value, per_page: '200' });
-    if (!isTeacher.value && props.branchId) params.set('branch_id', String(props.branchId));
+    const params = new URLSearchParams({ per_page: '200' });
+    if (isTeacher.value) {
+      // Teacher always queries a specific date (today by default, retroactive via date picker).
+      params.set('date', recordsDate.value);
+    } else {
+      if (recordsMode.value === 'day') {
+        params.set('date', recordsDate.value);
+      } else {
+        // 'week' mode: send explicit start/end so the backend window is fixed to
+        // today-6 … today regardless of when the server's "now" is evaluated.
+        const end   = localTodayYmd();
+        const start = (() => {
+          const d = new Date(); d.setDate(d.getDate() - 6);
+          return d.toISOString().slice(0, 10);
+        })();
+        params.set('start_date', start);
+        params.set('end_date',   end);
+      }
+      if (props.branchId) params.set('branch_id', String(props.branchId));
+    }
     const res = await fetch(`/api/v1/attendance?${params.toString()}`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -2487,6 +2531,11 @@ watch(() => props.branchId, () => {
 .att-filter-select { width: 100px; padding: 7px 10px; font-size: 13px; }
 .att-date-input { width: 140px; padding: 7px 10px; font-size: 13px; }
 .att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--color-primary, #4f46e5); background: #eef2ff; border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
+.att-mode-toggle { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color, #ddd); }
+.att-mode-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; background: var(--card-bg, #fff); color: var(--text-light); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--border-color, #ddd); }
+.att-mode-btn:last-child { border-right: none; }
+.att-mode-btn:hover { background: rgba(0,0,0,0.04); }
+.att-mode-btn.active { background: var(--primary, #4f46e5); color: #fff; }
 
 /* Table */
 .att-table-scroll { overflow-x: auto; }
