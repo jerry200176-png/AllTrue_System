@@ -45,6 +45,7 @@ class ParentPortalSubjectNameTest extends TestCase
             'StudentClassID' => 0,
             'ClassSessionID' => 0,
             'TeacherID'      => 1,
+            'Content'        => '',
             'Subject'        => $subjectRaw,
             'Status'         => 'approved',
         ]);
