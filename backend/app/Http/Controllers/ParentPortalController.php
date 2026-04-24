@@ -51,19 +51,23 @@ class ParentPortalController extends Controller
 
         if ($hasStudentId) {
             $candidate = Student::find((int) $data['StudentID']);
-            if ($candidate && empty(trim($candidate->Phone ?? ''))) {
+            if ($candidate && empty(trim($this->resolveContactPhone($candidate)))) {
                 return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
             }
+            $contactPhone = $candidate ? $this->resolveContactPhone($candidate) : '';
             if ($candidate
-                && !empty($candidate->Phone)
-                && $this->normalizePhone($candidate->Phone) === $phoneNorm
+                && !empty($contactPhone)
+                && $this->normalizePhone($contactPhone) === $phoneNorm
                 && ($rawName === '' || trim((string) $candidate->name) === $rawName)) {
                 $student = $candidate;
             }
         } else {
             $candidates = Student::whereRaw('TRIM(name) = ?', [$rawName])
                 ->get()
-                ->filter(fn ($s) => !empty($s->Phone) && $this->normalizePhone($s->Phone) === $phoneNorm)
+                ->filter(function ($s) use ($phoneNorm) {
+                    $contact = $this->resolveContactPhone($s);
+                    return !empty($contact) && $this->normalizePhone($contact) === $phoneNorm;
+                })
                 ->values();
 
             if ($candidates->count() === 1) {
@@ -77,7 +81,7 @@ class ParentPortalController extends Controller
             } else {
                 // Hint to front desk if name matched but phone didn't for any row with empty phone
                 $nameOnly = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
-                if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($s->Phone ?? '')))) {
+                if ($nameOnly->isNotEmpty() && $nameOnly->contains(fn ($s) => empty(trim($this->resolveContactPhone($s))))) {
                     return response()->json(['message' => '此學生尚未設定聯絡手機，請聯繫分校補登後再登入'], 401);
                 }
             }
@@ -723,6 +727,19 @@ class ParentPortalController extends Controller
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/[^0-9]/', '', $phone);
+    }
+
+    /**
+     * 家長入口驗證用的聯絡手機：優先用 parent_phone（UI「家長手機」欄），
+     * 若空則 fallback 到 Phone（舊資料相容）。
+     */
+    private function resolveContactPhone(Student $student): string
+    {
+        $parentPhone = trim($student->parent_phone ?? '');
+        if ($parentPhone !== '') {
+            return $parentPhone;
+        }
+        return trim($student->Phone ?? '');
     }
 
     /**
