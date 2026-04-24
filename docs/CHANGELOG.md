@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-24（深夜 v4）
+
+### Changed
+- 版本顯示改回日期格式（`建置 2026-04-24`）：`vite.config.js` 的 `version.json` 輸出由 commit hash 改為 build 日期（`t` 欄位），同時保留 `hash` 欄位供開發者追溯（見 `chore/version-display-date`）
+
 ## 2026-04-24（深夜 v3）
 
 ### Fixed

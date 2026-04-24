@@ -3,14 +3,14 @@ import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import { execSync } from 'child_process';
 
-// 業界做法：用 git commit hash 作版本識別碼，而非 build 時間戳
-// 好處：相同 commit 多次 build 結果相同，避免無謂的「新版本」通知
-// docs-only commit 不重 build 前端（由 deploy.yml 控制），所以 hash 不會推到 server
+// version.json 顯示給使用者看 → 用日期（YYYY-MM-DD）更直觀
+// 同時保留 commit hash 供開發者追溯
+const buildDate = new Date().toISOString().slice(0, 10);
 const gitHash = (() => {
   try {
     return execSync('git rev-parse --short HEAD').toString().trim();
   } catch {
-    return new Date().toISOString(); // fallback: CI 或無 git 環境
+    return 'unknown';
   }
 })();
 
@@ -24,7 +24,7 @@ export default defineConfig({
     },
   },
   define: {
-    __APP_BUILD_TIME__: JSON.stringify(gitHash),
+    __APP_BUILD_TIME__: JSON.stringify(buildDate),
   },
   plugins: [
     vue(),
@@ -34,7 +34,7 @@ export default defineConfig({
         this.emitFile({
           type: 'asset',
           fileName: 'version.json',
-          source: JSON.stringify({ t: gitHash }),
+          source: JSON.stringify({ t: buildDate, hash: gitHash }),
         });
       },
     },
