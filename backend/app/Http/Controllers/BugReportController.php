@@ -50,14 +50,16 @@ class BugReportController extends Controller
         if ($uploaded instanceof \Illuminate\Http\UploadedFile) {
             $uploaded = [$uploaded];
         }
+        $attachmentErrors = 0;
         if (is_array($uploaded)) {
-            BugReportService::attachUploadedFiles($bug, $uploaded);
+            $attachmentErrors = BugReportService::attachUploadedFiles($bug, $uploaded);
         }
 
         return response()->json([
-            'id' => $bug->id,
-            'status' => $bug->status,
-            'created_at' => $bug->created_at?->toIso8601String(),
+            'id'               => $bug->id,
+            'status'           => $bug->status,
+            'created_at'       => $bug->created_at?->toIso8601String(),
+            'attachment_errors' => $attachmentErrors,
         ], 201);
     }
 
