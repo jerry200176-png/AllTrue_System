@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-24（深夜 v2）
+
+### Fixed
+- 出勤頁「出缺勤紀錄」管理員預設改顯示最近 7 天（而非只有今天）：`AttendanceController::index` 新增 `start_date`/`end_date` 區間參數，無參數時預設最近 7 天；前端管理員加「最近 7 天 / 今天」快捷切換（見 `fix/attendance-range-view`，bugfix plan `bugfix_attendance_range_view_2026-04-24.md`）
+
 ## 2026-04-24（深夜）
 
 ### Fixed
