@@ -217,35 +217,18 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 - `rsa-key-20230629`（原始管理 key）
 - `github-actions-deploy`（ED25519，指紋 `SHA256:Hvxcdzf6pN1vZeedRtCnx0JMbTjTT4QD5uZUA2lZd/M`）
 
-### ⏳ 待工程師處理（需 sudo）
+### ✅ 部署通道修復記錄（2026-04-24 完成）
 
-fail2ban 封鎖了 9 個 GitHub Actions IP，導致自動部署失敗。工程師需執行：
+| 問題 | 根因 | 修法 |
+|---|---|---|
+| `Permission denied (publickey)` | `/home/admin` 權限 775，SSH StrictModes 拒絕 | `StrictModes no` 加入 sshd_config + `systemctl restart sshd` |
+| GitHub Actions IP 被 fail2ban 封鎖 | 多次失敗 SSH 觸發 fail2ban | 解封 9 個 IP + 永久白名單 GitHub Actions IP 範圍（`jail.local`） |
+| `Class Collision not found` → health 500 | `--no-dev` 無法乾淨移除舊 vendor dev 套件 | 移除 `composer install` 的 `--no-dev` flag |
+| `git pull` divergent branches 卡住 | Pi 有 nightly auto-commit | 改為 `git fetch origin main && git reset --hard origin/main` |
 
-**Step 1：解封**
-```bash
-sudo fail2ban-client set sshd unbanip \
-  135.232.208.147 172.184.204.108 132.196.32.49 \
-  172.183.132.70 20.163.83.244 172.202.100.52 \
-  64.236.177.112 64.236.200.115 20.62.207.243
-```
+**首次成功**：2026-04-24 14:17 TWN，`push → CI → deploy → health ok` 全流程驗證通過。
 
-**Step 2：永久白名單（加入 `/etc/fail2ban/jail.local` 的 `[sshd]` 區塊）**
-```ini
-ignoreip = 127.0.0.1/8 ::1 4.148.0.0/16 4.149.0.0/16 4.150.0.0/16 20.0.0.0/8 135.232.128.0/17 172.183.0.0/16 172.184.0.0/15 172.202.0.0/17 64.236.128.0/17
-```
-
-**Step 3：重新載入**
-```bash
-sudo fail2ban-client reload
-```
-
-**完成後**：告知開發者，觸發一次空 commit push 驗證部署：
-```bash
-cd /home/jerry/alltrue
-git checkout -b chore/verify-deploy
-git commit --allow-empty -m "chore: verify auto-deploy"
-./scripts/git-sync.sh "chore: verify auto-deploy"
-```
+> 事故防再犯規則：`AI_REGRESSION_LESSONS.md` R7（SSH）、R8（composer）、R9（git pull）
 
 ### 驗證部署成功
 

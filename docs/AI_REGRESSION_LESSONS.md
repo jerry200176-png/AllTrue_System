@@ -73,6 +73,44 @@ php artisan config:cache && php artisan route:cache
 
 - 事故記錄：`optimize:clear` 包含 config + route + view cache 複合清除，清除後若有任何延遲就會導致 API 失敗（2026-04-24 修正）
 
+### R7. Pi SSH public key 拒絕 → 根因是 home 目錄 775（group-writable）
+
+```
+症狀：Permission denied (publickey,password) — key 正確、格式正確，仍被拒
+根因：/home/admin 權限 775 (admin:www-data)，SSH StrictModes 預設拒絕 group-writable home
+修法：/etc/ssh/sshd_config 加入 StrictModes no（因為 www-data 需要寫入 home，無法改 755）
+```
+
+- **禁止**：看到 `Permission denied (publickey)` 就換 key — 先查 `ls -la /home/ | grep admin` 確認 home 權限
+- **確認修復**：`sudo systemctl restart sshd` 後，GitHub Actions Deploy run 應無 `Permission denied`
+- **Pi 環境特殊說明**：`/home/admin` 為 `admin:www-data 775`，是刻意設計讓 Apache 可寫；`StrictModes no` 是正確解法，不是暫時 workaround（2026-04-24）
+
+### R8. deploy.yml 禁止 `composer install --no-dev`（Pi 環境）
+
+```bash
+# ❌ 造成 "Class NunoMaduro\Collision not found" → health check 500
+composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+# ✅ 正確：Pi 已有 dev 套件，--no-dev 無法乾淨移除，保留 dev 套件不影響生產
+composer install --no-interaction --prefer-dist --optimize-autoloader
+```
+
+- 原因：Pi 本機 vendor 有舊 dev 安裝，`--no-dev` 雖移除 Collision 的檔案，但 `php artisan optimize` bootstrap 時仍讀到舊 `packages.php` 中的 provider 登記，導致 class not found
+- 結果：health check 失敗 → 自動 rollback 觸發 → 服務短暫中斷（2026-04-24 事故）
+
+### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
+
+```bash
+# ❌ Pi 有本地 auto-commit（nightly tag、hourly sync），造成 divergent branches，git pull 卡住
+git pull origin main
+
+# ✅ 強制對齊 origin/main，忽略 Pi 本地 commit
+git fetch origin main
+git reset --hard origin/main
+```
+
+- Pi 上有 `nightly-backup.sh`、hourly auto-sync 等 cron 腳本會產生本地 commit；deploy 必須用 reset --hard 確保版本一致（2026-04-24）
+
 ---
 
 ## 黃線（⚠️ 違反 = CI 反覆失敗、浪費時間）
