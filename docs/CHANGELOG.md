@@ -10,6 +10,7 @@
 
 ### Fixed
 - Bug 回報：附截圖時回傳 500 → 修 `deploy.yml` 補 `storage:link --force` + `chmod 775`；`BugReportService::attachUploadedFiles` / `AuthController::toAvatarUrl` 加 try-catch 讓存檔失敗降級（不中斷主流程），回傳 201 + `attachment_errors` 欄位（RC-1，見 `fix/bug-attachment-storage-500`）
+- 家長入口評量：科目名稱顯示不一致（有的顯示 `English`、有的顯示 `英文課`）→ `ParentPortalController::resolveSubjectName` 邏輯修正：(1) 有課程科目且非 '課程' 時優先用課程名稱；(2) 課程無科目時對 `LearningRecord.Subject` 原始值套 `mapSubjectLabel`；(3) `mapSubjectLabel` 補中文別名（`英文課→英文`、`數學課→數學` 等）（PR #39 — 見 R11）
 
 ---
 
