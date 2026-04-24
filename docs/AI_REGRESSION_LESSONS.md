@@ -209,6 +209,16 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - **修法**：後端加 `start_date`/`end_date` 區間參數，無參數預設最近 7 天；前端管理員加「最近 7 天 / 今天」快捷切換（2026-04-24，`fix/attendance-range-view`）
 - **防再犯**：任何「列表型」API（attendance、class-sessions 等）若依賴日期篩選，必須支援區間查詢並設合理預設窗口（≤ 14 天），不得預設只回今天
 
+### R16. ⛔ `<script setup>` 中 `const` 初始化時呼叫尚未宣告的 `const` → TDZ 整頁空白（P0）
+
+- `quickForm = ref({ date: localTodayYmd() })` 在 line 1473，但 `localTodayYmd` const arrow 在 line 1620 → JavaScript TDZ → `ReferenceError: Cannot access 'Xt' before initialization`（minified）→ Vue `setup()` 中止 → 整頁空白（P0 regression，PR #41 引入）
+- **根本原因**：`const`/`let` 宣告在其 binding 初始化前無法存取（Temporal Dead Zone），`function` 宣告才有 hoisting；minifier 只改名字，不改執行順序，TDZ 問題在 production 同樣觸發
+- **修法**：將 `localTodayYmd` 宣告移到首次使用之前（2026-04-24，`hotfix/attendance-tdz-blank-page`，PR #45）
+- **防再犯**：
+  1. 在 `<script setup>` 中，任何工具函式（helper function）如果在 **`ref()`/`reactive()`/`computed()` 初始化時**被直接呼叫，必須確保該函式在呼叫點**之前**宣告
+  2. 宣告順序優先：工具函式（`localTodayYmd` 類）→ 時間無關的常數（`quickMinDate` 類）→ 用到工具函式的 reactive state（`quickForm`、`recordsDate` 類）
+  3. 如需 hoisting 特性，改用 `function` declaration 而非 `const` arrow function
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
@@ -222,7 +232,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 評量 | §同天多堂課 buildEvents、§請假後不填評量 |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見） |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|
 | 月結制 | §b3 inactive 歷史、§b4 加購分流 |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
