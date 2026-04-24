@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-24（深夜 v3）
+
+### Fixed
+- 出缺勤管理頁面一片空白（P0 regression hotfix）：`AttendancePage.vue` 中 `quickForm` ref 初始化時呼叫 `localTodayYmd()`，但 `localTodayYmd` 為 `const` arrow function 且宣告在後面（line 1620）→ JavaScript TDZ ReferenceError → `setup()` 中止 → 整頁空白。修復：將 `localTodayYmd` 宣告移到 `quickForm` 之前（line 1467）。由 PR #41 引入，PR #45 hotfix 修復。
+
 ## 2026-04-24（深夜 v2）
 
 ### Fixed
