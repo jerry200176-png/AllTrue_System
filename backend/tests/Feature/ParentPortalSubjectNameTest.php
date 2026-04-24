@@ -41,14 +41,15 @@ class ParentPortalSubjectNameTest extends TestCase
 
     private function makeLR(Student $student, string $subjectRaw): void
     {
-        LearningRecord::create([
-            'StudentID'      => $student->id,
+        $lr = new LearningRecord([
             'StudentClassID' => 0,
+            'ClassSessionID' => 0,
             'TeacherID'      => 1,
             'Subject'        => $subjectRaw,
             'Status'         => 'approved',
-            'LearningDate'   => now()->toDateString(),
         ]);
+        $lr->StudentID = $student->id;
+        $lr->save();
     }
 
     public function test_english_subject_normalized_to_chinese(): void
