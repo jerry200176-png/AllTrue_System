@@ -344,6 +344,31 @@ class ScheduleController extends Controller
         }
 
         $schedule = Schedule::create($data);
+
+        // BUG-A fix: when a makeup/rescheduled schedule is created with an explicit
+        // date (补课), ensure a ClassSession exists so attendance and evaluation pages
+        // can find the session (both depend exclusively on ClassSession, not schedules).
+        // Only applies to rescheduled status OR extra type — normal schedules generate
+        // their ClassSessions through the regular StudentClass session-generation pipeline.
+        $scheduleType = strtolower((string) ($data['type'] ?? 'normal'));
+        if (($status === 'rescheduled' || $scheduleType === 'extra')
+            && $courseId > 0
+            && !empty($data['schedule_date'])
+        ) {
+            ClassSession::firstOrCreate(
+                [
+                    'StudentClassID' => $courseId,
+                    'SessionDate'    => $data['schedule_date'],
+                ],
+                [
+                    'StartTime' => $data['start_time'] ?? '00:00:00',
+                    'EndTime'   => $data['end_time']   ?? '00:00:00',
+                    'Status'    => 'scheduled',
+                    'Note'      => '',
+                ]
+            );
+        }
+
         return response()->json($schedule, 201);
     }
 
