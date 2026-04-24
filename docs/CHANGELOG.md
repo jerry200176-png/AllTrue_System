@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-04-24（下午）
+
+### Fixed
+- 家長入口：登入驗證改讀 `parent_phone`（UI「家長手機」欄），舊 `Phone` 欄 fallback 相容（PR #38 — 見 R10）
+
+---
+
 ## 2026-04-24
 
 ### Security / Ops
