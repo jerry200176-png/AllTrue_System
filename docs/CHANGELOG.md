@@ -23,6 +23,14 @@
 ### Changed
 - Docs: `README.md` GitHub 同步工作流程更新為 feature branch → PR → CI → merge 流程，移除過期的 `jerry-sync-main` 說明（FR-011）
 
+### Ops（CI/CD 部署通道修復，同日下午）
+- Pi: `StrictModes no` 加入 `/etc/ssh/sshd_config`（根因：`/home/admin` 為 `admin:www-data 775`，SSH 拒絕 public key — 見 R7）
+- Pi: fail2ban unban 9 個 GitHub Actions runner IP + 永久白名單 GitHub Actions IP 範圍（`jail.local`）
+- `deploy.yml`: `git pull` 改為 `git fetch origin main && git reset --hard origin/main`（根因：Pi 本地 nightly auto-commit 造成 divergent branches — 見 R9）
+- `deploy.yml`: 移除 `composer install` 的 `--no-dev` flag（根因：Pi vendor 有舊 dev 安裝，--no-dev 造成 Collision class not found → health 500 — 見 R8）
+- `deploy.yml`: `bootstrap/cache/packages.php` 部署前清除（搭配 R8 修復，已不需要，但保留作保險）
+- **首次端對端自動部署成功**：`push → CI → deploy → health ok` 全流程驗證通過（2026-04-24 14:17 TWN）
+
 ---
 
 ## 2026-04-23
