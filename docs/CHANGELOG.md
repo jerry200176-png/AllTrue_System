@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-24（深夜 v5）
+
+### Fixed
+- 版本標籤顯示「早上 8:00」：`App.vue` 的 `formatBuildTime` 將純日期字串（`YYYY-MM-DD`）傳入 `new Date()` 後被解析成 UTC 午夜，台灣 +8 小時後變 08:00。修復：偵測純日期格式直接回傳，不做 Date 轉換（見 `fix/version-display-timezone`）
+
 ## 2026-04-24（深夜 v4）
 
 ### Changed
