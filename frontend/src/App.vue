@@ -1421,6 +1421,9 @@ watch(active, (p) => {
 function formatBuildTime(rawIso) {
   const source = String(rawIso || '').trim();
   if (!source) return 'unknown';
+  // 純日期字串（YYYY-MM-DD）直接回傳，避免 new Date() 解析成 UTC 午夜
+  // 再轉本地時間後偏移 +8 小時變成「早上 8:00」的問題
+  if (/^\d{4}-\d{2}-\d{2}$/.test(source)) return source;
   const date = new Date(source);
   if (Number.isNaN(date.getTime())) return source;
   const y = date.getFullYear();
