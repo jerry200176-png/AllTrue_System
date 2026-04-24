@@ -1,6 +1,5 @@
 name: Deploy to Pi
 
-# 只在 CI 全綠後才部署，不會自己亂跑
 on:
   workflow_run:
     workflows: ["CI — PHPUnit Tests"]
@@ -14,51 +13,57 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.PI_SSH_HOST }}
-          username: ${{ secrets.PI_SSH_USER }}
-          key: ${{ secrets.PI_SSH_KEY }}
-          script: |
-            set -e
-            cd /home/admin
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PI_SSH_KEY }}" | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-            echo "=== [1/5] git pull ==="
-            git pull origin main
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=no \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
+          set -e
+          cd /home/admin
 
-            echo "=== [2/5] Migration 備份 + 執行 ==="
-            PENDING=$(cd backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
-            if [ "$PENDING" -gt 0 ]; then
-              echo "有 $PENDING 筆 pending migration，先備份再執行..."
-              TS=$(date '+%Y-%m-%d_%H%M%S')
-              BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
-              mkdir -p /home/admin/backups/emergency
-              mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
-                --single-transaction AllTrue | gzip > "$BACKUP_FILE"
-              echo "✅ 備份完成：$BACKUP_FILE"
-              cd /home/admin/backend && php artisan migrate --force
-              echo "✅ Migration 完成"
-            else
-              echo "✅ 無 pending migration，略過"
-            fi
+          echo "=== [1/5] git pull ==="
+          git pull origin main
 
-            echo "=== [3/5] 前端 build + deploy ==="
-            cd /home/admin/frontend && npm run deploy
+          echo "=== [2/5] Migration 備份 + 執行 ==="
+          PENDING=$(cd backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+          if [ "$PENDING" -gt 0 ]; then
+            echo "有 $PENDING 筆 pending migration，先備份再執行..."
+            TS=$(date '+%Y-%m-%d_%H%M%S')
+            BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
+            mkdir -p /home/admin/backups/emergency
+            mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+              --single-transaction AllTrue | gzip > "$BACKUP_FILE"
+            echo "✅ 備份完成：$BACKUP_FILE"
+            cd /home/admin/backend && php artisan migrate --force
+            echo "✅ Migration 完成"
+          else
+            echo "✅ 無 pending migration，略過"
+          fi
 
-            echo "=== [4/5] 清除 Laravel 快取 ==="
-            cd /home/admin/backend && php artisan optimize:clear
+          echo "=== [3/5] 前端 build + deploy ==="
+          cd /home/admin/frontend && npm run deploy
 
-            echo "=== [5/5] Health check ==="
-            HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
-              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
-              2>/dev/null || echo "error")
-            if [ "$HEALTH" = "ok" ]; then
-              echo "✅ Health check passed"
-            else
-              echo "❌ Health check 失敗：$HEALTH"
-              exit 1
-            fi
+          echo "=== [4/5] 清除 Laravel 快取 ==="
+          cd /home/admin/backend && php artisan optimize:clear
 
-            echo ""
-            echo "🚀 部署完成"
+          echo "=== [5/5] Health check ==="
+          HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
+            2>/dev/null || echo "error")
+          if [ "$HEALTH" = "ok" ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check 失敗：$HEALTH"
+            exit 1
+          fi
+
+          echo ""
+          echo "🚀 部署完成"
+          ENDSSH
