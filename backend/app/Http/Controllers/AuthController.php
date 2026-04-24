@@ -754,15 +754,19 @@ class AuthController extends Controller
         }
         // Same path after re-upload (e.g. avatars/1/avatar.jpg) must change in the browser; append file mtime.
         $diskPath = self::avatarStoredPathForDisk($avatar);
-        if ($diskPath !== null && $diskPath !== '' && Storage::disk('public')->exists($diskPath)) {
-            try {
+        try {
+            if ($diskPath !== null && $diskPath !== '' && Storage::disk('public')->exists($diskPath)) {
                 $v = Storage::disk('public')->lastModified($diskPath);
                 $sep = str_contains($url, '?') ? '&' : '?';
 
                 return $url.$sep.'v='.$v;
-            } catch (\Throwable $e) {
-                // fall through: return without query param
             }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('[toAvatarUrl] storage disk not accessible', [
+                'disk_path' => $diskPath,
+                'error'     => $e->getMessage(),
+            ]);
+            // fall through: return URL without version param
         }
 
         return $url;
