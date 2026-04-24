@@ -1,0 +1,107 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\LearningRecord;
+use App\Models\ParentSession;
+use App\Models\Student;
+use App\Models\StudentClass;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+/**
+ * Regression: 家長入口評量科目名稱標準化
+ * BUG: LearningRecord.Subject 存的是原始值（English / 英文課），
+ *      未經 mapSubjectLabel，導致同科目顯示不一致。
+ */
+class ParentPortalSubjectNameTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function makeStudent(): Student
+    {
+        return Student::create([
+            'name' => '測試學生', 'CampusID' => 15, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+            'Phone' => '0911000001',
+        ]);
+    }
+
+    private function makeSession(Student $student, string $subjectRaw): string
+    {
+        $token = \Illuminate\Support\Str::random(32);
+        ParentSession::create([
+            'student_id' => $student->id,
+            'token'      => $token,
+            'expires_at' => now()->addHours(2),
+        ]);
+        LearningRecord::create([
+            'StudentID'    => $student->id,
+            'TeacherID'    => 1,
+            'Subject'      => $subjectRaw,
+            'Status'       => 'approved',
+            'LearningDate' => now()->toDateString(),
+        ]);
+        return $token;
+    }
+
+    public function test_english_subject_normalized_to_chinese(): void
+    {
+        $s = $this->makeStudent();
+        $token = $this->makeSession($s, 'English');
+
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $subjects = collect($res->json('learning_records'))->pluck('Subject')->unique()->values();
+        $this->assertNotContains('English', $subjects->all(), 'English should be mapped to 英文');
+        $this->assertContains('英文', $subjects->all());
+    }
+
+    public function test_chinese_course_suffix_normalized(): void
+    {
+        $s = $this->makeStudent();
+        $token = $this->makeSession($s, '英文課');
+
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $subjects = collect($res->json('learning_records'))->pluck('Subject')->unique()->values();
+        $this->assertNotContains('英文課', $subjects->all(), '英文課 should be mapped to 英文');
+        $this->assertContains('英文', $subjects->all());
+    }
+
+    public function test_both_variants_normalize_to_same_value(): void
+    {
+        $s = $this->makeStudent();
+        foreach (['English', '英文課'] as $raw) {
+            LearningRecord::create([
+                'StudentID'    => $s->id,
+                'TeacherID'    => 1,
+                'Subject'      => $raw,
+                'Status'       => 'approved',
+                'LearningDate' => now()->toDateString(),
+            ]);
+        }
+        $token = \Illuminate\Support\Str::random(32);
+        ParentSession::create([
+            'student_id' => $s->id,
+            'token'      => $token,
+            'expires_at' => now()->addHours(2),
+        ]);
+
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $subjects = collect($res->json('learning_records'))->pluck('Subject')->unique()->values();
+        $this->assertCount(1, $subjects, '兩種寫法應標準化為同一個科目名稱');
+        $this->assertEquals('英文', $subjects->first());
+    }
+}

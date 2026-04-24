@@ -315,9 +315,15 @@ class ParentPortalController extends Controller
                     $rec->teacher_name = $teacher ? $teacher->Name : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
                     $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
-                    $rec->Subject = trim((string) ($rec->Subject ?? '')) !== ''
-                        ? (string) $rec->Subject
-                        : ($fromCourse ?: '課程');
+                    $rawSubject = trim((string) ($rec->Subject ?? ''));
+                    if ($fromCourse) {
+                        $rec->Subject = $fromCourse;
+                    } elseif ($rawSubject !== '') {
+                        $mapped = $this->mapSubjectLabel($rawSubject);
+                        $rec->Subject = $mapped !== '' ? $mapped : $rawSubject;
+                    } else {
+                        $rec->Subject = '課程';
+                    }
                     $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
                     return $rec;
                 });
@@ -916,20 +922,17 @@ class ParentPortalController extends Controller
         }
 
         $map = [
-            '1' => '國文',
-            '2' => '英文',
-            '3' => '數學',
-            '4' => '理化',
-            '5' => '社會',
-            '理化' => '理化',
-            'Chinese' => '國文',
-            'English' => '英文',
-            'Math' => '數學',
-            'Science' => '理化',
-            'Social' => '社會',
-            'Physics' => '物理',
-            'Chemistry' => '化學',
-            'Biology' => '生物',
+            '1' => '國文',  '2' => '英文',  '3' => '數學',
+            '4' => '理化',  '5' => '社會',
+            // 英文別名
+            'Chinese'  => '國文', '國文課' => '國文',
+            'English'  => '英文', '英文課' => '英文',
+            'Math'     => '數學', '數學課' => '數學',
+            'Science'  => '理化', '理化課' => '理化', '理化' => '理化',
+            'Social'   => '社會', '社會課' => '社會',
+            'Physics'  => '物理', '物理課' => '物理',
+            'Chemistry'=> '化學', '化學課' => '化學',
+            'Biology'  => '生物', '生物課' => '生物',
         ];
 
         return $map[$v] ?? '';
