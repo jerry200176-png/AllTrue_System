@@ -6,6 +6,25 @@
 
 ---
 
+## 2026-04-24
+
+### Security / Ops
+- CI/CD: 移除 `ci.yml` 中的明碼 DB 密碼，改用 GitHub Secret `CI_DB_PASSWORD`（FR-007）
+- CI/CD: `deploy.yml` 移除 `StrictHostKeyChecking=no`（`ssh-keyscan` 已在 Setup SSH 建立 known_hosts）（FR-008）
+
+### Fixed
+- CI/CD: `deploy.yml` 將 `php artisan optimize:clear` 改為 `config:cache && route:cache`，消除部署時短暫快取空白期（FR-004）
+
+### Added
+- CI/CD: `deploy.yml` 新增自動 rollback 機制—health check 失敗時自動執行 `git reset --hard`、前端重 build、快取重建、migration rollback（若有），並二次確認 health check（FR-005/006）
+- CI/CD: `scripts/git-sync.sh` 加入 main branch 守門，在 main 執行時直接 abort 並提示建 feature branch（FR-009）
+- CI/CD: `scripts/git-sync.sh` push 後自動執行 `gh pr create --fill --draft`（FR-010）
+
+### Changed
+- Docs: `README.md` GitHub 同步工作流程更新為 feature branch → PR → CI → merge 流程，移除過期的 `jerry-sync-main` 說明（FR-011）
+
+---
+
 ## 2026-04-23
 
 ### Fixed (cont.)

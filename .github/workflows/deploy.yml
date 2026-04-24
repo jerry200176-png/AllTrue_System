@@ -26,20 +26,22 @@ jobs:
       - name: Deploy
         run: |
           ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
             "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
-          set -e
+          set -uo pipefail
           cd /home/admin
 
-          echo "=== [1/6] git pull ==="
+          PREV_COMMIT=$(git rev-parse HEAD)
+          MIGRATION_RAN=0
+
+          echo "=== [1/7] git pull ==="
           git pull origin main
 
-          echo "=== [2/6] Composer dependencies ==="
+          echo "=== [2/7] Composer dependencies ==="
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
           echo "✅ Composer 完成"
 
-          echo "=== [3/6] Migration 備份 + 執行 ==="
-          PENDING=$(cd backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+          echo "=== [3/7] Migration 備份 + 執行 ==="
+          PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
           if [ "$PENDING" -gt 0 ]; then
             echo "有 $PENDING 筆 pending migration，先備份再執行..."
             TS=$(date '+%Y-%m-%d_%H%M%S')
@@ -49,30 +51,56 @@ jobs:
               --single-transaction AllTrue | gzip > "$BACKUP_FILE"
             echo "✅ 備份完成：$BACKUP_FILE"
             cd /home/admin/backend && php artisan migrate --force
+            MIGRATION_RAN=1
             echo "✅ Migration 完成"
           else
             echo "✅ 無 pending migration，略過"
           fi
 
-          echo "=== [4/6] 前端 build + deploy ==="
+          echo "=== [4/7] 前端 build + deploy ==="
           cd /home/admin/frontend && npm run deploy
 
-          echo "=== [5/6] 重建 Laravel 快取 ==="
+          echo "=== [5/7] 重建 Laravel 快取 ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
-          # ✅ optimize 直接重建快取，不留空窗期
+          # ✅ optimize 直接重建快取（config:cache + route:cache + event:cache），不留空窗期
           cd /home/admin/backend && php artisan optimize
 
-          echo "=== [6/6] Health check ==="
+          echo "=== [6/7] Health check ==="
           HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
             | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
             2>/dev/null || echo "error")
           if [ "$HEALTH" = "ok" ]; then
             echo "✅ Health check passed"
-          else
-            echo "❌ Health check 失敗：$HEALTH"
-            exit 1
+            echo ""
+            echo "🚀 部署完成"
+            exit 0
           fi
 
-          echo ""
-          echo "🚀 部署完成"
+          echo "=== [7/7] ❌ Health check 失敗，啟動自動 Rollback ==="
+          echo "回滾到 $PREV_COMMIT ..."
+
+          cd /home/admin
+          git reset --hard "$PREV_COMMIT" || echo "⚠️ git reset 失敗"
+
+          cd /home/admin/frontend && npm run deploy || echo "⚠️ 前端 rollback build 失敗"
+
+          cd /home/admin/backend
+          php artisan optimize || echo "⚠️ optimize 失敗"
+
+          if [ "$MIGRATION_RAN" -eq 1 ]; then
+            echo "回滾 migration..."
+            php artisan migrate:rollback --step=1 --force || echo "⚠️ migrate:rollback 失敗"
+          fi
+
+          echo "Rollback health check..."
+          HEALTH2=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
+            2>/dev/null || echo "error")
+          if [ "$HEALTH2" = "ok" ]; then
+            echo "✅ Rollback 成功，系統已恢復到 $PREV_COMMIT"
+          else
+            echo "❌ Rollback 後 health check 仍失敗：$HEALTH2 — 需要人工介入"
+          fi
+
+          exit 1
           ENDSSH

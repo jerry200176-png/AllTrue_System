@@ -22,7 +22,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: root
           MYSQL_DATABASE: AllTrue_test
           MYSQL_USER: admin
-          MYSQL_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
+          MYSQL_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
         ports:
           - 3306:3306
         options: >-
@@ -61,9 +61,11 @@ jobs:
           php artisan key:generate --force
 
       - name: Wait for MySQL
+        env:
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
         run: |
           for i in {1..30}; do
-            mysqladmin ping -h 127.0.0.1 -u admin -pfLcLUu3Imi7RuFhT1jfwIH1 --silent && break
+            mysqladmin ping -h 127.0.0.1 -u admin -p"$DB_PASSWORD" --silent && break
             echo "Waiting for MySQL... ($i)"
             sleep 2
           done
@@ -76,7 +78,7 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
 
       - name: Run PHPUnit (with JUnit XML report)
         working-directory: backend
@@ -91,7 +93,7 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
           APP_ENV: testing
 
       - name: Skipped test report
