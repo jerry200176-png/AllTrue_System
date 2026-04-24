@@ -94,8 +94,21 @@ class AttendanceController extends Controller
             $query->where('si.StudentClassID', $request->input('student_class_id'));
         }
 
+        // Date filtering: single `date` (legacy/single-day) OR `start_date`/`end_date` range.
+        // When nothing is provided, default to the last 7 days so admins can see recent
+        // attended records without having to manually pick a date every time.
         if ($request->filled('date')) {
             $query->whereDate('si.SignInDT', $request->input('date'));
+        } elseif ($request->filled('start_date') || $request->filled('end_date')) {
+            $rangeStart = $request->input('start_date', Carbon::now()->subDays(6)->toDateString());
+            $rangeEnd   = $request->input('end_date',   Carbon::now()->toDateString());
+            $query->whereBetween(DB::raw('DATE(si.SignInDT)'), [$rangeStart, $rangeEnd]);
+        } else {
+            // Default: last 7 days (today inclusive).
+            $query->whereBetween(DB::raw('DATE(si.SignInDT)'), [
+                Carbon::now()->subDays(6)->toDateString(),
+                Carbon::now()->toDateString(),
+            ]);
         }
 
         $query->whereNull('si.VoidedAt');
@@ -103,6 +116,7 @@ class AttendanceController extends Controller
 
         // ── Supplemental: ClassSessions with leave status that have no active StudentSignIn ──
         // Wrapped in try/catch so a SQL failure here never breaks the main response.
+        // Only runs for single-date queries; range/default mode skips this supplemental.
         if ($request->filled('date')) {
             try {
                 $leaveDate = $request->input('date');
