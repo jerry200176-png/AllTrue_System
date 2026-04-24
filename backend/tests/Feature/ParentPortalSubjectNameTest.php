@@ -28,28 +28,34 @@ class ParentPortalSubjectNameTest extends TestCase
         ]);
     }
 
-    private function makeSession(Student $student, string $subjectRaw): string
+    private function makeToken(Student $student): string
     {
-        $token = \Illuminate\Support\Str::random(32);
+        $raw = \Illuminate\Support\Str::random(32);
         ParentSession::create([
-            'student_id' => $student->id,
-            'token'      => $token,
-            'expires_at' => now()->addHours(2),
+            'StudentID' => $student->id,
+            'TokenHash' => hash('sha256', $raw),
+            'ExpiresAt' => now()->addHours(2),
         ]);
+        return $raw;
+    }
+
+    private function makeLR(Student $student, string $subjectRaw): void
+    {
         LearningRecord::create([
-            'StudentID'    => $student->id,
-            'TeacherID'    => 1,
-            'Subject'      => $subjectRaw,
-            'Status'       => 'approved',
-            'LearningDate' => now()->toDateString(),
+            'StudentID'      => $student->id,
+            'StudentClassID' => 0,
+            'TeacherID'      => 1,
+            'Subject'        => $subjectRaw,
+            'Status'         => 'approved',
+            'LearningDate'   => now()->toDateString(),
         ]);
-        return $token;
     }
 
     public function test_english_subject_normalized_to_chinese(): void
     {
         $s = $this->makeStudent();
-        $token = $this->makeSession($s, 'English');
+        $this->makeLR($s, 'English');
+        $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
             'Authorization' => 'Bearer ' . $token,
@@ -64,7 +70,8 @@ class ParentPortalSubjectNameTest extends TestCase
     public function test_chinese_course_suffix_normalized(): void
     {
         $s = $this->makeStudent();
-        $token = $this->makeSession($s, '英文課');
+        $this->makeLR($s, '英文課');
+        $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
             'Authorization' => 'Bearer ' . $token,
@@ -79,21 +86,9 @@ class ParentPortalSubjectNameTest extends TestCase
     public function test_both_variants_normalize_to_same_value(): void
     {
         $s = $this->makeStudent();
-        foreach (['English', '英文課'] as $raw) {
-            LearningRecord::create([
-                'StudentID'    => $s->id,
-                'TeacherID'    => 1,
-                'Subject'      => $raw,
-                'Status'       => 'approved',
-                'LearningDate' => now()->toDateString(),
-            ]);
-        }
-        $token = \Illuminate\Support\Str::random(32);
-        ParentSession::create([
-            'student_id' => $s->id,
-            'token'      => $token,
-            'expires_at' => now()->addHours(2),
-        ]);
+        $this->makeLR($s, 'English');
+        $this->makeLR($s, '英文課');
+        $token = $this->makeToken($s);
 
         $res = $this->getJson('/api/v1/parent/dashboard', [
             'Authorization' => 'Bearer ' . $token,
