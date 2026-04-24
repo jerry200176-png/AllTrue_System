@@ -2,19 +2,30 @@
 
 This runbook captures the practical SOP to keep AllTrue stable during development and deployment.
 
-## A. Development SOP
+## A. Development SOP（2026-04-24 起：WSL2 本地開發）
 
-1. Sync first:
-   - `git checkout main`
-   - `git pull`
-2. Implement changes in focused commits.
-3. If frontend changed, deploy build:
-   - `cd frontend && npm run deploy`
-4. Verify:
-   - frontend opens
-   - key API endpoint responds
-5. Sync to GitHub:
-   - `./scripts/git-sync.sh "feat/fix: message"`
+> ⛔ 禁止 SSH 到 Pi 直接改程式碼。所有改動必須在 WSL2 `~/alltrue` 進行。
+
+1. **開始前同步**（在 WSL2 終端機）：
+   ```bash
+   git checkout main && git pull origin main
+   ```
+2. **開 feature branch**：
+   ```bash
+   git checkout -b feat/或fix/功能名稱
+   ```
+3. **實作改動**，用 Cursor（WSL2 模式）編輯。
+4. **Push 並開 PR**：
+   ```bash
+   git add . && git commit -m "feat/fix: 說明"
+   git push origin feat/功能名稱
+   # → GitHub 開 PR → 等 CI 通過 → merge
+   ```
+5. **PR merge 後**：`deploy.yml` 自動部署到 Pi，無需手動操作。
+6. **驗證**：
+   ```bash
+   curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+   ```
 
 6. **老師端（2026-04-12 起）**：預設首頁為 **教學工作台**（`teacher-home`）。部署含前端變更後，建議抽樣：**老師登入** → 工作台載入、跨分校本週課表、點「出勤／評量」導頁、側欄出缺勤**紅點**（當日有待點名 `scheduled` 堂次時）是否正常。
 
