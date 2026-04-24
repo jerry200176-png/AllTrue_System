@@ -36,6 +36,7 @@
 - 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
 - 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
 - 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
+- ⛔ **禁止直接 `git push origin main`**（含原生 git 指令）—— 必須用 feature branch → PR → merge。`scripts/git-sync.sh` 在 main 會 abort，但原生 git 指令不受此保護，AI 必須自我約束
 
 **任何 AI 在執行下列操作前，必須先讀完 `docs/DANGEROUS_OPERATIONS.md` 與 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
 
