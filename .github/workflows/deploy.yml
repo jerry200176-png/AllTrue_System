@@ -33,8 +33,9 @@ jobs:
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
 
-          echo "=== [1/7] git pull ==="
-          git pull origin main
+          echo "=== [1/7] git fetch + reset ==="
+          git fetch origin main
+          git reset --hard origin/main
 
           echo "=== [2/7] Composer dependencies ==="
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
@@ -62,8 +63,11 @@ jobs:
 
           echo "=== [5/7] 重建 Laravel 快取 ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
+          # ✅ 只清 composer package discovery 快取（--no-dev 後必須，否則找不到已移除的 dev 套件）
           # ✅ optimize 直接重建快取（config:cache + route:cache + event:cache），不留空窗期
-          cd /home/admin/backend && php artisan optimize
+          cd /home/admin/backend
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
 
           echo "=== [6/7] Health check ==="
           HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
