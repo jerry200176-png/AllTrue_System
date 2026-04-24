@@ -948,6 +948,18 @@ class StudentClassController extends Controller
             }
         }
 
+        // Payment Gate (FR-3): 直接設 payment_status=paid 必須提供 paid_at（繳款日期）。
+        // 前端一律透過 PaymentEntryModal 走 /api/v1/payment-reports/director-record，
+        // 不應直接用 payment_status=paid 切換狀態，避免 PayDate 空白、帳務無從查核。
+        $rawInput = $request->all();
+        if (($rawInput['payment_status'] ?? null) === 'paid'
+            && (!array_key_exists('paid_at', $rawInput) || empty($rawInput['paid_at']))) {
+            return response()->json([
+                'message' => '標記已繳費必須提供繳款日期',
+                'code'    => 'paid_at_required',
+            ], 422);
+        }
+
         $mapped = $this->mapFrontendPayload($request);
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
