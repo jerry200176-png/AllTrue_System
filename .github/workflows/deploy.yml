@@ -14,9 +14,11 @@ jobs:
 
     steps:
       - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.PI_SSH_KEY }}" | tr -d '\n\r ' | base64 -d > ~/.ssh/deploy_key
+          printf '%s\n' "$PI_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
