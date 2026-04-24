@@ -1464,6 +1464,11 @@ const halfHourLater = () => {
   return `${String(next).padStart(2,'0')}:00`;
 };
 
+const localTodayYmd = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const quickMinDate = (() => {
   const d = new Date();
   d.setDate(d.getDate() - 14);
@@ -1616,11 +1621,6 @@ const filteredRecords = computed(() => {
   }
   return list;
 });
-
-const localTodayYmd = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 // --- Selection helpers ---
 function toggleSelectAll() {
