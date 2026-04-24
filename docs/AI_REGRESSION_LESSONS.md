@@ -98,6 +98,17 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 - 原因：Pi 本機 vendor 有舊 dev 安裝，`--no-dev` 雖移除 Collision 的檔案，但 `php artisan optimize` bootstrap 時仍讀到舊 `packages.php` 中的 provider 登記，導致 class not found
 - 結果：health check 失敗 → 自動 rollback 觸發 → 服務短暫中斷（2026-04-24 事故）
 
+### R10. 家長入口登入：必須同時讀 `parent_phone` 與 `Phone`
+
+```
+UI「家長手機」欄 → 儲存到 Student.parent_phone
+登入驗證         → 原本只讀 Student.Phone → 永遠不符 → 401
+```
+
+- **禁止**：只用 `$s->Phone` 驗證家長身份
+- **正確**：`resolveContactPhone()` 優先 `parent_phone`，空才 fallback `Phone`
+- 修復：PR #38，2026-04-24
+
 ### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
 
 ```bash
