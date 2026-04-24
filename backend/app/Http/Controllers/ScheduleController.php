@@ -345,13 +345,15 @@ class ScheduleController extends Controller
 
         $schedule = Schedule::create($data);
 
-        // BUG-A fix: when a makeup/rescheduled schedule is created with an explicit
-        // date (补课), ensure a ClassSession exists so attendance and evaluation pages
-        // can find the session (both depend exclusively on ClassSession, not schedules).
-        // Only applies to rescheduled status OR extra type — normal schedules generate
-        // their ClassSessions through the regular StudentClass session-generation pipeline.
+        // BUG-A fix: when a makeup class (type=extra) is created with an explicit date,
+        // ensure a ClassSession exists so attendance and evaluation pages can find it
+        // (both depend exclusively on ClassSession, not schedules).
+        //
+        // Only type=extra triggers this: that marks the *destination* makeup date (e.g. 4/23).
+        // type=normal + status=rescheduled marks the *origin* vacated date (e.g. 4/22) and
+        // must NOT create a ClassSession — the original session there is being removed/moved.
         $scheduleType = strtolower((string) ($data['type'] ?? 'normal'));
-        if (($status === 'rescheduled' || $scheduleType === 'extra')
+        if ($scheduleType === 'extra'
             && $courseId > 0
             && !empty($data['schedule_date'])
         ) {
