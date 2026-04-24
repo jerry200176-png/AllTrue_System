@@ -199,8 +199,10 @@ npm run deploy    # build + 複製到 backend/public + 自動觸發 OPcache 重�
 ### 生產環境（Raspberry Pi 遠端部署）
 
 ```bash
+# 透過 feature branch → PR → CI → 自動部署
+git checkout -b feat/my-feature
 ./scripts/git-sync.sh "feat: 你的 commit 訊息"
-# → 自動 stage all + commit + push 到 origin/jerry-sync-main
+# → 自動 commit + push + 建立 PR；CI 通過 merge 後自動部署到 Pi
 ```
 
 詳細步驟見 `docs/DEPLOYMENT.md` 與 `docs/deploy-raspberry-pi.md`。
@@ -209,24 +211,26 @@ npm run deploy    # build + 複製到 backend/public + 自動觸發 OPcache 重�
 
 ## GitHub 同步工作流程
 
-- **生產主分支（遠端）**：`origin/jerry-sync-main`
-- **本機工作分支**：`main`
+- **生產主分支**：`origin/main`（受 Branch Protection 保護，禁止直接 push）
+- **開發流程**：feature branch → PR → CI 通過 → merge → 自動部署
 
 ### 一般日常更新（最常用）
 
 ```bash
-./scripts/git-sync.sh "feat: 這次改動內容"
+git checkout -b feat/my-feature    # 建立 feature branch
+./scripts/git-sync.sh "feat: 這次改動內容"  # commit + push + 自動建 PR
+# → CI 通過後在 GitHub merge PR
 ```
 
 ### 手動 git 流程
 
 ```bash
+git checkout -b feat/my-feature
 git add .
 git commit -m "feat: 說明"
-git push origin main:jerry-sync-main
+git push -u origin feat/my-feature
+gh pr create --fill
 ```
-
-詳細 SOP 見 `docs/GITHUB_SYNC_WORKFLOW.md`。
 
 ---
 

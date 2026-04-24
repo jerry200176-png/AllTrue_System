@@ -25,6 +25,17 @@ else
   commit_msg="chore: sync update $(date '+%Y-%m-%d %H:%M')"
 fi
 
+# ── Branch Protection 守門：禁止在 main 直接推送 ──
+if [[ "$branch" == "main" ]]; then
+  echo "[git-sync] ❌ 禁止在 main branch 直接推送。" >&2
+  echo "[git-sync]    Branch Protection 要求所有變更必須透過 PR。" >&2
+  echo "[git-sync]    請先建立 feature branch：" >&2
+  echo "[git-sync]      git checkout -b feat/<功能名稱>" >&2
+  echo "[git-sync]      git checkout -b fix/<修復名稱>" >&2
+  echo "[git-sync]      git checkout -b chore/<維護名稱>" >&2
+  exit 1
+fi
+
 echo "[git-sync] Branch: $branch"
 
 # ── Pre-sync security scan: abort if suspicious binaries detected ──
@@ -153,11 +164,26 @@ echo "[git-sync] Committing..."
 git commit -m "$commit_msg"
 
 echo "[git-sync] Pushing..."
-# deploy.yml 已移除，直接 push origin main（不再需要 jerry-sync-main 隔離層）
 if git rev-parse --abbrev-ref --symbolic-full-name "@{u}" >/dev/null 2>&1; then
   git push
 else
   git push -u origin "$branch"
+fi
+
+# ── 自動建立 PR（需要 gh CLI）──
+if command -v gh &>/dev/null; then
+  if gh pr view --json number &>/dev/null 2>&1; then
+    PR_URL=$(gh pr view --json url --jq '.url' 2>/dev/null)
+    echo "[git-sync] PR 已存在：$PR_URL"
+  else
+    echo "[git-sync] 建立 PR..."
+    PR_URL=$(gh pr create --fill --draft 2>/dev/null) && \
+      echo "[git-sync] PR 已建立：$PR_URL" || \
+      echo "[git-sync] ⚠️ 自動建立 PR 失敗，請手動執行：gh pr create --fill"
+  fi
+else
+  echo "[git-sync] ⚠️ gh CLI 未安裝，請手動建立 PR：gh pr create --fill"
+  echo "[git-sync]    安裝方式：sudo apt install gh && gh auth login"
 fi
 
 echo "[git-sync] Done."
