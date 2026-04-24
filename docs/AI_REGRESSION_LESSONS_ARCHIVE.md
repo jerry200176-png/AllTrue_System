@@ -3,7 +3,42 @@
 > 速查摘要（紅線/黃線/模組索引）→ [AI_REGRESSION_LESSONS.md](AI_REGRESSION_LESSONS.md)  
 > **AI 一般不需要讀這個檔案**；只在調查特定 bug 回歸時，搜尋對應的 `§` 條目。
 
-# 完整事故紀錄（33 條）
+# 完整事故紀錄（34 條）
+
+---
+
+## §R11 — deploy.yml 缺 storage:link 導致附件存檔 500（2026-04-24）
+
+### 根因
+
+`deploy.yml` 自動部署流程沒有執行 `php artisan storage:link`，重新部署後  
+`public/storage` symlink 消失或路徑錯誤，造成 `Storage::disk('public')` 的 Local adapter  
+在首次 I/O 時拋出 `LogicException`，波及：
+
+1. `POST /api/v1/bugs`（附截圖）→ 500
+2. `GET /api/v1/me`（`toAvatarUrl` 呼叫 `Storage::disk('public')->exists()`）→ 500
+
+### 修法
+
+| 檔案 | 改動 |
+|------|------|
+| `.github/workflows/deploy.yml` | Composer 後加步驟：`php artisan storage:link --force && chmod -R 775 storage bootstrap/cache` |
+| `BugReportService::attachUploadedFiles` | 每個附件的 `store()` + `BugReportAttachment::create()` 包 try-catch；失敗 log warning，不中斷主流程；回傳 `int $failCount` |
+| `BugReportController::store` | 回傳 `attachment_errors` 欄位（值 = failCount） |
+| `AuthController::toAvatarUrl` | `Storage::disk('public')->exists()` 整段包 try-catch；失敗 log warning，URL 無 `?v=` 降級回傳 |
+
+### 測試
+
+`BugReportApiTest::test_submit_bug_report_with_screenshot_returns_201_even_when_storage_fails`  
+— 替換 'public' disk 為拋出異常的 mock，驗證：
+- HTTP 201 仍返回
+- `attachment_errors > 0`
+- `bug_report_attachments` 資料表 count = 0
+
+### 防再犯規則
+
+- **任何 deploy.yml 修改後**：確認 `storage:link` 與 `chmod` 步驟仍在 Composer 之後執行
+- **Storage::disk('public')** 的任何 I/O（exists / get / put / delete）都應包 try-catch，因 Pi 重啟或重部署後 symlink 可能短暫失效
 
 ---
 
