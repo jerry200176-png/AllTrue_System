@@ -41,6 +41,7 @@ class ParentPortalSubjectNameTest extends TestCase
 
     private function makeLR(Student $student, string $subjectRaw): void
     {
+        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=0');
         $lr = new LearningRecord([
             'StudentClassID' => 0,
             'ClassSessionID' => 0,
@@ -51,6 +52,7 @@ class ParentPortalSubjectNameTest extends TestCase
         ]);
         $lr->StudentID = $student->id;
         $lr->save();
+        \Illuminate\Support\Facades\DB::statement('SET FOREIGN_KEY_CHECKS=1');
     }
 
     public function test_english_subject_normalized_to_chinese(): void
