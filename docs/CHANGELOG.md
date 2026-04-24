@@ -30,6 +30,8 @@
 - `deploy.yml`: 移除 `composer install` 的 `--no-dev` flag（根因：Pi vendor 有舊 dev 安裝，--no-dev 造成 Collision class not found → health 500 — 見 R8）
 - `deploy.yml`: `bootstrap/cache/packages.php` 部署前清除（搭配 R8 修復，已不需要，但保留作保險）
 - **首次端對端自動部署成功**：`push → CI → deploy → health ok` 全流程驗證通過（2026-04-24 14:17 TWN）
+- `deploy.yml`: `git diff` 偵測 `frontend/` 有無變動，無變動跳過 `npm run deploy`（docs/backend-only commit 不觸發用戶更新通知）
+- `vite.config.js`: `version.json` 版本識別碼從 build 時間戳改為 git commit hash（相同 commit 多次 build 結果穩定）
 
 ---
 
