@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-04-24（深夜）
+
+### Fixed
+- 補課流程三連修：(A) `ScheduleController::store` 補建補課時同步 `ClassSession::firstOrCreate`，出勤與評量頁面可見補課堂次；(B) `submitQuickAttend` 補上 `StudentID` 防 422 靜默失敗；(C) 老師快速點名加日期選擇器（最多回溯 14 天）；出勤頁加日期篩選器，管理員可查詢過去紀錄（見 `fix/makeup-attendance-flow`，bugfix plan `bugfix_makeup_class_session_missing_2026-04-24.md`）
+
+---
+
 ## 2026-04-24（晚上）
 
 ### Fixed
