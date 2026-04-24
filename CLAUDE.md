@@ -99,6 +99,18 @@ mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env |
 
 ---
 
+## 開發環境（2026-04-24 起正式啟用）
+
+| 環境 | 說明 |
+|---|---|
+| **本地開發** | Windows WSL2（Ubuntu）`~/alltrue` — 所有程式碼改動在這裡 |
+| **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
+| **部署方式** | WSL2 push → GitHub CI 通過 → `deploy.yml` 自動 SSH 部署到 Pi |
+
+**⛔ 新增紅線 R6**：禁止 SSH 到 Pi 直接編輯任何程式碼。所有改動必須走 WSL2 → feature branch → PR → CI → auto-deploy。
+
+---
+
 ## 技術棧快速參照
 
 | 項目 | 說明 |
@@ -107,7 +119,7 @@ mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env |
 | 後端 | Laravel 8.x + PHP 8+，MySQL（database: `AllTrue`） |
 | 認證 token | `localStorage.alltrue_session`（Bearer）⚠️ `supabase.js` 是**自製 client**，非真實 Supabase |
 | 分校 | `currentBranch` ref，持久化 `localStorage.app_branch`；後端 `require_campus` middleware |
-| 部署指令 | `cd /home/admin/frontend && npm run deploy`（build + copy 到 `backend/public/`） |
+| 部署指令 | **自動**：PR merge → `deploy.yml` 執行（禁止手動在 Pi 跑 `npm run deploy`，除非 CI 掛掉緊急修復）|
 | 刷卡 | RFID → `POST /api/v1/swipe-rfid` |
 | 通知 | LINE Webhook / LINE Login |
 | 測試 | PHPUnit 9.6（⛔ **只能在 GitHub Actions 跑，絕不在 Pi 上跑**） |
