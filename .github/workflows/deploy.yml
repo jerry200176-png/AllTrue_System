@@ -41,6 +41,12 @@ jobs:
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
           echo "✅ Composer 完成"
 
+          echo "=== [2b/7] Storage symlink + 權限 ==="
+          cd /home/admin/backend
+          php artisan storage:link --force 2>/dev/null || true
+          chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+          echo "✅ storage:link + chmod 完成"
+
           echo "=== [3/7] Migration 備份 + 執行 ==="
           PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
           if [ "$PENDING" -gt 0 ]; then

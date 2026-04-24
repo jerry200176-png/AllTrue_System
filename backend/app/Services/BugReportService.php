@@ -31,27 +31,44 @@ class BugReportService
     }
 
     /**
+     * Store uploaded files and return the count of failures.
+     * If the storage disk is unavailable, the failure is logged and the bug
+     * report itself is preserved (graceful degradation).
+     *
      * @param  array<int, UploadedFile>  $files
+     * @return int  Number of attachments that failed to store
      */
-    public static function attachUploadedFiles(BugReport $bug, array $files): void
+    public static function attachUploadedFiles(BugReport $bug, array $files): int
     {
         $files = array_values(array_filter($files, fn ($f) => $f instanceof UploadedFile && $f->isValid()));
         $files = array_slice($files, 0, self::MAX_ATTACHMENTS);
         if (empty($files)) {
-            return;
+            return 0;
         }
 
+        $failCount = 0;
         foreach ($files as $file) {
-            $storedPath = $file->store('bug-reports/' . $bug->id, 'public');
-            BugReportAttachment::create([
-                'bug_report_id' => $bug->id,
-                'stored_path' => $storedPath,
-                'original_name' => $file->getClientOriginalName(),
-                'mime_type' => $file->getClientMimeType(),
-                'size' => (int) $file->getSize(),
-                'created_at' => Carbon::now(),
-            ]);
+            try {
+                $storedPath = $file->store('bug-reports/' . $bug->id, 'public');
+                BugReportAttachment::create([
+                    'bug_report_id' => $bug->id,
+                    'stored_path' => $storedPath,
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getClientMimeType(),
+                    'size' => (int) $file->getSize(),
+                    'created_at' => Carbon::now(),
+                ]);
+            } catch (\Throwable $e) {
+                $failCount++;
+                \Illuminate\Support\Facades\Log::warning('[BugReport] attachment storage failed', [
+                    'bug_id'   => $bug->id,
+                    'filename' => $file->getClientOriginalName(),
+                    'error'    => $e->getMessage(),
+                ]);
+            }
         }
+
+        return $failCount;
     }
 
     private const SORT_WHITELIST = [

@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-04-24（晚上）
+
+### Fixed
+- Bug 回報：附截圖時回傳 500 → 修 `deploy.yml` 補 `storage:link --force` + `chmod 775`；`BugReportService::attachUploadedFiles` / `AuthController::toAvatarUrl` 加 try-catch 讓存檔失敗降級（不中斷主流程），回傳 201 + `attachment_errors` 欄位（RC-1，見 `fix/bug-attachment-storage-500`）
+
+---
+
 ## 2026-04-24（下午）
 
 ### Fixed
