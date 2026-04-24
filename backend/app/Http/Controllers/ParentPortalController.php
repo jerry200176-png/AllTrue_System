@@ -62,8 +62,19 @@ class ParentPortalController extends Controller
                 $student = $candidate;
             }
         } else {
-            $candidates = Student::whereRaw('TRIM(name) = ?', [$rawName])
-                ->get()
+            $allByName = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
+            \Illuminate\Support\Facades\Log::info('parent.login.debug', [
+                'name'       => $rawName,
+                'phoneNorm'  => $phoneNorm,
+                'matches'    => $allByName->map(fn ($s) => [
+                    'id'           => $s->id,
+                    'campus'       => $s->CampusID,
+                    'Phone'        => $s->Phone,
+                    'parent_phone' => $s->parent_phone,
+                    'resolved'     => $this->normalizePhone($this->resolveContactPhone($s)),
+                ]),
+            ]);
+            $candidates = $allByName
                 ->filter(function ($s) use ($phoneNorm) {
                     $contact = $this->resolveContactPhone($s);
                     return !empty($contact) && $this->normalizePhone($contact) === $phoneNorm;
