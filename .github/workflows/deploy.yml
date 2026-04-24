@@ -65,6 +65,7 @@ jobs:
           fi
 
           echo "=== [4/7] 前端變動偵測 ==="
+          cd /home/admin
           FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
           if [ "$FRONTEND_CHANGED" -gt 0 ]; then
             echo "前端有 $FRONTEND_CHANGED 個檔案變動，執行 build + deploy..."
