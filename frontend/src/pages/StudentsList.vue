@@ -477,6 +477,14 @@
 
     <ToastWithUndo ref="toastRef" />
 
+    <!-- Payment Entry Modal — 核帳登記（未繳費→已繳費必須填繳款日期） -->
+    <PaymentEntryModal
+      :show="paymentEntryOpen"
+      :row="paymentEntryRow"
+      @close="paymentEntryOpen = false"
+      @confirmed="onPaymentEntryConfirmed"
+    />
+
     <QuickAddSessionModal
       :show="showQuickAddSession"
       :form="quickAddSessionForm"
@@ -629,6 +637,7 @@ import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
 import RenewMonthlyModal from '../components/course-management/RenewMonthlyModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
+import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 
 const props = defineProps({ branchId: [String, Number] });
 
@@ -748,6 +757,9 @@ const interceptPendingStudent = ref(null);
 const interceptOriginalPayload = ref(null);
 const forceSubmitting = ref(false);
 const pendingPaymentStatusIds = ref(new Set());
+const paymentEntryOpen = ref(false);
+const paymentEntryRow = ref(null);
+const paymentEntryStudentId = ref(null);
 
 // Quick add session (single extra lesson within existing session count)
 const showQuickAddSession = ref(false);
@@ -1226,6 +1238,7 @@ const loadStudentCourses = async (studentId) => {
           closed_reason: c.closed_reason ?? null,
           paid_at: c.paid_at ?? null,
           last_paid_at: c.last_paid_at ?? null,
+          charge: c.Charge ?? c.charge ?? 0,
           data_source: 'laravel'
         }));
         studentCourses.value = { ...studentCourses.value, [studentId]: courses };
@@ -2315,61 +2328,59 @@ const submitRenewMonthly = async (endDate) => {
 const togglePaymentStatus = async (course, studentName = '') => {
   const courseId = course?.id;
   if (!courseId || isPaymentStatusPending(courseId)) return;
-  const newStatus = course.payment_status === 'paid' ? 'unpaid' : 'paid';
-  const fromLabel = course.payment_status === 'paid' ? '已繳費' : '未繳費';
-  const toLabel = newStatus === 'paid' ? '已繳費' : '未繳費';
+
+  // 未繳費 → 已繳費：一律走核帳登記 Modal（強制填繳款日期）
+  if (course.payment_status !== 'paid') {
+    const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
+    paymentEntryRow.value = {
+      id: courseId,
+      student_name: studentName || '此學生',
+      subject: subjectLabel || course.subject || '',
+      charge: course.charge ?? 0,
+    };
+    paymentEntryStudentId.value = course.student_id ?? null;
+    paymentEntryOpen.value = true;
+    return;
+  }
+
+  // 已繳費 → 未繳費：保留原有 confirm 流程
   const subjectLabel = getSubjectLabel(course.subject).split('(')[0].trim();
   const targetLabel = studentName || '此學生';
-  const confirmText = `確定將「${targetLabel}」${subjectLabel ? `的${subjectLabel}課程` : '課程'}由「${fromLabel}」改為「${toLabel}」嗎？`;
-  if (!confirm(confirmText)) return;
+  if (!confirm(`確定將「${targetLabel}」${subjectLabel ? `的${subjectLabel}課程` : '課程'}改為「未繳費」嗎？`)) return;
 
   setPaymentStatusPending(courseId, true);
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    let apiOk = false;
     if (token) {
-      const payload = { payment_status: newStatus };
-      if (newStatus === 'unpaid') {
-        payload.paid_at = null;
-      }
       const res = await fetch(`/api/v1/student-classes/${courseId}`, {
         method: 'PUT',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
       });
-      if (res.ok) {
-        apiOk = true;
-      } else {
+      if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
         console.warn('Payment status API error:', res.status, errBody);
       }
     }
-
-    // Also update Supabase to keep both in sync
-    await supabase
-      .from('student-classes')
-      .update({ payment_status: newStatus })
-      .eq('id', courseId);
-
-    if (!apiOk && !token) {
-      throw new Error('無法取得登入狀態，請重新登入');
-    }
-
-    course.payment_status = newStatus;
-    if (newStatus === 'unpaid') {
-      course.last_paid_at = null;
-      course.paid_at = null;
-    }
+    await supabase.from('student-classes').update({ payment_status: 'unpaid' }).eq('id', courseId);
+    course.payment_status = 'unpaid';
+    course.last_paid_at = null;
+    course.paid_at = null;
   } catch (e) {
     alert('更新繳費狀態失敗：' + (e?.message || '請稍後再試'));
   } finally {
     setPaymentStatusPending(courseId, false);
   }
+};
+
+const onPaymentEntryConfirmed = async () => {
+  paymentEntryOpen.value = false;
+  if (paymentEntryStudentId.value) {
+    await loadStudentCourses(paymentEntryStudentId.value);
+  }
+  paymentEntryStudentId.value = null;
 };
 
 // --- CSV Import ---
