@@ -1,4 +1,4 @@
-<template>
+<template><!-- AttendancePage v1.2 -->
   <div class="att-page">
     <div class="page-header att-header">
       <div>
