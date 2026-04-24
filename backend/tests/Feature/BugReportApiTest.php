@@ -62,6 +62,7 @@ class BugReportApiTest extends TestCase
         ]);
 
         $res->assertStatus(201);
+        $this->assertSame(0, $res->json('attachment_errors'));
         $bugId = (int) $res->json('id');
         $this->assertGreaterThan(0, $bugId);
 
@@ -77,6 +78,44 @@ class BugReportApiTest extends TestCase
         $this->assertIsArray($atts);
         $this->assertCount(1, $atts);
         $this->assertNotEmpty($atts[0]['url'] ?? null);
+    }
+
+    /**
+     * RC-1 regression: when the public storage disk is broken / symlink missing,
+     * the bug report itself must still be created (HTTP 201) and attachment_errors
+     * must reflect the failure count rather than bubbling up as a 500.
+     */
+    public function test_submit_bug_report_with_screenshot_returns_201_even_when_storage_fails(): void
+    {
+        Storage::fake('public');
+
+        // Replace the 'public' disk with a mock that throws on every write.
+        $throwingDisk = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $throwingDisk->shouldReceive('putFileAs')->andThrow(new \RuntimeException('Simulated disk failure'));
+        // Allow any other calls (e.g. exists) to succeed silently.
+        $throwingDisk->shouldReceive('exists')->andReturn(false);
+        $throwingDisk->shouldIgnoreMissing();
+        Storage::set('public', $throwingDisk);
+
+        [$token] = $this->createUserToken([1], 'bugStorageFail@test.com', 'T');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->post('/api/v1/bugs', [
+            'title' => '存檔失敗回退測試',
+            'description' => '附件存檔失敗時主回報仍應成功',
+            'severity' => 'low',
+            'branch_id' => 1,
+            'attachments' => [
+                UploadedFile::fake()->image('fail.png', 40, 40),
+            ],
+        ]);
+
+        // The bug report itself must be created even if attachment storage fails.
+        $res->assertStatus(201);
+        $this->assertGreaterThan(0, $res->json('attachment_errors'));
+        $this->assertDatabaseCount('bug_report_attachments', 0);
     }
 
     public function test_list_bugs_for_teacher_sees_own_only(): void

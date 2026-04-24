@@ -183,6 +183,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 月結制 | §b3 inactive 歷史、§b4 加購分流 |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |
 
 ---
 
