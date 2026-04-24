@@ -17,16 +17,15 @@
 
 ### 部署前端到生產
 
-```bash
-# 方式一：直接在伺服器建置
-chmod +x scripts/deploy-to-pi.sh && ./scripts/deploy-to-pi.sh
+**正常流程（全自動）**：WSL2 push → PR merge → `deploy.yml` 自動執行，無需手動操作。
 
-# 方式二：本機建置後上傳
-cd frontend && npm run build && npm run deploy:pack
-scp frontend/deploy.tar.gz user@server:/path/to/admin/frontend/
-# 在伺服器上：
-sudo tar -xzf frontend/deploy.tar.gz -C backend/public
-cd backend && php artisan optimize:clear
+**緊急手動部署**（CI 掛掉時才用，需 SSH 到 Pi）：
+```bash
+cd /home/admin
+git pull origin main
+cd frontend && npm run deploy
+# ⛔ 禁止用 optimize:clear，改用：
+cd /home/admin/backend && php artisan optimize
 ```
 
 若 `npm run deploy` 出現 EPERM，先執行 `./scripts/fix-deploy-permissions.sh`。

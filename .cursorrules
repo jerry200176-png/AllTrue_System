@@ -31,6 +31,12 @@
 恢復：`git checkout -- backend/app/Http/Controllers/SwipeRfidController.php` 完整還原，diff 確認清空。
 根本原因：**AI 記憶規則但執行時跳過，應在每次改 production 檔案前強制自我檢查「測試寫了嗎？」**。
 
+**⛔ 開發環境規則（2026-04-24 起）**：
+- 所有程式碼改動只在 **WSL2 本地** `~/alltrue` 進行
+- 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
+- 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
+- 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
+
 **任何 AI 在執行下列操作前，必須先讀完 `docs/DANGEROUS_OPERATIONS.md` 與 `.cursor/rules/p0-never-force-push-and-deploy.mdc`：**
 
 1. 任何 `git push`（尤其是 `--force` / `-f`）
