@@ -30,7 +30,8 @@ jobs:
           echo "Branch: $BRANCH"
 
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp)/.' \
-            || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' ; then
+            || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
+            || echo "$BRANCH" | grep -qE '^dependabot/' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
