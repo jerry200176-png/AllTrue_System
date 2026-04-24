@@ -44,9 +44,26 @@ class ParentPortalSubjectNameTest extends TestCase
     private function makeClassForStudent(Student $student): StudentClass
     {
         return StudentClass::create([
-            'StudentID' => $student->id,
-            'TeacherID' => 1,
-            'StartDate' => now()->toDateString(),
+            'StudentID'       => $student->id,
+            'GradeID'         => 1,
+            'SubjectID'       => 1,
+            'TeacherID'       => 1,
+            'by1'             => 1,
+            'Period'          => 4,
+            'StartDate'       => now()->toDateString(),
+            'TotalHours'      => 4,
+            'Charge'          => 0,
+            'Paid'            => 0,
+            'Rate'            => 0,
+            'RoomID'          => 'R1',
+            'MDate'           => now()->toDateString(),
+            'Stop'            => 0,
+            'ScheduleMode'    => 'count',
+            'SessionCount'    => 4,
+            'SessionDuration' => 60,
+            'RemainingSessions' => 4,
+            'ClassType'       => 'one_on_one',
+            'UsedSessions'    => 0,
         ]);
     }
 
