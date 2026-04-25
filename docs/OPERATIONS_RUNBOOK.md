@@ -613,6 +613,15 @@ curl -sk https://daan.lifenet.com.tw/api/v1/health  # 驗證
 | Dependabot | Actions + npm 依賴自動升版 PR |
 | RFID + Auth 資安 | 事故 A-F 復盤 + ParentPortal 跨家庭修復（R18）|
 
+### ✅ 2026-04-25 補充（大公司標準）
+
+| 項目 | 實作方式 |
+|---|---|
+| 備份還原驗證 | `backup-restore-test.yml` 每月 1 日自動還原驗資料表筆數 |
+| Migration dry-run | CI `migrate --pretend` 在 merge 前捕捉 SQL 錯誤 |
+| JSON 結構化 logging | `logging.json` channel（warning+），為 ELK/Loki 預留 |
+| DORA metrics | `dora-metrics.yml` 每週一自動計算部署頻率/lead time/CFR |
+
 ### ⚠️ 刻意不做（P3，這個規模 overkill）
 
 | 項目 | 原因 |
