@@ -8,6 +8,8 @@ use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\User;
 use App\Models\UserCampus;
+use Database\Factories\CampusFactory;
+use Database\Factories\StudentFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -123,8 +125,8 @@ class ParentLearningRecordFeedbackTest extends TestCase
 
     public function test_director_feedback_list_is_scoped_by_accessible_campus(): void
     {
-        $campusA = Campus::factory()->create();
-        $campusB = Campus::factory()->create();
+        $campusA = CampusFactory::new()->create();
+        $campusB = CampusFactory::new()->create();
         $sameCampus = $this->makeApprovedRecord(['campus' => $campusA]);
         $otherCampus = $this->makeApprovedRecord(['campus' => $campusB]);
         $this->submitParentFeedback($sameCampus, '同分校主任可看');
@@ -166,7 +168,7 @@ class ParentLearningRecordFeedbackTest extends TestCase
 
     private function makeApprovedRecord(array $overrides = []): array
     {
-        $campus = $overrides['campus'] ?? Campus::factory()->create();
+        $campus = $overrides['campus'] ?? CampusFactory::new()->create();
         $teacher = $overrides['teacher'] ?? User::create([
             'LoginName' => 'feedback-teacher-' . Str::random(8) . '@test.com',
             'Name' => 'Feedback Teacher',
@@ -183,7 +185,7 @@ class ParentLearningRecordFeedbackTest extends TestCase
             'Approved' => 1,
         ]);
 
-        $student = Student::factory()->create([
+        $student = StudentFactory::new()->create([
             'CampusID' => $campus->id,
             'name' => '回饋測試學生' . Str::random(4),
             'Phone' => '0911' . random_int(100000, 999999),
