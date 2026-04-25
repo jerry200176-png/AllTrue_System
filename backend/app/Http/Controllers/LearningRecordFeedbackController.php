@@ -140,13 +140,13 @@ class LearningRecordFeedbackController extends Controller
 
     private function authorizeParentRecord(ParentSession $session, LearningRecord $record)
     {
-        if ($record->VoidedAt !== null || (string) $record->Status !== 'approved') {
-            return response()->json(['message' => 'Only approved records can receive feedback'], 409);
-        }
         $ctx = $this->recordContext($record);
         if (!$ctx) return response()->json(['message' => 'Learning record context missing'], 409);
         if ((int) $ctx['student_id'] !== (int) $session->StudentID) {
             return response()->json(['message' => 'Forbidden'], 403);
+        }
+        if ($record->VoidedAt !== null || (string) $record->Status !== 'approved') {
+            return response()->json(['message' => 'Only approved records can receive feedback'], 409);
         }
 
         return true;
