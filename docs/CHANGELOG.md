@@ -8,6 +8,7 @@
 
 ## 2026-04-25
 
+- Added 家長回饋系統內通知：側欄 badge + 5 分鐘輪詢、老師/主任首頁待辦卡、評量頁卡片/列表切換（PR #54）
 - Fixed 學習評量表 API 全線 500：migration 偵測用 `grep "Pending"` 在 Laravel 8 失效（應為 `| No`），導致 `learning_record_feedbacks` 表未建立；同時加 `Schema::hasTable` guard 防止表不存在時 crash（PR #52）
 
 - Fixed 跨校支援老師在出缺勤頁面提交「回報出入」回傳 403 Forbidden（PR #49）
