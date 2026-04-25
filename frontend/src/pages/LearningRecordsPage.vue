@@ -929,7 +929,7 @@ import {
   migrateLegacyDrafts,
 } from '../lib/learningRecordDrafts';
 
-const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession']);
 
 const perf = createPerfTracker('LearningRecordsPage');
 
@@ -3121,6 +3121,41 @@ const openTargetRecord = () => {
   }
 };
 
+/**
+ * 從 TeacherHomePage「補填提醒」點進來時，帶有 classSessionId + sessionDate。
+ * 自動切到包含該日期的週，並打開對應的填寫 modal。
+ * 若 sessionDatesByClassId 尚未載入，由後續 watch 補觸發。
+ */
+const _pendingTargetSession = ref(null);
+const openTargetSession = ({ classSessionId, sessionDate } = {}) => {
+  if (!classSessionId || !sessionDate) return;
+  const dateStr = String(sessionDate).slice(0, 10);
+
+  // 計算目標日期在哪一週（相對於本週 Monday）
+  const sessionDateObj = new Date(dateStr + 'T00:00:00');
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = today.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const thisMonday = new Date(today);
+  thisMonday.setDate(today.getDate() + mondayOffset);
+  thisMonday.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((sessionDateObj.getTime() - thisMonday.getTime()) / 86400000);
+  weekOffset.value = diffDays >= 0 ? Math.floor(diffDays / 7) : Math.ceil(diffDays / 7);
+  scheduleView.value = 'week';
+
+  // 找到對應的 event 並直接開 modal
+  const dayEvents = buildEvents([dateStr]);
+  const targetEv = dayEvents.find(ev => ev.classSessionId === Number(classSessionId));
+  if (targetEv) {
+    openFromScheduleMaybe(targetEv);
+    _pendingTargetSession.value = null;
+  } else {
+    // sessionDatesByClassId 可能還沒載入，先暫存等資料到齊後觸發
+    _pendingTargetSession.value = { classSessionId, sessionDate };
+  }
+};
+
 const onStartTimeChange = () => {
   if (form.StartTime) {
     const [h, m] = form.StartTime.split(':').map(Number);
@@ -3176,6 +3211,23 @@ watch(() => props.targetRecordId, (newId) => {
     nextTick(() => openTargetRecord());
   }
 });
+
+watch(() => props.targetSession, (newSession) => {
+  if (newSession?.classSessionId) {
+    nextTick(() => openTargetSession(newSession));
+  }
+});
+
+// 當 sessionDatesByClassId 載入完成後，消化未完成的 pending target
+watch(
+  () => Object.keys(sessionDatesByClassId.value || {}).length,
+  () => {
+    const pending = _pendingTargetSession.value;
+    if (pending?.classSessionId) {
+      openTargetSession(pending);
+    }
+  }
+);
 
 // ── Fetch Courses (for bulk backfill) ──
 const fetchCourses = async () => {
