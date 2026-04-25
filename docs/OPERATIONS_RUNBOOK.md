@@ -586,3 +586,50 @@ curl -sk https://daan.lifenet.com.tw/api/v1/health  # 驗證
 ### 4. 提醒機制
 
 每 90 天在 GitHub Issues 手動建立「Secret rotation reminder」milestone issue，指派給 `jerry200176-png`。
+
+## P. 工程成熟度現況（2026-04-25 評估）
+
+> 對標業界標準（中小型 SaaS，非 FAANG 規模），excluding staging 環境。
+
+### ✅ 已達標
+
+| 項目 | 實作方式 |
+|---|---|
+| CI/CD 自動部署 | GitHub Actions `deploy.yml` → Pi auto-deploy |
+| PR template | `.github/pull_request_template.md` |
+| CODEOWNERS | `.github/CODEOWNERS`（高風險模組自動 request review）|
+| PHPStan 靜態分析 | `codeql.yml` → phpstan level 5 |
+| API smoke test | `deploy.yml` 驗 health + branches + swipe-rfid |
+| Coverage gate | CI 70% 門檻（warning），目標 80% |
+| Rate limiting | 所有公開端點（swipe-rfid 30/min, login 5/hr）|
+| 前端錯誤監控 | Sentry（`@sentry/vue`）+ GitHub issue 自動建立 |
+| Uptime 監控 | UptimeRobot 每 5 分鐘（主站 + /health）|
+| Pi 健康 alerting | `pi-health.yml` 每 6h：磁碟/溫度/備份年齡 |
+| 週期慢查詢報告 | `slow-query-report.yml` 每週一 |
+| 6 小時自動備份 | Pi cron → `/home/admin/backups/sixhour/` |
+| Secret rotation policy | OPERATIONS_RUNBOOK.md §O（90 天輪換）|
+| commitlint | `commit-msg` hook 強制 Conventional Commits |
+| pre-push 保護 | 禁止直接 push main |
+| Dependabot | Actions + npm 依賴自動升版 PR |
+| RFID + Auth 資安 | 事故 A-F 復盤 + ParentPortal 跨家庭修復（R18）|
+
+### ⚠️ 刻意不做（P3，這個規模 overkill）
+
+| 項目 | 原因 |
+|---|---|
+| Staging 環境 | Pi 單機，維護成本 > 效益（使用者明確排除）|
+| 分散式追蹤（OpenTelemetry）| 單一服務，Sentry 已夠 |
+| Log 聚合（ELK/Loki）| Pi 規模，`tail -f laravel.log` 夠用 |
+| WAF | Nginx 基本防護 + rate limiting 已涵蓋 80% |
+| DB read replica | 流量規模不需要 |
+| CDN | 靜態資源小，Nginx 快取足夠 |
+| Chaos engineering | 4 校區補習班，非必要 |
+| Feature flags | 規模不需要 |
+
+### 🟡 唯一值得考慮的 P2 剩餘項目
+
+| 項目 | 說明 | 成本 |
+|---|---|---|
+| 備份還原驗證（Restore test）| 每月自動還原到 `/tmp` 確認 DB 完整性 | 中（半天）|
+| Branch protection rules | 需 GitHub Pro（已用 local hook 替代）| 低（但需付費）|
+
