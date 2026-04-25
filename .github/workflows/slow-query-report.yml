@@ -1,0 +1,68 @@
+name: Slow Query Report
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # 每週一早上 8:00 UTC（台灣時間 16:00）
+  workflow_dispatch:
+
+jobs:
+  slow-query-check:
+    name: MySQL Slow Query Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" > ~/.ssh/pi_key
+          chmod 600 ~/.ssh/pi_key
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Fetch slow query stats from Pi
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          DB_PASS=$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)
+          DB_NAME=$(grep DB_DATABASE /home/admin/backend/.env | cut -d= -f2)
+
+          echo "=== 慢查詢報告 $(date '+%Y-%m-%d') ==="
+          echo ""
+
+          # 1. slow_query_log 狀態
+          echo "--- Slow Query Log 設定 ---"
+          mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -e \
+            "SHOW VARIABLES LIKE 'slow_query_log%'; SHOW VARIABLES LIKE 'long_query_time';" 2>/dev/null || \
+            echo "⚠️ 無法讀取 MySQL 設定（可能 user 無 SHOW VARIABLES 權限）"
+
+          # 2. 如果 slow query log 已啟用，列出最近 TOP 10 慢查詢
+          SLOW_LOG=$(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -sN -e \
+            "SHOW VARIABLES LIKE 'slow_query_log_file';" 2>/dev/null | awk '{print $2}')
+
+          if [ -f "$SLOW_LOG" ]; then
+            echo ""
+            echo "--- 最近 1 週 TOP 10 慢查詢（> long_query_time） ---"
+            # mysqldumpslow 匯總
+            mysqldumpslow -s t -t 10 "$SLOW_LOG" 2>/dev/null | head -60 || echo "無資料或工具不存在"
+          else
+            echo ""
+            echo "⚠️ Slow query log 未啟用或路徑無法讀取。"
+            echo "   建議執行：SET GLOBAL slow_query_log='ON'; SET GLOBAL long_query_time=1;"
+          fi
+
+          # 3. information_schema.PROCESSLIST 即時查看
+          echo ""
+          echo "--- 目前執行中的長查詢（> 3 秒）---"
+          mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" -e \
+            "SELECT ID, USER, HOST, DB, TIME, STATE, LEFT(INFO,120) AS QUERY FROM information_schema.PROCESSLIST WHERE COMMAND != 'Sleep' AND TIME > 3 ORDER BY TIME DESC;" \
+            2>/dev/null || echo "（無或無法讀取）"
+          REMOTE
+
+      - name: Write summary
+        if: always()
+        run: |
+          echo "### 🐢 Slow Query Weekly Report — $(date '+%Y-%m-%d')" >> "$GITHUB_STEP_SUMMARY"
+          echo "詳細輸出見 job log。如 slow_query_log 未啟用，請手動開啟。" >> "$GITHUB_STEP_SUMMARY"

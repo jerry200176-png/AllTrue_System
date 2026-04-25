@@ -137,26 +137,35 @@ jobs:
             echo "All tests passed with no skips. ✅" >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Coverage summary
+      - name: Coverage summary + threshold gate
         if: always()
         working-directory: backend
         run: |
           XML=storage/test-results/coverage.xml
           if [ ! -f "$XML" ]; then echo "Coverage XML not found." && exit 0; fi
           python3 - <<'PYEOF'
-          import xml.etree.ElementTree as ET
+          import xml.etree.ElementTree as ET, os, sys
+          THRESHOLD = 70   # 目標 80%，現階段先設 70% 給測試補齊的時間
           tree = ET.parse("storage/test-results/coverage.xml")
           metrics = tree.find(".//project/metrics")
           if metrics is None:
               print("No metrics found in coverage.xml.")
-          else:
-              stmts   = int(metrics.get("statements", 0))
-              covered = int(metrics.get("coveredstatements", 0))
-              pct     = round(covered / stmts * 100, 1) if stmts else 0.0
-              summary = f"### 📊 Coverage: {pct}% ({covered}/{stmts} statements)"
-              print(summary)
-              with open("storage/test-results/coverage_summary.txt", "w") as f:
-                  f.write(summary + "\n")
+              sys.exit(0)
+          stmts   = int(metrics.get("statements", 0))
+          covered = int(metrics.get("coveredstatements", 0))
+          pct     = round(covered / stmts * 100, 1) if stmts else 0.0
+          status  = "✅" if pct >= THRESHOLD else "⚠️"
+          summary = f"### 📊 Coverage: {pct}% ({covered}/{stmts} statements) {status}"
+          print(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary + "\n")
+              if pct < THRESHOLD:
+                  f.write(f"> ⚠️ Coverage {pct}% is below the {THRESHOLD}% threshold. Please add tests.\n")
+          with open("storage/test-results/coverage_summary.txt", "w") as f:
+              f.write(summary + "\n")
+          # 低於門檻輸出警告但不擋 CI（先觀察，之後改為 sys.exit(1)）
+          if pct < THRESHOLD:
+              print(f"::warning::Coverage {pct}% is below {THRESHOLD}% target")
           PYEOF
 
       - name: Upload test results

@@ -52,7 +52,31 @@ fi
 exit 0
 EOF
 
-# 3. post-merge：PR merge 後自動 mine MemPalace
+# 3. commit-msg：commitlint — 強制 conventional commits 格式
+cat > "$HOOKS_DIR/commit-msg" << 'EOF'
+#!/bin/bash
+# Conventional Commits 格式驗證
+# 格式：type(scope): description
+# type: feat|fix|docs|chore|refactor|test|perf|ci|revert|td
+MSG=$(cat "$1")
+PATTERN='^(feat|fix|docs|chore|refactor|test|perf|ci|revert|td|style|build)(\([a-z0-9_-]+\))?: .{1,100}'
+if ! echo "$MSG" | grep -qE "$PATTERN"; then
+  echo ""
+  echo "❌ Commit message 格式不符 Conventional Commits："
+  echo "   你寫的：$MSG"
+  echo ""
+  echo "   正確格式：type(scope): description"
+  echo "   type 可以是：feat | fix | docs | chore | refactor | test | perf | ci | revert | td"
+  echo "   範例：feat(attendance): add RFID swipe debounce"
+  echo "         fix(billing): correct remaining sessions calculation"
+  echo "         chore(deps): update phpunit to 9.6"
+  echo ""
+  exit 1
+fi
+exit 0
+EOF
+
+# 4. post-merge：PR merge 後自動 mine MemPalace
 cat > "$HOOKS_DIR/post-merge" << 'EOF'
 #!/bin/bash
 MEMPALACE=~/.local/bin/mempalace
@@ -64,10 +88,11 @@ fi
 exit 0
 EOF
 
-chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/post-merge"
+chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/commit-msg" "$HOOKS_DIR/post-merge"
 
 echo "✅ pre-push hook   → 禁止直接 push main"
 echo "✅ pre-commit hook → PHP syntax check + debug 語句警告"
+echo "✅ commit-msg hook → Conventional Commits 格式驗證"
 echo "✅ post-merge hook → 自動 mine MemPalace"
 echo ""
 echo "完成！hooks 已安裝到 .git/hooks/"

@@ -1,0 +1,114 @@
+name: Pi Health Monitor
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # 每 6 小時執行一次
+  workflow_dispatch:         # 手動觸發
+
+jobs:
+  health-check:
+    name: Pi System Health
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" > ~/.ssh/pi_key
+          chmod 600 ~/.ssh/pi_key
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Run health checks on Pi
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          set -e
+          ALERTS=""
+
+          # ── 1. 磁碟空間 ──────────────────────────────────────────────
+          DISK_PCT=$(df / | awk 'NR==2 {gsub(/%/,""); print $5}')
+          echo "磁碟使用率：${DISK_PCT}%"
+          [ "$DISK_PCT" -gt 85 ] && ALERTS="${ALERTS}⚠️ 磁碟使用率 ${DISK_PCT}% > 85%\n"
+          [ "$DISK_PCT" -gt 95 ] && ALERTS="${ALERTS}🔴 磁碟使用率 ${DISK_PCT}% > 95% — 緊急！\n"
+
+          # ── 2. CPU 溫度（Pi）────────────────────────────────────────
+          if command -v vcgencmd &>/dev/null; then
+            TEMP=$(vcgencmd measure_temp | grep -o '[0-9.]*')
+            echo "CPU 溫度：${TEMP}°C"
+            TEMP_INT=$(echo "$TEMP" | cut -d. -f1)
+            [ "$TEMP_INT" -gt 75 ] && ALERTS="${ALERTS}⚠️ CPU 溫度 ${TEMP}°C > 75°C\n"
+            [ "$TEMP_INT" -gt 85 ] && ALERTS="${ALERTS}🔴 CPU 溫度 ${TEMP}°C > 85°C — 緊急！\n"
+          fi
+
+          # ── 3. 備份年齡驗證 ──────────────────────────────────────────
+          BACKUP_DIR="/home/admin/backups/sixhour"
+          if [ -d "$BACKUP_DIR" ]; then
+            LATEST=$(ls -t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | head -1)
+            if [ -z "$LATEST" ]; then
+              ALERTS="${ALERTS}🔴 備份目錄無任何 .sql.gz 檔案！\n"
+            else
+              AGE_HOURS=$(( ( $(date +%s) - $(stat -c %Y "$LATEST") ) / 3600 ))
+              echo "最新備份年齡：${AGE_HOURS} 小時（${LATEST}）"
+              [ "$AGE_HOURS" -gt 8 ] && ALERTS="${ALERTS}⚠️ 最新備份已 ${AGE_HOURS} 小時未更新 (> 8hr)\n"
+              [ "$AGE_HOURS" -gt 24 ] && ALERTS="${ALERTS}🔴 最新備份已 ${AGE_HOURS} 小時！可能備份失敗！\n"
+            fi
+          else
+            ALERTS="${ALERTS}⚠️ 備份目錄 ${BACKUP_DIR} 不存在\n"
+          fi
+
+          # ── 4. 輸出結果 ──────────────────────────────────────────────
+          if [ -n "$ALERTS" ]; then
+            echo "=== ⚠️ ALERTS ==="
+            printf "$ALERTS"
+          else
+            echo "✅ 所有指標正常"
+          fi
+          REMOTE
+
+      - name: UptimeRobot status check
+        env:
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "api_key=${UPTIMEROBOT_API_KEY}&format=json&logs=0" \
+            -o /tmp/ur_response.json
+
+          python3 - /tmp/ur_response.json << 'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              data = json.load(f)
+          if data.get("stat") != "ok":
+              print(f"::warning::UptimeRobot API error: {data}")
+              sys.exit(0)
+          monitors = data.get("monitors", [])
+          if not monitors:
+              print("::warning::UptimeRobot: no monitors found")
+              sys.exit(0)
+          all_up = True
+          for m in monitors:
+              status = m.get("status")
+              name = m.get("friendly_name", "?")
+              # status: 2=up, 8=seems down, 9=down, 0=paused, 1=not checked yet
+              if status == 2:
+                  print(f"✅ UP   — {name}")
+              elif status in (8, 9):
+                  print(f"🔴 DOWN — {name} (status={status})")
+                  all_up = False
+              else:
+                  print(f"⚠️  WARN — {name}: status={status}")
+          if not all_up:
+              print("::error::UptimeRobot reports monitor is DOWN!")
+              sys.exit(1)
+          PYEOF
+
+      - name: Report to GitHub Step Summary
+        if: always()
+        run: |
+          echo "### 🖥️ Pi Health Check — $(date '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: 磁碟空間 / CPU 溫度 / 備份年齡 / UptimeRobot" >> "$GITHUB_STEP_SUMMARY"
