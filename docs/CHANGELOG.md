@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-25 — feat: 學習評量頁家長回饋視覺化 (#67)
+- Added orange left-border on unread feedback cards/rows; grey border for read
+- Added `💬 未讀回饋` / `💬 家長回饋` chip with click-to-expand inline preview (marks as read)
+- List view rows now show colour-coded left-border for feedback state
+
 ## 2026-04-25
 
 - Added Sentry 錯誤追蹤整合：前端 @sentry/vue + 後端 sentry-laravel，production exception 自動上報（PR #61）
