@@ -1,3 +1,4 @@
+// Sentry 已整合，DSN 由 deploy 時注入 VITE_SENTRY_DSN
 import { createApp } from 'vue';
 import * as Sentry from '@sentry/vue';
 import App from './App.vue';
