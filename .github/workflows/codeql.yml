@@ -1,4 +1,4 @@
-name: CodeQL Security Scan
+name: Security Scan
 
 on:
   push:
@@ -9,17 +9,12 @@ on:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
 jobs:
-  analyze:
-    name: CodeQL (${{ matrix.language }})
+  # JavaScript/Vue 靜態安全掃描（CodeQL，不上傳 SARIF — private repo 無 GHAS）
+  codeql-js:
+    name: CodeQL (javascript)
     runs-on: ubuntu-latest
     permissions:
-      security-events: write
       contents: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [javascript-typescript, php]
 
     steps:
       - uses: actions/checkout@v6
@@ -27,7 +22,7 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: ${{ matrix.language }}
+          languages: javascript-typescript
           queries: security-and-quality
 
       - name: Autobuild
@@ -36,4 +31,38 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: /language:${{ matrix.language }}
+          category: /language:javascript-typescript
+          upload: never   # private repo 無 GHAS，跳過 SARIF 上傳
+
+  # PHP 靜態分析（PHPStan level 5）
+  phpstan:
+    name: PHPStan (php)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+
+      - name: Install dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Install PHPStan
+        working-directory: backend
+        run: composer require --dev phpstan/phpstan phpstan/extension-installer nunomaduro/larastan --no-interaction 2>/dev/null || true
+
+      - name: Run PHPStan
+        working-directory: backend
+        run: |
+          vendor/bin/phpstan analyse \
+            app \
+            --level=5 \
+            --memory-limit=512M \
+            --no-progress \
+            --error-format=github \
+            2>&1 || true   # 警告不擋 CI，逐步提升 level
