@@ -8,6 +8,8 @@
 
 ## 2026-04-25
 
+- Added Sentry 錯誤追蹤整合：前端 @sentry/vue + 後端 sentry-laravel，production exception 自動上報（PR #61）
+- Added P1+P2 工程改善：CI 安全掃描（npm audit + composer audit）、bundle size budget、pre-push/pre-commit git hooks、Dependabot（PR #56）
 - Fixed 前端 bundle 與 version.json 被 git 追蹤舊版，每次 backend-only deploy 後 git reset 還原舊檔案導致 UI 退化；移除所有 build artifact 出 git、deploy 加 ASSETS_MISSING fallback 強制重 build（PR #55）
 - Added 家長回饋系統內通知：側欄 badge + 5 分鐘輪詢、老師/主任首頁待辦卡、評量頁卡片/列表切換（PR #54）
 - Fixed 學習評量表 API 全線 500：migration 偵測用 `grep "Pending"` 在 Laravel 8 失效（應為 `| No`），導致 `learning_record_feedbacks` 表未建立；同時加 `Schema::hasTable` guard 防止表不存在時 crash（PR #52）
