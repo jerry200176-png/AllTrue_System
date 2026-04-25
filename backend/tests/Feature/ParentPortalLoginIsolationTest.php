@@ -110,8 +110,8 @@ class ParentPortalLoginIsolationTest extends TestCase
         $studentA = $this->createStudent(1, '王大毛', '0911000001');
         $studentB = $this->createStudent(1, '王二毛', '0911000002');
 
-        // Explicit LINE binding for both under a single parent line_user_id
-        $lineUserId = 'Utest_line_parent_001';
+        // Explicit LINE binding for both under a single parent line_user_id (valid U+32hex format)
+        $lineUserId = 'Ua1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
         StudentLineBinding::create(['student_id' => $studentA->id, 'line_user_id' => $lineUserId]);
         StudentLineBinding::create(['student_id' => $studentB->id, 'line_user_id' => $lineUserId]);
 
