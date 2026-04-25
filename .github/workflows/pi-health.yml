@@ -64,17 +64,51 @@ jobs:
           if [ -n "$ALERTS" ]; then
             echo "=== ⚠️ ALERTS ==="
             printf "$ALERTS"
-            echo "HEALTH_ALERT=1" >> /tmp/pi_health_result
           else
             echo "✅ 所有指標正常"
-            echo "HEALTH_ALERT=0" >> /tmp/pi_health_result
           fi
-
-          cat /tmp/pi_health_result 2>/dev/null || true
           REMOTE
+
+      - name: UptimeRobot status check
+        env:
+          UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
+        run: |
+          curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "api_key=${UPTIMEROBOT_API_KEY}&format=json&logs=0" \
+            -o /tmp/ur_response.json
+
+          python3 - /tmp/ur_response.json << 'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              data = json.load(f)
+          if data.get("stat") != "ok":
+              print(f"::warning::UptimeRobot API error: {data}")
+              sys.exit(0)
+          monitors = data.get("monitors", [])
+          if not monitors:
+              print("::warning::UptimeRobot: no monitors found")
+              sys.exit(0)
+          all_up = True
+          for m in monitors:
+              status = m.get("status")
+              name = m.get("friendly_name", "?")
+              # status: 2=up, 8=seems down, 9=down, 0=paused, 1=not checked yet
+              if status == 2:
+                  print(f"✅ UP   — {name}")
+              elif status in (8, 9):
+                  print(f"🔴 DOWN — {name} (status={status})")
+                  all_up = False
+              else:
+                  print(f"⚠️  WARN — {name}: status={status}")
+          if not all_up:
+              print("::error::UptimeRobot reports monitor is DOWN!")
+              sys.exit(1)
+          PYEOF
 
       - name: Report to GitHub Step Summary
         if: always()
         run: |
           echo "### 🖥️ Pi Health Check — $(date '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: 磁碟空間 / CPU 溫度 / 備份年齡" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: 磁碟空間 / CPU 溫度 / 備份年齡 / UptimeRobot" >> "$GITHUB_STEP_SUMMARY"
