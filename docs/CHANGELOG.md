@@ -8,6 +8,8 @@
 
 ## 2026-04-25
 
+- Fixed 學習評量表 API 全線 500：migration 偵測用 `grep "Pending"` 在 Laravel 8 失效（應為 `| No`），導致 `learning_record_feedbacks` 表未建立；同時加 `Schema::hasTable` guard 防止表不存在時 crash（PR #52）
+
 - Fixed 跨校支援老師在出缺勤頁面提交「回報出入」回傳 403 Forbidden（PR #49）
 - Fixed 教學工作台「補填提醒」點擊後無法找到昨日課程：自動切到正確的週並開啟填寫 modal（PR #50）
 - Added 家長可在評量表留下回饋，老師與主任可在評量頁查看（PR #51）
