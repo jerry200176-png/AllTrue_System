@@ -26,8 +26,8 @@ class NotificationLineDispatcherTest extends TestCase
     private function makeStaffWithLine(int $campusId, string $lineId, bool $lineEnabled = true): int
     {
         $userId = DB::table('User')->insertGetId([
-            'LoginName' => fake()->unique()->email(),
-            'Name'      => fake()->name(),
+            'LoginName' => $this->faker->unique()->email(),
+            'Name'      => $this->faker->name(),
             'PSW'       => bcrypt('password'),
             'type'      => 'A',
             'status'    => 'active',
@@ -88,8 +88,8 @@ class NotificationLineDispatcherTest extends TestCase
             'messaging_channel_token' => 'fake-token-abc',
         ]);
         $userId = DB::table('User')->insertGetId([
-            'LoginName' => fake()->unique()->email(),
-            'Name'      => fake()->name(),
+            'LoginName' => $this->faker->unique()->email(),
+            'Name'      => $this->faker->name(),
             'PSW'       => bcrypt('password'),
             'type'      => 'A',
             'status'    => 'active',
