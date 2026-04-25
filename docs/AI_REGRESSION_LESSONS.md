@@ -221,6 +221,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R17. 家長/學生資料 API：先檢查 ownership，再檢查狀態
+
+- 家長端若先回 `pending/approved/voided` 狀態錯誤，再檢查 `StudentID` 歸屬，攻擊者可用猜測 ID 從 `403/409` 差異推測別人評量狀態。
+- **正確順序**：解析 session → 找 record context → `StudentID === session.StudentID` → 才判斷 `Status/VoidedAt`。
+- **測試必補**：同一個外部 token 對「別人的 pending record」也必須回 `403`，不可回 `409`。（PR #51，2026-04-25）
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -229,7 +237,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程 |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession） |
-| 評量 | §同天多堂課 buildEvents、§請假後不填評量 |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|

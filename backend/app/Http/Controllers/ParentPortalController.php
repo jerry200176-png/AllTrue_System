@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\LearningRecord;
+use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -309,8 +310,11 @@ class ParentPortalController extends Controller
                 ->get();
 
             $sessionNumbers = LearningRecordController::batchSessionNumbers($recordsRaw);
+            $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $recordsRaw->pluck('id'))
+                ->get()
+                ->keyBy('learning_record_id');
 
-            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers) {
+            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks) {
                     $teacher = User::find($rec->TeacherID);
                     $rec->teacher_name = $teacher ? $teacher->Name : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
@@ -328,6 +332,12 @@ class ParentPortalController extends Controller
                         $rec->Subject = $fromCourse ?: '課程';
                     }
                     $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
+                    $fb = $feedbacks->get((int) $rec->id);
+                    $rec->parent_feedback = $fb ? [
+                        'id' => (int) $fb->id,
+                        'content' => $fb->content,
+                        'updated_at' => optional($fb->updated_at)->toIso8601String(),
+                    ] : null;
                     return $rec;
                 });
             $lrHasMore = ($lrPage * $lrPerPage) < $lrTotal;
