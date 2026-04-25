@@ -93,4 +93,9 @@ class LearningRecord extends Model
     {
         return $this->belongsTo(User::class, 'TeacherID', 'id');
     }
+
+    public function feedback()
+    {
+        return $this->hasOne(LearningRecordFeedback::class, 'learning_record_id', 'id');
+    }
 }

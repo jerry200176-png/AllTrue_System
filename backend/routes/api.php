@@ -6,6 +6,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LearningRecordController;
+use App\Http\Controllers\LearningRecordFeedbackController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
@@ -354,6 +355,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy']);
+        Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
+        Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
@@ -407,6 +410,9 @@ Route::prefix('v1')->group(function () {
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
+    Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
+    Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
+        ->middleware('throttle:20,1');
 
     // ── Director: payment message for LINE copy ──────────────────────────
     Route::middleware(['role:director', 'require_password_change'])->group(function () {
