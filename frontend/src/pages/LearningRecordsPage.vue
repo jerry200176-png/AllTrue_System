@@ -484,6 +484,7 @@
                       <td>
                         <div class="lr-student-name">{{ record.student_name }}</div>
                         <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
+                        <span v-if="record.parent_feedback" :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : '']">家長回饋</span>
                       </td>
                       <td>
                         <span class="tag">{{ record.student_class_label || record.Subject }}</span>
@@ -789,6 +790,11 @@
               <div v-if="!isReadOnly" class="lr-phrase-row">
                 <button v-for="p in templatePhrases.Comment" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Comment', p)">{{ p }}</button>
               </div>
+            </div>
+            <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box">
+              <div class="lr-parent-feedback-title">家長回饋</div>
+              <div class="lr-parent-feedback-content">{{ _activeRecordRef.parent_feedback.content }}</div>
+              <div class="lr-parent-feedback-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.parent_feedback.updated_at) }}</div>
             </div>
           </div>
 
@@ -1286,6 +1292,15 @@ const pendingCount = computed(() => (records.value || []).filter(r => r.Status =
 const changesRequestedCount = computed(() => (records.value || []).filter(r => r.Status === 'changes_requested').length);
 const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
+const parentFeedbackUnread = (record) => {
+  const fb = record?.parent_feedback;
+  return !!(fb?.unread_for_teacher || fb?.unread_for_director);
+};
+const formatParentFeedbackTime = (value) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 /**
  * 目前頂部 tab（reviewTab / teacherFilterTab）隱藏了幾筆「否則會顯示」的記錄。
@@ -4985,6 +5000,12 @@ select.lr-input {
   color: var(--text-light);
   font-size: 12px;
 }
+.lr-parent-feedback-chip { display:inline-block; margin-top:4px; padding:2px 8px; border-radius:10px; font-size:12px; background:#eceff1; color:#455a64; }
+.lr-parent-feedback-chip.unread { background:#FFF3E0; color:#E65100; }
+.lr-parent-feedback-box { margin-top:12px; padding:12px; border:1px solid #e0e7ff; border-radius:12px; background:rgba(92,107,192,.06); }
+.lr-parent-feedback-title { font-weight:700; color:#3949ab; margin-bottom:6px; }
+.lr-parent-feedback-content { white-space:pre-wrap; line-height:1.6; }
+.lr-parent-feedback-time { margin-top:6px; font-size:12px; color:#78909c; }
 
 .lr-date {
   font-weight: 600;
