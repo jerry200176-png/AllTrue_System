@@ -347,6 +347,31 @@
                 </div>
                 <div class="pp-report-field-value pp-report-comment">{{ record.Comment }}</div>
               </div>
+              <div class="pp-feedback-box" @click.stop>
+                <div class="pp-feedback-title">
+                  <span class="material-symbols-outlined">rate_review</span>
+                  給老師的回饋
+                </div>
+                <p class="pp-feedback-hint">
+                  {{ record.parent_feedback ? '已送出給老師與主任查看。' : '有想補充給老師的嗎？可留下問題、觀察或鼓勵。' }}
+                </p>
+                <textarea
+                  v-model="record._feedbackDraft"
+                  class="pp-feedback-textarea"
+                  maxlength="500"
+                  aria-label="給老師的回饋"
+                  placeholder="例如：孩子回家說這個單元還不太熟，想請老師下次協助加強。"
+                  @focus="prepareFeedbackDraft(record)"
+                ></textarea>
+                <div class="pp-feedback-actions">
+                  <span :class="['pp-feedback-count', { warn: feedbackLength(record) >= 480 }]">{{ feedbackLength(record) }}/500</span>
+                  <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="record._feedbackSaving || !canSubmitFeedback(record)" @click="submitFeedback(record)">
+                    {{ record._feedbackSaving ? '送出中...' : (record.parent_feedback ? '更新回饋' : '送出回饋') }}
+                  </button>
+                </div>
+                <p v-if="record._feedbackError" class="pp-error pp-feedback-error">{{ record._feedbackError }}</p>
+                <p v-if="record.parent_feedback?.updated_at" class="pp-feedback-time">上次更新：{{ formatFeedbackTime(record.parent_feedback.updated_at) }}</p>
+              </div>
             </div>
             </div>
             </section>
@@ -468,7 +493,7 @@
 
 <script setup>
 import { onMounted, ref, computed, reactive } from 'vue';
-import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent } from '../api';
+import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback } from '../api';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -560,6 +585,38 @@ const visibleLearningRecordGroups = computed(() => {
   if (!f) return all;
   return all.filter(([subj]) => subj === f);
 });
+
+const prepareFeedbackDraft = (record) => {
+  if (record._feedbackDraft == null) record._feedbackDraft = record.parent_feedback?.content || '';
+};
+const feedbackLength = (record) => String(record._feedbackDraft ?? record.parent_feedback?.content ?? '').length;
+const canSubmitFeedback = (record) => {
+  const text = String(record._feedbackDraft ?? '').trim();
+  return text.length > 0 && text.length <= 500;
+};
+const formatFeedbackTime = (value) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const submitFeedback = async (record) => {
+  prepareFeedbackDraft(record);
+  record._feedbackError = '';
+  if (!canSubmitFeedback(record)) {
+    record._feedbackError = '請輸入 1-500 字的回饋內容';
+    return;
+  }
+  record._feedbackSaving = true;
+  try {
+    const id = record.id ?? record.ID;
+    record.parent_feedback = await upsertParentLearningRecordFeedback(token.value, id, String(record._feedbackDraft).trim());
+    record._feedbackDraft = record.parent_feedback?.content || '';
+  } catch (e) {
+    record._feedbackError = e?.message || '暫時無法送出，請稍後再試';
+  } finally {
+    record._feedbackSaving = false;
+  }
+};
 
 const statusLabel = (s) => {
   const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '已請假', cancelled: '已取消', completed: '已完成' };
@@ -1159,6 +1216,15 @@ onMounted(async () => {
 .pp-detail-row { display: flex; align-items: flex-start; gap: 6px; font-size: 0.88em; }
 .pp-detail-icon { font-size: 16px; color: #90a4ae; flex-shrink: 0; margin-top: 1px; }
 .pp-detail-label { font-weight: 600; color: #607d8b; white-space: nowrap; margin-right: 4px; }
+.pp-feedback-box { margin-top: 12px; padding: 12px; border: 1px solid #e0e7ff; border-radius: 12px; background: rgba(92,107,192,.06); }
+.pp-feedback-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #3949ab; }
+.pp-feedback-hint, .pp-feedback-time { margin: 6px 0; font-size: .86em; color: #607d8b; }
+.pp-feedback-textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid #c5cae9; border-radius: 10px; padding: 10px; font: inherit; box-sizing: border-box; }
+.pp-feedback-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
+.pp-feedback-count { font-size: .8em; color: #78909c; }
+.pp-feedback-count.warn { color: #e65100; }
+.pp-feedback-submit { min-height: 44px; }
+.pp-feedback-error { margin-top: 6px; }
 
 /* ═══ Report Card (Learning Records) ═══ */
 .pp-lr-filter-row {
