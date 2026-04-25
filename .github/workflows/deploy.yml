@@ -72,8 +72,16 @@ jobs:
             echo "前端有 $FRONTEND_CHANGED 個檔案變動，執行 build + deploy..."
             cd /home/admin/frontend && npm run deploy
           else
-            echo "✅ 前端無變動，跳過 build（version.json 不更新，用戶不會看到更新通知）"
+            echo "✅ 前端無變動，跳過 build（version.json 將在 step 4b 統一更新）"
           fi
+
+          echo "=== [4b/7] 更新 version.json ==="
+          # 永遠寫入最新 hash + 台北時間，無論是否有前端 build。
+          # 這樣 backend-only 的 commit 也不會讓 version.json 退化到 git 追蹤的舊版本。
+          GIT_HASH=$(git rev-parse --short HEAD)
+          TZ_DATE=$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M')
+          echo "{\"t\":\"${TZ_DATE}\",\"hash\":\"${GIT_HASH}\"}" > /home/admin/backend/public/version.json
+          echo "✅ version.json 更新：${TZ_DATE} (${GIT_HASH})"
 
           echo "=== [5/7] 重建 Laravel 快取 + 重載 PHP-FPM ==="
           # ⛔ 禁止用 optimize:clear / config:clear（事故 B 教訓：清除會造成短暫 auth 錯亂）
