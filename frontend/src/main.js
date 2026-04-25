@@ -1,4 +1,4 @@
-// Sentry 已整合，DSN 由 deploy 時注入 VITE_SENTRY_DSN
+// Sentry integrated — DSN injected via VITE_SENTRY_DSN at build time (PR #61 #63 #64)
 import { createApp } from 'vue';
 import * as Sentry from '@sentry/vue';
 import App from './App.vue';
