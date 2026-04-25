@@ -844,7 +844,7 @@
   <ReportDiscrepancyModal
     v-if="discrepancyModal.visible"
     :mode="discrepancyModal.mode"
-    :branch-id="props.branchId || 0"
+    :branch-id="discrepancyModal.branchId || props.branchId || 0"
     :class-session-id="discrepancyModal.sessionId"
     :session-context="discrepancyModal.sessionContext"
     :existing="discrepancyModal.existing"
@@ -1733,6 +1733,7 @@ const fetchPendingSessions = async () => {
         student_id: Number(r.student_id || 0),
         student_class_id: Number(r.student_class_id || 0),
         teacher_id: Number(r.teacher_id || (isTeacher.value ? props.userId : 0) || 0),
+        branch_id: Number(r.branch_id || r.CampusID || 0),
         session_date: String(r.session_date || '').slice(0, 10),
         start_time: String(r.start_time || '').slice(0, 5),
         end_time: String(r.end_time || '').slice(0, 5),
@@ -2198,6 +2199,7 @@ const discrepancyModal = reactive({
   sessionId: null,
   sessionContext: null,
   existing: null,
+  branchId: null,          // session's own campus — overrides currentBranch for cross-campus teachers
 });
 const discrepancyToast = reactive({ visible: false, text: '', tone: 'success' });
 let toastTimer = null;
@@ -2243,6 +2245,7 @@ function openReportModalForSession(session) {
   const existing = getSessionDiscrepancy(session.class_session_id);
   discrepancyModal.mode = 'session';
   discrepancyModal.sessionId = session.class_session_id;
+  discrepancyModal.branchId = session.branch_id || null;
   discrepancyModal.sessionContext = {
     date: session.session_date || localTodayYmd(),
     time: `${session.start_time || ''}${session.end_time ? '–' + session.end_time : ''}`,
@@ -2258,6 +2261,7 @@ function openReportModalMissing() {
   discrepancyModal.sessionId = null;
   discrepancyModal.sessionContext = null;
   discrepancyModal.existing = null;
+  discrepancyModal.branchId = null;
   discrepancyModal.visible = true;
 }
 
