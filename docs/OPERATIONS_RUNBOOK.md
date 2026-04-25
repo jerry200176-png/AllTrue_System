@@ -36,6 +36,33 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 - Backup branches are **not** for normal merge.
 - If PR contains huge unrelated diffs or historical artifacts: close it, do not merge.
 
+### B0. Dependabot PR Merge SOP
+
+**觸發時機**：Dependabot 開 PR（npm / composer / GitHub Actions 版本更新）
+
+**前置條件（缺一不可）**
+1. `curl https://daan.lifenet.com.tw/api/v1/health` → `{"status":"ok"}`
+2. `gh run list --workflow=deploy.yml --limit 3` → 最近 3 次全 success（代表備份正常）
+3. `git log --oneline -3` → main 與 production 一致
+
+**執行步驟**
+```bash
+# 1. 確認 PR 只改依賴版本，不碰 production 邏輯
+gh pr view <PR_NUMBER> --json files -q '.files[].path'
+
+# 2. Merge（PHPUnit fail 若只因 Dependabot 沒有 DB secret 屬正常）
+gh pr merge <PR_NUMBER> --squash --delete-branch
+
+# 3. 有 conflict → 讓 Dependabot 自動 rebase
+gh pr comment <PR_NUMBER> --body "@dependabot rebase"
+# rebase 完成後重跑步驟 2
+
+# 4. 需要 workflow scope 時先執行
+gh auth refresh -h github.com -s workflow
+```
+
+**⚠️ Dependabot PHPUnit fail 屬正常**：Dependabot PR 無法存取 GitHub Secrets（DB_PASSWORD），不是程式碼問題。只要 Vite build pass + 改動只有依賴版本，可安全 merge。
+
 ### B1. Branch Hygiene
 
 **Policy**
