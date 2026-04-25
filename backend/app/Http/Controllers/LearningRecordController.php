@@ -253,15 +253,9 @@ class LearningRecordController extends Controller
         }
 
         $sessionNumbers = static::batchSessionNumbers($collection);
-        static $feedbackTableExists = null;
-        if ($feedbackTableExists === null) {
-            $feedbackTableExists = Schema::hasTable('learning_record_feedbacks');
-        }
-        $feedbacks = $feedbackTableExists
-            ? LearningRecordFeedback::whereIn('learning_record_id', $collection->pluck('id'))
-                ->get()
-                ->keyBy('learning_record_id')
-            : collect();
+        $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $collection->pluck('id'))
+            ->get()
+            ->keyBy('learning_record_id');
 
         $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks) {
             $record->student_name = $record->studentClass->student->name ?? '—';
