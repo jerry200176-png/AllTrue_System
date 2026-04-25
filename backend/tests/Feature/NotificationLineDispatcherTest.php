@@ -34,8 +34,9 @@ class NotificationLineDispatcherTest extends TestCase
         ]);
 
         DB::table('Teacher')->insert([
-            'id'     => $userId,
-            'LineID' => $lineId,
+            'id'       => $userId,
+            'CampusID' => $campusId,
+            'LineID'   => $lineId,
         ]);
 
         DB::table('UserCampus')->insert([
@@ -94,7 +95,7 @@ class NotificationLineDispatcherTest extends TestCase
             'type'      => 'A',
             'status'    => 'active',
         ]);
-        DB::table('Teacher')->insert(['id' => $userId, 'LineID' => null]);
+        DB::table('Teacher')->insert(['id' => $userId, 'CampusID' => $campusId, 'LineID' => null]);
         DB::table('UserCampus')->insert(['UserID' => $userId, 'CampusID' => $campus->id, 'Approved' => 1]);
         UserNotificationPreference::create(['user_id' => $userId, 'line_enabled' => true]);
 
