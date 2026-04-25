@@ -74,6 +74,16 @@ jobs:
             sleep 2
           done
 
+      - name: Migration dry-run (pretend)
+        working-directory: backend
+        run: php artisan migrate --pretend --database=mysql 2>&1 | tee /tmp/migrate-pretend.txt; echo "✅ migrate --pretend 通過"
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+
       - name: Run migrations on test DB
         working-directory: backend
         run: php artisan migrate --force --database=mysql

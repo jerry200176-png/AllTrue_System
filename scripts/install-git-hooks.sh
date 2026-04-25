@@ -27,15 +27,19 @@ cat > "$HOOKS_DIR/pre-commit" << 'EOF'
 set -euo pipefail
 ERRORS=0
 
-# PHP syntax check（只掃暫存的 .php 檔）
-PHP_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
-if [ -n "$PHP_FILES" ]; then
-  while IFS= read -r file; do
-    if ! php -l "$file" >/dev/null 2>&1; then
-      echo "❌ PHP syntax error: $file"
-      ERRORS=$((ERRORS + 1))
-    fi
-  done <<< "$PHP_FILES"
+# PHP syntax check（只掃暫存的 .php 檔；若環境沒裝 PHP 則跳過）
+if command -v php &>/dev/null; then
+  PHP_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.php$' || true)
+  if [ -n "$PHP_FILES" ]; then
+    while IFS= read -r file; do
+      if ! php -l "$file" >/dev/null 2>&1; then
+        echo "❌ PHP syntax error: $file"
+        ERRORS=$((ERRORS + 1))
+      fi
+    done <<< "$PHP_FILES"
+  fi
+else
+  echo "⚠️  PHP not found locally — skipping PHP syntax check (CI will catch errors)"
 fi
 
 # 禁止把 console.log、dd()、var_dump() 提交進去
