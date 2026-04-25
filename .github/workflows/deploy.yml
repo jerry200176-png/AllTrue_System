@@ -65,6 +65,18 @@ jobs:
             echo "✅ 無 pending migration，略過"
           fi
 
+          echo "=== [3b/7] 注入 Sentry DSN ==="
+          # 後端 .env：寫入或更新 SENTRY_LARAVEL_DSN
+          if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
+            echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env
+            echo "✅ SENTRY_LARAVEL_DSN 已寫入 .env"
+          else
+            sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
+            echo "✅ SENTRY_LARAVEL_DSN 已更新"
+          fi
+          # 前端 build 時讀取的 env 變數
+          export VITE_SENTRY_DSN="${{ secrets.SENTRY_DSN }}"
+
           echo "=== [4/7] 前端變動偵測 ==="
           cd /home/admin
           FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
