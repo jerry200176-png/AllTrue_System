@@ -347,7 +347,7 @@
                 </div>
                 <div class="pp-report-field-value pp-report-comment">{{ record.Comment }}</div>
               </div>
-              <div class="pp-feedback-box" @click.stop>
+              <div class="pp-feedback-box" @click.stop="prepareFeedbackDraft(record)">
                 <div class="pp-feedback-title">
                   <span class="material-symbols-outlined">rate_review</span>
                   給老師的回饋
@@ -360,7 +360,7 @@
                   class="pp-feedback-textarea"
                   maxlength="500"
                   aria-label="給老師的回饋"
-                  placeholder="例如：孩子回家說這個單元還不太熟，想請老師下次協助加強。"
+                  :placeholder="record.parent_feedback?.content || '例如：孩子回家說這個單元還不太熟，想請老師下次協助加強。'"
                   @focus="prepareFeedbackDraft(record)"
                 ></textarea>
                 <div class="pp-feedback-actions">

@@ -1294,12 +1294,27 @@ const approvedCount = computed(() => (records.value || []).filter(r => r.Status 
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
 const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
-  return !!(fb?.unread_for_teacher || fb?.unread_for_director);
+  return isTeacher.value ? !!fb?.unread_for_teacher : !!fb?.unread_for_director;
 };
 const formatParentFeedbackTime = (value) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
+const markParentFeedbackRead = async (record) => {
+  const feedback = record?.parent_feedback;
+  if (!feedback?.id || !parentFeedbackUnread(record)) return;
+  try {
+    const token = await getToken();
+    await fetch(`/api/v1/learning-record-feedbacks/${feedback.id}/read`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (isTeacher.value) feedback.unread_for_teacher = false;
+    else feedback.unread_for_director = false;
+  } catch (e) {
+    console.warn('[LR] Failed to mark parent feedback as read');
+  }
 };
 
 /**
@@ -2549,6 +2564,7 @@ const viewRecord = (record) => {
   forceReadOnly.value = true;
   _fillForm(record);
   showModal.value = true;
+  markParentFeedbackRead(record);
   _attachTextareaResize();
 };
 
