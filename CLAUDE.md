@@ -4,6 +4,31 @@
 
 ---
 
+## 🧠 MemPalace — AI 記憶系統（2026-04-25 啟用）
+
+過去對話、文件、程式碼已索引進 palace（~2200 drawers）。Cursor hooks 已設定，每次 `sessionStart` 自動注入相關記憶。
+
+**手動搜尋**（調查 bug 或回顧過去決策前先跑）：
+```bash
+~/.local/bin/mempalace search "關鍵字"          # 語意搜尋全 palace
+~/.local/bin/mempalace search "關鍵字" --wing alltrue-sessions  # 只搜過去對話
+~/.local/bin/mempalace search "關鍵字" --wing alltrue-docs      # 只搜文件
+```
+
+**更新 palace**（完成重要任務後）：
+```bash
+# Mine 最新對話（把本次決策存進 palace）
+~/.local/bin/mempalace mine ~/.cursor/projects/home-jerry-alltrue/agent-transcripts \
+  --mode convos --wing alltrue-sessions
+
+# Mine 文件（有更新 docs/ 後）
+~/.local/bin/mempalace mine ~/alltrue/docs --wing alltrue-docs
+```
+
+Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
+
+---
+
 ## ⛔ 5 條紅線（違反 = P0 故障，零容忍）
 
 | # | 觸發情境 | 強制行動 |
