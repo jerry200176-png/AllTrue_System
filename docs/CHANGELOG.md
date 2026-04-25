@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-25 — chore: P1 workflow improvements — PR template, PHPStan, smoke test, CODEOWNERS (#71)
+- Added `.github/pull_request_template.md` for structured PR descriptions
+- Added `.github/workflows/codeql.yml` with PHPStan level 5 static analysis (CodeQL requires GHAS on private repo)
+- Enhanced `deploy.yml` smoke test: verify `/branches`, `/swipe-rfid`, `/auth/login` after deploy
+- Added `.github/CODEOWNERS` to auto-request review for high-risk modules
+
 ## 2026-04-25 — feat: 學習評量頁家長回饋視覺化 (#67)
 - Added orange left-border on unread feedback cards/rows; grey border for read
 - Added `💬 未讀回饋` / `💬 家長回饋` chip with click-to-expand inline preview (marks as read)
