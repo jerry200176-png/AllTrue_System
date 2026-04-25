@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-04-26 — feat: 通知中心 v2 (#81)
+- Changed: 類型下拉改為分類 Tab（全部/繳費/評量/刷卡/堂數/系統），各 Tab 顯示未讀計數徽章
+- Changed: 「標記已繳費」改為彈出核帳確認 Modal，避免誤觸直接異動 DB
+- Added: 「清除已解除」批次操作，將已解除通知標記已讀一鍵清除
+- Added: 深度連結擴充 — `low_sessions` → 課程管理，`schedule_change/substitute_confirm` → 行事曆
+- Changed: 通知 item 視覺層次強化 — 未讀藍色左邊框、urgent 紅色背景、已解除灰化刪除線
+- Added: API 30 天封存過濾 — 已讀且超過 30 天的通知預設不顯示，未讀永遠顯示
+- Added: 支援 `schedule_change`、`substitute_confirm`、`low_sessions` 類型 label 與樣式
+
+---
+
 ## 2026-04-25 — fix: 家長入口跨家庭學生資料洩漏修復 (#74 #75) [SECURITY]
 - Fixed: parent portal showed 7 unrelated students from different campuses as switchable siblings
 - Root cause: 2026-04-16 backfill migration copied invalid/shared Student.LineID into student_line_bindings
