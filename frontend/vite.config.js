@@ -3,9 +3,15 @@ import vue from '@vitejs/plugin-vue';
 import path from 'path';
 import { execSync } from 'child_process';
 
-// version.json 顯示給使用者看 → 用日期（YYYY-MM-DD）更直觀
+// version.json 顯示給使用者看 → 用「YYYY-MM-DD HH:mm」（台北時間）
 // 同時保留 commit hash 供開發者追溯
-const buildDate = new Date().toISOString().slice(0, 10);
+const buildDate = (() => {
+  const now = new Date();
+  // UTC+8
+  const tpe = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${tpe.getUTCFullYear()}-${pad(tpe.getUTCMonth() + 1)}-${pad(tpe.getUTCDate())} ${pad(tpe.getUTCHours())}:${pad(tpe.getUTCMinutes())}`;
+})();
 const gitHash = (() => {
   try {
     return execSync('git rev-parse --short HEAD').toString().trim();
