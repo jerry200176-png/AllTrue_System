@@ -9,33 +9,8 @@ on:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
 jobs:
-  # JavaScript/Vue 靜態安全掃描（CodeQL，不上傳 SARIF — private repo 無 GHAS）
-  codeql-js:
-    name: CodeQL (javascript)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-          queries: security-and-quality
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: /language:javascript-typescript
-          upload: never            # private repo 無 GHAS，跳過 SARIF 上傳
-          upload-database: false   # 同上，不上傳 DB
-
-  # PHP 靜態分析（PHPStan level 5，全域安裝不依賴 composer.lock）
+  # PHP 靜態分析（PHPStan level 5）
+  # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan
   phpstan:
     name: PHPStan (php)
     runs-on: ubuntu-latest
