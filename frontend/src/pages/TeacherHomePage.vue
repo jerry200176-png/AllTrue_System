@@ -141,7 +141,7 @@
             <span class="th-overdue-subject">{{ item.subject_name || item.subject || '' }}</span>
             <span class="th-branch-chip" :style="{ background: branchColor(item.branch_id) }">{{ branchShortName(item.branch_id) }}</span>
           </div>
-          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branch_id, recordId: null, studentClassId: item.student_class_id })" title="填寫評量">
+          <button class="th-fill-btn" @click="goFillRecord({ branchId: item.branch_id, recordId: null, classSessionId: item.id, sessionDate: item.session_date })" title="填寫評量">
             <span class="material-symbols-outlined">edit_note</span>
           </button>
         </div>
@@ -705,7 +705,11 @@ function goFillRecord(ev) {
   if (ev.branchId && Number(ev.branchId) !== Number(props.branchId)) {
     localStorage.setItem('app_branch', String(ev.branchId));
   }
-  emit('navigate-learning', { recordId: ev.recordId || null });
+  emit('navigate-learning', {
+    recordId: ev.recordId || null,
+    classSessionId: ev.classSessionId || null,
+    sessionDate: ev.sessionDate || null,
+  });
 }
 
 // ── Lifecycle ──
