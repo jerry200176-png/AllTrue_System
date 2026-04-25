@@ -299,10 +299,10 @@
         :user-role="role"
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
         @navigate="setActivePage($event)"
-        @navigate-learning="learningTargetRecordId = $event?.recordId || null; setActivePage('learning')"
+        @navigate-learning="learningTargetRecordId = $event?.recordId || null; learningTargetSession = $event?.classSessionId ? { classSessionId: $event.classSessionId, sessionDate: $event.sessionDate } : null; setActivePage('learning')"
       />
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -611,6 +611,7 @@ function onWindowResizeGuideFab() {
 const active = ref('director');
 const currentBranch = ref(null); // Will be set after branches load
 const learningTargetRecordId = ref(null);
+const learningTargetSession = ref(null);
 
 // Sidebar collapse state (desktop)
 const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true');
