@@ -10,24 +10,43 @@
     </div>
 
     <template v-else>
+      <!-- 核帳確認 Modal -->
+      <div v-if="tuitionModal.visible" class="modal-overlay" @click.self="tuitionModal.visible = false">
+        <div class="modal-box">
+          <h3>確認標記已繳費</h3>
+          <p class="modal-desc">此操作將直接更新資料庫繳費狀態，請確認已收到款項。</p>
+          <div class="modal-item-name">{{ tuitionModal.item?.Title }}</div>
+          <div class="modal-actions">
+            <button class="small ghost" @click="tuitionModal.visible = false">取消</button>
+            <button class="small primary" :disabled="tuitionModal.processing" @click="confirmTuitionPaid">
+              {{ tuitionModal.processing ? '處理中...' : '確認已繳費' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="card controls-card" data-guide="notifications-controls">
-        <div class="controls-grid">
+        <!-- 分類 Tab -->
+        <div class="type-tabs">
+          <button
+            v-for="tab in typeTabs"
+            :key="tab.value"
+            class="type-tab"
+            :class="{ active: typeFilter === tab.value }"
+            @click="typeFilter = tab.value"
+          >
+            {{ tab.label }}
+            <span v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</span>
+          </button>
+        </div>
+
+        <div class="controls-row">
           <label>
             狀態
             <select v-model="readFilter">
               <option value="unread">未讀</option>
               <option value="all">全部</option>
               <option value="read">已讀</option>
-            </select>
-          </label>
-
-          <label>
-            類型
-            <select v-model="typeFilter">
-              <option value="">全部類型</option>
-              <option value="tuition">繳費通知</option>
-              <option value="learning_review">待審評量</option>
-              <option value="pending_swipe">未識別刷卡</option>
             </select>
           </label>
 
@@ -38,18 +57,21 @@
 
           <label class="checkbox-wrap">
             <input v-model="soundEnabled" type="checkbox" />
-            <span>急件聲音提醒</span>
+            <span>急件提醒音</span>
           </label>
 
           <div class="stats-box">
-            未讀：<strong>{{ unreadCount }}</strong>
-            <span class="urgent-stat">急件：<strong>{{ urgentUnreadCount }}</strong></span>
+            未讀 <strong>{{ unreadCount }}</strong>
+            <span class="urgent-stat">急件 <strong>{{ urgentUnreadCount }}</strong></span>
           </div>
         </div>
 
         <div class="actions-row">
           <button class="small ghost" :disabled="syncing" @click="syncNotifications(true)">
             {{ syncing ? '同步中...' : '同步通知' }}
+          </button>
+          <button class="small ghost" :disabled="clearingResolved" @click="clearResolved">
+            {{ clearingResolved ? '清除中...' : '清除已解除' }}
           </button>
           <button class="small primary" :disabled="markingAllRead || notifications.length === 0" @click="markAllRead">
             {{ markingAllRead ? '處理中...' : '全部標記已讀' }}
@@ -74,7 +96,7 @@
                   v-if="canMarkTuitionPaid(item)"
                   class="small primary"
                   :disabled="isMarkingTuitionPaid(item.id)"
-                  @click="markTuitionPaid(item)"
+                  @click="openTuitionModal(item)"
                 >
                   {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
                 </button>
@@ -84,15 +106,24 @@
             </div>
           </div>
 
-          <div v-for="item in mainNotifications" :key="item.id" class="notification-item" :class="{ unread: !item.read_at }">
+          <div
+            v-for="item in mainNotifications"
+            :key="item.id"
+            class="notification-item"
+            :class="{
+              unread: !item.read_at,
+              resolved: !!item.ResolvedAt,
+              'severity-high-item': item.Severity === 'high' && !item.read_at,
+            }"
+          >
             <div class="title-row">
               <span class="type-tag" :class="`type-${item.Type}`">{{ typeLabel(item.Type) }}</span>
               <span class="severity-tag" :class="`severity-${item.Severity}`">{{ severityLabel(item.Severity) }}</span>
               <span v-if="item.ResolvedAt" class="resolved-tag">已解除</span>
-              <span v-if="!item.read_at" class="unread-dot">未讀</span>
+              <span v-if="!item.read_at" class="unread-dot"></span>
             </div>
 
-            <div class="main-title">{{ item.Title }}</div>
+            <div class="main-title" :class="{ 'title-resolved': !!item.ResolvedAt }">{{ item.Title }}</div>
             <div v-if="item.Body" class="main-body">{{ item.Body }}</div>
 
             <div class="meta-row">
@@ -106,7 +137,7 @@
                 v-if="canMarkTuitionPaid(item)"
                 class="small primary"
                 :disabled="isMarkingTuitionPaid(item.id)"
-                @click="markTuitionPaid(item)"
+                @click="openTuitionModal(item)"
               >
                 {{ isMarkingTuitionPaid(item.id) ? '處理中...' : '標記已繳費' }}
               </button>
@@ -149,10 +180,13 @@ const readFilter = ref('unread');
 const typeFilter = ref('');
 const includeResolved = ref(false);
 const soundEnabled = ref(localStorage.getItem('notifications_sound_enabled') !== '0');
+const clearingResolved = ref(false);
 const severityRank = { high: 3, medium: 2, low: 1, info: 0 };
 const hasUrgentWatchInitialized = ref(false);
 const lastUrgentDigest = ref('');
 const markingTuitionPaidIds = ref(new Set());
+
+const tuitionModal = ref({ visible: false, item: null, processing: false });
 
 const getToken = () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
@@ -161,14 +195,32 @@ const getToken = () => {
 
 const getBaseUrl = () => import.meta.env.VITE_API_BASE || '/api';
 
-const typeLabel = (type) => {
-  const map = {
-    tuition: '繳費',
-    learning_review: '評量',
-    pending_swipe: '刷卡',
-  };
-  return map[type] || type || '其他';
+const TYPE_META = {
+  tuition:          { label: '繳費',    tab: '繳費' },
+  low_sessions:     { label: '堂數',    tab: '堂數' },
+  learning_review:  { label: '評量',    tab: '評量' },
+  pending_swipe:    { label: '刷卡',    tab: '刷卡' },
+  schedule_change:  { label: '課程變更', tab: '系統' },
+  substitute_confirm: { label: '代課確認', tab: '系統' },
 };
+
+const typeLabel = (type) => TYPE_META[type]?.label || type || '其他';
+
+const typeTabs = computed(() => {
+  const counts = {};
+  notifications.value.forEach((n) => {
+    const tab = TYPE_META[n.Type]?.tab || '系統';
+    if (!n.read_at) counts[tab] = (counts[tab] || 0) + 1;
+  });
+  return [
+    { value: '',               label: '全部',    count: unreadCount.value },
+    { value: 'tuition',        label: '繳費',    count: counts['繳費'] || 0 },
+    { value: 'learning_review',label: '評量',    count: counts['評量'] || 0 },
+    { value: 'pending_swipe',  label: '刷卡',    count: counts['刷卡'] || 0 },
+    { value: 'low_sessions',   label: '堂數',    count: counts['堂數'] || 0 },
+    { value: 'schedule_change,substitute_confirm', label: '系統', count: counts['系統'] || 0 },
+  ];
+});
 
 const severityLabel = (severity) => {
   const map = {
@@ -195,7 +247,8 @@ const formatDateTime = (value) => {
 const targetPage = (type) => {
   if (type === 'pending_swipe') return 'attendance';
   if (type === 'learning_review') return 'learning';
-  if (type === 'tuition') return 'course-mgmt';
+  if (type === 'tuition' || type === 'low_sessions') return 'course-mgmt';
+  if (type === 'schedule_change' || type === 'substitute_confirm') return 'calendar';
   return null;
 };
 
@@ -204,7 +257,8 @@ const goToTarget = (type, item) => {
   if (!target) return;
   const payload = item ? payloadOf(item) : {};
   const recordId = type === 'learning_review' ? (payload.record_id || null) : null;
-  emit('navigate', { target, recordId });
+  const studentId = payload.student_id || null;
+  emit('navigate', { target, recordId, studentId });
 };
 
 const payloadOf = (item) => {
@@ -472,11 +526,16 @@ const markAllRead = async () => {
   }
 };
 
-const markTuitionPaid = async (item) => {
-  if (!item?.id || !props.branchId || isMarkingTuitionPaid(item.id)) return;
-  const ok = confirm(`確定將「${item.Title || '此通知'}」標記為已繳費嗎？`);
-  if (!ok) return;
+const openTuitionModal = (item) => {
+  if (!item?.id || isMarkingTuitionPaid(item.id)) return;
+  tuitionModal.value = { visible: true, item, processing: false };
+};
 
+const confirmTuitionPaid = async () => {
+  const item = tuitionModal.value.item;
+  if (!item?.id || !props.branchId) return;
+
+  tuitionModal.value.processing = true;
   setMarkingTuitionPaid(item.id, true);
   errorMessage.value = '';
   try {
@@ -494,11 +553,40 @@ const markTuitionPaid = async (item) => {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '更新繳費狀態失敗');
 
+    tuitionModal.value.visible = false;
     await syncNotifications(false);
   } catch (err) {
     errorMessage.value = err.message || '更新繳費狀態失敗';
+    tuitionModal.value.visible = false;
   } finally {
     setMarkingTuitionPaid(item.id, false);
+    tuitionModal.value.processing = false;
+  }
+};
+
+const clearResolved = async () => {
+  if (!props.branchId || clearingResolved.value) return;
+  clearingResolved.value = true;
+  errorMessage.value = '';
+  try {
+    const token = getToken();
+    const baseUrl = getBaseUrl();
+    const res = await fetch(`${baseUrl}/v1/notifications/read-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ branch_id: Number(props.branchId), resolved_only: true }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '清除失敗');
+    await loadNotifications(1);
+  } catch (err) {
+    errorMessage.value = err.message || '清除已解除通知失敗';
+  } finally {
+    clearingResolved.value = false;
   }
 };
 
@@ -554,17 +642,112 @@ onUnmounted(() => {
   color: var(--text-light);
 }
 
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal-box {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px 28px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.modal-box h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.modal-desc {
+  color: var(--text-light);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.modal-item-name {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  margin-bottom: 18px;
+  font-weight: 600;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ── 分類 Tab ── */
+.type-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.type-tab {
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #f5f7fa;
+  color: var(--text-light);
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s;
+}
+
+.type-tab:hover {
+  background: #e8edf5;
+}
+
+.type-tab.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.tab-badge {
+  background: #ff5252;
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 1px 6px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+.type-tab.active .tab-badge {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Controls ── */
 .controls-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.controls-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
-  gap: 10px;
-  align-items: end;
+.controls-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
 }
 
 .checkbox-wrap {
@@ -666,15 +849,33 @@ onUnmounted(() => {
 
 .notification-item {
   border: 1px solid var(--border);
+  border-left: 4px solid transparent;
   border-radius: 10px;
   padding: 12px;
   margin-bottom: 10px;
   background: #fff;
+  transition: background 0.15s;
 }
 
 .notification-item.unread {
-  border-color: #ffcc80;
-  background: #fffaf2;
+  border-color: #90caf9;
+  border-left-color: #1976d2;
+  background: #f3f8ff;
+}
+
+.notification-item.severity-high-item {
+  border-left-color: #d32f2f;
+  background: #fff8f8;
+}
+
+.notification-item.resolved {
+  opacity: 0.65;
+  background: #fafafa;
+}
+
+.title-resolved {
+  text-decoration: line-through;
+  color: var(--text-light);
 }
 
 .title-row {
@@ -714,6 +915,17 @@ onUnmounted(() => {
   color: #d32f2f;
 }
 
+.type-low_sessions {
+  background: #f3e5f5;
+  color: #6a1b9a;
+}
+
+.type-schedule_change,
+.type-substitute_confirm {
+  background: #e0f2f1;
+  color: #00695c;
+}
+
 .severity-high {
   background: #ffebee;
   color: #c62828;
@@ -736,8 +948,12 @@ onUnmounted(() => {
 }
 
 .unread-dot {
-  background: #263238;
-  color: #fff;
+  width: 8px;
+  height: 8px;
+  background: #1976d2;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 .main-title {
@@ -777,19 +993,19 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-@media (max-width: 900px) {
-  .controls-grid {
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-  }
-}
-
 @media (max-width: 640px) {
-  .controls-grid {
-    grid-template-columns: 1fr;
+  .type-tabs {
+    gap: 4px;
+  }
+
+  .type-tab {
+    padding: 4px 10px;
+    font-size: 12px;
   }
 
   .actions-row {
     justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .actions-row button {
