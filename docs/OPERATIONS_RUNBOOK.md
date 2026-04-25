@@ -549,3 +549,40 @@ php artisan tinker
 - LINE Notify 已於 2025-03-31 下線，此系統使用 LINE Messaging API Push Message（不同 API，需 Bot Channel Token）
 - LINE Push 失敗**不阻擋**課表出入回報的提交與處理流程
 
+
+## O. Secret Rotation Policy（2026-04-25）
+
+**原則：任何 secret 外洩跡象 → 當天輪換，不等。定期輪換每 90 天。**
+
+### 1. Secret 清單
+
+| Secret 名稱 | 位置 | 輪換方式 | 影響範圍 |
+|---|---|---|---|
+| `DB_PASSWORD` | Pi `backend/.env` + GitHub Secrets | MySQL FLUSH PRIVILEGES + .env 更新 + deploy | 後端 API 全部 |
+| `APP_KEY` | Pi `backend/.env` | `php artisan key:generate` + .env 更新 + 重啟 | Session（全員登出）|
+| `PI_SSH_KEY` | GitHub Secrets | `ssh-keygen` 新 keypair，更新 Pi `.authorized_keys` + GitHub Secrets | CI/CD 部署 |
+| `LINE_CHANNEL_SECRET` | Campus table / `.env` | LINE Dev Console 重新簽發 + 更新 DB | LINE Webhook 驗簽 |
+| `LINE_MESSAGING_TOKEN` | Campus table | LINE Dev Console 重新簽發 + 更新 DB | LINE Push 推播 |
+| `SENTRY_DSN` | `.env.production` (前端 Vite inject) | Sentry 建新 DSN，舊 DSN 停用 | 前端錯誤報告 |
+
+### 2. 輪換 SOP（以 DB_PASSWORD 為例）
+
+```bash
+# 在 Pi 上（緊急例外，事後補 PR 更新 documentation）
+mysql -u root -p -e "ALTER USER 'admin'@'localhost' IDENTIFIED BY 'NEW_PASS'; FLUSH PRIVILEGES;"
+sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=NEW_PASS/" /home/admin/backend/.env
+php artisan config:clear && php artisan cache:clear
+# 同步更新 GitHub → Settings → Secrets → PI_DB_PASSWORD（若有）
+curl -sk https://daan.lifenet.com.tw/api/v1/health  # 驗證
+```
+
+### 3. 外洩應急（< 1 小時內完成）
+
+1. 立即輪換（不用等排程）
+2. 確認 Git log 是否有誤 commit（若有：`git filter-repo` 或 GitHub Support）
+3. 稽核過去 7 天 access log 確認是否被濫用
+4. 更新 `docs/AI_REGRESSION_LESSONS.md` 記錄事件
+
+### 4. 提醒機制
+
+每 90 天在 GitHub Issues 手動建立「Secret rotation reminder」milestone issue，指派給 `jerry200176-png`。
