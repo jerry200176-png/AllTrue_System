@@ -48,7 +48,8 @@ jobs:
           echo "✅ storage:link + chmod 完成"
 
           echo "=== [3/7] Migration 備份 + 執行 ==="
-          PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+          # Laravel 8 用 "| No" (Ran? 欄)；Laravel 9+ 用 "Pending"。兩者都偵測。
+          PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -cE "\| No|Pending" || true)
           if [ "$PENDING" -gt 0 ]; then
             echo "有 $PENDING 筆 pending migration，先備份再執行..."
             TS=$(date '+%Y-%m-%d_%H%M%S')
