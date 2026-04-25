@@ -57,7 +57,6 @@ backups/emergency/code_*.tar.gz
 .cursor/data/
 .cursor/skills-cursor/.cursor-managed-skills-manifest.json
 .cursor/skills-cursor/.sync-manifest.json
-.claude/
 .cloudflared/
 .docker/
 .ssh/
@@ -88,3 +87,4 @@ logs/*.log
 
 # Third-party binaries installed locally (not to be tracked in git)
 bin/
+.claude/settings.local.json
