@@ -112,7 +112,9 @@ class ParentPortalController extends Controller
 
         // Only attach additional students if they share an explicit LINE binding.
         // 不再以「相同 Phone」自動帶出 siblings，避免跨家庭 PII 洩漏。
-        $lineUserIds = StudentLineBinding::where('student_id', $student->id)->pluck('line_user_id');
+        $lineUserIds = StudentLineBinding::where('student_id', $student->id)
+            ->pluck('line_user_id')
+            ->filter(fn ($id) => $this->isValidLineUserId($id));
         if ($lineUserIds->isNotEmpty()) {
             $siblingIds = StudentLineBinding::whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
@@ -215,9 +217,10 @@ class ParentPortalController extends Controller
         $allowed = false;
 
         if ($currentStudent) {
-            // Check via student_line_bindings: any shared line_user_id
+            // Check via student_line_bindings: any shared *valid* line_user_id
             $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
-                ->pluck('line_user_id');
+                ->pluck('line_user_id')
+                ->filter(fn ($id) => $this->isValidLineUserId($id));
             if ($currentLineIds->isNotEmpty()) {
                 $allowed = StudentLineBinding::where('student_id', $targetStudent->id)
                     ->whereIn('line_user_id', $currentLineIds)
@@ -546,8 +549,10 @@ class ParentPortalController extends Controller
         } catch (\Exception $e) {}
 
         // PRD-B FR-B-001: Siblings 僅透過 LINE 綁定解析，不再以相同 Phone 自動帶出。
+        // 只接受有效 LINE user ID 格式（U+32hex），過濾 backfill 產生的無效值。
         $lineUserIds = StudentLineBinding::where('student_id', $student->id)
-            ->pluck('line_user_id');
+            ->pluck('line_user_id')
+            ->filter(fn ($id) => $this->isValidLineUserId($id));
         $siblingIdsByLine = $lineUserIds->isNotEmpty()
             ? StudentLineBinding::whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
@@ -757,6 +762,15 @@ class ParentPortalController extends Controller
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/[^0-9]/', '', $phone);
+    }
+
+    /**
+     * 驗證是否為有效的 LINE user ID 格式（U + 32 位小寫 hex）。
+     * 防止 backfill 的無效值（電話、placeholder 等）產生跨家庭兄弟姐妹群組。
+     */
+    private function isValidLineUserId(string $id): bool
+    {
+        return (bool) preg_match('/^U[0-9a-f]{32}$/i', $id);
     }
 
     /**
