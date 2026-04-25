@@ -96,7 +96,7 @@ class NotificationLineDispatcherTest extends TestCase
             'type'      => 'A',
             'status'    => 'active',
         ]);
-        DB::table('Teacher')->insert(['id' => $userId, 'CampusID' => $campusId, 'T_Name' => 'No Line Staff', 'LineID' => null]);
+        DB::table('Teacher')->insert(['id' => $userId, 'CampusID' => $campus->id, 'T_Name' => 'No Line Staff', 'LineID' => null]);
         DB::table('UserCampus')->insert(['UserID' => $userId, 'CampusID' => $campus->id, 'Approved' => 1]);
         UserNotificationPreference::create(['user_id' => $userId, 'line_enabled' => true]);
 
