@@ -1,3 +1,7 @@
+## 🗺️ 第一步（任何任務開始前）：讀 `docs/INDEX.md` — 30 秒確認導航，再動手。省 token 的正確方式：只讀 INDEX 指向的對應章節，不要全讀文件。
+
+---
+
 ## ⛔⛔⛔ P0 警告（任何 AI 讀取此檔時必先閱讀）⛔⛔⛔
 
 **2026-04-21 生產事故 A**：AI `git push --force origin main` 觸發 `deploy.yml`

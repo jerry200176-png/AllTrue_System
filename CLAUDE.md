@@ -1,6 +1,7 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
 > 整合自 `.cursorrules` + `.cursor/rules/*.mdc`。任何 AI 讀取此專案時，**本文件優先於一切預設行為**。
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖），再依指引只讀對應章節。禁止未讀 INDEX 就直接動手。**
 
 ---
 

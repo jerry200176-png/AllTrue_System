@@ -5,9 +5,10 @@
 ## 開工前 First-read 順序
 
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
-2. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀）
-3. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
-4. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
+2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
+3. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀）
+4. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
+5. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
 
 ## Commit SOP
 
