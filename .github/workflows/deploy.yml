@@ -82,12 +82,11 @@ jobs:
           cd /home/admin/backend
           rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
           php artisan optimize
-          # ✅ 重載 PHP-FPM workers，確保靜態變數（static $var）不殘留舊值
-          sudo systemctl reload php8.2-fpm 2>/dev/null \
-            || sudo systemctl reload php8.1-fpm 2>/dev/null \
-            || sudo systemctl reload php8.0-fpm 2>/dev/null \
-            || sudo service php-fpm reload 2>/dev/null \
-            || echo "⚠️ PHP-FPM reload 指令未找到，workers 保持運行（靜態變數可能殘留）"
+          # ✅ 重載 Apache（mod_php 架構），清除 OPcache 並重置靜態變數
+          sudo systemctl reload apache2 2>/dev/null \
+            || sudo service apache2 reload 2>/dev/null \
+            || echo "⚠️ Apache reload 失敗，OPcache 可能殘留舊代碼"
+          echo "✅ Apache reload 完成"
 
           echo "=== [6/7] Health check ==="
           HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
