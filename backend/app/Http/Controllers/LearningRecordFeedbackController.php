@@ -128,6 +128,38 @@ class LearningRecordFeedbackController extends Controller
         return response()->json(['message' => 'ok']);
     }
 
+    public function unreadCount(Request $request)
+    {
+        $role = (string) $request->attributes->get('auth_role');
+        $query = LearningRecordFeedback::query();
+
+        if ($role === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if (!$teacherId) return response()->json(['message' => 'Teacher not linked'], 403);
+            $query->where('teacher_id', $teacherId);
+            $readAtColumn = 'last_read_by_teacher_at';
+        } else {
+            $campusIds = $role === 'super_admin' ? [] : array_map('intval', $request->attributes->get('auth_campus_ids', []));
+            $branchId = (int) ($request->input('branch_id') ?: $request->input('campus_id'));
+            if ($branchId > 0) {
+                if ($role !== 'super_admin' && !in_array($branchId, $campusIds, true)) {
+                    return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+                }
+                $query->where('campus_id', $branchId);
+            } elseif ($role !== 'super_admin') {
+                if (empty($campusIds)) return response()->json(['message' => 'Campus required'], 403);
+                $query->whereIn('campus_id', $campusIds);
+            }
+            $readAtColumn = 'last_read_by_director_at';
+        }
+
+        $count = $query
+            ->where(fn ($q) => $q->whereNull($readAtColumn)->orWhereColumn($readAtColumn, '<', 'updated_at'))
+            ->count();
+
+        return response()->json(['count' => (int) $count]);
+    }
+
     private function resolveParentSession(Request $request): ?ParentSession
     {
         $token = $request->bearerToken();

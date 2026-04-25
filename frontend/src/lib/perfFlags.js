@@ -13,6 +13,9 @@ const flags = {
   /** Polling interval for chat/bug/director badges (ms). Old: 25000, new: 60000 */
   BADGE_POLL_INTERVAL: 60000,
 
+  /** Polling interval for parent feedback unread badge (ms). */
+  FEEDBACK_BADGE_POLL_INTERVAL: 5 * 60 * 1000,
+
   /** Default per_page for learning records fetch. 200 gives a near-complete view per student without manual pagination */
   LR_DEFAULT_PER_PAGE: 200,
 

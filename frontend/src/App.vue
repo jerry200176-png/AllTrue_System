@@ -274,7 +274,7 @@
       <div v-if="isPasswordChangeLocked" class="card password-lock-card">
         為了帳號安全，請先到「右上角帳號選單 > 個人管理 > 安全性」完成初始密碼修改後再繼續使用系統。
       </div>
-      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" @navigate="onNavigateFromNotifications" />
+      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
         :branch-id="currentBranch"
@@ -298,11 +298,12 @@
         :user-id="session.user.id"
         :user-role="role"
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
+        :unread-feedback-count="unreadFeedbackCount"
         @navigate="setActivePage($event)"
         @navigate-learning="learningTargetRecordId = $event?.recordId || null; learningTargetSession = $event?.classSessionId ? { classSessionId: $event.classSessionId, sessionDate: $event.sessionDate } : null; setActivePage('learning')"
       />
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" @feedback-read="refreshUnreadNotifications" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -665,7 +666,7 @@ const mobileTabItems = computed(() => {
     return [
       { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
       { page: 'attendance', label: '出勤', icon: 'fact_check' },
-      { page: 'learning', label: '評量', icon: 'assignment' },
+      { page: 'learning', label: '評量', icon: 'assignment', badgeTypes: ['parent_feedback'] },
       { page: 'chat', label: '聊天', icon: 'forum', badgeTypes: ['chat'] },
       { page: 'more', label: '更多', icon: 'apps' },
     ];
@@ -680,6 +681,7 @@ const urgentNotificationCount = ref(0);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
+let feedbackBadgePollingTimer = null;
 let _badgePollingPaused = false;
 
 function _startBadgePolling() {
@@ -688,6 +690,7 @@ function _startBadgePolling() {
 
   const notifInterval = perfFlags.NOTIFICATION_POLL_INTERVAL;
   const badgeInterval = perfFlags.BADGE_POLL_INTERVAL;
+  const feedbackInterval = perfFlags.FEEDBACK_BADGE_POLL_INTERVAL;
   const pauseOnHidden = perfFlags.PAUSE_POLLING_ON_HIDDEN;
 
   unreadPollingTimer = window.setInterval(() => {
@@ -704,11 +707,18 @@ function _startBadgePolling() {
     mergeDirectorPendingBadge();
     mergeScheduleDiscrepancyBadge();
   }, badgeInterval);
+
+  feedbackBadgePollingTimer = window.setInterval(() => {
+    if (pauseOnHidden && document.visibilityState !== 'visible') return;
+    if (_badgePollingPaused) return;
+    mergeParentFeedbackBadge();
+  }, feedbackInterval);
 }
 
 function _stopBadgePolling() {
   if (unreadPollingTimer) { clearInterval(unreadPollingTimer); unreadPollingTimer = null; }
   if (chatBadgePollingTimer) { clearInterval(chatBadgePollingTimer); chatBadgePollingTimer = null; }
+  if (feedbackBadgePollingTimer) { clearInterval(feedbackBadgePollingTimer); feedbackBadgePollingTimer = null; }
 }
 
 function _onVisibilityChangeForPolling() {
@@ -719,6 +729,7 @@ function _onVisibilityChangeForPolling() {
 
 
 const unreadNotificationLabel = computed(() => (unreadNotificationCount.value > 99 ? '99+' : String(unreadNotificationCount.value)));
+const unreadFeedbackCount = computed(() => Number(badgeByType.value.parent_feedback?.total || 0));
 
 function getItemBadgeCount(item) {
   if (!item?.badgeTypes?.length) return 0;
@@ -776,6 +787,9 @@ function setActivePage(page) {
     calendarResetToken.value += 1;
   }
   active.value = page;
+  if (page === 'learning') {
+    mergeParentFeedbackBadge();
+  }
 }
 
 function isNavItemDisabled(page) {
@@ -848,7 +862,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'course-mgmt', label: '課程管理', icon: 'menu_book', badgeTypes: ['tuition'] },
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
-          { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review'] },
+          { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
         ],
       },
       {
@@ -894,7 +908,7 @@ const sidebarNavGroups = computed(() => {
         items: [
           { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['attendance'] },
-          { page: 'learning', label: '課表與評量', icon: 'assignment' },
+          { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['parent_feedback'] },
           { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
@@ -1285,6 +1299,44 @@ async function refreshUnreadNotifications() {
   await mergeDirectorPendingBadge();
   await mergeTeacherAttendanceBadge();
   await mergeScheduleDiscrepancyBadge();
+  await mergeParentFeedbackBadge();
+}
+
+async function mergeParentFeedbackBadge() {
+  if (!session.value?.access_token || (!isDirector.value && !isTeacher.value) || !currentBranch.value || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.parent_feedback;
+    badgeByType.value = next;
+    return;
+  }
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const params = new URLSearchParams();
+    if (isDirector.value && currentBranch.value) {
+      params.set('branch_id', String(currentBranch.value));
+    }
+    const qs = params.toString();
+    const res = await fetch(`${baseUrl}/v1/me/unread-feedback-count${qs ? `?${qs}` : ''}`, {
+      headers: {
+        Authorization: `Bearer ${session.value.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('parent feedback unread count failed');
+    const json = await res.json();
+    const n = Number(json.count || 0);
+    const next = { ...badgeByType.value };
+    if (n > 0) {
+      next.parent_feedback = { total: n, urgent: n };
+    } else {
+      delete next.parent_feedback;
+    }
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.parent_feedback;
+    badgeByType.value = next;
+  }
 }
 
 async function mergeScheduleDiscrepancyBadge() {
