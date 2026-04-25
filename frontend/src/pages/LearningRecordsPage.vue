@@ -423,7 +423,11 @@
               v-for="record in group.records"
               :key="record.id"
               class="lr-record-card"
-              :class="{ 'has-feedback': record.parent_feedback, 'is-unread': parentFeedbackUnread(record) }"
+              :class="{
+                'has-feedback': record.parent_feedback,
+                'is-unread': parentFeedbackUnread(record),
+                'has-feedback-read': record.parent_feedback && !parentFeedbackUnread(record)
+              }"
               @click="viewRecord(record)"
             >
               <div class="lr-record-card__top">
@@ -439,11 +443,24 @@
                 <span v-if="record.session_number"> · 第{{ record.session_number }}堂</span>
               </div>
               <div class="lr-record-card__chips">
-                <span v-if="record.parent_feedback" :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : '']">
-                  家長回饋
+                <span
+                  v-if="record.parent_feedback"
+                  :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                  @click.stop="toggleFeedbackPreview(record)"
+                  :title="parentFeedbackUnread(record) ? '有新家長回饋（點擊預覽）' : '家長回饋（點擊預覽）'"
+                >
+                  💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}
                 </span>
                 <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
+              </div>
+              <div
+                v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
+                class="lr-feedback-inline-preview"
+                @click.stop
+              >
+                <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
+                <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
               </div>
               <div class="lr-record-card__actions" @click.stop>
                 <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
@@ -550,7 +567,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing' }" @click="viewRecord(record)">
+                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record) }" @click="viewRecord(record)">
                       <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
@@ -567,7 +584,20 @@
                       <td>
                         <div class="lr-student-name">{{ record.student_name }}</div>
                         <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
-                        <span v-if="record.parent_feedback" :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : '']">家長回饋</span>
+                        <span
+                          v-if="record.parent_feedback"
+                          :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
+                          @click.stop="toggleFeedbackPreview(record)"
+                          :title="record.parent_feedback.content?.slice(0,60)"
+                        >💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}</span>
+                        <div
+                          v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
+                          class="lr-feedback-inline-preview"
+                          @click.stop
+                        >
+                          <div class="lr-feedback-inline-preview__content">{{ record.parent_feedback.content?.slice(0, 100) }}{{ (record.parent_feedback.content?.length || 0) > 100 ? '…' : '' }}</div>
+                          <div class="lr-feedback-inline-preview__time">{{ formatParentFeedbackTime(record.parent_feedback.updated_at) }}</div>
+                        </div>
                       </td>
                       <td>
                         <span class="tag">{{ record.student_class_label || record.Subject }}</span>
@@ -1020,6 +1050,18 @@ import {
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession']);
 const emit = defineEmits(['feedback-read']);
+
+const feedbackPreviewOpen = ref(new Set());
+const toggleFeedbackPreview = (record) => {
+  const id = record.id;
+  if (feedbackPreviewOpen.value.has(id)) {
+    feedbackPreviewOpen.value.delete(id);
+  } else {
+    feedbackPreviewOpen.value.add(id);
+    markParentFeedbackRead(record);
+  }
+  feedbackPreviewOpen.value = new Set(feedbackPreviewOpen.value);
+};
 
 const perf = createPerfTracker('LearningRecordsPage');
 
@@ -4607,9 +4649,13 @@ select.lr-input {
   box-shadow: 0 12px 26px rgba(15, 23, 42, .1);
 }
 
+.lr-record-card.has-feedback {
+  border-left: 3px solid #9CA3AF;
+}
 .lr-record-card.is-unread {
-  border-color: rgba(245, 158, 11, .55);
-  box-shadow: 0 8px 20px rgba(245, 158, 11, .12);
+  border-left: 3px solid #F97316;
+  border-color: #F97316;
+  box-shadow: 0 8px 20px rgba(249, 115, 22, .12);
 }
 
 .lr-record-card__top {
@@ -5275,8 +5321,18 @@ select.lr-input {
   color: var(--text-light);
   font-size: 12px;
 }
-.lr-parent-feedback-chip { display:inline-block; margin-top:4px; padding:2px 8px; border-radius:10px; font-size:12px; background:#eceff1; color:#455a64; }
-.lr-parent-feedback-chip.unread { background:#FFF3E0; color:#E65100; }
+.lr-parent-feedback-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; cursor:pointer; user-select:none; transition: opacity .15s; }
+.lr-parent-feedback-chip:hover { opacity:.8; }
+.lr-parent-feedback-chip.unread { background:#FFF3E0; color:#C2410C; font-weight:600; border:1px solid #FED7AA; }
+.lr-parent-feedback-chip.read { background:#F1F5F9; color:#64748B; border:1px solid #E2E8F0; }
+
+.lr-feedback-inline-preview { margin-top:8px; padding:8px 10px; background:#FFFBF5; border:1px solid #FED7AA; border-radius:8px; font-size:12px; }
+.lr-feedback-inline-preview__content { color:#1E293B; line-height:1.5; white-space:pre-wrap; }
+.lr-feedback-inline-preview__time { margin-top:4px; color:#94A3B8; font-size:11px; }
+
+/* 列表視圖 row 高亮 */
+tr.lr-row-has-feedback { border-left: 3px solid #9CA3AF; }
+tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.03); }
 .lr-parent-feedback-box { margin-top:12px; padding:12px; border:1px solid #e0e7ff; border-radius:12px; background:rgba(92,107,192,.06); }
 .lr-parent-feedback-title { font-weight:700; color:#3949ab; margin-bottom:6px; }
 .lr-parent-feedback-content { white-space:pre-wrap; line-height:1.6; }
