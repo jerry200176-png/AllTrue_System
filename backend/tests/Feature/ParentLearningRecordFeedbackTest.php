@@ -79,6 +79,38 @@ class ParentLearningRecordFeedbackTest extends TestCase
         $this->getJson("/api/v1/learning-record-feedbacks?branch_id={$campusB->id}", $this->bearer($directorToken))->assertStatus(403);
     }
 
+    public function test_staff_unread_feedback_count_scopes_by_role_and_mark_read(): void
+    {
+        $campusA = CampusFactory::new()->create();
+        $campusB = CampusFactory::new()->create();
+        $a = $this->record(['campus' => $campusA]);
+        $b = $this->record(['campus' => $campusB]);
+        $this->submit($a, '老師可見');
+        $this->submit($b, '跨分校');
+
+        $teacherToken = $this->staffToken($a['teacher'], [$campusA->id]);
+        $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($teacherToken))
+            ->assertOk()
+            ->assertJsonPath('count', 1);
+
+        $director = $this->user('A');
+        $directorToken = $this->staffToken($director, [$campusA->id]);
+        $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($directorToken))
+            ->assertOk()
+            ->assertJsonPath('count', 1);
+        $this->getJson("/api/v1/me/unread-feedback-count?branch_id={$campusB->id}", $this->bearer($directorToken))
+            ->assertStatus(403);
+
+        $feedbackId = DB::table('learning_record_feedbacks')
+            ->where('learning_record_id', $a['record_id'])
+            ->value('id');
+        $this->postJson("/api/v1/learning-record-feedbacks/{$feedbackId}/read", [], $this->bearer($teacherToken))
+            ->assertOk();
+        $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($teacherToken))
+            ->assertOk()
+            ->assertJsonPath('count', 0);
+    }
+
     private function submit(array $s, string $content): void
     {
         $this->putJson($this->parentUrl($s), ['content' => $content], $this->bearer($this->parentToken($s['student_id'])))->assertOk();
