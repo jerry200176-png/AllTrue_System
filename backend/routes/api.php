@@ -355,6 +355,7 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy']);
+        Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);

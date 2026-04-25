@@ -64,6 +64,18 @@
             <button class="ac__cta" @click.stop="scrollTo('evals')">去審核</button>
           </div>
 
+          <div v-if="unreadFeedbackCount > 0"
+               class="ac ac--feedback" tabindex="0"
+               @click="emit('navigate', { target: 'learning' })"
+               @keydown.enter="emit('navigate', { target: 'learning' })">
+            <span class="material-symbols-outlined ac__icon">mark_unread_chat_alt</span>
+            <div class="ac__body">
+              <span class="ac__count">{{ unreadFeedbackCount }}</span>
+              <span class="ac__label">筆家長回饋待看</span>
+            </div>
+            <button class="ac__cta" @click.stop="emit('navigate', { target: 'learning' })">去查看</button>
+          </div>
+
           <div class="ac ac--import" tabindex="0"
                @click="triggerImport" @keydown.enter="triggerImport">
             <span class="material-symbols-outlined ac__icon">upload_file</span>
@@ -134,6 +146,10 @@
           <div class="pb">
             <span class="pb__label">未讀通知</span>
             <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
+          </div>
+          <div class="pb">
+            <span class="pb__label">未讀家長回饋</span>
+            <span class="pb__val"><strong>{{ unreadFeedbackCount }}</strong></span>
           </div>
           <div class="pb">
             <span class="pb__label">本月科目數</span>
@@ -373,7 +389,8 @@ import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCar
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 
 const props = defineProps({
-  branchId: [String, Number]
+  branchId: [String, Number],
+  unreadFeedbackCount: { type: Number, default: 0 },
 });
 const emit = defineEmits(['navigate']);
 
@@ -452,6 +469,7 @@ const allClearActionLane = computed(() =>
   && lowBalanceStudents.value.length === 0
   && pendingEvaluations.value.length === 0
   && pendingMakeupCount.value === 0
+  && props.unreadFeedbackCount === 0
 );
 
 const displayPaymentAlerts = computed(() =>
@@ -986,6 +1004,7 @@ onMounted(() => {
 .ac--attend { border-left-color: #ef4444; }
 .ac--pay    { border-left-color: #f97316; }
 .ac--eval   { border-left-color: #3b82f6; }
+.ac--feedback { border-left-color: #f59e0b; }
 .ac--makeup { border-left-color: #8b5cf6; }
 .ac--import { border-left-color: #10b981; }
 .ac--clear  {
@@ -1002,6 +1021,7 @@ onMounted(() => {
 .ac--attend .ac__icon { color: #ef4444; }
 .ac--pay    .ac__icon { color: #f97316; }
 .ac--eval   .ac__icon { color: #3b82f6; }
+.ac--feedback .ac__icon { color: #f59e0b; }
 .ac--makeup .ac__icon { color: #8b5cf6; }
 .ac--import .ac__icon { color: #10b981; }
 .ac--clear  .ac__icon { color: #22c55e; }
@@ -1047,6 +1067,8 @@ onMounted(() => {
 .ac--pay .ac__cta:hover { background: #ffedd5; }
 .ac--eval .ac__cta   { background: #eff6ff; color: #2563eb; }
 .ac--eval .ac__cta:hover { background: #dbeafe; }
+.ac--feedback .ac__cta { background: #fffbeb; color: #d97706; }
+.ac--feedback .ac__cta:hover { background: #fef3c7; }
 .ac--makeup .ac__cta { background: #f5f3ff; color: #7c3aed; }
 .ac--makeup .ac__cta:hover { background: #ede9fe; }
 .ac--import .ac__cta { background: #ecfdf5; color: #059669; }
