@@ -2,7 +2,7 @@ name: DORA Metrics Weekly Report
 
 on:
   schedule:
-    - cron: '0 9 * * 1'   # 每週一早上 9:00 UTC（台灣時間 17:00）
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -16,20 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # 需要完整 git history
+          fetch-depth: 0
 
-      - name: Calculate DORA metrics
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+      - name: Write DORA script
         run: |
-          python3 << 'PYEOF'
+          cat > /tmp/dora.py << 'PYEOF'
           import subprocess, json, os
           from datetime import datetime, timedelta, timezone
 
           REPO = os.environ["REPO"]
-          GH   = os.environ["GH_TOKEN"]
-          DAYS = 30  # 看過去 30 天
+          DAYS = 30
 
           since = (datetime.now(timezone.utc) - timedelta(days=DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -44,59 +40,62 @@ jobs:
               except:
                   return []
 
-          # 1. Deployment Frequency — merged PRs to main
           prs = gh(f"/pulls?state=closed&base=main&per_page=100&sort=updated&direction=desc")
           merged = [p for p in prs if p.get("merged_at") and p["merged_at"] >= since]
-          deploy_freq = len(merged) / DAYS * 7  # per week
+          deploy_freq = len(merged) / DAYS * 7
 
-          # 2. Lead Time — PR open → merge
           lead_times = []
           for p in merged:
-              created = datetime.fromisoformat(p["created_at"].replace("Z","+00:00"))
+              created  = datetime.fromisoformat(p["created_at"].replace("Z","+00:00"))
               merged_at = datetime.fromisoformat(p["merged_at"].replace("Z","+00:00"))
               lead_times.append((merged_at - created).total_seconds() / 3600)
           avg_lead_h = sum(lead_times) / len(lead_times) if lead_times else 0
 
-          # 3. Change Failure Rate — PRs with "fix" or "hotfix" in title (proxy)
-          fix_prs = [p for p in merged if any(k in p["title"].lower() for k in ["fix", "hotfix", "revert"])]
+          fix_prs = [p for p in merged if any(k in p["title"].lower() for k in ["fix","hotfix","revert"])]
           cfr = len(fix_prs) / len(merged) * 100 if merged else 0
 
-          # DORA levels
-          def deploy_level(d):
-              if d >= 1:   return "Elite (daily+)"
+          def d_level(d):
+              if d >= 1:    return "Elite (daily+)"
               if d >= 0.25: return "High (weekly)"
               if d >= 0.03: return "Medium (monthly)"
               return "Low"
 
-          def lead_level(h):
-              if h < 24:   return "Elite (< 1 day)"
-              if h < 168:  return "High (< 1 week)"
-              if h < 720:  return "Medium (< 1 month)"
+          def l_level(h):
+              if h < 24:  return "Elite (< 1 day)"
+              if h < 168: return "High (< 1 week)"
+              if h < 720: return "Medium (< 1 month)"
               return "Low"
 
-          def cfr_level(c):
-              if c < 5:    return "Elite (< 5%)"
-              if c < 10:   return "High (< 10%)"
-              if c < 15:   return "Medium (< 15%)"
+          def c_level(c):
+              if c < 5:  return "Elite (< 5%)"
+              if c < 10: return "High (< 10%)"
+              if c < 15: return "Medium (< 15%)"
               return "Low"
 
-          summary = f"""### 📊 DORA Metrics — Past {DAYS} Days
+          lines = [
+              f"### DORA Metrics - Past {DAYS} Days",
+              "",
+              f"Deployment Frequency : {deploy_freq:.1f}/week ({len(merged)} deploys) [{d_level(deploy_freq)}]",
+              f"Lead Time for Changes: {avg_lead_h:.1f} hours avg [{l_level(avg_lead_h)}]",
+              f"Change Failure Rate  : {cfr:.1f}% ({len(fix_prs)} fix PRs) [{c_level(cfr)}]",
+              f"MTTR                 : manual (track in AI_REGRESSION_LESSONS.md)",
+              "",
+              "Definitions:",
+              "  Deployment Frequency = merged PRs to main",
+              "  Lead Time = PR open to merge",
+              "  Change Failure Rate = PRs with fix/hotfix/revert in title",
+          ]
+          output = "\n".join(lines)
+          print(output)
 
-| Metric | Value | Level |
-|--------|-------|-------|
-| Deployment Frequency | {deploy_freq:.1f} / week ({len(merged)} deploys) | {deploy_level(deploy_freq)} |
-| Lead Time for Changes | {avg_lead_h:.1f} hours avg | {lead_level(avg_lead_h)} |
-| Change Failure Rate | {cfr:.1f}% ({len(fix_prs)} fix PRs) | {cfr_level(cfr)} |
-| MTTR | (manual — track in AI_REGRESSION_LESSONS.md) | — |
-
-> Deployment Frequency = merged PRs to main
-> Lead Time = PR open → merge
-> Change Failure Rate = PRs with "fix/hotfix/revert" in title (proxy metric)
-> MTTR requires manual incident tracking
-"""
-          print(summary)
-
-          # Write to step summary
-          with open(os.environ.get("GITHUB_STEP_SUMMARY",""), "a") as f:
-              f.write(summary)
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY", "")
+          if summary_path:
+              with open(summary_path, "a") as f:
+                  f.write(output + "\n")
           PYEOF
+
+      - name: Run DORA metrics
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: python3 /tmp/dora.py
