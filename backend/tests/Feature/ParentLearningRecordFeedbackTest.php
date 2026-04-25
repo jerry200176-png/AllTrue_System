@@ -44,9 +44,11 @@ class ParentLearningRecordFeedbackTest extends TestCase
         $own = $this->record();
         $other = $this->record();
         $pending = $this->record(['status' => 'pending']);
+        $otherPending = $this->record(['status' => 'pending']);
         $token = $this->parentToken($own['student_id']);
 
         $this->putJson($this->parentUrl($other), ['content' => '越權'], $this->bearer($token))->assertStatus(403);
+        $this->putJson($this->parentUrl($otherPending), ['content' => '越權未核准'], $this->bearer($token))->assertStatus(403);
         $this->putJson($this->parentUrl($pending), ['content' => '未核准'], $this->bearer($this->parentToken($pending['student_id'])))->assertStatus(409);
         $this->putJson($this->parentUrl($own), ['content' => '   '], $this->bearer($token))->assertStatus(422);
         $this->putJson($this->parentUrl($own), ['content' => Str::repeat('a', 501)], $this->bearer($token))->assertStatus(422);
