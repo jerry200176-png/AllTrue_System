@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\LearningRecordFeedback;
 use App\Models\LearningRecordTeacherChange;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -252,8 +253,11 @@ class LearningRecordController extends Controller
         }
 
         $sessionNumbers = static::batchSessionNumbers($collection);
+        $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $collection->pluck('id'))
+            ->get()
+            ->keyBy('learning_record_id');
 
-        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers) {
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $subjectId = $record->studentClass->SubjectID ?? null;
@@ -262,6 +266,14 @@ class LearningRecordController extends Controller
                 : $record->Subject;
             $record->teacher_name = $teacherNameMap[$record->TeacherID] ?? '未指派';
             $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
+            $fb = $feedbacks->get((int) $record->id);
+            $record->parent_feedback = $fb ? [
+                'id' => (int) $fb->id,
+                'content' => $fb->content,
+                'updated_at' => optional($fb->updated_at)->toIso8601String(),
+                'unread_for_teacher' => !$fb->last_read_by_teacher_at || $fb->last_read_by_teacher_at->lt($fb->updated_at),
+                'unread_for_director' => !$fb->last_read_by_director_at || $fb->last_read_by_director_at->lt($fb->updated_at),
+            ] : null;
             return $record;
         });
     }
