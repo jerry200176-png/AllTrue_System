@@ -74,8 +74,9 @@ jobs:
             sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
             echo "✅ SENTRY_LARAVEL_DSN 已更新"
           fi
-          # 前端 build 時讀取的 env 變數
-          export VITE_SENTRY_DSN="${{ secrets.SENTRY_DSN }}"
+          # 前端：Vite 只從 .env 檔讀取，寫入暫時的 .env.production.local 再 build
+          echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local
+          echo "✅ frontend .env.production.local 已寫入"
 
           echo "=== [4/7] 前端變動偵測 ==="
           cd /home/admin
@@ -89,6 +90,8 @@ jobs:
           else
             echo "✅ 前端無變動且 assets 存在，跳過 build"
           fi
+          # build 完後刪除含 DSN 的暫時 env 檔（DSN 已 bake 進 bundle，檔案不需保留）
+          rm -f /home/admin/frontend/.env.production.local
 
           echo "=== [4b/7] 更新 version.json ==="
           # 永遠寫入最新 hash + 台北時間，無論是否有前端 build。
