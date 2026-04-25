@@ -63,6 +63,17 @@ export async function parentRequestLeave(token, sessionId) {
   return data;
 }
 
+export async function upsertParentLearningRecordFeedback(token, learningRecordId, content) {
+  const res = await fetch(`${API_BASE}/parent/learning-records/${learningRecordId}/feedback`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ content }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '回饋送出失敗');
+  return data.feedback;
+}
+
 export async function getPaymentMessage(token, studentId) {
   const res = await fetch(`${API_BASE}/parent/payment-message/${studentId}`, {
     headers: { Authorization: `Bearer ${token}` },
