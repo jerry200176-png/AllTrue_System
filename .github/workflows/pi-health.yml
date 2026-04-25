@@ -64,6 +64,7 @@ jobs:
           if [ -n "$ALERTS" ]; then
             echo "=== ⚠️ ALERTS ==="
             printf "$ALERTS"
+            exit 1   # 讓 GitHub Actions 判定 failure → 自動寄 email 給 repo owner
           else
             echo "✅ 所有指標正常"
           fi
