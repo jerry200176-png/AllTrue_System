@@ -1,5 +1,6 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 
+// PR #51: parent learning record feedback UI
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 export function useUpdateChecker() {
