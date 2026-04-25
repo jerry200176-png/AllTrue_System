@@ -107,6 +107,7 @@ jobs:
             echo ""
             echo "🚀 部署完成"
             exit 0
+          # ⬇ unreachable — exit 0 above，這段不會執行，健康檢查失敗才往下走
           fi
 
           echo "=== [7/7] ❌ Health check 失敗，啟動自動 Rollback ==="
