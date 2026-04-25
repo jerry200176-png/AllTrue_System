@@ -53,6 +53,10 @@ jobs:
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
+      - name: Composer audit (security)
+        working-directory: backend
+        run: composer audit --no-dev 2>&1 | tee /tmp/composer-audit.txt; grep -q "No security vulnerability" /tmp/composer-audit.txt || echo "::warning::Composer audit 發現漏洞，請儘快更新依賴"
+
       - name: Copy .env for CI
         working-directory: backend
         run: |
@@ -195,3 +199,25 @@ jobs:
           test -f dist_build/index.html || (echo "❌ index.html missing from dist_build" && exit 1)
           echo "✅ dist_build/index.html exists"
           ls -lh dist_build/
+
+      - name: Bundle size budget
+        working-directory: frontend
+        run: |
+          JS_SIZE=$(find dist_build/assets -name "*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          CSS_SIZE=$(find dist_build/assets -name "*.css" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          JS_KB=$((JS_SIZE / 1024))
+          CSS_KB=$((CSS_SIZE / 1024))
+          echo "### 📦 Bundle Size" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Asset | Size |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| JS total | ${JS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CSS total | ${CSS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
+          echo "JS: ${JS_KB} KB, CSS: ${CSS_KB} KB"
+          # 預算：JS > 800KB 或 CSS > 150KB 發出警告（不擋 CI）
+          [ "$JS_KB" -gt 800 ] && echo "::warning::JS bundle ${JS_KB} KB 超過 800 KB 預算，考慮 code splitting"
+          [ "$CSS_KB" -gt 150 ] && echo "::warning::CSS bundle ${CSS_KB} KB 超過 150 KB 預算"
+          exit 0
+
+      - name: npm audit (security)
+        working-directory: frontend
+        run: npm audit --audit-level=high --omit=dev || echo "::warning::npm audit 發現 high+ 漏洞，請儘快更新依賴"
