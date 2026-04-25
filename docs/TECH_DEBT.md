@@ -257,3 +257,17 @@
 ---
 
 *最後更新：2026-04-23（fix/swipe-classsession-sync — TD-012 登記）*
+
+### TD-013：個人設定頁自填 LINE User ID
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-04-26 |
+| 發現來源 | 開發中 |
+| 影響模組 | ProfileCenterPage.vue / AuthController |
+| 描述 | LINE push 後端已實作（NotificationLineDispatcher），但老師/主任無法在個人設定自填 LINE User ID，目前只能由主任透過老師管理頁代填 |
+| 建議做法 | 基本資料 tab 加 LINE User ID 輸入欄 + `PUT /api/v1/me` 支援 `line_id` + 通知偏好說明移除「暫不影響」字樣 |
+| 清償成本估計 | 低（< 2hr）|
+| 不做的代價 | 老師無法自助綁定，LINE 通知功能雖已上線但使用率低 |
