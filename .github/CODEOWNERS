@@ -1,0 +1,19 @@
+# AllTrue CODEOWNERS
+# 格式：<pattern> <GitHub username>
+# PR 觸碰對應路徑時，自動 request review
+
+# 全域 fallback — 所有檔案
+*                                   @jerry200176-png
+
+# 高風險後端模組（堂數扣除、繳費、刷卡）
+backend/app/Http/Controllers/Alert* @jerry200176-png
+backend/app/Services/SessionDeduction* @jerry200176-png
+backend/app/Services/ApprovalSessionSync* @jerry200176-png
+backend/app/Http/Controllers/SwipeRfid* @jerry200176-png
+
+# DB Migrations（任何 schema 變更）
+backend/database/migrations/        @jerry200176-png
+
+# CI/CD（部署相關）
+.github/workflows/                  @jerry200176-png
+.github/dependabot.yml              @jerry200176-png
