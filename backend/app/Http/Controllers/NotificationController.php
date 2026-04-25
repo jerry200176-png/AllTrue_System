@@ -59,6 +59,15 @@ class NotificationController extends Controller
             $query->whereNotNull('nr.ReadAt');
         }
 
+        // 30 天封存：已讀且超過 30 天的通知預設不顯示（未讀永遠顯示）
+        if ($readFilter !== 'unread') {
+            $archiveCutoff = now()->subDays(30)->toDateTimeString();
+            $query->where(function ($q) use ($archiveCutoff) {
+                $q->whereNull('nr.ReadAt')
+                    ->orWhere('Notifications.created_at', '>=', $archiveCutoff);
+            });
+        }
+
         $query->orderByRaw('CASE WHEN nr.ReadAt IS NULL THEN 0 ELSE 1 END ASC')
             ->orderByRaw("CASE Notifications.Severity
                 WHEN 'high' THEN 0
@@ -135,6 +144,7 @@ class NotificationController extends Controller
             'branch_id' => 'nullable|integer',
             'type' => 'nullable|string|max:120',
             'include_resolved' => 'nullable|boolean',
+            'resolved_only' => 'nullable|boolean',
         ]);
 
         [$campusIds] = $this->resolveCampusScope($request);
@@ -144,6 +154,7 @@ class NotificationController extends Controller
         }
 
         $includeResolved = filter_var($request->input('include_resolved', false), FILTER_VALIDATE_BOOLEAN);
+        $resolvedOnly = filter_var($request->input('resolved_only', false), FILTER_VALIDATE_BOOLEAN);
         $types = $this->parseTypes($request->input('type'));
 
         $query = Notification::query()->select('id');
@@ -153,7 +164,9 @@ class NotificationController extends Controller
         if (!empty($types)) {
             $query->whereIn('Type', $types);
         }
-        if (!$includeResolved) {
+        if ($resolvedOnly) {
+            $query->whereNotNull('ResolvedAt');
+        } elseif (!$includeResolved) {
             $query->whereNull('ResolvedAt');
         }
 
