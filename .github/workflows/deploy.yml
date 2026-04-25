@@ -82,11 +82,10 @@ jobs:
           cd /home/admin/backend
           rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
           php artisan optimize
-          # ✅ 重載 Apache（mod_php 架構），清除 OPcache 並重置靜態變數
-          sudo systemctl reload apache2 2>/dev/null \
-            || sudo service apache2 reload 2>/dev/null \
-            || echo "⚠️ Apache reload 失敗，OPcache 可能殘留舊代碼"
-          echo "✅ Apache reload 完成"
+          # ✅ 清除 OPcache（mod_php 架構，用自製 artisan 指令，不需 sudo）
+          cd /home/admin/backend && php artisan opcache:reset 2>/dev/null \
+            && echo "✅ OPcache 清除完成" \
+            || echo "⚠️ OPcache reset 失敗（非致命，TTL 到期後自動清除）"
 
           echo "=== [6/7] Health check ==="
           HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
