@@ -68,11 +68,14 @@ jobs:
           echo "=== [4/7] 前端變動偵測 ==="
           cd /home/admin
           FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
-          if [ "$FRONTEND_CHANGED" -gt 0 ]; then
-            echo "前端有 $FRONTEND_CHANGED 個檔案變動，執行 build + deploy..."
+          # 若 index.html 不存在（git rm --cached 後首次 deploy），強制 build
+          ASSETS_MISSING=0
+          [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
+          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ]; then
+            echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}），執行 build + deploy..."
             cd /home/admin/frontend && npm run deploy
           else
-            echo "✅ 前端無變動，跳過 build（version.json 將在 step 4b 統一更新）"
+            echo "✅ 前端無變動且 assets 存在，跳過 build"
           fi
 
           echo "=== [4b/7] 更新 version.json ==="
