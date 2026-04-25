@@ -1,0 +1,104 @@
+name: Backup Restore Verification
+
+on:
+  schedule:
+    - cron: '0 2 1 * *'   # 每月 1 日凌晨 2:00 UTC（台灣時間 10:00）
+  workflow_dispatch:
+
+jobs:
+  restore-test:
+    name: DB Backup Integrity Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" > ~/.ssh/pi_key
+          chmod 600 ~/.ssh/pi_key
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Run restore test on Pi
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          set -e
+
+          DB_PASS=$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)
+          DB_USER=$(grep DB_USERNAME /home/admin/backend/.env | cut -d= -f2)
+          BACKUP_DIR="/home/admin/backups/sixhour"
+          TEST_DB="AllTrue_restore_test_$$"
+
+          echo "=== Backup Restore Test $(date '+%Y-%m-%d %H:%M') ==="
+
+          # 1. 找最新備份
+          LATEST=$(ls -t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | head -1)
+          if [ -z "$LATEST" ]; then
+            echo "❌ 找不到備份檔"
+            exit 1
+          fi
+          echo "✅ 使用備份：$LATEST"
+          echo "   大小：$(du -sh "$LATEST" | cut -f1)"
+
+          # 2. 建立測試用 DB
+          mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
+            -e "CREATE DATABASE \`$TEST_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          echo "✅ 測試 DB 建立：$TEST_DB"
+
+          # 3. 還原
+          echo "⏳ 開始還原..."
+          zcat "$LATEST" | mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TEST_DB"
+          echo "✅ 還原完成"
+
+          # 4. 驗證核心資料表筆數
+          echo "--- 核心資料表驗證 ---"
+          FAIL=0
+
+          check_table() {
+            local TBL=$1
+            local MIN=$2
+            COUNT=$(mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" "$TEST_DB" \
+              -sN -e "SELECT COUNT(*) FROM \`$TBL\` LIMIT 1;" 2>/dev/null || echo "0")
+            if [ "$COUNT" -lt "$MIN" ]; then
+              echo "❌ $TBL: $COUNT 筆（期望 >= $MIN）"
+              FAIL=1
+            else
+              echo "✅ $TBL: $COUNT 筆"
+            fi
+          }
+
+          check_table "Student"       10
+          check_table "StudentClass"  10
+          check_table "ClassSession"  50
+          check_table "User"          3
+          check_table "Campus"        1
+
+          # 5. 清理測試 DB
+          mysql -h 127.0.0.1 -u "$DB_USER" -p"$DB_PASS" \
+            -e "DROP DATABASE \`$TEST_DB\`;"
+          echo "✅ 測試 DB 已清理"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "❌ 備份還原驗證失敗！核心資料表筆數不符預期"
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ 備份還原驗證通過"
+          REMOTE
+
+      - name: Report to GitHub Step Summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            echo "### ✅ Backup Restore Test — PASSED $(date '+%Y-%m-%d')" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ Backup Restore Test — FAILED $(date '+%Y-%m-%d')" >> "$GITHUB_STEP_SUMMARY"
+            echo "> 備份還原失敗！請立即檢查備份完整性。" >> "$GITHUB_STEP_SUMMARY"
+          fi
