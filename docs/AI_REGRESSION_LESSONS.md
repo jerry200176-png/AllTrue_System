@@ -249,3 +249,18 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 ---
 
 > 新增事故：請直接寫到 [AI_REGRESSION_LESSONS_ARCHIVE.md](AI_REGRESSION_LESSONS_ARCHIVE.md)，並更新上方黃/紅線（若升級為通用規則）。
+
+### R18. 家長入口 sibling 偵測必須驗證 LINE user ID 格式
+
+**觸發情境**：2026-04-25 家長登入看到 7 個不相關學生可切換
+
+**根因**：2026-04-16 backfill migration 把 `Student.LineID` 直接複製進 `student_line_bindings`，
+未驗證是否為有效 LINE user ID 格式（U + 32 hex）。多個不同分校的學生共享同一 LineID（舊系統錯誤資料），
+造成跨家庭 PII 洩漏。
+
+**強制規則**：
+- `StudentLineBinding` 查詢用於 sibling 偵測前，必須 `.filter(fn($id) => isValidLineUserId($id))`
+- backfill migration 複製 `LineID` 欄位時，必須加 `AND LineID REGEXP '^U[0-9a-f]{32}$'` 條件
+- 同一 `line_user_id` 出現在多個不同 `CampusID` 的學生 = 資料錯誤，不得作為 sibling 群組
+
+**修復**：PR #74 (code guard) + PR #75 (data cleanup migration)

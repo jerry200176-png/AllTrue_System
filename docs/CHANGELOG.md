@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-04-25 — fix: 家長入口跨家庭學生資料洩漏修復 (#74 #75) [SECURITY]
+- Fixed: parent portal showed 7 unrelated students from different campuses as switchable siblings
+- Root cause: 2026-04-16 backfill migration copied invalid/shared Student.LineID into student_line_bindings
+- Fix 1 (code): filter line_user_id to valid LINE format (U+32hex) in sibling detection (login, switchStudent, dashboard)
+- Fix 2 (data): migration to remove invalid-format LINE IDs from student_line_bindings
+- Fix 3 (data): migration to remove cross-campus LINE user IDs (impossible for real family groups)
+
 ## 2026-04-25 — chore: P1 workflow improvements — PR template, PHPStan, smoke test, CODEOWNERS (#71)
 - Added `.github/pull_request_template.md` for structured PR descriptions
 - Added `.github/workflows/codeql.yml` with PHPStan level 5 static analysis (CodeQL requires GHAS on private repo)
