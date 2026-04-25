@@ -86,7 +86,7 @@ jobs:
           [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
           if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ]; then
             echo "前端有 $FRONTEND_CHANGED 個檔案變動 / assets 不存在（${ASSETS_MISSING}），執行 build + deploy..."
-            cd /home/admin/frontend && npm run deploy
+            cd /home/admin/frontend && npm install --prefer-offline && npm run deploy
           else
             echo "✅ 前端無變動且 assets 存在，跳過 build"
           fi
