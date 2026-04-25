@@ -113,6 +113,23 @@
           </div>
           <span class="material-symbols-outlined th-action-arrow">chevron_right</span>
         </button>
+
+        <button
+          v-if="unreadFeedbackCount > 0"
+          class="th-action-btn th-action-feedback"
+          @click="goLearning"
+        >
+          <div class="th-action-icon-wrap">
+            <span class="material-symbols-outlined">mark_unread_chat_alt</span>
+          </div>
+          <div class="th-action-body">
+            <div class="th-action-label">
+              家長回饋待看 <strong>{{ unreadFeedbackCount }}</strong> 筆
+            </div>
+            <div class="th-action-hint">點此查看評量表回饋</div>
+          </div>
+          <span class="material-symbols-outlined th-action-arrow">chevron_right</span>
+        </button>
       </div>
 
       <!-- Cross-branch hint -->
@@ -284,6 +301,7 @@ const props = defineProps({
   userId: { type: [Number, String], default: null },
   userRole: { type: String, default: '' },
   teacherBranchIds: { type: Array, default: () => [] },
+  unreadFeedbackCount: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(['navigate', 'navigate-learning']);
@@ -854,6 +872,8 @@ onBeforeUnmount(() => {
 .th-action-attendance .th-action-icon-wrap { background: var(--primary-bg); color: var(--primary); }
 .th-action-learning .th-action-icon-wrap { background: #e3f2fd; color: #1565c0; }
 [data-theme="dark"] .th-action-learning .th-action-icon-wrap { background: #1a237e; color: #90caf9; }
+.th-action-feedback .th-action-icon-wrap { background: #fff3e0; color: #ef6c00; }
+[data-theme="dark"] .th-action-feedback .th-action-icon-wrap { background: #3b2612; color: #ffb74d; }
 .th-done .th-action-icon-wrap { background: var(--success-bg); color: var(--success); }
 
 .th-action-body { flex: 1; min-width: 0; }

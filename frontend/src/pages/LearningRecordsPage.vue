@@ -352,8 +352,38 @@
     </div>
 
     <!-- ===== Records Grouped By Student ===== -->
+    <div class="lr-view-toolbar" aria-label="評量顯示模式">
+      <div class="lr-view-toolbar__label">顯示模式</div>
+      <div class="lr-view-toggle" role="group" aria-label="切換列表或卡片">
+        <button
+          type="button"
+          :class="['lr-view-btn', { active: viewMode === 'table' }]"
+          @click="viewMode = 'table'"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">view_list</span>
+          列表
+        </button>
+        <button
+          type="button"
+          :class="['lr-view-btn', { active: viewMode === 'card' }]"
+          @click="viewMode = 'card'"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">grid_view</span>
+          卡片
+        </button>
+      </div>
+    </div>
+
     <div class="card lr-table-card" data-guide="learning-table">
-      <div v-if="filteredGroupedRecords.length === 0" class="lr-empty-state">
+      <div v-if="recordsPagination.loading && records.length === 0" class="lr-record-skeleton-grid" aria-hidden="true">
+        <div v-for="i in 5" :key="i" class="lr-record-skeleton-card">
+          <div class="lr-skel-line lr-skel-title"></div>
+          <div class="lr-skel-line"></div>
+          <div class="lr-skel-line short"></div>
+        </div>
+      </div>
+
+      <div v-else-if="filteredGroupedRecords.length === 0" class="lr-empty-state">
         <div class="lr-empty-icon" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="28" cy="28" r="16"></circle>
@@ -371,6 +401,59 @@
         <div v-else-if="isUsingDefaultWindow" class="lr-empty-desc">若要查看更早的記錄，請點擊下方按鈕。</div>
         <button v-if="hasActiveFilters" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
         <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>
+      </div>
+
+      <div v-else-if="viewMode === 'card'" class="lr-card-view">
+        <section
+          v-for="group in filteredGroupedRecords"
+          :key="group.key"
+          class="lr-card-student-group"
+        >
+          <div class="lr-card-student-head">
+            <button
+              type="button"
+              class="lr-group-student lr-group-student-btn"
+              :title="`點此只載入 ${group.student_name} 的全部記錄`"
+              @click.stop.prevent="filterByStudent(group.student_name)"
+            >{{ group.student_name }}</button>
+            <span class="lr-group-count">{{ group.records.length }} 筆</span>
+          </div>
+          <div class="lr-card-grid">
+            <article
+              v-for="record in group.records"
+              :key="record.id"
+              class="lr-record-card"
+              :class="{ 'has-feedback': record.parent_feedback, 'is-unread': parentFeedbackUnread(record) }"
+              @click="viewRecord(record)"
+            >
+              <div class="lr-record-card__top">
+                <div>
+                  <div class="lr-record-card__student">{{ record.student_name }}</div>
+                  <div class="lr-record-card__meta">{{ record.student_class_label || record.Subject || '未分類' }}</div>
+                </div>
+                <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
+              </div>
+              <div class="lr-record-card__time">
+                <span class="material-symbols-outlined" aria-hidden="true">event</span>
+                {{ record.SessionDate }} {{ record.StartTime || '' }}
+                <span v-if="record.session_number"> · 第{{ record.session_number }}堂</span>
+              </div>
+              <div class="lr-record-card__chips">
+                <span v-if="record.parent_feedback" :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : '']">
+                  家長回饋
+                </span>
+                <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
+                <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
+              </div>
+              <div class="lr-record-card__actions" @click.stop>
+                <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
+                <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
+                <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
+              </div>
+            </article>
+          </div>
+        </section>
       </div>
 
       <div v-else class="lr-groups">
@@ -936,6 +1019,7 @@ import {
 } from '../lib/learningRecordDrafts';
 
 const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession']);
+const emit = defineEmits(['feedback-read']);
 
 const perf = createPerfTracker('LearningRecordsPage');
 
@@ -970,6 +1054,9 @@ const isDirectorRole = computed(() => ['director', 'admin', 'super_admin'].inclu
 
 const records = ref([]);
 const recordsPagination = ref({ currentPage: 1, lastPage: 1, total: 0, loading: false });
+const defaultViewMode = typeof window !== 'undefined' && window.innerWidth < 760 ? 'card' : 'table';
+const viewMode = ref(localStorage.getItem('lr_view_mode') || defaultViewMode);
+watch(viewMode, (mode) => localStorage.setItem('lr_view_mode', mode));
 /** 是否正在執行「載入全部」的自動多頁輪詢。 */
 const loadingAll = ref(false);
 const showModal = ref(false);
@@ -1282,6 +1369,7 @@ const filteredGroupedRecords = computed(() => {
           return collator.compare(a.subject, b.subject);
         });
       group.subjectGroups = subjectGroups;
+      group.records = sortRecords(group.records.slice());
       delete group.subjectMap;
       return group;
     })
@@ -1312,6 +1400,7 @@ const markParentFeedbackRead = async (record) => {
     });
     if (isTeacher.value) feedback.unread_for_teacher = false;
     else feedback.unread_for_director = false;
+    emit('feedback-read');
   } catch (e) {
     console.warn('[LR] Failed to mark parent feedback as read');
   }
@@ -2321,6 +2410,7 @@ const fetchRecords = async () => {
   try {
     const token = await getToken();
     if (!token) return;
+    recordsPagination.value = { ...recordsPagination.value, loading: true };
 
     const params = _buildRecordsParams(1);
     const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
@@ -2339,6 +2429,7 @@ const fetchRecords = async () => {
     };
   } catch (e) {
     console.error(e);
+    recordsPagination.value = { ...recordsPagination.value, loading: false };
   }
 };
 
@@ -4395,9 +4486,177 @@ select.lr-input {
 }
 
 /* ── Table ── */
+.lr-view-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.lr-view-toolbar__label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.lr-view-toggle {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+}
+
+.lr-view-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 12px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.lr-view-btn .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.lr-view-btn.active {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, .22);
+}
+
 .lr-table-card {
   padding: 0;
   overflow: hidden;
+}
+
+.lr-record-skeleton-grid,
+.lr-card-view {
+  padding: 14px;
+}
+
+.lr-record-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.lr-record-skeleton-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--card-bg);
+}
+
+.lr-skel-line {
+  height: 12px;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef2f7 25%, #f8fafc 37%, #eef2f7 63%);
+  background-size: 400% 100%;
+  animation: lr-skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+.lr-skel-title { height: 18px; margin-top: 0; width: 70%; }
+.lr-skel-line.short { width: 45%; }
+
+@keyframes lr-skeleton-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+.lr-card-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.lr-card-student-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.lr-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.lr-record-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  background: var(--card-bg);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.lr-record-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, .35);
+  box-shadow: 0 12px 26px rgba(15, 23, 42, .1);
+}
+
+.lr-record-card.is-unread {
+  border-color: rgba(245, 158, 11, .55);
+  box-shadow: 0 8px 20px rgba(245, 158, 11, .12);
+}
+
+.lr-record-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lr-record-card__student {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.lr-record-card__meta,
+.lr-record-card__time,
+.lr-record-card__teacher {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lr-record-card__time {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.lr-record-card__time .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.lr-record-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lr-record-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .lr-groups {
