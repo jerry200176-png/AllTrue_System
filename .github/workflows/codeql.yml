@@ -34,7 +34,7 @@ jobs:
           category: /language:javascript-typescript
           upload: never   # private repo 無 GHAS，跳過 SARIF 上傳
 
-  # PHP 靜態分析（PHPStan level 5）
+  # PHP 靜態分析（PHPStan level 5，全域安裝不依賴 composer.lock）
   phpstan:
     name: PHPStan (php)
     runs-on: ubuntu-latest
@@ -42,25 +42,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup PHP
+      - name: Setup PHP + PHPStan
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-          tools: composer
-
-      - name: Install dependencies
-        working-directory: backend
-        run: composer install --no-interaction --prefer-dist --no-progress
-
-      - name: Install PHPStan
-        working-directory: backend
-        run: composer require --dev phpstan/phpstan phpstan/extension-installer nunomaduro/larastan --no-interaction 2>/dev/null || true
+          php-version: '8.2'
+          tools: phpstan
 
       - name: Run PHPStan
         working-directory: backend
         run: |
-          vendor/bin/phpstan analyse \
-            app \
+          phpstan analyse app \
             --level=5 \
             --memory-limit=512M \
             --no-progress \
