@@ -35,7 +35,7 @@ jobs:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "$PI_SSH_KEY" > ~/.ssh/pi_key
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/pi_key
           chmod 600 ~/.ssh/pi_key
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
