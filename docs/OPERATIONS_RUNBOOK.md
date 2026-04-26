@@ -84,6 +84,32 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 - ✅ Settings → General → Auto-delete head branches after merge
 - ✅ Settings → Branches → Branch protection rules on `main`
 
+### B2. GitHub Actions Minutes Conservation SOP
+
+**目的**：降低 GitHub-hosted runner minutes 消耗，同時維持「PR 綠燈才 merge、merge 後自動部署、部署後 health check」的安全底線。
+
+**核心規則**
+1. **PR 舊 run 自動取消**：CI / PHPStan workflow 必須使用 `concurrency`，同一 PR 新 commit 進來時取消舊 run，只驗最新 commit。
+2. **Docs-only 不跑重 CI**：只改 `docs/**`、`.cursor/**`、Markdown 或計畫文件時，只跑 Presubmit；跳過 PHPUnit/MySQL、Vite build、PHPStan。
+3. **Frontend-only 不跑後端測試**：只改 `frontend/**` 時跑 Vite build，不跑 PHPUnit/MySQL 與 PHPStan。
+4. **Backend-only 不跑前端 build**：只改 `backend/**` 或 Composer 依賴時跑 PHPUnit/MySQL 與 PHPStan，不跑 Vite build。
+5. **Workflow 改動保守全跑**：修改 `.github/workflows/**` 時，CI 必須保守跑完整前後端檢查，避免 path filter 失手。
+6. **Docs-only merge 不部署**：`deploy.yml` 必須先偵測 main 最新 commit 是否含 `backend/**`、`frontend/**`、Composer 或 deploy workflow 變動；沒有 deployable diff 就跳過 production deploy。
+7. **Production deploy 不取消**：部署 workflow 使用 `concurrency: production-deploy` 且 `cancel-in-progress: false`，避免中途取消造成半部署。
+8. **禁止用 production Pi 省 CI minutes**：不得把 `/home/admin` production Pi 註冊為 PHPUnit/self-hosted test runner；也不得為省 minutes 在 Pi 上跑 `php artisan test` / `phpunit`。
+
+**第一階段目標**
+- docs-only PR：Actions job minutes 目標 `< 0.5 min`
+- frontend-only PR：只消耗 Vite build + Presubmit
+- backend-only PR：只消耗 PHPUnit/PHPStan + Presubmit
+- 多次 push 同 PR：只保留最新 run
+
+**第二階段才評估（若月用量仍過高）**
+- 將 coverage 報告改為 nightly，PR 只跑 PHPUnit 無 coverage
+- 將低頻維運排程降頻或移到外部監控
+- 拆分 fast tests / full regression tests
+- 評估獨立、非 production 的 self-hosted runner（不可與 Pi production 共用）
+
 ## C. Incident lessons (must remember)
 
 From previous incidents:

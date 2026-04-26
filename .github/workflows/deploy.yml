@@ -6,11 +6,78 @@ on:
     types: [completed]
     branches: [main]
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  detect-deployable:
+    name: Detect deployable changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      deployable: ${{ steps.detect.outputs.deployable }}
+    steps:
+      - name: Check changed files
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+          import subprocess
+
+          repo = os.environ["REPO"]
+          head = os.environ["HEAD_SHA"]
+
+          commit = json.loads(subprocess.check_output(
+              ["gh", "api", f"/repos/{repo}/commits/{head}"],
+              text=True,
+          ))
+          parents = commit.get("parents", [])
+          if not parents:
+              print("deployable=true")
+              with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                  f.write("deployable=true\n")
+              raise SystemExit(0)
+
+          base = parents[0]["sha"]
+          comparison = json.loads(subprocess.check_output(
+              ["gh", "api", f"/repos/{repo}/compare/{base}...{head}"],
+              text=True,
+          ))
+          files = [item.get("filename", "") for item in comparison.get("files", [])]
+          deployable_prefixes = ("backend/", "frontend/")
+          deployable_exact = {
+              "composer.json",
+              "composer.lock",
+              ".github/workflows/deploy.yml",
+          }
+          deployable = any(
+              path.startswith(deployable_prefixes) or path in deployable_exact
+              for path in files
+          )
+          print("Changed files:")
+          for path in files:
+              print(f"- {path}")
+          print(f"deployable={str(deployable).lower()}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"deployable={str(deployable).lower()}\n")
+          PYEOF
+
   deploy:
     name: Deploy to Production
+    needs: detect-deployable
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.detect-deployable.outputs.deployable == 'true'
 
     steps:
       - name: Setup SSH

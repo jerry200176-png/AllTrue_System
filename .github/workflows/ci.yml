@@ -9,9 +9,43 @@ on:
 # ⛔ 此 workflow 只跑測試，絕對不部署任何東西到生產環境
 # ⛔ 禁止在此新增任何 ssh、rsync、scp、ftp deploy 步驟
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      ci_config: ${{ steps.filter.outputs.ci_config }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            ci_config:
+              - '.github/workflows/**'
+
   phpunit:
     name: PHPUnit Feature & Unit Tests
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -271,6 +305,8 @@ jobs:
 
   vite-build:
     name: Vite Frontend Build
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
