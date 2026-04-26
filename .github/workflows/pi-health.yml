@@ -45,7 +45,13 @@ jobs:
           PI_HOST: ${{ secrets.PI_HOST }}
           PI_USER: ${{ secrets.PI_USER }}
         run: |
-          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          ssh -i ~/.ssh/pi_key -v \
+            -o ConnectTimeout=15 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=no \
+            -o PasswordAuthentication=no \
+            -o PubkeyAuthentication=yes \
+            ${PI_USER}@${PI_HOST} bash << 'REMOTE'
           set -e
           ALERTS=""
 
