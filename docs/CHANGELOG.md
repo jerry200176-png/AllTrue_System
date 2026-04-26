@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(monthly-courses): 月結建立課程日曆調整
+
+- Added 月結制一般課程建立時可在日曆排除或加入初始堂次，避免建立後逐堂調課
+
 ## 2026-04-27 — chore(security): Composer audit warning 清償
 
 - Security 升級 `league/commonmark` 至 2.8.2，並登記 Laravel major upgrade 技術債以追蹤剩餘 framework audit warning
