@@ -549,6 +549,13 @@ class PaymentReportController extends Controller
         $report = PaymentReport::with(['student', 'studentClass.subjectRecord', 'confirmedByUser'])
             ->findOrFail($id);
 
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $studentCampusId = (int) ($report->student?->CampusID ?? 0);
+        if ($role !== 'super_admin' && ($studentCampusId <= 0 || !in_array($studentCampusId, $campusIds, true))) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
         if ($report->status !== 'confirmed') {
             return response()->json(['message' => '尚未核帳確認，無法產生收據'], 422);
         }
