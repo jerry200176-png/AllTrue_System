@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-26 — feat(notifications): 通知中心核帳流程升級（PR #104）
+
+- Added 通知中心「標記已繳費」可填繳費日期、方式、金額與備註，並同步建立 Payment / Invoice 核帳記錄
+- Changed 繳費與堂數提醒的「前往處理」導向催繳名單，通知卡片補充學生、科目與金額摘要
+
 ## 2026-04-26 — fix(sentry): 處理 MIME type 錯誤 #100 及 N+1 誤判 #101（PR #102）
 
 - Fixed 加入 `window.addEventListener('error')` 捕捉 MIME type 錯誤並自動 reload；Sentry ignoreErrors 加入對應樣式
