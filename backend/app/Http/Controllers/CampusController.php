@@ -45,6 +45,8 @@ class CampusController extends Controller
         '敦化分校',
         '蘆洲分校',
         '大同分校',
+        '新莊分校',
+        '中平分校',
     ];
 
     public function listPublic()
