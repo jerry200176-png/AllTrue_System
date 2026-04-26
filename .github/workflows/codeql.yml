@@ -8,11 +8,38 @@ on:
   schedule:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    name: Detect backend/security changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      security_config: ${{ steps.filter.outputs.security_config }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            security_config:
+              - '.github/workflows/codeql.yml'
+              - '.github/workflows/ci.yml'
+
   # PHP 靜態分析（PHPStan level 5）
   # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan
   phpstan:
     name: PHPStan (php)
+    needs: changes
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
     runs-on: ubuntu-latest
 
     steps:
