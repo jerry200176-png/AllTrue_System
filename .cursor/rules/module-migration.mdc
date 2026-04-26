@@ -41,7 +41,7 @@ $table->enum('Status', [...])->default('pending_review');
 ```
 ❌ 禁止：CI 還在跑就執行 migrate
 ❌ 禁止：直接在 feature branch 跑 migrate --force
-✅ 正確：PR merge → git pull origin main → php artisan migrate --force
+✅ 正確：PR merge → deploy.yml 偵測 pending migration → 備份 → php artisan migrate --force
 ```
 
 ---

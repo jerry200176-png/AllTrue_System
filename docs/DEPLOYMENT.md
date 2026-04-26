@@ -6,7 +6,7 @@
 
 ## 1. 生產環境：Apache + PHP（daan.lifenet.com.tw）
 
-純 Apache + PHP + MySQL，無 Node.js 執行時、無 Docker。詳見 [APACHE-SETUP.md](APACHE-SETUP.md)。
+純 Apache + PHP + MySQL，無 Node.js 常駐執行時、無 Docker。完整維運 SOP 見 `docs/OPERATIONS_RUNBOOK.md`。
 
 ### 必要條件
 
@@ -28,12 +28,12 @@ cd frontend && npm run deploy
 cd /home/admin/backend && php artisan optimize
 ```
 
-若 `npm run deploy` 出現 EPERM，先執行 `./scripts/fix-deploy-permissions.sh`。
+若緊急手動 `npm run deploy` 出現 EPERM，先執行 `./scripts/fix-deploy-permissions.sh`，事後補 PR 記錄原因。
 
 ### 驗證
 
 ```bash
-curl -s https://daan.lifenet.com.tw/api/health
+curl -s https://daan.lifenet.com.tw/api/v1/health
 curl -s https://daan.lifenet.com.tw/api/v1/branches
 ```
 
@@ -99,7 +99,7 @@ cloudflared tunnel --url http://localhost:8080
 
 ### 前端沒更新
 
-強制重新整理（Ctrl+Shift+R），或確認已執行 `npm run deploy` 並清快取。
+強制重新整理（Ctrl+Shift+R），或先確認 `deploy.yml` 成功、`backend/public/version.json` 已更新。
 
 ---
 
