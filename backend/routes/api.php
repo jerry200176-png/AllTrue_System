@@ -38,6 +38,7 @@ use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleDiscrepancyController;
+use App\Http\Controllers\AccountingController;
 
 
 if (app()->environment('local')) {
@@ -266,6 +267,8 @@ Route::prefix('v1')->group(function () {
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
+        Route::get('accounting/payments', [AccountingController::class, 'payments']);
+        Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
         Route::get('payment-reports', [PaymentReportController::class, 'index']);
         Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);
