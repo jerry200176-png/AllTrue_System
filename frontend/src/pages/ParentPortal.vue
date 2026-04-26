@@ -80,7 +80,7 @@
     <!-- ═══ Dashboard (logged in) ═══ -->
     <template v-if="token && dashboard">
 
-      <!-- Student Profile Card -->
+      <!-- Student Profile Card (simplified — no fee ring) -->
       <div class="pp-card pp-profile-card" data-guide="parent-student-card">
         <div class="pp-profile-top">
           <div class="pp-avatar">{{ (dashboard.student?.name || '?')[0] }}</div>
@@ -113,144 +113,43 @@
           </div>
           <p class="pp-error" v-if="switchError" style="margin-top:6px;">{{ switchError }}</p>
         </div>
-
-        <!-- Remaining sessions ring -->
-        <div class="pp-sessions-summary">
-          <div class="pp-ring-container">
-            <svg class="pp-ring" viewBox="0 0 80 80">
-              <circle cx="40" cy="40" r="34" fill="none" stroke="#e8e8e8" stroke-width="6" />
-              <circle cx="40" cy="40" r="34" fill="none" :stroke="ringColor" stroke-width="6"
-                stroke-linecap="round" :stroke-dasharray="ringDash" stroke-dashoffset="0"
-                transform="rotate(-90 40 40)" />
-            </svg>
-            <div class="pp-ring-value">
-              <span class="pp-ring-number">{{ dashboard.remaining_sessions_total ?? 0 }}</span>
-              <span class="pp-ring-label">堂</span>
-            </div>
-          </div>
-          <div class="pp-sessions-detail">
-            <div class="pp-sessions-title">總剩餘堂數</div>
-            <div class="pp-sessions-sub">堂數制課程合計</div>
-            <div class="pp-line-status" v-if="lineLinked">
-              <span class="material-symbols-outlined" style="color:#06C755;font-size:16px;">check_circle</span>
-              <span>LINE 已綁定</span>
-            </div>
-          </div>
-        </div>
-        <!-- Per-subject breakdown pills -->
-        <div class="pp-subject-breakdown" v-if="dashboard.remaining_by_subject && Object.keys(dashboard.remaining_by_subject).length">
-          <div v-for="(count, subject) in dashboard.remaining_by_subject" :key="subject"
-               class="pp-subject-pill" :style="{ borderColor: remainingPillColor(count) }">
-            <span class="pp-pill-subject">{{ subject }}</span>
-            <span class="pp-pill-count" :style="{ color: remainingPillColor(count) }">{{ count }}堂</span>
-          </div>
-        </div>
       </div>
 
-      <!-- Payment Alerts -->
-      <div class="pp-card pp-alert-card" v-if="(dashboard.payment_alerts || []).length > 0">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#E65100;">payments</span>
-          <h3>繳費通知</h3>
-        </div>
-        <div v-for="alert in dashboard.payment_alerts" :key="alert.class_id" class="pp-alert-item">
-          <span class="pp-subject-chip">{{ alert.subject || '課程' }}</span>
-          <div class="pp-alert-badges">
-            <span v-if="alert.remaining_sessions <= 0" class="pp-badge pp-badge-danger">已用完</span>
-            <span v-else class="pp-badge pp-badge-warning">剩餘 {{ alert.remaining_sessions }} 堂</span>
-            <span v-if="!alert.paid" class="pp-badge pp-badge-danger">未繳費</span>
-          </div>
-        </div>
+      <!-- ═══ Tab Bar ═══ -->
+      <div class="pp-tab-bar">
+        <button :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'">
+          <span class="material-symbols-outlined">assignment</span>
+          學習
+        </button>
+        <button :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'">
+          <span class="material-symbols-outlined">calendar_today</span>
+          課表
+        </button>
+        <button :class="['pp-tab', { active: activeTab === 'billing' }]" @click="activeTab = 'billing'">
+          <span class="material-symbols-outlined">receipt_long</span>
+          帳務
+          <span v-if="billingBadgeCount > 0" class="pp-tab-badge">{{ billingBadgeCount }}</span>
+        </button>
       </div>
 
-      <!-- Upcoming Sessions -->
-      <div class="pp-card" v-if="(dashboard.upcoming_sessions || []).length > 0">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#1565c0;">calendar_today</span>
-          <h3>近期課程</h3>
-        </div>
-        <div class="pp-session-list">
-          <div v-for="s in dashboard.upcoming_sessions" :key="s.id" class="pp-session-item">
-            <div class="pp-session-date-col">
-              <div class="pp-session-day">{{ formatDay(s.SessionDate) }}</div>
-              <div class="pp-session-weekday">{{ formatWeekday(s.SessionDate) }}</div>
-            </div>
-            <div class="pp-session-info">
-              <div class="pp-session-subject">{{ s.Subject || '課程' }}</div>
-              <div class="pp-session-time">{{ formatHM(s.StartTime) }}~{{ formatHM(s.EndTime) }}</div>
-            </div>
-            <div class="pp-session-action">
-              <span :class="['pp-status-dot', s.Status]"></span>
-              <span class="pp-status-text">{{ statusLabel(s.Status) }}</span>
-            </div>
+      <!-- ═══ Tab: 學習（預設首頁） ═══ -->
+      <template v-if="activeTab === 'learning'">
+
+        <!-- Announcements -->
+        <div class="pp-card" v-if="(dashboard.announcements || []).length > 0">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#f57c00;">campaign</span>
+            <h3>公告</h3>
+          </div>
+          <div v-for="ann in dashboard.announcements" :key="ann.id" class="pp-announcement">
+            <div class="pp-ann-title">{{ ann.Title || ann.title || '公告' }}</div>
+            <div class="pp-ann-body" v-if="ann.Content || ann.content">{{ ann.Content || ann.content }}</div>
+            <div class="pp-ann-date">{{ ann.created_at ? ann.created_at.substring(0, 10) : '' }}</div>
           </div>
         </div>
-      </div>
 
-      <!-- Courses & Remaining Sessions (Card Layout) -->
-      <!-- PRD-H (2026-04-18)：月結制改顯示「本月已上 X 堂 / 預定 Y 堂」＋「月繳 $Z 預估」，
-           堂數制仍維持已用/購買/剩餘；付款狀態 badge 兩種模式共用。 -->
-      <div class="pp-card" v-if="(dashboard.classes || []).length > 0" data-guide="parent-classes-card">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#2e7d32;">menu_book</span>
-          <h3>進行中的課程</h3>
-        </div>
-        <div class="pp-course-grid">
-          <div v-for="c in dashboard.classes" :key="c.id" class="pp-course-card" :class="courseCardClass(c)">
-            <div class="pp-course-top">
-              <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
-              <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
-              <span v-if="c.is_stopped" class="pp-badge pp-badge-danger">已停課</span>
-              <span v-else-if="c.paid" class="pp-badge pp-badge-success">已繳費</span>
-              <span v-else class="pp-badge pp-badge-warning">未繳費</span>
-            </div>
-
-            <!-- 堂數制：顯示已用/購買進度條 + 剩餘堂數 -->
-            <template v-if="!isMonthlyCourse(c)">
-              <div class="pp-course-progress">
-                <div class="pp-progress-bar">
-                  <div class="pp-progress-fill" :style="{ width: progressPercent(c) + '%', background: progressColor(c) }"></div>
-                </div>
-                <div class="pp-progress-labels">
-                  <span>已上 {{ c.used_sessions ?? 0 }}</span>
-                  <span>購買 {{ c.sessions_purchased ?? 0 }}</span>
-                </div>
-              </div>
-              <div class="pp-course-remaining" :style="{ color: remainingColor(c) }">
-                <span class="pp-remaining-number">{{ c.remaining_sessions ?? 0 }}</span>
-                <span class="pp-remaining-label">堂剩餘</span>
-              </div>
-            </template>
-
-            <!-- 月結制：顯示本月已上堂數 + 預估月費 -->
-            <template v-else>
-              <div class="pp-course-progress" v-if="(c.monthly_target || 0) > 0">
-                <div class="pp-progress-bar">
-                  <div class="pp-progress-fill" :style="{ width: monthlyProgressPercent(c) + '%', background: '#1976d2' }"></div>
-                </div>
-                <div class="pp-progress-labels">
-                  <span>{{ dashboard.current_month_label || '本月' }}已上 {{ c.attended_this_month ?? 0 }}</span>
-                  <span>預定 {{ c.monthly_target }} 堂/月</span>
-                </div>
-              </div>
-              <div class="pp-monthly-stats">
-                <div class="pp-monthly-attended">
-                  <span class="pp-remaining-number" style="color:#1976d2;">{{ c.attended_this_month ?? 0 }}</span>
-                  <span class="pp-remaining-label">{{ dashboard.current_month_label || '本月' }}已上</span>
-                </div>
-                <div v-if="(c.monthly_fee_estimate || 0) > 0" class="pp-monthly-fee">
-                  <span class="pp-monthly-fee-amount">${{ formatMoney(c.monthly_fee_estimate) }}</span>
-                  <span class="pp-monthly-fee-label">月費預估</span>
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <!-- Learning Records (Expandable Cards) -->
-      <!-- Learning Records — Report Card Style (paginated) -->
-      <div class="pp-card" v-if="token && dashboard" data-guide="parent-learning-card">
+        <!-- Learning Records — Report Card Style (paginated) -->
+        <div class="pp-card" data-guide="parent-learning-card">
         <div class="pp-section-header">
           <span class="material-symbols-outlined pp-section-icon" style="color:#5c6bc0;">assignment</span>
           <h3>學習評量</h3>
@@ -393,99 +292,224 @@
         </div>
       </div>
 
-      <!-- Attendance Timeline (FR-B-003) -->
-      <div class="pp-card" v-if="token && dashboard">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#00897b;">fact_check</span>
-          <h3>出缺勤紀錄</h3>
-        </div>
-        <template v-if="(dashboard.attendance_history || []).length">
-          <div class="pp-timeline">
-            <div v-for="a in dashboard.attendance_history.slice(0, showAllAttendance ? undefined : 10)"
-                 :key="a.id"
-                 class="pp-timeline-item"
-                 :class="attendanceRowClass(a.Status)">
-              <div class="pp-timeline-dot" :class="attendanceDotClass(a.Status)">
-                <span class="material-symbols-outlined">{{ attendanceIcon(a.Status) }}</span>
-              </div>
-              <div class="pp-timeline-content">
-                <div class="pp-timeline-head">
-                  <span class="pp-timeline-date">{{ a.date || (a.SignInDT ? a.SignInDT.substring(0, 10) : '') }}</span>
-                  <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
+        <!-- Attendance Timeline (FR-B-003) -->
+        <div class="pp-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#00897b;">fact_check</span>
+            <h3>出缺勤紀錄</h3>
+          </div>
+          <template v-if="(dashboard.attendance_history || []).length">
+            <div class="pp-timeline">
+              <div v-for="a in dashboard.attendance_history.slice(0, showAllAttendance ? undefined : 10)"
+                   :key="a.id"
+                   class="pp-timeline-item"
+                   :class="attendanceRowClass(a.Status)">
+                <div class="pp-timeline-dot" :class="attendanceDotClass(a.Status)">
+                  <span class="material-symbols-outlined">{{ attendanceIcon(a.Status) }}</span>
                 </div>
-                <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
-                  <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon">schedule</span>{{ a.time }}</span>
-                  <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon">menu_book</span>{{ a.subject }}</span>
-                  <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon">person</span>{{ a.teacher_name }}</span>
+                <div class="pp-timeline-content">
+                  <div class="pp-timeline-head">
+                    <span class="pp-timeline-date">{{ a.date || (a.SignInDT ? a.SignInDT.substring(0, 10) : '') }}</span>
+                    <span :class="['pp-timeline-status', attendanceStatusClass(a.Status)]">{{ a.status_label || attendanceLabel(a.Status) }}</span>
+                  </div>
+                  <div class="pp-timeline-sub" v-if="a.time || a.subject || a.teacher_name">
+                    <span v-if="a.time"><span class="material-symbols-outlined pp-mini-icon">schedule</span>{{ a.time }}</span>
+                    <span v-if="a.subject"><span class="material-symbols-outlined pp-mini-icon">menu_book</span>{{ a.subject }}</span>
+                    <span v-if="a.teacher_name"><span class="material-symbols-outlined pp-mini-icon">person</span>{{ a.teacher_name }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <button v-if="dashboard.attendance_history.length > 10 && !showAllAttendance"
-                  class="pp-btn-more" @click="showAllAttendance = true">
-            <span class="material-symbols-outlined">expand_more</span>
-            顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
-          </button>
-        </template>
-        <div class="pp-empty" v-else>
-          <span class="material-symbols-outlined">event_busy</span>
-          <p>目前無出缺勤記錄</p>
-          <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
-        </div>
-      </div>
-
-      <!-- Announcements -->
-      <div class="pp-card" v-if="(dashboard.announcements || []).length > 0">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#f57c00;">campaign</span>
-          <h3>公告</h3>
-        </div>
-        <div v-for="ann in dashboard.announcements" :key="ann.id" class="pp-announcement">
-          <div class="pp-ann-title">{{ ann.Title || ann.title || '公告' }}</div>
-          <div class="pp-ann-body" v-if="ann.Content || ann.content">{{ ann.Content || ann.content }}</div>
-          <div class="pp-ann-date">{{ ann.created_at ? ann.created_at.substring(0, 10) : '' }}</div>
-        </div>
-      </div>
-
-      <!-- Invoices -->
-      <div class="pp-card" v-if="(dashboard.invoices || []).length > 0">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#6d4c41;">receipt_long</span>
-          <h3>帳單紀錄</h3>
-        </div>
-        <div v-for="inv in dashboard.invoices" :key="inv.id" class="pp-invoice-item">
-          <div class="pp-invoice-main">
-            <div class="pp-invoice-date">{{ inv.IssueDate || inv.issue_date || '' }}</div>
-            <div class="pp-invoice-amount">${{ inv.TotalAmount || inv.total_amount || 0 }}</div>
-          </div>
-          <div class="pp-invoice-badges">
-            <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
-              {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
-            </span>
-            <span v-if="inv.reconciled_at" class="pp-badge pp-badge-reconciled" title="已核帳確認">
-              <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">verified</span>
-              已核帳
-            </span>
+            <button v-if="dashboard.attendance_history.length > 10 && !showAllAttendance"
+                    class="pp-btn-more" @click="showAllAttendance = true">
+              <span class="material-symbols-outlined">expand_more</span>
+              顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
+            </button>
+          </template>
+          <div class="pp-empty" v-else>
+            <span class="material-symbols-outlined">event_busy</span>
+            <p>目前無出缺勤記錄</p>
+            <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
           </div>
         </div>
-      </div>
 
-      <!-- LINE Binding Info -->
-      <div class="pp-card" v-if="token && dashboard">
-        <div class="pp-section-header">
-          <span class="material-symbols-outlined pp-section-icon" style="color:#06C755;">link</span>
-          <h3>LINE 綁定</h3>
+      </template>
+      <!-- ／學習 Tab -->
+
+      <!-- ═══ Tab: 課表 ═══ -->
+      <template v-if="activeTab === 'schedule'">
+
+        <!-- Remaining Sessions by Subject -->
+        <div class="pp-card" v-if="dashboard.remaining_by_subject && Object.keys(dashboard.remaining_by_subject).length">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#5c6bc0;">layers</span>
+            <h3>剩餘堂數</h3>
+          </div>
+          <div class="pp-subject-breakdown">
+            <div v-for="(count, subject) in dashboard.remaining_by_subject" :key="subject"
+                 class="pp-subject-pill" :style="{ borderColor: remainingPillColor(count) }">
+              <span class="pp-pill-subject">{{ subject }}</span>
+              <span class="pp-pill-count" :style="{ color: remainingPillColor(count) }">{{ count }}堂</span>
+            </div>
+          </div>
         </div>
-        <div v-if="lineLinked" class="pp-line-bound">
-          <span class="material-symbols-outlined" style="color:#06C755;">verified</span>
-          <span>已綁定 LINE，可直接從 LINE 官方帳號進入查看</span>
+
+        <!-- Upcoming Sessions -->
+        <div class="pp-card" v-if="(dashboard.upcoming_sessions || []).length > 0">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#1565c0;">calendar_today</span>
+            <h3>近期課程</h3>
+          </div>
+          <div class="pp-session-list">
+            <div v-for="s in dashboard.upcoming_sessions" :key="s.id" class="pp-session-item">
+              <div class="pp-session-date-col">
+                <div class="pp-session-day">{{ formatDay(s.SessionDate) }}</div>
+                <div class="pp-session-weekday">{{ formatWeekday(s.SessionDate) }}</div>
+              </div>
+              <div class="pp-session-info">
+                <div class="pp-session-subject">{{ s.Subject || '課程' }}</div>
+                <div class="pp-session-time">{{ formatHM(s.StartTime) }}~{{ formatHM(s.EndTime) }}</div>
+              </div>
+              <div class="pp-session-action">
+                <span :class="['pp-status-dot', s.Status]"></span>
+                <span class="pp-status-text">{{ statusLabel(s.Status) }}</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div v-else class="pp-line-unbound">
-          <p>尚未綁定 LINE。請加入補習班 LINE 官方帳號，並輸入：</p>
-          <code class="pp-bind-code">綁定 {{ dashboard.student?.name || '學生姓名' }} 手機號碼</code>
-          <p class="pp-hint">綁定後即可透過 LINE 查看剩餘堂數與學習評量。</p>
+        <div class="pp-empty" v-if="!(dashboard.upcoming_sessions || []).length">
+          <span class="material-symbols-outlined">event_available</span>
+          <p>近期無安排課程</p>
         </div>
-      </div>
+
+        <!-- Courses & Remaining Sessions -->
+        <!-- PRD-H (2026-04-18)：月結制改顯示「本月已上 X 堂 / 預定 Y 堂」＋「月繳 $Z 預估」，
+             堂數制仍維持已用/購買/剩餘；付款狀態 badge 兩種模式共用。 -->
+        <div class="pp-card" v-if="(dashboard.classes || []).length > 0" data-guide="parent-classes-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#2e7d32;">menu_book</span>
+            <h3>進行中的課程</h3>
+          </div>
+          <div class="pp-course-grid">
+            <div v-for="c in dashboard.classes" :key="c.id" class="pp-course-card" :class="courseCardClass(c)">
+              <div class="pp-course-top">
+                <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
+                <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
+                <span v-if="c.is_stopped" class="pp-badge pp-badge-danger">已停課</span>
+                <span v-else-if="c.paid" class="pp-badge pp-badge-success">已繳費</span>
+                <span v-else class="pp-badge pp-badge-warning">未繳費</span>
+              </div>
+              <!-- 堂數制 -->
+              <template v-if="!isMonthlyCourse(c)">
+                <div class="pp-course-progress">
+                  <div class="pp-progress-bar">
+                    <div class="pp-progress-fill" :style="{ width: progressPercent(c) + '%', background: progressColor(c) }"></div>
+                  </div>
+                  <div class="pp-progress-labels">
+                    <span>已上 {{ c.used_sessions ?? 0 }}</span>
+                    <span>購買 {{ c.sessions_purchased ?? 0 }}</span>
+                  </div>
+                </div>
+                <div class="pp-course-remaining" :style="{ color: remainingColor(c) }">
+                  <span class="pp-remaining-number">{{ c.remaining_sessions ?? 0 }}</span>
+                  <span class="pp-remaining-label">堂剩餘</span>
+                </div>
+              </template>
+              <!-- 月結制 -->
+              <template v-else>
+                <div class="pp-course-progress" v-if="(c.monthly_target || 0) > 0">
+                  <div class="pp-progress-bar">
+                    <div class="pp-progress-fill" :style="{ width: monthlyProgressPercent(c) + '%', background: '#1976d2' }"></div>
+                  </div>
+                  <div class="pp-progress-labels">
+                    <span>{{ dashboard.current_month_label || '本月' }}已上 {{ c.attended_this_month ?? 0 }}</span>
+                    <span>預定 {{ c.monthly_target }} 堂/月</span>
+                  </div>
+                </div>
+                <div class="pp-monthly-stats">
+                  <div class="pp-monthly-attended">
+                    <span class="pp-remaining-number" style="color:#1976d2;">{{ c.attended_this_month ?? 0 }}</span>
+                    <span class="pp-remaining-label">{{ dashboard.current_month_label || '本月' }}已上</span>
+                  </div>
+                  <div v-if="(c.monthly_fee_estimate || 0) > 0" class="pp-monthly-fee">
+                    <span class="pp-monthly-fee-amount">${{ formatMoney(c.monthly_fee_estimate) }}</span>
+                    <span class="pp-monthly-fee-label">月費預估</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+      </template>
+      <!-- ／課表 Tab -->
+
+      <!-- ═══ Tab: 帳務 ═══ -->
+      <template v-if="activeTab === 'billing'">
+
+        <!-- Payment Alerts (soft info style, not alarming orange) -->
+        <div class="pp-card pp-info-card" v-if="(dashboard.payment_alerts || []).length > 0">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#1565c0;">info</span>
+            <h3>繳費提醒</h3>
+          </div>
+          <div v-for="alert in dashboard.payment_alerts" :key="alert.class_id" class="pp-alert-item">
+            <span class="pp-subject-chip">{{ alert.subject || '課程' }}</span>
+            <div class="pp-alert-badges">
+              <span v-if="alert.remaining_sessions <= 0" class="pp-badge pp-badge-neutral">堂數用完</span>
+              <span v-else class="pp-badge pp-badge-info-soft">剩餘 {{ alert.remaining_sessions }} 堂</span>
+              <span v-if="!alert.paid" class="pp-badge pp-badge-info-warn">待繳費</span>
+            </div>
+          </div>
+          <p class="pp-info-hint">如需繳費，請聯絡補習班。</p>
+        </div>
+        <div class="pp-empty" v-if="!(dashboard.payment_alerts || []).length">
+          <span class="material-symbols-outlined" style="color:#43a047;">check_circle</span>
+          <p>目前無待繳費項目</p>
+        </div>
+
+        <!-- Invoices -->
+        <div class="pp-card" v-if="(dashboard.invoices || []).length > 0">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#6d4c41;">receipt_long</span>
+            <h3>帳單紀錄</h3>
+          </div>
+          <div v-for="inv in dashboard.invoices" :key="inv.id" class="pp-invoice-item">
+            <div class="pp-invoice-main">
+              <div class="pp-invoice-date">{{ inv.IssueDate || inv.issue_date || '' }}</div>
+              <div class="pp-invoice-amount">${{ inv.TotalAmount || inv.total_amount || 0 }}</div>
+            </div>
+            <div class="pp-invoice-badges">
+              <span :class="['pp-badge', inv.Status === 'paid' || inv.status === 'paid' ? 'pp-badge-success' : 'pp-badge-warning']">
+                {{ inv.Status === 'paid' || inv.status === 'paid' ? '已付款' : '未付款' }}
+              </span>
+              <span v-if="inv.reconciled_at" class="pp-badge pp-badge-reconciled" title="已核帳確認">
+                <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">verified</span>
+                已核帳
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LINE Binding Info -->
+        <div class="pp-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#06C755;">link</span>
+            <h3>LINE 綁定</h3>
+          </div>
+          <div v-if="lineLinked" class="pp-line-bound">
+            <span class="material-symbols-outlined" style="color:#06C755;">verified</span>
+            <span>已綁定 LINE，可直接從 LINE 官方帳號進入查看</span>
+          </div>
+          <div v-else class="pp-line-unbound">
+            <p>尚未綁定 LINE。請加入補習班 LINE 官方帳號，並輸入：</p>
+            <code class="pp-bind-code">綁定 {{ dashboard.student?.name || '學生姓名' }} 手機號碼</code>
+            <p class="pp-hint">綁定後即可透過 LINE 查看剩餘堂數與學習評量。</p>
+          </div>
+        </div>
+
+      </template>
+      <!-- ／帳務 Tab -->
 
     </template>
   </div>
@@ -538,6 +562,12 @@ const autoLineMode = ref(false);
 const lineLinked = computed(() => !!dashboard.value?.student?.line_linked);
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
+const activeTab = ref('learning');
+
+const billingBadgeCount = computed(() => {
+  const alerts = dashboard.value?.payment_alerts || [];
+  return alerts.length;
+});
 // PRD-B 追加修正（2026-04-18 晚間）：家長端仍會看到舊版「相同 Phone」帶出的兄弟姊妹名單，
 // 根因為 localStorage 的 parent_portal_students 舊快取未清。改用「伺服器回應為唯一來源」，
 // 登入/dashboard/切換成功後 setStudents() 一律以最新回應覆寫；不再從 localStorage 初始化。
@@ -866,6 +896,7 @@ const switchStudent = async (studentId) => {
     allLearningRecords.value = [];
     lrPage.value = 1;
     expandedRecords.clear();
+    activeTab.value = 'learning';
     await loadDashboard();
   } catch (e) {
     console.error('Switch student failed:', e);
@@ -1114,6 +1145,31 @@ onMounted(async () => {
 .pp-section-header h3 { margin: 0; font-size: 1.05em; color: #263238; }
 
 /* ═══ Alert Card ═══ */
+/* ═══ Tab Bar ═══ */
+.pp-tab-bar {
+  display: flex; gap: 0; background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; margin-bottom: 4px;
+}
+.pp-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 3px; padding: 10px 4px; background: none; border: none;
+  cursor: pointer; font-size: 0.8em; color: #90a4ae; transition: color .2s, background .2s;
+  position: relative;
+}
+.pp-tab .material-symbols-outlined { font-size: 20px; }
+.pp-tab.active { color: #1565c0; background: #e8f2ff; font-weight: 600; }
+.pp-tab:not(.active):hover { background: #f5f8ff; color: #5c6bc0; }
+.pp-tab-badge {
+  position: absolute; top: 6px; right: calc(50% - 18px);
+  background: #e53935; color: #fff; border-radius: 10px;
+  font-size: 0.7em; padding: 1px 5px; font-weight: 700; min-width: 16px;
+  text-align: center;
+}
+
+/* ═══ Info Card (帳務：非警報色，柔和藍) ═══ */
+.pp-info-card { border-left: 4px solid #90caf9; }
+.pp-info-hint { font-size: 0.82em; color: #78909c; margin: 10px 0 0; }
+
 .pp-alert-card { border-left: 4px solid #ff9800; }
 .pp-alert-item {
   display: flex; align-items: center; justify-content: space-between;
@@ -1135,6 +1191,9 @@ onMounted(async () => {
 .pp-badge-warning { background: #fff3e0; color: #e65100; }
 .pp-badge-danger { background: #ffebee; color: #c62828; }
 .pp-badge-info { background: #e3f2fd; color: #1565c0; }
+.pp-badge-neutral { background: #eceff1; color: #546e7a; }
+.pp-badge-info-soft { background: #e8eaf6; color: #3949ab; }
+.pp-badge-info-warn { background: #fff8e1; color: #f57f17; }
 
 /* ═══ Upcoming Sessions ═══ */
 .pp-session-list { display: flex; flex-direction: column; gap: 0; }
