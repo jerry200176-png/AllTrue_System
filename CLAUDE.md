@@ -46,7 +46,7 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
-| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → `git pull` → `npm run deploy` → 驗 `version.json` |
+| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` 自動部署 → 驗 health / `version.json` |
 
 ---
 
@@ -82,8 +82,8 @@ Phase 3 [TEST]   → 跑所有 AC，自動驗收
 Phase 4 [SEC]    → STRIDE 審查（涉及 auth/PII/RFID/webhook 才做）
 Phase 5 [REVIEW] → 逐條對照 FR；Minor 問題登記 docs/TECH_DEBT.md
 Phase 6 [DOCS]   → 更新 docs/CHANGELOG.md
-Phase 7 [OPS]    → PR merge → git pull → migrate --force（有 migration 才做）
-                 → npm run deploy（有前端改動才做）
+Phase 7 [OPS]    → PR merge → 等 `deploy.yml`（有 deployable diff 才跑）
+                 → migration / frontend deploy 由 `deploy.yml` 自動處理
                  → curl health check → 才回報使用者「完成」
 ```
 
@@ -145,7 +145,7 @@ mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env |
 | 後端 | Laravel 8.x + PHP 8+，MySQL（database: `AllTrue`） |
 | 認證 token | `localStorage.alltrue_session`（Bearer）⚠️ `supabase.js` 是**自製 client**，非真實 Supabase |
 | 分校 | `currentBranch` ref，持久化 `localStorage.app_branch`；後端 `require_campus` middleware |
-| 部署指令 | **自動**：PR merge → `deploy.yml` 執行（禁止手動在 Pi 跑 `npm run deploy`，除非 CI 掛掉緊急修復）|
+| 部署指令 | **自動**：PR merge → `deploy.yml` 執行（docs-only merge 跳過；禁止手動在 Pi 跑 `npm run deploy`，除非 CI 掛掉緊急修復）|
 | 刷卡 | RFID → `POST /api/v1/swipe-rfid` |
 | 通知 | LINE Webhook / LINE Login |
 | 測試 | PHPUnit 9.6（⛔ **只能在 GitHub Actions 跑，絕不在 Pi 上跑**） |
@@ -287,7 +287,7 @@ MySQL 新增帶 DEFAULT 欄位會自動回填所有舊記錄，必須搭配 chun
 ```
 ❌ CI 還在跑就 migrate
 ❌ 直接在 feature branch 跑 migrate --force
-✅ PR merge → git pull origin main → php artisan migrate --force
+✅ PR merge → `deploy.yml` 自動偵測 pending migration → 備份 → php artisan migrate --force
 ```
 
 ---
@@ -298,10 +298,10 @@ MySQL 新增帶 DEFAULT 欄位會自動回填所有舊記錄，必須搭配 chun
 ```
 1. 前端變更 → commit → push feature branch
 2. CI 全綠（自己等，自己驗，綠燈才報告）
-3. PR merge → git checkout main → git pull origin main
-4. cd /home/admin/frontend && npm run deploy
-5. 確認 backend/public/version.json 時間戳更新
-6. 才告訴使用者「已上線」
+3. PR merge → `deploy.yml` 自動部署
+4. 確認 deploy workflow success
+5. 確認 backend/public/version.json 時間戳更新（前端有變更時）
+6. health check + smoke test 通過後才告訴使用者「已上線」
 ```
 
 ### ❌ 禁止
@@ -309,7 +309,7 @@ MySQL 新增帶 DEFAULT 欄位會自動回填所有舊記錄，必須搭配 chun
 ❌ 在 feature branch 上 npm run deploy
 ❌ CI 還在跑就 deploy
 ❌ PR 未 merge 就 deploy
-❌ merge 後忘記 deploy（功能做完但使用者看不到）
+❌ merge 後不看 deploy.yml / health check 就回報完成
 ❌ 修改 frontend/dist_build/ 裡的 JS/CSS（build 產物）
 ❌ 在 .vue 檔直接 hard-code token
 ```
@@ -317,7 +317,7 @@ MySQL 新增帶 DEFAULT 欄位會自動回填所有舊記錄，必須搭配 chun
 ### Bundle 快取問題診斷
 ```bash
 cat backend/public/version.json   # 確認時間戳是否最新
-# 舊版 → npm run deploy → 通知使用者 Ctrl+Shift+R
+# 舊版 → 先看 deploy.yml log；必要時 hotfix PR 重新觸發部署 → 通知使用者 Ctrl+Shift+R
 ```
 
 ### 出缺勤模組特殊規則（AttendancePage.vue）
@@ -355,7 +355,7 @@ cat backend/public/version.json   # 確認時間戳是否最新
  ▼
 [DEV]   全端工程師         → 後端 API + 前端 Vue 同步實作
  ▼
-[TEST]  QA 工程師          → Pest 測試（GitHub Actions）
+[TEST]  QA 工程師          → PHPUnit 測試（GitHub Actions）
  ▼
 [SEC]   Security Engineer  → OWASP + STRIDE
  ▼
@@ -417,7 +417,7 @@ cat backend/public/version.json   # 確認時間戳是否最新
 - **必須更新**：`docs/CHANGELOG.md` + `AI_REGRESSION_LESSONS.md`（若涉及高風險邏輯）
 
 ### [OPS] DevOps Engineer
-- **部署 SOP**：migrate → deploy → health check → smoke test（刷卡 + 主任登入 + 今日排課）
+- **部署 SOP**：PR merge → `deploy.yml` 自動處理 migration/frontend/cache → health check → smoke test（刷卡 + 主任登入 + 今日排課）
 - **Rollback**：`git revert <hash> --no-commit && git commit`；`php artisan migrate:rollback`
 
 ### [BUG] Bug 調查 & 修復

@@ -86,15 +86,15 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 - **前端**：Vue 3.4 + Vite 5，`<script setup>`，`frontend/src/supabase.js` 自建 client 打 `/api/v1/*`
 - **後端**：Laravel 8.x + PHP 8+，MySQL，`laravel/sanctum` + 自建 `AuthController`
 - **認證**：`localStorage.alltrue_session`（Bearer token），middleware `role:*` + `require_campus`
-- **測試**：Pest（⛔ **不可在 Pi 上跑**，見 P0 第 8 條）
-- **部署**：`cd frontend && npm run deploy` → build + 複製到 `backend/public`
+- **測試**：PHPUnit 9.6（⛔ **只能在 GitHub Actions 跑，絕不可在 Pi 上跑**，見 P0 第 8 條）
+- **部署**：PR merge 後由 `deploy.yml` 自動部署；docs-only merge 會跳過 production deploy
 - 詳細架構：`docs/SYSTEM_TECH_GUIDE.md`（按需讀對應章節，勿全讀）｜ API 路由：`backend/routes/api.php`
 
 ### AI／開發防再犯（修改相關功能前必讀）
 - **`.cursor/.local/test-credentials.md`**：各角色測試帳號 + Browser MCP 登入 SOP（fill/type 踩坑、家長入口用 `?parent=1`）
 - **`docs/AI_REGRESSION_LESSONS.md`**：紅線/黃線速查摘要（127 行，必讀）＋模組索引；詳細事故 → `AI_REGRESSION_LESSONS_ARCHIVE.md`
 - **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：繳費/續課提醒完整規則；**勿擅自改條件**
-- **`docs/OPERATIONS_RUNBOOK.md` §B1 Branch Hygiene SOP**：分支治理標準（PR 合併即刪、每週 stale branch 清理）
+- **`docs/OPERATIONS_RUNBOOK.md` §B1/B2**：分支治理與 Actions minutes 節流（PR 合併即刪、docs-only 不跑重 CI/不部署）
 
 ### 核心資料表 gotcha（不可踩的坑）
 - **`StudentSingIn`**（Sing ≠ Sign，歷史 typo），Model 須 `protected $table = 'StudentSingIn'`
@@ -121,7 +121,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
  ▼
 [DEV]   全端工程師         → 後端 API + 前端 Vue 同步實作
  ▼
-[TEST]  QA 工程師          → Pest 測試（`.cursor/rules/module-test.mdc`）
+[TEST]  QA 工程師          → PHPUnit 測試（`.cursor/rules/module-test.mdc`）
  ▼
 [SEC]   Security Engineer  → OWASP + STRIDE（`.cursor/rules/module-security.mdc`）
  ▼
@@ -167,7 +167,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ### [DEV] 全端工程師
 - **CANNOT DO**：不可無 ARCH 設計文件自行決定 API 結構；不可直接修改高風險檔案（`AlertController::tuition`、`ApprovalSessionSyncService`、`SessionDeductionService`）；不可只完成後端宣告完成；不可新增無 `CampusID` 的跨校 query；不可跳過 `docs/AI_REGRESSION_LESSONS.md` 已知坑區
-- **Exit**：後端 + 前端全部完成 + `npm run deploy`（若前端有改）→ 列出 QA 重點場景
+- **Exit**：後端 + 前端全部完成 + PR CI GREEN；merge 後由 `deploy.yml` 自動部署（若有 deployable diff）→ 列出 QA 重點場景
 
 ### [TEST] QA 工程師
 → 詳細規格：`.cursor/rules/module-test.mdc`
@@ -192,8 +192,8 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ### [OPS] DevOps Engineer
 - **CANNOT DO**：不可有 Critical 問題時部署；不可跳過 health check；不可只部署後端
 - **部署 SOP**：
-  1. `php artisan migrate --force`（若有）
-  2. `cd frontend && npm run deploy`（若前端有改）
+  1. PR merge 後等 `deploy.yml` 自動處理 migration / frontend build / cache rebuild
+  2. docs-only merge 應跳過 production deploy
   3. `curl GET /api/v1/health` → 200 OK
   4. Smoke test：刷卡端點 + 主任登入 + 今日排課
 - **Rollback**：`git revert <hash> --no-commit && git commit`；`php artisan migrate:rollback`（若有）
