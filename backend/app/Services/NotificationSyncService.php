@@ -123,6 +123,7 @@ class NotificationSyncService
             $campusId = (int) ($student->CampusID ?? 0);
             $remaining = (int) ($class->RemainingSessions ?? 0);
             $isUnpaid = (int) ($class->Paid ?? 0) === 0;
+            $charge = (int) ($class->Charge ?? $class->Pay ?? 0);
             $subject = self::displaySubjectForClass($class);
 
             $title = "{$student->name} {$subject} 未繳費";
@@ -144,6 +145,8 @@ class NotificationSyncService
                     'class_id' => (int) $class->ID,
                     'subject' => $subject,
                     'remaining_sessions' => $remaining,
+                    'charge' => $charge,
+                    'outstanding' => $isUnpaid ? $charge : 0,
                     'paid' => !$isUnpaid,
                 ],
                 'OccurredAt' => now(),
