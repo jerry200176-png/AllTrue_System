@@ -30,6 +30,7 @@ if (!fs.existsSync(toDir)) {
 
 // Files in dist_build root (from public/) that should always be deployed
 const ROOT_ASSETS = ['manifest.json', 'logo.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'version.json'];
+const PUBLIC_DIRS = ['audio'];
 
 function copyRootAssets() {
   for (const f of ROOT_ASSETS) {
@@ -40,6 +41,19 @@ function copyRootAssets() {
         try { fs.writeFileSync(dest, fs.readFileSync(src)); } catch (_) {}
       }
     }
+  }
+}
+
+function copyPublicDirs() {
+  for (const dir of PUBLIC_DIRS) {
+    const src = path.join(fromDir, dir);
+    const dest = path.join(toDir, dir);
+    if (!fs.existsSync(src)) {
+      fs.rmSync(dest, { recursive: true, force: true });
+      continue;
+    }
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.cpSync(src, dest, { recursive: true, force: true });
   }
 }
 
@@ -80,6 +94,7 @@ function copyWithFsCp() {
     if (fs.statSync(src).isFile()) fs.cpSync(src, dest, { force: true });
   }
   copyRootAssets();
+  copyPublicDirs();
   ensureBranchesJson();
   verifyIndexHtmlReferencesAssets();
 }
@@ -96,6 +111,7 @@ function copyWithNode() {
     if (fs.statSync(src).isFile()) fs.writeFileSync(dest, fs.readFileSync(src));
   }
   copyRootAssets();
+  copyPublicDirs();
   ensureBranchesJson();
   verifyIndexHtmlReferencesAssets();
 }
@@ -106,13 +122,15 @@ function copyWithCp() {
   resetAssetsDir();
   execSync(`mkdir -p "${toAssets}" && cp -f "${path.join(fromDir, 'index.html')}" "${toDir}/" && cp -rf "${fromAssets}"/* "${toAssets}/"`, { stdio: 'pipe', shell: true });
   copyRootAssets();
+  copyPublicDirs();
   ensureBranchesJson();
   verifyIndexHtmlReferencesAssets();
 }
 
 function createPack() {
   const outFile = path.join(path.dirname(fromDir), 'deploy.tar.gz');
-  execSync(`tar -czf "${outFile}" index.html assets/`, { cwd: fromDir, stdio: 'pipe', shell: true });
+  const packItems = ['index.html', 'assets/'].concat(PUBLIC_DIRS.filter((dir) => fs.existsSync(path.join(fromDir, dir))).map((dir) => `${dir}/`));
+  execSync(`tar -czf "${outFile}" ${packItems.map((item) => `"${item}"`).join(' ')}`, { cwd: fromDir, stdio: 'pipe', shell: true });
   console.log('已產生 frontend/deploy.tar.gz');
   console.log('');
   console.log('請在專案根目錄執行：');
