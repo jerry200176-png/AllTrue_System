@@ -901,7 +901,16 @@
               <label>學習進度與家長溝通</label>
               <textarea v-model="form.Comment" rows="4" :disabled="isReadOnly" placeholder="綜合評語與聯絡事項..."></textarea>
               <div v-if="!isReadOnly" class="lr-phrase-row">
-                <button v-for="p in templatePhrases.Comment" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Comment', p)">{{ p }}</button>
+                <button v-for="p in visibleCommentPhrases" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Comment', p)">{{ p }}</button>
+                <button
+                  v-if="commentExtraCount > 0"
+                  class="lr-phrase-btn lr-phrase-toggle"
+                  type="button"
+                  :aria-expanded="showAllCommentPhrases ? 'true' : 'false'"
+                  @click="showAllCommentPhrases = !showAllCommentPhrases"
+                >
+                  {{ showAllCommentPhrases ? '收合選項' : `顯示更多 ${commentExtraCount} 個` }}
+                </button>
               </div>
             </div>
             <div v-if="_activeRecordRef?.parent_feedback" class="lr-parent-feedback-box">
@@ -1229,8 +1238,28 @@ const templatePhrases = {
   Progress: ['課本 p.XX ~ p.XX', '複習上次範圍', '練習題本 第X回'],
   NextHomework: ['課本 p.XX ~ p.XX', '題本 第X回', '背單字 Unit X'],
   NextWeekTestScope: ['課本 p.XX ~ p.XX', 'Unit X 單字', '第X章'],
-  Comment: ['表現優良，繼續保持', '需加強練習', '建議每日複習 30 分鐘'],
+  Comment: [
+    '表現優良，繼續保持',
+    '本次重點已有進步，可再多練習類似題型',
+    '建議每日複習 15-30 分鐘，加深熟練度',
+    '上課態度穩定，請持續維持',
+    '課堂專注度可再提升，建議在家協助建立複習節奏',
+    '若家長方便，可協助提醒孩子完成訂正與複習',
+    '本次觀念理解穩定，建議持續用例題複習',
+    '作業訂正請再留意計算與書寫細節',
+    '考前可優先複習錯題與老師標記的重點',
+    '鼓勵孩子上課多主動提問，有助於釐清觀念',
+  ],
 };
+
+const COMMENT_PHRASE_PREVIEW_COUNT = 6;
+const showAllCommentPhrases = ref(false);
+const commentExtraCount = computed(() => Math.max(templatePhrases.Comment.length - COMMENT_PHRASE_PREVIEW_COUNT, 0));
+const visibleCommentPhrases = computed(() => (
+  showAllCommentPhrases.value
+    ? templatePhrases.Comment
+    : templatePhrases.Comment.slice(0, COMMENT_PHRASE_PREVIEW_COUNT)
+));
 
 const groupedRecordsByStudent = computed(() => {
   const groups = new Map();
@@ -2678,6 +2707,7 @@ const openModal = (record = null) => {
     alert('請從上方課表點選堂次後填寫評量。');
     return;
   }
+  showAllCommentPhrases.value = false;
   forceReadOnly.value = false;
   if (record) {
     _fillForm(record);
@@ -2694,6 +2724,7 @@ const openModal = (record = null) => {
 };
 
 const viewRecord = (record) => {
+  showAllCommentPhrases.value = false;
   forceReadOnly.value = true;
   _fillForm(record);
   showModal.value = true;
@@ -2702,6 +2733,7 @@ const viewRecord = (record) => {
 };
 
 const editRecord = (record) => {
+  showAllCommentPhrases.value = false;
   forceReadOnly.value = false;
   _fillForm(record);
   showModal.value = true;
@@ -2719,6 +2751,7 @@ const closeModal = () => {
   }
   draftStatusText.value = '';
   draftSaveError.value = false;
+  showAllCommentPhrases.value = false;
   showModal.value = false;
   _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
@@ -3862,6 +3895,12 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   background: #e3f2fd;
   border-color: #90caf9;
   color: #1565c0;
+}
+
+.lr-phrase-toggle {
+  border-style: dashed;
+  color: #1565c0;
+  background: #f5f9ff;
 }
 
 /* ── Approved Note ── */
