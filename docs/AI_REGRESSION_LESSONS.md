@@ -229,6 +229,29 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R18. GitHub Actions SSH Secrets 三組值必須同步維護，且格式嚴格
+
+**事故日期**：2026-04-26（今天，由前一個 session 的 debug 操作造成）
+
+**根本錯誤**：
+1. `PI_USER` 被設成 `admin@pi.lifenet.com.tw`（完整連線字串）而非 `admin`（純帳號）→ sshd 收到 username=`admin@admin`，Invalid user
+2. `PI_SSH_KEY` 被換成新生成的 private key，但對應 public key 未加入 Pi `authorized_keys` → Permission denied
+
+**診斷關鍵**：`sudo journalctl -u ssh` 的 `Invalid user admin@admin` 比 SSH verbose log 更快指出真正問題。
+
+**強制規則**：
+- `PI_USER` / `PI_SSH_USER`：只能存**純帳號**（`admin`），不可含 `@hostname`
+- `PI_HOST` / `PI_SSH_HOST`：只能存**純主機名**（`pi.lifenet.com.tw`），不可含 `user@`
+- `PI_SSH_KEY`：換 key 前必須同步在 Pi `~/.ssh/authorized_keys` 加入對應公鑰，並先以 pi-health.yml 驗證連線再換
+- 原始 deploy key pair 放在 Pi `~/.ssh/rpi_actions_deploy`（私）/ `rpi_actions_deploy.pub`（公），公鑰指紋 `SHA256:B/tQBH...95g`，永遠保留在 authorized_keys 第一行
+
+**修復 SOP**（SSH deploy 失敗時）：
+1. `sudo journalctl -u ssh` 看 sshd 實際收到的 username → 若含 `@` 就是 Secret 格式錯
+2. 看 CI log `debug1: Offering public key` 的指紋 → 對照 Pi `authorized_keys` 的公鑰指紋
+3. 用 `rpi_actions_deploy` 私鑰重設 `PI_SSH_KEY`，確認 `PI_USER`/`PI_HOST` 純格式
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
