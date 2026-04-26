@@ -635,10 +635,9 @@ curl -sk https://daan.lifenet.com.tw/api/v1/health  # 驗證
 | Chaos engineering | 4 校區補習班，非必要 |
 | Feature flags | 規模不需要 |
 
-### 🟡 唯一值得考慮的 P2 剩餘項目
+### 🟡 唯一剩餘缺口（2026-04-26 確認）
 
-| 項目 | 說明 | 成本 |
+| 項目 | 說明 | 狀態 |
 |---|---|---|
-| 備份還原驗證（Restore test）| 每月自動還原到 `/tmp` 確認 DB 完整性 | 中（半天）|
-| Branch protection rules | 需 GitHub Pro（已用 local hook 替代）| 低（但需付費）|
+| Branch protection rules | GitHub Free 私有 repo 不支援（HTTP 403）。升 GitHub Pro $4/月 可開啟「require status checks before merge」。目前 local pre-push hook 替代 | 需付費才能做 |
 

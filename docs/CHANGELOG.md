@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — chore: 補上 3 項工程缺口 (#82)
+- Changed: Coverage gate 從 warning 改為真正擋關（block < 60%，warn < 70%，目前 64.6%）
+- Added: CI 自動生成 API route 文件（`php artisan route:list`）並上傳為 artifact
+- Changed: `SENTRY_DSN` secret 更新為正確值；deploy.yml 自動注入 Pi `.env` 的 `SENTRY_LARAVEL_DSN`
+- Ops: Branch protection (Gap 1) 確認需 GitHub Pro；local pre-push hook 維持現有保護
+
 ## 2026-04-26 — feat: 通知中心 v2 (#81)
 - Changed: 類型下拉改為分類 Tab（全部/繳費/評量/刷卡/堂數/系統），各 Tab 顯示未讀計數徽章
 - Changed: 「標記已繳費」改為彈出核帳確認 Modal，避免誤觸直接異動 DB
