@@ -70,6 +70,19 @@
       </div>
     </div>
 
+    <div v-if="isTeacher || isDirectorRole" class="lr-feedback-filter-row card">
+      <span class="lr-feedback-filter-label">家長回饋</span>
+      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">
+        全部
+      </button>
+      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
+        有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
+      </button>
+      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
+        未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+      </button>
+    </div>
+
     <div v-if="!isTeacher && !isDirectorRole" class="card lr-teacher-entry" data-guide="learning-teacher-login-entry">
       <div class="lr-teacher-entry__text">
         <h3>老師填寫入口</h3>
@@ -1229,6 +1242,7 @@ const activeFilterCount = computed(() => {
 
 const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
+const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
 const selectedRecordIds = ref(new Set());
 const batchOperating = ref(false);
@@ -1322,6 +1336,11 @@ const filteredRecords = computed(() => {
     list = list.filter(r =>
       (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
     );
+  }
+  if (feedbackFilter.value === 'has') {
+    list = list.filter(r => !!r.parent_feedback);
+  } else if (feedbackFilter.value === 'unread') {
+    list = list.filter(parentFeedbackUnread);
   }
   return list;
 });
@@ -1465,10 +1484,12 @@ const markParentFeedbackRead = async (record) => {
   if (!feedback?.id || !parentFeedbackUnread(record)) return;
   try {
     const token = await getToken();
-    await fetch(`/api/v1/learning-record-feedbacks/${feedback.id}/read`, {
+    if (!token) throw new Error('missing auth token');
+    const res = await fetch(`/api/v1/learning-record-feedbacks/${feedback.id}/read`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
     });
+    if (!res.ok) throw new Error(`mark read failed: ${res.status}`);
     if (isTeacher.value) feedback.unread_for_teacher = false;
     else feedback.unread_for_director = false;
     emit('feedback-read');
@@ -1476,6 +1497,9 @@ const markParentFeedbackRead = async (record) => {
     console.warn('[LR] Failed to mark parent feedback as read');
   }
 };
+
+const parentFeedbackCount = computed(() => (records.value || []).filter(r => !!r.parent_feedback).length);
+const unreadParentFeedbackCount = computed(() => (records.value || []).filter(parentFeedbackUnread).length);
 
 /**
  * 目前頂部 tab（reviewTab / teacherFilterTab）隱藏了幾筆「否則會顯示」的記錄。
@@ -3839,6 +3863,52 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   margin-top: 8px;
   font-size: 12px;
   color: #888;
+}
+
+.lr-feedback-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+}
+
+.lr-feedback-filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.lr-feedback-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: 1px solid #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lr-feedback-filter-chip:hover {
+  background: #ffedd5;
+  border-color: #fdba74;
+}
+
+.lr-feedback-filter-chip.active {
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
+}
+
+.lr-feedback-filter-chip.active .lr-tab-count {
+  background: rgba(255,255,255,0.3);
+  color: #fff;
 }
 
 .lr-unfilled-toggle {
