@@ -231,18 +231,32 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 
 ### GitHub Secrets（必須存在）
 
-| Secret | 說明 | 最後更新 |
+| Secret | 說明 | ⚠️ 格式規則 |
 |---|---|---|
-| `PI_SSH_KEY` | deploy key 私鑰（base64）| 2026-04-24 |
-| `PI_SSH_USER` | Pi 登入帳號（`admin`） | — |
-| `PI_SSH_HOST` | Pi 主機名稱 | — |
-| `CI_DB_PASSWORD` | CI 測試 DB 密碼 | 2026-04-24（新密碼，舊明碼已從程式碼移除） |
+| `PI_SSH_KEY` | deploy key 私鑰（base64 單行）| 值 = `base64 -w0 rpi_actions_deploy`，不含換行 |
+| `PI_SSH_USER` | Pi SSH 帳號 | **只填 `admin`，禁止含 `@hostname`** |
+| `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
+| `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
+| `PI_HOST` | pi-health.yml 用主機名 | 同 PI_SSH_HOST，只填 `pi.lifenet.com.tw` |
+| `CI_DB_PASSWORD` | CI 測試 DB 密碼 | — |
+
+> ⛔ 格式錯誤後果：`PI_USER=admin@pi.lifenet.com.tw` → sshd 收到 username=`admin@admin` → Invalid user（2026-04-26 事故，見 R18）
 
 ### Pi authorized_keys
 
-`/home/admin/.ssh/authorized_keys` 含以下兩把 key：
-- `rsa-key-20230629`（原始管理 key）
-- `github-actions-deploy`（ED25519，指紋 `SHA256:Hvxcdzf6pN1vZeedRtCnx0JMbTjTT4QD5uZUA2lZd/M`）
+`/home/admin/.ssh/authorized_keys` 含以下兩把 key（**不可刪除**）：
+- `rsa-key-20230629`（個人管理 key）
+- `github-actions-deploy` — **原始 deploy key**，指紋 `SHA256:B/tQBHTLo7xlWnSmheXHe17PoxTrUUhknxte8cKP95g`
+
+**原始 deploy key pair 位置**（Pi 本機）：
+- 私鑰：`/home/admin/.ssh/rpi_actions_deploy`（⛔ 不可刪，是 PI_SSH_KEY 的來源）
+- 公鑰：`/home/admin/.ssh/rpi_actions_deploy.pub`
+
+**換 key SOP**（若需輪換）：
+1. 在 Pi 產新 key：`ssh-keygen -t ed25519 -f ~/.ssh/rpi_actions_deploy -C "github-actions-deploy"`
+2. 把公鑰加進 `authorized_keys`：`cat ~/.ssh/rpi_actions_deploy.pub >> ~/.ssh/authorized_keys`
+3. 更新 GitHub Secret：`base64 -w0 ~/.ssh/rpi_actions_deploy | gh secret set PI_SSH_KEY`
+4. 用 pi-health.yml 驗證連線成功後，才移除舊公鑰
 
 ### ✅ 部署通道修復記錄（2026-04-24 完成）
 
