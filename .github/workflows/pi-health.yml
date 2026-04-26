@@ -11,7 +11,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check Pi secrets
+        id: secrets
+        env:
+          PI_HOST:    ${{ secrets.PI_HOST }}
+          PI_USER:    ${{ secrets.PI_USER }}
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          missing=""
+          [ -z "$PI_HOST" ]    && missing="$missing PI_HOST"
+          [ -z "$PI_USER" ]    && missing="$missing PI_USER"
+          [ -z "$PI_SSH_KEY" ] && missing="$missing PI_SSH_KEY"
+          if [ -n "$missing" ]; then
+            echo "::notice::Pi secrets 未設定（$missing）— 略過本次執行。請至 repo Settings → Secrets → Actions 設定後生效。"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Setup SSH
+        if: steps.secrets.outputs.configured == 'true'
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
         run: |
@@ -21,6 +40,7 @@ jobs:
           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
       - name: Run health checks on Pi
+        if: steps.secrets.outputs.configured == 'true'
         env:
           PI_HOST: ${{ secrets.PI_HOST }}
           PI_USER: ${{ secrets.PI_USER }}
@@ -74,6 +94,10 @@ jobs:
         env:
           UPTIMEROBOT_API_KEY: ${{ secrets.UPTIMEROBOT_API_KEY }}
         run: |
+          if [ -z "$UPTIMEROBOT_API_KEY" ]; then
+            echo "::notice::UPTIMEROBOT_API_KEY 未設定 — 略過 UptimeRobot 檢查"
+            exit 0
+          fi
           curl -s -X POST "https://api.uptimerobot.com/v2/getMonitors" \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "api_key=${UPTIMEROBOT_API_KEY}&format=json&logs=0" \
