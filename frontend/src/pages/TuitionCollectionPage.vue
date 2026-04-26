@@ -1016,14 +1016,26 @@ async function exportAccountingCSV() {
 
 async function exportAccountingPDF() {
   accountingExporting.value = true;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('瀏覽器封鎖了 PDF 視窗，請允許彈出視窗後重試', 'warning');
+    accountingExporting.value = false;
+    return;
+  }
+  printWindow.opener = null;
+  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收款紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收款紀錄報表...</p>');
+  printWindow.document.close();
+
   try {
     const payload = await fetchAccountingExportRows();
     const data = payload.data || [];
     if (!data.length) {
+      printWindow.close();
       showToast('目前篩選條件沒有可匯出的收款紀錄', 'warning');
       return;
     }
     if (data.length > 500) {
+      printWindow.close();
       showToast('PDF 最多匯出 500 筆，請縮小日期區間或改用 CSV', 'warning');
       return;
     }
@@ -1040,11 +1052,7 @@ async function exportAccountingPDF() {
         <td>${r.is_prepaid ? '預收' : ''}${r.is_backfilled ? ' 補建' : ''}</td>
       </tr>
     `).join('');
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-    if (!printWindow) {
-      showToast('瀏覽器封鎖了 PDF 視窗，請允許彈出視窗後重試', 'warning');
-      return;
-    }
+    printWindow.document.open();
     printWindow.document.write(`
       <!doctype html>
       <html>
@@ -1088,6 +1096,9 @@ async function exportAccountingPDF() {
     printWindow.document.close();
     showToast('已開啟 PDF 列印報表');
   } catch (e) {
+    if (!printWindow.closed) {
+      printWindow.close();
+    }
     showToast(e.message || 'PDF 匯出失敗', 'error');
   } finally {
     accountingExporting.value = false;
