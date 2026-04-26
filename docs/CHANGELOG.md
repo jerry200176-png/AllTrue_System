@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — feat(parent-feedback): 家長建議回饋系統（PR #94, #95）
+
+- Added: 家長入口學習 Tab 底部新增「台北全真一對一補習班自主研發」品牌回饋卡片（分類 Chip + 星評 + 文字輸入，mobile-first）
+- Added: 後端 `parent_feedback` 資料表 + `ParentFeedbackController`（4 支 API）
+- Added: super_admin Bug 回報頁新增「家長回饋」Tab，含未讀 badge、分類篩選、標記已處理
+
 ## 2026-04-26 — feat(parent-portal): 三 Tab 架構改版，學習優先（PR #90）
 
 - Changed: 家長入口頁改為三 Tab（學習/課表/帳務），預設進入「學習」Tab 顯示評量與出缺勤
