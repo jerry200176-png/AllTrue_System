@@ -883,7 +883,7 @@ const sidebarNavGroups = computed(() => {
         title: '財務收費',
         defaultOpen: true,
         items: [
-          { page: 'tuition-collect', label: '催繳名單', icon: 'payments' },
+          { page: 'tuition-collect', label: '帳務中心', icon: 'payments' },
           { page: 'tuition-report', label: '當月學收', icon: 'bar_chart' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'parttime-payroll', label: '兼職薪資', icon: 'account_balance_wallet' },
