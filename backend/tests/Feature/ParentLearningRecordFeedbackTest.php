@@ -6,6 +6,7 @@ use App\Models\AuthToken;
 use App\Models\ParentSession;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Database\Factories\CampusFactory;
 use Database\Factories\StudentFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -109,6 +110,48 @@ class ParentLearningRecordFeedbackTest extends TestCase
         $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($teacherToken))
             ->assertOk()
             ->assertJsonPath('count', 0);
+        $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($directorToken))
+            ->assertOk()
+            ->assertJsonPath('count', 1);
+    }
+
+    public function test_mark_read_does_not_touch_feedback_updated_at(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $s = $this->record(['campus' => $campus]);
+        $this->submit($s, '請老師下次協助確認作業訂正');
+
+        $feedbackId = DB::table('learning_record_feedbacks')
+            ->where('learning_record_id', $s['record_id'])
+            ->value('id');
+        $parentUpdatedAt = Carbon::parse('2026-04-26 10:00:00');
+        DB::table('learning_record_feedbacks')
+            ->where('id', $feedbackId)
+            ->update(['updated_at' => $parentUpdatedAt]);
+
+        Carbon::setTestNow(Carbon::parse('2026-04-26 10:05:00'));
+        try {
+            $teacherToken = $this->staffToken($s['teacher'], [$campus->id]);
+            $this->postJson("/api/v1/learning-record-feedbacks/{$feedbackId}/read", [], $this->bearer($teacherToken))
+                ->assertOk();
+
+            $row = DB::table('learning_record_feedbacks')->where('id', $feedbackId)->first();
+            $this->assertSame($parentUpdatedAt->format('Y-m-d H:i:s'), Carbon::parse($row->updated_at)->format('Y-m-d H:i:s'));
+            $this->assertSame('2026-04-26 10:05:00', Carbon::parse($row->last_read_by_teacher_at)->format('Y-m-d H:i:s'));
+
+            $this->getJson('/api/v1/me/unread-feedback-count', $this->bearer($teacherToken))
+                ->assertOk()
+                ->assertJsonPath('count', 0);
+
+            $records = $this->getJson('/api/v1/learning-records?per_page=100', $this->bearer($teacherToken))
+                ->assertOk()
+                ->json('data');
+            $record = collect($records)->firstWhere('id', $s['record_id']);
+            $this->assertNotNull($record);
+            $this->assertFalse($record['parent_feedback']['unread_for_teacher']);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     private function submit(array $s, string $content): void
