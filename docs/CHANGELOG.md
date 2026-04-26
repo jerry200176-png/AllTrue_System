@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-26 — fix(sentry): 處理 MIME type 錯誤 #100 及 N+1 誤判 #101（PR #102）
+
+- Fixed 加入 `window.addEventListener('error')` 捕捉 MIME type 錯誤並自動 reload；Sentry ignoreErrors 加入對應樣式
+- Fixed `classSessionsApi.js` CHUNK_SIZE 60→200，消除分批請求被 Sentry 誤判 N+1 的根因
+
 ## 2026-04-26 — fix(students): 月結課程在學生管理被誤判歷史課程而隱藏（PR #98）
 
 - Fixed `isHistoricalCourse()` 對月結制（payment_type=monthly）課程缺少保護，RemainingSessions=0 + 已繳費導致課程被過濾，補習科目/堂數欄顯示「尚未設定」
