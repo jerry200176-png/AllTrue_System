@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-26 — fix(ops): 還原 GitHub Actions SSH Deploy 三組 secrets（PI_SSH_KEY / PI_USER / PI_HOST）
+
+- Ops: `PI_SSH_KEY` 還原為原始 `rpi_actions_deploy` 私鑰（指紋 `B/tQBH...`），修復 deploy.yml Permission denied
+- Ops: `PI_USER` 由錯誤的 `admin@pi.lifenet.com.tw` 格式改回 `admin`，修復 pi-health.yml Invalid user
+- Ops: `PI_HOST` 改回 `pi.lifenet.com.tw`，修復 pi-health.yml 連線
+
 ## 2026-04-26 — fix(security): 密碼改完撤銷全部 token + CSP Report-Only + debug_mode 監測 (PR #84)
 
 - Security: `PUT /api/v1/me` 改密碼時刪除所有舊 AuthToken，簽發新 token（`new_token` 欄位），其他裝置自動失效
