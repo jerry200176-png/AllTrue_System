@@ -186,6 +186,61 @@ class EnrollmentServiceMonthlyRecurringTest extends TestCase
     }
 
     /**
+     * Explicit session_plan is the source of truth when the monthly creation
+     * calendar has been manually adjusted before submit.
+     */
+    public function test_monthly_with_end_date_and_session_plan_uses_explicit_dates(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = $this->createTeacher();
+        $student = $this->createStudent();
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/class-sessions/batch', [
+            'student_id'       => $student->id,
+            'teacher_id'       => $teacherId,
+            'subject'          => 'Math',
+            'class_type'       => 'one_on_one',
+            'days_of_week'     => [4],
+            'start_time'       => '18:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 500,
+            'payment_type'     => 'monthly',
+            'settlement_day'   => 5,
+            'monthly_sessions' => 2,
+            'end_date'         => '2026-05-31',
+            'course_start_date' => '2026-05-01',
+            'confirmed_dates'  => [],
+            'future_dates'     => [],
+            'session_plan'     => [
+                ['session_date' => '2026-05-07', 'start_time' => '18:00', 'kind' => 'future', 'subject' => 'Math'],
+                ['session_date' => '2026-05-12', 'start_time' => '18:00', 'kind' => 'future', 'subject' => 'Math'],
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('created_sessions', 2)
+            ->assertJsonPath('created_future_sessions', 2);
+
+        $scId = $response->json('student_class_id');
+        $sessions = ClassSession::where('StudentClassID', $scId)
+            ->orderBy('SessionDate')
+            ->pluck('SessionDate')
+            ->map(fn ($date) => substr((string) $date, 0, 10))
+            ->values()
+            ->all();
+
+        $this->assertSame(['2026-05-07', '2026-05-12'], $sessions);
+
+        $sc = StudentClass::find($scId);
+        $this->assertSame('date', (string) $sc->ScheduleMode);
+        $this->assertSame(2, (int) $sc->monthly_sessions);
+        $this->assertSame('2026-05-31', substr((string) $sc->EndDate, 0, 10));
+    }
+
+    /**
      * Edge: end_date 等於 start_date 且當天是指定星期 → 生成 1 堂。
      * 2026-05-07 is Thursday (ISO 4).
      */
