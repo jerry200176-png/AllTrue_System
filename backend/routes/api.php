@@ -152,6 +152,8 @@ Route::prefix('v1')->group(function () {
 
         $logPipeline['logs_dir_writable'] = is_writable($logDir);
 
+        $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
+
         return response()->json([
             'status' => 'ok',
             'timestamp' => now()->toIso8601String(),
@@ -162,6 +164,10 @@ Route::prefix('v1')->group(function () {
                 'lr_default_window_days'  => config('perfflags.learning_records_default_window_days'),
             ],
             'log_pipeline' => $logPipeline,
+            'sentry' => [
+                'configured' => !empty($sentryDsn),
+                'sdk_bound'  => app()->bound('sentry'),
+            ],
         ]);
     });
 

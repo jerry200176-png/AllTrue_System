@@ -48,7 +48,12 @@ export default defineConfig({
   build: {
     outDir: 'dist_build',
     rollupOptions: {
-      // Removed custom output names to prevent asset overlapping (like index.png overriding logo.png)
+      output: {
+        manualChunks: {
+          'vendor-vue':    ['vue'],
+          'vendor-sentry': ['@sentry/vue'],
+        },
+      },
     },
   },
   server: {
