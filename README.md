@@ -191,10 +191,9 @@ docker-compose up -d
 
 ### 前端部署（同步到 backend/public）
 
-```bash
-cd frontend
-npm run deploy    # build + 複製到 backend/public + 自動觸發 OPcache 重置
-```
+正常上線不手動執行 `npm run deploy`。前端變更合併到 `main` 後，由 `deploy.yml` 在 Pi 上自動 build、複製到 `backend/public`，並執行 health / smoke test。
+
+手動 `npm run deploy` 只允許在 CI/deploy 掛掉的緊急修復流程中使用，且必須先確認不在 feature branch 上線。
 
 ### 生產環境（Raspberry Pi 遠端部署）
 
@@ -205,7 +204,7 @@ git checkout -b feat/my-feature
 # → 自動 commit + push + 建立 PR；CI 通過 merge 後自動部署到 Pi
 ```
 
-詳細步驟見 `docs/DEPLOYMENT.md` 與 `docs/deploy-raspberry-pi.md`。
+詳細步驟見 `docs/DEPLOYMENT.md` 與 `docs/OPERATIONS_RUNBOOK.md`。
 
 ---
 
@@ -245,7 +244,7 @@ gh pr create --fill
     ↓ 批准（依情況進入 [UX] 和/或 [DBA]）
 [DEV] 全端工程師 → 後端 API + 前端 Vue 實作
     ↓ 批准
-[TEST] QA 工程師 → Pest 測試（Feature / Unit / Regression）
+[TEST] QA 工程師 → PHPUnit 測試（Feature / Unit / Regression，只在 GitHub Actions 執行）
     ↓ 批准
 [SEC] Security Engineer → OWASP / STRIDE 資安審查
     ↓ 批准

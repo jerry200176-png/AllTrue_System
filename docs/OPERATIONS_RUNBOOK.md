@@ -143,9 +143,9 @@ From previous incidents:
 3. Clear Laravel cached files:
    - `backend/bootstrap/cache/*.php` (config/services/packages)
 4. Verify DB credentials in `backend/.env`.
-5. Rebuild frontend:
-   - `cd frontend && npm run deploy`
-6. Re-test web + API endpoints.
+5. Confirm `deploy.yml` success and `backend/public/version.json` freshness.
+6. If deploy workflow is broken and this is an incident, use the emergency manual frontend deploy path in `docs/DEPLOYMENT.md`.
+7. Re-test web + API endpoints.
 
 ## E. Pre-merge checklist
 
@@ -195,10 +195,7 @@ From previous incidents:
    frontend/src/lib/useBranches.js  →  const DEFAULT_BRANCHES = [...]
    ```
 
-4. **重新 deploy 前端**：
-   ```bash
-   cd frontend && npm run deploy
-   ```
+4. **走 PR → CI → deploy.yml 自動部署**；若是事故且 deploy workflow 無法使用，才走 `docs/DEPLOYMENT.md` 的緊急手動部署流程。
 
 5. **請使用者強制重新整理瀏覽器**（Ctrl+Shift+R / Cmd+Shift+R）。
 

@@ -128,7 +128,7 @@
 
 若上線後出現大量誤操作或客訴：
 
-1. **即時回滾**：`git revert` 對應 commit + `cd frontend && npm run deploy`
+1. **即時回滾**：`git revert` 對應 commit，走 hotfix PR merge 後由 `deploy.yml` 自動部署
 2. **公告**：通知各分校「系統已恢復舊版面，操作方式不變」
 3. **調查**：收集具體誤操作案例，判斷是文案問題還是流程問題
 4. **修正後重新上線**：經 PM + 營運確認後再次部署

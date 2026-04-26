@@ -11,15 +11,15 @@
 
 ## 紅線（⛔ 違反 = P0 故障，零容忍）
 
-### R1. `/home/admin` 就是 production — 改檔案 = 改線上
+### R1. `/home/admin` 就是 production — 在 Pi 改檔案 = 改線上
 
 ```
 /home/admin/backend/  ← nginx 直接 serve 的 document root
 /home/admin/frontend/ ← npm run deploy 後 copy 到 backend/public/
 ```
 
-- **feature branch 上修改既有 .php/.vue 檔案 = 即時影響 production**
-- git checkout -b 不會隔離 working tree
+- **只要 cwd 在 `/home/admin` production working tree，任何分支修改既有 .php/.vue/config 檔 = 即時影響 production**
+- 在 Pi 上 `git checkout -b` 不會隔離 working tree；WSL2 `~/alltrue` feature branch 才是安全開發路徑
 - 唯一安全的寫入：**新增** test file（`tests/` 目錄）、新增 Export class、新增 migration
 - 事故：§P0-005、§事故F
 
@@ -41,8 +41,8 @@
 ✅ 正確順序：
    1. 新增 test file → push → CI RED
    2. 改 production code → push → CI GREEN
-   3. PR merge → git checkout main → git pull
-   4. 前端有改才 npm run deploy
+   3. PR merge → deploy.yml 自動部署（有 deployable diff 才跑）
+   4. AI 自己監控 CI / deploy / health check
 
 ❌ 錯誤：直接改 Controller/Route/Config 再補測試
 ❌ 錯誤：CI 還在跑就通知使用者

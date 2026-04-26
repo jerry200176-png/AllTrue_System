@@ -50,8 +50,9 @@ php artisan migrate:rollback --step=1  # 只有有 migration 才做
 
 ### Rollback 步驟（Frontend）
 ```bash
-# 前端沒有 git rollback 機制 — 用 git revert 修掉問題 commit 後重新 deploy
-cd /home/admin/frontend && npm run deploy
+# 前端 rollback 走 hotfix/revert PR，merge 後由 deploy.yml 重新部署
+git checkout -b hotfix/rollback-frontend-<date>
+git revert <bad_commit>
 ```
 
 ### 記錄

@@ -65,7 +65,7 @@ alwaysApply: false
 
 ## 11. 上線與維運
 
-**部署步驟**：含 `npm run deploy`、migration 順序、env 變數設定
+**部署步驟**：說明 `deploy.yml` 自動部署、migration/env 變更、docs-only 是否應跳過 production deploy
 
 **Feature Flag 策略**：
 - 有風險功能：說明 flag 名稱與上線順序（內部 → 部分分校 → 全量），各階段觀察期
