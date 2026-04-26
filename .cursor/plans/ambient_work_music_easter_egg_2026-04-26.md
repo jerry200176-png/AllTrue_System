@@ -1,7 +1,7 @@
 # [PLAN/ARCH] 工作音樂小彩蛋
 
 日期：2026-04-26  
-狀態：DEV/TEST 完成，PR 中  
+狀態：v1 已上線；v2 自製 MP3 取代中  
 目標角色：主任、老師、super_admin
 
 ## 1. 背景與目標
@@ -10,8 +10,8 @@
 
 目標：
 - 使用者手動開啟，不自動播放。
-- 提供 3 種低干擾音景：雨聲、咖啡廳、棕噪音。
-- 不使用第三方音檔或外部串流，改用 Web Audio 本地合成。
+- v1 提供 3 種 Web Audio 合成音景；v2 改用 3 首 AllTrue 自製 MP3。
+- 不使用第三方音檔或外部串流。
 - 不新增 DB/API，不保存聆聽紀錄。
 
 ## 2. 範圍
@@ -36,7 +36,7 @@ Out of Scope：
 | 前置 PR | 無 |
 | 外部服務 | 無 |
 | DB/API | 無新增 |
-| 音源授權 | v1 無第三方音檔；詳 `docs/AMBIENT_AUDIO_LICENSES.md` |
+| 音源授權 | v2 使用 AllTrue 自製 MP3；詳 `docs/AMBIENT_AUDIO_LICENSES.md` |
 
 ## 4. User Stories / AC
 
@@ -54,7 +54,7 @@ Out of Scope：
 | 控制 | Play/Pause、音景切換、音量 slider |
 | 手機 | 按鈕收斂成 icon，面板避開底部 nav |
 | 無障礙 | 按鈕/slider 有 aria-label，鍵盤可操作 |
-| 錯誤 | 瀏覽器不支援 Web Audio 時顯示 inline error，不阻塞頁面 |
+| 錯誤 | 音檔載入或播放失敗時顯示 inline error，不阻塞頁面 |
 
 ## 6. 功能與非功能需求
 
@@ -70,13 +70,13 @@ Out of Scope：
 
 | 檔案 | 職責 |
 |---|---|
-| `frontend/src/components/AmbientMusicPlayer.vue` | Web Audio 合成音景、播放控制、偏好保存 |
+| `frontend/src/components/AmbientMusicPlayer.vue` | MP3 播放控制、音量、音樂切換、偏好保存 |
 | `frontend/src/App.vue` | 掛載播放器，條件為 staff + feature flag |
 | `frontend/src/lib/perfFlags.js` | `AMBIENT_MUSIC_ENABLED` 快速關閉 |
 | `docs/AMBIENT_AUDIO_LICENSES.md` | 音源策略與日後真實音檔授權規則 |
 
 設計決策：
-- 選 Web Audio 本地合成，不選第三方音檔：降低版權/公開傳輸風險。
+- v1 選 Web Audio 本地合成降低版權風險；v2 依使用者確認改用 AllTrue 自製 MP3。
 - 選 topbar，不選右下 FAB：避免和問題回報、導覽 FAB 競爭。
 - 選 localStorage，不選後端：符合資料最小化。
 
@@ -85,14 +85,14 @@ Out of Scope：
 - 無新 auth flow，無 PII，無播放紀錄。
 - 無後端 query，因此無 `CampusID` / `branch_id` 隔離風險。
 - 家長入口不顯示，避免外部使用場景擴大。
-- 日後若加入真實音檔，必須先在授權文件記錄來源、授權、下載日期、可商用確認與 attribution。
+- 自製 MP3 已在授權文件記錄來源、授權確認與 attribution 要求。
 
 ## 9. QA / DoD
 
 已驗證：
 - `cd frontend && npm run build` 通過。
 - 無 `backend/`、migration、`frontend/dist_build/` diff。
-- 靜態審查確認無 autoplay path：`AudioContext` 只在播放按鈕流程建立/resume。
+- 靜態審查確認無 autoplay path：`audio` 使用 `preload="none"`，播放只由按鈕觸發。
 
 仍需人工實機驗收：
 - 實際聽感是否舒適。
