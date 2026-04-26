@@ -34,8 +34,10 @@ class EnrollmentService
         $paymentType = (string) ($data['payment_type'] ?? 'session');
         $endDateRaw = $data['end_date'] ?? null;
         $daysOfWeekRaw = $data['days_of_week'] ?? [];
+        $sessionPlanRaw = $data['session_plan'] ?? null;
+        $hasExplicitSessionPlan = !empty($sessionPlanRaw) && is_array($sessionPlanRaw);
 
-        if ($paymentType === 'monthly' && !empty($endDateRaw) && !empty($daysOfWeekRaw)) {
+        if ($paymentType === 'monthly' && !empty($endDateRaw)) {
             $courseStart = $data['course_start_date'] ?? Carbon::today()->toDateString();
             $endDate = $endDateRaw;
 
@@ -54,8 +56,13 @@ class EnrollmentService
                 ], 422);
             }
 
-            $isMonthlyRecurring = true;
             $endDateOverride = $endDate;
+        }
+
+        if ($paymentType === 'monthly' && !$hasExplicitSessionPlan && $endDateOverride !== null && !empty($daysOfWeekRaw)) {
+            $courseStart = $data['course_start_date'] ?? Carbon::today()->toDateString();
+            $endDate = $endDateOverride;
+            $isMonthlyRecurring = true;
 
             $weekdays = $this->normalizeWeekdayArray((array) $daysOfWeekRaw);
             $startTimeStr = $this->normalizeTime((string) ($data['start_time'] ?? '16:00'));
@@ -117,7 +124,6 @@ class EnrollmentService
             ? reset($dayTimeSlotMap)['start_time']
             : $this->normalizeTime((string) ($data['start_time'] ?? '16:00'));
 
-        $sessionPlanRaw = $data['session_plan'] ?? null;
         $sessionRows = [];
         if (!$isMonthlyRecurring && !empty($sessionPlanRaw) && is_array($sessionPlanRaw)) {
             $sessionRows = $this->buildRowsFromSessionPlan(
@@ -164,7 +170,7 @@ class EnrollmentService
         } elseif (!empty($data['days_of_week'])) {
             $allowedWeekdays = $this->normalizeWeekdayArray((array) $data['days_of_week']);
         }
-        if (!empty($allowedWeekdays)) {
+        if (!empty($allowedWeekdays) && !($paymentType === 'monthly' && $hasExplicitSessionPlan)) {
             $allowedSet = array_fill_keys($allowedWeekdays, true);
             $weekCn = ['', '一', '二', '三', '四', '五', '六', '日'];
             $today = Carbon::today()->toDateString();

@@ -567,7 +567,7 @@
           </article>
         </section>
 
-        <section v-else class="panel-stack">
+        <section class="panel-stack">
           <article class="scheduler-card calendar-card">
             <div class="calendar-header">
               <button class="ghost small" type="button" @click="shiftMonth(-1)">上個月</button>
@@ -590,15 +590,18 @@
                     muted: !cell.inMonth,
                     confirmed: cell.status === 'manual-confirmed',
                     'manual-future': cell.status === 'manual-future',
+                    excluded: cell.status === 'excluded',
                     future: cell.status === 'future',
                     'course-start-marker': cell.isCourseStart,
                   },
                 ]"
+                :aria-label="calendarCellAriaLabel(cell)"
                 @click="onDateClick(cell)"
               >
                 <span>{{ cell.day }}</span>
                 <small v-if="cell.status === 'manual-confirmed'" class="cell-label cell-label-confirmed">補登</small>
                 <small v-else-if="cell.status === 'manual-future'" class="cell-label cell-label-scheduled">預排</small>
+                <small v-else-if="cell.status === 'excluded'" class="cell-label cell-label-excluded">排除</small>
                 <small v-else-if="cell.status === 'future'" class="cell-label cell-label-auto">預排</small>
                 <small v-if="cell.isCourseStart" class="cell-flag">開課</small>
               </button>
@@ -618,7 +621,7 @@
               </div>
               <div class="summary-pill total">
                 <div class="summary-label">{{ plannedCountLabel }}</div>
-                <strong>{{ safePlannedSessions }}</strong>
+                <strong>{{ plannedDisplayCount }}</strong>
               </div>
             </div>
 
@@ -631,15 +634,19 @@
               <span class="legend-chip confirmed">補登已上</span>
               <span class="legend-chip manual-future">手動預排</span>
               <span class="legend-chip future">系統預排</span>
+              <span v-if="form.payment_type === 'monthly'" class="legend-chip excluded">排除不建立</span>
             </div>
 
-            <p class="hint-text">
+            <p v-if="form.payment_type === 'monthly'" class="hint-text">
+              日曆調整只影響建立時要產生哪些堂次；排除日期不會建立堂次，但不是正式請假紀錄。若需要請假紀錄，建立後再從課表操作請假。
+            </p>
+            <p v-else class="hint-text">
               開課日前不會建立預排堂次。系統從開課日起，依固定上課星期自動補齊剩餘堂次。
             </p>
 
             <div class="calendar-actions">
-              <button class="ghost small" type="button" @click="clearConfirmedDates" :disabled="manualDates.length === 0">
-                清除手動日期
+              <button class="ghost small" type="button" @click="clearConfirmedDates" :disabled="manualDates.length === 0 && excludedDates.length === 0">
+                清除手動調整
               </button>
             </div>
 
@@ -651,6 +658,11 @@
             <div v-if="manualScheduledDates.length > 0" class="date-list manual-future-list">
               <p>手動預排日期（未上）：</p>
               <div>{{ manualScheduledDates.join('、') }}</div>
+            </div>
+
+            <div v-if="excludedDates.length > 0" class="date-list excluded">
+              <p>排除不建立日期：</p>
+              <div>{{ excludedDates.join('、') }}</div>
             </div>
 
             <div v-if="futureSessionOccurrences.length > 0" class="date-list future">
@@ -795,6 +807,7 @@ const form = reactive({
   subject: 'Math',
   class_type: 'one_on_one',
   confirmed_dates: [],
+  excluded_dates: [],
   total_classes: 8,
   settlement_day: null,
   monthly_sessions: 4,
@@ -886,6 +899,7 @@ function resetForm() {
   form.subject = 'Math';
   form.class_type = 'one_on_one';
   form.confirmed_dates = [];
+  form.excluded_dates = [];
   form.total_classes = 8;
   form.settlement_day = null;
   form.monthly_sessions = 4;
@@ -1249,6 +1263,8 @@ watch(() => form.course_start_date, (val) => {
 
 const manualDates = computed(() => sortDates(form.confirmed_dates || []));
 const manualDateSet = computed(() => new Set(manualDates.value));
+const excludedDates = computed(() => sortDates(form.excluded_dates || []));
+const excludedDateSet = computed(() => new Set(excludedDates.value));
 const confirmedDates = computed(() => manualDates.value.filter((date) => isManualDateConfirmed(date)));
 const manualScheduledDates = computed(() => manualDates.value.filter((date) => !isManualDateConfirmed(date)));
 
@@ -1301,6 +1317,10 @@ const pastCourseStartAutoAddHint = computed(() => {
 });
 
 const futureSessionOccurrences = computed(() => {
+  if (form.payment_type === 'monthly') {
+    return monthlySystemOccurrences.value;
+  }
+
   const remaining = safePlannedSessions.value - manualSessionCount.value;
   if (remaining <= 0) return [];
 
@@ -1353,6 +1373,74 @@ const futureSessionOccurrences = computed(() => {
   }
   return selected;
 });
+
+function buildSessionEntriesForDate(ymd) {
+  if (!ymd) return [];
+  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
+  const slots = orderedSlotsForWeekday(dow);
+  const slotList = slots.length ? slots : [{
+    start_time: normalizeHalfHourTime(form.start_time || '16:00'),
+    duration_minutes: durationHoursToMinutes(form.duration_hours),
+    subject: form.subject,
+  }];
+  return slotList.map((slot) => {
+    const entry = {
+      ymd,
+      start_time: slot.start_time,
+      duration_minutes: slot.duration_minutes,
+      subject: slot.subject || form.subject,
+    };
+    const slotObj = slot.index != null ? (form.day_time_slots[slot.index] || {}) : {};
+    if (slotObj.teacher_id) entry.teacher_id = Number(slotObj.teacher_id);
+    return entry;
+  });
+}
+
+const monthlySystemOccurrences = computed(() => {
+  if (form.payment_type !== 'monthly') return [];
+  const startStr = form.course_start_date || '';
+  const endStr = form.end_date || '';
+  const daySet = new Set((form.days_of_week || []).map((d) => Number(d)).filter((d) => d >= 1 && d <= 7));
+  if (!startStr || !endStr || daySet.size === 0 || endStr < startStr) return [];
+
+  const entries = [];
+  const cursor = new Date(`${startStr}T00:00:00`);
+  const end = new Date(`${endStr}T00:00:00`);
+  let guard = 0;
+  while (cursor <= end && guard < 731) {
+    guard += 1;
+    const ymd = toYmd(cursor);
+    const dow = weekdayOneToSeven(cursor);
+    if (
+      daySet.has(dow)
+      && !excludedDateSet.value.has(ymd)
+      && !manualDateSet.value.has(ymd)
+    ) {
+      entries.push(...buildSessionEntriesForDate(ymd));
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return entries;
+});
+
+const finalMonthlySessionPlan = computed(() => {
+  if (form.payment_type !== 'monthly') return [];
+  const manualEntries = manualDates.value.flatMap((ymd) => buildSessionEntriesForDate(ymd));
+  return [...monthlySystemOccurrences.value, ...manualEntries]
+    .sort((a, b) => {
+      const dateCmp = a.ymd.localeCompare(b.ymd);
+      if (dateCmp !== 0) return dateCmp;
+      return a.start_time.localeCompare(b.start_time);
+    });
+});
+
+const monthlyHasCalendarAdjustments = computed(() => (
+  form.payment_type === 'monthly' && (manualDates.value.length > 0 || excludedDates.value.length > 0)
+));
+
+const plannedDisplayCount = computed(() => (
+  form.payment_type === 'monthly' ? finalMonthlySessionPlan.value.length : safePlannedSessions.value
+));
 
 const futureSessionLines = computed(() => (
   futureSessionOccurrences.value.map((o) => `${o.ymd} ${o.start_time}`)
@@ -1458,6 +1546,7 @@ const calendarCells = computed(() => {
     let status = '';
     if (manualConfirmedSet.value.has(ymd)) status = 'manual-confirmed';
     else if (manualFutureSet.value.has(ymd)) status = 'manual-future';
+    else if (excludedDateSet.value.has(ymd)) status = 'excluded';
     else if (futureDateSet.value.has(ymd)) status = 'future';
 
     cells.push({
@@ -1471,6 +1560,17 @@ const calendarCells = computed(() => {
   }
   return cells;
 });
+
+function calendarCellAriaLabel(cell) {
+  if (!cell?.ymd) return '日期';
+  const statusLabel = {
+    'manual-confirmed': '補登已上',
+    'manual-future': '手動預排',
+    excluded: '排除不建立',
+    future: '系統預排',
+  }[cell.status] || '未選取';
+  return `${cell.ymd}，${statusLabel}`;
+}
 
 onMounted(async () => {
   try {
@@ -1680,6 +1780,7 @@ function isTodaySessionEnded() {
 
 function clearConfirmedDates() {
   form.confirmed_dates = [];
+  form.excluded_dates = [];
 }
 
 function isManualDateConfirmed(ymd) {
@@ -1695,7 +1796,7 @@ function isManualDateConfirmed(ymd) {
 function onDateClick(cell) {
   if (!cell?.ymd) return;
   const todayYmd = getCurrentTodayYmd();
-  if (selectedDays.value.length > 0 && cell.ymd >= todayYmd) {
+  if (form.payment_type !== 'monthly' && selectedDays.value.length > 0 && cell.ymd >= todayYmd) {
     const dow = weekdayOneToSeven(new Date(`${cell.ymd}T12:00:00`));
     if (!selectedDays.value.includes(dow)) {
       const names = ['', '一', '二', '三', '四', '五', '六', '日'];
@@ -1711,11 +1812,26 @@ function onDateClick(cell) {
     }
   }
   if (form.payment_type === 'monthly') {
-    const targetYm = toYmd(currentMonth.value).slice(0, 7);
-    if (cell.ymd.slice(0, 7) !== targetYm) {
-      alert('月結課程僅可選擇同一月份日期。');
+    const manual = new Set(manualDateSet.value);
+    const excluded = new Set(excludedDateSet.value);
+    if (manual.has(cell.ymd)) {
+      manual.delete(cell.ymd);
+      form.confirmed_dates = sortDates([...manual]);
       return;
     }
+    if (excluded.has(cell.ymd)) {
+      excluded.delete(cell.ymd);
+      form.excluded_dates = sortDates([...excluded]);
+      return;
+    }
+    if (futureDateSet.value.has(cell.ymd)) {
+      excluded.add(cell.ymd);
+      form.excluded_dates = sortDates([...excluded]);
+      return;
+    }
+    manual.add(cell.ymd);
+    form.confirmed_dates = sortDates([...manual]);
+    return;
   }
   const current = new Set(manualDateSet.value);
   if (current.has(cell.ymd)) {
@@ -1863,13 +1979,28 @@ async function submit() {
     return;
   }
 
-  const useMonthlyRecurringPath = form.payment_type === 'monthly' && form.end_date && (form.days_of_week || []).length > 0;
+  const monthlyHasPastGeneratedSessions = form.payment_type === 'monthly'
+    && monthlySystemOccurrences.value.some((entry) => entry.ymd < todayYmd);
+  const useMonthlyExplicitPlan = form.payment_type === 'monthly'
+    && (monthlyHasCalendarAdjustments.value || monthlyHasPastGeneratedSessions);
+  const useMonthlyRecurringPath = form.payment_type === 'monthly'
+    && !useMonthlyExplicitPlan
+    && form.end_date
+    && (form.days_of_week || []).length > 0;
 
-  if (useMonthlyRecurringPath) {
+  if (form.payment_type === 'monthly' && form.end_date) {
     if (form.end_date < form.course_start_date) {
       alert('結束日不可早於開課日');
       return;
     }
+  }
+
+  if (useMonthlyExplicitPlan) {
+    if (finalMonthlySessionPlan.value.length <= 0) {
+      alert('月結日曆沒有任何要建立的堂次，請保留至少一個預排日期或手動加入日期');
+      return;
+    }
+  } else if (useMonthlyRecurringPath) {
     const previewCount = countWeekdayOccurrences(
       form.course_start_date, form.end_date,
       (form.days_of_week || []).map(Number).filter((d) => d >= 1 && d <= 7)
@@ -1880,7 +2011,7 @@ async function submit() {
     }
   }
 
-  if (!useMonthlyRecurringPath) {
+  if (!useMonthlyRecurringPath && !useMonthlyExplicitPlan) {
     if (manualSessionCount.value > safePlannedSessions.value) {
       alert(`手動指定堂數不可超過${plannedCountLabel.value}`);
       return;
@@ -1897,7 +2028,7 @@ async function submit() {
     }
   }
 
-  if (!useMonthlyRecurringPath) {
+  if (!useMonthlyRecurringPath && !useMonthlyExplicitPlan) {
     const remainingSessions = safePlannedSessions.value - manualSessionCount.value;
     if (remainingSessions > 0 && (form.days_of_week || []).length === 0) {
       alert('尚有未排堂次，請先設定固定上課星期讓系統推算未來日期');
@@ -1919,8 +2050,12 @@ async function submit() {
       return;
     }
   }
+  if (useMonthlyExplicitPlan && finalMonthlySessionPlan.value.some((o) => o.ymd < todayYmd && !isManualDateConfirmed(o.ymd))) {
+    alert('月結日曆含有過去但尚未標記為補登的日期，請重新點選該日期');
+    return;
+  }
 
-  const sessionPlan = [];
+  let sessionPlan = [];
   for (const ymd of manualDates.value) {
     const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
     const indices = getSlotIndicesForDay(dow);
@@ -1962,6 +2097,15 @@ async function submit() {
     if (c !== 0) return c;
     return a.start_time.localeCompare(b.start_time);
   });
+  if (useMonthlyExplicitPlan) {
+    sessionPlan = finalMonthlySessionPlan.value.map((entry) => ({
+      session_date: entry.ymd,
+      start_time: entry.start_time,
+      kind: isManualDateConfirmed(entry.ymd) ? 'confirmed' : 'future',
+      subject: String(entry.subject || form.subject),
+      ...(entry.teacher_id ? { teacher_id: Number(entry.teacher_id) } : {}),
+    }));
+  }
 
   submitting.value = true;
   try {
@@ -1984,7 +2128,10 @@ async function submit() {
     const hasMultiTeacher = normalizedDaySlots.some(
       (s) => s.teacher_id && s.teacher_id !== globalTeacherId
     );
-    const useMonthlyRecurring = form.payment_type === 'monthly' && form.end_date && (form.days_of_week || []).length > 0;
+    const useMonthlyRecurring = form.payment_type === 'monthly'
+      && !useMonthlyExplicitPlan
+      && form.end_date
+      && (form.days_of_week || []).length > 0;
     const payload = {
       branch_id: branchId,
       student_id: Number(form.student_id),
@@ -2002,14 +2149,16 @@ async function submit() {
       price_per_session: Math.max(0, Number(form.price_per_session) || 0),
       payment_type: form.payment_type || 'session',
       settlement_day: form.payment_type === 'monthly' ? Number(form.settlement_day) || null : null,
-      monthly_sessions: form.payment_type === 'monthly' ? safePlannedSessions.value : null,
+      monthly_sessions: form.payment_type === 'monthly'
+        ? (useMonthlyExplicitPlan ? sessionPlan.length : safePlannedSessions.value)
+        : null,
       room_id: form.room_id ? Number(form.room_id) : null,
       memo: form.memo || null,
       paid_at: form.paid_at || null,
       course_start_date: form.course_start_date || null,
       mode: props.mode,
       ...(hasMultiTeacher ? { allow_multi_teacher: true } : {}),
-      ...(useMonthlyRecurringPath ? { end_date: form.end_date } : {}),
+      ...((useMonthlyRecurringPath || (form.payment_type === 'monthly' && form.end_date)) ? { end_date: form.end_date } : {}),
     };
 
     if (form.payment_type === 'session') {
@@ -2337,6 +2486,14 @@ async function submit() {
   font-weight: 700;
 }
 
+.calendar-cell.excluded {
+  border-color: #f59e0b;
+  background: #fff7ed;
+  color: #b45309;
+  font-weight: 700;
+  text-decoration: line-through;
+}
+
 .calendar-cell.course-start-marker {
   box-shadow: inset 0 -3px 0 0 #f59e0b;
 }
@@ -2350,6 +2507,7 @@ async function submit() {
 .cell-label-confirmed { color: #16783b; }
 .cell-label-scheduled { color: #5b21b6; }
 .cell-label-auto { color: #1657c1; }
+.cell-label-excluded { color: #b45309; }
 .cell-flag {
   font-size: 8px;
   font-weight: 700;
@@ -2423,6 +2581,11 @@ async function submit() {
   color: #1858bc;
 }
 
+.legend-chip.excluded {
+  background: #fff7ed;
+  color: #b45309;
+}
+
 .course-start-info {
   display: flex;
   align-items: center;
@@ -2481,6 +2644,11 @@ async function submit() {
 .date-list.future {
   background: #f7faff;
   border-color: #c8daf7;
+}
+
+.date-list.excluded {
+  background: #fffaf0;
+  border-color: #fed7aa;
 }
 
 .modal-actions {
