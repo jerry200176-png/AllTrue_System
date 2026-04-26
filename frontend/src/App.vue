@@ -367,7 +367,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
+import { computed, defineAsyncComponent, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from './supabase';
 import {
   branches,
@@ -381,32 +381,32 @@ import { useUpdateChecker } from './composables/useUpdateChecker';
 import { lockScroll, unlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
 
-// Pages
+// Pages — lazy-loaded per route for code splitting (reduces initial bundle size)
 import Login from './pages/Login.vue';
-
-import StudentsList from './pages/StudentsList.vue';
-import LearningRecordsPage from './pages/LearningRecordsPage.vue';
-import SmartCalendar from './pages/SmartCalendar.vue';
-import DirectorDashboard from './pages/DirectorDashboard.vue';
 import ParentPortal from './pages/ParentPortal.vue';
-import LineIntegration from './pages/LineIntegration.vue';
-import CourseManagement from './pages/CourseManagement.vue';
-import ClassroomManagement from './pages/ClassroomManagement.vue';
-import SubjectSettingsPage from './pages/SubjectSettingsPage.vue';
-import TeachersList from './pages/TeachersList.vue';
-import AttendancePage from './pages/AttendancePage.vue';
-import SubjectUnitsPage from './pages/SubjectUnitsPage.vue';
+
+const StudentsList          = defineAsyncComponent(() => import('./pages/StudentsList.vue'));
+const LearningRecordsPage   = defineAsyncComponent(() => import('./pages/LearningRecordsPage.vue'));
+const SmartCalendar         = defineAsyncComponent(() => import('./pages/SmartCalendar.vue'));
+const DirectorDashboard     = defineAsyncComponent(() => import('./pages/DirectorDashboard.vue'));
+const LineIntegration       = defineAsyncComponent(() => import('./pages/LineIntegration.vue'));
+const CourseManagement      = defineAsyncComponent(() => import('./pages/CourseManagement.vue'));
+const ClassroomManagement   = defineAsyncComponent(() => import('./pages/ClassroomManagement.vue'));
+const SubjectSettingsPage   = defineAsyncComponent(() => import('./pages/SubjectSettingsPage.vue'));
+const TeachersList          = defineAsyncComponent(() => import('./pages/TeachersList.vue'));
+const AttendancePage        = defineAsyncComponent(() => import('./pages/AttendancePage.vue'));
+const SubjectUnitsPage      = defineAsyncComponent(() => import('./pages/SubjectUnitsPage.vue'));
 // BillingList removed — replaced by TuitionReportPage (當月學收)
-import TuitionCollectionPage from './pages/TuitionCollectionPage.vue';
-import TuitionReportPage from './pages/TuitionReportPage.vue';
-import ParttimePayrollPage from './pages/ParttimePayrollPage.vue';
-import DirectorAccountsPage from './pages/DirectorAccountsPage.vue';
-import NotificationsCenter from './pages/NotificationsCenter.vue';
-import ProfileCenterPage from './pages/ProfileCenterPage.vue';
-import ChatPage from './pages/ChatPage.vue';
-import BugReportsPage from './pages/BugReportsPage.vue';
-import TeacherHomePage from './pages/TeacherHomePage.vue';
-import ScheduleDiscrepancyPage from './pages/ScheduleDiscrepancyPage.vue';
+const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/TuitionCollectionPage.vue'));
+const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
+const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));
+const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
+const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
+const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
+const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));
+const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugReportsPage.vue'));
+const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
+const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';

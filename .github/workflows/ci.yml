@@ -55,7 +55,35 @@ jobs:
 
       - name: Composer audit (security)
         working-directory: backend
-        run: composer audit --no-dev 2>&1 | tee /tmp/composer-audit.txt; grep -q "No security vulnerability" /tmp/composer-audit.txt || echo "::warning::Composer audit 發現漏洞，請儘快更新依賴"
+        run: |
+          # 只在 HIGH / CRITICAL 才擋 CI；MEDIUM 印警告
+          composer audit --no-dev --format=json 2>/dev/null > /tmp/composer-audit.json || true
+          python3 - <<'PYEOF'
+          import json, sys, os
+          try:
+              data = json.load(open("/tmp/composer-audit.json"))
+          except Exception:
+              print("::warning::composer audit JSON parse failed — skipping")
+              sys.exit(0)
+          advisories = data.get("advisories", {})
+          has_high = False
+          for pkg, adv_list in advisories.items():
+              for adv in (adv_list if isinstance(adv_list, list) else [adv_list]):
+                  sev = str(adv.get("severity", "")).lower()
+                  title = adv.get("title", "?")
+                  if sev in ("high", "critical"):
+                      print(f"::error::{pkg}: [{sev.upper()}] {title}")
+                      has_high = True
+                  else:
+                      print(f"::warning::{pkg}: [{sev}] {title}")
+          if has_high:
+              print("::error::Composer audit: HIGH/CRITICAL 漏洞必須修復才能 merge")
+              sys.exit(1)
+          elif advisories:
+              print("::warning::Composer audit: 發現 MEDIUM/LOW 漏洞，請儘快更新依賴")
+          else:
+              print("✅ Composer audit: 無已知漏洞")
+          PYEOF
 
       - name: Copy .env for CI
         working-directory: backend
@@ -292,4 +320,4 @@ jobs:
 
       - name: npm audit (security)
         working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev || echo "::warning::npm audit 發現 high+ 漏洞，請儘快更新依賴"
+        run: npm audit --audit-level=high --omit=dev
