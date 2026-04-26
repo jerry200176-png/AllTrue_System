@@ -38,14 +38,9 @@
 
 ## 網站畫面改了但現場還是舊的？
 
-前端修改後需要**重新建置並複製到後端靜態目錄**才會在正式網址生效。工程師在專案內慣用：
+前端修改後需要由 `deploy.yml` **重新建置並複製到後端靜態目錄**才會在正式網址生效。正常流程是 feature branch → PR → CI 綠 → merge → deploy.yml 自動部署。
 
-```bash
-cd frontend && npm run deploy
-```
-
-（等同 `vite build` + 複製到 `backend/public`。）  
-若只有改後端 PHP／資料庫，通常不必跑 deploy，但改完仍建議重新整理瀏覽器並確認 API 正常。
+若現場仍看到舊版，先確認 deploy workflow 成功與 `backend/public/version.json` 已更新，再請使用者 Ctrl+Shift+R 強制重新整理。手動 `npm run deploy` 只限 CI/deploy 掛掉的緊急修復流程。
 
 ---
 
