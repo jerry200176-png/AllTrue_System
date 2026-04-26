@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — chore(campus): 新增新莊分校 & 中平分校
+
+- Added 新莊分校（code: xinzhuang）、中平分校（code: zhongping）上線，migration 冪等零 downtime
+
 ## 2026-04-27 — feat(accounting): 帳務中心收款與收據紀錄
 
 - Added 帳務中心新增已核帳收款清單、收據紀錄、預收標籤、CSV/PDF 匯出，並強化收據跨分校存取檢查
