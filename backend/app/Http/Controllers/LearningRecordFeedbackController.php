@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class LearningRecordFeedbackController extends Controller
 {
@@ -110,20 +111,24 @@ class LearningRecordFeedbackController extends Controller
     public function markRead(Request $request, LearningRecordFeedback $feedback)
     {
         $role = (string) $request->attributes->get('auth_role');
+        $readAt = now();
         if ($role === 'teacher') {
             $teacherId = (int) $request->attributes->get('auth_teacher_id');
             if ($teacherId !== (int) $feedback->teacher_id) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
-            $feedback->last_read_by_teacher_at = now();
+            DB::table($feedback->getTable())
+                ->where('id', $feedback->id)
+                ->update(['last_read_by_teacher_at' => $readAt]);
         } else {
             $campusIds = $role === 'super_admin' ? [] : array_map('intval', $request->attributes->get('auth_campus_ids', []));
             if ($role !== 'super_admin' && !in_array((int) $feedback->campus_id, $campusIds, true)) {
                 return response()->json(['message' => 'Forbidden'], 403);
             }
-            $feedback->last_read_by_director_at = now();
+            DB::table($feedback->getTable())
+                ->where('id', $feedback->id)
+                ->update(['last_read_by_director_at' => $readAt]);
         }
-        $feedback->save();
 
         return response()->json(['message' => 'ok']);
     }
