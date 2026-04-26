@@ -12,6 +12,7 @@ use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
+use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentController;
@@ -423,6 +424,17 @@ Route::prefix('v1')->group(function () {
     Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
         ->middleware('throttle:20,1');
+
+    // ── Parent: 家長建議回饋（parent token 驗證在 Controller 內）────────────────
+    Route::post('parent/feedback', [ParentFeedbackController::class, 'store'])
+        ->middleware('throttle:20,1');
+
+    // ── Super Admin: 家長回饋管理 ─────────────────────────────────────────────
+    Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('parent-feedback/unread-count', [ParentFeedbackController::class, 'unreadCount']);
+        Route::get('parent-feedback', [ParentFeedbackController::class, 'index']);
+        Route::post('parent-feedback/{id}/mark-read', [ParentFeedbackController::class, 'markRead']);
+    });
 
     // ── Director: payment message for LINE copy ──────────────────────────
     Route::middleware(['role:director', 'require_password_change'])->group(function () {
