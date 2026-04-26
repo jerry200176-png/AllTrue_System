@@ -46,7 +46,9 @@ export function normalizeClassSessionsPayload(json) {
   return { items, byClass };
 }
 
-const CHUNK_SIZE = 60;
+// 分批大小：提高到 200 避免 Sentry N+1 誤判（MySQL IN 子句可安全支援 200+ 筆 ID）
+// 大多數分校課程數 < 200，因此通常只需一次請求
+const CHUNK_SIZE = 200;
 
 async function fetchClassSessionsSingle({
   token, branchId, studentClassId, studentClassIds,
