@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-04-26 — feat(parent-portal): 三 Tab 架構改版，學習優先（PR #90）
+
+- Changed: 家長入口頁改為三 Tab（學習/課表/帳務），預設進入「學習」Tab 顯示評量與出缺勤
+- Changed: 移除 Profile Card 的剩餘堂數環形圖，降低「催費感」
+- Changed: 繳費提醒移至「帳務」Tab，改柔和藍色 info-card 取代橙色警報樣式
+- Added: 帳務 Tab 有待繳費項目時顯示紅色數字 badge
+
 ## 2026-04-26 — fix(ops): 還原 GitHub Actions SSH Deploy 三組 secrets（PI_SSH_KEY / PI_USER / PI_HOST）
 
 - Ops: `PI_SSH_KEY` 還原為原始 `rpi_actions_deploy` 私鑰（指紋 `B/tQBH...`），修復 deploy.yml Permission denied
