@@ -204,6 +204,9 @@
           :title="`部署時間 ${buildTimeDisplay}`"
         >建置 {{ buildTimeDisplay }}</span>
         <div class="main-topbar-spacer"></div>
+        <AmbientMusicPlayer
+          v-if="perfFlags.AMBIENT_MUSIC_ENABLED && (isDirector || isTeacher)"
+        />
         <details class="account-menu" data-guide="app-account-menu">
           <summary class="account-menu-trigger">
             <div class="account-avatar">
@@ -407,6 +410,7 @@ const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPag
 const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugReportsPage.vue'));
 const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
 const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
+import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
@@ -1603,6 +1607,7 @@ function formatBuildTime(rawIso) {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  gap: 10px;
   margin-bottom: 10px;
 }
 

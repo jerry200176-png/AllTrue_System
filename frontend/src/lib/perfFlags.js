@@ -35,6 +35,9 @@ const flags = {
 
   /** Students per_page. Old: 500, new: 200 */
   STUDENTS_PER_PAGE: 200,
+
+  /** Staff-only ambient music easter egg. Compile-time rollback switch. */
+  AMBIENT_MUSIC_ENABLED: true,
 };
 
 export default flags;
