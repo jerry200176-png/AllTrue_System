@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\LearningRecord;
 use App\Models\Notification;
 use App\Models\PendingSwipe;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -283,6 +284,137 @@ class NotificationApiTest extends TestCase
         $this->assertDatabaseMissing('Notifications', [
             'SourceKey' => "tuition:1:{$class->ID}",
             'ResolvedAt' => null,
+        ]);
+    }
+
+    public function test_mark_student_class_tuition_paid_records_payment_details(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-tuition-paid@example.com');
+
+        $student = Student::create([
+            'name' => '核帳學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $class = $this->createStudentClass($student->id, 0, 1, 5);
+
+        $notification = Notification::create([
+            'CampusID' => 1,
+            'Type' => 'tuition',
+            'Severity' => 'high',
+            'Title' => '核帳學生 學費提醒',
+            'Body' => '尚未繳費',
+            'SourceType' => 'StudentClass',
+            'SourceID' => (string) $class->ID,
+            'SourceKey' => "tuition:1:{$class->ID}",
+            'Payload' => ['class_id' => (int) $class->ID, 'student_id' => $student->id],
+            'OccurredAt' => now(),
+            'ResolvedAt' => null,
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/notifications/{$notification->id}/tuition-paid", [
+            'branch_id' => 1,
+            'payment_date' => '2026-04-20',
+            'payment_method' => 'transfer',
+            'account_last5' => '45688',
+            'amount' => 5000,
+            'note' => '通知中心核帳',
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $class->ID,
+            'Paid' => 1,
+            'PayDate' => '2026-04-20',
+        ]);
+        $this->assertDatabaseHas('Invoice', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $class->ID,
+            'TotalAmount' => 5000,
+            'PaidAmount' => 5000,
+            'Status' => 'paid',
+        ]);
+        $invoice = Invoice::where('StudentClassID', $class->ID)->firstOrFail();
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-20 00:00:00',
+            'Method' => 'transfer',
+            'Note' => '通知中心核帳（帳號後5碼：45688）',
+        ]);
+        $this->assertDatabaseHas('NotificationReads', [
+            'NotificationID' => $notification->id,
+        ]);
+    }
+
+    public function test_mark_invoice_tuition_paid_uses_submitted_payment_details(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-invoice-paid@example.com');
+
+        $student = Student::create([
+            'name' => '帳單學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $class = $this->createStudentClass($student->id, 0, 1, 5);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $class->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 6200,
+            'PaidAmount' => 1000,
+            'Status' => 'partial',
+            'Note' => '',
+        ]);
+        $notification = Notification::create([
+            'CampusID' => 1,
+            'Type' => 'tuition',
+            'Severity' => 'high',
+            'Title' => '帳單學生 學費提醒',
+            'Body' => '帳單未結清',
+            'SourceType' => 'Invoice',
+            'SourceID' => (string) $invoice->id,
+            'SourceKey' => "invoice_overdue:1:{$invoice->id}",
+            'Payload' => ['invoice_id' => (int) $invoice->id, 'student_id' => $student->id],
+            'OccurredAt' => now(),
+            'ResolvedAt' => null,
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/notifications/{$notification->id}/tuition-paid", [
+            'branch_id' => 1,
+            'payment_date' => '2026-04-21',
+            'payment_method' => 'cash',
+            'amount' => 5200,
+            'note' => '櫃台現金',
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('Invoice', [
+            'id' => $invoice->id,
+            'PaidAmount' => 6200,
+            'Status' => 'paid',
+        ]);
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5200,
+            'PaidAt' => '2026-04-21 00:00:00',
+            'Method' => 'cash',
+            'Note' => '櫃台現金',
         ]);
     }
 
