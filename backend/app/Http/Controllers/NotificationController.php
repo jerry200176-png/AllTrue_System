@@ -7,6 +7,7 @@ use App\Models\NotificationRead;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Services\NotificationSyncService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -219,8 +220,13 @@ class NotificationController extends Controller
 
     public function markTuitionPaid(Request $request, int $notificationId)
     {
-        $request->validate([
+        $data = $request->validate([
             'branch_id' => 'nullable|integer',
+            'payment_date' => 'nullable|date|before_or_equal:today',
+            'payment_method' => 'nullable|in:transfer,cash',
+            'account_last5' => 'nullable|string|max:5|regex:/^[0-9]*$/',
+            'amount' => 'nullable|numeric|min:1|max:999999',
+            'note' => 'nullable|string|max:500',
         ]);
 
         [$campusIds, , $branchId] = $this->resolveCampusScope($request);
@@ -241,20 +247,45 @@ class NotificationController extends Controller
         $payload = is_array($notification->Payload) ? $notification->Payload : [];
 
         try {
-            DB::transaction(function () use ($notification, $payload, $userId) {
+            DB::transaction(function () use ($notification, $payload, $userId, $data) {
                 if ((string) $notification->SourceType === 'StudentClass') {
                     $studentClassId = (int) ($notification->SourceID ?: ($payload['class_id'] ?? 0));
                     if ($studentClassId <= 0) {
                         throw new \RuntimeException('找不到課程資料');
                     }
 
-                    $affected = DB::table('StudentClass')
-                        ->where('ID', $studentClassId)
-                        ->update(['Paid' => 1]);
-
-                    if ($affected <= 0) {
+                    $studentClass = DB::table('StudentClass')->where('ID', $studentClassId)->first();
+                    if (!$studentClass) {
                         throw new \RuntimeException('找不到對應課程，無法更新繳費狀態');
                     }
+
+                    $invoice = Invoice::where('StudentClassID', $studentClassId)
+                        ->where('Status', '!=', 'paid')
+                        ->first();
+                    $classCharge = (int) ($studentClass->Charge ?? $studentClass->Pay ?? 0);
+
+                    if (!$invoice) {
+                        $initialAmount = (int) ($data['amount'] ?? max(1, $classCharge));
+                        $invoice = Invoice::create([
+                            'StudentID' => (int) $studentClass->StudentID,
+                            'StudentClassID' => $studentClassId,
+                            'IssueDate' => Carbon::today()->toDateString(),
+                            'DueDate' => null,
+                            'TotalAmount' => $initialAmount,
+                            'PaidAmount' => 0,
+                            'Status' => 'unpaid',
+                            'Note' => '',
+                        ]);
+                    }
+
+                    $this->recordNotificationPayment($invoice, $data, $userId);
+
+                    DB::table('StudentClass')
+                        ->where('ID', $studentClassId)
+                        ->update([
+                            'Paid' => 1,
+                            'PayDate' => $this->paymentDate($data),
+                        ]);
                 } else {
                     $invoiceId = (int) ($notification->SourceID ?: ($payload['invoice_id'] ?? 0));
                     if ($invoiceId <= 0) {
@@ -266,23 +297,7 @@ class NotificationController extends Controller
                         throw new \RuntimeException('找不到帳單資料');
                     }
 
-                    $total = (int) ($invoice->TotalAmount ?? 0);
-                    $paid = (int) ($invoice->PaidAmount ?? 0);
-                    $remaining = max(0, $total - $paid);
-
-                    if ($remaining > 0) {
-                        Payment::create([
-                            'InvoiceID' => (int) $invoice->id,
-                            'Amount' => $remaining,
-                            'PaidAt' => now(),
-                            'Method' => 'notification_center',
-                            'Note' => '通知中心標記已繳費',
-                        ]);
-                    }
-
-                    $invoice->PaidAmount = max($total, $paid);
-                    $invoice->Status = 'paid';
-                    $invoice->save();
+                    $this->recordNotificationPayment($invoice, $data, $userId);
                 }
 
                 NotificationRead::updateOrCreate(
@@ -308,6 +323,42 @@ class NotificationController extends Controller
             'unread_count' => $this->countUnread($userId, $campusIds),
             'urgent_unread_count' => $this->countUrgentUnread($userId, $campusIds),
         ]);
+    }
+
+    private function recordNotificationPayment(Invoice $invoice, array $data, int $userId): Payment
+    {
+        $total = (int) ($invoice->TotalAmount ?? 0);
+        $paid = (int) ($invoice->PaidAmount ?? 0);
+        $remaining = max(0, $total - $paid);
+        $amount = (int) ($data['amount'] ?? max(1, $remaining));
+        $paymentDate = $this->paymentDate($data);
+        $method = (string) ($data['payment_method'] ?? 'cash');
+        $note = trim((string) ($data['note'] ?? '通知中心標記已繳費'));
+        if ($method === 'transfer' && !empty($data['account_last5'])) {
+            $note .= "（帳號後5碼：{$data['account_last5']}）";
+        }
+
+        $payment = Payment::create([
+            'InvoiceID' => (int) $invoice->id,
+            'Amount' => $amount,
+            'PaidAt' => $paymentDate,
+            'Method' => $method,
+            'Note' => $note,
+        ]);
+
+        $newPaid = $paid + $amount;
+        $invoice->PaidAmount = $newPaid;
+        $invoice->Status = $newPaid >= $total ? 'paid' : 'partial';
+        $invoice->reconciled_at = Carbon::now();
+        $invoice->reconciled_by = $userId;
+        $invoice->save();
+
+        return $payment;
+    }
+
+    private function paymentDate(array $data): string
+    {
+        return Carbon::parse($data['payment_date'] ?? Carbon::today()->toDateString())->toDateString();
     }
 
     public function unreadCount(Request $request)
