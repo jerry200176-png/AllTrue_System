@@ -333,6 +333,73 @@
           </div>
         </div>
 
+        <!-- 家長建議回饋卡片（Brand + Mobile-first） -->
+        <div class="pp-card pp-voice-card">
+          <div class="pp-voice-brand">
+            <span class="material-symbols-outlined pp-voice-logo">school</span>
+            <div>
+              <div class="pp-voice-brand-name">台北全真一對一補習班</div>
+              <div class="pp-voice-brand-sub">自主研發管理系統 · 您的意見讓我們更好</div>
+            </div>
+          </div>
+
+          <!-- 成功提示 -->
+          <div v-if="fbSuccess" class="pp-voice-success">
+            <span class="material-symbols-outlined">check_circle</span>
+            感謝您的寶貴建議！全真團隊將認真參考。
+          </div>
+
+          <template v-else>
+            <!-- 分類 Chips（手機優先，大觸控目標） -->
+            <div class="pp-voice-label">選擇類型</div>
+            <div class="pp-voice-chips">
+              <button v-for="c in fbCategories" :key="c.key"
+                type="button"
+                :class="['pp-voice-chip', { active: fbCategory === c.key }]"
+                @click="fbCategory = c.key">
+                {{ c.label }}
+              </button>
+            </div>
+
+            <!-- 星評（選填） -->
+            <div class="pp-voice-label">滿意度 <span class="pp-voice-optional">（選填）</span></div>
+            <div class="pp-voice-stars">
+              <button v-for="n in 5" :key="n" type="button"
+                class="pp-star-btn"
+                @click="fbRating = fbRating === n ? 0 : n">
+                <span class="material-symbols-outlined"
+                  :style="{ color: n <= fbRating ? '#f59e0b' : '#d1d5db', fontSize: '32px' }">
+                  {{ n <= fbRating ? 'star' : 'star_border' }}
+                </span>
+              </button>
+            </div>
+
+            <!-- 文字輸入 -->
+            <div class="pp-voice-label">您的建議 <span class="pp-voice-required">（最少 10 字）</span></div>
+            <textarea
+              v-model="fbContent"
+              class="pp-voice-textarea"
+              maxlength="500"
+              rows="4"
+              placeholder="例如：孩子對這學期的數學進步很多，希望繼續加強英文…"
+              aria-label="建議內容"
+            ></textarea>
+            <div class="pp-voice-count" :class="{ warn: fbContent.length >= 480 }">
+              {{ fbContent.length }} / 500
+            </div>
+
+            <p v-if="fbError" class="pp-error">{{ fbError }}</p>
+
+            <button
+              class="pp-voice-submit"
+              :disabled="!fbCanSubmit"
+              @click="submitFeedbackForm">
+              <span class="material-symbols-outlined">send</span>
+              {{ fbSubmitting ? '送出中…' : '送出建議' }}
+            </button>
+          </template>
+        </div>
+
       </template>
       <!-- ／學習 Tab -->
 
@@ -517,7 +584,7 @@
 
 <script setup>
 import { onMounted, ref, computed, reactive } from 'vue';
-import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback } from '../api';
+import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback } from '../api';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -568,6 +635,45 @@ const billingBadgeCount = computed(() => {
   const alerts = dashboard.value?.payment_alerts || [];
   return alerts.length;
 });
+
+// ─── 家長建議回饋 ────────────────────────────────────────────────────
+const fbCategory = ref('');
+const fbRating = ref(0);
+const fbContent = ref('');
+const fbSubmitting = ref(false);
+const fbError = ref('');
+const fbSuccess = ref(false);
+
+const fbCategories = [
+  { key: 'teaching', label: '老師教學' },
+  { key: 'schedule', label: '課程安排' },
+  { key: 'system',   label: '系統功能' },
+  { key: 'other',    label: '其他建議' },
+];
+
+const fbCanSubmit = computed(() => fbCategory.value && fbContent.value.length >= 10 && !fbSubmitting.value);
+
+async function submitFeedbackForm() {
+  if (!fbCanSubmit.value) return;
+  fbSubmitting.value = true;
+  fbError.value = '';
+  try {
+    await submitParentFeedback(token.value, {
+      category: fbCategory.value,
+      content:  fbContent.value.trim(),
+      rating:   fbRating.value || null,
+    });
+    fbSuccess.value = true;
+    fbCategory.value = '';
+    fbRating.value = 0;
+    fbContent.value = '';
+    setTimeout(() => { fbSuccess.value = false; }, 5000);
+  } catch (e) {
+    fbError.value = e.message || '送出失敗，請稍後再試';
+  } finally {
+    fbSubmitting.value = false;
+  }
+}
 // PRD-B 追加修正（2026-04-18 晚間）：家長端仍會看到舊版「相同 Phone」帶出的兄弟姊妹名單，
 // 根因為 localStorage 的 parent_portal_students 舊快取未清。改用「伺服器回應為唯一來源」，
 // 登入/dashboard/切換成功後 setStudents() 一律以最新回應覆寫；不再從 localStorage 初始化。
@@ -1194,6 +1300,70 @@ onMounted(async () => {
 .pp-badge-neutral { background: #eceff1; color: #546e7a; }
 .pp-badge-info-soft { background: #e8eaf6; color: #3949ab; }
 .pp-badge-info-warn { background: #fff8e1; color: #f57f17; }
+
+/* ═══ 家長建議回饋卡片（Voice Card）═══ */
+.pp-voice-card {
+  background: linear-gradient(135deg, #f0f7ff 0%, #e8f4fd 100%);
+  border: 1px solid #bbdefb;
+}
+.pp-voice-brand {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #c5dff8;
+}
+.pp-voice-logo { font-size: 28px; color: #1565c0; flex-shrink: 0; }
+.pp-voice-brand-name { font-size: 0.95em; font-weight: 700; color: #1565c0; line-height: 1.3; }
+.pp-voice-brand-sub { font-size: 0.75em; color: #5c8fb5; margin-top: 2px; }
+
+.pp-voice-label { font-size: 0.82em; font-weight: 600; color: #37474f; margin: 12px 0 6px; }
+.pp-voice-optional { font-weight: 400; color: #90a4ae; }
+.pp-voice-required { font-weight: 400; color: #ef9a9a; }
+
+.pp-voice-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pp-voice-chip {
+  padding: 9px 16px; border-radius: 20px; border: 1.5px solid #90caf9;
+  background: #fff; color: #1565c0; font-size: 0.88em; cursor: pointer;
+  transition: all .15s; min-height: 40px;
+}
+.pp-voice-chip.active {
+  background: #1565c0; color: #fff; border-color: #1565c0; font-weight: 600;
+}
+.pp-voice-chip:not(.active):active { background: #e3f2fd; }
+
+.pp-voice-stars { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+.pp-star-btn {
+  background: none; border: none; cursor: pointer; padding: 4px;
+  min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center;
+}
+
+.pp-voice-textarea {
+  width: 100%; border: 1.5px solid #90caf9; border-radius: 10px;
+  padding: 12px; font-size: 0.92em; line-height: 1.6; resize: vertical;
+  background: #fff; outline: none; box-sizing: border-box; font-family: inherit;
+  transition: border-color .2s;
+}
+.pp-voice-textarea:focus { border-color: #1565c0; }
+.pp-voice-count { text-align: right; font-size: 0.75em; color: #90a4ae; margin-top: 4px; }
+.pp-voice-count.warn { color: #e53935; }
+
+.pp-voice-submit {
+  margin-top: 14px; width: 100%; padding: 14px;
+  background: #1565c0; color: #fff; border: none; border-radius: 12px;
+  font-size: 1em; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background .2s; min-height: 50px;
+}
+.pp-voice-submit:disabled { background: #b0bec5; cursor: not-allowed; }
+.pp-voice-submit:not(:disabled):active { background: #0d47a1; }
+.pp-voice-submit .material-symbols-outlined { font-size: 20px; }
+
+.pp-voice-success {
+  display: flex; align-items: center; gap: 10px;
+  background: #e8f5e9; color: #2e7d32; border-radius: 10px;
+  padding: 14px 16px; font-weight: 600; font-size: 0.95em;
+}
+.pp-voice-success .material-symbols-outlined { font-size: 24px; flex-shrink: 0; }
 
 /* ═══ Upcoming Sessions ═══ */
 .pp-session-list { display: flex; flex-direction: column; gap: 0; }

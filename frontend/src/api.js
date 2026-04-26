@@ -74,6 +74,46 @@ export async function upsertParentLearningRecordFeedback(token, learningRecordId
   return data.feedback;
 }
 
+export async function submitParentFeedback(token, { category, content, rating }) {
+  const res = await fetch(`${API_BASE}/parent/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ category, content, rating: rating || null }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '送出失敗，請稍後再試');
+  return data;
+}
+
+export async function getParentFeedbackList(token, { campusId, category, page = 1 } = {}) {
+  const params = new URLSearchParams({ page });
+  if (campusId) params.set('campus_id', campusId);
+  if (category) params.set('category', category);
+  const res = await fetch(`${API_BASE}/parent-feedback?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '載入失敗');
+  return data;
+}
+
+export async function getParentFeedbackUnreadCount(token, campusId) {
+  const params = campusId ? `?campus_id=${campusId}` : '';
+  const res = await fetch(`${API_BASE}/parent-feedback/unread-count${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  return data?.count ?? 0;
+}
+
+export async function markParentFeedbackRead(token, id) {
+  const res = await fetch(`${API_BASE}/parent-feedback/${id}/mark-read`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('標記失敗');
+}
+
 export async function getPaymentMessage(token, studentId) {
   const res = await fetch(`${API_BASE}/parent/payment-message/${studentId}`, {
     headers: { Authorization: `Bearer ${token}` },
