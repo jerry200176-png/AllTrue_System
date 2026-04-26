@@ -1979,7 +1979,10 @@ async function submit() {
     return;
   }
 
-  const useMonthlyExplicitPlan = form.payment_type === 'monthly' && monthlyHasCalendarAdjustments.value;
+  const monthlyHasPastGeneratedSessions = form.payment_type === 'monthly'
+    && monthlySystemOccurrences.value.some((entry) => entry.ymd < todayYmd);
+  const useMonthlyExplicitPlan = form.payment_type === 'monthly'
+    && (monthlyHasCalendarAdjustments.value || monthlyHasPastGeneratedSessions);
   const useMonthlyRecurringPath = form.payment_type === 'monthly'
     && !useMonthlyExplicitPlan
     && form.end_date
