@@ -675,7 +675,14 @@ async function submitPassword() {
       password: passwordForm.value.newPassword,
       password_confirmation: passwordForm.value.confirmPassword,
     });
-    passwordMsg.value = { type: 'success', text: '密碼已更新。' };
+    // Backend revokes all old tokens and issues a fresh one; update localStorage
+    // so the current session stays valid (other devices are logged out).
+    if (data?.new_token) {
+      const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+      session.access_token = data.new_token;
+      localStorage.setItem('alltrue_session', JSON.stringify(session));
+    }
+    passwordMsg.value = { type: 'success', text: '密碼已更新，其他裝置已登出。' };
     passwordForm.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
     emit('profile-updated', {
       must_change_password: Boolean(data?.must_change_password),
