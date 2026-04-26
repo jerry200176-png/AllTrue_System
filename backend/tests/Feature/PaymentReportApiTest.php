@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -381,6 +382,34 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
     }
 
+    public function test_receipt_rejects_cross_campus_report(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'test-receipt-cross-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertStatus(403);
+    }
+
     // ── void ────────────────────────────────────────────────────────
 
     public function test_director_can_void_confirmed_report(): void
@@ -630,6 +659,163 @@ class PaymentReportApiTest extends TestCase
         $res->assertStatus(404);
     }
 
+    // ── Accounting Center: payment ledger ───────────────────────────
+
+    public function test_accounting_payments_lists_confirmed_payments_with_summary(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $cashClass = $this->createCountModeClass($student->id, ['Charge' => 5000]);
+        $transferClass = $this->createCountModeClass($student->id, ['Charge' => 8800]);
+
+        $this->createConfirmedReport($student, $cashClass, [
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+        ]);
+        $this->createConfirmedReport($student, $transferClass, [
+            'payment_date' => '2026-04-11',
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+            'account_last5' => '12345',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.total_count', 2)
+            ->assertJsonPath('summary.cash_total', 5000)
+            ->assertJsonPath('summary.transfer_total', 8800)
+            ->assertJsonPath('summary.grand_total', 13800);
+
+        $this->assertCount(2, $res->json('data'));
+        $this->assertSame(5000, $res->json('data.0.cash_amount') + $res->json('data.1.cash_amount'));
+        $this->assertSame(8800, $res->json('data.0.transfer_amount') + $res->json('data.1.transfer_amount'));
+    }
+
+    public function test_accounting_payments_marks_prepaid_when_payment_before_first_session(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-05-01',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-04-20',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'cancelled',
+        ]);
+        $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-15',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertOk()
+            ->assertJsonPath('data.0.first_session_date', '2026-05-01')
+            ->assertJsonPath('data.0.is_prepaid', true)
+            ->assertJsonPath('summary.prepaid_count', 1);
+    }
+
+    public function test_accounting_payments_returns_first_session_for_monthly_course(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'monthly_sessions' => 4,
+            'settlement_day' => 5,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-04-08',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-04-01',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+        $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertOk()
+            ->assertJsonPath('data.0.schedule_mode', 'date')
+            ->assertJsonPath('data.0.first_session_date', '2026-04-01')
+            ->assertJsonPath('data.0.is_prepaid', false);
+    }
+
+    public function test_accounting_payments_rejects_cross_campus_branch(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertStatus(403);
+    }
+
+    public function test_accounting_payments_does_not_expose_account_last5(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+        $this->createConfirmedReport($student, $sc, [
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'transfer',
+            'reported_amount' => 8800,
+            'account_last5' => '54321',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/payments/export?branch_id=1&start=2026-04-01&end=2026-04-30');
+
+        $res->assertOk();
+        $payload = json_encode($res->json(), JSON_UNESCAPED_UNICODE);
+        $this->assertStringNotContainsString('54321', $payload);
+        $this->assertArrayNotHasKey('account_last5', $res->json('data.0'));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────
 
     private function assertStringContains(string $needle, string $haystack): void
@@ -711,6 +897,23 @@ class PaymentReportApiTest extends TestCase
             'RemainingSessions' => 5,
             'ClassType' => 'one_on_one',
             'UsedSessions' => 0,
+        ], $overrides));
+    }
+
+    private function createConfirmedReport(Student $student, StudentClass $studentClass, array $overrides = []): PaymentReport
+    {
+        return PaymentReport::create(array_merge([
+            'StudentID' => $student->id,
+            'StudentClassID' => $studentClass->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::parse('2026-04-10 12:00:00'),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'accounting-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
         ], $overrides));
     }
 }
