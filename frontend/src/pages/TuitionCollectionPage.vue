@@ -2,15 +2,32 @@
   <div class="tc-page">
     <div class="tc-header">
       <div>
-        <h2>催繳名單</h2>
-        <p class="tc-subtitle">催繳與核帳管理</p>
+        <h2>帳務中心</h2>
+        <p class="tc-subtitle">待收核帳、收款紀錄與收據查詢</p>
       </div>
-      <button class="tc-refresh-btn" @click="loadAlerts()" :disabled="loading">
+      <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
         <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
         重新整理
       </button>
     </div>
 
+    <div class="acct-tabs" role="tablist" aria-label="帳務中心分頁">
+      <button
+        v-for="tab in ACCOUNTING_TABS"
+        :key="tab.key"
+        type="button"
+        class="acct-tab"
+        :class="{ active: activeAccountingTab === tab.key }"
+        role="tab"
+        :aria-selected="activeAccountingTab === tab.key"
+        @click="activeAccountingTab = tab.key"
+      >
+        <span class="material-symbols-outlined" style="font-size:18px">{{ tab.icon }}</span>
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <section v-if="activeAccountingTab === 'receivables'">
     <!-- Skeleton loading -->
     <div v-if="loading && !rows.length" class="tc-skeleton-area">
       <div class="tc-summary">
@@ -270,6 +287,164 @@
 
       </div>
     </template>
+    </section>
+
+    <section v-else class="acct-panel">
+      <div class="acct-filter-card">
+        <div class="acct-filter-grid">
+          <label>
+            起日
+            <input v-model="accountingFilters.start" type="date" />
+          </label>
+          <label>
+            迄日
+            <input v-model="accountingFilters.end" type="date" />
+          </label>
+          <label>
+            學生
+            <input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" />
+          </label>
+          <label>
+            科目
+            <input v-model="accountingFilters.subject" type="text" placeholder="全部科目" />
+          </label>
+          <label>
+            付款方式
+            <select v-model="accountingFilters.payment_method">
+              <option value="">全部</option>
+              <option value="cash">現金</option>
+              <option value="transfer">匯款</option>
+            </select>
+          </label>
+        </div>
+        <div class="acct-filter-actions">
+          <button class="tc-btn tc-btn--ghost" @click="loadAccountingPayments()" :disabled="accountingLoading">
+            <span class="material-symbols-outlined" :class="{ spin: accountingLoading }" style="font-size:16px">refresh</span>
+            查詢
+          </button>
+          <button class="tc-btn tc-btn--csv" @click="exportAccountingCSV" :disabled="!accountingRows.length || accountingExporting">
+            <span class="material-symbols-outlined" :class="{ spin: accountingExporting }" style="font-size:16px">download</span>
+            匯出 CSV
+          </button>
+          <button class="tc-btn tc-btn--receipt" @click="exportAccountingPDF" :disabled="!accountingRows.length || accountingExporting">
+            <span class="material-symbols-outlined" style="font-size:16px">picture_as_pdf</span>
+            匯出 PDF
+          </button>
+        </div>
+      </div>
+
+      <div v-if="accountingError" class="tc-error">
+        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+        {{ accountingError }}
+      </div>
+
+      <div v-if="accountingLoading && !accountingRows.length" class="tc-skeleton-area">
+        <div class="tc-summary">
+          <div class="tc-card tc-card--skeleton" v-for="i in 5" :key="i">
+            <span class="skel skel-num"></span>
+            <span class="skel skel-label"></span>
+          </div>
+        </div>
+      </div>
+
+      <template v-else>
+        <div class="tc-summary">
+          <div class="tc-card tc-card--total">
+            <span class="tc-card-num">{{ accountingSummary.total_count || 0 }}</span>
+            <span class="tc-card-label">收款筆數</span>
+          </div>
+          <div class="tc-card tc-card--success">
+            <span class="tc-card-num">{{ formatCurrency(accountingSummary.cash_total || 0) }}</span>
+            <span class="tc-card-label">現金</span>
+          </div>
+          <div class="tc-card tc-card--info">
+            <span class="tc-card-num">{{ formatCurrency(accountingSummary.transfer_total || 0) }}</span>
+            <span class="tc-card-label">匯款</span>
+          </div>
+          <div class="tc-card tc-card--outstanding">
+            <span class="tc-card-num">{{ formatCurrency(accountingSummary.grand_total || 0) }}</span>
+            <span class="tc-card-label">合計</span>
+          </div>
+          <div class="tc-card tc-card--warn">
+            <span class="tc-card-num">{{ accountingSummary.prepaid_count || 0 }}</span>
+            <span class="tc-card-label">預收筆數</span>
+          </div>
+        </div>
+
+        <div v-if="!accountingRows.length" class="tc-empty">
+          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
+          <p>此區間尚無已核帳收款</p>
+          <button class="tc-cta-btn tc-cta-btn--ghost" @click="activeAccountingTab = 'receivables'">前往待收與核帳</button>
+        </div>
+
+        <div v-else class="tc-table-wrap">
+          <table class="tc-table acct-table">
+            <thead>
+              <tr v-if="activeAccountingTab === 'payments'">
+                <th>繳費日期</th>
+                <th>學生</th>
+                <th>科目</th>
+                <th>第一堂課</th>
+                <th class="tc-col-currency">現金</th>
+                <th class="tc-col-currency">匯款</th>
+                <th class="tc-col-currency">合計</th>
+                <th>標籤</th>
+                <th>收據</th>
+              </tr>
+              <tr v-else>
+                <th>收據編號</th>
+                <th>繳費日期</th>
+                <th>學生</th>
+                <th>科目</th>
+                <th class="tc-col-currency">金額</th>
+                <th>付款方式</th>
+                <th>核帳人</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in accountingRows" :key="row.report_id">
+                <template v-if="activeAccountingTab === 'payments'">
+                  <td>{{ row.payment_date || '—' }}</td>
+                  <td class="tc-cell-name">{{ row.student_name }}</td>
+                  <td>{{ row.subject }}</td>
+                  <td>{{ row.first_session_date || '尚未排課' }}</td>
+                  <td class="tc-col-currency">{{ formatCurrency(row.cash_amount || 0) }}</td>
+                  <td class="tc-col-currency">{{ formatCurrency(row.transfer_amount || 0) }}</td>
+                  <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
+                  <td>
+                    <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
+                    <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
+                    <span v-if="!row.is_prepaid && !row.is_backfilled" class="text-light">—</span>
+                  </td>
+                  <td>
+                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.student_name} 收據`">
+                      <span class="material-symbols-outlined">receipt</span>
+                      查看
+                    </button>
+                  </td>
+                </template>
+                <template v-else>
+                  <td>{{ row.receipt_no }}</td>
+                  <td>{{ row.payment_date || '—' }}</td>
+                  <td class="tc-cell-name">{{ row.student_name }}</td>
+                  <td>{{ row.subject }}</td>
+                  <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
+                  <td>{{ paymentMethodLabel(row.payment_method) }}</td>
+                  <td>{{ row.confirmed_by_name || '—' }}</td>
+                  <td>
+                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
+                      <span class="material-symbols-outlined">receipt</span>
+                      查看 / PNG
+                    </button>
+                  </td>
+                </template>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </section>
 
     <!-- Modals -->
     <PaymentSlipModal
@@ -446,6 +621,29 @@ const loading = ref(false);
 const error = ref('');
 const actionLoading = ref(null);
 
+const ACCOUNTING_TABS = [
+  { key: 'receivables', label: '待收與核帳', icon: 'payments' },
+  { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
+  { key: 'receipts', label: '收據紀錄', icon: 'receipt' },
+];
+const activeAccountingTab = ref('receivables');
+const accountingLoading = ref(false);
+const accountingExporting = ref(false);
+const accountingError = ref('');
+const accountingRows = ref([]);
+const accountingSummary = ref({
+  total_count: 0,
+  cash_total: 0,
+  transfer_total: 0,
+  grand_total: 0,
+  prepaid_count: 0,
+});
+const accountingFilters = ref(defaultAccountingFilters());
+
+const activeTabLoading = computed(() => (
+  activeAccountingTab.value === 'receivables' ? loading.value : accountingLoading.value
+));
+
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
   return session?.access_token;
@@ -492,6 +690,37 @@ function rowClass(r) {
 function formatCurrency(v) {
   if (v == null || isNaN(v)) return '—';
   return 'NT$ ' + Number(v).toLocaleString('zh-TW');
+}
+
+function defaultAccountingFilters() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const last = new Date(y, now.getMonth() + 1, 0).getDate();
+  return {
+    start: `${y}-${m}-01`,
+    end: `${y}-${m}-${String(last).padStart(2, '0')}`,
+    student: '',
+    subject: '',
+    payment_method: '',
+  };
+}
+
+function paymentMethodLabel(method) {
+  return method === 'transfer' ? '匯款' : method === 'cash' ? '現金' : method || '—';
+}
+
+function openReceiptByReport(reportId) {
+  receiptReportId.value = Number(reportId);
+  receiptOpen.value = true;
+}
+
+function refreshActiveTab() {
+  if (activeAccountingTab.value === 'receivables') {
+    loadAlerts();
+  } else {
+    loadAccountingPayments();
+  }
 }
 
 // ═══ Alerts ═══
@@ -688,6 +917,201 @@ async function loadAlerts() {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadAccountingPayments() {
+  accountingLoading.value = true;
+  accountingError.value = '';
+  try {
+    const token = getToken();
+    if (!token) { accountingError.value = '請先登入'; return; }
+
+    const params = new URLSearchParams({
+      start: accountingFilters.value.start,
+      end: accountingFilters.value.end,
+      per_page: '200',
+    });
+    if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+    if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
+    if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
+    if (accountingFilters.value.payment_method) params.set('payment_method', accountingFilters.value.payment_method);
+
+    const resp = await fetch(`/api/v1/accounting/payments?${params}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `載入失敗（${resp.status}）`);
+    }
+    const json = await resp.json();
+    accountingRows.value = Array.isArray(json.data) ? json.data : [];
+    accountingSummary.value = json.summary || accountingSummary.value;
+  } catch (e) {
+    accountingError.value = e.message || '載入失敗';
+  } finally {
+    accountingLoading.value = false;
+  }
+}
+
+async function fetchAccountingExportRows() {
+  const token = getToken();
+  if (!token) throw new Error('請先登入');
+  const params = new URLSearchParams({
+    start: accountingFilters.value.start,
+    end: accountingFilters.value.end,
+  });
+  if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+  if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
+  if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
+  if (accountingFilters.value.payment_method) params.set('payment_method', accountingFilters.value.payment_method);
+
+  const resp = await fetch(`/api/v1/accounting/payments/export?${params}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.message || `匯出失敗（${resp.status}）`);
+  }
+  return resp.json();
+}
+
+async function exportAccountingCSV() {
+  accountingExporting.value = true;
+  try {
+    const payload = await fetchAccountingExportRows();
+    const data = payload.data || [];
+    if (!data.length) {
+      showToast('目前篩選條件沒有可匯出的收款紀錄', 'warning');
+      return;
+    }
+    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '第一堂課日期', '現金', '匯款', '合計', '付款方式', '標籤'];
+    const csvRows = data.map(r => [
+      r.receipt_no || '',
+      r.payment_date || '',
+      r.student_name || '',
+      r.subject || '',
+      r.first_session_date || '尚未排課',
+      r.cash_amount || 0,
+      r.transfer_amount || 0,
+      r.total_amount || 0,
+      paymentMethodLabel(r.payment_method),
+      [r.is_prepaid ? '預收' : '', r.is_backfilled ? '補建' : ''].filter(Boolean).join(' / '),
+    ]);
+    const bom = '\uFEFF';
+    const csv = bom + [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `收款紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('已匯出 CSV');
+  } catch (e) {
+    showToast(e.message || 'CSV 匯出失敗', 'error');
+  } finally {
+    accountingExporting.value = false;
+  }
+}
+
+async function exportAccountingPDF() {
+  accountingExporting.value = true;
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('瀏覽器封鎖了 PDF 視窗，請允許彈出視窗後重試', 'warning');
+    accountingExporting.value = false;
+    return;
+  }
+  printWindow.opener = null;
+  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收款紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收款紀錄報表...</p>');
+  printWindow.document.close();
+
+  try {
+    const payload = await fetchAccountingExportRows();
+    const data = payload.data || [];
+    if (!data.length) {
+      printWindow.close();
+      showToast('目前篩選條件沒有可匯出的收款紀錄', 'warning');
+      return;
+    }
+    if (data.length > 500) {
+      printWindow.close();
+      showToast('PDF 最多匯出 500 筆，請縮小日期區間或改用 CSV', 'warning');
+      return;
+    }
+    const summary = payload.summary || {};
+    const rowsHtml = data.map(r => `
+      <tr>
+        <td>${escapeHtml(r.payment_date || '')}</td>
+        <td>${escapeHtml(r.student_name || '')}</td>
+        <td>${escapeHtml(r.subject || '')}</td>
+        <td>${escapeHtml(r.first_session_date || '尚未排課')}</td>
+        <td class="num">${Number(r.cash_amount || 0).toLocaleString('zh-TW')}</td>
+        <td class="num">${Number(r.transfer_amount || 0).toLocaleString('zh-TW')}</td>
+        <td class="num">${Number(r.total_amount || 0).toLocaleString('zh-TW')}</td>
+        <td>${r.is_prepaid ? '預收' : ''}${r.is_backfilled ? ' 補建' : ''}</td>
+      </tr>
+    `).join('');
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>收款紀錄 ${escapeHtml(accountingFilters.value.start)}_${escapeHtml(accountingFilters.value.end)}</title>
+        <style>
+          body { font-family: "Noto Sans TC", Arial, sans-serif; color: #1f2937; margin: 28px; }
+          h1 { margin: 0; font-size: 24px; color: #14532d; }
+          .subtitle { margin: 6px 0 20px; color: #6b7280; }
+          .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+          .card { border: 1px solid #d1d5db; border-radius: 12px; padding: 10px; background: #f8fafc; }
+          .card strong { display: block; font-size: 18px; margin-bottom: 4px; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th { background: #14532d; color: white; text-align: left; padding: 8px; }
+          td { border-bottom: 1px solid #e5e7eb; padding: 7px 8px; }
+          .num { text-align: right; font-variant-numeric: tabular-nums; }
+          .footer { margin-top: 18px; color: #6b7280; font-size: 11px; text-align: right; }
+          @media print { body { margin: 18mm; } button { display: none; } }
+        </style>
+      </head>
+      <body>
+        <h1>全真一對一｜收款紀錄報表</h1>
+        <div class="subtitle">區間：${escapeHtml(accountingFilters.value.start)} 至 ${escapeHtml(accountingFilters.value.end)}</div>
+        <div class="summary">
+          <div class="card"><strong>${summary.total_count || 0}</strong>筆數</div>
+          <div class="card"><strong>NT$ ${Number(summary.cash_total || 0).toLocaleString('zh-TW')}</strong>現金</div>
+          <div class="card"><strong>NT$ ${Number(summary.transfer_total || 0).toLocaleString('zh-TW')}</strong>匯款</div>
+          <div class="card"><strong>NT$ ${Number(summary.grand_total || 0).toLocaleString('zh-TW')}</strong>合計</div>
+          <div class="card"><strong>${summary.prepaid_count || 0}</strong>預收</div>
+        </div>
+        <table>
+          <thead><tr><th>繳費日期</th><th>學生</th><th>科目</th><th>第一堂課</th><th>現金</th><th>匯款</th><th>合計</th><th>標籤</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+        <div class="footer">產生時間：${new Date().toLocaleString('zh-TW')}</div>
+        <script>window.onload = () => setTimeout(() => window.print(), 250);<\/script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    showToast('已開啟 PDF 列印報表');
+  } catch (e) {
+    if (!printWindow.closed) {
+      printWindow.close();
+    }
+    showToast(e.message || 'PDF 匯出失敗', 'error');
+  } finally {
+    accountingExporting.value = false;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // ═══ Toast ═══
@@ -960,7 +1384,15 @@ async function openSessionDetail(row) {
 
 // ═══ Watchers ═══
 watch(() => props.branchId, () => {
-  loadAlerts();
+  refreshActiveTab();
+}, { flush: 'post' });
+
+watch(activeAccountingTab, (tab) => {
+  if (tab === 'receivables') {
+    if (!rows.value.length) loadAlerts();
+  } else {
+    loadAccountingPayments();
+  }
 }, { flush: 'post' });
 
 loadAlerts();
@@ -1016,6 +1448,102 @@ loadAlerts();
 }
 .tc-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ─── Accounting center tabs ─── */
+.acct-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.acct-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--text-light);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.acct-tab:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+.acct-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background: var(--primary-light, rgba(37,99,235,0.06));
+}
+.acct-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.acct-filter-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.acct-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+.acct-filter-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-light);
+}
+.acct-filter-grid input,
+.acct-filter-grid select {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+}
+.acct-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.acct-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.acct-chip--prepaid {
+  background: #E0F2FE;
+  color: #0369A1;
+}
+.acct-chip--backfill {
+  background: #F3F4F6;
+  color: #4B5563;
+}
+.acct-table .tc-btn {
+  white-space: nowrap;
+}
+
 /* ─── Summary cards ─── */
 .tc-summary {
   display: flex;
@@ -1045,6 +1573,10 @@ loadAlerts();
 .tc-card--total .tc-card-num { color: var(--text); }
 .tc-card--danger { background: #FFF5F5; border-color: #FECACA; }
 .tc-card--danger .tc-card-num { color: var(--danger); }
+.tc-card--success { background: #F0FDF4; border-color: #BBF7D0; }
+.tc-card--success .tc-card-num { color: #15803D; font-size: 18px; }
+.tc-card--info { background: #EFF6FF; border-color: #BFDBFE; }
+.tc-card--info .tc-card-num { color: #1D4ED8; font-size: 18px; }
 .tc-card--warn { background: #FFFBEB; border-color: #FDE68A; }
 .tc-card--warn .tc-card-num { color: #D97706; }
 .tc-card--overdue { background: #FFF5F5; border-color: #FECACA; }
@@ -1665,8 +2197,13 @@ loadAlerts();
   .tc-card-num { font-size: 18px; }
   .tc-card--outstanding .tc-card-num { font-size: 15px; }
   .tc-search-wrap { width: 100%; }
+  .acct-filter-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
+  .acct-tabs { white-space: nowrap; }
+  .acct-filter-grid { grid-template-columns: 1fr; }
+  .acct-filter-actions { justify-content: stretch; }
+  .acct-filter-actions .tc-btn { flex: 1; justify-content: center; }
   .tc-tabs { overflow-x: auto; white-space: nowrap; }
   .tc-toolbar { flex-direction: column; align-items: stretch; }
   .tc-toolbar-right { margin-left: 0; justify-content: flex-end; }
