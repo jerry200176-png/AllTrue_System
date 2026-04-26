@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-26 — fix(students): 月結課程在學生管理被誤判歷史課程而隱藏（PR #98）
+
+- Fixed `isHistoricalCourse()` 對月結制（payment_type=monthly）課程缺少保護，RemainingSessions=0 + 已繳費導致課程被過濾，補習科目/堂數欄顯示「尚未設定」
+
 ## 2026-04-26 — feat(parent-feedback): 家長建議回饋系統（PR #94, #95）
 
 - Added: 家長入口學習 Tab 底部新增「台北全真一對一補習班自主研發」品牌回饋卡片（分類 Chip + 星評 + 文字輸入，mobile-first）
