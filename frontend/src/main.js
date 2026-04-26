@@ -4,6 +4,13 @@ import * as Sentry from '@sentry/vue';
 import App from './App.vue';
 import './styles.css';
 
+// Deploy 後舊 chunk hash 失效時（vite:preloadError），自動 reload 一次讓使用者取得最新版
+// Ref: https://vite.dev/guide/build#load-error-handling
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  window.location.reload();
+});
+
 const app = createApp(App);
 
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -20,6 +27,9 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       'ResizeObserver loop',
       'Network request failed',
       'Load failed',
+      // Deploy 後舊 tab 嘗試載入已被新 hash 取代的 chunk，會自動 reload，無需回報
+      'Failed to fetch dynamically imported module',
+      'Importing a module script failed',
     ],
     beforeSend(event) {
       // 不回報本地開發的錯誤
