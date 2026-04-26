@@ -142,7 +142,7 @@ class TeacherBulkAccountOnboardingTest extends TestCase
             ->assertStatus(428)
             ->assertJsonPath('code', 'PASSWORD_CHANGE_REQUIRED');
 
-        $this->withHeaders([
+        $changeRes = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->putJson('/api/v1/me', [
@@ -152,6 +152,10 @@ class TeacherBulkAccountOnboardingTest extends TestCase
         ])->assertOk()
             ->assertJsonPath('must_change_password', false);
 
+        // Password change revokes all old tokens and returns a fresh one
+        $freshToken = $changeRes->json('new_token');
+        $this->assertNotNull($freshToken, 'Password change must return a new_token');
+
         $this->assertDatabaseHas('User', [
             'id' => $teacher->id,
             'MustChangePassword' => 0,
@@ -159,7 +163,7 @@ class TeacherBulkAccountOnboardingTest extends TestCase
         $this->assertNotNull(DB::table('User')->where('id', $teacher->id)->value('PasswordChangedAt'));
 
         $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
+            'Authorization' => "Bearer {$freshToken}",
             'Accept' => 'application/json',
         ])->getJson('/api/v1/subjects')
             ->assertOk();

@@ -168,6 +168,9 @@ Route::prefix('v1')->group(function () {
                 'configured' => !empty($sentryDsn),
                 'sdk_bound'  => app()->bound('sentry'),
             ],
+            'security' => [
+                'debug_mode' => config('app.debug'),
+            ],
         ]);
     });
 
