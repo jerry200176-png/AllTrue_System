@@ -382,6 +382,34 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
     }
 
+    public function test_receipt_rejects_cross_campus_report(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => Carbon::today(),
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'test-receipt-cross-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertStatus(403);
+    }
+
     // ── void ────────────────────────────────────────────────────────
 
     public function test_director_can_void_confirmed_report(): void
