@@ -31,7 +31,7 @@ class ParentFeedbackTest extends TestCase
             'rating'   => 5,
         ], $this->bearer($token))
             ->assertCreated()
-            ->assertJsonPath('message', fn ($v) => str_contains($v, '謝'));
+            ->assertJsonFragment(['message' => '感謝您的寶貴建議！全真團隊將認真參考。']);
 
         $this->assertDatabaseHas('parent_feedback', [
             'student_id' => $student->id,
@@ -192,10 +192,9 @@ class ParentFeedbackTest extends TestCase
             'LoginName' => Str::random(6) . '@sa.com',
             'Name'      => 'SuperAdmin',
             'PSW'       => 'secret',
-            'type'      => 'A',
+            'type'      => 'S',
             'phone'     => (string) random_int(900000000, 999999999),
             'MustChangePassword' => false,
-            'super_admin' => true,
         ]);
         UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
         $token = bin2hex(random_bytes(16));
