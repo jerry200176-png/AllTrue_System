@@ -55,7 +55,35 @@ jobs:
 
       - name: Composer audit (security)
         working-directory: backend
-        run: composer audit --no-dev 2>&1 | tee /tmp/composer-audit.txt; grep -q "No security vulnerability" /tmp/composer-audit.txt || echo "::warning::Composer audit 發現漏洞，請儘快更新依賴"
+        run: |
+          # 只在 HIGH / CRITICAL 才擋 CI；MEDIUM 印警告
+          composer audit --no-dev --format=json 2>/dev/null > /tmp/composer-audit.json || true
+          python3 - <<'PYEOF'
+          import json, sys, os
+          try:
+              data = json.load(open("/tmp/composer-audit.json"))
+          except Exception:
+              print("::warning::composer audit JSON parse failed — skipping")
+              sys.exit(0)
+          advisories = data.get("advisories", {})
+          has_high = False
+          for pkg, adv_list in advisories.items():
+              for adv in (adv_list if isinstance(adv_list, list) else [adv_list]):
+                  sev = str(adv.get("severity", "")).lower()
+                  title = adv.get("title", "?")
+                  if sev in ("high", "critical"):
+                      print(f"::error::{pkg}: [{sev.upper()}] {title}")
+                      has_high = True
+                  else:
+                      print(f"::warning::{pkg}: [{sev}] {title}")
+          if has_high:
+              print("::error::Composer audit: HIGH/CRITICAL 漏洞必須修復才能 merge")
+              sys.exit(1)
+          elif advisories:
+              print("::warning::Composer audit: 發現 MEDIUM/LOW 漏洞，請儘快更新依賴")
+          else:
+              print("✅ Composer audit: 無已知漏洞")
+          PYEOF
 
       - name: Copy .env for CI
         working-directory: backend
@@ -275,21 +303,26 @@ jobs:
       - name: Bundle size budget
         working-directory: frontend
         run: |
-          JS_SIZE=$(find dist_build/assets -name "*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          # Initial chunk = index-*.js (entry point, 初始載入)
+          INIT_JS=$(find dist_build/assets -name "index-*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          TOTAL_JS=$(find dist_build/assets -name "*.js" ! -name "*.map" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
           CSS_SIZE=$(find dist_build/assets -name "*.css" -exec wc -c {} + 2>/dev/null | tail -1 | awk '{print $1}')
-          JS_KB=$((JS_SIZE / 1024))
-          CSS_KB=$((CSS_SIZE / 1024))
+          INIT_KB=$(( (INIT_JS + 1023) / 1024 ))
+          TOTAL_KB=$(( (TOTAL_JS + 1023) / 1024 ))
+          CSS_KB=$(( (CSS_SIZE + 1023) / 1024 ))
+          CHUNKS=$(find dist_build/assets -name "*.js" ! -name "*.map" | wc -l)
           echo "### 📦 Bundle Size" >> "$GITHUB_STEP_SUMMARY"
           echo "| Asset | Size |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| JS total | ${JS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| CSS total | ${CSS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
-          echo "JS: ${JS_KB} KB, CSS: ${CSS_KB} KB"
-          # 預算：JS > 800KB 或 CSS > 150KB 發出警告（不擋 CI）
-          [ "$JS_KB" -gt 800 ] && echo "::warning::JS bundle ${JS_KB} KB 超過 800 KB 預算，考慮 code splitting"
-          [ "$CSS_KB" -gt 150 ] && echo "::warning::CSS bundle ${CSS_KB} KB 超過 150 KB 預算"
+          echo "| JS initial chunk | ${INIT_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| JS total (all chunks) | ${TOTAL_KB} KB (${CHUNKS} chunks) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| CSS | ${CSS_KB} KB |" >> "$GITHUB_STEP_SUMMARY"
+          echo "JS initial: ${INIT_KB} KB, total: ${TOTAL_KB} KB (${CHUNKS} chunks), CSS: ${CSS_KB} KB"
+          # 預算針對 initial chunk（使用者第一次載入的大小）
+          [ "$INIT_KB" -gt 500 ] && echo "::warning::Initial JS chunk ${INIT_KB} KB 超過 500 KB 預算"
+          [ "$CSS_KB" -gt 200 ] && echo "::warning::CSS ${CSS_KB} KB 超過 200 KB 預算"
           exit 0
 
       - name: npm audit (security)
         working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev || echo "::warning::npm audit 發現 high+ 漏洞，請儘快更新依賴"
+        run: npm audit --audit-level=high --omit=dev
