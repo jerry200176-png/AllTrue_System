@@ -26,7 +26,7 @@ alwaysApply: true
 |---|---------|---------|
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
-| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → `git pull` → `npm run deploy` → 驗 version.json |
+| Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` 自動部署 → 驗 health/version.json |
 
 ---
 
@@ -49,8 +49,8 @@ Phase 3 [TEST]   → 跑所有 AC，自動驗收
 Phase 4 [SEC]    → STRIDE 審查（涉及 auth/PII/RFID/webhook 才做，見 module-security.mdc）
 Phase 5 [REVIEW] → 逐條對照 FR；Minor 問題登記 docs/TECH_DEBT.md（tech-debt.mdc）
 Phase 6 [DOCS]   → 更新 docs/CHANGELOG.md（格式：## YYYY-MM-DD — feat/fix: 標題）
-Phase 7 [OPS]    → PR merge → git pull → migrate --force（有migration才做）
-                   → npm run deploy（有前端改動才做）
+Phase 7 [OPS]    → PR merge → 等 deploy.yml（有 deployable diff 才跑）
+                   → migrate --force 由 deploy.yml 在有 pending migration 時執行
                    → curl health check → 才回報使用者「完成」
 ```
 
@@ -106,7 +106,7 @@ chore/<slug>         文件/規則/維護
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 # 必須看到 {"status":"ok",...}
 
-# 2. 前端版本確認（有 deploy 才做）
+# 2. 前端版本確認（前端有 deploy 才做；docs-only merge 應跳過 deploy）
 cat /home/admin/backend/public/version.json  # 時間戳應為剛才的時間
 
 # 3. Migration 確認（有 migration 才做）

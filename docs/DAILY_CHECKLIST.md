@@ -46,9 +46,9 @@
 ### D1. 網站顯示舊版或前端怪異
 
 1. 確認目前分支與最新 commit
-2. 重新部署前端：
-   - `cd frontend && npm run deploy`
-3. 重整頁面並驗證關鍵頁面
+2. 確認最近一次 `deploy.yml` 成功，且 `backend/public/version.json` 為預期版本
+3. 請現場重整頁面並驗證關鍵頁面
+4. 若 deploy workflow 掛掉，才依 `docs/DEPLOYMENT.md` 的緊急手動部署流程處理
 
 ### D2. API 無法使用 / 500 錯誤
 

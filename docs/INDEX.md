@@ -16,6 +16,21 @@
 
 ---
 
+## 🏢 AllTrue AI 公司治理
+
+AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Agents 是產品、工程、QA、資安、維運、文件等職能團隊。
+
+**公司 slogan：前人種樹，後人乘涼。**
+
+治理原則：
+1. 做事前先查：先讀本 INDEX，再按任務查 Docs / MemPalace / 對應 rules。
+2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`。
+3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
+4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
+5. `.cursor/plans/**` 與 `CHANGELOG_ARCHIVE_*` 是歷史紀錄；若與本 INDEX、`.cursorrules`、`OPERATIONS_RUNBOOK.md` 衝突，以現行入口與 runbook 為準。
+
+---
+
 ## 🚨 開工前必讀（每次都要）
 
 | 檔案 | 內容 | Token 成本 |
@@ -134,15 +149,15 @@
 
 | Workflow | 觸發時機 | 功能 |
 |----------|---------|------|
-| `ci.yml` | 每次 PR | PHPUnit + coverage gate + composer/npm audit |
-| `deploy.yml` | merge to main | 自動部署 Pi + smoke test + rollback |
+| `ci.yml` | PR / main push | 依 path filter 跑 PHPUnit、Vite、coverage gate、composer/npm audit；workflow 改動時保守全跑 |
+| `deploy.yml` | main CI success | 有 deployable diff 才自動部署 Pi + smoke test + rollback；docs-only merge 跳過 |
 | `presubmit.yml` | 每次 PR | Branch 命名規範檢查 |
-| `codeql.yml` | 每次 PR | PHPStan level 5 靜態分析 |
+| `codeql.yml` | PR / main push / weekly | 後端或 workflow 相關改動才跑 PHPStan level 5 |
 | `pi-health.yml` | 每 6 小時 | 磁碟/溫度/備份年齡/UptimeRobot |
 | `slow-query-report.yml` | 每週一 | MySQL 慢查詢報告 |
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
 | `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR）|
-| `branch-hygiene.yml` | 每週日 | 清理過期 branches |
+| `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
 
 ---
 
@@ -150,15 +165,15 @@
 
 ```bash
 # 搜尋任何主題
-mempalace search "<關鍵字>"
+~/.local/bin/mempalace search "<關鍵字>"
 
 # 看全局記憶摘要
-mempalace wake-up
+~/.local/bin/mempalace wake-up
 
 # 每次 PR merge 後自動 mine（post-merge hook）
 ```
 
-Wings：`alltrue-sessions`（對話記憶）、`alltrue-code`（程式碼知識）
+Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）、`alltrue-code`（程式碼知識）
 
 ---
 
