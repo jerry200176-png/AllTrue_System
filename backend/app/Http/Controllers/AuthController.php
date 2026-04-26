@@ -348,6 +348,7 @@ class AuthController extends Controller
         if (array_key_exists('avatar_url', $data) && Schema::hasColumn('User', 'AvatarUrl')) {
             $user->AvatarUrl = $data['avatar_url'] ?: null;
         }
+        $passwordChanged = false;
         if (!empty($data['password'])) {
             if (empty($data['current_password'])) {
                 return response()->json(['message' => '修改密碼需先輸入目前密碼'], 422);
@@ -365,6 +366,7 @@ class AuthController extends Controller
             if (Schema::hasColumn('User', 'PasswordSetByUserID')) {
                 $user->PasswordSetByUserID = $user->id;
             }
+            $passwordChanged = true;
         }
         $user->save();
 
@@ -439,6 +441,20 @@ class AuthController extends Controller
             }
         }
 
+        // After password change: revoke ALL existing tokens to force re-login on all devices,
+        // then issue a fresh token for the current session so the user stays logged in.
+        $newToken = null;
+        if ($passwordChanged && Schema::hasTable('auth_tokens')) {
+            AuthToken::where('user_id', $user->id)->delete();
+            $raw = Str::random(64);
+            AuthToken::create([
+                'user_id'    => $user->id,
+                'token'      => $raw,
+                'expires_at' => Carbon::now()->addDays(7),
+            ]);
+            $newToken = $raw;
+        }
+
         $user = User::find($user->id);
         return response()->json([
             'message' => '已更新',
@@ -452,6 +468,7 @@ class AuthController extends Controller
                 ? (bool) ($user->MustChangePassword ?? false)
                 : false,
             'teacher_config' => $this->teacherConfigForResponse($user),
+            'new_token' => $newToken,
         ]);
     }
 
