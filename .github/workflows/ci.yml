@@ -155,7 +155,8 @@ jobs:
           if [ ! -f "$XML" ]; then echo "Coverage XML not found." && exit 0; fi
           python3 - <<'PYEOF'
           import xml.etree.ElementTree as ET, os, sys
-          THRESHOLD = 70   # 目標 80%，現階段先設 70% 給測試補齊的時間
+          BLOCK_THRESHOLD = 60   # 低於此值直接擋 CI（目前 coverage ~64.6%，安全緩衝）
+          WARN_THRESHOLD  = 70   # 低於此值警告（目標 80%）
           tree = ET.parse("storage/test-results/coverage.xml")
           metrics = tree.find(".//project/metrics")
           if metrics is None:
@@ -164,18 +165,59 @@ jobs:
           stmts   = int(metrics.get("statements", 0))
           covered = int(metrics.get("coveredstatements", 0))
           pct     = round(covered / stmts * 100, 1) if stmts else 0.0
-          status  = "✅" if pct >= THRESHOLD else "⚠️"
+          if pct >= WARN_THRESHOLD:
+              status = "✅"
+          elif pct >= BLOCK_THRESHOLD:
+              status = "⚠️"
+          else:
+              status = "❌"
           summary = f"### 📊 Coverage: {pct}% ({covered}/{stmts} statements) {status}"
           print(summary)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
               f.write(summary + "\n")
-              if pct < THRESHOLD:
-                  f.write(f"> ⚠️ Coverage {pct}% is below the {THRESHOLD}% threshold. Please add tests.\n")
+              if pct < WARN_THRESHOLD:
+                  f.write(f"> {'❌' if pct < BLOCK_THRESHOLD else '⚠️'} Coverage {pct}% — block:{BLOCK_THRESHOLD}% / target:{WARN_THRESHOLD}%\n")
           with open("storage/test-results/coverage_summary.txt", "w") as f:
               f.write(summary + "\n")
-          # 低於門檻輸出警告但不擋 CI（先觀察，之後改為 sys.exit(1)）
-          if pct < THRESHOLD:
-              print(f"::warning::Coverage {pct}% is below {THRESHOLD}% target")
+          if pct < BLOCK_THRESHOLD:
+              print(f"::error::Coverage {pct}% is below the {BLOCK_THRESHOLD}% minimum — add tests to unblock CI")
+              sys.exit(1)
+          elif pct < WARN_THRESHOLD:
+              print(f"::warning::Coverage {pct}% is below the {WARN_THRESHOLD}% target")
+          PYEOF
+
+      - name: Generate API route documentation
+        if: always()
+        working-directory: backend
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: AllTrue_test
+          DB_USERNAME: admin
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+        run: |
+          php artisan route:list --json 2>/dev/null | python3 - <<'PYEOF'
+          import json, sys, os
+          routes = json.load(sys.stdin)
+          lines = [
+              "# AllTrue API Route Reference",
+              f"> Auto-generated from `php artisan route:list` — {len(routes)} routes",
+              "",
+              "| Method | URI | Middleware | Name |",
+              "|--------|-----|------------|------|",
+          ]
+          for r in sorted(routes, key=lambda x: x.get("uri", "")):
+              method = r.get("method", "").replace("|HEAD", "")
+              uri    = r.get("uri", "")
+              mw     = ", ".join((r.get("middleware") or [])[:3])
+              name   = r.get("name") or "-"
+              lines.append(f"| `{method}` | `/{ uri}` | {mw} | {name} |")
+          md = "\n".join(lines)
+          with open("storage/test-results/api-routes.md", "w") as f:
+              f.write(md)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n\n" + "\n".join(lines[:20]) + "\n> ...and more, see artifact\n")
+          print(f"✅ Generated API docs: {len(routes)} routes")
           PYEOF
 
       - name: Upload test results
@@ -186,6 +228,7 @@ jobs:
           path: |
             backend/storage/test-results/junit.xml
             backend/storage/test-results/coverage.xml
+            backend/storage/test-results/api-routes.md
           if-no-files-found: warn
 
   vite-build:
