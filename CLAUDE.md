@@ -190,6 +190,13 @@ PR #23 修復只對新刷卡有效，歷史記錄需手動 UPDATE。
 - `'presence-window'`：刷退時 backfill 補建
 - `NULL`：老師手動點名或 legacy
 
+### G-006：GitHub Actions SSH Secrets 格式嚴格，含 `@` 就爆
+- `PI_SSH_USER` / `PI_USER`：只能填 `admin`，含 `@hostname` → sshd 收到 `admin@admin` → Invalid user
+- `PI_SSH_HOST` / `PI_HOST`：只能填 `pi.lifenet.com.tw`，含 `user@` → 同上
+- `PI_SSH_KEY`：必須是 `base64 -w0 /home/admin/.ssh/rpi_actions_deploy` 的輸出
+- SSH deploy 失敗 → 第一步看 `sudo journalctl -u ssh`，比 verbose SSH log 更快指出 username 格式錯
+- 詳見 `docs/OPERATIONS_RUNBOOK.md` §Pi authorized_keys + AI_REGRESSION_LESSONS R18
+
 ### 命名坑（必記）
 - `StudentSingIn`（Sing ≠ Sign，歷史 typo）→ Model 須 `protected $table = 'StudentSingIn'`
 - `schedules`（snake_case 新表）vs `StudentClass`（PascalCase 舊表）：兩套並存，勿混用
