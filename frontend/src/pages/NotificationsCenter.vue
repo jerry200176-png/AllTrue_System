@@ -12,16 +12,66 @@
     <template v-else>
       <!-- 核帳確認 Modal -->
       <div v-if="tuitionModal.visible" class="modal-overlay" @click.self="tuitionModal.visible = false">
-        <div class="modal-box">
-          <h3>確認標記已繳費</h3>
-          <p class="modal-desc">此操作將直接更新資料庫繳費狀態，請確認已收到款項。</p>
-          <div class="modal-item-name">{{ tuitionModal.item?.Title }}</div>
-          <div class="modal-actions">
-            <button class="small ghost" @click="tuitionModal.visible = false">取消</button>
-            <button class="small primary" :disabled="tuitionModal.processing" @click="confirmTuitionPaid">
-              {{ tuitionModal.processing ? '處理中...' : '確認已繳費' }}
-            </button>
+        <div class="modal-box payment-modal">
+          <h3>核帳登記</h3>
+          <p class="modal-desc">請依實際入帳資訊填寫，系統會同步更新催繳與通知狀態。</p>
+          <div class="modal-item-name">
+            <span><strong>學生</strong>{{ tuitionPaymentRow.student_name || '-' }}</span>
+            <span><strong>科目</strong>{{ tuitionPaymentRow.subject || '學費' }}</span>
+            <span><strong>應繳</strong>{{ formatCurrency(tuitionPaymentRow.charge || tuitionModal.form.amount || 0) }}</span>
           </div>
+
+          <form @submit.prevent="confirmTuitionPaid">
+            <label class="modal-field">
+              繳費日期 <span class="required">*</span>
+              <input v-model="tuitionModal.form.payment_date" type="date" required :max="todayYmd" />
+            </label>
+
+            <div class="modal-field">
+              <span>繳費方式 <span class="required">*</span></span>
+              <div class="payment-method-row">
+                <label :class="['payment-method-option', { active: tuitionModal.form.payment_method === 'transfer' }]">
+                  <input v-model="tuitionModal.form.payment_method" type="radio" value="transfer" />
+                  匯款
+                </label>
+                <label :class="['payment-method-option', { active: tuitionModal.form.payment_method === 'cash' }]">
+                  <input v-model="tuitionModal.form.payment_method" type="radio" value="cash" />
+                  現金
+                </label>
+              </div>
+            </div>
+
+            <label v-if="tuitionModal.form.payment_method === 'transfer'" class="modal-field">
+              帳號後5碼（選填）
+              <input
+                v-model="tuitionModal.form.account_last5"
+                type="text"
+                maxlength="5"
+                inputmode="numeric"
+                pattern="[0-9]*"
+                placeholder="例如 45688"
+              />
+            </label>
+
+            <label class="modal-field">
+              繳費金額 <span class="required">*</span>
+              <input v-model.number="tuitionModal.form.amount" type="number" required min="1" max="999999" step="1" />
+            </label>
+
+            <label class="modal-field">
+              備註（選填）
+              <textarea v-model="tuitionModal.form.note" rows="2" placeholder="例如：通知中心核帳"></textarea>
+            </label>
+
+            <div v-if="tuitionModal.error" class="modal-error">{{ tuitionModal.error }}</div>
+
+            <div class="modal-actions">
+              <button type="button" class="small ghost" @click="tuitionModal.visible = false">取消</button>
+              <button type="submit" class="small primary" :disabled="tuitionModal.processing">
+                {{ tuitionModal.processing ? '處理中...' : '確認已繳費' }}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
@@ -89,7 +139,10 @@
           <div v-if="urgentNotifications.length > 0" class="urgent-panel">
             <h4>🚨 急件置頂</h4>
             <div v-for="item in urgentNotifications" :key="`urgent-${item.id}`" class="urgent-row">
-              <span class="urgent-title">{{ item.Title }}</span>
+              <div class="urgent-copy">
+                <span class="urgent-title">{{ item.Title }}</span>
+                <span v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</span>
+              </div>
               <div class="urgent-actions">
                 <button v-if="!item.read_at" class="small" @click="markRead(item.id)">標記已讀</button>
                 <button
@@ -124,6 +177,7 @@
             </div>
 
             <div class="main-title" :class="{ 'title-resolved': !!item.ResolvedAt }">{{ item.Title }}</div>
+            <div v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</div>
             <div v-if="item.Body" class="main-body">{{ item.Body }}</div>
 
             <div class="meta-row">
@@ -186,7 +240,21 @@ const hasUrgentWatchInitialized = ref(false);
 const lastUrgentDigest = ref('');
 const markingTuitionPaidIds = ref(new Set());
 
-const tuitionModal = ref({ visible: false, item: null, processing: false });
+const todayYmd = computed(() => new Date().toISOString().slice(0, 10));
+const tuitionModal = ref({
+  visible: false,
+  item: null,
+  processing: false,
+  error: '',
+  form: {
+    payment_date: todayYmd.value,
+    payment_method: 'transfer',
+    account_last5: '',
+    amount: 0,
+    note: '',
+  },
+});
+const tuitionPaymentRow = computed(() => paymentRowFromNotification(tuitionModal.value.item));
 
 const getToken = () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
@@ -247,7 +315,7 @@ const formatDateTime = (value) => {
 const targetPage = (type) => {
   if (type === 'pending_swipe') return 'attendance';
   if (type === 'learning_review') return 'learning';
-  if (type === 'tuition' || type === 'low_sessions') return 'course-mgmt';
+  if (type === 'tuition' || type === 'low_sessions') return 'tuition-collect';
   if (type === 'schedule_change' || type === 'substitute_confirm') return 'calendar';
   return null;
 };
@@ -272,6 +340,46 @@ const payloadOf = (item) => {
     }
   }
   return {};
+};
+
+const parseMoney = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+const formatCurrency = (value) => `NT$ ${Number(value || 0).toLocaleString('zh-TW')}`;
+
+const paymentAmountFromPayload = (payload) => {
+  const total = parseMoney(payload?.total_amount ?? payload?.charge ?? payload?.amount);
+  const paid = parseMoney(payload?.paid_amount);
+  const outstanding = parseMoney(payload?.outstanding);
+  if (outstanding > 0) return outstanding;
+  if (total > 0 && paid > 0) return Math.max(0, total - paid);
+  return total;
+};
+
+const paymentRowFromNotification = (item) => {
+  const payload = payloadOf(item);
+  const amount = paymentAmountFromPayload(payload);
+  return {
+    student_name: payload.student_name || '',
+    subject: payload.subject || (item?.SourceType === 'Invoice' ? '學費' : ''),
+    charge: amount,
+  };
+};
+
+const notificationSummary = (item) => {
+  const payload = payloadOf(item);
+  const parts = [];
+  if (payload.student_name) parts.push(payload.student_name);
+  if (payload.subject) parts.push(payload.subject);
+  const amount = paymentAmountFromPayload(payload);
+  if (amount > 0) parts.push(formatCurrency(amount));
+  if (payload.overdue_days) parts.push(`逾期 ${payload.overdue_days} 天`);
+  if (payload.remaining_sessions != null && item?.Type === 'low_sessions') {
+    parts.push(`剩餘 ${payload.remaining_sessions} 堂`);
+  }
+  return parts.join(' ｜ ');
 };
 
 const canCopyTuition = (item) => {
@@ -528,12 +636,31 @@ const markAllRead = async () => {
 
 const openTuitionModal = (item) => {
   if (!item?.id || isMarkingTuitionPaid(item.id)) return;
-  tuitionModal.value = { visible: true, item, processing: false };
+  const amount = paymentAmountFromPayload(payloadOf(item));
+  tuitionModal.value = {
+    visible: true,
+    item,
+    processing: false,
+    error: '',
+    form: {
+      payment_date: todayYmd.value,
+      payment_method: 'transfer',
+      account_last5: '',
+      amount,
+      note: '',
+    },
+  };
 };
 
 const confirmTuitionPaid = async () => {
   const item = tuitionModal.value.item;
   if (!item?.id || !props.branchId) return;
+  const form = tuitionModal.value.form;
+  tuitionModal.value.error = '';
+  if (!form.payment_date || !form.amount || form.amount <= 0) {
+    tuitionModal.value.error = '請填寫繳費日期與金額';
+    return;
+  }
 
   tuitionModal.value.processing = true;
   setMarkingTuitionPaid(item.id, true);
@@ -548,7 +675,14 @@ const confirmTuitionPaid = async () => {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      body: JSON.stringify({ branch_id: Number(props.branchId) }),
+      body: JSON.stringify({
+        branch_id: Number(props.branchId),
+        payment_date: form.payment_date,
+        payment_method: form.payment_method,
+        account_last5: form.payment_method === 'transfer' ? form.account_last5 : '',
+        amount: form.amount,
+        note: form.note?.trim() || '',
+      }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '更新繳費狀態失敗');
@@ -556,8 +690,7 @@ const confirmTuitionPaid = async () => {
     tuitionModal.value.visible = false;
     await syncNotifications(false);
   } catch (err) {
-    errorMessage.value = err.message || '更新繳費狀態失敗';
-    tuitionModal.value.visible = false;
+    tuitionModal.value.error = err.message || '更新繳費狀態失敗';
   } finally {
     setMarkingTuitionPaid(item.id, false);
     tuitionModal.value.processing = false;
@@ -662,6 +795,10 @@ onUnmounted(() => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
 
+.payment-modal {
+  max-width: 460px;
+}
+
 .modal-box h3 {
   margin: 0 0 8px;
   font-size: 17px;
@@ -680,6 +817,74 @@ onUnmounted(() => {
   font-size: 14px;
   margin-bottom: 18px;
   font-weight: 600;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.modal-item-name strong {
+  color: var(--text-light);
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+.modal-field {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.required {
+  color: var(--danger);
+}
+
+.modal-field input,
+.modal-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: #fff;
+}
+
+.payment-method-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.payment-method-option {
+  flex: 1;
+  text-align: center;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.payment-method-option input {
+  display: none;
+}
+
+.payment-method-option.active {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary);
+}
+
+.modal-error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
 .modal-actions {
@@ -821,6 +1026,18 @@ onUnmounted(() => {
   font-size: 13px;
   color: #c62828;
   font-weight: 600;
+}
+
+.urgent-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.notification-context {
+  color: var(--text-light);
+  font-size: 12px;
 }
 
 .urgent-actions {

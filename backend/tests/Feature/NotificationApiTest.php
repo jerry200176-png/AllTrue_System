@@ -8,7 +8,6 @@ use App\Models\Invoice;
 use App\Models\LearningRecord;
 use App\Models\Notification;
 use App\Models\PendingSwipe;
-use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
