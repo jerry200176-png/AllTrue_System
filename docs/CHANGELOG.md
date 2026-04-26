@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — chore(security): Composer audit warning 清償
+
+- Security 升級 `league/commonmark` 至 2.8.2，並登記 Laravel major upgrade 技術債以追蹤剩餘 framework audit warning
+
 ## 2026-04-26 — feat(ambient-music): 工作音樂小彩蛋
 
 - Added 主任／老師後台新增手動開啟的工作音樂播放器，使用瀏覽器本地合成音景避免第三方音檔授權風險
