@@ -884,6 +884,11 @@ function effectiveClosedReason(course) {
   return null;
 }
 const isHistoricalCourse = (course) => {
+  // 月結制課程 RemainingSessions 通常為 0（月結不扣堂），不可用 remaining ≤ 0 判斷歷史。
+  // 月結課程只有明確停課（status=inactive，即 Stop=1）才視為歷史課程。
+  if (String(course?.payment_type || '').toLowerCase() === 'monthly') {
+    return String(course?.status || '').toLowerCase() === 'inactive';
+  }
   // FR-001：共用方案課程（PackageID）以方案共用池記錄剩餘，個別 StudentClass 的 remaining 欄可能
   // 被 over-deduction 誤設為 0；若此時又已繳費，舊邏輯會把 active 方案課程誤判為「歷史課程」並隱藏，
   // 造成學生管理欄位顯示「尚未設定」。僅在明確停課（status=inactive，即 Stop=1）時才視為歷史。
