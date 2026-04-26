@@ -10,8 +10,88 @@
     </div>
 
     <template v-else>
-      <!-- Quick filter tabs -->
-      <div class="card quick-filter-card" data-guide="bugs-quick-filter">
+
+      <!-- Super Admin: 頁面層級 Tab（Bug 回報 / 家長回饋）-->
+      <div v-if="isSuperAdmin" class="bugs-page-tabs">
+        <button :class="['bugs-page-tab', { active: pageTab === 'bugs' }]" @click="pageTab = 'bugs'">
+          <span class="material-symbols-outlined">bug_report</span>
+          Bug 回報
+        </button>
+        <button :class="['bugs-page-tab', { active: pageTab === 'feedback' }]" @click="switchToFeedbackTab">
+          <span class="material-symbols-outlined">chat</span>
+          家長回饋
+          <span v-if="pfUnreadCount > 0" class="bugs-page-tab-badge">{{ pfUnreadCount }}</span>
+        </button>
+      </div>
+
+      <!-- ═══ 家長回饋 Tab（super_admin only）═══ -->
+      <div v-if="isSuperAdmin && pageTab === 'feedback'" class="card pf-admin-card">
+        <!-- 篩選 -->
+        <div class="pf-filter-row">
+          <select v-model="pfCategoryFilter" class="pf-select">
+            <option value="">全部類型</option>
+            <option value="teaching">老師教學</option>
+            <option value="schedule">課程安排</option>
+            <option value="system">系統功能</option>
+            <option value="other">其他建議</option>
+          </select>
+          <span class="pf-total">共 {{ pfTotal }} 筆</span>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="pfLoading" class="pf-loading">
+          <div class="pp-spinner-inline"></div> 載入中…
+        </div>
+
+        <!-- Empty -->
+        <div v-else-if="!pfList.length" class="pf-empty">
+          <span class="material-symbols-outlined">mark_chat_read</span>
+          <p>目前無家長回饋</p>
+        </div>
+
+        <!-- 列表 -->
+        <div v-else class="pf-list">
+          <div v-for="fb in pfList" :key="fb.id"
+            class="pf-item" :class="{ unread: !fb.is_read }">
+            <div class="pf-item-head">
+              <div class="pf-item-meta">
+                <span class="pf-student">{{ fb.student_name }}</span>
+                <span class="pf-category pf-cat-{{ fb.category }}">{{ pfCategoryLabel(fb.category) }}</span>
+                <span v-if="!fb.is_read" class="pf-new-dot">NEW</span>
+              </div>
+              <div class="pf-item-time">{{ fb.created_at?.substring(0, 16).replace('T', ' ') }}</div>
+            </div>
+            <!-- 星評 -->
+            <div v-if="fb.rating" class="pf-stars">
+              <span v-for="n in 5" :key="n" class="material-symbols-outlined pf-star"
+                :style="{ color: n <= fb.rating ? '#f59e0b' : '#e5e7eb' }">star</span>
+            </div>
+            <!-- 內容 -->
+            <div class="pf-content">{{ fb.content }}</div>
+            <!-- 動作 -->
+            <div class="pf-actions">
+              <button v-if="!fb.is_read" class="pf-btn-read" @click="markRead(fb)">
+                <span class="material-symbols-outlined">done_all</span>
+                標記已讀
+              </button>
+              <span v-else class="pf-read-label">
+                <span class="material-symbols-outlined">check_circle</span>
+                已處理
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 分頁 -->
+        <div v-if="pfLastPage > 1" class="pf-pagination">
+          <button :disabled="pfPage <= 1" @click="loadFeedback(pfPage - 1)" class="pf-page-btn">‹</button>
+          <span>{{ pfPage }} / {{ pfLastPage }}</span>
+          <button :disabled="pfPage >= pfLastPage" @click="loadFeedback(pfPage + 1)" class="pf-page-btn">›</button>
+        </div>
+      </div>
+
+      <!-- Quick filter tabs（Bug 回報，pageTab === 'bugs' 或非 super_admin） -->
+      <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card quick-filter-card" data-guide="bugs-quick-filter">
         <div class="quick-tabs">
           <!-- Super admin tabs: 待處理 first (their default action queue) -->
           <template v-if="isSuperAdmin">
@@ -145,8 +225,8 @@
         </div>
       </div>
 
-      <!-- Bug list -->
-      <div class="card" data-guide="bugs-list" ref="listCardRef">
+      <!-- Bug list（只在 Bug Tab 顯示）-->
+      <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card" data-guide="bugs-list" ref="listCardRef">
         <div v-if="loading" class="loading-box">載入中...</div>
         <div v-else-if="bugs.length === 0" class="empty-box">
           <span class="material-symbols-outlined empty-icon">check_circle</span>
@@ -347,6 +427,7 @@ import {
   fetchBugReports, fetchBugDetail, addBugComment,
   updateBugStatus, updateBugCommentVisibility,
 } from '../lib/bugReportsApi';
+import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -417,6 +498,67 @@ const listCardRef = ref(null);
 let debounceTimer = null;
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
+
+// ─── 頁面層級 Tab（super_admin：Bug 回報 / 家長回饋）──────────────
+const pageTab = ref('bugs');
+
+// ─── 家長回饋列表狀態 ─────────────────────────────────────────────
+const pfList = ref([]);
+const pfLoading = ref(false);
+const pfTotal = ref(0);
+const pfPage = ref(1);
+const pfLastPage = ref(1);
+const pfUnreadCount = ref(0);
+const pfCategoryFilter = ref('');
+
+const pfCategoryLabel = (cat) => {
+  const map = { teaching: '老師教學', schedule: '課程安排', system: '系統功能', other: '其他建議' };
+  return map[cat] || cat;
+};
+
+async function loadFeedback(page = 1) {
+  pfLoading.value = true;
+  try {
+    const token = localStorage.getItem('alltrue_session') || '';
+    const res = await getParentFeedbackList(token, {
+      campusId: props.branchId,
+      category: pfCategoryFilter.value,
+      page,
+    });
+    pfList.value = res.data || [];
+    pfTotal.value = res.total || 0;
+    pfPage.value = res.current_page || 1;
+    pfLastPage.value = res.last_page || 1;
+  } catch (e) {
+    console.error('Load parent feedback failed:', e);
+  } finally {
+    pfLoading.value = false;
+  }
+}
+
+async function loadPfUnreadCount() {
+  if (!isSuperAdmin.value) return;
+  const token = localStorage.getItem('alltrue_session') || '';
+  pfUnreadCount.value = await getParentFeedbackUnreadCount(token, props.branchId);
+}
+
+async function switchToFeedbackTab() {
+  pageTab.value = 'feedback';
+  await loadFeedback(1);
+  pfUnreadCount.value = 0;
+}
+
+async function markRead(fb) {
+  try {
+    const token = localStorage.getItem('alltrue_session') || '';
+    await markParentFeedbackRead(token, fb.id);
+    fb.is_read = true;
+  } catch (e) {
+    console.error('Mark read failed:', e);
+  }
+}
+
+watch(pfCategoryFilter, () => loadFeedback(1));
 
 // The most recent status_log note when a bug reaches resolved/closed — shown in banner
 const resolutionNote = computed(() => {
@@ -520,9 +662,9 @@ function goToPage(p) {
 }
 
 onMounted(() => {
-  // Set role-based default: reporters want to see all their bugs; admins want the action queue
   quickFilter.value = isSuperAdmin.value ? 'pending' : 'all';
   loadBugs();
+  loadPfUnreadCount();
   window.addEventListener('scroll', handleScroll);
 });
 
@@ -662,6 +804,75 @@ function formatDate(iso) {
 
 <style scoped>
 .bugs-page { padding-bottom: 24px; }
+
+/* ═══ 頁面 Tab Bar（Bug 回報 / 家長回饋）═══ */
+.bugs-page-tabs {
+  display: flex; gap: 0; background: #fff; border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; margin-bottom: 12px;
+}
+.bugs-page-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 11px 16px; background: none; border: none;
+  cursor: pointer; font-size: 0.88em; color: #78909c;
+  transition: color .2s, background .2s; position: relative; font-weight: 500;
+}
+.bugs-page-tab .material-symbols-outlined { font-size: 18px; }
+.bugs-page-tab.active { color: #1565c0; background: #e8f2ff; font-weight: 700; }
+.bugs-page-tab:not(.active):hover { background: #f5f8ff; }
+.bugs-page-tab-badge {
+  background: #e53935; color: #fff; border-radius: 10px;
+  font-size: 0.72em; padding: 1px 6px; font-weight: 700; min-width: 18px; text-align: center;
+}
+
+/* ═══ 家長回饋 Admin 列表 ═══ */
+.pf-admin-card { padding: 16px; }
+.pf-filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.pf-select {
+  border: 1px solid #e0e0e0; border-radius: 8px; padding: 7px 12px;
+  font-size: 0.88em; outline: none; background: #fafafa;
+}
+.pf-total { font-size: 0.82em; color: #90a4ae; margin-left: auto; }
+.pf-loading { display: flex; align-items: center; gap: 8px; color: #78909c; padding: 20px 0; }
+.pf-empty { text-align: center; padding: 32px 16px; color: #90a4ae; }
+.pf-empty .material-symbols-outlined { font-size: 40px; display: block; margin: 0 auto 8px; }
+.pf-list { display: flex; flex-direction: column; gap: 10px; }
+.pf-item {
+  border: 1px solid #e8e8e8; border-radius: 10px; padding: 14px; background: #fff;
+  transition: box-shadow .15s;
+}
+.pf-item.unread { border-color: #90caf9; background: #f0f7ff; }
+.pf-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.pf-item-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pf-student { font-weight: 700; color: #263238; font-size: 0.9em; }
+.pf-category {
+  padding: 2px 10px; border-radius: 10px; font-size: 0.76em; font-weight: 600;
+  background: #e3f2fd; color: #1565c0;
+}
+.pf-new-dot {
+  background: #e53935; color: #fff; padding: 1px 7px; border-radius: 8px;
+  font-size: 0.7em; font-weight: 700;
+}
+.pf-item-time { font-size: 0.75em; color: #90a4ae; white-space: nowrap; flex-shrink: 0; }
+.pf-stars { display: flex; gap: 2px; margin-bottom: 6px; }
+.pf-star { font-size: 16px; }
+.pf-content { font-size: 0.9em; color: #37474f; line-height: 1.6; margin-bottom: 10px; }
+.pf-actions { display: flex; align-items: center; }
+.pf-btn-read {
+  display: flex; align-items: center; gap: 5px;
+  background: #e3f2fd; color: #1565c0; border: none; border-radius: 8px;
+  padding: 6px 14px; font-size: 0.82em; cursor: pointer; font-weight: 600;
+  transition: background .15s;
+}
+.pf-btn-read:hover { background: #bbdefb; }
+.pf-btn-read .material-symbols-outlined { font-size: 16px; }
+.pf-read-label { display: flex; align-items: center; gap: 5px; color: #66bb6a; font-size: 0.82em; font-weight: 600; }
+.pf-read-label .material-symbols-outlined { font-size: 16px; }
+.pf-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
+.pf-page-btn {
+  border: 1px solid #e0e0e0; background: #fff; border-radius: 6px;
+  padding: 6px 14px; cursor: pointer; font-size: 1em;
+}
+.pf-page-btn:disabled { opacity: .4; cursor: not-allowed; }
 .page-header { padding: 16px 24px 8px; }
 .page-header h2 { display: flex; align-items: center; gap: 8px; margin: 0; }
 .header-icon { font-size: 28px; color: var(--primary); }
