@@ -6,6 +6,17 @@
 
 ---
 
+## 2026-04-26 — chore: 補上最後 4 個工程缺口 (PR #83)
+
+- Security: Composer audit 改為 HIGH/CRITICAL 才擋 CI，MEDIUM/LOW 僅印警告（目前 2 個 medium 不阻斷）
+- Security: npm audit `--audit-level=high` 移除 fallback echo，HIGH+ 真正 fail CI
+- Added: `GET /api/v1/health` 新增 `sentry.configured` + `sentry.sdk_bound` 欄位，可 API 驗證 Sentry 是否載入
+- Changed: App.vue 所有 22 個頁面改為 `defineAsyncComponent` 懶載入，initial JS chunk 從 1176 KB 降至 **137 KB**（-88%）
+- Changed: `vite.config.js` 加入 `manualChunks` 分離 vue / sentry vendor 到獨立 chunk，共 38 chunks
+- Added: 新增 `RoomControllerTest`（6 tests）、`CampusControllerTest`（3 tests）、`TeacherBranchControllerTest`（5 tests）覆蓋 3 個先前 0% controller；coverage 64.6% → 65.0%
+
+---
+
 ## 2026-04-26 — chore: 補上 3 項工程缺口 (#82)
 - Changed: Coverage gate 從 warning 改為真正擋關（block < 60%，warn < 70%，目前 64.6%）
 - Added: CI 自動生成 API route 文件（`php artisan route:list`）並上傳為 artifact
