@@ -256,7 +256,7 @@
 
 ---
 
-*最後更新：2026-04-23（fix/swipe-classsession-sync — TD-012 登記）*
+*最後更新：2026-04-27（chore/composer-audit-commonmark — TD-014 登記）*
 
 ### TD-013：個人設定頁自填 LINE User ID
 
@@ -271,3 +271,17 @@
 | 建議做法 | 基本資料 tab 加 LINE User ID 輸入欄 + `PUT /api/v1/me` 支援 `line_id` + 通知偏好說明移除「暫不影響」字樣 |
 | 清償成本估計 | 低（< 2hr）|
 | 不做的代價 | 老師無法自助綁定，LINE 通知功能雖已上線但使用率低 |
+
+### TD-014：Laravel 8 安全修補需規劃 major upgrade
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-04-27 |
+| 發現來源 | [ARCH] 技術債月度評估 |
+| 影響模組 | backend composer dependencies / Laravel framework |
+| 描述 | Composer audit 顯示 `laravel/framework` 8.x-dev 存在 file validation bypass（MEDIUM）；修補版本在 Laravel 10.48.29+ / 11.44.1+ / 12.1.1+，Laravel 8 無低風險 patch path |
+| 建議做法 | 另開 Laravel major upgrade 專案，先盤點 PHP 版本、Sanctum、Pest/PHPUnit、middleware、filesystem validation 與部署相容性，再分階段升級 |
+| 清償成本估計 | 高（> 1天）|
+| 不做的代價 | CI 會持續出現 Composer audit warning，且涉及檔案上傳驗證的安全風險無法在 Laravel 8 內完全修補 |
