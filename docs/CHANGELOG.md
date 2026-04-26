@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-04-26 — fix(security): 密碼改完撤銷全部 token + CSP Report-Only + debug_mode 監測 (PR #84)
+
+- Security: `PUT /api/v1/me` 改密碼時刪除所有舊 AuthToken，簽發新 token（`new_token` 欄位），其他裝置自動失效
+- Security: frontend 收到 `new_token` 自動更新 localStorage，當前工作階段不中斷
+- Security: `GET /api/v1/health` 新增 `security.debug_mode` 欄位，可即時確認 production 是否 APP_DEBUG=true
+- Security: `SecurityHeaders` middleware 加入 `Content-Security-Policy-Report-Only`，透過 Sentry CSP 端點接收 violation report（Report-Only 不擋截，安全）
+- Test: 新增 `PasswordChangeTokenRevokeTest`（4 tests）；修復 `TeacherBulkAccountOnboardingTest` 使用密碼改後的新 token
+
 ## 2026-04-26 — chore: 補上最後 4 個工程缺口 (PR #83)
 
 - Security: Composer audit 改為 HIGH/CRITICAL 才擋 CI，MEDIUM/LOW 僅印警告（目前 2 個 medium 不阻斷）
