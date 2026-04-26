@@ -9,6 +9,7 @@
 ## 2026-04-26 — feat(ambient-music): 工作音樂小彩蛋
 
 - Added 主任／老師後台新增手動開啟的工作音樂播放器，使用瀏覽器本地合成音景避免第三方音檔授權風險
+- Changed 工作音樂改用 AllTrue 自製 MP3（Tutoring Loop / Paper Window / Paperwork Rain）取代本地合成音景
 
 ## 2026-04-26 — fix(parent-feedback): 修復已讀反彈並強化回饋定位
 
