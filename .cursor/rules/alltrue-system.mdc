@@ -13,7 +13,7 @@ alwaysApply: true
 |---|---|
 | 前端 | Vue 3.4 + Vite 5，`<script setup>`，無 Vue Router（用 `active` ref 切頁） |
 | 後端 | Laravel (PHP 8+)，MySQL（database: `alltrue`） |
-| 部署 | Raspberry Pi，指令：`cd frontend && npm run deploy`（build + copy 到 backend/public）；**Agent 修改 `frontend/src` 等後應自動執行，見規則 `auto-frontend-deploy.mdc`** |
+| 部署 | Raspberry Pi；PR merge 後由 GitHub Actions `deploy.yml` 自動 build/deploy（docs-only merge 跳過 production deploy）；見 `auto-frontend-deploy.mdc` |
 | 認證 | 自建 Bearer token，存 `localStorage.alltrue_session`，**非真實 Supabase** |
 | 刷卡 | RFID 讀卡機 → `POST /api/v1/swipe-rfid` |
 | 通知 | LINE Webhook / LINE Login |

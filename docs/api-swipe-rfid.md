@@ -243,7 +243,7 @@ curl -sS -i "https://pi.lifenet.com.tw/api/health"
 - 預期大致為 **HTTP 200** 且 body 含 `{"ok":true`（見 `routes/api.php` 的 `/api/health`）。
 - 若仍是 **HTML + Apache**：`pi.lifenet.com.tw` 的 **DocumentRoot 必須改為專案的 `backend/public`**，並啟用 `mod_rewrite`、`AllowOverride All`（`backend/public/.htaccess` 才能把 `/api/...` 轉給 `index.php`）。
 
-**部署請對照** `docs/APACHE-SETUP.md`、`docs/DEPLOYMENT.md`。
+**部署請對照** `docs/DEPLOYMENT.md`、`docs/OPERATIONS_RUNBOOK.md`。
 
 ### 12.2 `branch_code` 與 `Authorization` 不可弄反
 

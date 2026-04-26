@@ -60,7 +60,7 @@ alwaysApply: false
 | 後端 API / 資料（Controller / migration） | `[FEATURE]` |
 | 前端 UI 功能（Vue 元件 / API 串接） | `[FEATURE]` |
 | UI/UX 精緻化（依第 5b 節規格） | `[FEATURE]` |
-| 測試設計與自動執行（Pest Feature Test） | `[TEST]` |
+| 測試設計與自動執行（PHPUnit Feature Test） | `[TEST]` |
 | 自動化 QA 驗收（執行第 10 節所有情境） | `[TEST]` |
 | 資安靜態審查（STRIDE / 存取控制） | `[REVIEW]` |
 | Code Review（逐條對照 FR） | `[REVIEW]` |

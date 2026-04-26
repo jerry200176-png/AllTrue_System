@@ -57,7 +57,7 @@ alwaysApply: false
 ```
 §SEC-001：SwipeRfidController catch 未 Log → silent pending_review（v1.2 已補 Log::warning）
 §SEC-002：RefreshDatabase 在生產 Pi 執行 → 清空 DB（R2 紅線）
-§SEC-003：feature branch npm run deploy → 未過 CI 就上線（auto-frontend-deploy.mdc 已修正）
+§SEC-003：feature branch 手動 npm run deploy → 未過 CI 就上線（現行正解：PR merge 後 deploy.yml 自動部署）
 ```
 
 ---
