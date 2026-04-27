@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue';
+import { getPerSessionFee, getRateUnit } from '../../lib/coursePricing';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -109,9 +110,9 @@ export function useSessionEditFlow({
       edit_start_time: row.start_time || '',
       edit_end_time: row.end_time || '',
       session_charge: row.session_charge ?? null,
-      contract_rate: row.contract_rate ?? (course?.rate_per_30min != null ? Number(course.rate_per_30min) * 2 : null),
+      contract_rate: row.contract_rate ?? getPerSessionFee(course),
       contract_session_duration: row.contract_session_duration ?? (course?.duration_hours != null ? Math.round(Number(course.duration_hours) * 60) : null),
-      contract_rate_unit: row.contract_rate_unit || 'session',
+      contract_rate_unit: row.contract_rate_unit || getRateUnit(course),
     };
     sessionEditMode.value = 'menu';
     secondaryStatusSelection.value = '';

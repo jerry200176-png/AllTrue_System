@@ -137,8 +137,8 @@
           <label>備註</label>
           <input v-model="form.note" type="text" placeholder="例：今日加課 1 小時，已收費" style="width: 100%;" maxlength="200" />
         </div>
-        <small v-if="chargePreview.unit === 'hour'" class="field-note">修改後評量表的結束時間也會同步；按時計費時若時長變動，課程總費用（Charge）也會依差額調整。</small>
-        <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響費用與課程總費用（Charge）。</small>
+        <small v-if="chargePreview.unit === 'hour'" class="field-note">修改後評量表的結束時間也會同步；按時計費預覽僅供核帳參考，不會在此自動改課程總費用。</small>
+        <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響本堂費用。</small>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
           <button class="primary" @click="onSaveClick" :disabled="submitting || !!timeRangeError">儲存</button>
@@ -147,7 +147,7 @@
 
       <div v-if="mode === 'menu'" class="actions" style="margin-top: 16px; justify-content: space-between;">
         <button class="ghost" @click="$emit('close')">關閉</button>
-        <button class="small ghost se-secondary-add" @click="$emit('add-session')" title="亦可在課程管理列表直接操作">+ 新增堂次</button>
+        <button class="small ghost se-secondary-add" @click="$emit('add-session')" title="亦可在課程管理列表直接操作">+ 補課 / 補登</button>
       </div>
 
       <div v-if="submitting" class="se-loading">處理中…</div>
