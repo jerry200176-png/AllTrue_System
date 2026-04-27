@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — fix(courses): 結案課程取消未來堂次一致性
+
+- Fixed 課程直接改為歷史狀態時也會取消未來 scheduled 堂次，避免結算後仍顯示未來排課
+
 ## 2026-04-27 — chore(campus): 新增新莊分校 & 中平分校
 
 - Added 新莊分校（code: xinzhuang）、中平分校（code: zhongping）上線，migration 冪等零 downtime
