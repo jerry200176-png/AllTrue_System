@@ -6,6 +6,11 @@
 
 ---
 
+## 2026-04-27 — fix(courses): 預排堂次補齊與缺口校正
+
+- Fixed 月結課程續約或編輯固定時段後補齊未來 `ClassSession`，讓課程管理詳情立即顯示該月固定預排堂次且不重複建立
+- Fixed 堂數制補建堂次優先補中間缺口，避免漏排日期後在尾端多出第 N+1 堂
+
 ## 2026-04-27 — chore(campus): 新增新莊分校 & 中平分校
 
 - Added 新莊分校（code: xinzhuang）、中平分校（code: zhongping）上線，migration 冪等零 downtime

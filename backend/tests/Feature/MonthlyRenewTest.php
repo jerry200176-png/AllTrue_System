@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -18,7 +19,7 @@ use Tests\TestCase;
  * 破壞月結計費語意，且舊月結課不被結案，造成重複課程列。
  *
  * 修復後行為：
- * 1. 新增 renewMonthly 端點：延長原月結課程的 EndDate，不新建課程。
+ * 1. renewMonthly 端點：延長原月結課程的 EndDate，不新建課程，但補齊未來預排堂次供課程管理詳情顯示。
  * 2. purchaseBatch 對月結課回傳 422，防止誤用。
  * 3. 堂數制 purchaseBatch 流程完全不受影響。
  */
@@ -26,7 +27,19 @@ class MonthlyRenewTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_renew_monthly_extends_end_date_without_creating_new_course(): void
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-04-27 08:00:00', 'Asia/Taipei'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    public function test_renew_monthly_extends_end_date_without_creating_new_course_and_creates_future_sessions(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew@example.com');
         $student = $this->createStudent();
@@ -37,7 +50,11 @@ class MonthlyRenewTest extends TestCase
             'RemainingSessions' => 0,
             'settlement_day'   => 15,
             'monthly_sessions' => 8,
+            'StartDate'        => '2026-04-01',
             'EndDate'          => '2026-04-30',
+            'week'             => 2,
+            'time'             => '18:00:00',
+            'SessionDuration'  => 120,
             'Paid'             => 1,
         ]);
 
@@ -76,11 +93,77 @@ class MonthlyRenewTest extends TestCase
             '月結續約不應新建 StudentClass 記錄'
         );
 
-        // 不應建立任何 ClassSession
         $this->assertSame(
-            0,
-            ClassSession::where('StudentClassID', $course->ID)->count(),
-            '月結續約不應建立 ClassSession 預排堂次'
+            ['2026-04-28', '2026-05-05', '2026-05-12', '2026-05-19', '2026-05-26'],
+            $this->scheduledSessionDates($course),
+            '月結續約後，課程管理詳情應能讀到固定時段的未來預排堂次'
+        );
+
+        // 同一續約請求重送不可重複建立堂次
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => $newEndDate,
+        ])->assertOk();
+
+        $this->assertSame(
+            ['2026-04-28', '2026-05-05', '2026-05-12', '2026-05-19', '2026-05-26'],
+            $this->scheduledSessionDates($course),
+            '月結續約補建堂次必須是 idempotent，避免詳情預排課程重複'
+        );
+    }
+
+    public function test_updating_monthly_course_schedule_creates_fixed_future_sessions_for_detail_view(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-renew-edit@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-05-31',
+            'week'             => 2,
+            'time'             => '18:00:00',
+            'SessionDuration'  => 120,
+            'Paid'             => 1,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->putJson("/api/v1/student-classes/{$course->ID}", [
+            'subject'          => 'Math',
+            'class_type'       => 'one_on_one',
+            'duration_hours'   => 2,
+            'payment_type'     => 'monthly',
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'days_of_week'     => [4],
+            'start_time'       => '17:00',
+            'day_time_slots'   => [['day' => 4, 'start_time' => '17:00']],
+            'first_class_date' => '2026-04-01',
+        ]);
+
+        $res->assertOk();
+
+        $this->assertSame(
+            ['2026-04-30', '2026-05-07', '2026-05-14', '2026-05-21', '2026-05-28'],
+            $this->scheduledSessionDates($course),
+            '編輯月結固定時段後，課程管理詳情應顯示該月週期性預排堂次'
+        );
+
+        $this->assertSame(
+            ['17:00:00'],
+            ClassSession::where('StudentClassID', $course->ID)
+                ->distinct()
+                ->orderBy('StartTime')
+                ->pluck('StartTime')
+                ->all()
         );
     }
 
@@ -279,5 +362,19 @@ class MonthlyRenewTest extends TestCase
         ];
 
         return StudentClass::create(array_merge($defaults, $overrides));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function scheduledSessionDates(StudentClass $course): array
+    {
+        return ClassSession::where('StudentClassID', $course->ID)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->pluck('SessionDate')
+            ->map(fn ($date) => substr((string) $date, 0, 10))
+            ->all();
     }
 }

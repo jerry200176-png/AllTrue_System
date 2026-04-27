@@ -342,7 +342,7 @@ WHERE ScheduleMode = 'date' AND Stop = 1 AND closed_reason IS NULL;
 
 1. **新增任何「新建 `StudentClass` 批次」的後端路徑時，必須在方法首行 guard `ScheduleMode !== 'count'` → 422**（`purchaseBatch` 已示範）
 2. **前端新增「加購／續約」入口時，必須先分流 `payment_type` / `ScheduleMode`**，不同模式送不同 API，不可共用 payload
-3. **`renewMonthly` 不得建立任何 `ClassSession`**：月結排課依 `settlement_day`/`monthly_sessions` 動態生成，續約只更新 `EndDate`
+3. **`renewMonthly` 不得建立新 `StudentClass`，但必須補齊未來 `ClassSession` 預排堂次**：課程管理詳情以 `ClassSession` 顯示日期 chip；續約或編輯月結固定時段後，需依 `EndDate + week/time` 補建缺漏未來堂次，並以 `StudentClassID + SessionDate + StartTime` 去重避免重複。
 
 ### 診斷查詢
 
@@ -1362,7 +1362,7 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 | 項目 | 說明 |
 |------|------|
 | **曾發生的問題** | 課程管理頁展開上課日期面板時，購買 8 堂、已上 6、剩餘 2（含請假與調課）的課程仍顯示「⚠ 排程列數與購買堂數不一致」。使用者（主任）誤以為系統資料異常，實際數據正確。 |
-| **根因** | 前端 `CourseManagement.vue` 用 `sessionUnits(c).length !== getPurchasedSessions(c)` 做警示判定。`sessionUnits` 只排除 `cancelled`，**仍包含 `leave/leave_adjusted`**（請假列），導致「請假原堂 + 補課新堂」使總列數 > 購買堂數，觸發假陽性。而後端 `extendSessionsIfNeeded` 已明確排除 `cancelled/leave/leave_adjusted`。 |
+| **根因** | 前端 `CourseManagement.vue` 用 `sessionUnits(c).length !== getPurchasedSessions(c)` 做警示判定。`sessionUnits` 只排除 `cancelled`，**仍包含 `leave/leave_adjusted`**（請假列），導致「請假原堂 + 補課新堂」使總列數 > 購買堂數，觸發假陽性。而後端 `extendSessionsIfNeeded` 已明確排除 `cancelled/leave/leave_adjusted/excused`。 |
 | **修正** | (1) 在 `useCourseSessionsDisplay.js` 新增 `SESSION_NOT_OCCUPYING_QUOTA` 狀態矩陣常數，與後端口徑一致。(2) 新增 `effectiveSessionCount`（排除非占額狀態的堂次數）。(3) 新增 `sessionCountWarning` 結構化警示判定（`over`/`under_leave`/`under_other`）。(4) 前端警示改用 `sessionCountWarning(c)` 取代原始列數比較。(5) 請假未補課時文案改為「有請假堂次尚未補課」（藍色資訊色），與真異常黃色警告區分。 |
 | **禁止回歸** | **(a)** 勿把警示條件改回 `sessionUnits().length !== purchased` 或任何包含請假列的計數。**(b)** `SESSION_NOT_OCCUPYING_QUOTA` 與後端 `extendSessionsIfNeeded` 的 `whereNotIn` 必須同步維護。**(c)** 勿讓 `effectiveSessionCount` 影響 `displayRemainingSessions`——兩者解耦。 |
 | **狀態矩陣** | 占購買額度：`scheduled`, `attended`, `completed`, `late`, `absent`。不占：`cancelled`, `leave`, `leave_adjusted`, `excused`。 |
@@ -1484,14 +1484,15 @@ Claude Code 在 2026-04-17 執行多工重構時，**靜默刪除了 `backend/ro
 |------|------|
 | **曾發生的錯誤** | 主任在課程編輯介面將「購買堂數」從 8 改成 10 後，`StudentClass.SessionCount` 正確更新為 10，但課程列表底下仍只顯示第 1～8 堂，沒有出現第 9、10 堂。 |
 | **根本原因** | `StudentClassController::update` 在 `SessionCount` 異動時只呼叫了 `cancelExcessScheduledSessions`（縮減邏輯），**完全沒有處理增加的情況**。`maybeRebuildSessionsAfterUpdate` 僅在排課欄位（week/time）或 `StartDate` 改變時才觸發重建，單純改 `SessionCount` 不會進入任何補建分支。 |
-| **正確行為** | 若 `SessionCount` 增加且 `ScheduleMode = 'count'`，必須從現有最後一堂的隔日起，按固定星期繼續往後補建缺少的 `ClassSession` 記錄，並同步 `UsedSessions` / `RemainingSessions`（`SessionDeductionService::syncCounters`）。 |
+| **正確行為** | 若 `SessionCount` 增加或主任重新儲存堂數制課程且 `ScheduleMode = 'count'`，必須先依 `StartDate + week/time` 算出前 N 堂契約序列，優先補中間缺口（例如漏掉 4/29），再取消未鎖定且落在契約序列外的尾端 `scheduled` 堂次，最後同步 `UsedSessions` / `RemainingSessions`（`SessionDeductionService::syncCounters`）。 |
 | **實作位置** | `StudentClassController::update`（在 `cancelExcessScheduledSessions` 之後呼叫 `extendSessionsIfNeeded`）+ 新增私有方法 `extendSessionsIfNeeded`。 |
 
 ### 禁止回歸
 
 - **勿移除或繞過 `extendSessionsIfNeeded` 呼叫**：`cancelExcessScheduledSessions` 之後必須緊接呼叫，否則增堂時仍會靜默失效。
-- **勿在 `extendSessionsIfNeeded` 中改用「從 `StartDate` 重建全部堂次」**：若前面的堂次已有出缺勤 / 評量記錄，整刪重建會連帶清掉歷史資料；應**只補差額**（`newCount - currentCount` 筆），從最後一堂隔日開始排。
-- **`currentCount` 必須排除 `cancelled` 與 `leave`／`leave_adjusted`**（請假不佔用購買額度，與 `cancelExcessScheduledSessions` 口徑一致）；勿只算 `scheduled`，否則補建數量偏多。
+- **勿在 `extendSessionsIfNeeded` 中改回「只從最後一堂隔日追加」**：若中間缺一堂，尾端追加會造成「缺原日期 + 多第 N+1 堂」。正確做法是先比對前 N 堂契約序列並補缺口。
+- **勿整刪重建全部堂次**：若前面的堂次已有出缺勤 / 評量記錄，整刪重建會連帶清掉歷史資料；只能新增缺漏的契約堂次，並取消未鎖定且落在契約序列外的 `scheduled` 尾端堂次。
+- **`currentCount` 必須排除 `cancelled`、`leave`、`leave_adjusted`、`excused`**（請假不佔用購買額度，與 `cancelExcessScheduledSessions` 口徑一致）；勿只算 `scheduled`，否則補建數量偏多。
 - **補建堂次若日期已過去**，狀態應設 `completed`（非 `scheduled`），並自動建立 `Status=pending` 的 `LearningRecord`，與新建課程時的行為保持一致。
 
 ### 相關檔案
