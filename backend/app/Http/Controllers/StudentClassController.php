@@ -991,6 +991,11 @@ class StudentClassController extends Controller
         $studentClass->update($mapped);
         $studentClass->refresh();
 
+        if (array_key_exists('Stop', $mapped) && (int) ($mapped['Stop'] ?? 0) === 1) {
+            $this->cancelFutureScheduledSessions($studentClass, null);
+            $studentClass->refresh();
+        }
+
         // Rate 或 SessionCount 異動時同步 Charge（總費用快照），
         // 並保留原本由單堂時間調整累積的 delta（老 Charge − 老 Rate×老數量），
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
@@ -3553,15 +3558,7 @@ class StudentClassController extends Controller
                 }
                 $sc->save();
 
-                $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
-                $cancelled = ClassSession::where('StudentClassID', $sc->ID)
-                    ->where('SessionDate', '>=', $today)
-                    ->where('Status', 'scheduled')
-                    ->update([
-                        'Status' => 'cancelled',
-                        'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
-                        'updated_at' => now(),
-                    ]);
+                $cancelled = $this->cancelFutureScheduledSessions($sc, $reason);
 
                 $labels = ['completed' => '已完課', 'settled' => '已結案'];
                 $label = $labels[$reason] ?? '已暫停';
@@ -3584,5 +3581,20 @@ class StudentClassController extends Controller
             DB::rollBack();
             return response()->json(['message' => '操作失敗：' . $e->getMessage()], 500);
         }
+    }
+
+    private function cancelFutureScheduledSessions(StudentClass $studentClass, ?string $reason): int
+    {
+        $today = Carbon::today()->toDateString();
+        $noteTag = $reason === 'settled' ? '[結案取消]' : '[暫停取消]';
+
+        return ClassSession::where('StudentClassID', $studentClass->ID)
+            ->where('SessionDate', '>=', $today)
+            ->where('Status', 'scheduled')
+            ->update([
+                'Status' => 'cancelled',
+                'Note' => DB::raw("CONCAT(COALESCE(Note,''), ' {$noteTag}')"),
+                'updated_at' => now(),
+            ]);
     }
 }
