@@ -1013,18 +1013,22 @@ class StudentClassController extends Controller
             }
         }
 
-        // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次
+        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
+
+        // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次。
+        // 如果堂數未變但只是調整固定時段，先讓後面的 schedule sync 處理，避免互相覆蓋。
         if (array_key_exists('SessionCount', $mapped)
             && (string) ($studentClass->ScheduleMode ?? 'count') === 'count'
         ) {
             $newCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             if ($newCount > 0) {
-                $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
-                $this->extendSessionsIfNeeded($studentClass, $newCount);
+                $sessionCountChanged = $newCount !== $oldSessionCountSnapshot;
+                if ($sessionCountChanged || !$scheduleFieldsPresent) {
+                    $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
+                    $this->extendSessionsIfNeeded($studentClass, $newCount);
+                }
             }
         }
-
-        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
 
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
@@ -3002,6 +3006,8 @@ class StudentClassController extends Controller
             ->get();
         $existingQuotaKeys = [];
         $occupiedKeys = [];
+        $currentCount = 0;
+        $hasScheduledOutsideContract = false;
         foreach ($existingSessions as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
             $start = substr((string) ($session->StartTime ?? ''), 0, 5);
@@ -3015,7 +3021,19 @@ class StudentClassController extends Controller
             }
             if (!in_array($status, $nonQuotaStatuses, true)) {
                 $existingQuotaKeys[$key] = true;
+                $currentCount++;
             }
+            if ($status === 'scheduled'
+                && !isset($expectedKeys[$key])
+                && !$this->isLockedContractException($session)
+            ) {
+                $hasScheduledOutsideContract = true;
+            }
+        }
+
+        if ($currentCount >= $newCount && !$hasScheduledOutsideContract) {
+            SessionDeductionService::syncCounters($studentClass);
+            return;
         }
 
         $newSessions = [];
@@ -3032,9 +3050,6 @@ class StudentClassController extends Controller
             $newSessions[] = $session;
         }
 
-        $currentCount = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', $nonQuotaStatuses)
-            ->count();
         if ($currentCount < $newCount && empty($newSessions)) {
             // No contract gap was found; append after the last row as the legacy extension path.
             $lastSession = ClassSession::where('StudentClassID', $classId)
