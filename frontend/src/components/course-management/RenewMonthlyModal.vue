@@ -20,10 +20,11 @@
           <span class="info-value">{{ form.monthly_sessions ?? '未設定' }} 堂</span>
         </div>
         <div class="info-row">
-          <span class="info-label">目前到期日</span>
+          <span class="info-label">舊期到期日</span>
           <span class="info-value">{{ form.current_end_date || '無到期日' }}</span>
         </div>
       </div>
+      <p class="period-hint">確認後會建立「新一期課程」，舊課程會結算成歷史，帳單不會再混在同一筆課程。</p>
 
       <hr class="divider" />
 
@@ -38,7 +39,7 @@
       <div v-if="mode === 'months'" class="form-group">
         <label>延長月數</label>
         <input v-model.number="form.months" type="number" min="1" max="24" step="1" placeholder="1" />
-        <span class="hint">新到期日：{{ computedEndDate }}</span>
+        <span class="hint">新一期到期日：{{ computedEndDate }}</span>
       </div>
 
       <div v-if="mode === 'date'" class="form-group">
@@ -49,7 +50,7 @@
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
         <button class="primary" :disabled="submitting" @click="$emit('submit', finalEndDate)">
-          {{ submitting ? '續約中…' : '確認續約' }}
+          {{ submitting ? '建立中…' : '建立新一期' }}
         </button>
       </div>
     </div>
@@ -137,4 +138,13 @@ const finalEndDate = computed(() => {
 .mode-btn { flex: 1; padding: 6px 12px; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg-card, #fff); cursor: pointer; font-size: 13px; color: var(--text-light); transition: all .15s; }
 .mode-btn.active { border-color: var(--primary, #1976d2); background: var(--primary, #1976d2); color: #fff; font-weight: 600; }
 .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--text-light); }
+.period-hint {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.5;
+}
 </style>
