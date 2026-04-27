@@ -4,8 +4,9 @@
     <div class="card course-header-card" data-guide="course-mgmt-header">
       <div class="header-actions">
         <div class="page-title-block">
+          <p class="command-kicker">AllTrue Operations Command</p>
           <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">管理所有學生的課程安排，快速新增課程</p>
+          <p class="ref-hint">即時掌握學生課程、續報風險、排課狀態與營運節奏</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
             <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
@@ -57,28 +58,27 @@
         </div>
       </div>
 
-      <!-- Compact stats strip -->
+      <!-- Performance cockpit stats -->
       <div class="stats-strip">
-        <span class="stats-strip-item stats-strip-total">
-          <span class="stats-strip-num">{{ courses.length }}</span> 筆課程
+        <span class="stats-orb stats-orb-total">
+          <span class="stats-orb-label">Course Matrix</span>
+          <span class="stats-orb-num">{{ courses.length }}</span>
+          <span class="stats-orb-caption">筆課程在線</span>
         </span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對一 <strong>{{ coursesByType.one_on_one }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對二 <strong>{{ coursesByType.one_on_two }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對三 <strong>{{ coursesByType.one_on_three }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">輔導 <strong>{{ coursesByType.tutoring }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">試聽 <strong>{{ coursesByType.trial }}</strong></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">Coach</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">Trial</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
         <template v-if="coursesBySubject.length">
-          <span class="stats-strip-sep stats-strip-pipe">|</span>
-          <span
-            v-for="s in coursesBySubject"
-            :key="s.subject"
-            class="stats-strip-subject"
-          >{{ s.label }} {{ s.count }}</span>
+          <span class="stats-subject-deck">
+            <span class="stats-subject-title">Subjects</span>
+            <span
+              v-for="s in coursesBySubject"
+              :key="s.subject"
+              class="stats-strip-subject"
+            >{{ s.label }} {{ s.count }}</span>
+          </span>
         </template>
       </div>
     </div>
@@ -94,7 +94,14 @@
 
     <!-- Course Table -->
     <div class="card table-card" data-guide="course-mgmt-table">
-      <div v-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
+      <div v-if="coursesLoading && !groupedCourses.length" class="course-list-skeleton" role="status" aria-label="課程資料載入中">
+        <div v-for="idx in 3" :key="idx" class="course-skeleton-group">
+          <div class="course-skeleton-header"></div>
+          <div class="course-skeleton-row"></div>
+          <div class="course-skeleton-row short"></div>
+        </div>
+      </div>
+      <div v-else-if="groupedCourses.length" class="grouped-course-list" :class="{ 'focus-fullscreen-mode': focusedStudentKey }">
         <div v-if="focusedStudentKey" class="focus-mode-banner">
           <span>專注模式：只顯示 {{ visibleGroups[0]?.student_name }}</span>
           <button @click="focusedStudentKey = null">✕ 回復全部顯示</button>
@@ -455,14 +462,16 @@
     <PurchaseSessionsModal
       :show="showPurchaseModal"
       :form="purchaseForm"
-      @close="showPurchaseModal = false"
+      :submitting="purchaseSubmitting"
+      @close="!purchaseSubmitting && (showPurchaseModal = false)"
       @submit="submitPurchaseSessions"
     />
 
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
-      @close="showRenewMonthlyModal = false"
+      :submitting="renewMonthlySubmitting"
+      @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
       @submit="submitRenewMonthly"
     />
 
@@ -660,7 +669,7 @@
       </div>
     </div>
 
-    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="pauseConfirmTarget = null">
+    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
       <div class="modal course-modal pause-confirm-modal">
         <div class="pause-confirm-header">
           <span class="pause-confirm-icon" :class="{ resume: pauseConfirmIsResume }">{{ pauseConfirmIsResume ? '▶' : '⏸' }}</span>
@@ -678,29 +687,37 @@
           </ul>
         </div>
         <div class="actions">
-          <button class="ghost" @click="pauseConfirmTarget = null">取消</button>
-          <button class="primary" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
-            {{ pauseConfirmIsResume ? '確認恢復' : '確認暫停' }}
+          <button class="ghost" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
+          <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+            {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '確認恢復' : '確認暫停') }}
           </button>
         </div>
       </div>
     </div>
 
     <!-- Delete Confirm Modal (FR-013) -->
-    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="confirmDeleteTarget = null">
-      <div class="modal" style="width: 420px;">
-        <h3 class="modal-title" style="color: #dc2626;">確認刪除課程</h3>
-        <div style="margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">
+    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="!deleteCourseSubmitting && (confirmDeleteTarget = null)">
+      <div class="modal premium-danger-modal">
+        <div class="premium-danger-header">
+          <span class="premium-danger-icon">!</span>
+          <div>
+            <p class="premium-danger-kicker">Irreversible Action</p>
+            <h3 class="modal-title">確認刪除課程</h3>
+          </div>
+        </div>
+        <div class="premium-danger-body">
           <p>確定要刪除以下課程？</p>
           <p style="margin: 8px 0;">
             <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
             <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
           </p>
-          <p style="color: #dc2626; font-size: 13px;">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除。</p>
         </div>
         <div class="actions">
-          <button class="ghost" @click="confirmDeleteTarget = null">取消</button>
-          <button class="danger" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">確認刪除</button>
+          <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
+          <button class="danger" :disabled="deleteCourseSubmitting" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">
+            {{ deleteCourseSubmitting ? '刪除中…' : '確認刪除' }}
+          </button>
         </div>
       </div>
     </div>
@@ -790,6 +807,7 @@ const props = defineProps({ branchId: [String, Number], initialTeacherId: [Strin
 const emit = defineEmits(['clear-initial-teacher', 'navigate']);
 
 const courses = ref([]);
+const coursesLoading = ref(false);
 const allStudents = ref([]);
 const teachers = ref([]);
 
@@ -1327,9 +1345,11 @@ const rooms = ref([]);
 const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const showPurchaseModal = ref(false);
 const purchaseCourse = ref(null);
+const purchaseSubmitting = ref(false);
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
+const renewMonthlySubmitting = ref(false);
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
@@ -1350,6 +1370,7 @@ const quickAddSessionForm = ref({
   subject: 'Math',
 });
 const pauseConfirmTarget = ref(null);
+const pauseConfirmSubmitting = ref(false);
 const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
 const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
   ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
@@ -1374,10 +1395,12 @@ function requestCoursePause(course) {
 }
 
 async function confirmCoursePause() {
+  if (pauseConfirmSubmitting.value) return;
   const course = pauseConfirmTarget.value;
   if (!course) return;
   const isPaused = course.status === 'inactive';
   const action = isPaused ? '恢復' : '暫停';
+  pauseConfirmSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1399,6 +1422,8 @@ async function confirmCoursePause() {
     await loadCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    pauseConfirmSubmitting.value = false;
   }
 }
 
@@ -1489,6 +1514,7 @@ function openPurchaseModal(course) {
 }
 
 async function submitPurchaseSessions() {
+  if (purchaseSubmitting.value) return;
   const course = purchaseCourse.value;
   if (!course?.id) return;
   if (!Number.isFinite(Number(purchaseForm.value.sessions)) || Number(purchaseForm.value.sessions) <= 0) {
@@ -1499,6 +1525,7 @@ async function submitPurchaseSessions() {
     alert('請選擇新批次開始日期');
     return;
   }
+  purchaseSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1523,7 +1550,10 @@ async function submitPurchaseSessions() {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      alert(details || json?.message || '加購失敗');
+      const duplicateHint = json?.duplicate_course?.id
+        ? `\n\n已存在相同批次：課程 #${json.duplicate_course.id}，請先查看是否已續報過。`
+        : '';
+      alert((details || json?.message || '加購失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -1545,16 +1575,20 @@ async function submitPurchaseSessions() {
     });
   } catch (e) {
     alert('加購失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    purchaseSubmitting.value = false;
   }
 }
 
 async function submitRenewMonthly(endDate) {
+  if (renewMonthlySubmitting.value) return;
   const course = renewMonthlyCourse.value;
   if (!course?.id) return;
   if (!endDate) {
     alert('請選擇新到期日或延長月數');
     return;
   }
+  renewMonthlySubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1580,6 +1614,8 @@ async function submitRenewMonthly(endDate) {
     await loadCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    renewMonthlySubmitting.value = false;
   }
 }
 
@@ -2194,6 +2230,7 @@ const invoiceStatusLabel = (status) => ({
 
 const loadCourses = async (page = 1) => {
   if (!props.branchId) {
+    coursesLoading.value = false;
     courses.value = [];
     pagination.value = { page: 1, lastPage: 1, total: 0, perPage: 50 };
     completedSessionDatesByCourse.value = {};
@@ -2202,6 +2239,7 @@ const loadCourses = async (page = 1) => {
     expandedStudentGroups.value = new Set();
     return;
   }
+  coursesLoading.value = true;
   completedSessionDatesByCourse.value = {};
   classSessionsByCourse.value = {};
   effectiveSessionDatesByCourse.value = {};
@@ -2246,6 +2284,7 @@ const loadCourses = async (page = 1) => {
         resetExpandedStudentGroups(groupCoursesByStudent(result));
         await loadClassSessionsForCourses(result, token);
         await loadEffectiveSessionDates(result, token);
+        coursesLoading.value = false;
         return;
       }
     }
@@ -2296,6 +2335,7 @@ const loadCourses = async (page = 1) => {
     classSessionsByCourse.value = {};
     effectiveSessionDatesByCourse.value = {};
   }
+  coursesLoading.value = false;
 };
 
 const {
@@ -2879,6 +2919,7 @@ const submitEdit = async () => {
 };
 
 const confirmDeleteTarget = ref(null);
+const deleteCourseSubmitting = ref(false);
 const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
 const invoiceModalOpen = ref(false);
@@ -2925,9 +2966,10 @@ const openInvoiceModal = async (course) => {
 };
 
 const executeDeleteCourse = async () => {
+  if (deleteCourseSubmitting.value) return;
   const c = confirmDeleteTarget.value;
   if (!c) return;
-  confirmDeleteTarget.value = null;
+  deleteCourseSubmitting.value = true;
   const fromLaravel = c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null;
   if (fromLaravel) {
     try {
@@ -2940,6 +2982,7 @@ const executeDeleteCourse = async () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
+          confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
           toastRef.value?.show?.({ title: '已刪除', description: `${c.subject_name || c.subject || ''} 課程已刪除`, variant: 'success', durationMs: 3000 });
           return;
@@ -2951,10 +2994,17 @@ const executeDeleteCourse = async () => {
     } catch (e) {
       toastRef.value?.show?.({ title: '刪除失敗', description: e?.message || '請稍後再試', variant: 'error', durationMs: 5000 });
       return;
+    } finally {
+      deleteCourseSubmitting.value = false;
     }
   }
-  await supabase.from('student-classes').delete().eq('id', c.id);
-  courses.value = courses.value.filter(x => x.id !== c.id);
+  try {
+    await supabase.from('student-classes').delete().eq('id', c.id);
+    confirmDeleteTarget.value = null;
+    courses.value = courses.value.filter(x => x.id !== c.id);
+  } finally {
+    deleteCourseSubmitting.value = false;
+  }
 };
 
 const submitBackfill = async () => {
@@ -3169,20 +3219,66 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 0 12px 24px;
   box-sizing: border-box;
+  position: relative;
+}
+.course-page::before {
+  content: '';
+  position: absolute;
+  inset: -18px -24px auto;
+  height: 360px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(148, 163, 184, 0.16), transparent 30%),
+    radial-gradient(circle at 88% 2%, rgba(245, 158, 11, 0.08), transparent 24%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.045), transparent 58%);
+  filter: blur(2px);
+  z-index: -1;
 }
 
 /* ----- Page header ----- */
 .course-header-card {
-  padding: 18px;
-  border-radius: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
   background:
-    radial-gradient(140% 120% at 0% 0%, rgba(99, 102, 241, 0.12) 0%, rgba(255, 255, 255, 0) 48%),
+    radial-gradient(circle at top right, rgba(15, 23, 42, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94)),
     var(--card-bg);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 24px 62px rgba(15, 23, 42, 0.11), inset 0 1px 0 rgba(255,255,255,0.9);
+  color: #0f172a;
+}
+.course-header-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(circle at 38% 20%, #000 0%, transparent 70%);
+  pointer-events: none;
+}
+.course-header-card::after {
+  content: '';
+  position: absolute;
+  top: -72px;
+  right: -72px;
+  width: 250px;
+  height: 250px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background:
+    radial-gradient(circle, rgba(15,23,42,0.06), transparent 58%),
+    conic-gradient(from 110deg, rgba(15,23,42,0), rgba(15,23,42,0.12), rgba(245,158,11,0.14), rgba(15,23,42,0));
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 .header-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3192,19 +3288,31 @@ onUnmounted(() => {
 .page-title-block {
   min-width: 0;
 }
+.command-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  text-shadow: none;
+}
 
 .page-title {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4px;
-  letter-spacing: 0.02em;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-weight: 950;
+  color: #0f172a;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+  text-shadow: none;
 }
 
 .ref-hint {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-top: 3px;
+  color: #475569;
+  font-size: 14px;
+  margin-top: 8px;
+  font-weight: 650;
 }
 
 .meta-pills {
@@ -3222,8 +3330,9 @@ onUnmounted(() => {
   font-size: 12px;
   font-weight: 700;
   color: #334155;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.84);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
 }
 
 .header-buttons {
@@ -3235,10 +3344,10 @@ onUnmounted(() => {
 }
 
 .btn-soft {
-  border: 1px solid rgba(100, 116, 139, 0.28);
-  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.84);
   color: #334155;
-  border-radius: 10px;
+  border-radius: 999px;
   padding: 9px 14px;
   font-size: 13px;
   font-weight: 700;
@@ -3247,31 +3356,32 @@ onUnmounted(() => {
 }
 
 .btn-soft:hover {
-  border-color: rgba(79, 70, 229, 0.35);
-  color: #3730a3;
+  border-color: rgba(15, 23, 42, 0.24);
+  color: #0f172a;
   transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
 }
 
 .btn-accent {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--primary));
+  background: linear-gradient(135deg, #0f172a, #334155);
   color: #fff;
   border: none;
   padding: 10px 18px;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 999px;
+  font-weight: 900;
   font-size: 14px;
   cursor: pointer;
   transition: var(--transition);
-  box-shadow: 0 2px 8px rgba(230, 81, 0, 0.25);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
 }
 
 .btn-accent:hover {
   opacity: 0.95;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(230, 81, 0, 0.35);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.24);
 }
 
 .btn-icon {
@@ -3283,8 +3393,11 @@ onUnmounted(() => {
   margin-top: 16px;
   padding: 14px;
   border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86);
+  position: relative;
+  z-index: 1;
 }
 
 .filter-bar.grid {
@@ -3295,7 +3408,7 @@ onUnmounted(() => {
 .filter-field label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-light);
+  color: #475569;
   margin-bottom: 6px;
 }
 
@@ -3304,8 +3417,10 @@ onUnmounted(() => {
   padding: 9px 12px;
   border-radius: 10px;
   font-size: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.30);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
 }
 
 /* ----- Compact stats strip ----- */
@@ -3342,65 +3457,119 @@ onUnmounted(() => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .stats-strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  font-size: 12.5px;
-  color: var(--text-light);
-}
-
-.stats-strip-item {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(160px, 1.35fr) repeat(5, minmax(96px, 1fr)) minmax(180px, 1.8fr);
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(248, 250, 252, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.86);
   color: #475569;
 }
 
-.stats-strip-item strong {
+.stats-orb {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 2px;
+  padding: 12px 13px;
+  min-height: 82px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(145deg, rgba(255,255,255,0.98), rgba(248,250,252,0.86));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+}
+.stats-orb::after {
+  content: '';
+  position: absolute;
+  inset: auto 10px 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0f172a, #f59e0b);
+  opacity: 0.58;
+}
+.stats-orb-total {
+  border-color: rgba(245, 158, 11, 0.36);
+  background:
+    radial-gradient(circle at 16% 16%, rgba(245,158,11,0.10), transparent 42%),
+    linear-gradient(145deg, rgba(255,255,255,0.98), rgba(248,250,252,0.86));
+}
+.stats-orb-label,
+.stats-subject-title {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.stats-orb-num {
+  font-size: 30px;
+  font-weight: 950;
+  line-height: 1;
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.stats-orb-caption {
+  font-size: 12px;
   font-weight: 700;
-  color: var(--text);
+  color: #64748b;
 }
 
-.stats-strip-total {
-  font-weight: 600;
-  color: var(--primary);
+.stats-subject-deck {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 7px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.78);
 }
-
-.stats-strip-total .stats-strip-num {
-  font-size: 14px;
+.stats-subject-title {
+  flex: 0 0 100%;
+}
+.stats-strip-subject {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(241, 245, 249, 0.92);
+  color: #334155;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-size: 11.5px;
   font-weight: 800;
 }
 
-.stats-strip-sep {
-  color: rgba(148, 163, 184, 0.6);
-  font-size: 11px;
-}
-
-.stats-strip-pipe {
-  margin: 0 2px;
-  color: rgba(148, 163, 184, 0.5);
-  font-size: 13px;
-}
-
-.stats-strip-subject {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--primary-bg);
-  color: var(--primary);
-  font-size: 11.5px;
-  font-weight: 600;
+@media (max-width: 980px) {
+  .course-header-card {
+    padding: 18px;
+  }
+  .header-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .stats-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stats-orb-total,
+  .stats-subject-deck {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ----- Table ----- */
 .table-card {
   padding: 0;
   overflow: visible;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+  margin-top: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92));
+  box-shadow: 0 20px 54px rgba(15, 23, 42, 0.1);
 }
 
 .table-wrap {
@@ -3412,7 +3581,54 @@ onUnmounted(() => {
 .grouped-course-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
+}
+.course-list-skeleton {
+  display: grid;
+  gap: 14px;
+}
+.course-skeleton-group {
+  position: relative;
+  overflow: hidden;
+  padding: 14px;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(15,23,42,0.05), transparent 38%),
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.9));
+  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.1);
+}
+.course-skeleton-group::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #0f172a, #38bdf8, #f59e0b);
+}
+.course-skeleton-header,
+.course-skeleton-row {
+  height: 16px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f8fafc 37%, #e5e7eb 63%);
+  background-size: 400% 100%;
+  animation: course-loading 1.4s ease infinite;
+}
+.course-skeleton-header {
+  width: 34%;
+  height: 18px;
+  margin-bottom: 14px;
+}
+.course-skeleton-row {
+  width: 86%;
+  margin-top: 10px;
+}
+.course-skeleton-row.short {
+  width: 58%;
+}
+@keyframes course-loading {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
 }
 .grouped-course-list.focus-fullscreen-mode {
   position: fixed;
@@ -3449,18 +3665,38 @@ onUnmounted(() => {
 .pagination-current { font-weight: 600; color: #334155; }
 
 .student-group-card {
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 14px;
+  position: relative;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 22px;
   overflow: visible;
-  background: var(--card-bg);
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  background:
+    linear-gradient(135deg, rgba(15,23,42,0.03), transparent 32%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 30%),
+    var(--card-bg);
+  box-shadow: 0 22px 56px rgba(15, 23, 42, 0.09);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.student-group-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  border-radius: 22px 22px 0 0;
+  background: linear-gradient(90deg, #0f172a, #38bdf8 42%, #f59e0b);
+  opacity: 0.86;
+}
+.student-group-card:hover {
+  border-color: rgba(14, 165, 233, 0.26);
+  box-shadow: 0 28px 68px rgba(15, 23, 42, 0.13);
+  transform: translateY(-1px);
 }
 
 .student-group-header {
   width: 100%;
   border: none;
-  background: linear-gradient(180deg, #eef2ff 0%, #fff 92%);
-  padding: 12px 16px;
+  background: linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 92%);
+  padding: 16px 18px 13px;
+  border-radius: 22px 22px 0 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3469,7 +3705,7 @@ onUnmounted(() => {
 }
 
 .student-group-header:hover {
-  background: var(--primary-bg);
+  background: linear-gradient(180deg, rgba(240,249,255,0.98) 0%, rgba(255,255,255,0.96) 92%);
 }
 
 .student-group-left {
@@ -3480,29 +3716,42 @@ onUnmounted(() => {
 }
 
 .expand-indicator {
-  color: var(--text-light);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: #0f172a;
+  background: linear-gradient(135deg, #e0f2fe, #f8fafc);
+  border: 1px solid rgba(14, 165, 233, 0.22);
   font-size: 12px;
-  width: 12px;
   text-align: center;
+  box-shadow: 0 10px 22px rgba(14,165,233,0.1);
 }
 
 .student-group-meta {
   font-size: 13px;
-  color: var(--text-light);
-  font-weight: 600;
+  color: #475569;
+  font-weight: 800;
   white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(248,250,252,0.8);
+  border: 1px solid rgba(148,163,184,0.2);
 }
 
 .focus-btn {
   margin-left: auto;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  background: #f8fafc;
+  background: rgba(255,255,255,0.82);
   color: #64748b;
   font-size: 13px;
   cursor: pointer;
   flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
 }
 .focus-btn:hover, .focus-btn.active {
   background: #dbeafe;
@@ -3554,8 +3803,8 @@ onUnmounted(() => {
   justify-content: flex-end;
   align-items: center;
   padding: 8px 12px 6px;
-  background: rgba(248, 250, 252, 0.9);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(90deg, rgba(248, 250, 252, 0.92), rgba(239, 246, 255, 0.66));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
 }
 
 .student-group-add-btn {
@@ -3571,8 +3820,10 @@ onUnmounted(() => {
 .course-table {
   width: 100%;
   min-width: 540px;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0 8px;
   font-size: 13.5px;
+  padding: 0 10px 10px;
 }
 
 .course-table thead {
@@ -3580,7 +3831,7 @@ onUnmounted(() => {
   top: 0;
   z-index: 2;
   background: #f8fafc;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.25);
+  border-bottom: none;
 }
 @media (min-width: 641px) {
   .course-table thead {
@@ -3590,7 +3841,7 @@ onUnmounted(() => {
 }
 
 .course-table th {
-  padding: 12px 10px;
+  padding: 12px 10px 6px;
   text-align: left;
   font-weight: 700;
   color: #334155;
@@ -3598,15 +3849,31 @@ onUnmounted(() => {
 }
 
 .course-table td {
-  padding: 9px 10px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+  padding: 12px 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+  background: rgba(255,255,255,0.9);
   vertical-align: middle;
   word-break: keep-all;
   line-height: 1.4;
 }
+.course-table .course-row td:first-child {
+  border-left: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 16px 0 0 16px;
+  box-shadow: inset 4px 0 0 rgba(14,165,233,0.52);
+}
+.course-table .course-row td:last-child {
+  border-right: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 0 16px 16px 0;
+}
 
 .course-row:hover {
-  background: #f8fafc;
+  background: transparent;
+}
+.course-row:hover td {
+  border-color: rgba(14, 165, 233, 0.28);
+  background: linear-gradient(90deg, rgba(240,249,255,0.98), rgba(255,255,255,0.96));
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
 }
 
 .course-row.course-paused:hover td {
@@ -3627,8 +3894,8 @@ onUnmounted(() => {
 .price-line {
   margin-top: 4px;
   font-size: 13px;
-  color: #475569;
-  font-weight: 600;
+  color: #334155;
+  font-weight: 800;
 }
 
 .memo-line {
@@ -3736,8 +4003,9 @@ onUnmounted(() => {
 
 .cell-student {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--text);
+  letter-spacing: 0.02em;
 }
 
 .subject-tag {
@@ -3745,9 +4013,11 @@ onUnmounted(() => {
   padding: 4px 10px;
   border-radius: 20px;
   font-size: 13px;
-  font-weight: 600;
-  background: var(--primary-bg);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--primary-bg), #eef2ff);
   color: var(--primary);
+  border: 1px solid rgba(79, 70, 229, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
 }
 
 .cell-fee {
@@ -3801,11 +4071,14 @@ onUnmounted(() => {
 }
 
 .cell-remaining {
-  font-weight: 700;
+  font-weight: 950;
+  font-size: 15px;
+  color: #0f172a;
 }
 
 .cell-remaining.low {
   color: var(--danger);
+  text-shadow: 0 0 18px rgba(220, 38, 38, 0.18);
 }
 
 .col-actions,
@@ -3829,14 +4102,16 @@ onUnmounted(() => {
 
 .action-menu-trigger {
   font-size: 13px !important;
-  font-weight: 700 !important;
+  font-weight: 900 !important;
   letter-spacing: 0;
   padding: 6px 12px !important;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.26) !important;
-  background: #fff;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: #e0f2fe !important;
   cursor: pointer;
   line-height: 1.2;
+  box-shadow: 0 10px 22px rgba(15,23,42,0.18);
 }
 
 .action-dropdown {
@@ -3845,10 +4120,10 @@ onUnmounted(() => {
   min-width: 170px;
   max-height: 260px;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.34);
   z-index: 1;
   padding: 4px 0;
   animation: dropdown-fade 0.12s ease;
@@ -3867,13 +4142,13 @@ onUnmounted(() => {
   background: none;
   text-align: left;
   font-size: 14px;
-  color: #334155;
+  color: #e2e8f0;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .action-dropdown-item:hover {
-  background: #f1f5f9;
+  background: rgba(56, 189, 248, 0.12);
 }
 
 .action-dropdown-resume {
@@ -3901,8 +4176,8 @@ onUnmounted(() => {
   margin: 0;
   padding: 6px 14px 4px;
   font-size: 0.7em;
-  font-weight: 600;
-  color: #94a3b8;
+  font-weight: 900;
+  color: #7dd3fc;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -3946,33 +4221,37 @@ button.danger:disabled {
 
 .btn-status {
   cursor: pointer;
+  border-radius: 999px !important;
+  font-weight: 900 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
 }
 
 .btn-toggle {
   white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: #fff;
-  color: #334155;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(135deg, #fff, #f8fafc);
+  color: #0f172a;
+  font-weight: 800;
 }
 
 .btn-add-session {
   white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-weight: 600;
+  border: 1px solid rgba(14, 165, 233, 0.36);
+  background: linear-gradient(135deg, #e0f2fe, #eef2ff);
+  color: #075985;
+  font-weight: 900;
   font-size: 13px;
   padding: 5px 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .btn-add-session:hover:not(:disabled) {
-  background: #dbeafe;
-  border-color: #60a5fa;
+  background: linear-gradient(135deg, #bae6fd, #dbeafe);
+  border-color: #38bdf8;
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.18);
 }
 .btn-add-session:disabled,
 .btn-add-session.disabled {
@@ -4008,24 +4287,56 @@ button.danger:disabled {
 
 /* ----- Empty state ----- */
 .empty-state {
-  padding: 48px 24px;
+  position: relative;
+  overflow: hidden;
+  padding: 64px 24px;
   text-align: center;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top, rgba(14,165,233,0.16), transparent 36%),
+    linear-gradient(135deg, rgba(15,23,42,0.05), transparent 38%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95));
+  box-shadow: 0 22px 58px rgba(15,23,42,0.08), inset 0 1px 0 rgba(255,255,255,0.82);
+}
+.empty-state::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(15,23,42,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15,23,42,0.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+  pointer-events: none;
+  mask-image: radial-gradient(circle at center, #000, transparent 72%);
 }
 
 .empty-icon {
-  font-size: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  position: relative;
+  border-radius: 26px;
+  font-size: 2.5rem;
   margin-bottom: 12px;
-  opacity: 0.6;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  box-shadow: 0 18px 42px rgba(15,23,42,0.22), 0 0 30px rgba(14,165,233,0.14);
+  color: #e0f2fe;
 }
 
 .empty-title {
-  font-size: 1.1rem;
-  font-weight: 700;
+  position: relative;
+  font-size: 1.2rem;
+  font-weight: 900;
   color: var(--text);
   margin-bottom: 8px;
 }
 
 .empty-desc {
+  position: relative;
   font-size: 14px;
   color: var(--text-light);
   max-width: 360px;
@@ -4117,6 +4428,74 @@ button.danger:disabled {
   line-height: 1.6;
 }
 
+.premium-danger-modal,
+.pause-confirm-modal {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  box-shadow: 0 30px 86px rgba(15, 23, 42, 0.34), inset 0 1px 0 rgba(255,255,255,0.12);
+  background:
+    radial-gradient(circle at top right, rgba(14,165,233,0.18), transparent 34%),
+    linear-gradient(135deg, rgba(15,23,42,0.96), rgba(30,41,59,0.94));
+  color: #e2e8f0;
+}
+.premium-danger-modal {
+  width: min(440px, calc(100vw - 32px));
+}
+.premium-danger-modal::before,
+.pause-confirm-modal::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
+}
+.premium-danger-modal::before {
+  background: linear-gradient(90deg, #fb7185, #ef4444, #f97316);
+}
+.premium-danger-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.premium-danger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  color: #fecaca;
+  background: linear-gradient(135deg, rgba(127,29,29,0.92), rgba(15,23,42,0.88));
+  border: 1px solid rgba(248,113,113,0.42);
+  box-shadow: 0 14px 34px rgba(220,38,38,0.24);
+  font-weight: 900;
+}
+.premium-danger-kicker {
+  margin: 0 0 2px;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.premium-danger-body {
+  margin: 12px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid rgba(248,113,113,0.28);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(127,29,29,0.2), rgba(15,23,42,0.44));
+  font-size: 14px;
+  line-height: 1.6;
+}
+.premium-danger-warning {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .form-section {
   margin-bottom: 20px;
 }
@@ -4160,11 +4539,15 @@ button.danger:disabled {
 }
 .small.danger:hover { background: #fee2e2; color: #991b1b; }
 
-.status-tag.one_on_one { background: #FFF3E0; color: #E65100; }
-.status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
-.status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
-.status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
-.status-tag.trial { background: #E8EAF6; color: #3949AB; }
+.status-tag {
+  border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+}
+.status-tag.one_on_one { background: linear-gradient(135deg, #FFF3E0, #FFEDD5); color: #C2410C; border-color: #FDBA74; }
+.status-tag.one_on_two { background: linear-gradient(135deg, #FFF8E1, #FEF3C7); color: #B45309; border-color: #FCD34D; }
+.status-tag.one_on_three { background: linear-gradient(135deg, #FBE9E7, #FFE4E6); color: #BE123C; border-color: #FDA4AF; }
+.status-tag.tutoring { background: linear-gradient(135deg, #E8F5E9, #DCFCE7); color: #15803D; border-color: #86EFAC; }
+.status-tag.trial { background: linear-gradient(135deg, #E8EAF6, #E0E7FF); color: #4338CA; border-color: #A5B4FC; }
 
 .legacy-box {
   background: #FFF8E1;
@@ -4332,9 +4715,14 @@ button.danger:disabled {
 }
 
 .detail-panel {
-  padding: 14px 16px;
-  background: #f8fbff;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 16px 18px;
+  background:
+    radial-gradient(circle at top right, rgba(14,165,233,0.12), transparent 36%),
+    linear-gradient(180deg, #f8fbff, #f1f5f9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  margin: 2px 10px 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
 }
 
 .detail-meta {
@@ -4352,18 +4740,25 @@ button.danger:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.76);
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .detail-label {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-light);
+  font-weight: 900;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .dates-row td { padding: 0; }
 .dates-panel {
-  background: #f8fbff;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(180deg, rgba(248,251,255,0.98), rgba(241,245,249,0.92));
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
   padding: 12px 16px 14px;
   display: flex;
   flex-direction: column;
@@ -4403,9 +4798,9 @@ button.danger:disabled {
   gap: 6px 8px;
 }
 .date-chip {
-  background: #fff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
+  background: linear-gradient(135deg, #fff, #f8fafc);
+  border: 1px solid rgba(147, 197, 253, 0.9);
+  border-radius: 999px;
   padding: 5px 10px;
   font-size: 12px;
   color: #1d4ed8;
@@ -4469,7 +4864,7 @@ button.danger:disabled {
 .notes-toggle-btn:hover { background: #e0e7ff; }
 .date-chip:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 22px rgba(14, 165, 233, 0.14);
 }
 /* Synthetic chips stay flat on hover — they are not interactive. */
 .date-chip.date-chip-synthetic:hover {
@@ -4587,30 +4982,31 @@ button.danger:disabled {
   width: 40px;
   height: 40px;
   border-radius: 14px;
-  background: #fffbeb;
-  color: #b45309;
-  border: 1px solid #fde68a;
+  background: linear-gradient(135deg, rgba(120,53,15,0.78), rgba(15,23,42,0.86));
+  color: #fef3c7;
+  border: 1px solid rgba(251,191,36,0.38);
   font-weight: 800;
   flex: 0 0 auto;
+  box-shadow: 0 10px 26px rgba(180,83,9,0.16);
 }
 
 .pause-confirm-icon.resume {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: linear-gradient(135deg, rgba(30,64,175,0.78), rgba(15,23,42,0.86));
+  color: #bfdbfe;
+  border-color: rgba(96,165,250,0.42);
 }
 
 .pause-impact-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.44);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
   padding: 12px 14px;
   margin: 12px 0 18px;
 }
 
 .pause-impact-title {
   margin: 0 0 8px;
-  color: #334155;
+  color: #e0f2fe;
   font-weight: 800;
   font-size: 13px;
 }
@@ -4618,7 +5014,7 @@ button.danger:disabled {
 .pause-impact-card ul {
   margin: 0;
   padding-left: 18px;
-  color: #475569;
+  color: #cbd5e1;
   line-height: 1.7;
   font-size: 13px;
 }
@@ -4645,16 +5041,23 @@ button.danger:disabled {
   padding: 28px 16px !important;
   text-align: center;
   border-bottom: none !important;
+  background: linear-gradient(180deg, rgba(248,250,252,0.82), rgba(255,255,255,0.96));
 }
 .empty-active-courses__inner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px dashed rgba(148, 163, 184, 0.36);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.74);
 }
 .empty-active-courses__icon {
   font-size: 32px;
-  color: #cbd5e1;
+  color: #94a3b8;
 }
 .empty-active-courses__text {
   font-size: 14px;
@@ -4680,8 +5083,10 @@ button.danger:disabled {
 
 /* ── History section ── */
 .history-section {
-  border-top: 1px dashed #e2e8f0;
-  background: #fafbfc;
+  border-top: 1px solid rgba(226, 232, 240, 0.75);
+  background:
+    radial-gradient(circle at top right, rgba(14,165,233,0.1), transparent 34%),
+    #fafbfc;
 }
 .history-section__toggle {
   display: flex;
@@ -4699,7 +5104,7 @@ button.danger:disabled {
   transition: background 0.15s;
 }
 .history-section__toggle:hover {
-  background: #f1f5f9;
+  background: rgba(241, 245, 249, 0.88);
 }
 .history-section__icon {
   font-size: 18px;
@@ -4724,16 +5129,20 @@ button.danger:disabled {
 
 /* ── History course card ── */
 .history-course-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(15,23,42,0.035), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.94));
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 16px;
   padding: 12px 14px;
-  transition: box-shadow 0.15s;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
   position: relative;
-  border-left: 3px solid #d1d5db;
+  border-left: 4px solid #64748b;
 }
 .history-course-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: rgba(148, 163, 184, 0.55);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
 }
 .history-course-card__header {
   display: flex;
@@ -4748,10 +5157,10 @@ button.danger:disabled {
   border: 1px solid #cbd5e1 !important;
 }
 .tag-history {
-  border-radius: 6px;
+  border-radius: 999px;
   font-size: 11px;
-  padding: 2px 8px;
-  font-weight: 700;
+  padding: 3px 9px;
+  font-weight: 900;
   letter-spacing: 0.02em;
 }
 .tag-history--settled {
@@ -5089,7 +5498,80 @@ button.danger:disabled {
 /* ── Dark mode: history section ── */
 [data-theme="dark"] .history-section {
   border-top-color: #334155;
-  background: #0f172a;
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,0.12), transparent 34%),
+    #0f172a;
+}
+[data-theme="dark"] .course-page::before {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(125, 211, 252, 0.16), transparent 28%),
+    radial-gradient(circle at 88% 2%, rgba(245, 158, 11, 0.12), transparent 24%);
+}
+[data-theme="dark"] .course-header-card {
+  border-color: rgba(125, 211, 252, 0.28);
+  background:
+    linear-gradient(120deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96) 50%, rgba(30, 64, 175, 0.72));
+}
+[data-theme="dark"] .table-card {
+  border-color: #334155;
+  background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
+}
+[data-theme="dark"] .student-group-card,
+[data-theme="dark"] .course-skeleton-group {
+  border-color: #334155;
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,0.13), transparent 30%),
+    #0f172a;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+[data-theme="dark"] .student-group-header {
+  background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.92));
+}
+[data-theme="dark"] .course-table td {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: #334155;
+}
+[data-theme="dark"] .course-row:hover td {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.92));
+  border-color: rgba(56, 189, 248, 0.24);
+}
+[data-theme="dark"] .student-group-meta,
+[data-theme="dark"] .detail-item {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: #334155;
+}
+[data-theme="dark"] .cell-remaining,
+[data-theme="dark"] .price-line {
+  color: #e2e8f0;
+}
+[data-theme="dark"] .detail-panel,
+[data-theme="dark"] .dates-panel {
+  background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
+  border-color: #334155;
+}
+[data-theme="dark"] .student-group-add-row,
+[data-theme="dark"] .empty-active-courses {
+  background: rgba(15, 23, 42, 0.88);
+}
+[data-theme="dark"] .empty-state,
+[data-theme="dark"] .empty-active-courses__inner {
+  border-color: #334155;
+  background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
+}
+[data-theme="dark"] .empty-icon {
+  background: linear-gradient(135deg, #020617, #0f172a);
+  border-color: rgba(125, 211, 252, 0.26);
+}
+[data-theme="dark"] .modal-title {
+  color: #f8fafc;
+}
+[data-theme="dark"] .modal-desc {
+  color: #cbd5e1;
+}
+[data-theme="dark"] .course-skeleton-header,
+[data-theme="dark"] .course-skeleton-row {
+  background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
+  background-size: 400% 100%;
 }
 [data-theme="dark"] .history-section__toggle {
   color: #94a3b8;

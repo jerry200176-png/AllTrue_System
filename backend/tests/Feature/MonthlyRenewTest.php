@@ -684,6 +684,48 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
+    public function test_purchase_batch_rejects_duplicate_active_session_batch(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-pb-duplicate@example.com');
+        $student = $this->createStudent();
+
+        $source = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 8,
+            'RemainingSessions' => 1,
+            'Paid'              => 1,
+            'Rate'              => 500,
+            'SessionDuration'   => 120,
+            'StartDate'         => '2026-03-01',
+            'week'              => 2,
+            'time'              => '20:00:00',
+        ]);
+        $duplicate = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 6,
+            'RemainingSessions' => 6,
+            'Paid'              => 0,
+            'Rate'              => 500,
+            'SessionDuration'   => 120,
+            'StartDate'         => '2026-05-05',
+            'EndDate'           => '2026-06-09',
+            'week'              => 2,
+            'time'              => '20:00:00',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+            'sessions'   => 6,
+            'start_date' => '2026-05-05',
+            'mode'       => 'new_purchase',
+        ])->assertStatus(409)
+            ->assertJsonPath('duplicate_course.id', (int) $duplicate->ID);
+
+        $this->assertSame(2, StudentClass::where('StudentID', $student->id)->count());
+    }
+
     public function test_renewal_preview_for_monthly_course_is_read_only_and_shows_invoice_impact(): void
     {
         $token = $this->createDirectorToken([1], 'director-preview-monthly@example.com');
@@ -822,6 +864,61 @@ class MonthlyRenewTest extends TestCase
 
         $this->assertSame(2, StudentClass::where('StudentID', $student->id)->count());
         $this->assertSame(6, ClassSession::where('StudentClassID', $res->json('new_course.id'))->count());
+    }
+
+    public function test_renewal_confirm_rejects_reusing_same_purchase_batch_preview(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-confirm-duplicate@example.com');
+        $student = $this->createStudent();
+
+        $source = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions'      => 7,
+            'Paid'              => 1,
+            'Rate'              => 500,
+            'SessionDuration'   => 120,
+            'Charge'            => 4000,
+            'StartDate'         => '2026-03-01',
+            'week'              => 2,
+            'time'              => '20:00:00',
+        ]);
+
+        $preview = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+            'mode'       => 'purchase_batch',
+            'sessions'   => 6,
+            'start_date' => '2026-05-05',
+        ])->assertOk()
+            ->json();
+
+        $payload = [
+            'preview_id' => $preview['preview_id'],
+            'state_hash' => $preview['state_hash'],
+            'mode'       => 'purchase_batch',
+            'payload'    => [
+                'sessions'   => 6,
+                'start_date' => '2026-05-05',
+            ],
+        ];
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-confirm", $payload)
+            ->assertCreated();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-confirm", $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('message', '課程狀態已變更，請重新預覽後再確認。');
+
+        $this->assertSame(2, StudentClass::where('StudentID', $student->id)->count());
     }
 
     private function createDirectorToken(array $campusIds, string $loginName): string
