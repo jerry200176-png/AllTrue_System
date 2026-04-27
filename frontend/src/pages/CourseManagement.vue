@@ -642,7 +642,8 @@
           <thead>
             <tr>
               <th>期別</th>
-              <th>繳費日</th>
+              <th>應繳日</th>
+              <th>付款日</th>
               <th class="invoice-amount-cell">金額</th>
               <th class="invoice-amount-cell">已繳</th>
               <th class="invoice-status-cell">狀態</th>
@@ -653,6 +654,7 @@
             <tr v-for="inv in invoiceModalList" :key="inv.id">
               <td>{{ formatBillingPeriod(inv.billing_period) }}</td>
               <td>{{ inv.due_date || '—' }}</td>
+              <td>{{ invoicePaidDateLabel(inv) }}</td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
               <td class="invoice-status-cell">
@@ -2243,6 +2245,10 @@ const invoiceStatusLabel = (status) => ({
   unpaid: '未繳',
   partial: '部分繳',
 }[status] || status || '未知');
+const invoicePaidDateLabel = (invoice) => {
+  if (invoice?.paid_at) return invoice.paid_at;
+  return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
+};
 
 const loadCourses = async (page = 1) => {
   if (!props.branchId) {
@@ -2786,6 +2792,7 @@ const editCourse = (c) => {
     remaining_sessions: c.remaining_sessions ?? 0,
     days_of_week: existingDays,
     day_time_slots: existingSlots,
+    original_teacher_id: c.teacher_id || '',
     start_time: normalizeTo30Min(c.start_time || '16:00'),
     end_time: c.end_time || '',
     payment_type: c.payment_type || 'session',
