@@ -575,13 +575,17 @@ gh pr create --fill
 | 禁止事項 | 原因 |
 |---|---|
 | `git push --force origin main` | 會觸發 CI deploy，覆蓋生產 `.env` / routes |
+| 直接 push `main` 或繞過 PR | 會跳過 branch protection / review / CI gate，可能直接觸發 deploy |
 | 在 `/home/admin/backend/` 執行 `php artisan test` | `RefreshDatabase` 會清空生產資料庫 |
 | 在生產後端執行 `config:clear` / `route:clear` 用於 debug | 造成 session / auth 配置錯亂 |
 | 直接修改 `backend/.env` | 影響生產認證與資料庫連線 |
+| 把 Pi local backup branch 當 code 備份來源 | code 備份以 GitHub protected `main` + PR history 為準，Pi working tree 只視為 deploy target |
+| 有備份但沒驗證 restore | 備份不可只看檔案存在；需有 Google Drive offsite、sha256 manifest、monthly restore drill |
 
 > **要跑測試**：`cp -r /home/admin/backend /tmp/backend-test` → 改 `.env` → 在 `/tmp` 跑  
 > **CI 問題**：改 `.github/workflows/ci.yml` 後 push，看 GitHub Actions log
+> **資料備份**：正式 DB 寫入前先備份；例行備份需能從 Drive 還原到 drill DB，不能直接測 production `AllTrue`
 
 ---
 
-*最後更新：2026-04-23*
+*最後更新：2026-04-27*

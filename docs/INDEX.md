@@ -27,7 +27,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`。
 3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
-5. `.cursor/plans/**` 與 `CHANGELOG_ARCHIVE_*` 是歷史紀錄；若與本 INDEX、`.cursorrules`、`OPERATIONS_RUNBOOK.md` 衝突，以現行入口與 runbook 為準。
+5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；若與本 INDEX、`.cursorrules`、`OPERATIONS_RUNBOOK.md` 衝突，以現行入口與 runbook 為準。
 
 ---
 
@@ -71,6 +71,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Dependabot merge SOP | `docs/OPERATIONS_RUNBOOK.md §B0` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
+| AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |
 
 ### 資安審查
 | 需要什麼 | 去哪裡找 |
@@ -104,7 +105,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
-| `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（按需查）|
+| `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
 
 ### 業務規則
 | 檔案 | 一行說明 |
@@ -120,7 +121,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
-| `docs/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG |
+| `docs/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |

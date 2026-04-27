@@ -12,6 +12,8 @@
 | 2026-04-21 | P0 | `git push --force origin main` | 觸發 deploy.yml，生產 `.env`/routes 被覆蓋，全站停機 15 分鐘 |
 | 2026-04-22 | P0 | `php artisan config:clear`（在 Pi 上） | session/auth 配置錯亂，全站 401 錯誤 5 分鐘 |
 | 2026-04-22 | P0 | `php artisan test`（在 Pi 上） | `RefreshDatabase` 清空 production DB：Student 395→1，ClassSession 5446→0 |
+| 2026-04-23 | P0 | 未經 CI 直接改 `.htaccess` 並部分還原 | 前端全站語系/靜態資源錯亂，部分還原造成第二次破壞 |
+| 2026-04-23 | P0 | 在 production 跑 `vendor/bin/phpunit` | 污染 cache owner，所有使用 cache 的 API 500 |
 
 ---
 
@@ -25,6 +27,7 @@
 | `vendor/bin/phpunit` | ⛔ 清空 DB | 同上 |
 | `git push --force` | ⛔ 觸發部署 | 覆蓋歷史 + 可能觸發 deploy.yml 自動部署 |
 | `git push -f` | ⛔ 觸發部署 | 同上 |
+| `git push origin main` | ⛔ 繞過 PR | 直接觸發 main CI/deploy，跳過 branch protection 與 review 流程 |
 | `git reset --hard <任何>` | ⛔ 不可逆 | 覆蓋工作區，無法復原 |
 | `git checkout <branch> -- backend/` | ⛔ 覆蓋檔案 | 大目錄 checkout 會覆蓋生產最新版本 |
 
@@ -48,6 +51,15 @@
 | `php artisan migrate:fresh` | 整個 DB 重建 | 等同清空所有資料 |
 | `php artisan db:wipe` | 整個 DB 清空 | 同上 |
 | `mysqldump ... > /dev/null`（寫錯目標） | 備份消失 | 備份本身可能被覆蓋 |
+| 在 production `AllTrue` 上做 restore drill | 二次資料破壞 | 還原演練只能進 drill/test DB，不能碰正式 DB |
+
+### 🔴 等級 D：備份 / code backup 破壞
+
+| 危險做法 | 風險 | 說明 |
+|----------|------|------|
+| 把 Pi working tree / local backup branch 當 code 備份來源 | 可能把舊版覆蓋成真相 | code source of truth 是 GitHub protected `main` + PR history |
+| 沒確認 Google Drive offsite / manifest 就回報備份正常 | 假安全感 | 備份需有本地 dump、Drive 異地、sha256 manifest、restore drill |
+| 事故恢復時部分還原檔案 | 二次事故 | 還原必須完整還原指定檔案或走 PR revert，不做手工局部拼接 |
 
 ---
 
@@ -60,7 +72,7 @@
 cp -r /home/admin/backend /tmp/backend-test-$$
 
 # 2. 改 .env 到測試 DB
-sed -i 's/^DB_DATABASE=.*/DB_DATABASE=AllTrue_test/' /tmp/backend-test-$$/. env
+sed -i 's/^DB_DATABASE=.*/DB_DATABASE=AllTrue_test/' /tmp/backend-test-$$/.env
 sed -i 's/^APP_ENV=.*/APP_ENV=testing/' /tmp/backend-test-$$/.env
 
 # 3. 確認（必看！）
@@ -97,15 +109,20 @@ cp 某個檔案 /home/admin/backend/.env             # 覆蓋！
 ### Push 到 GitHub（推之前必檢查）
 
 ```bash
-# 1. 確認 deploy workflow 狀態
-ls /home/admin/.github/workflows/
+# 1. 確認在 WSL2 本地 repo，不在 Pi production 直接改檔
+pwd
+git remote -v
 
 # 2. 確認當前 branch
 git branch --show-current
 
-# 3. 確認沒有 force flag
+# 3. 必須是 feature/fix/chore branch，不可為 main
+test "$(git branch --show-current)" != "main"
+
+# 4. 確認沒有 force flag，且只推 feature branch
 git push origin HEAD   # ✅ 正確
 git push --force       # ❌ 禁止
+git push origin main   # ❌ 禁止
 ```
 
 ---
@@ -134,6 +151,14 @@ mysqldump -h 127.0.0.1 -u admin -p'密碼' --single-transaction AllTrue \
 echo "備份完成：pre_op_${TS}.sql.gz"
 ```
 
+### 備份健康檢查（不可只看檔案存在）
+
+- 本地：nightly + sixhour dump 必須持續產生。
+- 異地：Google Drive `AllTrue-Backups` 必須有 `db/`、`sixhour/`、`monthly/`、`manifests/`。
+- 完整性：manifest 需包含檔名、大小、sha256。
+- 還原驗證：restore drill 只能還原到 drill/test DB；禁止在 production `AllTrue` 做演練。
+- code 備份：GitHub protected `main` + PR history 是唯一可信 code backup；Pi working tree 不是備份來源。
+
 ---
 
 ## 四、快速確認清單（任何高風險操作前）
@@ -145,6 +170,8 @@ echo "備份完成：pre_op_${TS}.sql.gz"
 - [ ] 我**不在** `/home/admin/backend/` 目錄下跑任何測試指令？
 - [ ] 我確認**沒有** `--force` / `-f` 旗標？
 - [ ] 修改 DB 前已執行 `mysqldump` 備份？
+- [ ] 若牽涉備份/還原，我確認目標不是 production `AllTrue`？
+- [ ] 若牽涉 code 回復，我確認 source of truth 是 GitHub protected `main`？
 
 如果有任何一個「否」，**先停下來**，確認清楚再繼續。
 
@@ -186,5 +213,5 @@ git reset --soft <hash>  # 軟還原（保留工作區變更）
 
 ---
 
-> 最後更新：2026-04-22
+> 最後更新：2026-04-27
 > 相關文件：`.cursor/rules/p0-never-force-push-and-deploy.mdc`、`docs/AI_REGRESSION_LESSONS.md`
