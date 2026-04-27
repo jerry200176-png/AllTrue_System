@@ -292,6 +292,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R24. 多科固定時段優先走一般課程
+
+- 一般課程建立已支援每個固定時段覆寫科目與老師；若再把「多科共用方案」放在日常新建入口，主任容易誤以為多科排課必須建立共享付款池。
+- **強制規則**：多科共用方案只作為 legacy / 歷史維護能力保留；新建課程 UI 應優先導向一般課程，不可與一般課程並列推薦。
+- **變更限制**：不可刪除既有 `CoursePackage` API、ledger 或財務歷史；若要資料轉換，需另開 PRD 與 migration plan。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -304,7 +312,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|
-| 月結制 / 加購 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip） |
+| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |
