@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — fix(courses): 課程管理補課與暫停 UI SaaS 化
+
+- Changed 課程管理將「新增堂次」統一改為「補課／補登」，重做暫停課程確認 modal 與狀態列，並修正單堂備註／時段的費用預覽語意
+
 ## 2026-04-27 — docs(ops): 補 token 與 Actions 節流 SOP
 
 - Changed Runbook 補低風險 docs 小修先累積、同類 docs 批次送出、避免混合 deployable diff 與 token conservation 規則
