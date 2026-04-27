@@ -10,6 +10,50 @@
 
 - Fixed 智慧行事曆同課程同日同時存在請假與 scheduled 例外時保留請假卡，避免張正樂 4/29 請假在課表消失
 
+## 2026-04-27 — feat(ui): Porsche 視覺系統規格
+
+- Added AllTrue Porsche-inspired light-first 視覺系統規格與共用前端 token/class，作為後續頁面升級的單一設計依據
+
+## 2026-04-27 — feat(dashboard): Porsche-style 工作面板
+
+- Changed 主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche-style 霧面工作卡
+
+## 2026-04-27 — feat(ui): Porsche-inspired 視覺校準
+
+- Changed 課程管理與主任儀表板首屏為 light-first 高級霧面視覺，收斂過重 HUD/雷達感並統一 Porsche-inspired 設計語言
+
+## 2026-04-27 — feat(dashboard): 主任指揮艙首屏
+
+- Added 主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計
+
+## 2026-04-27 — feat(courses): AAA 狀態與 Modal 補強
+
+- Added 課程管理空狀態、loading skeleton、歷史課程卡與高風險 modal 的 AAA 視覺一致性補強
+
+## 2026-04-27 — feat(courses): 戰術課程列表視覺
+
+- Added 課程管理學生群組、課程 row、操作按鈕與詳情面板的戰術資訊列視覺，提升掃描速度與高風險狀態辨識度
+
+## 2026-04-27 — feat(courses): Porsche-inspired command center 首屏
+
+- Added 課程管理首屏的高級性能指揮艙視覺：深色霧面 hero、精準控制列、性能儀表統計與玻璃質感背景
+
+## 2026-04-27 — feat(courses): 高質感課程列表
+
+- Added 課程管理主列表、學生群組卡、課程狀態標籤、歷史課程卡與空狀態的 premium 視覺層級，並補上初次載入 skeleton
+
+## 2026-04-27 — feat(courses): 高質感課程操作 Modal
+
+- Added 課程管理加購、月結續約、暫停/恢復、刪除確認 modal 的 premium command-card 視覺層級，提升高風險操作的可讀性與辨識度
+
+## 2026-04-27 — fix(courses): 複雜流程送出中防呆
+
+- Fixed 課程管理加購、月結續約、暫停/恢復、刪除在送出中會鎖定按鈕與 modal，降低雙擊或重送造成重複操作的風險
+
+## 2026-04-27 — fix(billing): 續報重複送出防護
+
+- Fixed 續報確認與舊加購入口會鎖定來源課程並拒絕相同學生、科目、開課日與堂數的重複批次，避免雙擊或重送產生重複課程
+
 ## 2026-04-27 — fix(courses): 課程管理顯示月結逐期帳單
 
 - Added 課程管理月結課程「帳單」入口，主任可查看各期 billing period 的已繳、未繳、部分繳狀態

@@ -1501,71 +1501,77 @@ class StudentClassController extends Controller
             'payload'    => 'required|array',
         ]);
 
-        $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
-        $preview = $this->buildRenewalPreview($studentClass, $payload);
+        return DB::transaction(function () use ($request, $studentClass, $data) {
+            $lockedStudentClass = StudentClass::where('ID', $studentClass->ID)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
-            return response()->json([
-                'message' => '課程狀態已變更，請重新預覽後再確認。',
-                'preview' => $preview,
-            ], 409);
-        }
+            $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
+            $preview = $this->buildRenewalPreview($lockedStudentClass, $payload);
 
-        if ($preview['severity'] === 'blocked') {
-            return response()->json([
-                'message' => '此續報目前不可執行。',
-                'preview' => $preview,
-            ], 422);
-        }
-
-        if ($data['mode'] === 'purchase_batch') {
-            $originalInput = $request->all();
-            $request->replace([
-                'sessions'   => $payload['sessions'] ?? null,
-                'start_date' => $payload['start_date'] ?? null,
-                'mode'       => 'new_purchase',
-            ]);
-            try {
-                $response = $this->purchaseBatch($request, $studentClass);
-            } finally {
-                $request->replace($originalInput);
+            if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
+                return response()->json([
+                    'message' => '課程狀態已變更，請重新預覽後再確認。',
+                    'preview' => $preview,
+                ], 409);
             }
-        } else {
-            $originalInput = $request->all();
-            $request->replace([
-                'end_date' => $preview['proposed_course']['end_date'] ?? ($payload['end_date'] ?? null),
-                'months'   => $payload['months'] ?? null,
-            ]);
-            try {
-                $response = $this->renewMonthly($request, $studentClass);
-            } finally {
-                $request->replace($originalInput);
+
+            if ($preview['severity'] === 'blocked') {
+                return response()->json([
+                    'message' => '此續報目前不可執行。',
+                    'preview' => $preview,
+                ], 422);
             }
-        }
 
-        $status = $response->getStatusCode();
-        $result = method_exists($response, 'getData') ? $response->getData(true) : [];
-        if ($status >= 400) {
-            return $response;
-        }
+            if ($data['mode'] === 'purchase_batch') {
+                $originalInput = $request->all();
+                $request->replace([
+                    'sessions'   => $payload['sessions'] ?? null,
+                    'start_date' => $payload['start_date'] ?? null,
+                    'mode'       => 'new_purchase',
+                ]);
+                try {
+                    $response = $this->purchaseBatch($request, $lockedStudentClass);
+                } finally {
+                    $request->replace($originalInput);
+                }
+            } else {
+                $originalInput = $request->all();
+                $request->replace([
+                    'end_date' => $preview['proposed_course']['end_date'] ?? ($payload['end_date'] ?? null),
+                    'months'   => $payload['months'] ?? null,
+                ]);
+                try {
+                    $response = $this->renewMonthly($request, $lockedStudentClass);
+                } finally {
+                    $request->replace($originalInput);
+                }
+            }
 
-        return response()->json([
-            'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
-            'message' => $result['message'] ?? '續報已完成',
-            'mode' => $data['mode'],
-            'preview_id' => $preview['preview_id'],
-            'source_course' => $result['source_course'] ?? $preview['source_course'],
-            'new_course' => $result['new_course'] ?? null,
-            'invoice' => $data['mode'] === 'renew_monthly' ? ($preview['billing']['invoice'] ?? null) : null,
-            'schedule' => [
-                'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
-                'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
-                'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
-            ],
-            'next_actions' => $data['mode'] === 'purchase_batch'
-                ? ['view_new_course', 'record_payment']
-                : ['view_invoices', 'record_payment'],
-        ], $status);
+            $status = $response->getStatusCode();
+            $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+            if ($status >= 400) {
+                return $response;
+            }
+
+            return response()->json([
+                'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
+                'message' => $result['message'] ?? '續報已完成',
+                'mode' => $data['mode'],
+                'preview_id' => $preview['preview_id'],
+                'source_course' => $result['source_course'] ?? $preview['source_course'],
+                'new_course' => $result['new_course'] ?? null,
+                'invoice' => $data['mode'] === 'renew_monthly' ? ($preview['billing']['invoice'] ?? null) : null,
+                'schedule' => [
+                    'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
+                    'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
+                    'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
+                ],
+                'next_actions' => $data['mode'] === 'purchase_batch'
+                    ? ['view_new_course', 'record_payment']
+                    : ['view_invoices', 'record_payment'],
+            ], $status);
+        });
     }
 
     /**
@@ -1720,6 +1726,28 @@ class StudentClassController extends Controller
         $startDate = Carbon::parse($data['start_date'])->toDateString();
 
         return DB::transaction(function () use ($studentClass, $sessions, $startDate, $mode) {
+            $studentClass = StudentClass::where('ID', $studentClass->ID)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $duplicate = $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions);
+            if ($duplicate !== null) {
+                return response()->json([
+                    'message' => '偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
+                    'errors' => [
+                        'duplicate' => ['已存在相同條件的續報批次。'],
+                    ],
+                    'duplicate_course' => [
+                        'id' => (int) $duplicate->ID,
+                        'start_date' => $this->normalizeDateString($duplicate->StartDate),
+                        'end_date' => $this->normalizeDateString($duplicate->EndDate),
+                        'session_count' => (int) ($duplicate->SessionCount ?? 0),
+                        'remaining_sessions' => (int) ($duplicate->RemainingSessions ?? 0),
+                        'paid' => (int) ($duplicate->Paid ?? 0),
+                    ],
+                ], 409);
+            }
+
             $rate = (float) ($studentClass->Rate ?? 0);
             $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
             $globalDur = (int) ($studentClass->SessionDuration ?? 120);
@@ -2380,23 +2408,14 @@ class StudentClassController extends Controller
                     : null;
             }
 
-            $duplicateCount = 0;
-            if ($startDate && $sessions > 0) {
-                $duplicateCount = StudentClass::where('ID', '<>', $studentClass->ID)
-                    ->where('StudentID', $studentClass->StudentID)
-                    ->where('SubjectID', $studentClass->SubjectID)
-                    ->where('ScheduleMode', 'count')
-                    ->where('StartDate', $startDate)
-                    ->where('SessionCount', $sessions)
-                    ->where(function ($q) {
-                        $q->whereNull('Stop')->orWhere('Stop', 0);
-                    })
-                    ->count();
-            }
-            if ($duplicateCount > 0) {
+            $duplicate = ($startDate && $sessions > 0)
+                ? $this->findDuplicatePurchaseBatch($studentClass, $startDate, $sessions)
+                : null;
+            if ($duplicate !== null) {
                 $blockers[] = [
                     'code' => 'possible_duplicate_batch',
                     'message' => '系統偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
+                    'duplicate_course_id' => (int) $duplicate->ID,
                 ];
             }
 
@@ -2554,6 +2573,21 @@ class StudentClassController extends Controller
             'warnings' => $warnings,
             'blockers' => $blockers,
         ];
+    }
+
+    private function findDuplicatePurchaseBatch(StudentClass $studentClass, string $startDate, int $sessions): ?StudentClass
+    {
+        return StudentClass::where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('ScheduleMode', 'count')
+            ->where('StartDate', $startDate)
+            ->where('SessionCount', $sessions)
+            ->where(function ($q) {
+                $q->whereNull('Stop')->orWhere('Stop', 0);
+            })
+            ->orderBy('ID')
+            ->first();
     }
 
     /**
