@@ -219,6 +219,61 @@ class PaymentReportApiTest extends TestCase
         $this->assertEquals('pending', $res->json('data.0.status'));
     }
 
+    public function test_director_record_can_target_specific_invoice_period(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 8800,
+            'Paid' => 0,
+        ]);
+
+        $april = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-04',
+        ]);
+        $may = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-05-01',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'invoice_id' => $may->id,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 8800,
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('invoice_id', (int) $may->id);
+
+        $april->refresh();
+        $may->refresh();
+        $this->assertSame('unpaid', (string) $april->Status);
+        $this->assertSame(0, (int) $april->PaidAmount);
+        $this->assertSame('paid', (string) $may->Status);
+        $this->assertSame(8800, (int) $may->PaidAmount);
+    }
+
     // ── confirm ────────────────────────────────────────────────────
 
     public function test_director_can_confirm_report(): void
