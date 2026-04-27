@@ -1018,18 +1018,22 @@ class StudentClassController extends Controller
             }
         }
 
-        // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次
+        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
+
+        // 若 SessionCount 被縮減，取消超出新堂數的 scheduled 堂次；若增加，補建新堂次。
+        // 如果堂數未變但只是調整固定時段，先讓後面的 schedule sync 處理，避免互相覆蓋。
         if (array_key_exists('SessionCount', $mapped)
             && (string) ($studentClass->ScheduleMode ?? 'count') === 'count'
         ) {
             $newCount = max(0, (int) ($studentClass->SessionCount ?? 0));
             if ($newCount > 0) {
-                $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
-                $this->extendSessionsIfNeeded($studentClass, $newCount);
+                $sessionCountChanged = $newCount !== $oldSessionCountSnapshot;
+                if ($sessionCountChanged || !$scheduleFieldsPresent) {
+                    $this->cancelExcessScheduledSessions((int) $studentClass->ID, $newCount);
+                    $this->extendSessionsIfNeeded($studentClass, $newCount);
+                }
             }
         }
-
-        $scheduleFieldsPresent = $this->scheduleFieldsPresentInMapped($mapped);
 
         // 主任「強制重建未上堂次」：直接執行安全部分重建，不走完整重建流程
         if ($request->boolean('force_partial_rebuild', false)) {
@@ -1077,6 +1081,11 @@ class StudentClassController extends Controller
             $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
         } else {
             $this->reconcileWeekTimeFieldsFromSessions($studentClass);
+        }
+
+        $monthlySessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass, $scheduleSlotsForRebuild);
+        if (($monthlySessionSync['created_sessions'] ?? 0) > 0) {
+            $sessionSync['monthly_future_sessions_created'] = (int) $monthlySessionSync['created_sessions'];
         }
 
         $payload = $studentClass->toArray();
@@ -1366,10 +1375,13 @@ class StudentClassController extends Controller
 
         $studentClass->EndDate = $newEndDate;
         $studentClass->save();
+        $studentClass->refresh();
+        $sessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass);
 
         return response()->json([
             'message'  => '月結課程已續約，到期日更新為 ' . $newEndDate,
             'end_date' => $newEndDate,
+            'session_sync' => $sessionSync,
             'course'   => [
                 'id'                => (int) $studentClass->ID,
                 'end_date'          => $newEndDate,
@@ -2278,6 +2290,94 @@ class StudentClassController extends Controller
     }
 
     /**
+     * 月結課程以 EndDate + 固定星期/時段為契約；課程管理詳情則讀 ClassSession。
+     * 續約或編輯後補齊未來缺少的實體堂次，讓 UI 能立即顯示預排課程。
+     *
+     * @param  array<int, array<string, mixed>>  $providedSlots
+     * @return array<string, mixed>
+     */
+    private function ensureMonthlyFutureScheduledSessions(StudentClass $studentClass, array $providedSlots = []): array
+    {
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+            return ['created_sessions' => 0, 'reason' => 'not_monthly'];
+        }
+        if ((int) ($studentClass->Stop ?? 0) === 1) {
+            return ['created_sessions' => 0, 'reason' => 'inactive_course'];
+        }
+
+        $endDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+        if (!$endDate) {
+            return ['created_sessions' => 0, 'reason' => 'end_date_missing'];
+        }
+
+        $today = Carbon::today()->toDateString();
+        $startDate = $this->normalizeDateString($studentClass->StartDate ?? null) ?: $today;
+        if ($startDate < $today) {
+            $startDate = $today;
+        }
+        if ($endDate < $startDate) {
+            return ['created_sessions' => 0, 'reason' => 'date_range_elapsed'];
+        }
+
+        $slots = $this->resolveScheduleSlotsForRebuild($studentClass, $providedSlots);
+        if (empty($slots)) {
+            return ['created_sessions' => 0, 'reason' => 'schedule_slots_missing'];
+        }
+
+        $durationMinutes = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        $proposedSessions = $this->buildSessionsFromWeeklySchedule(
+            (int) $studentClass->ID,
+            $startDate,
+            $endDate,
+            $slots,
+            $durationMinutes
+        );
+        if (empty($proposedSessions)) {
+            return ['created_sessions' => 0, 'reason' => 'no_matching_dates'];
+        }
+
+        $existingKeys = [];
+        $existingRows = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+            ->whereDate('SessionDate', '>=', $startDate)
+            ->whereDate('SessionDate', '<=', $endDate)
+            ->get(['SessionDate', 'StartTime']);
+        foreach ($existingRows as $row) {
+            $date = $this->normalizeDateString($row->SessionDate ?? null);
+            $start = substr((string) ($row->StartTime ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $existingKeys[$date . '|' . $start] = true;
+            }
+        }
+
+        $created = 0;
+        $now = Carbon::now();
+        foreach ($proposedSessions as $session) {
+            $sessionDate = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+            $endTime = $this->normalizeSessionTime($session['EndTime'] ?? null, '18:00:00');
+            if (!$sessionDate || $start === '') {
+                continue;
+            }
+            if ($this->sessionEndedByEndTime($sessionDate, $endTime, $now)) {
+                continue;
+            }
+            $key = $sessionDate . '|' . $start;
+            if (isset($existingKeys[$key])) {
+                continue;
+            }
+
+            ClassSession::create($session);
+            $existingKeys[$key] = true;
+            $created++;
+        }
+
+        return [
+            'created_sessions' => $created,
+            'reason' => $created > 0 ? 'monthly_future_sessions_created' : 'already_complete',
+        ];
+    }
+
+    /**
      * After an update, optionally align week/time DB fields with **future**
      * scheduled ClassSession rows (same cadence as index drift detection).
      *
@@ -2849,7 +2949,7 @@ class StudentClassController extends Controller
     public function cancelExcessScheduledSessions(int $classId, int $newCount): void
     {
         $allActive = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
             ->orderBy('SessionDate')
             ->orderBy('StartTime')
             ->orderBy('id')
@@ -2869,49 +2969,121 @@ class StudentClassController extends Controller
     }
 
     /**
-     * 當 SessionCount 增加時，補建不足的 ClassSession 堂次。
-     * 從現有最後一堂的隔日開始，按固定星期往後排，直到補足差額。
+     * 對齊堂數制契約序列：優先補中間缺口，再取消多出的尾端 scheduled 堂次。
      *
      * NOTE: public for cross-controller invocation (see cancelExcessScheduledSessions).
-     * Must remain Append-Only：只補差額，絕不整刪重建（AI_REGRESSION_LESSONS §2026-04-12）。
+     * Must never delete/rebuild locked history; only create missing contract rows
+     * and cancel unlocked scheduled rows outside the first N contract slots.
      */
     public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
     {
         $classId = (int) $studentClass->ID;
+        $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
 
-        // 計算現有「實際堂次數」：排除 cancelled 與 leave（請假不佔用購買額度）
+        // 計算現有「實際堂次數」：排除 cancelled 與 leave/excused（請假不佔用購買額度）
         // 與 cancelExcessScheduledSessions 的計算口徑保持一致
-        $currentCount = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
-            ->count();
-
-        if ($currentCount >= $newCount) {
-            return;
-        }
-
-        $toCreate = $newCount - $currentCount;
-
         $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
         if (empty($slots)) {
             return;
         }
 
         $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
-
-        // 從最後一堂（含取消）的隔日開始，確保不重疊
-        $lastSession = ClassSession::where('StudentClassID', $classId)
-            ->orderByDesc('SessionDate')
-            ->orderByDesc('StartTime')
-            ->first();
-
-        if ($lastSession) {
-            $startFrom = Carbon::parse($lastSession->SessionDate)->addDay()->toDateString();
-        } else {
-            $startFrom = $this->normalizeDateString($studentClass->StartDate ?? null)
-                ?: Carbon::today()->toDateString();
+        $startFrom = $this->normalizeDateString($studentClass->StartDate ?? null)
+            ?: Carbon::today()->toDateString();
+        $expectedSessions = $this->buildSessionsForCount($classId, $startFrom, $newCount, $slots, $globalDur);
+        if (empty($expectedSessions)) {
+            return;
         }
 
-        $newSessions = $this->buildSessionsForCount($classId, $startFrom, $toCreate, $slots, $globalDur);
+        $expectedKeys = [];
+        foreach ($expectedSessions as $session) {
+            $date = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+            if ($date && $start !== '') {
+                $expectedKeys[$date . '|' . $start] = true;
+            }
+        }
+
+        $existingSessions = ClassSession::where('StudentClassID', $classId)
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->orderBy('id')
+            ->get();
+        $existingQuotaKeys = [];
+        $occupiedKeys = [];
+        $currentCount = 0;
+        $hasScheduledOutsideContract = false;
+        $hasLockedQuotaSession = false;
+        $hasLockedQuotaOutsideContract = false;
+        foreach ($existingSessions as $session) {
+            $date = $this->normalizeDateString($session->SessionDate ?? null);
+            $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+            if (!$date || $start === '') {
+                continue;
+            }
+            $key = $date . '|' . $start;
+            $status = strtolower((string) ($session->Status ?? ''));
+            if ($status !== 'cancelled') {
+                $occupiedKeys[$key] = true;
+            }
+            if (!in_array($status, $nonQuotaStatuses, true)) {
+                $existingQuotaKeys[$key] = true;
+                $currentCount++;
+                if ($status !== 'scheduled') {
+                    $hasLockedQuotaSession = true;
+                }
+            }
+            if ($status === 'scheduled'
+                && !isset($expectedKeys[$key])
+                && empty($session->IsContractException)
+            ) {
+                $hasScheduledOutsideContract = true;
+            } elseif (!in_array($status, $nonQuotaStatuses, true)
+                && !isset($expectedKeys[$key])
+            ) {
+                $hasLockedQuotaOutsideContract = true;
+            }
+        }
+
+        if ($currentCount >= $newCount && ($hasLockedQuotaSession || $hasLockedQuotaOutsideContract)) {
+            SessionDeductionService::syncCounters($studentClass);
+            return;
+        }
+
+        if ($currentCount >= $newCount && !$hasScheduledOutsideContract) {
+            SessionDeductionService::syncCounters($studentClass);
+            return;
+        }
+
+        $newSessions = [];
+        $quotaShortfall = max(0, $newCount - $currentCount);
+        foreach ($expectedSessions as $session) {
+            $date = $this->normalizeDateString($session['SessionDate'] ?? null);
+            $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+            if (!$date || $start === '') {
+                continue;
+            }
+            $key = $date . '|' . $start;
+            if (isset($existingQuotaKeys[$key]) || isset($occupiedKeys[$key])) {
+                continue;
+            }
+            $newSessions[] = $session;
+            if ($quotaShortfall > 0 && count($newSessions) >= $quotaShortfall) {
+                break;
+            }
+        }
+
+        if ($currentCount < $newCount && empty($newSessions)) {
+            // No contract gap was found; append after the last row as the legacy extension path.
+            $lastSession = ClassSession::where('StudentClassID', $classId)
+                ->orderByDesc('SessionDate')
+                ->orderByDesc('StartTime')
+                ->first();
+            $appendFrom = $lastSession
+                ? Carbon::parse($lastSession->SessionDate)->addDay()->toDateString()
+                : $startFrom;
+            $newSessions = $this->buildSessionsForCount($classId, $appendFrom, $newCount - $currentCount, $slots, $globalDur);
+        }
 
         $now = Carbon::now();
         $teacherId = (int) ($studentClass->TeacherID ?? 0);
@@ -2945,6 +3117,37 @@ class StudentClassController extends Controller
                     'EndTime' => $classSession->EndTime,
                     'Status' => 'pending',
                 ]);
+            }
+        }
+
+        $activeCount = ClassSession::where('StudentClassID', $classId)
+            ->whereNotIn('Status', $nonQuotaStatuses)
+            ->count();
+        if ($activeCount > $newCount) {
+            $excess = $activeCount - $newCount;
+            $extraScheduled = ClassSession::where('StudentClassID', $classId)
+                ->where('Status', 'scheduled')
+                ->orderBy('SessionDate')
+                ->orderBy('StartTime')
+                ->orderBy('id')
+                ->get()
+                ->filter(function ($session) use ($expectedKeys) {
+                    if (!empty($session->IsContractException)) {
+                        return false;
+                    }
+                    $date = $this->normalizeDateString($session->SessionDate ?? null);
+                    $start = substr((string) ($session->StartTime ?? ''), 0, 5);
+                    return $date && $start !== '' && !isset($expectedKeys[$date . '|' . $start]);
+                })
+                ->values();
+
+            foreach ($extraScheduled as $session) {
+                if ($excess <= 0) {
+                    break;
+                }
+                $session->Status = 'cancelled';
+                $session->save();
+                $excess--;
             }
         }
 
