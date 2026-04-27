@@ -1,22 +1,28 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
-    <div class="modal course-modal">
-      <h3 class="modal-title">月結續約</h3>
-      <p class="modal-desc">
-        {{ form.student_name }} — {{ subjectLabel }}
-      </p>
+    <div class="modal course-modal premium-renewal-modal">
+      <div class="premium-modal-header">
+        <span class="premium-modal-icon">↻</span>
+        <div>
+          <p class="premium-kicker">Monthly Renewal</p>
+          <h3 class="modal-title">月結續約</h3>
+          <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
+        </div>
+      </div>
 
-      <div class="info-row">
-        <span class="info-label">結算日</span>
-        <span class="info-value">{{ form.settlement_day ? '每月 ' + form.settlement_day + ' 日' : '未設定' }}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">每月堂數</span>
-        <span class="info-value">{{ form.monthly_sessions ?? '未設定' }} 堂</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">目前到期日</span>
-        <span class="info-value">{{ form.current_end_date || '無到期日' }}</span>
+      <div class="renewal-hud">
+        <div class="info-row">
+          <span class="info-label">結算日</span>
+          <span class="info-value">{{ form.settlement_day ? '每月 ' + form.settlement_day + ' 日' : '未設定' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">每月堂數</span>
+          <span class="info-value">{{ form.monthly_sessions ?? '未設定' }} 堂</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">目前到期日</span>
+          <span class="info-value">{{ form.current_end_date || '無到期日' }}</span>
+        </div>
       </div>
 
       <hr class="divider" />
@@ -89,11 +95,43 @@ const finalEndDate = computed(() => {
 
 <style scoped>
 .course-modal { width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; }
-.modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
-.modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 16px; }
-.info-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
+.premium-renewal-modal {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.7);
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,0.16), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
+}
+.premium-renewal-modal::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
+}
+.premium-modal-header { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
+.premium-modal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  color: #1d4ed8;
+  background: linear-gradient(135deg, #dbeafe, #eef2ff);
+  border: 1px solid #bfdbfe;
+  box-shadow: 0 10px 26px rgba(37,99,235,0.18);
+  font-weight: 900;
+}
+.premium-kicker { margin: 0 0 2px; color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
+.modal-desc { color: var(--text-light); font-size: 13px; margin: 0; }
+.renewal-hud { display: grid; gap: 8px; margin-bottom: 14px; }
+.info-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 11px; font-size: 13px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(255,255,255,0.68); }
 .info-label { color: var(--text-light); }
-.info-value { font-weight: 600; color: var(--text); }
+.info-value { font-weight: 800; color: var(--text); }
 .divider { border: none; border-top: 1px solid var(--border, #e0e0e0); margin: 14px 0; }
 .mode-toggle { display: flex; gap: 8px; margin-bottom: 4px; }
 .mode-btn { flex: 1; padding: 6px 12px; border: 1px solid var(--border, #ddd); border-radius: 6px; background: var(--bg-card, #fff); cursor: pointer; font-size: 13px; color: var(--text-light); transition: all .15s; }
