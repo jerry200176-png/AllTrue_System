@@ -13,6 +13,9 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 - [功能模組](#功能模組)
 - [角色與使用情境](#角色與使用情境)
 - [技術架構](#技術架構)
+- [Architecture Diagram](#architecture-diagram)
+- [ERD - Entity Relationship Diagram](#erd---entity-relationship-diagram)
+- [Engineering Maturity](#engineering-maturity)
 - [前端頁面清單](#前端頁面清單)
 - [目錄結構](#目錄結構)
 - [本地開發快速開始](#本地開發快速開始)
@@ -30,12 +33,13 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 |---|---|
 | **前端頁面** | 30 個 Vue 頁面（管理後台 + 家長入口） |
 | **API 端點** | 70+ RESTful routes（`/api/v1/*`） |
-| **資料庫** | MySQL，核心表 15+，含完整 FK 與索引 |
+| **資料庫** | MySQL，核心表 15+，含核心關聯欄位與效能索引 |
 | **部署平台** | Raspberry Pi 5，含自動備份 + Telegram 告警 |
 | **RFID 整合** | 刷卡自動點名，60s debounce 防重複，重複卡 422 保護 |
 | **LINE 整合** | 家長出缺勤通知、評量推播 |
 | **安全加固** | Route throttle、HTTP 安全標頭（HSTS/CSP/nosniff）、密碼最低 8 碼 |
-| **自動備份** | 每日 nightly + 每 6 小時快照 → Google Drive 異地同步 |
+| **自動備份** | 每日 nightly + 每 6 小時快照 → Google Drive 異地同步 + sha256 manifest |
+| **工程治理** | GitHub Pro Branch Protection、PR CI、CODEOWNERS、Sentry、UptimeRobot、DORA metrics |
 
 ---
 
@@ -102,8 +106,8 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
   ├── 核心表：Student, StudentClass, ClassSession, StudentSingIn
   ├── 財務表：Invoice, InvoiceItem, Payment
   ├── 評量表：LearningRecord
-  ├── 方案表：CoursePackage, CoursePackageMember
-  └── 其他：User, Campus, Teacher, Room, Schedule, Notification…
+  ├── 方案表：course_packages, package_session_ledger
+  └── 其他：User, UserCampus, Campus, Teacher, rooms, schedules, Notification…
 
 排程任務（Laravel Scheduler）
   ├── 每日 02:30 — CloseOrphanStudentSignIns（清孤兒出缺勤）
@@ -115,6 +119,265 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
   ├── 前端 build → backend/public（npm run deploy + OPcache 自動重置）
   └── CI：GitHub Actions（.github/workflows/）
 ```
+
+---
+
+## Architecture Diagram
+
+```mermaid
+flowchart LR
+    subgraph Users["使用者"]
+        Director["主任 / 行政"]
+        Teacher["老師"]
+        Parent["家長"]
+        RFID["RFID 讀卡機"]
+    end
+
+    subgraph Frontend["Vue 3 + Vite SPA"]
+        WebApp["管理後台 / 老師工作台"]
+        ParentPortal["家長入口"]
+        ApiClient["frontend/src/supabase.js<br/>自製 API client"]
+    end
+
+    subgraph Backend["Laravel 8 API (/api/v1)"]
+        Auth["Auth / Bearer token"]
+        Controllers["Controllers"]
+        Services["Services<br/>Attendance / Deduction / Sync"]
+        Scheduler["Laravel Scheduler"]
+    end
+
+    subgraph Data["Data Layer"]
+        MySQL[("MySQL AllTrue")]
+        Files["storage/app/public"]
+        Cache["Laravel cache / OPcache"]
+    end
+
+    subgraph Integrations["External Integrations"]
+        LINE["LINE Login / LIFF / Webhook"]
+        Sentry["Sentry error tracking"]
+        Telegram["Telegram ops alerts"]
+    end
+
+    subgraph Platform["Production / DevOps"]
+        Pi["Raspberry Pi 5<br/>Apache + PHP-FPM"]
+        GitHub["GitHub Pro<br/>Branch Protection + PR CI"]
+        Actions["GitHub Actions<br/>CI / Deploy / Health / DORA"]
+        Drive["Google Drive<br/>nightly + sixhour + manifest"]
+    end
+
+    Director --> WebApp
+    Teacher --> WebApp
+    Parent --> ParentPortal
+    RFID --> Controllers
+    WebApp --> ApiClient
+    ParentPortal --> ApiClient
+    ApiClient --> Auth
+    Auth --> Controllers
+    Controllers --> Services
+    Services --> MySQL
+    Controllers --> Files
+    Backend --> Cache
+    Scheduler --> MySQL
+    Controllers --> LINE
+    Backend --> Sentry
+    Scheduler --> Telegram
+    GitHub --> Actions
+    Actions --> Pi
+    Pi --> Backend
+    Pi --> Frontend
+    Pi --> MySQL
+    MySQL --> Drive
+```
+
+---
+
+## ERD - Entity Relationship Diagram
+
+> 精簡展示版，聚焦核心營運資料流。完整欄位以 `backend/database/migrations/` 為準；歷史表名 `StudentSingIn` 是 production schema 的實際拼字。
+
+```mermaid
+erDiagram
+    Campus ||--o{ Student : owns
+    Campus ||--o{ UserCampus : grants_access
+    Campus ||--o{ rooms : has
+    Campus ||--o{ course_packages : owns
+
+    User ||--o{ UserCampus : belongs_to
+    Student ||--o{ StudentClass : enrolls
+    Student ||--o{ schedules : has
+    Student ||--o{ Invoice : billed
+    Student ||--o{ course_packages : owns
+
+    User ||--o{ StudentClass : teaches
+    User ||--o{ StudentSingIn : records
+    User ||--o{ LearningRecord : writes
+    User ||--o{ schedules : teaches
+
+    StudentClass ||--o{ ClassSession : schedules
+    StudentClass ||--o{ StudentSingIn : attendance
+    StudentClass ||--o{ LearningRecord : evaluates
+    StudentClass ||--o{ Invoice : bills
+    StudentClass }o--o| course_packages : package_member
+
+    ClassSession ||--o| StudentSingIn : attendance_record
+    ClassSession ||--o| LearningRecord : evaluation_record
+    ClassSession ||--o{ package_session_ledger : package_deduction
+
+    Invoice ||--o{ Payment : paid_by
+    course_packages ||--o{ package_session_ledger : ledger
+    schedules ||--o| schedules : makeup_from
+
+    Campus {
+        int id PK
+        string name
+        string LIFFID
+        string LineNotifyID
+    }
+
+    User {
+        int id PK
+        string LoginName
+        string Name
+        string type
+        string status
+    }
+
+    UserCampus {
+        int CampusID FK
+        int UserID FK
+        int Admin
+        bool Approved
+        string RFID
+    }
+
+    Student {
+        int id PK
+        int CampusID FK
+        string name
+        string RFID
+        string LineID
+        int enable
+    }
+
+    StudentClass {
+        bigint ID PK
+        int StudentID FK
+        int TeacherID FK
+        bigint PackageID FK
+        string ScheduleMode
+        int SessionCount
+        int RemainingSessions
+        bool Stop
+    }
+
+    ClassSession {
+        bigint id PK
+        bigint StudentClassID FK
+        date SessionDate
+        time StartTime
+        time EndTime
+        string Status
+    }
+
+    StudentSingIn {
+        bigint id PK
+        int StudentID FK
+        bigint StudentClassID FK
+        bigint ClassSessionID FK
+        int TeacherID FK
+        datetime SignInDT
+        datetime SignOutDT
+        string Status
+        string Memo
+    }
+
+    LearningRecord {
+        bigint id PK
+        bigint StudentClassID FK
+        bigint ClassSessionID FK
+        int TeacherID FK
+        string Status
+        int ApprovedBy
+    }
+
+    Invoice {
+        bigint id PK
+        int StudentID FK
+        bigint StudentClassID FK
+        int TotalAmount
+        int PaidAmount
+        string Status
+    }
+
+    Payment {
+        bigint id PK
+        bigint InvoiceID FK
+        int Amount
+        datetime PaidAt
+        string Method
+    }
+
+    course_packages {
+        bigint id PK
+        bigint student_id FK
+        bigint campus_id FK
+        int total_sessions
+        int remaining_sessions
+        bool paid
+        bool stop
+    }
+
+    package_session_ledger {
+        bigint id PK
+        bigint package_id FK
+        bigint student_class_id FK
+        bigint class_session_id FK
+        int delta
+        string reason
+    }
+
+    schedules {
+        bigint id PK
+        int student_id FK
+        int teacher_id FK
+        int branch_id FK
+        int student_course_id FK
+        date schedule_date
+        string status
+        string type
+    }
+
+    rooms {
+        bigint id PK
+        int campus_id FK
+        string name
+        int capacity
+    }
+```
+
+---
+
+## Engineering Maturity
+
+| 面向 | 已完成能力 | 對標意義 |
+|---|---|---|
+| Code governance | GitHub Pro `main` Branch Protection、required checks、conversation resolution、禁止 force push/delete | 防止直接覆蓋 production 主線 |
+| Review ownership | PR template、CODEOWNERS、高風險模組審查規則 | 堂數、繳費、RFID、CI/CD 變更有明確 owner |
+| CI quality gate | PHPUnit、Vite build、PHPStan、migration dry-run、npm/composer audit、coverage gate | merge 前阻擋大多數 regression |
+| Deployment | `deploy.yml` 自動部署 Pi、health check、smoke test、rollback path、docs-only skip deploy | 上線流程可重複、可觀測、可回滾 |
+| Observability | Sentry、UptimeRobot、Pi health、slow query report、structured logging 預留 | 錯誤、可用性、效能有監控入口 |
+| Backup / DR | nightly + sixhour DB backup、Google Drive offsite、sha256 manifest、monthly restore drill | 備份不只存在，還能驗證可還原 |
+| Delivery metrics | DORA metrics、branch hygiene、Dependabot | 追蹤交付健康度與依賴風險 |
+| AI governance | `.cursorrules`、`AGENTS.md`、`AI_REGRESSION_LESSONS.md`、MemPalace | 將事故教訓轉成可執行規則，降低 AI 重犯 |
+
+### Known Gaps / Roadmap
+
+| 缺口 | 狀態 | 目前策略 |
+|---|---|---|
+| MySQL PITR / binlog | `TD-015` Open | 先保留 RPO <= 6 小時；另走 DBA/OPS 流程評估 binlog retention、磁碟壓力與 replay drill |
+| 第二 maintainer approval | Planned | 單人 repo 暫不強制 1 approval，避免 PR 審核死鎖；有第二位 maintainer 後啟用 |
+| Full server DR tabletop | Planned | 每半年演練「全新 Pi + GitHub + Drive + secrets」重建流程 |
+| Laravel major upgrade | `TD-014` Open | Laravel 8 安全修補需另開升級專案，不混入日常 bugfix |
 
 ---
 
