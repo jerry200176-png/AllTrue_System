@@ -690,15 +690,21 @@
 
     <!-- Delete Confirm Modal (FR-013) -->
     <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="!deleteCourseSubmitting && (confirmDeleteTarget = null)">
-      <div class="modal" style="width: 420px;">
-        <h3 class="modal-title" style="color: #dc2626;">確認刪除課程</h3>
-        <div style="margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">
+      <div class="modal premium-danger-modal">
+        <div class="premium-danger-header">
+          <span class="premium-danger-icon">!</span>
+          <div>
+            <p class="premium-danger-kicker">Irreversible Action</p>
+            <h3 class="modal-title">確認刪除課程</h3>
+          </div>
+        </div>
+        <div class="premium-danger-body">
           <p>確定要刪除以下課程？</p>
           <p style="margin: 8px 0;">
             <strong>{{ confirmDeleteTarget.subject_name || confirmDeleteTarget.subject }}</strong>
             <span v-if="confirmDeleteTarget.student_name"> — {{ confirmDeleteTarget.student_name }}</span>
           </p>
-          <p style="color: #dc2626; font-size: 13px;">刪除後無法復原，所有堂次紀錄將一併移除。</p>
+          <p class="premium-danger-warning">刪除後無法復原，所有堂次紀錄將一併移除。</p>
         </div>
         <div class="actions">
           <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
@@ -4149,6 +4155,73 @@ button.danger:disabled {
   line-height: 1.6;
 }
 
+.premium-danger-modal,
+.pause-confirm-modal {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.7);
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
+}
+.premium-danger-modal {
+  width: min(440px, calc(100vw - 32px));
+}
+.premium-danger-modal::before,
+.pause-confirm-modal::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
+}
+.premium-danger-modal::before {
+  background: linear-gradient(90deg, #fb7185, #ef4444, #f97316);
+}
+.premium-danger-header {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+.premium-danger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  color: #991b1b;
+  background: linear-gradient(135deg, #fee2e2, #fff7ed);
+  border: 1px solid #fecaca;
+  box-shadow: 0 10px 26px rgba(220,38,38,0.18);
+  font-weight: 900;
+}
+.premium-danger-kicker {
+  margin: 0 0 2px;
+  color: #dc2626;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.premium-danger-body {
+  margin: 12px 0 20px;
+  padding: 12px 14px;
+  border: 1px solid #fee2e2;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff7ed, #fef2f2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.premium-danger-warning {
+  margin: 0;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .form-section {
   margin-bottom: 20px;
 }
@@ -4624,6 +4697,7 @@ button.danger:disabled {
   border: 1px solid #fde68a;
   font-weight: 800;
   flex: 0 0 auto;
+  box-shadow: 0 10px 26px rgba(180,83,9,0.16);
 }
 
 .pause-confirm-icon.resume {
@@ -4633,9 +4707,9 @@ button.danger:disabled {
 }
 
 .pause-impact-card {
-  background: #f8fafc;
+  background: rgba(248, 250, 252, 0.82);
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 12px 14px;
   margin: 12px 0 18px;
 }
