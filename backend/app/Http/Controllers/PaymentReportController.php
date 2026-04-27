@@ -334,7 +334,7 @@ class PaymentReportController extends Controller
             'student_class_id' => 'required|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
-            'amount'           => 'required|numeric|min:1|max:999999',
+            'amount'           => 'required|numeric|min:0|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
         ]);

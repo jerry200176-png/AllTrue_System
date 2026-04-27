@@ -57,11 +57,12 @@
               type="number"
               v-model.number="form.amount"
               required
-              min="1"
+              min="0"
               max="999999"
               step="1"
             />
           </div>
+          <p v-if="isZeroCharge" class="pe-hint">免費課程，金額為 NT$ 0，確認後會標記為已結算。</p>
         </div>
 
         <div class="pe-field">
@@ -105,6 +106,7 @@ const form = reactive({
 
 const submitting = ref(false);
 const submitError = ref('');
+const isZeroCharge = computed(() => Number(props.row?.charge ?? 0) === 0);
 
 watch(() => props.show, (val) => {
   if (val && props.row) {
@@ -125,8 +127,9 @@ function getToken() {
 async function submit() {
   submitError.value = '';
 
-  if (!form.payment_date || !form.amount || form.amount <= 0) {
-    submitError.value = '請填寫繳費日期與金額';
+  const amount = Number(form.amount);
+  if (!form.payment_date || form.amount === '' || form.amount == null || !Number.isFinite(amount) || amount < 0) {
+    submitError.value = '請填寫繳費日期與金額，金額不可小於 0';
     return;
   }
 
@@ -139,7 +142,7 @@ async function submit() {
       student_class_id: props.row.id,
       payment_date: form.payment_date,
       payment_method: form.payment_method,
-      amount: form.amount,
+      amount,
     };
     if (form.payment_method === 'transfer' && form.account_last5) {
       body.account_last5 = form.account_last5;
@@ -299,6 +302,11 @@ async function submit() {
 .pe-amount-wrap input {
   padding-left: 44px !important;
   font-variant-numeric: tabular-nums;
+}
+.pe-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-light);
 }
 
 .pe-error {

@@ -353,6 +353,70 @@ class NotificationApiTest extends TestCase
         ]);
     }
 
+    public function test_mark_student_class_tuition_paid_accepts_zero_amount_for_free_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-tuition-zero@example.com');
+
+        $student = Student::create([
+            'name' => '免費核帳學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+        $class = $this->createStudentClass($student->id, 0, 1, 5);
+        $class->update([
+            'Charge' => 0,
+            'Rate' => 0,
+            'ClassType' => 'tutoring',
+        ]);
+
+        $notification = Notification::create([
+            'CampusID' => 1,
+            'Type' => 'tuition',
+            'Severity' => 'high',
+            'Title' => '免費核帳學生 學費提醒',
+            'Body' => '免費課程待結算',
+            'SourceType' => 'StudentClass',
+            'SourceID' => (string) $class->ID,
+            'SourceKey' => "tuition:1:{$class->ID}",
+            'Payload' => ['class_id' => (int) $class->ID, 'student_id' => $student->id],
+            'OccurredAt' => now(),
+            'ResolvedAt' => null,
+        ]);
+
+        $response = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/notifications/{$notification->id}/tuition-paid", [
+            'branch_id' => 1,
+            'payment_date' => '2026-04-20',
+            'payment_method' => 'cash',
+            'amount' => 0,
+            'note' => '免費課程結算',
+        ]);
+
+        $response->assertOk();
+
+        $this->assertDatabaseHas('StudentClass', [
+            'ID' => $class->ID,
+            'Paid' => 1,
+            'PayDate' => '2026-04-20',
+        ]);
+        $invoice = Invoice::where('StudentClassID', $class->ID)->firstOrFail();
+        $this->assertSame(0, (int) $invoice->TotalAmount);
+        $this->assertSame(0, (int) $invoice->PaidAmount);
+        $this->assertSame('paid', (string) $invoice->Status);
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice->id,
+            'Amount' => 0,
+            'PaidAt' => '2026-04-20 00:00:00',
+            'Method' => 'cash',
+            'Note' => '免費課程結算',
+        ]);
+    }
+
     public function test_mark_invoice_tuition_paid_uses_submitted_payment_details(): void
     {
         $token = $this->createDirectorToken([1], 'director-invoice-paid@example.com');
