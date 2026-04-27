@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(dashboard): Porsche-style 工作面板
+
+- Changed 主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche-style 霧面工作卡
+
 ## 2026-04-27 — feat(ui): Porsche-inspired 視覺校準
 
 - Changed 課程管理與主任儀表板首屏為 light-first 高級霧面視覺，收斂過重 HUD/雷達感並統一 Porsche-inspired 設計語言
