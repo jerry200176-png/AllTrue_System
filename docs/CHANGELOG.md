@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-27 — fix(billing): 0元課程可核帳結算
+
+- Fixed 輔導課、試聽課等 Charge=0 課程可用 NT$0 完成主任核帳，避免免費課程永遠停留在未繳狀態
+- Fixed 通知中心「確認已繳費」同樣支援 NT$0 免費課程結算
+- Fixed 智慧課表同一學生同一天同開始時間已有基底課程時，不再重複渲染 scheduled 例外列
+
 ## 2026-04-27 — feat(billing): 月結制逐期帳單，修復白嫖漏洞
 
 - Fixed 月結課程「月結續約」後 `StudentClass.Paid` 不再維持 1；renew-monthly 同步重置 Paid=0 並建立新期 Invoice（billing_period YYYY-MM），杜絕後續月份免費白嫖

@@ -225,7 +225,7 @@ class NotificationController extends Controller
             'payment_date' => 'nullable|date|before_or_equal:today',
             'payment_method' => 'nullable|in:transfer,cash',
             'account_last5' => 'nullable|string|max:5|regex:/^[0-9]*$/',
-            'amount' => 'nullable|numeric|min:1|max:999999',
+            'amount' => 'nullable|numeric|min:0|max:999999',
             'note' => 'nullable|string|max:500',
         ]);
 

@@ -588,6 +588,62 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame(1, (int) $course->Paid, '核帳後 StudentClass.Paid 應為 1');
     }
 
+    public function test_director_record_accepts_zero_amount_for_free_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-record-zero@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'count',
+            'ClassType'    => 'tutoring',
+            'Paid'         => 0,
+            'Charge'       => 0,
+            'Rate'         => 0,
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID'      => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate'      => now()->toDateString(),
+            'TotalAmount'    => 0,
+            'PaidAmount'     => 0,
+            'Status'         => 'unpaid',
+            'Note'           => '',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => (int) $course->ID,
+            'payment_date'     => now()->toDateString(),
+            'payment_method'   => 'cash',
+            'amount'           => 0,
+            'note'             => '免費課程結算',
+        ]);
+
+        $res->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('paid', $invoice->Status, '0 元 Invoice 應可核帳為 paid');
+        $this->assertSame(0, (int) $invoice->PaidAmount);
+
+        $course->refresh();
+        $this->assertSame(1, (int) $course->Paid, '0 元課程核帳後 StudentClass.Paid 應為 1');
+
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice->id,
+            'Amount'    => 0,
+            'Method'    => 'cash',
+        ]);
+        $this->assertDatabaseHas('payment_reports', [
+            'StudentClassID'  => $course->ID,
+            'InvoiceID'       => $invoice->id,
+            'reported_amount' => 0,
+            'status'          => 'confirmed',
+        ]);
+    }
+
     public function test_purchase_batch_still_works_for_session_mode(): void
     {
         $token = $this->createDirectorToken([1], 'director-pb-session@example.com');
