@@ -306,6 +306,13 @@ class PaymentReportApiTest extends TestCase
             'Method' => 'cash',
             'Note' => '主任核帳登記',
         ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => -8800,
+            'PaidAt' => '2026-04-12',
+            'Method' => 'void',
+            'Note' => '沖銷紀錄不算有效付款',
+        ]);
 
         $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -318,6 +325,53 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.due_date', '2026-05-15')
             ->assertJsonPath('invoices.0.paid_at', '2026-04-10')
             ->assertJsonPath('invoices.0.payment_count', 1);
+    }
+
+    public function test_director_record_rejects_duplicate_payment_when_course_already_paid(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'count',
+            'Charge' => 8800,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-04-10',
+            'Method' => 'cash',
+            'Note' => '已核帳',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 8800,
+        ]);
+
+        $res->assertStatus(422)
+            ->assertJsonPath('code', 'course_already_paid');
+
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->count());
+        $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
     }
 
     // ── confirm ────────────────────────────────────────────────────

@@ -320,8 +320,19 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 ### R27. 課程編輯新增同日多時段必須重排未來堂次
 
 - 編輯課程把正班老師改掉並新增同一天第二個固定時段時，若後端只依「星期是否相同」判斷同步，會把所有未來堂次留在第一個時段，看起來像一週只能有一段。
+- 編輯課程選了多個星期但 `day_time_slots` 暫時只含原本星期時，若前端 parent sync 或後端 mapping 只信 `day_time_slots`，新勾選的星期會被吃掉（例：週三+週日只存週三）。
 - **強制規則**：`StudentClassController::syncFutureScheduledSessionTimes` 除了偵測星期新增/移除，也要偵測同一星期的固定時段數是否增加；增加時必須用 `buildSessionsForCount` cadence 重排未來未上堂次。
-- **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段，歷史堂次保持不動。
+- **強制規則**：課程編輯 payload 必須以 `days_of_week` 補齊缺漏的 `day_time_slots`；前端開啟編輯時不可讓既有 slot 覆蓋 parent 傳入的 selected days。
+- **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段；`days_of_week=[3,7]` 但 slots 只有週三時，主檔仍必須保存週日。
+
+---
+
+### R28. 已繳課程不可再次核帳建立新付款
+
+- 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
+- **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 且無未繳 Invoice 時，必須回 422，要求先作廢原收款或指定未繳帳單。
+- **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
+- **測試必補**：已繳課程重複呼叫 `directorRecord` 不得新增第二張 Invoice 或第二筆 Payment；invoice API 必須排除 void payment count。
 
 ---
 

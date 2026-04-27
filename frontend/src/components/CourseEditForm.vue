@@ -265,6 +265,7 @@ const defaultForm = {
   memo: '',
   remaining_sessions: 0,
   paid_at: '',
+  original_paid_at: '',
   original_teacher_id: '',
 };
 
@@ -439,9 +440,11 @@ function syncDayTimeSlotsFromSelection() {
   }
 
   if (syncingFromParent && slots.length > 0) {
-    const fromSlots = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
-    form.days_of_week = fromSlots;
-    chipDays = new Set(fromSlots);
+    const fromSlots = slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7);
+    const fromParent = Array.isArray(form.days_of_week) ? form.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7) : [];
+    const mergedDays = [...new Set([...fromParent, ...fromSlots])].sort((a, b) => a - b);
+    form.days_of_week = mergedDays;
+    chipDays = new Set(mergedDays);
   }
 
   if (chipDays.size > 0) {
