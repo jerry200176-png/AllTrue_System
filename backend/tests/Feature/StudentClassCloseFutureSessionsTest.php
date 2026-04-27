@@ -79,6 +79,32 @@ class StudentClassCloseFutureSessionsTest extends TestCase
         }
     }
 
+    public function test_resaving_already_inactive_course_also_cleans_future_scheduled_sessions(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-27 10:00:00'));
+        try {
+            $token = $this->createDirectorToken([1]);
+            $student = $this->createStudent();
+            $course = $this->createStudentClass($student->id, [
+                'Stop' => 1,
+                'closed_reason' => 'settled',
+                'Paid' => 1,
+                'RemainingSessions' => 0,
+            ]);
+            $futureSession = $this->createClassSession((int) $course->ID, '2026-04-28', 'scheduled');
+
+            $this->putJson(
+                "/api/v1/student-classes/{$course->ID}",
+                ['status' => 'inactive', 'Memo' => 'resave historical course'],
+                ['Authorization' => "Bearer {$token}"]
+            )->assertOk();
+
+            $this->assertSame('cancelled', DB::table('ClassSession')->where('id', $futureSession)->value('Status'));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function createDirectorToken(array $campusIds): string
     {
         $user = User::create([

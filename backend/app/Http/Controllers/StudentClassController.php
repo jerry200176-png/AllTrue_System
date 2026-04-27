@@ -938,7 +938,6 @@ class StudentClassController extends Controller
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         $previousStartDate = $this->normalizeDateString($studentClass->StartDate ?? null);
-        $previousStop = (int) ($studentClass->Stop ?? 0);
 
         if (!empty($campusIds)) {
             $allowed = Student::whereIn('CampusID', $campusIds)
@@ -992,7 +991,7 @@ class StudentClassController extends Controller
         $studentClass->update($mapped);
         $studentClass->refresh();
 
-        if ($previousStop === 0 && array_key_exists('Stop', $mapped) && (int) ($mapped['Stop'] ?? 0) === 1) {
+        if (array_key_exists('Stop', $mapped) && (int) ($mapped['Stop'] ?? 0) === 1) {
             $this->cancelFutureScheduledSessions($studentClass, null);
             $studentClass->refresh();
         }
