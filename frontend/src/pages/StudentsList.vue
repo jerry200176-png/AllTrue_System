@@ -16,10 +16,6 @@
           </div>
         </div>
         <div class="header-buttons">
-          <button class="button-outline" @click="emit('navigate', 'course-plan-create')">
-            <span class="material-symbols-outlined btn-icon">add_box</span>
-            建立課程方案
-          </button>
           <label class="button-outline">
             <span class="material-symbols-outlined btn-icon">upload_file</span>
             匯入名單
