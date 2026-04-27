@@ -1768,14 +1768,17 @@ class StudentClassController extends Controller
 
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->with(['payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'PaidAt']);
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method']);
             }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
             ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         return response()->json([
             'invoices' => $invoices->map(function ($inv) {
-                $paidAt = $inv->payments
+                $effectivePayments = $inv->payments
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) >= 0 && (string) ($payment->Method ?? '') !== 'void')
+                    ->values();
+                $paidAt = $effectivePayments
                     ->map(fn ($payment) => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null)
                     ->filter()
                     ->sort()
@@ -1787,7 +1790,7 @@ class StudentClassController extends Controller
                     'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
-                    'payment_count'  => $inv->payments->count(),
+                    'payment_count'  => $effectivePayments->count(),
                     'total_amount'   => (int) $inv->TotalAmount,
                     'paid_amount'    => (int) $inv->PaidAmount,
                     'status'         => $inv->Status,
@@ -2886,6 +2889,12 @@ class StudentClassController extends Controller
 
         // Handle days + time slots for both create and update.
         $dayTimeSlots = $this->normalizeDayTimeSlotsInput($input['day_time_slots'] ?? []);
+        $dayTimeSlots = $this->backfillMissingSelectedDaySlots(
+            $dayTimeSlots,
+            $input['days_of_week'] ?? [],
+            $input['start_time'] ?? null,
+            $input['duration_hours'] ?? null
+        );
         if (empty($dayTimeSlots)) {
             $startTime = $input['start_time'] ?? null;
             $daysOfWeek = $input['days_of_week'] ?? null;
@@ -2935,6 +2944,50 @@ class StudentClassController extends Controller
         }
 
         return $mappedData;
+    }
+
+    /**
+     * @param  array<int, array{day:int,start_time:string,duration_minutes?:int|null}>  $slots
+     * @param  mixed  $rawDays
+     * @return array<int, array{day:int,start_time:string,duration_minutes?:int|null}>
+     */
+    private function backfillMissingSelectedDaySlots(array $slots, $rawDays, $fallbackStartTime = null, $fallbackDurationHours = null): array
+    {
+        if (!is_array($rawDays)) {
+            return $slots;
+        }
+
+        $selectedDays = array_values(array_unique(array_filter(array_map('intval', $rawDays), fn ($day) => $day >= 1 && $day <= 7)));
+        if ($selectedDays === []) {
+            return $slots;
+        }
+
+        $slotDays = [];
+        foreach ($slots as $slot) {
+            $slotDays[(int) ($slot['day'] ?? 0)] = true;
+        }
+
+        $fallbackTime = $fallbackStartTime
+            ? substr((string) $fallbackStartTime, 0, 5)
+            : ($slots[0]['start_time'] ?? '16:00');
+        $fallbackDurationMinutes = null;
+        if ($fallbackDurationHours !== null && (float) $fallbackDurationHours > 0) {
+            $fallbackDurationMinutes = (int) round((float) $fallbackDurationHours * 60);
+        }
+
+        foreach ($selectedDays as $day) {
+            if (isset($slotDays[$day]) || count($slots) >= 7) {
+                continue;
+            }
+            $slots[] = [
+                'day' => $day,
+                'start_time' => $fallbackTime,
+                'duration_minutes' => $fallbackDurationMinutes,
+            ];
+            $slotDays[$day] = true;
+        }
+
+        return $this->normalizeDayTimeSlotsInput($slots);
     }
 
     /**

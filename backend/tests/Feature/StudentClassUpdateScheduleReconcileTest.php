@@ -470,6 +470,73 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
         }
     }
 
+    public function test_update_schedule_backfills_missing_slot_for_selected_weekday(): void
+    {
+        Carbon::setTestNow('2026-04-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+
+            $student = Student::create([
+                'name' => '選星期補齊測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-04-01',
+                'TotalHours' => 20,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 500,
+                'RoomID' => '1',
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 8,
+                'ClassType' => 'one_on_one',
+                'week' => 3,
+                'time' => '16:00:00',
+            ]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'duration_hours' => 2,
+                'days_of_week' => [3, 7],
+                'start_time' => '16:00',
+                // Regression: frontend can temporarily have only the original slot.
+                'day_time_slots' => [
+                    ['day' => 3, 'start_time' => '16:00', 'duration_minutes' => 120],
+                ],
+                'payment_type' => 'session',
+            ]);
+
+            $res->assertOk();
+
+            $course->refresh();
+            $this->assertSame(3, (int) $course->week);
+            $this->assertSame('16:00:00', (string) $course->time);
+            $this->assertSame(7, (int) $course->week1, 'Selected Sunday must be persisted even when day_time_slots omitted it');
+            $this->assertSame('16:00:00', (string) $course->time1);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * Adding a new weekday (Mon+Tue → Mon+Tue+Thu) must trigger remap so
      * existing future sessions are redistributed onto the new cadence.
