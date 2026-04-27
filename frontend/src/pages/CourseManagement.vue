@@ -157,8 +157,9 @@
                     <td class="td-subject">
                       <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-course-callout" role="status">
                         <span class="paused-course-callout__icon" aria-hidden="true">⏸</span>
-                        <span class="paused-course-callout__main">課程暫停中</span>
+                        <span class="paused-course-callout__main">暫停中</span>
                         <span class="paused-course-callout__sub">未恢復前不排新課、不計入待辦</span>
+                        <button class="paused-course-callout__action" type="button" @click.stop="requestCoursePause(c)">恢復課程</button>
                       </div>
                       <div v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
@@ -169,7 +170,7 @@
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">已暫停</span>
+                        <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">暫停中</span>
                         <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
                       </div>
                       <div class="price-line">
@@ -224,9 +225,9 @@
                           class="small btn-add-session"
                           :class="{ disabled: !canQuickAddSession(c) }"
                           :disabled="!canQuickAddSession(c)"
-                          :title="canQuickAddSession(c) ? '加課／補登（不增加總堂數）' : quickAddDisabledReason(c)"
+                          :title="canQuickAddSession(c) ? '補課／補登（總堂數不變）' : quickAddDisabledReason(c)"
                           @click="canQuickAddSession(c) && openQuickAddSessionModal(c)"
-                        >+ 新增堂次</button>
+                        >+ 補課</button>
                         <button class="small ghost btn-toggle" @click="toggleDates(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
@@ -242,15 +243,15 @@
                               :disabled="!canQuickAddSession(c)"
                               :title="canQuickAddSession(c) ? '' : quickAddDisabledReason(c)"
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
-                            ><span class="action-icon">＋</span> 新增堂次</button>
+                            ><span class="action-icon">＋</span> 補課 / 補登</button>
                             <button
                               :class="['action-dropdown-item', { 'action-dropdown-renew': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }]"
                               @click="openPurchaseModal(c); closeActionMenu()"
                             ><span class="action-icon">⚡</span> {{ isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數' }}</button>
                             <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
-                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="toggleCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                            <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
+                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
@@ -341,7 +342,7 @@
                         <button class="action-dropdown-item" @click="editCourse(hc); closeActionMenu()"><span class="action-icon">✏️</span> 編輯</button>
                         <button class="action-dropdown-item" @click="duplicateCourseForTeacher(hc); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
                         <p class="action-section-label">狀態管理</p>
-                        <button class="action-dropdown-item action-dropdown-resume" @click="toggleCoursePause(hc); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                        <button class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(hc); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                         <hr class="action-dropdown-divider" />
                         <p class="action-section-label action-section-label--danger">危險操作</p>
                         <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = hc; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
@@ -432,7 +433,7 @@
           class="quick-add-session-link"
           style="margin: 12px 0 4px; text-align: right;"
         >
-          <button type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 單次加課（不增加總堂數）</button>
+          <button type="button" class="ghost small" @click="openQuickAddSessionFromEditModal">＋ 補課 / 補登（總堂數不變）</button>
         </div>
         <div class="actions">
           <button class="ghost" @click="showEditModal = false">取消</button>
@@ -594,6 +595,32 @@
       @close="paymentEntryOpen = false"
       @confirmed="onPaymentEntryConfirmed"
     />
+
+    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="pauseConfirmTarget = null">
+      <div class="modal course-modal pause-confirm-modal">
+        <div class="pause-confirm-header">
+          <span class="pause-confirm-icon" :class="{ resume: pauseConfirmIsResume }">{{ pauseConfirmIsResume ? '▶' : '⏸' }}</span>
+          <div>
+            <h3 class="modal-title">{{ pauseConfirmIsResume ? '恢復課程？' : '暫停課程？' }}</h3>
+            <p class="modal-desc">
+              {{ pauseConfirmTarget.student_name || '學生' }} — {{ getSubjectLabel(pauseConfirmTarget.subject) }}
+            </p>
+          </div>
+        </div>
+        <div class="pause-impact-card">
+          <p class="pause-impact-title">{{ pauseConfirmIsResume ? '恢復後的影響' : '暫停後的影響' }}</p>
+          <ul>
+            <li v-for="item in pauseConfirmImpacts" :key="item">{{ item }}</li>
+          </ul>
+        </div>
+        <div class="actions">
+          <button class="ghost" @click="pauseConfirmTarget = null">取消</button>
+          <button class="primary" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+            {{ pauseConfirmIsResume ? '確認恢復' : '確認暫停' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Delete Confirm Modal (FR-013) -->
     <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="confirmDeleteTarget = null">
@@ -1258,6 +1285,11 @@ const quickAddSessionForm = ref({
   student_name: '',
   subject: 'Math',
 });
+const pauseConfirmTarget = ref(null);
+const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
+const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
+  ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
+  : ['取消未來尚未上課堂次', '暫停期間不排新課、不計入待辦', '可從歷史課程或暫停清單恢復']);
 
 const activeActionMenu = ref(null);
 const toggleActionMenu = (courseId) => {
@@ -1273,14 +1305,15 @@ const localTodayYmd = () => {
   return `${y}-${m}-${day}`;
 };
 
-async function toggleCoursePause(course) {
+function requestCoursePause(course) {
+  pauseConfirmTarget.value = course;
+}
+
+async function confirmCoursePause() {
+  const course = pauseConfirmTarget.value;
+  if (!course) return;
   const isPaused = course.status === 'inactive';
-  const studentName = course.student_name || '學生';
-  const subject = getSubjectLabel(course.subject);
   const action = isPaused ? '恢復' : '暫停';
-
-  if (!confirm(`確定要${action}「${studentName}」的 ${subject} 課程嗎？\n${isPaused ? '恢復後可繼續排課。' : '暫停後，未來未上課的堂次將被取消。'}`)) return;
-
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1298,6 +1331,7 @@ async function toggleCoursePause(course) {
       return;
     }
     alert(json.message || `已${action}`);
+    pauseConfirmTarget.value = null;
     await loadCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
@@ -1531,7 +1565,7 @@ async function runQuickAddCheck(courseIdOverride) {
   }, 300);
 }
 
-/** 編輯課程彈窗內開啟單次加課（與列表加課同一支 API） */
+/** 編輯課程彈窗內開啟補課/補登（與列表補課同一支 API） */
 function openQuickAddSessionFromEditModal() {
   const id = editingId.value;
   if (!id || !editingCourseFromLaravel.value) return;
@@ -1592,7 +1626,7 @@ async function submitQuickAddSession() {
         runQuickAddCheck();
       } else {
         const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-        alert(details || json?.message || '加課失敗');
+        alert(details || json?.message || '補課失敗');
       }
       return;
     }
@@ -1605,7 +1639,7 @@ async function submitQuickAddSession() {
     alert(json?.message ? `${json.message}\n${defaultMsg}` : defaultMsg);
     await loadCourses();
   } catch (e) {
-    alert('加課失敗：' + (e?.message || '請稍後再試'));
+    alert('補課失敗：' + (e?.message || '請稍後再試'));
   }
 }
 // ----- Leave (請假) -----
@@ -1844,10 +1878,10 @@ function canQuickAddSession(c) {
 }
 
 function quickAddDisabledReason(c) {
-  if (!isSessionMode(c)) return '僅堂數制課程可新增堂次';
-  if (effectiveClosedReason(c) === 'settled') return '已結算課程無法新增堂次';
-  if (effectiveClosedReason(c) === 'completed') return '已完課課程無法新增堂次';
-  if (c.status === 'inactive') return '課程已暫停，請先恢復後再新增堂次';
+  if (!isSessionMode(c)) return '僅堂數制課程可補課';
+  if (effectiveClosedReason(c) === 'settled') return '已結算課程無法補課';
+  if (effectiveClosedReason(c) === 'completed') return '已完課課程無法補課';
+  if (c.status === 'inactive') return '課程已暫停，請先恢復後再補課';
   return '';
 }
 
@@ -3522,15 +3556,13 @@ onUnmounted(() => {
 
 .paused-course-callout {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 10px;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #fff7ed 0%, #ffedd5 55%, #fef3c7 100%);
-  border: 1px solid #f59e0b;
-  box-shadow: 0 1px 2px rgba(180, 83, 9, 0.12);
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
 }
 
 .paused-course-callout__icon {
@@ -3540,17 +3572,27 @@ onUnmounted(() => {
 }
 
 .paused-course-callout__main {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   color: #7c2d12;
-  letter-spacing: 0.03em;
 }
 
 .paused-course-callout__sub {
   font-size: 11px;
   font-weight: 600;
   color: #b45309;
-  flex: 1 1 100%;
+  flex: 1;
+}
+
+.paused-course-callout__action {
+  border: 0;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .subject-tag--paused {
@@ -3562,8 +3604,8 @@ onUnmounted(() => {
 .dates-row-paused .dates-panel {
   margin-top: 2px;
   padding-left: 12px;
-  border-left: 4px solid #d97706;
-  background: linear-gradient(90deg, rgba(255, 247, 237, 0.65) 0%, rgba(250, 250, 249, 0.4) 100%);
+  border-left: 3px solid #f59e0b;
+  background: #fffbeb;
   border-radius: 0 8px 8px 0;
 }
 
@@ -4372,8 +4414,8 @@ button.danger:disabled {
   color: #6b7280;
 }
 .course-paused td {
-  background: linear-gradient(180deg, rgba(255, 251, 235, 0.75) 0%, rgba(245, 245, 244, 0.55) 100%);
-  box-shadow: inset 4px 0 0 #d97706;
+  background: #fffdf7;
+  box-shadow: inset 3px 0 0 #f59e0b;
   color: #44403c;
 }
 
@@ -4400,6 +4442,64 @@ button.danger:disabled {
   padding: 3px 8px;
   font-weight: 800;
   letter-spacing: 0.02em;
+}
+
+.pause-confirm-modal {
+  max-width: 480px;
+}
+
+.pause-confirm-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.pause-confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.pause-confirm-icon.resume {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.pause-impact-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0 18px;
+}
+
+.pause-impact-title {
+  margin: 0 0 8px;
+  color: #334155;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.pause-impact-card ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
+.btn-resume-primary {
+  background: #2563eb;
 }
 
 .tag-package {
