@@ -1156,15 +1156,12 @@ class StudentClassController extends Controller
                     $slots,
                     $durationMinutes
                 );
-                if ($updatedCount > 0) {
-                    $this->reconcileWeekTimeFieldsFromSessions($studentClass);
-                }
                 return response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
                         'reason'                  => 'force_partial_rebuild',
                         'updated_future_sessions' => $updatedCount,
-                        'reconcile_skipped'       => $updatedCount === 0,
+                        'reconcile_skipped'       => true,
                     ],
                 ]));
             }
@@ -1185,7 +1182,10 @@ class StudentClassController extends Controller
         // ClassSession times.
         $skipReconcile = $scheduleFieldsPresent
             && ($sessionSync['reason'] ?? '') === 'history_exists'
-            && (int) ($sessionSync['updated_future_sessions'] ?? -1) === 0;
+            && (
+                !array_key_exists('updated_future_sessions', $sessionSync)
+                || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
+            );
 
         if ($skipReconcile) {
             $sessionSync['reconcile_skipped'] = true;
