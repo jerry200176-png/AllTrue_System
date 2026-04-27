@@ -317,6 +317,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R27. 課程編輯新增同日多時段必須重排未來堂次
+
+- 編輯課程把正班老師改掉並新增同一天第二個固定時段時，若後端只依「星期是否相同」判斷同步，會把所有未來堂次留在第一個時段，看起來像一週只能有一段。
+- **強制規則**：`StudentClassController::syncFutureScheduledSessionTimes` 除了偵測星期新增/移除，也要偵測同一星期的固定時段數是否增加；增加時必須用 `buildSessionsForCount` cadence 重排未來未上堂次。
+- **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段，歷史堂次保持不動。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |

@@ -1767,19 +1767,32 @@ class StudentClassController extends Controller
         }
 
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
+            ->with(['payments' => function ($query) {
+                $query->select(['id', 'InvoiceID', 'PaidAt']);
+            }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
             ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         return response()->json([
-            'invoices' => $invoices->map(fn ($inv) => [
-                'id'             => (int) $inv->id,
-                'billing_period' => $inv->billing_period,
-                'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
-                'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
-                'total_amount'   => (int) $inv->TotalAmount,
-                'paid_amount'    => (int) $inv->PaidAmount,
-                'status'         => $inv->Status,
-            ])->values()->all(),
+            'invoices' => $invoices->map(function ($inv) {
+                $paidAt = $inv->payments
+                    ->map(fn ($payment) => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null)
+                    ->filter()
+                    ->sort()
+                    ->last();
+
+                return [
+                    'id'             => (int) $inv->id,
+                    'billing_period' => $inv->billing_period,
+                    'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
+                    'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
+                    'paid_at'        => $paidAt,
+                    'payment_count'  => $inv->payments->count(),
+                    'total_amount'   => (int) $inv->TotalAmount,
+                    'paid_amount'    => (int) $inv->PaidAmount,
+                    'status'         => $inv->Status,
+                ];
+            })->values()->all(),
         ]);
     }
 
@@ -3911,6 +3924,7 @@ class StudentClassController extends Controller
 
         $needsRemap = false;
         $sessionWeekdays = [];
+        $unlockedCountByDate = [];
         foreach ($unlocked as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
             if (!$date) {
@@ -3918,9 +3932,21 @@ class StudentClassController extends Controller
             }
             $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
             $sessionWeekdays[$isoDow] = true;
+            $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
             if (!isset($slotsByWeekday[$isoDow])) {
                 $needsRemap = true;
                 break;
+            }
+        }
+
+        if (!$needsRemap && $unlocked->isNotEmpty()) {
+            foreach ($unlockedCountByDate as $date => $countOnDate) {
+                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
+                    $needsRemap = true;
+                    break;
+                }
             }
         }
 
