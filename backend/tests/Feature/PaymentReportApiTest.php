@@ -374,6 +374,63 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
     }
 
+    public function test_confirm_rejects_duplicate_payment_when_course_already_paid(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'count',
+            'Charge' => 8800,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-04-10',
+            'Method' => 'cash',
+            'Note' => '已核帳',
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'pending',
+            'report_token_hash' => hash('sha256', 'test-confirm-duplicate'),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/payment-reports/{$report->id}/confirm");
+
+        $res->assertStatus(422)
+            ->assertJsonPath('code', 'course_already_paid');
+
+        $report->refresh();
+        $this->assertSame('pending', (string) $report->status);
+        $this->assertNull($report->payment_id);
+        $this->assertSame(1, Payment::where('InvoiceID', $invoice->id)->count());
+        $this->assertSame(1, Invoice::where('StudentClassID', $sc->ID)->count());
+    }
+
     // ── confirm ────────────────────────────────────────────────────
 
     public function test_director_can_confirm_report(): void
