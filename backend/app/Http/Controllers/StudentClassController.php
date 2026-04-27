@@ -1537,6 +1537,11 @@ class StudentClassController extends Controller
                 $newCourse->save();
             }
 
+            $firstSessionDate = null;
+            if (!empty($builtSessions)) {
+                $firstSessionDate = $builtSessions[0]['SessionDate'] ?? null;
+            }
+
             SessionDeductionService::syncCounters($newCourse);
             $newCourse->refresh();
 
@@ -1573,9 +1578,12 @@ class StudentClassController extends Controller
                     'id' => (int) $newCourse->ID,
                     'session_count' => (int) ($newCourse->SessionCount ?? 0),
                     'remaining_sessions' => (int) ($newCourse->RemainingSessions ?? 0),
+                    'created_sessions' => $createdSessions,
                     'paid' => (int) ($newCourse->Paid ?? 0),
                     'start_date' => $this->normalizeDateString($newCourse->StartDate),
                     'end_date' => $this->normalizeDateString($newCourse->EndDate),
+                    'first_session_date' => $this->normalizeDateString($firstSessionDate),
+                    'last_session_date' => $this->normalizeDateString($lastSessionDate),
                 ],
             ], 201);
         });
