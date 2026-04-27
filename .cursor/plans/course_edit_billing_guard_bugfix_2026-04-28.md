@@ -6,9 +6,9 @@
 |---|---|
 | 嚴重度 | P1 |
 | 根因類型 | 前後端契約同步錯誤 + 付款防重邏輯缺失 |
-| 根因摘要 | `CourseEditForm` 開啟編輯時可能以既有 `day_time_slots` 覆蓋新勾選的 `days_of_week`；`PaymentReportController::directorRecord` 在已繳課程找不到未繳帳單時會新建 Invoice/Payment |
-| 錯誤行為 | 編輯選週三+週日只保留週三；同一課程可被再次核帳，畫面出現多筆繳費 |
-| 預期行為 | 勾選星期是固定課表契約來源；已繳且無未繳帳單的課程不可再次核帳 |
+| 根因摘要 | `CourseEditForm` 開啟編輯時可能以既有 `day_time_slots` 覆蓋新勾選的 `days_of_week`，且時段列只能在已選星期內切換；`PaymentReportController::directorRecord/confirm` 在已繳課程找不到未繳帳單時會新建 Invoice/Payment |
+| 錯誤行為 | 編輯選週三+週日只保留週三或不知道如何新增週日；同一課程可被再次核帳，畫面出現多筆繳費 |
+| 預期行為 | 固定時段以列式編輯為主，每列可直接選週一到週日；已繳且無未繳帳單的課程不可再次核帳 |
 | 影響範圍 | 主任課程編輯、月結/堂數核帳、課程帳單 Modal |
 | B1 偵查來源 | 本次 B1：課程編輯 payload 與 `directorRecord` invoice fallback |
 
@@ -46,10 +46,12 @@ Out of Scope：歷史 production 資料清理、付款 UI 重設計、App Store/
 ### AC-001：課程編輯多日補齊
 - AC-001-a：PUT 課程時 `days_of_week=[3,7]` 但 `day_time_slots` 只有週三，系統仍保存週三與週日兩個固定時段。
 - AC-001-b：開啟編輯表單時，既有 slot 不得覆蓋 parent 傳入的 selected days。
+- AC-001-c：課程編輯固定時段每列可直接選週一到週日；新增一列後可改成週日，並同步更新 `days_of_week`。
 
 ### AC-002：重複核帳防護
 - AC-002-a：已繳課程且沒有未繳 Invoice 時，`directorRecord` 回 422 `course_already_paid`。
 - AC-002-b：帳單付款筆數只計有效正向付款，void/負數沖銷不算「繳費次數」。
+- AC-002-c：已繳課程且沒有未繳 Invoice 時，`confirm` pending report 也回 422 `course_already_paid`，不得新建付款。
 
 ## 6. 功能需求 FR
 
@@ -57,6 +59,8 @@ Out of Scope：歷史 production 資料清理、付款 UI 重設計、App Store/
 - FR-002：`StudentClassController::mapFrontendPayload` 必須以 `days_of_week` 補齊缺漏 slot。
 - FR-003：`PaymentReportController::directorRecord` 必須拒絕已繳且無未繳帳單的重複入帳。
 - FR-004：`StudentClassController::invoices` 必須排除 void/負數付款計數。
+- FR-005：`CourseEditForm` 固定時段列的星期選單必須列出一到日，新增/改列星期時同步 `days_of_week`。
+- FR-006：`PaymentReportController::confirm` 必須拒絕已繳且無未繳帳單的重複入帳。
 
 ## 7. 非功能需求 NFR
 
@@ -65,14 +69,17 @@ Out of Scope：歷史 production 資料清理、付款 UI 重設計、App Store/
 ## 8. 技術方向
 
 - `frontend/src/components/CourseEditForm.vue`：調整 parent sync 合併策略。
+- `frontend/src/components/CourseEditForm.vue`：固定時段改為列式編輯，每列可直接選星期。
 - `frontend/src/pages/CourseManagement.vue`：只有繳費日期被改動時才送 `paid_at`。
 - `backend/app/Http/Controllers/StudentClassController.php`：補齊 missing selected day slots，並計算有效付款筆數。
-- `backend/app/Http/Controllers/PaymentReportController.php`：新增重複核帳 guard。
+- `backend/app/Http/Controllers/PaymentReportController.php`：新增 `directorRecord` / `confirm` 重複核帳 guard。
 
 ## 8b. Decision Log
 
 - 2026-04-28：選擇前後端雙層補齊，而非只修 UI，避免任何舊前端或同步延遲再次吃掉星期。
 - 2026-04-28：選擇 422 guard，而非自動建立新帳單，因為同一課程已繳後再次核帳必須先人工作廢或指定未繳帳單。
+- 2026-04-28：第二輪 B1 確認 chips 推導仍讓使用者卡住，改用列式時段作為主要 UX。
+- 2026-04-28：第二輪 B1 確認 `confirm` 也是重複付款入口，套用與 `directorRecord` 相同 guard。
 
 ## 9. 資安與存取控制
 
@@ -80,9 +87,9 @@ Out of Scope：歷史 production 資料清理、付款 UI 重設計、App Store/
 
 ## 10. QA 驗收
 
-- Happy Path：週三+週日課程編輯後兩日皆保存；未繳帳單可正常核帳。
+- Happy Path：週三+週日課程編輯後兩日皆保存；主任可新增一列並直接選週日；未繳帳單可正常核帳。
 - Edge：`day_time_slots` 漏週日仍補齊；void payment 不計入有效付款筆數。
-- Error：已繳課程重複核帳回 422。
+- Error：已繳課程透過 `directorRecord` 或 `confirm` 重複核帳回 422。
 - Revert-proof：還原任一修復後，新增測試至少一個失敗。
 
 ## 11. 上線與維運
@@ -97,7 +104,7 @@ P1，由 `[DEV]`、`[TEST]`、`[REVIEW]`、`[DOCS]`、`[OPS]` 處理。
 
 WebSearch 參考：Stripe duplicate payment/idempotency 建議以唯一交易識別與付款防重控制避免 double charge；recurring schedule UX 建議用自然語言/多時段列與模板化方式管理 recurrence。
 
-風險：歷史已重複建立的 Invoice/Payment 不在本次自動清理範圍，需後續依主任確認作廢。
+風險：歷史已重複建立的 Invoice/Payment 不在本次自動清理範圍，需後續依主任確認作廢。吳艾潼既有錯帳需先只讀查明是多張 Invoice 或多筆 Payment，再提出人工作廢清單。
 
 ## 14. Definition of Done
 
