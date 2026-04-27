@@ -53,7 +53,10 @@ class StudentClassPurchaseBatchTest extends TestCase
         $res->assertCreated()
             ->assertJsonPath('mode', 'new_purchase')
             ->assertJsonPath('new_course.session_count', 6)
-            ->assertJsonPath('new_course.remaining_sessions', 6);
+            ->assertJsonPath('new_course.remaining_sessions', 6)
+            ->assertJsonPath('new_course.created_sessions', 6)
+            ->assertJsonPath('new_course.first_session_date', '2026-04-07')
+            ->assertJsonPath('new_course.last_session_date', '2026-05-12');
 
         $source->refresh();
         $this->assertSame(8, (int) $source->SessionCount);
