@@ -98,4 +98,9 @@ class LearningRecord extends Model
     {
         return $this->hasOne(LearningRecordFeedback::class, 'learning_record_id', 'id');
     }
+
+    public function teacherComment()
+    {
+        return $this->hasOne(LearningRecordTeacherComment::class, 'learning_record_id', 'id');
+    }
 }
