@@ -646,6 +646,7 @@
               <th class="invoice-amount-cell">金額</th>
               <th class="invoice-amount-cell">已繳</th>
               <th class="invoice-status-cell">狀態</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -658,6 +659,15 @@
                 <span :class="['invoice-status-chip', `invoice-status-${inv.status || 'unknown'}`]">
                   {{ invoiceStatusLabel(inv.status) }}
                 </span>
+              </td>
+              <td>
+                <button
+                  v-if="inv.status !== 'paid'"
+                  class="small primary invoice-pay-btn"
+                  type="button"
+                  @click="openPaymentEntryForInvoice(inv)"
+                >核帳</button>
+                <span v-else class="hint">—</span>
               </td>
             </tr>
           </tbody>
@@ -1610,7 +1620,13 @@ async function submitRenewMonthly(endDate) {
       return;
     }
     showRenewMonthlyModal.value = false;
-    alert('月結續約成功，到期日已更新為 ' + endDate);
+    const newCourse = json?.new_course || {};
+    toastRef.value?.show?.({
+      title: '已建立月結新一期',
+      description: `新一期課程 #${newCourse.id || '—'} 已建立，舊期已結算。請在新期帳單核帳，不會再混在原課程底下。`,
+      variant: 'success',
+      durationMs: 7000,
+    });
     await loadCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
@@ -2595,6 +2611,9 @@ const togglePaymentStatus = async (c) => {
 
 const onPaymentEntryConfirmed = async () => {
   paymentEntryOpen.value = false;
+  if (invoiceModalOpen.value) {
+    closeInvoiceModal();
+  }
   await loadCourses();
 };
 
@@ -2963,6 +2982,21 @@ const openInvoiceModal = async (course) => {
   } finally {
     invoiceModalLoading.value = false;
   }
+};
+
+const openPaymentEntryForInvoice = (invoice) => {
+  const course = invoiceModalCourse.value;
+  if (!course?.id || !invoice?.id) return;
+  paymentEntryRow.value = {
+    id: course.id,
+    invoice_id: invoice.id,
+    student_name: course.student_name || '此學生',
+    subject: course.subject_name || course.subject || '',
+    billing_period: formatBillingPeriod(invoice.billing_period),
+    charge: Number(invoice.total_amount ?? course.Charge ?? course.charge ?? 0) || 0,
+  };
+  invoiceModalOpen.value = false;
+  paymentEntryOpen.value = true;
 };
 
 const executeDeleteCourse = async () => {
@@ -4933,6 +4967,26 @@ button.danger:disabled {
   border-color: #d1d5db;
   color: #6b7280;
 }
+.date-chip.exception {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+  color: #3730a3;
+  font-weight: 700;
+}
+.date-chip.exception .chip-state {
+  color: #3730a3;
+  background: #c7d2fe;
+}
+.date-chip.over-quota {
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #991b1b;
+  font-weight: 800;
+}
+.date-chip.over-quota .chip-state {
+  color: #fff;
+  background: #dc2626;
+}
 .course-paused td {
   background: #fffdf7;
   box-shadow: inset 3px 0 0 #f59e0b;
@@ -5352,6 +5406,11 @@ button.danger:disabled {
 .invoice-status-unknown {
   background: #e5e7eb;
   color: #4b5563;
+}
+.invoice-pay-btn {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 .invoice-modal-actions {
   margin-top: 18px;
