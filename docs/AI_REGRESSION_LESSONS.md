@@ -284,6 +284,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R23. 推算日期不可成為 dead-end chip
+
+- 課程詳情若顯示 `_synthetic` 推算堂次但沒有 `ClassSession.id`，主任會看得到日期卻無法做單堂編輯。
+- **強制規則**：任何顯示在「上課日期」區塊的 chip 都必須可操作；若是推算資料，點擊時應先經由受權限保護的 endpoint 冪等建立實體 `ClassSession`，再進既有編輯流程。
+- **測試必補**：同一推算日期重複 materialize 不可建立重複 `ClassSession`；已結案課程不可建立新堂次。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -296,7 +304,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|
-| 月結制 / 加購 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession） |
+| 月結制 / 加購 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |

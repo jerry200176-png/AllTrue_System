@@ -299,6 +299,98 @@ class ClassSessionController extends Controller
     }
 
     /**
+     * Materialize one projected monthly schedule date so the normal single-session
+     * edit flow can operate on a real ClassSession row.
+     */
+    public function ensureProjected(Request $request)
+    {
+        $data = $request->validate([
+            'student_class_id' => 'required|integer|exists:StudentClass,ID',
+            'session_date'     => 'required|date',
+            'start_time'       => 'nullable|date_format:H:i',
+            'branch_id'        => 'nullable|integer|min:1',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'super_admin'], true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $studentClass = StudentClass::where('ID', (int) $data['student_class_id'])->first();
+        if (!$studentClass) {
+            return response()->json(['message' => '找不到對應課程'], 404);
+        }
+
+        if ((int) ($studentClass->Stop ?? 0) === 1) {
+            return response()->json(['message' => '課程已結案或停用，不能新增堂次'], 422);
+        }
+
+        if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+            return response()->json(['message' => '僅月結固定時段課程可建立推算堂次'], 422);
+        }
+
+        $studentCampusId = (int) (Student::where('id', (int) $studentClass->StudentID)->value('CampusID') ?? 0);
+        $requestedBranchId = (int) ($data['branch_id'] ?? 0);
+        if ($requestedBranchId > 0 && $studentCampusId > 0 && $requestedBranchId !== $studentCampusId) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $sessionDate = Carbon::parse($data['session_date'])->toDateString();
+        $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
+        $endDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
+        if ($startDate && $sessionDate < $startDate) {
+            return response()->json(['message' => '堂次日期早於課程開始日'], 422);
+        }
+        if ($endDate && $sessionDate > $endDate) {
+            return response()->json(['message' => '堂次日期超過課程到期日'], 422);
+        }
+
+        $slot = $this->resolveProjectedMonthlySlot(
+            $studentClass,
+            (int) Carbon::parse($sessionDate)->dayOfWeekIso,
+            isset($data['start_time']) ? substr((string) $data['start_time'], 0, 5) : null
+        );
+        if (!$slot) {
+            return response()->json(['message' => '指定日期不符合此課程固定時段'], 422);
+        }
+
+        $created = false;
+        $session = DB::transaction(function () use ($studentClass, $sessionDate, $slot, &$created) {
+            $existing = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+                ->whereDate('SessionDate', $sessionDate)
+                ->where('StartTime', $slot['start_time'])
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $created = true;
+            return ClassSession::create([
+                'StudentClassID'       => (int) $studentClass->ID,
+                'SubjectID'            => $studentClass->SubjectID ?: null,
+                'SessionDate'          => $sessionDate,
+                'StartTime'            => $slot['start_time'],
+                'EndTime'              => $slot['end_time'],
+                'Status'               => 'scheduled',
+                'Note'                 => 'projected-monthly-materialized',
+                'IsContractException'  => 0,
+            ]);
+        });
+
+        return response()->json([
+            'message' => $created ? '已建立可編輯堂次' : '已取得既有堂次',
+            'created' => $created,
+            'session' => $this->sessionPayload($session),
+        ]);
+    }
+
+    /**
      * State-machine transitions for ClassSession.Status.
      * Key = current status, value = allowed next statuses.
      */
@@ -852,17 +944,70 @@ class ClassSessionController extends Controller
         $session->refresh();
         return response()->json([
             'message' => $message,
-            'session' => [
-                'id'               => (int) $session->id,
-                'student_class_id' => (int) $session->StudentClassID,
-                'session_date'     => $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null,
-                'start_time'       => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
-                'end_time'         => $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
-                'status'           => (string) ($session->Status ?? ''),
-                'note'             => $session->Note,
-                'session_charge'   => $session->session_charge !== null ? (int) $session->session_charge : null,
-            ],
+            'session' => $this->sessionPayload($session),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sessionPayload(ClassSession $session): array
+    {
+        $session->refresh();
+        return [
+            'id'               => (int) $session->id,
+            'student_class_id' => (int) $session->StudentClassID,
+            'session_date'     => $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null,
+            'start_time'       => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+            'end_time'         => $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
+            'status'           => (string) ($session->Status ?? ''),
+            'note'             => $session->Note,
+            'session_charge'   => $session->session_charge !== null ? (int) $session->session_charge : null,
+            'learning_record_status' => 'missing',
+        ];
+    }
+
+    /**
+     * @return array{start_time:string,end_time:string}|null
+     */
+    private function resolveProjectedMonthlySlot(StudentClass $studentClass, int $isoWeekday, ?string $requestedStart): ?array
+    {
+        $globalDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
+        $candidates = [
+            ['week', 'time', null],
+            ['week1', 'time1', 'duration1'],
+            ['week2', 'time2', 'duration2'],
+            ['week3', 'time3', 'duration3'],
+            ['week4', 'time4', 'duration4'],
+            ['week5', 'time5', 'duration5'],
+            ['week6', 'time6', 'duration6'],
+        ];
+
+        foreach ($candidates as [$weekField, $timeField, $durationField]) {
+            $weekday = (int) ($studentClass->{$weekField} ?? 0);
+            if ($weekday !== $isoWeekday) {
+                continue;
+            }
+            $time = trim((string) ($studentClass->{$timeField} ?? ''));
+            if ($time === '') {
+                continue;
+            }
+            $start = $this->normalizeTime($time);
+            if ($requestedStart && substr($start, 0, 5) !== substr($requestedStart, 0, 5)) {
+                continue;
+            }
+            $duration = $durationField ? (int) ($studentClass->{$durationField} ?? 0) : 0;
+            if ($duration < 30) {
+                $duration = $globalDuration;
+            }
+
+            return [
+                'start_time' => $start,
+                'end_time'   => $this->computeEndTime($start, $duration),
+            ];
+        }
+
+        return null;
     }
 
     private function appendSessionNote($existing, string $suffix): string
