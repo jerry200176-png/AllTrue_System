@@ -61,5 +61,3 @@ assert.equal(
   true,
   'scheduled-only exception should still render normally',
 );
-
-console.log('calendarExceptionMerge tests passed');
