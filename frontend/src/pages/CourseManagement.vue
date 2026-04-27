@@ -231,6 +231,11 @@
                         <button class="small ghost btn-toggle" @click="toggleDates(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
+                        <button
+                          v-if="isMonthlyMode(c)"
+                          class="small ghost btn-invoices"
+                          @click="openInvoiceModal(c)"
+                        >帳單</button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
@@ -332,6 +337,11 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
+                    <button
+                      v-if="isMonthlyMode(hc)"
+                      class="small ghost btn-invoices"
+                      @click="openInvoiceModal(hc)"
+                    >帳單</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
                     </button>
@@ -595,6 +605,60 @@
       @close="paymentEntryOpen = false"
       @confirmed="onPaymentEntryConfirmed"
     />
+
+    <!-- 月結帳單記錄 Modal -->
+    <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
+      <div class="modal course-modal invoice-modal">
+        <div class="invoice-modal-header">
+          <div>
+            <h3 class="modal-title">月結帳單記錄</h3>
+            <p class="modal-desc">
+              {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
+            </p>
+          </div>
+          <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
+        </div>
+
+        <div v-if="invoiceModalLoading" class="invoice-modal-state" role="status">
+          <div class="invoice-skeleton"></div>
+          <div class="invoice-skeleton invoice-skeleton-short"></div>
+        </div>
+        <div v-else-if="invoiceModalError" class="invoice-modal-state invoice-modal-error" role="alert">
+          {{ invoiceModalError }}
+        </div>
+        <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
+          尚無帳單記錄（舊有課程）。請以課程主檔繳費狀態作為暫時參考。
+        </div>
+        <table v-else class="invoice-table">
+          <thead>
+            <tr>
+              <th>期別</th>
+              <th>繳費日</th>
+              <th class="invoice-amount-cell">金額</th>
+              <th class="invoice-amount-cell">已繳</th>
+              <th class="invoice-status-cell">狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="inv in invoiceModalList" :key="inv.id">
+              <td>{{ formatBillingPeriod(inv.billing_period) }}</td>
+              <td>{{ inv.due_date || '—' }}</td>
+              <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
+              <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
+              <td class="invoice-status-cell">
+                <span :class="['invoice-status-chip', `invoice-status-${inv.status || 'unknown'}`]">
+                  {{ invoiceStatusLabel(inv.status) }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions invoice-modal-actions">
+          <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="pauseConfirmTarget = null">
       <div class="modal course-modal pause-confirm-modal">
@@ -2110,6 +2174,24 @@ const paymentStatusButtonLabel = (course) => {
   return course?.payment_status === 'paid' ? '已繳費' : '未繳費';
 };
 
+const formatMoney = (value) => {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n.toLocaleString() : '0';
+};
+
+const formatBillingPeriod = (period) => {
+  if (!period || String(period).length < 7) return period || '—';
+  const [year, month] = String(period).split('-');
+  const monthNum = Number.parseInt(month, 10);
+  return monthNum ? `${year}年${monthNum}月` : period;
+};
+
+const invoiceStatusLabel = (status) => ({
+  paid: '已繳',
+  unpaid: '未繳',
+  partial: '部分繳',
+}[status] || status || '未知');
+
 const loadCourses = async (page = 1) => {
   if (!props.branchId) {
     courses.value = [];
@@ -2799,6 +2881,49 @@ const submitEdit = async () => {
 const confirmDeleteTarget = ref(null);
 const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
+const invoiceModalOpen = ref(false);
+const invoiceModalCourse = ref(null);
+const invoiceModalList = ref([]);
+const invoiceModalLoading = ref(false);
+const invoiceModalError = ref('');
+
+const closeInvoiceModal = () => {
+  invoiceModalOpen.value = false;
+};
+
+const openInvoiceModal = async (course) => {
+  if (!course?.id || !isMonthlyMode(course)) return;
+  invoiceModalCourse.value = course;
+  invoiceModalList.value = [];
+  invoiceModalError.value = '';
+  invoiceModalLoading.value = true;
+  invoiceModalOpen.value = true;
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      invoiceModalError.value = '請重新登入後再查看帳單。';
+      return;
+    }
+
+    const res = await fetch(`/api/v1/student-classes/${course.id}/invoices`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      invoiceModalError.value = json?.message || '帳單載入失敗，請稍後再試。';
+      return;
+    }
+    invoiceModalList.value = Array.isArray(json?.invoices) ? json.invoices : [];
+  } catch (e) {
+    invoiceModalError.value = e?.message || '帳單載入失敗，請稍後再試。';
+  } finally {
+    invoiceModalLoading.value = false;
+  }
+};
+
 const executeDeleteCourse = async () => {
   const c = confirmDeleteTarget.value;
   if (!c) return;
@@ -4698,6 +4823,130 @@ button.danger:disabled {
   padding: 3px 10px;
 }
 .paid-date-hint { font-size: 11px; color: #2e7d32; margin-top: 2px; white-space: nowrap; }
+.btn-invoices {
+  border-color: #bfdbfe !important;
+  color: #1d4ed8 !important;
+  background: #eff6ff !important;
+}
+.btn-invoices:hover {
+  background: #dbeafe !important;
+}
+.invoice-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+.invoice-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.invoice-modal-header .modal-desc {
+  margin: 4px 0 0;
+  color: var(--text-light);
+  font-size: 13px;
+}
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-light);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+.icon-btn:hover {
+  background: #f8fafc;
+  color: var(--text);
+}
+.invoice-modal-state {
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--text-light);
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+}
+.invoice-modal-error {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+.invoice-skeleton {
+  height: 14px;
+  margin: 8px auto;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 37%, #e5e7eb 63%);
+  background-size: 400% 100%;
+  animation: invoice-loading 1.4s ease infinite;
+  width: 88%;
+}
+.invoice-skeleton-short {
+  width: 58%;
+}
+@keyframes invoice-loading {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.invoice-table th,
+.invoice-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.invoice-table th {
+  background: #f8fafc;
+  color: var(--text-light);
+  font-weight: 700;
+}
+.invoice-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.invoice-amount-cell,
+.invoice-status-cell {
+  text-align: right !important;
+  white-space: nowrap;
+}
+.invoice-status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.invoice-status-paid {
+  background: #dcfce7;
+  color: #166534;
+}
+.invoice-status-unpaid {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.invoice-status-partial {
+  background: #fef3c7;
+  color: #92400e;
+}
+.invoice-status-unknown {
+  background: #e5e7eb;
+  color: #4b5563;
+}
+.invoice-modal-actions {
+  margin-top: 18px;
+}
 .tag-armed {
   background: #ffebee;
   color: #c62828;
@@ -4886,6 +5135,30 @@ button.danger:disabled {
 [data-theme="dark"] .empty-active-courses__text,
 [data-theme="dark"] .empty-active-courses__hint {
   color: #64748b;
+}
+[data-theme="dark"] .btn-invoices {
+  background: #172554 !important;
+  color: #93c5fd !important;
+  border-color: #1d4ed8 !important;
+}
+[data-theme="dark"] .icon-btn {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+[data-theme="dark"] .invoice-modal-state,
+[data-theme="dark"] .invoice-table th {
+  background: #0f172a;
+}
+[data-theme="dark"] .invoice-table,
+[data-theme="dark"] .invoice-table th,
+[data-theme="dark"] .invoice-table td,
+[data-theme="dark"] .invoice-modal-state {
+  border-color: #334155;
+}
+[data-theme="dark"] .invoice-skeleton {
+  background: linear-gradient(90deg, #334155 25%, #475569 37%, #334155 63%);
+  background-size: 400% 100%;
 }
 
 /* ── Disabled button UX: cursor + tooltip affordance ── */
