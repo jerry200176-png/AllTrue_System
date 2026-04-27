@@ -41,6 +41,9 @@
             </template>
             <span v-else class="teacher-schedule-meta teacher-schedule-empty">近兩週無排課</span>
           </div>
+          <p v-if="teacherChanged" class="field-hint field-hint--warning">
+            已更換正班老師；儲存後未來未上堂次會改由新老師負責，已點名／已核准歷史堂次不改。
+          </p>
         </div>
 
         <div class="form-group">
@@ -207,6 +210,9 @@
             >
               ＋ 新增時段（同日可排多段，最多 7 段）
             </button>
+            <p class="slot-help-text">
+              固定課表可設定同一天多段或一週多天；儲存後系統會重排未來未上堂次，已點名／已核准堂次保留原狀。
+            </p>
           </div>
         </div>
 
@@ -259,6 +265,7 @@ const defaultForm = {
   memo: '',
   remaining_sessions: 0,
   paid_at: '',
+  original_teacher_id: '',
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
@@ -304,6 +311,10 @@ const hasPerDayDuration = computed(() => {
     .filter((v) => v > 0);
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
+});
+const teacherChanged = computed(() => {
+  if (!form.original_teacher_id || !form.teacher_id) return false;
+  return String(form.original_teacher_id) !== String(form.teacher_id);
 });
 
 const fieldErrors = computed(() => {
@@ -666,6 +677,12 @@ function computeEndTime(startRaw, durHours) {
 .btn-add-slot:hover {
   border-color: var(--primary, #2563eb);
   background: var(--primary-bg, #eef2ff);
+}
+.slot-help-text {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .btn-remove-slot {
   padding: 4px 10px;
