@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(courses): AAA 狀態與 Modal 補強
+
+- Added 課程管理空狀態、loading skeleton、歷史課程卡與高風險 modal 的 AAA 視覺一致性補強
+
 ## 2026-04-27 — feat(courses): 戰術課程列表視覺
 
 - Added 課程管理學生群組、課程 row、操作按鈕與詳情面板的戰術資訊列視覺，提升掃描速度與高風險狀態辨識度
