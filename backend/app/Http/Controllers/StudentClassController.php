@@ -3051,6 +3051,7 @@ class StudentClassController extends Controller
         }
 
         $newSessions = [];
+        $quotaShortfall = max(0, $newCount - $currentCount);
         foreach ($expectedSessions as $session) {
             $date = $this->normalizeDateString($session['SessionDate'] ?? null);
             $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
@@ -3062,6 +3063,9 @@ class StudentClassController extends Controller
                 continue;
             }
             $newSessions[] = $session;
+            if ($quotaShortfall > 0 && count($newSessions) >= $quotaShortfall) {
+                break;
+            }
         }
 
         if ($currentCount < $newCount && empty($newSessions)) {
