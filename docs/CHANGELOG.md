@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-04-27 — docs(ops): 補 token 與 Actions 節流 SOP
+
+- Changed Runbook 補低風險 docs 小修先累積、同類 docs 批次送出、避免混合 deployable diff 與 token conservation 規則
+- Changed AGENTS 補 Agent Orchestration SOP：任務分級、bounded context 切分、artifact-only handoff 與 architecture boundary 原則
+- Changed AI 公司組織圖新增 ORCH、INT、DOCS/MEM 職責，並明確小任務不啟動全流程
+- Changed INDEX/Runbook/AGENTS 清理長篇 archive 判讀規則、branch protection 舊 reviewer 說法與過時協作者入口
+- Security 必讀安全警示補強 code backup source of truth、DB offsite manifest、restore drill 與 production 禁令
+- Changed Workflow 補 Risk Tier、Definition of Ready/Done、Stop-the-line 與 post-merge learning loop，對齊大廠與 AI orchestration 實務
+
 ## 2026-04-27 — docs(readme): 補 Architecture Diagram 與 ERD
 
 - Changed README 新增 Mermaid Architecture Diagram、核心 ERD、Engineering Maturity 與 Known Gaps/Roadmap，方便對外展示系統成熟度
