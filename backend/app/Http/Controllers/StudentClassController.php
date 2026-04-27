@@ -1561,7 +1561,9 @@ class StudentClassController extends Controller
                 'preview_id' => $preview['preview_id'],
                 'source_course' => $result['source_course'] ?? $preview['source_course'],
                 'new_course' => $result['new_course'] ?? null,
-                'invoice' => $data['mode'] === 'renew_monthly' ? ($preview['billing']['invoice'] ?? null) : null,
+                'invoice' => $data['mode'] === 'renew_monthly'
+                    ? ($result['invoice'] ?? ($preview['billing']['invoice'] ?? null))
+                    : null,
                 'schedule' => [
                     'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
                     'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
@@ -1575,7 +1577,7 @@ class StudentClassController extends Controller
     }
 
     /**
-     * 月結制課程續約：延長 EndDate，不建立新批次。
+     * 月結制課程續約：建立新一期課程，舊課程結算。
      * POST /api/v1/student-classes/{studentClass}/renew-monthly
      */
     public function renewMonthly(Request $request, StudentClass $studentClass)
@@ -1600,62 +1602,156 @@ class StudentClassController extends Controller
         $newEndDate = Carbon::parse($data['end_date'])->toDateString();
 
         return DB::transaction(function () use ($studentClass, $newEndDate) {
-            // 延長到期日
-            $studentClass->EndDate = $newEndDate;
-            // FR-003：重置繳費狀態，讓新月份顯示「未繳費」
-            $studentClass->Paid    = 0;
-            $studentClass->PayDate = null;
-            $studentClass->save();
-            $studentClass->refresh();
+            $studentClass = StudentClass::where('ID', $studentClass->ID)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass);
+            $sourceEndDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+            $newStartDate = $sourceEndDate
+                ? Carbon::parse($sourceEndDate)->addDay()->toDateString()
+                : Carbon::today()->toDateString();
 
-            // FR-002：建立新期逐期帳單（billing_period = 新 EndDate 所在月）
-            $billingPeriod = Carbon::parse($newEndDate)->format('Y-m');
-            $exists = Invoice::where('StudentClassID', $studentClass->ID)
-                ->where('billing_period', $billingPeriod)
-                ->exists();
-
-            if (! $exists) {
-                $totalAmount = max(0, (int) ($studentClass->Charge ?? 0));
-                $dueDay      = (int) ($studentClass->settlement_day ?? 15);
-                $dueDate     = Carbon::parse($newEndDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
-
-                $invoice = Invoice::create([
-                    'StudentID'      => (int) $studentClass->StudentID,
-                    'StudentClassID' => (int) $studentClass->ID,
-                    'IssueDate'      => Carbon::today()->toDateString(),
-                    'DueDate'        => $dueDate,
-                    'TotalAmount'    => $totalAmount,
-                    'PaidAmount'     => 0,
-                    'Status'         => 'unpaid',
-                    'Note'           => '',
-                    'billing_period' => $billingPeriod,
-                ]);
-
-                // FR-009：同步建立 InvoiceItem
-                $periodLabel = Carbon::parse($newEndDate)->locale('zh_TW')->isoFormat('YYYY年M月');
-                InvoiceItem::create([
-                    'InvoiceID'   => $invoice->id,
-                    'Description' => '月結費用 ' . $periodLabel,
-                    'Amount'      => $totalAmount,
-                    'PeriodStart' => Carbon::parse($newEndDate)->startOfMonth()->toDateString(),
-                    'PeriodEnd'   => $newEndDate,
-                ]);
+            if ($newEndDate < $newStartDate) {
+                return response()->json([
+                    'message' => '新到期日必須晚於新一期開始日。',
+                    'errors' => ['end_date' => ['新到期日不可早於舊課程結束後的下一天。']],
+                ], 422);
             }
 
-            return response()->json([
-                'message'      => '月結課程已續約，到期日更新為 ' . $newEndDate,
-                'end_date'     => $newEndDate,
-                'session_sync' => $sessionSync,
-                'course'       => [
-                    'id'               => (int) $studentClass->ID,
-                    'end_date'         => $newEndDate,
-                    'settlement_day'   => $studentClass->settlement_day,
-                    'monthly_sessions' => $studentClass->monthly_sessions,
-                    'schedule_mode'    => $studentClass->ScheduleMode,
-                ],
+            $duplicate = $this->findDuplicateMonthlyRenewal($studentClass, $newStartDate, $newEndDate);
+            if ($duplicate !== null) {
+                return response()->json([
+                    'message' => '偵測到相同學生、科目與期間的月結續報課程，請先確認是否已續報過。',
+                    'errors' => ['duplicate' => ['已存在相同期間的月結續報課程。']],
+                    'duplicate_course' => [
+                        'id' => (int) $duplicate->ID,
+                        'start_date' => $this->normalizeDateString($duplicate->StartDate),
+                        'end_date' => $this->normalizeDateString($duplicate->EndDate),
+                        'paid' => (int) ($duplicate->Paid ?? 0),
+                    ],
+                ], 409);
+            }
+
+            $newPayload = [
+                'StudentID' => (int) $studentClass->StudentID,
+                'GradeID' => (int) ($studentClass->GradeID ?? 1),
+                'SubjectID' => (int) ($studentClass->SubjectID ?? 1),
+                'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
+                'by1' => (int) ($studentClass->by1 ?? 1),
+                'Period' => (int) ($studentClass->Period ?? 4),
+                'StartDate' => $newStartDate,
+                'EndDate' => $newEndDate,
+                'week' => $studentClass->week,
+                'time' => $studentClass->time,
+                'week1' => $studentClass->week1,
+                'time1' => $studentClass->time1,
+                'week2' => $studentClass->week2,
+                'time2' => $studentClass->time2,
+                'week3' => $studentClass->week3,
+                'time3' => $studentClass->time3,
+                'week4' => $studentClass->week4,
+                'time4' => $studentClass->time4,
+                'week5' => $studentClass->week5,
+                'time5' => $studentClass->time5,
+                'week6' => $studentClass->week6,
+                'time6' => $studentClass->time6,
+                'duration1' => $studentClass->duration1,
+                'duration2' => $studentClass->duration2,
+                'duration3' => $studentClass->duration3,
+                'duration4' => $studentClass->duration4,
+                'duration5' => $studentClass->duration5,
+                'duration6' => $studentClass->duration6,
+                'TotalHours' => (int) ($studentClass->TotalHours ?? 0),
+                'Memo' => $studentClass->Memo,
+                'Charge' => (int) ($studentClass->Charge ?? 0),
+                'Pay' => 0,
+                'PayDate' => null,
+                'Paid' => 0,
+                'Disconunt' => $studentClass->Disconunt,
+                'Rate' => (float) ($studentClass->Rate ?? 0),
+                'rate_unit' => $studentClass->rate_unit,
+                'LearnTimeID' => $studentClass->LearnTimeID,
+                'RoomID' => $studentClass->RoomID,
+                'room_id' => $studentClass->room_id,
+                'settlement_day' => $studentClass->settlement_day,
+                'monthly_sessions' => $studentClass->monthly_sessions,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'date',
+                'SessionCount' => 0,
+                'SessionDuration' => (int) ($studentClass->SessionDuration ?? 120),
+                'RemainingSessions' => 0,
+                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'UsedSessions' => 0,
+            ];
+
+            $newCourse = $this->createStudentClassRecordResilient($newPayload);
+            $newCourse->refresh();
+            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
+
+            $studentClass->Stop = 1;
+            $studentClass->closed_reason = 'settled';
+            $studentClass->save();
+            $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
+            $studentClass->refresh();
+
+            $billingPeriod = Carbon::parse($newStartDate)->format('Y-m');
+            $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
+            $dueDay = max(1, min(31, (int) ($newCourse->settlement_day ?? 15)));
+            $dueDate = Carbon::parse($newStartDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
+
+            $invoice = Invoice::create([
+                'StudentID'      => (int) $newCourse->StudentID,
+                'StudentClassID' => (int) $newCourse->ID,
+                'IssueDate'      => Carbon::today()->toDateString(),
+                'DueDate'        => $dueDate,
+                'TotalAmount'    => $totalAmount,
+                'PaidAmount'     => 0,
+                'Status'         => 'unpaid',
+                'Note'           => '',
+                'billing_period' => $billingPeriod,
             ]);
+
+            $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
+            InvoiceItem::create([
+                'InvoiceID'   => $invoice->id,
+                'Description' => '月結費用 ' . $periodLabel,
+                'Amount'      => $totalAmount,
+                'PeriodStart' => $newStartDate,
+                'PeriodEnd'   => $newEndDate,
+            ]);
+
+            return response()->json([
+                'message' => '已建立月結新一期課程，舊期已結算',
+                'mode' => 'renew_monthly',
+                'source_closed' => true,
+                'cancelled_source_sessions' => $cancelled,
+                'session_sync' => $sessionSync,
+                'source_course' => [
+                    'id' => (int) $studentClass->ID,
+                    'start_date' => $this->normalizeDateString($studentClass->StartDate),
+                    'end_date' => $this->normalizeDateString($studentClass->EndDate),
+                    'paid' => (int) ($studentClass->Paid ?? 0),
+                    'stop' => (int) ($studentClass->Stop ?? 0),
+                    'closed_reason' => $studentClass->closed_reason,
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'start_date' => $this->normalizeDateString($newCourse->StartDate),
+                    'end_date' => $this->normalizeDateString($newCourse->EndDate),
+                    'settlement_day' => $newCourse->settlement_day,
+                    'monthly_sessions' => $newCourse->monthly_sessions,
+                    'schedule_mode' => $newCourse->ScheduleMode,
+                    'paid' => (int) ($newCourse->Paid ?? 0),
+                ],
+                'invoice' => [
+                    'id' => (int) $invoice->id,
+                    'billing_period' => $invoice->billing_period,
+                    'status' => $invoice->Status,
+                    'total_amount' => (int) $invoice->TotalAmount,
+                    'due_date' => $this->normalizeDateString($invoice->DueDate),
+                ],
+            ], 201);
         });
     }
 
@@ -2583,6 +2679,21 @@ class StudentClassController extends Controller
             ->where('ScheduleMode', 'count')
             ->where('StartDate', $startDate)
             ->where('SessionCount', $sessions)
+            ->where(function ($q) {
+                $q->whereNull('Stop')->orWhere('Stop', 0);
+            })
+            ->orderBy('ID')
+            ->first();
+    }
+
+    private function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
+    {
+        return StudentClass::where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('ScheduleMode', 'date')
+            ->whereDate('StartDate', $startDate)
+            ->whereDate('EndDate', $endDate)
             ->where(function ($q) {
                 $q->whereNull('Stop')->orWhere('Stop', 0);
             })
