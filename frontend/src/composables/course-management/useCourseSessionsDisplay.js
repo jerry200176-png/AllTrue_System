@@ -274,6 +274,31 @@ export function useCourseSessionsDisplay({
     return getCourseSessionRows(course).find((r) => Number(r?.id) === id) || null;
   };
 
+  const isContractException = (row) => !!(row?.is_contract_exception ?? row?.IsContractException ?? false);
+
+  const rowOccupiesPurchasedQuota = (row) => {
+    const status = String(row?.status || '').toLowerCase();
+    return !isContractException(row) && !SESSION_NOT_OCCUPYING_QUOTA.has(status);
+  };
+
+  const isOverQuotaSession = (course, row) => {
+    if (!row || course?.PackageID) return false;
+    const purchased = getPurchasedSessions(course);
+    if (purchased <= 0 || !rowOccupiesPurchasedQuota(row)) return false;
+
+    let quotaIndex = 0;
+    for (const unit of sessionUnits(course)) {
+      if (!rowOccupiesPurchasedQuota(unit)) continue;
+      quotaIndex += 1;
+      const sameId = Number(unit?.id || 0) > 0 && Number(unit.id) === Number(row.id || 0);
+      const sameSynthetic = !unit?.id
+        && String(unit?.session_date || '').slice(0, 10) === String(row?.session_date || '').slice(0, 10)
+        && String(unit?.start_time || '').slice(0, 5) === String(row?.start_time || '').slice(0, 5);
+      if (sameId || sameSynthetic) return quotaIndex > purchased;
+    }
+    return false;
+  };
+
   const formatAttendanceTooltipTime = (value) => {
     if (!value) return '';
     const text = String(value);
@@ -360,6 +385,8 @@ export function useCourseSessionsDisplay({
     if (!rows.length) {
       return isCompletedDate(course, dateYmd) ? { label: '已上', className: 'completed' } : null;
     }
+    if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
+    if (rows.some((row) => isOverQuotaSession(course, row))) return { label: '超排', className: 'over-quota' };
     const statuses = new Set(rows.map((row) => String(row?.status || '').toLowerCase()).filter(Boolean));
     if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
     if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
@@ -376,13 +403,15 @@ export function useCourseSessionsDisplay({
     for (const u of units) {
       const uDate = String(u?.session_date || '').slice(0, 10);
       const uId = Number(u?.id || 0);
+      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
       const state = getSessionState(course, uDate, uId || undefined);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
+      const isNonQuota = isLeave || isContractException(row) || isOverQuotaSession(course, row);
       const isMatch = sessionId
         ? (uId > 0 && uId === Number(sessionId))
         : (uDate === dateYmd);
-      if (isMatch) return isLeave ? null : num + 1;
-      if (!isLeave) num++;
+      if (isMatch) return isNonQuota ? null : num + 1;
+      if (!isNonQuota) num++;
     }
     return null;
   };
@@ -393,8 +422,9 @@ export function useCourseSessionsDisplay({
     for (const u of units) {
       const uDate = String(u?.session_date || '').slice(0, 10);
       const uId = Number(u?.id || 0);
+      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
       const state = getSessionState(course, uDate, uId || undefined);
-      if (!state || !LEAVE_STATUSES.has(state.className)) count++;
+      if (!state || (!LEAVE_STATUSES.has(state.className) && !isContractException(row) && !isOverQuotaSession(course, row))) count++;
     }
     return count;
   };
@@ -408,7 +438,7 @@ export function useCourseSessionsDisplay({
     const cid = String(course?.id ?? '');
     const rows = classSessionsByCourse.value[cid];
     if (Array.isArray(rows) && rows.length > 0) {
-      return rows.filter((row) => !SESSION_NOT_OCCUPYING_QUOTA.has(String(row?.status || '').toLowerCase())).length;
+      return rows.filter((row) => rowOccupiesPurchasedQuota(row)).length;
     }
     return countNonLeaveSessions(course);
   };
@@ -437,7 +467,7 @@ export function useCourseSessionsDisplay({
     if (effective === purchased) return null;
     const leaves = leaveSessionCount(course);
     if (effective > purchased) {
-      return { show: true, type: 'over', message: '排程列數與購買堂數不一致' };
+      return { show: true, type: 'over', message: '已超出購買堂數，請取消、改為例外堂，或建立新批次' };
     }
     if (leaves > 0) {
       return { show: true, type: 'under_leave', message: '有請假堂次尚未補課' };
@@ -451,8 +481,10 @@ export function useCourseSessionsDisplay({
     for (const u of units) {
       const uDate = String(u?.session_date || '').slice(0, 10);
       const uId = Number(u?.id || 0);
+      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
       const state = getSessionState(course, uDate, uId || undefined);
       if (state && LEAVE_STATUSES.has(state.className)) continue;
+      if (isContractException(row) || isOverQuotaSession(course, row)) continue;
       if (state && SESSION_DISPLAY_CONSUMED.has(state.className)) continue;
       count++;
     }

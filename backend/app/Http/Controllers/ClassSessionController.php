@@ -122,6 +122,7 @@ class ClassSessionController extends Controller
                 'cs.StartTime',
                 'cs.EndTime',
                 'cs.Status',
+                'cs.IsContractException',
                 // PRD-A (2026-04-18): Reconcile displayed status against the latest
                 // active StudentSignIn. When an attendance record exists but
                 // ClassSession.Status is still `scheduled` or `absent` (a known
@@ -239,6 +240,7 @@ class ClassSessionController extends Controller
             $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
             $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
             $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
+            $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
             $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
             $row->learning_record_status = $row->learning_record_status ?? 'missing';
             $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
@@ -266,6 +268,7 @@ class ClassSessionController extends Controller
                 $row->StartTime,
                 $row->EndTime,
                 $row->Status,
+                $row->IsContractException,
                 $row->effective_status,
                 $row->Note,
                 $row->sc_rate,

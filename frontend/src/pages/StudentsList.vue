@@ -2418,7 +2418,7 @@ const submitRenewMonthly = async (endDate) => {
       return;
     }
     showRenewMonthlyModal.value = false;
-    alert('月結續約成功，到期日已更新為 ' + endDate);
+    alert(`已建立月結新一期課程 #${json?.new_course?.id || '—'}，舊期已結算。`);
     await loadAllStudentCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
