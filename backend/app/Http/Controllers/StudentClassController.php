@@ -3008,6 +3008,7 @@ class StudentClassController extends Controller
         $occupiedKeys = [];
         $currentCount = 0;
         $hasScheduledOutsideContract = false;
+        $hasLockedQuotaOutsideContract = false;
         foreach ($existingSessions as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
             $start = substr((string) ($session->StartTime ?? ''), 0, 5);
@@ -3025,10 +3026,19 @@ class StudentClassController extends Controller
             }
             if ($status === 'scheduled'
                 && !isset($expectedKeys[$key])
-                && !$this->isLockedContractException($session)
+                && empty($session->IsContractException)
             ) {
                 $hasScheduledOutsideContract = true;
+            } elseif (!in_array($status, $nonQuotaStatuses, true)
+                && !isset($expectedKeys[$key])
+            ) {
+                $hasLockedQuotaOutsideContract = true;
             }
+        }
+
+        if ($currentCount >= $newCount && $hasLockedQuotaOutsideContract) {
+            SessionDeductionService::syncCounters($studentClass);
+            return;
         }
 
         if ($currentCount >= $newCount && !$hasScheduledOutsideContract) {
