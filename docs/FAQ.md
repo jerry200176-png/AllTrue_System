@@ -14,11 +14,11 @@
 
 ## 我是新同事／新工程師，要先看什麼？
 
-1. [`CONTRIBUTING.md`](../CONTRIBUTING.md) — 協作方式與 AI 工具對照  
-2. [`AI_QUICKSTART.md`](../AI_QUICKSTART.md) — 專案與目錄速覽  
-3. [`docs/AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) — **防再犯**（暫停課程、繳費提醒、評量待審等已知坑）  
-4. [`docs/OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) — 維運與日常 SOP  
-5. [`docs/GITHUB_SYNC_WORKFLOW.md`](GITHUB_SYNC_WORKFLOW.md) — 怎麼把改動同步到 GitHub  
+1. [`docs/INDEX.md`](INDEX.md) — 文件導航地圖，決定下一步要讀哪個文件
+2. [`AGENTS.md`](../AGENTS.md) — AI / 協作者開工順序與 commit SOP
+3. [`docs/AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) — **防再犯**（暫停課程、繳費提醒、評量待審等已知坑）
+4. [`docs/OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) — 維運與日常 SOP
+5. [`README.md`](../README.md) — 專案總覽與 GitHub Flow
 
 若你要改**主任儀表板繳費提醒**或相關 API，必讀 [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md)。
 
@@ -64,24 +64,23 @@
 聊天與 Bug 模組有**角色權限矩陣**（例如 Bug 狀態僅限 super_admin 等）。改動前請先讀：
 
 - [`docs/CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md)  
-- [`docs/AI_HANDOFF_CHAT_BUG_AVATAR.md`](AI_HANDOFF_CHAT_BUG_AVATAR.md)（較完整的手冊與禁止回歸項）
+- [`docs/AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) 的聊天 / Bug 模組索引
 
 ---
 
 ## GitHub 要怎麼更新？主分支是哪一支？
 
-協作主分支為 **`jerry-sync-main`**（見 [`README.md`](../README.md) 說明）。本機常用 `main` 追蹤遠端。
-
-建議使用專案內一鍵腳本（會 `git add`、commit、push）：
+生產主分支為 **`origin/main`**，受 branch protection 保護，禁止直接 push。日常開發走：
 
 ```bash
-cd /home/admin   # 或你的 clone 根目錄
-./scripts/git-sync.sh "feat: 簡短說明這次改動"
+git checkout -b feat/my-feature
+git add <相關檔案>
+git commit -m "feat: 簡短說明"
+git push -u origin HEAD
+gh pr create --fill
 ```
 
-若你目前在本機分支 **`main`**，腳本會把改動推到遠端的 **`jerry-sync-main`**（與 README 協作約定一致）。
-
-詳細流程、被拒絕 push 時怎麼辦：[`docs/GITHUB_SYNC_WORKFLOW.md`](GITHUB_SYNC_WORKFLOW.md)。
+PR CI 通過後 merge，由 `deploy.yml` 自動部署。不要直接 push `main`，也不要在 feature branch 手動 deploy。
 
 **注意**：請勿將資料庫備份、`.env` 密鑰、使用者上傳的私密檔案推上 GitHub；`.gitignore` 已排除常見敏感路徑。
 
@@ -136,11 +135,11 @@ cd /home/admin   # 或你的 clone 根目錄
 | 主題 | 文件 |
 |------|------|
 | 專案總覽 | [`README.md`](../README.md) |
-| 協作與 AI 入口 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) |
+| 協作與 AI 入口 | [`AGENTS.md`](../AGENTS.md) |
 | 防再犯／已知坑 | [`docs/AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) |
 | 繳費提醒規則 | [`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md) |
 | 大分校／效能說明（給非技術） | [`docs/DIRECTOR_SCALING_FAQ.md`](DIRECTOR_SCALING_FAQ.md) |
-| GitHub 同步 | [`docs/GITHUB_SYNC_WORKFLOW.md`](GITHUB_SYNC_WORKFLOW.md) |
+| GitHub / 部署流程 | [`README.md`](../README.md) + [`docs/OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) |
 | 維運 SOP | [`docs/OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) |
 | 聊天／Bug | [`docs/CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) |
 | 變更紀錄 | [`docs/CHANGELOG.md`](CHANGELOG.md)（含出缺勤科目、請假順延等） |

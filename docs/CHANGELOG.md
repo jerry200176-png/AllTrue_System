@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — docs(governance): 清理 AI 導航過期連結
+
+- Changed 文件導航、FAQ、部署與角色手冊移除不存在的舊入口連結與 `jerry-sync-main` 說法，統一為 feature branch → PR → CI → `deploy.yml`
+
 ## 2026-04-27 — changed(courses): 多科共用方案入口降噪
 
 - Changed 新增課程預設直接進入一般課程建立，保留多科共用方案舊資料維護能力但不再作為主任日常新建入口
