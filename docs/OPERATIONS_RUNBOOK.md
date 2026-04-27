@@ -69,7 +69,7 @@ gh auth refresh -h github.com -s workflow
 - PR merged = branch deleted (local + remote).
 - Branch lifetime target: 1-3 days.
 - `backup-*` 分支：**只用於還原，不合併，不主動清除**（max 1-2 個）。
-- Protect `main`（no force-push, CI required, 1 reviewer）。
+- Protect `main`（required checks + admin enforcement + no force-push/delete；單人 repo 暫不強制 approval，有第二位 maintainer 後再升級為 1 approval）。
 
 **Automation（每週一至五 08:00 自動 dry-run）**  
 GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫入 Actions Job Summary。
@@ -97,6 +97,15 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 6. **Docs-only merge 不部署**：`deploy.yml` 必須先偵測 main 最新 commit 是否含 `backend/**`、`frontend/**`、Composer 或 deploy workflow 變動；沒有 deployable diff 就跳過 production deploy。
 7. **Production deploy 不取消**：部署 workflow 使用 `concurrency: production-deploy` 且 `cancel-in-progress: false`，避免中途取消造成半部署。
 8. **禁止用 production Pi 省 CI minutes**：不得把 `/home/admin` production Pi 註冊為 PHPUnit/self-hosted test runner；也不得為省 minutes 在 Pi 上跑 `php artisan test` / `phpunit`。
+9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
+10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
+11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
+
+**Token Conservation SOP**
+- 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。
+- 先用 `rg` / MemPalace 定位，再用 `ReadFile offset/limit` 讀小片段。
+- 回答小問題先直接回答；只有要改程式、改流程或高風險操作時才展開完整 Phase。
+- 重複 SOP 優先寫進既有文件或腳本，之後只引用路徑，不在每次對話重貼長流程。
 
 **第一階段目標**
 - docs-only PR：Actions job minutes 目標 `< 0.5 min`
@@ -109,6 +118,32 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 - 將低頻維運排程降頻或移到外部監控
 - 拆分 fast tests / full regression tests
 - 評估獨立、非 production 的 self-hosted runner（不可與 Pi production 共用）
+
+### B3. Workflow Maturity Gates（AI + 大廠式工作流）
+
+**目標**：讓任務在正確的流程重量中完成，避免小事浪費 Actions，也避免高風險改動被當成小修。
+
+| Gate | 問題 | 未通過時 |
+|---|---|---|
+| Risk Tier | 這是 T0/T1/T2/T3 哪一級？ | 不進 DEV；先由 `[ORCH]` 補分級 |
+| Contract | API/DB/UI/權限邊界是否清楚？ | 不開多 agent；先補 ARCH artifact |
+| Ownership | 誰是 `[INT]`，誰負責最後整合？ | 不平行拆 PR |
+| Safety | 是否碰 auth、PII、RFID、webhook、堂數/繳費、migration、備份/CI/CD？ | 加 SEC/OPS/DBA gate |
+| CI Budget | 是否 docs-only？是否混入 deployable diff？ | 拆出 docs batch 或改成小 PR |
+| Memory | 完成後要寫回哪裡？ | PR 說明列出 CHANGELOG / TECH_DEBT / AI_REGRESSION / SYSTEM_TECH_GUIDE |
+
+**Tier 對應**
+- T0：docs-only / 規則文字 / README 展示。只跑 docs 檢查，不混 `backend/**`、`frontend/**`、`scripts/**`、`.github/**`。
+- T1：低風險單點程式碼。小 PR、局部測試或 build。
+- T2：跨模組產品流程。需要 PLAN/ARCH、artifact handoff、Integration Owner。
+- T3：安全、資料、部署、備份、權限、高風險金流/堂數。必須加 SEC/OPS/DBA，使用者批准後才做。
+
+**Post-merge learning loop**
+1. Merge 後確認 CI/deploy/health 或 docs-only skip 結果。
+2. 將「有效做法」寫入 `AGENTS.md` / `OPERATIONS_RUNBOOK.md` / `SYSTEM_TECH_GUIDE.md`。
+3. 將「踩坑與防再犯」寫入 `docs/AI_REGRESSION_LESSONS.md`。
+4. 將「本次不修但會影響未來」寫入 `docs/TECH_DEBT.md`。
+5. 只保存 distilled causality，不複製完整對話推理，避免記憶污染。
 
 ## C. Incident lessons (must remember)
 
@@ -682,6 +717,14 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | RPO / RTO | 目前可承諾：RPO ≤ 6 小時（sixhour + Drive），RTO 目標 ≤ 30 分鐘（依近幾次還原經驗）| 每季演練一次「從 Drive 取備份 → 還原到 drill DB → 驗核心表 row count」 |
 | MySQL PITR / binlog | 尚未啟用明確的 point-in-time recovery；若事故發生在兩次 sixhour 中間，仍可能損失數小時資料 | 登記 TD-015，另走 DBA/OPS 流程評估 binlog retention、磁碟壓力、restore SOP |
 | Full server DR | 目前有 DB 備份與 GitHub code backup，但沒有完整記錄「全新 Pi 從零重建到可服務」耗時 | 每半年做一次 tabletop drill，驗證 secrets、rclone、nginx、PHP/MySQL、deploy key 都可重建 |
+
+### Backup / Code Backup 不可破壞規則
+
+- **Code source of truth**：GitHub protected `main` + PR history。Pi `/home/admin` working tree 是 deploy target，不是 code backup 來源。
+- **DB backup minimum**：本地 nightly、sixhour、monthly + Google Drive offsite + manifest + monthly restore drill。
+- **Restore drill target**：只能還原到 drill/test DB；不得用 production `AllTrue` 做演練。
+- **事故恢復順序**：先確認 GitHub commit / backup manifest / health check，再做最小 rollback；禁止用舊工作樹覆蓋後直接 commit。
+- **回報「備份正常」條件**：不是只看到 `.sql.gz` 存在，還要能確認 Drive 同步與最近一次 restore drill 成功。
 
 ### Branch Protection 稽核指令（每月或重大事故後）
 
