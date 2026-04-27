@@ -2801,7 +2801,8 @@ const editCourse = (c) => {
     first_class_date: c.first_class_date || '',
     room_id: c.room_id ?? null,
     memo: c.memo ?? c.Memo ?? '',
-    paid_at: c.paid_at || c.last_paid_at || ''
+    paid_at: c.paid_at || c.last_paid_at || '',
+    original_paid_at: c.paid_at || c.last_paid_at || ''
   };
   originalFirstClassDate.value = c.first_class_date || '';
   loadRoomsForBranch();
@@ -2847,7 +2848,9 @@ const submitEdit = async () => {
           room_id: form.room_id || null,
           Memo: form.memo || null
         };
-        body.paid_at = form.paid_at ? form.paid_at : null;
+        if (String(form.paid_at || '') !== String(form.original_paid_at || '')) {
+          body.paid_at = form.paid_at ? form.paid_at : null;
+        }
         const res = await fetch(`/api/v1/student-classes/${id}`, {
           method: 'PUT',
           credentials: 'include',
