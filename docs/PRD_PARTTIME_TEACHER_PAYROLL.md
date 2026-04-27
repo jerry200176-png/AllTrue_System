@@ -603,17 +603,10 @@ free -m | awk 'NR==2{printf "Used: %sMB / %sMB (%.1f%%)\n", $3, $2, $3*100/$2}'
 
 ### 13.7 回退步驟（5 分鐘內）
 
-```bash
-# 1. 關閉功能
-echo "PAYROLL_FEATURE_ENABLED=false" >> /home/admin/backend/.env
-cd /home/admin/backend && php artisan config:clear
-
-# 2. 若需回退 migration
-cd /home/admin/backend && php artisan migrate:rollback --step=1
-
-# 3. 若前端已部署，重新部署移除薪資頁入口
-cd /home/admin/frontend && npm run deploy
-```
+本節是歷史 PRD 的風險規劃，不作為即時操作指令。實際回退需先讀
+`docs/DANGEROUS_OPERATIONS.md`，再依 `docs/OPERATIONS_RUNBOOK.md` 走 PR revert /
+feature flag / deploy workflow；禁止為了 debug 直接在 production 執行
+`config:clear`、`migrate:rollback` 或手動前端 deploy。
 
 ## 14. 測試與回歸清單
 

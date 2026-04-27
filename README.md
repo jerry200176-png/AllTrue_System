@@ -292,7 +292,7 @@ gh pr create --fill
 | `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
-| `docs/GITHUB_SYNC_WORKFLOW.md` | GitHub 協作 SOP |
+| `AGENTS.md` | AI / 協作者開工順序與 commit SOP |
 | `docs/DEPLOYMENT.md` | 部署步驟 |
 | `docs/OPERATIONS_RUNBOOK.md` | 日常維運手冊 |
 | `docs/SECURITY.md` | 安全設計說明 |
