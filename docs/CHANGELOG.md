@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(courses): Porsche-inspired command center 首屏
+
+- Added 課程管理首屏的高級性能指揮艙視覺：深色霧面 hero、精準控制列、性能儀表統計與玻璃質感背景
+
 ## 2026-04-27 — feat(courses): 高質感課程列表
 
 - Added 課程管理主列表、學生群組卡、課程狀態標籤、歷史課程卡與空狀態的 premium 視覺層級，並補上初次載入 skeleton

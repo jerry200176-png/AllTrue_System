@@ -4,8 +4,9 @@
     <div class="card course-header-card" data-guide="course-mgmt-header">
       <div class="header-actions">
         <div class="page-title-block">
+          <p class="command-kicker">AllTrue Operations Command</p>
           <h2 class="page-title">課程管理</h2>
-          <p class="ref-hint">管理所有學生的課程安排，快速新增課程</p>
+          <p class="ref-hint">即時掌握學生課程、續報風險、排課狀態與營運節奏</p>
           <div class="meta-pills">
             <span class="meta-pill">{{ groupedCourses.length }} 位學生</span>
             <span v-if="pagination.lastPage > 1" class="meta-pill">第 {{ pagination.page }} / {{ pagination.lastPage }} 頁</span>
@@ -57,28 +58,27 @@
         </div>
       </div>
 
-      <!-- Compact stats strip -->
+      <!-- Performance cockpit stats -->
       <div class="stats-strip">
-        <span class="stats-strip-item stats-strip-total">
-          <span class="stats-strip-num">{{ courses.length }}</span> 筆課程
+        <span class="stats-orb stats-orb-total">
+          <span class="stats-orb-label">Course Matrix</span>
+          <span class="stats-orb-num">{{ courses.length }}</span>
+          <span class="stats-orb-caption">筆課程在線</span>
         </span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對一 <strong>{{ coursesByType.one_on_one }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對二 <strong>{{ coursesByType.one_on_two }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">一對三 <strong>{{ coursesByType.one_on_three }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">輔導 <strong>{{ coursesByType.tutoring }}</strong></span>
-        <span class="stats-strip-sep">·</span>
-        <span class="stats-strip-item">試聽 <strong>{{ coursesByType.trial }}</strong></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:1</span><span class="stats-orb-num">{{ coursesByType.one_on_one }}</span><span class="stats-orb-caption">一對一</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:2</span><span class="stats-orb-num">{{ coursesByType.one_on_two }}</span><span class="stats-orb-caption">一對二</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">1:3</span><span class="stats-orb-num">{{ coursesByType.one_on_three }}</span><span class="stats-orb-caption">一對三</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">Coach</span><span class="stats-orb-num">{{ coursesByType.tutoring }}</span><span class="stats-orb-caption">輔導</span></span>
+        <span class="stats-orb"><span class="stats-orb-label">Trial</span><span class="stats-orb-num">{{ coursesByType.trial }}</span><span class="stats-orb-caption">試聽</span></span>
         <template v-if="coursesBySubject.length">
-          <span class="stats-strip-sep stats-strip-pipe">|</span>
-          <span
-            v-for="s in coursesBySubject"
-            :key="s.subject"
-            class="stats-strip-subject"
-          >{{ s.label }} {{ s.count }}</span>
+          <span class="stats-subject-deck">
+            <span class="stats-subject-title">Subjects</span>
+            <span
+              v-for="s in coursesBySubject"
+              :key="s.subject"
+              class="stats-strip-subject"
+            >{{ s.label }} {{ s.count }}</span>
+          </span>
         </template>
       </div>
     </div>
@@ -3219,20 +3219,69 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 0 12px 24px;
   box-sizing: border-box;
+  position: relative;
+}
+.course-page::before {
+  content: '';
+  position: absolute;
+  inset: -18px -24px auto;
+  height: 360px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(125, 211, 252, 0.18), transparent 28%),
+    radial-gradient(circle at 88% 2%, rgba(245, 158, 11, 0.16), transparent 24%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.08), transparent 58%);
+  filter: blur(2px);
+  z-index: -1;
 }
 
 /* ----- Page header ----- */
 .course-header-card {
-  padding: 18px;
-  border-radius: 16px;
-  border: 1px solid rgba(99, 102, 241, 0.18);
+  position: relative;
+  overflow: hidden;
+  padding: 22px;
+  border-radius: 24px;
+  border: 1px solid rgba(125, 211, 252, 0.32);
   background:
-    radial-gradient(140% 120% at 0% 0%, rgba(99, 102, 241, 0.12) 0%, rgba(255, 255, 255, 0) 48%),
+    linear-gradient(120deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94) 50%, rgba(30, 64, 175, 0.88)),
     var(--card-bg);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 28px 78px rgba(15, 23, 42, 0.34), inset 0 1px 0 rgba(255,255,255,0.12);
+  color: #e0f2fe;
+}
+.course-header-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(circle at 38% 20%, #000 0%, transparent 70%);
+  pointer-events: none;
+}
+.course-header-card::after {
+  content: '';
+  position: absolute;
+  top: -72px;
+  right: -72px;
+  width: 250px;
+  height: 250px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background:
+    radial-gradient(circle, rgba(56,189,248,0.18), transparent 58%),
+    conic-gradient(from 110deg, rgba(56,189,248,0), rgba(56,189,248,0.34), rgba(245,158,11,0.24), rgba(56,189,248,0));
+  opacity: 0.9;
+  pointer-events: none;
+  animation: command-orbit 12s linear infinite;
+}
+@keyframes command-orbit {
+  to { transform: rotate(360deg); }
 }
 
 .header-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -3242,19 +3291,31 @@ onUnmounted(() => {
 .page-title-block {
   min-width: 0;
 }
+.command-kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  text-shadow: 0 0 18px rgba(125, 211, 252, 0.48);
+}
 
 .page-title {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 4px;
-  letter-spacing: 0.02em;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  font-weight: 950;
+  color: #f8fafc;
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+  text-shadow: 0 0 34px rgba(56,189,248,0.42);
 }
 
 .ref-hint {
-  color: var(--text-light);
-  font-size: 13px;
-  margin-top: 3px;
+  color: #bae6fd;
+  font-size: 14px;
+  margin-top: 8px;
+  font-weight: 650;
 }
 
 .meta-pills {
@@ -3271,9 +3332,10 @@ onUnmounted(() => {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 700;
-  color: #334155;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: #e0f2fe;
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 0 18px rgba(56,189,248,0.12);
 }
 
 .header-buttons {
@@ -3285,10 +3347,10 @@ onUnmounted(() => {
 }
 
 .btn-soft {
-  border: 1px solid rgba(100, 116, 139, 0.28);
-  background: rgba(255, 255, 255, 0.86);
-  color: #334155;
-  border-radius: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  background: rgba(15, 23, 42, 0.38);
+  color: #e0f2fe;
+  border-radius: 999px;
   padding: 9px 14px;
   font-size: 13px;
   font-weight: 700;
@@ -3297,31 +3359,32 @@ onUnmounted(() => {
 }
 
 .btn-soft:hover {
-  border-color: rgba(79, 70, 229, 0.35);
-  color: #3730a3;
+  border-color: rgba(125, 211, 252, 0.55);
+  color: #fff;
   transform: translateY(-1px);
+  box-shadow: 0 0 24px rgba(56,189,248,0.2);
 }
 
 .btn-accent {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--primary));
+  background: linear-gradient(135deg, #f59e0b, #ef4444 48%, #8b5cf6);
   color: #fff;
   border: none;
   padding: 10px 18px;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 999px;
+  font-weight: 900;
   font-size: 14px;
   cursor: pointer;
   transition: var(--transition);
-  box-shadow: 0 2px 8px rgba(230, 81, 0, 0.25);
+  box-shadow: 0 14px 34px rgba(239, 68, 68, 0.3), 0 0 28px rgba(245, 158, 11, 0.2);
 }
 
 .btn-accent:hover {
   opacity: 0.95;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(230, 81, 0, 0.35);
+  box-shadow: 0 18px 42px rgba(239, 68, 68, 0.38), 0 0 34px rgba(245, 158, 11, 0.28);
 }
 
 .btn-icon {
@@ -3332,9 +3395,12 @@ onUnmounted(() => {
 .filter-bar {
   margin-top: 16px;
   padding: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.38);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+  position: relative;
+  z-index: 1;
 }
 
 .filter-bar.grid {
@@ -3345,7 +3411,7 @@ onUnmounted(() => {
 .filter-field label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-light);
+  color: #93c5fd;
   margin-bottom: 6px;
 }
 
@@ -3354,8 +3420,10 @@ onUnmounted(() => {
   padding: 9px 12px;
   border-radius: 10px;
   font-size: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: #fff;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  background: rgba(15, 23, 42, 0.58);
+  color: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 /* ----- Compact stats strip ----- */
@@ -3392,65 +3460,120 @@ onUnmounted(() => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .stats-strip {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(160px, 1.35fr) repeat(5, minmax(96px, 1fr)) minmax(180px, 1.8fr);
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 20px;
+  background: rgba(2, 6, 23, 0.36);
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07);
+  color: #cbd5e1;
+}
+
+.stats-orb {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 2px;
+  padding: 12px 13px;
+  min-height: 82px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(145deg, rgba(15,23,42,0.78), rgba(30,41,59,0.42)),
+    rgba(255,255,255,0.03);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+.stats-orb::after {
+  content: '';
+  position: absolute;
+  inset: auto 10px 10px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8, #f59e0b);
+  opacity: 0.72;
+}
+.stats-orb-total {
+  border-color: rgba(245, 158, 11, 0.36);
+  background:
+    radial-gradient(circle at 16% 16%, rgba(245,158,11,0.2), transparent 42%),
+    linear-gradient(145deg, rgba(15,23,42,0.82), rgba(30,41,59,0.44));
+}
+.stats-orb-label,
+.stats-subject-title {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+.stats-orb-num {
+  font-size: 30px;
+  font-weight: 950;
+  line-height: 1;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+}
+.stats-orb-caption {
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+.stats-subject-deck {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(248, 250, 252, 0.85);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  font-size: 12.5px;
-  color: var(--text-light);
+  align-content: center;
+  gap: 7px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.48);
 }
-
-.stats-strip-item {
-  color: #475569;
+.stats-subject-title {
+  flex: 0 0 100%;
 }
-
-.stats-strip-item strong {
-  font-weight: 700;
-  color: var(--text);
-}
-
-.stats-strip-total {
-  font-weight: 600;
-  color: var(--primary);
-}
-
-.stats-strip-total .stats-strip-num {
-  font-size: 14px;
+.stats-strip-subject {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.14);
+  color: #e0f2fe;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  font-size: 11.5px;
   font-weight: 800;
 }
 
-.stats-strip-sep {
-  color: rgba(148, 163, 184, 0.6);
-  font-size: 11px;
-}
-
-.stats-strip-pipe {
-  margin: 0 2px;
-  color: rgba(148, 163, 184, 0.5);
-  font-size: 13px;
-}
-
-.stats-strip-subject {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--primary-bg);
-  color: var(--primary);
-  font-size: 11.5px;
-  font-weight: 600;
+@media (max-width: 980px) {
+  .course-header-card {
+    padding: 18px;
+  }
+  .header-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .stats-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stats-orb-total,
+  .stats-subject-deck {
+    grid-column: 1 / -1;
+  }
 }
 
 /* ----- Table ----- */
 .table-card {
   padding: 0;
   overflow: visible;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+  margin-top: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92));
+  box-shadow: 0 20px 54px rgba(15, 23, 42, 0.1);
 }
 
 .table-wrap {
@@ -5308,6 +5431,20 @@ button.danger:disabled {
   background:
     radial-gradient(circle at top right, rgba(59,130,246,0.12), transparent 34%),
     #0f172a;
+}
+[data-theme="dark"] .course-page::before {
+  background:
+    radial-gradient(circle at 14% 18%, rgba(125, 211, 252, 0.16), transparent 28%),
+    radial-gradient(circle at 88% 2%, rgba(245, 158, 11, 0.12), transparent 24%);
+}
+[data-theme="dark"] .course-header-card {
+  border-color: rgba(125, 211, 252, 0.28);
+  background:
+    linear-gradient(120deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96) 50%, rgba(30, 64, 175, 0.72));
+}
+[data-theme="dark"] .table-card {
+  border-color: #334155;
+  background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
 }
 [data-theme="dark"] .student-group-card,
 [data-theme="dark"] .course-skeleton-group {
