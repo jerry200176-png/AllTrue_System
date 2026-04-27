@@ -2,17 +2,17 @@
   <div class="modal-overlay">
     <div class="modal universal-scheduler-modal">
       <header class="scheduler-header">
-        <h3>{{ step === 1 ? '新增課程' : title }}</h3>
+        <h3>{{ showTypeChooser && step === 1 ? '新增課程' : title }}</h3>
         <p class="scheduler-subtitle">
-          <template v-if="step === 1">請先選擇要建立的課程類型，下一步再填寫詳細資料。</template>
+          <template v-if="showTypeChooser && step === 1">請先選擇要建立的課程類型，下一步再填寫詳細資料。</template>
           <template v-else>
             {{ packageMode
               ? '建立多科共用堂數方案：多個科目共享同一份堂數池，每次上課（不論科目）扣 1 堂。'
-              : '手動勾選的日期可自由選擇，不限固定上課星期；系統會依固定星期自動補齊其餘堂次，若今天尚未下課也可排入今日。'
+              : '一般課程可在同一份課程中設定不同固定時段、科目與老師；多科固定上課請優先使用此流程。'
             }}
           </template>
         </p>
-        <div v-if="step === 2" class="usw-stepper" role="navigation" aria-label="步驟指示">
+        <div v-if="showTypeChooser && step === 2" class="usw-stepper" role="navigation" aria-label="步驟指示">
           <button type="button" class="usw-stepper-back" @click="goBack">
             <span class="material-symbols-outlined">arrow_back</span>
             返回
@@ -32,7 +32,7 @@
       </header>
 
       <transition name="usw-step" mode="out-in">
-        <div v-if="step === 1" key="step1" class="usw-step1">
+        <div v-if="showTypeChooser && step === 1" key="step1" class="usw-step1">
           <div class="usw-step1-cards">
             <button
               type="button"
@@ -48,6 +48,7 @@
               </span>
             </button>
             <button
+              v-if="props.allowPackageMode"
               type="button"
               class="usw-type-card usw-type-card--package"
               @click="selectType('package')"
@@ -763,6 +764,8 @@ const props = defineProps({
   initialDaysOfWeek: { type: Array, default: () => [] },
   /** 打開時月曆預設顯示此日所在月份 YYYY-MM-DD */
   initialCalendarYmd: { type: String, default: '' },
+  /** Legacy package creation is hidden from daily course creation unless explicitly enabled. */
+  allowPackageMode: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
 });
 
@@ -869,15 +872,22 @@ function setEndDateQuickSelect(months) {
 const packageMode = ref(false);
 
 // ── Step wizard state ──
-const step = ref(1);
+const showTypeChooser = computed(() => props.allowPackageMode);
+const step = ref(showTypeChooser.value ? 1 : 2);
 const confirmBackOpen = ref(false);
 
 function selectType(type) {
+  if (type === 'package' && !props.allowPackageMode) {
+    return;
+  }
   packageMode.value = type === 'package';
   step.value = 2;
 }
 
 function goBack() {
+  if (!showTypeChooser.value) {
+    return;
+  }
   confirmBackOpen.value = true;
 }
 
@@ -889,7 +899,7 @@ function confirmGoBack() {
   resetForm();
   resetPkgForm();
   packageMode.value = false;
-  step.value = 1;
+  step.value = showTypeChooser.value ? 1 : 2;
   confirmBackOpen.value = false;
 }
 
