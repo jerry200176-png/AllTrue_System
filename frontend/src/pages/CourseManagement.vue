@@ -3662,36 +3662,37 @@ onUnmounted(() => {
 
 .student-group-card {
   position: relative;
-  border: 1px solid rgba(99, 102, 241, 0.18);
-  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 22px;
   overflow: visible;
   background:
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.11), transparent 30%),
+    linear-gradient(135deg, rgba(15,23,42,0.03), transparent 32%),
+    radial-gradient(circle at top right, rgba(14, 165, 233, 0.14), transparent 30%),
     var(--card-bg);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
+  box-shadow: 0 22px 56px rgba(15, 23, 42, 0.09);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 .student-group-card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 3px;
-  border-radius: 18px 18px 0 0;
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
-  opacity: 0.75;
+  height: 4px;
+  border-radius: 22px 22px 0 0;
+  background: linear-gradient(90deg, #0f172a, #38bdf8 42%, #f59e0b);
+  opacity: 0.86;
 }
 .student-group-card:hover {
-  border-color: rgba(99, 102, 241, 0.32);
-  box-shadow: 0 22px 54px rgba(15, 23, 42, 0.1);
+  border-color: rgba(14, 165, 233, 0.26);
+  box-shadow: 0 28px 68px rgba(15, 23, 42, 0.13);
   transform: translateY(-1px);
 }
 
 .student-group-header {
   width: 100%;
   border: none;
-  background: linear-gradient(180deg, rgba(238,242,255,0.92) 0%, rgba(255,255,255,0.92) 92%);
-  padding: 14px 16px 12px;
-  border-radius: 18px 18px 0 0;
+  background: linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 92%);
+  padding: 16px 18px 13px;
+  border-radius: 22px 22px 0 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3700,7 +3701,7 @@ onUnmounted(() => {
 }
 
 .student-group-header:hover {
-  background: linear-gradient(180deg, rgba(224,231,255,0.92) 0%, rgba(255,255,255,0.96) 92%);
+  background: linear-gradient(180deg, rgba(240,249,255,0.98) 0%, rgba(255,255,255,0.96) 92%);
 }
 
 .student-group-left {
@@ -3714,20 +3715,26 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 999px;
-  color: #4f46e5;
-  background: rgba(224, 231, 255, 0.86);
+  color: #0f172a;
+  background: linear-gradient(135deg, #e0f2fe, #f8fafc);
+  border: 1px solid rgba(14, 165, 233, 0.22);
   font-size: 12px;
   text-align: center;
+  box-shadow: 0 10px 22px rgba(14,165,233,0.1);
 }
 
 .student-group-meta {
   font-size: 13px;
-  color: var(--text-light);
-  font-weight: 600;
+  color: #475569;
+  font-weight: 800;
   white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(248,250,252,0.8);
+  border: 1px solid rgba(148,163,184,0.2);
 }
 
 .focus-btn {
@@ -3809,8 +3816,10 @@ onUnmounted(() => {
 .course-table {
   width: 100%;
   min-width: 540px;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0 8px;
   font-size: 13.5px;
+  padding: 0 10px 10px;
 }
 
 .course-table thead {
@@ -3818,7 +3827,7 @@ onUnmounted(() => {
   top: 0;
   z-index: 2;
   background: #f8fafc;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.25);
+  border-bottom: none;
 }
 @media (min-width: 641px) {
   .course-table thead {
@@ -3828,7 +3837,7 @@ onUnmounted(() => {
 }
 
 .course-table th {
-  padding: 12px 10px;
+  padding: 12px 10px 6px;
   text-align: left;
   font-weight: 700;
   color: #334155;
@@ -3836,15 +3845,31 @@ onUnmounted(() => {
 }
 
 .course-table td {
-  padding: 11px 10px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+  padding: 12px 10px;
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+  background: rgba(255,255,255,0.9);
   vertical-align: middle;
   word-break: keep-all;
   line-height: 1.4;
 }
+.course-table .course-row td:first-child {
+  border-left: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 16px 0 0 16px;
+  box-shadow: inset 4px 0 0 rgba(14,165,233,0.52);
+}
+.course-table .course-row td:last-child {
+  border-right: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 0 16px 16px 0;
+}
 
 .course-row:hover {
-  background: linear-gradient(90deg, rgba(239,246,255,0.78), rgba(255,255,255,0.96));
+  background: transparent;
+}
+.course-row:hover td {
+  border-color: rgba(14, 165, 233, 0.28);
+  background: linear-gradient(90deg, rgba(240,249,255,0.98), rgba(255,255,255,0.96));
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
 }
 
 .course-row.course-paused:hover td {
@@ -3865,8 +3890,8 @@ onUnmounted(() => {
 .price-line {
   margin-top: 4px;
   font-size: 13px;
-  color: #475569;
-  font-weight: 600;
+  color: #334155;
+  font-weight: 800;
 }
 
 .memo-line {
@@ -3974,8 +3999,9 @@ onUnmounted(() => {
 
 .cell-student {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 900;
   color: var(--text);
+  letter-spacing: 0.02em;
 }
 
 .subject-tag {
@@ -4041,11 +4067,14 @@ onUnmounted(() => {
 }
 
 .cell-remaining {
-  font-weight: 700;
+  font-weight: 950;
+  font-size: 15px;
+  color: #0f172a;
 }
 
 .cell-remaining.low {
   color: var(--danger);
+  text-shadow: 0 0 18px rgba(220, 38, 38, 0.18);
 }
 
 .col-actions,
@@ -4069,14 +4098,16 @@ onUnmounted(() => {
 
 .action-menu-trigger {
   font-size: 13px !important;
-  font-weight: 700 !important;
+  font-weight: 900 !important;
   letter-spacing: 0;
   padding: 6px 12px !important;
-  border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.26) !important;
-  background: #fff;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: #e0f2fe !important;
   cursor: pointer;
   line-height: 1.2;
+  box-shadow: 0 10px 22px rgba(15,23,42,0.18);
 }
 
 .action-dropdown {
@@ -4085,10 +4116,10 @@ onUnmounted(() => {
   min-width: 170px;
   max-height: 260px;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.34);
   z-index: 1;
   padding: 4px 0;
   animation: dropdown-fade 0.12s ease;
@@ -4107,13 +4138,13 @@ onUnmounted(() => {
   background: none;
   text-align: left;
   font-size: 14px;
-  color: #334155;
+  color: #e2e8f0;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .action-dropdown-item:hover {
-  background: #f1f5f9;
+  background: rgba(56, 189, 248, 0.12);
 }
 
 .action-dropdown-resume {
@@ -4141,8 +4172,8 @@ onUnmounted(() => {
   margin: 0;
   padding: 6px 14px 4px;
   font-size: 0.7em;
-  font-weight: 600;
-  color: #94a3b8;
+  font-weight: 900;
+  color: #7dd3fc;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -4186,33 +4217,37 @@ button.danger:disabled {
 
 .btn-status {
   cursor: pointer;
+  border-radius: 999px !important;
+  font-weight: 900 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.72);
 }
 
 .btn-toggle {
   white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: #fff;
-  color: #334155;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: linear-gradient(135deg, #fff, #f8fafc);
+  color: #0f172a;
+  font-weight: 800;
 }
 
 .btn-add-session {
   white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-weight: 600;
+  border: 1px solid rgba(14, 165, 233, 0.36);
+  background: linear-gradient(135deg, #e0f2fe, #eef2ff);
+  color: #075985;
+  font-weight: 900;
   font-size: 13px;
   padding: 5px 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 .btn-add-session:hover:not(:disabled) {
-  background: #dbeafe;
-  border-color: #60a5fa;
+  background: linear-gradient(135deg, #bae6fd, #dbeafe);
+  border-color: #38bdf8;
   transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.18);
 }
 .btn-add-session:disabled,
 .btn-add-session.disabled {
@@ -4659,9 +4694,14 @@ button.danger:disabled {
 }
 
 .detail-panel {
-  padding: 14px 16px;
-  background: #f8fbff;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  padding: 16px 18px;
+  background:
+    radial-gradient(circle at top right, rgba(14,165,233,0.12), transparent 36%),
+    linear-gradient(180deg, #f8fbff, #f1f5f9);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 16px;
+  margin: 2px 10px 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82);
 }
 
 .detail-meta {
@@ -4679,18 +4719,25 @@ button.danger:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.76);
+  border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .detail-label {
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-light);
+  font-weight: 900;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .dates-row td { padding: 0; }
 .dates-panel {
-  background: #f8fbff;
-  border-top: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    linear-gradient(180deg, rgba(248,251,255,0.98), rgba(241,245,249,0.92));
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
   padding: 12px 16px 14px;
   display: flex;
   flex-direction: column;
@@ -4730,9 +4777,9 @@ button.danger:disabled {
   gap: 6px 8px;
 }
 .date-chip {
-  background: #fff;
-  border: 1px solid #bfdbfe;
-  border-radius: 8px;
+  background: linear-gradient(135deg, #fff, #f8fafc);
+  border: 1px solid rgba(147, 197, 253, 0.9);
+  border-radius: 999px;
   padding: 5px 10px;
   font-size: 12px;
   color: #1d4ed8;
@@ -4796,7 +4843,7 @@ button.danger:disabled {
 .notes-toggle-btn:hover { background: #e0e7ff; }
 .date-chip:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 22px rgba(14, 165, 233, 0.14);
 }
 /* Synthetic chips stay flat on hover — they are not interactive. */
 .date-chip.date-chip-synthetic:hover {
@@ -5456,6 +5503,28 @@ button.danger:disabled {
 }
 [data-theme="dark"] .student-group-header {
   background: linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.92));
+}
+[data-theme="dark"] .course-table td {
+  background: rgba(15, 23, 42, 0.86);
+  border-color: #334155;
+}
+[data-theme="dark"] .course-row:hover td {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(15, 23, 42, 0.92));
+  border-color: rgba(56, 189, 248, 0.24);
+}
+[data-theme="dark"] .student-group-meta,
+[data-theme="dark"] .detail-item {
+  background: rgba(15, 23, 42, 0.72);
+  border-color: #334155;
+}
+[data-theme="dark"] .cell-remaining,
+[data-theme="dark"] .price-line {
+  color: #e2e8f0;
+}
+[data-theme="dark"] .detail-panel,
+[data-theme="dark"] .dates-panel {
+  background: linear-gradient(180deg, rgba(15,23,42,0.98), rgba(30,41,59,0.9));
+  border-color: #334155;
 }
 [data-theme="dark"] .student-group-add-row,
 [data-theme="dark"] .empty-active-courses {
