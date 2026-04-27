@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — docs(readme): 補 Architecture Diagram 與 ERD
+
+- Changed README 新增 Mermaid Architecture Diagram、核心 ERD、Engineering Maturity 與 Known Gaps/Roadmap，方便對外展示系統成熟度
+
 ## 2026-04-27 — ops(governance): GitHub Pro 與備份成熟度補強
 
 - Ops 啟用 `main` branch protection required checks，補強 Drive 備份 manifest、RPO/RTO/DR 演練 SOP，並登記 MySQL PITR/binlog 為 P1 技術債
