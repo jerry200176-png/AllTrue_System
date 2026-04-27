@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(ui): Porsche-inspired 視覺校準
+
+- Changed 課程管理與主任儀表板首屏為 light-first 高級霧面視覺，收斂過重 HUD/雷達感並統一 Porsche-inspired 設計語言
+
 ## 2026-04-27 — feat(dashboard): 主任指揮艙首屏
 
 - Added 主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計
