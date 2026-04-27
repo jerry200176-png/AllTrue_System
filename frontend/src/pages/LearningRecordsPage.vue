@@ -464,6 +464,13 @@
                 >
                   💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}
                 </span>
+                <span
+                  v-if="record.teacher_comment"
+                  :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
+                  :title="record.teacher_comment.content?.slice(0, 60)"
+                >
+                  📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}
+                </span>
                 <span v-if="fillLabel(record)" :class="['fill-badge', fillLabelClass(record)]">{{ fillLabel(record) }}</span>
                 <span v-if="!isTeacher" class="lr-record-card__teacher">{{ record.teacher_name || '未指派' }}</span>
               </div>
@@ -603,6 +610,11 @@
                           @click.stop="toggleFeedbackPreview(record)"
                           :title="record.parent_feedback.content?.slice(0,60)"
                         >💬 {{ parentFeedbackUnread(record) ? '未讀回饋' : '家長回饋' }}</span>
+                        <span
+                          v-if="record.teacher_comment"
+                          :class="['lr-teacher-comment-chip', teacherCommentUnread(record) ? 'unread' : 'read']"
+                          :title="record.teacher_comment.content?.slice(0,60)"
+                        >📝 {{ teacherCommentUnread(record) ? '新主任評語' : '主任評語' }}</span>
                         <div
                           v-if="record.parent_feedback && feedbackPreviewOpen.has(record.id)"
                           class="lr-feedback-inline-preview"
@@ -930,6 +942,35 @@
               <div class="lr-parent-feedback-title">家長回饋</div>
               <div class="lr-parent-feedback-content">{{ _activeRecordRef.parent_feedback.content }}</div>
               <div class="lr-parent-feedback-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.parent_feedback.updated_at) }}</div>
+            </div>
+            <div v-if="form.id && (isDirectorRole || _activeRecordRef?.teacher_comment)" class="lr-teacher-comment-box">
+              <div class="lr-teacher-comment-title">
+                主任給老師評語
+                <span v-if="_activeRecordRef?.teacher_comment?.author_name" class="lr-teacher-comment-author">
+                  {{ _activeRecordRef.teacher_comment.author_name }}
+                </span>
+              </div>
+              <template v-if="isDirectorRole">
+                <textarea
+                  v-model="teacherCommentContent"
+                  rows="3"
+                  maxlength="500"
+                  placeholder="給老師的內部評語，不會顯示給家長..."
+                ></textarea>
+                <div class="lr-teacher-comment-actions">
+                  <span v-if="teacherCommentError" class="lr-teacher-comment-error">{{ teacherCommentError }}</span>
+                  <span v-else-if="_activeRecordRef?.teacher_comment?.updated_at" class="lr-teacher-comment-time">
+                    更新：{{ formatParentFeedbackTime(_activeRecordRef.teacher_comment.updated_at) }}
+                  </span>
+                  <button type="button" class="primary small" :disabled="teacherCommentSaving" @click="saveTeacherComment">
+                    {{ teacherCommentSaving ? '儲存中...' : '儲存主任評語' }}
+                  </button>
+                </div>
+              </template>
+              <template v-else>
+                <div class="lr-teacher-comment-content">{{ _activeRecordRef.teacher_comment.content }}</div>
+                <div class="lr-teacher-comment-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.teacher_comment.updated_at) }}</div>
+              </template>
             </div>
           </div>
 
@@ -1474,6 +1515,10 @@ const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
   return isTeacher.value ? !!fb?.unread_for_teacher : !!fb?.unread_for_director;
 };
+const teacherCommentUnread = (record) => {
+  const comment = record?.teacher_comment;
+  return isTeacher.value ? !!comment?.unread_for_teacher : false;
+};
 const formatParentFeedbackTime = (value) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '';
@@ -1495,6 +1540,62 @@ const markParentFeedbackRead = async (record) => {
     emit('feedback-read');
   } catch (e) {
     console.warn('[LR] Failed to mark parent feedback as read');
+  }
+};
+const updateRecordTeacherComment = (recordId, comment) => {
+  const rid = Number(recordId || 0);
+  if (!rid) return;
+  const apply = (record) => (Number(record?.id || 0) === rid ? { ...record, teacher_comment: comment } : record);
+  records.value = (records.value || []).map(apply);
+  if (_activeRecordRef.value && Number(_activeRecordRef.value.id || 0) === rid) {
+    _activeRecordRef.value = { ..._activeRecordRef.value, teacher_comment: comment };
+  }
+};
+const markTeacherCommentRead = async (record) => {
+  const comment = record?.teacher_comment;
+  if (!comment?.id || !teacherCommentUnread(record)) return;
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('missing auth token');
+    const res = await fetch(`/api/v1/learning-record-teacher-comments/${comment.id}/read`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`mark read failed: ${res.status}`);
+    updateRecordTeacherComment(record.id, { ...comment, unread_for_teacher: false });
+  } catch (e) {
+    console.warn('[LR] Failed to mark teacher comment as read');
+  }
+};
+const saveTeacherComment = async () => {
+  const recordId = Number(_activeRecordRef.value?.id || form.id || 0);
+  if (!recordId || teacherCommentSaving.value) return;
+  const content = String(teacherCommentContent.value || '').trim();
+  if (!content || content.length > 500) {
+    teacherCommentError.value = '主任評語需為 1-500 字';
+    return;
+  }
+  teacherCommentSaving.value = true;
+  teacherCommentError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-records/${recordId}/teacher-comment`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '儲存主任評語失敗');
+    updateRecordTeacherComment(recordId, json.comment || null);
+    teacherCommentContent.value = json.comment?.content || content;
+  } catch (e) {
+    teacherCommentError.value = e?.message || '儲存主任評語失敗';
+  } finally {
+    teacherCommentSaving.value = false;
   }
 };
 
@@ -1661,6 +1762,9 @@ const form = reactive({
 
 const forceReadOnly = ref(false);
 const _activeRecordRef = ref(null);
+const teacherCommentContent = ref('');
+const teacherCommentSaving = ref(false);
+const teacherCommentError = ref('');
 const teacherChangeForm = reactive({
   record_id: null,
   teacher_id: '',
@@ -2666,6 +2770,8 @@ const _fillForm = (record) => {
   isEditing.value = true;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = record;
+  teacherCommentContent.value = record?.teacher_comment?.content || '';
+  teacherCommentError.value = '';
   Object.assign(form, {
     id: record.id,
     StudentID: Number(record.student_id) || '',
@@ -2691,6 +2797,9 @@ const _clearForm = () => {
   isEditing.value = false;
   formTimesFromBinding.value = false;
   _activeRecordRef.value = null;
+  teacherCommentContent.value = '';
+  teacherCommentError.value = '';
+  teacherCommentSaving.value = false;
   Object.assign(form, {
     id: null,
     StudentID: '',
@@ -2753,6 +2862,7 @@ const viewRecord = (record) => {
   _fillForm(record);
   showModal.value = true;
   markParentFeedbackRead(record);
+  markTeacherCommentRead(record);
   _attachTextareaResize();
 };
 
@@ -2761,6 +2871,7 @@ const editRecord = (record) => {
   forceReadOnly.value = false;
   _fillForm(record);
   showModal.value = true;
+  markTeacherCommentRead(record);
   if (record.Status !== 'approved') {
     loadDraft();
   }
@@ -5434,6 +5545,9 @@ select.lr-input {
 .lr-parent-feedback-chip:hover { opacity:.8; }
 .lr-parent-feedback-chip.unread { background:#FFF3E0; color:#C2410C; font-weight:600; border:1px solid #FED7AA; }
 .lr-parent-feedback-chip.read { background:#F1F5F9; color:#64748B; border:1px solid #E2E8F0; }
+.lr-teacher-comment-chip { display:inline-flex; align-items:center; gap:3px; margin-top:4px; padding:3px 10px; border-radius:10px; font-size:12px; user-select:none; }
+.lr-teacher-comment-chip.unread { background:#EEF2FF; color:#3730A3; font-weight:700; border:1px solid #C7D2FE; }
+.lr-teacher-comment-chip.read { background:#F5F3FF; color:#6D28D9; border:1px solid #DDD6FE; }
 
 .lr-feedback-inline-preview { margin-top:8px; padding:8px 10px; background:#FFFBF5; border:1px solid #FED7AA; border-radius:8px; font-size:12px; }
 .lr-feedback-inline-preview__content { color:#1E293B; line-height:1.5; white-space:pre-wrap; }
@@ -5446,6 +5560,14 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
 .lr-parent-feedback-title { font-weight:700; color:#3949ab; margin-bottom:6px; }
 .lr-parent-feedback-content { white-space:pre-wrap; line-height:1.6; }
 .lr-parent-feedback-time { margin-top:6px; font-size:12px; color:#78909c; }
+.lr-teacher-comment-box { margin-top:12px; padding:12px; border:1px solid #C7D2FE; border-radius:12px; background:#F8FAFF; }
+.lr-teacher-comment-title { display:flex; align-items:center; gap:8px; font-weight:700; color:#3730A3; margin-bottom:8px; }
+.lr-teacher-comment-author { font-size:12px; font-weight:500; color:#64748B; }
+.lr-teacher-comment-box textarea { width:100%; resize:vertical; }
+.lr-teacher-comment-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:8px; flex-wrap:wrap; }
+.lr-teacher-comment-error { color:#B91C1C; font-size:12px; }
+.lr-teacher-comment-time { color:#64748B; font-size:12px; }
+.lr-teacher-comment-content { white-space:pre-wrap; line-height:1.6; color:#1E293B; }
 
 .lr-date {
   font-weight: 600;
