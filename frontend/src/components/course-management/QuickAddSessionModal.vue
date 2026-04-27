@@ -1,11 +1,11 @@
 <template>
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal course-modal" style="max-width: 440px;">
-      <h3 class="modal-title">加課／補登（不增加總堂數）</h3>
+      <h3 class="modal-title">補課／補登（總堂數不變）</h3>
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
-      <p class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，總堂數不變。</p>
+      <p class="modal-hint">堂數制課程若堂次已排滿，系統會將最後一筆可調整的未來排課移至您選的日期，購買總堂數不會增加。</p>
       <div class="form-group">
         <label>本堂日期</label>
         <input v-model="form.session_date" type="date" @change="$emit('check')" />
@@ -22,7 +22,7 @@
       </div>
       <div class="form-group">
         <label>備註（選填）</label>
-        <input v-model.trim="form.note" type="text" placeholder="例如：臨時加課" />
+        <input v-model.trim="form.note" type="text" placeholder="例如：補課原因或家長備註" />
       </div>
       <div class="form-group">
         <label class="hint">

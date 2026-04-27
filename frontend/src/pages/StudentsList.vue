@@ -465,7 +465,7 @@
         />
 
         <div v-if="courseForm.payment_type === 'session'" class="quick-add-session-link" style="margin: 12px 0 4px; text-align: right;">
-          <button type="button" class="ghost small" @click="openQuickAddSession">＋ 單次加課（不增加總堂數）</button>
+          <button type="button" class="ghost small" @click="openQuickAddSession">＋ 補課 / 補登（總堂數不變）</button>
         </div>
 
         <div class="actions">
@@ -2206,7 +2206,7 @@ async function submitQuickAddSession() {
         runQuickAddCheck();
       } else {
         const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-        alert(details || json?.message || '加課失敗');
+        alert(details || json?.message || '補課失敗');
       }
       return;
     }
@@ -2221,7 +2221,7 @@ async function submitQuickAddSession() {
     if (sid) await loadStudentCourses(sid);
     await loadAllStudentCourses();
   } catch (e) {
-    alert('加課失敗：' + (e?.message || '請稍後再試'));
+    alert('補課失敗：' + (e?.message || '請稍後再試'));
   }
 }
 
