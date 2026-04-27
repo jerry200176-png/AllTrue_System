@@ -6,9 +6,21 @@
 
 ---
 
+## 2026-04-27 — feat(billing): 月結制逐期帳單，修復白嫖漏洞
+
+- Fixed 月結課程「月結續約」後 `StudentClass.Paid` 不再維持 1；renew-monthly 同步重置 Paid=0 並建立新期 Invoice（billing_period YYYY-MM），杜絕後續月份免費白嫖
+- Added `Invoice.billing_period` 欄位（migration），實現業界「合約與帳單分離」設計
+- Changed `directorRecord` 優先對應當月 billing_period 的未繳 Invoice，確保逐期帳務可追溯
+- Added 新 API `GET /api/v1/student-classes/{id}/invoices`，回傳月結課程逐期帳單列表
+- Added 前端月結課程新增「帳單」按鈕，可查逐期帳單 modal（期別、金額、狀態 chip）
+
 ## 2026-04-27 — fix(courses): 課程管理補課與暫停 UI SaaS 化
 
 - Changed 課程管理將「新增堂次」統一改為「補課／補登」，重做暫停課程確認 modal 與狀態列，並修正單堂備註／時段的費用預覽語意
+
+## 2026-04-27 — feat(courses): 統一課程方案建立入口
+
+- Added 主任建立課程時可先選「每科獨立堂數」或「多科共用堂數」，保留既有一般課程與共用方案核心邏輯
 
 ## 2026-04-27 — docs(ops): 補 token 與 Actions 節流 SOP
 

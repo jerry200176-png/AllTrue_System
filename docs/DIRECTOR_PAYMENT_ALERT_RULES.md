@@ -30,6 +30,17 @@
 
 若一筆堂數制課程觸發 `low_sessions`，但**同一學生、同一科目**已存在另一筆進行中（`Stop=0`）且 `RemainingSessions > 2` 的課程（代表已續課），則該 `low_sessions` 提醒會被**自動抑制**，不再出現在催繳名單。`unpaid` 類型不受此邏輯影響。
 
+## 月結制逐期帳單（2026-04-27 起）
+
+月結課程「月結續約」後，系統自動：
+1. 重置 `StudentClass.Paid=0`、`PayDate=null`
+2. 建立新期 `Invoice`（`billing_period = YYYY-MM`，`Status='unpaid'`）
+
+`directorRecord` 核帳時，優先找 `billing_period = 當月` 的未繳 Invoice；
+主任收費後 Invoice.Status 更新為 `paid`，同時 `StudentClass.Paid=1`。
+
+舊月結課程（無 Invoice）行為不變，fallback `StudentClass.Paid` 欄位。
+
 ## 月結制（`StudentClass.ScheduleMode = date`）
 
 - 課程須為進行中：`Stop = 0`。

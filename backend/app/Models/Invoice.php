@@ -19,6 +19,7 @@ class Invoice extends Model
         'Note',
         'reconciled_at',
         'reconciled_by',
+        'billing_period',
     ];
 
     public function student()
