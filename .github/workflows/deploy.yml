@@ -55,7 +55,7 @@ jobs:
               text=True,
           ))
           files = [item.get("filename", "") for item in comparison.get("files", [])]
-          deployable_prefixes = ("backend/", "frontend/")
+          deployable_prefixes = ("backend/", "frontend/", "scripts/")
           deployable_exact = {
               "composer.json",
               "composer.lock",
