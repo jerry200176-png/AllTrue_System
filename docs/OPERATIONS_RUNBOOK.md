@@ -631,6 +631,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | PHPStan 靜態分析 | `codeql.yml` → phpstan level 5 |
 | API smoke test | `deploy.yml` 驗 health + branches + swipe-rfid |
 | Coverage gate | CI 70% 門檻（warning），目標 80% |
+| Branch protection | GitHub Pro 已啟用 main 保護：required checks + admin enforcement + 禁止 force push/delete；單人 repo 暫不強制 approval，避免審核死鎖 |
 | Rate limiting | 所有公開端點（swipe-rfid 30/min, login 5/hr）|
 | 前端錯誤監控 | Sentry（`@sentry/vue`）+ GitHub issue 自動建立 |
 | Uptime 監控 | UptimeRobot 每 5 分鐘（主站 + /health）|
@@ -648,6 +649,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | 項目 | 實作方式 |
 |---|---|
 | 備份還原驗證 | `backup-restore-test.yml` 每月 1 日自動還原驗資料表筆數 |
+| 備份 manifest | `gdrive-backup-sync.sh` 每次同步產生檔名 / 大小 / sha256 manifest 並同步到 Google Drive |
 | Migration dry-run | CI `migrate --pretend` 在 merge 前捕捉 SQL 錯誤 |
 | JSON 結構化 logging | `logging.json` channel（warning+），為 ELK/Loki 預留 |
 | DORA metrics | `dora-metrics.yml` 每週一自動計算部署頻率/lead time/CFR |
@@ -665,9 +667,34 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | Chaos engineering | 4 校區補習班，非必要 |
 | Feature flags | 規模不需要 |
 
-### 🟡 唯一剩餘缺口（2026-04-26 確認）
+### 🟢 2026-04-27 補強完成（GitHub Pro + Drive 備份）
 
 | 項目 | 說明 | 狀態 |
 |---|---|---|
-| Branch protection rules | GitHub Free 私有 repo 不支援（HTTP 403）。升 GitHub Pro $4/月 可開啟「require status checks before merge」。目前 local pre-push hook 替代 | 需付費才能做 |
+| Branch protection rules | `main` 已啟用 required status checks、admin enforcement、禁止 force push/delete、conversation resolution；單人 repo 暫不強制 approval，等有第二個 maintainer 再升級為 1 approval | Done |
+| Code backup | GitHub Pro remote repository + protected `main` + PR history；禁止把 Pi local backup branch 當主備份來源 | Done |
+| Data backup | Pi 本機 nightly + sixhour + Google Drive offsite；同步 manifest 記錄 sha256，月度 restore drill 驗證可還原 | Done |
+
+### 🟡 仍需規劃（P1/P2，不在本次直接改 production）
+
+| 項目 | 目前口徑 | 下一步 |
+|---|---|---|
+| RPO / RTO | 目前可承諾：RPO ≤ 6 小時（sixhour + Drive），RTO 目標 ≤ 30 分鐘（依近幾次還原經驗）| 每季演練一次「從 Drive 取備份 → 還原到 drill DB → 驗核心表 row count」 |
+| MySQL PITR / binlog | 尚未啟用明確的 point-in-time recovery；若事故發生在兩次 sixhour 中間，仍可能損失數小時資料 | 登記 TD-015，另走 DBA/OPS 流程評估 binlog retention、磁碟壓力、restore SOP |
+| Full server DR | 目前有 DB 備份與 GitHub code backup，但沒有完整記錄「全新 Pi 從零重建到可服務」耗時 | 每半年做一次 tabletop drill，驗證 secrets、rclone、nginx、PHP/MySQL、deploy key 都可重建 |
+
+### Branch Protection 稽核指令（每月或重大事故後）
+
+```bash
+gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
+  --jq '{checks: .required_status_checks.contexts, reviews: .required_pull_request_reviews.required_approving_review_count, admins: .enforce_admins.enabled, force_pushes: .allow_force_pushes.enabled, deletions: .allow_deletions.enabled, conversations: .required_conversation_resolution.enabled}'
+```
+
+期望：
+- `reviews` = null（單人 repo 暫不強制；有第二個 maintainer 後改為 1）
+- `admins` = true
+- `force_pushes` = false
+- `deletions` = false
+- `conversations` = true
+- `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`PHPStan (php)`
 
