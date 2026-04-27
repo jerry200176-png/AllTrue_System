@@ -127,6 +127,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
+| `docs/PORSCHE_VISUAL_SYSTEM.md` | Porsche-inspired light-first 視覺系統規格 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 
 ### 維運 SOP

@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(ui): Porsche 視覺系統規格
+
+- Added AllTrue Porsche-inspired light-first 視覺系統規格與共用前端 token/class，作為後續頁面升級的單一設計依據
+
 ## 2026-04-27 — feat(dashboard): Porsche-style 工作面板
 
 - Changed 主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche-style 霧面工作卡
