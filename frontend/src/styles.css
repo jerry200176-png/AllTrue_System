@@ -36,6 +36,22 @@
   --modal-bg: #FFFFFF;
   --topbar-bg: #FFFFFF;
   --topbar-border: #F0F0F0;
+
+  /* Porsche-inspired visual system tokens. See docs/PORSCHE_VISUAL_SYSTEM.md. */
+  --porsche-ink: #111827;
+  --porsche-ink-soft: #64748b;
+  --porsche-surface: rgba(255, 255, 255, 0.94);
+  --porsche-surface-muted: #f5f5f3;
+  --porsche-border: rgba(17, 24, 39, 0.1);
+  --porsche-border-strong: rgba(17, 24, 39, 0.22);
+  --porsche-amber: #c47a18;
+  --porsche-blue: #2563eb;
+  --porsche-red: #b91c1c;
+  --porsche-green: #15803d;
+  --porsche-radius-lg: 28px;
+  --porsche-radius-md: 18px;
+  --porsche-shadow-soft: 0 24px 60px rgba(15, 23, 42, 0.1);
+  --porsche-shadow-hover: 0 30px 70px rgba(15, 23, 42, 0.14);
 }
 
 /* ===== 夜間模式（Dark Theme） ===== */
@@ -56,6 +72,14 @@
   --modal-bg: #1e293b;
   --topbar-bg: #1e293b;
   --topbar-border: #334155;
+  --porsche-ink: #f8fafc;
+  --porsche-ink-soft: #cbd5e1;
+  --porsche-surface: rgba(15, 23, 42, 0.9);
+  --porsche-surface-muted: #0f172a;
+  --porsche-border: rgba(226, 232, 240, 0.14);
+  --porsche-border-strong: rgba(226, 232, 240, 0.28);
+  --porsche-shadow-soft: 0 24px 60px rgba(0, 0, 0, 0.38);
+  --porsche-shadow-hover: 0 30px 70px rgba(0, 0, 0, 0.48);
 }
 
 html {
@@ -80,6 +104,135 @@ body {
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   line-height: 1;
+}
+
+/* ===================== PORSCHE-INSPIRED UTILITIES ===================== */
+.porsche-surface {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9)),
+    var(--porsche-surface);
+  border: 1px solid var(--porsche-border);
+  border-radius: var(--porsche-radius-lg);
+  box-shadow: var(--porsche-shadow-soft);
+}
+
+.porsche-surface:hover {
+  border-color: var(--porsche-border-strong);
+  box-shadow: var(--porsche-shadow-hover);
+}
+
+.porsche-kicker {
+  color: var(--porsche-ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.porsche-title {
+  color: var(--porsche-ink);
+  font-size: clamp(28px, 4vw, 46px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.porsche-muted {
+  color: var(--porsche-ink-soft);
+}
+
+.porsche-metric {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--porsche-border);
+  border-radius: var(--porsche-radius-md);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  padding: 16px;
+}
+
+.porsche-metric__label {
+  color: var(--porsche-ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.porsche-metric__value {
+  color: var(--porsche-ink);
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.porsche-btn {
+  align-items: center;
+  border: 1px solid var(--porsche-border);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 18px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.porsche-btn:hover:not(:disabled) {
+  border-color: var(--porsche-border-strong);
+  transform: translateY(-1px);
+}
+
+.porsche-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.porsche-btn--primary {
+  background: var(--porsche-ink);
+  border-color: var(--porsche-ink);
+  color: #fff;
+}
+
+.porsche-btn--secondary {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--porsche-ink);
+}
+
+.porsche-btn--danger {
+  background: var(--porsche-red);
+  border-color: var(--porsche-red);
+  color: #fff;
+}
+
+.porsche-badge {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid var(--porsche-border);
+  border-radius: 999px;
+  color: var(--porsche-ink);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
+.porsche-badge--amber { border-color: rgba(196, 122, 24, 0.3); color: var(--porsche-amber); }
+.porsche-badge--blue { border-color: rgba(37, 99, 235, 0.28); color: var(--porsche-blue); }
+.porsche-badge--red { border-color: rgba(185, 28, 28, 0.28); color: var(--porsche-red); }
+.porsche-badge--green { border-color: rgba(21, 128, 61, 0.28); color: var(--porsche-green); }
+
+[data-theme="dark"] .porsche-surface,
+[data-theme="dark"] .porsche-metric,
+[data-theme="dark"] .porsche-btn--secondary,
+[data-theme="dark"] .porsche-badge {
+  background: rgba(15, 23, 42, 0.84);
 }
 
 /* ===================== LAYOUT ===================== */
