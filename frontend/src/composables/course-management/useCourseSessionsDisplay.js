@@ -61,7 +61,8 @@ export function useCourseSessionsDisplay({
   }
 
   async function loadClassSessionsForCourses(courseRows = [], token = '') {
-    const ids = (courseRows || []).map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
+    const rows = Array.isArray(courseRows) ? courseRows : [];
+    const ids = rows.map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
     const bid = branchId.value ?? branchId;
     if (!bid || ids.length === 0 || !token) {
       classSessionsByCourse.value = {};
@@ -71,6 +72,13 @@ export function useCourseSessionsDisplay({
       const now = new Date();
       const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
       const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      rows.forEach((course) => {
+        const endRaw = course?.end_date || course?.EndDate || '';
+        const endDate = endRaw ? new Date(`${String(endRaw).slice(0, 10)}T12:00:00`) : null;
+        if (endDate && !Number.isNaN(endDate.getTime()) && endDate > rangeEnd) {
+          rangeEnd.setTime(endDate.getTime());
+        }
+      });
       const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
       const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
       const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, start, end, perPage: 2000 });

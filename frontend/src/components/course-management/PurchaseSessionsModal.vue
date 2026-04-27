@@ -5,6 +5,9 @@
       <p class="modal-desc">
         {{ form.student_name }} — {{ subjectLabel }}
       </p>
+      <p class="modal-note">
+        加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。
+      </p>
       <div class="form-group">
         <label>加購堂數</label>
         <input v-model.number="form.sessions" type="number" min="1" step="1" />
@@ -34,4 +37,5 @@ const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 .course-modal { width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
 .modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
+.modal-note { background: #fff8e1; border: 1px solid #ffe0a3; border-radius: 8px; color: #7a4b00; font-size: 13px; line-height: 1.6; margin: -8px 0 16px; padding: 10px 12px; }
 </style>

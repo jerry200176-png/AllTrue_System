@@ -533,7 +533,9 @@
             <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" style="font-size: 13px; color: #e65100;">（即將用完，建議盡快加購）</span>
           </p>
         </div>
-        <p class="hint" style="color: #666; margin-bottom: 8px;">此加購會延續原課程，不會建立新的課程。</p>
+        <p class="hint" style="color: #7a4b00; margin-bottom: 8px;">
+          此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。
+        </p>
         <div class="form-group">
           <label>加購堂數</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
@@ -2275,7 +2277,8 @@ const submitAddSessions = async () => {
       },
       body: JSON.stringify({
         sessions: Number(addSessionCount.value),
-        start_date: addSessionStartDate.value
+        start_date: addSessionStartDate.value,
+        mode: 'new_purchase'
       })
     });
 
@@ -2292,6 +2295,11 @@ const submitAddSessions = async () => {
     if (selectedStudent.value?.id) {
       await loadStudentCourses(selectedStudent.value.id);
     }
+    const newCourse = json?.new_course || {};
+    const sessionRange = newCourse.first_session_date && newCourse.last_session_date
+      ? `\n上課日期：${newCourse.first_session_date} 至 ${newCourse.last_session_date}`
+      : '';
+    alert(`已建立加購批次課程 #${newCourse.id || '—'}，共 ${Number(newCourse.created_sessions || 0)} 堂。${sessionRange}\n請在此學生的新批次課程詳情查看上課日期，原課程不會追加堂次。`);
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
   }
