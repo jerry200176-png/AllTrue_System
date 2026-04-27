@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(dashboard): 主任指揮艙首屏
+
+- Added 主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計
+
 ## 2026-04-27 — feat(courses): AAA 狀態與 Modal 補強
 
 - Added 課程管理空狀態、loading skeleton、歷史課程卡與高風險 modal 的 AAA 視覺一致性補強
