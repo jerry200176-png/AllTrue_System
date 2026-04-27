@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(courses): 高質感課程列表
+
+- Added 課程管理主列表、學生群組卡、課程狀態標籤、歷史課程卡與空狀態的 premium 視覺層級，並補上初次載入 skeleton
+
 ## 2026-04-27 — feat(courses): 高質感課程操作 Modal
 
 - Added 課程管理加購、月結續約、暫停/恢復、刪除確認 modal 的 premium command-card 視覺層級，提升高風險操作的可讀性與辨識度
