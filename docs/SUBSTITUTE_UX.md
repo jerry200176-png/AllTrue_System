@@ -1,7 +1,7 @@
 # 代課流程 UX v2 操作手冊（PRD 9c058f19）
 
 > 適用：SmartCalendar v2 代課 Modal、老師請假批次 Modal、主任儀表板近 7 天代課卡片  
-> 啟用條件：前端 `VITE_FEATURE_SUBSTITUTE_V2=true` 並重建 `npm run deploy`  
+> 啟用條件：前端 `VITE_FEATURE_SUBSTITUTE_V2=true`，經 PR merge 後由 `deploy.yml` 自動重建部署
 > 版本：2026-04-18
 
 ---
@@ -157,15 +157,8 @@ curl -X PUT -H 'Authorization: Bearer <super>' \
 ## 部署清單
 
 ```bash
-# 後端
-cd /home/admin/backend
-php artisan route:clear && php artisan config:clear
-sudo systemctl reload php8.3-fpm   # or: php artisan opcache:reset
-
-# 前端（啟用 flag）
-cd /home/admin/frontend
-# .env.production 已設 VITE_FEATURE_SUBSTITUTE_V2=true
-npm run deploy
+# 正常上線：feature branch → PR → CI 綠 → merge → deploy.yml 自動部署。
+# 不在 feature branch 或 CI 未通過時手動 npm run deploy。
 ```
 
 部署後 smoke：
@@ -173,4 +166,4 @@ npm run deploy
 - SmartCalendar 點「👤 換代課老師」應彈出新卡片式 Modal（而非舊 `<select>`）
 - 儀表板可見「近 7 天代課記錄」卡片
 
-Rollback：`VITE_FEATURE_SUBSTITUTE_V2=false` 重新 `npm run deploy`；後端 API 不必回滾（新路由不影響舊 caller）。
+Rollback：以 PR 調整 `VITE_FEATURE_SUBSTITUTE_V2=false` 或 revert 相關前端變更，merge 後由 `deploy.yml` 自動部署；後端 API 不必回滾（新路由不影響舊 caller）。

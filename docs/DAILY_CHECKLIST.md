@@ -59,9 +59,10 @@
 
 ### D3. GitHub 同步異常
 
-1. 確認目標分支是 `jerry-sync-main`
-2. 不要把備份分支直接 merge 到主協作分支
-3. 必要時先關閉異常 PR，改用乾淨 feature branch 重送
+1. 確認改動在 feature branch，不在 `main`
+2. 確認沒有 force push，且 PR CI 已跑完
+3. 不要把備份分支直接 merge 到主協作分支
+4. 必要時先關閉異常 PR，改用乾淨 feature branch 重送
 
 ## E. 每週固定檢查（建議每週五）
 
@@ -74,6 +75,6 @@
 
 - `docs/ROLE_PLAYBOOK.md`
 - `docs/OPERATIONS_RUNBOOK.md`
-- `docs/GITHUB_SYNC_WORKFLOW.md`
-- `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`
+- `docs/INDEX.md`
+- `docs/AI_REGRESSION_LESSONS.md`
 

@@ -19,16 +19,14 @@
 
 **正常流程（全自動）**：WSL2 push → PR merge → `deploy.yml` 自動執行，無需手動操作。
 
-**緊急手動部署**（CI 掛掉時才用，需 SSH 到 Pi）：
+**緊急手動部署**（CI 掛掉時才用，需使用者明確批准並先讀 `docs/DANGEROUS_OPERATIONS.md`）：
 ```bash
-cd /home/admin
-git pull origin main
-cd frontend && npm run deploy
-# ⛔ 禁止用 optimize:clear，改用：
-cd /home/admin/backend && php artisan optimize
+# 正常情況不要執行；優先修復 CI/deploy workflow 後重新 merge/deploy。
+# 若進入緊急手動流程，請依 docs/OPERATIONS_RUNBOOK.md 的事故程序操作，
+# 不要在 feature branch 或未通過 CI 的狀態部署前端。
 ```
 
-若緊急手動 `npm run deploy` 出現 EPERM，先執行 `./scripts/fix-deploy-permissions.sh`，事後補 PR 記錄原因。
+若緊急手動部署出現權限問題，停止操作並走事故處理流程，事後補 PR 記錄原因。
 
 ### 驗證
 

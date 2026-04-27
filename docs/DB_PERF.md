@@ -29,12 +29,9 @@
 
 ## 2. 回滾 P0 索引
 
-```bash
-cd /home/admin/backend
-php artisan migrate:rollback --step=1 --force
-# 驗證：
-mysql -u admin -p -h 127.0.0.1 AllTrue -e "SHOW INDEX FROM Student;"
-```
+索引回滾屬高風險 DB 操作。不得直接在 production debug 時執行；需先讀
+`docs/DANGEROUS_OPERATIONS.md`、完成備份，並由使用者批准後按
+`docs/OPERATIONS_RUNBOOK.md` 的事故流程處理。
 
 從備份完整還原：
 ```bash
@@ -52,10 +49,12 @@ DB_READ_HOST=<replica-ip>
 DB_READ_PORT=3306
 DB_PERSISTENT=true
 ```
-然後 `php artisan config:clear`。
+然後經 PR / deploy workflow 更新設定；若需在 production 重建設定快取，只能按
+`docs/DANGEROUS_OPERATIONS.md` 的部署或事故流程執行。
 
 ### 回滾
-移除 `DB_READ_HOST` 與 `DB_READ_PORT`，然後 `php artisan config:clear`。
+移除 `DB_READ_HOST` 與 `DB_READ_PORT`，再經 PR / deploy workflow 更新設定；禁止為了
+debug 直接清 production config cache。
 
 ---
 

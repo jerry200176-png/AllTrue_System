@@ -36,7 +36,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 內容 | Token 成本 |
 |------|------|-----------|
 | `.cursorrules` §P0 | 5 條紅線 + 3 條黃線 + 6 次事故摘要 | 已自動載入 |
-| `docs/AI_REGRESSION_LESSONS.md` | R1-R18 防再犯規則（127 行）| 按需讀 |
+| `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
 
 ---
 
@@ -103,7 +103,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 防再犯
 | 檔案 | 一行說明 |
 |------|---------|
-| `docs/AI_REGRESSION_LESSONS.md` | R1-R18 已發生的坑，改前必查 |
+| `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（按需查）|
 
 ### 業務規則

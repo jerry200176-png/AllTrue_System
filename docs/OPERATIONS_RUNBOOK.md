@@ -304,9 +304,10 @@ GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`
 ## I. Reference docs
 
 - `README.md`
-- `AI_QUICKSTART.md`
-- `docs/GITHUB_SYNC_WORKFLOW.md`
-- `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`（分校選單 / 學生消失 / 全 API 500）
+- `docs/INDEX.md`
+- `AGENTS.md`
+- `docs/AI_REGRESSION_LESSONS.md`
+- `docs/DANGEROUS_OPERATIONS.md`
 
 ---
 
@@ -423,15 +424,12 @@ ORDER BY branch_id, course_id;
 | 學生/class-sessions per_page | 200 / 500 | `perfFlags.js` 改回舊值 → rebuild |
 | 通知 sync | 每分校 5min throttle | `.env` `PERF_THROTTLE_NOTIF_SYNC=false` |
 | 手機 backdrop-filter | 640px 以下停用 | 移除 `styles.css` 中 `MOBILE PERF RELIEF` 區塊 → rebuild |
-| DB indexes | 4 組複合索引 | `php artisan migrate:rollback --step=1` |
+| DB indexes | 4 組複合索引 | 需 DBA/OPS 批准後走 migration rollback 事故流程 |
 
 ### 後端回退（5 分鐘內）
-```bash
-echo "PERF_THROTTLE_NOTIF_SYNC=false" >> /home/admin/backend/.env
-echo "PERF_LR_DEFAULT_PER_PAGE=200" >> /home/admin/backend/.env
-cd /home/admin/backend && php artisan config:clear
-# 如需回退索引：php artisan migrate:rollback --step=1
-```
+本節是歷史效能任務的回退設計，不作為即時操作指令。實際回退請先讀
+`docs/DANGEROUS_OPERATIONS.md`，再以 PR revert / feature flag / deploy workflow
+處理；若涉及 production `.env` 或 migration rollback，需使用者明確批准與備份。
 
 ### SLO 門檻
 | 端點 | P95 目標 | P99 上限 |
@@ -604,14 +602,9 @@ php artisan tinker
 
 ### 2. 輪換 SOP（以 DB_PASSWORD 為例）
 
-```bash
-# 在 Pi 上（緊急例外，事後補 PR 更新 documentation）
-mysql -u root -p -e "ALTER USER 'admin'@'localhost' IDENTIFIED BY 'NEW_PASS'; FLUSH PRIVILEGES;"
-sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=NEW_PASS/" /home/admin/backend/.env
-php artisan config:clear && php artisan cache:clear
-# 同步更新 GitHub → Settings → Secrets → PI_DB_PASSWORD（若有）
-curl -sk https://daan.lifenet.com.tw/api/v1/health  # 驗證
-```
+DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERATIONS.md`、
+確認備份與回復方案，並由使用者明確批准；完成後以 `config:cache` / `route:cache`
+重建快取並驗證 health，禁止用 debug 目的執行 `config:clear` / `cache:clear`。
 
 ### 3. 外洩應急（< 1 小時內完成）
 

@@ -115,12 +115,13 @@
 先讀文件順序：
 
 1. `README.md`
-2. `AI_QUICKSTART.md`
-3. `docs/OPERATIONS_RUNBOOK.md`
-4. `docs/ROLE_PLAYBOOK.md`
+2. `docs/INDEX.md`
+3. `AGENTS.md`
+4. `docs/OPERATIONS_RUNBOOK.md`
+5. `docs/ROLE_PLAYBOOK.md`
 
 若是工程協作，再讀：
 
-5. `docs/GITHUB_SYNC_WORKFLOW.md`
-6. `docs/INCIDENT_2026-04-10_BRANCH_CAMPUS_500.md`
+6. `docs/AI_REGRESSION_LESSONS.md`
+7. `docs/DANGEROUS_OPERATIONS.md`
 
