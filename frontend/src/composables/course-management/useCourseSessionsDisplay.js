@@ -113,12 +113,24 @@ export function useCourseSessionsDisplay({
     }
 
     try {
+      const now = new Date();
+      const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      rows.forEach((course) => {
+        const endRaw = course?.end_date || course?.EndDate || '';
+        const endDate = endRaw ? new Date(`${String(endRaw).slice(0, 10)}T12:00:00`) : null;
+        if (endDate && !Number.isNaN(endDate.getTime()) && endDate > rangeEnd) {
+          rangeEnd.setTime(endDate.getTime());
+        }
+      });
+      const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+      const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
       const params = new URLSearchParams({ branch_id: String(bid) });
       const res = await fetch(`/api/v1/student-classes/session-dates?${params.toString()}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ branch_id: Number(bid), courses: payloadCourses }),
+        body: JSON.stringify({ branch_id: Number(bid), range_start: start, range_end: end, courses: payloadCourses }),
       });
       if (!res.ok) return;
       const json = await res.json().catch(() => ({}));
@@ -158,6 +170,50 @@ export function useCourseSessionsDisplay({
       return String(a?.start_time || '').localeCompare(String(b?.start_time || ''));
     });
 
+  const courseSlotForDate = (course, dateYmd) => {
+    const date = String(dateYmd || '').slice(0, 10);
+    if (!date) return null;
+    const dow = new Date(`${date}T12:00:00`).getDay();
+    const isoDow = dow === 0 ? 7 : dow;
+    const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
+    return slots.find((slot) => Number(slot?.day || 0) === isoDow) || null;
+  };
+
+  const addHoursToTime = (time, hours) => {
+    const base = String(time || '').slice(0, 5);
+    if (!/^\d{2}:\d{2}$/.test(base)) return '';
+    const [hh, mm] = base.split(':').map((v) => Number(v));
+    const total = hh * 60 + mm + Math.round((Number(hours) || 0) * 60);
+    const endH = Math.floor(total / 60) % 24;
+    const endM = total % 60;
+    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  };
+
+  const syntheticEffectiveUnits = (course, existingRows = []) => {
+    const cid = String(course?.id ?? '');
+    const effective = effectiveSessionDatesByCourse.value[cid];
+    if (!Array.isArray(effective)) return [];
+    const existingDates = new Set(
+      (existingRows || [])
+        .map((row) => String(row?.session_date || '').slice(0, 10))
+        .filter(Boolean)
+    );
+    return [...new Set(effective.map((d) => String(d || '').slice(0, 10)).filter(Boolean))]
+      .filter((d) => !existingDates.has(d))
+      .map((d) => {
+        const slot = courseSlotForDate(course, d);
+        const start = String(slot?.start_time || course?.start_time || '').slice(0, 5);
+        const duration = Number(slot?.duration_hours ?? course?.duration_hours ?? 0) || 0;
+        return {
+          session_date: d,
+          start_time: start,
+          end_time: start && duration ? addHoursToTime(start, duration) : '',
+          status: 'scheduled',
+          _synthetic: true,
+        };
+      });
+  };
+
   /**
    * Return ordered, non-cancelled session "units". Each unit is either a real
    * ClassSession row or a synthetic { session_date } from legacy date lists.
@@ -167,13 +223,12 @@ export function useCourseSessionsDisplay({
     const cid = String(c?.id ?? '');
     const rows = classSessionsByCourse.value[cid];
     if (Array.isArray(rows) && rows.length > 0) {
-      return sortSessionRows(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
+      const activeRows = rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled');
+      return sortSessionRows([...activeRows, ...syntheticEffectiveUnits(c, activeRows)]);
     }
     const effective = effectiveSessionDatesByCourse.value[cid];
     if (Array.isArray(effective)) {
-      return [...new Set(effective.map((d) => String(d || '').slice(0, 10)).filter(Boolean))]
-        .sort()
-        .map((d) => ({ session_date: d, _synthetic: true }));
+      return sortSessionRows(syntheticEffectiveUnits(c));
     }
     return [];
   };
@@ -183,7 +238,7 @@ export function useCourseSessionsDisplay({
     const cid = String(c?.id ?? '');
     const rows = classSessionsByCourse.value[cid];
     if (Array.isArray(rows) && rows.length > 0) {
-      return sortSessionRows(rows);
+      return sortSessionRows([...rows, ...syntheticEffectiveUnits(c, rows)]);
     }
     return sessionUnits(c);
   };
