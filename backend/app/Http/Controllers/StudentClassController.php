@@ -1175,21 +1175,20 @@ class StudentClassController extends Controller
             (bool) $request->boolean('force_rebuild_if_mismatch', false)
         );
 
-        // Only reconcile week/time fields from ClassSession when it is safe:
-        // skip when the user explicitly changed schedule fields but the future
-        // sessions could not be updated (history_exists with 0 rows touched),
-        // because reconcile would overwrite the user's new values with the old
-        // ClassSession times.
-        $skipReconcile = $scheduleFieldsPresent
-            && ($sessionSync['reason'] ?? '') === 'history_exists'
-            && (
-                !array_key_exists('updated_future_sessions', $sessionSync)
-                || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
-            );
-
-        if ($skipReconcile) {
-            $sessionSync['reconcile_skipped'] = true;
-            $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+        // When the request explicitly carries fixed schedule fields, those
+        // fields are the contract source of truth. Future ClassSession rows may
+        // be sparse near the end of a course (e.g. only one Wednesday remains),
+        // so reverse-reconciling from them would erase newly edited weekdays.
+        if ($scheduleFieldsPresent) {
+            if (($sessionSync['reason'] ?? '') === 'history_exists'
+                && (
+                    !array_key_exists('updated_future_sessions', $sessionSync)
+                    || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
+                )
+            ) {
+                $sessionSync['reconcile_skipped'] = true;
+                $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+            }
         } else {
             $this->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
