@@ -526,8 +526,9 @@ export function useCourseSessionsDisplay({
   function updateLocalSessionRow(courseId, sessionData) {
     const key = String(courseId || '');
     if (!key || !sessionData || sessionData.id == null) return;
-    const rows = classSessionsByCourse.value[key];
-    if (!Array.isArray(rows)) return;
+    const rows = Array.isArray(classSessionsByCourse.value[key])
+      ? [...classSessionsByCourse.value[key]]
+      : [];
     const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
     // PRD f0cce4d5 P2：只覆寫 payload 中實際提供的欄位，避免把代課 patch（只帶 teacher_id/teacher_name）
     // 意外覆寫成 undefined 的 status / start_time / end_time。
@@ -550,6 +551,10 @@ export function useCourseSessionsDisplay({
         updated.attendance_sign_in_at = null;
       }
       rows[i] = updated;
+      changed = true;
+    }
+    if (!changed) {
+      rows.push({ ...sessionData });
       changed = true;
     }
     if (changed) {

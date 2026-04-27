@@ -376,6 +376,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
+        Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
+            ->middleware('role:director,super_admin');
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
         // PRD 9c058f19 — 代課流程 UX 優化

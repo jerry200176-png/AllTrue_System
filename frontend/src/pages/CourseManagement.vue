@@ -290,12 +290,12 @@
                               :key="sessionRowKey(u)"
                               :class="[
                                 'date-chip',
-                                !u._synthetic && 'date-chip-clickable',
+                                'date-chip-clickable',
                                 u._synthetic && 'date-chip-synthetic',
                                 getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)
                               ]"
-                              :title="u._synthetic ? '依月結固定時段推算，尚未建立實體堂次' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
-                              @click="!u._synthetic && openSessionEdit(c, (u.session_date || '').slice(0,10), u.id)"
+                              :title="u._synthetic ? '依月結固定時段推算；點擊後會建立實體堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id, u)"
                             >
                               <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </span>

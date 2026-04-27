@@ -74,8 +74,11 @@ export function useSessionEditFlow({
     doStatusChange(next);
   }
 
-  function openSessionEdit(course, dateYmd, sessionId) {
-    const row = getSessionDisplayRow(course, dateYmd, sessionId);
+  async function openSessionEdit(course, dateYmd, sessionId, unit = null) {
+    let row = getSessionDisplayRow(course, dateYmd, sessionId);
+    if (!row && unit?._synthetic) {
+      row = await materializeProjectedSession(course, dateYmd, unit);
+    }
     if (!row) {
       // Synthetic chips (rendered from schedule before ClassSession loads) or
       // any other code path that supplies an unresolvable sessionId used to
@@ -116,6 +119,51 @@ export function useSessionEditFlow({
     showSessionEditModal.value = true;
   }
 
+  async function materializeProjectedSession(course, dateYmd, unit) {
+    sessionEditSubmitting.value = true;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) {
+        alert('請重新登入');
+        return null;
+      }
+
+      const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
+      const res = await fetch('/api/v1/class-sessions/ensure-projected', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          student_class_id: Number(course?.id || course?.ID || 0),
+          session_date: String(dateYmd || '').slice(0, 10),
+          start_time: unit?.start_time || undefined,
+          branch_id: bid || undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert('建立可編輯堂次失敗：' + (json.message || res.statusText));
+        return null;
+      }
+      if (!json.session) {
+        alert('建立可編輯堂次失敗：伺服器未回傳堂次資料');
+        return null;
+      }
+      updateLocalSessionRow(course?.id || course?.ID, json.session);
+      return json.session;
+    } catch (e) {
+      alert('建立可編輯堂次失敗：' + (e?.message || '請稍後再試'));
+      return null;
+    } finally {
+      sessionEditSubmitting.value = false;
+    }
+  }
+
   async function openSessionEditFromAction(course) {
     await ensureCompletedSessionDatesLoaded(course);
     const dates = displaySessions(course);
@@ -126,7 +174,7 @@ export function useSessionEditFlow({
     const today = typeof todayYmd === 'object' ? todayYmd.value : todayYmd;
     const upcoming = dates.find((d) => String(d) >= today);
     const targetDate = upcoming || dates[0];
-    openSessionEdit(course, targetDate);
+    await openSessionEdit(course, targetDate);
   }
 
   function closeSessionEdit() {
