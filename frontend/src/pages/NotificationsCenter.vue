@@ -55,8 +55,9 @@
 
             <label class="modal-field">
               繳費金額 <span class="required">*</span>
-              <input v-model.number="tuitionModal.form.amount" type="number" required min="1" max="999999" step="1" />
+              <input v-model.number="tuitionModal.form.amount" type="number" required min="0" max="999999" step="1" />
             </label>
+            <p v-if="Number(tuitionModal.form.amount || 0) === 0" class="modal-hint">免費課程，金額為 NT$ 0，確認後會標記為已結算。</p>
 
             <label class="modal-field">
               備註（選填）
@@ -657,8 +658,9 @@ const confirmTuitionPaid = async () => {
   if (!item?.id || !props.branchId) return;
   const form = tuitionModal.value.form;
   tuitionModal.value.error = '';
-  if (!form.payment_date || !form.amount || form.amount <= 0) {
-    tuitionModal.value.error = '請填寫繳費日期與金額';
+  const amount = Number(form.amount);
+  if (!form.payment_date || form.amount === '' || form.amount == null || !Number.isFinite(amount) || amount < 0) {
+    tuitionModal.value.error = '請填寫繳費日期與金額，金額不可小於 0';
     return;
   }
 
@@ -680,7 +682,7 @@ const confirmTuitionPaid = async () => {
         payment_date: form.payment_date,
         payment_method: form.payment_method,
         account_last5: form.payment_method === 'transfer' ? form.account_last5 : '',
-        amount: form.amount,
+        amount,
         note: form.note?.trim() || '',
       }),
     });
@@ -876,6 +878,12 @@ onUnmounted(() => {
   border-color: var(--primary);
   background: var(--primary-bg);
   color: var(--primary);
+}
+
+.modal-hint {
+  margin: -6px 0 12px;
+  font-size: 12px;
+  color: var(--text-light);
 }
 
 .modal-error {
