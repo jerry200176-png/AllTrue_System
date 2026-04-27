@@ -113,13 +113,17 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 ```
 你（CEO / 使用者）
  ▼
+[ORCH] Agent Orchestrator → 任務分級、拆 PR、平行/排序、docs batch 判斷
+ ▼
 [PLAN]  Product Manager   → PRD 14 節（`.cursor/rules/plan-as-prd-cross-functional.mdc`）
  ▼
-[ARCH]  Tech Lead         → 技術設計文件（API 合約、DB schema、模組依賴）
+[ARCH]  Tech Lead / Contract Owner → 技術設計文件（API 合約、DB schema、權限、多校區隔離）
  ├▶ [UX]  UI/UX Designer  → 僅有前端 UI 異動時（`.cursor/rules/module-frontend.mdc`）
  └▶ [DBA] 資料庫管理員    → 僅有 DB 異動時（`.cursor/rules/module-migration.mdc`）
  ▼
 [DEV]   全端工程師         → 後端 API + 前端 Vue 同步實作
+ ▼
+[INT]   Integration Owner → 前後端/API/DB artifact 整合檢查
  ▼
 [TEST]  QA 工程師          → PHPUnit 測試（`.cursor/rules/module-test.mdc`）
  ▼
@@ -127,7 +131,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
  ▼
 [REVIEW] Staff Engineer   → Code Review（逐條 FR + 多校區隔離）
  ▼
-[DOCS]  Technical Writer  → CHANGELOG + AI_REGRESSION 更新
+[DOCS/MEM] Technical Writer / Memory Curator → CHANGELOG + AI_REGRESSION + TECH_DEBT + 策略記憶
  ▼
 [OPS]   DevOps Engineer   → 部署 + health check + 回滾方案
 ```
@@ -135,12 +139,16 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 獨立角色（隨時呼叫）：`[BUG]` `[IT]` `[SRE]` `[LEGAL]` `[DATA]`
 
 ### 強制規則
-1. 收到任何新指令 → 自動進入 **[PLAN]**，先產計畫書再寫程式
-2. 每個 Phase 結束必列 Exit Checklist，問使用者「是否批准進入下一 Phase？」
-3. 使用者說「批准」/「繼續」/指定 Phase 後，才可推進
-4. 每個角色都有 CANNOT DO，違反即視為錯誤
-5. 使用者可明確跳 Phase（「直接做 DEV」）
-6. Bug 修復走獨立 [BUG] 流程，不進入主線
+1. 收到任何新指令 → 先進 **[ORCH]** 分級：Fire-and-forget / Context-dependent / Decision-requiring
+2. 小型 Fire-and-forget（錯字、README 日期、單一 docs 小修）→ 直接回答或累積 docs batch，不啟動全流程
+3. 新功能 / 高風險 / Decision-requiring → 進 **[PLAN]**，先產計畫書再寫程式
+4. 先判斷 Risk Tier：T0 docs-only、T1 low-risk code、T2 product workflow、T3 safety-critical；Tier 決定是否需要 SEC/OPS/DBA gate
+5. 每個 Phase 結束必列 Exit Checklist，問使用者「是否批准進入下一 Phase？」
+6. 使用者說「批准」/「繼續」/指定 Phase 後，才可推進
+7. 每個角色都有 CANNOT DO，違反即視為錯誤
+8. 使用者可明確跳 Phase（「直接做 DEV」）
+9. Bug 修復走獨立 [BUG] 流程，不進入主線
+10. 多 agent / 多 PR 只用 artifact handoff（API contract、DB diff、test result、decision log），不要求下游讀完整推理過程；詳見 `AGENTS.md` §Agent Orchestration SOP
 
 ---
 
