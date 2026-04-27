@@ -268,6 +268,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R21. 堂數制加購是新批次，不是追加原課程
+
+- `POST /student-classes/{id}/purchase-batch` 會新建一筆未繳 `StudentClass` 與對應 `ClassSession`，原課程 `SessionCount` / `RemainingSessions` 不會被改寫。
+- **強制規則**：加購 UI、README、操作提示都必須說「新批次課程」；成功後要用 response 的 `new_course.id` 引導主任查看新批次詳情，不可暗示原課程詳情會追加上課日期。
+- **測試必補**：`purchase-batch` response 必須保留 `new_course.id`、`created_sessions`、`first_session_date`、`last_session_date`，讓前端能定位與說明新增批次。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -280,7 +288,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消 |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|
-| 月結制 | §b3 inactive 歷史、§b4 加購分流 |
+| 月結制 / 加購 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |

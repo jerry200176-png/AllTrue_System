@@ -1429,8 +1429,22 @@ async function submitPurchaseSessions() {
       return;
     }
     showPurchaseModal.value = false;
-    alert('加購成功，已建立新批次課程。');
     await loadCourses();
+    const newCourse = json?.new_course || {};
+    const groupKey = course?.student_id != null ? `sid:${course.student_id}` : null;
+    if (groupKey) {
+      expandedStudentGroups.value = new Set([...expandedStudentGroups.value, groupKey]);
+      focusedStudentKey.value = groupKey;
+    }
+    const sessionRange = newCourse.first_session_date && newCourse.last_session_date
+      ? `，上課日期 ${newCourse.first_session_date} 至 ${newCourse.last_session_date}`
+      : '';
+    toastRef.value?.show?.({
+      title: '已建立加購批次',
+      description: `新批次課程 #${newCourse.id || '—'} 已建立 ${Number(newCourse.created_sessions || 0)} 堂${sessionRange}。請查看此新批次詳情，原課程不會追加堂次。`,
+      variant: 'success',
+      durationMs: 7000,
+    });
   } catch (e) {
     alert('加購失敗：' + (e?.message || '請稍後再試'));
   }
