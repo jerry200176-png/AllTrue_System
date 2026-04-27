@@ -1,5 +1,5 @@
 <template>
-  <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
+  <div v-if="show" class="modal-overlay" @click.self="!submitting && $emit('close')">
     <div class="modal course-modal">
       <h3 class="modal-title">月結續約</h3>
       <p class="modal-desc">
@@ -41,8 +41,10 @@
       </div>
 
       <div class="actions">
-        <button class="ghost" @click="$emit('close')">取消</button>
-        <button class="primary" @click="$emit('submit', finalEndDate)">確認續約</button>
+        <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
+        <button class="primary" :disabled="submitting" @click="$emit('submit', finalEndDate)">
+          {{ submitting ? '續約中…' : '確認續約' }}
+        </button>
       </div>
     </div>
   </div>
@@ -52,7 +54,11 @@
 import { ref, computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 
-const props = defineProps({ show: Boolean, form: Object });
+const props = defineProps({
+  show: Boolean,
+  form: Object,
+  submitting: { type: Boolean, default: false },
+});
 defineEmits(['close', 'submit']);
 
 const mode = ref('months');
