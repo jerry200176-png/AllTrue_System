@@ -263,7 +263,22 @@ class PaymentReportController extends Controller
 
             $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
                 ->where('Status', '!=', 'paid')
+                ->lockForUpdate()
                 ->first();
+
+            $hasPaidInvoice = false;
+            if (! $invoice) {
+                $hasPaidInvoice = Invoice::where('StudentClassID', $report->StudentClassID)
+                    ->where('Status', 'paid')
+                    ->exists();
+            }
+
+            if (! $invoice && $sc && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+                return response()->json([
+                    'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款或指定未繳帳單。',
+                    'code'    => 'course_already_paid',
+                ], 422);
+            }
 
             if (!$invoice) {
                 $invoice = Invoice::create([
