@@ -167,6 +167,7 @@ class MonthlyInvoiceListTest extends TestCase
             'Charge'           => 4800,
             'Paid'             => 0,
             'Rate'             => 600,
+            'RoomID'           => 'R1',
             'MDate'            => now(),
             'Stop'             => 0,
             'ScheduleMode'     => 'date',
