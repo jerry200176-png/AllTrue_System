@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -419,6 +421,171 @@ class MonthlyRenewTest extends TestCase
             StudentClass::where('StudentID', $student->id)->count(),
             'purchaseBatch 對月結課應被拒絕，不應新建任何課程'
         );
+    }
+
+    // ── FR-002 / FR-003：renew-monthly 建立逐期帳單並重置 Paid ──────────────
+
+    public function test_renew_monthly_creates_invoice_and_resets_paid(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-invoice-create@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-04-30',
+            'Paid'             => 1,
+            'Charge'           => 4800,
+            'Rate'             => 600,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-05-31',
+        ]);
+
+        $res->assertOk();
+
+        $course->refresh();
+        // FR-003：Paid 重置為 0
+        $this->assertSame(0, (int) $course->Paid, '月結續約後 Paid 應重置為 0');
+        $this->assertNull($course->PayDate, '月結續約後 PayDate 應清空');
+
+        // FR-002：建立新期 Invoice
+        $this->assertDatabaseHas('Invoice', [
+            'StudentClassID' => $course->ID,
+            'billing_period' => '2026-05',
+            'Status'         => 'unpaid',
+        ]);
+
+        $invoice = Invoice::where('StudentClassID', $course->ID)
+            ->where('billing_period', '2026-05')
+            ->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame(4800, (int) $invoice->TotalAmount, 'TotalAmount 應從 Charge 取值');
+
+        // FR-009：同步建立 InvoiceItem
+        $this->assertDatabaseHas('InvoiceItem', [
+            'InvoiceID' => $invoice->id,
+        ]);
+    }
+
+    public function test_renew_monthly_invoice_creation_is_idempotent(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-invoice-idempotent@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'   => 'date',
+            'settlement_day' => 15,
+            'EndDate'        => '2026-04-30',
+            'Paid'           => 1,
+            'Charge'         => 4800,
+        ]);
+
+        $headers = ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
+
+        $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$course->ID}/renew-monthly",
+            ['end_date' => '2026-05-31']
+        )->assertOk();
+
+        $this->withHeaders($headers)->postJson(
+            "/api/v1/student-classes/{$course->ID}/renew-monthly",
+            ['end_date' => '2026-05-31']
+        )->assertOk();
+
+        // 不應建立兩筆相同 billing_period 的 Invoice
+        $this->assertSame(
+            1,
+            Invoice::where('StudentClassID', $course->ID)
+                ->where('billing_period', '2026-05')
+                ->count(),
+            '重複 renew-monthly 不應重複建立 Invoice'
+        );
+    }
+
+    public function test_legacy_monthly_course_without_charge_creates_zero_invoice(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-invoice-legacy@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'   => 'date',
+            'settlement_day' => 15,
+            'EndDate'        => '2026-04-30',
+            'Paid'           => 0,
+            'Charge'         => 0,
+            'Rate'           => 0,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-05-31',
+        ])->assertOk();
+
+        // 即使金額為 0 也應建立 Invoice（主任手動核帳時再填金額）
+        $this->assertDatabaseHas('Invoice', [
+            'StudentClassID' => $course->ID,
+            'billing_period' => '2026-05',
+            'Status'         => 'unpaid',
+            'TotalAmount'    => 0,
+        ]);
+    }
+
+    // ── FR-006：directorRecord 優先找當月 billing_period Invoice ─────────────
+
+    public function test_director_record_uses_current_billing_period_invoice(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-record-period@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'   => 'date',
+            'settlement_day' => 15,
+            'Paid'           => 0,
+            'Charge'         => 4800,
+        ]);
+
+        // 預先建立當月未繳帳單（模擬 renew-monthly 已建立）
+        $currentPeriod = now()->format('Y-m');
+        $invoice = Invoice::create([
+            'StudentID'      => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate'      => now()->toDateString(),
+            'TotalAmount'    => 4800,
+            'PaidAmount'     => 0,
+            'Status'         => 'unpaid',
+            'Note'           => '',
+            'billing_period' => $currentPeriod,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => (int) $course->ID,
+            'payment_date'     => now()->toDateString(),
+            'payment_method'   => 'cash',
+            'amount'           => 4800,
+        ]);
+
+        $res->assertOk();
+
+        $invoice->refresh();
+        $this->assertSame('paid', $invoice->Status, '當月 Invoice 應被標為 paid');
+        $this->assertSame(4800, (int) $invoice->PaidAmount);
+
+        $course->refresh();
+        $this->assertSame(1, (int) $course->Paid, '核帳後 StudentClass.Paid 應為 1');
     }
 
     public function test_purchase_batch_still_works_for_session_mode(): void

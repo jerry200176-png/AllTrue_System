@@ -16,6 +16,10 @@
           </div>
         </div>
         <div class="header-buttons">
+          <button class="button-outline" @click="emit('navigate', 'course-plan-create')">
+            <span class="material-symbols-outlined btn-icon">add_box</span>
+            建立課程方案
+          </button>
           <label class="button-outline">
             <span class="material-symbols-outlined btn-icon">upload_file</span>
             匯入名單
@@ -311,6 +315,7 @@
                           :class="['small', course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? 'btn-renew-warn' : 'ghost']"
                           @click="openAddSessionsForCourse(course)"
                         >{{ course.payment_type === 'session' && (course.PackageID ? (course.package_remaining_sessions ?? 0) <= 2 : (course.remaining_sessions ?? 0) <= 2) ? '續報加購' : '加購' }}</button>
+                        <button v-if="course.payment_type === 'monthly'" class="small ghost" @click="openInvoiceModal(course)">帳單</button>
                         <button class="small ghost" @click="editCourse(course)">編輯</button>
                         <button v-if="canCloseCourse(course)" class="small close-btn" @click="closeCourseNoRenew(course, student.name)">結案</button>
                         <button class="small danger" @click="deleteCourse(course)">刪除</button>
@@ -518,6 +523,53 @@
       @submit="submitRenewMonthly"
     />
 
+    <!-- 月結帳單記錄 Modal -->
+    <div v-if="showInvoiceModal" class="modal-overlay" @click.self="showInvoiceModal = false">
+      <div class="modal" style="max-width: 480px;">
+        <h3 style="margin-bottom: 4px;">月結帳單記錄</h3>
+        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">
+          {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
+        </p>
+
+        <div v-if="invoiceModalLoading" style="padding: 24px 0; text-align: center; color: #aaa;">
+          <div class="invoice-skeleton"></div>
+          <div class="invoice-skeleton" style="width: 70%;"></div>
+        </div>
+
+        <div v-else-if="invoiceModalList.length === 0" style="padding: 16px 0; text-align: center; color: #aaa; font-size: 14px;">
+          尚無帳單記錄（舊有課程）
+        </div>
+
+        <table v-else class="course-inner-table">
+          <thead>
+            <tr>
+              <th>期別</th>
+              <th style="text-align: right;">金額</th>
+              <th style="text-align: center;">狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="inv in invoiceModalList" :key="inv.id">
+              <td style="font-size: 13px;">
+                {{ inv.billing_period ? formatBillingPeriod(inv.billing_period) : (inv.issue_date ? inv.issue_date.slice(0, 7) : '—') }}
+                <span v-if="inv.due_date" style="font-size: 11px; color: #888; display: block;">繳費日 {{ inv.due_date }}</span>
+              </td>
+              <td style="text-align: right; font-weight: 600;">${{ inv.total_amount.toLocaleString() }}</td>
+              <td style="text-align: center;">
+                <span :class="['invoice-status-chip', inv.status]">
+                  {{ { paid: '已繳', unpaid: '未繳', partial: '部分繳' }[inv.status] || inv.status }}
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions" style="margin-top: 20px;">
+          <button class="ghost" @click="showInvoiceModal = false">關閉</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" @click.self="showSessionsModal = false">
       <div class="modal">
@@ -642,6 +694,7 @@ import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 
 const props = defineProps({ branchId: [String, Number] });
+const emit = defineEmits(['navigate']);
 
 // --- State ---
 const subjectOptions = ref([...SUBJECTS]);
@@ -750,6 +803,12 @@ const addSessionStartDate = ref(new Date().toISOString().slice(0, 10));
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyTargetCourse = ref(null);
 const renewMonthlyForm = ref({});
+
+// --- Monthly Invoice Modal ---
+const showInvoiceModal = ref(false);
+const invoiceModalCourse = ref(null);
+const invoiceModalList = ref([]);
+const invoiceModalLoading = ref(false);
 const selectedCourse = ref(null);
 
 // Duplicate course intercept modal
@@ -2305,6 +2364,39 @@ const submitAddSessions = async () => {
   }
 };
 
+const formatBillingPeriod = (period) => {
+  if (!period || period.length < 7) return period;
+  const [y, m] = period.split('-');
+  return `${y}年${parseInt(m)}月`;
+};
+
+const openInvoiceModal = async (course) => {
+  const studentName = students.value.find(s => s.id === course.student_id)?.name || '';
+  invoiceModalCourse.value = { ...course, student_name: studentName };
+  invoiceModalList.value = [];
+  invoiceModalLoading.value = true;
+  showInvoiceModal.value = true;
+
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) return;
+
+    const res = await fetch(`/api/v1/student-classes/${course.id}/invoices`, {
+      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) {
+      invoiceModalList.value = json.invoices || [];
+    }
+  } catch (_) {
+    // silent — modal shows empty state
+  } finally {
+    invoiceModalLoading.value = false;
+  }
+};
+
 const submitRenewMonthly = async (endDate) => {
   const course = renewMonthlyTargetCourse.value;
   if (!course?.id) return;
@@ -2488,6 +2580,28 @@ table th { font-size: 12.5px; }
 .close-btn { color: #92400e; border-color: #d97706; }
 .close-btn:hover { background: #fef3c7; }
 .paid-date-hint { display: inline-block; font-size: 12px; color: var(--success, #2e7d32); margin-left: 4px; white-space: nowrap; }
+
+/* ── Monthly Invoice Modal ── */
+.invoice-status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.invoice-status-chip.paid    { background: #e8f5e9; color: #2e7d32; }
+.invoice-status-chip.unpaid  { background: #fff3e0; color: #e65100; }
+.invoice-status-chip.partial { background: #fff8e1; color: #f57f17; }
+.invoice-skeleton {
+  height: 20px;
+  width: 100%;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 /* ═══ Header ═══ */
 .header-actions {
