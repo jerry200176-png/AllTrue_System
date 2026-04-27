@@ -455,14 +455,16 @@
     <PurchaseSessionsModal
       :show="showPurchaseModal"
       :form="purchaseForm"
-      @close="showPurchaseModal = false"
+      :submitting="purchaseSubmitting"
+      @close="!purchaseSubmitting && (showPurchaseModal = false)"
       @submit="submitPurchaseSessions"
     />
 
     <RenewMonthlyModal
       :show="showRenewMonthlyModal"
       :form="renewMonthlyForm"
-      @close="showRenewMonthlyModal = false"
+      :submitting="renewMonthlySubmitting"
+      @close="!renewMonthlySubmitting && (showRenewMonthlyModal = false)"
       @submit="submitRenewMonthly"
     />
 
@@ -660,7 +662,7 @@
       </div>
     </div>
 
-    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="pauseConfirmTarget = null">
+    <div v-if="pauseConfirmTarget" class="modal-overlay" @click.self="!pauseConfirmSubmitting && (pauseConfirmTarget = null)">
       <div class="modal course-modal pause-confirm-modal">
         <div class="pause-confirm-header">
           <span class="pause-confirm-icon" :class="{ resume: pauseConfirmIsResume }">{{ pauseConfirmIsResume ? '▶' : '⏸' }}</span>
@@ -678,16 +680,16 @@
           </ul>
         </div>
         <div class="actions">
-          <button class="ghost" @click="pauseConfirmTarget = null">取消</button>
-          <button class="primary" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
-            {{ pauseConfirmIsResume ? '確認恢復' : '確認暫停' }}
+          <button class="ghost" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
+          <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
+            {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '確認恢復' : '確認暫停') }}
           </button>
         </div>
       </div>
     </div>
 
     <!-- Delete Confirm Modal (FR-013) -->
-    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="confirmDeleteTarget = null">
+    <div v-if="confirmDeleteTarget" class="modal-overlay" @click.self="!deleteCourseSubmitting && (confirmDeleteTarget = null)">
       <div class="modal" style="width: 420px;">
         <h3 class="modal-title" style="color: #dc2626;">確認刪除課程</h3>
         <div style="margin: 12px 0 20px; font-size: 14px; line-height: 1.6;">
@@ -699,8 +701,10 @@
           <p style="color: #dc2626; font-size: 13px;">刪除後無法復原，所有堂次紀錄將一併移除。</p>
         </div>
         <div class="actions">
-          <button class="ghost" @click="confirmDeleteTarget = null">取消</button>
-          <button class="danger" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">確認刪除</button>
+          <button class="ghost" :disabled="deleteCourseSubmitting" @click="confirmDeleteTarget = null">取消</button>
+          <button class="danger" :disabled="deleteCourseSubmitting" style="background: #dc2626; color: #fff; border: none; padding: 8px 20px; border-radius: 8px; cursor: pointer;" @click="executeDeleteCourse">
+            {{ deleteCourseSubmitting ? '刪除中…' : '確認刪除' }}
+          </button>
         </div>
       </div>
     </div>
@@ -1327,9 +1331,11 @@ const rooms = ref([]);
 const settlementDayOptions = Array.from({ length: 31 }, (_, i) => i + 1);
 const showPurchaseModal = ref(false);
 const purchaseCourse = ref(null);
+const purchaseSubmitting = ref(false);
 const showRenewMonthlyModal = ref(false);
 const renewMonthlyCourse = ref(null);
 const renewMonthlyForm = ref({});
+const renewMonthlySubmitting = ref(false);
 const purchaseForm = ref({
   sessions: 8,
   start_date: '',
@@ -1350,6 +1356,7 @@ const quickAddSessionForm = ref({
   subject: 'Math',
 });
 const pauseConfirmTarget = ref(null);
+const pauseConfirmSubmitting = ref(false);
 const pauseConfirmIsResume = computed(() => pauseConfirmTarget.value?.status === 'inactive');
 const pauseConfirmImpacts = computed(() => pauseConfirmIsResume.value
   ? ['恢復後可繼續排課與補課', '後續仍依原課程設定計算堂數與提醒', '已取消的未來堂次不會自動重建，需依需要重新排課']
@@ -1374,10 +1381,12 @@ function requestCoursePause(course) {
 }
 
 async function confirmCoursePause() {
+  if (pauseConfirmSubmitting.value) return;
   const course = pauseConfirmTarget.value;
   if (!course) return;
   const isPaused = course.status === 'inactive';
   const action = isPaused ? '恢復' : '暫停';
+  pauseConfirmSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1399,6 +1408,8 @@ async function confirmCoursePause() {
     await loadCourses();
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    pauseConfirmSubmitting.value = false;
   }
 }
 
@@ -1489,6 +1500,7 @@ function openPurchaseModal(course) {
 }
 
 async function submitPurchaseSessions() {
+  if (purchaseSubmitting.value) return;
   const course = purchaseCourse.value;
   if (!course?.id) return;
   if (!Number.isFinite(Number(purchaseForm.value.sessions)) || Number(purchaseForm.value.sessions) <= 0) {
@@ -1499,6 +1511,7 @@ async function submitPurchaseSessions() {
     alert('請選擇新批次開始日期');
     return;
   }
+  purchaseSubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1523,7 +1536,10 @@ async function submitPurchaseSessions() {
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
-      alert(details || json?.message || '加購失敗');
+      const duplicateHint = json?.duplicate_course?.id
+        ? `\n\n已存在相同批次：課程 #${json.duplicate_course.id}，請先查看是否已續報過。`
+        : '';
+      alert((details || json?.message || '加購失敗') + duplicateHint);
       return;
     }
     showPurchaseModal.value = false;
@@ -1545,16 +1561,20 @@ async function submitPurchaseSessions() {
     });
   } catch (e) {
     alert('加購失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    purchaseSubmitting.value = false;
   }
 }
 
 async function submitRenewMonthly(endDate) {
+  if (renewMonthlySubmitting.value) return;
   const course = renewMonthlyCourse.value;
   if (!course?.id) return;
   if (!endDate) {
     alert('請選擇新到期日或延長月數');
     return;
   }
+  renewMonthlySubmitting.value = true;
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1580,6 +1600,8 @@ async function submitRenewMonthly(endDate) {
     await loadCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    renewMonthlySubmitting.value = false;
   }
 }
 
@@ -2879,6 +2901,7 @@ const submitEdit = async () => {
 };
 
 const confirmDeleteTarget = ref(null);
+const deleteCourseSubmitting = ref(false);
 const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
 const invoiceModalOpen = ref(false);
@@ -2925,9 +2948,10 @@ const openInvoiceModal = async (course) => {
 };
 
 const executeDeleteCourse = async () => {
+  if (deleteCourseSubmitting.value) return;
   const c = confirmDeleteTarget.value;
   if (!c) return;
-  confirmDeleteTarget.value = null;
+  deleteCourseSubmitting.value = true;
   const fromLaravel = c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null;
   if (fromLaravel) {
     try {
@@ -2940,6 +2964,7 @@ const executeDeleteCourse = async () => {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
+          confirmDeleteTarget.value = null;
           courses.value = courses.value.filter(x => x.id !== c.id);
           toastRef.value?.show?.({ title: '已刪除', description: `${c.subject_name || c.subject || ''} 課程已刪除`, variant: 'success', durationMs: 3000 });
           return;
@@ -2951,10 +2976,17 @@ const executeDeleteCourse = async () => {
     } catch (e) {
       toastRef.value?.show?.({ title: '刪除失敗', description: e?.message || '請稍後再試', variant: 'error', durationMs: 5000 });
       return;
+    } finally {
+      deleteCourseSubmitting.value = false;
     }
   }
-  await supabase.from('student-classes').delete().eq('id', c.id);
-  courses.value = courses.value.filter(x => x.id !== c.id);
+  try {
+    await supabase.from('student-classes').delete().eq('id', c.id);
+    confirmDeleteTarget.value = null;
+    courses.value = courses.value.filter(x => x.id !== c.id);
+  } finally {
+    deleteCourseSubmitting.value = false;
+  }
 };
 
 const submitBackfill = async () => {
