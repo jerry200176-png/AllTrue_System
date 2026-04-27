@@ -9,6 +9,7 @@
 ## 2026-04-27 — ops(governance): GitHub Pro 與備份成熟度補強
 
 - Ops 啟用 `main` branch protection required checks，補強 Drive 備份 manifest、RPO/RTO/DR 演練 SOP，並登記 MySQL PITR/binlog 為 P1 技術債
+- Ops 將 `scripts/` 納入 deployable diff，確保備份腳本變更會透過 `deploy.yml` 同步到 Pi
 
 ## 2026-04-27 — docs(governance): 清理 AI 導航過期連結
 
