@@ -7,6 +7,7 @@ use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LearningRecordController;
 use App\Http\Controllers\LearningRecordFeedbackController;
+use App\Http\Controllers\LearningRecordTeacherCommentController;
 use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
@@ -368,6 +369,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::delete('learning-records/{learningRecord}', [LearningRecordController::class, 'destroy']);
+        Route::put('learning-records/{learningRecord}/teacher-comment', [LearningRecordTeacherCommentController::class, 'upsert']);
+        Route::post('learning-record-teacher-comments/{comment}/read', [LearningRecordTeacherCommentController::class, 'markRead']);
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);

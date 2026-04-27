@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(learning-records): 主任給老師評語與結案堂次一致性
+
+- Added 學習評量表新增主任給老師的內部評語，老師可讀取並標記已讀；同時修復課程直接改為歷史狀態時仍留下未來排課的風險
+
 ## 2026-04-27 — chore(campus): 新增新莊分校 & 中平分校
 
 - Added 新莊分校（code: xinzhuang）、中平分校（code: zhongping）上線，migration 冪等零 downtime

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
+use App\Models\LearningRecordTeacherComment;
 use App\Models\LearningRecordTeacherChange;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -44,6 +45,10 @@ class LearningRecordController extends Controller
         $teacherName = DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
             ?? DB::table('User')->where('id', $record->TeacherID)->value('Name');
         $record->teacher_name = $teacherName ?? '未指派';
+        $comment = LearningRecordTeacherComment::where('learning_record_id', $record->id)->first();
+        $record->teacher_comment = $comment ? $this->formatTeacherCommentForRecord($comment, [
+            (int) $comment->author_user_id => DB::table('User')->where('id', $comment->author_user_id)->value('Name'),
+        ]) : null;
         return $record;
     }
 
@@ -256,8 +261,15 @@ class LearningRecordController extends Controller
         $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $collection->pluck('id'))
             ->get()
             ->keyBy('learning_record_id');
+        $teacherComments = LearningRecordTeacherComment::whereIn('learning_record_id', $collection->pluck('id'))
+            ->get()
+            ->keyBy('learning_record_id');
+        $authorIds = $teacherComments->pluck('author_user_id')->filter()->unique()->values();
+        $authorNameMap = $authorIds->isNotEmpty()
+            ? DB::table('User')->whereIn('id', $authorIds)->pluck('Name', 'id')->toArray()
+            : [];
 
-        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks) {
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks, $teacherComments, $authorNameMap) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $subjectId = $record->studentClass->SubjectID ?? null;
@@ -274,8 +286,24 @@ class LearningRecordController extends Controller
                 'unread_for_teacher' => !$fb->last_read_by_teacher_at || $fb->last_read_by_teacher_at->lt($fb->updated_at),
                 'unread_for_director' => !$fb->last_read_by_director_at || $fb->last_read_by_director_at->lt($fb->updated_at),
             ] : null;
+            $comment = $teacherComments->get((int) $record->id);
+            $record->teacher_comment = $comment
+                ? $this->formatTeacherCommentForRecord($comment, $authorNameMap)
+                : null;
             return $record;
         });
+    }
+
+    private function formatTeacherCommentForRecord(LearningRecordTeacherComment $comment, array $authorNameMap): array
+    {
+        return [
+            'id' => (int) $comment->id,
+            'content' => $comment->content,
+            'author_user_id' => (int) $comment->author_user_id,
+            'author_name' => $authorNameMap[(int) $comment->author_user_id] ?? null,
+            'updated_at' => optional($comment->updated_at)->toIso8601String(),
+            'unread_for_teacher' => !$comment->last_read_by_teacher_at || $comment->last_read_by_teacher_at->lt($comment->updated_at),
+        ];
     }
 
     public function store(Request $request)
