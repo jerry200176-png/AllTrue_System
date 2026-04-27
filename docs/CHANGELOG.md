@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — fix(courses): 課程管理顯示月結逐期帳單
+
+- Added 課程管理月結課程「帳單」入口，主任可查看各期 billing period 的已繳、未繳、部分繳狀態
+
 ## 2026-04-27 — feat(billing): 續報 preview/confirm 防呆 API
 
 - Added 續報預覽與確認 API，確認前回傳帳單、排課與風險摘要，並用 state hash 防止課程資料變更後誤送舊確認
