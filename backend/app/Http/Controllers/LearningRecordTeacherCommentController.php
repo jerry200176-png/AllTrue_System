@@ -40,7 +40,7 @@ class LearningRecordTeacherCommentController extends Controller
                 'class_session_id' => $ctx['class_session_id'],
                 'teacher_id' => $ctx['teacher_id'],
                 'campus_id' => $ctx['campus_id'],
-                'author_user_id' => (int) $request->attributes->get('auth_user_id'),
+                'author_user_id' => $this->authUserId($request),
                 'content' => $content,
                 'last_read_by_teacher_at' => null,
             ]
@@ -83,6 +83,12 @@ class LearningRecordTeacherCommentController extends Controller
         }
 
         return true;
+    }
+
+    private function authUserId(Request $request): int
+    {
+        $user = $request->attributes->get('auth_user');
+        return (int) ($user->id ?? 0);
     }
 
     private function recordContext(LearningRecord $record): ?array
