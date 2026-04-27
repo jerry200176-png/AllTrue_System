@@ -254,6 +254,89 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
+    public function test_director_can_materialize_projected_monthly_session_once_for_editing(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-materialize-monthly@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 8,
+            'RemainingSessions' => 0,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => null,
+            'week'             => 1,
+            'time'             => '17:00:00',
+            'week1'            => 4,
+            'time1'            => '17:00:00',
+            'duration1'        => 120,
+            'SessionDuration'  => 120,
+        ]);
+
+        $payload = [
+            'student_class_id' => (int) $course->ID,
+            'session_date'     => '2026-04-02',
+            'start_time'       => '17:00',
+            'branch_id'        => 1,
+        ];
+
+        $first = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/class-sessions/ensure-projected', $payload);
+
+        $first->assertOk()
+            ->assertJsonPath('created', true)
+            ->assertJsonPath('session.student_class_id', (int) $course->ID)
+            ->assertJsonPath('session.session_date', '2026-04-02')
+            ->assertJsonPath('session.start_time', '17:00')
+            ->assertJsonPath('session.end_time', '19:00')
+            ->assertJsonPath('session.status', 'scheduled');
+
+        $second = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/class-sessions/ensure-projected', $payload);
+
+        $second->assertOk()
+            ->assertJsonPath('created', false)
+            ->assertJsonPath('session.id', $first->json('session.id'));
+
+        $this->assertSame(
+            1,
+            ClassSession::where('StudentClassID', $course->ID)
+                ->whereDate('SessionDate', '2026-04-02')
+                ->where('StartTime', '17:00:00')
+                ->count(),
+            'materialize projected session must be idempotent'
+        );
+    }
+
+    public function test_materializing_projected_session_rejects_inactive_course(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-materialize-inactive@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate'    => '2026-04-01',
+            'week'         => 4,
+            'time'         => '17:00:00',
+            'Stop'         => 1,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/class-sessions/ensure-projected', [
+            'student_class_id' => (int) $course->ID,
+            'session_date'     => '2026-04-02',
+            'start_time'       => '17:00',
+            'branch_id'        => 1,
+        ])->assertStatus(422)
+            ->assertJsonPath('message', '課程已結案或停用，不能新增堂次');
+    }
+
     public function test_renew_monthly_rejects_session_mode_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew-reject@example.com');
