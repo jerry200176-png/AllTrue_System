@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(courses): 戰術課程列表視覺
+
+- Added 課程管理學生群組、課程 row、操作按鈕與詳情面板的戰術資訊列視覺，提升掃描速度與高風險狀態辨識度
+
 ## 2026-04-27 — feat(courses): Porsche-inspired command center 首屏
 
 - Added 課程管理首屏的高級性能指揮艙視覺：深色霧面 hero、精準控制列、性能儀表統計與玻璃質感背景
