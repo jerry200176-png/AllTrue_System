@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClassSession;
+use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\LearningRecord;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -1482,22 +1484,91 @@ class StudentClassController extends Controller
 
         $newEndDate = Carbon::parse($data['end_date'])->toDateString();
 
-        $studentClass->EndDate = $newEndDate;
-        $studentClass->save();
-        $studentClass->refresh();
-        $sessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass);
+        return DB::transaction(function () use ($studentClass, $newEndDate) {
+            // 延長到期日
+            $studentClass->EndDate = $newEndDate;
+            // FR-003：重置繳費狀態，讓新月份顯示「未繳費」
+            $studentClass->Paid    = 0;
+            $studentClass->PayDate = null;
+            $studentClass->save();
+            $studentClass->refresh();
+
+            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass);
+
+            // FR-002：建立新期逐期帳單（billing_period = 新 EndDate 所在月）
+            $billingPeriod = Carbon::parse($newEndDate)->format('Y-m');
+            $exists = Invoice::where('StudentClassID', $studentClass->ID)
+                ->where('billing_period', $billingPeriod)
+                ->exists();
+
+            if (! $exists) {
+                $totalAmount = max(0, (int) ($studentClass->Charge ?? 0));
+                $dueDay      = (int) ($studentClass->settlement_day ?? 15);
+                $dueDate     = Carbon::parse($newEndDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
+
+                $invoice = Invoice::create([
+                    'StudentID'      => (int) $studentClass->StudentID,
+                    'StudentClassID' => (int) $studentClass->ID,
+                    'IssueDate'      => Carbon::today()->toDateString(),
+                    'DueDate'        => $dueDate,
+                    'TotalAmount'    => $totalAmount,
+                    'PaidAmount'     => 0,
+                    'Status'         => 'unpaid',
+                    'Note'           => '',
+                    'billing_period' => $billingPeriod,
+                ]);
+
+                // FR-009：同步建立 InvoiceItem
+                $periodLabel = Carbon::parse($newEndDate)->locale('zh_TW')->isoFormat('YYYY年M月');
+                InvoiceItem::create([
+                    'InvoiceID'   => $invoice->id,
+                    'Description' => '月結費用 ' . $periodLabel,
+                    'Amount'      => $totalAmount,
+                    'PeriodStart' => Carbon::parse($newEndDate)->startOfMonth()->toDateString(),
+                    'PeriodEnd'   => $newEndDate,
+                ]);
+            }
+
+            return response()->json([
+                'message'      => '月結課程已續約，到期日更新為 ' . $newEndDate,
+                'end_date'     => $newEndDate,
+                'session_sync' => $sessionSync,
+                'course'       => [
+                    'id'               => (int) $studentClass->ID,
+                    'end_date'         => $newEndDate,
+                    'settlement_day'   => $studentClass->settlement_day,
+                    'monthly_sessions' => $studentClass->monthly_sessions,
+                    'schedule_mode'    => $studentClass->ScheduleMode,
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * FR-007：回傳月結課程的逐期帳單列表。
+     * GET /api/v1/student-classes/{studentClass}/invoices
+     */
+    public function invoices(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $invoices = Invoice::where('StudentClassID', $studentClass->ID)
+            ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
+            ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         return response()->json([
-            'message'  => '月結課程已續約，到期日更新為 ' . $newEndDate,
-            'end_date' => $newEndDate,
-            'session_sync' => $sessionSync,
-            'course'   => [
-                'id'                => (int) $studentClass->ID,
-                'end_date'          => $newEndDate,
-                'settlement_day'    => $studentClass->settlement_day,
-                'monthly_sessions'  => $studentClass->monthly_sessions,
-                'schedule_mode'     => $studentClass->ScheduleMode,
-            ],
+            'invoices' => $invoices->map(fn ($inv) => [
+                'id'             => (int) $inv->id,
+                'billing_period' => $inv->billing_period,
+                'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
+                'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
+                'total_amount'   => (int) $inv->TotalAmount,
+                'paid_amount'    => (int) $inv->PaidAmount,
+                'status'         => $inv->Status,
+            ])->values()->all(),
         ]);
     }
 
