@@ -256,7 +256,7 @@
 
 ---
 
-*最後更新：2026-04-27（chore/composer-audit-commonmark — TD-014 登記）*
+*最後更新：2026-04-27（chore/ops-hardening-2026-04 — TD-015 登記）*
 
 ### TD-013：個人設定頁自填 LINE User ID
 
@@ -285,3 +285,17 @@
 | 建議做法 | 另開 Laravel major upgrade 專案，先盤點 PHP 版本、Sanctum、Pest/PHPUnit、middleware、filesystem validation 與部署相容性，再分階段升級 |
 | 清償成本估計 | 高（> 1天）|
 | 不做的代價 | CI 會持續出現 Composer audit warning，且涉及檔案上傳驗證的安全風險無法在 Laravel 8 內完全修補 |
+
+### TD-015：MySQL PITR / binlog 還原能力
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-04-27 |
+| 發現來源 | [SRE] 工程成熟度補強 |
+| 影響模組 | DB backup / restore / Pi ops |
+| 描述 | 目前已有 nightly、sixhour 與 Google Drive 異地備份，RPO 可控制在數小時等級；但尚未建立正式 MySQL binary log / point-in-time recovery SOP，若資料誤刪發生在兩次 sixhour 備份之間，仍可能損失該區間資料 |
+| 建議做法 | 由 DBA/OPS 評估啟用 MySQL binlog、retention、磁碟壓力、binlog 異地同步與「full backup + binlog replay」演練；所有測試只可還原到 drill DB，不可觸碰 production `AllTrue` |
+| 清償成本估計 | 中（半天）|
+| 不做的代價 | 下一次資料破壞事件仍只能回到最近快照，無法精準還原到事故前一刻 |

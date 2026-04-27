@@ -5,6 +5,7 @@
 #   - 每日 nightly .sql.gz  → g-drive:AllTrue-Backups/db/      （保留 14 份）
 #   - 每月 monthly .sql.gz  → g-drive:AllTrue-Backups/monthly/ （保留 12 份）
 #   - 最新 2 份 sixhour     → g-drive:AllTrue-Backups/sixhour/ （提供 6h 異地快照）
+#   - manifest .txt          → g-drive:AllTrue-Backups/manifests/（檔名/大小/sha256）
 #   - 不同步原始碼（GitHub 已是程式碼異地備份）
 #   - 不同步 emergency/ 目錄（大且 GitHub 已覆蓋）
 #
@@ -43,6 +44,27 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [gdrive-sync] $*" | tee -a "$LOG"; 
 SYNC_ERRORS=0
 
 log "=== Google Drive sync start ==="
+
+# ── 產生 manifest：讓每次異地同步都有可稽核的檔名 / 大小 / checksum ──
+MANIFEST_DIR="${BACKUP_DIR}/manifests"
+MANIFEST="${MANIFEST_DIR}/backup_manifest_$(date '+%Y%m%d_%H%M%S').txt"
+mkdir -p "$MANIFEST_DIR"
+{
+  echo "AllTrue backup manifest"
+  echo "generated_at=$(date -Iseconds)"
+  echo "host=$(hostname)"
+  echo
+  echo "sha256 size_bytes path"
+  for pattern in \
+    "${BACKUP_DIR}"/alltrue_nightly_*.sql.gz \
+    "${BACKUP_DIR}/monthly"/alltrue_monthly_*.sql.gz \
+    "${BACKUP_DIR}/sixhour"/alltrue_6h_*.sql.gz
+  do
+    [ -e "$pattern" ] || continue
+    sha256sum "$pattern" | awk -v size="$(stat -c%s "$pattern")" '{print $1, size, $2}'
+  done
+} > "$MANIFEST"
+log "Manifest generated: ${MANIFEST}"
 
 # ── 啟動前退讓：避免與其他凌晨 cron 觸發的 API burst 衝突 ──
 sleep 15
@@ -90,12 +112,24 @@ else
   log "WARN: No sixhour backups found to sync"
 fi
 
+# ── 同步 manifest → manifests/ ──
+sleep 5
+log "Syncing manifest to ${REMOTE}/manifests/ ..."
+"$RCLONE" copy \
+  --transfers 1 \
+  --retries 3 \
+  --retries-sleep 20s \
+  --log-level ERROR \
+  "$MANIFEST" \
+  "${REMOTE}/manifests/" 2>&1 | tee -a "$LOG" || { log "WARN: manifest sync had errors (non-fatal)"; SYNC_ERRORS=$((SYNC_ERRORS+1)); }
+
 # ── 遠端檔案數確認 ──
 sleep 5
 DB_COUNT=$("$RCLONE" ls "${REMOTE}/db/" 2>/dev/null | wc -l || echo "?")
 MONTHLY_COUNT=$("$RCLONE" ls "${REMOTE}/monthly/" 2>/dev/null | wc -l || echo "?")
 SIXHOUR_COUNT=$("$RCLONE" ls "${REMOTE}/sixhour/" 2>/dev/null | wc -l || echo "?")
-log "Remote files — db/: ${DB_COUNT}, monthly/: ${MONTHLY_COUNT}, sixhour/: ${SIXHOUR_COUNT}"
+MANIFEST_COUNT=$("$RCLONE" ls "${REMOTE}/manifests/" 2>/dev/null | wc -l || echo "?")
+log "Remote files — db/: ${DB_COUNT}, monthly/: ${MONTHLY_COUNT}, sixhour/: ${SIXHOUR_COUNT}, manifests/: ${MANIFEST_COUNT}"
 
 # ── 遠端舊備份清理（保留最新 14 份 nightly，12 份 monthly，4 份 sixhour）──
 log "Pruning old remote backups..."
@@ -113,6 +147,11 @@ log "Pruning old remote backups..."
   --min-age 2d \
   --include "alltrue_6h_*.sql.gz" \
   "${REMOTE}/sixhour/" 2>/dev/null || true
+
+"$RCLONE" delete \
+  --min-age 370d \
+  --include "backup_manifest_*.txt" \
+  "${REMOTE}/manifests/" 2>/dev/null || true
 
 # ── Log 檔大小控管（超過 500KB 截頭）──
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 512000 ]; then
