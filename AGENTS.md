@@ -22,6 +22,50 @@
 - 複雜架構、資料流或 SOP：更新 `docs/SYSTEM_TECH_GUIDE.md` 或 `docs/OPERATIONS_RUNBOOK.md`。
 - 文件不要複製長 SOP；入口文件只導航，單一主題只保留一個權威出處。
 
+## Agent Orchestration SOP
+
+開工前先判斷任務類型，避免把 AI 協作變成額外認知負擔：
+
+| 類型 | 定義 | 處理方式 |
+|---|---|---|
+| Fire-and-forget | 錯字、footer 日期、單一連結、小型 lint/docs 修正 | 累積到 docs batch；不要單獨開 PR 浪費 Actions |
+| Context-dependent | API 串接、前後端同改、README/Runbook 同步 | 先產 artifact（API contract、diff、測試結果），下游只讀 artifact |
+| Decision-requiring | DB schema、auth、堂數/繳費、CI/CD、備份/還原 | 必須進 PLAN/ARCH 或 BUG B1，等使用者批准後才 DEV |
+
+強制原則：
+- 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。
+- Agent handoff 只交 output artifact，不要求下游讀完整推理過程。
+- PRD/ARCH 至少寫到 architecture boundary：API 合約、資料邊界、權限、錯誤處理、多校區隔離。
+- 沒有 architecture boundary 的需求，不進 DEV；讓 agent 猜架構會把 decision load 丟給錯的人。
+- 多 agent 或多 PR 任務需指定 `[INT] Integration Owner` 檢查 artifact 能否接起來；完成後由 `[DOCS/MEM] Memory Curator` 決定寫回哪份長期記憶文件。
+- 完成後把有效策略寫回 `AI_REGRESSION_LESSONS.md`、`TECH_DEBT.md` 或 `SYSTEM_TECH_GUIDE.md`，讓下一個 session 不重學。
+
+### Workflow Risk Tiers
+
+大廠 workflow 的重點不是所有任務都變重，而是讓風險決定流程重量：
+
+| Tier | 範圍 | 必要流程 |
+|---|---|---|
+| T0 Docs-only | README、FAQ、INDEX、Runbook、規則文件，且不碰 `.github/**` / `scripts/**` | docs batch → `git diff --check` → PR；避免 deployable diff |
+| T1 Low-risk code | 單一 UI 顯示、純 helper、無資料寫入、無權限邊界 | 小 PR → 對應測試/build → REVIEW |
+| T2 Product workflow | 前後端契約、排課、出缺勤、評量、跨分校查詢 | PLAN/ARCH → DEV → TEST → INT → REVIEW |
+| T3 Safety-critical | auth、PII、RFID、LINE webhook、堂數扣除、繳費、migration、備份/還原、CI/CD | PLAN/ARCH + SEC + OPS；使用者批准後才實作，CI 綠才可 merge |
+
+**Definition of Ready（進 DEV 前）**
+- 已定義 product intent、architecture boundary、API/DB/data ownership、錯誤處理、多校區隔離。
+- 已判斷 Tier、是否需要 SEC/OPS/DBA、是否能平行。
+- 已列出不可碰的檔案/邏輯與必讀文件。
+
+**Definition of Done（回報完成前）**
+- PR CI 狀態明確；docs-only 要確認未混入 deployable diff。
+- 有使用者可驗收的測試或 smoke test 清單。
+- 新規則、事故、技術債、架構決策已寫回正確文件。
+
+**Stop-the-line 條件**
+- 發現可能寫 production DB、繞過 auth、暴露 token/PII、直接 push `main`、force push、或在 Pi production 跑測試。
+- CI/deploy 狀態不明但要回報「完成」。
+- 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
+
 ## Commit SOP
 
 每個獨立可驗收的子任務完成後立即 commit：
@@ -41,4 +85,4 @@ git commit -m "<type>(<scope>): <one-line summary>
 
 - **Claude Code**：讀根目錄 `CLAUDE.md`（若存在）
 - **GitHub Copilot**：讀 `.github/copilot-instructions.md`（若存在）
-- **人類協作者**：讀 `CONTRIBUTING.md`（若存在）
+- **人類協作者**：先讀 `README.md`、`docs/INDEX.md`、本檔 `AGENTS.md`
