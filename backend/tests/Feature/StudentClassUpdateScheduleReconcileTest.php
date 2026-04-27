@@ -593,6 +593,124 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
     }
 
     /**
+     * Editing a course from one weekly slot to same-day multi-slot should
+     * redistribute future sessions across the submitted fixed schedule.
+     */
+    public function test_adding_same_day_time_slot_remaps_future_sessions_to_multi_slot_cadence(): void
+    {
+        Carbon::setTestNow('2026-04-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+
+            $student = Student::create([
+                'name' => '同日多時段測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-03-14',
+                'TotalHours' => 20,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 1500,
+                'RoomID' => '1',
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 4,
+                'UsedSessions' => 4,
+                'ClassType' => 'one_on_one',
+                'week' => 6,
+                'time' => '13:00:00',
+            ]);
+
+            $pastSession = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-03-14',
+                'StartTime' => '13:00:00',
+                'EndTime' => '15:00:00',
+                'Status' => 'attended',
+            ]);
+            StudentSignIn::create([
+                'StudentClassID' => $course->ID,
+                'StudentID' => $student->id,
+                'TeacherID' => 99,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'CampusID' => 1,
+                'SignInDT' => '2026-03-14 13:00:00',
+                'MDT' => now(),
+                'ClassSessionID' => $pastSession->id,
+                'Status' => 'present',
+                'SessionDeducted' => 1,
+            ]);
+
+            foreach (['2026-04-18', '2026-04-25', '2026-05-02', '2026-05-09'] as $date) {
+                ClassSession::create([
+                    'StudentClassID' => $course->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '13:00:00',
+                    'EndTime' => '15:00:00',
+                    'Status' => 'scheduled',
+                ]);
+            }
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math',
+                'teacher_id' => 100,
+                'class_type' => 'one_on_one',
+                'duration_hours' => 2,
+                'days_of_week' => [6],
+                'start_time' => '13:00',
+                'day_time_slots' => [
+                    ['day' => 6, 'start_time' => '13:00'],
+                    ['day' => 6, 'start_time' => '17:00'],
+                ],
+                'payment_type' => 'session',
+            ]);
+
+            $res->assertOk();
+            $sync = $res->json('session_sync');
+            $this->assertGreaterThan(0, (int) ($sync['updated_future_sessions'] ?? 0),
+                'Adding a second same-day slot must remap future sessions, not leave one slot per week');
+
+            $course->refresh();
+            $this->assertSame(100, (int) $course->TeacherID, 'Editing course teacher should update the contract teacher');
+            $this->assertSame(6, (int) $course->week);
+            $this->assertSame('13:00:00', (string) $course->time);
+            $this->assertSame(6, (int) $course->week1);
+            $this->assertSame('17:00:00', (string) $course->time1);
+
+            $future = ClassSession::where('StudentClassID', $course->ID)
+                ->where('Status', 'scheduled')
+                ->orderBy('SessionDate')
+                ->orderBy('StartTime')
+                ->get();
+
+            $this->assertCount(4, $future);
+            $byDate = $future->groupBy(fn ($s) => Carbon::parse($s->SessionDate)->toDateString());
+            $this->assertSame(['13:00', '17:00'], $byDate->first()->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->values()->all());
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
      * force_partial_rebuild must NOT let reconcile overwrite contract when
      * all future sessions are locked (completed) and sync returns 0.
      */
