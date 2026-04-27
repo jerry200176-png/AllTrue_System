@@ -347,9 +347,19 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($data, $sc, $userId) {
+            // FR-006：月結制優先找當月 billing_period 的未繳帳單
+            $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
             $invoice = Invoice::where('StudentClassID', $sc->ID)
+                ->where('billing_period', $currentPeriod)
                 ->where('Status', '!=', 'paid')
                 ->first();
+
+            // Fallback：找任何未繳帳單（legacy 課程或堂數制）
+            if (! $invoice) {
+                $invoice = Invoice::where('StudentClassID', $sc->ID)
+                    ->where('Status', '!=', 'paid')
+                    ->first();
+            }
 
             if (!$invoice) {
                 $invoice = Invoice::create([

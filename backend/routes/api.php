@@ -333,6 +333,7 @@ Route::prefix('v1')->group(function () {
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
         Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
+        Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);
         Route::post('student-classes/{studentClass}/add-session', [StudentClassController::class, 'addSession']);
         Route::post('student-classes/{studentClass}/add-session/check', [StudentClassController::class, 'checkAddSession']);
         Route::post('student-classes/{studentClass}/pause', [StudentClassController::class, 'togglePause']);
