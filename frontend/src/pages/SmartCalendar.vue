@@ -1937,6 +1937,15 @@ const filteredCourses = computed(() => {
     const hasLeave = (date, courseId) => exceptions.value.some(ex =>
       ex.status === 'leave' && toYmd(ex.schedule_date) === date && ex.student_course_id == courseId
     );
+    const hasSameStudentSlot = (ex, dow) => {
+      const exStart = normalizeTimeTo30(ex.start_time || '');
+      return mergedList.some(item =>
+        !item.is_exception &&
+        Number(item.day_of_week) === Number(dow) &&
+        String(item.student_id ?? '') === String(ex.student_id ?? '') &&
+        normalizeTimeTo30(item.start_time || '') === exStart
+      );
+    };
     const getCounts = () => {
       const m = {};
       mergedList.forEach(x => {
@@ -1956,6 +1965,7 @@ const filteredCourses = computed(() => {
       );
       
       dayExceptions.forEach(ex => {
+        if (hasSameStudentSlot(ex, dow)) return;
         const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
         if (scid) {
           const course = courses.value.find(c => String(c.id) === scid);
