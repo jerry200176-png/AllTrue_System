@@ -405,6 +405,13 @@ class StudentClassController extends Controller
         }
 
         $result = [];
+        $rangeStart = $this->normalizeDateString($request->input('range_start') ?? null)
+            ?: Carbon::today()->startOfMonth()->toDateString();
+        $rangeEnd = $this->normalizeDateString($request->input('range_end') ?? null)
+            ?: Carbon::parse($rangeStart)->endOfMonth()->toDateString();
+        if ($rangeEnd < $rangeStart) {
+            $rangeEnd = $rangeStart;
+        }
 
         // POST body: 課程管理傳入的堂數制課程（Supabase id），用 Schedule 計算含請假/調課的日期
         $bodyCourses = $request->get('courses');
@@ -516,7 +523,34 @@ class StudentClassController extends Controller
 
         try {
             $classes = StudentClass::whereIn('ID', $classIds)
-                ->select('ID', 'StartDate', 'SessionCount', 'ScheduleMode', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                ->select(
+                    'ID',
+                    'StartDate',
+                    'EndDate',
+                    'SessionCount',
+                    'ScheduleMode',
+                    'week',
+                    'time',
+                    'week1',
+                    'time1',
+                    'week2',
+                    'time2',
+                    'week3',
+                    'time3',
+                    'week4',
+                    'time4',
+                    'week5',
+                    'time5',
+                    'week6',
+                    'time6',
+                    'SessionDuration',
+                    'duration1',
+                    'duration2',
+                    'duration3',
+                    'duration4',
+                    'duration5',
+                    'duration6'
+                )
                 ->get()
                 ->keyBy('ID');
 
@@ -552,10 +586,10 @@ class StudentClassController extends Controller
             }
 
             foreach ($classIds as $id) {
-                if (isset($result[(string) $id])) {
+                $class = $classes->get($id);
+                if (isset($result[(string) $id]) && (!$class || ($class->ScheduleMode ?? '') !== 'date')) {
                     continue;
                 }
-                $class = $classes->get($id);
                 $isSessionMode = $class && ($class->ScheduleMode ?? '') === 'count' && (int) ($class->SessionCount ?? 0) > 0;
                 $startDate = $class && $class->StartDate ? Carbon::parse($class->StartDate)->toDateString() : null;
 
@@ -628,6 +662,13 @@ class StudentClassController extends Controller
                     }
                 }
                 $list = array_keys($set);
+                if ($class && ($class->ScheduleMode ?? '') === 'date') {
+                    $leaveSet = $leaveByClass[$id] ?? [];
+                    $scheduledSet = $scheduledByClass[$id] ?? [];
+                    $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $rangeEnd, $leaveSet, $scheduledSet, $set);
+                    $result[(string) $id] = $list;
+                    continue;
+                }
                 sort($list);
                 $n = (int) ($class->SessionCount ?? 0);
                 if ($n > 0 && count($list) > $n) {
@@ -641,6 +682,74 @@ class StudentClassController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /**
+     * 月結制詳情顯示：以固定星期/時段推算查詢月份的日期，再與既有 ClassSession/schedules 合併。
+     * Legacy 月結課可能沒有 EndDate/monthly_sessions，但仍有 week/time 契約欄位。
+     *
+     * @param  array<string, bool>  $leaveSet
+     * @param  array<string, bool>  $scheduledSet
+     * @param  array<string, bool>  $existingSet
+     * @return array<int, string>
+     */
+    private function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
+    {
+        $start = $this->normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
+        if ($start < $rangeStart) {
+            $start = $rangeStart;
+        }
+
+        $end = $this->normalizeDateString($class->EndDate ?? null) ?: $rangeEnd;
+        if ($end > $rangeEnd) {
+            $end = $rangeEnd;
+        }
+        if ($end < $start) {
+            $end = $start;
+        }
+
+        $weekdays = [];
+        $candidates = [
+            ['week', 'time'],
+            ['week1', 'time1'],
+            ['week2', 'time2'],
+            ['week3', 'time3'],
+            ['week4', 'time4'],
+            ['week5', 'time5'],
+            ['week6', 'time6'],
+        ];
+        foreach ($candidates as [$weekField, $timeField]) {
+            $weekday = (int) ($class->{$weekField} ?? 0);
+            $time = trim((string) ($class->{$timeField} ?? ''));
+            if ($weekday >= 1 && $weekday <= 7 && $time !== '') {
+                $weekdays[$weekday] = true;
+            }
+        }
+
+        $set = $existingSet;
+        $cursor = Carbon::parse($start . ' 12:00:00');
+        $last = Carbon::parse($end . ' 12:00:00');
+        while ($cursor->lte($last)) {
+            $ymd = $cursor->toDateString();
+            $dow = (int) $cursor->dayOfWeekIso;
+            if (isset($weekdays[$dow]) && !isset($leaveSet[$ymd])) {
+                $set[$ymd] = true;
+            }
+            if (isset($scheduledSet[$ymd])) {
+                $set[$ymd] = true;
+            }
+            $cursor->addDay();
+        }
+
+        foreach (array_keys($set) as $date) {
+            if ($date < $rangeStart || $date > $rangeEnd) {
+                unset($set[$date]);
+            }
+        }
+
+        $list = array_keys($set);
+        sort($list);
+        return $list;
     }
 
     /**

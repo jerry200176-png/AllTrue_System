@@ -189,6 +189,71 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
+    public function test_legacy_monthly_course_without_end_date_still_returns_current_month_fixed_dates_for_detail_view(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-legacy-monthly@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 8,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 31,
+            'monthly_sessions' => null,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => null,
+            'week'             => 1,
+            'time'             => '17:00:00',
+            'week1'            => 4,
+            'time1'            => '17:00:00',
+            'duration1'        => 120,
+            'SessionDuration'  => 120,
+            'Paid'             => 0,
+        ]);
+
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate'    => '2026-04-06',
+            'StartTime'      => '17:00:00',
+            'EndTime'        => '19:00:00',
+            'Status'         => 'scheduled',
+            'Note'           => '',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson('/api/v1/student-classes/session-dates?branch_id=1', [
+            'branch_id'   => 1,
+            'range_start' => '2026-04-01',
+            'range_end'   => '2026-04-30',
+            'courses'     => [[
+                'id'               => (int) $course->ID,
+                'first_class_date' => '2026-04-01',
+                'sessions_purchased' => 0,
+                'days_of_week'     => [1, 4],
+            ]],
+        ]);
+
+        $res->assertOk();
+
+        $this->assertSame(
+            [
+                '2026-04-02',
+                '2026-04-06',
+                '2026-04-09',
+                '2026-04-13',
+                '2026-04-16',
+                '2026-04-20',
+                '2026-04-23',
+                '2026-04-27',
+                '2026-04-30',
+            ],
+            $res->json((string) $course->ID),
+            'legacy 月結課即使 EndDate 缺失且只有部分 ClassSession，詳情仍應推算本月固定時段日期'
+        );
+    }
+
     public function test_renew_monthly_rejects_session_mode_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew-reject@example.com');
