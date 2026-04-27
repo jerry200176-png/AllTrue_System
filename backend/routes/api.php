@@ -331,6 +331,8 @@ Route::prefix('v1')->group(function () {
         Route::get('student-classes/{studentClass}', [StudentClassController::class, 'show']);
         Route::put('student-classes/{studentClass}', [StudentClassController::class, 'update']);
         Route::post('student-classes/{studentClass}/confirm-payment', [StudentClassController::class, 'confirmPayment']);
+        Route::post('student-classes/{studentClass}/renewal-preview', [StudentClassController::class, 'renewalPreview']);
+        Route::post('student-classes/{studentClass}/renewal-confirm', [StudentClassController::class, 'renewalConfirm']);
         Route::post('student-classes/{studentClass}/purchase-batch', [StudentClassController::class, 'purchaseBatch']);
         Route::post('student-classes/{studentClass}/renew-monthly', [StudentClassController::class, 'renewMonthly']);
         Route::get('student-classes/{studentClass}/invoices', [StudentClassController::class, 'invoices']);

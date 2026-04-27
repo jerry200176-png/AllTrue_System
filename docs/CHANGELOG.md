@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — feat(billing): 續報 preview/confirm 防呆 API
+
+- Added 續報預覽與確認 API，確認前回傳帳單、排課與風險摘要，並用 state hash 防止課程資料變更後誤送舊確認
+
 ## 2026-04-27 — fix(billing): 0元課程可核帳結算
 
 - Fixed 輔導課、試聽課等 Charge=0 課程可用 NT$0 完成主任核帳，避免免費課程永遠停留在未繳狀態

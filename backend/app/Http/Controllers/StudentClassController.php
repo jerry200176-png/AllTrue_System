@@ -1460,6 +1460,115 @@ class StudentClassController extends Controller
     }
 
     /**
+     * 續報預覽：只回傳將發生的課程 / 帳單 / 排課影響，不寫入資料。
+     * POST /api/v1/student-classes/{studentClass}/renewal-preview
+     */
+    public function renewalPreview(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'mode'       => 'required|in:purchase_batch,renew_monthly',
+            'sessions'   => 'nullable|integer|min:1|max:500',
+            'start_date' => 'nullable|date',
+            'end_date'   => 'nullable|date',
+            'months'     => 'nullable|integer|min:1|max:24',
+        ]);
+
+        $preview = $this->buildRenewalPreview($studentClass, $data);
+
+        return response()->json($preview, $preview['severity'] === 'blocked' ? 422 : 200);
+    }
+
+    /**
+     * 續報確認：重新計算 preview，state 沒變才委派既有續報邏輯。
+     * POST /api/v1/student-classes/{studentClass}/renewal-confirm
+     */
+    public function renewalConfirm(Request $request, StudentClass $studentClass)
+    {
+        $auth = $this->authorizeStudentClassAccess($studentClass);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $data = $request->validate([
+            'preview_id' => 'required|string|max:128',
+            'state_hash' => 'required|string|max:128',
+            'mode'       => 'required|in:purchase_batch,renew_monthly',
+            'payload'    => 'required|array',
+        ]);
+
+        $payload = array_merge($data['payload'], ['mode' => $data['mode']]);
+        $preview = $this->buildRenewalPreview($studentClass, $payload);
+
+        if ($preview['state_hash'] !== $data['state_hash'] || $preview['preview_id'] !== $data['preview_id']) {
+            return response()->json([
+                'message' => '課程狀態已變更，請重新預覽後再確認。',
+                'preview' => $preview,
+            ], 409);
+        }
+
+        if ($preview['severity'] === 'blocked') {
+            return response()->json([
+                'message' => '此續報目前不可執行。',
+                'preview' => $preview,
+            ], 422);
+        }
+
+        if ($data['mode'] === 'purchase_batch') {
+            $originalInput = $request->all();
+            $request->replace([
+                'sessions'   => $payload['sessions'] ?? null,
+                'start_date' => $payload['start_date'] ?? null,
+                'mode'       => 'new_purchase',
+            ]);
+            try {
+                $response = $this->purchaseBatch($request, $studentClass);
+            } finally {
+                $request->replace($originalInput);
+            }
+        } else {
+            $originalInput = $request->all();
+            $request->replace([
+                'end_date' => $preview['proposed_course']['end_date'] ?? ($payload['end_date'] ?? null),
+                'months'   => $payload['months'] ?? null,
+            ]);
+            try {
+                $response = $this->renewMonthly($request, $studentClass);
+            } finally {
+                $request->replace($originalInput);
+            }
+        }
+
+        $status = $response->getStatusCode();
+        $result = method_exists($response, 'getData') ? $response->getData(true) : [];
+        if ($status >= 400) {
+            return $response;
+        }
+
+        return response()->json([
+            'receipt_id' => substr(hash('sha256', ($preview['preview_id'] ?? '') . '|' . now()->timestamp), 0, 16),
+            'message' => $result['message'] ?? '續報已完成',
+            'mode' => $data['mode'],
+            'preview_id' => $preview['preview_id'],
+            'source_course' => $result['source_course'] ?? $preview['source_course'],
+            'new_course' => $result['new_course'] ?? null,
+            'invoice' => $data['mode'] === 'renew_monthly' ? ($preview['billing']['invoice'] ?? null) : null,
+            'schedule' => [
+                'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
+                'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
+                'last_session_date' => $result['new_course']['last_session_date'] ?? ($preview['schedule']['last_session_date'] ?? null),
+            ],
+            'next_actions' => $data['mode'] === 'purchase_batch'
+                ? ['view_new_course', 'record_payment']
+                : ['view_invoices', 'record_payment'],
+        ], $status);
+    }
+
+    /**
      * 月結制課程續約：延長 EndDate，不建立新批次。
      * POST /api/v1/student-classes/{studentClass}/renew-monthly
      */
@@ -2190,6 +2299,261 @@ class StudentClassController extends Controller
 
             return response()->json(['message' => 'Course deleted successfully']);
         });
+    }
+
+    private function buildRenewalPreview(StudentClass $studentClass, array $data): array
+    {
+        $mode = (string) ($data['mode'] ?? '');
+        $student = $studentClass->relationLoaded('student') ? $studentClass->student : Student::find($studentClass->StudentID);
+        $severity = 'ok';
+        $warnings = [];
+        $blockers = [];
+        $proposedCourse = [];
+        $billing = [];
+        $schedule = [
+            'created_sessions' => 0,
+            'first_session_date' => null,
+            'last_session_date' => null,
+        ];
+
+        if ((int) ($studentClass->Stop ?? 0) === 1) {
+            $warnings[] = [
+                'code' => 'source_paused',
+                'message' => '來源課程目前為暫停狀態，確認前請確認是否仍要續報。',
+            ];
+        }
+
+        if ($mode === 'purchase_batch') {
+            if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'count') {
+                $blockers[] = [
+                    'code' => 'monthly_course_purchase_batch',
+                    'message' => '月結制課程不可加購堂數，請使用月結續報。',
+                ];
+            }
+
+            $sessions = (int) ($data['sessions'] ?? 0);
+            $startDate = $this->normalizeDateString($data['start_date'] ?? null);
+            if ($sessions < 1) {
+                $blockers[] = [
+                    'code' => 'sessions_required',
+                    'message' => '請輸入本次新增堂數。',
+                ];
+            }
+            if (!$startDate) {
+                $blockers[] = [
+                    'code' => 'start_date_required',
+                    'message' => '請選擇新批次開課日。',
+                ];
+            }
+
+            $rate = (float) ($studentClass->Rate ?? 0);
+            $rateUnit = (string) ($studentClass->rate_unit ?? 'session');
+            $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
+            $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+            $totalHours = 0;
+            $charge = 0;
+            if ($sessions > 0) {
+                if ($rateUnit === 'hour') {
+                    $durSum = 0;
+                    $slotCount = max(1, count($slots));
+                    foreach ($slots as $slot) {
+                        $durSum += !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $globalDur;
+                    }
+                    $avgDur = $durSum / $slotCount;
+                    $totalHours = (int) round(($sessions * $avgDur) / 60);
+                    $charge = (int) round($rate * $totalHours);
+                } else {
+                    $totalHours = (int) round(($sessions * $globalDur) / 60);
+                    $charge = (int) round($rate * $sessions);
+                }
+            }
+
+            if ($startDate && $sessions > 0 && !empty($slots)) {
+                $sessionsPreview = $this->buildSessionsForCount((int) $studentClass->ID, $startDate, $sessions, $slots, $globalDur);
+                $schedule['created_sessions'] = count($sessionsPreview);
+                $schedule['first_session_date'] = isset($sessionsPreview[0])
+                    ? $this->normalizeDateString($sessionsPreview[0]['SessionDate'])
+                    : null;
+                $lastSession = !empty($sessionsPreview) ? $sessionsPreview[count($sessionsPreview) - 1] : null;
+                $schedule['last_session_date'] = $lastSession
+                    ? $this->normalizeDateString($lastSession['SessionDate'])
+                    : null;
+            }
+
+            $duplicateCount = 0;
+            if ($startDate && $sessions > 0) {
+                $duplicateCount = StudentClass::where('ID', '<>', $studentClass->ID)
+                    ->where('StudentID', $studentClass->StudentID)
+                    ->where('SubjectID', $studentClass->SubjectID)
+                    ->where('ScheduleMode', 'count')
+                    ->where('StartDate', $startDate)
+                    ->where('SessionCount', $sessions)
+                    ->where(function ($q) {
+                        $q->whereNull('Stop')->orWhere('Stop', 0);
+                    })
+                    ->count();
+            }
+            if ($duplicateCount > 0) {
+                $blockers[] = [
+                    'code' => 'possible_duplicate_batch',
+                    'message' => '系統偵測到相同學生、科目、開課日與堂數的既有批次，請先確認是否已續報過。',
+                ];
+            }
+
+            $proposedCourse = [
+                'schedule_mode' => 'count',
+                'sessions' => $sessions,
+                'start_date' => $startDate,
+                'end_date' => $schedule['last_session_date'],
+                'charge' => $charge,
+                'paid' => 0,
+                'total_hours' => $totalHours,
+            ];
+            $billing = [
+                'payment_status_after_confirm' => 'unpaid',
+                'amount_due' => $charge,
+            ];
+        } elseif ($mode === 'renew_monthly') {
+            if ((string) ($studentClass->ScheduleMode ?? 'count') !== 'date') {
+                $blockers[] = [
+                    'code' => 'non_monthly_course',
+                    'message' => '堂數制課程不可月結續報，請使用新增購買批次。',
+                ];
+            }
+
+            $currentEnd = $this->normalizeDateString($studentClass->EndDate ?? null);
+            $newEnd = $this->normalizeDateString($data['end_date'] ?? null);
+            if (!$newEnd && !empty($data['months'])) {
+                $base = $currentEnd ?: Carbon::today()->toDateString();
+                $newEnd = Carbon::parse($base)->addMonths((int) $data['months'])->toDateString();
+            }
+            if (!$newEnd) {
+                $blockers[] = [
+                    'code' => 'end_date_required',
+                    'message' => '請選擇新的月結結束日。',
+                ];
+            } else {
+                if ($currentEnd && $newEnd <= $currentEnd) {
+                    $blockers[] = [
+                        'code' => 'end_date_not_extended',
+                        'message' => '新的結束日必須晚於目前結束日，避免誤把課程縮短。',
+                    ];
+                }
+                if ($newEnd <= Carbon::today()->toDateString()) {
+                    $blockers[] = [
+                        'code' => 'end_date_in_past',
+                        'message' => '新的結束日必須晚於今天。',
+                    ];
+                }
+            }
+
+            $billingPeriod = $newEnd ? Carbon::parse($newEnd)->format('Y-m') : null;
+            $invoiceExists = false;
+            if ($billingPeriod) {
+                $invoiceExists = Invoice::where('StudentClassID', $studentClass->ID)
+                    ->where('billing_period', $billingPeriod)
+                    ->exists();
+                if ($invoiceExists) {
+                    $warnings[] = [
+                        'code' => 'invoice_already_exists',
+                        'message' => '此月份已有帳單，確認時會沿用既有帳單，不會重複建立。',
+                    ];
+                }
+            }
+
+            $dueDay = max(1, min(31, (int) ($studentClass->settlement_day ?? 15)));
+            $dueDate = $newEnd
+                ? Carbon::parse($newEnd)->startOfMonth()->addDays($dueDay - 1)->toDateString()
+                : null;
+            $amount = max(0, (int) ($studentClass->Charge ?? 0));
+
+            $proposedCourse = [
+                'schedule_mode' => 'date',
+                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
+                'current_end_date' => $currentEnd,
+                'end_date' => $newEnd,
+                'paid' => 0,
+            ];
+            $billing = [
+                'payment_status_after_confirm' => 'unpaid',
+                'amount_due' => $amount,
+                'invoice' => [
+                    'billing_period' => $billingPeriod,
+                    'due_date' => $dueDate,
+                    'total_amount' => $amount,
+                    'will_create' => $billingPeriod ? !$invoiceExists : false,
+                ],
+            ];
+            $schedule = [
+                'created_sessions' => null,
+                'first_session_date' => null,
+                'last_session_date' => $newEnd,
+            ];
+        } else {
+            $blockers[] = [
+                'code' => 'mode_required',
+                'message' => '請選擇續報類型。',
+            ];
+        }
+
+        if (!empty($blockers)) {
+            $severity = 'blocked';
+        } elseif (!empty($warnings)) {
+            $severity = 'warning';
+        }
+
+        $stateSource = [
+            'source' => [
+                'id' => (int) $studentClass->ID,
+                'student_id' => (int) $studentClass->StudentID,
+                'subject_id' => (int) ($studentClass->SubjectID ?? 0),
+                'teacher_id' => (int) ($studentClass->TeacherID ?? 0),
+                'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
+                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
+                'end_date' => $this->normalizeDateString($studentClass->EndDate ?? null),
+                'paid' => (int) ($studentClass->Paid ?? 0),
+                'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+                'session_count' => (int) ($studentClass->SessionCount ?? 0),
+                'charge' => (int) ($studentClass->Charge ?? 0),
+                'updated_at' => (string) ($studentClass->updated_at ?? ''),
+            ],
+            'mode' => $mode,
+            'payload' => [
+                'sessions' => $data['sessions'] ?? null,
+                'start_date' => $this->normalizeDateString($data['start_date'] ?? null),
+                'end_date' => $this->normalizeDateString($data['end_date'] ?? null),
+                'months' => $data['months'] ?? null,
+            ],
+            'billing' => $billing,
+            'schedule' => $schedule,
+            'blockers' => $blockers,
+        ];
+        $stateJson = json_encode($stateSource, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $stateHash = hash('sha256', $stateJson ?: '');
+
+        return [
+            'preview_id' => substr(hash('sha256', 'renewal-preview|' . $stateHash), 0, 24),
+            'state_hash' => $stateHash,
+            'mode' => $mode,
+            'severity' => $severity,
+            'source_course' => [
+                'id' => (int) $studentClass->ID,
+                'student_id' => (int) $studentClass->StudentID,
+                'student_name' => $student?->name,
+                'subject_id' => (int) ($studentClass->SubjectID ?? 0),
+                'teacher_id' => (int) ($studentClass->TeacherID ?? 0),
+                'schedule_mode' => (string) ($studentClass->ScheduleMode ?? ''),
+                'start_date' => $this->normalizeDateString($studentClass->StartDate ?? null),
+                'end_date' => $this->normalizeDateString($studentClass->EndDate ?? null),
+                'paid' => (int) ($studentClass->Paid ?? 0),
+                'remaining_sessions' => (int) ($studentClass->RemainingSessions ?? 0),
+            ],
+            'proposed_course' => $proposedCourse,
+            'billing' => $billing,
+            'schedule' => $schedule,
+            'warnings' => $warnings,
+            'blockers' => $blockers,
+        ];
     }
 
     /**

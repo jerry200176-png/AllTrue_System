@@ -684,6 +684,146 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
+    public function test_renewal_preview_for_monthly_course_is_read_only_and_shows_invoice_impact(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-preview-monthly@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-04-30',
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'Charge'           => 4800,
+            'Paid'             => 1,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode'     => 'renew_monthly',
+            'end_date' => '2026-05-31',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('mode', 'renew_monthly')
+            ->assertJsonPath('severity', 'ok')
+            ->assertJsonPath('proposed_course.current_end_date', '2026-04-30')
+            ->assertJsonPath('proposed_course.end_date', '2026-05-31')
+            ->assertJsonPath('proposed_course.paid', 0)
+            ->assertJsonPath('billing.amount_due', 4800)
+            ->assertJsonPath('billing.invoice.billing_period', '2026-05')
+            ->assertJsonPath('billing.invoice.will_create', true);
+
+        $course->refresh();
+        $this->assertSame('2026-04-30', substr((string) $course->EndDate, 0, 10));
+        $this->assertSame(1, (int) $course->Paid);
+        $this->assertSame(0, Invoice::where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_renewal_confirm_for_monthly_course_requires_fresh_preview_state(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-confirm-stale@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-04-30',
+            'settlement_day'   => 15,
+            'monthly_sessions' => 8,
+            'Charge'           => 4800,
+            'Paid'             => 1,
+        ]);
+
+        $preview = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renewal-preview", [
+            'mode'     => 'renew_monthly',
+            'end_date' => '2026-05-31',
+        ])->json();
+
+        $course->Paid = 0;
+        $course->save();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renewal-confirm", [
+            'preview_id' => $preview['preview_id'],
+            'state_hash' => $preview['state_hash'],
+            'mode'       => 'renew_monthly',
+            'payload'    => ['end_date' => '2026-05-31'],
+        ])->assertStatus(409)
+            ->assertJsonPath('message', '課程狀態已變更，請重新預覽後再確認。');
+
+        $course->refresh();
+        $this->assertSame('2026-04-30', substr((string) $course->EndDate, 0, 10));
+        $this->assertSame(0, Invoice::where('StudentClassID', $course->ID)->count());
+    }
+
+    public function test_renewal_confirm_for_session_course_creates_unpaid_new_batch_from_preview(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-preview-batch@example.com');
+        $student = $this->createStudent();
+
+        $source = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions'      => 7,
+            'Paid'              => 1,
+            'Rate'              => 500,
+            'SessionDuration'   => 120,
+            'Charge'            => 4000,
+            'StartDate'         => '2026-03-01',
+            'week'              => 2,
+            'time'              => '20:00:00',
+        ]);
+
+        $preview = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-preview", [
+            'mode'       => 'purchase_batch',
+            'sessions'   => 6,
+            'start_date' => '2026-05-05',
+        ])->assertOk()
+            ->assertJsonPath('severity', 'ok')
+            ->assertJsonPath('billing.amount_due', 3000)
+            ->assertJsonPath('schedule.created_sessions', 6)
+            ->json();
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/renewal-confirm", [
+            'preview_id' => $preview['preview_id'],
+            'state_hash' => $preview['state_hash'],
+            'mode'       => 'purchase_batch',
+            'payload'    => [
+                'sessions'   => 6,
+                'start_date' => '2026-05-05',
+            ],
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('mode', 'purchase_batch')
+            ->assertJsonPath('new_course.session_count', 6)
+            ->assertJsonPath('new_course.paid', 0)
+            ->assertJsonPath('schedule.created_sessions', 6);
+
+        $this->assertSame(2, StudentClass::where('StudentID', $student->id)->count());
+        $this->assertSame(6, ClassSession::where('StudentClassID', $res->json('new_course.id'))->count());
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
     {
         $user = User::create([
