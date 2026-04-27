@@ -274,6 +274,52 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(8800, (int) $may->PaidAmount);
     }
 
+    public function test_student_class_invoices_include_payment_date_separate_from_due_date(): void
+    {
+        Carbon::setTestNow('2026-04-28 10:00:00');
+
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 8800,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-04-10',
+            'Method' => 'cash',
+            'Note' => '主任核帳登記',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$sc->ID}/invoices");
+
+        $res->assertOk()
+            ->assertJsonPath('invoices.0.id', (int) $invoice->id)
+            ->assertJsonPath('invoices.0.billing_period', '2026-04')
+            ->assertJsonPath('invoices.0.due_date', '2026-05-15')
+            ->assertJsonPath('invoices.0.paid_at', '2026-04-10')
+            ->assertJsonPath('invoices.0.payment_count', 1);
+    }
+
     // ── confirm ────────────────────────────────────────────────────
 
     public function test_director_can_confirm_report(): void
