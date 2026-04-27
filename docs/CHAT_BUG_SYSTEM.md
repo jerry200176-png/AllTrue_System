@@ -84,7 +84,7 @@
 - [ ] Bug：主任/老師僅自己的單；狀態僅 `super_admin` + `RequireSuperAdmin`；無指派 API/UI
 - [ ] Bug 路由：`bugs/unread-badge` 在 `bugs/{id}` 之前
 - [ ] Bug 紅點：內部備註不驅動回報者未讀；super_admin 進入 Bug 頁 mark inbox
-- [ ] 前端變更後執行 `npm run deploy`
-- [ ] 測試：`phpunit --filter='ChatApiTest|BugReportApiTest|ProfileCenterApiTest'`
+- [ ] 前端變更後走 PR → CI → merge → `deploy.yml` 自動部署
+- [ ] 測試：GitHub Actions 跑 `ChatApiTest` / `BugReportApiTest` / `ProfileCenterApiTest`
 
-*最後更新：2026-04-15*
+*最後更新：2026-04-27*
