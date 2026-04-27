@@ -258,16 +258,6 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - 若 staff mark-read 用 Eloquent `save()`，會同步更新 `updated_at`，造成「讀完刷新又變未讀」。
 - **強制規則**：mark-read 只能更新 `last_read_by_teacher_at` / `last_read_by_director_at`，不可碰 `updated_at`；測試必斷言 `updated_at` 不變。
 
----
-
-### R20. 課程結案不可只改 `StudentClass.Stop`
-
-- 歷史課程狀態（`Stop=1` / `closed_reason`）若只改主檔，未來 `ClassSession.Status='scheduled'` 會殘留，老師/主任仍可能看到待上或待填項目。
-- **強制規則**：任何入口把課程改為 inactive / settled / completed，都必須共用「取消未來 scheduled 堂次」邏輯；不可只更新 `StudentClass`。
-- **測試必補**：直接 `PUT /student-classes/{id}` with `status=inactive` 與 `/pause` endpoint 都要驗證 future scheduled 變 `cancelled`，歷史 attended 不變。
-
----
-
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
