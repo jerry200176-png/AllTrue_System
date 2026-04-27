@@ -106,6 +106,42 @@ class StudentClassScheduleDriftExceptionTest extends TestCase
         }
     }
 
+    public function test_class_sessions_api_exposes_contract_exception_for_quota_display(): void
+    {
+        Carbon::setTestNow('2026-04-14 10:00:00');
+        try {
+            [$token, $sc] = $this->setupCourse(['week' => 5, 'time' => '17:00:00']);
+
+            $normal = ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-04-17',
+                'StartTime' => '17:00:00',
+                'EndTime' => '19:00:00',
+                'Status' => 'scheduled',
+                'IsContractException' => false,
+            ]);
+            $exception = ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-04-14',
+                'StartTime' => '18:00:00',
+                'EndTime' => '20:00:00',
+                'Status' => 'scheduled',
+                'IsContractException' => true,
+            ]);
+
+            $res = $this->withAuth($token)->getJson(
+                "/api/v1/class-sessions?student_class_id={$sc->ID}&branch_id=1"
+            );
+            $res->assertOk();
+
+            $byId = collect($res->json('data'))->keyBy('id');
+            $this->assertFalse((bool) $byId[$normal->id]['is_contract_exception']);
+            $this->assertTrue((bool) $byId[$exception->id]['is_contract_exception']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     /**
      * Exception + real drift → schedule_drift=true (exceptions must not mask real drift).
      */

@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-28 — fix(billing): 月結續報新一期與堂數超排防呆
+
+- Fixed 月結續報改為建立新一期課程並結算舊期，且堂數詳情會區分補課例外與超出購買堂數的異常堂次
+
 ## 2026-04-27 — feat(ui): Porsche 視覺系統規格
 
 - Added AllTrue Porsche-inspired light-first 視覺系統規格與共用前端 token/class，作為後續頁面升級的單一設計依據
@@ -53,6 +57,10 @@
 ## 2026-04-27 — fix(courses): 課程管理顯示月結逐期帳單
 
 - Added 課程管理月結課程「帳單」入口，主任可查看各期 billing period 的已繳、未繳、部分繳狀態
+
+## 2026-04-27 — fix(billing): 續報重複送出防護
+
+- Fixed 續報確認與舊加購入口會鎖定來源課程並拒絕相同學生、科目、開課日與堂數的重複批次，避免雙擊或重送產生重複課程
 
 ## 2026-04-27 — feat(billing): 續報 preview/confirm 防呆 API
 
