@@ -52,10 +52,10 @@
 
 ### D2. API 無法使用 / 500 錯誤
 
-1. 檢查 `backend/.env` DB 參數是否正確
-2. 清除 Laravel cache（`bootstrap/cache`）
-3. 確認 `backend/public/.htaccess` 存在
-4. 再測 API 健康檢查
+1. 先看最近一次 `deploy.yml` / `pi-health.yml` / Sentry 是否同時告警
+2. 測 API 健康檢查；若全站 500，依 `docs/DANGEROUS_OPERATIONS.md` + `docs/OPERATIONS_RUNBOOK.md §H` 處理
+3. 不為 debug 直接跑 `php artisan config:clear`、`php artisan test`、`vendor/bin/phpunit`
+4. 需要 cache / config / route 操作時，先取得使用者批准並走事故 SOP
 
 ### D3. GitHub 同步異常
 
@@ -69,7 +69,16 @@
 - [ ] 抽查 5 筆課程：堂數/出缺勤/繳費是否一致
 - [ ] 抽查 5 筆評量：堂次與學生是否對得上
 - [ ] 檢查是否有跨校區資料誤入
+- [ ] 檢查 Google Drive `AllTrue-Backups` 是否有最新 nightly / sixhour / manifest
+- [ ] 檢查 GitHub `main` branch protection 仍啟用（required checks + admin enforcement + no force push/delete）
 - [ ] 檢查文件是否需要更新（流程有改就更新）
+
+## E2. 每月 / 每季固定檢查
+
+- [ ] 每月確認 `backup-restore-test.yml` 或 Pi restore drill 成功，並抽查 `Student`、`StudentClass`、`ClassSession` row count 合理
+- [ ] 每月下載最新 Drive manifest，確認 manifest 日期與備份日期一致
+- [ ] 每季做一次 offsite restore drill：從 Google Drive 取備份還原到 drill DB，不觸碰 production `AllTrue`
+- [ ] 每半年做一次 full server tabletop：假設 Pi 壞掉，列出從 GitHub + Drive + secrets 重建服務所需步驟與缺口
 
 ## F. 文件參考
 

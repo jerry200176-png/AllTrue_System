@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-27 — ops(governance): GitHub Pro 與備份成熟度補強
+
+- Ops 啟用 `main` branch protection required checks，補強 Drive 備份 manifest、RPO/RTO/DR 演練 SOP，並登記 MySQL PITR/binlog 為 P1 技術債
+
 ## 2026-04-27 — docs(governance): 清理 AI 導航過期連結
 
 - Changed 文件導航、FAQ、部署與角色手冊移除不存在的舊入口連結與 `jerry-sync-main` 說法，統一為 feature branch → PR → CI → `deploy.yml`
