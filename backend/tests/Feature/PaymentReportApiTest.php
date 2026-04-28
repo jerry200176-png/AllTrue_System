@@ -1012,6 +1012,101 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('data.0.is_prepaid', false);
     }
 
+    public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $paymentA = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-05',
+            'Method' => 'cash',
+            'Note' => '第一筆',
+        ]);
+        $reportA = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-05',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::parse('2026-04-05 12:00:00'),
+            'confirmed_by' => 1,
+            'payment_id' => $paymentA->id,
+            'report_token_hash' => hash('sha256', 'ledger-a-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $paymentA->update(['payment_report_id' => $reportA->id]);
+
+        $paymentB = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 3800,
+            'PaidAt' => '2026-04-06',
+            'Method' => 'transfer',
+            'Note' => '第二筆',
+        ]);
+        $reportB = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-06',
+            'payment_method' => 'transfer',
+            'reported_amount' => 3800,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::parse('2026-04-06 12:00:00'),
+            'confirmed_by' => 1,
+            'payment_id' => $paymentB->id,
+            'report_token_hash' => hash('sha256', 'ledger-b-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $paymentB->update(['payment_report_id' => $reportB->id]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('student.id', $student->id)
+            ->assertJsonPath('summary.invoice_total', 8800)
+            ->assertJsonPath('summary.applied_total', 8800)
+            ->assertJsonPath('summary.outstanding_total', 0)
+            ->assertJsonPath('summary.receipt_count', 2)
+            ->assertJsonPath('invoices.0.id', $invoice->id)
+            ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'R-' . str_pad((string) $reportA->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.1.receipt_no', 'R-' . str_pad((string) $reportB->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('anomalies.0.code', 'duplicate_effective_payments');
+    }
+
+    public function test_accounting_ledger_rejects_cross_campus_access(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertStatus(403);
+    }
+
     public function test_accounting_payments_rejects_cross_campus_branch(): void
     {
         $token = $this->createDirectorToken([2]);
