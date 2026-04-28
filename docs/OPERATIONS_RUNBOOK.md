@@ -403,6 +403,20 @@ GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`
   - `ApprovalSessionSyncService`（核准驅動扣堂）
   - `StudentClassController::index`（課程列表展示）
 
+#### 4a) 老師 RFID 衝突歷史補登
+
+修復前若同一 RFID 同時綁到學生與老師分校卡，老師刷卡可能被寫進 `StudentSingIn`，老師打卡區看不到。
+
+1. 先 dry-run，不寫資料：
+   ```bash
+   php artisan teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<User.id>
+   ```
+2. 確認候選列的老師、分校、時間正確，且已完成 production 備份後才可 apply：
+   ```bash
+   php artisan teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<User.id> --apply
+   ```
+3. 此工具只新增 `TeacherSingIn`，不刪除、不作廢原始 `StudentSingIn`；原始學生列是否要 void 必須另案人工審核。
+
 ### 5) 課程管理堂次警示排查 SOP
 
 營運/客服回報「排程列數與購買堂數不一致」時：
