@@ -229,6 +229,49 @@ class BillingInvoiceVoidTest extends TestCase
             ->assertJsonPath('invoices.0.outstanding_amount', 0);
     }
 
+    public function test_accounting_ledger_exposes_direct_void_action_for_unpaid_invoice_without_payment(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, $course] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('invoices.0.can_direct_void', true)
+            ->assertJsonPath('invoices.0.can_exception_void', false);
+    }
+
+    public function test_accounting_ledger_exposes_exception_void_action_for_invoice_with_payment_trace(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, $course, $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 13200,
+            'TotalAmount' => 13200,
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-27 12:00:00',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('invoices.0.can_direct_void', false)
+            ->assertJsonPath('invoices.0.can_exception_void', true);
+    }
+
     public function test_teacher_cannot_void_invoice(): void
     {
         $teacherToken = $this->createToken('T', [1]);
