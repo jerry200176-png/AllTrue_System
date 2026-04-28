@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-28 — fix(accounting): 學生帳務對帳表
+
+- Added 帳務中心與課程帳單共用學生 AR 對帳表，將 Invoice、Payment、Receipt 與沖銷流水收斂到同一視圖並標示異常
+
 ## 2026-04-28 — docs(agents): 外部 agent playbook 引用準則
 
 - Added `agency-agents` 可參考但不可整包覆蓋 AllTrue P0/SOP 的整合準則

@@ -233,6 +233,11 @@
                 </td>
                 <td class="tc-col-actions">
                   <div class="tc-actions">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(r)" title="查看學生帳務對帳">
+                      <span class="material-symbols-outlined">account_balance</span>
+                      對帳
+                    </button>
+
                     <!-- unpaid / partial: slip + 核帳登記 -->
                     <template v-if="r.payment_status === 'unpaid' || r.payment_status === 'partial'">
                       <button class="tc-btn tc-btn--slip" @click="openSlip(r)" title="產生繳費通知單">
@@ -423,6 +428,10 @@
                 <td>{{ row.confirmed_by_name || '—' }}</td>
                 <td>
                   <div class="tc-actions">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForReport(row)" :aria-label="`對帳 ${row.receipt_no}`">
+                      <span class="material-symbols-outlined">account_balance</span>
+                      對帳
+                    </button>
                     <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
                       <span class="material-symbols-outlined">receipt</span>
                       查看 / PNG
@@ -465,6 +474,14 @@
       :show="receiptOpen"
       :report-id="receiptReportId"
       @close="receiptOpen = false"
+    />
+
+    <AccountingLedgerModal
+      :show="ledgerOpen"
+      :student-class-id="ledgerStudentClassId"
+      :report-id="ledgerReportId"
+      :branch-id="branchId"
+      @close="ledgerOpen = false"
     />
 
     <!-- Void Confirmation Dialog -->
@@ -613,6 +630,7 @@ import { ref, computed, watch } from 'vue';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
+import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -731,6 +749,21 @@ const searchQuery = ref('');
 const slipOpen = ref(false);
 const slipInvoiceId = ref(null);
 const slipStudentClassId = ref(null);
+const ledgerOpen = ref(false);
+const ledgerStudentClassId = ref(null);
+const ledgerReportId = ref(null);
+
+function openLedgerForClass(row) {
+  ledgerStudentClassId.value = row?.id || row?.student_class_id || null;
+  ledgerReportId.value = null;
+  ledgerOpen.value = true;
+}
+
+function openLedgerForReport(row) {
+  ledgerStudentClassId.value = row?.student_class_id || null;
+  ledgerReportId.value = row?.report_id || null;
+  ledgerOpen.value = true;
+}
 
 // ═══ Tab Filter ═══
 const activeTab = ref('all');
@@ -1943,6 +1976,9 @@ loadAlerts();
 
 .tc-btn--receipt { color: #15803D; }
 .tc-btn--receipt:hover:not(:disabled) { background: #F0FDF4; border-color: #86EFAC; }
+
+.tc-btn--ledger { color: #4338CA; }
+.tc-btn--ledger:hover:not(:disabled) { background: #EEF2FF; border-color: #A5B4FC; }
 
 .tc-btn--reject { color: #DC2626; }
 .tc-btn--reject:hover:not(:disabled) { background: #FFF5F5; border-color: #FECACA; }
