@@ -3,7 +3,7 @@
     <div class="tc-header">
       <div>
         <h2>帳務中心</h2>
-        <p class="tc-subtitle">待處理、已結清查詢、收款與收據紀錄</p>
+        <p class="tc-subtitle">未繳待收、待核帳、續課提醒，以及已結清課程彙總與收據流水</p>
       </div>
       <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
         <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
@@ -482,7 +482,7 @@
           <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
           <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">溢收/待沖銷</span></div>
         </div>
-        <p class="tc-summary-note">「已結清查詢」用 Invoice/Payment/Receipt 與課程主檔彙整，不是提醒 queue；堂數制已繳且堂數充足也會出現在這裡。</p>
+        <p class="tc-summary-note">「已結清課程彙總」用 Invoice/Payment/Receipt 與課程主檔彙整；「收據流水」是一筆筆收款/沖銷紀錄，兩者口徑不同。</p>
 
         <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
           <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
@@ -713,8 +713,8 @@ const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
-  { key: 'settled', label: '已結清查詢', icon: 'task_alt' },
-  { key: 'payments', label: '收款與收據紀錄', icon: 'receipt_long' },
+  { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
+  { key: 'payments', label: '收據流水紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
 const accountingLoading = ref(false);
@@ -759,7 +759,7 @@ const STATUS_CONFIG = {
   partial:          { label: '部分付款',      cls: 'st-partial' },
   pending_report:   { label: '待核帳',        cls: 'st-pending' },
   paid:             { label: '已繳費',        cls: 'st-paid' },
-  renew_needed:     { label: '已繳需續課',    cls: 'st-renew' },
+  renew_needed:     { label: '續課待處理',    cls: 'st-renew' },
   monthly_due_soon: { label: '月結將到期',    cls: 'st-monthly' },
 };
 
@@ -848,7 +848,7 @@ const TAB_DEFS = [
   { key: 'unpaid', label: '未繳' },
   { key: 'overdue', label: '逾期' },
   { key: 'pending_report', label: '待核帳' },
-  { key: 'paid', label: '已繳' },
+  { key: 'renewal', label: '續課/將到期' },
 ];
 
 function isOverdue(r) {
@@ -857,14 +857,14 @@ function isOverdue(r) {
 }
 
 const tabCounts = computed(() => {
-  const c = { all: 0, unpaid: 0, overdue: 0, pending_report: 0, paid: 0 };
+  const c = { all: 0, unpaid: 0, overdue: 0, pending_report: 0, renewal: 0 };
   rows.value.forEach(r => {
     c.all++;
     const ps = r.payment_status;
     if (isOverdue(r)) c.overdue++;
     if (ps === 'unpaid' || ps === 'partial') c.unpaid++;
     else if (ps === 'pending_report') c.pending_report++;
-    else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.paid++;
+    else if (ps === 'paid' || ps === 'renew_needed' || ps === 'monthly_due_soon') c.renewal++;
   });
   return c;
 });
@@ -931,7 +931,7 @@ const tabFilteredRows = computed(() => {
   if (tab === 'overdue') return rows.value.filter(isOverdue);
   if (tab === 'unpaid') return rows.value.filter(r => r.payment_status === 'unpaid' || r.payment_status === 'partial');
   if (tab === 'pending_report') return rows.value.filter(r => r.payment_status === 'pending_report');
-  if (tab === 'paid') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
+  if (tab === 'renewal') return rows.value.filter(r => ['paid', 'renew_needed', 'monthly_due_soon'].includes(r.payment_status));
   return rows.value;
 });
 
@@ -1123,7 +1123,7 @@ async function exportAccountingCSV() {
     const payload = await fetchAccountingExportRows();
     const data = payload.data || [];
     if (!data.length) {
-      showToast('目前篩選條件沒有可匯出的收款與收據紀錄', 'warning');
+      showToast('目前篩選條件沒有可匯出的收據流水紀錄', 'warning');
       return;
     }
     const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '第一堂課日期', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
@@ -1146,7 +1146,7 @@ async function exportAccountingCSV() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `收款與收據紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
+    a.download = `收據流水紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('已匯出 CSV');
@@ -1166,7 +1166,7 @@ async function exportAccountingPDF() {
     return;
   }
   printWindow.opener = null;
-  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收款與收據紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收款與收據紀錄報表...</p>');
+  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收據流水紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收據流水紀錄報表...</p>');
   printWindow.document.close();
 
   try {
@@ -1174,7 +1174,7 @@ async function exportAccountingPDF() {
     const data = payload.data || [];
     if (!data.length) {
       printWindow.close();
-      showToast('目前篩選條件沒有可匯出的收款與收據紀錄', 'warning');
+      showToast('目前篩選條件沒有可匯出的收據流水紀錄', 'warning');
       return;
     }
     if (data.length > 500) {
@@ -1203,7 +1203,7 @@ async function exportAccountingPDF() {
       <html>
       <head>
         <meta charset="utf-8" />
-        <title>收款與收據紀錄 ${escapeHtml(accountingFilters.value.start)}_${escapeHtml(accountingFilters.value.end)}</title>
+        <title>收據流水紀錄 ${escapeHtml(accountingFilters.value.start)}_${escapeHtml(accountingFilters.value.end)}</title>
         <style>
           body { font-family: "Noto Sans TC", Arial, sans-serif; color: #1f2937; margin: 28px; }
           h1 { margin: 0; font-size: 24px; color: #14532d; }
@@ -1220,7 +1220,7 @@ async function exportAccountingPDF() {
         </style>
       </head>
       <body>
-        <h1>台北全真一對一補習班｜收款與收據紀錄報表</h1>
+        <h1>台北全真一對一補習班｜收據流水紀錄報表</h1>
         <div class="subtitle">區間：${escapeHtml(accountingFilters.value.start)} 至 ${escapeHtml(accountingFilters.value.end)}</div>
         <div class="summary">
           <div class="card"><strong>${summary.total_count || 0}</strong>筆數</div>
