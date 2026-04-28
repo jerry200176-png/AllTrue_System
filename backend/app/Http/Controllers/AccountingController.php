@@ -331,7 +331,7 @@ class AccountingController extends Controller
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => $status,
-                'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && $paidAmount <= 0 && $positivePayments->isEmpty(),
+                'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && $paidAmount <= 0 && $netApplied <= 0,
                 'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),

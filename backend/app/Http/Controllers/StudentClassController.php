@@ -1867,6 +1867,7 @@ class StudentClassController extends Controller
                     'ledger_anomalies' => $ledgerAnomalies,
                     'calculated_paid_amount' => $appliedAmount,
                     'outstanding_amount' => $outstandingAmount,
+                    'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && (int) ($inv->PaidAmount ?? 0) <= 0 && $netApplied <= 0,
                     'can_exception_void' => $netApplied > 0 && $status !== 'void',
                 ];
             })->values()->all(),
