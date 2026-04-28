@@ -40,6 +40,8 @@
 `directorRecord` 核帳時，優先找 `billing_period = 當月` 的未繳 Invoice；
 主任收費後 Invoice.Status 更新為 `paid`，同時新一期 `StudentClass.Paid=1`。
 
+主任提醒若存在 `Status in (unpaid, partial)` 的逐期 Invoice，必須優先使用最早未結清 Invoice 的 `DueDate` / `billing_period` 判斷是否進入 0～4 天或逾期提醒；不可用「今天所在月份 + settlement_day」覆蓋未來期帳單。
+
 舊月結課程（無 Invoice）行為不變，fallback `StudentClass.Paid` 欄位。
 
 ## 月結制（`StudentClass.ScheduleMode = date`）

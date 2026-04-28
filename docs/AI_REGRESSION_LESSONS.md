@@ -313,7 +313,8 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - 月結續報若延長原 `StudentClass`，舊期已繳與新期待繳會混在同一課程，主任無法判斷哪一期已結算。
 - 堂數制若直接列出所有有效 `ClassSession`，購買 8 堂也可能看到第 9 堂，造成家長對帳與少收費風險。
 - **強制規則**：月結續報必須建立新一期課程並結算舊期；堂數 chip 序號只給購買額度內堂次，`IsContractException=1` 顯示為例外堂，超出 `SessionCount` 的非例外堂必須顯示為超排異常。
-- **測試必補**：`renew-monthly` 必須驗證新舊 `StudentClass` 分離與舊期 future scheduled 取消；`class-sessions` 必須回傳例外旗標供前端分流。
+- **強制規則**：月結提醒若已有未結清逐期 `Invoice`，必須用該 Invoice 的 `DueDate`/`billing_period` 當真實應繳日，不可用今天月份重新推導。
+- **測試必補**：`renew-monthly` 必須驗證新舊 `StudentClass` 分離與舊期 future scheduled 取消；`class-sessions` 必須回傳例外旗標供前端分流；未來期月結 Invoice 不可被當成本月逾期。
 
 ---
 
@@ -322,10 +323,12 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - 編輯課程把正班老師改掉並新增同一天第二個固定時段時，若後端只依「星期是否相同」判斷同步，會把所有未來堂次留在第一個時段，看起來像一週只能有一段。
 - 編輯課程選了多個星期但 `day_time_slots` 暫時只含原本星期時，若前端 parent sync 或後端 mapping 只信 `day_time_slots`，新勾選的星期會被吃掉（例：週三+週日只存週三）。
 - 只靠上方 weekday chips 推導時段會讓使用者不知道如何新增週日；固定時段應以「每列可選星期/時間/時長」為主，chips 只能當輔助顯示。
+- 後端在儲存排課契約後若再用既有未來 `ClassSession` 反寫 `week/time`，舊堂次仍只有週三時會把剛新增的週日洗掉；改正式老師時若剩餘未來堂次很少也會重現。
 - **強制規則**：`StudentClassController::syncFutureScheduledSessionTimes` 除了偵測星期新增/移除，也要偵測同一星期的固定時段數是否增加；增加時必須用 `buildSessionsForCount` cadence 重排未來未上堂次。
 - **強制規則**：課程編輯 payload 必須以 `days_of_week` 補齊缺漏的 `day_time_slots`；前端開啟編輯時不可讓既有 slot 覆蓋 parent 傳入的 selected days。
 - **強制規則**：`CourseEditForm` 的時段列 weekday select 必須列出週一到週日，不可只列已勾選星期；新增/改列星期時必須同步更新 `days_of_week`。
-- **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段；`days_of_week=[3,7]` 但 slots 只有週三時，主檔仍必須保存週日。
+- **強制規則**：本次 `PUT` 明確帶排課欄位時，`ClassSession` 只能被同步到新契約，不可再反向覆蓋 `StudentClass.week/time` 契約欄位；`force_partial_rebuild` 也不可反寫主檔契約。
+- **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段；`days_of_week=[3,7]` 但 slots 只有週三時，主檔仍必須保存週日；若開課日 mismatch 或只改正式老師且舊未來堂次只有週三，`week1` 仍必須是 7。
 
 ---
 
@@ -336,7 +339,9 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 或已有 paid Invoice 時，必須回 422；即使 request 指定了 unpaid `invoice_id` 也不可建立第二筆 Payment/PaymentReport。
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
-- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count。
+- **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。
+- **強制規則**：帳務中心的「收款流水筆數」不可被解讀成「已繳課程數」；畫面必須分開顯示有效收款流水、對應課程數、同課程多筆收款。
+- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 並回傳付款/沖銷明細供稽核。
 
 ---
 
@@ -349,12 +354,32 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R30. 帳務入口必須能 drill down 到同一份 AR ledger
+
+- 帳務中心「待收與核帳」是提醒/催繳 queue，「收款與收據紀錄」是 receipt/payment 流水，課程管理帳單是單一課程 Invoice；三者若各自顯示不同口徑且不能互相 drill down，主任會無法對齊同一學生的帳。
+- **強制規則**：所有帳務入口若呈現應收、已收、收據或帳單狀態，必須能連到同一份以 `Invoice` 為中心的學生 AR ledger，並同時顯示 `PaymentReport` 收據、`Payment` 套用、void/reversal 與未結清金額。
+- **強制規則**：歷史錯帳不可用「畫面看起來一致」掩蓋；ledger 必須標示同帳單多筆正向收款、收據未套帳單、收據缺 Payment、Payment 缺收據、帳單狀態與付款流水不一致等異常。
+- **測試必補**：至少一個 regression case 驗證同一學生/課程可從 `student_class_id` 打開 ledger，且 Invoice、Payment、PaymentReport 的 receipt no 與異常標籤能對齊；跨分校 ledger 必須 403。
+
+---
+
+### R31. Ledger 不可把溢收顯示成同一帳單還要再繳
+
+- 同一張 Invoice 可能因歷史錯帳有多筆正向 Payment；若畫面把每筆都用 `+金額` 顯示且全部加進已套用，主任會解讀成「同一課程要繳三次」。
+- **強制規則**：AR ledger 必須用 cash application 口徑：一張 Invoice 的已套用最多等於 `TotalAmount`，超過部分要進 `overpaid_amount` 並標示「溢收/待沖銷」，不可算進未結清或已套用。
+- **強制規則**：Payment 明細必須顯示套用狀態（已套用、部分套用、溢收/待沖銷、已沖銷），並使用正式業務編號（如 `INV-*`、`RCPT-*`、`COURSE-*`）作為主要顯示，不可只顯示 DB id。
+- **強制規則**：「待收/待核」是工作 queue，不可拿來當完整已繳查詢；已結清課程必須由 Invoice/Payment/Receipt 與課程主檔彙整，堂數制已繳且剩餘堂數充足也要查得到。
+- **強制規則**：Ledger 的例外帳不可只顯示警告；可處理的 confirmed receipt 必須提供撤銷/沖銷入口，不能自動處理的 legacy/payment 關聯缺口才標示需人工修復。
+- **測試必補**：同一 Invoice 三筆收款且合計超過應收時，API 必須回傳已套用等於應收、溢收等於超額、第三筆為 `overpayment_pending_review`。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程 |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at） |

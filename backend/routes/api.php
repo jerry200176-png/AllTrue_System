@@ -268,6 +268,8 @@ Route::prefix('v1')->group(function () {
         Route::get('alerts/tuition-slip/{studentClassId}', [AlertController::class, 'tuitionSlipData']);
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
+        Route::get('accounting/ledger', [AccountingController::class, 'ledger']);
+        Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses']);
         Route::get('accounting/payments', [AccountingController::class, 'payments']);
         Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);

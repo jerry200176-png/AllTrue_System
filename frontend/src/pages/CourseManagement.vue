@@ -238,11 +238,7 @@
                         <button class="small ghost btn-toggle" @click="toggleDates(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
-                        <button
-                          v-if="isMonthlyMode(c)"
-                          class="small ghost btn-invoices"
-                          @click="openInvoiceModal(c)"
-                        >帳單</button>
+                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單/對帳</button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
@@ -344,11 +340,7 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
-                    <button
-                      v-if="isMonthlyMode(hc)"
-                      class="small ghost btn-invoices"
-                      @click="openInvoiceModal(hc)"
-                    >帳單</button>
+                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單/對帳</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
                     </button>
@@ -615,17 +607,29 @@
       @confirmed="onPaymentEntryConfirmed"
     />
 
-    <!-- 月結帳單記錄 Modal -->
+    <AccountingLedgerModal
+      :show="ledgerOpen"
+      :student-class-id="ledgerStudentClassId"
+      :branch-id="props.branchId"
+      @close="ledgerOpen = false"
+    />
+
+    <!-- 帳單記錄 Modal -->
     <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
       <div class="modal course-modal invoice-modal">
         <div class="invoice-modal-header">
           <div>
-            <h3 class="modal-title">月結帳單記錄</h3>
+            <h3 class="modal-title">帳單 / 對帳記錄</h3>
             <p class="modal-desc">
               {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
             </p>
           </div>
-          <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
+          <div class="invoice-modal-tools">
+            <button class="small ghost btn-ledger" type="button" @click="openLedgerForCourse(invoiceModalCourse)">
+              對帳
+            </button>
+            <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
+          </div>
         </div>
 
         <div v-if="invoiceModalLoading" class="invoice-modal-state" role="status">
@@ -636,14 +640,15 @@
           {{ invoiceModalError }}
         </div>
         <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
-          尚無帳單記錄（舊有課程）。請以課程主檔繳費狀態作為暫時參考。
+          尚無帳單流水（舊有或堂數制課程可能只保留課程主檔繳費狀態）。可按「對帳」查看同學生收據與例外資料。
         </div>
         <table v-else class="invoice-table">
           <thead>
             <tr>
-              <th>期別</th>
+              <th>帳單 / 期別</th>
               <th>應繳日</th>
               <th>付款日</th>
+              <th>已收款紀錄</th>
               <th class="invoice-amount-cell">金額</th>
               <th class="invoice-amount-cell">已繳</th>
               <th class="invoice-status-cell">狀態</th>
@@ -652,9 +657,28 @@
           </thead>
           <tbody>
             <tr v-for="inv in invoiceModalList" :key="inv.id">
-              <td>{{ formatBillingPeriod(inv.billing_period) }}</td>
+              <td>
+                <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
+                <div class="hint">{{ inv.course_ref || `COURSE-${String(invoiceModalCourse?.ID || '').padStart(6, '0')}` }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
+              </td>
               <td>{{ inv.due_date || '—' }}</td>
               <td>{{ invoicePaidDateLabel(inv) }}</td>
+              <td>
+                <div v-if="inv.payments?.length" class="invoice-payment-list">
+                  <div
+                    v-for="payment in inv.payments"
+                    :key="payment.id"
+                    :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
+                  >
+                    <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
+                    <span class="invoice-payment-amount">{{ payment.is_void ? '已沖銷 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
+                    <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
+                    <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
+                    <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
+                  </div>
+                </div>
+                <span v-else class="hint">—</span>
+              </td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
               <td class="invoice-status-cell">
@@ -760,6 +784,7 @@ import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.v
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 
@@ -2249,6 +2274,11 @@ const invoicePaidDateLabel = (invoice) => {
   if (invoice?.paid_at) return invoice.paid_at;
   return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
 };
+const invoicePaymentMethodLabel = (method) => ({
+  cash: '現金',
+  transfer: '匯款',
+  void: '沖銷',
+}[method] || method || '—');
 
 const loadCourses = async (page = 1) => {
   if (!props.branchId) {
@@ -2951,6 +2981,8 @@ const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
 const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
+const ledgerOpen = ref(false);
+const ledgerStudentClassId = ref(null);
 const invoiceModalOpen = ref(false);
 const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
@@ -2961,8 +2993,14 @@ const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;
 };
 
+const openLedgerForCourse = (course) => {
+  if (!course?.id) return;
+  ledgerStudentClassId.value = course.id;
+  ledgerOpen.value = true;
+};
+
 const openInvoiceModal = async (course) => {
-  if (!course?.id || !isMonthlyMode(course)) return;
+  if (!course?.id) return;
   invoiceModalCourse.value = course;
   invoiceModalList.value = [];
   invoiceModalError.value = '';
@@ -5304,6 +5342,14 @@ button.danger:disabled {
 .btn-invoices:hover {
   background: #dbeafe !important;
 }
+.btn-ledger {
+  border-color: #c7d2fe !important;
+  color: #4338ca !important;
+  background: #eef2ff !important;
+}
+.btn-ledger:hover {
+  background: #e0e7ff !important;
+}
 .invoice-modal {
   width: min(560px, calc(100vw - 32px));
 }
@@ -5313,6 +5359,11 @@ button.danger:disabled {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+.invoice-modal-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .invoice-modal-header .modal-desc {
   margin: 4px 0 0;
@@ -5421,6 +5472,41 @@ button.danger:disabled {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
+}
+.invoice-payment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+.invoice-payment-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+.invoice-payment-row--void {
+  color: var(--text-light);
+  text-decoration: line-through;
+}
+.invoice-payment-date,
+.invoice-payment-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.invoice-payment-method,
+.invoice-payment-receipt,
+.invoice-payment-void {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--text-light);
+}
+.invoice-payment-void {
+  background: #fef3c7;
+  color: #92400e;
 }
 .invoice-modal-actions {
   margin-top: 18px;
