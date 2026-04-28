@@ -171,14 +171,9 @@ class BillingController extends Controller
                 return response()->json(['message' => '此帳單已作廢。'], 422);
             }
 
-            $hasEffectivePayment = Payment::where('InvoiceID', $invoice->id)
-                ->where('Amount', '>', 0)
-                ->where(function ($query) {
-                    $query->whereNull('Method')->orWhere('Method', '!=', 'void');
-                })
-                ->exists();
+            $netApplied = $this->invoiceNetAppliedAmount((int) $invoice->id);
 
-            if (in_array($status, ['paid', 'partial'], true) || (int) ($invoice->PaidAmount ?? 0) > 0 || $hasEffectivePayment) {
+            if (in_array($status, ['paid', 'partial'], true) || (int) ($invoice->PaidAmount ?? 0) > 0 || $netApplied > 0) {
                 return response()->json([
                     'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
                 ], 422);
@@ -249,12 +244,6 @@ class BillingController extends Controller
                 ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
             $netApplied = max(0, $positiveTotal - $voidedTotal);
 
-            if ($netApplied <= 0 && (int) ($invoice->PaidAmount ?? 0) <= 0) {
-                return response()->json([
-                    'message' => '此帳單沒有收款痕跡，請使用一般作廢流程。',
-                ], 422);
-            }
-
             $authUser = $request->attributes->get('auth_user');
             $reason = trim((string) $data['reason']);
             $positivePaymentIds = $payments
@@ -263,8 +252,10 @@ class BillingController extends Controller
                 ->map(fn ($id) => (int) $id)
                 ->values()
                 ->all();
+            $auditType = $netApplied > 0 || (int) ($invoice->PaidAmount ?? 0) > 0 ? 'exception-void' : 'void';
             $audit = sprintf(
-                '[exception-void: %s; user_id=%s; at=%s; positive_payments=%s; net=%s]',
+                '[%s: %s; user_id=%s; at=%s; positive_payments=%s; net=%s]',
+                $auditType,
                 str_replace(["\r", "\n"], ' ', $reason),
                 $authUser?->id ?? 'system',
                 now()->format('Y-m-d H:i:s'),
@@ -483,5 +474,18 @@ class BillingController extends Controller
         }
 
         return $items;
+    }
+
+    private function invoiceNetAppliedAmount(int $invoiceId): int
+    {
+        $payments = Payment::where('InvoiceID', $invoiceId)->get(['Amount', 'Method']);
+        $positiveTotal = (int) $payments
+            ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
+            ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
+        $voidedTotal = abs((int) $payments
+            ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
+            ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+
+        return max(0, $positiveTotal - $voidedTotal);
     }
 }
