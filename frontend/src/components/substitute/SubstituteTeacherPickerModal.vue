@@ -41,6 +41,16 @@
         <button v-if="search" class="stp-search__clear" type="button" @click="search = ''">清除</button>
       </div>
 
+      <section v-if="canRestoreOriginal" class="stp-restore">
+        <div>
+          <strong>要改回正班老師？</strong>
+          <span>這會清除此堂代課設定，回到 {{ originalTeacherName }}。</span>
+        </div>
+        <button type="button" class="stp-restore__btn" :disabled="submitting" @click="restoreOriginalTeacher">
+          回正班老師
+        </button>
+      </section>
+
       <!-- PRD f0cce4d5 5b：換時間變更後的即時刷新細進度條（避免整個 list layout shift） -->
       <div v-if="loadingAvailability" class="stp-progress" aria-hidden="true">
         <div class="stp-progress__bar"></div>
@@ -530,6 +540,14 @@ const selectedTeacher = computed(() =>
   enriched.value.find((t) => t.id === selectedTeacherId.value) || null
 );
 const selectedTeacherName = computed(() => selectedTeacher.value?.name || '');
+const originalTeacherId = computed(() => Number(props.context?.original_teacher_id || 0));
+const currentTeacherId = computed(() => Number(props.context?.current_teacher_id || 0));
+const originalTeacherName = computed(() => props.context?.original_teacher_name || `老師#${originalTeacherId.value}`);
+const canRestoreOriginal = computed(() =>
+  originalTeacherId.value > 0
+  && currentTeacherId.value > 0
+  && originalTeacherId.value !== currentTeacherId.value
+);
 
 const canSubmit = computed(() => {
   if (selectedTeacherId.value == null) return false;
@@ -577,6 +595,22 @@ async function submit() {
     await Promise.resolve(emit('submit', payload));
   } catch (e) {
     inlineError.value = e?.message || '代課設定失敗，請稍後再試';
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function restoreOriginalTeacher() {
+  if (!canRestoreOriginal.value || submitting.value) return;
+  inlineError.value = '';
+  submitting.value = true;
+  try {
+    await Promise.resolve(emit('submit', {
+      substitute_teacher_id: originalTeacherId.value,
+      reason: reason.value.trim() || '回復正班老師',
+    }));
+  } catch (e) {
+    inlineError.value = e?.message || '回復正班老師失敗，請稍後再試';
   } finally {
     submitting.value = false;
   }
@@ -681,6 +715,37 @@ defineExpose({ setError });
   color: #6b7280;
   font-size: 12px;
   cursor: pointer;
+}
+.stp-restore {
+  margin: 10px 20px 0;
+  padding: 10px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.stp-restore strong {
+  display: block;
+  margin-bottom: 2px;
+}
+.stp-restore__btn {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 700;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.stp-restore__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .stp-body {

@@ -2480,8 +2480,10 @@ const openSubstituteV2FromEdit = () => {
     session_date: form.session_date || '',
     start_time: (form.start_time || '').toString().slice(0, 5),
     end_time: (form.end_time || '').toString().slice(0, 5),
+    current_teacher_id: form.teacher_id ?? null,
+    current_teacher_name: form.teacher_name || '',
     original_teacher_id: course.teacher_id ?? null,
-    original_teacher_name: form.teacher_name || course.teacher_name || '',
+    original_teacher_name: course.teacher_name || '',
     session_campus_id: Number(props.branchId || 0) || null,
   };
   closeSessionEdit();
