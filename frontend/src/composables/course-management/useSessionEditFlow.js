@@ -42,7 +42,7 @@ export function useSessionEditFlow({
   const sessionEditForm = ref({
     session_id: null, student_class_id: null,
     session_date: '', start_time: '', end_time: '', current_status: '',
-    student_name: '', teacher_name: '', subject: '',
+    student_name: '', teacher_id: null, teacher_name: '', subject: '',
     attendance_time: '', lr_status: '', course: null,
     reason: '', new_date: '', new_start: '16:00', duration_hours: 2,
     note: '', edit_start_time: '', edit_end_time: '',
@@ -97,6 +97,7 @@ export function useSessionEditFlow({
       end_time: row.end_time || '',
       current_status: String(row.status || '').toLowerCase(),
       student_name: course.student_name || row.student_name || '—',
+      teacher_id: row.teacher_id || course.teacher_id || null,
       teacher_name: row.teacher_name || course.teacher_name || '—',
       subject: course.subject || '',
       attendance_time: formatAttendanceTooltipTime(row.attendance_sign_in_at) || '',
