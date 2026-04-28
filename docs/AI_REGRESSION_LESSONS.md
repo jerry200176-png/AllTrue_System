@@ -328,6 +328,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - **強制規則**：課程編輯 payload 必須以 `days_of_week` 補齊缺漏的 `day_time_slots`；前端開啟編輯時不可讓既有 slot 覆蓋 parent 傳入的 selected days。
 - **強制規則**：`CourseEditForm` 的時段列 weekday select 必須列出週一到週日，不可只列已勾選星期；新增/改列星期時必須同步更新 `days_of_week`。
 - **強制規則**：本次 `PUT` 明確帶排課欄位時，`ClassSession` 只能被同步到新契約，不可再反向覆蓋 `StudentClass.week/time` 契約欄位；`force_partial_rebuild` 也不可反寫主檔契約。
+- **強制規則**：手機版 modal 必須蓋過 `.mobile-bottom-nav`，且底部要包含 `safe-area-inset-bottom`；不可讓 iPhone mini 等小螢幕的底部導覽擋住「儲存」。
 - **測試必補**：課程已有歷史出勤、未來 scheduled 從週六 13:00 改成週六 13:00+17:00 時，未來堂次必須分布成同日兩段；`days_of_week=[3,7]` 但 slots 只有週三時，主檔仍必須保存週日；若開課日 mismatch 或只改正式老師且舊未來堂次只有週三，`week1` 仍必須是 7。
 
 ---
