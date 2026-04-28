@@ -37,10 +37,25 @@ class DiagnoseTeacherSignInTest extends TestCase
         ]);
 
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('Provide --teacher-id or --teacher-name', Artisan::output());
+        $this->assertStringContainsString('Provide --teacher-id, --teacher-name, or --login-name', Artisan::output());
     }
 
-    private function makeFixture(): array
+    public function test_diagnostic_can_filter_by_login_name_without_writing(): void
+    {
+        [$teacherId] = $this->makeFixture('diag-huang-login@example.com');
+
+        $exit = Artisan::call('teacher-signin:diagnose', [
+            '--date' => '2026-04-28',
+            '--login-name' => 'diag-huang-login@example.com',
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertGreaterThan(0, $teacherId);
+        $this->assertDatabaseCount('TeacherSingIn', 0);
+        $this->assertDatabaseCount('StudentSingIn', 1);
+    }
+
+    private function makeFixture(?string $loginName = null): array
     {
         static $n = 0;
         $n++;
@@ -73,7 +88,7 @@ class DiagnoseTeacherSignInTest extends TestCase
         ]);
 
         $teacherId = DB::table('User')->insertGetId([
-            'LoginName' => "diag-huang-{$n}@example.com",
+            'LoginName' => $loginName ?: "diag-huang-{$n}@example.com",
             'Name' => '黃芝琳',
             'PSW' => 'secret',
             'type' => 'T',
