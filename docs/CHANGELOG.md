@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — fix(attendance): 老師登入帳號診斷補充 User fallback
+
+- Changed read-only teacher sign-in diagnostic to report matching `User` / `UserCampus` / disabled `Teacher` rows when a login has no active teacher profile
+
+---
+
 ## 2026-04-29 — fix(attendance): 老師打卡診斷支援登入帳號
 
 - Changed read-only teacher sign-in diagnostic workflow to support exact `LoginName` lookup when the displayed teacher name is unknown
