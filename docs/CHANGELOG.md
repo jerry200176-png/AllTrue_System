@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — fix(attendance): 老師 RFID 衝突歷史補登工具
+
+- Added dry-run-first recovery command for historical teacher RFID collisions, so swallowed teacher sign-ins can be audited and restored without deleting original attendance data
+
+---
+
 ## 2026-04-29 — chore(ci): GitHub Actions 額度節流
 
 - Changed PR/main workflows to avoid waking heavy CI/security runs for docs-only changes and cancel stale Presubmit runs on repeated pushes
