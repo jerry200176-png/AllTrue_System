@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-28 — feat(dashboard): 總覽儀表板高級視覺校準
+
+- Changed 主任總覽儀表板與近 7 天代課紀錄卡片的字體、間距與資訊層級，延續 Porsche-inspired light-first 視覺系統
+
+---
+
 ## 2026-04-28 — fix(accounting): 已結清查詢與例外處理
 
 - Changed 帳務中心新增完整已結清查詢並將 AR ledger 例外帳集中提供撤銷/沖銷處理入口，堂數制課程也可從課程管理開啟帳單/對帳
