@@ -2793,25 +2793,25 @@ const submitLeave = async () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
-  let ok = false;
-  if (token) {
-    try {
-      const res = await fetch(`${baseUrl}/v1/schedules`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.warn('Leave API error:', res.status, errBody);
-      }
-      ok = res.ok;
-    } catch (_) {}
+  if (!token) {
+    alert('請假登記失敗：請重新登入後再試');
+    return;
   }
-  if (!ok) {
-    const { error } = await supabase.from('schedules').insert([payload]);
-    if (error) { alert('請假登記失敗：' + (error.message || '請稍後再試')); return; }
+  try {
+    const res = await fetch(`${baseUrl}/v1/schedules`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('請假登記失敗：' + (body.message || res.statusText || '請稍後再試'));
+      return;
+    }
+  } catch (error) {
+    alert('請假登記失敗：' + (error?.message || '請稍後再試'));
+    return;
   }
   showLeaveModal.value = false;
   contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
