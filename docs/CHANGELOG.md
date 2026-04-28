@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — fix(attendance): 老師打卡只讀診斷工具
+
+- Added read-only teacher sign-in diagnostic command and manual workflow to inspect missing sign-ins without modifying production data
+
+---
+
 ## 2026-04-29 — ops(attendance): 老師打卡補登受控 workflow
 
 - Added manual teacher sign-in recovery workflow with dry-run default, allowlisted command execution, and automatic DB backup before apply
