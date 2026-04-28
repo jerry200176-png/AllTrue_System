@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — fix(attendance): 老師打卡診斷支援登入帳號
+
+- Changed read-only teacher sign-in diagnostic workflow to support exact `LoginName` lookup when the displayed teacher name is unknown
+
+---
+
 ## 2026-04-29 — fix(attendance): 老師打卡只讀診斷工具
 
 - Added read-only teacher sign-in diagnostic command and manual workflow to inspect missing sign-ins without modifying production data
