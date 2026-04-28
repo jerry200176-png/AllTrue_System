@@ -3104,6 +3104,7 @@ const openInvoiceModal = async (course) => {
 
 const canVoidInvoice = (invoice) => {
   if (!invoice) return false;
+  if (invoice.can_direct_void === true) return true;
   const status = String(invoice.status || '').toLowerCase();
   const paidAmount = Number(invoice.paid_amount ?? 0) || 0;
   const hasPayment = Array.isArray(invoice.payments)
