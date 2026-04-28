@@ -377,7 +377,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ### R32. 已上課歷史評量不可因課程後來停用而消失
 
-- `StudentClass.Stop=1` 用來關閉未來待上／待填事項，但不能遮掉已上課（`ClassSession.Status in attended/completed/late/absent`）的歷史待填或待審評量。
+- `StudentClass.Stop=1` 用來關閉未來待上／待填事項，但不能遮掉已出勤（`ClassSession.Status in attended/late/absent`）的歷史待填或待審評量；既有 `completed` 停用課程 pending 仍維持隱藏。
 - **強制規則**：評量列表可排除停用課程的未上課 pending，但必須保留已上課堂次；`ensure-past` 也必須能替已上課的停用歷史課補建 `LearningRecord`。
 - **測試必補**：停用課程 + 已上課堂次的 pending LR 仍出現在列表；無 LR 時 `ensure-past` 會補建且不處理停用課程的未上課堂次。
 

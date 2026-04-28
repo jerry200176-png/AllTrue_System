@@ -67,7 +67,7 @@ class LearningRecord extends Model
         return $query->where(function ($outer) use ($t) {
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhereHas('classSession', function ($cs) {
-                    $cs->whereIn('Status', ['attended', 'completed', 'late', 'absent']);
+                    $cs->whereIn('Status', ['attended', 'late', 'absent']);
                 })
                 ->orWhereHas('studentClass', function ($sc) {
                     $sc->where(function ($w) {

@@ -1470,7 +1470,7 @@ class LearningRecordController extends Controller
                 ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
                 ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
                 ->when($courseStopped, function ($query) {
-                    $query->whereIn('Status', ['attended', 'completed', 'late', 'absent']);
+                    $query->whereIn('Status', ['attended', 'late', 'absent']);
                 })
                 ->get();
 
