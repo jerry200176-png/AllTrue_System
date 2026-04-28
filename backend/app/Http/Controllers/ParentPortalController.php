@@ -441,6 +441,7 @@ class ParentPortalController extends Controller
                 ];
             })
             ->values();
+        $visibleClassIds = $perCourse->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
         // 與下方「進行中的課程」卡片一致：勿把已隱藏課程（如已暫停且已繳）的剩餘加進總數，否則會比主任只看進行中時多 1 堂以上
         $remainingTotal = $perCourse
@@ -521,10 +522,14 @@ class ParentPortalController extends Controller
 
         $invoices = [];
         try {
-            $invoices = Invoice::with(['items', 'payments'])
-                ->where('StudentID', $student->id)
-                ->orderBy('IssueDate', 'desc')
-                ->get();
+            $invoices = !empty($visibleClassIds)
+                ? Invoice::with(['items', 'payments'])
+                    ->where('StudentID', $student->id)
+                    ->whereIn('StudentClassID', $visibleClassIds)
+                    ->notVoided()
+                    ->orderBy('IssueDate', 'desc')
+                    ->get()
+                : collect();
         } catch (\Exception $e) {}
 
         $announcements = [];

@@ -40,6 +40,16 @@
 - 多 agent 或多 PR 任務需指定 `[INT] Integration Owner` 檢查 artifact 能否接起來；完成後由 `[DOCS/MEM] Memory Curator` 決定寫回哪份長期記憶文件。
 - 完成後把有效策略寫回 `AI_REGRESSION_LESSONS.md`、`TECH_DEBT.md` 或 `SYSTEM_TECH_GUIDE.md`，讓下一個 session 不重學。
 
+### 外部 Agent Playbook 引用
+
+可參考 [`msitarzewski/agency-agents`](https://github.com/msitarzewski/agency-agents) 的角色設計、deliverable 格式與多工具整合概念，但它不是 AllTrue 產品功能，也不可整包安裝覆蓋本 repo 規則。
+
+引用時遵守：
+- 只挑選角色/交付物模板，改寫成 AllTrue bounded context 的 artifact handoff。
+- 所有外部 agent 規則都必須服從 `.cursorrules`、P0 gate、分校隔離、CI/deploy SOP。
+- 禁止一鍵匯入大量 `.cursor/rules/*.mdc`；新增或改 rule 必須走 T0 docs-only PR。
+- 若外部流程與 AllTrue P0 安全規則衝突，永遠以 AllTrue 規則為準。
+
 ### Workflow Risk Tiers
 
 大廠 workflow 的重點不是所有任務都變重，而是讓風險決定流程重量：

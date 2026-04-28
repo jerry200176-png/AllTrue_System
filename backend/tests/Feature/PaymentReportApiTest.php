@@ -299,12 +299,25 @@ class PaymentReportApiTest extends TestCase
             'Status' => 'paid',
             'billing_period' => '2026-04',
         ]);
-        Payment::create([
+        $payment = Payment::create([
             'InvoiceID' => $invoice->id,
             'Amount' => 8800,
             'PaidAt' => '2026-04-10',
             'Method' => 'cash',
             'Note' => '主任核帳登記',
+        ]);
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'confirmed',
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'invoice-detail-report'),
+            'token_expires_at' => Carbon::now(),
         ]);
         Payment::create([
             'InvoiceID' => $invoice->id,
@@ -324,7 +337,55 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.billing_period', '2026-04')
             ->assertJsonPath('invoices.0.due_date', '2026-05-15')
             ->assertJsonPath('invoices.0.paid_at', '2026-04-10')
-            ->assertJsonPath('invoices.0.payment_count', 1);
+            ->assertJsonPath('invoices.0.payment_count', 1)
+            ->assertJsonPath('invoices.0.payments.0.amount', 8800)
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'RCPT-202604-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.0.is_void', false)
+            ->assertJsonPath('invoices.0.payments.1.amount', -8800)
+            ->assertJsonPath('invoices.0.payments.1.is_void', true);
+    }
+
+    public function test_student_class_invoices_exclude_voided_invoices(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 8800,
+        ]);
+
+        $activeInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-04',
+        ]);
+        $voidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$sc->ID}/invoices");
+
+        $res->assertOk();
+        $invoiceIds = collect($res->json('invoices'))->pluck('id')->all();
+        $this->assertContains((int) $activeInvoice->id, $invoiceIds);
+        $this->assertNotContains((int) $voidInvoice->id, $invoiceIds, 'Course management invoice list must not show void/stale invoices.');
     }
 
     public function test_director_record_rejects_duplicate_payment_when_course_already_paid(): void
@@ -946,6 +1007,11 @@ class PaymentReportApiTest extends TestCase
             'payment_method' => 'cash',
             'reported_amount' => 5000,
         ]);
+        $this->createConfirmedReport($student, $cashClass, [
+            'payment_date' => '2026-04-12',
+            'payment_method' => 'cash',
+            'reported_amount' => 1000,
+        ]);
         $this->createConfirmedReport($student, $transferClass, [
             'payment_date' => '2026-04-11',
             'payment_method' => 'transfer',
@@ -959,14 +1025,17 @@ class PaymentReportApiTest extends TestCase
         ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
 
         $res->assertOk()
-            ->assertJsonPath('summary.total_count', 2)
-            ->assertJsonPath('summary.cash_total', 5000)
+            ->assertJsonPath('summary.total_count', 3)
+            ->assertJsonPath('summary.unique_paid_course_count', 2)
+            ->assertJsonPath('summary.duplicate_payment_course_count', 1)
+            ->assertJsonPath('summary.duplicate_payment_extra_count', 1)
+            ->assertJsonPath('summary.cash_total', 6000)
             ->assertJsonPath('summary.transfer_total', 8800)
-            ->assertJsonPath('summary.grand_total', 13800);
+            ->assertJsonPath('summary.grand_total', 14800);
 
-        $this->assertCount(2, $res->json('data'));
-        $this->assertSame(5000, $res->json('data.0.cash_amount') + $res->json('data.1.cash_amount'));
-        $this->assertSame(8800, $res->json('data.0.transfer_amount') + $res->json('data.1.transfer_amount'));
+        $this->assertCount(3, $res->json('data'));
+        $this->assertSame(6000, collect($res->json('data'))->sum('cash_amount'));
+        $this->assertSame(8800, collect($res->json('data'))->sum('transfer_amount'));
     }
 
     public function test_accounting_payments_marks_prepaid_when_payment_before_first_session(): void
@@ -1045,6 +1114,228 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('data.0.schedule_mode', 'date')
             ->assertJsonPath('data.0.first_session_date', '2026-04-01')
             ->assertJsonPath('data.0.is_prepaid', false);
+    }
+
+    public function test_accounting_ledger_aligns_invoice_payments_and_receipts(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        $paymentA = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 5000,
+            'PaidAt' => '2026-04-05',
+            'Method' => 'cash',
+            'Note' => '第一筆',
+        ]);
+        $reportA = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-05',
+            'payment_method' => 'cash',
+            'reported_amount' => 5000,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::parse('2026-04-05 12:00:00'),
+            'confirmed_by' => 1,
+            'payment_id' => $paymentA->id,
+            'report_token_hash' => hash('sha256', 'ledger-a-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $paymentA->update(['payment_report_id' => $reportA->id]);
+
+        $paymentB = Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 3800,
+            'PaidAt' => '2026-04-06',
+            'Method' => 'transfer',
+            'Note' => '第二筆',
+        ]);
+        $reportB = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-06',
+            'payment_method' => 'transfer',
+            'reported_amount' => 3800,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::parse('2026-04-06 12:00:00'),
+            'confirmed_by' => 1,
+            'payment_id' => $paymentB->id,
+            'report_token_hash' => hash('sha256', 'ledger-b-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+        $paymentB->update(['payment_report_id' => $reportB->id]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('student.id', $student->id)
+            ->assertJsonPath('summary.invoice_total', 8800)
+            ->assertJsonPath('summary.applied_total', 8800)
+            ->assertJsonPath('summary.outstanding_total', 0)
+            ->assertJsonPath('summary.receipt_count', 2)
+            ->assertJsonPath('summary.anomaly_count', 0)
+            ->assertJsonPath('invoices.0.id', $invoice->id)
+            ->assertJsonPath('invoices.0.invoice_no', 'INV-202604-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
+            ->assertJsonPath('invoices.0.overpaid_amount', 0)
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'RCPT-202604-' . str_pad((string) $reportA->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.0.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.1.receipt_no', 'RCPT-202604-' . str_pad((string) $reportB->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.1.application_status', 'applied');
+    }
+
+    public function test_accounting_ledger_caps_applied_amount_and_marks_excess_payment(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 12800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+
+        foreach ([5000, 3800, 4000] as $idx => $amount) {
+            $payment = Payment::create([
+                'InvoiceID' => $invoice->id,
+                'Amount' => $amount,
+                'PaidAt' => '2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT),
+                'Method' => $idx === 2 ? 'cash' : 'transfer',
+                'Note' => '第' . ($idx + 1) . '筆',
+            ]);
+            $report = PaymentReport::create([
+                'StudentID' => $student->id,
+                'StudentClassID' => $sc->ID,
+                'InvoiceID' => $invoice->id,
+                'reported_by_name' => $student->name,
+                'payment_date' => '2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT),
+                'payment_method' => $idx === 2 ? 'cash' : 'transfer',
+                'reported_amount' => $amount,
+                'status' => 'confirmed',
+                'confirmed_at' => Carbon::parse('2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT) . ' 12:00:00'),
+                'confirmed_by' => 1,
+                'payment_id' => $payment->id,
+                'report_token_hash' => hash('sha256', 'ledger-overpay-' . $idx . '-' . uniqid()),
+                'token_expires_at' => Carbon::now()->addDay(),
+            ]);
+            $payment->update(['payment_report_id' => $report->id]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('summary.invoice_total', 8800)
+            ->assertJsonPath('summary.applied_total', 8800)
+            ->assertJsonPath('summary.overpaid_total', 4000)
+            ->assertJsonPath('summary.outstanding_total', 0)
+            ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
+            ->assertJsonPath('invoices.0.overpaid_amount', 4000)
+            ->assertJsonPath('invoices.0.payments.0.applied_amount', 5000)
+            ->assertJsonPath('invoices.0.payments.0.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.1.applied_amount', 3800)
+            ->assertJsonPath('invoices.0.payments.1.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.2.applied_amount', 0)
+            ->assertJsonPath('invoices.0.payments.2.unapplied_amount', 4000)
+            ->assertJsonPath('invoices.0.payments.2.application_status', 'overpayment_pending_review')
+            ->assertJsonPath('anomalies.0.code', 'overpayment_pending_review');
+    }
+
+    public function test_accounting_settled_courses_includes_paid_count_course_without_low_sessions(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '吳艾潼']);
+        $sc = $this->createCountModeClass($student->id, [
+            'Charge' => 8800,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+            'RemainingSessions' => 8,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=吳艾潼');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.course_count', 1)
+            ->assertJsonPath('summary.legacy_count', 1)
+            ->assertJsonPath('data.0.student_class_id', $sc->ID)
+            ->assertJsonPath('data.0.student_name', '吳艾潼')
+            ->assertJsonPath('data.0.schedule_mode', 'count')
+            ->assertJsonPath('data.0.legacy_paid_without_invoice', true);
+    }
+
+    public function test_accounting_settled_courses_marks_overpayment_exception(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '吳艾潼']);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 12800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-04-11', 'Method' => 'cash']);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=吳艾潼');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.course_count', 1)
+            ->assertJsonPath('summary.exception_count', 1)
+            ->assertJsonPath('summary.overpaid_total', 4000)
+            ->assertJsonPath('data.0.paid_amount', 8800)
+            ->assertJsonPath('data.0.overpaid_amount', 4000)
+            ->assertJsonPath('data.0.has_exception', true);
+    }
+
+    public function test_accounting_ledger_rejects_cross_campus_access(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertStatus(403);
     }
 
     public function test_accounting_payments_rejects_cross_campus_branch(): void
