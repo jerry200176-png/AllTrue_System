@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-28 — fix(profiles): 移除老師跨校支援分校後儲存不生效
+
+- Fixed `PUT /api/v1/profiles/{id}` 更新 `multi_branches` 時，被移除的 `UserCampus` 列未刪除，導致移除分校後儲存無效（PR #183）
+
+---
+
 ## 2026-04-28 — fix(billing): 錯帳沖銷作廢與 ledger 狀態
 
 - Fixed 課程帳單對已收足額但狀態未繳的歷史錯帳顯示 ledger 例外，並提供保留收款稽核的沖銷作廢入口
