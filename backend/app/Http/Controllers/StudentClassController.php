@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LearningRecord;
+use App\Models\PaymentReport;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -1767,13 +1768,34 @@ class StudentClassController extends Controller
 
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
             ->with(['payments' => function ($query) {
-                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method']);
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                    ->orderBy('PaidAt')
+                    ->orderBy('id');
             }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
             ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
+        $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
+        $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $reportIds = $payments->pluck('payment_report_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $reports = empty($paymentIds) && empty($reportIds)
+            ? collect()
+            : PaymentReport::query()
+                ->where(function ($query) use ($paymentIds, $reportIds) {
+                    if (!empty($paymentIds)) {
+                        $query->whereIn('payment_id', $paymentIds);
+                    }
+                    if (!empty($reportIds)) {
+                        $method = empty($paymentIds) ? 'whereIn' : 'orWhereIn';
+                        $query->{$method}('id', $reportIds);
+                    }
+                })
+                ->get(['id', 'payment_id', 'status']);
+        $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
+        $reportsById = $reports->keyBy('id');
+
         return response()->json([
-            'invoices' => $invoices->map(function ($inv) {
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
                 $effectivePayments = $inv->payments
                     ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) >= 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
@@ -1790,6 +1812,23 @@ class StudentClassController extends Controller
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
                     'paid_at'        => $paidAt,
                     'payment_count'  => $effectivePayments->count(),
+                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById) {
+                        $report = $reportsByPaymentId->get((int) $payment->id)
+                            ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
+                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+
+                        return [
+                            'id'         => (int) $payment->id,
+                            'paid_at'    => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null,
+                            'amount'     => (int) $payment->Amount,
+                            'method'     => (string) ($payment->Method ?? ''),
+                            'note'       => (string) ($payment->Note ?? ''),
+                            'is_void'    => $isVoid,
+                            'report_id'  => $report ? (int) $report->id : null,
+                            'receipt_no' => $report ? 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
+                            'status'     => $report ? (string) $report->status : null,
+                        ];
+                    })->values()->all(),
                     'total_amount'   => (int) $inv->TotalAmount,
                     'paid_amount'    => (int) $inv->PaidAmount,
                     'status'         => $inv->Status,

@@ -351,7 +351,15 @@
         <div class="tc-summary">
           <div class="tc-card tc-card--total">
             <span class="tc-card-num">{{ accountingSummary.total_count || 0 }}</span>
-            <span class="tc-card-label">收款筆數</span>
+            <span class="tc-card-label">有效收款流水</span>
+          </div>
+          <div class="tc-card tc-card--info">
+            <span class="tc-card-num">{{ accountingSummary.unique_paid_course_count || 0 }}</span>
+            <span class="tc-card-label">對應課程數</span>
+          </div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (accountingSummary.duplicate_payment_course_count || 0) > 0 }">
+            <span class="tc-card-num">{{ accountingSummary.duplicate_payment_course_count || 0 }}</span>
+            <span class="tc-card-label">同課程多筆收款</span>
           </div>
           <div class="tc-card tc-card--success">
             <span class="tc-card-num">{{ formatCurrency(accountingSummary.cash_total || 0) }}</span>
@@ -370,6 +378,9 @@
             <span class="tc-card-label">預收筆數</span>
           </div>
         </div>
+        <p class="tc-summary-note">
+          「有效收款流水」是一張張收據/核帳紀錄；「對應課程數」是這些收款對應到的不同課程。若同課程多筆收款大於 0，請用逐筆撤銷沖銷錯帳，不要刪除原紀錄。
+        </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
           <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
@@ -1542,8 +1553,14 @@ loadAlerts();
 .tc-summary {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
+}
+.tc-summary-note {
+  margin: 0 0 18px;
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .tc-card {
   display: flex;
