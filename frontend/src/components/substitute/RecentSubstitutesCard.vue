@@ -1,11 +1,10 @@
 <template>
   <section class="rsc wp" id="recent-subs-sec" data-guide="director-recent-subs">
-    <header class="wp__head rsc-head">
+    <header class="wp__head">
       <span class="material-symbols-outlined wp__hi" aria-hidden="true">&#xe8d4;</span>
       <h3>代課動態</h3>
       <span v-if="items.length" class="wp__badge">{{ items.length }}</span>
     </header>
-    <p class="wp__hint rsc-scope">近 7 天 · 本分校</p>
     <div v-if="loading" class="rsc-skel" aria-hidden="true">
       <div v-for="n in 3" :key="n" class="rsc-skel__row">
         <div class="rsc-skel__line rsc-skel__line--w60"></div>
@@ -171,20 +170,7 @@ defineExpose({ reload: load });
 .rsc {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-.rsc::before {
-  background: linear-gradient(90deg, var(--porsche-ink), rgba(196, 122, 24, 0.72), transparent);
-  opacity: 0.86;
-}
-.rsc-head .wp__hi {
-  flex: 0 0 auto;
-  overflow: hidden;
-  width: 20px;
-}
-.rsc-scope {
-  margin-top: -4px;
-  font-variant-numeric: tabular-nums;
+  gap: 0;
 }
 
 .rsc-list {
