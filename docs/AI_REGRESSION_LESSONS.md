@@ -343,6 +343,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - **強制規則**：帳務中心的「收款流水筆數」不可被解讀成「已繳課程數」；畫面必須分開顯示有效收款流水、對應課程數、同課程多筆收款。
 - **強制規則**：歷史錯帳只能作廢，不可刪除；`Invoice.Status='void'` 不得進入家長應收、課程帳單列表、主任催繳/未結清加總。
 - **強制規則**：系統內 Invoice 作廢入口只能處理未收款錯帳（非 paid/partial、`PaidAmount=0`、無正向 Payment），必填原因並記錄操作者；已收款帳單必須走收款撤銷/沖銷，不可直接 void Invoice。
+- **強制規則**：已收款錯帳若需作廢，必須建立負值 `Payment` 沖銷（`Method='void'`）並保留原始正向 Payment/收據；UI 必須顯示 ledger 派生狀態（例如「已收足額 · 狀態待修復」），不可只照 `Invoice.Status` 顯示成未繳。
 - **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
 
 ---
