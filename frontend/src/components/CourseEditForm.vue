@@ -41,6 +41,9 @@
             </template>
             <span v-else class="teacher-schedule-meta teacher-schedule-empty">近兩週無排課</span>
           </div>
+          <p v-if="teacherChanged" class="field-hint field-hint--warning">
+            已更換正班老師；儲存後未來未上堂次會改由新老師負責，已點名／已核准歷史堂次不改。
+          </p>
         </div>
 
         <div class="form-group">
@@ -159,21 +162,19 @@
               {{ d.label }}
             </label>
           </div>
-          <div v-if="(form.days_of_week || []).length > 0" class="day-time-slots">
+          <div class="day-time-slots">
             <div
               v-for="(slot, idx) in (form.day_time_slots || [])"
               :key="`slot-${idx}-${slot.day}-${slot.start_time}`"
               class="day-time-slot-row per-day-row"
             >
               <select
-                v-if="sortedSelectedDays.length > 1"
                 class="day-inline-select"
                 :value="Number(slot.day)"
                 @change="updateSlotDay(idx, $event.target.value)"
               >
-                <option v-for="d in sortedSelectedDays" :key="`opt-${idx}-${d}`" :value="d">週{{ dayLabelMap[d] }}</option>
+                <option v-for="d in dayOptions" :key="`opt-${idx}-${d.value}`" :value="d.value">週{{ d.label }}</option>
               </select>
-              <span v-else class="day-time-slot-label">週{{ dayLabelMap[Number(slot.day)] || '?' }}</span>
               <select
                 :value="String(slot.start_time || form.start_time).slice(0, 5)"
                 @change="updateSlotTime(idx, $event.target.value)"
@@ -207,6 +208,9 @@
             >
               ＋ 新增時段（同日可排多段，最多 7 段）
             </button>
+            <p class="slot-help-text">
+              每一列就是一個固定時段，可直接新增一列並選週日；儲存後系統會重排未來未上堂次，已點名／已核准堂次保留原狀。
+            </p>
           </div>
         </div>
 
@@ -259,6 +263,8 @@ const defaultForm = {
   memo: '',
   remaining_sessions: 0,
   paid_at: '',
+  original_paid_at: '',
+  original_teacher_id: '',
 };
 
 const form = reactive({ ...defaultForm, ...(props.modelValue || {}) });
@@ -304,6 +310,10 @@ const hasPerDayDuration = computed(() => {
     .filter((v) => v > 0);
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
+});
+const teacherChanged = computed(() => {
+  if (!form.original_teacher_id || !form.teacher_id) return false;
+  return String(form.original_teacher_id) !== String(form.teacher_id);
 });
 
 const fieldErrors = computed(() => {
@@ -428,9 +438,11 @@ function syncDayTimeSlotsFromSelection() {
   }
 
   if (syncingFromParent && slots.length > 0) {
-    const fromSlots = [...new Set(slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7))].sort((a, b) => a - b);
-    form.days_of_week = fromSlots;
-    chipDays = new Set(fromSlots);
+    const fromSlots = slots.map((s) => Number(s?.day || 0)).filter((d) => d >= 1 && d <= 7);
+    const fromParent = Array.isArray(form.days_of_week) ? form.days_of_week.map(Number).filter((d) => d >= 1 && d <= 7) : [];
+    const mergedDays = [...new Set([...fromParent, ...fromSlots])].sort((a, b) => a - b);
+    form.days_of_week = mergedDays;
+    chipDays = new Set(mergedDays);
   }
 
   if (chipDays.size > 0) {
@@ -456,14 +468,19 @@ function syncDayTimeSlotsFromSelection() {
 
 function addTimeSlot() {
   if ((form.day_time_slots || []).length >= 7) return;
+  const usedDays = new Set((form.day_time_slots || []).map((slot) => Number(slot?.day || 0)));
+  const firstUnused = (dayOptions || []).map((d) => Number(d.value)).find((day) => day >= 1 && day <= 7 && !usedDays.has(day));
   const days = sortedSelectedDays.value;
-  const day = days.length ? days[days.length - 1] : 1;
+  const day = firstUnused || (days.length ? days[days.length - 1] : 1);
   const baseTime = String(form.start_time || '16:00').slice(0, 5);
   form.day_time_slots = [...(form.day_time_slots || []), {
     day,
     start_time: baseTime,
     duration_hours: form.duration_hours || 2,
   }];
+  form.days_of_week = [...new Set([...(form.days_of_week || []).map(Number), day])]
+    .filter((d) => d >= 1 && d <= 7)
+    .sort((a, b) => a - b);
 }
 
 function removeSlot(idx) {
@@ -482,9 +499,16 @@ function removeSlot(idx) {
 function updateSlotDay(idx, dayVal) {
   const d = Number(dayVal);
   if (d < 1 || d > 7) return;
+  const currentSlots = form.day_time_slots || [];
+  const oldDay = Number(currentSlots[idx]?.day || 0);
   form.day_time_slots = (form.day_time_slots || []).map((slot, i) => (
     i === idx ? { ...slot, day: d } : slot
   ));
+  const remainingOldDay = form.day_time_slots.some((slot, i) => i !== idx && Number(slot?.day || 0) === oldDay);
+  const nextDays = new Set((form.days_of_week || []).map(Number).filter((day) => day >= 1 && day <= 7));
+  nextDays.add(d);
+  if (oldDay >= 1 && oldDay <= 7 && !remainingOldDay) nextDays.delete(oldDay);
+  form.days_of_week = [...nextDays].sort((a, b) => a - b);
 }
 
 function updateSlotTime(idx, nextTime) {
@@ -666,6 +690,12 @@ function computeEndTime(startRaw, durHours) {
 .btn-add-slot:hover {
   border-color: var(--primary, #2563eb);
   background: var(--primary-bg, #eef2ff);
+}
+.slot-help-text {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .btn-remove-slot {
   padding: 4px 10px;

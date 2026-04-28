@@ -11,6 +11,7 @@
       <div class="pe-info">
         <span class="pe-info-item"><strong>學生</strong>{{ row?.student_name }}</span>
         <span class="pe-info-item"><strong>科目</strong>{{ row?.subject }}</span>
+        <span v-if="row?.billing_period" class="pe-info-item"><strong>期別</strong>{{ row.billing_period }}</span>
         <span class="pe-info-item"><strong>應繳</strong>NT$ {{ Number(row?.charge || 0).toLocaleString('zh-TW') }}</span>
       </div>
 
@@ -144,6 +145,9 @@ async function submit() {
       payment_method: form.payment_method,
       amount,
     };
+    if (props.row.invoice_id) {
+      body.invoice_id = props.row.invoice_id;
+    }
     if (form.payment_method === 'transfer' && form.account_last5) {
       body.account_last5 = form.account_last5;
     }

@@ -56,7 +56,7 @@ jobs:
           echo "=== Backup Restore Test $(date '+%Y-%m-%d %H:%M') ==="
 
           # 1. 找最新備份
-          LATEST=$(ls -t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | head -1)
+          LATEST=$(ls "$BACKUP_DIR"/alltrue_6h_*.sql.gz 2>/dev/null | sort | tail -1)
           if [ -z "$LATEST" ]; then
             echo "❌ 找不到備份檔"
             exit 1

@@ -21,7 +21,7 @@ use Tests\TestCase;
  * 破壞月結計費語意，且舊月結課不被結案，造成重複課程列。
  *
  * 修復後行為：
- * 1. renewMonthly 端點：延長原月結課程的 EndDate，不新建課程，但補齊未來預排堂次供課程管理詳情顯示。
+ * 1. renewMonthly 端點：建立新一期月結課程，舊課程結算，不再把多期帳務混在同一筆課程。
  * 2. purchaseBatch 對月結課回傳 422，防止誤用。
  * 3. 堂數制 purchaseBatch 流程完全不受影響。
  */
@@ -41,7 +41,7 @@ class MonthlyRenewTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_renew_monthly_extends_end_date_without_creating_new_course_and_creates_future_sessions(): void
+    public function test_renew_monthly_creates_new_period_course_and_settles_source_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-renew@example.com');
         $student = $this->createStudent();
@@ -60,6 +60,15 @@ class MonthlyRenewTest extends TestCase
             'Paid'             => 1,
         ]);
 
+        ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate'    => '2026-05-05',
+            'StartTime'      => '18:00:00',
+            'EndTime'        => '20:00:00',
+            'Status'         => 'scheduled',
+            'Note'           => '',
+        ]);
+
         $newEndDate = '2026-06-30';
 
         $res = $this->withHeaders([
@@ -69,35 +78,36 @@ class MonthlyRenewTest extends TestCase
             'end_date' => $newEndDate,
         ]);
 
-        $res->assertOk()
-            ->assertJsonPath('end_date', $newEndDate)
-            ->assertJsonPath('course.schedule_mode', 'date')
-            ->assertJsonPath('course.id', (int) $course->ID);
+        $res->assertCreated()
+            ->assertJsonPath('source_course.id', (int) $course->ID)
+            ->assertJsonPath('source_course.closed_reason', 'settled')
+            ->assertJsonPath('new_course.end_date', $newEndDate)
+            ->assertJsonPath('new_course.schedule_mode', 'date')
+            ->assertJsonPath('new_course.paid', 0);
 
         $course->refresh();
+        $newCourse = StudentClass::where('StudentID', $student->id)
+            ->where('ID', '<>', $course->ID)
+            ->firstOrFail();
 
-        // EndDate 應被更新
-        $this->assertStringStartsWith($newEndDate, (string) $course->EndDate);
-        // 月結欄位保持不變
+        // 舊課程不再延長；它代表已結算舊期。
+        $this->assertStringStartsWith('2026-04-30', (string) $course->EndDate);
         $this->assertSame('date', (string) $course->ScheduleMode);
         $this->assertSame(15, (int) $course->settlement_day);
         $this->assertSame(8, (int) $course->monthly_sessions);
-        // 不應被結案
-        $this->assertSame(0, (int) $course->Stop);
+        $this->assertSame(1, (int) $course->Stop);
+        $this->assertSame('settled', (string) $course->closed_reason);
 
-        // 不應新建 StudentClass
         $this->assertSame(
-            1,
+            2,
             StudentClass::where('StudentID', $student->id)
                 ->where('SubjectID', 1)
-                ->where('Stop', 0)
                 ->count(),
-            '月結續約不應新建 StudentClass 記錄'
+            '月結續約應建立新一期 StudentClass，避免多期帳務混在同一筆課程'
         );
 
         $this->assertSame(
             [
-                '2026-04-28',
                 '2026-05-05',
                 '2026-05-12',
                 '2026-05-19',
@@ -108,34 +118,20 @@ class MonthlyRenewTest extends TestCase
                 '2026-06-23',
                 '2026-06-30',
             ],
-            $this->scheduledSessionDates($course),
-            '月結續約後，課程管理詳情應能讀到固定時段的未來預排堂次'
+            $this->scheduledSessionDates($newCourse),
+            '新一期月結課程應補齊自己的未來預排堂次'
         );
-
-        // 同一續約請求重送不可重複建立堂次
-        $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept'        => 'application/json',
-        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
-            'end_date' => $newEndDate,
-        ])->assertOk();
 
         $this->assertSame(
-            [
-                '2026-04-28',
-                '2026-05-05',
-                '2026-05-12',
-                '2026-05-19',
-                '2026-05-26',
-                '2026-06-02',
-                '2026-06-09',
-                '2026-06-16',
-                '2026-06-23',
-                '2026-06-30',
-            ],
+            [],
             $this->scheduledSessionDates($course),
-            '月結續約補建堂次必須是 idempotent，避免詳情預排課程重複'
+            '舊課程結算後不可留下未來 scheduled，避免主任仍看到舊期待上'
         );
+
+        $invoice = Invoice::where('StudentClassID', $newCourse->ID)->first();
+        $this->assertNotNull($invoice);
+        $this->assertSame('2026-05', (string) $invoice->billing_period);
+        $this->assertSame('unpaid', (string) $invoice->Status);
     }
 
     public function test_updating_monthly_course_schedule_creates_fixed_future_sessions_for_detail_view(): void
@@ -423,9 +419,9 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
-    // ── FR-002 / FR-003：renew-monthly 建立逐期帳單並重置 Paid ──────────────
+    // ── FR-002 / FR-003：renew-monthly 建立新一期課程與逐期帳單 ──────────────
 
-    public function test_renew_monthly_creates_invoice_and_resets_paid(): void
+    public function test_renew_monthly_creates_invoice_on_new_period_course(): void
     {
         $token = $this->createDirectorToken([1], 'director-invoice-create@example.com');
         $student = $this->createStudent();
@@ -450,21 +446,25 @@ class MonthlyRenewTest extends TestCase
             'end_date' => '2026-05-31',
         ]);
 
-        $res->assertOk();
+        $res->assertCreated();
 
         $course->refresh();
-        // FR-003：Paid 重置為 0
-        $this->assertSame(0, (int) $course->Paid, '月結續約後 Paid 應重置為 0');
-        $this->assertNull($course->PayDate, '月結續約後 PayDate 應清空');
+        $newCourseId = (int) $res->json('new_course.id');
+        $newCourse = StudentClass::findOrFail($newCourseId);
+
+        $this->assertSame(1, (int) $course->Paid, '舊期已繳狀態應保留供歷史對帳');
+        $this->assertSame(1, (int) $course->Stop, '舊期應結算成歷史課程');
+        $this->assertSame(0, (int) $newCourse->Paid, '新一期課程應顯示未繳');
+        $this->assertNull($newCourse->PayDate, '新一期 PayDate 應為空');
 
         // FR-002：建立新期 Invoice
         $this->assertDatabaseHas('Invoice', [
-            'StudentClassID' => $course->ID,
+            'StudentClassID' => $newCourseId,
             'billing_period' => '2026-05',
             'Status'         => 'unpaid',
         ]);
 
-        $invoice = Invoice::where('StudentClassID', $course->ID)
+        $invoice = Invoice::where('StudentClassID', $newCourseId)
             ->where('billing_period', '2026-05')
             ->first();
         $this->assertNotNull($invoice);
@@ -494,20 +494,25 @@ class MonthlyRenewTest extends TestCase
         $this->withHeaders($headers)->postJson(
             "/api/v1/student-classes/{$course->ID}/renew-monthly",
             ['end_date' => '2026-05-31']
-        )->assertOk();
+        )->assertCreated();
 
         $this->withHeaders($headers)->postJson(
             "/api/v1/student-classes/{$course->ID}/renew-monthly",
             ['end_date' => '2026-05-31']
-        )->assertOk();
+        )->assertStatus(409);
 
-        // 不應建立兩筆相同 billing_period 的 Invoice
+        // 不應建立兩筆相同期間的新課程 / Invoice
         $this->assertSame(
             1,
-            Invoice::where('StudentClassID', $course->ID)
-                ->where('billing_period', '2026-05')
+            Invoice::where('billing_period', '2026-05')
+                ->whereIn('StudentClassID', StudentClass::where('StudentID', $student->id)->pluck('ID'))
                 ->count(),
             '重複 renew-monthly 不應重複建立 Invoice'
+        );
+        $this->assertSame(
+            2,
+            StudentClass::where('StudentID', $student->id)->count(),
+            '重複 renew-monthly 不應重複建立 StudentClass'
         );
     }
 
@@ -525,16 +530,19 @@ class MonthlyRenewTest extends TestCase
             'Rate'           => 0,
         ]);
 
-        $this->withHeaders([
+        $res = $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept'        => 'application/json',
         ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
             'end_date' => '2026-05-31',
-        ])->assertOk();
+        ]);
+
+        $res->assertCreated();
+        $newCourseId = (int) $res->json('new_course.id');
 
         // 即使金額為 0 也應建立 Invoice（主任手動核帳時再填金額）
         $this->assertDatabaseHas('Invoice', [
-            'StudentClassID' => $course->ID,
+            'StudentClassID' => $newCourseId,
             'billing_period' => '2026-05',
             'Status'         => 'unpaid',
             'TotalAmount'    => 0,

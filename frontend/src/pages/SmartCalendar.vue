@@ -1377,7 +1377,10 @@ function resolveAllCourseGridTimesForDate(c, dow, targetYmd) {
           const st = normalizeTimeTo30(hit.start_time);
           const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
           const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
-          return { start_time: st, end_time: en, duration_hours: dh };
+          const teacherFields = hit.teacher_id != null
+            ? { teacher_id: hit.teacher_id, teacher_name: hit.teacher_name || c.teacher_name }
+            : {};
+          return { ...teacherFields, start_time: st, end_time: en, duration_hours: dh };
         });
       }
       // 當日僅有已取消堂次時，不可回退契約時段，否則課表仍會出現區塊 +「取消」角標
@@ -1885,7 +1888,13 @@ const filteredCourses = computed(() => {
         );
         const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
         const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
-        const hasReschedule = rawHasReschedule && !hasAttendedSession;
+        const hasLeaveOnDate = sessionRows.some(r => ['leave', 'leave_adjusted', 'excused'].includes(String(r.status || '').toLowerCase()))
+          || exceptions.value.some(ex =>
+            ex.status === 'leave' &&
+            (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
+            toYmd(ex.schedule_date) === targetDate
+          );
+        const hasReschedule = rawHasReschedule && !hasAttendedSession && !hasLeaveOnDate;
         // PRD-E (2026-04-18, plan 8c1673b9) — 多日多時段課程不可被單一 scheduled 例外吃掉全部基底格。
         // 舊邏輯 hasScheduledExc 為 boolean，只要該日該課程存在任何 status='scheduled' 例外就
         // 整個日期的基底 weekly pattern 不渲染；遇到 days_of_week=[3,7] 這類多日多時段課程
@@ -1902,7 +1911,7 @@ const filteredCourses = computed(() => {
             const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
             for (const t of times) {
               const tStart = String(t.start_time || '').slice(0, 5);
-              if (scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
+              if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
               if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
               mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
             }
@@ -1918,7 +1927,7 @@ const filteredCourses = computed(() => {
           const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
           for (const t of times) {
             const tStart = String(t.start_time || '').slice(0, 5);
-            if (scheduledExcStartSet.has(tStart)) continue;
+            if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue;
             if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
             mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
           }
@@ -2784,25 +2793,25 @@ const submitLeave = async () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
-  let ok = false;
-  if (token) {
-    try {
-      const res = await fetch(`${baseUrl}/v1/schedules`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.warn('Leave API error:', res.status, errBody);
-      }
-      ok = res.ok;
-    } catch (_) {}
+  if (!token) {
+    alert('請假登記失敗：請重新登入後再試');
+    return;
   }
-  if (!ok) {
-    const { error } = await supabase.from('schedules').insert([payload]);
-    if (error) { alert('請假登記失敗：' + (error.message || '請稍後再試')); return; }
+  try {
+    const res = await fetch(`${baseUrl}/v1/schedules`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('請假登記失敗：' + (body.message || res.statusText || '請稍後再試'));
+      return;
+    }
+  } catch (error) {
+    alert('請假登記失敗：' + (error?.message || '請稍後再試'));
+    return;
   }
   showLeaveModal.value = false;
   contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };
