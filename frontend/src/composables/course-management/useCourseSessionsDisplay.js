@@ -278,7 +278,7 @@ export function useCourseSessionsDisplay({
 
   const rowOccupiesPurchasedQuota = (row) => {
     const status = String(row?.status || '').toLowerCase();
-    return !isContractException(row) && !SESSION_NOT_OCCUPYING_QUOTA.has(status);
+    return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
   };
 
   const isOverQuotaSession = (course, row) => {
@@ -406,7 +406,7 @@ export function useCourseSessionsDisplay({
       const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
       const state = getSessionState(course, uDate, uId || undefined);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
-      const isNonQuota = isLeave || isContractException(row) || isOverQuotaSession(course, row);
+      const isNonQuota = isLeave || isOverQuotaSession(course, row);
       const isMatch = sessionId
         ? (uId > 0 && uId === Number(sessionId))
         : (uDate === dateYmd);
@@ -424,7 +424,7 @@ export function useCourseSessionsDisplay({
       const uId = Number(u?.id || 0);
       const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
       const state = getSessionState(course, uDate, uId || undefined);
-      if (!state || (!LEAVE_STATUSES.has(state.className) && !isContractException(row) && !isOverQuotaSession(course, row))) count++;
+      if (!state || (!LEAVE_STATUSES.has(state.className) && !isOverQuotaSession(course, row))) count++;
     }
     return count;
   };
