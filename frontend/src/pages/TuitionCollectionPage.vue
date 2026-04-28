@@ -3,7 +3,7 @@
     <div class="tc-header">
       <div>
         <h2>帳務中心</h2>
-        <p class="tc-subtitle">待收核帳、收款紀錄與收據查詢</p>
+        <p class="tc-subtitle">待收核帳、收款與收據查詢</p>
       </div>
       <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
         <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
@@ -351,7 +351,15 @@
         <div class="tc-summary">
           <div class="tc-card tc-card--total">
             <span class="tc-card-num">{{ accountingSummary.total_count || 0 }}</span>
-            <span class="tc-card-label">收款筆數</span>
+            <span class="tc-card-label">有效收款流水</span>
+          </div>
+          <div class="tc-card tc-card--info">
+            <span class="tc-card-num">{{ accountingSummary.unique_paid_course_count || 0 }}</span>
+            <span class="tc-card-label">對應課程數</span>
+          </div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (accountingSummary.duplicate_payment_course_count || 0) > 0 }">
+            <span class="tc-card-num">{{ accountingSummary.duplicate_payment_course_count || 0 }}</span>
+            <span class="tc-card-label">同課程多筆收款</span>
           </div>
           <div class="tc-card tc-card--success">
             <span class="tc-card-num">{{ formatCurrency(accountingSummary.cash_total || 0) }}</span>
@@ -370,6 +378,9 @@
             <span class="tc-card-label">預收筆數</span>
           </div>
         </div>
+        <p class="tc-summary-note">
+          「有效收款流水」是一張張收據/核帳紀錄；「對應課程數」是這些收款對應到的不同課程。若同課程多筆收款大於 0，請用逐筆撤銷沖銷錯帳，不要刪除原紀錄。
+        </p>
 
         <div v-if="!accountingRows.length" class="tc-empty">
           <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
@@ -380,7 +391,8 @@
         <div v-else class="tc-table-wrap">
           <table class="tc-table acct-table">
             <thead>
-              <tr v-if="activeAccountingTab === 'payments'">
+              <tr>
+                <th>收據編號</th>
                 <th>繳費日期</th>
                 <th>學生</th>
                 <th>科目</th>
@@ -389,56 +401,44 @@
                 <th class="tc-col-currency">匯款</th>
                 <th class="tc-col-currency">合計</th>
                 <th>標籤</th>
-                <th>收據</th>
-              </tr>
-              <tr v-else>
-                <th>收據編號</th>
-                <th>繳費日期</th>
-                <th>學生</th>
-                <th>科目</th>
-                <th class="tc-col-currency">金額</th>
-                <th>付款方式</th>
                 <th>核帳人</th>
                 <th>操作</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in accountingRows" :key="row.report_id">
-                <template v-if="activeAccountingTab === 'payments'">
-                  <td>{{ row.payment_date || '—' }}</td>
-                  <td class="tc-cell-name">{{ row.student_name }}</td>
-                  <td>{{ row.subject }}</td>
-                  <td>{{ row.first_session_date || '尚未排課' }}</td>
-                  <td class="tc-col-currency">{{ formatCurrency(row.cash_amount || 0) }}</td>
-                  <td class="tc-col-currency">{{ formatCurrency(row.transfer_amount || 0) }}</td>
-                  <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
-                  <td>
-                    <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
-                    <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
-                    <span v-if="!row.is_prepaid && !row.is_backfilled" class="text-light">—</span>
-                  </td>
-                  <td>
-                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.student_name} 收據`">
-                      <span class="material-symbols-outlined">receipt</span>
-                      查看
-                    </button>
-                  </td>
-                </template>
-                <template v-else>
-                  <td>{{ row.receipt_no }}</td>
-                  <td>{{ row.payment_date || '—' }}</td>
-                  <td class="tc-cell-name">{{ row.student_name }}</td>
-                  <td>{{ row.subject }}</td>
-                  <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
-                  <td>{{ paymentMethodLabel(row.payment_method) }}</td>
-                  <td>{{ row.confirmed_by_name || '—' }}</td>
-                  <td>
+                <td>{{ row.receipt_no }}</td>
+                <td>{{ row.payment_date || '—' }}</td>
+                <td class="tc-cell-name">{{ row.student_name }}</td>
+                <td>{{ row.subject }}</td>
+                <td>{{ row.first_session_date || '尚未排課' }}</td>
+                <td class="tc-col-currency">{{ formatCurrency(row.cash_amount || 0) }}</td>
+                <td class="tc-col-currency">{{ formatCurrency(row.transfer_amount || 0) }}</td>
+                <td class="tc-col-currency">{{ formatCurrency(row.total_amount || 0) }}</td>
+                <td>
+                  <span v-if="row.is_prepaid" class="acct-chip acct-chip--prepaid">預收</span>
+                  <span v-if="row.is_backfilled" class="acct-chip acct-chip--backfill">補建</span>
+                  <span v-if="!row.is_prepaid && !row.is_backfilled" class="text-light">—</span>
+                </td>
+                <td>{{ row.confirmed_by_name || '—' }}</td>
+                <td>
+                  <div class="tc-actions">
                     <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
                       <span class="material-symbols-outlined">receipt</span>
                       查看 / PNG
                     </button>
-                  </td>
-                </template>
+                    <button
+                      v-if="canVoid"
+                      class="tc-btn tc-btn--void"
+                      @click="openVoidDialog(row)"
+                      :disabled="voidLoading"
+                      :aria-label="`撤銷 ${row.receipt_no}`"
+                    >
+                      <span class="material-symbols-outlined">undo</span>
+                      撤銷
+                    </button>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -475,9 +475,12 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">warning</span>
             撤銷收款確認
           </h3>
-          <p class="tc-dialog-desc">此操作將作廢原付款紀錄並重置繳費狀態，無法自動還原，請確認。</p>
+          <p class="tc-dialog-desc">此操作不會刪除付款；系統會建立一筆負值沖銷並保留稽核紀錄。請只用於重複入帳、金額錯誤或誤核帳。</p>
           <div class="tc-dialog-info" v-if="voidTarget">
             <span>{{ voidTarget.student_name }} — {{ voidTarget.subject }}</span>
+            <small v-if="voidTarget.receipt_no">
+              {{ voidTarget.receipt_no }} · {{ voidTarget.payment_date || '未記錄日期' }} · {{ formatCurrency(voidTarget.total_amount || voidTarget.reported_amount || 0) }}
+            </small>
           </div>
           <label class="tc-dialog-label">撤銷原因（必填）</label>
           <textarea v-model="voidReason" class="tc-dialog-textarea" placeholder="請輸入撤銷原因…" maxlength="500" rows="3"></textarea>
@@ -623,8 +626,7 @@ const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待收與核帳', icon: 'payments' },
-  { key: 'payments', label: '收款紀錄', icon: 'receipt_long' },
-  { key: 'receipts', label: '收據紀錄', icon: 'receipt' },
+  { key: 'payments', label: '收款與收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
 const accountingLoading = ref(false);
@@ -981,10 +983,10 @@ async function exportAccountingCSV() {
     const payload = await fetchAccountingExportRows();
     const data = payload.data || [];
     if (!data.length) {
-      showToast('目前篩選條件沒有可匯出的收款紀錄', 'warning');
+      showToast('目前篩選條件沒有可匯出的收款與收據紀錄', 'warning');
       return;
     }
-    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '第一堂課日期', '現金', '匯款', '合計', '付款方式', '標籤'];
+    const headers = ['收據編號', '繳費日期', '學生姓名', '科目', '第一堂課日期', '現金', '匯款', '合計', '付款方式', '標籤', '核帳人'];
     const csvRows = data.map(r => [
       r.receipt_no || '',
       r.payment_date || '',
@@ -996,6 +998,7 @@ async function exportAccountingCSV() {
       r.total_amount || 0,
       paymentMethodLabel(r.payment_method),
       [r.is_prepaid ? '預收' : '', r.is_backfilled ? '補建' : ''].filter(Boolean).join(' / '),
+      r.confirmed_by_name || '',
     ]);
     const bom = '\uFEFF';
     const csv = bom + [headers, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -1003,7 +1006,7 @@ async function exportAccountingCSV() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `收款紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
+    a.download = `收款與收據紀錄_${accountingFilters.value.start}_${accountingFilters.value.end}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('已匯出 CSV');
@@ -1023,7 +1026,7 @@ async function exportAccountingPDF() {
     return;
   }
   printWindow.opener = null;
-  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收款紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收款紀錄報表...</p>');
+  printWindow.document.write('<!doctype html><meta charset="utf-8"><title>收款與收據紀錄報表</title><p style="font-family:sans-serif;padding:24px">正在產生收款與收據紀錄報表...</p>');
   printWindow.document.close();
 
   try {
@@ -1031,7 +1034,7 @@ async function exportAccountingPDF() {
     const data = payload.data || [];
     if (!data.length) {
       printWindow.close();
-      showToast('目前篩選條件沒有可匯出的收款紀錄', 'warning');
+      showToast('目前篩選條件沒有可匯出的收款與收據紀錄', 'warning');
       return;
     }
     if (data.length > 500) {
@@ -1042,6 +1045,7 @@ async function exportAccountingPDF() {
     const summary = payload.summary || {};
     const rowsHtml = data.map(r => `
       <tr>
+        <td>${escapeHtml(r.receipt_no || '')}</td>
         <td>${escapeHtml(r.payment_date || '')}</td>
         <td>${escapeHtml(r.student_name || '')}</td>
         <td>${escapeHtml(r.subject || '')}</td>
@@ -1050,6 +1054,7 @@ async function exportAccountingPDF() {
         <td class="num">${Number(r.transfer_amount || 0).toLocaleString('zh-TW')}</td>
         <td class="num">${Number(r.total_amount || 0).toLocaleString('zh-TW')}</td>
         <td>${r.is_prepaid ? '預收' : ''}${r.is_backfilled ? ' 補建' : ''}</td>
+        <td>${escapeHtml(r.confirmed_by_name || '')}</td>
       </tr>
     `).join('');
     printWindow.document.open();
@@ -1058,7 +1063,7 @@ async function exportAccountingPDF() {
       <html>
       <head>
         <meta charset="utf-8" />
-        <title>收款紀錄 ${escapeHtml(accountingFilters.value.start)}_${escapeHtml(accountingFilters.value.end)}</title>
+        <title>收款與收據紀錄 ${escapeHtml(accountingFilters.value.start)}_${escapeHtml(accountingFilters.value.end)}</title>
         <style>
           body { font-family: "Noto Sans TC", Arial, sans-serif; color: #1f2937; margin: 28px; }
           h1 { margin: 0; font-size: 24px; color: #14532d; }
@@ -1075,7 +1080,7 @@ async function exportAccountingPDF() {
         </style>
       </head>
       <body>
-        <h1>全真一對一｜收款紀錄報表</h1>
+        <h1>台北全真一對一補習班｜收款與收據紀錄報表</h1>
         <div class="subtitle">區間：${escapeHtml(accountingFilters.value.start)} 至 ${escapeHtml(accountingFilters.value.end)}</div>
         <div class="summary">
           <div class="card"><strong>${summary.total_count || 0}</strong>筆數</div>
@@ -1085,7 +1090,7 @@ async function exportAccountingPDF() {
           <div class="card"><strong>${summary.prepaid_count || 0}</strong>預收</div>
         </div>
         <table>
-          <thead><tr><th>繳費日期</th><th>學生</th><th>科目</th><th>第一堂課</th><th>現金</th><th>匯款</th><th>合計</th><th>標籤</th></tr></thead>
+          <thead><tr><th>收據編號</th><th>繳費日期</th><th>學生</th><th>科目</th><th>第一堂課</th><th>現金</th><th>匯款</th><th>合計</th><th>標籤</th><th>核帳人</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
         <div class="footer">產生時間：${new Date().toLocaleString('zh-TW')}</div>
@@ -1221,7 +1226,7 @@ async function confirmVoid() {
   voidLoading.value = true;
   try {
     const token = getToken();
-    const reportId = await findConfirmedReportForClass(voidTarget.value);
+    const reportId = Number(voidTarget.value.report_id || 0) || await findConfirmedReportForClass(voidTarget.value);
     if (!reportId) {
       showToast('找不到此課程的已確認核帳紀錄', 'error');
       return;
@@ -1238,7 +1243,7 @@ async function confirmVoid() {
     }
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
-    loadAlerts();
+    await Promise.all([loadAlerts(), loadAccountingPayments()]);
   } catch (e) {
     showToast(e.message || '撤銷失敗', 'error');
   } finally {
@@ -1548,8 +1553,14 @@ loadAlerts();
 .tc-summary {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
+}
+.tc-summary-note {
+  margin: 0 0 18px;
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .tc-card {
   display: flex;
@@ -2045,6 +2056,12 @@ loadAlerts();
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 12px;
+}
+.tc-dialog-info small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-light);
+  font-weight: 400;
 }
 .tc-dialog-label {
   display: block;
