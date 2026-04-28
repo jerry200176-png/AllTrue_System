@@ -641,6 +641,48 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertGreaterThanOrEqual(0, $row['outstanding']);
     }
 
+    public function test_voided_invoice_does_not_increase_outstanding(): void
+    {
+        $token = $this->createDirectorToken([1], 'void-invoice-alert@example.com');
+        $student = Student::create([
+            'name' => '作廢帳單學生',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 1, 'Charge' => 5000,
+        ]);
+
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-04',
+        ]);
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string
     {
         $user = User::create([

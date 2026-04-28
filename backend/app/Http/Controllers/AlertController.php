@@ -539,6 +539,9 @@ class AlertController extends Controller
 
         $rows = DB::table('Invoice')
             ->whereIn('StudentClassID', $studentClassIds)
+            ->where(function ($q) {
+                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
             ->select(
                 'StudentClassID',
                 DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
@@ -653,6 +656,9 @@ class AlertController extends Controller
         $rows = DB::table('Invoice')
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
             ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
             ->groupBy('Invoice.StudentClassID')
             ->get();

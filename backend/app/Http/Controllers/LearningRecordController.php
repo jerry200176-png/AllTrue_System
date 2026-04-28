@@ -1460,16 +1460,18 @@ class LearningRecordController extends Controller
             return response()->json(['created' => 0]);
         }
 
-        $classes = StudentClass::whereIn('StudentID', $studentIds)
-            ->where('Stop', 0)
-            ->get();
+        $classes = StudentClass::whereIn('StudentID', $studentIds)->get();
 
         $created = 0;
 
         foreach ($classes as $sc) {
+            $courseStopped = (int) ($sc->Stop ?? 0) === 1;
             $sessions = ClassSession::where('StudentClassID', $sc->ID)
                 ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
                 ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
+                ->when($courseStopped, function ($query) {
+                    $query->whereIn('Status', ['attended', 'completed', 'late', 'absent']);
+                })
                 ->get();
 
             foreach ($sessions as $cs) {
