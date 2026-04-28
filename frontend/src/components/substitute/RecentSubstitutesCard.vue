@@ -1,7 +1,7 @@
 <template>
   <section class="rsc wp" id="recent-subs-sec" data-guide="director-recent-subs">
     <header class="wp__head">
-      <span class="material-symbols-outlined wp__hi" aria-hidden="true">&#xe8d4;</span>
+      <span class="material-symbols-outlined wp__hi" aria-hidden="true">calendar_today</span>
       <h3>代課動態</h3>
       <span v-if="items.length" class="wp__badge">{{ items.length }}</span>
     </header>
@@ -171,6 +171,39 @@ defineExpose({ reload: load });
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+.wp__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 17px 18px 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+}
+.wp__head h3 {
+  flex: 1;
+  margin: 0;
+  color: var(--porsche-ink);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.wp__hi {
+  color: var(--porsche-ink);
+  font-size: 20px;
+}
+.wp__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .rsc-list {
