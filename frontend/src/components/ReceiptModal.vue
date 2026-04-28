@@ -59,6 +59,11 @@ const copying = ref(false);
 function formatAmount(n) {
   return 'NT$ ' + Number(n || 0).toLocaleString('zh-TW');
 }
+const BRAND_TITLE = '台北全真一對一補習班';
+function formatBrandTitle(campusName) {
+  const branch = String(campusName || '').trim();
+  return branch ? `${BRAND_TITLE}｜${branch}` : BRAND_TITLE;
+}
 
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
@@ -108,6 +113,14 @@ function drawDivider(ctx, y) {
   ctx.moveTo(PAD, y);
   ctx.lineTo(W - PAD, y);
   ctx.stroke();
+}
+
+function truncateText(ctx, text, maxW) {
+  if (!text) return '—';
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t + '…';
 }
 
 function drawReceipt(canvas, d) {
@@ -164,12 +177,8 @@ function drawReceipt(canvas, d) {
 
   ctx.font = '500 14px "Noto Sans TC", "Inter", sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  if (d.campus_name) {
-    ctx.fillText(d.campus_name, W / 2, 76);
-    ctx.fillText(`學生：${d.student_name}`, W / 2, 100);
-  } else {
-    ctx.fillText(`學生：${d.student_name}`, W / 2, 86);
-  }
+  ctx.fillText(truncateText(ctx, formatBrandTitle(d.campus_name), INNER), W / 2, 76);
+  ctx.fillText(`學生：${d.student_name}`, W / 2, 100);
 
   // Amount block
   let y = headerH + 16;
@@ -250,8 +259,8 @@ function drawReceipt(canvas, d) {
 
   y += 28;
   ctx.fillStyle = '#CFD8DC';
-  ctx.font = '400 10px "Inter", sans-serif';
-  ctx.fillText(`AllTrue ${d.campus_name || ''} — ${new Date().toLocaleDateString('zh-TW')}`, W / 2, y + 8);
+  ctx.font = '400 10px "Noto Sans TC", "Inter", sans-serif';
+  ctx.fillText(`${formatBrandTitle(d.campus_name)} — ${new Date().toLocaleDateString('zh-TW')}`, W / 2, y + 8);
 }
 
 watch(() => props.show, async (v) => {
