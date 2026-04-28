@@ -841,6 +841,10 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
+import {
+  scheduledExceptionStartSetForCourseDate,
+  shouldRenderScheduledException,
+} from '../lib/calendarExceptionMerge';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
@@ -1898,16 +1902,7 @@ const filteredCourses = computed(() => {
         // scheduled 例外，週日 15:00-17:00 的基底格會被誤抹除。
         // 修正：改以 Set 收集該日該課程所有 scheduled 例外的 HH:MM，渲染基底時段時逐一比對，
         // 只當基底時段與某個例外 start_time 完全重疊才跳過（代表那格是被調走/取代）。
-        const scheduledExcStartSet = new Set(
-          exceptions.value
-            .filter(ex =>
-              ex.status === 'scheduled' &&
-              (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
-              toYmd(ex.schedule_date) === targetDate
-            )
-            .map(ex => String(ex.start_time || '').slice(0, 5))
-            .filter(Boolean)
-        );
+        const scheduledExcStartSet = scheduledExceptionStartSetForCourseDate(exceptions.value, targetDate, cid);
         if (sessionSet) {
           if (!sessionSet.has(targetYmd)) continue;
           const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
@@ -1941,11 +1936,8 @@ const filteredCourses = computed(() => {
     });
     // 2. Add extra and scheduled (rescheduled-to) classes that fall onto this week's dates
     //    已刪除的課程（student_course_id 不在 courses 內）不顯示調課
-    //    若該日該課程已請假，則不顯示該筆調課/加課
+    //    若該日該課程已請假，helper 會讓請假基底卡優先顯示，避免 scheduled 例外吃掉「假」角標
     const courseIds = new Set(courses.value.map(c => c.id));
-    const hasLeave = (date, courseId) => exceptions.value.some(ex =>
-      ex.status === 'leave' && toYmd(ex.schedule_date) === date && ex.student_course_id == courseId
-    );
     const hasSameStudentSlot = (ex, dow) => {
       const exStart = normalizeTimeTo30(ex.start_time || '');
       return mergedList.some(item =>
@@ -1967,9 +1959,8 @@ const filteredCourses = computed(() => {
       const targetDate = getDisplayDateFull(dow);
       const dayExceptions = exceptions.value.filter(ex =>
         toYmd(ex.schedule_date) === targetDate &&
-        ex.status === 'scheduled' &&
+        shouldRenderScheduledException(ex, exceptions.value, targetDate) &&
         (ex.student_course_id == null || courseIds.has(Number(ex.student_course_id))) &&
-        !hasLeave(targetDate, ex.student_course_id) &&
         (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
       );
       
