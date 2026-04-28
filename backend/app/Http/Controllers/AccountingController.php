@@ -22,6 +22,110 @@ class AccountingController extends Controller
         return $this->paymentResponse($request, true);
     }
 
+    public function settledCourses(Request $request)
+    {
+        $query = StudentClass::with(['student', 'subjectRecord'])
+            ->where(function ($q) {
+                $q->where('Paid', 1)
+                    ->orWhereHas('invoices', fn ($invoice) => $invoice->where('Status', 'paid'));
+            });
+
+        $guard = $this->applyStudentClassCampusGuard($request, $query);
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        if ($request->filled('student')) {
+            $student = trim((string) $request->input('student'));
+            $query->whereHas('student', fn ($q) => $q->where('name', 'like', "%{$student}%"));
+        }
+
+        if ($request->filled('subject')) {
+            $subject = trim((string) $request->input('subject'));
+            $query->whereHas('subjectRecord', fn ($q) => $q->where('Subject_Name', 'like', "%{$subject}%"));
+        }
+
+        $courses = $query
+            ->orderByDesc('PayDate')
+            ->orderByDesc('ID')
+            ->limit(500)
+            ->get();
+        $courseIds = $courses->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
+        $invoiceMap = Invoice::with(['payments' => fn ($q) => $q->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method'])])
+            ->whereIn('StudentClassID', $courseIds)
+            ->get()
+            ->groupBy('StudentClassID');
+        $reportMap = PaymentReport::query()
+            ->whereIn('StudentClassID', $courseIds)
+            ->where('status', 'confirmed')
+            ->select(['id', 'StudentClassID', 'payment_date'])
+            ->orderByDesc('payment_date')
+            ->orderByDesc('id')
+            ->get()
+            ->groupBy('StudentClassID');
+
+        $rows = $courses->map(function (StudentClass $course) use ($invoiceMap, $reportMap) {
+            $invoices = $invoiceMap->get((int) $course->ID, collect());
+            $reports = $reportMap->get((int) $course->ID, collect());
+            $invoiceTotal = 0;
+            $appliedTotal = 0;
+            $overpaidTotal = 0;
+            $outstandingTotal = 0;
+            foreach ($invoices as $invoice) {
+                $total = (int) ($invoice->TotalAmount ?? 0);
+                $positive = (int) $invoice->payments
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
+                    ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
+                $voided = abs((int) $invoice->payments
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
+                    ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+                $net = max(0, $positive - $voided);
+                $applied = min($total, $net);
+                $invoiceTotal += $total;
+                $appliedTotal += $applied;
+                $overpaidTotal += max(0, $net - $total);
+                $outstandingTotal += max(0, $total - $applied);
+            }
+
+            $legacyPaid = $invoices->isEmpty() && (int) ($course->Paid ?? 0) === 1;
+            $latestReport = $reports->first();
+            $lastPaidAt = $course->PayDate ? substr((string) $course->PayDate, 0, 10) : null;
+            if (!$lastPaidAt && $latestReport?->payment_date) {
+                $lastPaidAt = $latestReport->payment_date->toDateString();
+            }
+
+            return [
+                'student_class_id' => (int) $course->ID,
+                'course_ref' => $this->courseRef((int) $course->ID),
+                'student_id' => (int) $course->StudentID,
+                'student_name' => (string) ($course->student?->name ?? ''),
+                'subject' => $course->displaySubjectName(),
+                'schedule_mode' => (string) ($course->ScheduleMode ?? ''),
+                'charge' => (int) ($course->Charge ?? 0),
+                'paid_amount' => $invoices->isEmpty() ? ((int) ($course->Paid ?? 0) === 1 ? (int) ($course->Charge ?? 0) : 0) : $appliedTotal,
+                'invoice_total' => $invoiceTotal,
+                'outstanding_amount' => $outstandingTotal,
+                'overpaid_amount' => $overpaidTotal,
+                'invoice_count' => $invoices->count(),
+                'receipt_count' => $reports->count(),
+                'last_paid_at' => $lastPaidAt,
+                'legacy_paid_without_invoice' => $legacyPaid,
+                'has_exception' => $overpaidTotal > 0,
+            ];
+        })->values();
+
+        return response()->json([
+            'data' => $rows,
+            'summary' => [
+                'course_count' => $rows->count(),
+                'legacy_count' => $rows->where('legacy_paid_without_invoice', true)->count(),
+                'exception_count' => $rows->where('has_exception', true)->count(),
+                'paid_total' => (int) $rows->sum('paid_amount'),
+                'overpaid_total' => (int) $rows->sum('overpaid_amount'),
+            ],
+        ]);
+    }
+
     public function ledger(Request $request)
     {
         $studentClassId = (int) $request->input('student_class_id', 0);
@@ -243,6 +347,7 @@ class AccountingController extends Controller
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
+                    'action' => $this->ledgerAnomalyAction('receipt_without_invoice', (int) $report->id, $report->payment_id ? (int) $report->payment_id : null),
                 ];
             }
             if ($report->status === 'confirmed' && empty($report->payment_id)) {
@@ -254,6 +359,7 @@ class AccountingController extends Controller
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => null,
+                    'action' => $this->ledgerAnomalyAction('confirmed_receipt_without_payment', (int) $report->id, null),
                 ];
             }
             if ($report->payment_id && !in_array((int) $report->payment_id, $paymentIds, true)) {
@@ -265,6 +371,7 @@ class AccountingController extends Controller
                     'student_class_id' => (int) $report->StudentClassID,
                     'report_id' => (int) $report->id,
                     'payment_id' => (int) $report->payment_id,
+                    'action' => $this->ledgerAnomalyAction('receipt_payment_outside_ledger', (int) $report->id, (int) $report->payment_id),
                 ];
             }
             return $row;
@@ -442,6 +549,29 @@ class AccountingController extends Controller
         return null;
     }
 
+    private function applyStudentClassCampusGuard(Request $request, $query)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin'
+            ? []
+            : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+
+        if ($request->filled('branch_id')) {
+            $branchId = (int) $request->input('branch_id');
+            if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            $query->whereHas('student', fn ($q) => $q->where('CampusID', $branchId));
+            return null;
+        }
+
+        if (!empty($campusIds)) {
+            $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
+        }
+
+        return null;
+    }
+
     private function authorizeCampusForStudent(Request $request, int $campusId)
     {
         $role = $request->attributes->get('auth_role');
@@ -470,7 +600,22 @@ class AccountingController extends Controller
             'student_class_id' => (int) $invoice->StudentClassID,
             'report_id' => $reportId,
             'payment_id' => $paymentId,
+            'action' => $this->ledgerAnomalyAction($code, $reportId, $paymentId),
         ];
+    }
+
+    private function ledgerAnomalyAction(string $code, ?int $reportId, ?int $paymentId): array
+    {
+        if ($reportId && in_array($code, ['receipt_without_invoice', 'receipt_without_payment', 'confirmed_receipt_without_payment'], true)) {
+            return ['type' => 'void_report', 'label' => '撤銷/沖銷收據', 'report_id' => $reportId];
+        }
+        if ($reportId) {
+            return ['type' => 'view_receipt', 'label' => '查看收據', 'report_id' => $reportId];
+        }
+        if ($paymentId) {
+            return ['type' => 'manual_review', 'label' => '需人工修復 Payment 關聯'];
+        }
+        return ['type' => 'review', 'label' => '檢視對帳明細'];
     }
 
     private function ledgerReportRow(PaymentReport $report): array
@@ -544,7 +689,7 @@ class AccountingController extends Controller
 
         return [
             'report_id' => (int) $report->id,
-            'receipt_no' => 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT),
+            'receipt_no' => $this->receiptNo((int) $report->id, $paymentDate),
             'payment_date' => $paymentDate,
             'student_id' => (int) $report->StudentID,
             'student_name' => $report->student?->name ?? $report->reported_by_name,
