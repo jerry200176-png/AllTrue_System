@@ -644,6 +644,7 @@
               <th>期別</th>
               <th>應繳日</th>
               <th>付款日</th>
+              <th>付款明細</th>
               <th class="invoice-amount-cell">金額</th>
               <th class="invoice-amount-cell">已繳</th>
               <th class="invoice-status-cell">狀態</th>
@@ -655,6 +656,22 @@
               <td>{{ formatBillingPeriod(inv.billing_period) }}</td>
               <td>{{ inv.due_date || '—' }}</td>
               <td>{{ invoicePaidDateLabel(inv) }}</td>
+              <td>
+                <div v-if="inv.payments?.length" class="invoice-payment-list">
+                  <div
+                    v-for="payment in inv.payments"
+                    :key="payment.id"
+                    :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
+                  >
+                    <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
+                    <span class="invoice-payment-amount">{{ payment.is_void ? '-' : '+' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
+                    <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
+                    <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
+                    <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
+                  </div>
+                </div>
+                <span v-else class="hint">—</span>
+              </td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
               <td class="invoice-status-cell">
@@ -2249,6 +2266,11 @@ const invoicePaidDateLabel = (invoice) => {
   if (invoice?.paid_at) return invoice.paid_at;
   return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
 };
+const invoicePaymentMethodLabel = (method) => ({
+  cash: '現金',
+  transfer: '匯款',
+  void: '沖銷',
+}[method] || method || '—');
 
 const loadCourses = async (page = 1) => {
   if (!props.branchId) {
@@ -5421,6 +5443,41 @@ button.danger:disabled {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
+}
+.invoice-payment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+}
+.invoice-payment-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+.invoice-payment-row--void {
+  color: var(--text-light);
+  text-decoration: line-through;
+}
+.invoice-payment-date,
+.invoice-payment-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.invoice-payment-method,
+.invoice-payment-receipt,
+.invoice-payment-void {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: var(--text-light);
+}
+.invoice-payment-void {
+  background: #fef3c7;
+  color: #92400e;
 }
 .invoice-modal-actions {
   margin-top: 18px;

@@ -60,6 +60,11 @@ function formatDate(d) {
   if (!d) return '—';
   return d.replace(/-/g, '/');
 }
+const BRAND_TITLE = '台北全真一對一補習班';
+function formatBrandTitle(campusName) {
+  const branch = String(campusName || '').trim();
+  return branch ? `${BRAND_TITLE}｜${branch}` : BRAND_TITLE;
+}
 
 const STATUS_ZH = {
   attended: '已到課', completed: '已完課', late: '遲到', absent: '缺席',
@@ -269,12 +274,8 @@ function drawSlip(canvas, data) {
 
   ctx.font = '500 14px "Noto Sans TC", "Inter", sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  if (data.campus_name) {
-    ctx.fillText(data.campus_name, W / 2, 80);
-    ctx.fillText(`學生：${data.student_name}`, W / 2, 104);
-  } else {
-    ctx.fillText(`學生：${data.student_name}`, W / 2, 90);
-  }
+  ctx.fillText(truncateText(ctx, formatBrandTitle(data.campus_name), INNER), W / 2, 80);
+  ctx.fillText(`學生：${data.student_name}`, W / 2, 104);
 
   // ── Amount block ──
   let y = headerH + 22;
@@ -495,8 +496,8 @@ function drawSlip(canvas, data) {
 
   y += 28;
   ctx.fillStyle = '#CFD8DC';
-  ctx.font = '400 10px "Inter", sans-serif';
-  ctx.fillText(`AllTrue ${data.campus_name || ''} — ${new Date().toLocaleDateString('zh-TW')}`, W / 2, y + 8);
+  ctx.font = '400 10px "Noto Sans TC", "Inter", sans-serif';
+  ctx.fillText(`${formatBrandTitle(data.campus_name)} — ${new Date().toLocaleDateString('zh-TW')}`, W / 2, y + 8);
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────
