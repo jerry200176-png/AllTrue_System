@@ -228,6 +228,7 @@ Route::prefix('v1')->group(function () {
         Route::get('invoices/{invoice}/slip-data', [BillingController::class, 'slipData']);
         Route::post('invoices/{invoice}/payments', [BillingController::class, 'recordPayment']);
         Route::post('invoices/{invoice}/void', [BillingController::class, 'voidInvoice']);
+        Route::post('invoices/{invoice}/exception-void', [BillingController::class, 'exceptionVoidInvoice']);
         Route::get('invoices/export', [ExportController::class, 'invoices']);
 
         Route::post('learning-records/{learningRecord}/approve', [LearningRecordController::class, 'approve']);
