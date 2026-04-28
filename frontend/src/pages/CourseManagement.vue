@@ -653,10 +653,10 @@
         <table v-else class="invoice-table">
           <thead>
             <tr>
-              <th>期別</th>
+              <th>帳單 / 期別</th>
               <th>應繳日</th>
               <th>付款日</th>
-              <th>付款明細</th>
+              <th>已收款紀錄</th>
               <th class="invoice-amount-cell">金額</th>
               <th class="invoice-amount-cell">已繳</th>
               <th class="invoice-status-cell">狀態</th>
@@ -665,7 +665,10 @@
           </thead>
           <tbody>
             <tr v-for="inv in invoiceModalList" :key="inv.id">
-              <td>{{ formatBillingPeriod(inv.billing_period) }}</td>
+              <td>
+                <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
+                <div class="hint">{{ inv.course_ref || `COURSE-${String(invoiceModalCourse?.ID || '').padStart(6, '0')}` }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
+              </td>
               <td>{{ inv.due_date || '—' }}</td>
               <td>{{ invoicePaidDateLabel(inv) }}</td>
               <td>
@@ -676,7 +679,7 @@
                     :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
                   >
                     <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
-                    <span class="invoice-payment-amount">{{ payment.is_void ? '-' : '+' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
+                    <span class="invoice-payment-amount">{{ payment.is_void ? '已沖銷 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
                     <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
                     <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
                     <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
