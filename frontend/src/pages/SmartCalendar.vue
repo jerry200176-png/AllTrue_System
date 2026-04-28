@@ -841,6 +841,10 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
+import {
+  scheduledExceptionStartSetForCourseDate,
+  shouldRenderScheduledException,
+} from '../lib/calendarExceptionMerge';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
@@ -1373,7 +1377,10 @@ function resolveAllCourseGridTimesForDate(c, dow, targetYmd) {
           const st = normalizeTimeTo30(hit.start_time);
           const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
           const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
-          return { start_time: st, end_time: en, duration_hours: dh };
+          const teacherFields = hit.teacher_id != null
+            ? { teacher_id: hit.teacher_id, teacher_name: hit.teacher_name || c.teacher_name }
+            : {};
+          return { ...teacherFields, start_time: st, end_time: en, duration_hours: dh };
         });
       }
       // 當日僅有已取消堂次時，不可回退契約時段，否則課表仍會出現區塊 +「取消」角標
@@ -1881,7 +1888,13 @@ const filteredCourses = computed(() => {
         );
         const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
         const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
-        const hasReschedule = rawHasReschedule && !hasAttendedSession;
+        const hasLeaveOnDate = sessionRows.some(r => ['leave', 'leave_adjusted', 'excused'].includes(String(r.status || '').toLowerCase()))
+          || exceptions.value.some(ex =>
+            ex.status === 'leave' &&
+            (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
+            toYmd(ex.schedule_date) === targetDate
+          );
+        const hasReschedule = rawHasReschedule && !hasAttendedSession && !hasLeaveOnDate;
         // PRD-E (2026-04-18, plan 8c1673b9) — 多日多時段課程不可被單一 scheduled 例外吃掉全部基底格。
         // 舊邏輯 hasScheduledExc 為 boolean，只要該日該課程存在任何 status='scheduled' 例外就
         // 整個日期的基底 weekly pattern 不渲染；遇到 days_of_week=[3,7] 這類多日多時段課程
@@ -1889,16 +1902,7 @@ const filteredCourses = computed(() => {
         // scheduled 例外，週日 15:00-17:00 的基底格會被誤抹除。
         // 修正：改以 Set 收集該日該課程所有 scheduled 例外的 HH:MM，渲染基底時段時逐一比對，
         // 只當基底時段與某個例外 start_time 完全重疊才跳過（代表那格是被調走/取代）。
-        const scheduledExcStartSet = new Set(
-          exceptions.value
-            .filter(ex =>
-              ex.status === 'scheduled' &&
-              (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
-              toYmd(ex.schedule_date) === targetDate
-            )
-            .map(ex => String(ex.start_time || '').slice(0, 5))
-            .filter(Boolean)
-        );
+        const scheduledExcStartSet = scheduledExceptionStartSetForCourseDate(exceptions.value, targetDate, cid);
         if (sessionSet) {
           if (!sessionSet.has(targetYmd)) continue;
           const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
@@ -1907,7 +1911,7 @@ const filteredCourses = computed(() => {
             const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
             for (const t of times) {
               const tStart = String(t.start_time || '').slice(0, 5);
-              if (scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
+              if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
               if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
               mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
             }
@@ -1923,7 +1927,7 @@ const filteredCourses = computed(() => {
           const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
           for (const t of times) {
             const tStart = String(t.start_time || '').slice(0, 5);
-            if (scheduledExcStartSet.has(tStart)) continue;
+            if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue;
             if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
             mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
           }
@@ -1932,11 +1936,8 @@ const filteredCourses = computed(() => {
     });
     // 2. Add extra and scheduled (rescheduled-to) classes that fall onto this week's dates
     //    已刪除的課程（student_course_id 不在 courses 內）不顯示調課
-    //    若該日該課程已請假，則不顯示該筆調課/加課
+    //    若該日該課程已請假，helper 會讓請假基底卡優先顯示，避免 scheduled 例外吃掉「假」角標
     const courseIds = new Set(courses.value.map(c => c.id));
-    const hasLeave = (date, courseId) => exceptions.value.some(ex =>
-      ex.status === 'leave' && toYmd(ex.schedule_date) === date && ex.student_course_id == courseId
-    );
     const hasSameStudentSlot = (ex, dow) => {
       const exStart = normalizeTimeTo30(ex.start_time || '');
       return mergedList.some(item =>
@@ -1958,9 +1959,8 @@ const filteredCourses = computed(() => {
       const targetDate = getDisplayDateFull(dow);
       const dayExceptions = exceptions.value.filter(ex =>
         toYmd(ex.schedule_date) === targetDate &&
-        ex.status === 'scheduled' &&
+        shouldRenderScheduledException(ex, exceptions.value, targetDate) &&
         (ex.student_course_id == null || courseIds.has(Number(ex.student_course_id))) &&
-        !hasLeave(targetDate, ex.student_course_id) &&
         (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
       );
       
@@ -2793,25 +2793,25 @@ const submitLeave = async () => {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
   const token = session?.access_token || '';
   const baseUrl = import.meta.env.VITE_API_BASE || '/api';
-  let ok = false;
-  if (token) {
-    try {
-      const res = await fetch(`${baseUrl}/v1/schedules`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.warn('Leave API error:', res.status, errBody);
-      }
-      ok = res.ok;
-    } catch (_) {}
+  if (!token) {
+    alert('請假登記失敗：請重新登入後再試');
+    return;
   }
-  if (!ok) {
-    const { error } = await supabase.from('schedules').insert([payload]);
-    if (error) { alert('請假登記失敗：' + (error.message || '請稍後再試')); return; }
+  try {
+    const res = await fetch(`${baseUrl}/v1/schedules`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('請假登記失敗：' + (body.message || res.statusText || '請稍後再試'));
+      return;
+    }
+  } catch (error) {
+    alert('請假登記失敗：' + (error?.message || '請稍後再試'));
+    return;
   }
   showLeaveModal.value = false;
   contextMenu.value = { show: false, x: 0, y: 0, course: null, date: null };

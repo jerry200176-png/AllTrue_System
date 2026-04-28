@@ -68,6 +68,7 @@ class AlertController extends Controller
         $allClassIds = $countResults->pluck('ID')->merge($dateResults->pluck('ID'))->unique()->values()->all();
         $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
+        $openMonthlyInvoiceMap = self::openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
         $pendingReportMap = self::latestPendingReportByStudentClassIds($allClassIds);
         $newerCourseMap = self::newerCourseByStudentClassIds($allClassIds);
 
@@ -157,7 +158,7 @@ class AlertController extends Controller
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
                 $dateResults->filter(fn ($c) => !$monthlyPkgMemberIds->contains($c->ID))
-                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today))->filter()
+                    ->map(fn ($c) => $this->mapMonthlyAlert($c, $today, $openMonthlyInvoiceMap[(int) $c->ID] ?? null))->filter()
             )
             ->map(function ($row) use ($paidAtMap, $allResults, $invoiceAggMap, $pendingReportMap, $newerCourseMap) {
                 $classId = (int) $row['id'];
@@ -230,11 +231,21 @@ class AlertController extends Controller
         ];
     }
 
-    private function mapMonthlyAlert(StudentClass $c, Carbon $today): ?array
+    private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null): ?array
     {
         $settlementDay = (int) ($c->settlement_day ?? 0);
         if ($settlementDay < 1 || $settlementDay > 31) {
             return null;
+        }
+
+        if ($openInvoice !== null && !empty($openInvoice['due_date'])) {
+            $invoiceDue = Carbon::parse($openInvoice['due_date'])->startOfDay();
+            $daysUntilDue = (int) $today->copy()->startOfDay()->diffInDays($invoiceDue, false);
+            if ($daysUntilDue > 5) {
+                return null;
+            }
+
+            return $this->monthlyAlertRow($c, $invoiceDue, $daysUntilDue, $openInvoice);
         }
 
         $isPaid = (int) ($c->Paid ?? 0) === 1;
@@ -274,11 +285,11 @@ class AlertController extends Controller
         return $this->monthlyAlertRow($c, $nextDue, $daysLeft);
     }
 
-    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement): array
+    private function monthlyAlertRow(StudentClass $c, Carbon $dueDate, int $daysUntilSettlement, ?array $invoice = null): array
     {
         $isPaid = (int) ($c->Paid ?? 0) === 1;
 
-        return [
+        $row = [
             'id'                 => $c->ID,
             'student_id'         => (int) $c->StudentID,
             'student_name'       => $c->student->name ?? 'Unknown',
@@ -293,6 +304,14 @@ class AlertController extends Controller
             'settlement_day'     => (int) ($c->settlement_day ?? 0),
             'due_date'           => $dueDate->toDateString(),
         ];
+
+        if ($invoice !== null) {
+            $row['invoice_id'] = (int) $invoice['id'];
+            $row['billing_period'] = $invoice['billing_period'] ?? null;
+            $row['invoice_status'] = $invoice['status'] ?? null;
+        }
+
+        return $row;
     }
 
     private function settlementDateInMonth(int $year, int $month, int $settlementDay): Carbon
@@ -301,6 +320,37 @@ class AlertController extends Controller
         $d = max(1, min($settlementDay, $dim));
 
         return Carbon::createFromDate($year, $month, $d)->startOfDay();
+    }
+
+    private static function openInvoiceByStudentClassIds(array $studentClassIds): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $studentClassIds)));
+        if (empty($ids)) {
+            return [];
+        }
+
+        $rows = Invoice::query()
+            ->whereIn('StudentClassID', $ids)
+            ->whereIn('Status', ['unpaid', 'partial'])
+            ->orderBy('DueDate')
+            ->orderBy('id')
+            ->get(['id', 'StudentClassID', 'DueDate', 'billing_period', 'Status']);
+
+        $map = [];
+        foreach ($rows as $invoice) {
+            $classId = (int) $invoice->StudentClassID;
+            if (isset($map[$classId]) || !$invoice->DueDate) {
+                continue;
+            }
+            $map[$classId] = [
+                'id' => (int) $invoice->id,
+                'due_date' => substr((string) $invoice->DueDate, 0, 10),
+                'billing_period' => $invoice->billing_period,
+                'status' => $invoice->Status,
+            ];
+        }
+
+        return $map;
     }
 
     /**
@@ -489,6 +539,9 @@ class AlertController extends Controller
 
         $rows = DB::table('Invoice')
             ->whereIn('StudentClassID', $studentClassIds)
+            ->where(function ($q) {
+                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+            })
             ->select(
                 'StudentClassID',
                 DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
@@ -603,6 +656,9 @@ class AlertController extends Controller
         $rows = DB::table('Invoice')
             ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
             ->whereIn('Invoice.StudentClassID', $studentClassIds)
+            ->where(function ($q) {
+                $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+            })
             ->select('Invoice.StudentClassID', DB::raw('MAX(Payment.PaidAt) as last_paid_at'))
             ->groupBy('Invoice.StudentClassID')
             ->get();

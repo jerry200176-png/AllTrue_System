@@ -50,6 +50,16 @@ class StudentClass extends Model
         return $this->hasMany(LearningRecord::class, 'StudentClassID', 'ID');
     }
 
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class, 'StudentClassID', 'ID');
+    }
+
+    public function paymentReports()
+    {
+        return $this->hasMany(PaymentReport::class, 'StudentClassID', 'ID');
+    }
+
     public function room()
     {
         return $this->belongsTo(Room::class, 'room_id', 'id');

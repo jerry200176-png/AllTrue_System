@@ -22,6 +22,13 @@ class Invoice extends Model
         'billing_period',
     ];
 
+    public function scopeNotVoided($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('Status')->orWhere('Status', '!=', 'void');
+        });
+    }
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');

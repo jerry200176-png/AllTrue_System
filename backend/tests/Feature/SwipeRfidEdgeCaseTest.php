@@ -8,8 +8,10 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
+use App\Models\TeacherSignIn;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -243,6 +245,53 @@ class SwipeRfidEdgeCaseTest extends TestCase
 
         $this->assertSame(1, $count,
             'TD-007: ClassSession 已有 active StudentSignIn，刷卡不應再新增一筆');
+    }
+
+    /**
+     * @test
+     * RFID 同時綁到同分校老師與學生時，老師每分校卡片設定（UserCampus.RFID）
+     * 必須優先，避免老師本人刷卡被靜默寫成學生出勤而消失於老師打卡列表。
+     */
+    public function teacher_campus_rfid_takes_precedence_over_student_rfid_collision(): void
+    {
+        $rfid = 'EDGE-COLLIDE';
+        $student = $this->makeStudent();
+        $student->RFID = $rfid;
+        $student->save();
+
+        $teacherId = DB::table('User')->insertGetId([
+            'LoginName' => 'collision-teacher@example.com',
+            'Name' => '黃芝琳',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0900000000',
+        ]);
+        DB::table('Teacher')->insert([
+            'id' => $teacherId,
+            'CampusID' => $this->campus->id,
+            'T_Name' => '黃芝琳',
+            'RFID' => null,
+            'Enable' => 1,
+            'MDT' => now(),
+            'TelegramID' => '',
+        ]);
+        DB::table('UserCampus')->insert([
+            'CampusID' => $this->campus->id,
+            'UserID' => $teacherId,
+            'Admin' => 0,
+            'Approved' => 1,
+            'RFID' => $rfid,
+        ]);
+
+        $res = $this->swipe($rfid);
+
+        $res->assertStatus(201)
+            ->assertJsonPath('type', 'teacher')
+            ->assertJsonPath('action', 'sign_in');
+
+        $this->assertSame(1, TeacherSignIn::where('TeacherID', $teacherId)->count());
+        $this->assertSame(0, StudentSignIn::where('StudentID', $student->id)->count(),
+            '同卡衝突時不可靜默建立學生出勤，否則老師打卡列表會看不到');
     }
 
     // ── TD-009: backfillPresenceWindow — SignOutDT 必須等於 session EndTime ────

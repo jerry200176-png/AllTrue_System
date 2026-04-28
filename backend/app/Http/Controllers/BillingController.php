@@ -43,6 +43,8 @@ class BillingController extends Controller
 
         if ($request->filled('status')) {
             $query->where('Status', $request->input('status'));
+        } else {
+            $query->notVoided();
         }
 
         $invoices = $query->with(['student', 'items', 'items.studentClass'])->orderBy('id', 'desc')->paginate(20);
@@ -145,6 +147,72 @@ class BillingController extends Controller
             return response()->json([
                 'invoice' => $invoice,
                 'payment' => $payment,
+            ]);
+        });
+    }
+
+    public function voidInvoice(Request $request, Invoice $invoice)
+    {
+        $invoice->loadMissing('student');
+        if (!$invoice->student) {
+            return response()->json(['message' => 'Invoice has no linked student'], 404);
+        }
+        $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
+
+        $data = $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        return DB::transaction(function () use ($request, $invoice, $data) {
+            $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            $status = strtolower((string) ($invoice->Status ?? ''));
+
+            if ($status === 'void') {
+                return response()->json(['message' => '此帳單已作廢。'], 422);
+            }
+
+            $hasEffectivePayment = Payment::where('InvoiceID', $invoice->id)
+                ->where('Amount', '>', 0)
+                ->where(function ($query) {
+                    $query->whereNull('Method')->orWhere('Method', '!=', 'void');
+                })
+                ->exists();
+
+            if (in_array($status, ['paid', 'partial'], true) || (int) ($invoice->PaidAmount ?? 0) > 0 || $hasEffectivePayment) {
+                return response()->json([
+                    'message' => '此帳單已有收款紀錄，請先走收款撤銷/沖銷流程，不可直接作廢帳單。',
+                ], 422);
+            }
+
+            $authUser = $request->attributes->get('auth_user');
+            $reason = trim((string) $data['reason']);
+            $audit = sprintf(
+                '[void: %s; user_id=%s; at=%s]',
+                str_replace(["\r", "\n"], ' ', $reason),
+                $authUser?->id ?? 'system',
+                now()->format('Y-m-d H:i:s')
+            );
+
+            $note = trim((string) ($invoice->Note ?? ''));
+            $invoice->Status = 'void';
+            $invoice->Note = trim($note . ' ' . $audit);
+            $invoice->save();
+
+            Log::info('[InvoiceVoid] invoice voided', [
+                'invoice_id' => $invoice->id,
+                'student_id' => $invoice->StudentID,
+                'student_class_id' => $invoice->StudentClassID,
+                'campus_id' => $invoice->student?->CampusID,
+                'user_id' => $authUser?->id,
+            ]);
+
+            return response()->json([
+                'message' => '帳單已作廢。',
+                'invoice' => [
+                    'id' => (int) $invoice->id,
+                    'status' => $invoice->Status,
+                    'note' => $invoice->Note,
+                ],
             ]);
         });
     }
