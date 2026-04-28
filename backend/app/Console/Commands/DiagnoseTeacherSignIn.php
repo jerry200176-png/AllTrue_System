@@ -40,6 +40,9 @@ class DiagnoseTeacherSignIn extends Command
         $this->info("Teachers matched: {$teachers->count()}");
 
         if ($teachers->isEmpty()) {
+            if ($loginName !== '') {
+                $this->printLoginFallback($loginName);
+            }
             return self::SUCCESS;
         }
 
@@ -130,6 +133,54 @@ class DiagnoseTeacherSignIn extends Command
                 $row->Status,
             ])->all());
         }
+    }
+
+    private function printLoginFallback(string $loginName): void
+    {
+        $users = DB::table('User as u')
+            ->leftJoin('UserCampus as uc', 'uc.UserID', '=', 'u.id')
+            ->leftJoin('Campus as c', 'c.id', '=', 'uc.CampusID')
+            ->leftJoin('Teacher as t', 't.id', '=', 'u.id')
+            ->where('u.LoginName', $loginName)
+            ->orderBy('u.id')
+            ->get([
+                'u.id as user_id',
+                'u.Name as user_name',
+                'u.type as user_type',
+                'u.status as user_status',
+                'uc.CampusID as user_campus_id',
+                'uc.Approved as approved',
+                'uc.Admin as admin',
+                'uc.RFID as uc_rfid',
+                'c.name as campus_name',
+                't.id as teacher_id',
+                't.T_Name as teacher_name',
+                't.CampusID as teacher_campus_id',
+                't.Enable as teacher_enable',
+                't.RFID as legacy_rfid',
+            ]);
+
+        $this->info("Login fallback User/UserCampus/Teacher rows: {$users->count()}");
+        if ($users->isEmpty()) {
+            return;
+        }
+
+        $this->table(['user_id', 'user_name', 'user_type', 'user_status', 'user_campus_id', 'campus_name', 'approved', 'admin', 'uc_rfid', 'teacher_id', 'teacher_name', 'teacher_campus_id', 'teacher_enable', 'legacy_rfid'], $users->map(fn ($row) => [
+            $row->user_id,
+            $row->user_name,
+            $row->user_type,
+            $row->user_status,
+            $row->user_campus_id,
+            $row->campus_name,
+            $row->approved,
+            $row->admin,
+            $this->fingerprint($row->uc_rfid),
+            $row->teacher_id,
+            $row->teacher_name,
+            $row->teacher_campus_id,
+            $row->teacher_enable,
+            $this->fingerprint($row->legacy_rfid),
+        ])->all());
     }
 
     private function printRelatedRfidRows(object $teacher, string $date): void

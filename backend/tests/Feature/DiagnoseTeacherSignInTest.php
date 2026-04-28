@@ -55,6 +55,27 @@ class DiagnoseTeacherSignInTest extends TestCase
         $this->assertDatabaseCount('StudentSingIn', 1);
     }
 
+    public function test_diagnostic_login_fallback_reports_user_without_active_teacher(): void
+    {
+        DB::table('User')->insert([
+            'LoginName' => 'login-only@example.com',
+            'Name' => '登入帳號老師',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => '0900000001',
+        ]);
+
+        $exit = Artisan::call('teacher-signin:diagnose', [
+            '--date' => '2026-04-28',
+            '--login-name' => 'login-only@example.com',
+        ]);
+
+        $this->assertSame(0, $exit);
+        $this->assertStringContainsString('Login fallback User/UserCampus/Teacher rows: 1', Artisan::output());
+        $this->assertDatabaseCount('TeacherSingIn', 0);
+        $this->assertDatabaseCount('StudentSingIn', 0);
+    }
+
     private function makeFixture(?string $loginName = null): array
     {
         static $n = 0;
