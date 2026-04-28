@@ -615,6 +615,13 @@
       @confirmed="onPaymentEntryConfirmed"
     />
 
+    <AccountingLedgerModal
+      :show="ledgerOpen"
+      :student-class-id="ledgerStudentClassId"
+      :branch-id="props.branchId"
+      @close="ledgerOpen = false"
+    />
+
     <!-- 月結帳單記錄 Modal -->
     <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
       <div class="modal course-modal invoice-modal">
@@ -625,7 +632,12 @@
               {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
             </p>
           </div>
-          <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
+          <div class="invoice-modal-tools">
+            <button class="small ghost btn-ledger" type="button" @click="openLedgerForCourse(invoiceModalCourse)">
+              對帳
+            </button>
+            <button class="icon-btn" type="button" aria-label="關閉帳單記錄" @click="closeInvoiceModal">×</button>
+          </div>
         </div>
 
         <div v-if="invoiceModalLoading" class="invoice-modal-state" role="status">
@@ -777,6 +789,7 @@ import MakeupSlotsModal from '../components/course-management/MakeupSlotsModal.v
 import SessionEditModal from '../components/course-management/SessionEditModal.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
+import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import { fetchTeacherAvailability, undoSubstitute } from '../lib/substituteApi.js';
 
@@ -2973,6 +2986,8 @@ const confirmDeleteTarget = ref(null);
 const deleteCourseSubmitting = ref(false);
 const paymentEntryOpen = ref(false);
 const paymentEntryRow = ref(null);
+const ledgerOpen = ref(false);
+const ledgerStudentClassId = ref(null);
 const invoiceModalOpen = ref(false);
 const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
@@ -2981,6 +2996,12 @@ const invoiceModalError = ref('');
 
 const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;
+};
+
+const openLedgerForCourse = (course) => {
+  if (!course?.id) return;
+  ledgerStudentClassId.value = course.id;
+  ledgerOpen.value = true;
 };
 
 const openInvoiceModal = async (course) => {
@@ -5326,6 +5347,14 @@ button.danger:disabled {
 .btn-invoices:hover {
   background: #dbeafe !important;
 }
+.btn-ledger {
+  border-color: #c7d2fe !important;
+  color: #4338ca !important;
+  background: #eef2ff !important;
+}
+.btn-ledger:hover {
+  background: #e0e7ff !important;
+}
 .invoice-modal {
   width: min(560px, calc(100vw - 32px));
 }
@@ -5335,6 +5364,11 @@ button.danger:disabled {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+.invoice-modal-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .invoice-modal-header .modal-desc {
   margin: 4px 0 0;
