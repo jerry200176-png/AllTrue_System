@@ -23,15 +23,22 @@
       </div>
       <ul v-else class="rsc-list">
         <li v-for="row in displayedItems" :key="row.id" class="rsc-row">
+          <span class="rsc-row__rail" aria-hidden="true"></span>
           <div class="rsc-row__meta">
             <span class="rsc-row__date">{{ formatDate(row.session_date) }}</span>
             <span class="rsc-row__time">{{ formatTimeRange(row.start_time, row.end_time) }}</span>
             <span class="rsc-row__student">{{ row.student_name }} · {{ row.subject || '課程' }}</span>
           </div>
           <div class="rsc-row__flow">
-            <span class="rsc-name rsc-name--old">{{ row.old_teacher_name || '—' }}</span>
+            <span class="rsc-name rsc-name--old">
+              <small>原老師</small>
+              <strong>{{ row.old_teacher_name || '—' }}</strong>
+            </span>
             <span class="material-symbols-outlined rsc-arrow-icon" aria-hidden="true">arrow_forward</span>
-            <span class="rsc-name rsc-name--new">{{ row.new_teacher_name || '—' }}</span>
+            <span class="rsc-name rsc-name--new">
+              <small>代課</small>
+              <strong>{{ row.new_teacher_name || '—' }}</strong>
+            </span>
             <span
               v-if="row.operation_type === 'substitute_with_reschedule'"
               class="rsc-row__chip rsc-row__chip--rescheduled"
@@ -166,7 +173,11 @@ defineExpose({ reload: load });
 .rsc {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+}
+.rsc::before {
+  background: linear-gradient(90deg, var(--porsche-ink), rgba(196, 122, 24, 0.72), transparent);
+  opacity: 0.86;
 }
 .rsc-head { display: flex; align-items: flex-start; gap: 9px; }
 .rsc-title {
@@ -194,132 +205,201 @@ defineExpose({ reload: load });
   line-height: 1.2;
 }
 
-.rsc-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-
-.rsc-row {
-  padding: 10px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  background: #fff;
+.rsc-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transition: box-shadow 0.15s, border-color 0.15s;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 4px;
+}
+
+.rsc-row {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(250, 250, 248, 0.92)),
+    var(--porsche-surface);
+  border: 1px solid var(--porsche-border);
+  border-radius: 20px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.055), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  display: grid;
+  gap: 12px;
+  padding: 15px 15px 15px 18px;
+  position: relative;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 .rsc-row:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  border-color: var(--porsche-border-strong);
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.095), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+.rsc-row__rail {
+  position: absolute;
+  inset: 16px auto 16px 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--porsche-ink), var(--porsche-amber));
+  opacity: 0.72;
 }
 
 /* ── Meta row：日期 / 時間 / 學生 */
 .rsc-row__meta {
-  display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  color: var(--porsche-ink-soft);
+  display: grid;
   gap: 8px;
-  font-size: 12px;
-  color: #6b7280;
+  grid-template-columns: minmax(58px, auto) minmax(96px, auto) minmax(0, 1fr);
 }
 .rsc-row__date {
-  font-weight: 700;
-  color: #111827;
-  font-size: 13px;
+  background: rgba(17, 24, 39, 0.06);
+  border: 1px solid rgba(17, 24, 39, 0.1);
+  border-radius: 999px;
+  color: var(--porsche-ink);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  white-space: nowrap;
 }
 .rsc-row__time {
-  color: #4b5563;
+  color: var(--porsche-ink);
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 .rsc-row__student {
-  color: #6b7280;
-  margin-left: auto;
+  color: var(--porsche-ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 
 /* ── Flow row：原老師 → 代課老師 + 標籤 */
 .rsc-row__flow {
-  display: flex;
   align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.08fr) auto auto;
   gap: 8px;
-  font-size: 14px;
-  flex-wrap: wrap;
 }
 .rsc-name {
-  line-height: 1.3;
-  max-width: 10em;
+  display: grid;
+  gap: 3px;
+  overflow: hidden;
+  border-radius: 16px;
+  line-height: 1.2;
+  min-width: 0;
+  padding: 10px 12px 11px;
+}
+.rsc-name small {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+.rsc-name strong {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rsc-name--old { color: #6b7280; }
-.rsc-name--new { color: var(--primary, #2563eb); font-weight: 700; }
+.rsc-name--old {
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: var(--porsche-ink-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rsc-name--new {
+  background:
+    linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(51, 65, 85, 0.96));
+  border: 1px solid rgba(17, 24, 39, 0.82);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+}
 .rsc-arrow-icon {
-  font-size: 18px;
-  color: #9ca3af;
+  color: var(--porsche-amber);
   flex-shrink: 0;
+  font-size: 17px;
+  opacity: 0.86;
 }
 
 .rsc-row__chip {
-  margin-left: 2px;
-  background: #f1f5f9;
-  color: #475569;
-  font-size: 11px;
-  padding: 2px 8px;
+  background: rgba(248, 250, 252, 0.88);
+  border: 1px solid var(--porsche-border);
   border-radius: 999px;
-  font-weight: 500;
+  color: var(--porsche-ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 .rsc-row__chip--rescheduled {
-  background: #fef3c7;
-  color: #92400e;
-  font-weight: 600;
+  background: rgba(196, 122, 24, 0.1);
+  border-color: rgba(196, 122, 24, 0.24);
+  color: var(--porsche-amber);
 }
 .rsc-row__badge {
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 11px;
-  padding: 2px 8px;
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.18);
   border-radius: 999px;
-  font-weight: 600;
+  color: var(--porsche-blue);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 /* ── Reason：可展開 */
 .rsc-row__reason {
-  display: flex;
   align-items: flex-start;
-  gap: 6px;
-  padding: 8px 10px;
-  border: none;
-  background: #f9fafb;
-  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.64);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
   cursor: pointer;
-  text-align: left;
-  width: 100%;
-  min-height: 44px;
-  transition: background 0.15s;
+  display: flex;
   font-family: inherit;
+  gap: 6px;
+  min-height: 44px;
+  padding: 9px 11px;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  width: 100%;
 }
-.rsc-row__reason:hover { background: #f3f4f6; }
+.rsc-row__reason:hover {
+  background: #fff;
+  border-color: var(--porsche-border-strong);
+}
 .rsc-row__reason:focus-visible {
-  outline: 2px solid var(--primary, #2563eb);
+  outline: 2px solid var(--porsche-ink);
   outline-offset: 1px;
 }
 .rsc-row__reason-icon {
-  font-size: 16px;
-  color: #9ca3af;
+  color: var(--porsche-ink-soft);
   flex-shrink: 0;
+  font-size: 16px;
   margin-top: 1px;
 }
 .rsc-row__reason-text {
-  font-size: 12px;
-  color: #4b5563;
-  line-height: 1.5;
+  color: var(--porsche-ink-soft);
+  display: -webkit-box;
   flex: 1;
-  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.55;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
+  min-width: 0;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   word-break: break-word;
@@ -332,48 +412,58 @@ defineExpose({ reload: load });
 
 /* ── Summary */
 .rsc-summary {
+  color: var(--porsche-ink-soft);
   font-size: 11px;
-  color: #9ca3af;
-  text-align: right;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   margin: 4px 2px 0;
+  padding: 0 16px;
+  text-align: right;
+  text-transform: uppercase;
 }
 
 /* ── Empty */
 .rsc-empty {
-  text-align: center;
-  padding: 28px 8px 20px;
-  color: #6b7280;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-}
-.rsc-empty__icon {
-  font-size: 36px;
-  color: #9ca3af;
-}
-.rsc-empty__title {
-  font-weight: 600;
-  color: #111827;
-  margin-top: 4px;
-}
-.rsc-empty__desc { font-size: 12px; color: #6b7280; }
-
-/* ── Skeleton */
-.rsc-skel { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
-.rsc-skel__row {
-  padding: 10px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(248, 250, 252, 0.78));
+  border: 1px solid var(--porsche-border);
+  border-radius: 18px;
+  color: var(--porsche-ink-soft);
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: #fff;
+  margin: 0 14px 4px;
+  padding: 34px 12px 28px;
+  text-align: center;
+}
+.rsc-empty__icon {
+  color: var(--porsche-green);
+  font-size: 38px;
+}
+.rsc-empty__title {
+  color: var(--porsche-ink);
+  font-weight: 900;
+  margin-top: 4px;
+}
+.rsc-empty__desc { color: var(--porsche-ink-soft); font-size: 12px; font-weight: 600; }
+
+/* ── Skeleton */
+.rsc-skel { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 4px; }
+.rsc-skel__row {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--porsche-border);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
 }
 .rsc-skel__line {
   height: 10px;
-  background: #e5e7eb;
-  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.14), rgba(148, 163, 184, 0.28), rgba(148, 163, 184, 0.14));
+  background-size: 200% 100%;
+  border-radius: 999px;
   animation: rsc-skel-pulse 1.4s ease-in-out infinite;
 }
 .rsc-skel__line--w40 { width: 40%; }
@@ -385,8 +475,20 @@ defineExpose({ reload: load });
 }
 
 /* ── 窄寬度 fallback */
-@media (max-width: 360px) {
-  .rsc-row__student { margin-left: 0; width: 100%; }
-  .rsc-name { max-width: 7em; }
+@media (max-width: 560px) {
+  .rsc-row__meta {
+    grid-template-columns: 1fr;
+  }
+  .rsc-row__student {
+    white-space: normal;
+  }
+  .rsc-row__flow {
+    align-items: stretch;
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .rsc-row__chip,
+  .rsc-row__badge {
+    justify-self: start;
+  }
 }
 </style>
