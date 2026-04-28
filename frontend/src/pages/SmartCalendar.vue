@@ -1881,7 +1881,13 @@ const filteredCourses = computed(() => {
         );
         const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
         const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
-        const hasReschedule = rawHasReschedule && !hasAttendedSession;
+        const hasLeaveOnDate = sessionRows.some(r => ['leave', 'leave_adjusted', 'excused'].includes(String(r.status || '').toLowerCase()))
+          || exceptions.value.some(ex =>
+            ex.status === 'leave' &&
+            (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
+            toYmd(ex.schedule_date) === targetDate
+          );
+        const hasReschedule = rawHasReschedule && !hasAttendedSession && !hasLeaveOnDate;
         // PRD-E (2026-04-18, plan 8c1673b9) — 多日多時段課程不可被單一 scheduled 例外吃掉全部基底格。
         // 舊邏輯 hasScheduledExc 為 boolean，只要該日該課程存在任何 status='scheduled' 例外就
         // 整個日期的基底 weekly pattern 不渲染；遇到 days_of_week=[3,7] 這類多日多時段課程
@@ -1907,7 +1913,7 @@ const filteredCourses = computed(() => {
             const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
             for (const t of times) {
               const tStart = String(t.start_time || '').slice(0, 5);
-              if (scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
+              if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
               if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
               mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
             }
@@ -1923,7 +1929,7 @@ const filteredCourses = computed(() => {
           const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
           for (const t of times) {
             const tStart = String(t.start_time || '').slice(0, 5);
-            if (scheduledExcStartSet.has(tStart)) continue;
+            if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue;
             if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
             mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
           }
