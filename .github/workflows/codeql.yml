@@ -5,14 +5,12 @@ on:
     branches: [main]
     paths:
       - "backend/**"
-      - ".github/workflows/codeql.yml"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
   pull_request:
     branches: [main]
     paths:
       - "backend/**"
-      - ".github/workflows/codeql.yml"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
   schedule:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
@@ -43,8 +41,7 @@ jobs:
             backend:
               - 'backend/**'
             security_config:
-              - '.github/workflows/codeql.yml'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/**'
 
   # PHP 靜態分析（PHPStan level 5）
   # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan
