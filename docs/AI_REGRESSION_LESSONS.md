@@ -339,7 +339,8 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
 - **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。
-- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；invoice API 必須排除 void payment count。
+- **強制規則**：帳務中心的「收款流水筆數」不可被解讀成「已繳課程數」；畫面必須分開顯示有效收款流水、對應課程數、同課程多筆收款。
+- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；invoice API 必須排除 void payment count 並回傳付款/沖銷明細供稽核。
 
 ---
 

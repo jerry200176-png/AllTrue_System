@@ -299,12 +299,25 @@ class PaymentReportApiTest extends TestCase
             'Status' => 'paid',
             'billing_period' => '2026-04',
         ]);
-        Payment::create([
+        $payment = Payment::create([
             'InvoiceID' => $invoice->id,
             'Amount' => 8800,
             'PaidAt' => '2026-04-10',
             'Method' => 'cash',
             'Note' => '主任核帳登記',
+        ]);
+        PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'InvoiceID' => $invoice->id,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-04-10',
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'confirmed',
+            'payment_id' => $payment->id,
+            'report_token_hash' => hash('sha256', 'invoice-detail-report'),
+            'token_expires_at' => Carbon::now(),
         ]);
         Payment::create([
             'InvoiceID' => $invoice->id,
@@ -324,7 +337,12 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.billing_period', '2026-04')
             ->assertJsonPath('invoices.0.due_date', '2026-05-15')
             ->assertJsonPath('invoices.0.paid_at', '2026-04-10')
-            ->assertJsonPath('invoices.0.payment_count', 1);
+            ->assertJsonPath('invoices.0.payment_count', 1)
+            ->assertJsonPath('invoices.0.payments.0.amount', 8800)
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'R-000001')
+            ->assertJsonPath('invoices.0.payments.0.is_void', false)
+            ->assertJsonPath('invoices.0.payments.1.amount', -8800)
+            ->assertJsonPath('invoices.0.payments.1.is_void', true);
     }
 
     public function test_director_record_rejects_duplicate_payment_when_course_already_paid(): void
@@ -885,6 +903,11 @@ class PaymentReportApiTest extends TestCase
             'payment_method' => 'cash',
             'reported_amount' => 5000,
         ]);
+        $this->createConfirmedReport($student, $cashClass, [
+            'payment_date' => '2026-04-12',
+            'payment_method' => 'cash',
+            'reported_amount' => 1000,
+        ]);
         $this->createConfirmedReport($student, $transferClass, [
             'payment_date' => '2026-04-11',
             'payment_method' => 'transfer',
@@ -898,14 +921,17 @@ class PaymentReportApiTest extends TestCase
         ])->getJson('/api/v1/accounting/payments?branch_id=1&start=2026-04-01&end=2026-04-30');
 
         $res->assertOk()
-            ->assertJsonPath('summary.total_count', 2)
-            ->assertJsonPath('summary.cash_total', 5000)
+            ->assertJsonPath('summary.total_count', 3)
+            ->assertJsonPath('summary.unique_paid_course_count', 2)
+            ->assertJsonPath('summary.duplicate_payment_course_count', 1)
+            ->assertJsonPath('summary.duplicate_payment_extra_count', 1)
+            ->assertJsonPath('summary.cash_total', 6000)
             ->assertJsonPath('summary.transfer_total', 8800)
-            ->assertJsonPath('summary.grand_total', 13800);
+            ->assertJsonPath('summary.grand_total', 14800);
 
-        $this->assertCount(2, $res->json('data'));
-        $this->assertSame(5000, $res->json('data.0.cash_amount') + $res->json('data.1.cash_amount'));
-        $this->assertSame(8800, $res->json('data.0.transfer_amount') + $res->json('data.1.transfer_amount'));
+        $this->assertCount(3, $res->json('data'));
+        $this->assertSame(6000, collect($res->json('data'))->sum('cash_amount'));
+        $this->assertSame(8800, collect($res->json('data'))->sum('transfer_amount'));
     }
 
     public function test_accounting_payments_marks_prepaid_when_payment_before_first_session(): void

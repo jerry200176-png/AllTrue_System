@@ -191,12 +191,19 @@ class AccountingController extends Controller
 
     private function summarize($rows): array
     {
+        $confirmed = $rows->where('status', 'confirmed');
+        $confirmedByCourse = $confirmed->groupBy('student_class_id');
+        $duplicateGroups = $confirmedByCourse->filter(fn ($group) => $group->count() > 1);
+
         return [
-            'total_count' => $rows->where('status', 'confirmed')->count(),
+            'total_count' => $confirmed->count(),
+            'unique_paid_course_count' => $confirmedByCourse->count(),
+            'duplicate_payment_course_count' => $duplicateGroups->count(),
+            'duplicate_payment_extra_count' => $duplicateGroups->sum(fn ($group) => max(0, $group->count() - 1)),
             'cash_total' => (int) $rows->sum('cash_amount'),
             'transfer_total' => (int) $rows->sum('transfer_amount'),
             'grand_total' => (int) $rows->sum('total_amount'),
-            'prepaid_count' => $rows->where('status', 'confirmed')->where('is_prepaid', true)->count(),
+            'prepaid_count' => $confirmed->where('is_prepaid', true)->count(),
         ];
     }
 }
