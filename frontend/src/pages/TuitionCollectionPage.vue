@@ -391,7 +391,7 @@
                 <th class="tc-col-currency">合計</th>
                 <th>標籤</th>
                 <th>核帳人</th>
-                <th>收據</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -411,10 +411,22 @@
                 </td>
                 <td>{{ row.confirmed_by_name || '—' }}</td>
                 <td>
-                  <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
-                    <span class="material-symbols-outlined">receipt</span>
-                    查看 / PNG
-                  </button>
+                  <div class="tc-actions">
+                    <button class="tc-btn tc-btn--receipt" @click="openReceiptByReport(row.report_id)" :aria-label="`查看 ${row.receipt_no}`">
+                      <span class="material-symbols-outlined">receipt</span>
+                      查看 / PNG
+                    </button>
+                    <button
+                      v-if="canVoid"
+                      class="tc-btn tc-btn--void"
+                      @click="openVoidDialog(row)"
+                      :disabled="voidLoading"
+                      :aria-label="`撤銷 ${row.receipt_no}`"
+                    >
+                      <span class="material-symbols-outlined">undo</span>
+                      撤銷
+                    </button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -452,9 +464,12 @@
             <span class="material-symbols-outlined" style="font-size:22px;color:var(--danger)">warning</span>
             撤銷收款確認
           </h3>
-          <p class="tc-dialog-desc">此操作將作廢原付款紀錄並重置繳費狀態，無法自動還原，請確認。</p>
+          <p class="tc-dialog-desc">此操作不會刪除付款；系統會建立一筆負值沖銷並保留稽核紀錄。請只用於重複入帳、金額錯誤或誤核帳。</p>
           <div class="tc-dialog-info" v-if="voidTarget">
             <span>{{ voidTarget.student_name }} — {{ voidTarget.subject }}</span>
+            <small v-if="voidTarget.receipt_no">
+              {{ voidTarget.receipt_no }} · {{ voidTarget.payment_date || '未記錄日期' }} · {{ formatCurrency(voidTarget.total_amount || voidTarget.reported_amount || 0) }}
+            </small>
           </div>
           <label class="tc-dialog-label">撤銷原因（必填）</label>
           <textarea v-model="voidReason" class="tc-dialog-textarea" placeholder="請輸入撤銷原因…" maxlength="500" rows="3"></textarea>
@@ -1200,7 +1215,7 @@ async function confirmVoid() {
   voidLoading.value = true;
   try {
     const token = getToken();
-    const reportId = await findConfirmedReportForClass(voidTarget.value);
+    const reportId = Number(voidTarget.value.report_id || 0) || await findConfirmedReportForClass(voidTarget.value);
     if (!reportId) {
       showToast('找不到此課程的已確認核帳紀錄', 'error');
       return;
@@ -1217,7 +1232,7 @@ async function confirmVoid() {
     }
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
-    loadAlerts();
+    await Promise.all([loadAlerts(), loadAccountingPayments()]);
   } catch (e) {
     showToast(e.message || '撤銷失敗', 'error');
   } finally {
@@ -2024,6 +2039,12 @@ loadAlerts();
   font-size: 13px;
   font-weight: 500;
   margin-bottom: 12px;
+}
+.tc-dialog-info small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-light);
+  font-weight: 400;
 }
 .tc-dialog-label {
   display: block;
