@@ -392,6 +392,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 - `SwipeRfidController` 若先查 `Student.RFID`，同一張卡同時綁到學生與 `UserCampus.RFID` 時，老師本人刷卡會被寫成 `StudentSingIn`，不會建立 `TeacherSingIn`，主任「老師打卡」列表看不到。
 - **強制規則**：同分校 `UserCampus.RFID` 明確命中有效老師時，必須優先走老師打卡；legacy `Teacher.RFID` 仍為學生查詢後的備援。
+- **補救規則**：修復前已被吃掉的歷史資料不可手工直接改 DB；先跑 `teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<id>` dry-run，確認候選後才可在備份後加 `--apply`，且工具只新增 `TeacherSingIn`，不刪除原始 `StudentSingIn`。
 - **測試必補**：RFID 同時存在於同分校學生與老師 `UserCampus.RFID` 時，API 回 `type=teacher` 且只建立 `TeacherSingIn`。
 
 ---
