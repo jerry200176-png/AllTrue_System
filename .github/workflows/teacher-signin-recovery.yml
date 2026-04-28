@@ -1,0 +1,112 @@
+name: Teacher Sign-in Recovery (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Local date to inspect/recover, format YYYY-MM-DD"
+        required: true
+        type: string
+      teacher_id:
+        description: "Teacher User.id. Optional for dry-run, required for apply."
+        required: false
+        type: string
+      campus_id:
+        description: "Optional campus id filter"
+        required: false
+        type: string
+      apply:
+        description: "Write recovered TeacherSingIn rows"
+        required: true
+        default: false
+        type: boolean
+      confirm:
+        description: "For apply only: type I_HAVE_BACKUP_AND_APPROVE_TEACHER_SIGNIN_RECOVERY"
+        required: false
+        type: string
+
+concurrency:
+  group: teacher-signin-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    name: Run allowlisted teacher sign-in recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate inputs
+        env:
+          DATE: ${{ inputs.date }}
+          TEACHER_ID: ${{ inputs.teacher_id }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+          APPLY: ${{ inputs.apply }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "::error::date must be YYYY-MM-DD"; exit 1; }
+          if [ -n "$TEACHER_ID" ]; then
+            [[ "$TEACHER_ID" =~ ^[0-9]+$ ]] || { echo "::error::teacher_id must be numeric"; exit 1; }
+          fi
+          if [ -n "$CAMPUS_ID" ]; then
+            [[ "$CAMPUS_ID" =~ ^[0-9]+$ ]] || { echo "::error::campus_id must be numeric"; exit 1; }
+          fi
+          if [ "$APPLY" = "true" ]; then
+            [ -n "$TEACHER_ID" ] || { echo "::error::apply requires teacher_id"; exit 1; }
+            [ "$CONFIRM" = "I_HAVE_BACKUP_AND_APPROVE_TEACHER_SIGNIN_RECOVERY" ] || {
+              echo "::error::apply requires exact confirmation string";
+              exit 1;
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run recovery command on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DATE: ${{ inputs.date }}
+          TEACHER_ID: ${{ inputs.teacher_id }}
+          CAMPUS_ID: ${{ inputs.campus_id }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            DATE="$DATE" TEACHER_ID="$TEACHER_ID" CAMPUS_ID="$CAMPUS_ID" APPLY="$APPLY" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          CMD=(php artisan teacher-signin:recover-rfid-collisions "--date=${DATE}")
+          if [ -n "${TEACHER_ID}" ]; then CMD+=("--teacher-id=${TEACHER_ID}"); fi
+          if [ -n "${CAMPUS_ID}" ]; then CMD+=("--campus-id=${CAMPUS_ID}"); fi
+
+          echo "=== Dry-run first ==="
+          "${CMD[@]}"
+
+          if [ "${APPLY}" != "true" ]; then
+            echo "Dry-run complete; no production data was changed."
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          BACKUP_FILE="/home/admin/backups/emergency/db_pre_teacher_signin_recovery_${TS}.sql.gz"
+          mkdir -p /home/admin/backups/emergency
+          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+            --single-transaction AllTrue | gzip > "$BACKUP_FILE"
+          echo "Backup complete: $BACKUP_FILE"
+
+          echo "=== Apply recovery ==="
+          "${CMD[@]}" --apply
+          ENDSSH
