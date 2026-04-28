@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — chore(ci): GitHub Actions 額度節流
+
+- Changed PR/main workflows to avoid waking heavy CI/security runs for docs-only changes and cancel stale Presubmit runs on repeated pushes
+
+---
+
 ## 2026-04-29 — fix(mobile): 課程編輯儲存按鈕可點擊
 
 - Fixed 手機版 modal 會被底部導覽列蓋住的層級與 safe-area 間距，避免 iPhone 12 mini 編輯課程時按不到儲存
