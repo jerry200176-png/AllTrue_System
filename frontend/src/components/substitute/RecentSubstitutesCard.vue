@@ -1,13 +1,11 @@
 <template>
   <section class="rsc wp" id="recent-subs-sec" data-guide="director-recent-subs">
     <header class="wp__head rsc-head">
-      <span class="material-symbols-outlined wp__hi">swap_horiz</span>
-      <div class="rsc-title">
-        <h3>代課動態</h3>
-        <span class="rsc-title__meta">近 7 天 · 本分校</span>
-      </div>
+      <span class="material-symbols-outlined wp__hi" aria-hidden="true">&#xe8d4;</span>
+      <h3>代課動態</h3>
       <span v-if="items.length" class="wp__badge">{{ items.length }}</span>
     </header>
+    <p class="wp__hint rsc-scope">近 7 天 · 本分校</p>
     <div v-if="loading" class="rsc-skel" aria-hidden="true">
       <div v-for="n in 3" :key="n" class="rsc-skel__row">
         <div class="rsc-skel__line rsc-skel__line--w60"></div>
@@ -179,48 +177,14 @@ defineExpose({ reload: load });
   background: linear-gradient(90deg, var(--porsche-ink), rgba(196, 122, 24, 0.72), transparent);
   opacity: 0.86;
 }
-.rsc-head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 10px;
-  overflow: hidden;
-}
 .rsc-head .wp__hi {
-  margin-top: 1px;
-}
-.rsc-head .wp__badge {
-  justify-self: end;
   flex: 0 0 auto;
-}
-.rsc-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
   overflow: hidden;
+  width: 20px;
 }
-.rsc-title h3 {
-  margin: 0;
-  color: var(--porsche-ink, #111827);
-  font-family: var(--font-ui, var(--font-sans));
-  font-size: clamp(14px, 1.1vw, 16px);
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rsc-title__meta {
-  color: var(--porsche-ink-soft, #64748b);
-  font-family: var(--font-ui, var(--font-sans));
-  font-size: 11px;
-  font-weight: 600;
+.rsc-scope {
+  margin-top: -4px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
 }
 
 .rsc-list {
