@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — ops(attendance): 老師打卡補登受控 workflow
+
+- Added manual teacher sign-in recovery workflow with dry-run default, allowlisted command execution, and automatic DB backup before apply
+
+---
+
 ## 2026-04-29 — fix(attendance): 老師 RFID 衝突歷史補登工具
 
 - Added dry-run-first recovery command for historical teacher RFID collisions, so swallowed teacher sign-ins can be audited and restored without deleting original attendance data
