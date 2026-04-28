@@ -12,6 +12,7 @@ class DiagnoseTeacherSignIn extends Command
         {--date= : Local date to inspect, format YYYY-MM-DD}
         {--teacher-id= : Optional teacher User.id}
         {--teacher-name= : Optional teacher name keyword}
+        {--login-name= : Optional User.LoginName exact match}
         {--campus-id= : Optional campus id filter}';
 
     protected $description = 'Read-only diagnostic report for missing teacher sign-in records';
@@ -26,14 +27,15 @@ class DiagnoseTeacherSignIn extends Command
 
         $teacherId = $this->option('teacher-id') ? (int) $this->option('teacher-id') : null;
         $teacherName = trim((string) ($this->option('teacher-name') ?: ''));
+        $loginName = trim((string) ($this->option('login-name') ?: ''));
         $campusId = $this->option('campus-id') ? (int) $this->option('campus-id') : null;
 
-        if (! $teacherId && $teacherName === '') {
-            $this->error('Provide --teacher-id or --teacher-name.');
+        if (! $teacherId && $teacherName === '' && $loginName === '') {
+            $this->error('Provide --teacher-id, --teacher-name, or --login-name.');
             return self::FAILURE;
         }
 
-        $teachers = $this->findTeachers($teacherId, $teacherName, $campusId);
+        $teachers = $this->findTeachers($teacherId, $teacherName, $loginName, $campusId);
         $this->info("Read-only teacher sign-in diagnostic for {$date}");
         $this->info("Teachers matched: {$teachers->count()}");
 
@@ -66,7 +68,7 @@ class DiagnoseTeacherSignIn extends Command
         return self::SUCCESS;
     }
 
-    private function findTeachers(?int $teacherId, string $teacherName, ?int $campusId)
+    private function findTeachers(?int $teacherId, string $teacherName, string $loginName, ?int $campusId)
     {
         $query = DB::table('Teacher as t')
             ->leftJoin('User as u', 'u.id', '=', 't.id')
@@ -95,6 +97,9 @@ class DiagnoseTeacherSignIn extends Command
                 $q->where('t.T_Name', 'like', "%{$teacherName}%")
                     ->orWhere('u.Name', 'like', "%{$teacherName}%");
             });
+        }
+        if ($loginName !== '') {
+            $query->where('u.LoginName', $loginName);
         }
         if ($campusId) {
             $query->where(function ($q) use ($campusId) {
