@@ -1973,6 +1973,7 @@ const filteredCourses = computed(() => {
           if (purchased > 0 && (getCounts()[scid] || 0) >= purchased) return;
         }
         if (!filterTeacherId.value || ex.teacher_id === filterTeacherId.value) {
+          const exBaseCourse = scid ? courses.value.find(c => String(c.id) === scid) : null;
           mergedList.push({
             id: 'ex_' + ex.id,
             original_id: ex.id,
@@ -1981,8 +1982,8 @@ const filteredCourses = computed(() => {
             student_name: ex.student?.name || resolveStudentName(ex.student_id) || '—',
             teacher_id: ex.teacher_id,
             teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || '未指派',
-            subject: ex.subject,
-            class_type: ex.class_type,
+            subject: exBaseCourse?.subject || ex.subject,
+            class_type: exBaseCourse?.class_type || ex.class_type,
             day_of_week: dow,
             start_time: ex.start_time,
             end_time: ex.end_time,
