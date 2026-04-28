@@ -1373,7 +1373,10 @@ function resolveAllCourseGridTimesForDate(c, dow, targetYmd) {
           const st = normalizeTimeTo30(hit.start_time);
           const en = hit.end_time ? normalizeTimeTo30(hit.end_time) : computeEndTime(st, c.duration_hours || 2);
           const dh = (durationHoursFromStartEnd(st, en) ?? Number(c.duration_hours)) || 2;
-          return { start_time: st, end_time: en, duration_hours: dh };
+          const teacherFields = hit.teacher_id != null
+            ? { teacher_id: hit.teacher_id, teacher_name: hit.teacher_name || c.teacher_name }
+            : {};
+          return { ...teacherFields, start_time: st, end_time: en, duration_hours: dh };
         });
       }
       // 當日僅有已取消堂次時，不可回退契約時段，否則課表仍會出現區塊 +「取消」角標
