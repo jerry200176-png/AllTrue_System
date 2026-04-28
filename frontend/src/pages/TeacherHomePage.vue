@@ -215,7 +215,10 @@
               v-for="ev in day.events"
               :key="ev.key"
               class="th-event"
-              :class="{ 'th-event-done': ev.status === 'attended' || ev.formStatus === 'approved' }"
+              :class="{
+                'th-event-done': ev.status === 'attended' || ev.formStatus === 'approved',
+                'th-event-leave': ev.formStatus === 'leave',
+              }"
             >
               <div class="th-event-time">{{ ev.startTime }}<br>{{ ev.endTime }}</div>
               <div class="th-event-info">
@@ -658,20 +661,24 @@ const weekDays = computed(() => {
     const dateStr = formatDate(d);
     const events = weekSessions.value
       .filter(s => s.session_date === dateStr && String(s.status || '').toLowerCase() !== 'cancelled')
-      .map(s => ({
-        key: `${s.id}-${s.branch_id}`,
-        id: s.id,
-        studentClassId: s.student_class_id,
-        studentName: s.student_name || '—',
-        subject: s.teacher_name ? `${s.teacher_name}` : '—',
-        date: s.session_date || dateStr,
-        startTime: s.start_time || '—',
-        endTime: s.end_time || '',
-        branchId: s.branch_id || 0,
-        status: s.status,
-        formStatus: s.learning_record_status || 'missing',
-        recordId: s.learning_record_id || null,
-      }));
+      .map(s => {
+        const status = String(s.status || '').toLowerCase();
+        const isLeave = status === 'leave' || status === 'leave_adjusted' || status === 'excused';
+        return {
+          key: `${s.id}-${s.branch_id}`,
+          id: s.id,
+          studentClassId: s.student_class_id,
+          studentName: s.student_name || '—',
+          subject: s.teacher_name ? `${s.teacher_name}` : '—',
+          date: s.session_date || dateStr,
+          startTime: s.start_time || '—',
+          endTime: s.end_time || '',
+          branchId: s.branch_id || 0,
+          status: s.status,
+          formStatus: isLeave ? 'leave' : (s.learning_record_status || 'missing'),
+          recordId: s.learning_record_id || null,
+        };
+      });
     days.push({
       date: dateStr,
       label: `週${dayNames[d.getDay()]}`,
@@ -706,7 +713,7 @@ function branchShortName(branchId) {
 }
 
 function formStatusLabel(status) {
-  const map = { pending: '待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課' };
+  const map = { pending: '待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假' };
   return map[status] || status;
 }
 
@@ -1009,9 +1016,15 @@ onBeforeUnmount(() => {
 .th-form-changes_requested { background: var(--danger-bg); color: var(--danger); }
 .th-form-rejected { background: var(--danger-bg); color: var(--danger); }
 .th-form-substituted { background: #e0e0e0; color: #757575; }
+.th-form-leave { background: #fff7ed; color: #c2410c; }
 [data-theme="dark"] .th-form-substituted { background: #424242; color: #bdbdbd; }
+[data-theme="dark"] .th-form-leave { background: rgba(194,65,12,0.18); color: #fdba74; }
 
 .th-event-done { opacity: 0.7; }
+.th-event-leave {
+  border-left-color: #f97316;
+  background: linear-gradient(90deg, rgba(249,115,22,0.10), transparent 55%);
+}
 
 .th-fill-btn {
   background: var(--primary-bg); border: none; border-radius: 8px;
