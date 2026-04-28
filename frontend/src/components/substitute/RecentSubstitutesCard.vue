@@ -179,25 +179,43 @@ defineExpose({ reload: load });
   background: linear-gradient(90deg, var(--porsche-ink), rgba(196, 122, 24, 0.72), transparent);
   opacity: 0.86;
 }
-.rsc-head { display: flex; align-items: flex-start; gap: 9px; }
+.rsc-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  overflow: hidden;
+}
+.rsc-head .wp__hi {
+  margin-top: 1px;
+}
+.rsc-head .wp__badge {
+  justify-self: end;
+  flex: 0 0 auto;
+}
 .rsc-title {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  overflow: hidden;
 }
 .rsc-title h3 {
   margin: 0;
   color: var(--porsche-ink, #111827);
-  font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
-  font-size: 15px;
+  font-family: var(--font-ui, var(--font-sans));
+  font-size: clamp(14px, 1.1vw, 16px);
   font-weight: 800;
-  letter-spacing: -0.015em;
-  line-height: 1.18;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rsc-title__meta {
   color: var(--porsche-ink-soft, #64748b);
-  font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-family: var(--font-ui, var(--font-sans));
   font-size: 11px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
