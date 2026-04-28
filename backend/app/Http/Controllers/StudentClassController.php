@@ -1798,8 +1798,35 @@ class StudentClassController extends Controller
         return response()->json([
             'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
                 $effectivePayments = $inv->payments
-                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) >= 0 && (string) ($payment->Method ?? '') !== 'void')
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
                     ->values();
+                $voidPayments = $inv->payments
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
+                    ->values();
+                $positiveTotal = (int) $effectivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
+                $voidedTotal = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+                $netApplied = max(0, $positiveTotal - $voidedTotal);
+                $totalAmount = (int) ($inv->TotalAmount ?? 0);
+                $appliedAmount = min($totalAmount, $netApplied);
+                $outstandingAmount = max(0, $totalAmount - $appliedAmount);
+                $status = (string) ($inv->Status ?? '');
+                $ledgerStatus = $status ?: 'unknown';
+                $ledgerLabel = null;
+                $ledgerAnomalies = [];
+
+                if (in_array($status, ['unpaid', 'partial'], true) && $totalAmount > 0 && $outstandingAmount === 0) {
+                    $ledgerStatus = 'open_status_without_balance';
+                    $ledgerLabel = '已收足額 · 狀態待修復';
+                    $ledgerAnomalies[] = 'open_status_without_balance';
+                } elseif ($status === 'paid' && $outstandingAmount > 0) {
+                    $ledgerStatus = 'paid_status_with_balance';
+                    $ledgerLabel = '已繳狀態 · 仍有餘額';
+                    $ledgerAnomalies[] = 'paid_status_with_balance';
+                } elseif ((int) ($inv->PaidAmount ?? 0) !== $appliedAmount) {
+                    $ledgerStatus = 'paid_amount_mismatch';
+                    $ledgerLabel = '金額待修復';
+                    $ledgerAnomalies[] = 'paid_amount_mismatch';
+                }
                 $paidAt = $effectivePayments
                     ->map(fn ($payment) => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null)
                     ->filter()
@@ -1835,6 +1862,12 @@ class StudentClassController extends Controller
                     'total_amount'   => (int) $inv->TotalAmount,
                     'paid_amount'    => (int) $inv->PaidAmount,
                     'status'         => $inv->Status,
+                    'ledger_status'  => $ledgerStatus,
+                    'ledger_label'   => $ledgerLabel,
+                    'ledger_anomalies' => $ledgerAnomalies,
+                    'calculated_paid_amount' => $appliedAmount,
+                    'outstanding_amount' => $outstandingAmount,
+                    'can_exception_void' => $netApplied > 0 && $status !== 'void',
                 ];
             })->values()->all(),
         ]);
