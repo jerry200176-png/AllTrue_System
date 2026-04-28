@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LearningRecord;
+use App\Models\PaymentReport;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -1156,15 +1157,12 @@ class StudentClassController extends Controller
                     $slots,
                     $durationMinutes
                 );
-                if ($updatedCount > 0) {
-                    $this->reconcileWeekTimeFieldsFromSessions($studentClass);
-                }
                 return response()->json(array_merge($studentClass->fresh()->toArray(), [
                     'session_sync' => [
                         'rebuilt'                 => false,
                         'reason'                  => 'force_partial_rebuild',
                         'updated_future_sessions' => $updatedCount,
-                        'reconcile_skipped'       => $updatedCount === 0,
+                        'reconcile_skipped'       => true,
                     ],
                 ]));
             }
@@ -1178,18 +1176,20 @@ class StudentClassController extends Controller
             (bool) $request->boolean('force_rebuild_if_mismatch', false)
         );
 
-        // Only reconcile week/time fields from ClassSession when it is safe:
-        // skip when the user explicitly changed schedule fields but the future
-        // sessions could not be updated (history_exists with 0 rows touched),
-        // because reconcile would overwrite the user's new values with the old
-        // ClassSession times.
-        $skipReconcile = $scheduleFieldsPresent
-            && ($sessionSync['reason'] ?? '') === 'history_exists'
-            && (int) ($sessionSync['updated_future_sessions'] ?? -1) === 0;
-
-        if ($skipReconcile) {
-            $sessionSync['reconcile_skipped'] = true;
-            $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+        // When the request explicitly carries fixed schedule fields, those
+        // fields are the contract source of truth. Future ClassSession rows may
+        // be sparse near the end of a course (e.g. only one Wednesday remains),
+        // so reverse-reconciling from them would erase newly edited weekdays.
+        if ($scheduleFieldsPresent) {
+            if (($sessionSync['reason'] ?? '') === 'history_exists'
+                && (
+                    !array_key_exists('updated_future_sessions', $sessionSync)
+                    || (int) ($sessionSync['updated_future_sessions'] ?? 0) === 0
+                )
+            ) {
+                $sessionSync['reconcile_skipped'] = true;
+                $sessionSync['warning'] = '未來堂次因狀態鎖定未更新時間，課程主檔已儲存新時段但堂次仍為舊時段，請檢查堂次狀態。';
+            }
         } else {
             $this->reconcileWeekTimeFieldsFromSessions($studentClass);
         }
@@ -1561,7 +1561,9 @@ class StudentClassController extends Controller
                 'preview_id' => $preview['preview_id'],
                 'source_course' => $result['source_course'] ?? $preview['source_course'],
                 'new_course' => $result['new_course'] ?? null,
-                'invoice' => $data['mode'] === 'renew_monthly' ? ($preview['billing']['invoice'] ?? null) : null,
+                'invoice' => $data['mode'] === 'renew_monthly'
+                    ? ($result['invoice'] ?? ($preview['billing']['invoice'] ?? null))
+                    : null,
                 'schedule' => [
                     'created_sessions' => $result['created_sessions'] ?? ($preview['schedule']['created_sessions'] ?? 0),
                     'first_session_date' => $result['new_course']['first_session_date'] ?? ($preview['schedule']['first_session_date'] ?? null),
@@ -1575,7 +1577,7 @@ class StudentClassController extends Controller
     }
 
     /**
-     * 月結制課程續約：延長 EndDate，不建立新批次。
+     * 月結制課程續約：建立新一期課程，舊課程結算。
      * POST /api/v1/student-classes/{studentClass}/renew-monthly
      */
     public function renewMonthly(Request $request, StudentClass $studentClass)
@@ -1600,62 +1602,156 @@ class StudentClassController extends Controller
         $newEndDate = Carbon::parse($data['end_date'])->toDateString();
 
         return DB::transaction(function () use ($studentClass, $newEndDate) {
-            // 延長到期日
-            $studentClass->EndDate = $newEndDate;
-            // FR-003：重置繳費狀態，讓新月份顯示「未繳費」
-            $studentClass->Paid    = 0;
-            $studentClass->PayDate = null;
-            $studentClass->save();
-            $studentClass->refresh();
+            $studentClass = StudentClass::where('ID', $studentClass->ID)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($studentClass);
+            $sourceEndDate = $this->normalizeDateString($studentClass->EndDate ?? null);
+            $newStartDate = $sourceEndDate
+                ? Carbon::parse($sourceEndDate)->addDay()->toDateString()
+                : Carbon::today()->toDateString();
 
-            // FR-002：建立新期逐期帳單（billing_period = 新 EndDate 所在月）
-            $billingPeriod = Carbon::parse($newEndDate)->format('Y-m');
-            $exists = Invoice::where('StudentClassID', $studentClass->ID)
-                ->where('billing_period', $billingPeriod)
-                ->exists();
-
-            if (! $exists) {
-                $totalAmount = max(0, (int) ($studentClass->Charge ?? 0));
-                $dueDay      = (int) ($studentClass->settlement_day ?? 15);
-                $dueDate     = Carbon::parse($newEndDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
-
-                $invoice = Invoice::create([
-                    'StudentID'      => (int) $studentClass->StudentID,
-                    'StudentClassID' => (int) $studentClass->ID,
-                    'IssueDate'      => Carbon::today()->toDateString(),
-                    'DueDate'        => $dueDate,
-                    'TotalAmount'    => $totalAmount,
-                    'PaidAmount'     => 0,
-                    'Status'         => 'unpaid',
-                    'Note'           => '',
-                    'billing_period' => $billingPeriod,
-                ]);
-
-                // FR-009：同步建立 InvoiceItem
-                $periodLabel = Carbon::parse($newEndDate)->locale('zh_TW')->isoFormat('YYYY年M月');
-                InvoiceItem::create([
-                    'InvoiceID'   => $invoice->id,
-                    'Description' => '月結費用 ' . $periodLabel,
-                    'Amount'      => $totalAmount,
-                    'PeriodStart' => Carbon::parse($newEndDate)->startOfMonth()->toDateString(),
-                    'PeriodEnd'   => $newEndDate,
-                ]);
+            if ($newEndDate < $newStartDate) {
+                return response()->json([
+                    'message' => '新到期日必須晚於新一期開始日。',
+                    'errors' => ['end_date' => ['新到期日不可早於舊課程結束後的下一天。']],
+                ], 422);
             }
 
-            return response()->json([
-                'message'      => '月結課程已續約，到期日更新為 ' . $newEndDate,
-                'end_date'     => $newEndDate,
-                'session_sync' => $sessionSync,
-                'course'       => [
-                    'id'               => (int) $studentClass->ID,
-                    'end_date'         => $newEndDate,
-                    'settlement_day'   => $studentClass->settlement_day,
-                    'monthly_sessions' => $studentClass->monthly_sessions,
-                    'schedule_mode'    => $studentClass->ScheduleMode,
-                ],
+            $duplicate = $this->findDuplicateMonthlyRenewal($studentClass, $newStartDate, $newEndDate);
+            if ($duplicate !== null) {
+                return response()->json([
+                    'message' => '偵測到相同學生、科目與期間的月結續報課程，請先確認是否已續報過。',
+                    'errors' => ['duplicate' => ['已存在相同期間的月結續報課程。']],
+                    'duplicate_course' => [
+                        'id' => (int) $duplicate->ID,
+                        'start_date' => $this->normalizeDateString($duplicate->StartDate),
+                        'end_date' => $this->normalizeDateString($duplicate->EndDate),
+                        'paid' => (int) ($duplicate->Paid ?? 0),
+                    ],
+                ], 409);
+            }
+
+            $newPayload = [
+                'StudentID' => (int) $studentClass->StudentID,
+                'GradeID' => (int) ($studentClass->GradeID ?? 1),
+                'SubjectID' => (int) ($studentClass->SubjectID ?? 1),
+                'TeacherID' => (int) ($studentClass->TeacherID ?? 0),
+                'by1' => (int) ($studentClass->by1 ?? 1),
+                'Period' => (int) ($studentClass->Period ?? 4),
+                'StartDate' => $newStartDate,
+                'EndDate' => $newEndDate,
+                'week' => $studentClass->week,
+                'time' => $studentClass->time,
+                'week1' => $studentClass->week1,
+                'time1' => $studentClass->time1,
+                'week2' => $studentClass->week2,
+                'time2' => $studentClass->time2,
+                'week3' => $studentClass->week3,
+                'time3' => $studentClass->time3,
+                'week4' => $studentClass->week4,
+                'time4' => $studentClass->time4,
+                'week5' => $studentClass->week5,
+                'time5' => $studentClass->time5,
+                'week6' => $studentClass->week6,
+                'time6' => $studentClass->time6,
+                'duration1' => $studentClass->duration1,
+                'duration2' => $studentClass->duration2,
+                'duration3' => $studentClass->duration3,
+                'duration4' => $studentClass->duration4,
+                'duration5' => $studentClass->duration5,
+                'duration6' => $studentClass->duration6,
+                'TotalHours' => (int) ($studentClass->TotalHours ?? 0),
+                'Memo' => $studentClass->Memo,
+                'Charge' => (int) ($studentClass->Charge ?? 0),
+                'Pay' => 0,
+                'PayDate' => null,
+                'Paid' => 0,
+                'Disconunt' => $studentClass->Disconunt,
+                'Rate' => (float) ($studentClass->Rate ?? 0),
+                'rate_unit' => $studentClass->rate_unit,
+                'LearnTimeID' => $studentClass->LearnTimeID,
+                'RoomID' => $studentClass->RoomID,
+                'room_id' => $studentClass->room_id,
+                'settlement_day' => $studentClass->settlement_day,
+                'monthly_sessions' => $studentClass->monthly_sessions,
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'date',
+                'SessionCount' => 0,
+                'SessionDuration' => (int) ($studentClass->SessionDuration ?? 120),
+                'RemainingSessions' => 0,
+                'ClassType' => $studentClass->ClassType ?: 'one_on_one',
+                'UsedSessions' => 0,
+            ];
+
+            $newCourse = $this->createStudentClassRecordResilient($newPayload);
+            $newCourse->refresh();
+            $sessionSync = $this->ensureMonthlyFutureScheduledSessions($newCourse);
+
+            $studentClass->Stop = 1;
+            $studentClass->closed_reason = 'settled';
+            $studentClass->save();
+            $cancelled = $this->cancelFutureScheduledSessions($studentClass, 'settled');
+            $studentClass->refresh();
+
+            $billingPeriod = Carbon::parse($newStartDate)->format('Y-m');
+            $totalAmount = max(0, (int) ($newCourse->Charge ?? 0));
+            $dueDay = max(1, min(31, (int) ($newCourse->settlement_day ?? 15)));
+            $dueDate = Carbon::parse($newStartDate)->startOfMonth()->addDays($dueDay - 1)->toDateString();
+
+            $invoice = Invoice::create([
+                'StudentID'      => (int) $newCourse->StudentID,
+                'StudentClassID' => (int) $newCourse->ID,
+                'IssueDate'      => Carbon::today()->toDateString(),
+                'DueDate'        => $dueDate,
+                'TotalAmount'    => $totalAmount,
+                'PaidAmount'     => 0,
+                'Status'         => 'unpaid',
+                'Note'           => '',
+                'billing_period' => $billingPeriod,
             ]);
+
+            $periodLabel = Carbon::parse($newStartDate)->locale('zh_TW')->isoFormat('YYYY年M月');
+            InvoiceItem::create([
+                'InvoiceID'   => $invoice->id,
+                'Description' => '月結費用 ' . $periodLabel,
+                'Amount'      => $totalAmount,
+                'PeriodStart' => $newStartDate,
+                'PeriodEnd'   => $newEndDate,
+            ]);
+
+            return response()->json([
+                'message' => '已建立月結新一期課程，舊期已結算',
+                'mode' => 'renew_monthly',
+                'source_closed' => true,
+                'cancelled_source_sessions' => $cancelled,
+                'session_sync' => $sessionSync,
+                'source_course' => [
+                    'id' => (int) $studentClass->ID,
+                    'start_date' => $this->normalizeDateString($studentClass->StartDate),
+                    'end_date' => $this->normalizeDateString($studentClass->EndDate),
+                    'paid' => (int) ($studentClass->Paid ?? 0),
+                    'stop' => (int) ($studentClass->Stop ?? 0),
+                    'closed_reason' => $studentClass->closed_reason,
+                ],
+                'new_course' => [
+                    'id' => (int) $newCourse->ID,
+                    'start_date' => $this->normalizeDateString($newCourse->StartDate),
+                    'end_date' => $this->normalizeDateString($newCourse->EndDate),
+                    'settlement_day' => $newCourse->settlement_day,
+                    'monthly_sessions' => $newCourse->monthly_sessions,
+                    'schedule_mode' => $newCourse->ScheduleMode,
+                    'paid' => (int) ($newCourse->Paid ?? 0),
+                ],
+                'invoice' => [
+                    'id' => (int) $invoice->id,
+                    'billing_period' => $invoice->billing_period,
+                    'status' => $invoice->Status,
+                    'total_amount' => (int) $invoice->TotalAmount,
+                    'due_date' => $this->normalizeDateString($invoice->DueDate),
+                ],
+            ], 201);
         });
     }
 
@@ -1671,19 +1767,76 @@ class StudentClassController extends Controller
         }
 
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
+            ->notVoided()
+            ->with(['payments' => function ($query) {
+                $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
+                    ->orderBy('PaidAt')
+                    ->orderBy('id');
+            }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
-            ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
+            ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
+
+        $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
+        $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $reportIds = $payments->pluck('payment_report_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $reports = empty($paymentIds) && empty($reportIds)
+            ? collect()
+            : PaymentReport::query()
+                ->where(function ($query) use ($paymentIds, $reportIds) {
+                    if (!empty($paymentIds)) {
+                        $query->whereIn('payment_id', $paymentIds);
+                    }
+                    if (!empty($reportIds)) {
+                        $method = empty($paymentIds) ? 'whereIn' : 'orWhereIn';
+                        $query->{$method}('id', $reportIds);
+                    }
+                })
+                ->get(['id', 'payment_id', 'status', 'payment_date']);
+        $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
+        $reportsById = $reports->keyBy('id');
 
         return response()->json([
-            'invoices' => $invoices->map(fn ($inv) => [
-                'id'             => (int) $inv->id,
-                'billing_period' => $inv->billing_period,
-                'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
-                'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
-                'total_amount'   => (int) $inv->TotalAmount,
-                'paid_amount'    => (int) $inv->PaidAmount,
-                'status'         => $inv->Status,
-            ])->values()->all(),
+            'invoices' => $invoices->map(function ($inv) use ($reportsByPaymentId, $reportsById) {
+                $effectivePayments = $inv->payments
+                    ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) >= 0 && (string) ($payment->Method ?? '') !== 'void')
+                    ->values();
+                $paidAt = $effectivePayments
+                    ->map(fn ($payment) => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null)
+                    ->filter()
+                    ->sort()
+                    ->last();
+
+                return [
+                    'id'             => (int) $inv->id,
+                    'invoice_no'     => 'INV-' . preg_replace('/[^0-9]/', '', (string) ($inv->billing_period ?: substr((string) $inv->IssueDate, 0, 7))) . '-' . str_pad((string) $inv->id, 6, '0', STR_PAD_LEFT),
+                    'course_ref'     => 'COURSE-' . str_pad((string) $inv->StudentClassID, 6, '0', STR_PAD_LEFT),
+                    'billing_period' => $inv->billing_period,
+                    'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
+                    'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
+                    'paid_at'        => $paidAt,
+                    'payment_count'  => $effectivePayments->count(),
+                    'payments'       => $inv->payments->map(function ($payment) use ($reportsByPaymentId, $reportsById) {
+                        $report = $reportsByPaymentId->get((int) $payment->id)
+                            ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
+                        $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+
+                        return [
+                            'id'         => (int) $payment->id,
+                            'paid_at'    => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null,
+                            'amount'     => (int) $payment->Amount,
+                            'method'     => (string) ($payment->Method ?? ''),
+                            'note'       => (string) ($payment->Note ?? ''),
+                            'is_void'    => $isVoid,
+                            'report_id'  => $report ? (int) $report->id : null,
+                            'receipt_no' => $report ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
+                            'status'     => $report ? (string) $report->status : null,
+                        ];
+                    })->values()->all(),
+                    'total_amount'   => (int) $inv->TotalAmount,
+                    'paid_amount'    => (int) $inv->PaidAmount,
+                    'status'         => $inv->Status,
+                ];
+            })->values()->all(),
         ]);
     }
 
@@ -2590,6 +2743,21 @@ class StudentClassController extends Controller
             ->first();
     }
 
+    private function findDuplicateMonthlyRenewal(StudentClass $studentClass, string $startDate, string $endDate): ?StudentClass
+    {
+        return StudentClass::where('ID', '<>', $studentClass->ID)
+            ->where('StudentID', $studentClass->StudentID)
+            ->where('SubjectID', $studentClass->SubjectID)
+            ->where('ScheduleMode', 'date')
+            ->whereDate('StartDate', $startDate)
+            ->whereDate('EndDate', $endDate)
+            ->where(function ($q) {
+                $q->whereNull('Stop')->orWhere('Stop', 0);
+            })
+            ->orderBy('ID')
+            ->first();
+    }
+
     /**
      * 正班 TeacherID 或單堂代課（schedules.status=scheduled + original_schedule_id）之代課老師。
      */
@@ -2762,6 +2930,12 @@ class StudentClassController extends Controller
 
         // Handle days + time slots for both create and update.
         $dayTimeSlots = $this->normalizeDayTimeSlotsInput($input['day_time_slots'] ?? []);
+        $dayTimeSlots = $this->backfillMissingSelectedDaySlots(
+            $dayTimeSlots,
+            $input['days_of_week'] ?? [],
+            $input['start_time'] ?? null,
+            $input['duration_hours'] ?? null
+        );
         if (empty($dayTimeSlots)) {
             $startTime = $input['start_time'] ?? null;
             $daysOfWeek = $input['days_of_week'] ?? null;
@@ -2811,6 +2985,50 @@ class StudentClassController extends Controller
         }
 
         return $mappedData;
+    }
+
+    /**
+     * @param  array<int, array{day:int,start_time:string,duration_minutes?:int|null}>  $slots
+     * @param  mixed  $rawDays
+     * @return array<int, array{day:int,start_time:string,duration_minutes?:int|null}>
+     */
+    private function backfillMissingSelectedDaySlots(array $slots, $rawDays, $fallbackStartTime = null, $fallbackDurationHours = null): array
+    {
+        if (!is_array($rawDays)) {
+            return $slots;
+        }
+
+        $selectedDays = array_values(array_unique(array_filter(array_map('intval', $rawDays), fn ($day) => $day >= 1 && $day <= 7)));
+        if ($selectedDays === []) {
+            return $slots;
+        }
+
+        $slotDays = [];
+        foreach ($slots as $slot) {
+            $slotDays[(int) ($slot['day'] ?? 0)] = true;
+        }
+
+        $fallbackTime = $fallbackStartTime
+            ? substr((string) $fallbackStartTime, 0, 5)
+            : ($slots[0]['start_time'] ?? '16:00');
+        $fallbackDurationMinutes = null;
+        if ($fallbackDurationHours !== null && (float) $fallbackDurationHours > 0) {
+            $fallbackDurationMinutes = (int) round((float) $fallbackDurationHours * 60);
+        }
+
+        foreach ($selectedDays as $day) {
+            if (isset($slotDays[$day]) || count($slots) >= 7) {
+                continue;
+            }
+            $slots[] = [
+                'day' => $day,
+                'start_time' => $fallbackTime,
+                'duration_minutes' => $fallbackDurationMinutes,
+            ];
+            $slotDays[$day] = true;
+        }
+
+        return $this->normalizeDayTimeSlotsInput($slots);
     }
 
     /**
@@ -3800,6 +4018,7 @@ class StudentClassController extends Controller
 
         $needsRemap = false;
         $sessionWeekdays = [];
+        $unlockedCountByDate = [];
         foreach ($unlocked as $session) {
             $date = $this->normalizeDateString($session->SessionDate ?? null);
             if (!$date) {
@@ -3807,9 +4026,21 @@ class StudentClassController extends Controller
             }
             $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
             $sessionWeekdays[$isoDow] = true;
+            $unlockedCountByDate[$date] = ($unlockedCountByDate[$date] ?? 0) + 1;
             if (!isset($slotsByWeekday[$isoDow])) {
                 $needsRemap = true;
                 break;
+            }
+        }
+
+        if (!$needsRemap && $unlocked->isNotEmpty()) {
+            foreach ($unlockedCountByDate as $date => $countOnDate) {
+                $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
+                $contractSlotsForDay = $slotsByWeekday[$isoDow] ?? [];
+                if (!empty($contractSlotsForDay) && count($contractSlotsForDay) > $countOnDate) {
+                    $needsRemap = true;
+                    break;
+                }
             }
         }
 
