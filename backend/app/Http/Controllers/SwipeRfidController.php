@@ -73,12 +73,8 @@ class SwipeRfidController extends Controller
 
             $campusId = $campus->id;
 
-            $student = Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first();
-            if ($student) {
-                return $this->handleStudentSwipe($student, $campus, $swipeAt);
-            }
-
-            // 優先：UserCampus 每分校 RFID；備援：舊版 Teacher.RFID（單一欄位）
+            // 優先：UserCampus 每分校 RFID。若同一張卡誤綁到學生，老師本人打卡
+            // 仍應進 TeacherSingIn，避免靜默寫成學生出勤而在老師打卡列表消失。
             $teacher = null;
             $teacherInCampus = false;
             $matchedUserCampus = false;
@@ -94,6 +90,16 @@ class SwipeRfidController extends Controller
                     $teacherInCampus = (bool) $teacher;
                 }
             }
+            if ($teacherInCampus) {
+                return $this->handleTeacherSwipe($teacher, $campus, $swipeAt);
+            }
+
+            $student = Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first();
+            if ($student) {
+                return $this->handleStudentSwipe($student, $campus, $swipeAt);
+            }
+
+            // 備援：舊版 Teacher.RFID（單一欄位）
             if (!$teacher) {
                 $teacher = Teacher::where('RFID', $rfid)->where('Enable', 1)->first();
                 if ($teacher) {
