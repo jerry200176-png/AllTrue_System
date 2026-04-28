@@ -120,6 +120,48 @@ class LearningRecordLeaveExclusionTest extends TestCase
         $this->assertContains((int) $record->id, $ids, '已上（attended）堂次的待審評量必須正常顯示（回歸守護）');
     }
 
+    public function test_pending_lr_on_attended_session_remains_visible_after_course_stopped(): void
+    {
+        [$token, $teacherId, $studentId] = $this->bootActors('attended-stopped-visible');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+        $cs = $this->seedSession($courseId, 'attended');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+
+        StudentClass::where('ID', $courseId)->update(['Stop' => 1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $record->id, $ids, '已上課的歷史評量不可因課程後來停用而消失');
+    }
+
+    public function test_ensure_past_creates_pending_lr_for_attended_stopped_course(): void
+    {
+        [$token, $teacherId, $studentId] = $this->bootActors('ensure-attended-stopped');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+        $cs = $this->seedSession($courseId, 'attended');
+
+        StudentClass::where('ID', $courseId)->update(['Stop' => 1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/ensure-past', ['branch_id' => 1]);
+
+        $res->assertOk()
+            ->assertJsonPath('created', 1);
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'ClassSessionID' => $cs->id,
+            'StudentClassID' => $courseId,
+            'Status' => 'pending',
+        ]);
+    }
+
     // ── helpers ──
 
     /**

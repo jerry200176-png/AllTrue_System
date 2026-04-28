@@ -1767,6 +1767,7 @@ class StudentClassController extends Controller
         }
 
         $invoices = Invoice::where('StudentClassID', $studentClass->ID)
+            ->notVoided()
             ->with(['payments' => function ($query) {
                 $query->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method', 'Note', 'payment_report_id'])
                     ->orderBy('PaidAt')

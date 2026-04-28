@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\ParentSession;
+use App\Models\Invoice;
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -148,6 +150,102 @@ class ParentPortalLoginIsolationTest extends TestCase
         $this->assertIsArray($res->json('attendance_history'));
     }
 
+    public function test_dashboard_invoices_only_include_visible_courses(): void
+    {
+        $student = $this->createStudent(1, '吳艾潼', '0912555000');
+        $visibleCourse = $this->createStudentClass($student->id, [
+            'RemainingSessions' => 4,
+            'Paid' => 0,
+            'Stop' => 0,
+        ]);
+        $hiddenSettledCourse = $this->createStudentClass($student->id, [
+            'RemainingSessions' => 0,
+            'Paid' => 1,
+            'Stop' => 1,
+        ]);
+
+        $visibleInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $visibleCourse->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'Note' => '',
+            'billing_period' => '2026-04',
+        ]);
+        $hiddenInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $hiddenSettledCourse->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'Note' => '',
+            'billing_period' => '2026-05',
+        ]);
+
+        $token = $this->parentLogin('吳艾潼', '0912555000');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+
+        $courseIds = collect($res->json('classes'))->pluck('id')->all();
+        $invoiceIds = collect($res->json('invoices'))->pluck('id')->all();
+
+        $this->assertContains($visibleCourse->ID, $courseIds);
+        $this->assertNotContains($hiddenSettledCourse->ID, $courseIds);
+        $this->assertContains($visibleInvoice->id, $invoiceIds);
+        $this->assertNotContains($hiddenInvoice->id, $invoiceIds, 'Hidden/settled course invoices must not appear in parent receivables.');
+    }
+
+    public function test_dashboard_invoices_exclude_voided_invoices(): void
+    {
+        $student = $this->createStudent(1, '吳艾潼', '0912555000');
+        $course = $this->createStudentClass($student->id, [
+            'RemainingSessions' => 4,
+            'Paid' => 0,
+            'Stop' => 0,
+            'ScheduleMode' => 'date',
+        ]);
+        $openInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'Note' => '',
+            'billing_period' => '2026-04',
+        ]);
+        $voidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'Note' => '歷史錯帳作廢',
+            'billing_period' => '2026-05',
+        ]);
+
+        $token = $this->parentLogin('吳艾潼', '0912555000');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $invoiceIds = collect($res->json('invoices'))->pluck('id')->all();
+        $this->assertContains($openInvoice->id, $invoiceIds);
+        $this->assertNotContains($voidInvoice->id, $invoiceIds, 'Voided/stale invoices must not appear in parent receivables.');
+    }
+
     // ── parent_phone regression（BUG: login only checked Phone, not parent_phone）────
 
     public function test_login_succeeds_with_parent_phone_when_phone_is_empty(): void
@@ -286,6 +384,33 @@ class ParentPortalLoginIsolationTest extends TestCase
             'Phone'        => $phone,
             'parent_phone' => $parentPhone,
         ]);
+    }
+
+    private function createStudentClass(int $studentId, array $overrides = []): StudentClass
+    {
+        return StudentClass::create(array_merge([
+            'StudentID' => $studentId,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-04-01',
+            'EndDate' => '2026-05-31',
+            'TotalHours' => 8,
+            'Charge' => 8800,
+            'Paid' => 0,
+            'Rate' => 1100,
+            'RoomID' => 'R1',
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'SessionDuration' => 60,
+            'RemainingSessions' => 8,
+            'ClassType' => 'one_on_one',
+            'UsedSessions' => 0,
+        ], $overrides));
     }
 
     private function parentLogin(string $name, string $phone): string

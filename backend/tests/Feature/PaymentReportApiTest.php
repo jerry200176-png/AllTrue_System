@@ -345,6 +345,49 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.payments.1.is_void', true);
     }
 
+    public function test_student_class_invoices_exclude_voided_invoices(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 8800,
+        ]);
+
+        $activeInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-04',
+        ]);
+        $voidInvoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$sc->ID}/invoices");
+
+        $res->assertOk();
+        $invoiceIds = collect($res->json('invoices'))->pluck('id')->all();
+        $this->assertContains((int) $activeInvoice->id, $invoiceIds);
+        $this->assertNotContains((int) $voidInvoice->id, $invoiceIds, 'Course management invoice list must not show void/stale invoices.');
+    }
+
     public function test_director_record_rejects_duplicate_payment_when_course_already_paid(): void
     {
         Carbon::setTestNow('2026-04-28 10:00:00');
