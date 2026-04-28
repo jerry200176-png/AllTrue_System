@@ -805,11 +805,12 @@ class ProfileController extends Controller
 
         if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
             $mainBranch = $input['branch_id'] ?? UserCampus::where('UserID', $user->id)->value('CampusID');
-            $allBranches = array_unique(array_filter(array_merge([$mainBranch], $input['multi_branches'])));
+            $allBranches = array_values(array_unique(array_filter(array_map('intval', array_merge([$mainBranch], $input['multi_branches'])))));
             $approvedAttr = Schema::hasColumn('UserCampus', 'Approved') ? ['Approved' => true] : [];
             if (Schema::hasTable('teacher_branches')) {
                 DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
             }
+            DB::table('UserCampus')->where('UserID', $user->id)->whereNotIn('CampusID', $allBranches)->delete();
             foreach ($allBranches as $bid) {
                 if ($bid) {
                     if (Schema::hasTable('teacher_branches')) {
