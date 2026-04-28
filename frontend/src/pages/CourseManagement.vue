@@ -682,8 +682,8 @@
               <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
               <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
               <td class="invoice-status-cell">
-                <span :class="['invoice-status-chip', `invoice-status-${inv.status || 'unknown'}`]">
-                  {{ invoiceStatusLabel(inv.status) }}
+                <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
+                  {{ invoiceStatusLabel(inv) }}
                 </span>
               </td>
               <td>
@@ -700,7 +700,13 @@
                     type="button"
                     @click="openInvoiceVoidDialog(inv)"
                   >作廢</button>
-                  <span v-if="inv.status === 'paid' && !canVoidInvoice(inv)" class="hint">—</span>
+                  <button
+                    v-else-if="canExceptionVoidInvoice(inv)"
+                    class="small ghost invoice-void-btn invoice-void-btn--exception"
+                    type="button"
+                    @click="openInvoiceExceptionVoidDialog(inv)"
+                  >沖銷作廢</button>
+                  <span v-if="inv.status === 'paid' && !canVoidInvoice(inv) && !canExceptionVoidInvoice(inv)" class="hint">—</span>
                 </div>
               </td>
             </tr>
@@ -719,14 +725,19 @@
           <span class="premium-danger-icon">!</span>
           <div>
             <p class="premium-danger-kicker">Accounting Control</p>
-            <h3 class="modal-title">作廢帳單</h3>
+            <h3 class="modal-title">{{ invoiceVoidMode === 'exception' ? '沖銷作廢帳單' : '作廢帳單' }}</h3>
             <p class="modal-desc">
               {{ invoiceVoidTarget.invoice_no || `INV-${invoiceVoidTarget.id}` }} · {{ invoiceVoidTarget.course_ref || 'COURSE' }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
             </p>
           </div>
         </div>
         <div class="invoice-void-warning">
-          這會將帳單狀態改為作廢並從家長應收、課程帳單與主任催繳統計排除。已收款或部分收款帳單不可在此作廢，需走收款撤銷/沖銷流程。
+          <template v-if="invoiceVoidMode === 'exception'">
+            這張帳單已有收款流水或已收足額但狀態異常。系統會建立負值沖銷紀錄、保留原始收款/收據稽核，並將帳單標記作廢後排除應收。
+          </template>
+          <template v-else>
+            這會將帳單狀態改為作廢並從家長應收、課程帳單與主任催繳統計排除。已收款或部分收款帳單不可在此作廢，需走收款撤銷/沖銷流程。
+          </template>
         </div>
         <label class="field-label" for="invoice-void-reason">作廢原因（必填）</label>
         <textarea
@@ -742,7 +753,7 @@
         <div class="actions">
           <button class="ghost" type="button" :disabled="invoiceVoidSubmitting" @click="closeInvoiceVoidDialog">取消</button>
           <button class="danger-btn" type="button" :disabled="invoiceVoidSubmitting || invoiceVoidReason.trim().length < 3" @click="submitInvoiceVoid">
-            {{ invoiceVoidSubmitting ? '作廢中...' : '確認作廢' }}
+            {{ invoiceVoidSubmitting ? '處理中...' : (invoiceVoidMode === 'exception' ? '確認沖銷作廢' : '確認作廢') }}
           </button>
         </div>
       </div>
@@ -2308,11 +2319,21 @@ const formatBillingPeriod = (period) => {
   return monthNum ? `${year}年${monthNum}月` : period;
 };
 
-const invoiceStatusLabel = (status) => ({
+const invoiceStatusLabel = (invoice) => {
+  if (invoice?.ledger_label) return invoice.ledger_label;
+  const status = typeof invoice === 'string' ? invoice : invoice?.status;
+  return ({
   paid: '已繳',
   unpaid: '未繳',
   partial: '部分繳',
-}[status] || status || '未知');
+  void: '已作廢',
+  }[status] || status || '未知');
+};
+const invoiceStatusClass = (invoice) => {
+  const ledgerStatus = invoice?.ledger_status || '';
+  if (ledgerStatus && ledgerStatus !== invoice?.status) return 'invoice-status-exception';
+  return `invoice-status-${invoice?.status || 'unknown'}`;
+};
 const invoicePaidDateLabel = (invoice) => {
   if (invoice?.paid_at) return invoice.paid_at;
   return invoice?.status === 'paid' ? '舊資料未記錄' : '—';
@@ -3035,6 +3056,7 @@ const invoiceModalLoading = ref(false);
 const invoiceModalError = ref('');
 const invoiceVoidTarget = ref(null);
 const invoiceVoidReason = ref('');
+const invoiceVoidMode = ref('direct');
 const invoiceVoidSubmitting = ref(false);
 
 const closeInvoiceModal = () => {
@@ -3089,6 +3111,16 @@ const canVoidInvoice = (invoice) => {
     : Number(invoice.payment_count ?? 0) > 0;
   return !['paid', 'partial', 'void'].includes(status) && paidAmount === 0 && !hasPayment;
 };
+const canExceptionVoidInvoice = (invoice) => {
+  if (!invoice) return false;
+  const status = String(invoice.status || '').toLowerCase();
+  const hasLedgerAnomaly = Array.isArray(invoice.ledger_anomalies) && invoice.ledger_anomalies.length > 0;
+  const calculatedPaid = Number(invoice.calculated_paid_amount ?? 0) || 0;
+  const hasPositivePayment = Array.isArray(invoice.payments)
+    ? invoice.payments.some((payment) => Number(payment?.amount ?? 0) > 0 && String(payment?.method || '') !== 'void')
+    : Number(invoice.payment_count ?? 0) > 0;
+  return status !== 'void' && (invoice.can_exception_void || hasLedgerAnomaly || calculatedPaid > 0 || hasPositivePayment);
+};
 
 const openInvoiceVoidDialog = (invoice) => {
   if (!canVoidInvoice(invoice)) {
@@ -3101,6 +3133,22 @@ const openInvoiceVoidDialog = (invoice) => {
     return;
   }
   invoiceVoidTarget.value = invoice;
+  invoiceVoidMode.value = 'direct';
+  invoiceVoidReason.value = '';
+};
+
+const openInvoiceExceptionVoidDialog = (invoice) => {
+  if (!canExceptionVoidInvoice(invoice)) {
+    toastRef.value?.show?.({
+      title: '不可沖銷作廢',
+      description: '此帳單沒有收款痕跡或不是帳務例外，請使用一般作廢流程。',
+      variant: 'warning',
+      durationMs: 5000,
+    });
+    return;
+  }
+  invoiceVoidTarget.value = invoice;
+  invoiceVoidMode.value = 'exception';
   invoiceVoidReason.value = '';
 };
 
@@ -3108,6 +3156,7 @@ const closeInvoiceVoidDialog = () => {
   if (invoiceVoidSubmitting.value) return;
   invoiceVoidTarget.value = null;
   invoiceVoidReason.value = '';
+  invoiceVoidMode.value = 'direct';
 };
 
 const submitInvoiceVoid = async () => {
@@ -3124,7 +3173,8 @@ const submitInvoiceVoid = async () => {
       return;
     }
 
-    const res = await fetch(`/api/v1/invoices/${invoice.id}/void`, {
+    const path = invoiceVoidMode.value === 'exception' ? 'exception-void' : 'void';
+    const res = await fetch(`/api/v1/invoices/${invoice.id}/${path}`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -3141,9 +3191,15 @@ const submitInvoiceVoid = async () => {
     }
 
     const periodLabel = formatBillingPeriod(invoice.billing_period);
-    toastRef.value?.show?.({ title: '已作廢帳單', description: `${periodLabel} 帳單已作廢並排除應收。`, variant: 'success', durationMs: 5000 });
+    toastRef.value?.show?.({
+      title: invoiceVoidMode.value === 'exception' ? '已沖銷作廢帳單' : '已作廢帳單',
+      description: `${periodLabel} 帳單已作廢並排除應收。`,
+      variant: 'success',
+      durationMs: 5000,
+    });
     invoiceVoidTarget.value = null;
     invoiceVoidReason.value = '';
+    invoiceVoidMode.value = 'direct';
     if (invoiceModalCourse.value) {
       await openInvoiceModal(invoiceModalCourse.value);
     }
@@ -5587,6 +5643,10 @@ button.danger:disabled {
   background: #fef3c7;
   color: #92400e;
 }
+.invoice-status-exception {
+  background: #fff7ed;
+  color: #9a3412;
+}
 .invoice-status-unknown {
   background: #e5e7eb;
   color: #4b5563;
@@ -5612,6 +5672,14 @@ button.danger:disabled {
 }
 .invoice-void-btn:hover {
   background: #fee2e2 !important;
+}
+.invoice-void-btn--exception {
+  border-color: #fed7aa !important;
+  color: #9a3412 !important;
+  background: #fff7ed !important;
+}
+.invoice-void-btn--exception:hover {
+  background: #ffedd5 !important;
 }
 .danger-btn {
   border: none;

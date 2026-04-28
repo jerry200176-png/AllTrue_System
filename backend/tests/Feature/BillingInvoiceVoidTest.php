@@ -130,6 +130,105 @@ class BillingInvoiceVoidTest extends TestCase
         ])->assertStatus(403);
     }
 
+    public function test_director_can_exception_void_invoice_with_payment_trace(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, , $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 13200,
+            'TotalAmount' => 13200,
+            'billing_period' => '2026-05',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-27 12:00:00',
+            'Method' => 'transfer',
+            'Note' => 'legacy receipt',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/invoices/{$invoice->id}/exception-void", [
+            'reason' => '歷史重複錯帳，正確帳單另有 INV-202604-000360',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('invoice.status', 'void')
+            ->assertJsonPath('invoice.paid_amount', 0)
+            ->assertJsonPath('reversal_payment.amount', -13200)
+            ->assertJsonPath('reversal_payment.method', 'void');
+
+        $this->assertDatabaseHas('Payment', [
+            'InvoiceID' => $invoice->id,
+            'Amount' => -13200,
+            'Method' => 'void',
+        ]);
+        $this->assertDatabaseHas('Invoice', [
+            'id' => $invoice->id,
+            'Status' => 'void',
+            'PaidAmount' => 0,
+        ]);
+    }
+
+    public function test_exception_void_is_only_for_payment_trace_and_same_campus(): void
+    {
+        $sameCampusToken = $this->createToken('A', [1]);
+        $otherCampusToken = $this->createToken('A', [2]);
+        [, , $unpaidInvoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 0,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$sameCampusToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/invoices/{$unpaidInvoice->id}/exception-void", [
+            'reason' => 'no payment trace',
+        ])->assertStatus(422);
+
+        [, , $paidInvoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 1000,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$otherCampusToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/invoices/{$paidInvoice->id}/exception-void", [
+            'reason' => 'cross-campus attempt',
+        ])->assertStatus(403);
+    }
+
+    public function test_student_class_invoice_list_marks_ledger_anomaly(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, $course, $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 13200,
+            'TotalAmount' => 13200,
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-27 12:00:00',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/student-classes/{$course->ID}/invoices");
+
+        $res->assertOk()
+            ->assertJsonPath('invoices.0.ledger_status', 'open_status_without_balance')
+            ->assertJsonPath('invoices.0.ledger_label', '已收足額 · 狀態待修復')
+            ->assertJsonPath('invoices.0.can_exception_void', true)
+            ->assertJsonPath('invoices.0.calculated_paid_amount', 13200)
+            ->assertJsonPath('invoices.0.outstanding_amount', 0);
+    }
+
     public function test_teacher_cannot_void_invoice(): void
     {
         $teacherToken = $this->createToken('T', [1]);
