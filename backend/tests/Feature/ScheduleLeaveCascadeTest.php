@@ -21,6 +21,12 @@ class ScheduleLeaveCascadeTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_leave_marks_target_session_and_cascades_future_sessions_with_end_date_extension(): void
     {
         $token = $this->createDirectorToken([1], 'director-leave-cascade@example.com');
@@ -249,6 +255,100 @@ class ScheduleLeaveCascadeTest extends TestCase
             'start_date' => '2026-05-01',
             'end_date' => '2026-05-01',
         ])->assertForbidden();
+    }
+
+    public function test_leave_by_session_repairs_existing_leave_without_duplicate_tail(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-existing-leave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-existing-leave@example.com');
+        $student = $this->createStudent(1, '黃品皓');
+
+        $futureDates = [
+            '2026-04-07',
+            '2026-04-14',
+            '2026-04-21',
+            '2026-04-28',
+            '2026-05-05',
+            '2026-05-12',
+            '2026-05-19',
+            '2026-05-26',
+        ];
+
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:30',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+        $this->assertTrue($courseId > 0);
+
+        $leaveSession = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', '2026-04-28')
+            ->first();
+        $this->assertNotNull($leaveSession);
+
+        // Simulate the historical half-written state: leave status exists, but
+        // subsequent sessions were not shifted and no replacement tail was appended.
+        $leaveSession->Status = 'leave';
+        $leaveSession->save();
+        DB::table('schedules')->insert([
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '16:30',
+            'end_time' => '18:30',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-28',
+            'student_course_id' => $courseId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->assertSame(7, ClassSession::where('StudentClassID', $courseId)
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->count());
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/leave-by-session', [
+            'class_session_id' => (int) $leaveSession->id,
+        ])->assertOk();
+
+        $this->assertSame('2026-06-09', (string) $res->json('extended_end_date'));
+        $this->assertSame(8, ClassSession::where('StudentClassID', $courseId)
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->count());
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-06-09',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/leave-by-session', [
+            'class_session_id' => (int) $leaveSession->id,
+        ])->assertStatus(422);
+
+        $this->assertSame(1, ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', '2026-06-09')
+            ->count());
     }
 
     public function test_retro_leave_voids_attendance_and_reverses_deduction(): void
