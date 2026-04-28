@@ -15,6 +15,7 @@ export function normalizeClassSessionsPayload(json) {
       start_time: String(raw?.start_time || raw?.StartTime || '').slice(0, 5),
       end_time: String(raw?.end_time || raw?.EndTime || '').slice(0, 5),
       status: String(raw?.status || raw?.Status || ''),
+      is_contract_exception: !!(raw?.is_contract_exception ?? raw?.IsContractException ?? false),
       learning_record_id: raw?.learning_record_id != null ? Number(raw.learning_record_id) : null,
       learning_record_status: String(raw?.learning_record_status || 'missing'),
       learning_record_body_filled: !!raw?.learning_record_body_filled,

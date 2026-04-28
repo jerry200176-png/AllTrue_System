@@ -122,6 +122,7 @@ class ClassSessionController extends Controller
                 'cs.StartTime',
                 'cs.EndTime',
                 'cs.Status',
+                'cs.IsContractException',
                 // PRD-A (2026-04-18): Reconcile displayed status against the latest
                 // active StudentSignIn. When an attendance record exists but
                 // ClassSession.Status is still `scheduled` or `absent` (a known
@@ -239,6 +240,7 @@ class ClassSessionController extends Controller
             $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
             $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
             $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
+            $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
             $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
             $row->learning_record_status = $row->learning_record_status ?? 'missing';
             $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
@@ -266,6 +268,7 @@ class ClassSessionController extends Controller
                 $row->StartTime,
                 $row->EndTime,
                 $row->Status,
+                $row->IsContractException,
                 $row->effective_status,
                 $row->Note,
                 $row->sc_rate,
@@ -1295,27 +1298,6 @@ class ClassSessionController extends Controller
         $newTeacherId = (int) $data['substitute_teacher_id'];
         $oldTeacherId = (int) ($studentClass->TeacherID ?? 0);
 
-        if ($newTeacherId === $oldTeacherId) {
-            return response()->json([
-                'message' => '代課老師與正班老師相同，無需替換',
-                'errors' => ['substitute_teacher_id' => ['請選擇不同的老師。']],
-            ], 422);
-        }
-
-        // PRD FR-003：候選池為 operator 管理分校的聯集（managed_campus_ids）。
-        // 老師只要綁定任一 operator 管理分校即可被指派（跨分校協調）。
-        $substituteSvc = app(SubstituteService::class);
-        if (!$substituteSvc->teacherBoundToAny($newTeacherId, $campusIds)) {
-            return response()->json([
-                'message' => '所選老師未綁定任一您管理的分校',
-                'errors' => ['substitute_teacher_id' => ['所選老師未綁定任一您管理的分校。']],
-            ], 422);
-        }
-        $teacherHasThisCampus = UserCampus::where('UserID', $newTeacherId)
-            ->where('CampusID', $campusId)
-            ->exists();
-        $crossCampus = !$teacherHasThisCampus;
-
         try {
             $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
         } catch (\Throwable $e) {
@@ -1416,6 +1398,34 @@ class ClassSessionController extends Controller
                     ->first();
             }
         }
+
+        if ($newTeacherId === $oldTeacherId) {
+            return $this->restoreOriginalTeacherFromSubstitute(
+                $request,
+                $session,
+                $studentClass,
+                $existingRescheduled,
+                $existingScheduled,
+                $sessionDate,
+                $startTime,
+                $oldTeacherId,
+                $data
+            );
+        }
+
+        // PRD FR-003：候選池為 operator 管理分校的聯集（managed_campus_ids）。
+        // 老師只要綁定任一 operator 管理分校即可被指派（跨分校協調）。
+        $substituteSvc = app(SubstituteService::class);
+        if (!$substituteSvc->teacherBoundToAny($newTeacherId, $campusIds)) {
+            return response()->json([
+                'message' => '所選老師未綁定任一您管理的分校',
+                'errors' => ['substitute_teacher_id' => ['所選老師未綁定任一您管理的分校。']],
+            ], 422);
+        }
+        $teacherHasThisCampus = UserCampus::where('UserID', $newTeacherId)
+            ->where('CampusID', $campusId)
+            ->exists();
+        $crossCampus = !$teacherHasThisCampus;
 
         // Determine whether the session is in the past (already ended or attended-like status).
         // Past sessions bypass the capacity guard -- the class already happened, so swapping the
@@ -1970,6 +1980,158 @@ class ClassSessionController extends Controller
                 'undo_deadline_ms' => (int) round(microtime(true) * 1000)
                     + \App\Http\Controllers\SubstituteController::resolveServerUndoWindow() * 1000,
             ], 200, [], $jsonFlags);
+        });
+    }
+
+    /**
+     * Revert a single-session substitute back to the contract teacher.
+     *
+     * This is intentionally not the time-limited "Undo" flow: directors need a
+     * durable correction path when a session was assigned to the wrong teacher.
+     */
+    private function restoreOriginalTeacherFromSubstitute(
+        Request $request,
+        ClassSession $session,
+        StudentClass $studentClass,
+        $existingRescheduled,
+        $existingScheduled,
+        string $sessionDate,
+        string $startTime,
+        int $originalTeacherId,
+        array $data
+    ) {
+        return DB::transaction(function () use (
+            $request,
+            $session,
+            $studentClass,
+            $existingRescheduled,
+            $existingScheduled,
+            $sessionDate,
+            $startTime,
+            $originalTeacherId,
+            $data
+        ) {
+            $courseId = (int) $studentClass->ID;
+            $authUser = $request->attributes->get('auth_user');
+            $changedBy = (int) ($authUser->id ?? 0);
+
+            $rescheduled = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'rescheduled')
+                ->first();
+
+            $scheduled = $existingScheduled;
+            if (!$scheduled && $rescheduled) {
+                $scheduled = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', (int) $rescheduled->id)
+                    ->where('start_time', $startTime)
+                    ->first();
+            }
+            if (!$scheduled && $rescheduled) {
+                $scheduled = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', (int) $rescheduled->id)
+                    ->first();
+            }
+
+            $scheduledDeleted = 0;
+            if ($rescheduled) {
+                $scheduledDeleted += Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'scheduled')
+                    ->where('original_schedule_id', (int) $rescheduled->id)
+                    ->delete();
+            } elseif ($scheduled) {
+                $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
+            }
+
+            $rescheduledDeleted = 0;
+            if ($rescheduled) {
+                $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
+            }
+
+            $lrId = null;
+            $lrTable = (new LearningRecord())->getTable();
+            $lrRowQuery = DB::table($lrTable)->where('ClassSessionID', $session->id);
+            if (Schema::hasColumn($lrTable, 'VoidedAt')) {
+                $lrRowQuery->whereNull('VoidedAt');
+            }
+            $lrRow = $lrRowQuery->first();
+            if ($lrRow) {
+                $lrId = (int) $lrRow->id;
+                $lrOldTeacher = (int) ($lrRow->TeacherID ?? 0);
+                if ($lrOldTeacher !== $originalTeacherId) {
+                    $lrUpdate = ['TeacherID' => $originalTeacherId];
+                    if (Schema::hasColumn($lrTable, 'updated_at')) {
+                        $lrUpdate['updated_at'] = now();
+                    }
+                    DB::table($lrTable)->where('id', $lrId)->update($lrUpdate);
+
+                    if (Schema::hasTable('learning_record_teacher_changes')) {
+                        try {
+                            $auditReason = $this->scrubSubstituteUtf8($data['reason'] ?? '回復正班老師') ?: '回復正班老師';
+                            LearningRecordTeacherChange::create([
+                                'learning_record_id' => $lrId,
+                                'old_teacher_id' => $lrOldTeacher > 0 ? $lrOldTeacher : null,
+                                'new_teacher_id' => $originalTeacherId,
+                                'changed_by' => $changedBy > 0 ? $changedBy : null,
+                                'reason' => $auditReason,
+                            ]);
+                        } catch (\Throwable $auditEx) {
+                            Log::warning('substitute_restore: learning_record_teacher_changes insert skipped', [
+                                'learning_record_id' => $lrId,
+                                'message' => $auditEx->getMessage(),
+                            ]);
+                        }
+                    }
+
+                    if (($lrRow->Status ?? '') === 'approved' && Schema::hasColumn('User', 'TeachingSessionCount')) {
+                        try {
+                            if ($lrOldTeacher > 0) {
+                                User::where('id', $lrOldTeacher)
+                                    ->where('TeachingSessionCount', '>', 0)
+                                    ->decrement('TeachingSessionCount');
+                            }
+                            User::where('id', $originalTeacherId)->increment('TeachingSessionCount');
+                        } catch (\Throwable $kpiEx) {
+                            Log::warning('substitute_restore: TeachingSessionCount update skipped', [
+                                'message' => $kpiEx->getMessage(),
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            if (Schema::hasTable('Notifications') && Schema::hasColumn('Notifications', 'ResolvedAt')) {
+                DB::table('Notifications')
+                    ->where('Type', 'substitute')
+                    ->where('SourceType', 'ClassSession')
+                    ->where('SourceID', $session->id)
+                    ->whereNull('ResolvedAt')
+                    ->update(['ResolvedAt' => now()]);
+            }
+
+            Log::info('[substitute_restore_original]', [
+                'class_session_id' => $session->id,
+                'student_class_id' => $courseId,
+                'restored_teacher_id' => $originalTeacherId,
+                'scheduled_deleted' => $scheduledDeleted,
+                'rescheduled_deleted' => $rescheduledDeleted,
+                'operator_id' => $changedBy ?: null,
+            ]);
+
+            return response()->json([
+                'message' => '已回復正班老師',
+                'class_session_id' => (int) $session->id,
+                'restored_teacher_id' => $originalTeacherId,
+                'substitute_cleared' => ($scheduledDeleted + $rescheduledDeleted) > 0,
+                'deleted_scheduled_count' => $scheduledDeleted,
+                'deleted_rescheduled_count' => $rescheduledDeleted,
+                'learning_record_id' => $lrId,
+            ]);
         });
     }
 

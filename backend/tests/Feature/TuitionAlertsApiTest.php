@@ -143,6 +143,94 @@ class TuitionAlertsApiTest extends TestCase
         $this->assertSame(-3, (int) $row['days_until_settlement']);
     }
 
+    public function test_monthly_alert_uses_future_invoice_due_date_when_pre_scheduled(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-18', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '月結未來期',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 15,
+            'Paid' => 0,
+            'StartDate' => '2026-05-01',
+            'EndDate' => '2026-05-31',
+        ]);
+
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-18',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $ids = collect($res->json())->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $course->ID, $ids, '未來月份帳單不應被當成本月逾期');
+    }
+
+    public function test_monthly_alert_returns_period_invoice_when_due_window_arrives(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1]);
+        $student = Student::create([
+            'name' => '月結應繳期',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = $this->createMonthlyClass($student->id, [
+            'settlement_day' => 15,
+            'Paid' => 0,
+            'StartDate' => '2026-05-01',
+            'EndDate' => '2026-05-31',
+        ]);
+
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-18',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame('2026-05-15', $row['due_date']);
+        $this->assertSame(3, (int) $row['days_until_settlement']);
+        $this->assertSame($invoice->id, $row['invoice_id']);
+        $this->assertSame('2026-05', $row['billing_period']);
+    }
+
     public function test_monthly_paid_included_when_next_due_within_window(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-12', 'Asia/Taipei'));
@@ -551,6 +639,48 @@ class TuitionAlertsApiTest extends TestCase
         $row = collect($res->json())->firstWhere('id', $course->ID);
         $this->assertNotNull($row);
         $this->assertGreaterThanOrEqual(0, $row['outstanding']);
+    }
+
+    public function test_voided_invoice_does_not_increase_outstanding(): void
+    {
+        $token = $this->createDirectorToken([1], 'void-invoice-alert@example.com');
+        $student = Student::create([
+            'name' => '作廢帳單學生',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $course = $this->createCountModeClass($student->id, [
+            'Paid' => 0, 'RemainingSessions' => 1, 'Charge' => 5000,
+        ]);
+
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'unpaid',
+            'billing_period' => '2026-04',
+        ]);
+        Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-05-01',
+            'DueDate' => '2026-05-15',
+            'TotalAmount' => 5000,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+            'billing_period' => '2026-05',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}", 'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $row = collect($res->json())->firstWhere('id', $course->ID);
+        $this->assertNotNull($row);
+        $this->assertSame(5000, (int) $row['outstanding'], 'void invoice should not count as receivable');
     }
 
     private function createDirectorToken(array $campusIds, string $loginName = 'director-tuition@example.com'): string

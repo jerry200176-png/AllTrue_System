@@ -261,9 +261,25 @@ class PaymentReportController extends Controller
         return DB::transaction(function () use ($report, $userId, $note) {
             $sc = StudentClass::find($report->StudentClassID);
 
+            if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse();
+            }
+
             $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
                 ->where('Status', '!=', 'paid')
+                ->lockForUpdate()
                 ->first();
+
+            $hasPaidInvoice = false;
+            if (! $invoice) {
+                $hasPaidInvoice = Invoice::where('StudentClassID', $report->StudentClassID)
+                    ->where('Status', 'paid')
+                    ->exists();
+            }
+
+            if (! $invoice && $sc && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+                return $this->duplicateCoursePaymentResponse();
+            }
 
             if (!$invoice) {
                 $invoice = Invoice::create([
@@ -332,6 +348,7 @@ class PaymentReportController extends Controller
     {
         $data = $request->validate([
             'student_class_id' => 'required|integer',
+            'invoice_id'       => 'nullable|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
             'amount'           => 'required|numeric|min:0|max:999999',
@@ -347,18 +364,53 @@ class PaymentReportController extends Controller
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($data, $sc, $userId) {
+            $invoice = null;
+
+            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse();
+            }
+
+            if (!empty($data['invoice_id'])) {
+                $invoice = Invoice::where('id', (int) $data['invoice_id'])
+                    ->where('StudentClassID', $sc->ID)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$invoice) {
+                    return response()->json(['message' => '指定帳單不存在或不屬於此課程'], 404);
+                }
+                if ((string) $invoice->Status === 'paid') {
+                    return response()->json(['message' => '指定帳單已繳清，請勿重複入帳'], 422);
+                }
+            }
+
             // FR-006：月結制優先找當月 billing_period 的未繳帳單
-            $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
-            $invoice = Invoice::where('StudentClassID', $sc->ID)
-                ->where('billing_period', $currentPeriod)
-                ->where('Status', '!=', 'paid')
-                ->first();
+            if (! $invoice) {
+                $currentPeriod = Carbon::now('Asia/Taipei')->format('Y-m');
+                $invoice = Invoice::where('StudentClassID', $sc->ID)
+                    ->where('billing_period', $currentPeriod)
+                    ->where('Status', '!=', 'paid')
+                    ->lockForUpdate()
+                    ->first();
+            }
 
             // Fallback：找任何未繳帳單（legacy 課程或堂數制）
             if (! $invoice) {
                 $invoice = Invoice::where('StudentClassID', $sc->ID)
                     ->where('Status', '!=', 'paid')
+                    ->lockForUpdate()
                     ->first();
+            }
+
+            $hasPaidInvoice = false;
+            if (! $invoice) {
+                $hasPaidInvoice = Invoice::where('StudentClassID', $sc->ID)
+                    ->where('Status', 'paid')
+                    ->exists();
+            }
+
+            if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
+                return $this->duplicateCoursePaymentResponse();
             }
 
             if (!$invoice) {
@@ -425,6 +477,25 @@ class PaymentReportController extends Controller
                 'invoice_id' => $invoice->id,
             ]);
         });
+    }
+
+    private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
+    {
+        if ($coursePaid === 1) {
+            return true;
+        }
+
+        return Invoice::where('StudentClassID', $studentClassId)
+            ->where('Status', 'paid')
+            ->exists();
+    }
+
+    private function duplicateCoursePaymentResponse()
+    {
+        return response()->json([
+            'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款後再重新核帳。',
+            'code'    => 'course_already_paid',
+        ], 422);
     }
 
     /**
