@@ -186,7 +186,9 @@ class BillingInvoiceVoidTest extends TestCase
             'Accept' => 'application/json',
         ])->postJson("/api/v1/invoices/{$unpaidInvoice->id}/exception-void", [
             'reason' => 'no payment trace',
-        ])->assertStatus(422);
+        ])->assertOk()
+            ->assertJsonPath('invoice.status', 'void')
+            ->assertJsonPath('reversal_payment', null);
 
         [, , $paidInvoice] = $this->createInvoiceFixture(1, [
             'Status' => 'unpaid',
@@ -245,6 +247,44 @@ class BillingInvoiceVoidTest extends TestCase
         $res->assertOk()
             ->assertJsonPath('invoices.0.can_direct_void', true)
             ->assertJsonPath('invoices.0.can_exception_void', false);
+    }
+
+    public function test_direct_void_allows_invoice_with_fully_reversed_payment_trace(): void
+    {
+        $token = $this->createToken('A', [1]);
+        [, $course, $invoice] = $this->createInvoiceFixture(1, [
+            'Status' => 'unpaid',
+            'PaidAmount' => 0,
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 1000,
+            'PaidAt' => '2026-04-08 12:00:00',
+            'Method' => 'transfer',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => -1000,
+            'PaidAt' => '2026-04-09 12:00:00',
+            'Method' => 'void',
+        ]);
+
+        $ledger = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?student_class_id={$course->ID}");
+
+        $ledger->assertOk()
+            ->assertJsonPath('invoices.0.can_direct_void', true)
+            ->assertJsonPath('invoices.0.can_exception_void', false);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/invoices/{$invoice->id}/void", [
+            'reason' => 'net zero stale invoice',
+        ])->assertOk()
+            ->assertJsonPath('invoice.status', 'void');
     }
 
     public function test_accounting_ledger_exposes_exception_void_action_for_invoice_with_payment_trace(): void
