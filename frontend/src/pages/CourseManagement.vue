@@ -687,13 +687,21 @@
                 </span>
               </td>
               <td>
-                <button
-                  v-if="inv.status !== 'paid'"
-                  class="small primary invoice-pay-btn"
-                  type="button"
-                  @click="openPaymentEntryForInvoice(inv)"
-                >核帳</button>
-                <span v-else class="hint">—</span>
+                <div class="invoice-row-actions">
+                  <button
+                    v-if="inv.status !== 'paid'"
+                    class="small primary invoice-pay-btn"
+                    type="button"
+                    @click="openPaymentEntryForInvoice(inv)"
+                  >核帳</button>
+                  <button
+                    v-if="canVoidInvoice(inv)"
+                    class="small ghost invoice-void-btn"
+                    type="button"
+                    @click="openInvoiceVoidDialog(inv)"
+                  >作廢</button>
+                  <span v-if="inv.status === 'paid' && !canVoidInvoice(inv)" class="hint">—</span>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -701,6 +709,41 @@
 
         <div class="actions invoice-modal-actions">
           <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="invoiceVoidTarget" class="modal-overlay" @click.self="!invoiceVoidSubmitting && closeInvoiceVoidDialog()">
+      <div class="modal course-modal invoice-void-modal">
+        <div class="premium-danger-header">
+          <span class="premium-danger-icon">!</span>
+          <div>
+            <p class="premium-danger-kicker">Accounting Control</p>
+            <h3 class="modal-title">作廢帳單</h3>
+            <p class="modal-desc">
+              {{ invoiceVoidTarget.invoice_no || `INV-${invoiceVoidTarget.id}` }} · {{ invoiceVoidTarget.course_ref || 'COURSE' }} · {{ formatBillingPeriod(invoiceVoidTarget.billing_period) }}
+            </p>
+          </div>
+        </div>
+        <div class="invoice-void-warning">
+          這會將帳單狀態改為作廢並從家長應收、課程帳單與主任催繳統計排除。已收款或部分收款帳單不可在此作廢，需走收款撤銷/沖銷流程。
+        </div>
+        <label class="field-label" for="invoice-void-reason">作廢原因（必填）</label>
+        <textarea
+          id="invoice-void-reason"
+          v-model.trim="invoiceVoidReason"
+          class="invoice-void-reason"
+          rows="4"
+          maxlength="255"
+          placeholder="例：歷史錯帳，不應產生 2026年5月 COURSE-000382 應收"
+          :disabled="invoiceVoidSubmitting"
+        ></textarea>
+        <p class="modal-desc">原因會寫入帳單稽核紀錄，之後可追查。</p>
+        <div class="actions">
+          <button class="ghost" type="button" :disabled="invoiceVoidSubmitting" @click="closeInvoiceVoidDialog">取消</button>
+          <button class="danger-btn" type="button" :disabled="invoiceVoidSubmitting || invoiceVoidReason.trim().length < 3" @click="submitInvoiceVoid">
+            {{ invoiceVoidSubmitting ? '作廢中...' : '確認作廢' }}
+          </button>
         </div>
       </div>
     </div>
@@ -2990,6 +3033,9 @@ const invoiceModalCourse = ref(null);
 const invoiceModalList = ref([]);
 const invoiceModalLoading = ref(false);
 const invoiceModalError = ref('');
+const invoiceVoidTarget = ref(null);
+const invoiceVoidReason = ref('');
+const invoiceVoidSubmitting = ref(false);
 
 const closeInvoiceModal = () => {
   invoiceModalOpen.value = false;
@@ -3031,6 +3077,81 @@ const openInvoiceModal = async (course) => {
     invoiceModalError.value = e?.message || '帳單載入失敗，請稍後再試。';
   } finally {
     invoiceModalLoading.value = false;
+  }
+};
+
+const canVoidInvoice = (invoice) => {
+  if (!invoice) return false;
+  const status = String(invoice.status || '').toLowerCase();
+  const paidAmount = Number(invoice.paid_amount ?? 0) || 0;
+  const hasPayment = Array.isArray(invoice.payments)
+    ? invoice.payments.some((payment) => Number(payment?.amount ?? 0) > 0 && String(payment?.method || '') !== 'void')
+    : Number(invoice.payment_count ?? 0) > 0;
+  return !['paid', 'partial', 'void'].includes(status) && paidAmount === 0 && !hasPayment;
+};
+
+const openInvoiceVoidDialog = (invoice) => {
+  if (!canVoidInvoice(invoice)) {
+    toastRef.value?.show?.({
+      title: '不可直接作廢',
+      description: '此帳單已有收款或狀態不是未繳，請走收款撤銷/沖銷流程。',
+      variant: 'warning',
+      durationMs: 5000,
+    });
+    return;
+  }
+  invoiceVoidTarget.value = invoice;
+  invoiceVoidReason.value = '';
+};
+
+const closeInvoiceVoidDialog = () => {
+  if (invoiceVoidSubmitting.value) return;
+  invoiceVoidTarget.value = null;
+  invoiceVoidReason.value = '';
+};
+
+const submitInvoiceVoid = async () => {
+  const invoice = invoiceVoidTarget.value;
+  const reason = invoiceVoidReason.value.trim();
+  if (!invoice?.id || reason.length < 3 || invoiceVoidSubmitting.value) return;
+
+  invoiceVoidSubmitting.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      toastRef.value?.show?.({ title: '請重新登入', description: '登入逾時，請重新登入後再作廢帳單。', variant: 'error', durationMs: 5000 });
+      return;
+    }
+
+    const res = await fetch(`/api/v1/invoices/${invoice.id}/void`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toastRef.value?.show?.({ title: '作廢失敗', description: json?.message || '帳單作廢失敗，請稍後再試。', variant: 'error', durationMs: 6000 });
+      return;
+    }
+
+    const periodLabel = formatBillingPeriod(invoice.billing_period);
+    toastRef.value?.show?.({ title: '已作廢帳單', description: `${periodLabel} 帳單已作廢並排除應收。`, variant: 'success', durationMs: 5000 });
+    invoiceVoidTarget.value = null;
+    invoiceVoidReason.value = '';
+    if (invoiceModalCourse.value) {
+      await openInvoiceModal(invoiceModalCourse.value);
+    }
+    await loadCourses(pagination.value.page || 1);
+  } catch (e) {
+    toastRef.value?.show?.({ title: '作廢失敗', description: e?.message || '帳單作廢失敗，請稍後再試。', variant: 'error', durationMs: 6000 });
+  } finally {
+    invoiceVoidSubmitting.value = false;
   }
 };
 
@@ -5475,6 +5596,60 @@ button.danger:disabled {
   border-radius: 999px;
   font-size: 12px;
 }
+.invoice-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 92px;
+}
+.invoice-void-btn {
+  border-color: #fecaca !important;
+  color: #b91c1c !important;
+  background: #fff7f7 !important;
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.invoice-void-btn:hover {
+  background: #fee2e2 !important;
+}
+.danger-btn {
+  border: none;
+  border-radius: 10px;
+  background: #b91c1c;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 10px 18px;
+}
+.danger-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+.danger-btn:not(:disabled):hover {
+  background: #991b1b;
+}
+.invoice-void-modal {
+  width: min(480px, calc(100vw - 32px));
+}
+.invoice-void-warning {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fff7f7;
+  color: #7f1d1d;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.invoice-void-reason {
+  width: 100%;
+  margin-top: 8px;
+  resize: vertical;
+  min-height: 104px;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
 .invoice-payment-list {
   display: flex;
   flex-direction: column;
@@ -5784,6 +5959,16 @@ button.danger:disabled {
   background: #1e293b;
   color: #cbd5e1;
   border-color: #334155;
+}
+[data-theme="dark"] .invoice-void-warning {
+  background: #450a0a;
+  color: #fecaca;
+  border-color: #7f1d1d;
+}
+[data-theme="dark"] .invoice-void-btn {
+  background: #450a0a !important;
+  color: #fecaca !important;
+  border-color: #7f1d1d !important;
 }
 [data-theme="dark"] .invoice-modal-state,
 [data-theme="dark"] .invoice-table th {
