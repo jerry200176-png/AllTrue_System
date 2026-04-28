@@ -339,7 +339,7 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('invoices.0.paid_at', '2026-04-10')
             ->assertJsonPath('invoices.0.payment_count', 1)
             ->assertJsonPath('invoices.0.payments.0.amount', 8800)
-            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'RCPT-202604-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT))
             ->assertJsonPath('invoices.0.payments.0.is_void', false)
             ->assertJsonPath('invoices.0.payments.1.amount', -8800)
             ->assertJsonPath('invoices.0.payments.1.is_void', true);
