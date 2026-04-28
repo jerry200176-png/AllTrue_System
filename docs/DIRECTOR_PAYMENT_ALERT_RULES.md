@@ -33,11 +33,12 @@
 ## 月結制逐期帳單（2026-04-27 起）
 
 月結課程「月結續約」後，系統自動：
-1. 重置 `StudentClass.Paid=0`、`PayDate=null`
-2. 建立新期 `Invoice`（`billing_period = YYYY-MM`，`Status='unpaid'`）
+1. 建立新一期 `StudentClass`，新課程 `Paid=0`、`PayDate=null`
+2. 舊期課程 `Stop=1`、`closed_reason='settled'`，保留原本 paid 歷史
+3. 在新課程底下建立新期 `Invoice`（`billing_period = YYYY-MM`，`Status='unpaid'`）
 
 `directorRecord` 核帳時，優先找 `billing_period = 當月` 的未繳 Invoice；
-主任收費後 Invoice.Status 更新為 `paid`，同時 `StudentClass.Paid=1`。
+主任收費後 Invoice.Status 更新為 `paid`，同時新一期 `StudentClass.Paid=1`。
 
 舊月結課程（無 Invoice）行為不變，fallback `StudentClass.Paid` 欄位。
 
