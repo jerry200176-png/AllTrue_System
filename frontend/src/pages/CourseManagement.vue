@@ -3114,12 +3114,7 @@ const canVoidInvoice = (invoice) => {
 const canExceptionVoidInvoice = (invoice) => {
   if (!invoice) return false;
   const status = String(invoice.status || '').toLowerCase();
-  const hasLedgerAnomaly = Array.isArray(invoice.ledger_anomalies) && invoice.ledger_anomalies.length > 0;
-  const calculatedPaid = Number(invoice.calculated_paid_amount ?? 0) || 0;
-  const hasPositivePayment = Array.isArray(invoice.payments)
-    ? invoice.payments.some((payment) => Number(payment?.amount ?? 0) > 0 && String(payment?.method || '') !== 'void')
-    : Number(invoice.payment_count ?? 0) > 0;
-  return status !== 'void' && (invoice.can_exception_void || hasLedgerAnomaly || calculatedPaid > 0 || hasPositivePayment);
+  return status !== 'void' && invoice.can_exception_void === true;
 };
 
 const openInvoiceVoidDialog = (invoice) => {

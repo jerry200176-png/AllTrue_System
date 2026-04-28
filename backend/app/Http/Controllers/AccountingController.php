@@ -209,6 +209,8 @@ class AccountingController extends Controller
             $appliedAmount = min($totalAmount, $netApplied);
             $overpaidAmount = max(0, $netApplied - $totalAmount);
             $outstanding = max(0, $totalAmount - $appliedAmount);
+            $status = (string) ($invoice->Status ?? '');
+            $paidAmount = (int) ($invoice->PaidAmount ?? 0);
             $invoiceAnomalies = [];
 
             if ($overpaidAmount > 0) {
@@ -220,7 +222,7 @@ class AccountingController extends Controller
                 );
             }
 
-            if ((int) ($invoice->PaidAmount ?? 0) !== $appliedAmount) {
+            if ($paidAmount !== $appliedAmount) {
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'paid_amount_mismatch',
                     'warning',
@@ -229,7 +231,7 @@ class AccountingController extends Controller
                 );
             }
 
-            if ((string) $invoice->Status === 'paid' && $outstanding > 0) {
+            if ($status === 'paid' && $outstanding > 0) {
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'paid_status_with_balance',
                     'critical',
@@ -238,7 +240,7 @@ class AccountingController extends Controller
                 );
             }
 
-            if (in_array((string) $invoice->Status, ['unpaid', 'partial'], true) && $totalAmount > 0 && $outstanding === 0) {
+            if (in_array($status, ['unpaid', 'partial'], true) && $totalAmount > 0 && $outstanding === 0) {
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
                     'open_status_without_balance',
                     'warning',
@@ -323,12 +325,14 @@ class AccountingController extends Controller
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
                 'total_amount' => $totalAmount,
-                'paid_amount' => (int) ($invoice->PaidAmount ?? 0),
+                'paid_amount' => $paidAmount,
                 'calculated_applied_amount' => $appliedAmount,
                 'voided_amount' => $voidedAmount,
                 'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
-                'status' => (string) ($invoice->Status ?? ''),
+                'status' => $status,
+                'can_direct_void' => !in_array($status, ['paid', 'partial', 'void'], true) && $paidAmount <= 0 && $positivePayments->isEmpty(),
+                'can_exception_void' => $status !== 'void' && ($netApplied > 0 || $paidAmount > 0),
                 'payments' => $paymentRows->all(),
                 'reports' => $invoiceReports->all(),
                 'anomalies' => $invoiceAnomalies,
