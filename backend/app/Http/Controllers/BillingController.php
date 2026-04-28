@@ -43,6 +43,8 @@ class BillingController extends Controller
 
         if ($request->filled('status')) {
             $query->where('Status', $request->input('status'));
+        } else {
+            $query->notVoided();
         }
 
         $invoices = $query->with(['student', 'items', 'items.studentClass'])->orderBy('id', 'desc')->paginate(20);
