@@ -3,8 +3,16 @@ name: Security Scan
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/codeql.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/codeql.yml"
+      - ".github/workflows/ci.yml"
   schedule:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
