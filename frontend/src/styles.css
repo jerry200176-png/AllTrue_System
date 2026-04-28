@@ -1123,7 +1123,7 @@ tr:hover td {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 12000;
   animation: fadeIn 0.2s ease;
 }
 @media (min-width: 641px) {
@@ -1458,6 +1458,7 @@ button, .button-outline, [type="button"] {
     max-width: 100vw !important;
     max-height: 92vh !important;
     max-height: 92dvh !important;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
     border-radius: 16px 16px 0 0 !important;
     overflow-y: auto;
   }
