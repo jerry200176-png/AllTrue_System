@@ -78,6 +78,7 @@
                     <th>未結清</th>
                     <th>狀態</th>
                     <th>已收款紀錄</th>
+                    <th>操作</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -103,6 +104,25 @@
                         </span>
                       </div>
                       <span v-else class="ledger-muted">—</span>
+                    </td>
+                    <td>
+                      <div class="ledger-actions">
+                        <button
+                          v-if="canDirectVoidInvoice(inv)"
+                          class="ledger-action ledger-action--danger"
+                          type="button"
+                          :disabled="isBusyInvoice(inv)"
+                          @click="voidInvoice(inv, 'direct')"
+                        >作廢</button>
+                        <button
+                          v-else-if="canExceptionVoidInvoice(inv)"
+                          class="ledger-action ledger-action--warning"
+                          type="button"
+                          :disabled="isBusyInvoice(inv)"
+                          @click="voidInvoice(inv, 'exception')"
+                        >沖銷作廢</button>
+                        <span v-else class="ledger-muted">—</span>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -141,6 +161,7 @@ const loading = ref(false);
 const error = ref('');
 const payload = ref(null);
 const busyReportId = ref(null);
+const busyInvoiceId = ref(null);
 
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
@@ -239,17 +260,50 @@ async function voidReport(reportId) {
   }
 }
 
+const canManageInvoices = () => ['director', 'admin', 'super_admin'].includes(getAuthRole());
+const canDirectVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_direct_void;
+const canExceptionVoidInvoice = (invoice) => canManageInvoices() && !!invoice?.can_exception_void;
+const isBusyInvoice = (invoice) => busyInvoiceId.value === invoice?.id;
+
+async function voidInvoice(invoice, mode) {
+  if (!invoice?.id || !canManageInvoices()) return;
+  const isException = mode === 'exception';
+  const actionLabel = isException ? '沖銷作廢' : '作廢';
+  const reason = window.prompt(`請輸入${actionLabel}原因（會保留稽核紀錄）`);
+  if (!reason || reason.trim().length < 3) return;
+
+  busyInvoiceId.value = invoice.id;
+  try {
+    const token = getToken();
+    if (!token) throw new Error('請先登入');
+    const path = isException ? 'exception-void' : 'void';
+    const resp = await fetch(`/api/v1/invoices/${invoice.id}/${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.trim() }),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || `${actionLabel}失敗（${resp.status}）`);
+    await loadLedger();
+    emit('changed');
+  } catch (e) {
+    error.value = e.message || `${actionLabel}失敗`;
+  } finally {
+    busyInvoiceId.value = null;
+  }
+}
+
 const labelMap = (map, key) => map[key] || key || '—';
 const formatCurrency = (value) => 'NT$ ' + Number(value || 0).toLocaleString('zh-TW');
 const signedCurrency = (value) => `${Number(value || 0) > 0 ? '+' : Number(value || 0) < 0 ? '-' : ''}${formatCurrency(Math.abs(Number(value || 0)))}`;
 const formatPeriod = (period) => !period ? '—' : (String(period).split('-').length === 2 ? String(period).replace('-', '/') : period);
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '沖銷' }, method);
-const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款' }, status);
+const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款', void: '已作廢' }, status);
 const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待核帳', voided: '已撤銷' }, status);
 const applicationStatusLabel = (status) => labelMap({ applied: '已套用', partially_applied: '部分套用', overpayment_pending_review: '溢收/待沖銷', voided: '已沖銷' }, status);
 const anomalyLabel = (code) => labelMap({ overpayment_pending_review: '溢收/疑似重複收款', duplicate_effective_payments: '同帳單多筆收款', paid_amount_mismatch: '帳單金額不一致', paid_status_with_balance: '已繳狀態仍有餘額', open_status_without_balance: '未繳狀態但已足額', payment_without_receipt: '付款缺收據', receipt_without_payment: '收據缺付款', receipt_without_invoice: '收據未套帳單', confirmed_receipt_without_payment: '核帳缺付款', receipt_payment_outside_ledger: '收據付款不在本帳本' }, code) || '異常';
 </script>
 
 <style scoped>
-.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}.ledger-modal{width:min(1040px,96vw);height:100vh;overflow:auto;background:var(--surface,#fff);color:var(--text,#111827);box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:24px}.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.ledger-eyebrow{margin:0 0 4px;color:var(--primary,#2563eb);font-size:12px;font-weight:800;letter-spacing:.08em}.ledger-header h3{margin:0;font-size:24px}.ledger-subtitle{margin:6px 0 0;color:var(--text-light,#64748b)}.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,#64748b)}.ledger-state,.ledger-empty{padding:28px;border:1px dashed #cbd5e1;border-radius:14px;color:var(--text-light,#64748b);text-align:center}.ledger-error{color:#b91c1c;background:#fef2f2;border-color:#fecaca}.ledger-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}.ledger-summary>div{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#f8fafc}.ledger-summary strong{display:block;font-size:20px}.ledger-summary span{color:var(--text-light,#64748b);font-size:12px}.ledger-summary .warn{background:#fffbeb;border-color:#fde68a}.ledger-alerts,.ledger-lines,.ledger-receipts{display:grid;gap:8px}.ledger-alerts{margin-bottom:16px}.ledger-alert{display:flex;gap:8px;border-radius:12px;padding:10px 12px;background:#fffbeb;color:#92400e}.ledger-alert--critical{background:#fef2f2;color:#991b1b}.ledger-section{margin-top:20px}.ledger-section h4{margin:0 0 10px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:13px}.ledger-table th,.ledger-table td{border-bottom:1px solid #e2e8f0;padding:10px;text-align:left;vertical-align:top}.ledger-table th{color:var(--text-light,#64748b);background:#f8fafc}.due{color:#b91c1c;font-weight:800}.ledger-chip{display:inline-flex;border-radius:999px;padding:2px 8px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:700}.ledger-lines span,.ledger-receipt{color:var(--text,#111827)}.ledger-lines .void{color:var(--text-light,#64748b);text-decoration:line-through}.ledger-lines em{margin-left:4px;color:var(--text-light,#64748b);font-style:normal}.ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,#64748b)}.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px}.ledger-action{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:4px 10px;cursor:pointer}.ledger-action--danger{border-color:#fecaca;color:#b91c1c}.status-voided{background:#fef3c7;color:#92400e}.status-pending{background:#f1f5f9;color:#475569}.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}@media (max-width:760px){.ledger-modal{width:100vw;padding:18px}.ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}.ledger-modal{width:min(1040px,96vw);height:100vh;overflow:auto;background:var(--surface,#fff);color:var(--text,#111827);box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:24px}.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.ledger-eyebrow{margin:0 0 4px;color:var(--primary,#2563eb);font-size:12px;font-weight:800;letter-spacing:.08em}.ledger-header h3{margin:0;font-size:24px}.ledger-subtitle{margin:6px 0 0;color:var(--text-light,#64748b)}.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,#64748b)}.ledger-state,.ledger-empty{padding:28px;border:1px dashed #cbd5e1;border-radius:14px;color:var(--text-light,#64748b);text-align:center}.ledger-error{color:#b91c1c;background:#fef2f2;border-color:#fecaca}.ledger-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}.ledger-summary>div{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#f8fafc}.ledger-summary strong{display:block;font-size:20px}.ledger-summary span{color:var(--text-light,#64748b);font-size:12px}.ledger-summary .warn{background:#fffbeb;border-color:#fde68a}.ledger-alerts,.ledger-lines,.ledger-receipts{display:grid;gap:8px}.ledger-alerts{margin-bottom:16px}.ledger-alert{display:flex;gap:8px;border-radius:12px;padding:10px 12px;background:#fffbeb;color:#92400e}.ledger-alert--critical{background:#fef2f2;color:#991b1b}.ledger-section{margin-top:20px}.ledger-section h4{margin:0 0 10px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:13px}.ledger-table th,.ledger-table td{border-bottom:1px solid #e2e8f0;padding:10px;text-align:left;vertical-align:top}.ledger-table th{color:var(--text-light,#64748b);background:#f8fafc}.due{color:#b91c1c;font-weight:800}.ledger-chip{display:inline-flex;border-radius:999px;padding:2px 8px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:700}.ledger-lines span,.ledger-receipt{color:var(--text,#111827)}.ledger-lines .void{color:var(--text-light,#64748b);text-decoration:line-through}.ledger-lines em{margin-left:4px;color:var(--text-light,#64748b);font-style:normal}.ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,#64748b)}.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px}.ledger-actions{display:flex;gap:6px;flex-wrap:wrap}.ledger-action{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:4px 10px;cursor:pointer}.ledger-action--danger{border-color:#fecaca;color:#b91c1c}.ledger-action--warning{border-color:#fed7aa;color:#9a3412;background:#fff7ed}.status-voided{background:#fef3c7;color:#92400e}.status-pending{background:#f1f5f9;color:#475569}.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}@media (max-width:760px){.ledger-modal{width:100vw;padding:18px}.ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
