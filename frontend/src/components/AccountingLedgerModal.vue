@@ -29,6 +29,10 @@
               <strong>{{ formatCurrency(payload.summary?.outstanding_total) }}</strong>
               <span>未結清</span>
             </div>
+            <div :class="{ warn: (payload.summary?.overpaid_total || 0) > 0 }">
+              <strong>{{ formatCurrency(payload.summary?.overpaid_total) }}</strong>
+              <span>溢收/待沖銷</span>
+            </div>
             <div :class="{ warn: (payload.summary?.anomaly_count || 0) > 0 }">
               <strong>{{ payload.summary?.anomaly_count || 0 }}</strong>
               <span>異常標籤</span>
@@ -53,30 +57,35 @@
               <table class="ledger-table">
                 <thead>
                   <tr>
-                    <th>課程</th>
-                    <th>期別</th>
+                    <th>帳單 / 課程</th>
                     <th>應繳日</th>
                     <th>應收</th>
                     <th>套用</th>
+                    <th>溢收</th>
                     <th>未結清</th>
                     <th>狀態</th>
-                    <th>付款/收據</th>
+                    <th>已收款紀錄</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="inv in payload.invoices" :key="inv.id">
-                    <td>#{{ inv.student_class_id }}</td>
-                    <td>{{ formatPeriod(inv.billing_period) }}</td>
+                    <td>
+                      <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
+                      <small>{{ inv.course_ref || `COURSE-${inv.student_class_id}` }} · {{ formatPeriod(inv.billing_period) }}</small>
+                    </td>
                     <td>{{ inv.due_date || '—' }}</td>
                     <td>{{ formatCurrency(inv.total_amount) }}</td>
                     <td>{{ formatCurrency(inv.calculated_applied_amount) }}</td>
+                    <td :class="{ due: (inv.overpaid_amount || 0) > 0 }">{{ formatCurrency(inv.overpaid_amount) }}</td>
                     <td :class="{ due: (inv.outstanding_amount || 0) > 0 }">{{ formatCurrency(inv.outstanding_amount) }}</td>
                     <td><span class="ledger-chip">{{ invoiceStatusLabel(inv.status) }}</span></td>
                     <td>
                       <div v-if="inv.payments?.length" class="ledger-lines">
-                        <span v-for="p in inv.payments" :key="p.id" :class="{ void: p.is_void }">
+                        <span v-for="p in inv.payments" :key="p.id" :class="{ void: p.is_void, due: p.application_status === 'overpayment_pending_review' }">
                           {{ p.paid_at || '未記錄' }} · {{ p.is_void ? '沖銷' : paymentMethodLabel(p.method) }}
-                          {{ signedCurrency(p.amount) }}
+                          {{ signedCurrency(p.amount) }} · {{ applicationStatusLabel(p.application_status) }}
+                          <em v-if="p.applied_amount">套用 {{ formatCurrency(p.applied_amount) }}</em>
+                          <em v-if="p.unapplied_amount">溢收 {{ formatCurrency(p.unapplied_amount) }}</em>
                           <em v-if="p.receipt_no">{{ p.receipt_no }}</em>
                         </span>
                       </div>
@@ -98,7 +107,7 @@
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span>{{ formatCurrency(r.amount) }}</span>
                 <span :class="['ledger-chip', `status-${r.status}`]">{{ reportStatusLabel(r.status) }}</span>
-                <small>Invoice #{{ r.invoice_id || '未套用' }} · 課程 #{{ r.student_class_id || '—' }}</small>
+                <small>帳單 #{{ r.invoice_id || '未套用' }} · {{ r.course_ref || `COURSE-${String(r.student_class_id || '—').padStart(6, '0')}` }}</small>
               </div>
             </div>
           </section>
@@ -166,9 +175,10 @@ const formatPeriod = (period) => !period ? '—' : (String(period).split('-').le
 const paymentMethodLabel = (method) => labelMap({ cash: '現金', transfer: '匯款', void: '沖銷' }, method);
 const invoiceStatusLabel = (status) => labelMap({ paid: '已繳', unpaid: '未繳', partial: '部分付款' }, status);
 const reportStatusLabel = (status) => labelMap({ confirmed: '已核帳', pending: '待核帳', voided: '已撤銷' }, status);
-const anomalyLabel = (code) => labelMap({ duplicate_effective_payments: '同帳單多筆收款', paid_amount_mismatch: '帳單金額不一致', paid_status_with_balance: '已繳狀態仍有餘額', open_status_without_balance: '未繳狀態但已足額', payment_without_receipt: '付款缺收據', receipt_without_payment: '收據缺付款', receipt_without_invoice: '收據未套帳單', confirmed_receipt_without_payment: '核帳缺付款', receipt_payment_outside_ledger: '收據付款不在本帳本' }, code) || '異常';
+const applicationStatusLabel = (status) => labelMap({ applied: '已套用', partially_applied: '部分套用', overpayment_pending_review: '溢收/待沖銷', voided: '已沖銷' }, status);
+const anomalyLabel = (code) => labelMap({ overpayment_pending_review: '溢收/疑似重複收款', duplicate_effective_payments: '同帳單多筆收款', paid_amount_mismatch: '帳單金額不一致', paid_status_with_balance: '已繳狀態仍有餘額', open_status_without_balance: '未繳狀態但已足額', payment_without_receipt: '付款缺收據', receipt_without_payment: '收據缺付款', receipt_without_invoice: '收據未套帳單', confirmed_receipt_without_payment: '核帳缺付款', receipt_payment_outside_ledger: '收據付款不在本帳本' }, code) || '異常';
 </script>
 
 <style scoped>
-.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}.ledger-modal{width:min(1040px,96vw);height:100vh;overflow:auto;background:var(--surface,#fff);color:var(--text,#111827);box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:24px}.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.ledger-eyebrow{margin:0 0 4px;color:var(--primary,#2563eb);font-size:12px;font-weight:800;letter-spacing:.08em}.ledger-header h3{margin:0;font-size:24px}.ledger-subtitle{margin:6px 0 0;color:var(--text-light,#64748b)}.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,#64748b)}.ledger-state,.ledger-empty{padding:28px;border:1px dashed #cbd5e1;border-radius:14px;color:var(--text-light,#64748b);text-align:center}.ledger-error{color:#b91c1c;background:#fef2f2;border-color:#fecaca}.ledger-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.ledger-summary>div{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#f8fafc}.ledger-summary strong{display:block;font-size:20px}.ledger-summary span{color:var(--text-light,#64748b);font-size:12px}.ledger-summary .warn{background:#fffbeb;border-color:#fde68a}.ledger-alerts,.ledger-lines,.ledger-receipts{display:grid;gap:8px}.ledger-alerts{margin-bottom:16px}.ledger-alert{display:flex;gap:8px;border-radius:12px;padding:10px 12px;background:#fffbeb;color:#92400e}.ledger-alert--critical{background:#fef2f2;color:#991b1b}.ledger-section{margin-top:20px}.ledger-section h4{margin:0 0 10px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:13px}.ledger-table th,.ledger-table td{border-bottom:1px solid #e2e8f0;padding:10px;text-align:left;vertical-align:top}.ledger-table th{color:var(--text-light,#64748b);background:#f8fafc}.due{color:#b91c1c;font-weight:800}.ledger-chip{display:inline-flex;border-radius:999px;padding:2px 8px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:700}.ledger-lines span,.ledger-receipt{color:var(--text,#111827)}.ledger-lines .void{color:var(--text-light,#64748b);text-decoration:line-through}.ledger-lines em{margin-left:4px;color:var(--text-light,#64748b);font-style:normal}.ledger-muted,.ledger-receipt small{color:var(--text-light,#64748b)}.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px}.status-voided{background:#fef3c7;color:#92400e}.status-pending{background:#f1f5f9;color:#475569}.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}@media (max-width:760px){.ledger-modal{width:100vw;padding:18px}.ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ledger-overlay{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.45);display:flex;justify-content:flex-end}.ledger-modal{width:min(1040px,96vw);height:100vh;overflow:auto;background:var(--surface,#fff);color:var(--text,#111827);box-shadow:-16px 0 44px rgba(15,23,42,.22);padding:24px}.ledger-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}.ledger-eyebrow{margin:0 0 4px;color:var(--primary,#2563eb);font-size:12px;font-weight:800;letter-spacing:.08em}.ledger-header h3{margin:0;font-size:24px}.ledger-subtitle{margin:6px 0 0;color:var(--text-light,#64748b)}.ledger-close{border:0;background:transparent;font-size:28px;cursor:pointer;color:var(--text-light,#64748b)}.ledger-state,.ledger-empty{padding:28px;border:1px dashed #cbd5e1;border-radius:14px;color:var(--text-light,#64748b);text-align:center}.ledger-error{color:#b91c1c;background:#fef2f2;border-color:#fecaca}.ledger-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:14px}.ledger-summary>div{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#f8fafc}.ledger-summary strong{display:block;font-size:20px}.ledger-summary span{color:var(--text-light,#64748b);font-size:12px}.ledger-summary .warn{background:#fffbeb;border-color:#fde68a}.ledger-alerts,.ledger-lines,.ledger-receipts{display:grid;gap:8px}.ledger-alerts{margin-bottom:16px}.ledger-alert{display:flex;gap:8px;border-radius:12px;padding:10px 12px;background:#fffbeb;color:#92400e}.ledger-alert--critical{background:#fef2f2;color:#991b1b}.ledger-section{margin-top:20px}.ledger-section h4{margin:0 0 10px}.ledger-table-wrap{overflow-x:auto}.ledger-table{width:100%;border-collapse:collapse;font-size:13px}.ledger-table th,.ledger-table td{border-bottom:1px solid #e2e8f0;padding:10px;text-align:left;vertical-align:top}.ledger-table th{color:var(--text-light,#64748b);background:#f8fafc}.due{color:#b91c1c;font-weight:800}.ledger-chip{display:inline-flex;border-radius:999px;padding:2px 8px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:700}.ledger-lines span,.ledger-receipt{color:var(--text,#111827)}.ledger-lines .void{color:var(--text-light,#64748b);text-decoration:line-through}.ledger-lines em{margin-left:4px;color:var(--text-light,#64748b);font-style:normal}.ledger-muted,.ledger-receipt small,.ledger-table small{color:var(--text-light,#64748b)}.ledger-receipt{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;border:1px solid #e2e8f0;border-radius:12px}.status-voided{background:#fef3c7;color:#92400e}.status-pending{background:#f1f5f9;color:#475569}.ledger-fade-enter-active,.ledger-fade-leave-active{transition:opacity .16s ease}.ledger-fade-enter-from,.ledger-fade-leave-to{opacity:0}@media (max-width:760px){.ledger-modal{width:100vw;padding:18px}.ledger-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
