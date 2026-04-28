@@ -116,16 +116,53 @@ class SubstituteTeacherTest extends TestCase
         $this->assertContains((int) $lr->id, $ids, 'Substitute teacher should see the LR assigned to them');
     }
 
-    public function test_same_teacher_substitute_rejected(): void
+    public function test_substituted_session_can_restore_original_teacher(): void
     {
-        [$dirToken, $regularTeacherId, , $session] = $this->seedSubstituteScenario();
+        [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();
 
         $this->withHeaders([
             'Authorization' => "Bearer {$dirToken}",
             'Accept' => 'application/json',
         ])->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subTeacherId,
+            'reason' => '正班老師請假',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subTeacherId,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
             'substitute_teacher_id' => $regularTeacherId,
-        ])->assertStatus(422);
+            'reason' => '回復正班老師',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonFragment([
+                'restored_teacher_id' => $regularTeacherId,
+                'substitute_cleared' => true,
+            ]);
+
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subTeacherId,
+        ]);
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'rescheduled',
+        ]);
+
+        $lr->refresh();
+        $this->assertEquals($regularTeacherId, (int) $lr->TeacherID);
     }
 
     /** 代課後即使 LR.TeacherID 被還原成正班，列表仍應讓代課老師看到；ensure-past 會自癒回代課。 */

@@ -31,8 +31,8 @@
 ❌ cd /home/admin/backend && php artisan config:clear  ← 全站 401
 ```
 
-- 測試只能在 GitHub Actions CI 跑
-- debug CI 失敗 → 改檔案 → push → 看 CI log，不要本機跑
+- 測試只可在 WSL2 本地 `AllTrue_test` 或 GitHub Actions CI 跑；Pi production 絕對不可跑
+- debug CI 失敗 → 先用 `./scripts/presubmit-local.sh` 排除本地可重現問題，再改檔案 → push → 看 CI log
 - **包括「只跑單一測試檔」也禁止** — `RefreshDatabase` trait 不管你跑幾個檔案都會 DROP 全部表
 
 ### R3. CI 全綠前禁止改 production 既有檔案
@@ -313,7 +313,8 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 - 月結續報若延長原 `StudentClass`，舊期已繳與新期待繳會混在同一課程，主任無法判斷哪一期已結算。
 - 堂數制若直接列出所有有效 `ClassSession`，購買 8 堂也可能看到第 9 堂，造成家長對帳與少收費風險。
 - **強制規則**：月結續報必須建立新一期課程並結算舊期；堂數 chip 序號只給購買額度內堂次，`IsContractException=1` 顯示為例外堂，超出 `SessionCount` 的非例外堂必須顯示為超排異常。
-- **測試必補**：`renew-monthly` 必須驗證新舊 `StudentClass` 分離與舊期 future scheduled 取消；`class-sessions` 必須回傳例外旗標供前端分流。
+- **強制規則**：月結提醒若已有未結清逐期 `Invoice`，必須用該 Invoice 的 `DueDate`/`billing_period` 當真實應繳日，不可用今天月份重新推導。
+- **測試必補**：`renew-monthly` 必須驗證新舊 `StudentClass` 分離與舊期 future scheduled 取消；`class-sessions` 必須回傳例外旗標供前端分流；未來期月結 Invoice 不可被當成本月逾期。
 
 ---
 
@@ -334,10 +335,68 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 ### R28. 已繳課程不可再次核帳建立新付款
 
 - 主任核帳若找不到未繳 Invoice 就自動新建 Invoice/Payment，會讓同一筆課被重複入帳，畫面出現多筆繳費。
-- **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 且無未繳 Invoice 時，必須回 422，要求先作廢原收款或指定未繳帳單。
+- 已繳課程底下若殘留 unpaid Invoice，不能把該 Invoice 當成「可核帳目標」；這通常代表歷史錯帳或續報/帳單建立時期的殘留資料，應先作廢或修補資料。
+- **強制規則**：`PaymentReportController::directorRecord` 在課程已標記 `Paid=1` 或已有 paid Invoice 時，必須回 422；即使 request 指定了 unpaid `invoice_id` 也不可建立第二筆 Payment/PaymentReport。
 - **強制規則**：`PaymentReportController::confirm` 必須套用同一個已繳防重 guard；家長回報 pending report 不可繞過 `directorRecord` 的防護而新建第二筆帳。
 - **強制規則**：帳單畫面顯示付款筆數時，只能計算正向有效付款；`Method='void'` 或負數沖銷不可算成「繳費次數」。
-- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；invoice API 必須排除 void payment count。
+- **強制規則**：歷史錯帳更正不可刪除 `Payment` 或手改金額；必須從收款/收據紀錄逐筆撤銷，建立負值沖銷並保存 `void_reason` 稽核。
+- **強制規則**：帳務中心的「收款流水筆數」不可被解讀成「已繳課程數」；畫面必須分開顯示有效收款流水、對應課程數、同課程多筆收款。
+- **強制規則**：歷史錯帳只能作廢，不可刪除；`Invoice.Status='void'` 不得進入家長應收、課程帳單列表、主任催繳/未結清加總。
+- **強制規則**：系統內 Invoice 作廢入口只能處理未收款錯帳（非 paid/partial、`PaidAmount=0`、無正向 Payment），必填原因並記錄操作者；已收款帳單必須走收款撤銷/沖銷，不可直接 void Invoice。
+- **測試必補**：已繳課程重複呼叫 `directorRecord` 或 `confirm` 不得新增第二張 Invoice 或第二筆 Payment；已繳課程殘留 unpaid Invoice 時仍必須拒絕；invoice API 必須排除 void payment count 與 void invoice，並回傳付款/沖銷明細供稽核；Invoice 作廢 API 必須覆蓋 paid/partial/cross-campus/teacher forbidden。
+
+---
+
+### R29. 請假入口不可 fallback 直接寫 `schedules`
+
+- `CourseLeaveCascadeService` 才是堂數制請假順延的唯一權威路徑；只寫 `schedules.status='leave'` 會產生「行事曆有請假、`ClassSession` 沒順延、課程管理少一堂」的半套資料。
+- **強制規則**：任何請假 UI 的 API 失敗都必須明確報錯並停止，不可 fallback 到 Supabase-style `schedules` insert。
+- **修復/補救**：既有 `ClassSession.Status='leave'` 但有效堂次少於購買堂數的資料，應透過受權限保護的 `leave-by-session` / cascade 路徑冪等修復，不可手動直接改 production DB。
+- **測試必補**：新增或修改請假流程時，必須覆蓋「已存在 leave 但尚未 cascade」重跑後只補一次尾堂，且有效堂次數等於購買堂數。
+
+---
+
+### R30. 帳務入口必須能 drill down 到同一份 AR ledger
+
+- 帳務中心「待收與核帳」是提醒/催繳 queue，「收款與收據紀錄」是 receipt/payment 流水，課程管理帳單是單一課程 Invoice；三者若各自顯示不同口徑且不能互相 drill down，主任會無法對齊同一學生的帳。
+- **強制規則**：所有帳務入口若呈現應收、已收、收據或帳單狀態，必須能連到同一份以 `Invoice` 為中心的學生 AR ledger，並同時顯示 `PaymentReport` 收據、`Payment` 套用、void/reversal 與未結清金額。
+- **強制規則**：歷史錯帳不可用「畫面看起來一致」掩蓋；ledger 必須標示同帳單多筆正向收款、收據未套帳單、收據缺 Payment、Payment 缺收據、帳單狀態與付款流水不一致等異常。
+- **測試必補**：至少一個 regression case 驗證同一學生/課程可從 `student_class_id` 打開 ledger，且 Invoice、Payment、PaymentReport 的 receipt no 與異常標籤能對齊；跨分校 ledger 必須 403。
+
+---
+
+### R31. Ledger 不可把溢收顯示成同一帳單還要再繳
+
+- 同一張 Invoice 可能因歷史錯帳有多筆正向 Payment；若畫面把每筆都用 `+金額` 顯示且全部加進已套用，主任會解讀成「同一課程要繳三次」。
+- **強制規則**：AR ledger 必須用 cash application 口徑：一張 Invoice 的已套用最多等於 `TotalAmount`，超過部分要進 `overpaid_amount` 並標示「溢收/待沖銷」，不可算進未結清或已套用。
+- **強制規則**：Payment 明細必須顯示套用狀態（已套用、部分套用、溢收/待沖銷、已沖銷），並使用正式業務編號（如 `INV-*`、`RCPT-*`、`COURSE-*`）作為主要顯示，不可只顯示 DB id。
+- **強制規則**：「待收/待核」是工作 queue，不可拿來當完整已繳查詢；已結清課程必須由 Invoice/Payment/Receipt 與課程主檔彙整，堂數制已繳且剩餘堂數充足也要查得到。
+- **強制規則**：Ledger 的例外帳不可只顯示警告；可處理的 confirmed receipt 必須提供撤銷/沖銷入口，不能自動處理的 legacy/payment 關聯缺口才標示需人工修復。
+- **測試必補**：同一 Invoice 三筆收款且合計超過應收時，API 必須回傳已套用等於應收、溢收等於超額、第三筆為 `overpayment_pending_review`。
+
+---
+
+### R32. 已上課歷史評量不可因課程後來停用而消失
+
+- `StudentClass.Stop=1` 用來關閉未來待上／待填事項，但不能遮掉已出勤（`ClassSession.Status in attended/late/absent`）的歷史待填或待審評量；既有 `completed` 停用課程 pending 仍維持隱藏。
+- **強制規則**：評量列表可排除停用課程的未上課 pending，但必須保留已上課堂次；`ensure-past` 也必須能替已上課的停用歷史課補建 `LearningRecord`。
+- **測試必補**：停用課程 + 已上課堂次的 pending LR 仍出現在列表；無 LR 時 `ensure-past` 會補建且不處理停用課程的未上課堂次。
+
+---
+
+### R33. 老師每分校 RFID 不可被學生 RFID 靜默吃掉
+
+- `SwipeRfidController` 若先查 `Student.RFID`，同一張卡同時綁到學生與 `UserCampus.RFID` 時，老師本人刷卡會被寫成 `StudentSingIn`，不會建立 `TeacherSingIn`，主任「老師打卡」列表看不到。
+- **強制規則**：同分校 `UserCampus.RFID` 明確命中有效老師時，必須優先走老師打卡；legacy `Teacher.RFID` 仍為學生查詢後的備援。
+- **測試必補**：RFID 同時存在於同分校學生與老師 `UserCampus.RFID` 時，API 回 `type=teacher` 且只建立 `TeacherSingIn`。
+
+---
+
+### R34. 備份健康檢查不可只看 mtime
+
+- `pi-health.yml` 若只用 `stat -c %Y` 判斷最新 sixhour 備份，檔案被同步或 touch 後會顯示「0 小時」，但檔名時間可能已是多天前，造成備份假綠。
+- **強制規則**：sixhour 備份新鮮度必須優先從 `alltrue_6h_YYYY-MM-DD_HHMM.sql.gz` 檔名解析；還原驗證也應以檔名排序選最新備份。
+- **測試/驗證必補**：手動觸發 backup restore workflow 時，log 中的「使用備份」檔名日期必須合理接近當前時間；Pi health 不得只用 mtime 當唯一依據。
 
 ---
 
@@ -346,16 +405,16 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程 |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession） |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外） |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）|
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules） |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
-| 備份 / nightly | §nightly 覆蓋修正、§備份還原演練 |
+| 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |
 
 ---
