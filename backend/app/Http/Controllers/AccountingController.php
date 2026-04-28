@@ -97,18 +97,20 @@ class AccountingController extends Controller
             $voidPayments = $payments
                 ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
                 ->values();
-            $netApplied = (int) $payments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
-            $appliedAmount = max(0, $netApplied);
+            $positiveTotal = (int) $positivePayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
             $voidedAmount = abs((int) $voidPayments->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+            $netApplied = max(0, $positiveTotal - $voidedAmount);
             $totalAmount = (int) ($invoice->TotalAmount ?? 0);
+            $appliedAmount = min($totalAmount, $netApplied);
+            $overpaidAmount = max(0, $netApplied - $totalAmount);
             $outstanding = max(0, $totalAmount - $appliedAmount);
             $invoiceAnomalies = [];
 
-            if ($positivePayments->count() > 1) {
+            if ($overpaidAmount > 0) {
                 $invoiceAnomalies[] = $this->ledgerAnomaly(
-                    'duplicate_effective_payments',
-                    'warning',
-                    '同一張帳單有多筆正向有效收款，需確認是否為分批付款或重複入帳。',
+                    'overpayment_pending_review',
+                    'critical',
+                    '同一張帳單的淨收款超過應收金額，超過部分應列為溢收/疑似重複並進行沖銷或轉抵。',
                     $invoice
                 );
             }
@@ -140,10 +142,26 @@ class AccountingController extends Controller
                 );
             }
 
-            $paymentRows = $payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies) {
+            $remainingInvoiceAmount = $totalAmount;
+            $paymentRows = $payments->map(function ($payment) use ($reportsByPaymentId, $reportsById, $invoice, &$invoiceAnomalies, &$remainingInvoiceAmount) {
                 $report = $reportsByPaymentId->get((int) $payment->id)
                     ?? ($payment->payment_report_id ? $reportsById->get((int) $payment->payment_report_id) : null);
                 $isVoid = (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void';
+                $amount = (int) ($payment->Amount ?? 0);
+                $appliedToInvoice = 0;
+                $unappliedAmount = 0;
+                $applicationStatus = $isVoid ? 'voided' : 'applied';
+
+                if (!$isVoid && $amount > 0) {
+                    $appliedToInvoice = min($amount, max(0, $remainingInvoiceAmount));
+                    $remainingInvoiceAmount -= $appliedToInvoice;
+                    $unappliedAmount = max(0, $amount - $appliedToInvoice);
+                    if ($appliedToInvoice === 0) {
+                        $applicationStatus = 'overpayment_pending_review';
+                    } elseif ($unappliedAmount > 0) {
+                        $applicationStatus = 'partially_applied';
+                    }
+                }
 
                 if (!$isVoid && !$report) {
                     $invoiceAnomalies[] = $this->ledgerAnomaly(
@@ -158,13 +176,17 @@ class AccountingController extends Controller
 
                 return [
                     'id' => (int) $payment->id,
+                    'payment_no' => $this->paymentNo((int) $payment->id, $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 7) : null),
                     'paid_at' => $payment->PaidAt ? substr((string) $payment->PaidAt, 0, 10) : null,
-                    'amount' => (int) $payment->Amount,
+                    'amount' => $amount,
+                    'applied_amount' => $appliedToInvoice,
+                    'unapplied_amount' => $unappliedAmount,
+                    'application_status' => $applicationStatus,
                     'method' => (string) ($payment->Method ?? ''),
                     'note' => (string) ($payment->Note ?? ''),
                     'is_void' => $isVoid,
                     'report_id' => $report ? (int) $report->id : null,
-                    'receipt_no' => $report ? $this->receiptNo((int) $report->id) : null,
+                    'receipt_no' => $report ? $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null) : null,
                     'report_status' => $report ? (string) $report->status : null,
                 ];
             })->values();
@@ -189,7 +211,9 @@ class AccountingController extends Controller
 
             return [
                 'id' => (int) $invoice->id,
+                'invoice_no' => $this->invoiceNo($invoice),
                 'student_class_id' => (int) $invoice->StudentClassID,
+                'course_ref' => $this->courseRef((int) $invoice->StudentClassID),
                 'billing_period' => $invoice->billing_period,
                 'issue_date' => $invoice->IssueDate ? substr((string) $invoice->IssueDate, 0, 10) : null,
                 'due_date' => $invoice->DueDate ? substr((string) $invoice->DueDate, 0, 10) : null,
@@ -197,6 +221,7 @@ class AccountingController extends Controller
                 'paid_amount' => (int) ($invoice->PaidAmount ?? 0),
                 'calculated_applied_amount' => $appliedAmount,
                 'voided_amount' => $voidedAmount,
+                'overpaid_amount' => $overpaidAmount,
                 'outstanding_amount' => $outstanding,
                 'status' => (string) ($invoice->Status ?? ''),
                 'payments' => $paymentRows->all(),
@@ -271,6 +296,7 @@ class AccountingController extends Controller
                 'invoice_total' => $invoiceTotal,
                 'applied_total' => $appliedTotal,
                 'voided_total' => (int) $invoiceRows->sum('voided_amount'),
+                'overpaid_total' => (int) $invoiceRows->sum('overpaid_amount'),
                 'outstanding_total' => max(0, $invoiceTotal - $appliedTotal),
                 'invoice_count' => $invoiceRows->count(),
                 'receipt_count' => $reportRows->where('status', 'confirmed')->count(),
@@ -278,6 +304,7 @@ class AccountingController extends Controller
             ],
             'courses' => $classes->map(fn (StudentClass $class) => [
                 'id' => (int) $class->ID,
+                'course_ref' => $this->courseRef((int) $class->ID),
                 'subject' => $class->displaySubjectName(),
                 'schedule_mode' => (string) ($class->ScheduleMode ?? ''),
                 'charge' => (int) ($class->Charge ?? 0),
@@ -450,8 +477,9 @@ class AccountingController extends Controller
     {
         return [
             'report_id' => (int) $report->id,
-            'receipt_no' => $this->receiptNo((int) $report->id),
+            'receipt_no' => $this->receiptNo((int) $report->id, $report->payment_date ? $report->payment_date->toDateString() : null),
             'student_class_id' => (int) $report->StudentClassID,
+            'course_ref' => $this->courseRef((int) $report->StudentClassID),
             'invoice_id' => $report->InvoiceID ? (int) $report->InvoiceID : null,
             'payment_id' => $report->payment_id ? (int) $report->payment_id : null,
             'payment_date' => $report->payment_date ? $report->payment_date->toDateString() : null,
@@ -466,9 +494,27 @@ class AccountingController extends Controller
         ];
     }
 
-    private function receiptNo(int $reportId): string
+    private function receiptNo(int $reportId, ?string $paymentDate = null): string
     {
-        return 'R-' . str_pad((string) $reportId, 6, '0', STR_PAD_LEFT);
+        $period = preg_replace('/[^0-9]/', '', (string) substr((string) $paymentDate, 0, 7));
+        return 'RCPT-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $reportId, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function invoiceNo(Invoice $invoice): string
+    {
+        $period = preg_replace('/[^0-9]/', '', (string) ($invoice->billing_period ?: substr((string) $invoice->IssueDate, 0, 7)));
+        return 'INV-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function paymentNo(int $paymentId, ?string $paidPeriod): string
+    {
+        $period = preg_replace('/[^0-9]/', '', (string) $paidPeriod);
+        return 'PAY-' . ($period ?: 'LEGACY') . '-' . str_pad((string) $paymentId, 6, '0', STR_PAD_LEFT);
+    }
+
+    private function courseRef(int $studentClassId): string
+    {
+        return 'COURSE-' . str_pad((string) $studentClassId, 6, '0', STR_PAD_LEFT);
     }
 
     private function firstSessionDateMap(array $studentClassIds): array

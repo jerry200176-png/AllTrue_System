@@ -1773,7 +1773,7 @@ class StudentClassController extends Controller
                     ->orderBy('id');
             }])
             ->orderByRaw("COALESCE(billing_period, DATE_FORMAT(IssueDate, '%Y-%m')) DESC")
-            ->get(['id', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
+            ->get(['id', 'StudentClassID', 'billing_period', 'IssueDate', 'DueDate', 'TotalAmount', 'PaidAmount', 'Status']);
 
         $payments = $invoices->flatMap(fn ($invoice) => $invoice->payments);
         $paymentIds = $payments->pluck('id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
@@ -1790,7 +1790,7 @@ class StudentClassController extends Controller
                         $query->{$method}('id', $reportIds);
                     }
                 })
-                ->get(['id', 'payment_id', 'status']);
+                ->get(['id', 'payment_id', 'status', 'payment_date']);
         $reportsByPaymentId = $reports->whereNotNull('payment_id')->keyBy('payment_id');
         $reportsById = $reports->keyBy('id');
 
@@ -1807,6 +1807,8 @@ class StudentClassController extends Controller
 
                 return [
                     'id'             => (int) $inv->id,
+                    'invoice_no'     => 'INV-' . preg_replace('/[^0-9]/', '', (string) ($inv->billing_period ?: substr((string) $inv->IssueDate, 0, 7))) . '-' . str_pad((string) $inv->id, 6, '0', STR_PAD_LEFT),
+                    'course_ref'     => 'COURSE-' . str_pad((string) $inv->StudentClassID, 6, '0', STR_PAD_LEFT),
                     'billing_period' => $inv->billing_period,
                     'issue_date'     => $inv->IssueDate ? substr((string) $inv->IssueDate, 0, 10) : null,
                     'due_date'       => $inv->DueDate   ? substr((string) $inv->DueDate, 0, 10)   : null,
@@ -1825,7 +1827,7 @@ class StudentClassController extends Controller
                             'note'       => (string) ($payment->Note ?? ''),
                             'is_void'    => $isVoid,
                             'report_id'  => $report ? (int) $report->id : null,
-                            'receipt_no' => $report ? 'R-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
+                            'receipt_no' => $report ? 'RCPT-' . ($report->payment_date ? $report->payment_date->format('Ym') : 'LEGACY') . '-' . str_pad((string) $report->id, 6, '0', STR_PAD_LEFT) : null,
                             'status'     => $report ? (string) $report->status : null,
                         ];
                     })->values()->all(),

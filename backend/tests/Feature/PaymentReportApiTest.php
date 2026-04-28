@@ -1086,11 +1086,79 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('summary.applied_total', 8800)
             ->assertJsonPath('summary.outstanding_total', 0)
             ->assertJsonPath('summary.receipt_count', 2)
+            ->assertJsonPath('summary.anomaly_count', 0)
             ->assertJsonPath('invoices.0.id', $invoice->id)
+            ->assertJsonPath('invoices.0.invoice_no', 'INV-202604-' . str_pad((string) $invoice->id, 6, '0', STR_PAD_LEFT))
             ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
-            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'R-' . str_pad((string) $reportA->id, 6, '0', STR_PAD_LEFT))
-            ->assertJsonPath('invoices.0.payments.1.receipt_no', 'R-' . str_pad((string) $reportB->id, 6, '0', STR_PAD_LEFT))
-            ->assertJsonPath('anomalies.0.code', 'duplicate_effective_payments');
+            ->assertJsonPath('invoices.0.overpaid_amount', 0)
+            ->assertJsonPath('invoices.0.payments.0.receipt_no', 'RCPT-202604-' . str_pad((string) $reportA->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.0.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.1.receipt_no', 'RCPT-202604-' . str_pad((string) $reportB->id, 6, '0', STR_PAD_LEFT))
+            ->assertJsonPath('invoices.0.payments.1.application_status', 'applied');
+    }
+
+    public function test_accounting_ledger_caps_applied_amount_and_marks_excess_payment(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 12800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+
+        foreach ([5000, 3800, 4000] as $idx => $amount) {
+            $payment = Payment::create([
+                'InvoiceID' => $invoice->id,
+                'Amount' => $amount,
+                'PaidAt' => '2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT),
+                'Method' => $idx === 2 ? 'cash' : 'transfer',
+                'Note' => '第' . ($idx + 1) . '筆',
+            ]);
+            $report = PaymentReport::create([
+                'StudentID' => $student->id,
+                'StudentClassID' => $sc->ID,
+                'InvoiceID' => $invoice->id,
+                'reported_by_name' => $student->name,
+                'payment_date' => '2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT),
+                'payment_method' => $idx === 2 ? 'cash' : 'transfer',
+                'reported_amount' => $amount,
+                'status' => 'confirmed',
+                'confirmed_at' => Carbon::parse('2026-04-' . str_pad((string) (5 + $idx), 2, '0', STR_PAD_LEFT) . ' 12:00:00'),
+                'confirmed_by' => 1,
+                'payment_id' => $payment->id,
+                'report_token_hash' => hash('sha256', 'ledger-overpay-' . $idx . '-' . uniqid()),
+                'token_expires_at' => Carbon::now()->addDay(),
+            ]);
+            $payment->update(['payment_report_id' => $report->id]);
+        }
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/accounting/ledger?branch_id=1&student_class_id={$sc->ID}");
+
+        $res->assertOk()
+            ->assertJsonPath('summary.invoice_total', 8800)
+            ->assertJsonPath('summary.applied_total', 8800)
+            ->assertJsonPath('summary.overpaid_total', 4000)
+            ->assertJsonPath('summary.outstanding_total', 0)
+            ->assertJsonPath('invoices.0.calculated_applied_amount', 8800)
+            ->assertJsonPath('invoices.0.overpaid_amount', 4000)
+            ->assertJsonPath('invoices.0.payments.0.applied_amount', 5000)
+            ->assertJsonPath('invoices.0.payments.0.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.1.applied_amount', 3800)
+            ->assertJsonPath('invoices.0.payments.1.application_status', 'applied')
+            ->assertJsonPath('invoices.0.payments.2.applied_amount', 0)
+            ->assertJsonPath('invoices.0.payments.2.unapplied_amount', 4000)
+            ->assertJsonPath('invoices.0.payments.2.application_status', 'overpayment_pending_review')
+            ->assertJsonPath('anomalies.0.code', 'overpayment_pending_review');
     }
 
     public function test_accounting_ledger_rejects_cross_campus_access(): void
