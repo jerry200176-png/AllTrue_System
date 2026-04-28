@@ -10,6 +10,10 @@
 
 - Added 帳務中心與課程帳單共用學生 AR 對帳表，將 Invoice、Payment、Receipt 與沖銷流水收斂到同一視圖並標示異常
 
+## 2026-04-28 — fix(scheduling): 請假順延補堂防半套資料
+
+- Fixed 行事曆請假失敗時不再直接寫入 `schedules`，並補上既有請假半套資料可安全重跑順延、補足購買堂數的 regression coverage
+
 ## 2026-04-28 — docs(agents): 外部 agent playbook 引用準則
 
 - Added `agency-agents` 可參考但不可整包覆蓋 AllTrue P0/SOP 的整合準則
