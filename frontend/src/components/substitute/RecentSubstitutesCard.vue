@@ -2,10 +2,12 @@
   <section class="rsc wp" id="recent-subs-sec" data-guide="director-recent-subs">
     <header class="wp__head rsc-head">
       <span class="material-symbols-outlined wp__hi">swap_horiz</span>
-      <h3>近 7 天代課記錄</h3>
+      <div class="rsc-title">
+        <h3>代課動態</h3>
+        <span class="rsc-title__meta">近 7 天 · 本分校</span>
+      </div>
       <span v-if="items.length" class="wp__badge">{{ items.length }}</span>
     </header>
-    <p class="wp__hint">僅顯示當前分校，資料來自代課送出時建立的家長通知。</p>
     <div v-if="loading" class="rsc-skel" aria-hidden="true">
       <div v-for="n in 3" :key="n" class="rsc-skel__row">
         <div class="rsc-skel__line rsc-skel__line--w60"></div>
@@ -177,7 +179,31 @@ defineExpose({ reload: load });
   background: linear-gradient(90deg, var(--porsche-ink), rgba(196, 122, 24, 0.72), transparent);
   opacity: 0.86;
 }
-.rsc-head { display: flex; align-items: center; gap: 8px; }
+.rsc-head { display: flex; align-items: flex-start; gap: 9px; }
+.rsc-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rsc-title h3 {
+  margin: 0;
+  color: var(--porsche-ink, #111827);
+  font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.18;
+}
+.rsc-title__meta {
+  color: var(--porsche-ink-soft, #64748b);
+  font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
 
 .rsc-list {
   display: flex;
