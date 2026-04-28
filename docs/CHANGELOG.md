@@ -6,6 +6,10 @@
 
 ---
 
+## 2026-04-28 — docs(agents): 外部 agent playbook 引用準則
+
+- Added `agency-agents` 可參考但不可整包覆蓋 AllTrue P0/SOP 的整合準則
+
 ## 2026-04-28 — fix(accounting): 收款與帳單稽核口徑
 
 - Changed 帳務中心區分有效收款流水與對應課程數，並在課程帳單展開付款/沖銷明細與收據號以利錯帳更正
