@@ -261,6 +261,10 @@ class PaymentReportController extends Controller
         return DB::transaction(function () use ($report, $userId, $note) {
             $sc = StudentClass::find($report->StudentClassID);
 
+            if ($sc && $this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse();
+            }
+
             $invoice = Invoice::where('StudentClassID', $report->StudentClassID)
                 ->where('Status', '!=', 'paid')
                 ->lockForUpdate()
@@ -274,10 +278,7 @@ class PaymentReportController extends Controller
             }
 
             if (! $invoice && $sc && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
-                return response()->json([
-                    'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款或指定未繳帳單。',
-                    'code'    => 'course_already_paid',
-                ], 422);
+                return $this->duplicateCoursePaymentResponse();
             }
 
             if (!$invoice) {
@@ -365,6 +366,10 @@ class PaymentReportController extends Controller
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
 
+            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+                return $this->duplicateCoursePaymentResponse();
+            }
+
             if (!empty($data['invoice_id'])) {
                 $invoice = Invoice::where('id', (int) $data['invoice_id'])
                     ->where('StudentClassID', $sc->ID)
@@ -405,10 +410,7 @@ class PaymentReportController extends Controller
             }
 
             if (! $invoice && ((int) ($sc->Paid ?? 0) === 1 || $hasPaidInvoice)) {
-                return response()->json([
-                    'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款或指定未繳帳單。',
-                    'code'    => 'course_already_paid',
-                ], 422);
+                return $this->duplicateCoursePaymentResponse();
             }
 
             if (!$invoice) {
@@ -475,6 +477,25 @@ class PaymentReportController extends Controller
                 'invoice_id' => $invoice->id,
             ]);
         });
+    }
+
+    private function courseAlreadyHasConfirmedPayment(int $studentClassId, int $coursePaid): bool
+    {
+        if ($coursePaid === 1) {
+            return true;
+        }
+
+        return Invoice::where('StudentClassID', $studentClassId)
+            ->where('Status', 'paid')
+            ->exists();
+    }
+
+    private function duplicateCoursePaymentResponse()
+    {
+        return response()->json([
+            'message' => '此課程已標記為已繳費，請勿重複入帳；若需更正請先作廢原收款後再重新核帳。',
+            'code'    => 'course_already_paid',
+        ], 422);
     }
 
     /**
