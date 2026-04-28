@@ -585,17 +585,17 @@
           <span v-else-if="recordsDate !== localTodayYmd()" class="att-records-date-badge">{{ recordsDate }}</span>
         </div>
         <div class="att-records-controls">
-          <!-- Admin/Director: 最近 7 天 | 今天 quick-switch + optional date picker -->
+          <!-- Admin/Director: today by default, with recent 7 days for review. -->
           <template v-if="!isTeacher">
             <div class="att-mode-toggle">
-              <button
-                :class="['att-mode-btn', { active: recordsMode === 'week' }]"
-                @click="recordsMode = 'week'; recordsDate = localTodayYmd(); fetchRecords()"
-              >最近 7 天</button>
               <button
                 :class="['att-mode-btn', { active: recordsMode === 'day' }]"
                 @click="recordsMode = 'day'; recordsDate = localTodayYmd(); fetchRecords()"
               >今天</button>
+              <button
+                :class="['att-mode-btn', { active: recordsMode === 'week' }]"
+                @click="recordsMode = 'week'; recordsDate = localTodayYmd(); fetchRecords()"
+              >最近 7 天</button>
             </div>
             <input
               v-if="recordsMode === 'day'"
@@ -632,6 +632,7 @@
         <table>
           <thead>
             <tr>
+              <th>日期</th>
               <th>時段</th>
               <th>學生</th>
               <th>科目</th>
@@ -643,6 +644,9 @@
           </thead>
           <tbody>
             <tr v-for="record in filteredRecords" :key="record.id" class="att-record-row">
+              <td>
+                <span class="att-record-date">{{ formatRecordDate(record.SignInDT) }}</span>
+              </td>
               <td>
                 <span class="att-time-range">{{ formatTime(record.SignInDT) }}</span>
                 <span v-if="record.SignOutDT" class="att-time-sep">–{{ formatTime(record.SignOutDT) }}</span>
@@ -705,9 +709,9 @@
               </td>
             </tr>
             <tr v-if="filteredRecords.length === 0">
-              <td colspan="7" class="empty-text">
-                <span v-if="filterStatus === 'self_study'">📚 今日暫無自修記錄</span>
-                <span v-else>今日尚無出缺勤紀錄</span>
+              <td colspan="8" class="empty-text">
+                <span v-if="filterStatus === 'self_study'">{{ recordsMode === 'week' ? '最近 7 天暫無自修記錄' : '今日暫無自修記錄' }}</span>
+                <span v-else>{{ recordsMode === 'week' ? '最近 7 天尚無出缺勤紀錄' : '今日尚無出缺勤紀錄' }}</span>
               </td>
             </tr>
           </tbody>
@@ -1646,8 +1650,8 @@ function setStatus(sessionId, status) {
 
 // --- API calls ---
 const recordsDate = ref(localTodayYmd());
-// Admin/Director default: show last 7 days. Teacher: always single-date.
-const recordsMode = ref('week');
+// Admin/Director default to today; recent 7 days remains available for review.
+const recordsMode = ref('day');
 
 const fetchRecords = async () => {
   try {
@@ -2308,6 +2312,18 @@ const formatTime = (dt) => {
     const d = new Date(dt);
     return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
   } catch { return dt; }
+};
+
+const formatRecordDate = (dt) => {
+  if (!dt) return '—';
+  try {
+    const d = new Date(dt);
+    return d.toLocaleDateString('zh-TW', {
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+    });
+  } catch { return String(dt).slice(0, 10) || '—'; }
 };
 
 const maskRfid = (rfid) => {
