@@ -821,6 +821,215 @@ class StudentClassUpdateScheduleReconcileTest extends TestCase
             'Contract time must NOT be overwritten by old ClassSession times via reconcile');
     }
 
+    public function test_schedule_update_preserves_new_sunday_when_start_date_mismatch_has_history(): void
+    {
+        Carbon::setTestNow('2026-04-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+
+            $student = Student::create([
+                'name' => '週日新增不覆蓋測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-04-01',
+                'TotalHours' => 20,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 500,
+                'RoomID' => '1',
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 4,
+                'UsedSessions' => 4,
+                'ClassType' => 'one_on_one',
+                'week' => 3,
+                'time' => '16:00:00',
+            ]);
+
+            $pastSession = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-04-02',
+                'StartTime' => '16:00:00',
+                'EndTime' => '18:00:00',
+                'Status' => 'attended',
+            ]);
+            StudentSignIn::create([
+                'StudentClassID' => $course->ID,
+                'StudentID' => $student->id,
+                'TeacherID' => 99,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'CampusID' => 1,
+                'SignInDT' => '2026-04-02 16:00:00',
+                'MDT' => now(),
+                'ClassSessionID' => $pastSession->id,
+                'Status' => 'present',
+                'SessionDeducted' => 1,
+            ]);
+
+            // Future rows still only have Wednesday. Reconcile must not treat
+            // those stale rows as the source of truth after the director adds Sunday.
+            foreach (['2026-04-15', '2026-04-22', '2026-04-29'] as $date) {
+                ClassSession::create([
+                    'StudentClassID' => $course->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '16:00:00',
+                    'EndTime' => '18:00:00',
+                    'Status' => 'scheduled',
+                ]);
+            }
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math',
+                'class_type' => 'one_on_one',
+                'duration_hours' => 2,
+                'days_of_week' => [3, 7],
+                'start_time' => '16:00',
+                'day_time_slots' => [
+                    ['day' => 3, 'start_time' => '16:00', 'duration_minutes' => 120],
+                    ['day' => 7, 'start_time' => '16:00', 'duration_minutes' => 120],
+                ],
+                'payment_type' => 'session',
+                'first_class_date' => '2026-04-01',
+                'force_rebuild_if_mismatch' => true,
+            ]);
+
+            $res->assertOk();
+
+            $course->refresh();
+            $this->assertSame(3, (int) $course->week);
+            $this->assertSame('16:00:00', (string) $course->time);
+            $this->assertSame(7, (int) $course->week1,
+                'Explicitly added Sunday must remain in the contract even when stale future sessions only contain Wednesday');
+            $this->assertSame('16:00:00', (string) $course->time1);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_teacher_change_preserves_cross_day_fixed_slots_even_with_single_future_session(): void
+    {
+        Carbon::setTestNow('2026-04-12 12:00:00');
+        try {
+            $token = $this->createDirectorToken([1]);
+
+            $student = Student::create([
+                'name' => '改老師保留週日測試',
+                'CampusID' => 1,
+                'ClassID' => 1,
+                'enable' => 1,
+                'MDT' => now(),
+                'Notify_Token' => '',
+            ]);
+
+            $course = StudentClass::create([
+                'StudentID' => $student->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'TeacherID' => 99,
+                'by1' => 1,
+                'Period' => 4,
+                'StartDate' => '2026-04-01',
+                'TotalHours' => 20,
+                'Charge' => 0,
+                'Paid' => 0,
+                'Rate' => 500,
+                'RoomID' => '1',
+                'MDate' => now(),
+                'Stop' => 0,
+                'ScheduleMode' => 'count',
+                'SessionCount' => 8,
+                'SessionDuration' => 120,
+                'RemainingSessions' => 1,
+                'UsedSessions' => 7,
+                'ClassType' => 'one_on_one',
+                'week' => 3,
+                'time' => '16:00:00',
+                'week1' => 7,
+                'time1' => '16:00:00',
+            ]);
+
+            $pastSession = ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-04-02',
+                'StartTime' => '16:00:00',
+                'EndTime' => '18:00:00',
+                'Status' => 'attended',
+            ]);
+            StudentSignIn::create([
+                'StudentClassID' => $course->ID,
+                'StudentID' => $student->id,
+                'TeacherID' => 99,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'CampusID' => 1,
+                'SignInDT' => '2026-04-02 16:00:00',
+                'MDT' => now(),
+                'ClassSessionID' => $pastSession->id,
+                'Status' => 'present',
+                'SessionDeducted' => 1,
+            ]);
+
+            // Real-world failure: only one stale future Wednesday remains, so
+            // reverse-reconciling from ClassSession would erase the Sunday contract.
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-04-15',
+                'StartTime' => '16:00:00',
+                'EndTime' => '18:00:00',
+                'Status' => 'scheduled',
+            ]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->putJson("/api/v1/student-classes/{$course->ID}", [
+                'subject' => 'Math',
+                'teacher_id' => 100,
+                'class_type' => 'one_on_one',
+                'duration_hours' => 2,
+                'days_of_week' => [3, 7],
+                'start_time' => '16:00',
+                'day_time_slots' => [
+                    ['day' => 3, 'start_time' => '16:00', 'duration_minutes' => 120],
+                    ['day' => 7, 'start_time' => '16:00', 'duration_minutes' => 120],
+                ],
+                'payment_type' => 'session',
+                'first_class_date' => '2026-04-01',
+                'force_rebuild_if_mismatch' => true,
+            ]);
+
+            $res->assertOk();
+
+            $course->refresh();
+            $this->assertSame(100, (int) $course->TeacherID, 'Teacher edit must still update the contract teacher');
+            $this->assertSame(3, (int) $course->week);
+            $this->assertSame(7, (int) $course->week1,
+                'Changing the formal teacher must not let stale Wednesday-only ClassSession rows erase Sunday');
+            $this->assertSame('16:00:00', (string) $course->time1);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------

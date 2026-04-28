@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0');
 
 * {
@@ -8,6 +8,8 @@
 }
 
 :root {
+  --font-sans: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-ui: var(--font-sans);
   --primary: #E65100;
   --primary-light: #FF8A65;
   --primary-bg: #FFF3E0;
@@ -86,6 +88,7 @@ html {
   overflow-x: hidden;
   max-width: 100vw;
   -webkit-overflow-scrolling: touch;
+  text-autospace: ideograph-alpha ideograph-numeric;
 }
 body {
   overflow-x: hidden;
@@ -95,15 +98,26 @@ html {
   overflow-y: scroll;
 }
 body {
-  font-family: 'Inter', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
   line-height: 1.6;
 }
 
 .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  display: inline-block;
+  letter-spacing: normal;
   line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ===================== PORSCHE-INSPIRED UTILITIES ===================== */
