@@ -217,6 +217,105 @@ class BillingController extends Controller
         });
     }
 
+    public function exceptionVoidInvoice(Request $request, Invoice $invoice)
+    {
+        $invoice->loadMissing('student');
+        if (!$invoice->student) {
+            return response()->json(['message' => 'Invoice has no linked student'], 404);
+        }
+        $this->assertInvoiceStudentCampusAllowed($request, (int) $invoice->student->CampusID);
+
+        $data = $request->validate([
+            'reason' => 'required|string|min:3|max:255',
+        ]);
+
+        return DB::transaction(function () use ($request, $invoice, $data) {
+            $invoice = Invoice::whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+            $status = strtolower((string) ($invoice->Status ?? ''));
+
+            if ($status === 'void') {
+                return response()->json(['message' => '此帳單已作廢。'], 422);
+            }
+
+            $payments = Payment::where('InvoiceID', $invoice->id)
+                ->lockForUpdate()
+                ->orderBy('id')
+                ->get();
+            $positiveTotal = (int) $payments
+                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
+                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0));
+            $voidedTotal = abs((int) $payments
+                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) < 0 || (string) ($payment->Method ?? '') === 'void')
+                ->sum(fn ($payment) => (int) ($payment->Amount ?? 0)));
+            $netApplied = max(0, $positiveTotal - $voidedTotal);
+
+            if ($netApplied <= 0 && (int) ($invoice->PaidAmount ?? 0) <= 0) {
+                return response()->json([
+                    'message' => '此帳單沒有收款痕跡，請使用一般作廢流程。',
+                ], 422);
+            }
+
+            $authUser = $request->attributes->get('auth_user');
+            $reason = trim((string) $data['reason']);
+            $positivePaymentIds = $payments
+                ->filter(fn ($payment) => (int) ($payment->Amount ?? 0) > 0 && (string) ($payment->Method ?? '') !== 'void')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+            $audit = sprintf(
+                '[exception-void: %s; user_id=%s; at=%s; positive_payments=%s; net=%s]',
+                str_replace(["\r", "\n"], ' ', $reason),
+                $authUser?->id ?? 'system',
+                now()->format('Y-m-d H:i:s'),
+                implode(',', $positivePaymentIds),
+                $netApplied
+            );
+
+            $reversalPayment = null;
+            if ($netApplied > 0) {
+                $reversalPayment = Payment::create([
+                    'InvoiceID' => $invoice->id,
+                    'Amount' => -$netApplied,
+                    'PaidAt' => now(),
+                    'Method' => 'void',
+                    'Note' => mb_substr('帳單例外沖銷作廢：' . $reason, 0, 255),
+                ]);
+            }
+
+            $note = trim((string) ($invoice->Note ?? ''));
+            $invoice->Status = 'void';
+            $invoice->PaidAmount = 0;
+            $invoice->Note = mb_substr(trim($note . ' ' . $audit), 0, 255);
+            $invoice->save();
+
+            Log::info('[InvoiceExceptionVoid] invoice reversed and voided', [
+                'invoice_id' => $invoice->id,
+                'student_id' => $invoice->StudentID,
+                'student_class_id' => $invoice->StudentClassID,
+                'campus_id' => $invoice->student?->CampusID,
+                'user_id' => $authUser?->id,
+                'net_applied' => $netApplied,
+                'reversal_payment_id' => $reversalPayment?->id,
+            ]);
+
+            return response()->json([
+                'message' => '帳單已沖銷作廢。',
+                'invoice' => [
+                    'id' => (int) $invoice->id,
+                    'status' => $invoice->Status,
+                    'paid_amount' => (int) $invoice->PaidAmount,
+                    'note' => $invoice->Note,
+                ],
+                'reversal_payment' => $reversalPayment ? [
+                    'id' => (int) $reversalPayment->id,
+                    'amount' => (int) $reversalPayment->Amount,
+                    'method' => (string) $reversalPayment->Method,
+                ] : null,
+            ]);
+        });
+    }
+
     public function slipData(Invoice $invoice, Request $request)
     {
         $invoice->load(['student', 'items', 'items.studentClass']);

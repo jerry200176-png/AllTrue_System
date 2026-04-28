@@ -53,6 +53,7 @@ class AccountingController extends Controller
         $courseIds = $courses->pluck('ID')->map(fn ($id) => (int) $id)->values()->all();
         $invoiceMap = Invoice::with(['payments' => fn ($q) => $q->select(['id', 'InvoiceID', 'Amount', 'PaidAt', 'Method'])])
             ->whereIn('StudentClassID', $courseIds)
+            ->notVoided()
             ->get()
             ->groupBy('StudentClassID');
         $reportMap = PaymentReport::query()
