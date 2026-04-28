@@ -1161,6 +1161,65 @@ class PaymentReportApiTest extends TestCase
             ->assertJsonPath('anomalies.0.code', 'overpayment_pending_review');
     }
 
+    public function test_accounting_settled_courses_includes_paid_count_course_without_low_sessions(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '吳艾潼']);
+        $sc = $this->createCountModeClass($student->id, [
+            'Charge' => 8800,
+            'Paid' => 1,
+            'PayDate' => '2026-04-10',
+            'RemainingSessions' => 8,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=吳艾潼');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.course_count', 1)
+            ->assertJsonPath('summary.legacy_count', 1)
+            ->assertJsonPath('data.0.student_class_id', $sc->ID)
+            ->assertJsonPath('data.0.student_name', '吳艾潼')
+            ->assertJsonPath('data.0.schedule_mode', 'count')
+            ->assertJsonPath('data.0.legacy_paid_without_invoice', true);
+    }
+
+    public function test_accounting_settled_courses_marks_overpayment_exception(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $student->update(['name' => '吳艾潼']);
+        $sc = $this->createCountModeClass($student->id, ['Charge' => 8800, 'Paid' => 1]);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-10',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 12800,
+            'Status' => 'paid',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 8800, 'PaidAt' => '2026-04-10', 'Method' => 'cash']);
+        Payment::create(['InvoiceID' => $invoice->id, 'Amount' => 4000, 'PaidAt' => '2026-04-11', 'Method' => 'cash']);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/accounting/settled-courses?branch_id=1&student=吳艾潼');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.course_count', 1)
+            ->assertJsonPath('summary.exception_count', 1)
+            ->assertJsonPath('summary.overpaid_total', 4000)
+            ->assertJsonPath('data.0.paid_amount', 8800)
+            ->assertJsonPath('data.0.overpaid_amount', 4000)
+            ->assertJsonPath('data.0.has_exception', true);
+    }
+
     public function test_accounting_ledger_rejects_cross_campus_access(): void
     {
         $token = $this->createDirectorToken([2]);

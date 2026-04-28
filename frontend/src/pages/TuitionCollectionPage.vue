@@ -3,7 +3,7 @@
     <div class="tc-header">
       <div>
         <h2>帳務中心</h2>
-        <p class="tc-subtitle">待收核帳、收款與收據查詢</p>
+        <p class="tc-subtitle">待處理、已結清查詢、收款與收據紀錄</p>
       </div>
       <button class="tc-refresh-btn" @click="refreshActiveTab()" :disabled="activeTabLoading">
         <span class="material-symbols-outlined" style="font-size:17px">refresh</span>
@@ -390,7 +390,7 @@
         <div v-if="!accountingRows.length" class="tc-empty">
           <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">receipt_long</span>
           <p>此區間尚無已核帳收款</p>
-          <button class="tc-cta-btn tc-cta-btn--ghost" @click="activeAccountingTab = 'receivables'">前往待收與核帳</button>
+          <button class="tc-cta-btn tc-cta-btn--ghost" @click="activeAccountingTab = 'receivables'">前往待處理</button>
         </div>
 
         <div v-else class="tc-table-wrap">
@@ -455,6 +455,74 @@
       </template>
     </section>
 
+    <section v-if="activeAccountingTab === 'settled'" class="acct-section">
+      <div class="acct-filter-bar">
+        <div class="acct-filters">
+          <label>學生<input v-model="accountingFilters.student" type="text" placeholder="搜尋學生姓名" /></label>
+          <label>科目<input v-model="accountingFilters.subject" type="text" placeholder="全部科目" /></label>
+        </div>
+        <div class="acct-filter-actions">
+          <button class="tc-btn tc-btn--ghost" @click="loadSettledCourses()" :disabled="settledLoading">
+            <span class="material-symbols-outlined" :class="{ spin: settledLoading }" style="font-size:16px">refresh</span>
+            查詢
+          </button>
+        </div>
+      </div>
+
+      <div v-if="settledError" class="tc-error">
+        <span class="material-symbols-outlined" style="font-size:20px">error</span>
+        {{ settledError }}
+      </div>
+
+      <template v-else>
+        <div class="tc-summary">
+          <div class="tc-card tc-card--total"><span class="tc-card-num">{{ settledSummary.course_count || 0 }}</span><span class="tc-card-label">已結清課程</span></div>
+          <div class="tc-card tc-card--success"><span class="tc-card-num">{{ formatCurrency(settledSummary.paid_total || 0) }}</span><span class="tc-card-label">已套用收款</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.legacy_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.legacy_count || 0 }}</span><span class="tc-card-label">舊制無帳單</span></div>
+          <div class="tc-card" :class="{ 'tc-card--warn': (settledSummary.exception_count || 0) > 0 }"><span class="tc-card-num">{{ settledSummary.exception_count || 0 }}</span><span class="tc-card-label">例外待處理</span></div>
+          <div class="tc-card tc-card--outstanding"><span class="tc-card-num">{{ formatCurrency(settledSummary.overpaid_total || 0) }}</span><span class="tc-card-label">溢收/待沖銷</span></div>
+        </div>
+        <p class="tc-summary-note">「已結清查詢」用 Invoice/Payment/Receipt 與課程主檔彙整，不是提醒 queue；堂數制已繳且堂數充足也會出現在這裡。</p>
+
+        <div v-if="settledLoading && !settledRows.length" class="tc-skeleton-area">
+          <div class="tc-card tc-card--skeleton"><span class="skel skel-num"></span><span class="skel skel-label"></span></div>
+        </div>
+        <div v-else-if="!settledRows.length" class="tc-empty">
+          <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-light)">task_alt</span>
+          <p>目前查無已結清課程</p>
+        </div>
+        <div v-else class="tc-table-wrap">
+          <table class="tc-table acct-table">
+            <thead>
+              <tr>
+                <th>課程</th><th>學生</th><th>科目</th><th>模式</th><th class="tc-col-currency">已套用</th><th>最近付款</th><th>標籤</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in settledRows" :key="row.student_class_id">
+                <td>{{ row.course_ref }}</td>
+                <td class="tc-cell-name">{{ row.student_name }}</td>
+                <td>{{ row.subject }}</td>
+                <td>{{ row.schedule_mode === 'date' ? '月結' : '堂數' }}</td>
+                <td class="tc-col-currency">{{ formatCurrency(row.paid_amount || 0) }}</td>
+                <td>{{ row.last_paid_at || '—' }}</td>
+                <td>
+                  <span v-if="row.legacy_paid_without_invoice" class="acct-chip acct-chip--backfill">舊制無帳單</span>
+                  <span v-if="row.has_exception" class="acct-chip acct-chip--prepaid">例外待處理</span>
+                  <span v-if="!row.legacy_paid_without_invoice && !row.has_exception" class="text-light">正常</span>
+                </td>
+                <td>
+                  <div class="tc-actions">
+                    <button class="tc-btn tc-btn--ledger" @click="openLedgerForClass(row)"><span class="material-symbols-outlined">account_balance</span>對帳</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+    </section>
+
     <!-- Modals -->
     <PaymentSlipModal
       :show="slipOpen"
@@ -482,6 +550,7 @@
       :report-id="ledgerReportId"
       :branch-id="branchId"
       @close="ledgerOpen = false"
+      @changed="onLedgerChanged"
     />
 
     <!-- Void Confirmation Dialog -->
@@ -643,7 +712,8 @@ const error = ref('');
 const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
-  { key: 'receivables', label: '待收與核帳', icon: 'payments' },
+  { key: 'receivables', label: '待處理', icon: 'payments' },
+  { key: 'settled', label: '已結清查詢', icon: 'task_alt' },
   { key: 'payments', label: '收款與收據紀錄', icon: 'receipt_long' },
 ];
 const activeAccountingTab = ref('receivables');
@@ -651,6 +721,10 @@ const accountingLoading = ref(false);
 const accountingExporting = ref(false);
 const accountingError = ref('');
 const accountingRows = ref([]);
+const settledLoading = ref(false);
+const settledError = ref('');
+const settledRows = ref([]);
+const settledSummary = ref({ course_count: 0, legacy_count: 0, exception_count: 0, paid_total: 0, overpaid_total: 0 });
 const accountingSummary = ref({
   total_count: 0,
   cash_total: 0,
@@ -661,7 +735,7 @@ const accountingSummary = ref({
 const accountingFilters = ref(defaultAccountingFilters());
 
 const activeTabLoading = computed(() => (
-  activeAccountingTab.value === 'receivables' ? loading.value : accountingLoading.value
+  activeAccountingTab.value === 'receivables' ? loading.value : activeAccountingTab.value === 'settled' ? settledLoading.value : accountingLoading.value
 ));
 
 function getToken() {
@@ -738,6 +812,8 @@ function openReceiptByReport(reportId) {
 function refreshActiveTab() {
   if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
+  } else if (activeAccountingTab.value === 'settled') {
+    loadSettledCourses();
   } else {
     loadAccountingPayments();
   }
@@ -986,6 +1062,37 @@ async function loadAccountingPayments() {
   } finally {
     accountingLoading.value = false;
   }
+}
+
+async function loadSettledCourses() {
+  settledLoading.value = true;
+  settledError.value = '';
+  try {
+    const token = getToken();
+    if (!token) { settledError.value = '請先登入'; return; }
+    const params = new URLSearchParams();
+    if (props.branchId != null && props.branchId !== '') params.set('branch_id', String(Number(props.branchId)));
+    if (accountingFilters.value.student.trim()) params.set('student', accountingFilters.value.student.trim());
+    if (accountingFilters.value.subject.trim()) params.set('subject', accountingFilters.value.subject.trim());
+    const resp = await fetch(`/api/v1/accounting/settled-courses?${params}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.message || `載入失敗（${resp.status}）`);
+    }
+    const json = await resp.json();
+    settledRows.value = Array.isArray(json.data) ? json.data : [];
+    settledSummary.value = json.summary || settledSummary.value;
+  } catch (e) {
+    settledError.value = e.message || '載入失敗';
+  } finally {
+    settledLoading.value = false;
+  }
+}
+
+async function onLedgerChanged() {
+  await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
 }
 
 async function fetchAccountingExportRows() {
@@ -1276,7 +1383,7 @@ async function confirmVoid() {
     }
     voidDialogOpen.value = false;
     showToast('已撤銷收款，狀態已重置', 'warning');
-    await Promise.all([loadAlerts(), loadAccountingPayments()]);
+    await Promise.all([loadAlerts(), loadAccountingPayments(), loadSettledCourses()]);
   } catch (e) {
     showToast(e.message || '撤銷失敗', 'error');
   } finally {
@@ -1428,6 +1535,8 @@ watch(() => props.branchId, () => {
 watch(activeAccountingTab, (tab) => {
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
+  } else if (tab === 'settled') {
+    loadSettledCourses();
   } else {
     loadAccountingPayments();
   }

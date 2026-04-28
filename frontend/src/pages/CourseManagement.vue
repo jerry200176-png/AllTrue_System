@@ -238,11 +238,7 @@
                         <button class="small ghost btn-toggle" @click="toggleDates(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
-                        <button
-                          v-if="isMonthlyMode(c)"
-                          class="small ghost btn-invoices"
-                          @click="openInvoiceModal(c)"
-                        >帳單</button>
+                        <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單/對帳</button>
                         <div class="action-menu-wrapper">
                           <button class="small ghost action-menu-trigger" @click.stop="toggleActionMenu(c.id)" title="更多操作">操作 ▾</button>
                           <div v-if="activeActionMenu === c.id" class="action-dropdown" @click.stop>
@@ -344,11 +340,7 @@
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
-                    <button
-                      v-if="isMonthlyMode(hc)"
-                      class="small ghost btn-invoices"
-                      @click="openInvoiceModal(hc)"
-                    >帳單</button>
+                    <button class="small ghost btn-invoices" @click="openInvoiceModal(hc)">帳單/對帳</button>
                     <button class="small ghost btn-toggle" @click="toggleDates(hc)">
                       {{ expandedDates.has(hc.id) ? '收起詳情' : '查看堂次' }}
                     </button>
@@ -622,12 +614,12 @@
       @close="ledgerOpen = false"
     />
 
-    <!-- 月結帳單記錄 Modal -->
+    <!-- 帳單記錄 Modal -->
     <div v-if="invoiceModalOpen" class="modal-overlay" @click.self="closeInvoiceModal">
       <div class="modal course-modal invoice-modal">
         <div class="invoice-modal-header">
           <div>
-            <h3 class="modal-title">月結帳單記錄</h3>
+            <h3 class="modal-title">帳單 / 對帳記錄</h3>
             <p class="modal-desc">
               {{ invoiceModalCourse?.student_name || '學生' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
             </p>
@@ -648,7 +640,7 @@
           {{ invoiceModalError }}
         </div>
         <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
-          尚無帳單記錄（舊有課程）。請以課程主檔繳費狀態作為暫時參考。
+          尚無帳單流水（舊有或堂數制課程可能只保留課程主檔繳費狀態）。可按「對帳」查看同學生收據與例外資料。
         </div>
         <table v-else class="invoice-table">
           <thead>
@@ -3008,7 +3000,7 @@ const openLedgerForCourse = (course) => {
 };
 
 const openInvoiceModal = async (course) => {
-  if (!course?.id || !isMonthlyMode(course)) return;
+  if (!course?.id) return;
   invoiceModalCourse.value = course;
   invoiceModalList.value = [];
   invoiceModalError.value = '';
