@@ -38,4 +38,19 @@ class ExceptionWorkflow extends Model
     {
         return $this->hasMany(ExceptionWorkflowCandidate::class, 'workflow_id', 'id');
     }
+
+    public function student()
+    {
+        return $this->belongsTo(Student::class, 'student_id', 'id');
+    }
+
+    public function studentClass()
+    {
+        return $this->belongsTo(StudentClass::class, 'student_class_id', 'ID');
+    }
+
+    public function classSession()
+    {
+        return $this->belongsTo(ClassSession::class, 'class_session_id', 'id');
+    }
 }

@@ -13,6 +13,7 @@ use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
+use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
@@ -287,6 +288,9 @@ Route::prefix('v1')->group(function () {
         Route::post('notifications/{notificationId}/read', [NotificationController::class, 'markRead']);
         Route::post('notifications/{notificationId}/tuition-paid', [NotificationController::class, 'markTuitionPaid']);
         Route::get('notifications/unread-count', [NotificationController::class, 'unreadCount']);
+
+        Route::get('exception-workflows', [ExceptionWorkflowController::class, 'index']);
+        Route::get('exception-workflows/{id}', [ExceptionWorkflowController::class, 'show'])->whereNumber('id');
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
