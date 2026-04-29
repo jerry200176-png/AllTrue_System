@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — fix(parent): 家長端月結與繳費提醒語意
+
+- Fixed 家長端月結課程改用課程帳期月份顯示，已繳停課月結課保留已繳費主狀態，且已繳低堂數舊約不再顯示成家長待繳費
+
+---
+
 ## 2026-04-29 — ops(ci): WSL2 self-hosted runner 啟用
 
 - Ops 將 CI / Presubmit / PHPStan checks 移至 WSL2 self-hosted runner，保留 `deploy.yml` 只用 GitHub-hosted runner，並更新文件避免 runner / DB secret 舊說法誤導

@@ -432,6 +432,16 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R38. 家長端繳費提醒不可直接套主任端續課提醒
+
+- 主任端 `alerts/tuition` 的堂數制低堂數（`RemainingSessions <= 2`）是營運續課提醒；家長端「繳費提醒」是付款/確認動作，兩者語意不同。
+- 月結課程顯示月份必須用課程帳期／服務月份（優先 `Invoice.billing_period`，fallback `StudentClass.StartDate`），不可用瀏覽當天月份推導，否則 5 月課在 4 月底會顯示「4月已上」。
+- `Paid=1` 與 `Stop=1` 必須分層顯示：付款狀態是「已繳費」，課程生命週期可輔助顯示「課程已結束」；不可用紅色「已停課」覆蓋已繳費語意。
+- **強制規則**：家長端 `payment_alerts` 只放需要家長付款/確認的項目；已繳費但剩 1～2 堂的舊堂數課不可出現在家長待繳費區。若要提示家長，只能另用「課程即將結束／櫃台會協助安排」等非繳費文案。
+- **測試必補**：家長 dashboard 必須覆蓋未來月份月結課、`Stop=1 + Paid=1`、`Paid=1 + remaining=1` 不列入家長待繳費、`Paid=0 + remaining=1` 仍列入。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -444,7 +454,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules） |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）|
-| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意） |
+| 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |

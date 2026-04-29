@@ -258,22 +258,58 @@ class ParentPortalController extends Controller
 
         $classIds = $classes->pluck('ID')->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
+        $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
 
         // PRD-H (2026-04-18)：月結制專用的「本月已上堂數」與預估月費，供家長端學習情況卡片顯示。
         $monthlyClassIds = $classes
             ->filter(fn ($c) => (string) ($c->ScheduleMode ?? 'count') !== 'count')
             ->pluck('ID')->values()->all();
         $attendedThisMonth = [];
-        $monthStart = Carbon::now()->startOfMonth()->toDateString();
-        $monthEnd   = Carbon::now()->endOfMonth()->toDateString();
         $currentMonthLabel = Carbon::now()->format('n') . '月';
+        $monthlyBillingPeriods = [];
+        $monthlyDisplayLabels = [];
+        $monthlyInvoiceRowsByClass = collect();
         if (!empty($monthlyClassIds)) {
+            $monthlyInvoiceRowsByClass = Invoice::query()
+                ->where('StudentID', $student->id)
+                ->whereIn('StudentClassID', $monthlyClassIds)
+                ->notVoided()
+                ->whereNotNull('billing_period')
+                ->orderByRaw("CASE WHEN Status IN ('unpaid', 'partial', 'partially_paid', 'open', 'pending') THEN 0 ELSE 1 END")
+                ->orderBy('billing_period', 'desc')
+                ->orderBy('DueDate', 'desc')
+                ->get(['StudentClassID', 'billing_period', 'Status', 'DueDate', 'IssueDate'])
+                ->groupBy('StudentClassID');
+
+            foreach ($classes as $class) {
+                if (!in_array((int) $class->ID, $monthlyClassIds, true)) {
+                    continue;
+                }
+                $period = $this->resolveMonthlyDisplayPeriod($class, $monthlyInvoiceRowsByClass->get($class->ID));
+                $monthlyBillingPeriods[(int) $class->ID] = $period;
+                $monthlyDisplayLabels[(int) $class->ID] = $this->formatBillingPeriodLabel($period);
+            }
+
+            $periodStarts = collect($monthlyBillingPeriods)->map(fn ($period) => $period . '-01');
+            $queryStart = $periodStarts->min() ?? Carbon::now()->startOfMonth()->toDateString();
+            $queryEnd = $periodStarts->max()
+                ? Carbon::parse($periodStarts->max())->endOfMonth()->toDateString()
+                : Carbon::now()->endOfMonth()->toDateString();
+
             $attendedThisMonth = ClassSession::whereIn('StudentClassID', $monthlyClassIds)
-                ->whereBetween('SessionDate', [$monthStart, $monthEnd])
+                ->whereBetween('SessionDate', [$queryStart, $queryEnd])
                 ->whereIn('Status', ['completed', 'attended', 'late'])
+                ->get(['StudentClassID', 'SessionDate'])
+                ->filter(function ($session) use ($monthlyBillingPeriods) {
+                    $classId = (int) $session->StudentClassID;
+                    $period = $monthlyBillingPeriods[$classId] ?? null;
+                    if (!$period) {
+                        return false;
+                    }
+                    return substr((string) $session->SessionDate, 0, 7) === $period;
+                })
                 ->groupBy('StudentClassID')
-                ->selectRaw('StudentClassID, COUNT(*) as c')
-                ->pluck('c', 'StudentClassID')
+                ->map(fn ($group) => $group->count())
                 ->toArray();
         }
 
@@ -400,14 +436,14 @@ class ParentPortalController extends Controller
 
         // Per-course breakdown — 家長端「進行中」：
         //   - 堂數制：剩餘 > 0 才顯示（已用完或已停課+已繳不列）
-        //   - 月結制：一律顯示（除非 stopped+paid 代表整份結案），顯示本月已上堂數與預估月費
+        //   - 月結制：保留已繳結案課程，前端以「已繳費・課程已結束」降低家長誤解
         $perCourse = $classes
             ->filter(function ($c) use ($sessionMetrics) {
                 $paid    = (bool) $c->Paid;
                 $stopped = (bool) $c->Stop;
                 $isCount = (string) ($c->ScheduleMode ?? 'count') === 'count';
 
-                if ($stopped && $paid) {
+                if ($isCount && $stopped && $paid) {
                     return false;
                 }
 
@@ -418,12 +454,14 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
                 $monthlyFee     = $isMonthly ? $this->resolveMonthlyFee($c) : 0;
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
+                $paid           = $this->isClassPaid($c, $paidAtMap);
+                $stopped        = (bool) $c->Stop;
 
                 return [
                     'id'                   => $c->ID,
@@ -432,8 +470,14 @@ class ParentPortalController extends Controller
                     'sessions_purchased'   => $c->SessionCount,
                     'remaining_sessions'   => $metrics['remaining'],
                     'used_sessions'        => $metrics['used'],
-                    'is_stopped'           => (bool) $c->Stop,
-                    'paid'                 => (bool) $c->Paid,
+                    'is_stopped'           => $stopped,
+                    'paid'                 => $paid,
+                    'payment_status'       => $paid ? 'paid' : 'unpaid',
+                    'payment_status_label' => $paid ? '已繳費' : '未繳費',
+                    'lifecycle_status'     => $stopped ? 'closed' : 'active',
+                    'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
+                    'billing_period'       => $isMonthly ? ($monthlyBillingPeriods[(int) $c->ID] ?? null) : null,
+                    'display_month_label'  => $isMonthly ? ($monthlyDisplayLabels[(int) $c->ID] ?? $currentMonthLabel) : null,
                     'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
                     'monthly_target'       => $isMonthly ? ($monthlyTarget ?: null) : null,
                     'attended_this_month'  => $isMonthly ? $attended : null,
@@ -458,33 +502,31 @@ class ParentPortalController extends Controller
 
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes
-            ->filter(function ($c) use ($sessionMetrics) {
+            ->filter(function ($c) use ($paidAtMap) {
                 if ($c->ScheduleMode !== 'count' && ($c->SessionCount ?? 0) <= 0) {
                     return false;
                 }
 
-                $remaining = (int) $sessionMetrics($c)['remaining'];
-                $paid = (bool) $c->Paid;
+                $paid = $this->isClassPaid($c, $paidAtMap);
                 $stopped = (bool) $c->Stop;
 
-                // Fully used + already paid → course complete, nothing to act on
-                if ($paid && $remaining <= 0) {
+                // Parent portal reminders are payment actions, not director renewal alerts.
+                if ($paid) {
                     return false;
                 }
 
-                // Stopped + already paid → no further payment needed
-                if ($stopped && $paid) {
+                if ($stopped) {
                     return false;
                 }
 
-                return $remaining <= 2 || !$paid;
+                return true;
             })
-            ->map(function ($c) use ($sessionMetrics) {
+            ->map(function ($c) use ($sessionMetrics, $paidAtMap) {
                 return [
                     'class_id'           => $c->ID,
                     'subject'            => $this->resolveSubjectName($c),
                     'remaining_sessions' => (int) $sessionMetrics($c)['remaining'],
-                    'paid'               => (bool) $c->Paid,
+                    'paid'               => $this->isClassPaid($c, $paidAtMap),
                     'is_stopped'         => (bool) $c->Stop,
                 ];
             })
@@ -823,6 +865,41 @@ class ParentPortalController extends Controller
         }
 
         return 0;
+    }
+
+    private function isClassPaid(StudentClass $class, array $paidAtMap): bool
+    {
+        return (bool) ($class->Paid ?? false) || array_key_exists((int) $class->ID, $paidAtMap);
+    }
+
+    private function resolveMonthlyDisplayPeriod(StudentClass $class, $invoiceRows): string
+    {
+        $invoiceRows = collect($invoiceRows ?? []);
+        $invoice = $invoiceRows->first(function ($row) {
+            return preg_match('/^\d{4}-\d{2}$/', (string) ($row->billing_period ?? ''));
+        });
+
+        if ($invoice) {
+            return (string) $invoice->billing_period;
+        }
+
+        if (!empty($class->StartDate)) {
+            try {
+                return Carbon::parse($class->StartDate)->format('Y-m');
+            } catch (\Throwable $e) {
+            }
+        }
+
+        return Carbon::now()->format('Y-m');
+    }
+
+    private function formatBillingPeriodLabel(?string $period): string
+    {
+        if ($period && preg_match('/^\d{4}-(\d{2})$/', $period, $m)) {
+            return ((int) $m[1]) . '月';
+        }
+
+        return Carbon::now()->format('n') . '月';
     }
 
     private function resolveUnitPrice(StudentClass $class, int $sessionCount): float

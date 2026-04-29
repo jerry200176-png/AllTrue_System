@@ -462,9 +462,9 @@
               <div class="pp-course-top">
                 <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
-                <span v-if="c.is_stopped" class="pp-badge pp-badge-danger">已停課</span>
-                <span v-else-if="c.paid" class="pp-badge pp-badge-success">已繳費</span>
+                <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
+                <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
               </div>
               <!-- 堂數制 -->
               <template v-if="!isMonthlyCourse(c)">
@@ -489,14 +489,14 @@
                     <div class="pp-progress-fill" :style="{ width: monthlyProgressPercent(c) + '%', background: '#1976d2' }"></div>
                   </div>
                   <div class="pp-progress-labels">
-                    <span>{{ dashboard.current_month_label || '本月' }}已上 {{ c.attended_this_month ?? 0 }}</span>
+                    <span>{{ courseMonthLabel(c) }}已上 {{ c.attended_this_month ?? 0 }}</span>
                     <span>預定 {{ c.monthly_target }} 堂/月</span>
                   </div>
                 </div>
                 <div class="pp-monthly-stats">
                   <div class="pp-monthly-attended">
                     <span class="pp-remaining-number" style="color:#1976d2;">{{ c.attended_this_month ?? 0 }}</span>
-                    <span class="pp-remaining-label">{{ dashboard.current_month_label || '本月' }}已上</span>
+                    <span class="pp-remaining-label">{{ courseMonthLabel(c) }}已上</span>
                   </div>
                   <div v-if="(c.monthly_fee_estimate || 0) > 0" class="pp-monthly-fee">
                     <span class="pp-monthly-fee-amount">${{ formatMoney(c.monthly_fee_estimate) }}</span>
@@ -803,6 +803,8 @@ const monthlyProgressPercent = (c) => {
   return Math.min(100, Math.round((attended / target) * 100));
 };
 
+const courseMonthLabel = (c) => c?.display_month_label || dashboard.value?.current_month_label || '本月';
+
 const formatMoney = (v) => {
   const n = Number(v || 0);
   if (!Number.isFinite(n)) return '0';
@@ -836,7 +838,7 @@ const hwIcon = (v) => ({ completed: 'task_alt', partial: 'pending', incomplete: 
 const hwLabel = (v) => ({ completed: '已完成', partial: '部分完成', incomplete: '未完成', missing: '未繳交' }[v] || v || '—');
 
 const courseCardClass = (c) => {
-  if (c.is_stopped) return 'stopped';
+  if (c.is_stopped) return c.paid ? 'settled' : 'stopped';
   if (isMonthlyCourse(c)) {
     if (!c.paid) return 'warning';
     return '';
