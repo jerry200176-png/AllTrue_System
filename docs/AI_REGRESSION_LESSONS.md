@@ -85,7 +85,7 @@ php artisan config:cache && php artisan route:cache
 - **確認修復**：`sudo systemctl restart sshd` 後，GitHub Actions Deploy run 應無 `Permission denied`
 - **Pi 環境特殊說明**：`/home/admin` 為 `admin:www-data 775`，是刻意設計讓 Apache 可寫；`StrictModes no` 是正確解法，不是暫時 workaround（2026-04-24）
 
-### R8. deploy.yml 禁止 `composer install --no-dev`（Pi 環境）
+### R8. Pi 部署禁止 `composer install --no-dev`（含 deploy.yml 與手動 incident deploy）
 
 ```bash
 # ❌ 造成 "Class NunoMaduro\Collision not found" → health check 500
@@ -97,6 +97,7 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 
 - 原因：Pi 本機 vendor 有舊 dev 安裝，`--no-dev` 雖移除 Collision 的檔案，但 `php artisan optimize` bootstrap 時仍讀到舊 `packages.php` 中的 provider 登記，導致 class not found
 - 結果：health check 失敗 → 自動 rollback 觸發 → 服務短暫中斷（2026-04-24 事故）
+- 2026-04-30 再犯：手動部署 PR #222 時誤用 `composer install --no-dev`，Telegram health 監控與 Sentry 同時收到短暫 500；即使是手動 emergency deploy 也必須用不含 `--no-dev` 的 composer 指令
 
 ### R10. 家長入口登入：必須同時讀 `parent_phone` 與 `Phone`
 

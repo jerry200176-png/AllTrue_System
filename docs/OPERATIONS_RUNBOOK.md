@@ -324,7 +324,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 |---|---|---|
 | `Permission denied (publickey)` | `/home/admin` 權限 775，SSH StrictModes 拒絕 | `StrictModes no` 加入 sshd_config + `systemctl restart sshd` |
 | GitHub Actions IP 被 fail2ban 封鎖 | 多次失敗 SSH 觸發 fail2ban | 解封 9 個 IP + 永久白名單 GitHub Actions IP 範圍（`jail.local`） |
-| `Class Collision not found` → health 500 | `--no-dev` 無法乾淨移除舊 vendor dev 套件 | 移除 `composer install` 的 `--no-dev` flag |
+| `Class Collision not found` → health 500 | `--no-dev` 無法乾淨移除舊 vendor dev 套件；手動 deploy 也會觸發 Sentry/Telegram 告警 | 移除 `composer install` 的 `--no-dev` flag |
 | `git pull` divergent branches 卡住 | Pi 有 nightly auto-commit | 改為 `git fetch origin main && git reset --hard origin/main` |
 
 **首次成功**：2026-04-24 14:17 TWN，`push → CI → deploy → health ok` 全流程驗證通過。
