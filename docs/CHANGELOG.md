@@ -9,6 +9,7 @@
 ## 2026-04-29 — fix(course): 例外堂請假取消狀態標籤優先
 
 - Fixed 課程管理例外堂被請假或取消後，日期 chip 外層標籤優先顯示請假/取消，例外堂改保留在提示資訊
+- Ops Security Scan 對所有 PR 產生 required check，避免 frontend/docs PR 因 `PHPStan (php)` 缺席被 branch protection 卡住
 
 ---
 
