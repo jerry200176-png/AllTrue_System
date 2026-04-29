@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
-use App\Models\ParentSession;
+use App\Models\ClassSession;
 use App\Models\Invoice;
+use App\Models\ParentSession;
+use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
@@ -246,6 +248,165 @@ class ParentPortalLoginIsolationTest extends TestCase
         $this->assertNotContains($voidInvoice->id, $invoiceIds, 'Voided/stale invoices must not appear in parent receivables.');
     }
 
+    public function test_monthly_course_uses_billing_period_for_parent_display_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-29 12:00:00'));
+
+        try {
+            $student = $this->createStudent(1, '月結五月學生', '0912666000');
+            $course = $this->createStudentClass($student->id, [
+                'ScheduleMode' => 'date',
+                'StartDate' => '2026-05-01',
+                'EndDate' => '2026-05-31',
+                'SessionCount' => 0,
+                'RemainingSessions' => 0,
+                'monthly_sessions' => 4,
+                'Paid' => 1,
+                'Stop' => 0,
+            ]);
+
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-04-25',
+                'StartTime' => '10:00',
+                'EndTime' => '12:00',
+                'Status' => 'attended',
+            ]);
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => '2026-05-02',
+                'StartTime' => '10:00',
+                'EndTime' => '12:00',
+                'Status' => 'attended',
+            ]);
+
+            Invoice::create([
+                'StudentID' => $student->id,
+                'StudentClassID' => $course->ID,
+                'IssueDate' => '2026-04-29',
+                'DueDate' => '2026-05-05',
+                'TotalAmount' => 8800,
+                'PaidAmount' => 8800,
+                'Status' => 'paid',
+                'Note' => '',
+                'billing_period' => '2026-05',
+            ]);
+
+            $token = $this->parentLogin('月結五月學生', '0912666000');
+            $res = $this->getJson('/api/v1/parent/dashboard', [
+                'Authorization' => 'Bearer ' . $token,
+            ]);
+
+            $res->assertOk();
+            $this->assertSame('4月', $res->json('current_month_label'));
+
+            $class = collect($res->json('classes'))->firstWhere('id', $course->ID);
+            $this->assertNotNull($class);
+            $this->assertSame('2026-05', $class['billing_period']);
+            $this->assertSame('5月', $class['display_month_label']);
+            $this->assertSame(1, $class['attended_this_month']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_stopped_paid_monthly_course_keeps_paid_status_visible(): void
+    {
+        $student = $this->createStudent(1, '已結案月結學生', '0912777000');
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode' => 'date',
+            'StartDate' => '2026-05-01',
+            'EndDate' => '2026-05-31',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'monthly_sessions' => 4,
+            'Paid' => 1,
+            'Stop' => 1,
+        ]);
+
+        $token = $this->parentLogin('已結案月結學生', '0912777000');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $class = collect($res->json('classes'))->firstWhere('id', $course->ID);
+        $this->assertNotNull($class, 'Stopped and paid monthly course should remain visible with settled wording, not disappear into an ambiguous state.');
+        $this->assertTrue($class['paid']);
+        $this->assertTrue($class['is_stopped']);
+        $this->assertSame('paid', $class['payment_status']);
+        $this->assertSame('closed', $class['lifecycle_status']);
+    }
+
+    public function test_paid_low_session_course_is_not_parent_payment_alert(): void
+    {
+        $student = $this->createStudent(1, '低堂數提醒學生', '0912888000');
+        $paidCourse = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'Paid' => 1,
+            'Stop' => 0,
+        ]);
+        $unpaidCourse = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'Paid' => 0,
+            'Stop' => 0,
+        ]);
+
+        $this->createAttendedSessions($paidCourse, 7);
+        $this->createAttendedSessions($unpaidCourse, 7);
+
+        $token = $this->parentLogin('低堂數提醒學生', '0912888000');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $alertClassIds = collect($res->json('payment_alerts'))->pluck('class_id')->all();
+        $this->assertNotContains($paidCourse->ID, $alertClassIds, 'Paid low-session courses are director renewal reminders, not parent payment alerts.');
+        $this->assertContains($unpaidCourse->ID, $alertClassIds);
+    }
+
+    public function test_invoice_payment_counts_as_paid_for_parent_payment_alerts(): void
+    {
+        $student = $this->createStudent(1, '帳單已繳學生', '0912999000');
+        $course = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'Paid' => 0,
+            'Stop' => 0,
+        ]);
+        $this->createAttendedSessions($course, 7);
+        $invoice = Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $course->ID,
+            'IssueDate' => '2026-04-01',
+            'DueDate' => '2026-04-15',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+            'Note' => '',
+            'billing_period' => '2026-04',
+        ]);
+        Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-04-10',
+            'Method' => 'cash',
+            'Note' => '',
+        ]);
+
+        $token = $this->parentLogin('帳單已繳學生', '0912999000');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+
+        $res->assertOk();
+        $class = collect($res->json('classes'))->firstWhere('id', $course->ID);
+        $this->assertTrue($class['paid']);
+        $this->assertSame('paid', $class['payment_status']);
+        $alertClassIds = collect($res->json('payment_alerts'))->pluck('class_id')->all();
+        $this->assertNotContains($course->ID, $alertClassIds, 'Course management treats invoice payments as paid; parent portal must use the same paid source.');
+    }
+
     // ── parent_phone regression（BUG: login only checked Phone, not parent_phone）────
 
     public function test_login_succeeds_with_parent_phone_when_phone_is_empty(): void
@@ -411,6 +572,19 @@ class ParentPortalLoginIsolationTest extends TestCase
             'ClassType' => 'one_on_one',
             'UsedSessions' => 0,
         ], $overrides));
+    }
+
+    private function createAttendedSessions(StudentClass $course, int $count): void
+    {
+        for ($i = 0; $i < $count; $i++) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => Carbon::parse('2026-04-01')->addDays($i)->toDateString(),
+                'StartTime' => '10:00',
+                'EndTime' => '12:00',
+                'Status' => 'attended',
+            ]);
+        }
     }
 
     private function parentLogin(string $name, string $phone): string
