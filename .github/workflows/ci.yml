@@ -63,12 +63,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.2"
-          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
-          coverage: pcov
+      - name: Verify local PHP runtime
+        run: |
+          php -v
+          php -m | php -r '
+            $mods = array_map("strtolower", array_filter(array_map("trim", explode("\n", stream_get_contents(STDIN)))));
+            $required = ["mbstring","pdo","pdo_mysql","bcmath","json","tokenizer","xml","ctype","pcov"];
+            $missing = array_values(array_diff($required, $mods));
+            if ($missing) {
+              fwrite(STDERR, "Missing PHP extensions: " . implode(", ", $missing) . PHP_EOL);
+              exit(1);
+            }
+          '
 
       - name: Cache Composer packages
         uses: actions/cache@v5
