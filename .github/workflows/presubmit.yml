@@ -15,7 +15,7 @@ concurrency:
 jobs:
   gate:
     name: Presubmit Checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 5
 
     steps:
