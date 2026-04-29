@@ -15,7 +15,7 @@ concurrency:
 jobs:
   gate:
     name: Presubmit Checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 5
 
     steps:
@@ -144,7 +144,7 @@ jobs:
             echo ""
             echo "$VIOLATIONS"
             echo ""
-            echo "CI must not deploy to production. Deployment is manual (SOP Phase 7)."
+            echo "CI workflows must not deploy to production. Only deploy.yml may run production deploy after protected main is green."
             echo "Reference: .cursor/rules/auto-frontend-deploy.mdc"
             exit 1
           else

@@ -61,7 +61,7 @@ gh pr comment <PR_NUMBER> --body "@dependabot rebase"
 gh auth refresh -h github.com -s workflow
 ```
 
-**⚠️ Dependabot PHPUnit fail 屬正常**：Dependabot PR 無法存取 GitHub Secrets（DB_PASSWORD），不是程式碼問題。只要 Vite build pass + 改動只有依賴版本，可安全 merge。
+**⚠️ Dependabot PR 合併前仍須看 required checks**：目前 PR checks 主要由 WSL2 self-hosted runner 執行，不再以「Dependabot 無法讀 GitHub Secrets」作為 PHPUnit fail 的預設理由。若依賴更新失敗，先看 log；只有確認改動純依賴且失敗原因與專案無關時，才可依 Dependabot SOP 處理。
 
 ### B1. Branch Hygiene
 
@@ -100,6 +100,8 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
 11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
+12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
+13. **WSL2 self-hosted runner 只跑 CI**：`wsl2-jerry-alltrue` labels = `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，只可用於 `ci.yml` / `presubmit.yml` / `codeql.yml`。`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上持有 production deploy secrets 或執行部署。
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。
@@ -117,7 +119,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 - 將 coverage 報告改為 nightly，PR 只跑 PHPUnit 無 coverage
 - 將低頻維運排程降頻或移到外部監控
 - 拆分 fast tests / full regression tests
-- 評估獨立、非 production 的 self-hosted runner（不可與 Pi production 共用）
+- 已啟用獨立、非 production 的 WSL2 self-hosted runner；若月用量仍過高，再評估 fast/full test 分流或第二台 runner（不可與 Pi production 共用）。
 
 ### B3. Workflow Maturity Gates（AI + 大廠式工作流）
 
@@ -296,7 +298,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
 | `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
 | `PI_HOST` | pi-health.yml 用主機名 | 同 PI_SSH_HOST，只填 `pi.lifenet.com.tw` |
-| `CI_DB_PASSWORD` | CI 測試 DB 密碼 | — |
+| `CI_DB_PASSWORD` | 舊 GitHub-hosted MySQL service 測試密碼；目前 WSL2 self-hosted CI 改讀 `backend/phpunit.xml` 測試 DB 設定 | 若重新啟用 GitHub-hosted MySQL service 才需要 |
 
 > ⛔ 格式錯誤後果：`PI_USER=admin@pi.lifenet.com.tw` → sshd 收到 username=`admin@admin` → Invalid user（2026-04-26 事故，見 R18）
 

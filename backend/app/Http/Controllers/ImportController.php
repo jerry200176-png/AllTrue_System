@@ -37,6 +37,7 @@ class ImportController extends Controller
         ]);
 
         $summary = null;
+        $statusCode = 200;
 
         try {
             $isCsv = in_array(strtolower($file->getClientOriginalExtension()), ['csv', 'txt'], true);
@@ -60,14 +61,17 @@ class ImportController extends Controller
         } catch (\Throwable $e) {
             $job->Status = 'failed';
             $job->ErrorLog = $e->getMessage();
+            $statusCode = 422;
         }
 
         $job->save();
 
         return response()->json([
+            'message' => $job->Status === 'failed' ? '匯入失敗' : '匯入完成',
             'job' => $job,
             'result' => $summary,
-        ]);
+            'error' => $job->Status === 'failed' ? $job->ErrorLog : null,
+        ], $statusCode);
     }
 
     public function studentClasses(Request $request)
@@ -138,20 +142,13 @@ class ImportController extends Controller
 
     private function importStudentsFromHandle($handle, int $branchId): array
     {
-        $headers = fgetcsv($handle);
-        if ($headers === false) {
-            throw new \RuntimeException('檔案內容為空');
-        }
+        [$headers, $headerRowNo] = $this->findStudentsHeaderRow($handle);
 
         $normalizedHeaders = array_map([$this, 'normalizeHeader'], $headers);
-        $studentIdx = $this->findHeaderIndex($normalizedHeaders, ['學生', '姓名', 'name', 'student']);
-        $gradeSchoolIdx = $this->findHeaderIndex($normalizedHeaders, ['年級學校', '年級', 'grade']);
-        $schoolIdx = $this->findHeaderIndex($normalizedHeaders, ['學校', 'school']);
-        $phoneIdx = $this->findHeaderIndex($normalizedHeaders, ['手機', '電話', 'phone', '家長手機', '家長電話', 'parent_phone']);
-
-        if ($studentIdx === null) {
-            throw new \RuntimeException('找不到「學生/姓名」欄位，請確認第一列為標題（如：學生、姓名）');
-        }
+        $studentIdx = $this->findHeaderIndex($normalizedHeaders, ['學生姓名', '學生', '姓名', 'name', 'student', '學員姓名'], ['學生姓名', '學員姓名']);
+        $gradeSchoolIdx = $this->findHeaderIndex($normalizedHeaders, ['年級學校', '年級', 'grade'], ['年級學校']);
+        $schoolIdx = $this->findHeaderIndex($normalizedHeaders, ['學校', 'school'], ['學校']);
+        $phoneIdx = $this->findHeaderIndex($normalizedHeaders, ['手機', '電話', 'phone', '家長手機', '家長電話', 'parent_phone'], ['手機', '電話']);
 
         $created = 0;
         $updated = 0;
@@ -159,7 +156,7 @@ class ImportController extends Controller
         $warnings = [];
         $errors = [];
         $lowConfidenceMatches = 0;
-        $rowNo = 1;
+        $rowNo = $headerRowNo;
         $seen = [];
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -286,11 +283,49 @@ class ImportController extends Controller
         return str_replace([' ', "\t", "\r", "\n"], '', $v);
     }
 
-    private function findHeaderIndex(array $headers, array $candidates): ?int
+    private function findStudentsHeaderRow($handle): array
+    {
+        $rowNo = 0;
+        $firstNonEmpty = null;
+
+        while (($headers = fgetcsv($handle)) !== false) {
+            $rowNo++;
+            if ($this->isEmptyRow($headers)) {
+                continue;
+            }
+
+            $firstNonEmpty ??= $headers;
+            $normalizedHeaders = array_map([$this, 'normalizeHeader'], $headers);
+            $studentIdx = $this->findHeaderIndex($normalizedHeaders, ['學生姓名', '學生', '姓名', 'name', 'student', '學員姓名'], ['學生姓名', '學員姓名']);
+            if ($studentIdx !== null) {
+                return [$headers, $rowNo];
+            }
+
+            if ($rowNo >= 10) {
+                break;
+            }
+        }
+
+        if ($rowNo === 0 || $firstNonEmpty === null) {
+            throw new \RuntimeException('檔案內容為空');
+        }
+
+        throw new \RuntimeException('找不到「學生/姓名」欄位，請確認前 10 列內有標題列（如：學生、姓名、學生姓名）');
+    }
+
+    private function findHeaderIndex(array $headers, array $candidates, array $containsCandidates = []): ?int
     {
         foreach ($headers as $idx => $header) {
             foreach ($candidates as $candidate) {
                 if ($header === $this->normalizeHeader($candidate)) {
+                    return $idx;
+                }
+            }
+        }
+        foreach ($headers as $idx => $header) {
+            foreach ($containsCandidates as $candidate) {
+                $needle = $this->normalizeHeader($candidate);
+                if ($needle !== '' && mb_strpos($header, $needle) !== false) {
                     return $idx;
                 }
             }

@@ -299,3 +299,17 @@
 | 建議做法 | 由 DBA/OPS 評估啟用 MySQL binlog、retention、磁碟壓力、binlog 異地同步與「full backup + binlog replay」演練；所有測試只可還原到 drill DB，不可觸碰 production `AllTrue` |
 | 清償成本估計 | 中（半天）|
 | 不做的代價 | 下一次資料破壞事件仍只能回到最近快照，無法精準還原到事故前一刻 |
+
+### TD-016：停用課程殘留 future scheduled 堂次掃描與自動修復
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-04-29 |
+| 發現來源 | [BUG] |
+| 影響模組 | `StudentClass` / `ClassSession` / `AttendancePage.vue` |
+| 描述 | 停用舊課程若仍殘留未來或當日 `ClassSession.Status='scheduled'`，今日點名總表會顯示重複學生；2026-04-29 大直周宏謙由舊課 `StudentClass#527 Stop=1` 的 `ClassSession#6239` 造成。 |
+| 建議做法 | 補一個只讀診斷/管理修復工具，列出 `Stop=1` 且未來仍 `scheduled` 的堂次；正式清償時讓所有停用/結案入口共用取消未來堂次邏輯，並加 regression tests。 |
+| 清償成本估計 | 中（半天） |
+| 不做的代價 | 每次新舊課程銜接都可能在今日點名或老師工作台重複出現，需臨時查 DB 單筆取消，增加 production 操作風險。 |
