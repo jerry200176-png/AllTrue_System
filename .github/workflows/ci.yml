@@ -30,7 +30,7 @@ permissions:
 jobs:
   changes:
     name: Detect changed areas
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 3
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -56,35 +56,39 @@ jobs:
     name: PHPUnit Feature & Unit Tests
     needs: changes
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 15
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: AllTrue_test
-          MYSQL_USER: admin
-          MYSQL_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.2"
-          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
-          coverage: pcov
+      - name: Verify local PHP runtime
+        run: |
+          php -v
+          php -m | php -r '
+            $mods = array_map("strtolower", array_filter(array_map("trim", explode("\n", stream_get_contents(STDIN)))));
+            $required = ["mbstring","pdo","pdo_mysql","bcmath","json","tokenizer","xml","ctype","pcov"];
+            $missing = array_values(array_diff($required, $mods));
+            if ($missing) {
+              fwrite(STDERR, "Missing PHP extensions: " . implode(", ", $missing) . PHP_EOL);
+              exit(1);
+            }
+          '
+
+      - name: Load PHPUnit database password
+        run: |
+          php -r '
+            $xml = simplexml_load_file("backend/phpunit.xml");
+            foreach ($xml->php->env as $env) {
+              if ((string) $env["name"] === "DB_PASSWORD") {
+                echo "DB_PASSWORD=" . (string) $env["value"] . PHP_EOL;
+                exit(0);
+              }
+            }
+            fwrite(STDERR, "DB_PASSWORD not found in backend/phpunit.xml" . PHP_EOL);
+            exit(1);
+          ' >> "$GITHUB_ENV"
 
       - name: Cache Composer packages
         uses: actions/cache@v5
@@ -137,14 +141,14 @@ jobs:
           php artisan key:generate --force
 
       - name: Wait for MySQL
-        env:
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
         run: |
           for i in {1..30}; do
             mysqladmin ping -h 127.0.0.1 -u admin -p"$DB_PASSWORD" --silent && break
             echo "Waiting for MySQL... ($i)"
             sleep 2
           done
+          mysql -h 127.0.0.1 -u admin -p"$DB_PASSWORD" \
+            -e "CREATE DATABASE IF NOT EXISTS AllTrue_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
       - name: Migration dry-run (pretend)
         working-directory: backend
@@ -154,7 +158,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
 
       - name: Run migrations on test DB
         working-directory: backend
@@ -164,7 +167,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
 
       - name: Run PHPUnit (with JUnit XML report)
         working-directory: backend
@@ -179,7 +181,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
           APP_ENV: testing
 
       - name: Skipped test report
@@ -266,7 +267,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
         run: |
           # Laravel 8 用 text 格式（--json 是 L9+），存成 txt 再用 Python 轉 Markdown
           php artisan route:list 2>/dev/null > /tmp/routes.txt || true
@@ -317,7 +317,7 @@ jobs:
     name: Vite Frontend Build
     needs: changes
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci_config == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 10
 
     steps:

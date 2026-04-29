@@ -2514,7 +2514,13 @@ const importStudents = async (event) => {
     const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      const msg = json?.message || json?.error || '匯入失敗';
+      const msg = json?.error || json?.job?.ErrorLog || json?.message || '匯入失敗';
+      alert(typeof msg === 'string' ? msg : '匯入失敗');
+      return;
+    }
+
+    if (json?.job?.Status === 'failed') {
+      const msg = json?.error || json?.job?.ErrorLog || json?.message || '匯入失敗';
       alert(typeof msg === 'string' ? msg : '匯入失敗');
       return;
     }
