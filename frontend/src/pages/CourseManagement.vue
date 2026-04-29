@@ -412,6 +412,7 @@
       :rooms="rooms"
       :initial-student-id="schedulerInitialStudentId"
       :initial-teacher-id="schedulerInitialTeacherId"
+      :allow-package-mode="true"
       mode="backfill"
       @cancel="showBackfillModal = false"
       @success="handleUniversalBackfillSuccess"
@@ -455,6 +456,7 @@
       :show="showPurchaseModal"
       :form="purchaseForm"
       :submitting="purchaseSubmitting"
+      :is-package-mode="isPackageMember(purchaseCourse)"
       @close="!purchaseSubmitting && (showPurchaseModal = false)"
       @submit="submitPurchaseSessions"
     />
@@ -825,6 +827,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { updatePackage } from '../lib/coursePackagesApi';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -853,6 +856,11 @@ const DAY_OPTIONS = [
   { value: 4, label: '四' }, { value: 5, label: '五' }, { value: 6, label: '六' },
   { value: 7, label: '日' },
 ];
+const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
+const getPackageTotalSessions = (course) => {
+  const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
+  return Number.isFinite(total) && total > 0 ? total : 0;
+};
 // 時間以半小時為單位：07:00 ~ 22:30
 const TIME_OPTIONS_30 = (() => {
   const opts = [];
@@ -1614,12 +1622,38 @@ async function submitPurchaseSessions() {
     alert('請輸入正確堂數');
     return;
   }
-  if (!purchaseForm.value.start_date) {
+  if (!isPackageMember(course) && !purchaseForm.value.start_date) {
     alert('請選擇新批次開始日期');
     return;
   }
   purchaseSubmitting.value = true;
   try {
+    if (isPackageMember(course)) {
+      const packageId = Number(course.PackageID ?? course.package_id);
+      const addSessions = Number(purchaseForm.value.sessions);
+      const currentTotal = getPackageTotalSessions(course);
+      const nextTotal = currentTotal + addSessions;
+      if (!packageId || currentTotal <= 0) {
+        alert('找不到方案總堂數，請先重新整理後再試');
+        return;
+      }
+      await updatePackage(packageId, { total_sessions: nextTotal });
+      showPurchaseModal.value = false;
+      await loadCourses();
+      const groupKey = course?.student_id != null ? `sid:${course.student_id}` : null;
+      if (groupKey) {
+        expandedStudentGroups.value = new Set([...expandedStudentGroups.value, groupKey]);
+        focusedStudentKey.value = groupKey;
+      }
+      toastRef.value?.show?.({
+        title: '已加購共用方案堂數',
+        description: `方案總堂數已由 ${currentTotal} 堂增加為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
+        variant: 'success',
+        durationMs: 7000,
+      });
+      return;
+    }
+
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) {

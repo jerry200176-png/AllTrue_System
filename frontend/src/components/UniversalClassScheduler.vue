@@ -54,8 +54,8 @@
               @click="selectType('package')"
             >
               <span class="usw-type-card-icon material-symbols-outlined">layers</span>
-              <h4 class="usw-type-card-title">多科共用方案</h4>
-              <p class="usw-type-card-sub">多個科目共用同一份堂數或月結計費，學生可跨科目自由補課</p>
+              <h4 class="usw-type-card-title">多科共用方案（進階）</h4>
+              <p class="usw-type-card-sub">多個科目共用同一份堂數池；續報加購會加到方案總堂數，不拆成單科契約</p>
               <span class="usw-type-card-tags">
                 <span class="usw-type-card-tag">堂數制</span>
                 <span class="usw-type-card-tag">月結制</span>
@@ -679,8 +679,8 @@
         <button
           class="primary"
           type="button"
-          :disabled="submitting || (packageMode && pkgForm.payment_type === 'monthly' && pkgForm.subjects.length < 2)"
-          :title="(packageMode && pkgForm.payment_type === 'monthly' && pkgForm.subjects.length < 2) ? '多科方案至少需要 2 個科目' : ''"
+          :disabled="submitting || (packageMode && pkgForm.subjects.length < 2)"
+          :title="(packageMode && pkgForm.subjects.length < 2) ? '多科共用方案至少需要 2 個科目' : ''"
           @click="packageMode ? submitPackage() : submit()"
         >
           <span v-if="submitting" class="btn-spinner material-symbols-outlined">progress_activity</span>
@@ -1874,7 +1874,7 @@ async function submitPackage() {
     if (pkgSettlementDayError.value) { alert(pkgSettlementDayError.value); return; }
   } else {
     if (!pkgForm.total_sessions || pkgForm.total_sessions < 1) { alert('總堂數至少為 1'); return; }
-    if (pkgForm.subjects.length === 0) { alert('請至少新增一個科目'); return; }
+    if (pkgForm.subjects.length < 2) { alert('多科共用方案至少需要 2 個科目'); return; }
   }
   for (let i = 0; i < pkgForm.subjects.length; i++) {
     const s = pkgForm.subjects[i];

@@ -506,6 +506,7 @@
       :teachers="teachers"
       :rooms="rooms"
       :initial-student-id="selectedStudentSchedulerId"
+      :allow-package-mode="true"
       mode="create"
       @cancel="closeCourseModal"
       @success="handleUniversalSchedulerSuccess"
@@ -582,18 +583,26 @@
           </p>
         </div>
         <p class="hint" style="color: #7a4b00; margin-bottom: 8px;">
-          此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。
+          {{ selectedCourse?.PackageID
+            ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
+            : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
+          }}
         </p>
         <div class="form-group">
           <label>加購堂數</label>
           <input v-model.number="addSessionCount" type="number" placeholder="8" />
         </div>
-        <div class="form-group">
+        <div v-if="!selectedCourse?.PackageID" class="form-group">
           <label>新批次開始日期</label>
           <input v-model="addSessionStartDate" type="date" />
         </div>
         <p class="hint" v-if="addSessionCount > 0">
-          將新增一筆 <strong>{{ addSessionCount }}</strong> 堂的未繳課程批次（不再併入原課程）
+          <template v-if="selectedCourse?.PackageID">
+            將共用方案總堂數增加 <strong>{{ addSessionCount }}</strong> 堂（不拆成單科新契約）
+          </template>
+          <template v-else>
+            將新增一筆 <strong>{{ addSessionCount }}</strong> 堂的未繳課程批次（不再併入原課程）
+          </template>
         </p>
         <div class="actions">
           <button class="ghost" @click="showSessionsModal = false">取消</button>
@@ -682,6 +691,7 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
+import { updatePackage } from '../lib/coursePackagesApi';
 import CourseEditForm from '../components/CourseEditForm.vue';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import QuickAddSessionModal from '../components/course-management/QuickAddSessionModal.vue';
@@ -788,6 +798,11 @@ function normalizeTo30Min(timeStr) {
   const nm = rounded % 60;
   return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
 }
+const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_id ?? 0) > 0;
+const getPackageTotalSessions = (course) => {
+  const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
+  return Number.isFinite(total) && total > 0 ? total : 0;
+};
 
 // Grade promotion
 const showGradePromotion = ref(false);
@@ -2309,12 +2324,31 @@ const submitAddSessions = async () => {
     alert('請輸入正確堂數');
     return;
   }
-  if (!addSessionStartDate.value) {
+  if (!isPackageMember(selectedCourse.value) && !addSessionStartDate.value) {
     alert('請選擇新批次開始日期');
     return;
   }
 
   try {
+    if (isPackageMember(selectedCourse.value)) {
+      const packageId = Number(selectedCourse.value.PackageID ?? selectedCourse.value.package_id);
+      const addSessions = Number(addSessionCount.value);
+      const currentTotal = getPackageTotalSessions(selectedCourse.value);
+      const nextTotal = currentTotal + addSessions;
+      if (!packageId || currentTotal <= 0) {
+        alert('找不到方案總堂數，請先重新整理後再試');
+        return;
+      }
+      await updatePackage(packageId, { total_sessions: nextTotal });
+      showSessionsModal.value = false;
+      await loadAllStudentCourses();
+      if (selectedStudent.value?.id) {
+        await loadStudentCourses(selectedStudent.value.id);
+      }
+      alert(`已加購共用方案堂數：總堂數由 ${currentTotal} 堂增加為 ${nextTotal} 堂。所有方案科目共用同一個堂數池。`);
+      return;
+    }
+
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
     if (!token) {
