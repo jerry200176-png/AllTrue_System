@@ -34,6 +34,7 @@
 
 強制原則：
 - 以 bounded context 切任務，不以 migration/model/controller/frontend/test 這種技術層硬切碎。
+- 規劃/ARCH/BUG B1 不可只靠模型記憶：研究順序為 `本專案 Docs/MemPalace` → `大公司/業界做法` → `相關開源專案實作`，最後才收斂為 AllTrue 的取捨。
 - Agent handoff 只交 output artifact，不要求下游讀完整推理過程。
 - PRD/ARCH 至少寫到 architecture boundary：API 合約、資料邊界、權限、錯誤處理、多校區隔離。
 - 沒有 architecture boundary 的需求，不進 DEV；讓 agent 猜架構會把 decision load 丟給錯的人。
