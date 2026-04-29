@@ -324,6 +324,45 @@ class SubstituteTeacherTest extends TestCase
         $this->assertContains($courseId, $ids, 'Substitute-only course should appear in student-classes index for teacher');
     }
 
+    public function test_learning_record_substitute_scope_matches_same_day_start_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-27 12:00:00', 'Asia/Taipei'));
+        [$regularTeacherId, , $subToken, $regularRecord, $subRecord] = $this->seedSameDayMixedSubstituteLearningRecords();
+
+        $list = $this->withHeaders([
+            'Authorization' => "Bearer {$subToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?start_date=2026-04-26&end_date=2026-04-26&per_page=50');
+        $list->assertOk();
+
+        $visibleIds = collect($list->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $regularRecord->id, $visibleIds, '代課老師不應看到同日不同時段的正班評量');
+        $this->assertContains((int) $subRecord->id, $visibleIds, '代課老師應看到同日同時段的代課評量');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$subToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$regularRecord->id}", [
+            'Progress' => '不應可修改',
+        ])->assertStatus(403);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$subToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/learning-records/{$subRecord->id}", [
+            'Progress' => '代課老師可修改同時段評量',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('LearningRecord', [
+            'id' => $subRecord->id,
+            'Progress' => '代課老師可修改同時段評量',
+        ]);
+        $this->assertDatabaseHas('LearningRecord', [
+            'id' => $regularRecord->id,
+            'TeacherID' => $regularTeacherId,
+        ]);
+    }
+
     /** 智慧排課老師端會帶 teacher_id=自己；不得與「僅代課」之 StudentClass.TeacherID（正班）衝突而漏列。 */
     public function test_teacher_student_classes_index_with_teacher_id_param_includes_substitute_only_course(): void
     {
@@ -606,6 +645,133 @@ class SubstituteTeacherTest extends TestCase
         ]);
 
         return [$dirToken, (int) $regular->id, (int) $sub->id, $session, $lr];
+    }
+
+    private function seedSameDayMixedSubstituteLearningRecords(): array
+    {
+        $campusId = 1;
+
+        $regular = User::create([
+            'LoginName' => 'regular-same-day@example.com', 'Name' => '同日正班', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0900000102', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $regular->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $sub = User::create([
+            'LoginName' => 'sub-same-day@example.com', 'Name' => '同日代課', 'PSW' => 'x',
+            'type' => 'T', 'phone' => '0900000103', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $sub->id, 'Admin' => 0, 'Approved' => 1]);
+        $subToken = $this->createTeacherToken((int) $sub->id);
+
+        $student = Student::create([
+            'name' => '同日多時段測試生', 'CampusID' => $campusId, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $sc = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => $regular->id, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 16,
+            'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 6, 'UsedSessions' => 2,
+            'Charge' => 1600, 'Pay' => 12800, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+
+        $regularSession = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-04-26',
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+            'Status' => 'attended',
+        ]);
+        $subSession = ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-04-26',
+            'StartTime' => '20:00',
+            'EndTime' => '22:00',
+            'Status' => 'completed',
+        ]);
+
+        $subAnchor = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $regular->id,
+            'day_of_week' => 7,
+            'start_time' => '20:00',
+            'end_time' => '22:00',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => '2026-04-26',
+            'student_course_id' => $sc->ID,
+        ]);
+
+        Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $sub->id,
+            'day_of_week' => 7,
+            'start_time' => '20:00',
+            'end_time' => '22:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => '2026-04-26',
+            'student_course_id' => $sc->ID,
+            'original_schedule_id' => $subAnchor->id,
+        ]);
+
+        $regularAnchor = Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $regular->id,
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => '2026-04-26',
+            'student_course_id' => $sc->ID,
+        ]);
+
+        Schedule::create([
+            'student_id' => $student->id,
+            'teacher_id' => $regular->id,
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $campusId,
+            'schedule_date' => '2026-04-26',
+            'student_course_id' => $sc->ID,
+            'original_schedule_id' => $regularAnchor->id,
+        ]);
+
+        $regularRecord = LearningRecord::create([
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $regularSession->id,
+            'TeacherID' => $regular->id,
+            'Status' => 'pending',
+            'Content' => '',
+            'SessionDate' => '2026-04-26',
+            'StartTime' => '15:00',
+            'EndTime' => '17:00',
+        ]);
+        $subRecord = LearningRecord::create([
+            'StudentClassID' => $sc->ID,
+            'ClassSessionID' => $subSession->id,
+            'TeacherID' => $regular->id,
+            'Status' => 'pending',
+            'Content' => '',
+            'SessionDate' => '2026-04-26',
+            'StartTime' => '20:00',
+            'EndTime' => '22:00',
+        ]);
+
+        return [(int) $regular->id, (int) $sub->id, $subToken, $regularRecord, $subRecord];
     }
 
     /**
