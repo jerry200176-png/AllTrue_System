@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — feat(workflow): 補課候選時段產生器 API
+
+- Added 主任可為請假 workflow 產生補課候選時段快照，依老師同時段容量避開滿載時段並保留分校隔離
+
+---
+
 ## 2026-04-29 — feat(workflow): 家長請假申請與主任閉環 inbox API
 
 - Added 家長請假申請會建立冪等 exception workflow，並新增主任依分校查詢請假補課 workflow inbox API
