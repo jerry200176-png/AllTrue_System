@@ -27,6 +27,7 @@ Current blocker:
 | #207 | DB recovery | P1 | No point-in-time recovery / binlog replay SOP | Decide PITR approach and drill on non-production DB |
 | #208 | Security / SSH | P1 | Maintenance workflows still need stricter SSH host key pinning | No production SSH workflow disables host checking |
 | #209 | CI runner | P1 | Self-hosted runner lacks lifecycle/hardening SOP | Document update, cleanup, offline, compromise, and prerequisite checks |
+| #212 | CI / docs | P1 | Docs-only PRs are blocked because required checks are path-filtered away | Align branch protection with an always-present required-check model |
 | #195 | Ops / hardware | P1 | Pi health reported 100C | Verify cooling and reliability risk |
 | #210 | Code backup policy | P2 | Nightly git tag idea conflicts with protected-main / Pi deploy-target policy | Remove or redesign tag/code-backup process without Pi main push |
 | #204 | Static analysis | P2 | `PHPStan (php)` is required but currently advisory via `|| true` | Make it blocking or explicitly rename/document advisory behavior |
