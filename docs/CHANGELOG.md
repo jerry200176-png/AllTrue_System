@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — feat(workflow): 補課候選確認 API
+
+- Added 主任確認補課候選時段後，系統會冪等建立補課 schedules 與 ClassSession，並將 workflow 標記為 confirmed
+
+---
+
 ## 2026-04-29 — feat(workflow): 補課候選時段產生器 API
 
 - Added 主任可為請假 workflow 產生補課候選時段快照，依老師同時段容量避開滿載時段並保留分校隔離
