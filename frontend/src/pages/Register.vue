@@ -24,7 +24,7 @@
 
         <div class="form-group">
             <label>密碼 (Password)</label>
-            <input v-model="form.password" type="password" placeholder="至少 4 個字元" />
+            <input v-model="form.password" type="password" placeholder="至少 8 個字元" />
         </div>
 
         <div class="form-group">
@@ -208,8 +208,8 @@ const handleRegister = async () => {
         showError('請填寫完整資訊');
         return;
     }
-    if (form.value.password.length < 4) {
-        showError('密碼至少 4 個字元');
+    if (form.value.password.length < 8) {
+        showError('密碼至少 8 個字元');
         return;
     }
     if (form.value.password !== form.value.confirmPassword) {

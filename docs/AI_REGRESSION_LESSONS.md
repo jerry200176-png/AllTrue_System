@@ -263,6 +263,8 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 ### R20. 課程結案不可只改 `StudentClass.Stop`
 
 - 歷史課程狀態（`Stop=1` / `closed_reason`）若只改主檔，未來 `ClassSession.Status='scheduled'` 會殘留，老師/主任仍可能看到待上或待填項目。
+- **快速診斷**：今日點名總表學生重複，但個人紀錄只有一次時，先查同一學生同日 `ClassSession` 是否同時存在 active 與 `Stop=1` 舊 `StudentClass` 的 `scheduled` 堂次；例：2026-04-29 大直周宏謙，舊課 `StudentClass#527 Stop=1` 殘留 `ClassSession#6239 scheduled`，與新課 `#902/#7959` 重疊。
+- **資料修復守則**：修單筆殘留堂次前先備份 DB + code；UPDATE 必須鎖定 `ClassSession.id`、`StudentClassID`、日期、時間與 `Status='scheduled'`，只改成 `cancelled` 並保留 Note 稽核，不可刪 row。
 - **強制規則**：任何入口把課程改為 inactive / settled / completed，都必須共用「取消未來 scheduled 堂次」邏輯；不可只更新 `StudentClass`。
 - **測試必補**：直接 `PUT /student-classes/{id}` with `status=inactive` 與 `/pause` endpoint 都要驗證 future scheduled 變 `cancelled`，歷史 attended 不變。
 
@@ -405,6 +407,31 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R35. 註冊密碼規則不可前端 4 碼、後端 8 碼
+
+- `AuthController::register`、`ProfileController::store`、`DirectorAccountController::register` 皆要求 `password min:8`；若前端提示或預檢仍寫 4 碼，使用者會以為可送出但後端回 422。
+- **快速診斷**：「老師自行註冊失敗／主任新增老師失敗」先查前端 `Register.vue`、`TeachersList.vue`、`DirectorRegister.vue` 的密碼提示與送出前檢查是否仍為 4；臨時 workaround 是密碼用 8 碼以上（如 `teacher123`）。
+- **強制規則**：改任一註冊/建帳入口的密碼 policy，三個前端入口與三個後端 validator 必須同步；測試或 build 後需檢查 production bundle/version 是否已上線。
+
+---
+
+### R36. 個別資料有課但老師今日名單缺漏，要分清「契約推算」與 `ClassSession`
+
+- 課程詳情可由 `student-classes/session-dates` 按契約推算 `_synthetic` 堂次；老師工作台與出缺勤待點名只吃 `GET /api/v1/class-sessions` 的實體 `ClassSession`。
+- **快速診斷**：遇到「學生個別資料有課、老師今日名單沒有」時，先用老師身分查 `/api/v1/class-sessions?start=<today>&end=<today>`。若 API 有回，優先懷疑前端快取/日期/分校/登入帳號；若 API 沒回，再查是否缺實體堂次或被 `cancelled/leave` 排除。
+- **反例記錄**：2026-04-29 大直鄭宇婷 15:00-17:00 林宇芹/簡采柔，production DB 與老師身分 API 均正常回傳 `scheduled`，因此不應做 DB 修復，應先要求老師端重整與確認登入/分校。
+
+---
+
+### R37. 學生 CSV/XLSX 匯入 0 筆時先查 `ImportJob.ErrorLog`
+
+- `ImportController::students` 會把每次匯入寫入 `ImportJob`；使用者說「CSV 有資料但匯入 0 筆」時，不要先猜編碼或資料庫問題，先查最新 `ImportJob.Status/Summary/ErrorLog`。
+- **快速診斷**：若 `ErrorLog` 是「找不到學生/姓名欄位」，通常是檔案前面有校名/匯出資訊列，或姓名欄叫「學生姓名」而非嚴格的「學生/姓名」；匯入器必須能掃前幾列找真正標題。
+- **強制規則**：匯入解析失敗不可回 HTTP 200 偽裝成功；前端必須顯示 `ErrorLog`/`error`，不可讓主任看到「新增 0 / 更新 0 / 略過 0」而無法自救。
+- **測試必補**：新增或修改學生匯入時，必須覆蓋「前兩列是標題說明、第三列才是學生姓名欄」與「缺姓名欄回 422」兩個案例。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -416,7 +443,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules） |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
