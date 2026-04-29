@@ -144,7 +144,7 @@ jobs:
             echo ""
             echo "$VIOLATIONS"
             echo ""
-            echo "CI must not deploy to production. Deployment is manual (SOP Phase 7)."
+            echo "CI workflows must not deploy to production. Only deploy.yml may run production deploy after protected main is green."
             echo "Reference: .cursor/rules/auto-frontend-deploy.mdc"
             exit 1
           else

@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — ops(ci): WSL2 self-hosted runner 啟用
+
+- Ops 將 CI / Presubmit / PHPStan checks 移至 WSL2 self-hosted runner，保留 `deploy.yml` 只用 GitHub-hosted runner，並更新文件避免 runner / DB secret 舊說法誤導
+
+---
+
 ## 2026-04-29 — fix(import): 學生名單匯入標題列容錯
 
 - Fixed 學生 CSV/XLSX 匯入可跳過檔案前方說明列尋找真正標題，並在失敗時顯示匯入錯誤而非誤導為 0 筆

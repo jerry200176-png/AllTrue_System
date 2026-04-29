@@ -76,6 +76,20 @@ jobs:
             }
           '
 
+      - name: Load PHPUnit database password
+        run: |
+          php -r '
+            $xml = simplexml_load_file("backend/phpunit.xml");
+            foreach ($xml->php->env as $env) {
+              if ((string) $env["name"] === "DB_PASSWORD") {
+                echo "DB_PASSWORD=" . (string) $env["value"] . PHP_EOL;
+                exit(0);
+              }
+            }
+            fwrite(STDERR, "DB_PASSWORD not found in backend/phpunit.xml" . PHP_EOL);
+            exit(1);
+          ' >> "$GITHUB_ENV"
+
       - name: Cache Composer packages
         uses: actions/cache@v5
         with:
@@ -127,8 +141,6 @@ jobs:
           php artisan key:generate --force
 
       - name: Wait for MySQL
-        env:
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
         run: |
           for i in {1..30}; do
             mysqladmin ping -h 127.0.0.1 -u admin -p"$DB_PASSWORD" --silent && break
@@ -146,7 +158,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
 
       - name: Run migrations on test DB
         working-directory: backend
@@ -156,7 +167,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
 
       - name: Run PHPUnit (with JUnit XML report)
         working-directory: backend
@@ -171,7 +181,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
           APP_ENV: testing
 
       - name: Skipped test report
@@ -258,7 +267,6 @@ jobs:
           DB_PORT: 3306
           DB_DATABASE: AllTrue_test
           DB_USERNAME: admin
-          DB_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
         run: |
           # Laravel 8 用 text 格式（--json 是 L9+），存成 txt 再用 Python 轉 Markdown
           php artisan route:list 2>/dev/null > /tmp/routes.txt || true
