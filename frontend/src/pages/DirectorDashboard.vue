@@ -60,6 +60,17 @@
             <button class="ac__cta" @click.stop="goToAttendance">補點名</button>
           </div>
 
+          <div v-if="exceptionWorkflowCount > 0"
+               class="ac ac--workflow" tabindex="0"
+               @click="scrollTo('exception-workflows')" @keydown.enter="scrollTo('exception-workflows')">
+            <span class="material-symbols-outlined ac__icon">event_repeat</span>
+            <div class="ac__body">
+              <span class="ac__count">{{ exceptionWorkflowCount }}</span>
+              <span class="ac__label">筆補課案件</span>
+            </div>
+            <button class="ac__cta" @click.stop="scrollTo('exception-workflows')">去安排</button>
+          </div>
+
           <div v-if="pendingEvaluations.length > 0"
                class="ac ac--eval" tabindex="0"
                @click="scrollTo('evals')" @keydown.enter="scrollTo('evals')">
@@ -254,6 +265,54 @@
             <!-- PRD 9c058f19：近 7 天代課記錄 -->
             <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
 
+            <!-- Exception Workflows -->
+            <section class="wp ew-card" id="exception-workflows-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">event_repeat</span>
+                <h3>補課案件</h3>
+                <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
+              </header>
+              <div v-if="exceptionWorkflowLoading" class="wp__empty">補課案件載入中...</div>
+              <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
+              <div v-else-if="!exceptionWorkflows.length" class="wp__empty">目前沒有家長請假待安排</div>
+              <div v-else class="ew-list">
+                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
+                  <div class="ew-main">
+                    <div class="ew-title">
+                      {{ workflow.student?.name || '學生' }}
+                      <span class="ew-status">{{ workflowStatusLabel(workflow.status) }}</span>
+                    </div>
+                    <div class="ew-meta">
+                      {{ workflow.class_session?.date || '未指定日期' }}
+                      {{ workflow.class_session?.start_time || '' }}-{{ workflow.class_session?.end_time || '' }}
+                    </div>
+                    <div v-if="workflow.payload?.reason" class="ew-reason">原因：{{ workflow.payload.reason }}</div>
+                  </div>
+                  <div class="ew-actions">
+                    <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="loadWorkflowDetail(workflow)">
+                      查看候選
+                    </button>
+                    <button class="btn-p btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
+                      {{ workflowActionId === workflow.id ? '處理中...' : '產生候選' }}
+                    </button>
+                  </div>
+                  <div v-if="workflowCandidates[workflow.id]?.length" class="ew-candidates">
+                    <button
+                      v-for="candidate in workflowCandidates[workflow.id]"
+                      :key="candidate.id"
+                      type="button"
+                      class="ew-candidate"
+                      :disabled="workflowActionId === workflow.id"
+                      @click="confirmCandidate(workflow, candidate)"
+                    >
+                      <span>候選 {{ candidate.rank }}：{{ candidate.candidate_date }} {{ candidate.start_time }}-{{ candidate.end_time }}</span>
+                      <strong>確認</strong>
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+
             <!-- Pending Evaluations -->
             <section class="wp" id="evals-sec" data-guide="director-pending-evals">
               <header class="wp__head">
@@ -394,6 +453,12 @@ import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
+import {
+  listExceptionWorkflows,
+  getExceptionWorkflow,
+  generateExceptionWorkflowCandidates,
+  confirmExceptionWorkflowCandidate,
+} from '../api';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -412,6 +477,11 @@ const notificationSummary = ref([]);
 const showAllPayments = ref(false);
 const paymentAlertLimit = 5;
 const pendingMakeupCount = ref(0);
+const exceptionWorkflows = ref([]);
+const exceptionWorkflowError = ref('');
+const exceptionWorkflowLoading = ref(false);
+const workflowCandidates = ref({});
+const workflowActionId = ref(null);
 
 // Schedule-discrepancy summary card
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
@@ -470,12 +540,14 @@ const monthlySubjectCountWith = computed(() =>
 const monthlySubjectCountWithout = computed(() =>
   Number(subjectTotals.value.subjectCountWithout || 0).toFixed(2)
 );
+const exceptionWorkflowCount = computed(() => exceptionWorkflows.value.length);
 
 const allClearActionLane = computed(() =>
   pendingAttendanceCount.value === 0
   && lowBalanceStudents.value.length === 0
   && pendingEvaluations.value.length === 0
   && pendingMakeupCount.value === 0
+  && exceptionWorkflowCount.value === 0
   && props.unreadFeedbackCount === 0
 );
 
@@ -544,6 +616,97 @@ const getToken = () => {
 };
 const getBaseUrl = () => import.meta.env.VITE_API_BASE || '/api';
 
+const workflowStatusLabel = (status) => ({
+  open: '待產生候選',
+  candidate_ready: '候選已產生',
+  confirmed: '已確認',
+  closed: '已關閉',
+}[String(status || '')] || String(status || '—'));
+
+const addDaysYmd = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const loadExceptionWorkflows = async () => {
+  if (!props.branchId) return;
+  const token = getToken();
+  exceptionWorkflowLoading.value = true;
+  exceptionWorkflowError.value = '';
+  try {
+    const rows = await listExceptionWorkflows(token, { branchId: props.branchId });
+    exceptionWorkflows.value = rows
+      .filter(row => ['open', 'candidate_ready'].includes(String(row.status || '')))
+      .sort((a, b) => String(a.due_at || a.created_at || '').localeCompare(String(b.due_at || b.created_at || '')));
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '補課案件載入失敗';
+    exceptionWorkflows.value = [];
+  } finally {
+    exceptionWorkflowLoading.value = false;
+  }
+};
+
+const setWorkflowCandidates = (workflowId, candidates) => {
+  workflowCandidates.value = {
+    ...workflowCandidates.value,
+    [workflowId]: Array.isArray(candidates) ? candidates : [],
+  };
+};
+
+const loadWorkflowDetail = async (workflow) => {
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    const detail = await getExceptionWorkflow(token, workflow.id);
+    setWorkflowCandidates(workflow.id, detail?.candidates || []);
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '案件詳情載入失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
+const generateCandidates = async (workflow) => {
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    const result = await generateExceptionWorkflowCandidates(token, workflow.id, {
+      startDate: addDaysYmd(1),
+      endDate: addDaysYmd(14),
+      limit: 5,
+    });
+    setWorkflowCandidates(workflow.id, result?.candidates || []);
+    await loadExceptionWorkflows();
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '產生候選時段失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
+const confirmCandidate = async (workflow, candidate) => {
+  if (!confirm(`確認安排 ${candidate.candidate_date} ${candidate.start_time}-${candidate.end_time} 補課？`)) return;
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    await confirmExceptionWorkflowCandidate(token, workflow.id, candidate.id);
+    setWorkflowCandidates(workflow.id, []);
+    await loadExceptionWorkflows();
+    loadData();
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '確認補課失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
 const loadData = async () => {
   if (!props.branchId) return;
 
@@ -583,6 +746,7 @@ const loadData = async () => {
   }
 
   await loadNotificationSummary(token, baseUrl);
+  await loadExceptionWorkflows();
 
   const today = localTodayYmd();
   try {
@@ -951,6 +1115,62 @@ onMounted(() => {
   100% { background-position: -200% 0; }
 }
 
+/* ===== Exception workflows ===== */
+.ew-card { border-left: 4px solid #14b8a6; }
+.ew-error {
+  margin: 0 14px 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+}
+.ew-list { display: flex; flex-direction: column; gap: 10px; padding: 0 14px 14px; }
+.ew-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(20, 184, 166, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fffd);
+}
+.ew-main { min-width: 0; }
+.ew-title { font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.ew-status {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #ecfeff;
+  color: #0f766e;
+  border: 1px solid #99f6e4;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ew-meta, .ew-reason { margin-top: 4px; color: #64748b; font-size: 12px; }
+.ew-actions { display: flex; gap: 6px; align-items: flex-start; }
+.ew-candidates {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ew-candidate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  padding: 8px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.ew-candidate:hover { background: #dbeafe; }
+.ew-candidate:disabled { opacity: 0.55; cursor: not-allowed; }
+
 /* ===== Layout ===== */
 .dash {
   display: flex;
@@ -1135,6 +1355,7 @@ onMounted(() => {
 .ac--eval::before   { background: linear-gradient(90deg, #3b82f6, #38bdf8); }
 .ac--feedback::before { background: linear-gradient(90deg, #f59e0b, #facc15); }
 .ac--makeup::before { background: linear-gradient(90deg, #8b5cf6, #38bdf8); }
+.ac--workflow::before { background: linear-gradient(90deg, #14b8a6, #6366f1); }
 .ac--import::before { background: linear-gradient(90deg, #10b981, #38bdf8); }
 .ac--clear  {
   background:
@@ -1154,6 +1375,7 @@ onMounted(() => {
 .ac--eval   .ac__icon { color: #3b82f6; }
 .ac--feedback .ac__icon { color: #f59e0b; }
 .ac--makeup .ac__icon { color: #8b5cf6; }
+.ac--workflow .ac__icon { color: #0f766e; }
 .ac--import .ac__icon { color: #10b981; }
 .ac--clear  .ac__icon { color: #22c55e; }
 
@@ -1203,6 +1425,8 @@ onMounted(() => {
 .ac--feedback .ac__cta:hover { background: #fef3c7; }
 .ac--makeup .ac__cta { background: #f5f3ff; color: #7c3aed; }
 .ac--makeup .ac__cta:hover { background: #ede9fe; }
+.ac--workflow .ac__cta { background: #f0fdfa; color: #0f766e; }
+.ac--workflow .ac__cta:hover { background: #ccfbf1; }
 .ac--import .ac__cta { background: #ecfdf5; color: #059669; }
 .ac--import .ac__cta:hover { background: #d1fae5; }
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
