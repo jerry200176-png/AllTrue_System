@@ -639,19 +639,80 @@ class CoursePackageController extends Controller
             return response()->json(['message' => '找不到方案'], 404);
         }
 
+        if ($role !== 'super_admin') {
+            $campusIds = $request->attributes->get('auth_campus_ids', []);
+            if (!empty($campusIds) && !in_array((int) $pkg->campus_id, $campusIds, true)) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+        }
+
         $ids = array_map('intval', $data['student_class_ids']);
+        $ids = array_values(array_unique(array_filter($ids, fn ($value) => $value > 0)));
         $courses = StudentClass::whereIn('ID', $ids)->get();
         $report = [];
+        $blocked = [];
+
+        $foundIds = $courses->pluck('ID')->map(fn ($value) => (int) $value)->all();
+        $missingIds = array_values(array_diff($ids, $foundIds));
+        foreach ($missingIds as $missingId) {
+            $blocked[] = [
+                'student_class_id' => $missingId,
+                'reason' => 'course_not_found',
+                'message' => '找不到課程',
+            ];
+        }
 
         foreach ($courses as $sc) {
             $currentPackage = $sc->PackageID;
+            $studentCampusId = (int) (Student::where('id', (int) $sc->StudentID)->value('CampusID') ?? 0);
+            $reasons = [];
+
+            if ((int) $sc->StudentID !== (int) $pkg->student_id) {
+                $reasons[] = 'different_student';
+            }
+            if ($studentCampusId !== (int) $pkg->campus_id) {
+                $reasons[] = 'different_campus';
+            }
+            if ((string) ($sc->ScheduleMode ?? 'count') !== 'count') {
+                $reasons[] = 'not_count_mode';
+            }
+            if ((int) ($sc->Stop ?? 0) !== 0) {
+                $reasons[] = 'course_inactive';
+            }
+            if (!empty($currentPackage) && (int) $currentPackage > 0 && (int) $currentPackage !== (int) $pkg->id) {
+                $reasons[] = 'different_package';
+            }
+
             $report[] = [
                 'student_class_id'    => $sc->ID,
                 'subject'             => $sc->displaySubjectName(),
                 'current_package_id'  => $currentPackage,
-                'will_bind'           => empty($currentPackage) || (int) $currentPackage === 0,
+                'will_bind'           => empty($reasons) && (empty($currentPackage) || (int) $currentPackage === 0),
                 'current_remaining'   => (int) ($sc->RemainingSessions ?? 0),
+                'reasons'             => $reasons,
             ];
+
+            if (!empty($reasons)) {
+                $blocked[] = [
+                    'student_class_id' => (int) $sc->ID,
+                    'subject' => $sc->displaySubjectName(),
+                    'reasons' => $reasons,
+                ];
+            }
+        }
+
+        if (!empty($blocked)) {
+            return response()->json([
+                'message' => '部分課程不可綁定到此方案',
+                'dry_run' => $dryRun,
+                'package' => [
+                    'id' => $pkg->id,
+                    'name' => $pkg->name,
+                    'remaining' => $pkg->remaining_sessions,
+                ],
+                'report' => $report,
+                'blocked' => $blocked,
+            ], 422);
         }
 
         if ($dryRun) {
@@ -659,14 +720,12 @@ class CoursePackageController extends Controller
                 'dry_run' => true,
                 'package' => ['id' => $pkg->id, 'name' => $pkg->name, 'remaining' => $pkg->remaining_sessions],
                 'report'  => $report,
+                'blocked' => [],
             ]);
         }
 
         DB::transaction(function () use ($courses, $pkg) {
             foreach ($courses as $sc) {
-                if (!empty($sc->PackageID) && (int) $sc->PackageID > 0 && (int) $sc->PackageID !== $pkg->id) {
-                    continue;
-                }
                 $sc->PackageID = $pkg->id;
                 $sc->PackageTotalSessions = $pkg->total_sessions;
                 $sc->PackageName = $pkg->name;
