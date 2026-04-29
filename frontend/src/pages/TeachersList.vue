@@ -194,7 +194,7 @@
 
         <div v-if="!isEditing" class="form-group">
           <label>密碼</label>
-          <input v-model="form.password" type="text" placeholder="預設密碼" />
+          <input v-model="form.password" type="text" placeholder="至少 8 個字元" />
         </div>
 
         <div class="form-group">
@@ -1431,6 +1431,7 @@ const submitForm = async () => {
     } else {
       if (!form.value.account) { formError.value = '請輸入登入帳號'; return; }
       if (!form.value.password) { formError.value = '請輸入密碼'; return; }
+      if (String(form.value.password).length < 8) { formError.value = '密碼至少 8 個字元'; return; }
       const body = {
         name: form.value.username,
         account: form.value.account,

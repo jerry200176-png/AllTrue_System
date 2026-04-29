@@ -100,6 +100,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 9. **低風險 docs 小修先累積**：README footer 日期、錯字、單一連結、排版等不影響系統行為的小修，先保留在本地 docs batch；不要單獨開 PR 觸發 Actions。
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
 11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
+12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。
