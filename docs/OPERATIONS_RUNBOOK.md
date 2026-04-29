@@ -671,6 +671,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 ## P. 工程成熟度現況（2026-04-25 評估）
 
 > 對標業界標準（中小型 SaaS，非 FAANG 規模），excluding staging 環境。
+> 成熟度缺口與 GitHub issue 對照表見 `docs/ENGINEERING_MATURITY_GAPS.md`。本節保留長期基線與操作規則；issue 是執行追蹤來源。
 
 ### ✅ 已達標
 

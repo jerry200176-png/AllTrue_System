@@ -71,6 +71,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Dependabot merge SOP | `docs/OPERATIONS_RUNBOOK.md §B0` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
+| 大公司成熟度缺口 / issue 對照 | `docs/ENGINEERING_MATURITY_GAPS.md` |
 | AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |
 
 ### 資安審查

@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — docs(ops): 工程成熟度缺口索引
+
+- Added 大公司工程成熟度缺口 registry，將 CI/CD、資安、DB recovery、備份、AI context 與 runner hardening 待辦對應到 GitHub issues 與 labels
+
+---
+
 ## 2026-04-29 — ops(ci): WSL2 self-hosted runner 啟用
 
 - Ops 將 CI / Presubmit / PHPStan checks 移至 WSL2 self-hosted runner，保留 `deploy.yml` 只用 GitHub-hosted runner，並更新文件避免 runner / DB secret 舊說法誤導
