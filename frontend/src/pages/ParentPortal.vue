@@ -440,9 +440,27 @@
               <div class="pp-session-action">
                 <span :class="['pp-status-dot', s.Status]"></span>
                 <span class="pp-status-text">{{ statusLabel(s.Status) }}</span>
+                <button
+                  v-if="canRequestLeave(s)"
+                  type="button"
+                  class="pp-link-btn"
+                  @click="openLeaveBox(s)"
+                >請假</button>
+              </div>
+              <div v-if="leaveSessionId === s.id" class="pp-leave-box">
+                <label>請假原因（選填）</label>
+                <textarea v-model="leaveReason" rows="2" maxlength="500" placeholder="例如：身體不適、學校活動、臨時有事"></textarea>
+                <div class="pp-leave-actions">
+                  <button class="pp-btn pp-btn-primary pp-btn-small" type="button" :disabled="leaveSubmitting" @click="submitLeaveRequest(s)">
+                    {{ leaveSubmitting ? '送出中…' : '送出請假' }}
+                  </button>
+                  <button class="pp-btn pp-btn-ghost pp-btn-small" type="button" :disabled="leaveSubmitting" @click="closeLeaveBox">取消</button>
+                </div>
+                <p v-if="leaveError" class="pp-error pp-leave-msg">{{ leaveError }}</p>
               </div>
             </div>
           </div>
+          <p v-if="leaveSuccess" class="pp-success-msg">{{ leaveSuccess }}</p>
         </div>
         <div class="pp-empty" v-if="!(dashboard.upcoming_sessions || []).length">
           <span class="material-symbols-outlined">event_available</span>
@@ -584,7 +602,7 @@
 
 <script setup>
 import { onMounted, ref, computed, reactive } from 'vue';
-import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback } from '../api';
+import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -630,6 +648,11 @@ const lineLinked = computed(() => !!dashboard.value?.student?.line_linked);
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
 const activeTab = ref('learning');
+const leaveSessionId = ref(null);
+const leaveReason = ref('');
+const leaveSubmitting = ref(false);
+const leaveError = ref('');
+const leaveSuccess = ref('');
 
 const billingBadgeCount = computed(() => {
   const alerts = dashboard.value?.payment_alerts || [];
@@ -757,6 +780,38 @@ const submitFeedback = async (record) => {
 const statusLabel = (s) => {
   const map = { scheduled: '排定', rescheduled: '已調課', leave_requested: '已請假', cancelled: '已取消', completed: '已完成' };
   return map[s] || s;
+};
+
+const canRequestLeave = (session) => ['scheduled', 'rescheduled'].includes(String(session?.Status || '').toLowerCase());
+
+const openLeaveBox = (session) => {
+  leaveSessionId.value = session?.id ?? null;
+  leaveReason.value = '';
+  leaveError.value = '';
+  leaveSuccess.value = '';
+};
+
+const closeLeaveBox = () => {
+  leaveSessionId.value = null;
+  leaveReason.value = '';
+  leaveError.value = '';
+};
+
+const submitLeaveRequest = async (session) => {
+  if (!session?.id || leaveSubmitting.value) return;
+  leaveSubmitting.value = true;
+  leaveError.value = '';
+  leaveSuccess.value = '';
+  try {
+    const result = await parentRequestLeave(token.value, session.id, { reason: leaveReason.value });
+    session.Status = result?.session?.status || 'leave_requested';
+    leaveSuccess.value = '請假申請已送出，補習班會安排補課時段。';
+    closeLeaveBox();
+  } catch (e) {
+    leaveError.value = e?.message || '請假申請失敗，請稍後再試';
+  } finally {
+    leaveSubmitting.value = false;
+  }
 };
 
 const toggleRecord = (id) => {
@@ -1172,6 +1227,12 @@ onMounted(async () => {
   background: #e3f2fd; color: #1565c0; border: none; border-radius: 6px;
   cursor: pointer; min-height: 32px;
 }
+.pp-btn-ghost { background: #f5f5f5; color: #607d8b; }
+.pp-link-btn {
+  border: none; background: #fff3e0; color: #e65100;
+  border-radius: 999px; padding: 4px 9px; font-size: 0.78em;
+  font-weight: 700; cursor: pointer;
+}
 .pp-btn-logout {
   background: none; border: 1px solid #e0e0e0; border-radius: 8px;
   padding: 6px; cursor: pointer; color: #90a4ae;
@@ -1370,7 +1431,7 @@ onMounted(async () => {
 /* ═══ Upcoming Sessions ═══ */
 .pp-session-list { display: flex; flex-direction: column; gap: 0; }
 .pp-session-item {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 10px 0; border-bottom: 1px solid #f5f5f5;
 }
 .pp-session-item:last-child { border-bottom: none; }
@@ -1389,6 +1450,25 @@ onMounted(async () => {
 .pp-status-dot.rescheduled { background: #f57c00; }
 .pp-status-dot.leave_requested { background: #7b1fa2; }
 .pp-status-text { font-size: 0.78em; color: #78909c; }
+.pp-leave-box {
+  flex: 1 0 100%;
+  margin-left: 56px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff8f1;
+  border: 1px solid #ffe0b2;
+}
+.pp-leave-box label { display: block; font-size: 0.8em; font-weight: 700; color: #6d4c41; margin-bottom: 6px; }
+.pp-leave-box textarea {
+  width: 100%; box-sizing: border-box; border: 1px solid #ffcc80;
+  border-radius: 8px; padding: 8px 10px; font-size: 0.9em; resize: vertical;
+}
+.pp-leave-actions { display: flex; gap: 8px; margin-top: 8px; }
+.pp-leave-msg { margin-top: 6px; }
+.pp-success-msg {
+  margin: 10px 0 0; padding: 9px 10px; border-radius: 8px;
+  background: #e8f5e9; color: #2e7d32; font-size: 0.86em; font-weight: 600;
+}
 
 /* ═══ Course Cards ═══ */
 .pp-course-grid { display: flex; flex-direction: column; gap: 10px; }

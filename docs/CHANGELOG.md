@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-30 — feat(workflow): 請假補課前端入口
+
+- Added 家長端請假申請入口與主任端補課案件卡片，可產生候選時段並確認建立補課
+
+---
+
 ## 2026-04-29 — feat(workflow): 補課候選確認 API
 
 - Added 主任確認補課候選時段後，系統會冪等建立補課 schedules 與 ClassSession，並將 workflow 標記為 confirmed
