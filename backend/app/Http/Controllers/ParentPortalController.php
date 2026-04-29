@@ -15,6 +15,7 @@ use App\Models\Announcement;
 use App\Models\Subject;
 use App\Models\User;
 use App\Http\Controllers\LearningRecordController;
+use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -736,24 +737,65 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $classSession = ClassSession::findOrFail($sessionId);
+        $data = $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
 
-        $ownsClass = StudentClass::where('ID', $classSession->StudentClassID)
-            ->where('StudentID', $session->StudentID)
-            ->exists();
+        $classSession = ClassSession::with('studentClass')->findOrFail($sessionId);
+        $studentClass = $classSession->studentClass;
+        if (!$studentClass) {
+            return response()->json(['message' => 'Course not found'], 404);
+        }
+
+        $ownsClass = (int) $studentClass->StudentID === (int) $session->StudentID;
 
         if (!$ownsClass) {
             return response()->json(['message' => 'Forbidden: This class does not belong to the authenticated student.'], 403);
         }
 
-        if (!in_array($classSession->Status, ['scheduled', 'rescheduled'])) {
+        if (!in_array($classSession->Status, ['scheduled', 'rescheduled', 'leave_requested'], true)) {
             return response()->json(['message' => 'Session cannot be altered.'], 422);
         }
 
-        $classSession->Status = 'leave_requested';
-        $classSession->save();
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$classSession->id}",
+            'campus_id' => (int) ($studentClass->student->CampusID ?? $this->studentCampusId($session->StudentID)),
+            'student_id' => (int) $session->StudentID,
+            'student_class_id' => (int) $studentClass->ID,
+            'class_session_id' => (int) $classSession->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+            'severity' => 'medium',
+            'source_type' => 'parent_portal',
+            'source_id' => (string) $classSession->id,
+            'parent_session_id' => (int) $session->id,
+            'due_at' => now()->addDay(),
+            'payload' => [
+                'reason' => trim((string) ($data['reason'] ?? '')),
+                'requested_at' => now()->toIso8601String(),
+                'session_date' => (string) $classSession->SessionDate,
+                'start_time' => $this->trimToHM($classSession->StartTime),
+                'end_time' => $this->trimToHM($classSession->EndTime),
+            ],
+        ]);
 
-        return response()->json(['message' => 'Leave requested successfully.']);
+        if ($classSession->Status !== 'leave_requested') {
+            $classSession->Status = 'leave_requested';
+            $classSession->save();
+        }
+
+        return response()->json([
+            'message' => 'Leave requested successfully.',
+            'workflow' => [
+                'id' => $workflow->id,
+                'type' => $workflow->type,
+                'status' => $workflow->status,
+            ],
+            'session' => [
+                'id' => $classSession->id,
+                'status' => $classSession->Status,
+            ],
+        ]);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -831,6 +873,11 @@ class ParentPortalController extends Controller
             return $parentPhone;
         }
         return trim($student->Phone ?? '');
+    }
+
+    private function studentCampusId(int $studentId): int
+    {
+        return (int) (Student::where('id', $studentId)->value('CampusID') ?? 0);
     }
 
     /**
