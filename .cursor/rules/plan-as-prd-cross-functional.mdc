@@ -34,7 +34,7 @@ alwaysApply: false
 | 10 | QA 驗收 | Happy Path / Edge / Error + UI/UX 驗收清單 |
 | 11 | 上線與維運 | 部署步驟 + Feature Flag 策略 + Observability 表 + 回滾方案 |
 | 12 | 里程碑與優先級 | P0 / P1 / P2 + 執行 Agent 標記 |
-| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch`** 查業界解法 |
+| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch`** 查業界解法，並補查相關開源專案實作 |
 | 14 | Definition of Done | **所有項目必須是 AI 可自動驗證的客觀指標** |
 
 **Todos 必須含 9 類**：後端 API / 前端 UI / UI/UX 精緻化 / 測試與自動 QA / 資安靜態審查 / Code Review / 文件更新 / 部署與 health check（不適用者明確標注原因）
@@ -48,7 +48,7 @@ alwaysApply: false
 - 禁止技術方向節出現 code / pseudo-code / 函式名稱
 - 禁止「只做防呆 = UI 完成」：必須有視覺精緻化規格
 - 禁止 DoD / todos 出現人工節點（PM sign-off / Designer sign-off / 等待確認）
-- 禁止第 13 節憑空填寫業界解法：必須先 `WebSearch` 再填
+- 禁止第 13 節憑空填寫業界/開源解法：必須先查本專案 Docs/MemPalace，再 `WebSearch` 查大公司/業界做法與相關開源專案後再填
 - 禁止開放問題標記 `[TODO: 需人工確認]`：改用 `[AI-RESOLVABLE]` 或 `[BLOCKED: 原因]`
 
 ---

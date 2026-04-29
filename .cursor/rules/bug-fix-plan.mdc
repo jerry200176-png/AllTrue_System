@@ -34,7 +34,7 @@ alwaysApply: false
 | 10 | QA 驗收 | Happy Path / Edge / Error + **Revert-proof 驗證（git stash 後測試應 fail）** |
 | 11 | 上線與維運 | 部署步驟 + **有無 migration** + Observability + 回滾方案（含時間估計） |
 | 12 | 優先級 | P0/P1/P2 + 執行 Agent 標記；**不需要里程碑時程** |
-| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch` 查業界解法**（同 PRD 規則） |
+| 13 | 風險 / 假設 / 開放問題 | **⚠️ 填寫前必須先呼叫 `WebSearch` 查業界解法與相關開源專案實作**（同 PRD 規則） |
 | 14 | Definition of Done | **所有項目必須是 AI 可自動驗證的客觀指標**（命令 + 預期輸出） |
 
 ---
@@ -85,7 +85,7 @@ alwaysApply: false
 
 - 禁止跳到「要加什麼函式 / 怎麼改行數」的工程細節（第 8 節只列檔案 + 方法名 + 取捨，不寫 code）
 - 禁止 DoD 出現「人工確認」「PM sign-off」等人工節點
-- 禁止第 13 節憑空填寫業界解法：**必須先 `WebSearch` 再填**
+- 禁止第 13 節憑空填寫業界/開源解法：**必須先查本專案 Docs/MemPalace，再 `WebSearch` 查大公司/業界做法與相關開源專案後再填**
 - 禁止 Out of Scope 留空：**必須明確列出不動的模組 / 路由 / 角色**
 - 禁止忽略 Revert-proof 驗證：**每份 Bug Fix Plan 都必須有此項 DoD**
 - 禁止純後端 bug 的第 5 節寫 UI 互動描述（AC 只描述 API 回傳行為）
@@ -140,4 +140,4 @@ alwaysApply: false
 | 第 10 節 | UI/UX 驗收清單 | **Revert-proof 驗證（必填）** |
 | 第 12 節 | 里程碑時程 | **只列優先級（P0/P1/P2），不排時程** |
 | Todos | 9 類 | **6～9 類（依 bug 類型，前端/資安可省）** |
-| WebSearch | §13 必做 | ✅ **§13 仍必須 WebSearch** |
+| WebSearch | §13 必做 | ✅ **§13 仍必須 WebSearch，且需納入相關開源專案參考** |

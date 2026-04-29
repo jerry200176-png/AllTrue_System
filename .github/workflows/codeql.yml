@@ -8,9 +8,6 @@ on:
       - ".github/workflows/**"
   pull_request:
     branches: [main]
-    paths:
-      - "backend/**"
-      - ".github/workflows/**"
   schedule:
     - cron: '0 2 * * 1'   # 每週一 02:00 UTC
 
