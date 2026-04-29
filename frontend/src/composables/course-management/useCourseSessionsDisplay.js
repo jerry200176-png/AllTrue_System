@@ -385,15 +385,15 @@ export function useCourseSessionsDisplay({
     if (!rows.length) {
       return isCompletedDate(course, dateYmd) ? { label: '已上', className: 'completed' } : null;
     }
-    if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
-    if (rows.some((row) => isOverQuotaSession(course, row))) return { label: '超排', className: 'over-quota' };
     const statuses = new Set(rows.map((row) => String(row?.status || '').toLowerCase()).filter(Boolean));
     if ([...statuses].some((status) => ATTENDED_SESSION_STATUSES.has(status))) return { label: '已上', className: 'completed' };
     if (statuses.has('absent')) return { label: '缺席', className: 'absent' };
-    if (statuses.has('scheduled')) return null;
     if (statuses.has('leave_adjusted')) return { label: '補請假', className: 'leave' };
     if (statuses.has('excused') || statuses.has('leave')) return { label: '請假', className: 'leave' };
     if (statuses.has('cancelled')) return { label: '取消', className: 'cancelled' };
+    if (rows.some((row) => isContractException(row))) return { label: '例外堂', className: 'exception' };
+    if (rows.some((row) => isOverQuotaSession(course, row))) return { label: '超排', className: 'over-quota' };
+    if (statuses.has('scheduled')) return null;
     return null;
   };
 
@@ -502,6 +502,7 @@ export function useCourseSessionsDisplay({
       `狀態：${stateLabel}`,
       `時段：${String(row?.start_time || '').slice(0, 5)}-${String(row?.end_time || '').slice(0, 5)}`,
     ];
+    if (isContractException(row) && stateLabel !== '例外堂') lines.push('類型：例外堂');
     const attendanceTime = formatAttendanceTooltipTime(row?.attendance_sign_in_at);
     if (attendanceTime) lines.push(`點名時間：${attendanceTime}`);
     const recordedBy = resolveRecordedByLabel(row);
