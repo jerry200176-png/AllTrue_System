@@ -78,6 +78,7 @@ class LearningRecordController extends Controller
                         ->join('schedules as s', function ($join) use ($teacherId) {
                             $join->on('s.student_course_id', '=', 'cs.StudentClassID')
                                 ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
                                 ->where('s.status', '=', 'scheduled')
                                 ->whereNotNull('s.original_schedule_id')
                                 ->where('s.teacher_id', '=', $teacherId);
@@ -136,6 +137,7 @@ class LearningRecordController extends Controller
                             ->join('schedules as s', function ($join) use ($filterTid) {
                                 $join->on('s.student_course_id', '=', 'cs.StudentClassID')
                                     ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                    ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
                                     ->where('s.status', '=', 'scheduled')
                                     ->whereNotNull('s.original_schedule_id')
                                     ->where('s.teacher_id', '=', $filterTid);
@@ -426,7 +428,8 @@ class LearningRecordController extends Controller
             $lrTeacherId = SubstituteScheduleService::effectiveInstructorUserId(
                 (int) $studentClass->ID,
                 $classSession->SessionDate,
-                (int) ($studentClass->TeacherID ?? 0)
+                (int) ($studentClass->TeacherID ?? 0),
+                $classSession->StartTime
             );
             if ($lrTeacherId <= 0) {
                 $lrTeacherId = (int) ($data['TeacherID'] ?? 0);
@@ -1504,7 +1507,8 @@ class LearningRecordController extends Controller
                 $tid = SubstituteScheduleService::effectiveInstructorUserId(
                     (int) $sc->ID,
                     $cs->SessionDate,
-                    (int) ($sc->TeacherID ?? 0)
+                    (int) ($sc->TeacherID ?? 0),
+                    $cs->StartTime
                 );
                 LearningRecord::create([
                     'StudentClassID' => $sc->ID,
@@ -1566,7 +1570,8 @@ class LearningRecordController extends Controller
         }
         $subTid = SubstituteScheduleService::resolveSubstituteUserId(
             (int) $classSession->StudentClassID,
-            $classSession->SessionDate
+            $classSession->SessionDate,
+            $classSession->StartTime
         );
         $contractTid = (int) ($fallbackTeacherId ?? 0);
         $effectiveTeacherId = $subTid !== null ? $subTid : max(0, $contractTid);
@@ -1599,7 +1604,7 @@ class LearningRecordController extends Controller
         if (!$cs) {
             return false;
         }
-        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $cs->StudentClassID, $cs->SessionDate);
+        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $cs->StudentClassID, $cs->SessionDate, $cs->StartTime);
 
         return $sub !== null && $sub === $authTeacherId;
     }
@@ -1612,7 +1617,7 @@ class LearningRecordController extends Controller
         if ((int) ($sc->TeacherID ?? 0) === $authTeacherId) {
             return true;
         }
-        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $sc->ID, $cs->SessionDate);
+        $sub = SubstituteScheduleService::resolveSubstituteUserId((int) $sc->ID, $cs->SessionDate, $cs->StartTime);
         if ($sub !== null && $sub === $authTeacherId) {
             return true;
         }
