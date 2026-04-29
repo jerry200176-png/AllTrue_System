@@ -54,16 +54,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup PHP + PHPStan
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          tools: phpstan
+      - name: Verify local PHP runtime
+        run: php -v
+
+      - name: Install PHP dependencies
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
       - name: Run PHPStan
         working-directory: backend
         run: |
-          phpstan analyse app \
+          ./vendor/bin/phpstan analyse app \
             --level=5 \
             --memory-limit=512M \
             --no-progress \
