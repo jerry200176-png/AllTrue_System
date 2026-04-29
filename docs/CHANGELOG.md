@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-04-29 — feat(workflow): 家長請假申請與主任閉環 inbox API
+
+- Added 家長請假申請會建立冪等 exception workflow，並新增主任依分校查詢請假補課 workflow inbox API
+
+---
+
 ## 2026-04-29 — feat(workflow): 請假補課閉環核心資料層
 
 - Added 例外事件閉環與補課候選快照的核心資料表、Model 與冪等 service skeleton，作為後續請假補課自動化基礎
