@@ -53,14 +53,57 @@ export async function parentSwitchStudent(token, studentId) {
   return data;
 }
 
-export async function parentRequestLeave(token, sessionId) {
+export async function parentRequestLeave(token, sessionId, { reason = '' } = {}) {
   const res = await fetch(`${API_BASE}/parent/sessions/${sessionId}/leave`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason: String(reason || '').trim() }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.message || '請假申請失敗');
   return data;
+}
+
+export async function listExceptionWorkflows(token, { branchId } = {}) {
+  const params = new URLSearchParams();
+  if (branchId) params.set('branch_id', String(branchId));
+  const res = await fetch(`${API_BASE}/exception-workflows?${params}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法取得補課案件');
+  return Array.isArray(data?.data) ? data.data : [];
+}
+
+export async function getExceptionWorkflow(token, workflowId) {
+  const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法取得案件詳情');
+  return data?.data || null;
+}
+
+export async function generateExceptionWorkflowCandidates(token, workflowId, { startDate, endDate, limit = 5 }) {
+  const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}/generate-candidates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ start_date: startDate, end_date: endDate, limit }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '產生候選時段失敗');
+  return data?.data || {};
+}
+
+export async function confirmExceptionWorkflowCandidate(token, workflowId, candidateId) {
+  const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}/confirm-candidate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ candidate_id: candidateId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '確認補課時段失敗');
+  return data?.data || {};
 }
 
 export async function upsertParentLearningRecordFeedback(token, learningRecordId, content) {
