@@ -642,76 +642,78 @@
         <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-state">
           尚無帳單流水（舊有或堂數制課程可能只保留課程主檔繳費狀態）。可按「對帳」查看同學生收據與例外資料。
         </div>
-        <table v-else class="invoice-table">
-          <thead>
-            <tr>
-              <th>帳單 / 期別</th>
-              <th>應繳日</th>
-              <th>付款日</th>
-              <th>已收款紀錄</th>
-              <th class="invoice-amount-cell">金額</th>
-              <th class="invoice-amount-cell">已繳</th>
-              <th class="invoice-status-cell">狀態</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="inv in invoiceModalList" :key="inv.id">
-              <td>
-                <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
-                <div class="hint">{{ inv.course_ref || `COURSE-${String(invoiceModalCourse?.ID || '').padStart(6, '0')}` }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
-              </td>
-              <td>{{ inv.due_date || '—' }}</td>
-              <td>{{ invoicePaidDateLabel(inv) }}</td>
-              <td>
-                <div v-if="inv.payments?.length" class="invoice-payment-list">
-                  <div
-                    v-for="payment in inv.payments"
-                    :key="payment.id"
-                    :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
-                  >
-                    <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
-                    <span class="invoice-payment-amount">{{ payment.is_void ? '已沖銷 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
-                    <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
-                    <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
-                    <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
+        <div v-else class="invoice-table-scroll">
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th>帳單 / 期別</th>
+                <th>應繳日</th>
+                <th>付款日</th>
+                <th>已收款紀錄</th>
+                <th class="invoice-amount-cell">金額</th>
+                <th class="invoice-amount-cell">已繳</th>
+                <th class="invoice-status-cell">狀態</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="inv in invoiceModalList" :key="inv.id">
+                <td>
+                  <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
+                  <div class="hint">{{ inv.course_ref || `COURSE-${String(invoiceModalCourse?.ID || '').padStart(6, '0')}` }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
+                </td>
+                <td>{{ inv.due_date || '—' }}</td>
+                <td>{{ invoicePaidDateLabel(inv) }}</td>
+                <td>
+                  <div v-if="inv.payments?.length" class="invoice-payment-list">
+                    <div
+                      v-for="payment in inv.payments"
+                      :key="payment.id"
+                      :class="['invoice-payment-row', { 'invoice-payment-row--void': payment.is_void }]"
+                    >
+                      <span class="invoice-payment-date">{{ payment.paid_at || '未記錄日期' }}</span>
+                      <span class="invoice-payment-amount">{{ payment.is_void ? '已沖銷 ' : '已收 ' }}${{ formatMoney(Math.abs(payment.amount || 0)) }}</span>
+                      <span class="invoice-payment-method">{{ invoicePaymentMethodLabel(payment.method) }}</span>
+                      <span v-if="payment.receipt_no" class="invoice-payment-receipt">{{ payment.receipt_no }}</span>
+                      <span v-if="payment.is_void" class="invoice-payment-void">沖銷</span>
+                    </div>
                   </div>
-                </div>
-                <span v-else class="hint">—</span>
-              </td>
-              <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
-              <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
-              <td class="invoice-status-cell">
-                <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
-                  {{ invoiceStatusLabel(inv) }}
-                </span>
-              </td>
-              <td>
-                <div class="invoice-row-actions">
-                  <button
-                    v-if="inv.status !== 'paid'"
-                    class="small primary invoice-pay-btn"
-                    type="button"
-                    @click="openPaymentEntryForInvoice(inv)"
-                  >核帳</button>
-                  <button
-                    v-if="canVoidInvoice(inv)"
-                    class="small ghost invoice-void-btn"
-                    type="button"
-                    @click="openInvoiceVoidDialog(inv)"
-                  >作廢</button>
-                  <button
-                    v-else-if="canExceptionVoidInvoice(inv)"
-                    class="small ghost invoice-void-btn invoice-void-btn--exception"
-                    type="button"
-                    @click="openInvoiceExceptionVoidDialog(inv)"
-                  >沖銷作廢</button>
-                  <span v-if="inv.status === 'paid' && !canVoidInvoice(inv) && !canExceptionVoidInvoice(inv)" class="hint">—</span>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                  <span v-else class="hint">—</span>
+                </td>
+                <td class="invoice-amount-cell">${{ formatMoney(inv.total_amount) }}</td>
+                <td class="invoice-amount-cell">${{ formatMoney(inv.paid_amount) }}</td>
+                <td class="invoice-status-cell">
+                  <span :class="['invoice-status-chip', invoiceStatusClass(inv)]">
+                    {{ invoiceStatusLabel(inv) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="invoice-row-actions">
+                    <button
+                      v-if="inv.status !== 'paid'"
+                      class="small primary invoice-pay-btn"
+                      type="button"
+                      @click="openPaymentEntryForInvoice(inv)"
+                    >核帳</button>
+                    <button
+                      v-if="canVoidInvoice(inv)"
+                      class="small ghost invoice-void-btn"
+                      type="button"
+                      @click="openInvoiceVoidDialog(inv)"
+                    >作廢</button>
+                    <button
+                      v-else-if="canExceptionVoidInvoice(inv)"
+                      class="small ghost invoice-void-btn invoice-void-btn--exception"
+                      type="button"
+                      @click="openInvoiceExceptionVoidDialog(inv)"
+                    >沖銷作廢</button>
+                    <span v-if="inv.status === 'paid' && !canVoidInvoice(inv) && !canExceptionVoidInvoice(inv)" class="hint">—</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <div class="actions invoice-modal-actions">
           <button class="ghost" type="button" @click="closeInvoiceModal">關閉</button>
@@ -5526,7 +5528,9 @@ button.danger:disabled {
   background: #e0e7ff !important;
 }
 .invoice-modal {
-  width: min(560px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
+  max-width: min(920px, calc(100vw - 32px));
+  overflow-x: hidden;
 }
 .invoice-modal-header {
   display: flex;
@@ -5535,9 +5539,13 @@ button.danger:disabled {
   gap: 16px;
   margin-bottom: 16px;
 }
+.invoice-modal-header > div:first-child {
+  min-width: 0;
+}
 .invoice-modal-tools {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 8px;
 }
 .invoice-modal-header .modal-desc {
@@ -5590,8 +5598,14 @@ button.danger:disabled {
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+.invoice-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
 .invoice-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   border: 1px solid var(--border);
   border-radius: 12px;
