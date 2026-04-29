@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\ExceptionWorkflowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -109,6 +110,76 @@ class ExceptionWorkflowApiTest extends TestCase
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->assertStatus(403);
+    }
+
+    public function test_director_can_generate_makeup_candidates_for_leave_workflow(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '候選學生', '0912000006');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        [$otherStudent, $otherCourse] = $this->makeStudentCourseSession(1, '佔用學生', '0912000007');
+        ClassSession::create([
+            'StudentClassID' => $otherCourse->ID,
+            'SessionDate' => '2026-05-07',
+            'StartTime' => '09:00',
+            'EndTime' => '11:00',
+            'Status' => 'scheduled',
+        ]);
+        $token = $this->createDirectorToken([1]);
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+            'limit' => 3,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('data.workflow_id', $workflow->id)
+            ->assertJsonPath('data.generated_count', 3)
+            ->assertJsonPath('data.candidates.0.candidate_date', '2026-05-07');
+
+        $starts = collect($res->json('data.candidates'))->pluck('start_time')->all();
+        $this->assertNotContains('09:00:00', $starts);
+        $this->assertDatabaseCount('exception_workflow_candidates', 3);
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'candidate_ready',
+        ]);
+    }
+
+    public function test_generate_candidates_rejects_cross_campus_director(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(2, '跨校候選學生', '0912000008');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 2,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1]);
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertStatus(403);
+
+        $this->assertDatabaseCount('exception_workflow_candidates', 0);
     }
 
     private function makeStudentCourseSession(int $campusId, string $name, string $phone): array

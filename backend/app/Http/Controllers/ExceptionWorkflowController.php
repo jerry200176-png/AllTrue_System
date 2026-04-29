@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExceptionWorkflow;
+use App\Services\ExceptionWorkflowCandidateGenerator;
 use App\Services\ExceptionWorkflowService;
 use Illuminate\Http\Request;
 
@@ -43,6 +44,44 @@ class ExceptionWorkflowController extends Controller
 
         return response()->json([
             'data' => $this->serialize($workflow, true),
+        ]);
+    }
+
+    public function generateCandidates(Request $request, int $id, ExceptionWorkflowCandidateGenerator $generator)
+    {
+        $workflow = ExceptionWorkflow::with(['student', 'studentClass', 'classSession', 'candidates'])
+            ->findOrFail($id);
+
+        if (!$this->canAccessCampus($request, (int) $workflow->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'limit' => 'nullable|integer|min:1|max:20',
+        ]);
+
+        $candidates = $generator->generate(
+            $workflow,
+            $data['start_date'],
+            $data['end_date'],
+            (int) ($data['limit'] ?? 10)
+        );
+
+        $workflow->refresh()->load(['student', 'studentClass', 'classSession', 'candidates']);
+
+        return response()->json([
+            'data' => [
+                'workflow_id' => (int) $workflow->id,
+                'generated_count' => count($candidates),
+                'workflow' => $this->serialize($workflow),
+                'candidates' => $workflow->candidates()
+                    ->orderBy('rank')
+                    ->get()
+                    ->map(fn ($candidate) => $this->serializeCandidate($candidate))
+                    ->values(),
+            ],
         ]);
     }
 
@@ -101,10 +140,32 @@ class ExceptionWorkflowController extends Controller
         ];
 
         if ($withCandidates) {
-            $data['candidates'] = $workflow->candidates->values();
+            $data['candidates'] = $workflow->candidates
+                ->sortBy('rank')
+                ->values()
+                ->map(fn ($candidate) => $this->serializeCandidate($candidate))
+                ->all();
         }
 
         return $data;
+    }
+
+    private function serializeCandidate($candidate): array
+    {
+        return [
+            'id' => (int) $candidate->id,
+            'workflow_id' => (int) $candidate->workflow_id,
+            'rank' => (int) $candidate->rank,
+            'candidate_date' => optional($candidate->candidate_date)->toDateString(),
+            'start_time' => $this->trimToHM($candidate->start_time),
+            'end_time' => $this->trimToHM($candidate->end_time),
+            'teacher_id' => $candidate->teacher_id ? (int) $candidate->teacher_id : null,
+            'room_id' => $candidate->room_id ? (int) $candidate->room_id : null,
+            'status' => $candidate->status,
+            'score' => (int) $candidate->score,
+            'reasons' => $candidate->reasons ?? [],
+            'expires_at' => optional($candidate->expires_at)->toIso8601String(),
+        ];
     }
 
     private function trimToHM(?string $time): string
