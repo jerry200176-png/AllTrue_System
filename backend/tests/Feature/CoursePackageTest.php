@@ -124,6 +124,35 @@ class CoursePackageTest extends TestCase
         ]);
     }
 
+    private function makePlainCourse(int $studentId, int $teacherId, array $overrides = []): StudentClass
+    {
+        $defaults = [
+            'StudentID'         => $studentId,
+            'GradeID'           => 1,
+            'SubjectID'         => 1,
+            'TeacherID'         => $teacherId,
+            'by1'               => 1,
+            'Period'            => 4,
+            'StartDate'         => Carbon::today()->toDateString(),
+            'TotalHours'        => 0,
+            'RoomID'            => 0,
+            'ScheduleMode'      => 'count',
+            'SessionCount'      => 10,
+            'RemainingSessions' => 8,
+            'UsedSessions'      => 2,
+            'SessionDuration'   => 120,
+            'ClassType'         => 'one_on_one',
+            'Rate'              => 500,
+            'rate_unit'         => 'session',
+            'Charge'            => 0,
+            'Pay'               => 0,
+            'Paid'              => 0,
+            'Stop'              => 0,
+        ];
+
+        return StudentClass::create(array_merge($defaults, $overrides));
+    }
+
     private function makeSession(int $scId, string $date, string $status = 'scheduled'): ClassSession
     {
         return ClassSession::create([
@@ -442,6 +471,70 @@ class CoursePackageTest extends TestCase
         $res->assertOk();
         $sc->refresh();
         $this->assertEquals($pkg->id, (int) $sc->PackageID);
+    }
+
+    public function test_bind_courses_rejects_cross_student_cross_campus_monthly_and_stopped_courses(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $otherStudent = $this->makeStudent(1);
+        $otherCampusStudent = $this->makeStudent(2);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 20);
+
+        $valid = $this->makePlainCourse($student->id, $teacher->id);
+        $crossStudent = $this->makePlainCourse($otherStudent->id, $teacher->id);
+        $crossCampus = $this->makePlainCourse($otherCampusStudent->id, $teacher->id);
+        $monthly = $this->makePlainCourse($student->id, $teacher->id, ['ScheduleMode' => 'date']);
+        $stopped = $this->makePlainCourse($student->id, $teacher->id, ['Stop' => 1]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/bind-courses", [
+            'student_class_ids' => [
+                $valid->ID,
+                $crossStudent->ID,
+                $crossCampus->ID,
+                $monthly->ID,
+                $stopped->ID,
+            ],
+            'dry_run' => true,
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJsonStructure(['message', 'blocked']);
+        $blockedIds = collect($res->json('blocked'))->pluck('student_class_id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $crossStudent->ID, $blockedIds);
+        $this->assertContains((int) $crossCampus->ID, $blockedIds);
+        $this->assertContains((int) $monthly->ID, $blockedIds);
+        $this->assertContains((int) $stopped->ID, $blockedIds);
+
+        foreach ([$valid, $crossStudent, $crossCampus, $monthly, $stopped] as $course) {
+            $course->refresh();
+            $this->assertNull($course->PackageID, 'Dry-run rejection must not bind any course');
+        }
+    }
+
+    public function test_bind_courses_rejects_other_campus_director(): void
+    {
+        $token = $this->createDirectorToken([2]);
+        $student = $this->makeStudent(1);
+        $teacher = $this->makeTeacher();
+        $pkg = $this->makePackage($student->id, 1, 20);
+        $course = $this->makePlainCourse($student->id, $teacher->id);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/course-packages/{$pkg->id}/bind-courses", [
+            'student_class_ids' => [$course->ID],
+            'dry_run' => true,
+        ]);
+
+        $res->assertStatus(403);
+        $course->refresh();
+        $this->assertNull($course->PackageID);
     }
 
     // ─── Test: Alert Rules Unchanged for Package Members ──

@@ -297,7 +297,9 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 ### R24. 多科固定時段優先走一般課程
 
 - 一般課程建立已支援每個固定時段覆寫科目與老師；若再把「多科共用方案」放在日常新建入口，主任容易誤以為多科排課必須建立共享付款池。
-- **強制規則**：多科共用方案只作為 legacy / 歷史維護能力保留；新建課程 UI 應優先導向一般課程，不可與一般課程並列推薦。
+- **強制規則**：一般多科固定時段仍優先走一般課程；多科共用方案可作為「進階選項」使用，但文案必須明確說明「多科共享同一個堂數池、續報加購加到方案總堂數」。
+- **加購規則**：`PackageID` 課程不可再走單科 `student-classes/{id}/purchase-batch`；必須改走 package 層 `PUT /course-packages/{id}` 更新 `total_sessions`，避免共用池被拆回單科新契約。
+- **舊課程綁定規則**：`bind-courses` 必須擋跨學生、跨分校、月結、停用、已屬其他 package 的課程；dry-run 發現任何 blocked course 時不可寫入。
 - **變更限制**：不可刪除既有 `CoursePackage` API、ledger 或財務歷史；若要資料轉換，需另開 PRD 與 migration plan。
 
 ---

@@ -10,13 +10,16 @@
         </div>
       </div>
       <p class="modal-note premium-note">
-        加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。
+        {{ isPackageMode
+          ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
+          : '加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
+        }}
       </p>
       <div class="form-group">
         <label>加購堂數</label>
         <input v-model.number="form.sessions" type="number" min="1" step="1" />
       </div>
-      <div class="form-group">
+      <div v-if="!isPackageMode" class="form-group">
         <label>新批次開始日期</label>
         <input v-model="form.start_date" type="date" />
       </div>
@@ -38,6 +41,7 @@ const props = defineProps({
   show: Boolean,
   form: Object,
   submitting: { type: Boolean, default: false },
+  isPackageMode: { type: Boolean, default: false },
 });
 defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
