@@ -182,6 +182,110 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertDatabaseCount('exception_workflow_candidates', 0);
     }
 
+    public function test_director_can_confirm_candidate_to_create_makeup_schedule_and_class_session(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '確認補課學生', '0912000009');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1]);
+        $generated = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+            'limit' => 1,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertOk();
+        $candidateId = (int) $generated->json('data.candidates.0.id');
+
+        $confirmed = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $confirmed->assertOk()
+            ->assertJsonPath('data.workflow.status', 'confirmed')
+            ->assertJsonPath('data.schedule.status', 'scheduled')
+            ->assertJsonPath('data.class_session.status', 'scheduled');
+
+        $this->assertDatabaseHas('schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => 1,
+            'branch_id' => 1,
+            'student_course_id' => $course->ID,
+            'schedule_date' => '2026-05-07',
+            'status' => 'scheduled',
+            'type' => 'extra',
+        ]);
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-05-07',
+            'Status' => 'scheduled',
+            'IsContractException' => 1,
+        ]);
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'confirmed',
+        ]);
+    }
+
+    public function test_confirm_candidate_is_idempotent_and_rejects_cross_campus(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(2, '確認跨校學生', '0912000010');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 2,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $allowedToken = $this->createDirectorToken([2], 'director-workflow-allowed@example.com');
+        $candidateId = (int) $this->postJson("/api/v1/exception-workflows/{$workflow->id}/generate-candidates", [
+            'start_date' => '2026-05-07',
+            'end_date' => '2026-05-07',
+            'limit' => 1,
+        ], [
+            'Authorization' => "Bearer {$allowedToken}",
+            'Accept' => 'application/json',
+        ])->assertOk()->json('data.candidates.0.id');
+        $blockedToken = $this->createDirectorToken([1], 'director-workflow-blocked@example.com');
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$blockedToken}",
+            'Accept' => 'application/json',
+        ])->assertStatus(403);
+
+        $first = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$allowedToken}",
+            'Accept' => 'application/json',
+        ])->assertOk();
+        $second = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/confirm-candidate", [
+            'candidate_id' => $candidateId,
+        ], [
+            'Authorization' => "Bearer {$allowedToken}",
+            'Accept' => 'application/json',
+        ])->assertOk();
+
+        $this->assertSame((int) $first->json('data.schedule.id'), (int) $second->json('data.schedule.id'));
+        $this->assertDatabaseCount('schedules', 1);
+        $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count());
+    }
+
     private function makeStudentCourseSession(int $campusId, string $name, string $phone): array
     {
         $student = Student::create([
@@ -238,10 +342,10 @@ class ExceptionWorkflowApiTest extends TestCase
         return $res->json('token');
     }
 
-    private function createDirectorToken(array $campusIds): string
+    private function createDirectorToken(array $campusIds, string $loginName = 'director-workflow@example.com'): string
     {
         $user = User::create([
-            'LoginName' => 'director-workflow@example.com',
+            'LoginName' => $loginName,
             'Name' => '主任測試',
             'PSW' => 'secret',
             'type' => 'A',
