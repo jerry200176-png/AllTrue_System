@@ -378,7 +378,7 @@ class StudentClassController extends Controller
             $hasInvoicePayment = $invoicePaidAt !== null;
             $class->payment_status = (empty($class->Paid) && !$hasInvoicePayment) ? 'unpaid' : 'paid';
             $class->paid_at = $directPaidAt;
-            $class->last_paid_at = $directPaidAt ?? $invoicePaidAt;
+            $class->last_paid_at = $invoicePaidAt ?? $directPaidAt;
             $class->status = empty($class->Stop) ? 'active' : 'inactive';
             $class->closed_reason = $class->closed_reason ?? null;
             $class->first_class_date = $class->StartDate ? (\Carbon\Carbon::parse($class->StartDate)->toDateString()) : null;

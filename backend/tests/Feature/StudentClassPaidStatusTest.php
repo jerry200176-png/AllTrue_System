@@ -397,6 +397,50 @@ class StudentClassPaidStatusTest extends TestCase
     }
 
     /**
+     * When a legacy StudentClass.PayDate differs from invoice payment records,
+     * the list display should use the auditable Payment.PaidAt date.
+     */
+    public function test_index_last_paid_at_prefers_invoice_payment_date_over_course_paydate(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-04-29',
+            'Stop' => 1,
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-29',
+            'TotalAmount' => 13200,
+            'PaidAmount' => 13200,
+            'Status' => 'paid',
+        ]);
+        \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-18',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->getJson(
+            '/api/v1/student-classes?branch_id=1&status=inactive',
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $json = $res->json();
+        $data = $json['data'] ?? $json;
+        $match = collect($data)->first(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0) === (int) $sc->ID);
+
+        $this->assertNotNull($match, 'Historical course should appear in list');
+        $this->assertSame('2026-04-29', $match['paid_at'], 'paid_at keeps the legacy StudentClass.PayDate for edit-form compatibility');
+        $this->assertSame('2026-04-18', $match['last_paid_at'], 'last_paid_at should match the auditable invoice payment date');
+    }
+
+    /**
      * FR-002 backend guard: toggle to unpaid without paid_at must also clear PayDate.
      * Regression for Bug B: StudentsList.vue previously sent only { payment_status: 'unpaid' }
      * without paid_at: null, leaving PayDate stale while Paid was set to 0.
