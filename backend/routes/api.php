@@ -292,6 +292,7 @@ Route::prefix('v1')->group(function () {
         Route::get('exception-workflows', [ExceptionWorkflowController::class, 'index']);
         Route::get('exception-workflows/{id}', [ExceptionWorkflowController::class, 'show'])->whereNumber('id');
         Route::post('exception-workflows/{id}/generate-candidates', [ExceptionWorkflowController::class, 'generateCandidates'])->whereNumber('id');
+        Route::post('exception-workflows/{id}/confirm-candidate', [ExceptionWorkflowController::class, 'confirmCandidate'])->whereNumber('id');
 
         Route::get('temp-rfid', [TempRfidController::class, 'show']);
         Route::post('temp-rfid/consume', [TempRfidController::class, 'consume']);
