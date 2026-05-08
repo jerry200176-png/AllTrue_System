@@ -137,6 +137,34 @@
         <span class="material-symbols-outlined" style="font-size:16px">info</span>
         他校今日尚有 {{ otherBranchTodayCount }} 堂課，可切換分校查看
       </div>
+
+      <div v-if="todayPendingEvents.length > 0" class="th-today-pending">
+        <div class="th-today-pending-head">
+          <span class="material-symbols-outlined" style="font-size:16px">playlist_add_check</span>
+          今日待填評量清單（{{ todayPendingEvents.length }}）
+        </div>
+        <div class="th-overdue-list">
+          <div
+            v-for="ev in todayPendingEvents.slice(0, 4)"
+            :key="`today-pending-${ev.key}`"
+            class="th-overdue-row"
+          >
+            <div class="th-overdue-date">{{ ev.startTime }}-{{ ev.endTime }}</div>
+            <div class="th-overdue-info">
+              <span class="th-overdue-student">{{ ev.studentName || '—' }}</span>
+              <span class="th-overdue-subject">{{ ev.subject || '' }}</span>
+              <span v-if="ev.formStatus === 'changes_requested'" class="th-form-chip th-form-changes_requested">需修改</span>
+            </div>
+            <button class="th-fill-btn" @click="goFillRecord(ev)" title="填寫評量">
+              <span class="material-symbols-outlined">edit_note</span>
+            </button>
+          </div>
+        </div>
+        <button v-if="todayPendingEvents.length > 4" class="th-overdue-more" @click="goLearning">
+          前往評量頁查看全部
+          <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle">arrow_forward</span>
+        </button>
+      </div>
     </div>
 
     <!-- A2. Overdue Learning Records Reminder -->
@@ -690,6 +718,14 @@ const weekDays = computed(() => {
   return days;
 });
 
+const todayPendingEvents = computed(() => {
+  const today = weekDays.value.find(d => d.isToday);
+  if (!today) return [];
+  return today.events
+    .filter(ev => ev.formStatus === 'missing' || ev.formStatus === 'changes_requested')
+    .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
+});
+
 // ── Branch colors and short names ──
 const BRANCH_COLORS = [
   'rgba(230, 81, 0, 0.85)',
@@ -896,6 +932,24 @@ onBeforeUnmount(() => {
   margin-top: 12px; padding: 8px 12px; border-radius: 8px;
   background: var(--warning-bg); color: var(--warning);
   font-size: 13px; font-weight: 500;
+}
+
+.th-today-pending {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+
+.th-today-pending-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
 }
 
 /* ──────── A2. Overdue Reminder ──────── */

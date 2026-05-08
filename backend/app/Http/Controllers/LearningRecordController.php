@@ -63,24 +63,45 @@ class LearningRecordController extends Controller
             if (!$teacherId) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            // Show records where: (a) LR.TeacherID is mine, (b) my contract courses,
-            // (c) 代課：schedules 顯示我帶此 ClassSession 但 LR 尚未改 TeacherID 者。
-            $teacherClassIds = StudentClass::where('TeacherID', $teacherId)->pluck('ID');
+            // 與 class-sessions 可見性一致：
+            // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
+            // 2) 無代課時才由正班老師/評量歸屬老師可見。
             $lrTable = (new LearningRecord())->getTable();
-            $query->where(function ($q) use ($teacherId, $teacherClassIds, $lrTable) {
-                $q->where('TeacherID', $teacherId);
-                if ($teacherClassIds->isNotEmpty()) {
-                    $q->orWhereIn('StudentClassID', $teacherClassIds);
-                }
-                $q->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
+            $query->where(function ($q) use ($teacherId, $lrTable) {
+                $q->where(function ($baseScope) use ($teacherId, $lrTable) {
+                    $baseScope->where(function ($owner) use ($teacherId, $lrTable) {
+                        $owner->where('TeacherID', $teacherId)
+                            ->orWhereExists(function ($scSub) use ($teacherId, $lrTable) {
+                                $scSub->select(DB::raw(1))
+                                    ->from('StudentClass as sc')
+                                    ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                    ->where('sc.TeacherID', '=', $teacherId);
+                            });
+                    })->whereNotExists(function ($sub) use ($lrTable) {
+                        $sub->select(DB::raw(1))
+                            ->from('ClassSession as cs')
+                            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                            ->join('schedules as s', function ($join) {
+                                $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                    ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                    ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                                    ->where('s.status', '=', 'scheduled')
+                                    ->whereNotNull('s.original_schedule_id')
+                                    ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID');
+                            })
+                            ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                    });
+                })->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
                     $sub->select(DB::raw(1))
                         ->from('ClassSession as cs')
+                        ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                         ->join('schedules as s', function ($join) use ($teacherId) {
                             $join->on('s.student_course_id', '=', 'cs.StudentClassID')
                                 ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
                                 ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
                                 ->where('s.status', '=', 'scheduled')
                                 ->whereNotNull('s.original_schedule_id')
+                                ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID')
                                 ->where('s.teacher_id', '=', $teacherId);
                         })
                         ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
