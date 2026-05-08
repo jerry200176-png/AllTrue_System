@@ -1096,6 +1096,7 @@ class StudentClassController extends Controller
         $oldRateSnapshot = (float) ($studentClass->Rate ?? 0);
         $oldSessionCountSnapshot = (int) ($studentClass->SessionCount ?? 0);
         $oldTotalHoursSnapshot = (int) ($studentClass->TotalHours ?? 0);
+        $oldTeacherSnapshot = (int) ($studentClass->TeacherID ?? 0);
         $oldRateUnitSnapshot = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
         if (!in_array($oldRateUnitSnapshot, ['session', 'hour'], true)) {
             $oldRateUnitSnapshot = 'session';
@@ -1103,6 +1104,17 @@ class StudentClassController extends Controller
 
         $studentClass->update($mapped);
         $studentClass->refresh();
+
+        if (array_key_exists('TeacherID', $mapped)) {
+            $newTeacherId = (int) ($studentClass->TeacherID ?? 0);
+            if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
+                $this->syncFutureScheduleTeachersAfterContractTeacherChange(
+                    (int) $studentClass->ID,
+                    $oldTeacherSnapshot,
+                    $newTeacherId
+                );
+            }
+        }
 
         if (array_key_exists('paid_at', $rawInput)) {
             $this->syncLatestPaymentDateForCourse($studentClass, $rawInput['paid_at'] ?? null);
@@ -3724,19 +3736,33 @@ class StudentClassController extends Controller
     }
 
     /**
-     * First calendar day on or after $ymd whose ISO weekday exists in the contract map.
+     * Nearest calendar day around $ymd whose ISO weekday exists in the contract map.
+     * Prefer closer days first; on equal distance prefer earlier day to avoid skipping
+     * the immediate week when changing weekday (e.g. Sun -> Sat should pick previous day).
+     * Never return a date earlier than today.
      */
     private function snapDateToContractWeekday(string $ymd, array $slotsByWeekday): string
     {
         if ($ymd === '' || empty($slotsByWeekday)) {
             return $ymd;
         }
-        $d = Carbon::parse($ymd)->startOfDay();
-        for ($i = 0; $i < 21; $i++) {
-            if (isset($slotsByWeekday[(int) $d->dayOfWeekIso])) {
-                return $d->toDateString();
+        $anchor = Carbon::parse($ymd)->startOfDay();
+        $today = Carbon::today()->startOfDay();
+
+        if (isset($slotsByWeekday[(int) $anchor->dayOfWeekIso]) && $anchor->greaterThanOrEqualTo($today)) {
+            return $anchor->toDateString();
+        }
+
+        for ($offset = 1; $offset <= 7; $offset++) {
+            $prev = $anchor->copy()->subDays($offset);
+            $next = $anchor->copy()->addDays($offset);
+
+            if ($prev->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $prev->dayOfWeekIso])) {
+                return $prev->toDateString();
             }
-            $d->addDay();
+            if ($next->greaterThanOrEqualTo($today) && isset($slotsByWeekday[(int) $next->dayOfWeekIso])) {
+                return $next->toDateString();
+            }
         }
 
         return $ymd;
@@ -4208,6 +4234,54 @@ class StudentClassController extends Controller
         }
         $firstDate = $this->normalizeDateString($firstActive->SessionDate ?? null);
         return $firstDate !== null && $firstDate !== $startDate;
+    }
+
+    /**
+     * Keep future schedule rows aligned when contract teacher changes.
+     */
+    private function syncFutureScheduleTeachersAfterContractTeacherChange(int $courseId, int $oldTeacherId, int $newTeacherId): void
+    {
+        if ($courseId <= 0 || $newTeacherId <= 0 || $oldTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
+            return;
+        }
+
+        $today = Carbon::today()->toDateString();
+
+        Schedule::where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereDate('schedule_date', '>=', $today)
+            ->whereNull('original_schedule_id')
+            ->where('teacher_id', $oldTeacherId)
+            ->update([
+                'teacher_id' => $newTeacherId,
+                'updated_at' => now(),
+            ]);
+
+        $staleAnchorIds = Schedule::where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereDate('schedule_date', '>=', $today)
+            ->whereNotNull('original_schedule_id')
+            ->where('teacher_id', $oldTeacherId)
+            ->pluck('original_schedule_id')
+            ->filter(fn ($id) => (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (!empty($staleAnchorIds)) {
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', '>=', $today)
+                ->where('status', 'scheduled')
+                ->whereIn('original_schedule_id', $staleAnchorIds)
+                ->delete();
+
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', '>=', $today)
+                ->where('status', 'rescheduled')
+                ->whereIn('id', $staleAnchorIds)
+                ->delete();
+        }
     }
 
     /**
