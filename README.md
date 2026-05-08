@@ -556,6 +556,8 @@ gh pr create --fill
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
 | `AGENTS.md` | AI / 協作者開工順序與 commit SOP |
+| `CONTRIBUTING.md` | GitHub 協作：分支、PR／Issue、CI、安全通報入口 |
+| `SECURITY.md`（根目錄） | 漏洞通報方式（GitHub Security）；延伸閱讀 `docs/SECURITY.md` |
 | `docs/DEPLOYMENT.md` | 部署步驟 |
 | `docs/OPERATIONS_RUNBOOK.md` | 日常維運手冊 |
 | `docs/SECURITY.md` | 安全設計說明 |
