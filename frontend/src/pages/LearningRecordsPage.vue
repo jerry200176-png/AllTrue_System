@@ -2025,7 +2025,9 @@ const fetchTeacherClasses = async () => {
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ per_page: 200, status: 'active' });
+    // Include inactive/closed classes as well. Teachers may still need to fill
+    // recent learning records for sessions that were attended before closure.
+    const params = new URLSearchParams({ per_page: 200 });
     const res = await fetch(`/api/v1/student-classes?${params}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });
@@ -2290,7 +2292,6 @@ const buildEvents = (targetDates) => {
   const myId = Number(props.userId || 0);
   const events = [];
   for (const sc of teacherClassList.value) {
-    if (sc.Stop == 1) continue;
     const classId = Number(sc.id || sc.ID || 0);
     if (!classId) continue;
     const allSessions = sessionDatesByClassId.value[String(classId)] || [];
@@ -3459,7 +3460,58 @@ const openTargetRecord = () => {
  * 若 sessionDatesByClassId 尚未載入，由後續 watch 補觸發。
  */
 const _pendingTargetSession = ref(null);
-const openTargetSession = ({ classSessionId, sessionDate } = {}) => {
+const fetchTargetSessionEvent = async ({ classSessionId, sessionDate } = {}) => {
+  const targetId = Number(classSessionId || 0);
+  const dateStr = String(sessionDate || '').slice(0, 10);
+  if (!targetId || !dateStr) return null;
+  try {
+    const token = await getToken();
+    if (!token) return null;
+    const { items } = await fetchClassSessions({
+      token,
+      branchId: props.branchId,
+      start: dateStr,
+      end: dateStr,
+      perPage: perfFlags.SESSION_MAX_PER_PAGE,
+    });
+    const row = (items || []).find((s) => Number(s?.id || 0) === targetId);
+    if (!row) return null;
+    const status = String(row?.status || '').toLowerCase();
+    const isLeaveSession = LEAVE_STATUSES.has(status);
+    const isCancelledSession = status === 'cancelled';
+    const fillLocked = !isSessionStarted(dateStr, row?.start_time);
+    let fillLockReason = '';
+    if (isLeaveSession) fillLockReason = '此堂為請假，無需填寫評量';
+    else if (isCancelledSession) fillLockReason = '此堂已取消，無需填寫評量';
+    else if (fillLocked) fillLockReason = '上課開始後開放填寫';
+    return {
+      key: `target-${targetId}`,
+      classSessionId: targetId,
+      classId: Number(row?.student_class_id || 0),
+      studentId: Number(row?.student_id || 0),
+      studentName: row?.student_name || '—',
+      subject: row?.subject || row?.subject_name || '?',
+      subjectName: row?.subject_name || row?.subject || '?',
+      date: dateStr,
+      startTime: normalizeTime(row?.start_time) || String(row?.start_time || '').slice(0, 5),
+      endTime: normalizeTime(row?.end_time) || String(row?.end_time || '').slice(0, 5),
+      timeRange: `${String(row?.start_time || '').slice(0, 5)}~${String(row?.end_time || '').slice(0, 5)}`,
+      recordId: (isLeaveSession || isCancelledSession) ? null : (row?.learning_record_id || null),
+      formStatus: isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learning_record_status || 'missing')),
+      formStatusLabel: scheduleStatusLabel(isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learning_record_status || 'missing'))),
+      fillLocked,
+      fillLockReason,
+      isSubstituted: false,
+      isLeave: isLeaveSession,
+      isCancelled: isCancelledSession,
+    };
+  } catch (e) {
+    console.warn('fetchTargetSessionEvent failed', e);
+    return null;
+  }
+};
+
+const openTargetSession = async ({ classSessionId, sessionDate } = {}) => {
   if (!classSessionId || !sessionDate) return;
   const dateStr = String(sessionDate).slice(0, 10);
 
@@ -3483,6 +3535,12 @@ const openTargetSession = ({ classSessionId, sessionDate } = {}) => {
     openFromScheduleMaybe(targetEv);
     _pendingTargetSession.value = null;
   } else {
+    const fetchedEvent = await fetchTargetSessionEvent({ classSessionId, sessionDate: dateStr });
+    if (fetchedEvent) {
+      openFromScheduleMaybe(fetchedEvent);
+      _pendingTargetSession.value = null;
+      return;
+    }
     // sessionDatesByClassId 可能還沒載入，先暫存等資料到齊後觸發
     _pendingTargetSession.value = { classSessionId, sessionDate };
   }
