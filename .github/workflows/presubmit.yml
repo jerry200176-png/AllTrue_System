@@ -136,6 +136,8 @@ jobs:
             -e 'ssh.*daan' -e 'rsync.*daan' -e 'scp.*daan' \
             -e 'ssh.*lifenet' -e 'npm run deploy' \
             -e 'appleboy/ssh-action' \
+            -e 'StrictHostKeyChecking[[:space:]]+no' \
+            -e 'UserKnownHostsFile=/dev/null' \
             --exclude=presubmit.yml --exclude=deploy.yml \
             .github/workflows/ 2>/dev/null | grep -v "^Binary" || true)
 
