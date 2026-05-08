@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(backups): nightly 移除 Pi 端 git push/tag
+
+- Ops 調整 `scripts/nightly-backup.sh` 僅保留 DB 備份與保留策略，不再從 Pi 嘗試 `git-sync` 或 nightly tag push，與 protected-main 治理一致
+
+---
+
 ## 2026-05-09 — ops(actions): 降低排程 Actions 依賴並補 fallback
 
 - Ops 將 `pi-health.yml` 降為每日、`branch-hygiene.yml` 降為每週，並在 runbook 補齊「minutes 耗盡時由 Pi 本機 monitor-alert + UptimeRobot 承接」與恢復後 rerun 清單
