@@ -2005,9 +2005,21 @@ const filteredCourses = computed(() => {
         (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
       );
       
+      const renderedScheduledKeys = new Set();
       dayExceptions.forEach(ex => {
-        if (hasSameStudentSlot(ex, dow)) return;
         const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
+        const exStart = normalizeTimeTo30(ex.start_time || '');
+        if (String(ex.status || '').toLowerCase() === 'scheduled') {
+          const key = [
+            scid || `student:${ex.student_id ?? ''}`,
+            toYmd(ex.schedule_date),
+            exStart,
+            ex.original_schedule_id || '',
+          ].join('|');
+          if (renderedScheduledKeys.has(key)) return;
+          renderedScheduledKeys.add(key);
+        }
+        if (hasSameStudentSlot(ex, dow)) return;
         if (scid) {
           const course = courses.value.find(c => String(c.id) === scid);
           const purchased = course ? Math.max(0, parseInt(course.sessions_purchased ?? course.SessionCount ?? 0, 10) || 0) : 0;
