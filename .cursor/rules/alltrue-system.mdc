@@ -194,3 +194,12 @@ LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
 - `'self_study'`：刷卡但無匹配課程  
 - `'presence-window'`：刷退時 backfill 補建  
 - `NULL`：老師手動點名或 legacy 記錄（不含 Memo 欄位）
+
+### G-007：智慧行事曆週檢視必須走 occurrence resolver，不可分散 if 合併
+
+三個資料源（`StudentClass` 常態規則、`ClassSession` 實際堂次、`schedules` 例外）若在 Vue component 內分段 `if` 合併，必然出現「base 先跳過 + exception 又跳過」的雙殺，導致課消失或同一堂掛兩位老師（吳艾潼 SC#382 / 2026-05-10）。
+
+- **唯一合法路徑**：`SmartCalendar.vue` 週檢視呼叫 `frontend/src/lib/calendarOccurrenceMerge.js` 的 `mergeWeekCalendarOccurrences()`，產生單一 occurrence list。
+- **Occurrence 身分識別**：同一 `ClassSession.id` 只輸出一張卡；`scheduled` 例外若匹配同一堂只做 overlay，不另建第二張卡。
+- **API 合約**：`GET /api/v1/class-sessions` 必須回傳 `substitute_teacher_id`，前端 `normalizeClassSessionsPayload` 已解析此欄位。
+- **回歸測試**：`npm run test:calendar`（CI 中已整合），覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
