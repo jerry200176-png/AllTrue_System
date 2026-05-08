@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(db): PITR/binlog 評估決策（先 defer）
+
+- Ops/DBA 在 runbook 明確記錄 `#207` 決策：目前先不啟用 production binlog，補齊觸發條件與 pre-enable checklist（限 drill DB 驗證）後再啟動
+
+---
+
 ## 2026-05-09 — ops(backups): nightly 移除 Pi 端 git push/tag
 
 - Ops 調整 `scripts/nightly-backup.sh` 僅保留 DB 備份與保留策略，不再從 Pi 嘗試 `git-sync` 或 nightly tag push，與 protected-main 治理一致
