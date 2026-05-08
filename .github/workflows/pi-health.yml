@@ -53,37 +53,21 @@ jobs:
             -o PubkeyAuthentication=yes \
             ${PI_USER}@${PI_HOST} bash << 'REMOTE'
           set -e
-          WARNINGS=""
-          CRITICALS=""
+          ALERTS=""
 
           # ── 1. 磁碟空間 ──────────────────────────────────────────────
           DISK_PCT=$(df / | awk 'NR==2 {gsub(/%/,""); print $5}')
           echo "磁碟使用率：${DISK_PCT}%"
-          if [ "$DISK_PCT" -gt 95 ]; then
-            CRITICALS="${CRITICALS}🔴 磁碟使用率 ${DISK_PCT}% > 95% — 緊急！\n"
-          elif [ "$DISK_PCT" -gt 85 ]; then
-            WARNINGS="${WARNINGS}⚠️ 磁碟使用率 ${DISK_PCT}% > 85%\n"
-          fi
+          [ "$DISK_PCT" -gt 85 ] && ALERTS="${ALERTS}⚠️ 磁碟使用率 ${DISK_PCT}% > 85%\n"
+          [ "$DISK_PCT" -gt 95 ] && ALERTS="${ALERTS}🔴 磁碟使用率 ${DISK_PCT}% > 95% — 緊急！\n"
 
           # ── 2. CPU 溫度（Pi）────────────────────────────────────────
           if command -v vcgencmd &>/dev/null; then
             TEMP=$(vcgencmd measure_temp | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
             echo "CPU 溫度：${TEMP}°C"
             TEMP_INT=$(echo "$TEMP" | cut -d. -f1)
-            THROTTLED=""
-            if vcgencmd get_throttled &>/dev/null; then
-              THROTTLED=$(vcgencmd get_throttled)
-              echo "CPU throttling：${THROTTLED}"
-            fi
-            if [ "$TEMP_INT" -gt 85 ]; then
-              if echo "$THROTTLED" | grep -Eq '0x[1-9a-fA-F]'; then
-                CRITICALS="${CRITICALS}🔴 CPU 溫度 ${TEMP}°C > 85°C 且偵測到 throttling/undervoltage（${THROTTLED}）\n"
-              else
-                WARNINGS="${WARNINGS}⚠️ CPU 溫度 ${TEMP}°C > 85°C，但未偵測到 throttling；視為 sensor/瞬間尖峰，請人工觀察散熱\n"
-              fi
-            elif [ "$TEMP_INT" -gt 75 ]; then
-              WARNINGS="${WARNINGS}⚠️ CPU 溫度 ${TEMP}°C > 75°C\n"
-            fi
+            [ "$TEMP_INT" -gt 75 ] && ALERTS="${ALERTS}⚠️ CPU 溫度 ${TEMP}°C > 75°C\n"
+            [ "$TEMP_INT" -gt 85 ] && ALERTS="${ALERTS}🔴 CPU 溫度 ${TEMP}°C > 85°C — 緊急！\n"
           fi
 
           # ── 3. 備份年齡驗證 ──────────────────────────────────────────
@@ -91,7 +75,7 @@ jobs:
           if [ -d "$BACKUP_DIR" ]; then
             LATEST=$(ls "$BACKUP_DIR"/alltrue_6h_*.sql.gz 2>/dev/null | sort | tail -1)
             if [ -z "$LATEST" ]; then
-              CRITICALS="${CRITICALS}🔴 備份目錄無任何 .sql.gz 檔案！\n"
+              ALERTS="${ALERTS}🔴 備份目錄無任何 .sql.gz 檔案！\n"
             else
               BASENAME=$(basename "$LATEST")
               STAMP=$(echo "$BASENAME" | sed -nE 's/^alltrue_6h_([0-9]{4}-[0-9]{2}-[0-9]{2})_([0-9]{2})([0-9]{2})\.sql\.gz$/\1 \2:\3/p')
@@ -100,30 +84,23 @@ jobs:
                 AGE_HOURS=$(( ( $(date +%s) - BACKUP_TS ) / 3600 ))
               else
                 AGE_HOURS=$(( ( $(date +%s) - $(stat -c %Y "$LATEST") ) / 3600 ))
-                WARNINGS="${WARNINGS}⚠️ 備份檔名無法解析時間，已 fallback 到 mtime：${BASENAME}\n"
+                ALERTS="${ALERTS}⚠️ 備份檔名無法解析時間，已 fallback 到 mtime：${BASENAME}\n"
               fi
               echo "最新備份年齡：${AGE_HOURS} 小時（${LATEST}）"
-              if [ "$AGE_HOURS" -gt 24 ]; then
-                CRITICALS="${CRITICALS}🔴 最新備份已 ${AGE_HOURS} 小時！可能備份失敗！\n"
-              elif [ "$AGE_HOURS" -gt 8 ]; then
-                WARNINGS="${WARNINGS}⚠️ 最新備份已 ${AGE_HOURS} 小時未更新 (> 8hr)\n"
-              fi
+              [ "$AGE_HOURS" -gt 8 ] && ALERTS="${ALERTS}⚠️ 最新備份已 ${AGE_HOURS} 小時未更新 (> 8hr)\n"
+              [ "$AGE_HOURS" -gt 24 ] && ALERTS="${ALERTS}🔴 最新備份已 ${AGE_HOURS} 小時！可能備份失敗！\n"
             fi
           else
-            CRITICALS="${CRITICALS}🔴 備份目錄 ${BACKUP_DIR} 不存在\n"
+            ALERTS="${ALERTS}⚠️ 備份目錄 ${BACKUP_DIR} 不存在\n"
           fi
 
           # ── 4. 輸出結果 ──────────────────────────────────────────────
-          if [ -n "$WARNINGS" ]; then
-            echo "=== ⚠️ WARNINGS（不使 workflow 失敗）==="
-            printf "$WARNINGS"
-          fi
-          if [ -n "$CRITICALS" ]; then
-            echo "=== 🔴 CRITICALS ==="
-            printf "$CRITICALS"
-            exit 1   # 只有 critical 才讓 GitHub Actions 判定 failure
+          if [ -n "$ALERTS" ]; then
+            echo "=== ⚠️ ALERTS ==="
+            printf "$ALERTS"
+            exit 1   # 讓 GitHub Actions 判定 failure → 自動寄 email 給 repo owner
           else
-            echo "✅ 無 critical 指標"
+            echo "✅ 所有指標正常"
           fi
           REMOTE
 
