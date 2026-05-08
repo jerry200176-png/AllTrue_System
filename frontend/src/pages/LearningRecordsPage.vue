@@ -2179,9 +2179,13 @@ function pickBestSession(candidates) {
 function deduplicateSessionsBySlot(sessions) {
   const groups = {};
   for (const s of sessions) {
+    const id = Number(s?.id || 0);
     const date = String(s?.session_date || s?.SessionDate || '').slice(0, 10);
     const time = normalizeTime(s?.start_time || s?.StartTime) || '';
-    const key = `${date}|${time}`;
+    // Keep different ClassSession IDs even when they share the same slot:
+    // a legitimate reschedule-to-past can produce two lessons on the same date/time.
+    // Grouping only by date|time would hide one and block teacher fill flow.
+    const key = id > 0 ? `id:${id}` : `slot:${date}|${time}`;
     if (!groups[key]) groups[key] = [];
     groups[key].push(s);
   }
