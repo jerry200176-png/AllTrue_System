@@ -61,6 +61,40 @@ class ClassSessionApiTest extends TestCase
         $this->assertSame(substr((string) $classSession->SessionDate, 0, 10), $hit['session_date'] ?? null);
     }
 
+    public function test_class_sessions_index_uses_current_course_teacher_name_over_old_learning_record_teacher(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-class-session-teacher-name@example.com');
+        $oldTeacherId = $this->createTeacher(1, 'teacher-old-class-session@example.com', '陳暉諺');
+        $newTeacherId = $this->createTeacher(1, 'teacher-new-class-session@example.com', '邱御碩');
+        $student = $this->createStudent(1, '王泓曄');
+        $courseRes = $this->createCourseViaApi($token, $student->id, $oldTeacherId)->assertCreated();
+        $courseId = $this->resolveCourseId($courseRes, $student->id, $oldTeacherId);
+
+        $classSession = ClassSession::where('StudentClassID', $courseId)->firstOrFail();
+
+        LearningRecord::where('ClassSessionID', $classSession->id)->update([
+            'TeacherID' => $oldTeacherId,
+            'Content' => '舊老師已填評量',
+            'Status' => 'approved',
+        ]);
+
+        DB::table('StudentClass')
+            ->where('ID', $courseId)
+            ->update(['TeacherID' => $newTeacherId]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_id={$courseId}&per_page=100");
+
+        $res->assertOk();
+        $hit = collect($res->json('data'))->firstWhere('id', $classSession->id);
+        $this->assertNotNull($hit);
+        $this->assertSame($newTeacherId, (int) ($hit['teacher_id'] ?? 0));
+        $this->assertSame('邱御碩', $hit['teacher_name'] ?? '');
+        $this->assertSame($oldTeacherId, (int) ($hit['learning_record_teacher_id'] ?? 0));
+    }
+
     public function test_director_cannot_query_unassigned_branch(): void
     {
         $token = $this->createDirectorToken([1], 'director-class-session-b@example.com');
@@ -119,11 +153,11 @@ class ClassSessionApiTest extends TestCase
         return $token;
     }
 
-    private function createTeacher(int $campusId, string $loginName): int
+    private function createTeacher(int $campusId, string $loginName, string $name = '老師測試'): int
     {
         $teacher = User::create([
             'LoginName' => $loginName,
-            'Name' => '老師測試',
+            'Name' => $name,
             'PSW' => 'secret',
             'type' => 'T',
             'phone' => '0922111111',
