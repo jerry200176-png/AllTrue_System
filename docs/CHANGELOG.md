@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(ci): presubmit alwaysApply soft warning（>400）
+
+- Changed `presubmit.yml`：alwaysApply 總行數超過 400 先輸出 GitHub warning（不干擾 merge），超過 500 仍 hard fail
+
+---
+
 ## 2026-05-09 — fix(calendar): 行事曆改用 occurrence 合約合併
 
 - Fixed 智慧行事曆週檢視以單一 occurrence resolver 合併 `StudentClass`、`ClassSession` 與 `schedules`，避免同一堂課重複掛兩位老師或被 scheduled 例外互相抵消而消失
