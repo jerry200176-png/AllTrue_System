@@ -42,6 +42,13 @@
 | **Branch protection** | `main` 上 required checks + 禁止 force push（設定在 GitHub 端）。 |
 | **Dependabot** | [`.github/dependabot.yml`](.github/dependabot.yml) 每週／每月自動開升級 PR。 |
 | **工作流** | `.github/workflows/`：`ci.yml`、`presubmit.yml`、`deploy.yml` 等；deploy 僅在合併後且有 deployable diff 時執行。 |
+| **Dependency Review** | [`.github/workflows/dependency-review.yml`](.github/workflows/dependency-review.yml)：每個 PR 比對 lockfile 依賴是否**新引入**高嚴重度漏洞（與 `npm audit` / `composer audit` 互補）。需於 **Settings → Code security** 啟用 **Dependency graph**（私有 repo 依方案）。可將 **Dependency Review** job 加入 Branch protection「必過檢查」。 |
+
+### 再靠近一點大廠（選配、不強制）
+
+- **Merge queue**：多人協作時在 **Settings → Rules** 開啟，減少「綠燈但合併後 main 紅」。
+- **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
+- **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
 ## Security
 

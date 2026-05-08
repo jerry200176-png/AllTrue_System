@@ -1,0 +1,34 @@
+# 與大廠常見「Supply chain / PR 依賴審查」對齊：僅在 PR 上執行，不改 production。
+# 需在 repo Settings → Code security 開啟 Dependency graph（私有 repo 依方案）。
+# 使用 GitHub-hosted runner，不消耗 self-hosted WSL CI minutes。
+
+name: Dependency Review
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # 失敗常見原因：未開 Dependency graph。Settings → Code security → enable.
+      - name: Run dependency review
+        uses: actions/dependency-review-action@v4
+        with:
+          # 與 frontend「npm audit --audit-level=high」、backend composer HIGH/CRITICAL 精神一致
+          fail-on-severity: high
