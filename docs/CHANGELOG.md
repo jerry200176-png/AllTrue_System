@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(backups): 新增一鍵備份稽核腳本
+
+- Ops 新增 `scripts/backup-audit.sh`，集中檢查本機備份、manifest、Google Drive 異地同步、restore drill 結果與只讀 row-count sanity，並以 GREEN/YELLOW/RED 輸出總結
+
+---
+
 ## 2026-05-08 — ops(ci): 補齊 WSL2 runner 硬化維運 SOP
 
 - Ops 新增 self-hosted runner 邊界、健康檢查、離線恢復與疑似入侵停用流程，確保 CI-only runner 不承載 production deploy secrets
