@@ -98,16 +98,25 @@ class AttendanceController extends Controller
         // When nothing is provided, default to the last 7 days so admins can see recent
         // attended records without having to manually pick a date every time.
         if ($request->filled('date')) {
-            $query->whereDate('si.SignInDT', $request->input('date'));
+            $day = Carbon::parse($request->input('date'))->toDateString();
+            $query->whereBetween('si.SignInDT', [
+                "{$day} 00:00:00",
+                "{$day} 23:59:59",
+            ]);
         } elseif ($request->filled('start_date') || $request->filled('end_date')) {
-            $rangeStart = $request->input('start_date', Carbon::now()->subDays(6)->toDateString());
-            $rangeEnd   = $request->input('end_date',   Carbon::now()->toDateString());
-            $query->whereBetween(DB::raw('DATE(si.SignInDT)'), [$rangeStart, $rangeEnd]);
+            $rangeStart = Carbon::parse($request->input('start_date', Carbon::now()->subDays(6)->toDateString()))->toDateString();
+            $rangeEnd   = Carbon::parse($request->input('end_date', Carbon::now()->toDateString()))->toDateString();
+            $query->whereBetween('si.SignInDT', [
+                "{$rangeStart} 00:00:00",
+                "{$rangeEnd} 23:59:59",
+            ]);
         } else {
             // Default: last 7 days (today inclusive).
-            $query->whereBetween(DB::raw('DATE(si.SignInDT)'), [
-                Carbon::now()->subDays(6)->toDateString(),
-                Carbon::now()->toDateString(),
+            $defaultStart = Carbon::now()->subDays(6)->toDateString();
+            $defaultEnd = Carbon::now()->toDateString();
+            $query->whereBetween('si.SignInDT', [
+                "{$defaultStart} 00:00:00",
+                "{$defaultEnd} 23:59:59",
             ]);
         }
 
