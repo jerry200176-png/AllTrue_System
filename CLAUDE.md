@@ -190,6 +190,15 @@ PR #23 修復只對新刷卡有效，歷史記錄需手動 UPDATE。
 - `'presence-window'`：刷退時 backfill 補建
 - `NULL`：老師手動點名或 legacy
 
+### G-007：智慧行事曆週檢視必須走 occurrence resolver，不可分散 if 合併
+
+三個資料源（`StudentClass` 常態規則、`ClassSession` 實際堂次、`schedules` 例外）若在 Vue component 內分段 `if` 合併，必然出現「base 先跳過 + exception 又跳過」的雙殺，導致課消失，或同一堂同時掛兩位老師（吳艾潼 SC#382 / 2026-05-10 事故）。
+
+- **唯一合法路徑**：`SmartCalendar.vue` 週檢視透過 `frontend/src/lib/calendarOccurrenceMerge.js` 的 `mergeWeekCalendarOccurrences()` 產生單一 occurrence list。
+- **Occurrence 身分識別**：同一 `ClassSession.id` 只輸出一張卡；`scheduled` 例外若匹配同一堂只做 `teacher_id` overlay，不另建第二張卡。
+- **API 合約**：`GET /api/v1/class-sessions` 必須回傳 `substitute_teacher_id`（非 null 時表示代課老師），前端 `classSessionsApi.js` `normalizeClassSessionsPayload` 已解析此欄位。
+- **回歸測試**：任何修改都必須先跑 `npm run test:calendar`，覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
+
 ### G-006：GitHub Actions SSH Secrets 格式嚴格，含 `@` 就爆
 - `PI_SSH_USER` / `PI_USER`：只能填 `admin`，含 `@hostname` → sshd 收到 `admin@admin` → Invalid user
 - `PI_SSH_HOST` / `PI_HOST`：只能填 `pi.lifenet.com.tw`，含 `user@` → 同上
