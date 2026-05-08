@@ -109,6 +109,40 @@ class AttendanceBatchMarkTest extends TestCase
         $this->assertTrue($body['results'][1]['success']);
     }
 
+    public function test_duplicate_same_slot_sessions_only_deduct_once(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $teacherId = $this->createTeacher(1);
+        $student = $this->createStudent(1, '同時段重複堂次');
+        $courseId = $this->bootstrapCourse($student->id, $teacherId, 10);
+
+        $cs1 = $this->pastClassSession($courseId, '18:00', '20:00');
+        $cs2 = $this->pastClassSession($courseId, '18:00', '20:00');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance/batch-mark', [
+            'items' => [
+                ['ClassSessionID' => $cs1->id, 'StudentID' => $student->id, 'StudentClassID' => $courseId, 'Status' => 'present', 'mark_mode' => 'arrival'],
+                ['ClassSessionID' => $cs2->id, 'StudentID' => $student->id, 'StudentClassID' => $courseId, 'Status' => 'present', 'mark_mode' => 'arrival'],
+            ],
+        ])->assertOk();
+
+        $body = $res->json();
+        $this->assertSame(2, $body['total']);
+        $this->assertSame(1, $body['success_count']);
+        $this->assertSame(1, $body['fail_count']);
+        $this->assertTrue($body['results'][0]['success']);
+        $this->assertFalse($body['results'][1]['success']);
+        $this->assertSame(409, $body['results'][1]['status_code']);
+
+        $after = StudentClass::findOrFail($courseId);
+        $this->assertSame(9, (int) $after->RemainingSessions);
+        $this->assertSame(1, (int) $after->UsedSessions);
+        $this->assertSame(1, StudentSignIn::where('StudentClassID', $courseId)->whereNull('VoidedAt')->count());
+    }
+
     public function test_teacher_cannot_batch_mark_others_classes(): void
     {
         $teacherUser = User::create([
