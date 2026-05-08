@@ -96,4 +96,5 @@ git commit -m "<type>(<scope>): <one-line summary>
 
 - **Claude Code**：讀根目錄 `CLAUDE.md`（若存在）
 - **GitHub Copilot**：讀 `.github/copilot-instructions.md`（若存在）
+- **GitHub 協作（分支／PR／Issue／通報）**：`CONTRIBUTING.md`、`SECURITY.md`
 - **人類協作者**：先讀 `README.md`、`docs/INDEX.md`、本檔 `AGENTS.md`
