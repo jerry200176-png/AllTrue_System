@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(calendar): 停用舊課程不再重複掛兩位老師
+
+- Fixed 智慧行事曆載入課程時排除 `status=inactive` 或 `Stop=1` 的舊課，避免同學生在舊/新老師欄位同時出現
+
+---
+
 ## 2026-05-09 — ops(ci): PHPStan 明確改為 advisory gate
 
 - Ops 將 workflow job 名稱改為 `PHPStan Advisory (php)`，並同步 main branch protection required checks 移除舊 `PHPStan (php)`，避免「看似硬擋實際不擋」語意落差
