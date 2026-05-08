@@ -253,6 +253,7 @@ class ClassSessionController extends Controller
             $row->student_id = (int) $row->StudentID;
             $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
                 ? (int) $row->substitute_teacher_id : 0;
+            $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
             $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
             $row->branch_id = (int) ($row->CampusID ?? 0);
             $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
@@ -281,7 +282,6 @@ class ClassSessionController extends Controller
                 $row->StudentClassID,
                 $row->StudentID,
                 $row->TeacherID,
-                $row->substitute_teacher_id,
                 $row->CampusID,
                 $row->SessionDate,
                 $row->StartTime,
