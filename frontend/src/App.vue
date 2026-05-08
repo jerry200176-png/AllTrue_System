@@ -303,7 +303,7 @@
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
         :unread-feedback-count="unreadFeedbackCount"
         @navigate="setActivePage($event)"
-        @navigate-learning="learningTargetRecordId = $event?.recordId || null; learningTargetSession = $event?.classSessionId ? { classSessionId: $event.classSessionId, sessionDate: $event.sessionDate } : null; setActivePage('learning')"
+        @navigate-learning="onNavigateLearningFromTeacherHome"
       />
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
       <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" @feedback-read="refreshUnreadNotifications" />
@@ -780,6 +780,18 @@ function onNavigateFromNotifications({ target, recordId }) {
     learningTargetRecordId.value = null;
   }
   active.value = target;
+}
+
+function onNavigateLearningFromTeacherHome(payload = {}) {
+  const targetBranchId = Number(payload?.branchId || 0);
+  if (targetBranchId > 0) {
+    currentBranch.value = targetBranchId;
+  }
+  learningTargetRecordId.value = payload?.recordId || null;
+  learningTargetSession.value = payload?.classSessionId
+    ? { classSessionId: payload.classSessionId, sessionDate: payload.sessionDate }
+    : null;
+  setActivePage('learning');
 }
 
 function setActivePage(page) {

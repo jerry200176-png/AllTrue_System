@@ -1725,12 +1725,22 @@ const fetchPendingSessions = async () => {
     const json = await res.json().catch(() => ({}));
     const rows = Array.isArray(json?.data) ? json.data : [];
 
+    const totalSlotKeys = new Set();
     todaySessionTotal.value = rows.filter((row) => {
       const status = String(row?.status || '').toLowerCase();
       return !['cancelled', 'leave', 'leave_adjusted'].includes(status);
+    }).filter((row) => {
+      const key = [
+        Number(row?.student_class_id || row?.StudentClassID || 0),
+        String(row?.session_date || row?.SessionDate || '').slice(0, 10),
+        String(row?.start_time || row?.StartTime || '').slice(0, 5),
+      ].join('|');
+      if (totalSlotKeys.has(key)) return false;
+      totalSlotKeys.add(key);
+      return true;
     }).length;
 
-    const pending = rows
+    const pendingRows = rows
       .filter(r => String(r?.status || '').toLowerCase() === 'scheduled')
       .map(r => ({
         class_session_id: Number(r.id || 0),
@@ -1747,6 +1757,14 @@ const fetchPendingSessions = async () => {
       }))
       .filter(r => r.class_session_id > 0 && r.student_id > 0 && r.student_class_id > 0)
       .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+    const pendingSlotKeys = new Set();
+    const pending = pendingRows.filter((r) => {
+      const key = `${r.student_class_id}|${r.session_date}|${r.start_time}`;
+      if (pendingSlotKeys.has(key)) return false;
+      pendingSlotKeys.add(key);
+      return true;
+    });
 
     pendingSessions.value = pending;
     const next = {};
