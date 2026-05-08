@@ -24,6 +24,18 @@ backend/storage/framework/testing/
 # Frontend build artifacts
 frontend/dist/
 frontend/.vite/
+frontend/deploy.tar.gz
+
+# Test/runtime cache artifacts
+backend/.phpunit.result.cache
+
+# Capacitor mobile build outputs (keep source project files)
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/**/build/
+frontend/android/**/outputs/
+frontend/ios/App/App/public/
+frontend/ios/App/App/DerivedData/
 
 # Emergency backups (too large for git)
 backups/emergency/code_*.tar.gz
