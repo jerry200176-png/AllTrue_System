@@ -391,7 +391,9 @@ class AttendanceController extends Controller
         ]);
 
         return DB::transaction(function () use ($data) {
-            $studentClass = StudentClass::findOrFail($data['StudentClassID']);
+            $studentClass = StudentClass::where('ID', (int) $data['StudentClassID'])
+                ->lockForUpdate()
+                ->firstOrFail();
             if ((int) $studentClass->StudentID !== (int) $data['StudentID']) {
                 return response()->json(['message' => 'Student does not match class'], 422);
             }
@@ -442,14 +444,21 @@ class AttendanceController extends Controller
                     return response()->json(['message' => 'Session does not match class'], 422);
                 }
             } else {
-                $classSession = ClassSession::create([
-                    'StudentClassID' => $studentClass->ID,
-                    'SessionDate' => $data['SessionDate'],
-                    'StartTime' => $data['StartTime'],
-                    'EndTime' => $data['EndTime'],
-                    'Status' => 'scheduled',
-                    'Note' => '',
-                ]);
+                $classSession = ClassSession::where('StudentClassID', $studentClass->ID)
+                    ->whereDate('SessionDate', $data['SessionDate'])
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [substr((string) $data['StartTime'], 0, 5)])
+                    ->orderBy('id')
+                    ->first();
+                if (!$classSession) {
+                    $classSession = ClassSession::create([
+                        'StudentClassID' => $studentClass->ID,
+                        'SessionDate' => $data['SessionDate'],
+                        'StartTime' => $data['StartTime'],
+                        'EndTime' => $data['EndTime'],
+                        'Status' => 'scheduled',
+                        'Note' => '',
+                    ]);
+                }
             }
 
             $markMode = (string) ($data['mark_mode'] ?? 'ended');
@@ -461,13 +470,8 @@ class AttendanceController extends Controller
                 return response()->json(['message' => '該節尚未結束，無法點名'], 422);
             }
 
-            if ($classSession->id) {
-                $existing = StudentSignIn::where('ClassSessionID', $classSession->id)
-                    ->whereNull('VoidedAt')
-                    ->first();
-                if ($existing) {
-                    return response()->json(['message' => 'Attendance already recorded'], 409);
-                }
+            if ($classSession->id && $this->activeAttendanceExistsForSessionSlot($classSession)) {
+                return response()->json(['message' => 'Attendance already recorded for this time slot'], 409);
             }
 
             $status = $data['Status'] ?? 'present';
@@ -793,6 +797,36 @@ class AttendanceController extends Controller
 
         $classSession->Status = $sessionStatus;
         $classSession->save();
+    }
+
+    private function activeAttendanceExistsForSessionSlot(ClassSession $classSession): bool
+    {
+        $courseId = (int) ($classSession->StudentClassID ?? 0);
+        $startTime = substr((string) ($classSession->StartTime ?? ''), 0, 5);
+        if ($courseId <= 0 || $startTime === '') {
+            return StudentSignIn::where('ClassSessionID', $classSession->id)
+                ->whereNull('VoidedAt')
+                ->lockForUpdate()
+                ->exists();
+        }
+
+        try {
+            $sessionDate = Carbon::parse((string) $classSession->SessionDate)->toDateString();
+        } catch (\Throwable $e) {
+            return StudentSignIn::where('ClassSessionID', $classSession->id)
+                ->whereNull('VoidedAt')
+                ->lockForUpdate()
+                ->exists();
+        }
+
+        return DB::table('StudentSingIn as si')
+            ->join('ClassSession as cs', 'cs.id', '=', 'si.ClassSessionID')
+            ->where('si.StudentClassID', $courseId)
+            ->whereNull('si.VoidedAt')
+            ->whereDate('cs.SessionDate', $sessionDate)
+            ->whereRaw('SUBSTRING(cs.StartTime, 1, 5) = ?', [$startTime])
+            ->lockForUpdate()
+            ->exists();
     }
 
     private function resolveSwipeStatus(ClassSession $classSession, Carbon $swipeAt): string
