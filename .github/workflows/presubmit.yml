@@ -101,6 +101,8 @@ jobs:
             echo "AI context bloat detected. Move non-critical rules to glob-based triggers."
             echo "Reference: .cursor/rules/p0-gate.mdc"
             exit 1
+          elif [ "$TOTAL" -gt 400 ]; then
+            echo "::warning title=alwaysApply nearing hard limit::alwaysApply is $TOTAL lines (recommended ≤ 400, hard limit 500). Move non-critical guidance to on-demand docs/rules."
           else
             echo "✅ alwaysApply size OK: $TOTAL lines"
           fi
