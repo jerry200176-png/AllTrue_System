@@ -62,6 +62,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
+| 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
+| 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 
 ### 部署 / 維運
 | 需要什麼 | 去哪裡找 |
@@ -169,16 +171,24 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ## 📐 MemPalace 導航（AI 記憶層）
 
 ```bash
-# 搜尋任何主題
+# 搜尋任何主題（調查 bug 或回顧決策前先跑）
 ~/.local/bin/mempalace search "<關鍵字>"
+~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-sessions  # 只搜對話
+~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-docs      # 只搜文件
 
-# 看全局記憶摘要
+# 看全局記憶摘要（session 開始時替代全讀文件）
 ~/.local/bin/mempalace wake-up
 
-# 每次 PR merge 後自動 mine（post-merge hook）
+# 每次 PR merge 後更新記憶（post-merge hook 自動執行）
+# 若 hook 未自動跑，手動執行：
+~/.local/bin/mempalace mine ~/.cursor/projects/home-jerry-alltrue/agent-transcripts \
+  --mode convos --wing alltrue-sessions
+~/.local/bin/mempalace mine ~/alltrue/docs --wing alltrue-docs
 ```
 
 Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）、`alltrue-code`（程式碼知識）
+
+> MemPalace 目前 `wake-up` 回傳「No memories yet」= palace 尚未有索引，需手動 mine 後才有內容。
 
 ---
 

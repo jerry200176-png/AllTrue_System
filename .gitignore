@@ -100,3 +100,7 @@ logs/*.log
 # Third-party binaries installed locally (not to be tracked in git)
 bin/
 .claude/settings.local.json
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
