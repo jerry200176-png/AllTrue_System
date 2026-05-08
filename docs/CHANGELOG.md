@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-08 — security(ops): 維運 SSH 改為 host key pinning
+
+- Security 將 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml` 移除 `StrictHostKeyChecking no`，改用 `PI_HOST_KEY` + `known_hosts` pinning，並在 Presubmit 增加禁止回歸檢查
+
+---
+
 ## 2026-05-08 — ops(ci): docs-only PR required checks 對齊
 
 - Ops 調整 `ci.yml` 改為所有 PR 皆觸發並保留 required check context，再用 changed-areas job 決定是否執行 PHPUnit/Vite，修復 docs-only PR 缺少 required checks 無法合併

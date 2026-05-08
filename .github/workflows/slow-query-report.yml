@@ -17,11 +17,13 @@ jobs:
           PI_HOST:    ${{ secrets.PI_HOST }}
           PI_USER:    ${{ secrets.PI_USER }}
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
         run: |
           missing=""
           [ -z "$PI_HOST" ]    && missing="$missing PI_HOST"
           [ -z "$PI_USER" ]    && missing="$missing PI_USER"
           [ -z "$PI_SSH_KEY" ] && missing="$missing PI_SSH_KEY"
+          [ -z "$PI_HOST_KEY" ] && missing="$missing PI_HOST_KEY"
           if [ -n "$missing" ]; then
             echo "::notice::Pi secrets 未設定（$missing）— 略過慢查詢報告。請至 repo Settings → Secrets → Actions 設定後生效。"
             echo "configured=false" >> "$GITHUB_OUTPUT"
@@ -33,11 +35,13 @@ jobs:
         if: steps.secrets.outputs.configured == 'true'
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/pi_key
           chmod 600 ~/.ssh/pi_key
-          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Fetch slow query stats from Pi
         if: steps.secrets.outputs.configured == 'true'
@@ -45,7 +49,7 @@ jobs:
           PI_HOST: ${{ secrets.PI_HOST }}
           PI_USER: ${{ secrets.PI_USER }}
         run: |
-          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 ${PI_USER}@${PI_HOST} bash << 'REMOTE'
+          ssh -i ~/.ssh/pi_key -o ConnectTimeout=15 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts ${PI_USER}@${PI_HOST} bash << 'REMOTE'
           DB_PASS=$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)
           DB_NAME=$(grep DB_DATABASE /home/admin/backend/.env | cut -d= -f2)
 
