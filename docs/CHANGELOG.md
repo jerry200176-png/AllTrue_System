@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-08 — ops(ci): 補齊 WSL2 runner 硬化維運 SOP
+
+- Ops 新增 self-hosted runner 邊界、健康檢查、離線恢復與疑似入侵停用流程，確保 CI-only runner 不承載 production deploy secrets
+
+---
+
 ## 2026-05-08 — security(ops): 維運 SSH 改為 host key pinning
 
 - Security 將 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml` 移除 `StrictHostKeyChecking no`，改用 `PI_HOST_KEY` + `known_hosts` pinning，並在 Presubmit 增加禁止回歸檢查
