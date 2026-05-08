@@ -1884,6 +1884,15 @@ const resolveTeacherName = (tid) => {
   return fromList?.username || null;
 };
 
+const isCourseActiveForCalendar = (course) => {
+  // Calendar should not render explicitly paused/closed courses.
+  // Legacy payloads may expose either `status=inactive` or Stop/stop=1.
+  const status = String(course?.status || '').toLowerCase();
+  if (status === 'inactive') return false;
+  const stopFlag = Number(course?.stop ?? course?.Stop ?? 0);
+  return stopFlag !== 1;
+};
+
 const filteredCourses = computed(() => {
   let list = displayWeekFilteredCourses.value;
   const teacherScopeId = isTeacher.value && currentTeacherId.value ? String(currentTeacherId.value) : '';
@@ -2122,6 +2131,8 @@ const loadCourses = async () => {
     teacher_name: c.teacher_name || '未指派',
     weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
     first_class_date: c.first_class_date || c.StartDate || null,
+    status: c.status || '',
+    stop: c.stop ?? c.Stop ?? 0,
     payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
     sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
     room_id: c.RoomID || c.room_id || ''
@@ -2163,6 +2174,8 @@ const loadCourses = async () => {
       days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
       weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
       first_class_date: c.first_class_date || c.StartDate || null,
+      status: c.status || '',
+      stop: c.stop ?? c.Stop ?? 0,
       payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
       sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0
     }));
@@ -2183,6 +2196,8 @@ const loadCourses = async () => {
   } else {
     courseList = supabaseList;
   }
+
+  courseList = courseList.filter(isCourseActiveForCalendar);
 
   // 優先從 Laravel API 載入請假/調課（與課程管理寫入的資料一致，該堂才會正確消失）
   // Use a +-2 month window around the current display month to avoid full-table load
