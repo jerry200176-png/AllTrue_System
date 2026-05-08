@@ -412,6 +412,23 @@ class SubstituteTeacherTest extends TestCase
         ]);
     }
 
+    public function test_learning_record_index_hides_substituted_slot_from_regular_teacher(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-27 12:00:00', 'Asia/Taipei'));
+        [$regularTeacherId, , , $regularRecord, $subRecord] = $this->seedSameDayMixedSubstituteLearningRecords();
+        $regularToken = $this->createTeacherToken($regularTeacherId);
+
+        $list = $this->withHeaders([
+            'Authorization' => "Bearer {$regularToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?start_date=2026-04-26&end_date=2026-04-26&per_page=50');
+        $list->assertOk();
+
+        $visibleIds = collect($list->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $regularRecord->id, $visibleIds, '正班老師仍應看到自己實際授課時段');
+        $this->assertNotContains((int) $subRecord->id, $visibleIds, '已代課時段不應再出現在原老師待填清單');
+    }
+
     /** 智慧排課老師端會帶 teacher_id=自己；不得與「僅代課」之 StudentClass.TeacherID（正班）衝突而漏列。 */
     public function test_teacher_student_classes_index_with_teacher_id_param_includes_substitute_only_course(): void
     {
