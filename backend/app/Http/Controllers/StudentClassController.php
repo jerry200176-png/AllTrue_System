@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LearningRecord;
+use App\Models\Payment;
 use App\Models\PaymentReport;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -1102,6 +1103,10 @@ class StudentClassController extends Controller
 
         $studentClass->update($mapped);
         $studentClass->refresh();
+
+        if (array_key_exists('paid_at', $rawInput)) {
+            $this->syncLatestPaymentDateForCourse($studentClass, $rawInput['paid_at'] ?? null);
+        }
 
         if (array_key_exists('Stop', $mapped) && (int) ($mapped['Stop'] ?? 0) === 1) {
             $this->cancelFutureScheduledSessions($studentClass, null);
@@ -3019,6 +3024,50 @@ class StudentClassController extends Controller
         }
 
         return $mappedData;
+    }
+
+    private function syncLatestPaymentDateForCourse(StudentClass $studentClass, mixed $paidAt): void
+    {
+        if (empty($paidAt)) {
+            return;
+        }
+
+        $normalizedDate = $this->normalizeDateString((string) $paidAt);
+        if (!$normalizedDate) {
+            return;
+        }
+
+        $invoiceIds = Invoice::query()
+            ->where('StudentClassID', (int) $studentClass->ID)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->values()
+            ->all();
+
+        if (empty($invoiceIds)) {
+            return;
+        }
+
+        $latestPayment = Payment::query()
+            ->whereIn('InvoiceID', $invoiceIds)
+            ->where('Amount', '>', 0)
+            ->where('Method', '!=', 'void')
+            ->orderByRaw("COALESCE(PaidAt, '0000-00-00') DESC")
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$latestPayment) {
+            return;
+        }
+
+        $latestPayment->PaidAt = $normalizedDate;
+        $latestPayment->save();
+
+        PaymentReport::query()
+            ->where('payment_id', (int) $latestPayment->id)
+            ->where('status', 'confirmed')
+            ->update(['payment_date' => $normalizedDate]);
     }
 
     /**
