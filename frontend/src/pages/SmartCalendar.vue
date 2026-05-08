@@ -2120,7 +2120,7 @@ const loadCourses = async () => {
       });
       courseList = allCourses.map(mapCourse);
     } catch (e) {
-      console.warn('Calendar: API load failed, falling back to Supabase', e);
+    // Keep fallback silent for end users; API failure is handled by fallback path.
     }
   }
 
@@ -2260,7 +2260,7 @@ const loadStudents = async () => {
     const json = await res.json();
     allStudents.value = Array.isArray(json) ? json : (json?.data || []);
   } catch (e) {
-    console.warn('loadStudents failed:', e);
+    // Keep UI usable even if student options fail to load.
     let query = supabase.from('students').select('id, name');
     if (!isTeacher.value && props.branchId) query = query.eq('branch_id', props.branchId);
     const { data } = await query;
@@ -2310,7 +2310,7 @@ const loadTeachers = async () => {
       ? normalized
       : normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
   } catch (e) {
-    console.warn('loadTeachers failed:', e);
+    // Keep UI usable even if teacher options fail to load.
     teachers.value = [];
   }
 };
@@ -2331,7 +2331,7 @@ const loadRooms = async () => {
       roomList.value = Array.isArray(json) ? json : (json?.data || []);
     }
   } catch (e) {
-    console.warn('loadRooms failed:', e);
+    // Keep UI usable even if room options fail to load.
   }
 };
 
