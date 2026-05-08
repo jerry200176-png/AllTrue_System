@@ -440,6 +440,50 @@ class StudentClassPaidStatusTest extends TestCase
         $this->assertSame('2026-04-18', $match['last_paid_at'], 'last_paid_at should match the auditable invoice payment date');
     }
 
+    public function test_update_paid_at_syncs_latest_invoice_payment_date(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-04-18',
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-04-18',
+            'TotalAmount' => 13200,
+            'PaidAmount' => 13200,
+            'Status' => 'paid',
+        ]);
+        $payment = \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 13200,
+            'PaidAt' => '2026-04-18',
+            'Method' => 'transfer',
+        ]);
+
+        $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['paid_at' => '2026-04-30'],
+            ['Authorization' => "Bearer {$token}"]
+        )->assertOk();
+
+        $payment->refresh();
+        $this->assertStringStartsWith('2026-04-30', (string) $payment->PaidAt, 'Editing paid_at should sync latest invoice payment date');
+
+        $res = $this->getJson(
+            '/api/v1/student-classes?branch_id=1',
+            ['Authorization' => "Bearer {$token}"]
+        );
+        $res->assertOk();
+        $data = $res->json('data') ?? $res->json();
+        $match = collect($data)->first(fn ($c) => (int) ($c['ID'] ?? $c['id'] ?? 0) === (int) $sc->ID);
+        $this->assertNotNull($match);
+        $this->assertSame('2026-04-30', $match['last_paid_at']);
+    }
+
     /**
      * FR-002 backend guard: toggle to unpaid without paid_at must also clear PayDate.
      * Regression for Bug B: StudentsList.vue previously sent only { payment_status: 'unpaid' }
