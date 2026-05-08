@@ -803,6 +803,21 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 - **事故恢復順序**：先確認 GitHub commit / backup manifest / health check，再做最小 rollback；禁止用舊工作樹覆蓋後直接 commit。
 - **回報「備份正常」條件**：不是只看到 `.sql.gz` 存在，還要能確認 Drive 同步與最近一次 restore drill 成功。
 
+### One-command Backup Audit（canonical）
+
+先在 Pi 或具備對應權限的維運環境執行：
+
+```bash
+bash /home/admin/scripts/backup-audit.sh
+```
+
+輸出為 `GREEN / YELLOW / RED`，並逐項檢查：
+- 本機 nightly / sixhour / monthly 新鮮度與檔案大小
+- 最新 manifest 是否含 sha256 列
+- Google Drive 遠端（db/monthly/sixhour/manifests）可見性
+- 最新 `Backup Restore Verification` workflow 結果
+- DB 核心表 row-count sanity（只讀查詢）
+
 ### Branch Protection 稽核指令（每月或重大事故後）
 
 ```bash
