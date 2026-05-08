@@ -24,9 +24,9 @@
 
 ---
 
-## 2026-05-09 — ops(security): PR Dependency Review workflow（供應鏈）
+## 2026-05-09 — ci(security): PR Dependency Review workflow（供應鏈，選用 GHAS）
 
-- Added `.github/workflows/dependency-review.yml`（`fail-on-severity: high`，`ubuntu-latest`）；`CONTRIBUTING`／`INDEX` 補啟用 Dependency graph 與選配 merge queue／reviewers 說明
+- Added `.github/workflows/dependency-review.yml`：`fail-on-severity: high`、`ubuntu-latest`；預設略過官方 action（未開 GHAS 時避免 PR 全紅），Repo 變數 `ENABLE_DEPENDENCY_REVIEW=true` 後啟用；`CONTRIBUTING`／`INDEX` 補說明；主線仍靠 `ci.yml` audit
 
 ---
 

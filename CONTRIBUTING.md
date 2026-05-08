@@ -42,7 +42,7 @@
 | **Branch protection** | `main` 上 required checks + 禁止 force push（設定在 GitHub 端）。 |
 | **Dependabot** | [`.github/dependabot.yml`](.github/dependabot.yml) 每週／每月自動開升級 PR。 |
 | **工作流** | `.github/workflows/`：`ci.yml`、`presubmit.yml`、`deploy.yml` 等；deploy 僅在合併後且有 deployable diff 時執行。 |
-| **Dependency Review** | [`.github/workflows/dependency-review.yml`](.github/workflows/dependency-review.yml)：每個 PR 比對 lockfile 依賴是否**新引入**高嚴重度漏洞（與 `npm audit` / `composer audit` 互補）。需於 **Settings → Code security** 啟用 **Dependency graph**（私有 repo 依方案）。可將 **Dependency Review** job 加入 Branch protection「必過檢查」。 |
+| **Dependency Review** | [`.github/workflows/dependency-review.yml`](.github/workflows/dependency-review.yml)：可選用 GitHub 官方的 **dependency-review**（與 `npm audit` / `composer audit` 互補）。需 **Dependency graph + GitHub Advanced Security**（私人 repo 常需付費方案）；啟用後在 **Repo settings → Variables → Actions** 設 `ENABLE_DEPENDENCY_REVIEW=true`，否則 workflow 只發 notice、不阻擋合併。主線供應鏈 gate 仍以 `ci.yml` 的 audit 為準。 |
 
 ### 再靠近一點大廠（選配、不強制）
 

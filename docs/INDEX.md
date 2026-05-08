@@ -159,7 +159,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `.github/ISSUE_TEMPLATE/` | 建立 Issue 時選擇：Bug／工程變更／Ops（`config.yml` 含導航連結）|
 | `SECURITY.md`（根目錄） | GitHub **Security policy** 與漏洞通報入口；細節見 `docs/SECURITY.md` |
 | `.github/CODEOWNERS` | 敏感路徑自動請求 review |
-| `dependency-review.yml` | PR **供應鏈**：依賴 diff + 漏洞嚴重度 gate（GitHub-hosted，需 **Dependency graph** 開啟） |
+| `dependency-review.yml` | PR **供應鏈（選用）**：官方 dependency-review；需 GHAS + 變數 `ENABLE_DEPENDENCY_REVIEW=true`；未開時僅 notice |
 
 ## 🤖 GitHub Workflows（自動化）
 
@@ -169,7 +169,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `deploy.yml` | main CI success | 有 deployable diff 才自動部署 Pi + smoke test + rollback；docs-only merge 跳過 |
 | `presubmit.yml` | 每次 PR | Branch 命名規範檢查 |
 | `codeql.yml` | PR / main push / weekly | 後端或 workflow 相關改動才跑 PHPStan level 5 |
-| `dependency-review.yml` | 每次 PR | 依賴變更審查（`fail-on-severity: high`）；見 `CONTRIBUTING.md` |
+| `dependency-review.yml` | 每次 PR | 選用 GHAS 依賴審查（見變數 `ENABLE_DEPENDENCY_REVIEW`）；見 `CONTRIBUTING.md` |
 | `pi-health.yml` | 每 6 小時 | 磁碟/溫度/備份年齡/UptimeRobot |
 | `slow-query-report.yml` | 每週一 | MySQL 慢查詢報告 |
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |

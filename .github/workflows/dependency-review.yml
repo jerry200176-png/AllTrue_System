@@ -1,6 +1,7 @@
 # 與大廠常見「Supply chain / PR 依賴審查」對齊：僅在 PR 上執行，不改 production。
-# 需在 repo Settings → Code security 開啟 Dependency graph（私有 repo 依方案）。
-# 使用 GitHub-hosted runner，不消耗 self-hosted WSL CI minutes。
+# 正式執行 dependency-review-action 需：Dependency graph + **GitHub Advanced Security**（私人 repo 多數要付費方案）。
+# 預設不跑該 action（避免 PR 因未開 GHAS 而全失敗）；啟用方式見下方 `ENABLE_DEPENDENCY_REVIEW`。
+# Runner 使用 GitHub-hosted，不消耗 self-hosted WSL CI minutes。
 
 name: Dependency Review
 
@@ -23,11 +24,22 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Gate (requires GHAS)
+        id: gate
+        run: |
+          if [ "${{ vars.ENABLE_DEPENDENCY_REVIEW }}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dependency Review action 已略過。若組織已啟用 GitHub Advanced Security + Dependency graph，請在 Repo settings → Variables → Actions 設定 ENABLE_DEPENDENCY_REVIEW=true。其餘供應鏈檢查仍由 ci.yml 的 npm/composer audit 負責。"
+          fi
+
       - name: Checkout
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/checkout@v6
 
-      # 失敗常見原因：未開 Dependency graph。Settings → Code security → enable.
       - name: Run dependency review
+        if: steps.gate.outputs.enabled == 'true'
         uses: actions/dependency-review-action@v4
         with:
           # 與 frontend「npm audit --audit-level=high」、backend composer HIGH/CRITICAL 精神一致
