@@ -2,7 +2,7 @@ name: Pi Health Monitor
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # 每 6 小時執行一次
+    - cron: '0 1 * * *'   # 每日 09:00 台灣時間（關鍵告警由 Pi 本機 monitor-alert cron 補位）
   workflow_dispatch:         # 手動觸發
 
 jobs:

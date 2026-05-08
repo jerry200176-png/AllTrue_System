@@ -2,8 +2,8 @@ name: Branch Hygiene Report (daily dry-run)
 
 on:
   schedule:
-    # 08:00 台灣時間 = 00:00 UTC
-    - cron: "0 0 * * 1-5"
+    # 每週一 08:00 台灣時間 = 週日 00:00 UTC
+    - cron: "0 0 * * 0"
   workflow_dispatch: {}
 
 # ⛔ 只讀報告，沒有任何刪除操作
