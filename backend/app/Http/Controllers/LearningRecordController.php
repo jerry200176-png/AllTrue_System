@@ -1183,6 +1183,12 @@ class LearningRecordController extends Controller
 
         if ($session) {
             $oldStatus = strtolower(trim((string) ($session->Status ?? 'scheduled')));
+            $this->cancelAutoMaterializedDuplicateSession(
+                $classId,
+                $newDate,
+                $startTime ?: (string) $session->StartTime,
+                (int) $session->id
+            );
             $session->SessionDate = $newDate;
             if ($startTime) $session->StartTime = $startTime;
             if ($endTime)   $session->EndTime   = $endTime;
@@ -1394,6 +1400,39 @@ class LearningRecordController extends Controller
                     ->delete();
             }
         }
+    }
+
+    private function cancelAutoMaterializedDuplicateSession(
+        int $courseId,
+        string $newDate,
+        ?string $startTime,
+        int $movingSessionId
+    ): void {
+        $startHm = substr((string) ($startTime ?? ''), 0, 5);
+        if ($courseId <= 0 || $startHm === '' || $movingSessionId <= 0) {
+            return;
+        }
+
+        $duplicate = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $newDate)
+            ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startHm])
+            ->where('id', '!=', $movingSessionId)
+            ->where('Status', 'scheduled')
+            ->where(function ($q) {
+                $q->whereNull('Note')
+                    ->orWhere('Note', '')
+                    ->orWhere('Note', 'auto-materialized-from-schedule');
+            })
+            ->lockForUpdate()
+            ->first();
+
+        if (!$duplicate) {
+            return;
+        }
+
+        $duplicate->Status = 'cancelled';
+        $duplicate->Note = trim((string) ($duplicate->Note ?? '') . '; cancelled-duplicate-reschedule-placeholder', '; ');
+        $duplicate->save();
     }
 
     public function requestChanges(Request $request, LearningRecord $learningRecord)
