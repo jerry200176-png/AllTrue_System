@@ -148,6 +148,49 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 4. 將「本次不修但會影響未來」寫入 `docs/TECH_DEBT.md`。
 5. 只保存 distilled causality，不複製完整對話推理，避免記憶污染。
 
+### B4. WSL2 Self-hosted Runner Hardening SOP
+
+**Scope boundary**
+- `wsl2-jerry-alltrue` runner 只允許 CI (`ci.yml` / `presubmit.yml` / `codeql.yml`)。
+- `deploy.yml` 必須持續使用 GitHub-hosted runner；禁止把 production deploy secrets 下放到 WSL2 runner。
+
+**Daily/PR-time health check（read-only）**
+```bash
+# Runner 是否在線
+gh api repos/jerry200176-png/AllTrue_System/actions/runners --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}'
+
+# 本機磁碟空間
+df -h
+
+# CI 前置 runtime
+php -v
+php -m | rg 'pcov|pdo_mysql|mbstring'
+mysql --version
+node -v
+```
+
+**Offline / queued jobs recovery**
+1. 確認 Windows 主機未 sleep，WSL2 有正常啟動。
+2. 在 runner 所在目錄重啟 service（依實際安裝方式）：
+   - `./svc.sh status`
+   - `./svc.sh stop`
+   - `./svc.sh start`
+3. 若 runner 卡 `busy=true` 超過 15 分鐘且無對應 job log，先重啟 runner service，再 re-run 失敗 workflow。
+
+**Compromise / leak suspicion（Stop-the-line）**
+1. 立即在 GitHub 停用 runner：
+   ```bash
+   gh api repos/jerry200176-png/AllTrue_System/actions/runners --jq '.runners[] | [.id,.name] | @tsv'
+   gh api -X DELETE repos/jerry200176-png/AllTrue_System/actions/runners/<runner_id>
+   ```
+2. 旋轉 repository Actions runner registration token，重新註冊新 runner。
+3. 驗證 `deploy.yml` secrets 未曾被配置到 self-hosted workflows。
+4. 事件紀錄寫入 `docs/AI_REGRESSION_LESSONS.md` 與 `docs/CHANGELOG.md`。
+
+**Monthly hygiene**
+- 每月一次更新 runner runtime（WSL2 packages, PHP, Node, Composer）並抽跑 `presubmit.yml` + `ci.yml`。
+- 每月一次檢查 labels 仍為 `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，避免誤接 production workflow。
+
 ## C. Incident lessons (must remember)
 
 From previous incidents:
