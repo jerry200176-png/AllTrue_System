@@ -339,37 +339,14 @@ class ScheduleController extends Controller
                 ->first();
             if ($existing) {
                 $existing->update(array_filter($data, fn ($v) => $v !== null));
+                $this->ensureClassSessionForScheduleData($existing->toArray());
                 return response()->json($existing, 201);
             }
         }
 
         $schedule = Schedule::create($data);
 
-        // BUG-A fix: when a makeup class (type=extra) is created with an explicit date,
-        // ensure a ClassSession exists so attendance and evaluation pages can find it
-        // (both depend exclusively on ClassSession, not schedules).
-        //
-        // Only type=extra triggers this: that marks the *destination* makeup date (e.g. 4/23).
-        // type=normal + status=rescheduled marks the *origin* vacated date (e.g. 4/22) and
-        // must NOT create a ClassSession — the original session there is being removed/moved.
-        $scheduleType = strtolower((string) ($data['type'] ?? 'normal'));
-        if ($scheduleType === 'extra'
-            && $courseId > 0
-            && !empty($data['schedule_date'])
-        ) {
-            ClassSession::firstOrCreate(
-                [
-                    'StudentClassID' => $courseId,
-                    'SessionDate'    => $data['schedule_date'],
-                ],
-                [
-                    'StartTime' => $data['start_time'] ?? '00:00:00',
-                    'EndTime'   => $data['end_time']   ?? '00:00:00',
-                    'Status'    => 'scheduled',
-                    'Note'      => '',
-                ]
-            );
-        }
+        $this->ensureClassSessionForScheduleData($schedule->toArray());
 
         return response()->json($schedule, 201);
     }
@@ -813,8 +790,57 @@ class ScheduleController extends Controller
 
         $schedule->fill(array_filter($data, fn ($v) => $v !== null));
         $schedule->save();
+        $this->ensureClassSessionForScheduleData($schedule->toArray());
 
         return response()->json($schedule);
+    }
+
+    /**
+     * Ensure schedule-backed sessions are materialized into ClassSession so
+     * SmartCalendar / 點名 / 評量 can render the same source of truth.
+     */
+    private function ensureClassSessionForScheduleData(array $schedule): void
+    {
+        $courseId = (int) ($schedule['student_course_id'] ?? 0);
+        $sessionDateRaw = (string) ($schedule['schedule_date'] ?? '');
+        $status = strtolower((string) ($schedule['status'] ?? 'scheduled'));
+        $scheduleType = strtolower((string) ($schedule['type'] ?? 'normal'));
+
+        if ($courseId <= 0 || $sessionDateRaw === '') {
+            return;
+        }
+
+        // Keep legacy behavior for makeup destination (type=extra), and also
+        // cover normal scheduled exceptions that previously stayed as "gray chips".
+        $shouldEnsure = $status === 'scheduled'
+            || ($scheduleType === 'extra' && in_array($status, ['scheduled', 'rescheduled'], true));
+        if (!$shouldEnsure) {
+            return;
+        }
+
+        $sessionDate = Carbon::parse($sessionDateRaw)->toDateString();
+        $startTime = substr((string) ($schedule['start_time'] ?? '00:00:00'), 0, 8);
+        $endTime = substr((string) ($schedule['end_time'] ?? '00:00:00'), 0, 8);
+        if (strlen($startTime) === 5) {
+            $startTime .= ':00';
+        }
+        if (strlen($endTime) === 5) {
+            $endTime .= ':00';
+        }
+
+        ClassSession::firstOrCreate(
+            [
+                'StudentClassID' => $courseId,
+                'SessionDate' => $sessionDate,
+                'StartTime' => $startTime,
+            ],
+            [
+                'SubjectID' => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
+                'EndTime' => $endTime,
+                'Status' => 'scheduled',
+                'Note' => 'auto-materialized-from-schedule',
+            ]
+        );
     }
 
     public function destroy(Schedule $schedule)

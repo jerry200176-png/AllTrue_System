@@ -91,6 +91,22 @@ class ScheduleMakeupCreatesClassSessionTest extends TestCase
         $this->assertDatabaseCount('ClassSession', 0);
     }
 
+    public function test_normal_scheduled_exception_creates_class_session(): void
+    {
+        $this->postSchedule([
+            'status'            => 'scheduled',
+            'type'              => 'normal',
+            'schedule_date'     => self::DATE,
+            'student_course_id' => $this->sc->ID,
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $this->sc->ID,
+            'SessionDate'    => self::DATE,
+            'Status'         => 'scheduled',
+        ]);
+    }
+
     // ── FR-002: idempotent — double POST does not duplicate ClassSession ────────
 
     public function test_duplicate_post_does_not_create_duplicate_class_session(): void

@@ -12,6 +12,12 @@
 
 ---
 
+## 2026-05-08 — fix(schedule): 例外堂補建 ClassSession 避免灰色堂次消失
+
+- Fixed `schedules` 新增/更新為可上課狀態時會冪等補建對應 `ClassSession`，並新增 backfill 指令修復歷史漏建，避免課程列表有堂次但行事曆不顯示
+
+---
+
 ## 2026-04-30 — feat(workflow): 請假補課前端入口
 
 - Added 家長端請假申請入口與主任端補課案件卡片，可產生候選時段並確認建立補課
