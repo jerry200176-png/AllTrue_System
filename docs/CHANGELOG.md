@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-08 — ops(ci): docs-only PR required checks 對齊
+
+- Ops 調整 `ci.yml` 改為所有 PR 皆觸發並保留 required check context，再用 changed-areas job 決定是否執行 PHPUnit/Vite，修復 docs-only PR 缺少 required checks 無法合併
+
+---
+
 ## 2026-05-08 — fix(schedule): 代課堂次顯示在代課老師欄
 
 - Fixed 同一堂代課若殘留原老師與代課老師的重複排程紀錄，行事曆會優先顯示在代課老師欄位

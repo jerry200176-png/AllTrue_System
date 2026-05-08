@@ -3,18 +3,8 @@ name: CI — PHPUnit Tests
 on:
   push:
     branches: ["main"]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "scripts/**"
-      - ".github/workflows/**"
   pull_request:
     branches: ["main"]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "scripts/**"
-      - ".github/workflows/**"
 
 # ⛔ 此 workflow 只跑測試，絕對不部署任何東西到生產環境
 # ⛔ 禁止在此新增任何 ssh、rsync、scp、ftp deploy 步驟
