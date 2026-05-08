@@ -454,6 +454,49 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R40. 點名扣堂不可只用 `ClassSessionID` 防重
+
+- 歷史補建或例外流程可能讓同一個 `StudentClass` 同一天同開始時間出現兩筆不同 `ClassSession.id`；若點名只檢查 `ClassSessionID`，前端會列兩堂，批次點名會扣兩堂。
+- **強制規則**：出缺勤建立與扣堂前，必須以 `StudentClassID + SessionDate + StartTime` 做時段級防重；`ClassSessionID` 只能當其中一層識別，不可作為唯一防線。
+- **前端規則**：待點名列表顯示同一天課表時，應以同課程/日期/開始時間去重，避免全選批次送出重複堂。
+- **測試必補**：新增或修改點名/補點名/批次點名時，必須覆蓋「兩筆不同 ClassSession id 但同課程同日期同開始時間」只能成功一筆且只扣一堂。
+
+---
+
+### R41. 補請假不可只用課程 + 日期找堂次
+
+- 同一個 `StudentClass` 同一天可能有兩堂不同時間的課；若補請假只用 `student_course_id + session_date` 找第一筆 `ClassSession`，會誤把較早堂次改成補請假，實際要處理的晚堂仍顯示已上。
+- **強制規則**：從出缺勤頁或任何已知堂次 context 發起補請假時，必須傳入並優先使用 `ClassSessionID`；日期只能做相容舊入口的 fallback，不可作為唯一定位。
+- **測試必補**：修改 `retroLeave`、出缺勤狀態修改或同日多堂流程時，必須覆蓋「同一課程同日 18:30 與 20:00 兩堂，補請假 20:00 不可誤改 18:30」。
+
+---
+
+### R42. 行事曆堂次顯示老師不可被舊評量老師覆蓋
+
+- `ClassSession` 列表同時回傳堂次顯示老師與 `learning_record_teacher_id`；若 `teacher_name` 優先取 `LearningRecord.TeacherID`，課程主檔改老師後，行事曆會出現 `teacher_id` 是新老師但名稱仍是舊老師的錯覺。
+- **強制規則**：`GET /class-sessions` 給行事曆/點名的顯示老師必須與 `teacher_id` 一致，優先順序為「代課老師 > 現任課程老師」；評量歷史歸屬只放在 `learning_record_teacher_id` 或評量頁專用欄位。
+- **測試必補**：修改 `ClassSessionController::index`、行事曆堂次顯示或課程改老師流程時，必須覆蓋「評量仍屬舊老師，但 StudentClass.TeacherID 已改新老師，class-sessions 應顯示新老師」。
+
+---
+
+### R43. 調課目標 `scheduled` 例外必須以 anchor 去重
+
+- 拖曳移動課表時，前端會先寫 `schedules.status='rescheduled'` 原堂 marker，再寫 `scheduled` 目標堂；若同一 anchor 因重試、同日改時段或 stale POST 留下多筆 `scheduled`，行事曆會多畫一堂。
+- **強制規則**：同步 `reschedule-session` 時，同一 `student_course_id + original_schedule_id` 在目標日期只能保留一筆 `scheduled`；跨日期與同日改時段都要清除 stale duplicates。
+- **前端規則**：`SmartCalendar` 渲染 scheduled exceptions 時，必須以 `student_course_id + schedule_date + start_time + original_schedule_id` 做顯示去重，避免歷史髒資料直接放大成畫面 bug。
+- **測試必補**：修改拖曳調課、`syncSchedulesAfterReschedule` 或行事曆例外合併時，必須覆蓋「同日改時段已有重複 scheduled row，修正後只剩一筆且保留代課老師」。
+
+---
+
+### R44. 代課顯示不可讓原老師 stale row 搶贏
+
+- 同一堂代課可能因重試或歷史流程留下兩筆 `schedules.status='scheduled'`：一筆 `teacher_id` 是原課程老師，一筆才是真正代課老師；若 `ClassSessionController::index` 單純取 `MAX(id)`，較新的原老師 stale row 會讓課表仍掛在原老師欄。
+- **強制規則**：查詢代課顯示老師時，`scheduled` 例外必須優先選 `teacher_id != StudentClass.TeacherID` 的紀錄；找不到不同老師時才退回課程老師。
+- **前端規則**：`SmartCalendar` 同日同時段例外排序時，必須讓「不同於課程老師」的 scheduled exception 先渲染，避免顯示去重保留錯誤那筆。
+- **測試必補**：修改 `ClassSessionController::index`、代課流程或行事曆例外合併時，必須覆蓋「同一堂同時存在原老師 stale scheduled row 與代課 scheduled row，API/畫面仍顯示代課老師」。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -461,11 +504,11 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules） |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）|
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
