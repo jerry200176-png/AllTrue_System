@@ -2073,6 +2073,7 @@ const saveStatusEdit = async (record) => {
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             student_course_id: record.StudentClassID,
+            class_session_id: record.ClassSessionID,
             session_date: sessionDate,
             reason: '出缺勤頁補請假',
           }),
