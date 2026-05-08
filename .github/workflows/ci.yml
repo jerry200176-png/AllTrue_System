@@ -325,6 +325,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Calendar occurrence regression tests
+        working-directory: frontend
+        run: npm run test:calendar
+
       - name: Vite build
         working-directory: frontend
         run: npm run build
