@@ -88,6 +88,10 @@ class ClassSessionController extends Controller
             $campusIds = [$requestedCampus];
         }
 
+        if ($role === 'teacher') {
+            $this->autoMaterializeTeacherMonthlySessionsForRange($request, $teacherId, $campusIds);
+        }
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
@@ -314,6 +318,97 @@ class ClassSessionController extends Controller
             'per_page' => $rows->perPage(),
             'total' => $rows->total(),
         ]);
+    }
+
+    /**
+     * Teacher today list relies on ClassSession rows; monthly contracts may only
+     * exist as projected slots. Materialize missing projected rows for same-day
+     * teacher queries so pending attendance lists do not drop students.
+     *
+     * @param  array<int>  $campusIds
+     */
+    private function autoMaterializeTeacherMonthlySessionsForRange(Request $request, int $teacherId, array $campusIds): void
+    {
+        if ($teacherId <= 0 || !$request->filled('start') || !$request->filled('end')) {
+            return;
+        }
+
+        try {
+            $start = Carbon::parse((string) $request->input('start'))->toDateString();
+            $end = Carbon::parse((string) $request->input('end'))->toDateString();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        // Keep scope tight for safety/perf: only same-day requests are auto-materialized.
+        if ($start !== $end) {
+            return;
+        }
+
+        $targetDate = $start;
+        $isoWeekday = (int) Carbon::parse($targetDate)->dayOfWeekIso;
+
+        $classes = StudentClass::query()
+            ->join('Student as st', 'st.id', '=', 'StudentClass.StudentID')
+            ->where('StudentClass.TeacherID', $teacherId)
+            ->where('StudentClass.ScheduleMode', 'date')
+            ->where(function ($q) {
+                $q->where('StudentClass.Stop', 0)->orWhereNull('StudentClass.Stop');
+            })
+            ->when(!empty($campusIds), fn ($q) => $q->whereIn('st.CampusID', $campusIds))
+            ->select('StudentClass.*')
+            ->get();
+
+        foreach ($classes as $studentClass) {
+            $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
+            $endDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
+            if ($startDate && $targetDate < $startDate) {
+                continue;
+            }
+            if ($endDate && $targetDate > $endDate) {
+                continue;
+            }
+
+            $slots = $this->resolveProjectedMonthlySlotsForWeekday($studentClass, $isoWeekday);
+            if (empty($slots)) {
+                continue;
+            }
+
+            foreach ($slots as $slot) {
+                $startHm = substr((string) ($slot['start_time'] ?? ''), 0, 5);
+                if ($startHm === '') {
+                    continue;
+                }
+
+                $hasSuppressedException = Schedule::where('student_course_id', (int) $studentClass->ID)
+                    ->whereDate('schedule_date', $targetDate)
+                    ->where('start_time', $startHm)
+                    ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
+                    ->exists();
+                if ($hasSuppressedException) {
+                    continue;
+                }
+
+                $exists = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+                    ->whereDate('SessionDate', $targetDate)
+                    ->where('StartTime', (string) $slot['start_time'])
+                    ->exists();
+                if ($exists) {
+                    continue;
+                }
+
+                ClassSession::create([
+                    'StudentClassID'      => (int) $studentClass->ID,
+                    'SubjectID'           => $studentClass->SubjectID ?: null,
+                    'SessionDate'         => $targetDate,
+                    'StartTime'           => (string) $slot['start_time'],
+                    'EndTime'             => (string) $slot['end_time'],
+                    'Status'              => 'scheduled',
+                    'Note'                => 'projected-monthly-materialized-auto',
+                    'IsContractException' => 0,
+                ]);
+            }
+        }
     }
 
     /**
@@ -990,6 +1085,27 @@ class ClassSessionController extends Controller
      */
     private function resolveProjectedMonthlySlot(StudentClass $studentClass, int $isoWeekday, ?string $requestedStart): ?array
     {
+        $slots = $this->resolveProjectedMonthlySlotsForWeekday($studentClass, $isoWeekday);
+        if (empty($slots)) {
+            return null;
+        }
+        if (!$requestedStart) {
+            return $slots[0];
+        }
+        foreach ($slots as $slot) {
+            if (substr((string) $slot['start_time'], 0, 5) === substr($requestedStart, 0, 5)) {
+                return $slot;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int, array{start_time:string,end_time:string}>
+     */
+    private function resolveProjectedMonthlySlotsForWeekday(StudentClass $studentClass, int $isoWeekday): array
+    {
         $globalDuration = max(30, (int) ($studentClass->SessionDuration ?? 120));
         $candidates = [
             ['week', 'time', null],
@@ -1001,6 +1117,7 @@ class ClassSessionController extends Controller
             ['week6', 'time6', 'duration6'],
         ];
 
+        $slots = [];
         foreach ($candidates as [$weekField, $timeField, $durationField]) {
             $weekday = (int) ($studentClass->{$weekField} ?? 0);
             if ($weekday !== $isoWeekday) {
@@ -1011,21 +1128,20 @@ class ClassSessionController extends Controller
                 continue;
             }
             $start = $this->normalizeTime($time);
-            if ($requestedStart && substr($start, 0, 5) !== substr($requestedStart, 0, 5)) {
-                continue;
-            }
             $duration = $durationField ? (int) ($studentClass->{$durationField} ?? 0) : 0;
             if ($duration < 30) {
                 $duration = $globalDuration;
             }
 
-            return [
+            $slots[] = [
                 'start_time' => $start,
                 'end_time'   => $this->computeEndTime($start, $duration),
             ];
         }
 
-        return null;
+        usort($slots, fn ($a, $b) => strcmp($a['start_time'], $b['start_time']));
+
+        return $slots;
     }
 
     private function appendSessionNote($existing, string $suffix): string
