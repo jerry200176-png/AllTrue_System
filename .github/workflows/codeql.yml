@@ -43,7 +43,7 @@ jobs:
   # PHP 靜態分析（PHPStan level 5）
   # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan
   phpstan:
-    name: PHPStan (php)
+    name: PHPStan Advisory (php)
     needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
     runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
@@ -66,4 +66,4 @@ jobs:
             --memory-limit=512M \
             --no-progress \
             --error-format=github \
-            2>&1 || true   # 警告不擋 CI，逐步提升 level
+            2>&1 || true   # Advisory mode: emit findings, do not block merge

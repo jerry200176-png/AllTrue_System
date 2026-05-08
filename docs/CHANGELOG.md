@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(ci): PHPStan 明確改為 advisory gate
+
+- Ops 將 workflow job 名稱改為 `PHPStan Advisory (php)`，並同步 main branch protection required checks 移除舊 `PHPStan (php)`，避免「看似硬擋實際不擋」語意落差
+
+---
+
 ## 2026-05-09 — ops(db): PITR/binlog 評估決策（先 defer）
 
 - Ops/DBA 在 runbook 明確記錄 `#207` 決策：目前先不啟用 production binlog，補齊觸發條件與 pre-enable checklist（限 drill DB 驗證）後再啟動
