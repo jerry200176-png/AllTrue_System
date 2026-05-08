@@ -1355,8 +1355,6 @@ class LearningRecordController extends Controller
             return;
         }
 
-        $sameDayTimeChange = ($oldDate === $newDate);
-
         // The `rescheduled` anchor row stays on the OLD date as a historical marker.
         // Only the linked `scheduled` (substitute) row follows the session to its new slot.
         $rescheduledRow = Schedule::where('student_course_id', $courseId)
@@ -1381,24 +1379,21 @@ class LearningRecordController extends Controller
                 'end_time'   => $endTime   ?: $scheduledRow->end_time,
             ];
 
-            if (!$sameDayTimeChange) {
-                // Moving to a different date: also update date and day_of_week.
-                $updates['schedule_date'] = $newDate;
-                $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
-            }
+            // Moving to a different date updates date/day; same-day time changes
+            // still go through the duplicate purge below for the same anchor.
+            $updates['schedule_date'] = $newDate;
+            $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
 
             $scheduledRow->update($updates);
 
-            if (!$sameDayTimeChange) {
-                // Purge any duplicate scheduled rows on the target date
-                // (from race conditions or stale frontend POSTs).
-                Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $newDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', $rescheduledRow->id)
-                    ->where('id', '!=', $scheduledRow->id)
-                    ->delete();
-            }
+            // Purge duplicate scheduled rows for this reschedule anchor, including
+            // same-day time changes where stale rows can otherwise render twice.
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $newDate)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $rescheduledRow->id)
+                ->where('id', '!=', $scheduledRow->id)
+                ->delete();
         }
     }
 
