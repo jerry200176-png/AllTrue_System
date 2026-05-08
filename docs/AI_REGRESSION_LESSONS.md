@@ -471,6 +471,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R42. 行事曆堂次顯示老師不可被舊評量老師覆蓋
+
+- `ClassSession` 列表同時回傳堂次顯示老師與 `learning_record_teacher_id`；若 `teacher_name` 優先取 `LearningRecord.TeacherID`，課程主檔改老師後，行事曆會出現 `teacher_id` 是新老師但名稱仍是舊老師的錯覺。
+- **強制規則**：`GET /class-sessions` 給行事曆/點名的顯示老師必須與 `teacher_id` 一致，優先順序為「代課老師 > 現任課程老師」；評量歷史歸屬只放在 `learning_record_teacher_id` 或評量頁專用欄位。
+- **測試必補**：修改 `ClassSessionController::index`、行事曆堂次顯示或課程改老師流程時，必須覆蓋「評量仍屬舊老師，但 StudentClass.TeacherID 已改新老師，class-sessions 應顯示新老師」。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -482,7 +490,7 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules） |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）|
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |

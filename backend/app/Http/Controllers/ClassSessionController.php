@@ -145,8 +145,9 @@ class ClassSessionController extends Controller
                 'sub_sched.teacher_id as substitute_teacher_id',
                 's.CampusID',
                 's.name as student_name',
-                // 優先順序：代課老師 > 評量記錄的老師（歷史老師） > 契約主責老師（現任）
-                DB::raw('COALESCE(subt.T_Name, subu.Name, lrt.T_Name, lru.Name, t.T_Name, u.Name, "") as teacher_name'),
+                // 行事曆/點名顯示應與 teacher_id 一致：代課老師 > 現任課程老師。
+                // 評量老師是歷史歸屬，保留在 learning_record_teacher_id，不覆蓋堂次顯示名稱。
+                DB::raw('COALESCE(subt.T_Name, subu.Name, t.T_Name, u.Name, lrt.T_Name, lru.Name, "") as teacher_name'),
                 DB::raw('COALESCE(sub.Subject_Name, "") as subject_name'),
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
