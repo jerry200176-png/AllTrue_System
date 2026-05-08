@@ -731,6 +731,7 @@ function goFillRecord(ev) {
     localStorage.setItem('app_branch', String(ev.branchId));
   }
   emit('navigate-learning', {
+    branchId: ev.branchId || null,
     recordId: ev.recordId || null,
     classSessionId: ev.classSessionId || null,
     sessionDate: ev.sessionDate || null,

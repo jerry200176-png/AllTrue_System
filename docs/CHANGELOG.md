@@ -6,6 +6,42 @@
 
 ---
 
+## 2026-05-08 — security(deps): 升級 PhpSpreadsheet 修復 CI audit HIGH 漏洞
+
+- Security 升級 `phpoffice/phpspreadsheet` 至安全版，清除 Composer audit 的 HIGH/CRITICAL 阻擋項目
+
+---
+
+## 2026-05-08 — fix(schedule): 調課時取消自動補建的重複堂次
+
+- Fixed 調課流程若先由 `schedules` 自動補建目標日堂次，移動原 `ClassSession` 時會取消該占位堂，避免目標日出現兩筆有效堂次
+
+---
+
+## 2026-05-08 — fix(attendance): 同時段重複堂次不可重複扣堂
+
+- Fixed 點名頁遇到同課程同日期同開始時間的重複 `ClassSession` 時只顯示一筆，且後端阻止第二筆有效點名再次扣堂
+
+---
+
+## 2026-05-08 — fix(billing): 課程編輯繳費日期同步課程欄顯示
+
+- Fixed 個別課程編輯調整 `paid_at` 後，會同步更新該課程最新有效收款日期，避免課程欄仍顯示舊繳費日期造成「改了但看起來沒生效」的誤解
+
+---
+
+## 2026-05-08 — fix(schedule): 例外堂補建 ClassSession 避免灰色堂次消失
+
+- Fixed `schedules` 新增/更新為可上課狀態時會冪等補建對應 `ClassSession`，並新增 backfill 指令修復歷史漏建，避免課程列表有堂次但行事曆不顯示
+
+---
+
+## 2026-05-08 — fix(learning): 補填提醒跳轉與評量課表對齊
+
+- Fixed 教學工作台補填提醒點入時會同步切換至對應分校並定位堂次，且評量頁可顯示近期需補填的非 active 課程，避免提醒可見但無法填寫
+
+---
+
 ## 2026-04-30 — feat(workflow): 請假補課前端入口
 
 - Added 家長端請假申請入口與主任端補課案件卡片，可產生候選時段並確認建立補課
