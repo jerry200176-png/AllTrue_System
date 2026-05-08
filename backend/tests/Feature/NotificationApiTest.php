@@ -286,6 +286,39 @@ class NotificationApiTest extends TestCase
         ]);
     }
 
+    public function test_unread_count_sync_is_idempotent_for_low_sessions_source_key(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-unread-idempotent@example.com');
+
+        $student = Student::create([
+            'name' => '低堂數同步學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $class = $this->createStudentClass($student->id, 1, 1, 1);
+        $sourceKey = "low_sessions:1:{$class->ID}";
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/notifications/unread-count?branch_id=1')->assertOk();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/notifications/unread-count?branch_id=1')->assertOk();
+
+        $this->assertSame(1, Notification::where('SourceKey', $sourceKey)->count());
+        $this->assertDatabaseHas('Notifications', [
+            'SourceKey' => $sourceKey,
+            'ResolvedAt' => null,
+        ]);
+    }
+
     public function test_mark_student_class_tuition_paid_records_payment_details(): void
     {
         $token = $this->createDirectorToken([1], 'director-tuition-paid@example.com');
