@@ -151,7 +151,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 | Workflow | 觸發時機 | 功能 |
 |----------|---------|------|
-| `ci.yml` | PR / main push | 依 path filter 跑 PHPUnit、Vite、coverage gate、composer/npm audit；workflow 改動時保守全跑 |
+| `ci.yml` | PR / main push | 所有 PR 都觸發 required checks context；再依 changed areas 決定是否跑 PHPUnit、Vite、coverage gate、composer/npm audit |
 | `deploy.yml` | main CI success | 有 deployable diff 才自動部署 Pi + smoke test + rollback；docs-only merge 跳過 |
 | `presubmit.yml` | 每次 PR | Branch 命名規範檢查 |
 | `codeql.yml` | PR / main push / weekly | 後端或 workflow 相關改動才跑 PHPStan level 5 |
