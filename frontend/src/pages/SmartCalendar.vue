@@ -2024,6 +2024,28 @@ const filteredCourses = computed(() => {
     //    已刪除的課程（student_course_id 不在 courses 內）不顯示調課
     //    若該日該課程已請假，helper 會讓請假基底卡優先顯示，避免 scheduled 例外吃掉「假」角標
     const courseIds = new Set(courses.value.map(c => c.id));
+    const hasClassSessionBackedSlot = (ex, dow) => {
+      const scid = ex.student_course_id != null ? String(ex.student_course_id) : '';
+      if (!scid) return false;
+      const exStart = normalizeTimeTo30(ex.start_time || '');
+      const exDate = toYmd(ex.schedule_date);
+      if (!exDate || !exStart) return false;
+
+      const sessionRows = sessionDatesByCourseId.value[scid] || [];
+      const hasSessionRow = sessionRows.some((row) =>
+        String(row.session_date || '').slice(0, 10) === exDate &&
+        String(row.status || '').toLowerCase() !== 'cancelled' &&
+        normalizeTimeTo30(row.start_time || '') === exStart
+      );
+      if (hasSessionRow) return true;
+
+      return mergedList.some((item) =>
+        !item.is_exception &&
+        String(item.id ?? item.student_course_id ?? '') === scid &&
+        Number(item.day_of_week) === Number(dow) &&
+        normalizeTimeTo30(item.start_time || '') === exStart
+      );
+    };
     const hasSameStudentSlot = (ex, dow) => {
       const exStart = normalizeTimeTo30(ex.start_time || '');
       return mergedList.some(item =>
@@ -2066,6 +2088,7 @@ const filteredCourses = computed(() => {
         const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
         const exStart = normalizeTimeTo30(ex.start_time || '');
         if (String(ex.status || '').toLowerCase() === 'scheduled') {
+          if (hasClassSessionBackedSlot(ex, dow)) return;
           const key = [
             scid || `student:${ex.student_id ?? ''}`,
             toYmd(ex.schedule_date),
