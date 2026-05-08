@@ -1909,6 +1909,42 @@ const filteredCourses = computed(() => {
   // Merge exceptions based on the exact date of the current week view
   if (viewMode.value === 'week') {
     const mergedList = [];
+    const dedupeWeekMergedList = (items) => {
+      const bestByKey = new Map();
+      const buildStudentKey = (row) => {
+        const scid = row?.student_course_id != null ? String(row.student_course_id) : '';
+        if (scid) return `sc:${scid}`;
+        const sid = row?.student_id != null ? String(row.student_id) : '';
+        if (sid) return `sid:${sid}`;
+        const sname = String(row?.student_name || '').trim().toLowerCase();
+        return sname ? `name:${sname}` : '';
+      };
+      const scoreRow = (row) => {
+        // Prefer exception rows (reschedule/substitute result) over base rows.
+        const isException = row?.is_exception === true ? 1 : 0;
+        const idNum = Number(row?.original_id || row?.id || 0) || 0;
+        return isException * 1_000_000 + idNum;
+      };
+      const makeKey = (row) => {
+        const studentKey = buildStudentKey(row);
+        if (!studentKey) return '';
+        const dow = Number(row?.day_of_week || 0);
+        const start = normalizeTimeTo30(row?.start_time || '');
+        if (!dow || !start) return '';
+        return `${studentKey}|${dow}|${start}`;
+      };
+
+      items.forEach((row) => {
+        const key = makeKey(row);
+        if (!key) return;
+        const prev = bestByKey.get(key);
+        if (!prev || scoreRow(row) >= scoreRow(prev)) {
+          bestByKey.set(key, row);
+        }
+      });
+
+      return Array.from(bestByKey.values());
+    };
     const countByCourseId = () => {
       const m = {};
       mergedList.filter(x => !x.is_exception).forEach(x => {
@@ -2067,10 +2103,11 @@ const filteredCourses = computed(() => {
         }
       });
     }
+    const deduped = dedupeWeekMergedList(mergedList);
     if (teacherScopeId) {
-      return mergedList.filter((c) => String(c.teacher_id) === teacherScopeId);
+      return deduped.filter((c) => String(c.teacher_id) === teacherScopeId);
     }
-    return mergedList;
+    return deduped;
   }
   
   return list;
