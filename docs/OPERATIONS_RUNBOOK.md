@@ -809,6 +809,26 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | MySQL PITR / binlog | 尚未啟用明確的 point-in-time recovery；若事故發生在兩次 sixhour 中間，仍可能損失數小時資料 | 登記 TD-015，另走 DBA/OPS 流程評估 binlog retention、磁碟壓力、restore SOP |
 | Full server DR | 目前有 DB 備份與 GitHub code backup，但沒有完整記錄「全新 Pi 從零重建到可服務」耗時 | 每半年做一次 tabletop drill，驗證 secrets、rclone、nginx、PHP/MySQL、deploy key 都可重建 |
 
+### PITR / Binlog Decision（2026-05-09）
+
+**Decision**：目前先 **defer**（不在當前維運窗口直接啟用 production binlog）。
+
+**Why defer now**
+- 現行快照備份鏈（nightly + sixhour + Drive + manifest + restore drill）健康，已覆蓋大部分事故恢復需求。
+- 啟用 binlog 會引入額外磁碟/rotation/offsite 同步與 restore 操作複雜度；若未先完成 drill SOP，可能把恢復流程風險前置到 production。
+- 當前優先先把「一鍵稽核與 fallback 告警」治理完成，避免同時引入多個變更面。
+
+**Trigger to enable later（任一達成即啟動）**
+1. 連續 2 次以上發生「兩個 sixhour 快照間的資料誤寫/誤刪」事故；
+2. 業務要求 RPO 由 6 小時收斂到 1 小時內；
+3. 磁碟與 offsite 帶寬評估可承受 binlog retention（至少 3-7 天）且已完成 drill SOP。
+
+**Pre-enable checklist（drill-only）**
+- 只在 drill DB 驗證 `full backup + binlog replay`，禁止對 production `AllTrue` 回放。
+- 先完成 binlog volume 預估與 rotate policy（每日增量、保留天數、清理腳本）。
+- 先完成 restore runbook：目標時間點、回放指令範本、驗證 query、回滾步驟。
+- 先完成一次 tabletop + 一次 drill，才可提案 production 啟用。
+
 ### Backup / Code Backup 不可破壞規則
 
 - **Code source of truth**：GitHub protected `main` + PR history。Pi `/home/admin` working tree 是 deploy target，不是 code backup 來源。
