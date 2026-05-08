@@ -355,6 +355,7 @@ class ScheduleController extends Controller
     {
         $data = $request->validate([
             'student_course_id' => 'required|integer',
+            'class_session_id'  => 'nullable|integer',
             'session_date'      => 'required|date',
             'reason'            => 'nullable|string|max:255',
         ]);
@@ -367,11 +368,12 @@ class ScheduleController extends Controller
         $authUser = $request->attributes->get('auth_user');
         $authUserId = (int) ($authUser->id ?? 0);
         $courseId = (int) $data['student_course_id'];
+        $classSessionId = (int) ($data['class_session_id'] ?? 0);
         $sessionDate = Carbon::parse($data['session_date'])->toDateString();
         $reason = trim((string) ($data['reason'] ?? ''));
 
         try {
-            return DB::transaction(function () use ($courseId, $sessionDate, $reason, $authUserId, $role, $request) {
+            return DB::transaction(function () use ($courseId, $classSessionId, $sessionDate, $reason, $authUserId, $role, $request) {
                 $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
                 if (!$course) {
                     return response()->json(['message' => '找不到課程'], 404);
@@ -383,8 +385,12 @@ class ScheduleController extends Controller
                     return response()->json(['message' => 'Forbidden'], 403);
                 }
 
-                $session = ClassSession::where('StudentClassID', $courseId)
-                    ->whereRaw("DATE(SessionDate) = ?", [$sessionDate])
+                $sessionQuery = ClassSession::where('StudentClassID', $courseId)
+                    ->whereRaw("DATE(SessionDate) = ?", [$sessionDate]);
+                if ($classSessionId > 0) {
+                    $sessionQuery->where('id', $classSessionId);
+                }
+                $session = $sessionQuery
                     ->lockForUpdate()
                     ->first();
                 if (!$session) {
