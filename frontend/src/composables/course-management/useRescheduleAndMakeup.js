@@ -261,7 +261,10 @@ export function useRescheduleAndMakeup({
           fetch(`/api/v1/student-classes?${new URLSearchParams({ branch_id: String(bid), teacher_id: String(form.teacher_id), per_page: '1000' })}`, {
             credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
           }),
-          fetch(`/api/v1/schedules?${new URLSearchParams({ branch_id: String(bid), teacher_id: String(form.teacher_id), per_page: '1000' })}`, {
+          // Pull by branch (not teacher_id) then filter by teacher course ids.
+          // Some leave rows may have null/mismatched teacher_id depending on write path,
+          // but student_course_id remains authoritative for occupancy release.
+          fetch(`/api/v1/schedules?${new URLSearchParams({ branch_id: String(bid), per_page: '5000' })}`, {
             credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
           }),
         ]);
@@ -275,9 +278,16 @@ export function useRescheduleAndMakeup({
       teacherCourses = data || [];
     }
     if (schedExceptions.length === 0) {
-      const { data } = await supabase.from('schedules').select('*').eq('teacher_id', form.teacher_id).eq('branch_id', bid);
+      const { data } = await supabase.from('schedules').select('*').eq('branch_id', bid);
       schedExceptions = data || [];
     }
+
+    const teacherCourseIds = new Set(
+      (teacherCourses || [])
+        .map((c) => String(c?.id || ''))
+        .filter(Boolean)
+    );
+    schedExceptions = (schedExceptions || []).filter((ex) => teacherCourseIds.has(String(ex?.student_course_id || '')));
 
     const leaveSet = new Set();
     const reschFromSet = new Set();
@@ -285,7 +295,7 @@ export function useRescheduleAndMakeup({
     for (const ex of schedExceptions) {
       const d = ex.schedule_date ? String(ex.schedule_date).slice(0, 10) : '';
       const cid = String(ex.student_course_id || '');
-      if (ex.status === 'leave') leaveSet.add(`${cid}_${d}`);
+      if (ex.status === 'leave' || ex.status === 'leave_adjusted' || ex.status === 'excused') leaveSet.add(`${cid}_${d}`);
       else if (ex.status === 'rescheduled') reschFromSet.add(`${cid}_${d}`);
       else if (ex.status === 'scheduled' && ex.original_schedule_id) reschToList.push(ex);
     }
