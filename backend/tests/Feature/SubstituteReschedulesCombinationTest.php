@@ -180,6 +180,78 @@ class SubstituteReschedulesCombinationTest extends TestCase
             'The surviving row must carry the substitute teacher_id (stale duplicate purged)');
     }
 
+    public function test_duplicate_scheduled_row_on_same_date_time_change_is_purged_by_sync(): void
+    {
+        [$dirToken, $regularTeacherId, $subTeacherId, $session] = $this->seedScenario('same-day-purge');
+        $courseId = (int) $session->StudentClassID;
+        $studentId = (int) $session->studentClass->StudentID;
+        $sessionDate = substr((string) $session->SessionDate, 0, 10);
+        $oldStartTime = substr((string) $session->StartTime, 0, 5);
+        $oldEndTime = substr((string) $session->EndTime, 0, 5);
+        $newStartTime = '15:00';
+        $newEndTime = '17:00';
+
+        $this->postSubstitute($dirToken, $session->id, $subTeacherId)->assertOk();
+
+        $substituteRow = Schedule::where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->first();
+        $this->assertNotNull($substituteRow);
+        $anchorId = (int) $substituteRow->original_schedule_id;
+
+        Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $regularTeacherId,
+            'subject' => 'Math',
+            'day_of_week' => (int) Carbon::parse($sessionDate)->dayOfWeekIso,
+            'start_time' => $newStartTime,
+            'end_time' => $newEndTime,
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $sessionDate,
+            'original_schedule_id' => $anchorId,
+            'student_course_id' => $courseId,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records/reschedule-session', [
+            'student_class_id' => $courseId,
+            'old_date' => $sessionDate,
+            'old_start_time' => $oldStartTime,
+            'new_date' => $sessionDate,
+            'start_time' => $newStartTime,
+            'end_time' => $newEndTime,
+        ])->assertOk();
+
+        $rowsOnSameDate = Schedule::where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'scheduled')
+            ->where('original_schedule_id', $anchorId)
+            ->get();
+
+        $this->assertCount(1, $rowsOnSameDate,
+            'Same-day time changes must also purge duplicate scheduled rows for the same anchor');
+        $this->assertSame($subTeacherId, (int) $rowsOnSameDate->first()->teacher_id,
+            'The surviving same-day row must keep the substitute teacher');
+        $this->assertSame($newStartTime, substr((string) $rowsOnSameDate->first()->start_time, 0, 5));
+        $this->assertSame($newEndTime, substr((string) $rowsOnSameDate->first()->end_time, 0, 5));
+        $this->assertSame(1, Schedule::where('student_course_id', $courseId)
+            ->whereDate('schedule_date', $sessionDate)
+            ->where('status', 'rescheduled')
+            ->where('id', $anchorId)
+            ->count(), 'The original rescheduled anchor must remain as the historical marker');
+        $this->assertSame($oldStartTime, substr((string) Schedule::findOrFail($anchorId)->start_time, 0, 5));
+        $this->assertSame($oldEndTime, substr((string) Schedule::findOrFail($anchorId)->end_time, 0, 5));
+    }
+
     public function test_plain_reschedule_without_substitute_still_creates_scheduled_row(): void
     {
         // Regression: make sure FR-002 does NOT delete legitimate scheduled
