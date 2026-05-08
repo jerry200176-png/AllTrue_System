@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-08 — security(deps): 升級 PhpSpreadsheet 修復 CI audit HIGH 漏洞
+
+- Security 升級 `phpoffice/phpspreadsheet` 至安全版，清除 Composer audit 的 HIGH/CRITICAL 阻擋項目
+
+---
+
 ## 2026-04-30 — feat(workflow): 請假補課前端入口
 
 - Added 家長端請假申請入口與主任端補課案件卡片，可產生候選時段並確認建立補課
