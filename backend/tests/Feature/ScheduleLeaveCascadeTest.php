@@ -468,6 +468,118 @@ class ScheduleLeaveCascadeTest extends TestCase
         $this->assertSame(5, $totalSessions);
     }
 
+    public function test_retro_leave_targets_specific_session_when_same_course_has_two_sessions_on_same_day(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-retro-specific@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-retro-specific@example.com');
+        $student = $this->createStudent(1, '陳湘甯');
+
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => $teacherId,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-04-01',
+            'EndDate' => '2026-05-31',
+            'TotalHours' => 40,
+            'Memo' => 'retro-specific-session',
+            'Paid' => 0,
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'RemainingSessions' => 6,
+            'UsedSessions' => 2,
+            'SessionDuration' => 120,
+            'ClassType' => 'one_on_one',
+            'RoomID' => 'R1',
+            'MDate' => now(),
+            'Rate' => 500,
+        ]);
+        $courseId = (int) $course->ID;
+
+        $earlySession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-04-30',
+            'StartTime' => '18:30:00',
+            'EndTime' => '20:30:00',
+            'Status' => 'attended',
+            'Note' => '',
+        ]);
+        $lateSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-04-30',
+            'StartTime' => '20:00:00',
+            'EndTime' => '22:00:00',
+            'Status' => 'attended',
+            'Note' => '',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-05-07',
+            'StartTime' => '18:30:00',
+            'EndTime' => '20:30:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $earlySignIn = StudentSignIn::create([
+            'StudentClassID' => $courseId,
+            'StudentID' => $student->id,
+            'TeacherID' => $teacherId,
+            'ClassSessionID' => $earlySession->id,
+            'SignInDT' => '2026-04-30 18:30:00',
+            'Status' => 'present',
+            'CampusID' => 1,
+            'SessionDeducted' => true,
+        ]);
+        $lateSignIn = StudentSignIn::create([
+            'StudentClassID' => $courseId,
+            'StudentID' => $student->id,
+            'TeacherID' => $teacherId,
+            'ClassSessionID' => $lateSession->id,
+            'SignInDT' => '2026-04-30 20:00:00',
+            'Status' => 'present',
+            'CampusID' => 1,
+            'SessionDeducted' => true,
+        ]);
+        foreach ([$earlySession, $lateSession] as $session) {
+            SessionDeductionLedger::create([
+                'student_class_id' => $courseId,
+                'class_session_id' => (int) $session->id,
+                'event_type' => 'deduct',
+                'source' => 'attendance',
+            ]);
+        }
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/retro-leave', [
+            'student_course_id' => $courseId,
+            'class_session_id' => (int) $lateSession->id,
+            'session_date' => '2026-04-30',
+            'reason' => '同日第二堂補請假',
+        ])->assertOk();
+
+        $earlySession->refresh();
+        $lateSession->refresh();
+        $earlySignIn->refresh();
+        $lateSignIn->refresh();
+
+        $this->assertSame('attended', $earlySession->Status, '18:30 堂次不應被補請假誤改');
+        $this->assertNull($earlySignIn->VoidedAt, '18:30 堂次點名不應被作廢');
+        $this->assertSame('leave_adjusted', $lateSession->Status, '20:00 指定堂次應被補請假');
+        $this->assertNotNull($lateSignIn->VoidedAt, '20:00 指定堂次點名應被作廢');
+        $this->assertDatabaseHas('session_deduction_ledger', [
+            'student_class_id' => $courseId,
+            'class_session_id' => (int) $lateSession->id,
+            'event_type' => 'reverse',
+            'source' => 'retro_leave',
+        ]);
+    }
+
     public function test_retro_leave_teacher_forbidden(): void
     {
         $dirToken = $this->createDirectorToken([1], 'director-retro-perm@example.com');
