@@ -136,6 +136,23 @@ gh workflow run backup-restore-test.yml
 gh workflow run branch-hygiene.yml
 ```
 
+### B2b. Pi CPU／溫度告警（例如 90°C+ 或 log 出現 100°C）
+
+1. **先從 GitHub 蒐證（不必先 SSH 互動）**：在 repo `Actions` → `Pi Health Monitor` → **Run workflow**，或本機執行 `gh workflow run pi-health.yml`，讀取該次 run 的 log（溫度、磁碟、備份新鮮度）。
+2. **若持續高溫**：改以 **IT 維運／機邊**檢查機殼、散熱片、風扇、入風口灰塵、周圍通風、長時間高負載程序；Raspberry Pi 可用 `vcgencmd measure_temp`。**勿**在公開 issue 貼含密鑰或完整稽核路徑的敏感內容。
+3. **結案標準**：能重現並留下紀錄者，於對應 issue 或本節附註 **日期、峰值、處置**；僅偶發尖峰且後續正常者，標記「觀察結束」即可。
+
+### B2c. 老師簽到／帳號診斷（`teacher-signin-diagnose.yml`）
+
+需已設定 `PI_SSH_*` 等 Secrets；**勿**在公開 issue 貼完整 `LoginName`／密碼或一次性驗證資料。
+
+```bash
+gh workflow run teacher-signin-diagnose.yml -f date=YYYY-MM-DD -f teacher_name="姓名關鍵字"
+# 或擇一：-f teacher_id=數字  -f login_name=email@example.com
+```
+
+Billing／minutes 恢復後用上述補跑即可；結果以 **workflow log** 為準，必要時將結論摘要寫回內部 issue（不含敏感憑證）。
+
 ### B3. Workflow Maturity Gates（AI + 大廠式工作流）
 
 **目標**：讓任務在正確的流程重量中完成，避免小事浪費 Actions，也避免高風險改動被當成小修。
