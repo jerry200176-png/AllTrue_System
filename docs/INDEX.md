@@ -108,6 +108,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
+| `docs/QA_GOLDEN_SCENARIOS.md` | PR／AI **最快有感**：依模組勾選 Golden smoke（連結 §R 規則）|
 
 ### 業務規則
 | 檔案 | 一行說明 |

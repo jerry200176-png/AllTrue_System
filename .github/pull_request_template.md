@@ -18,7 +18,10 @@
 <!-- 列出驗收步驟；PHPUnit / 前端測試由 CI 跑，有手動場景再寫 -->
 - [ ] 
 
+> **最快有感**：改動涉及家長／出勤／行事曆／繳費／課程時，對照 [`docs/QA_GOLDEN_SCENARIOS.md`](../docs/QA_GOLDEN_SCENARIOS.md) 勾選對應區塊（與 `AI_REGRESSION_LESSONS` §R 對齊）。
+
 ## Checklist
+- [ ] 已對照 Golden smoke（`docs/QA_GOLDEN_SCENARIOS.md`）或註明「本次僅 docs／與模組無關」
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
 - [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test

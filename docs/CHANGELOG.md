@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — docs(qa): Golden Scenarios 速驗清單
+
+- Added `docs/QA_GOLDEN_SCENARIOS.md`：依模組可勾選 PR／AI merge 前 smoke；`INDEX` 導航；PR 模板補 Golden 對照勾選
+
+---
+
 ## 2026-05-09 — fix(import): 學生名冊 CSV/XLSX 標題列與 0 列匯入
 
 - Fixed `ImportController`：標題列掃描加深至前 30 列、`normalizeHeader` 支援全形空白；若僅有表頭無資料列回 **422** 並寫入可讀 `ErrorLog`；補 `StudentImportTest` 迴歸案例（#205）
