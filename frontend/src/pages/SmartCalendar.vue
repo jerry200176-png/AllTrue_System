@@ -1076,6 +1076,17 @@ const courseMatchesStudentSearch = (c) => {
 const isWeekOverview = ref(isTeacher.value);
 const weekViewTeacherIds = ref([]);
 const weekViewTeacherIdSet = computed(() => new Set(weekViewTeacherIds.value.map(String)));
+const weekViewExpandedTeacherIdSet = computed(() => {
+  const expanded = new Set();
+  weekViewTeacherIds.value.forEach((id) => {
+    const selected = visibleTeachers.value.find((t) => String(t.id) === String(id));
+    const aliases = Array.isArray(selected?.alias_ids) && selected.alias_ids.length > 0
+      ? selected.alias_ids
+      : [id];
+    aliases.forEach((aliasId) => expanded.add(String(aliasId)));
+  });
+  return expanded;
+});
 
 function toggleTeacherSelection(teacherId) {
   const tid = String(teacherId);
@@ -1649,7 +1660,7 @@ const getDayCourseCount = (dow) => {
 // Week Overview helpers
 const getCoursesForWeekCell = (dow, hour) => {
   return filteredCourses.value.filter(c => {
-    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    if (weekViewTeacherIds.value.length > 0 && !weekViewExpandedTeacherIdSet.value.has(String(c.teacher_id))) return false;
     if (c.day_of_week !== dow) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (!courseMatchesStudentSearch(c)) return false;
@@ -1660,7 +1671,7 @@ const getCoursesForWeekCell = (dow, hour) => {
 
 const getWeekTeacherDayCount = (dow) => {
   return filteredCourses.value.filter(c => {
-    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    if (weekViewTeacherIds.value.length > 0 && !weekViewExpandedTeacherIdSet.value.has(String(c.teacher_id))) return false;
     return c.day_of_week === dow && courseMatchesStudentSearch(c);
   }).length;
 };
@@ -1698,12 +1709,39 @@ const filterTeacherOptions = computed(() => {
       map.set(c.teacher_id, c.teacher_name);
     }
   });
-  return Array.from(map.entries()).map(([id, username]) => ({ id, username }));
+  // Merge duplicate display names (same human teacher with multiple accounts),
+  // and prefer the account currently carrying actual courses in calendar.
+  const byName = new Map();
+  Array.from(map.entries()).forEach(([id, username]) => {
+    const name = String(username || '').trim();
+    const tid = Number(id);
+    if (!name || !Number.isFinite(tid) || tid <= 0) return;
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(tid);
+  });
+
+  return Array.from(byName.entries()).map(([username, ids]) => {
+    const scored = ids
+      .map((id) => ({
+        id,
+        courseCount: courses.value.filter((c) => Number(c.teacher_id || 0) === id).length,
+      }))
+      .sort((a, b) => {
+        if (a.courseCount !== b.courseCount) return b.courseCount - a.courseCount;
+        return a.id - b.id;
+      });
+    return {
+      id: scored[0]?.id || ids[0],
+      username,
+      alias_ids: ids,
+    };
+  });
 });
 
 const visibleTeachers = computed(() => {
   const teacherList = filterTeacherOptions.value.map(t => {
-    const teacherCourses = courses.value.filter(c => c.teacher_id === t.id);
+    const aliasSet = new Set((t.alias_ids || [t.id]).map((id) => Number(id)));
+    const teacherCourses = courses.value.filter(c => aliasSet.has(Number(c.teacher_id || 0)));
     const rooms = [...new Set(teacherCourses.map(c => c.room_id || c.RoomID).filter(Boolean))];
     return {
       ...t,
@@ -1728,9 +1766,12 @@ const visibleTeachers = computed(() => {
           if (dowFilter != null && c.day_of_week !== dowFilter) return false;
           return true;
         })
-        .map((c) => c.teacher_id)
+        .map((c) => String(c.teacher_id))
     );
-    filtered = filtered.filter((t) => tidSet.has(t.id));
+    filtered = filtered.filter((t) => {
+      const aliases = Array.isArray(t.alias_ids) && t.alias_ids.length > 0 ? t.alias_ids : [t.id];
+      return aliases.some((id) => tidSet.has(String(id)));
+    });
   }
   if (filterTeacherId.value) {
     const tid = String(filterTeacherId.value);
@@ -2079,7 +2120,7 @@ const loadCourses = async () => {
       });
       courseList = allCourses.map(mapCourse);
     } catch (e) {
-      console.warn('Calendar: API load failed, falling back to Supabase', e);
+    // Keep fallback silent for end users; API failure is handled by fallback path.
     }
   }
 
@@ -2219,7 +2260,7 @@ const loadStudents = async () => {
     const json = await res.json();
     allStudents.value = Array.isArray(json) ? json : (json?.data || []);
   } catch (e) {
-    console.warn('loadStudents failed:', e);
+    // Keep UI usable even if student options fail to load.
     let query = supabase.from('students').select('id, name');
     if (!isTeacher.value && props.branchId) query = query.eq('branch_id', props.branchId);
     const { data } = await query;
@@ -2269,7 +2310,7 @@ const loadTeachers = async () => {
       ? normalized
       : normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
   } catch (e) {
-    console.warn('loadTeachers failed:', e);
+    // Keep UI usable even if teacher options fail to load.
     teachers.value = [];
   }
 };
@@ -2290,7 +2331,7 @@ const loadRooms = async () => {
       roomList.value = Array.isArray(json) ? json : (json?.data || []);
     }
   } catch (e) {
-    console.warn('loadRooms failed:', e);
+    // Keep UI usable even if room options fail to load.
   }
 };
 
