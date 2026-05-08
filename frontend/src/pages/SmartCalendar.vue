@@ -2003,7 +2003,18 @@ const filteredCourses = computed(() => {
         shouldRenderScheduledException(ex, exceptions.value, targetDate) &&
         (ex.student_course_id == null || courseIds.has(Number(ex.student_course_id))) &&
         (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
-      );
+      ).sort((a, b) => {
+        const score = (ex) => {
+          const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
+          const baseCourse = scid ? courses.value.find(c => String(c.id) === scid) : null;
+          const isScheduled = String(ex.status || '').toLowerCase() === 'scheduled';
+          const isSubstitute = isScheduled && baseCourse && String(ex.teacher_id ?? '') !== String(baseCourse.teacher_id ?? '');
+          return isSubstitute ? 0 : 1;
+        };
+        const priority = score(a) - score(b);
+        if (priority !== 0) return priority;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
       
       const renderedScheduledKeys = new Set();
       dayExceptions.forEach(ex => {

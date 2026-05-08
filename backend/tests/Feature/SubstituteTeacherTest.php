@@ -296,6 +296,55 @@ class SubstituteTeacherTest extends TestCase
         $this->assertNull($rowReg, 'Regular teacher must NOT see a substituted session');
     }
 
+    public function test_class_sessions_index_prefers_substitute_when_duplicate_scheduled_rows_exist(): void
+    {
+        [$dirToken, $regularTeacherId, $subTeacherId, $session] = $this->seedSubstituteScenarioWithoutLearningRecord();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subTeacherId,
+        ])->assertOk();
+
+        $substituteRow = Schedule::where('student_course_id', $session->StudentClassID)
+            ->whereDate('schedule_date', '2026-04-20')
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->firstOrFail();
+
+        // Simulate stale frontend/history data: a newer scheduled row points
+        // back to the regular teacher for the same reschedule anchor and slot.
+        Schedule::create([
+            'student_id' => $substituteRow->student_id,
+            'teacher_id' => $regularTeacherId,
+            'subject' => $substituteRow->subject,
+            'day_of_week' => $substituteRow->day_of_week,
+            'start_time' => $substituteRow->start_time,
+            'end_time' => $substituteRow->end_time,
+            'duration_hours' => $substituteRow->duration_hours,
+            'class_type' => $substituteRow->class_type,
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $substituteRow->branch_id,
+            'schedule_date' => $substituteRow->schedule_date,
+            'student_course_id' => $substituteRow->student_course_id,
+            'original_schedule_id' => $substituteRow->original_schedule_id,
+        ]);
+
+        $idx = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/class-sessions?start=2026-04-20&end=2026-04-20&per_page=100');
+
+        $idx->assertOk();
+        $row = collect($idx->json('data'))->firstWhere('id', $session->id);
+        $this->assertNotNull($row);
+        $this->assertSame($subTeacherId, (int) ($row['teacher_id'] ?? 0));
+        $this->assertSame('代課2', $row['teacher_name'] ?? '');
+    }
+
     /** 學習評量頁老師課表：依 GET student-classes 建 classIds；代課-only 課程須列入。 */
     public function test_substitute_teacher_student_classes_index_includes_substitute_course(): void
     {
