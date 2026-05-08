@@ -295,6 +295,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | Secret | 說明 | ⚠️ 格式規則 |
 |---|---|---|
 | `PI_SSH_KEY` | deploy key 私鑰（base64 單行）| 值 = `base64 -w0 rpi_actions_deploy`，不含換行 |
+| `PI_HOST_KEY` | Pi SSH host key（known_hosts 單行）| 值範例：`pi.lifenet.com.tw ssh-ed25519 AAAA...`（用 `ssh-keyscan -H` 產生） |
 | `PI_SSH_USER` | Pi SSH 帳號 | **只填 `admin`，禁止含 `@hostname`** |
 | `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
 | `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
@@ -302,6 +303,22 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | `CI_DB_PASSWORD` | 舊 GitHub-hosted MySQL service 測試密碼；目前 WSL2 self-hosted CI 改讀 `backend/phpunit.xml` 測試 DB 設定 | 若重新啟用 GitHub-hosted MySQL service 才需要 |
 
 > ⛔ 格式錯誤後果：`PI_USER=admin@pi.lifenet.com.tw` → sshd 收到 username=`admin@admin` → Invalid user（2026-04-26 事故，見 R18）
+
+### SSH Host Key Pinning SOP（maintenance workflows）
+
+1. 在可信任環境抓取 host key（至少兩次比對）：
+   ```bash
+   ssh-keyscan -H pi.lifenet.com.tw
+   ```
+2. 記錄 fingerprint 供人工核對：
+   ```bash
+   ssh-keyscan -H pi.lifenet.com.tw | ssh-keygen -lf -
+   ```
+3. 更新 GitHub Secret：
+   ```bash
+   gh secret set PI_HOST_KEY --body "pi.lifenet.com.tw ssh-ed25519 AAAA..."
+   ```
+4. rotation 後，手動觸發 `pi-health.yml`、`backup-restore-test.yml`、`slow-query-report.yml` 驗證均可連線。
 
 ### Pi authorized_keys
 
