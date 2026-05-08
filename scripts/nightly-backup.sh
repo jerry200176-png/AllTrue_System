@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# nightly-backup.sh — MySQL dump + git push (+ monthly full archive + daily git tag)
+# nightly-backup.sh — MySQL dump (+ monthly full archive)
 # Runs at 01:00 daily via cron.
 #
 # 保留策略：
 #   - 每日夜備 SQL：保留 KEEP_DAYS 天（預設 14）
 #   - 每月 1 號額外產生「月首全備」：保留 KEEP_MONTHS 份（預設 12 個月）
-#   - 每次 nightly 會打一個 git tag `nightly-YYYYMMDD-HHMM`（避免版本回溯時找不到錨點）；
-#     tag 只保留 KEEP_TAGS 個最新（預設 60），舊的自動刪除（本地 + origin）。
+#   - 程式碼真實來源為 GitHub protected main + PR history；本腳本不再從 Pi 嘗試 git push/tag。
 
 set -euo pipefail
 
@@ -17,7 +16,6 @@ ENV_FILE="$REPO_ROOT/backend/.env"
 LOG_FILE="$REPO_ROOT/backups/nightly-backup.log"
 KEEP_DAYS=14
 KEEP_MONTHS=12
-KEEP_TAGS=60
 
 mkdir -p "$MONTHLY_DIR"
 
@@ -112,35 +110,6 @@ if python3 "$REPO_ROOT/.cursor/plans/list-plans-by-topic.py" --write-index -q; t
 else
   log "WARN: topic index refresh failed (continuing)."
 fi
-
-# --- Step 4: Git commit + push ---
-cd "$REPO_ROOT"
-
-log "Running git-sync.sh ..."
-./scripts/git-sync.sh "chore(nightly): auto backup ${TIMESTAMP}" 2>&1 | tee -a "$LOG_FILE"
-
-# --- Step 5: 打 nightly tag（防版本回溯遺失錨點）---
-TAG_NAME="nightly-${TIMESTAMP}"
-log "Tagging commit as $TAG_NAME ..."
-if git tag -a "$TAG_NAME" -m "nightly backup ${TIMESTAMP}" 2>&1 | tee -a "$LOG_FILE"; then
-  if git push origin "$TAG_NAME" 2>&1 | tee -a "$LOG_FILE"; then
-    log "Tag pushed."
-  else
-    log "WARN: tag push failed (continuing)."
-  fi
-else
-  log "WARN: tag creation failed or already exists (continuing)."
-fi
-
-# --- Step 5b: Prune 舊 nightly tag，只保留 KEEP_TAGS 個最新 ---
-log "Pruning nightly tags (keep latest $KEEP_TAGS) ..."
-mapfile -t OLD_TAGS < <(git tag --list 'nightly-*' --sort=-creatordate | tail -n +$((KEEP_TAGS + 1)))
-for t in "${OLD_TAGS[@]}"; do
-  [ -z "$t" ] && continue
-  git tag -d "$t" >/dev/null 2>&1 || true
-  git push origin ":refs/tags/$t" >/dev/null 2>&1 || true
-  log "Removed old tag: $t"
-done
 
 log "=== Nightly backup done ==="
 
