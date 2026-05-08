@@ -754,7 +754,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | CI/CD 自動部署 | GitHub Actions `deploy.yml` → Pi auto-deploy |
 | PR template | `.github/pull_request_template.md` |
 | CODEOWNERS | `.github/CODEOWNERS`（高風險模組自動 request review）|
-| PHPStan 靜態分析 | `codeql.yml` → phpstan level 5 |
+| PHPStan 靜態分析 | `codeql.yml` → `PHPStan Advisory (php)`（目前為 advisory，不擋 merge） |
 | API smoke test | `deploy.yml` 驗 health + branches + swipe-rfid |
 | Coverage gate | CI 70% 門檻（warning），目標 80% |
 | Branch protection | GitHub Pro 已啟用 main 保護：required checks + admin enforcement + 禁止 force push/delete；單人 repo 暫不強制 approval，避免審核死鎖 |
