@@ -723,7 +723,7 @@
     </div>
 
     <!-- Makeup Attendance (事後補點名) -->
-    <div class="card att-checkin-card">
+    <div class="card att-checkin-card att-makeup-card">
       <div class="att-checkin-header">
         <div class="att-section-title">待補點名（已結束節次）</div>
         <span v-if="makeupSessions.length > 0" class="att-badge att-badge-warn">{{ makeupTotal }}</span>
@@ -749,7 +749,7 @@
       </div>
       <div v-if="!isTeacher && !branchId" class="att-empty">請先選擇分校</div>
       <div v-else-if="makeupLoading" class="att-empty">載入中…</div>
-      <div v-else-if="makeupSessions.length === 0" class="att-empty">此期間沒有待補點名的已結束節次</div>
+      <div v-else-if="makeupSessions.length === 0" class="att-empty">此期間沒有尚未點名的已結束節次；已點名的課不會出現在這裡</div>
       <div v-else class="att-table-scroll">
         <table>
           <thead>
@@ -2073,6 +2073,7 @@ const saveStatusEdit = async (record) => {
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({
             student_course_id: record.StudentClassID,
+            class_session_id: record.ClassSessionID,
             session_date: sessionDate,
             reason: '出缺勤頁補請假',
           }),
@@ -2609,6 +2610,7 @@ watch(() => props.branchId, () => {
   display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 16px;
 }
 .att-makeup-filters .form-group { min-width: 140px; }
+.att-makeup-filters .att-submit-wrap { min-width: 112px; }
 .att-badge-warn { background: #d97706; }
 .att-load-more { text-align: center; padding: 12px 0; }
 
@@ -2628,6 +2630,31 @@ watch(() => props.branchId, () => {
   .att-desktop-only { display: none; }
   .att-mobile-only { display: flex; }
   .att-sticky-batch { display: flex; }
+
+  .att-makeup-card {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  .att-makeup-filters {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .att-makeup-filters .form-group,
+  .att-makeup-filters .att-submit-wrap {
+    min-width: 0;
+    width: 100%;
+  }
+  .att-makeup-filters .att-submit-wrap label {
+    display: none;
+  }
+  .att-makeup-filters .att-submit-wrap button {
+    min-height: 46px;
+    width: 100%;
+  }
+  .att-makeup-card .att-table-scroll {
+    margin-bottom: 16px;
+  }
 
 }
 
