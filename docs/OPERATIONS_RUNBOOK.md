@@ -89,6 +89,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 **目的**：降低 GitHub-hosted runner minutes 消耗，同時維持「PR 綠燈才 merge、merge 後自動部署、部署後 health check」的安全底線。
 
 **核心規則**
+0. **Required checks 必須永遠有 context**：`ci.yml` 必須在所有 PR 都觸發，由 `Detect changed areas` + job-level `if` 決定是否執行重檢查；禁止只靠 workflow-level `paths` 直接跳過整個 workflow，否則 docs-only PR 會缺少 required status checks。
 1. **PR 舊 run 自動取消**：CI / PHPStan workflow 必須使用 `concurrency`，同一 PR 新 commit 進來時取消舊 run，只驗最新 commit。
 2. **Docs-only 不跑重 CI**：只改 `docs/**`、`.cursor/**`、Markdown 或計畫文件時，只跑 Presubmit；跳過 PHPUnit/MySQL、Vite build、PHPStan。
 3. **Frontend-only 不跑後端測試**：只改 `frontend/**` 時跑 Vite build，不跑 PHPUnit/MySQL 與 PHPStan。
