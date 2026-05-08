@@ -8,6 +8,7 @@ use App\Models\Notification;
 use App\Models\PendingSwipe;
 use App\Models\StudentClass;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class NotificationSyncService
@@ -71,8 +72,28 @@ class NotificationSyncService
                     continue;
                 }
 
-                Notification::create($payload);
-                $created++;
+                try {
+                    Notification::create($payload);
+                    $created++;
+                } catch (QueryException $e) {
+                    // Concurrent sync calls can race on unique SourceKey; fall back to update.
+                    if ((string) $e->getCode() !== '23000') {
+                        throw $e;
+                    }
+
+                    $existing = Notification::where('SourceKey', $sourceKey)->first();
+                    if ($existing) {
+                        $existing->fill($payload);
+                        $existing->ResolvedAt = null;
+                        if ($existing->isDirty()) {
+                            $existing->save();
+                            $updated++;
+                        }
+                        continue;
+                    }
+
+                    throw $e;
+                }
             }
 
             foreach ($scopedUnresolved as $sourceKey => $notification) {
