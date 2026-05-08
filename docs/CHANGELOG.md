@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-08 — security(deps): 升級 PhpSpreadsheet 修復 CI audit HIGH 漏洞
+
+- Security 升級 `phpoffice/phpspreadsheet` 至安全版，清除 Composer audit 的 HIGH/CRITICAL 阻擋項目
+
+---
+
 ## 2026-05-08 — fix(attendance): 同時段重複堂次不可重複扣堂
 
 - Fixed 點名頁遇到同課程同日期同開始時間的重複 `ClassSession` 時只顯示一筆，且後端阻止第二筆有效點名再次扣堂
