@@ -1076,6 +1076,17 @@ const courseMatchesStudentSearch = (c) => {
 const isWeekOverview = ref(isTeacher.value);
 const weekViewTeacherIds = ref([]);
 const weekViewTeacherIdSet = computed(() => new Set(weekViewTeacherIds.value.map(String)));
+const weekViewExpandedTeacherIdSet = computed(() => {
+  const expanded = new Set();
+  weekViewTeacherIds.value.forEach((id) => {
+    const selected = visibleTeachers.value.find((t) => String(t.id) === String(id));
+    const aliases = Array.isArray(selected?.alias_ids) && selected.alias_ids.length > 0
+      ? selected.alias_ids
+      : [id];
+    aliases.forEach((aliasId) => expanded.add(String(aliasId)));
+  });
+  return expanded;
+});
 
 function toggleTeacherSelection(teacherId) {
   const tid = String(teacherId);
@@ -1649,7 +1660,7 @@ const getDayCourseCount = (dow) => {
 // Week Overview helpers
 const getCoursesForWeekCell = (dow, hour) => {
   return filteredCourses.value.filter(c => {
-    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    if (weekViewTeacherIds.value.length > 0 && !weekViewExpandedTeacherIdSet.value.has(String(c.teacher_id))) return false;
     if (c.day_of_week !== dow) return false;
     if (parseHour(c.start_time) !== hour) return false;
     if (!courseMatchesStudentSearch(c)) return false;
@@ -1660,7 +1671,7 @@ const getCoursesForWeekCell = (dow, hour) => {
 
 const getWeekTeacherDayCount = (dow) => {
   return filteredCourses.value.filter(c => {
-    if (weekViewTeacherIds.value.length > 0 && !weekViewTeacherIdSet.value.has(String(c.teacher_id))) return false;
+    if (weekViewTeacherIds.value.length > 0 && !weekViewExpandedTeacherIdSet.value.has(String(c.teacher_id))) return false;
     return c.day_of_week === dow && courseMatchesStudentSearch(c);
   }).length;
 };
@@ -1698,12 +1709,39 @@ const filterTeacherOptions = computed(() => {
       map.set(c.teacher_id, c.teacher_name);
     }
   });
-  return Array.from(map.entries()).map(([id, username]) => ({ id, username }));
+  // Merge duplicate display names (same human teacher with multiple accounts),
+  // and prefer the account currently carrying actual courses in calendar.
+  const byName = new Map();
+  Array.from(map.entries()).forEach(([id, username]) => {
+    const name = String(username || '').trim();
+    const tid = Number(id);
+    if (!name || !Number.isFinite(tid) || tid <= 0) return;
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(tid);
+  });
+
+  return Array.from(byName.entries()).map(([username, ids]) => {
+    const scored = ids
+      .map((id) => ({
+        id,
+        courseCount: courses.value.filter((c) => Number(c.teacher_id || 0) === id).length,
+      }))
+      .sort((a, b) => {
+        if (a.courseCount !== b.courseCount) return b.courseCount - a.courseCount;
+        return a.id - b.id;
+      });
+    return {
+      id: scored[0]?.id || ids[0],
+      username,
+      alias_ids: ids,
+    };
+  });
 });
 
 const visibleTeachers = computed(() => {
   const teacherList = filterTeacherOptions.value.map(t => {
-    const teacherCourses = courses.value.filter(c => c.teacher_id === t.id);
+    const aliasSet = new Set((t.alias_ids || [t.id]).map((id) => Number(id)));
+    const teacherCourses = courses.value.filter(c => aliasSet.has(Number(c.teacher_id || 0)));
     const rooms = [...new Set(teacherCourses.map(c => c.room_id || c.RoomID).filter(Boolean))];
     return {
       ...t,
@@ -1728,9 +1766,12 @@ const visibleTeachers = computed(() => {
           if (dowFilter != null && c.day_of_week !== dowFilter) return false;
           return true;
         })
-        .map((c) => c.teacher_id)
+        .map((c) => String(c.teacher_id))
     );
-    filtered = filtered.filter((t) => tidSet.has(t.id));
+    filtered = filtered.filter((t) => {
+      const aliases = Array.isArray(t.alias_ids) && t.alias_ids.length > 0 ? t.alias_ids : [t.id];
+      return aliases.some((id) => tidSet.has(String(id)));
+    });
   }
   if (filterTeacherId.value) {
     const tid = String(filterTeacherId.value);
@@ -1962,11 +2003,34 @@ const filteredCourses = computed(() => {
         shouldRenderScheduledException(ex, exceptions.value, targetDate) &&
         (ex.student_course_id == null || courseIds.has(Number(ex.student_course_id))) &&
         (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
-      );
+      ).sort((a, b) => {
+        const score = (ex) => {
+          const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
+          const baseCourse = scid ? courses.value.find(c => String(c.id) === scid) : null;
+          const isScheduled = String(ex.status || '').toLowerCase() === 'scheduled';
+          const isSubstitute = isScheduled && baseCourse && String(ex.teacher_id ?? '') !== String(baseCourse.teacher_id ?? '');
+          return isSubstitute ? 0 : 1;
+        };
+        const priority = score(a) - score(b);
+        if (priority !== 0) return priority;
+        return Number(a.id || 0) - Number(b.id || 0);
+      });
       
+      const renderedScheduledKeys = new Set();
       dayExceptions.forEach(ex => {
-        if (hasSameStudentSlot(ex, dow)) return;
         const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
+        const exStart = normalizeTimeTo30(ex.start_time || '');
+        if (String(ex.status || '').toLowerCase() === 'scheduled') {
+          const key = [
+            scid || `student:${ex.student_id ?? ''}`,
+            toYmd(ex.schedule_date),
+            exStart,
+            ex.original_schedule_id || '',
+          ].join('|');
+          if (renderedScheduledKeys.has(key)) return;
+          renderedScheduledKeys.add(key);
+        }
+        if (hasSameStudentSlot(ex, dow)) return;
         if (scid) {
           const course = courses.value.find(c => String(c.id) === scid);
           const purchased = course ? Math.max(0, parseInt(course.sessions_purchased ?? course.SessionCount ?? 0, 10) || 0) : 0;
@@ -2079,7 +2143,7 @@ const loadCourses = async () => {
       });
       courseList = allCourses.map(mapCourse);
     } catch (e) {
-      console.warn('Calendar: API load failed, falling back to Supabase', e);
+    // Keep fallback silent for end users; API failure is handled by fallback path.
     }
   }
 
@@ -2219,7 +2283,7 @@ const loadStudents = async () => {
     const json = await res.json();
     allStudents.value = Array.isArray(json) ? json : (json?.data || []);
   } catch (e) {
-    console.warn('loadStudents failed:', e);
+    // Keep UI usable even if student options fail to load.
     let query = supabase.from('students').select('id, name');
     if (!isTeacher.value && props.branchId) query = query.eq('branch_id', props.branchId);
     const { data } = await query;
@@ -2269,7 +2333,7 @@ const loadTeachers = async () => {
       ? normalized
       : normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
   } catch (e) {
-    console.warn('loadTeachers failed:', e);
+    // Keep UI usable even if teacher options fail to load.
     teachers.value = [];
   }
 };
@@ -2290,7 +2354,7 @@ const loadRooms = async () => {
       roomList.value = Array.isArray(json) ? json : (json?.data || []);
     }
   } catch (e) {
-    console.warn('loadRooms failed:', e);
+    // Keep UI usable even if room options fail to load.
   }
 };
 
@@ -3907,10 +3971,11 @@ onMounted(() => {
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  overflow: clip;
+  overflow: hidden;
 }
 .teacher-grid-wrapper {
-  overflow-x: auto;
+  max-height: min(76vh, 820px);
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 .teacher-grid {
@@ -3938,15 +4003,16 @@ onMounted(() => {
   font-size: 9px;
 }
 .teacher-grid.teacher-grid-compact .course-block {
-  padding: 4px 4px;
+  padding: 4px 3px;
   border-radius: 6px;
 }
 .teacher-grid.teacher-grid-compact .cb-student {
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.15;
 }
 .teacher-grid.teacher-grid-compact .cb-detail,
 .teacher-grid.teacher-grid-compact .cb-type {
-  font-size: 9px;
+  font-size: 8px;
   margin-top: 1px;
 }
 .time-col {
@@ -3962,7 +4028,8 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color, #e2e8f0);
   position: sticky;
   top: 0;
-  z-index: 6;
+  left: 0;
+  z-index: 12;
   background: var(--bg-muted, #f8fafc);
 }
 .time-label {
@@ -3993,7 +4060,8 @@ onMounted(() => {
   border-top: 3px solid transparent;
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 10;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
 }
 .teacher-col-avatar {
   width: 32px;
@@ -4043,7 +4111,7 @@ onMounted(() => {
   right: 3px;
   top: 3px;
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 5px 6px;
   color: #fff;
   font-size: 11px;
   line-height: 1.35;
@@ -4052,35 +4120,40 @@ onMounted(() => {
   z-index: 2;
   box-shadow: 0 1px 4px rgba(0,0,0,0.15);
   transition: transform 0.12s, box-shadow 0.12s;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
 }
 .course-block:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 .cb-student {
-  font-weight: 700;
-  font-size: 12px;
-  line-height: 1.3;
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
+  letter-spacing: -0.2px;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
 }
 .cb-detail {
-  font-size: 10px;
-  line-height: 1.35;
-  opacity: 0.95;
-  margin-top: 2px;
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: 0.9;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: block;
 }
 .cb-type {
-  font-size: 10px;
-  line-height: 1.3;
-  opacity: 0.85;
-  margin-top: 2px;
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: 0.78;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4647,9 +4720,9 @@ onMounted(() => {
   .teacher-col-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
   .teacher-col-name { font-size: 11px; }
   .teacher-col-room { font-size: 9px; }
-  .course-block { font-size: 10px; padding: 4px 5px; border-radius: 6px; }
-  .cb-student { font-size: 11px; }
-  .cb-detail, .cb-type { font-size: 9px; margin-top: 1px; }
+  .course-block { font-size: 10px; padding: 4px 4px; border-radius: 6px; }
+  .cb-student { font-size: 12px; }
+  .cb-detail, .cb-type { font-size: 8px; margin-top: 1px; }
   .teacher-courses { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .teacher-table { min-width: 500px; }
   .time-col { min-width: 40px; width: 40px; }
@@ -4710,8 +4783,8 @@ onMounted(() => {
     padding: 3px 4px;
     border-radius: 6px;
   }
-  .cb-student { font-size: 10px; }
-  .cb-detail, .cb-type { font-size: 9px; }
+  .cb-student { font-size: 12px; }
+  .cb-detail, .cb-type { font-size: 8px; }
   .modal {
     width: 100% !important;
     max-width: 100vw !important;
@@ -4758,8 +4831,8 @@ onMounted(() => {
   .time-label { font-size: 9px; padding: 2px 1px 0 0; }
   .col-header-blank { height: 48px; }
   .course-block { font-size: 9px; padding: 2px 3px; border-radius: 4px; }
-  .cb-student { font-size: 9px; line-height: 1.2; }
-  .cb-detail, .cb-type { font-size: 8px; }
+  .cb-student { font-size: 11px; line-height: 1.15; }
+  .cb-detail, .cb-type { font-size: 7px; }
   .teacher-card { padding: 10px; }
   .teacher-card h3 { font-size: 14px; }
   .modal {
@@ -4888,7 +4961,8 @@ onMounted(() => {
 
 /* ----- Week Overview Grid ----- */
 .week-overview-grid-wrapper {
-  overflow-x: auto;
+  max-height: min(76vh, 820px);
+  overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 .week-overview-grid {
@@ -4913,7 +4987,8 @@ onMounted(() => {
   border-bottom: 1px solid var(--border-color, #e2e8f0);
   position: sticky;
   top: 0;
-  z-index: 4;
+  z-index: 10;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
 }
 .day-col-header.day-col-today {
   background: #eff6ff;
@@ -4973,22 +5048,22 @@ onMounted(() => {
   top: 2px;
   left: 2px;
   z-index: 5;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  padding: 1px 4px;
+  padding: 1px 3px;
   border-radius: 4px;
   color: #fff;
   border: 1.5px solid rgba(255, 255, 255, 0.9);
-  min-width: 22px;
+  min-width: 18px;
   text-align: center;
   pointer-events: auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 .capacity-badge-compact {
-  font-size: 8px;
+  font-size: 7px;
   font-weight: 700;
-  min-width: 16px;
+  min-width: 14px;
   padding: 0 2px;
   border-radius: 3px;
   border-width: 1px;
@@ -4998,10 +5073,10 @@ onMounted(() => {
 }
 /* 當時段有容量徽章時，讓第一張課程卡的學生姓名向右讓位，避免遮擋 */
 .slot:has(.capacity-badge) .course-block:first-of-type .cb-student {
-  padding-left: 30px;
+  padding-left: 20px;
 }
 .slot:has(.capacity-badge-compact) .course-block:first-of-type .cb-student {
-  padding-left: 18px;
+  padding-left: 12px;
 }
 /* 緊湊模式的角標（到班/漏點/請假/未填評量）：字更小、邊距更緊，讓 split 卡片有更多姓名空間 */
 .teacher-grid.teacher-grid-compact .rc-tag {
@@ -5016,10 +5091,10 @@ onMounted(() => {
 }
 /* 當課程卡有「到班 / 漏點 / 請假 / 未填評量」角標時，讓學生姓名留出右側空間，避免被遮擋 */
 .course-block:has(.rc-tag) .cb-student {
-  padding-right: 20px;
+  padding-right: 18px;
 }
 .teacher-grid.teacher-grid-compact .course-block:has(.rc-tag) .cb-student {
-  padding-right: 13px;
+  padding-right: 10px;
 }
 .capacity-legend {
   display: inline-flex;

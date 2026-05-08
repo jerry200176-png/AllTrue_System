@@ -63,24 +63,45 @@ class LearningRecordController extends Controller
             if (!$teacherId) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            // Show records where: (a) LR.TeacherID is mine, (b) my contract courses,
-            // (c) 代課：schedules 顯示我帶此 ClassSession 但 LR 尚未改 TeacherID 者。
-            $teacherClassIds = StudentClass::where('TeacherID', $teacherId)->pluck('ID');
+            // 與 class-sessions 可見性一致：
+            // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
+            // 2) 無代課時才由正班老師/評量歸屬老師可見。
             $lrTable = (new LearningRecord())->getTable();
-            $query->where(function ($q) use ($teacherId, $teacherClassIds, $lrTable) {
-                $q->where('TeacherID', $teacherId);
-                if ($teacherClassIds->isNotEmpty()) {
-                    $q->orWhereIn('StudentClassID', $teacherClassIds);
-                }
-                $q->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
+            $query->where(function ($q) use ($teacherId, $lrTable) {
+                $q->where(function ($baseScope) use ($teacherId, $lrTable) {
+                    $baseScope->where(function ($owner) use ($teacherId, $lrTable) {
+                        $owner->where('TeacherID', $teacherId)
+                            ->orWhereExists(function ($scSub) use ($teacherId, $lrTable) {
+                                $scSub->select(DB::raw(1))
+                                    ->from('StudentClass as sc')
+                                    ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                    ->where('sc.TeacherID', '=', $teacherId);
+                            });
+                    })->whereNotExists(function ($sub) use ($lrTable) {
+                        $sub->select(DB::raw(1))
+                            ->from('ClassSession as cs')
+                            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                            ->join('schedules as s', function ($join) {
+                                $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                    ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                    ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                                    ->where('s.status', '=', 'scheduled')
+                                    ->whereNotNull('s.original_schedule_id')
+                                    ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID');
+                            })
+                            ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                    });
+                })->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
                     $sub->select(DB::raw(1))
                         ->from('ClassSession as cs')
+                        ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
                         ->join('schedules as s', function ($join) use ($teacherId) {
                             $join->on('s.student_course_id', '=', 'cs.StudentClassID')
                                 ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
                                 ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
                                 ->where('s.status', '=', 'scheduled')
                                 ->whereNotNull('s.original_schedule_id')
+                                ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID')
                                 ->where('s.teacher_id', '=', $teacherId);
                         })
                         ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
@@ -1183,6 +1204,12 @@ class LearningRecordController extends Controller
 
         if ($session) {
             $oldStatus = strtolower(trim((string) ($session->Status ?? 'scheduled')));
+            $this->cancelAutoMaterializedDuplicateSession(
+                $classId,
+                $newDate,
+                $startTime ?: (string) $session->StartTime,
+                (int) $session->id
+            );
             $session->SessionDate = $newDate;
             if ($startTime) $session->StartTime = $startTime;
             if ($endTime)   $session->EndTime   = $endTime;
@@ -1349,8 +1376,6 @@ class LearningRecordController extends Controller
             return;
         }
 
-        $sameDayTimeChange = ($oldDate === $newDate);
-
         // The `rescheduled` anchor row stays on the OLD date as a historical marker.
         // Only the linked `scheduled` (substitute) row follows the session to its new slot.
         $rescheduledRow = Schedule::where('student_course_id', $courseId)
@@ -1375,25 +1400,55 @@ class LearningRecordController extends Controller
                 'end_time'   => $endTime   ?: $scheduledRow->end_time,
             ];
 
-            if (!$sameDayTimeChange) {
-                // Moving to a different date: also update date and day_of_week.
-                $updates['schedule_date'] = $newDate;
-                $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
-            }
+            // Moving to a different date updates date/day; same-day time changes
+            // still go through the duplicate purge below for the same anchor.
+            $updates['schedule_date'] = $newDate;
+            $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
 
             $scheduledRow->update($updates);
 
-            if (!$sameDayTimeChange) {
-                // Purge any duplicate scheduled rows on the target date
-                // (from race conditions or stale frontend POSTs).
-                Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $newDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', $rescheduledRow->id)
-                    ->where('id', '!=', $scheduledRow->id)
-                    ->delete();
-            }
+            // Purge duplicate scheduled rows for this reschedule anchor, including
+            // same-day time changes where stale rows can otherwise render twice.
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $newDate)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', $rescheduledRow->id)
+                ->where('id', '!=', $scheduledRow->id)
+                ->delete();
         }
+    }
+
+    private function cancelAutoMaterializedDuplicateSession(
+        int $courseId,
+        string $newDate,
+        ?string $startTime,
+        int $movingSessionId
+    ): void {
+        $startHm = substr((string) ($startTime ?? ''), 0, 5);
+        if ($courseId <= 0 || $startHm === '' || $movingSessionId <= 0) {
+            return;
+        }
+
+        $duplicate = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $newDate)
+            ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startHm])
+            ->where('id', '!=', $movingSessionId)
+            ->where('Status', 'scheduled')
+            ->where(function ($q) {
+                $q->whereNull('Note')
+                    ->orWhere('Note', '')
+                    ->orWhere('Note', 'auto-materialized-from-schedule');
+            })
+            ->lockForUpdate()
+            ->first();
+
+        if (!$duplicate) {
+            return;
+        }
+
+        $duplicate->Status = 'cancelled';
+        $duplicate->Note = trim((string) ($duplicate->Note ?? '') . '; cancelled-duplicate-reschedule-placeholder', '; ');
+        $duplicate->save();
     }
 
     public function requestChanges(Request $request, LearningRecord $learningRecord)
