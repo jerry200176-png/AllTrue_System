@@ -816,6 +816,7 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 - **Restore drill target**：只能還原到 drill/test DB；不得用 production `AllTrue` 做演練。
 - **事故恢復順序**：先確認 GitHub commit / backup manifest / health check，再做最小 rollback；禁止用舊工作樹覆蓋後直接 commit。
 - **回報「備份正常」條件**：不是只看到 `.sql.gz` 存在，還要能確認 Drive 同步與最近一次 restore drill 成功。
+- **Nightly policy**：`nightly-backup.sh` 只做 DB dump/retention，不再執行 Pi 端 git push 或 nightly tags；避免與 protected-main 政策衝突。
 
 ### One-command Backup Audit（canonical）
 
