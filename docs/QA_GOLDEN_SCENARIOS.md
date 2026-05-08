@@ -1,65 +1,67 @@
-# Golden Scenarios — PR／AI 改動後最快驗收
+# Golden Scenarios — CI 自動對應（無需人工勾選）
 
-> **目的**：改程式後不用憑感覺；勾一圈 **5～10 分鐘** 能逮住最常再犯的坑。  
-> **詳細規則**仍以 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) 為準；本檔只列**最小可執行檢查**。
+> **目的**：把 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) 裡高頻坑，對應到 **CI 已跑的測試**，merge 前不需手動打勾。  
+> **詳細規則**仍以 `AI_REGRESSION_LESSONS.md` 為準；本檔說明「§ → 誰在 CI 裡驗」。
 
-## 怎麼用
+## 怎麼用（零人工）
 
-1. 開 PR 或請 AI 合併前：依**本次改動模組**勾選對應區塊（不必全勾）。
-2. 改了 `AttendancePage.vue`、`SmartCalendar`、`StudentClass`、繳費／Invoice → **必勾該區**。
-3. 只做 docs／純文案 → 至少勾 **§0 全站 smoke** 裡的 health（若可連線）。
-
----
-
-## §0 全站 smoke（常駐，約 1 分鐘）
-
-- [ ] `GET /api/v1/health` 回 200、`status` 為 ok（部署後或改 nginx／後端啟動相關時必做）
-- [ ] 主任／老師 **登入** 成功，token 寫入 session（改 `auth`／middleware 時必做）
-- [ ] 分校選擇後列表／儀表板仍 **限本分校**（改 `require_campus`／raw query 時必做）
+1. **Presubmit** 與 **CI** 會跑 [`scripts/golden-ci-report.sh`](../scripts/golden-ci-report.sh)：依 `origin/main...HEAD` 的檔案路徑標記 §0～§4 是否被本次 PR 觸及，並寫入 GitHub Actions **Job summary**。
+2. **後端**路徑觸及 § → `ci.yml` 的 **PHPUnit** job（全量 Feature／Unit）必須綠燈。
+3. **前端**路徑觸及 §3 → **Vite** job 內已含 `npm run test:calendar` + production build。
+4. **部署後**的 production smoke（health、真機刷卡）仍由維運 SOP 處理，無法在 PR CI 內 100% 模擬。
 
 ---
 
-## §1 家長端／聯絡電話（改 `parent`、`Student`、登入 API 時勾）
+## §0 全站 smoke（認證／路由／middleware）
 
-- [ ] 家長登入：學生若只有填「家長手機」在 `parent_phone`，仍可登入（見 `AI_REGRESSION_LESSONS` §R10）
-- [ ] 家長端評量／科目顯示為**中文或一致標籤**，不出現裸 `English` 當 UI 主文案（§R11）
-- [ ] 家長相關 API：**先驗證 StudentID 歸屬**，再回業務狀態碼；勿用 403/409 差異洩漏他人資料（§R17）
-
----
-
-## §2 出缺勤／刷卡／堂次（改 `AttendancePage`、`SwipeRfid`、`ClassSession`、`POST attendance` 時勾）
-
-- [ ] 老師「補建並點名」送出含 **`StudentID`**，且日期可選**非今天**（若 UI 有補登）（§R14）
-- [ ] 管理員可查**指定日期或區間**出勤紀錄，不是只能看今天（§R12、§R15）
-- [ ] 補課／調課建立後，**該日**在行事曆／待點名／評量可見（補課有對應 `ClassSession`）（§R13）
-- [ ] 改 `AttendancePage.vue` `<script setup>` 後：**整頁可開、無 TDZ 白屏**；helper 宣告在 `ref` 初始化之前（§R16）
+| 自動化 |
+|--------|
+| 改 `api.php`、Auth、`AttachAuthUser`、`Kernel` → Golden report 標 §0；**PHPUnit** 跑通即涵蓋後端啟動與路由註冊；功能行為由各 Feature 測試覆蓋。 |
 
 ---
 
-## §3 智慧行事曆（改 `SmartCalendar`、`calendarOccurrenceMerge`、請假／例外合併時勾）
+## §1 家長端／聯絡電話
 
-- [ ] 修改合併邏輯後執行：`cd frontend && npm run test:calendar`（§R25、§R25b）
-- [ ] 同日 **請假** 與 **scheduled 例外**並存時，請假顯示不被吃掉（§R25）
-
----
-
-## §4 繳費／課程／帳務（改 `AlertController::tuition`、`Invoice`、`Payment`、`StudentClass` 狀態、續報時勾）
-
-- [ ] 變更前讀 [`DIRECTOR_PAYMENT_ALERT_RULES.md`](DIRECTOR_PAYMENT_ALERT_RULES.md)，**不擅自改提醒條件**
-- [ ] **已繳**課程無法再核帳出第二筆付款／重複 Invoice（§R28）
-- [ ] 課程結案／暫停：**未來 scheduled 堂次**一併處理，不只改 `Stop`（§R20）
-- [ ] 加購堂數：使用者理解為**新批次**，導向 `new_course.id`（§R21）
+| 自動化 |
+|--------|
+| 路徑含 `ParentPortal`、`ParentController`、`Student` model、`backend/tests/Feature/Parent*` → **PHPUnit**（含 `ParentPortalLoginIsolationTest`、`ParentPortalSubjectNameTest` 等）。 |
 
 ---
 
-## §5 只对 AI／工程師的 P0 纪律（不必每次手動測，但 merge 前心头过一遍）
+## §2 出缺勤／刷卡／堂次
 
-- [ ] 未在 Pi production 路徑跑 `php artisan test`／`phpunit`（§R2）
-- [ ] 改既有 `.php`／`.vue` 前 **CI 路線合法**（先測後改或符合 repo SOP）（§R3）
-- [ ] 禁止 `git push --force`、禁止直推 `main`（§R5）
+| 自動化 |
+|--------|
+| 路徑含 `AttendancePage`、`SwipeRfid`、`ClassSession`、`Attendance*` tests → **PHPUnit** 全量。 |
+
+---
+
+## §3 智慧行事曆（合併／請假）
+
+| 自動化 |
+|--------|
+| 路徑含 `SmartCalendar`、`calendarOccurrenceMerge`、`ScheduleController`、`lib/sessionDates.js` 等 → **Frontend CI** 強制 `npm run test:calendar`（見 `ci.yml` vite-build job）。 |
+
+---
+
+## §4 繳費／課程／帳務
+
+| 自動化 |
+|--------|
+| 路徑含 `AlertController`、`Invoice`、`Payment`、`StudentClassController`、`Tuition*` tests 等 → **PHPUnit** 全量。 |
+
+---
+
+## §5 P0 紀律（Pi／force push／測試）
+
+| 自動化 |
+|--------|
+| **無法**由程式代替人的決策；靠 **Presubmit**（分支命名、CHANGELOG 警告）、**規則文件**與 **Code review**。 |
 
 ---
 
 ## 擴充方式
 
-新增場景時：在 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) 寫規則，再在本檔**加一行勾選項**並標 § 編號，保持一頁可讀。
+1. 新坑寫入 `AI_REGRESSION_LESSONS.md`。  
+2. 若有新「路徑模式」，編輯 `scripts/golden-ci-report.sh` 的對應 §。  
+3. 若新坑可用測試涵蓋，補 **PHPUnit / frontend test**，不必再手動列清單。

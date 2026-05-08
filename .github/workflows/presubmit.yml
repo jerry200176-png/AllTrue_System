@@ -156,6 +156,14 @@ jobs:
           fi
 
       # ─────────────────────────────────────────────
+      # CHECK 6：Golden scenarios — path → §（全自動，取代人工勾選）
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 6] Golden scenarios report (automated)"
+        run: |
+          chmod +x scripts/golden-ci-report.sh
+          ./scripts/golden-ci-report.sh
+
+      # ─────────────────────────────────────────────
       # Summary
       # ─────────────────────────────────────────────
       - name: Summary
@@ -170,3 +178,4 @@ jobs:
           echo "| alwaysApply rules | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| CHANGELOG | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| No deploy in CI | See step log |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Golden § report | CHECK 6 |" >> "$GITHUB_STEP_SUMMARY"

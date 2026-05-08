@@ -42,6 +42,28 @@ jobs:
             ci_config:
               - '.github/workflows/**'
 
+  # PR diff → Golden § 對照表（全自動；取代人工勾選 QA_GOLDEN_SCENARIOS）
+  golden_scenarios:
+    name: Golden scenarios report
+    needs: changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Fetch main for diff range
+        run: git fetch origin main --depth=128 || true
+      - name: Path → § traceability report
+        env:
+          GOLDEN_BASE_REF: origin/main
+          GOLDEN_HEAD_REF: HEAD
+        run: |
+          chmod +x scripts/golden-ci-report.sh
+          ./scripts/golden-ci-report.sh
+
   phpunit:
     name: PHPUnit Feature & Unit Tests
     needs: changes

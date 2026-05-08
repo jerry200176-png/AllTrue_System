@@ -6,9 +6,9 @@
 
 ---
 
-## 2026-05-09 — docs(qa): Golden Scenarios 速驗清單
+## 2026-05-09 — chore(ci): Golden scenarios 自動報告（取代人工勾選）
 
-- Added `docs/QA_GOLDEN_SCENARIOS.md`：依模組可勾選 PR／AI merge 前 smoke；`INDEX` 導航；PR 模板補 Golden 對照勾選
+- Added `scripts/golden-ci-report.sh`；Presubmit CHECK 6、`ci.yml` job **Golden scenarios report**；`QA_GOLDEN_SCENARIOS`／`INDEX`／PR 模板改為 CI 對應（無手勾）
 
 ---
 
