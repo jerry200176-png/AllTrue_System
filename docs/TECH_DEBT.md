@@ -290,7 +290,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Deferred（2026-05-09） |
 | 優先級 | P1 |
 | 發現日期 | 2026-04-27 |
 | 發現來源 | [SRE] 工程成熟度補強 |
@@ -299,6 +299,7 @@
 | 建議做法 | 由 DBA/OPS 評估啟用 MySQL binlog、retention、磁碟壓力、binlog 異地同步與「full backup + binlog replay」演練；所有測試只可還原到 drill DB，不可觸碰 production `AllTrue` |
 | 清償成本估計 | 中（半天）|
 | 不做的代價 | 下一次資料破壞事件仍只能回到最近快照，無法精準還原到事故前一刻 |
+| 2026-05-09 決策 | 先 defer，不在當前維運窗口直接啟用 production binlog；觸發條件與 pre-enable checklist 已寫入 `docs/OPERATIONS_RUNBOOK.md` §P |
 
 ### TD-016：停用課程殘留 future scheduled 堂次掃描與自動修復
 
