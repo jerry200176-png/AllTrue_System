@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — ops(actions): 降低排程 Actions 依賴並補 fallback
+
+- Ops 將 `pi-health.yml` 降為每日、`branch-hygiene.yml` 降為每週，並在 runbook 補齊「minutes 耗盡時由 Pi 本機 monitor-alert + UptimeRobot 承接」與恢復後 rerun 清單
+
+---
+
 ## 2026-05-09 — ops(backups): 新增一鍵備份稽核腳本
 
 - Ops 新增 `scripts/backup-audit.sh`，集中檢查本機備份、manifest、Google Drive 異地同步、restore drill 結果與只讀 row-count sanity，並以 GREEN/YELLOW/RED 輸出總結

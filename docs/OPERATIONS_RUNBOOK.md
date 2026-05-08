@@ -103,6 +103,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
 13. **WSL2 self-hosted runner 只跑 CI**：`wsl2-jerry-alltrue` labels = `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，只可用於 `ci.yml` / `presubmit.yml` / `codeql.yml`。`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上持有 production deploy secrets 或執行部署。
+14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。
@@ -121,6 +122,19 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 - 將低頻維運排程降頻或移到外部監控
 - 拆分 fast tests / full regression tests
 - 已啟用獨立、非 production 的 WSL2 self-hosted runner；若月用量仍過高，再評估 fast/full test 分流或第二台 runner（不可與 Pi production 共用）。
+
+**GitHub Actions 分鐘耗盡時 fallback（critical signals）**
+- Pi 本機 `monitor-alert.sh check`（每 30 分鐘）持續監控磁碟、溫度、RAM、`/api/v1/health` 並發 Telegram/LINE。
+- `gdrive-backup-sync.sh` 與 `nightly/sixhour` 備份腳本仍在 Pi cron 執行，不依賴 GitHub runners。
+- UptimeRobot 持續監控主站與 health endpoint，不依賴 GitHub runners。
+
+**billing/minutes 恢復後建議 rerun**
+```bash
+gh workflow run pi-health.yml
+gh workflow run slow-query-report.yml
+gh workflow run backup-restore-test.yml
+gh workflow run branch-hygiene.yml
+```
 
 ### B3. Workflow Maturity Gates（AI + 大廠式工作流）
 
