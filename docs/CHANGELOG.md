@@ -6,6 +6,24 @@
 
 ---
 
+## 2026-05-09 — fix(import): 學生名冊 CSV/XLSX 標題列與 0 列匯入
+
+- Fixed `ImportController`：標題列掃描加深至前 30 列、`normalizeHeader` 支援全形空白；若僅有表頭無資料列回 **422** 並寫入可讀 `ErrorLog`；補 `StudentImportTest` 迴歸案例（#205）
+
+---
+
+## 2026-05-09 — docs(ops): Pi 溫度告警與老師簽到診斷 SOP
+
+- Changed `docs/OPERATIONS_RUNBOOK.md` §B2b／B2c：`pi-health`／`teacher-signin-diagnose` 使用方式與紀律（#195、#197）
+
+---
+
+## 2026-05-09 — docs(ai): CLAUDE 移除重複 MASTER WORKFLOW 區塊
+
+- Changed `CLAUDE.md`：長版 Phase／角色規格改指向 `.cursorrules` 為單一權威，避免與 always-loaded 規則重複分叉（#203）
+
+---
+
 ## 2026-05-09 — chore(github): PR 模板補 Refs／Closes 規則
 
 - Changed `.github/pull_request_template.md`：多階段／Epic issue 預設用 `Refs`，全案驗收完成才用 `Closes`；並調整 merge 前 CI／CHANGELOG／高風險模組檢查清單

@@ -12,6 +12,9 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ImportController extends Controller
 {
+    /** 標題列前方常有多列匯出說明／統計列；掃描過短會找不到「學生姓名」欄 */
+    private const STUDENT_IMPORT_MAX_HEADER_SCAN_ROWS = 30;
+
     public function students(Request $request)
     {
         $request->validate([
@@ -55,9 +58,15 @@ class ImportController extends Controller
                 (int) ($summary['skipped'] ?? 0),
                 count($summary['errors'] ?? [])
             );
-            $job->ErrorLog = !empty($summary['errors'] ?? [])
-                ? json_encode(array_slice($summary['errors'], 0, 20), JSON_UNESCAPED_UNICODE)
-                : '';
+            $job->ErrorLog = $this->buildStudentImportJobErrorLog($summary);
+            $zeroData = ($summary['created'] ?? 0) + ($summary['updated'] ?? 0) + ($summary['skipped'] ?? 0) === 0
+                && empty($summary['errors'] ?? []);
+            if ($zeroData) {
+                $job->Status = 'failed';
+                $job->ErrorLog = '未匯入任何列（0 新增 / 0 更新 / 0 略過）。若檔案前幾列為學校匯出說明，請確認含「學生／姓名」之標題列未被合併儲存格遮住，或欄名與範本一致。'
+                    . ($job->ErrorLog !== '' ? "\n" . $job->ErrorLog : '');
+                $statusCode = 422;
+            }
         } catch (\Throwable $e) {
             $job->Status = 'failed';
             $job->ErrorLog = $e->getMessage();
@@ -279,8 +288,19 @@ class ImportController extends Controller
     private function normalizeHeader(?string $value): string
     {
         $v = trim((string) $value);
-        $v = preg_replace('/^\xEF\xBB\xBF/u', '', $v);
-        return str_replace([' ', "\t", "\r", "\n"], '', $v);
+        // UTF-8 BOM
+        $v = preg_replace('/^\xEF\xBB\xBF/', '', $v);
+        // ASCII + 全形空白 U+3000 等（學校匯出表常見）
+        $v = preg_replace('/\s+/u', '', $v);
+
+        return $v;
+    }
+
+    private function buildStudentImportJobErrorLog(array $summary): string
+    {
+        return !empty($summary['errors'] ?? [])
+            ? json_encode(array_slice($summary['errors'], 0, 20), JSON_UNESCAPED_UNICODE)
+            : '';
     }
 
     private function findStudentsHeaderRow($handle): array
@@ -301,7 +321,7 @@ class ImportController extends Controller
                 return [$headers, $rowNo];
             }
 
-            if ($rowNo >= 10) {
+            if ($rowNo >= self::STUDENT_IMPORT_MAX_HEADER_SCAN_ROWS) {
                 break;
             }
         }
@@ -310,7 +330,11 @@ class ImportController extends Controller
             throw new \RuntimeException('檔案內容為空');
         }
 
-        throw new \RuntimeException('找不到「學生/姓名」欄位，請確認前 10 列內有標題列（如：學生、姓名、學生姓名）');
+        throw new \RuntimeException(
+            '找不到「學生/姓名」欄位，請確認前 '
+            . self::STUDENT_IMPORT_MAX_HEADER_SCAN_ROWS
+            . ' 列內有標題列（如：學生、姓名、學生姓名）'
+        );
     }
 
     private function findHeaderIndex(array $headers, array $candidates, array $containsCandidates = []): ?int
