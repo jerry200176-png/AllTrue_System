@@ -12,6 +12,12 @@
 
 ---
 
+## 2026-05-09 — chore(github): Issue 模板、CONTRIBUTING、SECURITY 與 CODEOWNERS 補強
+
+- Added `.github/ISSUE_TEMPLATE/*` + `config.yml`、根目錄 `CONTRIBUTING.md`／`SECURITY.md`；補 `CODEOWNERS` 納入 `backend/routes/api.php` 與 `docs/DANGEROUS_OPERATIONS.md`；`INDEX`／`README`／`AGENTS` 導航更新
+
+---
+
 ## 2026-05-09 — ops(ci): presubmit alwaysApply soft warning（>400）
 
 - Changed `presubmit.yml`：alwaysApply 總行數超過 400 先輸出 GitHub warning（不干擾 merge），超過 500 仍 hard fail

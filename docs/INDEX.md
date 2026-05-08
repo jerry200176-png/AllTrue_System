@@ -121,6 +121,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 技術文件
 | 檔案 | 一行說明 |
 |------|---------|
+| `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |
@@ -148,6 +149,16 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 
 ---
+
+## 🤖 GitHub（協作介面）
+
+| 項目 | 說明 |
+|------|------|
+| `CONTRIBUTING.md` | 貢獻流程與與 branch protection / Dependabot 的對應 |
+| `.github/pull_request_template.md` | 開 PR 預填：`Refs` / `Closes`、merge 前檢查 |
+| `.github/ISSUE_TEMPLATE/` | 建立 Issue 時選擇：Bug／工程變更／Ops（`config.yml` 含導航連結）|
+| `SECURITY.md`（根目錄） | GitHub **Security policy** 與漏洞通報入口；細節見 `docs/SECURITY.md` |
+| `.github/CODEOWNERS` | 敏感路徑自動請求 review |
 
 ## 🤖 GitHub Workflows（自動化）
 

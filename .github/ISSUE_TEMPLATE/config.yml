@@ -1,0 +1,12 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: 文件導航（建議先讀）
+    url: https://github.com/jerry200176-png/AllTrue_System/blob/main/docs/INDEX.md
+    about: 用 INDEX 定位到正確章節，再回來開 issue，避免重複與失焦。
+  - name: AI／人類開工順序（AGENTS）
+    url: https://github.com/jerry200176-png/AllTrue_System/blob/main/AGENTS.md
+    about: 分支命名、Commit、CI 自驗與 artifact 交接約定。
+  - name: 維運 Runbook
+    url: https://github.com/jerry200176-png/AllTrue_System/blob/main/docs/OPERATIONS_RUNBOOK.md
+    about: 部署、事故、備份、Secrets 輪換等 SOP（長文請勿整份貼進 issue）。
