@@ -95,6 +95,49 @@ class ClassSessionApiTest extends TestCase
         $this->assertSame($oldTeacherId, (int) ($hit['learning_record_teacher_id'] ?? 0));
     }
 
+    public function test_class_sessions_index_exposes_substitute_teacher_contract(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-class-session-sub-contract@example.com');
+        $regularTeacherId = $this->createTeacher(1, 'teacher-regular-sub-contract@example.com', '正班老師');
+        $subTeacherId = $this->createTeacher(1, 'teacher-sub-contract@example.com', '代課老師');
+        $student = $this->createStudent(1, '代課契約測試');
+        $courseRes = $this->createCourseViaApi($token, $student->id, $regularTeacherId)->assertCreated();
+        $courseId = $this->resolveCourseId($courseRes, $student->id, $regularTeacherId);
+        $classSession = ClassSession::where('StudentClassID', $courseId)->firstOrFail();
+
+        DB::table('schedules')->insert([
+            'student_id' => $student->id,
+            'teacher_id' => $subTeacherId,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => substr((string) $classSession->StartTime, 0, 5),
+            'end_time' => substr((string) $classSession->EndTime, 0, 5),
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => substr((string) $classSession->SessionDate, 0, 10),
+            'student_course_id' => $courseId,
+            'original_schedule_id' => 999001,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/class-sessions?branch_id=1&student_class_id={$courseId}&per_page=100");
+
+        $res->assertOk();
+        $hit = collect($res->json('data'))->firstWhere('id', $classSession->id);
+        $this->assertNotNull($hit);
+        $this->assertSame($subTeacherId, (int) ($hit['teacher_id'] ?? 0));
+        $this->assertSame($subTeacherId, (int) ($hit['substitute_teacher_id'] ?? 0));
+        $this->assertSame('代課老師', $hit['teacher_name'] ?? '');
+    }
+
     public function test_director_cannot_query_unassigned_branch(): void
     {
         $token = $this->createDirectorToken([1], 'director-class-session-b@example.com');
