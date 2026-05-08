@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(calendar): scheduled 例外不重複渲染已有堂次
+
+- Fixed 智慧行事曆週檢視若同課程同日同時段已有 `ClassSession` 來源卡片，不再額外渲染 `schedules.status=scheduled` 例外列，避免吳艾潼 SC#382 類多時段調課資料重複掛在兩位老師欄位
+
+---
+
 ## 2026-05-09 — fix(calendar): 停用舊課程不再重複掛兩位老師
 
 - Fixed 智慧行事曆載入課程時排除 `status=inactive` 或 `Stop=1` 的舊課，避免同學生在舊/新老師欄位同時出現
