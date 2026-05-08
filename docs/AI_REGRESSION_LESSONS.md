@@ -313,6 +313,14 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 ---
 
+### R25b. 智慧行事曆不可再用分散 if 合併三個資料源
+
+- `StudentClass`（常態規則）、`ClassSession`（實際堂次）、`schedules`（請假/調課/代課例外）若在 Vue component 內分段合併，容易出現「base 先跳過、exception 又跳過」導致課消失，或同一堂同時掛兩位老師（吳艾潼 SC#382 / 2026-05-10）。
+- **強制規則**：週檢視必須經由 `calendarOccurrenceMerge` 產生單一 occurrence list；同一 `ClassSession.id` 只能輸出一張卡，`scheduled` 例外若匹配同一堂只能 overlay 老師/時段，不可另渲染第二張。
+- **測試必補**：任何修改 calendar merge 行為，都必須先跑 `npm run test:calendar`，並覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
+
+---
+
 ### R26. 月結續報與堂數額度不可混在同一語意
 
 - 月結續報若延長原 `StudentClass`，舊期已繳與新期待繳會混在同一課程，主任無法判斷哪一期已結算。

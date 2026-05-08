@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(calendar): 行事曆改用 occurrence 合約合併
+
+- Fixed 智慧行事曆週檢視以單一 occurrence resolver 合併 `StudentClass`、`ClassSession` 與 `schedules`，避免同一堂課重複掛兩位老師或被 scheduled 例外互相抵消而消失
+
+---
+
 ## 2026-05-09 — fix(calendar): 停用舊課程不再重複掛兩位老師
 
 - Fixed 智慧行事曆載入課程時排除 `status=inactive` 或 `Stop=1` 的舊課，避免同學生在舊/新老師欄位同時出現

@@ -841,10 +841,7 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
-import {
-  scheduledExceptionStartSetForCourseDate,
-  shouldRenderScheduledException,
-} from '../lib/calendarExceptionMerge';
+import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
@@ -1901,213 +1898,36 @@ const filteredCourses = computed(() => {
   if (teacherScopeId && viewMode.value !== 'week') {
     list = list.filter((c) => String(c.teacher_id) === teacherScopeId);
   }
-  if (filterTeacherId.value) {
+  if (filterTeacherId.value && viewMode.value !== 'week') {
     const selectedTeacherId = String(filterTeacherId.value);
     list = list.filter(c => String(c.teacher_id ?? '') === selectedTeacherId);
   }
   
   // Merge exceptions based on the exact date of the current week view
   if (viewMode.value === 'week') {
-    const mergedList = [];
-    const dedupeWeekMergedList = (items) => {
-      const bestByKey = new Map();
-      const buildStudentKey = (row) => {
-        const scid = row?.student_course_id != null ? String(row.student_course_id) : '';
-        if (scid) return `sc:${scid}`;
-        const sid = row?.student_id != null ? String(row.student_id) : '';
-        if (sid) return `sid:${sid}`;
-        const sname = String(row?.student_name || '').trim().toLowerCase();
-        return sname ? `name:${sname}` : '';
-      };
-      const scoreRow = (row) => {
-        // Prefer exception rows (reschedule/substitute result) over base rows.
-        const isException = row?.is_exception === true ? 1 : 0;
-        const idNum = Number(row?.original_id || row?.id || 0) || 0;
-        return isException * 1_000_000 + idNum;
-      };
-      const makeKey = (row) => {
-        const studentKey = buildStudentKey(row);
-        if (!studentKey) return '';
-        const dow = Number(row?.day_of_week || 0);
-        const start = normalizeTimeTo30(row?.start_time || '');
-        if (!dow || !start) return '';
-        return `${studentKey}|${dow}|${start}`;
-      };
+    const weekDatesByDow = {};
+    for (let dow = 1; dow <= 7; dow += 1) {
+      weekDatesByDow[dow] = getDisplayDateFull(dow);
+    }
 
-      items.forEach((row) => {
-        const key = makeKey(row);
-        if (!key) return;
-        const prev = bestByKey.get(key);
-        if (!prev || scoreRow(row) >= scoreRow(prev)) {
-          bestByKey.set(key, row);
-        }
-      });
-
-      return Array.from(bestByKey.values());
-    };
-    const countByCourseId = () => {
-      const m = {};
-      mergedList.filter(x => !x.is_exception).forEach(x => {
-        const k = String(x.id ?? x.student_course_id);
-        m[k] = (m[k] || 0) + 1;
-      });
-      return m;
-    };
-    list.forEach(c => {
-      const cid = String(c.id);
-      const purchased = Math.max(0, parseInt(c.sessions_purchased ?? c.SessionCount ?? 0, 10) || 0);
-      const sessionSet = getSessionDateSetForCourse(c);
-      const days = ((c.days_of_week && c.days_of_week.length) ? c.days_of_week : [parseInt(c.day_of_week) || 0]).map(Number);
-      for (let dow = 1; dow <= 7; dow++) {
-        const counts = countByCourseId();
-        if (purchased > 0 && (counts[cid] || 0) >= purchased) break;
-        const targetDate = getDisplayDateFull(dow);
-        if (!targetDate) continue;
-        const targetYmd = String(targetDate).slice(0, 10);
-        // Leave exceptions: keep the card visible (shows '假' badge via rollCallBadge)
-        // Rescheduled exceptions: hide the card on the original date (session was moved)
-        // BUT if the ClassSession is already attended, the reschedule is stale — show the card.
-        const rawHasReschedule = exceptions.value.some(ex =>
-          ex.status === 'rescheduled' &&
-          (ex.student_course_id == null ? false : String(ex.student_course_id) === cid) &&
-          toYmd(ex.schedule_date) === targetDate
-        );
-        const sessionRows = (sessionDatesByCourseId.value[cid] || []).filter(r => String(r.session_date || '').slice(0, 10) === targetYmd);
-        const hasAttendedSession = sessionRows.some(r => String(r.status || '').toLowerCase() === 'attended');
-        const hasLeaveOnDate = sessionRows.some(r => ['leave', 'leave_adjusted', 'excused'].includes(String(r.status || '').toLowerCase()))
-          || exceptions.value.some(ex =>
-            ex.status === 'leave' &&
-            (ex.student_course_id != null && String(ex.student_course_id) === cid) &&
-            toYmd(ex.schedule_date) === targetDate
-          );
-        const hasReschedule = rawHasReschedule && !hasAttendedSession && !hasLeaveOnDate;
-        // PRD-E (2026-04-18, plan 8c1673b9) — 多日多時段課程不可被單一 scheduled 例外吃掉全部基底格。
-        // 舊邏輯 hasScheduledExc 為 boolean，只要該日該課程存在任何 status='scheduled' 例外就
-        // 整個日期的基底 weekly pattern 不渲染；遇到 days_of_week=[3,7] 這類多日多時段課程
-        // （例如 SC#382 吳艾潼：週三 16:00 + 週日 15:00），當週日 17:00-19:00 是從別日調過來的
-        // scheduled 例外，週日 15:00-17:00 的基底格會被誤抹除。
-        // 修正：改以 Set 收集該日該課程所有 scheduled 例外的 HH:MM，渲染基底時段時逐一比對，
-        // 只當基底時段與某個例外 start_time 完全重疊才跳過（代表那格是被調走/取代）。
-        const scheduledExcStartSet = scheduledExceptionStartSetForCourseDate(exceptions.value, targetDate, cid);
-        if (sessionSet) {
-          if (!sessionSet.has(targetYmd)) continue;
-          const lastDate = courseLastSessionDate.value[cid] ?? (sessionSet.size ? Array.from(sessionSet).sort().pop() : null);
-          if (lastDate != null && targetYmd > lastDate) continue;
-          if (!hasReschedule) {
-            const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
-            for (const t of times) {
-              const tStart = String(t.start_time || '').slice(0, 5);
-              if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue; // 該時段已由 scheduled 例外接手
-              if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
-              mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
-            }
-          }
-          continue;
-        }
-        const isFirstDay = c.first_class_date && String(targetDate).trim() === String(c.first_class_date).trim();
-        const isRecurringDay = days.includes(dow);
-        if (!isFirstDay && !isRecurringDay) continue;
-        const isBeforeStart = c.first_class_date && String(targetDate).trim() < String(c.first_class_date).trim();
-        const overSessionLimit = isOverSessionLimit(c.id, targetDate);
-        if (!hasReschedule && !isBeforeStart && !overSessionLimit) {
-          const times = resolveAllCourseGridTimesForDate(c, dow, targetYmd);
-          for (const t of times) {
-            const tStart = String(t.start_time || '').slice(0, 5);
-            if (!hasLeaveOnDate && scheduledExcStartSet.has(tStart)) continue;
-            if (purchased > 0 && (countByCourseId()[cid] || 0) >= purchased) break;
-            mergedList.push({ ...c, ...t, day_of_week: dow, days_of_week: [dow], is_base: true });
-          }
-        }
-      }
+    return mergeWeekCalendarOccurrences({
+      courses: list,
+      allCourses: courses.value,
+      exceptions: exceptions.value,
+      sessionDatesByCourseId: sessionDatesByCourseId.value,
+      weekDatesByDow,
+      courseLastSessionDate: courseLastSessionDate.value,
+      resolveAllCourseGridTimesForDate,
+      isOverSessionLimit,
+      normalizeTime: normalizeTimeTo30,
+      computeEndTime,
+      resolveStudentName,
+      resolveTeacherName,
+      filterTeacherId: filterTeacherId.value,
+      teacherScopeId,
+      isTeacher: isTeacher.value,
+      currentTeacherId: currentTeacherId.value,
     });
-    // 2. Add extra and scheduled (rescheduled-to) classes that fall onto this week's dates
-    //    已刪除的課程（student_course_id 不在 courses 內）不顯示調課
-    //    若該日該課程已請假，helper 會讓請假基底卡優先顯示，避免 scheduled 例外吃掉「假」角標
-    const courseIds = new Set(courses.value.map(c => c.id));
-    const hasSameStudentSlot = (ex, dow) => {
-      const exStart = normalizeTimeTo30(ex.start_time || '');
-      return mergedList.some(item =>
-        !item.is_exception &&
-        Number(item.day_of_week) === Number(dow) &&
-        String(item.student_id ?? '') === String(ex.student_id ?? '') &&
-        normalizeTimeTo30(item.start_time || '') === exStart
-      );
-    };
-    const getCounts = () => {
-      const m = {};
-      mergedList.forEach(x => {
-        const k = String(x.student_course_id ?? x.id);
-        m[k] = (m[k] || 0) + 1;
-      });
-      return m;
-    };
-    for (let dow = 1; dow <= 7; dow++) {
-      const targetDate = getDisplayDateFull(dow);
-      const dayExceptions = exceptions.value.filter(ex =>
-        toYmd(ex.schedule_date) === targetDate &&
-        shouldRenderScheduledException(ex, exceptions.value, targetDate) &&
-        (ex.student_course_id == null || courseIds.has(Number(ex.student_course_id))) &&
-        (!isTeacher.value || !currentTeacherId.value || String(ex.teacher_id) === currentTeacherId.value)
-      ).sort((a, b) => {
-        const score = (ex) => {
-          const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
-          const baseCourse = scid ? courses.value.find(c => String(c.id) === scid) : null;
-          const isScheduled = String(ex.status || '').toLowerCase() === 'scheduled';
-          const isSubstitute = isScheduled && baseCourse && String(ex.teacher_id ?? '') !== String(baseCourse.teacher_id ?? '');
-          return isSubstitute ? 0 : 1;
-        };
-        const priority = score(a) - score(b);
-        if (priority !== 0) return priority;
-        return Number(a.id || 0) - Number(b.id || 0);
-      });
-      
-      const renderedScheduledKeys = new Set();
-      dayExceptions.forEach(ex => {
-        const scid = ex.student_course_id != null ? String(ex.student_course_id) : null;
-        const exStart = normalizeTimeTo30(ex.start_time || '');
-        if (String(ex.status || '').toLowerCase() === 'scheduled') {
-          const key = [
-            scid || `student:${ex.student_id ?? ''}`,
-            toYmd(ex.schedule_date),
-            exStart,
-            ex.original_schedule_id || '',
-          ].join('|');
-          if (renderedScheduledKeys.has(key)) return;
-          renderedScheduledKeys.add(key);
-        }
-        if (hasSameStudentSlot(ex, dow)) return;
-        if (scid) {
-          const course = courses.value.find(c => String(c.id) === scid);
-          const purchased = course ? Math.max(0, parseInt(course.sessions_purchased ?? course.SessionCount ?? 0, 10) || 0) : 0;
-          if (purchased > 0 && (getCounts()[scid] || 0) >= purchased) return;
-        }
-        if (!filterTeacherId.value || ex.teacher_id === filterTeacherId.value) {
-          const exBaseCourse = scid ? courses.value.find(c => String(c.id) === scid) : null;
-          mergedList.push({
-            id: 'ex_' + ex.id,
-            original_id: ex.id,
-            is_exception: true,
-            student_id: ex.student_id,
-            student_name: ex.student?.name || resolveStudentName(ex.student_id) || '—',
-            teacher_id: ex.teacher_id,
-            teacher_name: ex.teacher?.username || resolveTeacherName(ex.teacher_id) || '未指派',
-            subject: exBaseCourse?.subject || ex.subject,
-            class_type: exBaseCourse?.class_type || ex.class_type,
-            day_of_week: dow,
-            start_time: ex.start_time,
-            end_time: ex.end_time,
-            duration_hours: ex.duration_hours,
-            student_course_id: ex.student_course_id,
-            original_schedule_id: ex.original_schedule_id || null
-          });
-        }
-      });
-    }
-    const deduped = dedupeWeekMergedList(mergedList);
-    if (teacherScopeId) {
-      return deduped.filter((c) => String(c.teacher_id) === teacherScopeId);
-    }
-    return deduped;
   }
   
   return list;
