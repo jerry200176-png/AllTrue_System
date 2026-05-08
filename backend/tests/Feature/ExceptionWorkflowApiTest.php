@@ -10,12 +10,25 @@ use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ExceptionWorkflowService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExceptionWorkflowApiTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Carbon::setTestNow(Carbon::parse('2026-05-01 10:00:00'));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
 
     public function test_parent_leave_request_creates_idempotent_workflow_and_marks_session_requested(): void
     {
