@@ -237,7 +237,6 @@ class TeacherLearningEngagementApisTest extends TestCase
             $this->bearer($token)
         )->assertStatus(403);
     }
-
     public function test_teacher_learning_progress_summary_returns_daily_and_totals(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-05-10 09:00:00'));
