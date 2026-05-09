@@ -14,6 +14,10 @@ function roleMatchesNoteAudience(note, role) {
   if (note.audience.includes(role)) {
     return true;
   }
+  if (role === 'parent') {
+    // Parent portal shows the same curated product-level updates in plain language.
+    return note.audience.some((a) => a === 'director' || a === 'teacher');
+  }
   const elevatedCampusStaff = ['super_admin', 'admin'];
   if (elevatedCampusStaff.includes(role)) {
     return note.audience.some((a) => a === 'director' || a === 'teacher');
