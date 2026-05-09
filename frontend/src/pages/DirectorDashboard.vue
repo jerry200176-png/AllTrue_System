@@ -841,7 +841,7 @@ const loadData = async () => {
 
   try {
     const pendingRes = await fetch(
-      `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending,changes_requested&per_page=100&sort=session_date`,
+      `${baseUrl}/v1/learning-records?branch_id=${props.branchId}&status=pending,changes_requested&only_due=1&per_page=100&sort=session_date`,
       { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }
     );
     if (pendingRes.ok) {
