@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -1115,6 +1116,66 @@ class LearningRecordApprovalDeductionTest extends TestCase
         $resApproved->assertOk();
         $idsAfter = collect($resApproved->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
         $this->assertContains((int) $pendingRecord->id, $idsAfter, '已核准評量在暫停課程仍應可查');
+    }
+
+    /**
+     * 課程已暫停／結束（Stop=1）且 ClassSession 未及時改為已到（仍 scheduled）、但堂次結束時間已過：
+     * 待審評量仍應出現在 index（避免「最後一堂」卡住無法審／退回）。
+     */
+    public function test_paused_course_shows_pending_when_past_session_still_scheduled(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-07 21:00:00', 'Asia/Taipei'));
+
+        try {
+            $token = $this->createDirectorToken([1], 'director-paused-stuck-lr@example.com');
+            $teacherId = $this->createTeacher(1, 'teacher-paused-stuck-lr@example.com');
+            $student = $this->createStudent(1, '暫停卡住評量索引');
+
+            $course = $this->createStudentClassForTest($student->id, $teacherId, [
+                'sessions_purchased' => 4,
+                'remaining_sessions' => 0,
+                'sessions_used' => 4,
+                'first_class_date' => '2026-03-01',
+                'days_of_week' => [1],
+                'start_time' => '18:00',
+            ]);
+            $courseId = (int) $course->ID;
+
+            $sc = StudentClass::findOrFail($courseId);
+            $sc->Stop = 1;
+            $sc->save();
+
+            $classSession = ClassSession::create([
+                'StudentClassID' => $courseId,
+                'SessionDate' => '2026-05-07',
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'scheduled',
+                'Note' => '',
+            ]);
+
+            $pendingRecord = LearningRecord::create([
+                'StudentClassID' => $courseId,
+                'ClassSessionID' => $classSession->id,
+                'TeacherID' => $teacherId,
+                'Content' => '結束後仍待審',
+                'Status' => 'pending',
+                'SessionDate' => $classSession->SessionDate,
+                'StartTime' => $classSession->StartTime,
+                'EndTime' => $classSession->EndTime,
+            ]);
+
+            $res = $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+            $res->assertOk();
+            $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $this->assertContains((int) $pendingRecord->id, $ids, '結束後仍 scheduled 的待審應可見以便處理');
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     /**

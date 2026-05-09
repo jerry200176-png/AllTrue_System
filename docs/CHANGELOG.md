@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(learning): 暫停課程最後堂 scheduled 未回寫仍可見待審評量
+
+- Fixed `LearningRecord::excludePausedCoursePendingReview`：課程已 Stop 且堂次結束時間已過但仍為 `scheduled` 時，保留 `pending`／`changes_requested` 於列表（避免最後一堂評量永遠載不出、主任無法退回）
+
+---
+
 ## 2026-05-09 — fix(substitute): 調課時代課老師被合約老師時段誤阻修正
 
 - Fixed `ScheduleController::store` FR-003：建立調課目標排程列時，若合約老師(A)已有代課老師(B)指派，改以B為基準做衝堂檢查，避免A的其他課程錯誤阻擋有效的調課操作
