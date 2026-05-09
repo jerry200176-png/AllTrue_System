@@ -1895,20 +1895,27 @@ function formatBuildTime(rawIso) {
   background:
     radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.3), transparent 38%),
     rgba(15, 23, 42, 0.28);
+  animation: brandIntroBackdropFlash 2.4s ease-out both;
 }
 
 .brand-idle-layer--intro .brand-idle-logo-wrap {
   width: 196px;
   height: 196px;
+  animation: brandIntroOrbPulse 2.4s cubic-bezier(0.18, 1, 0.32, 1) both;
 }
 
 .brand-idle-layer--intro .brand-idle-logo {
   width: 132px;
   height: 132px;
+  animation: brandIntroLogoPunch 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .brand-idle-layer--intro .brand-idle-copy strong {
   font-size: 26px;
+}
+
+.brand-idle-layer--intro .brand-idle-copy {
+  animation: brandIntroTextRise 2.4s cubic-bezier(0.2, 1, 0.3, 1) both;
 }
 
 .brand-idle-card {
@@ -1973,6 +1980,26 @@ function formatBuildTime(rawIso) {
   mix-blend-mode: screen;
 }
 
+.brand-idle-logo-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  transform: scale(0.65);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.brand-idle-layer--intro .brand-idle-logo-wrap::before {
+  animation: brandIntroShockwave 1.1s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+}
+
+.brand-idle-layer--intro .brand-idle-logo-wrap::after {
+  animation: brandIntroShineBurst 2.4s ease-out both;
+}
+
 .brand-idle-copy {
   display: grid;
   gap: 4px;
@@ -2031,10 +2058,69 @@ function formatBuildTime(rawIso) {
   70%, 100% { transform: translateX(78%) rotate(12deg); opacity: 0; }
 }
 
+@keyframes brandIntroBackdropFlash {
+  0% {
+    background:
+      radial-gradient(circle at 50% 40%, rgba(255, 232, 187, 0.8), transparent 22%),
+      rgba(10, 14, 25, 0.06);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  18% {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255, 194, 84, 0.52), transparent 35%),
+      rgba(11, 18, 32, 0.2);
+  }
+  100% {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.3), transparent 38%),
+      rgba(15, 23, 42, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes brandIntroOrbPulse {
+  0% { transform: scale(0.52); filter: brightness(1.2) saturate(1.1); }
+  16% { transform: scale(1.32); filter: brightness(1.4) saturate(1.2); }
+  36% { transform: scale(0.86); filter: brightness(1.1) saturate(1.05); }
+  56% { transform: scale(1.08); }
+  100% { transform: scale(1); filter: brightness(1) saturate(1); }
+}
+
+@keyframes brandIntroLogoPunch {
+  0% { transform: scale(0.42); opacity: 0; }
+  14% { transform: scale(1.62); opacity: 1; }
+  30% { transform: scale(0.82); }
+  46% { transform: scale(1.26); }
+  62% { transform: scale(1.02); }
+  100% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes brandIntroShockwave {
+  0% { transform: scale(0.62); opacity: 0.95; }
+  100% { transform: scale(1.56); opacity: 0; }
+}
+
+@keyframes brandIntroShineBurst {
+  0% { transform: translateX(-115%) rotate(12deg); opacity: 0; }
+  10% { opacity: 1; }
+  34% { transform: translateX(108%) rotate(12deg); opacity: 0.95; }
+  52% { opacity: 0; }
+  100% { transform: translateX(118%) rotate(12deg); opacity: 0; }
+}
+
+@keyframes brandIntroTextRise {
+  0% { opacity: 0; transform: translateY(12px) scale(0.96); }
+  28% { opacity: 1; transform: translateY(0) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-idle-logo-wrap,
   .brand-idle-ring,
   .brand-idle-logo,
+  .brand-idle-logo-wrap::before,
   .brand-idle-logo-wrap::after {
     animation: none;
   }
