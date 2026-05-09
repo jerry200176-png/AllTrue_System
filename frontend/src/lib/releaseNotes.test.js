@@ -12,3 +12,10 @@ assert.strictEqual(notesForRole('super_admin').length, directorCount, 'super_adm
 assert.strictEqual(notesForRole('admin').length, directorCount, 'admin should match director-facing notes');
 
 assert.ok(latestReleaseVersionForRole('super_admin').length > 0, 'version nudge needs a stable version key');
+
+const latest = notesForRole('director')[0];
+assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version), 'release notes should use semantic-style three-part versions');
+assert.ok(Array.isArray(latest.sections) && latest.sections.length > 0, 'release cards should have Minecraft-style sections');
+
+const userFacingText = JSON.stringify(latest);
+assert.ok(!/Controller|Service|\.vue|\.php|GET\s+\/|POST\s+\/|::/.test(userFacingText), 'release notes should avoid technical implementation terms');
