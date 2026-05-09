@@ -24,6 +24,12 @@
 
 ---
 
+## 2026-05-09 — feat(ui): 首次登入顯示「新版重點」導覽卡
+
+- Added 老師與主任登入後首次會看到簡短新版提醒，支援「立即查看 / 稍後再看」；文案改為非技術語言，讓現場同仁更容易理解
+
+---
+
 ## 2026-05-09 — fix(ops): `artisan fix` 防呆提示（避免 namespace 例外）
 
 - Fixed 新增 `artisan fix` 說明命令，當只輸入 `fix` 時改回傳可用修復命令提示，避免 `NamespaceNotFoundException` 進入 Sentry（#271）
