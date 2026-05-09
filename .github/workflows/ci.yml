@@ -351,6 +351,10 @@ jobs:
         working-directory: frontend
         run: npm run test:calendar
 
+      - name: Release notes visibility regression
+        working-directory: frontend
+        run: npm run test:release-notes
+
       - name: Vite build
         working-directory: frontend
         run: npm run build
