@@ -433,6 +433,101 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * 調課時代課老師為有效老師：合約老師(A)有其他課不應阻擋以B代課的調課操作。
+     *
+     * 情境：
+     * - A 是 X 學生（四）13:00 的合約老師，B 已被指定為代課
+     * - A 在（五）20:00 另有一堂課（Y 學生）
+     * - 用戶在 frontend 例外 stale 時，仍送出 teacher_id=A 的調課新排程列
+     * - Bug 修前：ScheduleGuard 查 A → A 有（五）20:00 課 → 409 阻擋
+     * - Bug 修後：ScheduleGuard 改查現有代課老師 B → B（五）20:00 沒課 → 201 通過
+     */
+    public function test_reschedule_scheduled_row_uses_existing_substitute_teacher_for_guard(): void
+    {
+        $token = $this->createDirectorToken([1], 'dir-resched-sub@example.com');
+        $teacherAId = $this->createTeacher(1, 'teacher-a-contract@example.com');
+        $teacherBId = $this->createTeacher(1, 'teacher-b-substitute@example.com');
+
+        $studentX = $this->createStudent(1, '學生X');
+        $studentY = $this->createStudent(1, '學生Y');
+
+        // X 的 StudentClass（合約老師 = A）
+        $scXId = DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentX->id, 'TeacherID' => $teacherAId,
+            'GradeID' => 1, 'SubjectID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 0, 'TotalHours' => 16, 'RoomID' => '', 'MDate' => now(),
+            'SessionDuration' => 120, 'Stop' => 0, 'RemainingSessions' => 8,
+            'SessionCount' => 8, 'UsedSessions' => 0, 'Rate' => 500, 'Charge' => 0, 'Paid' => 0,
+            'StartDate' => '2026-04-01', 'week' => 4, 'time' => '13:00',
+        ]);
+        // Y 的 StudentClass（合約老師 = A，讓 A 在（五）20:00 佔有容量）
+        $scYId = DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentY->id, 'TeacherID' => $teacherAId,
+            'GradeID' => 1, 'SubjectID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 0, 'TotalHours' => 16, 'RoomID' => '', 'MDate' => now(),
+            'SessionDuration' => 120, 'Stop' => 0, 'RemainingSessions' => 8,
+            'SessionCount' => 8, 'UsedSessions' => 0, 'Rate' => 500, 'Charge' => 0, 'Paid' => 0,
+            'StartDate' => '2026-04-01', 'week' => 5, 'time' => '20:00',
+        ]);
+        // A 在（五）20:00-22:00 有一堂 Y 的課（ClassSession）
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $scYId, 'SessionDate' => '2026-04-24',
+            'StartTime' => '20:00', 'EndTime' => '22:00', 'Status' => 'scheduled',
+        ]);
+
+        // B 已被設為 X 課（四）13:00 的代課老師（schedules anchor + substitute row）
+        $rescheduledId = DB::table('schedules')->insertGetId([
+            'student_id' => $studentX->id, 'teacher_id' => $teacherAId,
+            'subject' => '數學', 'day_of_week' => 4, 'start_time' => '13:00', 'end_time' => '15:00',
+            'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'rescheduled', 'type' => 'normal', 'deduction' => 0,
+            'branch_id' => 1, 'schedule_date' => '2026-04-23', 'student_course_id' => $scXId,
+        ]);
+        DB::table('schedules')->insert([
+            'student_id' => $studentX->id, 'teacher_id' => $teacherBId,
+            'subject' => '數學', 'day_of_week' => 4, 'start_time' => '13:00', 'end_time' => '15:00',
+            'duration_hours' => 2, 'class_type' => 'one_on_one',
+            'status' => 'scheduled', 'type' => 'normal', 'deduction' => 1,
+            'branch_id' => 1, 'schedule_date' => '2026-04-23',
+            'student_course_id' => $scXId, 'original_schedule_id' => $rescheduledId,
+        ]);
+
+        // Frontend（例外 stale 時）送出 teacher_id=A 的調課目標排程列到（五）20:00-22:00
+        // Bug 修前：ScheduleGuard 查 A → A 有（五）課 → 409
+        // Bug 修後：ScheduleGuard 改查現有代課老師 B → B（五）沒課 → 201
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/schedules', [
+            'student_id'          => $studentX->id,
+            'teacher_id'          => $teacherAId,  // contract teacher A（stale frontend data）
+            'subject'             => '數學',
+            'day_of_week'         => 5,
+            'start_time'          => '20:00',
+            'end_time'            => '22:00',
+            'duration_hours'      => 2,
+            'class_type'          => 'one_on_one',
+            'status'              => 'scheduled',
+            'type'                => 'normal',
+            'deduction'           => 1,
+            'branch_id'           => 1,
+            'schedule_date'       => '2026-04-24',  // Friday
+            'student_course_id'   => $scXId,
+            'original_schedule_id' => $rescheduledId,
+        ]);
+
+        $res->assertStatus(201);
+
+        // 寫入的排程列 teacher_id 應為代課老師 B（非合約老師 A）
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id'   => $scXId,
+            'schedule_date'       => '2026-04-24',
+            'start_time'          => '20:00',
+            'status'              => 'scheduled',
+            'original_schedule_id' => $rescheduledId,
+            'teacher_id'          => $teacherBId,
+        ]);
+    }
+
+    /**
      * @param  array<int>  $campusIds
      */
     private function createDirectorToken(array $campusIds, string $loginName): string
