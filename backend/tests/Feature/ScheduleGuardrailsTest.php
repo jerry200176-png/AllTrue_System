@@ -3,9 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
+use App\Models\ClassSession;
+use App\Models\Schedule;
 use App\Models\Student;
+use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -165,6 +169,157 @@ class ScheduleGuardrailsTest extends TestCase
                     ],
                 ],
             ]);
+    }
+
+    /**
+     * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
+     * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
+     */
+    public function test_reschedule_schedule_row_prefers_substitute_teacher_linked_to_anchor(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-subst-anchor@example.com');
+        $teacherA = $this->createTeacher(1, 'teacher-sub-a@example.com');
+        $teacherB = $this->createTeacher(1, 'teacher-sub-b@example.com');
+
+        $studentX = $this->createStudent(1, '學生調課來源');
+        $studentY = $this->createStudent(1, '學生佔時段');
+
+        // SC1 Thu  evening — will be postponed to Fri overlapping A's Fri night slot
+        $course1Id = (int) StudentClass::query()->insertGetId([
+            'StudentID' => $studentX->id,
+            'TeacherID' => $teacherA,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-05-07',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'RoomID' => '1',
+            'MDate' => now(),
+            'week' => 4,
+            'time' => '18:00',
+            'ScheduleMode' => 'count',
+        ]);
+
+        // SC2 Fri 20–22 Teacher A consumes A at that instant (different student).
+        StudentClass::query()->insert([
+            'StudentID' => $studentY->id,
+            'TeacherID' => $teacherA,
+            'ClassType' => 'one_on_one',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-05-08',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'RoomID' => '1',
+            'MDate' => now(),
+            'week' => 5,
+            'time' => '20:00',
+            'ScheduleMode' => 'count',
+        ]);
+
+        ClassSession::query()->insert([
+            'StudentClassID' => $course1Id,
+            'SessionDate' => '2026-05-07',
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $sc2 = StudentClass::query()->where('StudentID', $studentY->id)->where('TeacherID', $teacherA)->first();
+
+        ClassSession::query()->insert([
+            'StudentClassID' => $sc2->ID,
+            'SessionDate' => '2026-05-08',
+            'StartTime' => '20:00:00',
+            'EndTime' => '22:00:00',
+            'Status' => 'scheduled',
+        ]);
+
+        // Rescheduled anchor Thu + substitute scheduled Thu (teacher B) — mimic post-substitute state.
+        $anchor = Schedule::create([
+            'student_id' => $studentX->id,
+            'teacher_id' => $teacherA,
+            'subject' => 'Math',
+            'day_of_week' => Carbon::parse('2026-05-07')->dayOfWeekIso,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-05-07',
+            'student_course_id' => $course1Id,
+        ]);
+
+        Schedule::create([
+            'student_id' => $studentX->id,
+            'teacher_id' => $teacherB,
+            'subject' => 'Math',
+            'day_of_week' => Carbon::parse('2026-05-07')->dayOfWeekIso,
+            'start_time' => '18:00',
+            'end_time' => '20:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-05-07',
+            'student_course_id' => $course1Id,
+            'original_schedule_id' => $anchor->id,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentX->id,
+            // Intentionally send contract TeacherID — server should honour substitute B linked to anchor.
+            'teacher_id' => $teacherA,
+            'subject' => 'Math',
+            'day_of_week' => Carbon::parse('2026-05-08')->dayOfWeekIso,
+            'start_time' => '20:00',
+            'end_time' => '22:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-05-08',
+            'student_course_id' => $course1Id,
+            'original_schedule_id' => $anchor->id,
+        ]);
+
+        $res->assertCreated();
+        $tid = Schedule::where('student_course_id', $course1Id)
+            ->whereDate('schedule_date', '2026-05-08')
+            ->where('status', 'scheduled')
+            ->value('teacher_id');
+        $this->assertSame($teacherB, (int) $tid, 'persisted schedules row uses substitute teacher capacity context');
     }
 
     public function test_stale_scheduled_overrides_do_not_double_count_when_class_session_exists(): void
