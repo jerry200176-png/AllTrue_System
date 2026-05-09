@@ -4,313 +4,203 @@
  */
 export const changelogReleaseNotes = [
   {
-    "version": "v2026.5.9",
-    "date": "2026-05-09",
-    "title": "v2026.5.9 更新內容",
-    "summary": "老師工作台新增評量待辦提醒，主任也能看到各老師評量填寫狀況；修正超級管理員看不到版本更新內容的問題",
+    "version": "2026-05-09",
+    "title": "feat(ui): 版本更新由 CHANGELOG 同步、主任總覽桌面版更緊湊",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "老師工作台新增評量待辦提醒，主任也能看到各老師評量填寫狀況"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "修正超級管理員看不到版本更新內容的問題",
-          "修正暫停課程最後一堂的評量仍能被主任找到並處理",
-          "修正代課與調課時誤判老師撞課的問題，安排課程更順",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-          "修正停用舊課程後，學生不會再同時出現在新舊老師課表上"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "版本更新會自動整理最近變更，顯示成更好讀的更新公告",
-          "新增系統內的版本更新頁，老師和主任可直接查看近期更新",
-          "登入後會提示新版重點，讓現場同仁更快知道這版多了什麼"
-        ]
-      }
-    ],
     "items": [
-      "老師工作台新增評量待辦提醒，主任也能看到各老師評量填寫狀況",
-      "修正超級管理員看不到版本更新內容的問題",
-      "修正暫停課程最後一堂的評量仍能被主任找到並處理",
-      "修正代課與調課時誤判老師撞課的問題，安排課程更順",
-      "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-      "修正行事曆課程合併邏輯，避免課程重複出現或突然消失",
-      "修正停用舊課程後，學生不會再同時出現在新舊老師課表上",
-      "版本更新會自動整理最近變更，顯示成更好讀的更新公告"
+      "Added 「scripts/changelog-to-release-notes.mjs」＋「npm run sync-release-notes」：「build」 與 CI 先從 「docs/CHANGELOG.md」 產生課程向更新卡（略過純維運／chore／docs 類標題）",
+      "Changed 主任總覽 「≥1100px」 縮短上下節奏；長列表區塊改為區內捲動以降低整頁長度",
+      "Added「版本更新」頁底 GitHub CHANGELOG 連結"
     ]
   },
   {
-    "version": "v2026.5.8",
-    "date": "2026-05-08",
-    "title": "v2026.5.8 更新內容",
-    "summary": "代課堂次顯示在代課老師欄；調課後行事曆避免重複顯示",
+    "version": "2026-05-09",
+    "title": "Fixed（ui）: Super Admin 「版本更新」空白",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "修正內容",
-        "items": [
-          "代課堂次顯示在代課老師欄",
-          "調課後行事曆避免重複顯示",
-          "手機版補點名操作入口可見",
-          "行事曆顯示現任課程老師",
-          "補請假指定同日正確堂次",
-          "調課時取消自動補建的重複堂次"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "課表捲動與學生姓名可讀性"
-        ]
-      }
-    ],
     "items": [
-      "代課堂次顯示在代課老師欄",
-      "調課後行事曆避免重複顯示",
-      "手機版補點名操作入口可見",
-      "行事曆顯示現任課程老師",
-      "補請假指定同日正確堂次",
-      "調課時取消自動補建的重複堂次",
-      "課表捲動與學生姓名可讀性"
+      "Fixed 「notesForRole」：super_admin／admin 對齊可看主任／老師向發布備註；CI 增加 「npm run test:release-notes」"
     ]
   },
   {
-    "version": "v2026.4.30",
-    "date": "2026-04-30",
-    "title": "v2026.4.30 更新內容",
-    "summary": "請假補課前端入口",
+    "version": "2026-05-09",
+    "title": "fix(learning): 暫停課程最後堂 scheduled 未回寫仍可見待審評量",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "請假補課前端入口"
-        ]
-      }
-    ],
     "items": [
-      "請假補課前端入口"
+      "Fixed 「LearningRecord::excludePausedCoursePendingReview」：課程已 Stop 且堂次結束時間已過但仍為 「scheduled」 時，保留 「pending」／「changes_requested」 於列表（避免最後一堂評量永遠載不出、主任無法退回）"
     ]
   },
   {
-    "version": "v2026.4.29",
-    "date": "2026-04-29",
-    "title": "v2026.4.29 更新內容",
-    "summary": "主任可以更快確認補課候選時段；系統可以協助產生補課候選時段",
+    "version": "2026-05-09",
+    "title": "fix(substitute): 調課時代課老師被合約老師時段誤阻修正",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "主任可以更快確認補課候選時段",
-          "系統可以協助產生補課候選時段",
-          "家長請假申請可由主任集中追蹤處理",
-          "請假補課流程的資料串接更完整",
-          "新增多科共用堂數與加購分流入口"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "課程繳費日期與帳單視窗一致",
-          "例外堂請假取消狀態標籤優先",
-          "代課老師評量權限精準匹配時段",
-          "家長端月結與繳費提醒語意",
-          "改善學生名冊匯入，表格格式比較不容易造成匯入失敗",
-          "老師註冊密碼規則同步"
-        ]
-      }
-    ],
     "items": [
-      "主任可以更快確認補課候選時段",
-      "系統可以協助產生補課候選時段",
-      "家長請假申請可由主任集中追蹤處理",
-      "請假補課流程的資料串接更完整",
-      "新增多科共用堂數與加購分流入口",
-      "課程繳費日期與帳單視窗一致",
-      "例外堂請假取消狀態標籤優先",
-      "代課老師評量權限精準匹配時段"
+      "Fixed 「ScheduleController::store」 FR-003：建立調課目標排程列時，若合約老師(A)已有代課老師(B)指派，改以B為基準做衝堂檢查，避免A的其他課程錯誤阻擋有效的調課操作"
     ]
   },
   {
-    "version": "v2026.4.28",
-    "date": "2026-04-28",
-    "title": "v2026.4.28 更新內容",
-    "summary": "總覽儀表板高級視覺校準；未收款錯帳作廢容錯",
+    "version": "2026-05-09",
+    "title": "fix(substitute): 代課老師衝堂誤報修正（#275）",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "總覽儀表板高級視覺校準"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "未收款錯帳作廢容錯",
-          "對帳視窗帳單作廢入口",
-          "錯帳沖銷作廢與 ledger 狀態",
-          "代課動態卡片標題對齊",
-          "請假卡被調課例外遮蔽",
-          "帳單作廢入口與代課卡片字型"
-        ]
-      }
-    ],
     "items": [
-      "總覽儀表板高級視覺校準",
-      "未收款錯帳作廢容錯",
-      "對帳視窗帳單作廢入口",
-      "錯帳沖銷作廢與 ledger 狀態",
-      "代課動態卡片標題對齊",
-      "請假卡被調課例外遮蔽",
-      "帳單作廢入口與代課卡片字型"
+      "Fixed 「SubstituteService::collectTeacherBusySlots」 / 「collectTeacherBusySlotsWithCapacity」：合約老師的課若已有代課安排，不再誤標為忙碌；修正代課選人 modal 錯誤顯示「在其他分校有課」的 false positive"
     ]
   },
   {
-    "version": "v2026.4.27",
-    "date": "2026-04-27",
-    "title": "v2026.4.27 更新內容",
-    "summary": "-style 工作面板；主任指揮艙首屏",
+    "version": "2026-05-09",
+    "title": "fix(schedule): 代課後調課寫 schedules 自動採 effective 代課老師",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "-style 工作面板",
-          "主任指揮艙首屏",
-          "狀態與 Modal 補強",
-          "戰術課程列表視覺",
-          "-inspired command center 首屏",
-          "高質感課程列表"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "複雜流程送出中防呆",
-          "續報重複送出防護",
-          "課程管理顯示月結逐期帳單",
-          "0元課程可核帳結算",
-          "課程管理補課與暫停 UI SaaS 化",
-          "推算月結堂次可單堂編輯"
-        ]
-      },
-      {
-        "title": "體驗調整",
-        "items": [
-          "視覺系統規格",
-          "-inspired 視覺校準",
-          "多科共用方案入口降噪",
-          "月結建立課程日曆調整"
-        ]
-      }
-    ],
     "items": [
-      "-style 工作面板",
-      "主任指揮艙首屏",
-      "狀態與 Modal 補強",
-      "戰術課程列表視覺",
-      "-inspired command center 首屏",
-      "高質感課程列表",
-      "複雜流程送出中防呆",
-      "續報重複送出防護"
+      "Fixed 「POST /schedules」 對 「scheduled」 + 「original_schedule_id」（調課目標列）先做 anchor 鏈結代課老師消解，避免請求沿用 「StudentClass.TeacherID」 觸發假性撞課；行事曆 「submitReschedule」 同步將 「teacher_id」 對齊已存在的代課列"
     ]
   },
   {
-    "version": "v2026.4.26",
-    "date": "2026-04-26",
-    "title": "v2026.4.26 更新內容",
-    "summary": "工作音樂小彩蛋；家長溝通快捷片語優化",
+    "version": "2026-05-09",
+    "title": "feat(learning): 老師評量待辦角標與一鍵開填、主任填寫率報表",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "工作音樂小彩蛋",
-          "家長溝通快捷片語優化",
-          "通知中心核帳流程升級（PR ）",
-          "修正超級管理員看不到版本更新內容的問題",
-          "三 Tab 架構改版，學習優先（PR ）",
-          "通知中心 v2"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "修復已讀反彈並強化回饋定位",
-          "處理 MIME type 錯誤 及 N+1 誤判 （PR ）",
-          "月結課程在學生管理被誤判歷史課程而隱藏（PR ）",
-          "密碼改完撤銷全部 token + CSP Report-Only + debug_mode 監測"
-        ]
-      }
-    ],
     "items": [
-      "工作音樂小彩蛋",
-      "家長溝通快捷片語優化",
-      "通知中心核帳流程升級（PR ）",
-      "修正超級管理員看不到版本更新內容的問題",
-      "三 Tab 架構改版，學習優先（PR ）",
-      "通知中心 v2",
-      "修復已讀反彈並強化回饋定位",
-      "處理 MIME type 錯誤 及 N+1 誤判 （PR ）"
+      "Added 教學工作台優先開下一筆待填／「GET me/learning-pending-summary」 角標；主任儀表板近 14 天各老師已到班堂次之評量進度填寫率（「GET reports/teacher-learning-fill-rates」）"
     ]
   },
   {
-    "version": "v2026.4.25",
-    "date": "2026-04-25",
-    "title": "v2026.4.25 更新內容",
-    "summary": "修正超級管理員看不到版本更新內容的問題；家長入口跨家庭學生資料洩漏修復 [SECURITY]",
+    "version": "2026-05-09",
+    "title": "feat(ui): 系統內建「版本更新」頁面（老師/主任）",
     "audience": [
       "teacher",
       "director"
     ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "修正超級管理員看不到版本更新內容的問題"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "家長入口跨家庭學生資料洩漏修復 [SECURITY]"
-        ]
-      }
+    "items": [
+      "Added 老師與主任側欄新增「版本更新」入口，集中顯示近期版本新增功能與修正重點，降低口頭公告成本"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "feat(ui): 首次登入顯示「新版重點」導覽卡",
+    "audience": [
+      "teacher",
+      "director"
     ],
     "items": [
-      "修正超級管理員看不到版本更新內容的問題",
-      "家長入口跨家庭學生資料洩漏修復 [SECURITY]"
+      "Added 老師與主任登入後首次會看到簡短新版提醒，支援「立即查看 / 稍後再看」；文案改為非技術語言，讓現場同仁更容易理解"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "fix(import): 學生名冊 CSV/XLSX 標題列與 0 列匯入",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Fixed 「ImportController」：標題列掃描加深至前 30 列、「normalizeHeader」 支援全形空白；若僅有表頭無資料列回 **422** 並寫入可讀 「ErrorLog」；補 「StudentImportTest」 迴歸案例（#205）"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "fix(calendar): 行事曆改用 occurrence 合約合併",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Fixed 智慧行事曆週檢視以單一 occurrence resolver 合併 「StudentClass」、「ClassSession」 與 「schedules」，避免同一堂課重複掛兩位老師或被 scheduled 例外互相抵消而消失"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "fix(calendar): 停用舊課程不再重複掛兩位老師",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Fixed 智慧行事曆載入課程時排除 「status=inactive」 或 「Stop=1」 的舊課，避免同學生在舊/新老師欄位同時出現"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "ops(db): PITR/binlog 評估決策（先 defer）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Ops/DBA 在 runbook 明確記錄 「#207」 決策：目前先不啟用 production binlog，補齊觸發條件與 pre-enable checklist（限 drill DB 驗證）後再啟動"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "ops(backups): nightly 移除 Pi 端 git push/tag",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Ops 調整 「scripts/nightly-backup.sh」 僅保留 DB 備份與保留策略，不再從 Pi 嘗試 「git-sync」 或 nightly tag push，與 protected-main 治理一致"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "ops(actions): 降低排程 Actions 依賴並補 fallback",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Ops 將 「pi-health.yml」 降為每日、「branch-hygiene.yml」 降為每週，並在 runbook 補齊「minutes 耗盡時由 Pi 本機 monitor-alert + UptimeRobot 承接」與恢復後 rerun 清單"
+    ]
+  },
+  {
+    "version": "2026-05-09",
+    "title": "ops(backups): 新增一鍵備份稽核腳本",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Ops 新增 「scripts/backup-audit.sh」，集中檢查本機備份、manifest、Google Drive 異地同步、restore drill 結果與只讀 row-count sanity，並以 GREEN/YELLOW/RED 輸出總結"
+    ]
+  },
+  {
+    "version": "2026-05-08",
+    "title": "security(ops): 維運 SSH 改為 host key pinning",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Security 將 「pi-health.yml」、「backup-restore-test.yml」、「slow-query-report.yml」 移除 「StrictHostKeyChecking no」，改用 「PI_HOST_KEY」 + 「known_hosts」 pinning，並在 Presubmit 增加禁止回歸檢查"
+    ]
+  },
+  {
+    "version": "2026-05-08",
+    "title": "fix(schedule): 代課堂次顯示在代課老師欄",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "items": [
+      "Fixed 同一堂代課若殘留原老師與代課老師的重複排程紀錄，行事曆會優先顯示在代課老師欄位"
     ]
   }
 ];
