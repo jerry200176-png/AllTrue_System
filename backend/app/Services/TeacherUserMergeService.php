@@ -63,54 +63,44 @@ class TeacherUserMergeService
         $this->assertMergeable($keepId, $mergeId);
 
         DB::transaction(function () use ($keepId, $mergeId) {
-            $this->dedupeTeacherSubjects($keepId, $mergeId);
+            $this->dedupeOverlappingFk($keepId, $mergeId, 'teacher_subjects', 'teacher_id', 'subject_id');
             $this->dedupeTeacherSubjectLevels($keepId, $mergeId);
-            $this->dedupeTeacherBranches($keepId, $mergeId);
-            $this->dedupeUserCampus($keepId, $mergeId);
+            $this->dedupeOverlappingFk($keepId, $mergeId, 'teacher_branches', 'teacher_id', 'branch_id');
+            $this->dedupeOverlappingFk($keepId, $mergeId, 'UserCampus', 'UserID', 'CampusID');
             $this->dedupePayrollTeacherBranchRules($keepId, $mergeId);
             $this->mergeTeacherMonthlyStats($keepId, $mergeId);
-            $this->dedupeNotificationReads($keepId, $mergeId);
-            $this->dedupeBugReportUserReads($keepId, $mergeId);
+            $this->dedupeScopedUserRows($keepId, $mergeId, 'NotificationReads', 'UserID', 'NotificationID');
+            $this->dedupeScopedUserRows($keepId, $mergeId, 'bug_report_user_reads', 'user_id', 'bug_report_id');
             $this->dedupeUserNotificationPreferences($keepId, $mergeId);
-            $this->dedupeChatThreadUsers($keepId, $mergeId);
+            $this->dedupeChatThreadMembers($keepId, $mergeId);
 
-            $this->bulkRetarget('StudentClass', 'TeacherID', $keepId, $mergeId);
-            $this->bulkRetarget('schedules', 'teacher_id', $keepId, $mergeId);
-            $this->bulkRetarget('LearningRecord', 'TeacherID', $keepId, $mergeId);
-            $this->bulkRetarget('LearningRecord', 'CreatedByUserID', $keepId, $mergeId);
-            $this->bulkRetarget('StudentSingIn', 'TeacherID', $keepId, $mergeId);
-            $this->bulkRetarget('StudentSingIn', 'RecordedByUserID', $keepId, $mergeId);
-            $this->bulkRetarget('TeacherSingIn', 'TeacherID', $keepId, $mergeId);
+            $this->retargetPairs($keepId, $mergeId, [
+                ['StudentClass', 'TeacherID'],
+                ['schedules', 'teacher_id'],
+                ['LearningRecord', 'TeacherID'],
+                ['LearningRecord', 'CreatedByUserID'],
+                ['StudentSingIn', 'TeacherID'],
+                ['StudentSingIn', 'RecordedByUserID'],
+                ['TeacherSingIn', 'TeacherID'],
+            ]);
 
-            if ($this->hasTable('learning_record_teacher_changes')) {
-                $this->bulkRetarget('learning_record_teacher_changes', 'new_teacher_id', $keepId, $mergeId);
-                $this->bulkRetarget('learning_record_teacher_changes', 'old_teacher_id', $keepId, $mergeId);
-                $this->bulkRetarget('learning_record_teacher_changes', 'changed_by', $keepId, $mergeId);
-            }
-            if ($this->hasTable('learning_record_feedbacks')) {
-                $this->bulkRetarget('learning_record_feedbacks', 'teacher_id', $keepId, $mergeId);
-            }
-            if ($this->hasTable('learning_record_teacher_comments')) {
-                $this->bulkRetarget('learning_record_teacher_comments', 'teacher_id', $keepId, $mergeId);
-                $this->bulkRetarget('learning_record_teacher_comments', 'author_user_id', $keepId, $mergeId);
-            }
-            if ($this->hasTable('exception_workflow_candidates')) {
-                $this->bulkRetarget('exception_workflow_candidates', 'teacher_id', $keepId, $mergeId);
-            }
+            $this->retargetTableColumnsIfExists('learning_record_teacher_changes', $keepId, $mergeId, [
+                'new_teacher_id', 'old_teacher_id', 'changed_by',
+            ]);
+            $this->retargetTableColumnsIfExists('learning_record_feedbacks', $keepId, $mergeId, ['teacher_id']);
+            $this->retargetTableColumnsIfExists('learning_record_teacher_comments', $keepId, $mergeId, [
+                'teacher_id', 'author_user_id',
+            ]);
+            $this->retargetTableColumnsIfExists('exception_workflow_candidates', $keepId, $mergeId, ['teacher_id']);
 
             $this->retargetBugReportUserRefs($keepId, $mergeId);
-            if ($this->hasTable('chat_threads')) {
-                $this->bulkRetarget('chat_threads', 'created_by', $keepId, $mergeId);
-            }
+            $this->bulkRetarget('chat_threads', 'created_by', $keepId, $mergeId);
             $this->bulkRetarget('chat_messages', 'sender_user_id', $keepId, $mergeId);
 
-            // Other User.id references
             if ($this->hasColumn('User', 'PasswordSetByUserID')) {
                 $this->bulkRetarget('User', 'PasswordSetByUserID', $keepId, $mergeId);
             }
-            if ($this->hasTable('payroll_audit_log')) {
-                $this->bulkRetarget('payroll_audit_log', 'user_id', $keepId, $mergeId);
-            }
+            $this->bulkRetarget('payroll_audit_log', 'user_id', $keepId, $mergeId);
 
             $this->mergeTeacherRows($keepId, $mergeId);
             $this->finalizeMergedUser($keepId, $mergeId);
@@ -125,80 +115,75 @@ class TeacherUserMergeService
         });
     }
 
-    private function mergeTeacherRows(int $keepId, int $mergeId): void
+    /**
+     * @param array<int, array{0: string, 1: string}> $pairs
+     */
+    private function retargetPairs(int $keepId, int $mergeId, array $pairs): void
     {
-        if (!$this->hasTable('Teacher')) {
-            return;
-        }
-
-        $keepT = DB::table('Teacher')->where('id', $keepId)->first();
-        $mergeT = DB::table('Teacher')->where('id', $mergeId)->first();
-
-        if ($mergeT) {
-            if ($keepT) {
-                $patch = [];
-                foreach (['RFID', 'Phone', 'LineID', 'T_Name'] as $col) {
-                    if (!isset($mergeT->$col) || $mergeT->$col === null || $mergeT->$col === '') {
-                        continue;
-                    }
-                    if (!isset($keepT->$col) || $keepT->$col === null || $keepT->$col === '') {
-                        $patch[$col] = $mergeT->$col;
-                    }
-                }
-                if (isset($patch['RFID']) && $this->hasColumn('Teacher', 'RFID')) {
-                    // Clear merge row first so a unique RFID is not held by two rows.
-                    DB::table('Teacher')->where('id', $mergeId)->update(['RFID' => null]);
-                }
-                if ($patch !== []) {
-                    DB::table('Teacher')->where('id', $keepId)->update($patch);
-                }
-            } else {
-                DB::table('Teacher')->where('id', $mergeId)->update(['id' => $keepId]);
-
-                return;
-            }
-            DB::table('Teacher')->where('id', $mergeId)->delete();
+        foreach ($pairs as [$table, $column]) {
+            $this->bulkRetarget($table, $column, $keepId, $mergeId);
         }
     }
 
-    private function finalizeMergedUser(int $keepId, int $mergeId): void
+    /**
+     * @param string[] $columns
+     */
+    private function retargetTableColumnsIfExists(string $table, int $keepId, int $mergeId, array $columns): void
     {
-        $suffix = '_into_' . $keepId . '_' . Str::lower(Str::random(6));
-        $mergedLogin = 'merged' . $suffix;
-        if (strlen($mergedLogin) > 64) {
-            $mergedLogin = Str::limit($mergedLogin, 64, '');
+        if (!$this->hasTable($table)) {
+            return;
         }
-
-        DB::table('User')->where('id', $mergeId)->update([
-            'LoginName' => $mergedLogin,
-            'status' => 'inactive',
-        ]);
+        foreach ($columns as $col) {
+            $this->bulkRetarget($table, $col, $keepId, $mergeId);
+        }
     }
 
-    private function dedupeTeacherSubjects(int $keepId, int $mergeId): void
+    /**
+     * Delete merge rows that duplicate keep rows on $scopeCol, then point remaining merge FKs at keep.
+     */
+    private function dedupeScopedUserRows(int $keepId, int $mergeId, string $table, string $userCol, string $scopeCol): void
     {
-        if (!$this->hasTable('teacher_subjects')) {
+        if (!$this->hasTable($table)) {
             return;
         }
 
-        $dupSubjects = DB::table('teacher_subjects as m')
-            ->join('teacher_subjects as k', function ($join) use ($keepId, $mergeId) {
-                $join->on('m.subject_id', '=', 'k.subject_id')
-                    ->where('m.teacher_id', $mergeId)
-                    ->where('k.teacher_id', $keepId);
+        $dupIds = DB::table($table . ' as m')
+            ->join($table . ' as k', function ($join) use ($keepId, $mergeId, $userCol, $scopeCol) {
+                $join->on('m.' . $scopeCol, '=', 'k.' . $scopeCol)
+                    ->where('m.' . $userCol, $mergeId)
+                    ->where('k.' . $userCol, $keepId);
             })
-            ->pluck('m.subject_id');
+            ->pluck('m.id');
 
-        if ($dupSubjects->isNotEmpty()) {
-            DB::table('teacher_subjects')
-                ->where('teacher_id', $mergeId)
-                ->whereIn('subject_id', $dupSubjects->all())
-                ->delete();
+        if ($dupIds->isNotEmpty()) {
+            DB::table($table)->whereIn('id', $dupIds->all())->delete();
         }
 
-        DB::table('teacher_subjects')
-            ->where('teacher_id', $mergeId)
-            ->update(['teacher_id' => $keepId]);
+        DB::table($table)->where($userCol, $mergeId)->update([$userCol => $keepId]);
+    }
+
+    /**
+     * When merge and keep each have a row with the same $overlapCol, drop merge's row; then retarget FK.
+     */
+    private function dedupeOverlappingFk(int $keepId, int $mergeId, string $table, string $fkCol, string $overlapCol): void
+    {
+        if (!$this->hasTable($table)) {
+            return;
+        }
+
+        $dupVals = DB::table($table . ' as m')
+            ->join($table . ' as k', function ($join) use ($keepId, $mergeId, $fkCol, $overlapCol) {
+                $join->on('m.' . $overlapCol, '=', 'k.' . $overlapCol)
+                    ->where('m.' . $fkCol, $mergeId)
+                    ->where('k.' . $fkCol, $keepId);
+            })
+            ->pluck('m.' . $overlapCol);
+
+        if ($dupVals->isNotEmpty()) {
+            DB::table($table)->where($fkCol, $mergeId)->whereIn($overlapCol, $dupVals->all())->delete();
+        }
+
+        DB::table($table)->where($fkCol, $mergeId)->update([$fkCol => $keepId]);
     }
 
     private function dedupeTeacherSubjectLevels(int $keepId, int $mergeId): void
@@ -224,61 +209,7 @@ class TeacherUserMergeService
                 ->delete();
         }
 
-        DB::table('teacher_subject_levels')
-            ->where('teacher_id', $mergeId)
-            ->update(['teacher_id' => $keepId]);
-    }
-
-    private function dedupeTeacherBranches(int $keepId, int $mergeId): void
-    {
-        if (!$this->hasTable('teacher_branches')) {
-            return;
-        }
-
-        $dupBranches = DB::table('teacher_branches as m')
-            ->join('teacher_branches as k', function ($join) use ($keepId, $mergeId) {
-                $join->on('m.branch_id', '=', 'k.branch_id')
-                    ->where('m.teacher_id', $mergeId)
-                    ->where('k.teacher_id', $keepId);
-            })
-            ->pluck('m.branch_id');
-
-        if ($dupBranches->isNotEmpty()) {
-            DB::table('teacher_branches')
-                ->where('teacher_id', $mergeId)
-                ->whereIn('branch_id', $dupBranches->all())
-                ->delete();
-        }
-
-        DB::table('teacher_branches')
-            ->where('teacher_id', $mergeId)
-            ->update(['teacher_id' => $keepId]);
-    }
-
-    private function dedupeUserCampus(int $keepId, int $mergeId): void
-    {
-        if (!$this->hasTable('UserCampus')) {
-            return;
-        }
-
-        $dupCampuses = DB::table('UserCampus as m')
-            ->join('UserCampus as k', function ($join) use ($keepId, $mergeId) {
-                $join->on('m.CampusID', '=', 'k.CampusID')
-                    ->where('m.UserID', $mergeId)
-                    ->where('k.UserID', $keepId);
-            })
-            ->pluck('m.CampusID');
-
-        if ($dupCampuses->isNotEmpty()) {
-            DB::table('UserCampus')
-                ->where('UserID', $mergeId)
-                ->whereIn('CampusID', $dupCampuses->all())
-                ->delete();
-        }
-
-        DB::table('UserCampus')
-            ->where('UserID', $mergeId)
-            ->update(['UserID' => $keepId]);
+        DB::table('teacher_subject_levels')->where('teacher_id', $mergeId)->update(['teacher_id' => $keepId]);
     }
 
     private function dedupePayrollTeacherBranchRules(int $keepId, int $mergeId): void
@@ -287,11 +218,9 @@ class TeacherUserMergeService
             return;
         }
 
-        $mergeRows = DB::table('payroll_teacher_branch_rules')
-            ->where('teacher_user_id', $mergeId)
-            ->get(['id', 'branch_id']);
-
-        foreach ($mergeRows as $row) {
+        foreach (
+            DB::table('payroll_teacher_branch_rules')->where('teacher_user_id', $mergeId)->get(['id', 'branch_id']) as $row
+        ) {
             $dup = DB::table('payroll_teacher_branch_rules')
                 ->where('teacher_user_id', $keepId)
                 ->where('branch_id', $row->branch_id)
@@ -299,9 +228,7 @@ class TeacherUserMergeService
             if ($dup) {
                 DB::table('payroll_teacher_branch_rules')->where('id', $row->id)->delete();
             } else {
-                DB::table('payroll_teacher_branch_rules')
-                    ->where('id', $row->id)
-                    ->update(['teacher_user_id' => $keepId]);
+                DB::table('payroll_teacher_branch_rules')->where('id', $row->id)->update(['teacher_user_id' => $keepId]);
             }
         }
     }
@@ -312,8 +239,7 @@ class TeacherUserMergeService
             return;
         }
 
-        $rows = DB::table('teacher_monthly_stats')->where('TeacherID', $mergeId)->get();
-        foreach ($rows as $row) {
+        foreach (DB::table('teacher_monthly_stats')->where('TeacherID', $mergeId)->get() as $row) {
             $existing = DB::table('teacher_monthly_stats')
                 ->where('TeacherID', $keepId)
                 ->where('YearMonth', $row->YearMonth)
@@ -325,53 +251,9 @@ class TeacherUserMergeService
                 ]);
                 DB::table('teacher_monthly_stats')->where('id', $row->id)->delete();
             } else {
-                DB::table('teacher_monthly_stats')->where('id', $row->id)->update([
-                    'TeacherID' => $keepId,
-                ]);
+                DB::table('teacher_monthly_stats')->where('id', $row->id)->update(['TeacherID' => $keepId]);
             }
         }
-    }
-
-    private function dedupeNotificationReads(int $keepId, int $mergeId): void
-    {
-        if (!$this->hasTable('NotificationReads')) {
-            return;
-        }
-
-        $dupIds = DB::table('NotificationReads as m')
-            ->join('NotificationReads as k', function ($join) use ($keepId, $mergeId) {
-                $join->on('m.NotificationID', '=', 'k.NotificationID')
-                    ->where('m.UserID', $mergeId)
-                    ->where('k.UserID', $keepId);
-            })
-            ->pluck('m.id');
-
-        if ($dupIds->isNotEmpty()) {
-            DB::table('NotificationReads')->whereIn('id', $dupIds->all())->delete();
-        }
-
-        DB::table('NotificationReads')->where('UserID', $mergeId)->update(['UserID' => $keepId]);
-    }
-
-    private function dedupeBugReportUserReads(int $keepId, int $mergeId): void
-    {
-        if (!$this->hasTable('bug_report_user_reads')) {
-            return;
-        }
-
-        $dupIds = DB::table('bug_report_user_reads as m')
-            ->join('bug_report_user_reads as k', function ($join) use ($keepId, $mergeId) {
-                $join->on('m.bug_report_id', '=', 'k.bug_report_id')
-                    ->where('m.user_id', $mergeId)
-                    ->where('k.user_id', $keepId);
-            })
-            ->pluck('m.id');
-
-        if ($dupIds->isNotEmpty()) {
-            DB::table('bug_report_user_reads')->whereIn('id', $dupIds->all())->delete();
-        }
-
-        DB::table('bug_report_user_reads')->where('user_id', $mergeId)->update(['user_id' => $keepId]);
     }
 
     private function dedupeUserNotificationPreferences(int $keepId, int $mergeId): void
@@ -386,21 +268,17 @@ class TeacherUserMergeService
         ) {
             DB::table('user_notification_preferences')->where('user_id', $mergeId)->delete();
         } else {
-            DB::table('user_notification_preferences')
-                ->where('user_id', $mergeId)
-                ->update(['user_id' => $keepId]);
+            DB::table('user_notification_preferences')->where('user_id', $mergeId)->update(['user_id' => $keepId]);
         }
     }
 
-    private function dedupeChatThreadUsers(int $keepId, int $mergeId): void
+    private function dedupeChatThreadMembers(int $keepId, int $mergeId): void
     {
         if (!$this->hasTable('chat_thread_members')) {
             return;
         }
 
-        $mergeMemberships = DB::table('chat_thread_members')->where('user_id', $mergeId)->get(['id', 'thread_id']);
-
-        foreach ($mergeMemberships as $mem) {
+        foreach (DB::table('chat_thread_members')->where('user_id', $mergeId)->get(['id', 'thread_id']) as $mem) {
             $dup = DB::table('chat_thread_members')
                 ->where('thread_id', $mem->thread_id)
                 ->where('user_id', $keepId)
@@ -421,12 +299,55 @@ class TeacherUserMergeService
 
         $this->bulkRetarget('bug_reports', 'reporter_user_id', $keepId, $mergeId);
         $this->bulkRetarget('bug_reports', 'assigned_to', $keepId, $mergeId);
-        if ($this->hasTable('bug_report_comments')) {
-            $this->bulkRetarget('bug_report_comments', 'author_user_id', $keepId, $mergeId);
+        $this->bulkRetarget('bug_report_comments', 'author_user_id', $keepId, $mergeId);
+        $this->bulkRetarget('bug_report_status_logs', 'changed_by', $keepId, $mergeId);
+    }
+
+    private function mergeTeacherRows(int $keepId, int $mergeId): void
+    {
+        if (!$this->hasTable('Teacher')) {
+            return;
         }
-        if ($this->hasTable('bug_report_status_logs')) {
-            $this->bulkRetarget('bug_report_status_logs', 'changed_by', $keepId, $mergeId);
+
+        $keepT = DB::table('Teacher')->where('id', $keepId)->first();
+        $mergeT = DB::table('Teacher')->where('id', $mergeId)->first();
+
+        if (!$mergeT) {
+            return;
         }
+
+        if ($keepT) {
+            $patch = [];
+            foreach (['RFID', 'Phone', 'LineID', 'T_Name'] as $col) {
+                if (!isset($mergeT->$col) || $mergeT->$col === null || $mergeT->$col === '') {
+                    continue;
+                }
+                if (!isset($keepT->$col) || $keepT->$col === null || $keepT->$col === '') {
+                    $patch[$col] = $mergeT->$col;
+                }
+            }
+            if (isset($patch['RFID']) && $this->hasColumn('Teacher', 'RFID')) {
+                DB::table('Teacher')->where('id', $mergeId)->update(['RFID' => null]);
+            }
+            if ($patch !== []) {
+                DB::table('Teacher')->where('id', $keepId)->update($patch);
+            }
+        } else {
+            DB::table('Teacher')->where('id', $mergeId)->update(['id' => $keepId]);
+
+            return;
+        }
+
+        DB::table('Teacher')->where('id', $mergeId)->delete();
+    }
+
+    private function finalizeMergedUser(int $keepId, int $mergeId): void
+    {
+        $mergedLogin = Str::limit('merged_into_' . $keepId . '_' . Str::lower(Str::random(6)), 64, '');
+        DB::table('User')->where('id', $mergeId)->update([
+            'LoginName' => $mergedLogin,
+            'status' => 'inactive',
+        ]);
     }
 
     /**
@@ -458,10 +379,6 @@ class TeacherUserMergeService
 
     private function hasColumn(string $table, string $column): bool
     {
-        if (!$this->hasTable($table)) {
-            return false;
-        }
-
-        return Schema::hasColumn($table, $column);
+        return $this->hasTable($table) && Schema::hasColumn($table, $column);
     }
 }
