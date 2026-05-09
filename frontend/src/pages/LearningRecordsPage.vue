@@ -1802,7 +1802,12 @@ const teacherChangeForm = reactive({
 const isSessionStarted = (sessionDate, startTime) => {
   const date = String(sessionDate || '').slice(0, 10);
   const time = normalizeTime(startTime);
-  if (!date || !time) return true;
+  if (!date) return true;
+  if (!time) {
+    const dayStart = new Date(`${date}T00:00:00`);
+    if (Number.isNaN(dayStart.getTime())) return true;
+    return Date.now() >= dayStart.getTime();
+  }
   const startAt = new Date(`${date}T${time}:00`);
   if (Number.isNaN(startAt.getTime())) return true;
   return Date.now() >= startAt.getTime();

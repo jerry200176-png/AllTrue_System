@@ -1961,12 +1961,22 @@ class LearningRecordController extends Controller
     {
         $date = $this->normalizeDateValue($sessionDate);
         $time = $this->normalizeProjectionTime($startTime);
-        if (!$date || !$time) {
+        if (!$date) {
             return null;
         }
 
         try {
             $timezone = config('app.timezone', 'Asia/Taipei');
+            $today = now($timezone)->toDateString();
+            if ($date > $today) {
+                return response()->json([
+                    'message' => '課程尚未開始，請於上課時間後再填寫評量表',
+                    'session_start_at' => "{$date} 00:00:00",
+                ], 422);
+            }
+            if (!$time) {
+                return null;
+            }
             $sessionStartAt = Carbon::createFromFormat('Y-m-d H:i:s', "{$date} {$time}", $timezone);
             if (now($timezone)->lessThan($sessionStartAt)) {
                 return response()->json([
