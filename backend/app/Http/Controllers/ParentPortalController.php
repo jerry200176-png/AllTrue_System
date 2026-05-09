@@ -615,6 +615,15 @@ class ParentPortalController extends Controller
             ->concat($siblingStudents->map(fn ($s) => ['id' => $s->id, 'name' => $s->name]))
             ->values();
 
+        $progressSummary = $this->buildProgressSummary(
+            $student,
+            $classes,
+            $perCourse,
+            $paymentAlerts,
+            $upcomingSessions,
+            $records
+        );
+
         return response()->json([
             'student' => [
                 'id'          => $student->id,
@@ -642,7 +651,116 @@ class ParentPortalController extends Controller
             'upcoming_sessions'        => $upcomingSessions,
             'invoices'                 => $invoices,
             'announcements'            => $announcements,
+            'progress_summary'         => $progressSummary,
         ]);
+    }
+
+    /**
+     * 家長進度中心摘要（PRD: enterprise dashboard parent portal v2）。
+     * 提供四個聚合卡片資料：本週學習、下次課程、待確認事項、繳費狀態。
+     * 僅做唯讀聚合，不改寫既有資料。
+     */
+    private function buildProgressSummary(
+        Student $student,
+        $classes,
+        $perCourse,
+        $paymentAlerts,
+        $upcomingSessions,
+        $records
+    ): array {
+        $weekStart = Carbon::now()->startOfWeek();
+        $weekEnd = Carbon::now()->endOfWeek();
+        $todayStr = Carbon::now()->toDateString();
+
+        $weekRecords = collect($records)->filter(function ($rec) use ($weekStart, $weekEnd) {
+            $date = (string) ($rec->SessionDate ?? '');
+            if ($date === '') {
+                return false;
+            }
+            try {
+                $d = Carbon::parse($date);
+                return $d->betweenIncluded($weekStart, $weekEnd);
+            } catch (\Throwable $e) {
+                return false;
+            }
+        });
+
+        $weekClassIds = $classes->pluck('ID')->all() ?: [0];
+        $weeklyAttended = ClassSession::query()
+            ->whereIn('StudentClassID', $weekClassIds)
+            ->whereBetween('SessionDate', [$weekStart->toDateString(), $weekEnd->toDateString()])
+            ->whereIn('Status', ['attended', 'completed', 'late'])
+            ->count();
+
+        $weeklyScheduled = ClassSession::query()
+            ->whereIn('StudentClassID', $weekClassIds)
+            ->whereBetween('SessionDate', [$weekStart->toDateString(), $weekEnd->toDateString()])
+            ->count();
+
+        $nextSession = collect($upcomingSessions)->first();
+        $nextSessionPayload = null;
+        if ($nextSession) {
+            $nextSessionPayload = [
+                'session_id'  => (int) ($nextSession->id ?? 0),
+                'date'        => (string) ($nextSession->SessionDate ?? ''),
+                'start_time'  => (string) ($nextSession->StartTime ?? ''),
+                'end_time'    => (string) ($nextSession->EndTime ?? ''),
+                'subject'     => (string) ($nextSession->Subject ?? '課程'),
+                'status'      => (string) ($nextSession->Status ?? 'scheduled'),
+                'is_today'    => ((string) ($nextSession->SessionDate ?? '')) === $todayStr,
+            ];
+        }
+
+        $pendingActions = [];
+        if (!empty($paymentAlerts) && count($paymentAlerts) > 0) {
+            $pendingActions[] = [
+                'key'   => 'payment',
+                'title' => '繳費提醒',
+                'count' => count($paymentAlerts),
+                'cta_target' => 'billing',
+            ];
+        }
+        if ($nextSessionPayload && $nextSessionPayload['is_today']) {
+            $pendingActions[] = [
+                'key'   => 'today_session',
+                'title' => '今日有課程',
+                'count' => 1,
+                'cta_target' => 'schedule',
+            ];
+        }
+        $unreadFeedback = collect($records)->filter(fn ($r) => empty($r->parent_feedback))->count();
+        if ($unreadFeedback > 0) {
+            $pendingActions[] = [
+                'key'   => 'feedback',
+                'title' => '評量待回饋',
+                'count' => $unreadFeedback,
+                'cta_target' => 'learning',
+            ];
+        }
+
+        $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
+        $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
+        $paidCount = max(0, $totalCourses - $unpaidCount);
+        $paymentStatus = $unpaidCount === 0 ? 'all_clear' : ($unpaidCount >= $totalCourses ? 'all_pending' : 'partial');
+
+        return [
+            'week_label' => $weekStart->format('m/d') . '–' . $weekEnd->format('m/d'),
+            'week_progress' => [
+                'attended' => (int) $weeklyAttended,
+                'scheduled' => (int) $weeklyScheduled,
+                'records_filled' => $weekRecords->count(),
+            ],
+            'next_session' => $nextSessionPayload,
+            'pending_actions' => array_values($pendingActions),
+            'pending_total' => array_sum(array_map(fn ($p) => (int) ($p['count'] ?? 0), $pendingActions)),
+            'payment' => [
+                'status' => $paymentStatus,
+                'paid_courses' => $paidCount,
+                'unpaid_courses' => $unpaidCount,
+                'total_courses' => $totalCourses,
+            ],
+            'generated_at' => Carbon::now()->toIso8601String(),
+        ];
     }
 
     // ── Director: generate copyable payment notification text ─────────────
