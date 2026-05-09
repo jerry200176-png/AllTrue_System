@@ -220,6 +220,31 @@ class ScheduleController extends Controller
             }
         }
 
+        // FR-003: When the payload teacher_id equals the contract teacher AND there is
+        // already a different substitute assigned for the same reschedule anchor, redirect
+        // both the guard check and the written row to the substitute teacher.
+        // Prevents the contract teacher's other classes from blocking a valid 調課 reschedule
+        // operation when the frontend sends a stale (contract) teacher_id.
+        if (
+            ($data['status'] ?? 'scheduled') === 'scheduled'
+            && (int) ($origId ?? 0) > 0
+            && $courseId > 0
+            && $effectiveTeacherId > 0
+            && isset($courseMeta)
+            && $effectiveTeacherId === (int) ($courseMeta->TeacherID ?? 0)
+        ) {
+            $existingSubTeacherId = (int) (Schedule::where('student_course_id', $courseId)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', (int) $origId)
+                ->where('teacher_id', '!=', $effectiveTeacherId)
+                ->orderByDesc('id')
+                ->value('teacher_id') ?? 0);
+            if ($existingSubTeacherId > 0) {
+                $effectiveTeacherId = $existingSubTeacherId;
+                $data['teacher_id'] = $effectiveTeacherId;
+            }
+        }
+
         // FR-002: When replacing an existing substitute row, look up its id so we can
         // pass it as exclude_schedule_id to the guard — preventing self-referential conflicts.
         $excludeScheduledId = null;

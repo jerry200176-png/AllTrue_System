@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(substitute): 調課時代課老師被合約老師時段誤阻修正
+
+- Fixed `ScheduleController::store` FR-003：建立調課目標排程列時，若合約老師(A)已有代課老師(B)指派，改以B為基準做衝堂檢查，避免A的其他課程錯誤阻擋有效的調課操作
+
+---
+
 ## 2026-05-09 — fix(substitute): 代課老師衝堂誤報修正（#275）
 
 - Fixed `SubstituteService::collectTeacherBusySlots` / `collectTeacherBusySlotsWithCapacity`：合約老師的課若已有代課安排，不再誤標為忙碌；修正代課選人 modal 錯誤顯示「在其他分校有課」的 false positive
