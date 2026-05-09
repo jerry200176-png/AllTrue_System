@@ -115,6 +115,60 @@
         </div>
       </div>
 
+      <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
+      <div class="pp-card pp-hub-card" v-if="progressSummary" data-guide="parent-progress-hub">
+        <div class="pp-hub-header">
+          <div class="pp-hub-title">
+            <span class="material-symbols-outlined">flag</span>
+            進度中心
+          </div>
+          <span class="pp-hub-week">本週 {{ progressSummary.week_label }}</span>
+        </div>
+        <div class="pp-hub-grid">
+          <button type="button" class="pp-hub-cell" @click="activeTab = 'learning'">
+            <span class="pp-hub-cell-label">本週學習</span>
+            <span class="pp-hub-cell-val">
+              <strong>{{ progressSummary.week_progress.attended }}</strong>
+              <small> / {{ progressSummary.week_progress.scheduled || 0 }} 堂</small>
+            </span>
+            <span class="pp-hub-cell-cta">查看學習評量</span>
+          </button>
+
+          <button type="button" class="pp-hub-cell" :class="{ 'pp-hub-cell--accent': progressSummary.next_session?.is_today }" @click="activeTab = 'schedule'">
+            <span class="pp-hub-cell-label">下次課程</span>
+            <span class="pp-hub-cell-val pp-hub-cell-val--small" v-if="progressSummary.next_session">
+              <strong>{{ formatHubDate(progressSummary.next_session.date) }}</strong>
+              <small>{{ formatHM(progressSummary.next_session.start_time) }}–{{ formatHM(progressSummary.next_session.end_time) }}</small>
+              <small v-if="progressSummary.next_session.subject" class="pp-hub-cell-sub">{{ progressSummary.next_session.subject }}</small>
+            </span>
+            <span class="pp-hub-cell-val pp-hub-cell-val--small" v-else>
+              <strong>—</strong>
+              <small>近期無課程</small>
+            </span>
+            <span class="pp-hub-cell-cta">查看課表</span>
+          </button>
+
+          <button type="button" class="pp-hub-cell" :class="{ 'pp-hub-cell--warn': progressSummary.pending_total > 0 }" @click="hubGoPending">
+            <span class="pp-hub-cell-label">待處理事項</span>
+            <span class="pp-hub-cell-val">
+              <strong>{{ progressSummary.pending_total || 0 }}</strong>
+              <small> 件</small>
+            </span>
+            <span class="pp-hub-cell-cta" v-if="progressSummary.pending_total > 0">前往處理</span>
+            <span class="pp-hub-cell-cta" v-else>目前都已完成</span>
+          </button>
+
+          <button type="button" class="pp-hub-cell" :class="paymentHubClass" @click="activeTab = 'billing'">
+            <span class="pp-hub-cell-label">繳費狀態</span>
+            <span class="pp-hub-cell-val">
+              <strong>{{ progressSummary.payment.paid_courses || 0 }}</strong>
+              <small> / {{ progressSummary.payment.total_courses || 0 }} 已繳</small>
+            </span>
+            <span class="pp-hub-cell-cta">{{ paymentHubLabel }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- ═══ Tab Bar ═══ -->
       <div class="pp-tab-bar">
         <button :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'">
@@ -653,6 +707,39 @@ const leaveReason = ref('');
 const leaveSubmitting = ref(false);
 const leaveError = ref('');
 const leaveSuccess = ref('');
+
+const progressSummary = computed(() => dashboard.value?.progress_summary || null);
+
+const paymentHubClass = computed(() => {
+  const status = progressSummary.value?.payment?.status;
+  if (status === 'all_pending') return 'pp-hub-cell--warn';
+  if (status === 'partial') return 'pp-hub-cell--accent';
+  if (status === 'all_clear') return 'pp-hub-cell--ok';
+  return '';
+});
+
+const paymentHubLabel = computed(() => {
+  const status = progressSummary.value?.payment?.status;
+  if (status === 'all_pending') return '前往繳費';
+  if (status === 'partial') return '部分待繳，前往查看';
+  if (status === 'all_clear') return '本期已全數繳清';
+  return '前往帳務';
+});
+
+function formatHubDate(value) {
+  if (!value) return '—';
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${parseInt(m[2], 10)}/${parseInt(m[3], 10)}` : value;
+}
+
+function hubGoPending() {
+  const list = progressSummary.value?.pending_actions || [];
+  if (list.length > 0 && list[0]?.cta_target) {
+    activeTab.value = list[0].cta_target;
+    return;
+  }
+  activeTab.value = 'learning';
+}
 
 const billingBadgeCount = computed(() => {
   const alerts = dashboard.value?.payment_alerts || [];
@@ -1314,6 +1401,70 @@ onMounted(async () => {
 .pp-section-header h3 { margin: 0; font-size: 1.05em; color: #263238; }
 
 /* ═══ Alert Card ═══ */
+
+/* ═══ Progress Hub (PRD enterprise v2) ═══ */
+.pp-hub-card { padding: 14px 14px 12px; }
+.pp-hub-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.pp-hub-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 800; color: #0f172a;
+}
+.pp-hub-week { font-size: 12px; color: #64748b; font-weight: 600; }
+.pp-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pp-hub-cell {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 12px 12px 14px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+.pp-hub-cell:hover {
+  border-color: rgba(15, 23, 42, 0.32);
+  transform: translateY(-1px);
+  background: #f8fafc;
+}
+.pp-hub-cell-label {
+  font-size: 11px; font-weight: 800; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.pp-hub-cell-val {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 14px; color: #475569;
+}
+.pp-hub-cell-val strong {
+  font-size: 24px; font-weight: 800; color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}
+.pp-hub-cell-val--small strong { font-size: 16px; }
+.pp-hub-cell-val--small { display: flex; flex-direction: column; gap: 2px; }
+.pp-hub-cell-val--small small { font-size: 12px; color: #475569; }
+.pp-hub-cell-sub { color: #94a3b8 !important; }
+.pp-hub-cell-cta {
+  font-size: 12px; font-weight: 700; color: #1d4ed8;
+}
+.pp-hub-cell--accent { border-color: rgba(245, 158, 11, 0.55); background: #fffbeb; }
+.pp-hub-cell--accent:hover { background: #fef3c7; }
+.pp-hub-cell--warn { border-color: rgba(220, 38, 38, 0.45); background: #fef2f2; }
+.pp-hub-cell--warn:hover { background: #fee2e2; }
+.pp-hub-cell--warn .pp-hub-cell-cta { color: #b91c1c; }
+.pp-hub-cell--ok { border-color: rgba(34, 197, 94, 0.4); background: #f0fdf4; }
+.pp-hub-cell--ok .pp-hub-cell-cta { color: #047857; }
+
+@media (max-width: 480px) {
+  .pp-hub-grid { grid-template-columns: 1fr; }
+}
+
 /* ═══ Tab Bar ═══ */
 .pp-tab-bar {
   display: flex; gap: 0; background: #fff; border-radius: 12px;
