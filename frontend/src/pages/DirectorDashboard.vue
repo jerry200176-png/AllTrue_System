@@ -179,6 +179,30 @@
           </div>
         </section>
 
+        <div class="work-toolbar">
+          <div class="view-switch" role="tablist" aria-label="總覽檢視模式">
+            <button
+              type="button"
+              class="view-switch__btn"
+              :class="{ 'view-switch__btn--active': dashboardViewMode === 'focus' }"
+              @click="setDashboardViewMode('focus')"
+            >
+              核心檢視
+            </button>
+            <button
+              type="button"
+              class="view-switch__btn"
+              :class="{ 'view-switch__btn--active': dashboardViewMode === 'full' }"
+              @click="setDashboardViewMode('full')"
+            >
+              完整檢視
+            </button>
+          </div>
+          <p class="work-toolbar__hint">
+            核心檢視先顯示今日必處理項目；完整檢視包含近期履歷與進階統計。
+          </p>
+        </div>
+
         <!-- ===== Work Area (detail panels) ===== -->
         <div class="work-grid">
           <div class="work-col">
@@ -352,7 +376,11 @@
             </section>
 
             <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+            <RecentSubstitutesCard
+              v-if="dashboardViewMode === 'full'"
+              :branch-id="branchId"
+              :fetch-recent="fetchRecentSubstitutes"
+            />
 
             <section class="wp" id="director-task-tracker-sec">
               <header class="wp__head">
@@ -380,7 +408,7 @@
               </div>
             </section>
 
-            <section class="wp" id="director-activity-log-sec">
+            <section v-if="dashboardViewMode === 'full'" class="wp" id="director-activity-log-sec">
               <header class="wp__head">
                 <span class="material-symbols-outlined wp__hi">history</span>
                 <h3>近期操作履歷</h3>
@@ -396,7 +424,7 @@
             </section>
 
             <!-- Teacher learning fill-rate -->
-            <section class="wp" id="teacher-fill-rates-sec">
+            <section v-if="dashboardViewMode === 'full'" class="wp" id="teacher-fill-rates-sec">
               <header class="wp__head">
                 <span class="material-symbols-outlined wp__hi">insights</span>
                 <h3>老師評量填寫率</h3>
@@ -590,6 +618,26 @@ const adoptionActivityRows = ref([]);
 const adoptionActivityLoading = ref(false);
 const adoptionWeeklyMetrics = ref(null);
 const adoptionWeeklyMetricsLoading = ref(false);
+const DASHBOARD_VIEW_MODE_KEY = 'alltrue.director_dashboard_view_mode.v1';
+const dashboardViewMode = ref(loadDashboardViewMode());
+
+function loadDashboardViewMode() {
+  try {
+    const saved = localStorage.getItem(DASHBOARD_VIEW_MODE_KEY);
+    return saved === 'full' ? 'full' : 'focus';
+  } catch {
+    return 'focus';
+  }
+}
+
+function setDashboardViewMode(mode) {
+  dashboardViewMode.value = mode === 'full' ? 'full' : 'focus';
+  try {
+    localStorage.setItem(DASHBOARD_VIEW_MODE_KEY, dashboardViewMode.value);
+  } catch {
+    // Ignore storage errors in restricted contexts.
+  }
+}
 
 const teacherFillRatesRangeLabel = computed(() => {
   const s = teacherFillRatesMeta.value?.start || '';
@@ -1830,6 +1878,47 @@ onMounted(() => {
   box-shadow: none;
 }
 
+.work-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 999px;
+}
+.view-switch__btn {
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.view-switch__btn:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+}
+.view-switch__btn--active {
+  background: linear-gradient(135deg, #0f172a, #334155);
+  color: #fff;
+}
+.work-toolbar__hint {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+}
+
 /* ===== Work Grid ===== */
 .work-grid {
   display: grid;
@@ -2368,6 +2457,9 @@ onMounted(() => {
     align-items: flex-start;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .dash.dash--desktop-dense .work-toolbar {
+    margin-top: -2px;
+  }
   .dash.dash--desktop-dense .work-col {
     gap: 14px;
   }
@@ -2400,6 +2492,13 @@ onMounted(() => {
   }
   .work-grid { grid-template-columns: 1fr; }
   .progress-board { grid-template-columns: repeat(2, 1fr); }
+  .work-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .work-toolbar__hint {
+    text-align: left;
+  }
 }
 
 @media (max-width: 600px) {
