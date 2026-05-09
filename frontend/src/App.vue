@@ -1895,20 +1895,27 @@ function formatBuildTime(rawIso) {
   background:
     radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.3), transparent 38%),
     rgba(15, 23, 42, 0.28);
+  animation: brandIntroBackdrop 2.4s ease-out both;
 }
 
 .brand-idle-layer--intro .brand-idle-logo-wrap {
   width: 196px;
   height: 196px;
+  animation: brandIntroOrb 2.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .brand-idle-layer--intro .brand-idle-logo {
   width: 132px;
   height: 132px;
+  animation: brandIntroLogoReveal 2.4s cubic-bezier(0.18, 1, 0.32, 1) both;
 }
 
 .brand-idle-layer--intro .brand-idle-copy strong {
   font-size: 26px;
+}
+
+.brand-idle-layer--intro .brand-idle-copy {
+  animation: brandIntroText 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .brand-idle-card {
@@ -1948,6 +1955,14 @@ function formatBuildTime(rawIso) {
   animation: brandRingPulse 3.8s ease-in-out infinite reverse;
 }
 
+.brand-idle-layer--intro .brand-idle-ring--outer {
+  animation: brandIntroRingOuter 2.4s cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+.brand-idle-layer--intro .brand-idle-ring--inner {
+  animation: brandIntroRingInner 2.4s cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
 .brand-idle-logo {
   position: relative;
   z-index: 1;
@@ -1971,6 +1986,10 @@ function formatBuildTime(rawIso) {
   z-index: 2;
   pointer-events: none;
   mix-blend-mode: screen;
+}
+
+.brand-idle-layer--intro .brand-idle-logo-wrap::after {
+  animation: brandIntroShine 2.4s ease-out both;
 }
 
 .brand-idle-copy {
@@ -1997,6 +2016,10 @@ function formatBuildTime(rawIso) {
 .brand-overlay-enter-active .brand-idle-card,
 .brand-overlay-leave-active .brand-idle-card {
   transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+.brand-idle-layer--intro .brand-idle-card {
+  animation: brandIntroCard 2.4s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .brand-overlay-enter-from,
@@ -2031,11 +2054,89 @@ function formatBuildTime(rawIso) {
   70%, 100% { transform: translateX(78%) rotate(12deg); opacity: 0; }
 }
 
+@keyframes brandIntroBackdrop {
+  0% {
+    background:
+      radial-gradient(circle at 50% 44%, rgba(255, 179, 0, 0.6), transparent 30%),
+      rgba(10, 15, 30, 0.08);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  42% {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.42), transparent 40%),
+      rgba(12, 20, 38, 0.2);
+    backdrop-filter: blur(7px);
+    -webkit-backdrop-filter: blur(7px);
+  }
+  100% {
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.3), transparent 38%),
+      rgba(15, 23, 42, 0.28);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+}
+
+@keyframes brandIntroCard {
+  0% { opacity: 0; transform: translateY(18px) scale(0.88); }
+  26% { opacity: 1; transform: translateY(0) scale(1.04); }
+  56% { transform: translateY(0) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes brandIntroOrb {
+  0% { transform: scale(0.52) rotate(-8deg); filter: saturate(0.75) brightness(1.15); }
+  28% { transform: scale(1.14) rotate(2deg); filter: saturate(1.12) brightness(1.26); }
+  58% { transform: scale(1) rotate(0deg); filter: saturate(1.02) brightness(1.06); }
+  100% { transform: scale(1) rotate(0deg); filter: saturate(1) brightness(1); }
+}
+
+@keyframes brandIntroLogoReveal {
+  0% { transform: scale(0.58); opacity: 0.2; box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.26); }
+  24% { transform: scale(1.2); opacity: 1; box-shadow: 0 22px 70px rgba(0, 0, 0, 0.3), 0 0 0 14px rgba(255, 255, 255, 0.92); }
+  62% { transform: scale(1.06); box-shadow: 0 18px 52px rgba(0, 0, 0, 0.24), 0 0 0 8px rgba(255, 255, 255, 0.88); }
+  100% { transform: scale(1.06); opacity: 1; box-shadow: 0 18px 52px rgba(0, 0, 0, 0.24), 0 0 0 8px rgba(255, 255, 255, 0.88); }
+}
+
+@keyframes brandIntroRingOuter {
+  0% { transform: scale(0.55); opacity: 0; }
+  40% { transform: scale(1.1); opacity: 0.95; }
+  100% { transform: scale(1.02); opacity: 0.68; }
+}
+
+@keyframes brandIntroRingInner {
+  0% { transform: scale(0.44); opacity: 0; }
+  36% { transform: scale(1.04); opacity: 0.92; }
+  100% { transform: scale(0.98); opacity: 0.74; }
+}
+
+@keyframes brandIntroShine {
+  0% { transform: translateX(-115%) rotate(12deg); opacity: 0; }
+  18% { opacity: 0.96; }
+  45% { transform: translateX(112%) rotate(12deg); opacity: 0.9; }
+  100% { transform: translateX(124%) rotate(12deg); opacity: 0; }
+}
+
+@keyframes brandIntroText {
+  0% { opacity: 0; transform: translateY(8px); letter-spacing: 0.1em; }
+  36% { opacity: 1; transform: translateY(0); letter-spacing: 0.05em; }
+  100% { opacity: 1; transform: translateY(0); letter-spacing: 0.04em; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-idle-logo-wrap,
   .brand-idle-ring,
   .brand-idle-logo,
   .brand-idle-logo-wrap::after {
+    animation: none;
+  }
+  .brand-idle-layer--intro .brand-idle-card,
+  .brand-idle-layer--intro .brand-idle-copy,
+  .brand-idle-layer--intro .brand-idle-ring,
+  .brand-idle-layer--intro .brand-idle-logo-wrap,
+  .brand-idle-layer--intro .brand-idle-logo,
+  .brand-idle-layer--intro .brand-idle-logo-wrap::after {
     animation: none;
   }
 }
