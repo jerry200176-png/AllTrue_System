@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-05-10 — feat(teacher-ui): 工作台資訊架構整合 + 手機評量表體驗優化
+
+- Changed 移除 `TeacherHomePage` 重複的「今日最重要 3 件事」與「每日任務清單」區塊，工作台子區塊從 5 降至 3
+- Changed `LearningRecordsPage` 手機（≤640px）初始預設課表 today tab，消除週檢視 7 欄橫向溢出
+- Changed 評量表快速語句 chip 在手機改為橫向捲動，不換行破版
+
+---
+
 ## 2026-05-10 — fix(teacher): 教學工作台評量數與已取消堂次可見性
 
 - Fixed 教學工作台「待填／待修改」數改走 `GET me/learning-pending-summary`，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總
