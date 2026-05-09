@@ -476,6 +476,35 @@ class LearningRecordApprovalDeductionTest extends TestCase
             ->assertJsonFragment(['message' => '課程尚未開始，請於上課時間後再填寫評量表']);
     }
 
+    public function test_learning_record_store_rejects_future_session_without_explicit_time_payload(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-time-lock-store-b@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-time-lock-store-b@example.com');
+        $student = $this->createStudent(1, '時間卡控測試C');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 4,
+            'remaining_sessions' => 4,
+            'sessions_used' => 0,
+            'first_class_date' => now()->toDateString(),
+            'days_of_week' => [3],
+            'start_time' => '15:00',
+        ]);
+        $futureDate = now()->addDays(10)->toDateString();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records', [
+            'StudentID' => $student->id,
+            'TeacherID' => $teacherId,
+            'Subject' => '數學',
+            'SessionDate' => $futureDate,
+            'Content' => '未開課不應可填（無開始時間）',
+        ])->assertStatus(422)
+            ->assertJsonFragment(['message' => '課程尚未開始，請於上課時間後再填寫評量表']);
+    }
+
     public function test_ensure_past_creates_record_bound_to_existing_class_session(): void
     {
         $token = $this->createDirectorToken([1], 'director-ensure-past-a@example.com');
