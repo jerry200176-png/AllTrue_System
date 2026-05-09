@@ -19,6 +19,7 @@ use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ParentPortalController extends Controller
@@ -616,6 +617,7 @@ class ParentPortalController extends Controller
             ->values();
 
         $progressSummary = $this->buildProgressSummary(
+            $session,
             $student,
             $classes,
             $perCourse,
@@ -661,6 +663,7 @@ class ParentPortalController extends Controller
      * 僅做唯讀聚合，不改寫既有資料。
      */
     private function buildProgressSummary(
+        ParentSession $session,
         Student $student,
         $classes,
         $perCourse,
@@ -738,6 +741,57 @@ class ParentPortalController extends Controller
             ];
         }
 
+        $flowRows = \App\Models\ExceptionWorkflow::query()
+            ->where('source_type', 'parent_portal')
+            ->where('parent_session_id', (int) $session->id)
+            ->orderByDesc('updated_at')
+            ->limit(10)
+            ->get(['id', 'type', 'status', 'updated_at', 'due_at']);
+
+        $interactionStatuses = [];
+        foreach ($flowRows as $flow) {
+            $interactionStatuses[] = [
+                'kind' => (string) $flow->type,
+                'flow_id' => (int) $flow->id,
+                'status' => $this->mapParentFlowStatus((string) $flow->status),
+                'raw_status' => (string) $flow->status,
+                'updated_at' => optional($flow->updated_at)->toIso8601String(),
+                'due_at' => optional($flow->due_at)->toIso8601String(),
+            ];
+        }
+
+        $feedbackRows = collect($records)
+            ->filter(fn ($r) => !empty($r->parent_feedback))
+            ->take(10);
+        foreach ($feedbackRows as $rec) {
+            $interactionStatuses[] = [
+                'kind' => 'learning_feedback',
+                'flow_id' => (int) ($rec->id ?? 0),
+                'status' => 'submitted',
+                'raw_status' => 'submitted',
+                'updated_at' => (string) ($rec->parent_feedback['updated_at'] ?? ''),
+                'due_at' => null,
+            ];
+        }
+        usort($interactionStatuses, static function (array $a, array $b): int {
+            return strcmp((string) ($b['updated_at'] ?? ''), (string) ($a['updated_at'] ?? ''));
+        });
+        $interactionStatuses = array_slice($interactionStatuses, 0, 10);
+
+        $notificationGroups = [];
+        foreach ($pendingActions as $action) {
+            $target = (string) ($action['cta_target'] ?? 'learning');
+            if (!isset($notificationGroups[$target])) {
+                $notificationGroups[$target] = [
+                    'target' => $target,
+                    'title' => (string) ($action['title'] ?? '待處理事項'),
+                    'count' => 0,
+                    'severity' => $target === 'billing' ? 'warning' : 'normal',
+                ];
+            }
+            $notificationGroups[$target]['count'] += (int) ($action['count'] ?? 0);
+        }
+
         $unpaidCount = is_countable($paymentAlerts) ? count($paymentAlerts) : 0;
         $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
         $paidCount = max(0, $totalCourses - $unpaidCount);
@@ -753,6 +807,8 @@ class ParentPortalController extends Controller
             'next_session' => $nextSessionPayload,
             'pending_actions' => array_values($pendingActions),
             'pending_total' => array_sum(array_map(fn ($p) => (int) ($p['count'] ?? 0), $pendingActions)),
+            'interaction_statuses' => $interactionStatuses,
+            'notifications' => array_values($notificationGroups),
             'payment' => [
                 'status' => $paymentStatus,
                 'paid_courses' => $paidCount,
@@ -761,6 +817,44 @@ class ParentPortalController extends Controller
             ],
             'generated_at' => Carbon::now()->toIso8601String(),
         ];
+    }
+
+    private function mapParentFlowStatus(string $status): string
+    {
+        $s = strtolower(trim($status));
+        if ($s === 'open') {
+            return 'submitted';
+        }
+        if ($s === 'candidate_ready' || $s === 'processing') {
+            return 'in_progress';
+        }
+        if (in_array($s, ['resolved', 'done', 'closed'], true)) {
+            return 'resolved';
+        }
+
+        return 'in_progress';
+    }
+
+    public function recordParentEvent(Request $request)
+    {
+        $session = $this->resolveSession($request);
+        if (!$session) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $payload = $request->validate([
+            'event' => 'required|string|max:64',
+            'meta' => 'nullable|array',
+        ]);
+
+        Log::channel('daily')->info('parent_adoption_event', [
+            'event' => (string) $payload['event'],
+            'student_id' => (int) $session->StudentID,
+            'parent_session_id' => (int) $session->id,
+            'meta' => $payload['meta'] ?? [],
+        ]);
+
+        return response()->json(['ok' => true]);
     }
 
     // ── Director: generate copyable payment notification text ─────────────
