@@ -16,6 +16,7 @@ use App\Models\UserCampus;
 use App\Services\ApprovalSessionSyncService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -63,50 +64,7 @@ class LearningRecordController extends Controller
             if (!$teacherId) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            // 與 class-sessions 可見性一致：
-            // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
-            // 2) 無代課時才由正班老師/評量歸屬老師可見。
-            $lrTable = (new LearningRecord())->getTable();
-            $query->where(function ($q) use ($teacherId, $lrTable) {
-                $q->where(function ($baseScope) use ($teacherId, $lrTable) {
-                    $baseScope->where(function ($owner) use ($teacherId, $lrTable) {
-                        $owner->where('TeacherID', $teacherId)
-                            ->orWhereExists(function ($scSub) use ($teacherId, $lrTable) {
-                                $scSub->select(DB::raw(1))
-                                    ->from('StudentClass as sc')
-                                    ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
-                                    ->where('sc.TeacherID', '=', $teacherId);
-                            });
-                    })->whereNotExists(function ($sub) use ($lrTable) {
-                        $sub->select(DB::raw(1))
-                            ->from('ClassSession as cs')
-                            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-                            ->join('schedules as s', function ($join) {
-                                $join->on('s.student_course_id', '=', 'cs.StudentClassID')
-                                    ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
-                                    ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                                    ->where('s.status', '=', 'scheduled')
-                                    ->whereNotNull('s.original_schedule_id')
-                                    ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID');
-                            })
-                            ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
-                    });
-                })->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
-                    $sub->select(DB::raw(1))
-                        ->from('ClassSession as cs')
-                        ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-                        ->join('schedules as s', function ($join) use ($teacherId) {
-                            $join->on('s.student_course_id', '=', 'cs.StudentClassID')
-                                ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
-                                ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                                ->where('s.status', '=', 'scheduled')
-                                ->whereNotNull('s.original_schedule_id')
-                                ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID')
-                                ->where('s.teacher_id', '=', $teacherId);
-                        })
-                        ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
-                });
-            });
+            $this->applyTeacherScopedLearningRecordConstraint($query, (int) $teacherId);
         }
 
         if ($role !== 'teacher' && ($request->filled('branch_id') || $request->filled('campus_id'))) {
@@ -249,6 +207,147 @@ class LearningRecordController extends Controller
         $this->decorateRecords($collection);
 
         return response()->json($records);
+    }
+
+    /**
+     * 老師儀表板角標：pending／需修改評量數 + 今日堂次尚未建立評量筆數（與前端教學工作台加總規則一致）。
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function teacherPendingBadgeSummary(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'super_admin') {
+            return response()->json([
+                'pending_learning_records'         => 0,
+                'today_sessions_without_record' => 0,
+                'total'                           => 0,
+            ]);
+        }
+        if ($role !== 'teacher') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+        if ($teacherId <= 0) {
+            return response()->json(['message' => 'Teacher not linked'], 403);
+        }
+
+        $branchId = (int) $request->input('branch_id', 0);
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        if ($branchId > 0 && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+
+        $lrQuery = LearningRecord::active();
+        $this->applyTeacherScopedLearningRecordConstraint($lrQuery, $teacherId);
+        $lrQuery->whereIn('Status', ['pending', 'changes_requested']);
+        $lrQuery->excludePausedCoursePendingReview();
+        $lrQuery->excludeLeaveSessionPendingReview();
+        if ($branchId > 0) {
+            $lrQuery->whereHas('studentClass.student', fn ($stu) => $stu->where('CampusID', $branchId));
+        }
+        $pendingLr = (int) $lrQuery->count();
+
+        $today = Carbon::today()->toDateString();
+        $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
+
+        $missingTodayBase = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->leftJoin('schedules as sub_sched', function ($join) {
+                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
+                    ->where('sub_sched.status', '=', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
+                    ->whereRaw('sub_sched.id = (
+                        SELECT MAX(sub2.id)
+                        FROM schedules sub2
+                        WHERE sub2.student_course_id = sc.ID
+                          AND sub2.status = "scheduled"
+                          AND sub2.original_schedule_id IS NOT NULL
+                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
+                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
+                          AND sub2.teacher_id <> sc.TeacherID
+                    )');
+            })
+            ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
+            ->whereDate('cs.SessionDate', '=', $today)
+            ->where(function ($outer) use ($teacherId) {
+                $outer->where(function ($inner) use ($teacherId) {
+                    $inner->whereNull('sub_sched.teacher_id')
+                        ->where('sc.TeacherID', $teacherId);
+                })->orWhere('sub_sched.teacher_id', $teacherId);
+            })
+            ->whereRaw('LOWER(cs.Status) IN ("scheduled","attended")')
+            ->whereNull('lr.id');
+
+        if ($branchId > 0) {
+            $missingTodayBase->where('s.CampusID', $branchId);
+        }
+
+        $missingToday = (int) $missingTodayBase->distinct()->count(DB::raw('cs.id'));
+
+        $total = $pendingLr + $missingToday;
+
+        return response()->json([
+            'pending_learning_records'         => $pendingLr,
+            'today_sessions_without_record' => $missingToday,
+            'total'                           => $total,
+        ]);
+    }
+
+    /**
+     * 與 GET learning-records 老師視角一致的 OR 範圍（代課可見性）。
+     */
+    private function applyTeacherScopedLearningRecordConstraint(Builder $query, int $teacherId): void
+    {
+        // 與 class-sessions 可見性一致：
+        // 1) 若該堂存在代課（teacher_id != 正班老師），僅代課老師可見；
+        // 2) 無代課時才由正班老師/評量歸屬老師可見。
+        $lrTable = (new LearningRecord())->getTable();
+        $query->where(function ($q) use ($teacherId, $lrTable) {
+            $q->where(function ($baseScope) use ($teacherId, $lrTable) {
+                $baseScope->where(function ($owner) use ($teacherId, $lrTable) {
+                    $owner->where('TeacherID', $teacherId)
+                        ->orWhereExists(function ($scSub) use ($teacherId, $lrTable) {
+                            $scSub->select(DB::raw(1))
+                                ->from('StudentClass as sc')
+                                ->whereColumn('sc.ID', "{$lrTable}.StudentClassID")
+                                ->where('sc.TeacherID', '=', $teacherId);
+                        });
+                })->whereNotExists(function ($sub) use ($lrTable) {
+                    $sub->select(DB::raw(1))
+                        ->from('ClassSession as cs')
+                        ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                        ->join('schedules as s', function ($join) {
+                            $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                                ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                                ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                                ->where('s.status', '=', 'scheduled')
+                                ->whereNotNull('s.original_schedule_id')
+                                ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID');
+                        })
+                        ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+                });
+            })->orWhereExists(function ($sub) use ($teacherId, $lrTable) {
+                $sub->select(DB::raw(1))
+                    ->from('ClassSession as cs')
+                    ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                    ->join('schedules as s', function ($join) use ($teacherId) {
+                        $join->on('s.student_course_id', '=', 'cs.StudentClassID')
+                            ->whereRaw('DATE(s.schedule_date) = DATE(cs.SessionDate)')
+                            ->whereRaw('SUBSTRING(s.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                            ->where('s.status', '=', 'scheduled')
+                            ->whereNotNull('s.original_schedule_id')
+                            ->whereColumn('s.teacher_id', '!=', 'sc.TeacherID')
+                            ->where('s.teacher_id', '=', $teacherId);
+                    })
+                    ->whereColumn('cs.id', "{$lrTable}.ClassSessionID");
+            });
+        });
     }
 
     /**
