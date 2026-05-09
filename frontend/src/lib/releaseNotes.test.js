@@ -14,7 +14,7 @@ assert.strictEqual(notesForRole('admin').length, directorCount, 'admin should ma
 assert.ok(latestReleaseVersionForRole('super_admin').length > 0, 'version nudge needs a stable version key');
 
 const latest = notesForRole('director')[0];
-assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version), 'release notes should use semantic-style three-part versions');
+assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version), 'release notes should use three-part continuous version labels');
 assert.ok(Array.isArray(latest.sections) && latest.sections.length > 0, 'release cards should have Minecraft-style sections');
 
 const userFacingText = JSON.stringify(latest);
