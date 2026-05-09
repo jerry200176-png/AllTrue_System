@@ -4,7 +4,7 @@
 import assert from 'assert';
 import { latestReleaseVersionForRole, notesForRole } from './releaseNotes.js';
 
-assert.ok(notesForRole('director').length > 0, 'director should see release entries');
+assert.ok(notesForRole('director').length >= 3, 'director should see several CHANGELOG-derived entries');
 assert.ok(notesForRole('teacher').length > 0, 'teacher should see release entries');
 
 const directorCount = notesForRole('director').length;

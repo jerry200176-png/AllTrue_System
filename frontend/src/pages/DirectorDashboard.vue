@@ -7,7 +7,7 @@
     </div>
 
     <template v-else>
-      <div class="dash">
+      <div class="dash dash--desktop-dense">
         <!-- ===== Header ===== -->
         <div class="dash-header">
           <div class="dash-title-block">
@@ -186,12 +186,14 @@
                 <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
               </header>
               <div v-if="!todaySchedules.length" class="wp__empty">今日無課程</div>
-              <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
-                <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
-                <span class="sched-row__name">{{ s.student_name || '—' }}</span>
-                <span class="sched-row__subj">{{ s.subject || s.subject_name || '' }}</span>
-                <span class="sched-row__tchr">{{ s.teacher_name || '' }}</span>
-                <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
+                  <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
+                  <span class="sched-row__name">{{ s.student_name || '—' }}</span>
+                  <span class="sched-row__subj">{{ s.subject || s.subject_name || '' }}</span>
+                  <span class="sched-row__tchr">{{ s.teacher_name || '' }}</span>
+                  <span :class="['sched-row__st', 'st--' + s.status]">{{ formatScheduleStatus(s.status) }}</span>
+                </div>
               </div>
               <footer v-if="pendingAttendanceCount > 0" class="wp__foot">
                 <button class="btn-p btn-sm" @click="goToAttendance">前往出缺勤處理</button>
@@ -246,12 +248,14 @@
               </header>
               <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
               <div v-if="!lowBalanceStudents.length" class="wp__empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
-              <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
-                <div class="pay-row__info">
-                  <span class="pay-row__name">{{ s.name }}</span>
-                  <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
+                  <div class="pay-row__info">
+                    <span class="pay-row__name">{{ s.name }}</span>
+                    <span :class="paymentAlertBadgeClass(s)">{{ paymentAlertBadgeText(s) }}</span>
+                  </div>
+                  <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
                 </div>
-                <button class="btn-o btn-xs" @click="copyPaymentMessage(s)">複製通知</button>
               </div>
               <footer v-if="lowBalanceStudents.length > paymentAlertLimit" class="wp__foot">
                 <button class="btn-o btn-xs" @click="showAllPayments = !showAllPayments">
@@ -327,9 +331,11 @@
               <template v-else-if="!teacherFillRatesRows.length">
                 <div class="wp__empty">此區間內無已到班堂次</div>
               </template>
-              <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
-                <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
-                <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+              <div class="wp-list-scroll-desktop">
+                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
+                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+                </div>
               </div>
             </section>
 
@@ -342,21 +348,23 @@
               </header>
               <p class="wp__hint">核准後老師科目數自動累計</p>
               <div v-if="!pendingEvaluations.length" class="wp__empty">無待審核評量</div>
-              <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
-                <div class="eval-card__top">
-                  <strong>{{ ev.student_name }}</strong>
-                  <span class="eval-card__tag">{{ ev.student_class_label || ev.Subject }}</span>
-                  <span class="eval-card__tchr">{{ ev.teacher_name }}</span>
-                </div>
-                <div class="eval-card__mid">
-                  <span>{{ ev.SessionDate }}</span>
-                  <span v-if="ev.Progress"> &middot; {{ ev.Progress }}</span>
-                </div>
-                <div v-if="ev.Comment" class="eval-card__comment">{{ ev.Comment }}</div>
-                <div class="eval-card__acts">
-                  <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning', recordId: ev.id })">檢視</button>
-                  <button class="btn-p btn-sm" @click="approveEvaluation(ev)">核准</button>
-                  <button class="btn-d btn-sm" @click="rejectEvaluation(ev)">退回</button>
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
+                  <div class="eval-card__top">
+                    <strong>{{ ev.student_name }}</strong>
+                    <span class="eval-card__tag">{{ ev.student_class_label || ev.Subject }}</span>
+                    <span class="eval-card__tchr">{{ ev.teacher_name }}</span>
+                  </div>
+                  <div class="eval-card__mid">
+                    <span>{{ ev.SessionDate }}</span>
+                    <span v-if="ev.Progress"> &middot; {{ ev.Progress }}</span>
+                  </div>
+                  <div v-if="ev.Comment" class="eval-card__comment">{{ ev.Comment }}</div>
+                  <div class="eval-card__acts">
+                    <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning', recordId: ev.id })">檢視</button>
+                    <button class="btn-p btn-sm" @click="approveEvaluation(ev)">核准</button>
+                    <button class="btn-d btn-sm" @click="rejectEvaluation(ev)">退回</button>
+                  </div>
                 </div>
               </div>
               <footer v-if="pendingEvaluations.length" class="wp__foot">
@@ -372,9 +380,11 @@
                 <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
               </header>
               <div v-if="!notificationSummary.length" class="wp__empty">目前無未讀通知</div>
-              <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
-                <span>{{ n.title }}</span>
-                <span class="badge-blue">{{ n.typeLabel }}</span>
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
+                  <span>{{ n.title }}</span>
+                  <span class="badge-blue">{{ n.typeLabel }}</span>
+                </div>
               </div>
               <footer class="wp__foot">
                 <button class="btn-o btn-sm" @click="goToNotifications">前往通知中心</button>
@@ -2077,6 +2087,67 @@ onMounted(() => {
 
 .btn-sm { padding: 6px 14px; font-size: 12px; }
 .btn-xs { padding: 4px 10px; font-size: 11px; }
+
+/* ===== Desktop: shorter vertical rhythm + scrollable long lists ===== */
+@media (min-width: 1100px) {
+  .dash.dash--desktop-dense {
+    gap: 14px;
+    padding: 0 12px 22px;
+    max-width: 1320px;
+  }
+  .dash.dash--desktop-dense .dash-header {
+    min-height: 148px;
+    padding: 22px 26px;
+    border-radius: 26px;
+  }
+  .dash.dash--desktop-dense .dash-subtitle {
+    font-size: 13px;
+    max-width: 52ch;
+    line-height: 1.45;
+  }
+  .dash.dash--desktop-dense .action-lane {
+    padding: 8px;
+    gap: 10px;
+    border-radius: 22px;
+  }
+  .dash.dash--desktop-dense .ac {
+    min-width: 150px;
+    padding: 12px 14px;
+  }
+  .dash.dash--desktop-dense .ac__count {
+    font-size: 24px;
+  }
+  .dash.dash--desktop-dense .progress-board {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+    border-radius: 22px;
+  }
+  .dash.dash--desktop-dense .pb {
+    min-height: 72px;
+    padding: 10px 12px;
+    border-radius: 16px;
+  }
+  .dash.dash--desktop-dense .pb__val strong {
+    font-size: 24px;
+  }
+  .dash.dash--desktop-dense .work-grid {
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .dash.dash--desktop-dense .work-col {
+    gap: 14px;
+  }
+  .dash.dash--desktop-dense .wp__head {
+    padding: 12px 14px 10px;
+  }
+  .dash.dash--desktop-dense .wp-list-scroll-desktop {
+    max-height: min(280px, 34vh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
 
 /* ===== Responsive ===== */
 @media (max-width: 900px) {
