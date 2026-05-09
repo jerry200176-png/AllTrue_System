@@ -61,8 +61,8 @@ jobs:
           GOLDEN_BASE_REF: origin/main
           GOLDEN_HEAD_REF: HEAD
         run: |
-          chmod +x scripts/golden-ci-report.sh
-          ./scripts/golden-ci-report.sh
+          chmod +x .github/scripts/golden-ci-report.sh
+          ./.github/scripts/golden-ci-report.sh
 
   phpunit:
     name: PHPUnit Feature & Unit Tests

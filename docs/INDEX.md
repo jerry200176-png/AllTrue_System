@@ -108,7 +108,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
-| `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI 對照（Presubmit CHECK 6 + `golden-ci-report.sh`，無需手勾）|
+| `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI（Presubmit CHECK 6 + `.github/scripts/golden-ci-report.sh`）|
 
 ### 業務規則
 | 檔案 | 一行說明 |
@@ -123,6 +123,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
+| `docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md` | 與大廠式流程對齊摘要（merge queue、deploy 邊界、Golden 自動化）|
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |

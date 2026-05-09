@@ -160,8 +160,8 @@ jobs:
       # ─────────────────────────────────────────────
       - name: "[CHECK 6] Golden scenarios report (automated)"
         run: |
-          chmod +x scripts/golden-ci-report.sh
-          ./scripts/golden-ci-report.sh
+          chmod +x .github/scripts/golden-ci-report.sh
+          ./.github/scripts/golden-ci-report.sh
 
       # ─────────────────────────────────────────────
       # Summary

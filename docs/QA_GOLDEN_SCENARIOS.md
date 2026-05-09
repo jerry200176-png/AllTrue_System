@@ -5,7 +5,7 @@
 
 ## 怎麼用（零人工）
 
-1. **Presubmit** 與 **CI** 會跑 [`scripts/golden-ci-report.sh`](../scripts/golden-ci-report.sh)：依 `origin/main...HEAD` 的檔案路徑標記 §0～§4 是否被本次 PR 觸及，並寫入 GitHub Actions **Job summary**。
+1. **Presubmit** 與 **CI** 會跑 [`.github/scripts/golden-ci-report.sh`](../.github/scripts/golden-ci-report.sh)：依 `origin/main...HEAD` 的檔案路徑標記 §0～§4 是否被本次 PR 觸及，並寫入 GitHub Actions **Job summary**。
 2. **後端**路徑觸及 § → `ci.yml` 的 **PHPUnit** job（全量 Feature／Unit）必須綠燈。
 3. **前端**路徑觸及 §3 → **Vite** job 內已含 `npm run test:calendar` + production build。
 4. **部署後**的 production smoke（health、真機刷卡）仍由維運 SOP 處理，無法在 PR CI 內 100% 模擬。
@@ -63,5 +63,5 @@
 ## 擴充方式
 
 1. 新坑寫入 `AI_REGRESSION_LESSONS.md`。  
-2. 若有新「路徑模式」，編輯 `scripts/golden-ci-report.sh` 的對應 §。  
+2. 若有新「路徑模式」，編輯 `.github/scripts/golden-ci-report.sh` 的對應 §。  
 3. 若新坑可用測試涵蓋，補 **PHPUnit / frontend test**，不必再手動列清單。

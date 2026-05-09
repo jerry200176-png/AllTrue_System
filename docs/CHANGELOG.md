@@ -8,7 +8,7 @@
 
 ## 2026-05-09 — chore(ci): Golden scenarios 自動報告（取代人工勾選）
 
-- Added `scripts/golden-ci-report.sh`；Presubmit CHECK 6、`ci.yml` job **Golden scenarios report**；`QA_GOLDEN_SCENARIOS`／`INDEX`／PR 模板改為 CI 對應（無手勾）
+- Added `.github/scripts/golden-ci-report.sh`（放於 `.github/` 下，避免僅 CI 工具卻觸發 `deploy.yml` 的 `scripts/` deployable）；Presubmit CHECK 6、`ci.yml` **Golden scenarios report**；`QA_GOLDEN_SCENARIOS`／`INDEX`／PR 模板；`ENTERPRISE_WORKFLOW_ALIGNMENT.md`／`CONTRIBUTING` 導航
 
 ---
 
