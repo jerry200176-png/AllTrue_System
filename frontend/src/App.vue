@@ -812,6 +812,12 @@ function setActivePage(page) {
   if (page === 'learning') {
     mergeParentFeedbackBadge();
     mergeTeacherLearningPendingBadge();
+    if (isTeacher.value) {
+      window.dispatchEvent(new CustomEvent('alltrue-teacher-learning-progress-refresh'));
+    }
+  }
+  if (page === 'teacher-home' && isTeacher.value) {
+    window.dispatchEvent(new CustomEvent('alltrue-teacher-learning-progress-refresh'));
   }
 }
 
