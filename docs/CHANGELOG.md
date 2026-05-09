@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-05-09 — feat(ui): 版本更新由 CHANGELOG 同步、主任總覽桌面版更緊湊
+
+- Added `scripts/changelog-to-release-notes.mjs`＋`npm run sync-release-notes`：`build` 與 CI 先從 `docs/CHANGELOG.md` 產生課程向更新卡（略過純維運／chore／docs 類標題）
+- Changed 主任總覽 `≥1100px` 縮短上下節奏；長列表區塊改為區內捲動以降低整頁長度
+- Added「版本更新」頁底 GitHub CHANGELOG 連結
+
+---
+
 ## 2026-05-09 — Fixed（ui）: Super Admin 「版本更新」空白
 
 - Fixed `notesForRole`：super_admin／admin 對齊可看主任／老師向發布備註；CI 增加 `npm run test:release-notes`
