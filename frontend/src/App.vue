@@ -334,6 +334,24 @@
 
   </div>
 
+  <div
+    v-if="releaseNudgeOpen"
+    class="release-nudge-layer"
+    @click.self="dismissReleaseNudge"
+  >
+    <div class="release-nudge-card">
+      <div class="release-nudge-kicker">本次更新重點</div>
+      <h3>系統有新功能，2 分鐘看完就上手</h3>
+      <p>我們把最近更新整理成簡單說明，你可以快速知道這版多了哪些功能。</p>
+      <div class="release-nudge-actions">
+        <button type="button" class="release-nudge-btn release-nudge-btn-primary" @click="openReleaseNotesFromNudge">
+          立即查看
+        </button>
+        <button type="button" class="release-nudge-btn" @click="dismissReleaseNudge">稍後再看</button>
+      </div>
+    </div>
+  </div>
+
   <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.closeTour">
     <div
       ref="guidePopoverRef"
@@ -417,6 +435,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
+import { latestReleaseVersionForRole } from './lib/releaseNotes';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -451,6 +470,27 @@ const userProfile = ref(null);
 const loading = ref(true);
 const guideTour = usePageGuideTour();
 const guidePopoverRef = ref(null);
+const releaseNudgeOpen = ref(false);
+const releaseNudgeVersion = ref('');
+const RELEASE_NOTES_SEEN_KEY = 'alltrue_release_notes_seen';
+
+function markReleaseNotesSeen() {
+  if (!releaseNudgeVersion.value) return;
+  try {
+    localStorage.setItem(RELEASE_NOTES_SEEN_KEY, releaseNudgeVersion.value);
+  } catch (_) { /* ignore */ }
+}
+
+function dismissReleaseNudge() {
+  releaseNudgeOpen.value = false;
+  markReleaseNotesSeen();
+}
+
+function openReleaseNotesFromNudge() {
+  releaseNudgeOpen.value = false;
+  markReleaseNotesSeen();
+  setActivePage('release-notes');
+}
 
 /** Draggable “?” guide FAB — persisted in localStorage (mouse + touch via Pointer Events). */
 const GUIDE_FAB_W = 46;
@@ -811,6 +851,9 @@ function setActivePage(page) {
     calendarResetToken.value += 1;
   }
   active.value = page;
+  if (page === 'release-notes') {
+    markReleaseNotesSeen();
+  }
   if (page === 'learning') {
     mergeParentFeedbackBadge();
     mergeTeacherLearningPendingBadge();
@@ -1241,6 +1284,25 @@ watch(isPasswordChangeLocked, (locked) => {
   }
 });
 
+watch([session, role, isPasswordChangeLocked], () => {
+  if (!session.value || isPasswordChangeLocked.value) {
+    releaseNudgeOpen.value = false;
+    return;
+  }
+  if (!isDirector.value && !isTeacher.value) {
+    releaseNudgeOpen.value = false;
+    return;
+  }
+  const latestVersion = latestReleaseVersionForRole(role.value);
+  releaseNudgeVersion.value = latestVersion;
+  if (!latestVersion) {
+    releaseNudgeOpen.value = false;
+    return;
+  }
+  const seenVersion = localStorage.getItem(RELEASE_NOTES_SEEN_KEY) || '';
+  releaseNudgeOpen.value = seenVersion !== latestVersion;
+});
+
 function onRefreshBadgesEvent() {
   refreshUnreadNotifications();
 }
@@ -1595,6 +1657,69 @@ function formatBuildTime(rawIso) {
   border: 1px solid #ffcc80;
   background: #fff8e1;
   color: #8d4e00;
+}
+
+.release-nudge-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.release-nudge-card {
+  width: min(460px, 100%);
+  border-radius: 14px;
+  background: var(--modal-bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.28);
+  padding: 18px;
+}
+
+.release-nudge-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.release-nudge-card h3 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  color: var(--text);
+}
+
+.release-nudge-card p {
+  margin: 0;
+  color: var(--text-light);
+  line-height: 1.6;
+}
+
+.release-nudge-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.release-nudge-btn {
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.release-nudge-btn-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .sidebar-nav button:disabled {
