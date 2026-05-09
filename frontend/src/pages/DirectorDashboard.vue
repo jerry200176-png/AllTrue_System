@@ -313,6 +313,26 @@
               </div>
             </section>
 
+            <!-- Teacher learning fill-rate -->
+            <section class="wp" id="teacher-fill-rates-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">insights</span>
+                <h3>老師評量填寫率</h3>
+              </header>
+              <p class="wp__hint">
+                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
+                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
+              </p>
+              <div v-if="teacherFillRatesLoading" class="wp__empty">載入中…</div>
+              <template v-else-if="!teacherFillRatesRows.length">
+                <div class="wp__empty">此區間內無已到班堂次</div>
+              </template>
+              <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
+                <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+              </div>
+            </section>
+
             <!-- Pending Evaluations -->
             <section class="wp" id="evals-sec" data-guide="director-pending-evals">
               <header class="wp__head">
@@ -486,6 +506,18 @@ const workflowActionId = ref(null);
 // Schedule-discrepancy summary card
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
 const sdLoading = ref(true);
+
+const teacherFillRatesDays = 14;
+const teacherFillRatesRows = ref([]);
+const teacherFillRatesMeta = ref({ start: '', end: '', days: teacherFillRatesDays });
+const teacherFillRatesLoading = ref(false);
+
+const teacherFillRatesRangeLabel = computed(() => {
+  const s = teacherFillRatesMeta.value?.start || '';
+  const e = teacherFillRatesMeta.value?.end || '';
+  if (!s || !e) return '';
+  return `${s}～${e}`;
+});
 
 async function loadScheduleDiscrepancySummary() {
   if (props.branchId == null) return;
@@ -808,6 +840,39 @@ const loadData = async () => {
     }
   } catch (err) {
     console.error('Failed to load pending evaluations:', err);
+  }
+
+  teacherFillRatesLoading.value = true;
+  try {
+    const fillParams = new URLSearchParams({
+      branch_id: String(props.branchId),
+      days: String(teacherFillRatesDays),
+    });
+    const fillRes = await fetch(`${baseUrl}/v1/reports/teacher-learning-fill-rates?${fillParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (fillRes.ok) {
+      const fj = await fillRes.json().catch(() => ({}));
+      teacherFillRatesMeta.value = {
+        start: fj.start || '',
+        end: fj.end || '',
+        days: Number(fj.days || teacherFillRatesDays),
+      };
+      const list = Array.isArray(fj.teachers) ? fj.teachers : [];
+      teacherFillRatesRows.value = list
+        .slice()
+        .sort((a, b) =>
+          Number(a.fill_rate_pct || 0) - Number(b.fill_rate_pct || 0)
+          || Number(b.sessions_attended || 0) - Number(a.sessions_attended || 0)
+        );
+    } else {
+      teacherFillRatesRows.value = [];
+    }
+  } catch (err) {
+    console.error('Failed to load teacher fill rates:', err);
+    teacherFillRatesRows.value = [];
+  } finally {
+    teacherFillRatesLoading.value = false;
   }
 
   try {
