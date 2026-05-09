@@ -50,6 +50,8 @@
 - **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
+延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
+
 ## Security
 
 請閱讀根目錄 [`SECURITY.md`](SECURITY.md)（含漏洞通報方式；完整決策仍見 [`docs/SECURITY.md`](docs/SECURITY.md)）。
