@@ -224,6 +224,15 @@
               <span class="material-symbols-outlined" aria-hidden="true">manage_accounts</span>
               <span>個人管理</span>
             </button>
+            <button
+              v-if="isDirector || isTeacher"
+              type="button"
+              class="account-menu-btn"
+              @click="setActivePage('release-notes')"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">new_releases</span>
+              <span>版本更新</span>
+            </button>
             <button type="button" class="account-menu-btn account-menu-btn-danger" @click="logout">
               <span class="material-symbols-outlined" aria-hidden="true">logout</span>
               <span>登出系統</span>
@@ -967,7 +976,6 @@ const sidebarNavGroups = computed(() => {
           { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
           { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
           ...systemItems,
-          { page: 'release-notes', label: '版本更新', icon: 'new_releases' },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
       },
@@ -987,7 +995,6 @@ const sidebarNavGroups = computed(() => {
           { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
-          { page: 'release-notes', label: '版本更新', icon: 'new_releases' },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
       },
