@@ -313,6 +313,32 @@
               </div>
             </section>
 
+            <!-- Teacher learning Progress fill-rate (recent days) -->
+            <section class="wp" id="teacher-fill-rates-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">insights</span>
+                <h3>老師評量填寫率</h3>
+                <span v-if="teacherFillRatesRangeLabel" class="wp__badge">{{ teacherFillRatesRangeLabel }}</span>
+              </header>
+              <p class="wp__hint">統計已到班／遲到堂次；該堂次對應評量之進度欄有填寫者計為已填（近 {{ teacherFillRatesDays }} 天）。</p>
+              <div v-if="teacherFillRatesLoading" class="wp__empty">載入中…</div>
+              <template v-else-if="!teacherFillRatesRows.length">
+                <div class="wp__empty">此區間內無已到班堂次</div>
+              </template>
+              <div v-else class="tfr-list">
+                <div
+                  v-for="row in teacherFillRatesRows"
+                  :key="row.teacher_id"
+                  class="tfr-row"
+                  :class="{ 'tfr-row--warn': row.fill_rate_pct < 80 && row.sessions_attended >= 3 }"
+                >
+                  <span class="tfr-row__name">{{ row.teacher_name }}</span>
+                  <span class="tfr-row__frac">{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                  <span class="tfr-row__pct">{{ row.fill_rate_pct }}%</span>
+                </div>
+              </div>
+            </section>
+
             <!-- Pending Evaluations -->
             <section class="wp" id="evals-sec" data-guide="director-pending-evals">
               <header class="wp__head">
@@ -486,6 +512,18 @@ const workflowActionId = ref(null);
 // Schedule-discrepancy summary card
 const sdSummary = ref({ pending: 0, acknowledged: 0, resolved: 0, withdrawn: 0 });
 const sdLoading = ref(true);
+
+const teacherFillRatesDays = 14;
+const teacherFillRatesRows = ref([]);
+const teacherFillRatesMeta = ref({ start: '', end: '', days: teacherFillRatesDays });
+const teacherFillRatesLoading = ref(false);
+
+const teacherFillRatesRangeLabel = computed(() => {
+  const s = teacherFillRatesMeta.value?.start || '';
+  const e = teacherFillRatesMeta.value?.end || '';
+  if (!s || !e) return '';
+  return `${s}～${e}`;
+});
 
 async function loadScheduleDiscrepancySummary() {
   if (props.branchId == null) return;
@@ -808,6 +846,39 @@ const loadData = async () => {
     }
   } catch (err) {
     console.error('Failed to load pending evaluations:', err);
+  }
+
+  teacherFillRatesLoading.value = true;
+  try {
+    const fillParams = new URLSearchParams({
+      branch_id: String(props.branchId),
+      days: String(teacherFillRatesDays),
+    });
+    const fillRes = await fetch(`${baseUrl}/v1/reports/teacher-learning-fill-rates?${fillParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (fillRes.ok) {
+      const fj = await fillRes.json().catch(() => ({}));
+      teacherFillRatesMeta.value = {
+        start: fj.start || '',
+        end: fj.end || '',
+        days: Number(fj.days || teacherFillRatesDays),
+      };
+      const list = Array.isArray(fj.teachers) ? fj.teachers : [];
+      teacherFillRatesRows.value = list
+        .slice()
+        .sort((a, b) =>
+          Number(a.fill_rate_pct || 0) - Number(b.fill_rate_pct || 0)
+          || Number(b.sessions_attended || 0) - Number(a.sessions_attended || 0)
+        );
+    } else {
+      teacherFillRatesRows.value = [];
+    }
+  } catch (err) {
+    console.error('Failed to load teacher fill rates:', err);
+    teacherFillRatesRows.value = [];
+  } finally {
+    teacherFillRatesLoading.value = false;
   }
 
   try {
@@ -1663,6 +1734,46 @@ onMounted(() => {
   border-top: 1px solid rgba(226, 232, 240, 0.82);
   display: flex;
   justify-content: flex-end;
+}
+
+/* Teacher learning fill-rate list */
+.tfr-list {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tfr-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 0;
+  padding: 11px 12px;
+  font-size: 13px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+}
+.tfr-row--warn {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(255, 251, 235, 0.72);
+}
+.tfr-row__name {
+  font-weight: 700;
+  color: var(--porsche-ink, #0f172a);
+  min-width: 0;
+}
+.tfr-row__frac {
+  font-size: 12px;
+  color: #64748b;
+  white-space: nowrap;
+}
+.tfr-row__pct {
+  font-weight: 800;
+  min-width: 3em;
+  text-align: right;
+  color: #0f766e;
 }
 
 /* ===== Schedule Row ===== */

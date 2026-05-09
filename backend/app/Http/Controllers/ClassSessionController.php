@@ -2338,6 +2338,102 @@ class ClassSessionController extends Controller
     }
 
     /**
+     * 主任／超管：近 N 天各授課老師已到班堂次的評量內容填寫率（LearningRecord.Progress 非空視為已填）。
+     *
+     * 代課堂次計入取代課老師名下（與行事曆顯示邏輯一致）。
+     */
+    public function directorTeacherLearningFillRates(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'director' && $role !== 'super_admin') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $validated = $request->validate([
+            'branch_id' => 'required|integer|min:1',
+            'days' => 'nullable|integer|min:1|max:31',
+        ]);
+        $branchId = (int) $validated['branch_id'];
+        $days = (int) ($validated['days'] ?? 14);
+
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+
+        $end = Carbon::today();
+        $start = $end->copy()->subDays($days - 1);
+
+        $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
+
+        $rows = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->leftJoin('schedules as sub_sched', function ($join) {
+                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
+                    ->where('sub_sched.status', '=', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
+                    ->whereRaw('sub_sched.id = (
+                        SELECT MAX(sub2.id)
+                        FROM schedules sub2
+                        WHERE sub2.student_course_id = sc.ID
+                          AND sub2.status = "scheduled"
+                          AND sub2.original_schedule_id IS NOT NULL
+                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
+                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
+                          AND sub2.teacher_id <> sc.TeacherID
+                    )');
+            })
+            ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
+            ->where('s.CampusID', $branchId)
+            ->whereBetween(DB::raw('DATE(cs.SessionDate)'), [$start->toDateString(), $end->toDateString()])
+            ->whereRaw('LOWER(cs.Status) IN ("attended", "late")')
+            ->select([
+                DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
+                DB::raw('COUNT(*) AS session_total'),
+                DB::raw('SUM(CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
+            ])
+            ->groupBy(DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID)'))
+            ->orderByDesc('session_total')
+            ->get()
+            ->filter(static function ($row) {
+                return (int) ($row->teacher_id ?? 0) > 0;
+            })
+            ->values();
+
+        $ids = $rows->pluck('teacher_id')->map(fn ($v) => (int) $v)->filter(fn ($id) => $id > 0)->unique()->values();
+        $nameMap = $ids->isNotEmpty()
+            ? DB::table('User')->whereIn('id', $ids->all())->pluck('Name', 'id')
+            : collect();
+
+        $teachers = $rows->map(static function ($row) use ($nameMap) {
+            $tid = (int) ($row->teacher_id ?? 0);
+            $total = (int) ($row->session_total ?? 0);
+            $filled = (int) ($row->filled ?? 0);
+            $pct = $total > 0 ? (int) round(100 * $filled / $total) : 0;
+
+            return [
+                'teacher_id'               => $tid,
+                'teacher_name'             => $nameMap->get($tid, '未知'),
+                'sessions_attended'        => $total,
+                'learning_records_filled'  => $filled,
+                'fill_rate_pct'            => $pct,
+            ];
+        })->values();
+
+        return response()->json([
+            'start'                  => $start->toDateString(),
+            'end'                    => $end->toDateString(),
+            'days'                   => $days,
+            'branch_id'               => $branchId,
+            'teachers'                => $teachers,
+        ]);
+    }
+
+    /**
      * Diagnostic: log when effective session count != purchased for any course in response.
      * Only runs when perfflags.log_session_count_mismatch is true.
      * Logs only course_id, branch_id, and status counts (no PII).
