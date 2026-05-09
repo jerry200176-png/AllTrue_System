@@ -45,9 +45,10 @@ class OrphanScheduledSessionsTest extends TestCase
             ['StudentClassID' => $courseId, 'SessionDate' => $future3,   'StartTime' => '23:00', 'EndTime' => '23:30', 'Status' => 'scheduled', 'created_at' => now(), 'updated_at' => now()],
         ]);
 
-        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$courseId}", $this->stopPayload($teacherId))
-            ->assertOk();
+        $res = $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->putJson("/api/v1/student-classes/{$courseId}", $this->stopPayload($teacherId));
+
+        $this->assertSame(200, $res->status(), 'PUT response: ' . $res->content());
 
         // 未來 3 筆應變 cancelled
         $this->assertSame(3, ClassSession::where('StudentClassID', $courseId)
