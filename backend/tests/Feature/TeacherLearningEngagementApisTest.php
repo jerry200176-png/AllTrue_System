@@ -237,4 +237,95 @@ class TeacherLearningEngagementApisTest extends TestCase
             $this->bearer($token)
         )->assertStatus(403);
     }
+
+    public function test_teacher_learning_progress_summary_returns_daily_and_totals(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-10 09:00:00'));
+        $campus = CampusFactory::new()->create();
+        [$teacher, $token] = $this->teacherWithToken($campus->id);
+        $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+        $scId = $this->insertCourse($student->id, $teacher->id);
+
+        DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $scId,
+            'SessionDate' => '2026-05-09',
+            'StartTime' => '10:00',
+            'EndTime' => '11:00',
+            'Status' => 'attended',
+        ]);
+        $cs2 = DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $scId,
+            'SessionDate' => '2026-05-10',
+            'StartTime' => '10:00',
+            'EndTime' => '11:00',
+            'Status' => 'attended',
+        ]);
+        DB::table('LearningRecord')->insert([
+            'StudentID' => $student->id,
+            'StudentClassID' => $scId,
+            'ClassSessionID' => $cs2,
+            'TeacherID' => $teacher->id,
+            'Subject' => 'Math',
+            'SessionDate' => '2026-05-10',
+            'StartTime' => '10:00',
+            'EndTime' => '11:00',
+            'Content' => '課堂',
+            'Status' => 'pending',
+            'Progress' => '完成紀錄',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->getJson(
+            "/api/v1/me/learning-progress-summary?branch_id={$campus->id}&days=2",
+            $this->bearer($token)
+        )->assertOk();
+
+        $res->assertJsonPath('summary.expected_sessions', 2);
+        $res->assertJsonPath('summary.completed_sessions', 1);
+        $res->assertJsonPath('summary.completion_rate_pct', 50);
+        $res->assertJsonPath('summary.today_expected_sessions', 1);
+        $res->assertJsonPath('summary.today_completed_sessions', 1);
+        $res->assertJsonPath('summary.today_completion_rate_pct', 100);
+        $res->assertJsonPath('summary.streak_days', 1);
+
+        $byDay = collect($res->json('by_day'));
+        $this->assertSame(2, $byDay->count());
+        $this->assertSame(1, (int) $byDay->firstWhere('date', '2026-05-09')['expected_sessions']);
+        $this->assertSame(0, (int) $byDay->firstWhere('date', '2026-05-09')['completed_sessions']);
+
+        Carbon::setTestNow();
+    }
+
+    public function test_teacher_learning_progress_summary_forbidden_when_branch_not_accessible(): void
+    {
+        $campusA = CampusFactory::new()->create();
+        $campusB = CampusFactory::new()->create();
+        [, $token] = $this->teacherWithToken($campusA->id);
+
+        $this->getJson(
+            "/api/v1/me/learning-progress-summary?branch_id={$campusB->id}",
+            $this->bearer($token)
+        )->assertStatus(403);
+    }
+
+    public function test_teacher_learning_progress_summary_handles_empty_window(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-10 09:00:00'));
+        $campus = CampusFactory::new()->create();
+        [, $token] = $this->teacherWithToken($campus->id);
+
+        $res = $this->getJson(
+            "/api/v1/me/learning-progress-summary?branch_id={$campus->id}&days=7",
+            $this->bearer($token)
+        )->assertOk();
+
+        $res->assertJsonPath('summary.expected_sessions', 0);
+        $res->assertJsonPath('summary.completed_sessions', 0);
+        $res->assertJsonPath('summary.completion_rate_pct', 0);
+        $res->assertJsonPath('summary.streak_days', 0);
+        $this->assertCount(7, $res->json('by_day'));
+
+        Carbon::setTestNow();
+    }
 }

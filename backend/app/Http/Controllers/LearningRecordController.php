@@ -300,6 +300,165 @@ class LearningRecordController extends Controller
     }
 
     /**
+     * 老師個人進度摘要（僅 teacher）：
+     * - expected_sessions: 區間內已到班/遲到堂次（含代課歸屬）；
+     * - completed_sessions: 上述堂次中 latest LearningRecord.Progress 非空；
+     * - by_day: 每日 expected/completed 與完成率；
+     * - streak_days: 從結束日往前，連續「當日有 expected 且 100% 完成」天數。
+     */
+    public function teacherLearningProgressSummary(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role !== 'teacher') {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $teacherId = (int) $request->attributes->get('auth_teacher_id');
+        if ($teacherId <= 0) {
+            return response()->json(['message' => 'Teacher not linked'], 403);
+        }
+
+        $validated = $request->validate([
+            'branch_id' => 'nullable|integer|min:1',
+            'days' => 'nullable|integer|min:1|max:31',
+        ]);
+
+        $branchId = (int) ($validated['branch_id'] ?? 0);
+        $days = (int) ($validated['days'] ?? 7);
+        $campusIds = $request->attributes->get('auth_campus_ids', []);
+        if ($branchId > 0 && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+
+        $end = Carbon::today();
+        $start = $end->copy()->subDays($days - 1);
+
+        $rows = $this->buildTeacherSessionProgressRowsQuery($teacherId, $start, $end, $branchId)
+            ->select([
+                DB::raw('DATE(cs.SessionDate) AS session_date'),
+                DB::raw('COUNT(*) AS expected_total'),
+                DB::raw('SUM(CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END) AS completed_total'),
+            ])
+            ->groupBy(DB::raw('DATE(cs.SessionDate)'))
+            ->orderBy(DB::raw('DATE(cs.SessionDate)'))
+            ->get();
+
+        $dailyMap = [];
+        foreach ($rows as $row) {
+            $date = (string) ($row->session_date ?? '');
+            if ($date === '') {
+                continue;
+            }
+            $expected = (int) ($row->expected_total ?? 0);
+            $completed = (int) ($row->completed_total ?? 0);
+            $dailyMap[$date] = [
+                'date' => $date,
+                'expected_sessions' => $expected,
+                'completed_sessions' => $completed,
+                'completion_rate_pct' => $expected > 0 ? (int) round(100 * $completed / $expected) : 0,
+            ];
+        }
+
+        $byDay = [];
+        $cursor = $start->copy();
+        while ($cursor->lte($end)) {
+            $date = $cursor->toDateString();
+            $byDay[] = $dailyMap[$date] ?? [
+                'date' => $date,
+                'expected_sessions' => 0,
+                'completed_sessions' => 0,
+                'completion_rate_pct' => 0,
+            ];
+            $cursor->addDay();
+        }
+
+        $expectedTotal = (int) collect($byDay)->sum('expected_sessions');
+        $completedTotal = (int) collect($byDay)->sum('completed_sessions');
+        $completionRate = $expectedTotal > 0 ? (int) round(100 * $completedTotal / $expectedTotal) : 0;
+
+        $today = $end->toDateString();
+        $todayRow = collect($byDay)->firstWhere('date', $today) ?? [
+            'expected_sessions' => 0,
+            'completed_sessions' => 0,
+            'completion_rate_pct' => 0,
+        ];
+
+        $streakDays = 0;
+        for ($i = count($byDay) - 1; $i >= 0; $i--) {
+            $d = $byDay[$i];
+            $expected = (int) ($d['expected_sessions'] ?? 0);
+            $completed = (int) ($d['completed_sessions'] ?? 0);
+            if ($expected <= 0 || $completed < $expected) {
+                break;
+            }
+            $streakDays++;
+        }
+
+        return response()->json([
+            'start' => $start->toDateString(),
+            'end' => $end->toDateString(),
+            'days' => $days,
+            'branch_id' => $branchId > 0 ? $branchId : null,
+            'summary' => [
+                'expected_sessions' => $expectedTotal,
+                'completed_sessions' => $completedTotal,
+                'completion_rate_pct' => $completionRate,
+                'today_expected_sessions' => (int) ($todayRow['expected_sessions'] ?? 0),
+                'today_completed_sessions' => (int) ($todayRow['completed_sessions'] ?? 0),
+                'today_completion_rate_pct' => (int) ($todayRow['completion_rate_pct'] ?? 0),
+                'streak_days' => $streakDays,
+            ],
+            'by_day' => $byDay,
+        ]);
+    }
+
+    private function buildTeacherSessionProgressRowsQuery(
+        int $teacherId,
+        Carbon $start,
+        Carbon $end,
+        int $branchId = 0
+    ) {
+        $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
+
+        $query = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->leftJoin('schedules as sub_sched', function ($join) {
+                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
+                    ->where('sub_sched.status', '=', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
+                    ->whereRaw('sub_sched.id = (
+                        SELECT MAX(sub2.id)
+                        FROM schedules sub2
+                        WHERE sub2.student_course_id = sc.ID
+                          AND sub2.status = "scheduled"
+                          AND sub2.original_schedule_id IS NOT NULL
+                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
+                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
+                          AND sub2.teacher_id <> sc.TeacherID
+                    )');
+            })
+            ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
+            ->whereBetween(DB::raw('DATE(cs.SessionDate)'), [$start->toDateString(), $end->toDateString()])
+            ->whereRaw('LOWER(cs.Status) IN ("attended","late")')
+            ->where(function ($outer) use ($teacherId) {
+                $outer->where(function ($inner) use ($teacherId) {
+                    $inner->whereNull('sub_sched.teacher_id')
+                        ->where('sc.TeacherID', $teacherId);
+                })->orWhere('sub_sched.teacher_id', $teacherId);
+            });
+
+        if ($branchId > 0) {
+            $query->where('s.CampusID', $branchId);
+        }
+
+        return $query;
+    }
+
+    /**
      * 與 GET learning-records 老師視角一致的 OR 範圍（代課可見性）。
      */
     private function applyTeacherScopedLearningRecordConstraint(Builder $query, int $teacherId): void
