@@ -417,9 +417,21 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 ### 11.5 前端治理規則
 
-- `DirectorDashboard`：任務列表按 `sla_level` 優先；`breached`/`warning` 顯著標記。
+- `DirectorDashboard`：任務列表按 `sla_level` 優先；`breached`/`warning` 顯著標記。雙檢視（`focus`/`full`），預設 `focus`，使用者偏好寫入 `localStorage.alltrue.director_dashboard_view_mode.v1`。
 - `TeacherHome`：登入後有未完成事項只提醒一次；支援「提示音開關」與「今日靜音」避免疲勞提醒。
 - `NotificationsCenter`：支援企業視圖（待處理優先 / SLA 優先 / 高風險），並可同類通知聚合降噪。
+- `ParentPortal`：頂部 Progress Hub 顯示四卡（本週學習、下次課程、待處理事項、繳費狀態）；資料來源 `GET /api/v1/parent/dashboard.progress_summary`。
+
+### 11.6 家長進度中心（Parent Progress Hub）
+
+| 卡片 | 主要欄位 | 點擊行為 |
+|---|---|---|
+| 本週學習 | `progress_summary.week_progress.attended/scheduled` | 切到 `learning` 分頁 |
+| 下次課程 | `progress_summary.next_session.{date,start_time,subject,is_today}` | 切到 `schedule` 分頁 |
+| 待處理事項 | `progress_summary.pending_actions[]` 與 `pending_total` | 依 `pending_actions[0].cta_target` 跳分頁 |
+| 繳費狀態 | `progress_summary.payment.{status,paid_courses,total_courses}` | 切到 `billing` 分頁 |
+
+`pending_actions` 來源：`payment_alerts`、今日 `next_session`、待回饋的已核准評量；用於降低家長端認知負擔（PRD: enterprise dashboard parent portal v2）。
 
 ---
 
@@ -429,3 +441,4 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 |---|---|---|
 | 2026-04-23 | 初版建立：Identity、Attendance、ClassSession、Swipe Flow、Gotchas | PR #23 |
 | 2026-05-09 | 新增 Adoption v1.1：SLA 分級、每日摘要與週對比口徑 | - |
+| 2026-05-09 | 主任雙檢視（focus/full）+ 家長 Progress Hub 與 `progress_summary` 摘要 | - |
