@@ -59,6 +59,8 @@ class ParentPortalProgressSummaryTest extends TestCase
                 'week_progress' => ['attended', 'scheduled', 'records_filled'],
                 'next_session',
                 'pending_actions',
+                'interaction_statuses',
+                'notifications',
                 'pending_total',
                 'payment' => ['status', 'paid_courses', 'unpaid_courses', 'total_courses'],
                 'generated_at',
@@ -72,6 +74,26 @@ class ParentPortalProgressSummaryTest extends TestCase
         $this->assertSame(1, (int) $payload['payment']['unpaid_courses']);
         $this->assertSame(1, (int) $payload['payment']['total_courses']);
         $this->assertContains($payload['payment']['status'], ['all_pending', 'partial', 'all_clear']);
+        $this->assertIsArray($payload['interaction_statuses']);
+        $this->assertIsArray($payload['notifications']);
+    }
+
+    public function test_parent_event_endpoint_requires_session_and_accepts_parent_events(): void
+    {
+        $this->postJson('/api/v1/parent/events', [
+            'event' => 'parent.progress_card_clicked',
+            'meta' => ['card' => 'week_progress'],
+        ])->assertStatus(401);
+
+        $this->createStudent(1, '家長事件學生', '0913000222');
+        $token = $this->parentLogin('家長事件學生', '0913000222');
+
+        $this->postJson('/api/v1/parent/events', [
+            'event' => 'parent.progress_card_clicked',
+            'meta' => ['card' => 'week_progress', 'target' => 'learning'],
+        ], [
+            'Authorization' => 'Bearer ' . $token,
+        ])->assertOk()->assertJson(['ok' => true]);
     }
 
     private function createStudent(int $campusId, string $name, ?string $phone = null): Student

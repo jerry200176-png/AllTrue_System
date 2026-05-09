@@ -124,8 +124,20 @@
           </div>
           <span class="pp-hub-week">本週 {{ progressSummary.week_label }}</span>
         </div>
+        <div class="pp-hub-notify" v-if="parentNotifications.length">
+          <span class="pp-hub-notify-title">待處理提醒：</span>
+          <button
+            v-for="n in parentNotifications"
+            :key="`${n.target}-${n.title}`"
+            type="button"
+            class="pp-hub-notify-chip"
+            @click="gotoParentTarget(n.target, 'notification_chip')"
+          >
+            {{ n.title }} × {{ n.count }}
+          </button>
+        </div>
         <div class="pp-hub-grid">
-          <button type="button" class="pp-hub-cell" @click="activeTab = 'learning'">
+          <button type="button" class="pp-hub-cell" @click="gotoParentTarget('learning', 'week_progress')">
             <span class="pp-hub-cell-label">本週學習</span>
             <span class="pp-hub-cell-val">
               <strong>{{ progressSummary.week_progress.attended }}</strong>
@@ -134,7 +146,7 @@
             <span class="pp-hub-cell-cta">查看學習評量</span>
           </button>
 
-          <button type="button" class="pp-hub-cell" :class="{ 'pp-hub-cell--accent': progressSummary.next_session?.is_today }" @click="activeTab = 'schedule'">
+          <button type="button" class="pp-hub-cell" :class="{ 'pp-hub-cell--accent': progressSummary.next_session?.is_today }" @click="gotoParentTarget('schedule', 'next_session')">
             <span class="pp-hub-cell-label">下次課程</span>
             <span class="pp-hub-cell-val pp-hub-cell-val--small" v-if="progressSummary.next_session">
               <strong>{{ formatHubDate(progressSummary.next_session.date) }}</strong>
@@ -158,7 +170,7 @@
             <span class="pp-hub-cell-cta" v-else>目前都已完成</span>
           </button>
 
-          <button type="button" class="pp-hub-cell" :class="paymentHubClass" @click="activeTab = 'billing'">
+          <button type="button" class="pp-hub-cell" :class="paymentHubClass" @click="gotoParentTarget('billing', 'payment')">
             <span class="pp-hub-cell-label">繳費狀態</span>
             <span class="pp-hub-cell-val">
               <strong>{{ progressSummary.payment.paid_courses || 0 }}</strong>
@@ -167,6 +179,56 @@
             <span class="pp-hub-cell-cta">{{ paymentHubLabel }}</span>
           </button>
         </div>
+      </div>
+
+      <div class="pp-grid-dual" v-if="progressSummary">
+        <div class="pp-card pp-mini-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#0ea5e9;">sync</span>
+            <h3>處理進度</h3>
+          </div>
+          <div v-if="interactionStatuses.length" class="pp-status-list">
+            <div v-for="item in interactionStatuses" :key="`${item.kind}-${item.flow_id}`" class="pp-status-row">
+              <span class="pp-status-kind">{{ interactionKindLabel(item.kind) }}</span>
+              <span class="pp-status-pill" :class="`pp-status-pill--${item.status}`">{{ interactionStatusLabel(item.status) }}</span>
+              <span class="pp-status-time">{{ formatStatusTime(item.updated_at) }}</span>
+            </div>
+          </div>
+          <div v-else class="pp-empty pp-empty--inline">
+            <span class="material-symbols-outlined">task_alt</span>
+            <p>目前沒有待追蹤進度</p>
+          </div>
+        </div>
+
+        <div class="pp-card pp-mini-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:#7c3aed;">new_releases</span>
+            <h3>版本更新</h3>
+          </div>
+          <div v-if="parentReleaseNotes.length" class="pp-release-list">
+            <button
+              v-for="note in parentReleaseNotes"
+              :key="note.version"
+              type="button"
+              class="pp-release-row"
+              @click="openReleaseNote(note)"
+            >
+              <span class="pp-release-version">{{ note.version }}</span>
+              <span class="pp-release-summary">{{ note.summary }}</span>
+            </button>
+          </div>
+          <div v-else class="pp-empty pp-empty--inline">
+            <span class="material-symbols-outlined">info</span>
+            <p>近期沒有更新公告</p>
+          </div>
+        </div>
+      </div>
+      <div class="pp-card pp-release-detail" v-if="selectedReleaseNote">
+        <div class="pp-release-detail-head">
+          <strong>{{ selectedReleaseNote.title }}</strong>
+          <button type="button" class="pp-link-btn" @click="selectedReleaseNote = null">關閉</button>
+        </div>
+        <p class="pp-release-detail-summary">{{ selectedReleaseNote.summary }}</p>
       </div>
 
       <!-- ═══ Tab Bar ═══ -->
@@ -657,6 +719,8 @@
 <script setup>
 import { onMounted, ref, computed, reactive } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
+import { notesForRole } from '../lib/releaseNotes';
+import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 
 function resolveParentLiffId() {
   const q = new URLSearchParams(window.location.search);
@@ -707,8 +771,12 @@ const leaveReason = ref('');
 const leaveSubmitting = ref(false);
 const leaveError = ref('');
 const leaveSuccess = ref('');
+const selectedReleaseNote = ref(null);
 
 const progressSummary = computed(() => dashboard.value?.progress_summary || null);
+const interactionStatuses = computed(() => progressSummary.value?.interaction_statuses || []);
+const parentNotifications = computed(() => progressSummary.value?.notifications || []);
+const parentReleaseNotes = computed(() => notesForRole('parent').slice(0, 5));
 
 const paymentHubClass = computed(() => {
   const status = progressSummary.value?.payment?.status;
@@ -735,10 +803,53 @@ function formatHubDate(value) {
 function hubGoPending() {
   const list = progressSummary.value?.pending_actions || [];
   if (list.length > 0 && list[0]?.cta_target) {
-    activeTab.value = list[0].cta_target;
+    const target = list[0].cta_target;
+    activeTab.value = target;
+    trackParentPortalEvent(token.value, 'parent.progress_card_clicked', { card: 'pending_actions', target });
     return;
   }
   activeTab.value = 'learning';
+  trackParentPortalEvent(token.value, 'parent.progress_card_clicked', { card: 'pending_actions', target: 'learning' });
+}
+
+function gotoParentTarget(target, source = 'hub_card') {
+  const resolved = ['learning', 'schedule', 'billing'].includes(String(target)) ? String(target) : 'learning';
+  activeTab.value = resolved;
+  trackParentPortalEvent(token.value, 'parent.progress_card_clicked', {
+    card: source,
+    target: resolved,
+  });
+}
+
+function interactionStatusLabel(status) {
+  const map = {
+    submitted: '已送出',
+    in_progress: '處理中',
+    resolved: '已完成',
+  };
+  return map[String(status || '')] || '處理中';
+}
+
+function interactionKindLabel(kind) {
+  const map = {
+    student_leave: '請假申請',
+    learning_feedback: '老師回饋',
+  };
+  return map[String(kind || '')] || '待處理';
+}
+
+function formatStatusTime(value) {
+  if (!value) return '剛剛';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '剛剛';
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function openReleaseNote(note) {
+  selectedReleaseNote.value = note;
+  trackParentPortalEvent(token.value, 'parent.release_note_opened', {
+    version: note?.version || '',
+  });
 }
 
 const billingBadgeCount = computed(() => {
@@ -857,6 +968,9 @@ const submitFeedback = async (record) => {
     const id = record.id ?? record.ID;
     record.parent_feedback = await upsertParentLearningRecordFeedback(token.value, id, String(record._feedbackDraft).trim());
     record._feedbackDraft = record.parent_feedback?.content || '';
+    trackParentPortalEvent(token.value, 'parent.learning_feedback_submitted', {
+      record_id: id,
+    });
   } catch (e) {
     record._feedbackError = e?.message || '暫時無法送出，請稍後再試';
   } finally {
@@ -893,6 +1007,10 @@ const submitLeaveRequest = async (session) => {
     const result = await parentRequestLeave(token.value, session.id, { reason: leaveReason.value });
     session.Status = result?.session?.status || 'leave_requested';
     leaveSuccess.value = '請假申請已送出，補習班會安排補課時段。';
+    trackParentPortalEvent(token.value, 'parent.leave_submitted', {
+      session_id: session.id,
+      status: session.Status,
+    });
     closeLeaveBox();
   } catch (e) {
     leaveError.value = e?.message || '請假申請失敗，請稍後再試';
@@ -1015,6 +1133,10 @@ const loadDashboard = async () => {
     lrSubjectFilter.value = '';
     const data = await getParentDashboard(token.value, { lrPage: 1, lrPerPage });
     dashboard.value = data;
+    trackParentPortalEvent(token.value, 'parent.dashboard_opened', {
+      student_id: data?.student?.id || null,
+      pending_total: data?.progress_summary?.pending_total || 0,
+    });
     // PRD-B hotfix：以後端為唯一真相，伺服器沒回 students 即表示本人無關聯學生；
     // 主動 null 覆寫以清除舊版本殘留的 localStorage 快取。
     setStudents(data.students || null);
@@ -1413,6 +1535,24 @@ onMounted(async () => {
   font-size: 14px; font-weight: 800; color: #0f172a;
 }
 .pp-hub-week { font-size: 12px; color: #64748b; font-weight: 600; }
+.pp-hub-notify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.pp-hub-notify-title { font-size: 12px; color: #64748b; font-weight: 700; }
+.pp-hub-notify-chip {
+  border: 1px solid rgba(30, 64, 175, 0.22);
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  cursor: pointer;
+}
 .pp-hub-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1460,9 +1600,69 @@ onMounted(async () => {
 .pp-hub-cell--warn .pp-hub-cell-cta { color: #b91c1c; }
 .pp-hub-cell--ok { border-color: rgba(34, 197, 94, 0.4); background: #f0fdf4; }
 .pp-hub-cell--ok .pp-hub-cell-cta { color: #047857; }
+.pp-grid-dual {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+.pp-mini-card { padding: 12px 14px; }
+.pp-status-list, .pp-release-list { display: flex; flex-direction: column; gap: 8px; }
+.pp-status-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+.pp-status-kind { color: #334155; font-weight: 600; }
+.pp-status-pill {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+.pp-status-pill--submitted { background: #eff6ff; color: #1d4ed8; }
+.pp-status-pill--in_progress { background: #fffbeb; color: #b45309; }
+.pp-status-pill--resolved { background: #ecfdf5; color: #047857; }
+.pp-status-time { color: #94a3b8; font-size: 11px; }
+.pp-release-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-release-version { font-size: 11px; font-weight: 800; color: #475569; }
+.pp-release-summary { font-size: 12px; color: #0f172a; line-height: 1.4; }
+.pp-release-detail {
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: #fff;
+}
+.pp-release-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pp-release-detail-summary { margin: 8px 0 0; color: #334155; font-size: 13px; line-height: 1.5; }
+.pp-empty--inline { padding: 10px 0 0; min-height: 0; }
 
 @media (max-width: 480px) {
   .pp-hub-grid { grid-template-columns: 1fr; }
+  .pp-grid-dual { grid-template-columns: 1fr; }
+  .pp-status-row { grid-template-columns: 1fr auto; }
+  .pp-status-time { grid-column: 1 / -1; }
 }
 
 /* ═══ Tab Bar ═══ */

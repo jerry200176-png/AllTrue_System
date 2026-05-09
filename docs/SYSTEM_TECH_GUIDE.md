@@ -433,6 +433,13 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 `pending_actions` 來源：`payment_alerts`、今日 `next_session`、待回饋的已核准評量；用於降低家長端認知負擔（PRD: enterprise dashboard parent portal v2）。
 
+### 11.7 家長互動狀態流與事件追蹤（P1）
+
+- `progress_summary.interaction_statuses`：統一輸出 `submitted / in_progress / resolved`，並附 `updated_at`。
+- `progress_summary.notifications`：依 `target` 聚合提醒（`learning` / `schedule` / `billing`），避免同類提醒重複卡片。
+- `POST /api/v1/parent/events`：家長端非阻塞 telemetry（記錄於 daily log `parent_adoption_event`）。
+- 前端 `ParentPortal` 事件：`parent.dashboard_opened`、`parent.progress_card_clicked`、`parent.release_note_opened`、`parent.leave_submitted`、`parent.learning_feedback_submitted`。
+
 ---
 
 ## 修訂記錄
