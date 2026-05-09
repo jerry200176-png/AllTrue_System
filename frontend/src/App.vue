@@ -361,6 +361,27 @@
     </div>
   </div>
 
+  <Transition name="brand-overlay">
+    <div
+      v-if="brandOverlayVisible"
+      :class="['brand-idle-layer', `brand-idle-layer--${brandOverlayMode}`]"
+      role="presentation"
+      @click="dismissBrandOverlay"
+    >
+      <div class="brand-idle-card" aria-live="polite">
+        <div class="brand-idle-logo-wrap">
+          <span class="brand-idle-ring brand-idle-ring--outer"></span>
+          <span class="brand-idle-ring brand-idle-ring--inner"></span>
+          <img :src="logoUrl" alt="全真一對一 Logo" class="brand-idle-logo" onerror="this.style.display='none'" />
+        </div>
+        <div class="brand-idle-copy">
+          <strong>{{ brandOverlayMode === 'intro' ? '歡迎回來' : '全真一對一' }}</strong>
+          <span>{{ brandOverlayMode === 'intro' ? '正在進入教務管理系統' : '系統待機中，點一下即可繼續' }}</span>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
   <div v-if="guideTour.isOpen.value" class="guide-tour-popover-layer" @click.self="guideTour.closeTour">
     <div
       ref="guidePopoverRef"
@@ -482,6 +503,95 @@ const guidePopoverRef = ref(null);
 const releaseNudgeOpen = ref(false);
 const releaseNudgeVersion = ref('');
 const RELEASE_NOTES_SEEN_KEY = 'alltrue_release_notes_seen';
+const brandOverlayMode = ref('idle');
+const brandOverlayVisible = ref(false);
+let brandIdleTimer = null;
+let brandIntroTimer = null;
+const BRAND_IDLE_DESKTOP_MS = 90 * 1000;
+const BRAND_IDLE_MOBILE_MS = 180 * 1000;
+const BRAND_INTRO_MS = 1600;
+
+const brandOverlayAllowed = computed(() =>
+  Boolean(session.value)
+  && !isStandaloneParent.value
+  && !isPasswordChangeLocked.value
+  && !releaseNudgeOpen.value
+  && !guideTour.isOpen.value
+  && !showMoreMenu.value
+  && (isDirector.value || isTeacher.value)
+);
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+}
+
+function isCoarsePointer() {
+  return typeof window !== 'undefined'
+    && window.matchMedia?.('(pointer: coarse)')?.matches;
+}
+
+function activeElementIsEditing() {
+  if (typeof document === 'undefined') return false;
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = String(el.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || Boolean(el.isContentEditable);
+}
+
+function clearBrandTimers() {
+  if (brandIdleTimer) {
+    clearTimeout(brandIdleTimer);
+    brandIdleTimer = null;
+  }
+  if (brandIntroTimer) {
+    clearTimeout(brandIntroTimer);
+    brandIntroTimer = null;
+  }
+}
+
+function scheduleBrandIdleOverlay() {
+  if (brandIdleTimer) {
+    clearTimeout(brandIdleTimer);
+    brandIdleTimer = null;
+  }
+  if (!brandOverlayAllowed.value || prefersReducedMotion()) return;
+  const delay = isCoarsePointer() ? BRAND_IDLE_MOBILE_MS : BRAND_IDLE_DESKTOP_MS;
+  brandIdleTimer = window.setTimeout(() => {
+    if (!brandOverlayAllowed.value || activeElementIsEditing()) {
+      scheduleBrandIdleOverlay();
+      return;
+    }
+    brandOverlayMode.value = 'idle';
+    brandOverlayVisible.value = true;
+  }, delay);
+}
+
+function showBrandIntroOverlay() {
+  if (!brandOverlayAllowed.value || prefersReducedMotion()) {
+    scheduleBrandIdleOverlay();
+    return;
+  }
+  brandOverlayMode.value = 'intro';
+  brandOverlayVisible.value = true;
+  if (brandIntroTimer) clearTimeout(brandIntroTimer);
+  brandIntroTimer = window.setTimeout(() => {
+    brandOverlayVisible.value = false;
+    scheduleBrandIdleOverlay();
+  }, BRAND_INTRO_MS);
+}
+
+function dismissBrandOverlay() {
+  brandOverlayVisible.value = false;
+  scheduleBrandIdleOverlay();
+}
+
+function onBrandActivity() {
+  if (brandOverlayMode.value === 'idle' && brandOverlayVisible.value) {
+    brandOverlayVisible.value = false;
+  }
+  scheduleBrandIdleOverlay();
+}
 
 function markReleaseNotesSeen() {
   if (!releaseNudgeVersion.value) return;
@@ -1129,6 +1239,10 @@ onMounted(async () => {
 
     window.addEventListener('resize', onWindowResizeGuideFab);
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
+    ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {
+      window.addEventListener(eventName, onBrandActivity, { passive: true });
+    });
+    scheduleBrandIdleOverlay();
 });
 
 const fetchProfile = async (_uid) => {
@@ -1209,6 +1323,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
     await ensureDirectorBranches();
     ensureTeacherBranch();
+    showBrandIntroOverlay();
 };
 
 const onProfileUpdated = async (updated) => {
@@ -1310,6 +1425,18 @@ watch([session, role, isPasswordChangeLocked], () => {
   releaseNudgeOpen.value = seenVersion !== latestVersion;
 });
 
+watch(brandOverlayAllowed, (allowed) => {
+  if (!allowed) {
+    brandOverlayVisible.value = false;
+    if (brandIdleTimer) {
+      clearTimeout(brandIdleTimer);
+      brandIdleTimer = null;
+    }
+    return;
+  }
+  scheduleBrandIdleOverlay();
+});
+
 function onRefreshBadgesEvent() {
   refreshUnreadNotifications();
 }
@@ -1321,6 +1448,10 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', _onVisibilityChangeForPolling);
   window.removeEventListener('resize', onWindowResizeGuideFab);
   window.removeEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
+  ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {
+    window.removeEventListener(eventName, onBrandActivity);
+  });
+  clearBrandTimers();
 });
 
 async function mergeBugUnreadBadge() {
@@ -1727,6 +1858,167 @@ function formatBuildTime(rawIso) {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.brand-idle-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10015;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.16), transparent 32%),
+    rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.brand-idle-layer--intro {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.22), transparent 34%),
+    rgba(15, 23, 42, 0.34);
+}
+
+.brand-idle-card {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  color: #fff;
+  text-align: center;
+  user-select: none;
+}
+
+.brand-idle-logo-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  animation: brandFloat 5.5s ease-in-out infinite;
+}
+
+.brand-idle-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  box-shadow: 0 0 30px rgba(255, 179, 0, 0.18);
+}
+
+.brand-idle-ring--outer {
+  animation: brandRingPulse 3.8s ease-in-out infinite;
+}
+
+.brand-idle-ring--inner {
+  inset: 16px;
+  border-color: rgba(255, 179, 0, 0.42);
+  animation: brandRingPulse 3.8s ease-in-out infinite reverse;
+}
+
+.brand-idle-logo {
+  position: relative;
+  z-index: 1;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  object-fit: cover;
+  transform: scale(1.08);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.24), 0 0 0 8px rgba(255, 255, 255, 0.88);
+  animation: brandLogoBreathe 3.4s ease-in-out infinite;
+}
+
+.brand-idle-logo-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 18px;
+  border-radius: 50%;
+  background: linear-gradient(110deg, transparent 22%, rgba(255,255,255,0.42) 48%, transparent 72%);
+  transform: translateX(-72%) rotate(12deg);
+  animation: brandLogoShine 4.8s ease-in-out infinite;
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.brand-idle-copy {
+  display: grid;
+  gap: 4px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.32);
+}
+
+.brand-idle-copy strong {
+  font-size: 22px;
+  letter-spacing: 0.04em;
+}
+
+.brand-idle-copy span {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.brand-overlay-enter-active,
+.brand-overlay-leave-active {
+  transition: opacity 0.32s ease;
+}
+
+.brand-overlay-enter-active .brand-idle-card,
+.brand-overlay-leave-active .brand-idle-card {
+  transition: transform 0.32s ease, opacity 0.32s ease;
+}
+
+.brand-overlay-enter-from,
+.brand-overlay-leave-to {
+  opacity: 0;
+}
+
+.brand-overlay-enter-from .brand-idle-card,
+.brand-overlay-leave-to .brand-idle-card {
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+}
+
+@keyframes brandFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes brandRingPulse {
+  0%, 100% { transform: scale(0.94); opacity: 0.5; }
+  50% { transform: scale(1.04); opacity: 0.92; }
+}
+
+@keyframes brandLogoBreathe {
+  0%, 100% { transform: scale(1.06); }
+  50% { transform: scale(1.12); }
+}
+
+@keyframes brandLogoShine {
+  0%, 42% { transform: translateX(-78%) rotate(12deg); opacity: 0; }
+  54% { opacity: 0.85; }
+  70%, 100% { transform: translateX(78%) rotate(12deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-idle-logo-wrap,
+  .brand-idle-ring,
+  .brand-idle-logo,
+  .brand-idle-logo-wrap::after {
+    animation: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .brand-idle-logo-wrap {
+    width: 142px;
+    height: 142px;
+  }
+  .brand-idle-logo {
+    width: 100px;
+    height: 100px;
+  }
 }
 
 .sidebar-nav button:disabled {
