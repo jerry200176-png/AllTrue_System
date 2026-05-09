@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 class LearningRecord extends Model
@@ -59,12 +60,16 @@ class LearningRecord extends Model
     /**
      * 課程暫停 (StudentClass.Stop=1) 時，待審／需修改評量不應再出現在清單（不需填寫）；
      * 已核准等狀態仍保留可查詢。
+     *
+     * 例外：課程已 Stop、但連結的 ClassSession 仍為 scheduled 且堂次結束時間已過（未及時點名／狀態未回寫）
+     * 時，待審評量仍應出現在清單，否則會發生「最後一堂／結束後評量永遠載不出」且主任無法退回／審核。
      */
     public function scopeExcludePausedCoursePendingReview($query)
     {
         $t = $query->getModel()->getTable();
+        $now = Carbon::now()->format('Y-m-d H:i:s');
 
-        return $query->where(function ($outer) use ($t) {
+        return $query->where(function ($outer) use ($t, $now) {
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhereHas('classSession', function ($cs) {
                     $cs->whereIn('Status', ['attended', 'late', 'absent']);
@@ -73,6 +78,20 @@ class LearningRecord extends Model
                     $sc->where(function ($w) {
                         $w->where('Stop', 0)->orWhereNull('Stop');
                     });
+                })
+                ->orWhere(function ($q) use ($t, $now) {
+                    $q->whereIn("{$t}.Status", ['pending', 'changes_requested'])
+                        ->whereHas('studentClass', function ($sc) {
+                            $sc->where('Stop', 1);
+                        })
+                        ->whereHas('classSession', function ($cs) use ($now) {
+                            $tbl = $cs->getModel()->getTable();
+                            $cs->whereRaw('LOWER(`' . $tbl . '`.`Status`) = ?', ['scheduled'])
+                                ->whereRaw(
+                                    "CONCAT(`{$tbl}`.`SessionDate`, ' ', COALESCE(`{$tbl}`.`EndTime`, '23:59:59')) < ?",
+                                    [$now]
+                                );
+                        });
                 });
         });
     }
