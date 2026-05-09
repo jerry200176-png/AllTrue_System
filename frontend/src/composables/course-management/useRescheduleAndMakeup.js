@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
+import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
 
 export function useRescheduleAndMakeup({
   supabase,
@@ -106,6 +107,13 @@ export function useRescheduleAndMakeup({
       schedule_date: form.new_date, original_schedule_id: originalId, student_course_id: form.course_id,
     });
 
+    const impactLines = [
+      `原堂次：${form.original_date} ${form.original_start}~${form.original_end}`,
+      `新堂次：${form.new_date} ${normalizeTo30Min(form.new_start)}~${newEnd}`,
+      '系統將建立「原堂改期」與「新堂排入」兩筆記錄，可於課程編修追溯',
+    ].join('\n');
+    if (!confirm(`調課影響預覽\n\n${impactLines}\n\n確認送出？`)) return;
+
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
@@ -170,6 +178,7 @@ export function useRescheduleAndMakeup({
         showRescheduleModal.value = false;
         rescheduleCourse.value = null;
         alert('調課完成');
+        trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal' });
         loadCourses();
         return;
       }
@@ -207,6 +216,7 @@ export function useRescheduleAndMakeup({
     showRescheduleModal.value = false;
     rescheduleCourse.value = null;
     alert('調課完成');
+    trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal-fallback' });
     loadCourses();
   }
 
