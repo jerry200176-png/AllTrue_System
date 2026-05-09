@@ -196,6 +196,8 @@ class OrphanScheduledSessionsTest extends TestCase
             'Paid'              => 0,
             'Stop'              => 0,
             'StartDate'         => now()->toDateString(),
+            'by1'               => $teacherId,
+            'RoomID'            => 'R1',
         ]);
     }
 
@@ -218,6 +220,8 @@ class OrphanScheduledSessionsTest extends TestCase
             'Paid'              => 1,
             'Stop'              => 1,
             'StartDate'         => now()->subMonth()->toDateString(),
+            'by1'               => $teacherId,
+            'RoomID'            => 'R1',
         ]);
     }
 }
