@@ -43,6 +43,8 @@
 | **Dependabot** | [`.github/dependabot.yml`](.github/dependabot.yml) 每週／每月自動開升級 PR。 |
 | **工作流** | `.github/workflows/`：`ci.yml`、`presubmit.yml`、`deploy.yml` 等；deploy 僅在合併後且有 deployable diff 時執行。 |
 
+延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
+
 ## Security
 
 請閱讀根目錄 [`SECURITY.md`](SECURITY.md)（含漏洞通報方式；完整決策仍見 [`docs/SECURITY.md`](docs/SECURITY.md)）。
