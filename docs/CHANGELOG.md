@@ -12,6 +12,18 @@
 
 ---
 
+## 2026-05-09 — feat(ui): 系統內建「版本更新」頁面（老師/主任）
+
+- Added 老師與主任側欄新增「版本更新」入口，集中顯示近期版本新增功能與修正重點，降低口頭公告成本
+
+---
+
+## 2026-05-09 — fix(ops): `artisan fix` 防呆提示（避免 namespace 例外）
+
+- Fixed 新增 `artisan fix` 說明命令，當只輸入 `fix` 時改回傳可用修復命令提示，避免 `NamespaceNotFoundException` 進入 Sentry（#271）
+
+---
+
 ## 2026-05-09 — td(attendance): TD-016 停用課程孤兒堂次修復（#270）
 
 - Added `artisan fix:orphan-scheduled-sessions`（支援 `--dry-run`）：掃描 `Stop=1` 課程殘留未來 scheduled ClassSession 並取消；生產執行清除 `StudentClass#526` 的 4 筆孤兒堂次；附 regression tests

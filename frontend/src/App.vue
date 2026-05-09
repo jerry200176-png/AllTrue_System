@@ -321,6 +321,7 @@
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
+      <ReleaseNotesPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'release-notes'" :user-role="role" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
       <div v-if="!isDirector && !isTeacher" class="card" style="max-width: 480px; margin: 2rem auto; padding: 2rem; text-align: center;">
@@ -410,6 +411,7 @@ const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPag
 const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugReportsPage.vue'));
 const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
 const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
+const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
@@ -922,6 +924,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'classroom', label: '教室管理', icon: 'meeting_room' },
           { page: 'subject-settings', label: '科目管理', icon: 'library_books' },
           ...systemItems,
+          { page: 'release-notes', label: '版本更新', icon: 'new_releases' },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
       },
@@ -941,6 +944,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
+          { page: 'release-notes', label: '版本更新', icon: 'new_releases' },
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
       },
