@@ -200,45 +200,6 @@
               </footer>
             </section>
 
-            <!-- Schedule Discrepancy Reports -->
-            <section
-              class="wp sd-card"
-              :class="{ 'sd-card--alert': sdSummary.pending > 0 }"
-              @click="goToScheduleDiscrepancy"
-              @keydown.enter="goToScheduleDiscrepancy"
-              tabindex="0"
-              role="button"
-            >
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">flag</span>
-                <h3>課表回報</h3>
-                <span v-if="sdSummary.pending > 0" class="wp__badge wp__badge--warn">{{ sdSummary.pending }}</span>
-              </header>
-              <div v-if="sdLoading" class="sd-skel-wrap" aria-hidden="true">
-                <div class="sd-skel-num"></div>
-                <div class="sd-skel-line"></div>
-              </div>
-              <template v-else>
-                <div v-if="sdSummary.pending > 0" class="sd-dash-body">
-                  <div class="sd-dash-num">{{ sdSummary.pending }}</div>
-                  <div class="sd-dash-text">
-                    <div class="sd-dash-title">筆待處理課表回報</div>
-                    <div class="sd-dash-sub">
-                      處理中 {{ sdSummary.acknowledged }} · 已解決 {{ sdSummary.resolved }}
-                    </div>
-                  </div>
-                  <button class="btn-o btn-sm sd-dash-cta" type="button" @click.stop="goToScheduleDiscrepancy">前往處理</button>
-                </div>
-                <div v-else class="sd-dash-empty">
-                  <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
-                  <div>
-                    <div class="sd-dash-title">目前課表無回報</div>
-                    <div class="sd-dash-sub">老師沒有回報任何出入，一切正常</div>
-                  </div>
-                </div>
-              </template>
-            </section>
-
             <!-- Payment Alerts -->
             <section class="wp wp--warn" id="payments-sec" data-guide="director-alerts">
               <header class="wp__head">
@@ -263,11 +224,6 @@
                 </button>
               </footer>
             </section>
-          </div>
-
-          <div class="work-col">
-            <!-- PRD 9c058f19：近 7 天代課記錄 -->
-            <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
 
             <!-- Exception Workflows -->
             <section class="wp ew-card" id="exception-workflows-sec">
@@ -317,28 +273,6 @@
               </div>
             </section>
 
-            <!-- Teacher learning fill-rate -->
-            <section class="wp" id="teacher-fill-rates-sec">
-              <header class="wp__head">
-                <span class="material-symbols-outlined wp__hi">insights</span>
-                <h3>老師評量填寫率</h3>
-              </header>
-              <p class="wp__hint">
-                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
-                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
-              </p>
-              <div v-if="teacherFillRatesLoading" class="wp__empty">載入中…</div>
-              <template v-else-if="!teacherFillRatesRows.length">
-                <div class="wp__empty">此區間內無已到班堂次</div>
-              </template>
-              <div class="wp-list-scroll-desktop">
-                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
-                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
-                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
-                </div>
-              </div>
-            </section>
-
             <!-- Pending Evaluations -->
             <section class="wp" id="evals-sec" data-guide="director-pending-evals">
               <header class="wp__head">
@@ -348,7 +282,7 @@
               </header>
               <p class="wp__hint">核准後老師科目數自動累計</p>
               <div v-if="!pendingEvaluations.length" class="wp__empty">無待審核評量</div>
-              <div v-else class="wp-list-scroll-desktop">
+              <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
                 <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                   <div class="eval-card__top">
                     <strong>{{ ev.student_name }}</strong>
@@ -370,6 +304,72 @@
               <footer v-if="pendingEvaluations.length" class="wp__foot">
                 <button class="btn-o btn-sm" @click="emit('navigate', { target: 'learning' })">前往評量頁面</button>
               </footer>
+            </section>
+          </div>
+
+          <div class="work-col work-col--side">
+            <!-- Schedule Discrepancy Reports -->
+            <section
+              class="wp sd-card"
+              :class="{ 'sd-card--alert': sdSummary.pending > 0 }"
+              @click="goToScheduleDiscrepancy"
+              @keydown.enter="goToScheduleDiscrepancy"
+              tabindex="0"
+              role="button"
+            >
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">flag</span>
+                <h3>課表回報</h3>
+                <span v-if="sdSummary.pending > 0" class="wp__badge wp__badge--warn">{{ sdSummary.pending }}</span>
+              </header>
+              <div v-if="sdLoading" class="sd-skel-wrap" aria-hidden="true">
+                <div class="sd-skel-num"></div>
+                <div class="sd-skel-line"></div>
+              </div>
+              <template v-else>
+                <div v-if="sdSummary.pending > 0" class="sd-dash-body">
+                  <div class="sd-dash-num">{{ sdSummary.pending }}</div>
+                  <div class="sd-dash-text">
+                    <div class="sd-dash-title">筆待處理課表回報</div>
+                    <div class="sd-dash-sub">
+                      處理中 {{ sdSummary.acknowledged }} · 已解決 {{ sdSummary.resolved }}
+                    </div>
+                  </div>
+                  <button class="btn-o btn-sm sd-dash-cta" type="button" @click.stop="goToScheduleDiscrepancy">前往處理</button>
+                </div>
+                <div v-else class="sd-dash-empty">
+                  <span class="material-symbols-outlined" aria-hidden="true">task_alt</span>
+                  <div>
+                    <div class="sd-dash-title">目前課表無回報</div>
+                    <div class="sd-dash-sub">老師沒有回報任何出入，一切正常</div>
+                  </div>
+                </div>
+              </template>
+            </section>
+
+            <!-- PRD 9c058f19：近 7 天代課記錄 -->
+            <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
+
+            <!-- Teacher learning fill-rate -->
+            <section class="wp" id="teacher-fill-rates-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">insights</span>
+                <h3>老師評量填寫率</h3>
+              </header>
+              <p class="wp__hint">
+                <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
+                已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
+              </p>
+              <div v-if="teacherFillRatesLoading" class="wp__empty">載入中…</div>
+              <template v-else-if="!teacherFillRatesRows.length">
+                <div class="wp__empty">此區間內無已到班堂次</div>
+              </template>
+              <div class="wp-list-scroll-desktop">
+                <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
+                  <span>{{ row.teacher_name }}　{{ row.learning_records_filled }}／{{ row.sessions_attended }} 堂</span>
+                  <span class="badge-blue">{{ row.fill_rate_pct }}%</span>
+                </div>
+              </div>
             </section>
 
             <!-- Notifications -->
@@ -1645,13 +1645,16 @@ onMounted(() => {
 /* ===== Work Grid ===== */
 .work-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  grid-template-columns: minmax(0, 1.14fr) minmax(340px, 0.86fr);
   gap: 20px;
 }
 .work-col {
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+.work-col--side .wp__hint {
+  font-size: 11px;
 }
 
 /* ===== Work Panel ===== */
@@ -2146,6 +2149,12 @@ onMounted(() => {
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
+  }
+  .dash.dash--desktop-dense .wp-list-scroll-desktop--primary {
+    max-height: min(340px, 42vh);
+  }
+  .dash.dash--desktop-dense .work-col--side .wp-list-scroll-desktop {
+    max-height: min(220px, 28vh);
   }
 }
 

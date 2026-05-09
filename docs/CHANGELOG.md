@@ -6,6 +6,13 @@
 
 ---
 
+## 2026-05-09 — feat(ui): Dashboard 欄位重排與系統待機動畫
+
+- Changed 主任總覽桌面版改成左側主作業、右側監控摘要，降低左右欄不平均感
+- Added 登入成功後品牌進場動畫與系統內閒置 Logo 待機動畫，互動後自動淡出
+
+---
+
 ## 2026-05-09 — feat(ui): 版本更新由 CHANGELOG 同步、主任總覽桌面版更緊湊
 
 - Added `scripts/changelog-to-release-notes.mjs`＋`npm run sync-release-notes`：`build` 與 CI 先從 `docs/CHANGELOG.md` 產生課程向更新卡（略過純維運／chore／docs 類標題）
