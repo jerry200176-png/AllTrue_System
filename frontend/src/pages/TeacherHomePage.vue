@@ -162,7 +162,6 @@
               <span class="th-priority-title">{{ item.title }}</span>
               <span class="th-priority-desc">{{ item.description }}</span>
             </div>
-            <span v-if="item.acknowledged" class="th-priority-ack">已讀</span>
             <span class="material-symbols-outlined">chevron_right</span>
           </button>
         </div>
@@ -1247,11 +1246,6 @@ onBeforeUnmount(() => {
   margin-top: 2px;
   font-size: 12px;
   color: var(--text-light);
-}
-.th-priority-ack {
-  font-size: 11px;
-  color: var(--success);
-  font-weight: 700;
 }
 .th-task-item {
   border: 1px solid var(--border);
