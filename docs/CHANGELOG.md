@@ -18,6 +18,12 @@
 
 ---
 
+## 2026-05-09 — fix(schedule): 代課後調課寫 schedules 自動採 effective 代課老師
+
+- Fixed `POST /schedules` 對 `scheduled` + `original_schedule_id`（調課目標列）先做 anchor 鏈結代課老師消解，避免請求沿用 `StudentClass.TeacherID` 觸發假性撞課；行事曆 `submitReschedule` 同步將 `teacher_id` 對齊已存在的代課列
+
+---
+
 ## 2026-05-09 — feat(learning): 老師評量待辦角標與一鍵開填、主任填寫率報表
 
 - Added 教學工作台優先開下一筆待填／`GET me/learning-pending-summary` 角標；主任儀表板近 14 天各老師已到班堂次之評量進度填寫率（`GET reports/teacher-learning-fill-rates`）

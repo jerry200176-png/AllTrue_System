@@ -3195,6 +3195,36 @@ const onSlotDrop = (dow, h, targetDate, teacherId) => {
   showRescheduleModal.value = true;
 };
 
+/** 調課寫 schedules 時，若仍以合約 TeacherID 顯示、但鏈結上已有「代課 scheduled」，改用代課老師避免假性撞課（後端亦有相同防呆）。 */
+const resolveTeacherIdForRescheduledSlot = (anchorId, courseId, fallbackTeacherId) => {
+  if (anchorId == null || anchorId === '' || !courseId) {
+    return fallbackTeacherId ?? null;
+  }
+  const subEx = exceptions.value.find((ex) =>
+    ex.status === 'scheduled'
+    && ex.original_schedule_id != null
+    && String(ex.original_schedule_id) === String(anchorId)
+    && String(ex.student_course_id) === String(courseId));
+  if (subEx?.teacher_id == null || String(subEx.teacher_id).trim() === '') {
+    return fallbackTeacherId ?? null;
+  }
+  const substituteTid = Number(subEx.teacher_id);
+  const fbNum = fallbackTeacherId != null && fallbackTeacherId !== ''
+    ? Number(fallbackTeacherId)
+    : 0;
+  const baseCourse = courses.value.find((c) => String(c.id) === String(courseId));
+  const contractTid = baseCourse?.teacher_id != null ? Number(baseCourse.teacher_id) : 0;
+  if (
+    contractTid > 0
+    && Number.isFinite(substituteTid)
+    && substituteTid > 0
+    && substituteTid !== contractTid
+    && (fbNum === 0 || fbNum === contractTid)) {
+    return substituteTid;
+  }
+  return fallbackTeacherId ?? null;
+};
+
 const submitReschedule = async () => {
   if (!rescheduleForm.value.new_date) { alert('請選擇新日期'); return; }
   const newDayOfWeek = dayOfWeekFromDate(rescheduleForm.value.new_date);
@@ -3262,9 +3292,14 @@ const submitReschedule = async () => {
   );
 
   if (!alreadySubstituted) {
+    const effectiveTid = resolveTeacherIdForRescheduledSlot(
+      originalId,
+      rescheduleForm.value.course_id,
+      rescheduleForm.value.teacher_id
+    );
     const payload2 = {
       student_id: rescheduleForm.value.student_id,
-      teacher_id: rescheduleForm.value.teacher_id || null,
+      teacher_id: effectiveTid != null && effectiveTid !== '' ? effectiveTid : null,
       subject: rescheduleForm.value.subject,
       day_of_week: newDayOfWeek,
       start_time: normalizeTimeTo30(rescheduleForm.value.new_start),

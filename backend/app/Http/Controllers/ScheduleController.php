@@ -260,6 +260,34 @@ class ScheduleController extends Controller
                 ->value('id');
         }
 
+        // 「代課 + 調課」 UX：前端常把 schedules.teacher_id 預設成 StudentClass.TeacherID（正班）。
+        // 但若該次調課 anchor 已有一份代課 scheduled 列，實際上課為代課老師，
+        // 仍用正班TeacherID 做容量檢查會發生假性「撞課」。
+        //
+        // 防呆：沿用同一 original_schedule_id 鏈結上最近一次代課老師，
+        // 僅在未明確指定第三位老師時覆寫（payload 留白或等於正班）。
+        if ($courseId > 0 && isset($courseMeta)
+            && ($data['status'] ?? 'scheduled') === 'scheduled'
+            && (int) ($origId ?? 0) > 0
+        ) {
+            $contractTeacherIdForAnchor = (int) ($courseMeta->TeacherID ?? 0);
+            $priorSubstituteTeacherId = (int) Schedule::query()
+                ->where('student_course_id', $courseId)
+                ->where('status', 'scheduled')
+                ->where('original_schedule_id', (int) $origId)
+                ->when($excludeScheduledId, function ($query) use ($excludeScheduledId): void {
+                    $query->where('id', '!=', (int) $excludeScheduledId);
+                })
+                ->orderByDesc('id')
+                ->value('teacher_id');
+            if ($priorSubstituteTeacherId > 0
+                && $priorSubstituteTeacherId !== $contractTeacherIdForAnchor
+                && ($effectiveTeacherId <= 0 || $effectiveTeacherId === $contractTeacherIdForAnchor)) {
+                $effectiveTeacherId = $priorSubstituteTeacherId;
+                $data['teacher_id'] = $priorSubstituteTeacherId;
+            }
+        }
+
         if (($data['status'] ?? 'scheduled') === 'scheduled') {
             $guardConflicts = $this->scheduleGuardService->validateScheduleOccurrence([
                 'teacher_id'          => $effectiveTeacherId,
