@@ -46,7 +46,7 @@ class OrphanScheduledSessionsTest extends TestCase
         ]);
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$courseId}", ['Stop' => 1])
+            ->putJson("/api/v1/student-classes/{$courseId}", $this->stopPayload($teacherId))
             ->assertOk();
 
         // 未來 3 筆應變 cancelled
@@ -76,7 +76,7 @@ class OrphanScheduledSessionsTest extends TestCase
         ]);
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->putJson("/api/v1/student-classes/{$courseId}", ['Stop' => 1])
+            ->putJson("/api/v1/student-classes/{$courseId}", $this->stopPayload($teacherId))
             ->assertOk();
 
         // attended / cancelled 不應被改動
@@ -134,6 +134,23 @@ class OrphanScheduledSessionsTest extends TestCase
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** 完整 PUT payload，附帶 Stop=1，通過後端所有 required 驗證 */
+    private function stopPayload(int $teacherId): array
+    {
+        return [
+            'subject'          => 'Math',
+            'class_type'       => 'one_on_one',
+            'duration_hours'   => 1,
+            'payment_type'     => 'session',
+            'days_of_week'     => [1],
+            'start_time'       => '10:00',
+            'day_time_slots'   => [['day' => 1, 'start_time' => '10:00']],
+            'sessions_purchased' => 10,
+            'remaining_sessions' => 10,
+            'Stop'             => 1,
+        ];
+    }
 
     private function makeDirectorToken(int $campusId, string $loginName): string
     {
