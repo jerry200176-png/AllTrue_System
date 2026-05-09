@@ -2085,7 +2085,37 @@ async function submitLeave() {
       }
       showLeaveModal.value = false;
       leaveCourse.value = null;
-      alert('請假登記完成');
+      const undoScheduleId = Number(json?.undo?.schedule_id || 0);
+      const undoWindowSec = Number(json?.undo?.undo_window_seconds || 30);
+      const canUndo = undoScheduleId > 0 && Number.isFinite(undoWindowSec) && undoWindowSec > 0;
+      if (canUndo) {
+        toastRef.value?.show?.({
+          title: '請假已送出',
+          description: `本堂已請假並順延，${undoWindowSec} 秒內可復原`,
+          variant: 'success',
+          durationMs: undoWindowSec * 1000,
+          undoDescription: '已撤銷請假，堂次順延已回復',
+          onUndo: async () => {
+            const undoRes = await fetch(`/api/v1/schedules/${undoScheduleId}/undo-leave`, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+            });
+            const undoJson = await undoRes.json().catch(() => ({}));
+            if (!undoRes.ok) {
+              throw new Error(undoJson?.message || '撤銷請假失敗');
+            }
+            await loadCourses();
+          },
+        });
+      } else {
+        toastRef.value?.show?.({
+          title: '請假已送出',
+          description: '本堂已請假並順延',
+          variant: 'success',
+          durationMs: 4000,
+        });
+      }
       await loadCourses();
       return;
     }
