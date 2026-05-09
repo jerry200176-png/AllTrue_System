@@ -510,6 +510,7 @@ let brandIntroTimer = null;
 const BRAND_IDLE_DESKTOP_MS = 90 * 1000;
 const BRAND_IDLE_MOBILE_MS = 180 * 1000;
 const BRAND_INTRO_MS = 2400;
+const BRAND_INTRO_SEEN_KEY = 'alltrue_brand_intro_seen_token';
 
 const brandOverlayAllowed = computed(() =>
   Boolean(session.value)
@@ -579,6 +580,19 @@ function showBrandIntroOverlay() {
     brandOverlayVisible.value = false;
     scheduleBrandIdleOverlay();
   }, BRAND_INTRO_MS);
+}
+
+function triggerBrandIntroOncePerSessionToken() {
+  try {
+    const token = String(session.value?.access_token || '');
+    if (!token) return;
+    const seenToken = sessionStorage.getItem(BRAND_INTRO_SEEN_KEY) || '';
+    if (seenToken === token) return;
+    sessionStorage.setItem(BRAND_INTRO_SEEN_KEY, token);
+    showBrandIntroOverlay();
+  } catch (_) {
+    showBrandIntroOverlay();
+  }
 }
 
 function dismissBrandOverlay() {
@@ -1220,6 +1234,7 @@ onMounted(async () => {
     if (session.value) {
         await fetchProfile(session.value.user.id);
         await ensureDirectorBranches();
+        triggerBrandIntroOncePerSessionToken();
     }
     loading.value = false;
 
@@ -1228,6 +1243,7 @@ onMounted(async () => {
         if (_session) {
             await fetchProfile(_session.user.id);
             await ensureDirectorBranches();
+            triggerBrandIntroOncePerSessionToken();
         } else {
             userProfile.value = null;
         }
@@ -1323,7 +1339,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
     await ensureDirectorBranches();
     ensureTeacherBranch();
-    showBrandIntroOverlay();
+    triggerBrandIntroOncePerSessionToken();
 };
 
 const onProfileUpdated = async (updated) => {
