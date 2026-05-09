@@ -34,6 +34,20 @@
         </button>
       </div>
       <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
+      <div class="lr-teacher-priority-chips">
+        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">
+          全部
+        </button>
+        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">
+          未填優先
+        </button>
+        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">
+          需修改
+        </button>
+        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">
+          逾期
+        </button>
+      </div>
     </div>
 
     <!-- Director review queue tabs -->
@@ -587,7 +601,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record) }" @click="viewRecord(record)">
+                    <tr v-for="record in sg.records" :key="record.id" class="lr-table-row" :class="{ 'lr-row-unfilled': fillLabelClass(record) === 'fill-missing', 'lr-row-has-feedback': record.parent_feedback && !parentFeedbackUnread(record), 'lr-row-unread': parentFeedbackUnread(record), 'lr-row-urgent': isUrgentTeacherRecord(record) }" @click="viewRecord(record)">
                       <td v-if="isDirectorRole && (reviewTab === 'pending' || reviewTab === 'changes_requested')" @click.stop>
                         <input
                           v-if="record.Status === 'pending' || record.Status === 'changes_requested'"
@@ -1283,6 +1297,7 @@ const activeFilterCount = computed(() => {
 
 const reviewTab = ref('pending');
 const teacherFilterTab = ref('all');
+const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
 const selectedRecordIds = ref(new Set());
@@ -1361,6 +1376,15 @@ const filteredRecords = computed(() => {
       list = list.filter(r => r.Status === 'approved');
     } else if (teacherFilterTab.value === 'pending') {
       list = list.filter(r => r.Status === 'pending');
+    }
+    if (teacherPriorityFilter.value === 'unfilled') {
+      list = list.filter(r =>
+        (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
+      );
+    } else if (teacherPriorityFilter.value === 'changes_requested') {
+      list = list.filter(r => r.Status === 'changes_requested');
+    } else if (teacherPriorityFilter.value === 'overdue') {
+      list = list.filter(isOverduePendingRecord);
     }
   } else if (isDirectorRole.value) {
     if (reviewTab.value === 'pending') {
@@ -2606,6 +2630,7 @@ const clearAllFilters = () => {
   filters.start_date = '';
   filters.end_date = '';
   filters.subject = '';
+  teacherPriorityFilter.value = 'all';
   defaultWindowDisabled.value = false;
   fetchRecords();
 };
@@ -3153,6 +3178,22 @@ const hasLearningRecordBody = (record) => {
   if (!record) return false;
   return String(record.Progress || '').trim() !== '';
 };
+
+const isOverduePendingRecord = (record) => {
+  if (!record) return false;
+  const status = String(record.Status || '').toLowerCase();
+  if (status !== 'pending' && status !== 'changes_requested') return false;
+  const sessionDate = String(record.SessionDate || '').slice(0, 10);
+  if (!sessionDate) return false;
+  const today = formatLocalDate(new Date());
+  return sessionDate < today;
+};
+
+const isUrgentTeacherRecord = (record) => (
+  isTeacher.value &&
+  (isOverduePendingRecord(record)
+    || ((String(record.Status || '').toLowerCase() === 'changes_requested') && !hasLearningRecordBody(record)))
+);
 
 const fillLabel = (record) => (hasLearningRecordBody(record) ? '已填' : '未填');
 
@@ -4036,6 +4077,16 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   margin-top: 8px;
   font-size: 12px;
   color: #888;
+}
+
+.lr-teacher-priority-chips {
+  position: sticky;
+  top: 8px;
+  z-index: 2;
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .lr-feedback-filter-row {
@@ -5578,6 +5629,9 @@ select.lr-input {
 }
 .lr-table-row.lr-row-unfilled {
   border-left: 3px solid #FB8C00;
+}
+.lr-table-row.lr-row-urgent {
+  background: rgba(251, 146, 60, 0.08);
 }
 .lr-table-row:hover {
   background: #f7f9ff;
