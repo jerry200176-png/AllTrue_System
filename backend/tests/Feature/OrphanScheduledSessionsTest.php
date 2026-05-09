@@ -135,20 +135,23 @@ class OrphanScheduledSessionsTest extends TestCase
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** 完整 PUT payload，附帶 Stop=1，通過後端所有 required 驗證 */
+    /**
+     * 完整 PUT payload，使用前端 key `status=inactive` → mapFrontendPayload → Stop=1
+     * 同時帶上 sessions_purchased/remaining_sessions 讓 ScheduleMode 正確 map
+     */
     private function stopPayload(int $teacherId): array
     {
         return [
-            'subject'          => 'Math',
-            'class_type'       => 'one_on_one',
-            'duration_hours'   => 1,
-            'payment_type'     => 'session',
-            'days_of_week'     => [1],
-            'start_time'       => '10:00',
-            'day_time_slots'   => [['day' => 1, 'start_time' => '10:00']],
+            'subject'            => 'Math',
+            'class_type'         => 'one_on_one',
+            'duration_hours'     => 1,
+            'payment_type'       => 'session',
+            'days_of_week'       => [1],
+            'start_time'         => '10:00',
+            'day_time_slots'     => [['day' => 1, 'start_time' => '10:00']],
             'sessions_purchased' => 10,
             'remaining_sessions' => 10,
-            'Stop'             => 1,
+            'status'             => 'inactive',
         ];
     }
 
