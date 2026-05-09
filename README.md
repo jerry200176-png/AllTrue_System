@@ -553,6 +553,8 @@ gh pr create --fill
 | `docs/CHANGELOG_ARCHIVE_2026-04.md` | 歷史變更紀錄 |
 | `docs/SYSTEM_TECH_GUIDE.md` | 後端技術實作索引（Identity/Swipe/ClassSession/Service 職責） |
 | `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
+| `docs/INDEX.md` | 文件導航入口（開工先讀，避免 SOP 走偏） |
+| `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理與 MemPalace 保鮮節奏（每日/每週/每月） |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
 | `AGENTS.md` | AI / 協作者開工順序與 commit SOP |
