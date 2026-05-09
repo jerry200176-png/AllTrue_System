@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Log;
 
 class ScheduleController extends Controller
 {
+    private const LEAVE_UNDO_WINDOW_SECONDS = 30;
+
     public function __construct(private ScheduleGuardService $scheduleGuardService)
     {
     }
@@ -363,6 +365,11 @@ class ScheduleController extends Controller
                         'leave_session_date' => $leaveSessionDate,
                         'extended_end_date' => $extendedEndDate,
                         'class_sessions' => $rows,
+                        'undo' => [
+                            'schedule_id' => (int) $schedule->id,
+                            'undo_window_seconds' => self::LEAVE_UNDO_WINDOW_SECONDS,
+                            'undo_deadline_ms' => (int) round(microtime(true) * 1000) + self::LEAVE_UNDO_WINDOW_SECONDS * 1000,
+                        ],
                     ], 201);
                 });
             } catch (\InvalidArgumentException $e) {
@@ -402,6 +409,59 @@ class ScheduleController extends Controller
         $this->ensureClassSessionForScheduleData($schedule->toArray());
 
         return response()->json($schedule, 201);
+    }
+
+    public function undoLeave(Request $request, Schedule $schedule)
+    {
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => '僅主任/管理員可撤銷請假'], 403);
+        }
+
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $branchId = (int) ($schedule->branch_id ?? 0);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $status = strtolower((string) ($schedule->status ?? ''));
+        if ($status !== 'leave') {
+            return response()->json(['message' => '僅能撤銷一般請假記錄'], 422);
+        }
+
+        $courseId = (int) ($schedule->student_course_id ?? 0);
+        $scheduleDate = $schedule->schedule_date ? Carbon::parse($schedule->schedule_date)->toDateString() : null;
+        if ($courseId <= 0 || !$scheduleDate) {
+            return response()->json(['message' => '缺少課程或請假日期，無法撤銷'], 422);
+        }
+
+        $createdAt = $schedule->created_at ? Carbon::parse($schedule->created_at) : null;
+        if (!$createdAt || $createdAt->diffInSeconds(now()) > self::LEAVE_UNDO_WINDOW_SECONDS) {
+            return response()->json([
+                'message' => '撤銷時限已過，請重新發起調整流程',
+                'code' => 'undo_window_expired',
+                'undo_window_seconds' => self::LEAVE_UNDO_WINDOW_SECONDS,
+            ], 422);
+        }
+
+        try {
+            return DB::transaction(function () use ($schedule, $courseId, $scheduleDate) {
+                [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
+                $schedule->delete();
+
+                return response()->json([
+                    'message' => '已撤銷請假，堂次與順延排程已回復',
+                    'leave_session_date' => $leaveSessionDate,
+                    'extended_end_date' => $extendedEndDate,
+                    'class_sessions' => $rows,
+                ]);
+            });
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'undo_leave_blocked',
+            ], 422);
+        }
     }
 
     public function retroLeave(Request $request)
