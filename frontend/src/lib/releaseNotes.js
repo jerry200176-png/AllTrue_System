@@ -1,35 +1,40 @@
 export const releaseNotes = [
   {
     version: '2026-05-09',
-    title: '老師評量待辦與回饋強化',
+    title: '評量填寫更直覺',
     audience: ['teacher', 'director'],
     items: [
-      '老師工作台新增每日任務清單（今日待填、逾期待補、需修改）',
-      '新增本週評量進度（完成率、連續完成天數、7 日趨勢）',
-      '評量頁新增老師優先篩選（未填優先 / 需修改 / 逾期）與急件高亮',
+      '老師工作台現在會直接列出「今天要填的評量」',
+      '可以一眼看到本週完成進度和連續完成天數',
+      '評量頁支援快速篩選，重要待辦會特別醒目',
     ],
   },
   {
     version: '2026-05-09',
-    title: '代課衝堂錯誤體驗修正',
+    title: '代課提醒更清楚',
     audience: ['teacher', 'director'],
     items: [
-      '代課衝堂等預期業務拒絕改為表單內提示，不再視為前端例外',
-      '老師與主任在代課操作時可直接看到可理解的錯誤訊息',
+      '若代課時段有衝突，系統會直接提示原因',
+      '提示改為清楚的人話，不用再猜是哪裡有問題',
     ],
   },
   {
     version: '2026-05-09',
-    title: '主任評量視角與老師待填角標',
+    title: '待辦提醒更容易發現',
     audience: ['teacher', 'director'],
     items: [
-      '老師側欄與底部導覽新增評量待辦角標',
-      '主任報表新增老師評量填寫率 API 與對應儀表資訊',
+      '評量待辦在選單上會顯示提醒數量',
+      '主任可以更快看到各老師的評量填寫進度',
     ],
   },
 ];
 
 export function notesForRole(role) {
   return releaseNotes.filter((note) => !note.audience?.length || note.audience.includes(role));
+}
+
+export function latestReleaseVersionForRole(role) {
+  const notes = notesForRole(role);
+  return notes.length > 0 ? notes[0].version : '';
 }
 
