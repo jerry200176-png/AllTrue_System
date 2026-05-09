@@ -12,5 +12,3 @@ assert.strictEqual(notesForRole('super_admin').length, directorCount, 'super_adm
 assert.strictEqual(notesForRole('admin').length, directorCount, 'admin should match director-facing notes');
 
 assert.ok(latestReleaseVersionForRole('super_admin').length > 0, 'version nudge needs a stable version key');
-
-console.log('releaseNotes.test.js OK');
