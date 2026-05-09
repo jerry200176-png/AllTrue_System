@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'alltrue_todo_ack_map_v1';
 
 export function sortTodoCards(cards = []) {
-  const priority = { overdue: 0, pending: 1, open: 2, acknowledged: 3, done: 9 };
+  const priority = { breached: 0, overdue: 0, warning: 1, pending: 2, open: 3, acknowledged: 4, done: 9 };
   return [...cards].sort((a, b) => {
     const pa = priority[a.status] ?? 5;
     const pb = priority[b.status] ?? 5;
