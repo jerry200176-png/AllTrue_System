@@ -2169,18 +2169,45 @@ class ClassSessionController extends Controller
             }
 
             $scheduledDeleted = 0;
+            $anchorIds = [];
             if ($rescheduled) {
+                $anchorIds[] = (int) $rescheduled->id;
+            }
+            if ($scheduled && (int) ($scheduled->original_schedule_id ?? 0) > 0) {
+                $anchorIds[] = (int) $scheduled->original_schedule_id;
+            }
+            // Defensive recovery for historical data: contract teacher may already change,
+            // but stale substitute rows (teacher_id != current contract teacher) still remain.
+            $fallbackAnchors = Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'scheduled')
+                ->whereNotNull('original_schedule_id')
+                ->where('teacher_id', '!=', $originalTeacherId)
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
+                ->pluck('original_schedule_id')
+                ->filter(fn ($id) => (int) $id > 0)
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $anchorIds = array_values(array_unique(array_merge($anchorIds, $fallbackAnchors)));
+
+            if (!empty($anchorIds)) {
                 $scheduledDeleted += Schedule::where('student_course_id', $courseId)
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
-                    ->where('original_schedule_id', (int) $rescheduled->id)
+                    ->whereIn('original_schedule_id', $anchorIds)
                     ->delete();
             } elseif ($scheduled) {
                 $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
             }
 
             $rescheduledDeleted = 0;
-            if ($rescheduled) {
+            if (!empty($anchorIds)) {
+                $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'rescheduled')
+                    ->whereIn('id', $anchorIds)
+                    ->delete();
+            } elseif ($rescheduled) {
                 $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
             }
 
