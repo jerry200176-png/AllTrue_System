@@ -27,22 +27,12 @@ function shouldSkipHeading(title) {
 
 function buildVersionMap(dates) {
   const sorted = [...new Set(dates)].sort();
-  const baseYear = Number(String(sorted[0] || '').slice(0, 4)) || new Date().getFullYear();
-  /** @type {Map<string, number>} */
-  const monthPatchCounter = new Map();
   /** @type {Map<string, string>} */
   const versionByDate = new Map();
 
-  for (const date of sorted) {
-    const [yearText, monthText] = String(date || '').split('-');
-    const year = Number(yearText) || baseYear;
-    const month = Number(monthText) || 1;
-    const major = Math.max(1, year - baseYear + 1);
-    const minor = month;
-    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
-    const patch = (monthPatchCounter.get(monthKey) || 0) + 1;
-    monthPatchCounter.set(monthKey, patch);
-    versionByDate.set(date, `${major}.${minor}.${patch}`);
+  for (let i = 0; i < sorted.length; i += 1) {
+    const date = sorted[i];
+    versionByDate.set(date, `1.0.${i + 1}`);
   }
 
   return versionByDate;
@@ -63,14 +53,28 @@ function stripTechNoise(s) {
     .replace(/\b[a-zA-Z0-9_./-]+\.(vue|js|mjs|php|md|yml|json|cjs)\b/g, '')
     .replace(/\b[A-Za-z_][A-Za-z0-9_]*\(\)/g, '')
     .replace(/\bFR-\d+\b/g, '')
+    .replace(/\bPR\s*\)?/gi, '')
+    .replace(/^-+/g, '')
+    .replace(/-style/gi, ' 介面')
+    .replace(/-inspired/gi, ' 風格')
     .replace(/\s*[：:]\s*/g, '：')
     .replace(/\s+/g, ' ')
     .trim();
   t = t.replace(/^[A-Za-z]+(?:\([^)]+\))?[：:]?\s*/i, '').trim();
+  t = t.replace(/^[^A-Za-z0-9\u4e00-\u9fff]+/, '').trim();
+  t = t.replace(/\(\s*\)/g, '').trim();
   if (t.length > 240) {
     return `${t.slice(0, 237)}…`;
   }
   return t;
+}
+
+function isReadablePhrase(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (t.length < 4) return false;
+  if (/^[\W_]+$/.test(t)) return false;
+  return true;
 }
 
 function plainTextFromEntry(rawTitle, itemLines) {
@@ -102,9 +106,10 @@ function plainTextFromEntry(rawTitle, itemLines) {
   }
 
   const cleanTitle = stripTechNoise(title.replace(/^([^:：]+)[：:]\s*/, ''));
-  if (cleanTitle) return cleanTitle;
+  if (isReadablePhrase(cleanTitle)) return cleanTitle;
   const cleanItem = stripTechNoise(itemLines[0] || title);
-  return cleanItem || '改善系統操作體驗';
+  if (isReadablePhrase(cleanItem)) return cleanItem;
+  return '優化系統使用體驗';
 }
 
 function categoryForTitle(rawTitle) {
@@ -150,6 +155,9 @@ function parseChangelog(md) {
 
     const category = categoryForTitle(rawTitle);
     const text = plainTextFromEntry(rawTitle, items);
+    if (!isReadablePhrase(text)) {
+      continue;
+    }
     if (!grouped.has(date)) grouped.set(date, new Map());
     const sections = grouped.get(date);
     if (!sections.has(category)) sections.set(category, []);
