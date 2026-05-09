@@ -177,51 +177,52 @@ class OrphanScheduledSessionsTest extends TestCase
         ]);
     }
 
-    /** 建立 Stop=0 的課程，回傳 ID */
-    private function makeCourse(int $studentId, int $teacherId): int
+    private function baseStudentClass(int $studentId, int $teacherId, array $overrides = []): int
     {
-        return (int) DB::table('StudentClass')->insertGetId([
+        return (int) DB::table('StudentClass')->insertGetId(array_merge([
             'StudentID'         => $studentId,
             'TeacherID'         => $teacherId,
             'GradeID'           => 1,
             'SubjectID'         => 1,
             'ClassType'         => 'one_on_one',
+            'ScheduleMode'      => 'count',
             'RemainingSessions' => 10,
             'UsedSessions'      => 0,
             'SessionCount'      => 10,
             'SessionDuration'   => 60,
+            'TotalHours'        => 10,
             'Rate'              => 500,
             'Charge'            => 5000,
             'Pay'               => 5000,
             'Paid'              => 0,
             'Stop'              => 0,
             'StartDate'         => now()->toDateString(),
+            'Period'            => 4,
             'by1'               => $teacherId,
             'RoomID'            => 'R1',
-        ]);
+            'MDate'             => now(),
+        ], $overrides));
+    }
+
+    /** 建立 Stop=0 的課程，回傳 ID */
+    private function makeCourse(int $studentId, int $teacherId): int
+    {
+        return $this->baseStudentClass($studentId, $teacherId);
     }
 
     /** 建立 Stop=1 的課程（模擬歷史孤兒），回傳 ID */
     private function makeStoppedCourse(int $studentId, int $teacherId): int
     {
-        return (int) DB::table('StudentClass')->insertGetId([
-            'StudentID'         => $studentId,
-            'TeacherID'         => $teacherId,
-            'GradeID'           => 1,
-            'SubjectID'         => 1,
-            'ClassType'         => 'one_on_one',
+        return $this->baseStudentClass($studentId, $teacherId, [
             'RemainingSessions' => 0,
             'UsedSessions'      => 5,
             'SessionCount'      => 5,
-            'SessionDuration'   => 60,
-            'Rate'              => 500,
+            'TotalHours'        => 5,
             'Charge'            => 2500,
             'Pay'               => 2500,
             'Paid'              => 1,
             'Stop'              => 1,
             'StartDate'         => now()->subMonth()->toDateString(),
-            'by1'               => $teacherId,
-            'RoomID'            => 'R1',
         ]);
     }
 }
