@@ -6,6 +6,7 @@ import { latestReleaseVersionForRole, notesForRole } from './releaseNotes.js';
 
 assert.ok(notesForRole('director').length >= 3, 'director should see several CHANGELOG-derived entries');
 assert.ok(notesForRole('teacher').length > 0, 'teacher should see release entries');
+assert.ok(notesForRole('parent').length > 0, 'parent should see release entries');
 
 const directorCount = notesForRole('director').length;
 assert.strictEqual(notesForRole('super_admin').length, directorCount, 'super_admin should match director-facing notes');
