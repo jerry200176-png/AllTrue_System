@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — Added（ops）: 主任／維運合併重複老師帳號 Artisan
+
+- Added `php artisan teachers:merge-users --keep-login=… --merge-login=…`（預設 dry-run；`--apply` 於備份後交易內重設 FK、停用重複帳號）；搭配 PHPUnit `TeacherUserMergeCommandTest`
+
+---
+
 ## 2026-05-09 — fix(learning): 暫停課程最後堂 scheduled 未回寫仍可見待審評量
 
 - Fixed `LearningRecord::excludePausedCoursePendingReview`：課程已 Stop 且堂次結束時間已過但仍為 `scheduled` 時，保留 `pending`／`changes_requested` 於列表（避免最後一堂評量永遠載不出、主任無法退回）
