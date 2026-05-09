@@ -140,6 +140,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/OPERATIONS_RUNBOOK.md` | 完整 SOP 手冊（§A-P，按節查）|
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
+| `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（每日/每週/每月）與 MemPalace 保鮮 SOP |
 
 ### 模組文件
 | 檔案 | 一行說明 |
@@ -177,6 +178,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
 | `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR）|
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
+| `docs-integrity.yml` | PR / 每週一 | 文件連結完整性、INDEX 導航與核心文件存在性檢查 |
 
 > `ci.yml` / `presubmit.yml` / `codeql.yml` 使用 WSL2 self-hosted runner `wsl2-jerry-alltrue`（labels: `self-hosted`, `Linux`, `X64`, `wsl-ci`, `alltrue-ci`）節省 GitHub-hosted minutes；`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上部署 production。
 > `main` branch protection 已啟用：required checks + admin enforcement + 禁止 force push/delete。備份同步會產生 Google Drive manifest（檔名 / 大小 / sha256），詳見 `OPERATIONS_RUNBOOK.md §P`。
