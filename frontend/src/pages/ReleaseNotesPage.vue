@@ -4,7 +4,7 @@
       <div>
         <span class="rn-kicker">AllTrue 更新公告</span>
         <h2>版本更新</h2>
-        <p>像遊戲更新公告一樣，用白話整理每一版多了什麼、修了什麼。技術細節仍保留在完整 CHANGELOG。</p>
+        <p>這裡用白話整理每一版多了什麼、修了什麼。技術細節仍保留在完整 CHANGELOG。</p>
       </div>
       <div v-if="latestNote" class="rn-latest">
         <span>最新版本</span>

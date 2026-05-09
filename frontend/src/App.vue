@@ -509,13 +509,13 @@ let brandIdleTimer = null;
 let brandIntroTimer = null;
 const BRAND_IDLE_DESKTOP_MS = 90 * 1000;
 const BRAND_IDLE_MOBILE_MS = 180 * 1000;
-const BRAND_INTRO_MS = 1600;
+const BRAND_INTRO_MS = 2400;
+const BRAND_INTRO_SEEN_KEY = 'alltrue_brand_intro_seen_token';
 
 const brandOverlayAllowed = computed(() =>
   Boolean(session.value)
   && !isStandaloneParent.value
   && !isPasswordChangeLocked.value
-  && !releaseNudgeOpen.value
   && !guideTour.isOpen.value
   && !showMoreMenu.value
   && (isDirector.value || isTeacher.value)
@@ -555,6 +555,7 @@ function scheduleBrandIdleOverlay() {
     clearTimeout(brandIdleTimer);
     brandIdleTimer = null;
   }
+  if (releaseNudgeOpen.value) return;
   if (!brandOverlayAllowed.value || prefersReducedMotion()) return;
   const delay = isCoarsePointer() ? BRAND_IDLE_MOBILE_MS : BRAND_IDLE_DESKTOP_MS;
   brandIdleTimer = window.setTimeout(() => {
@@ -579,6 +580,19 @@ function showBrandIntroOverlay() {
     brandOverlayVisible.value = false;
     scheduleBrandIdleOverlay();
   }, BRAND_INTRO_MS);
+}
+
+function triggerBrandIntroOncePerSessionToken() {
+  try {
+    const token = String(session.value?.access_token || '');
+    if (!token) return;
+    const seenToken = sessionStorage.getItem(BRAND_INTRO_SEEN_KEY) || '';
+    if (seenToken === token) return;
+    sessionStorage.setItem(BRAND_INTRO_SEEN_KEY, token);
+    showBrandIntroOverlay();
+  } catch (_) {
+    showBrandIntroOverlay();
+  }
 }
 
 function dismissBrandOverlay() {
@@ -1220,6 +1234,7 @@ onMounted(async () => {
     if (session.value) {
         await fetchProfile(session.value.user.id);
         await ensureDirectorBranches();
+        triggerBrandIntroOncePerSessionToken();
     }
     loading.value = false;
 
@@ -1228,6 +1243,7 @@ onMounted(async () => {
         if (_session) {
             await fetchProfile(_session.user.id);
             await ensureDirectorBranches();
+            triggerBrandIntroOncePerSessionToken();
         } else {
             userProfile.value = null;
         }
@@ -1323,7 +1339,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
     await ensureDirectorBranches();
     ensureTeacherBranch();
-    showBrandIntroOverlay();
+    triggerBrandIntroOncePerSessionToken();
 };
 
 const onProfileUpdated = async (updated) => {
@@ -1863,7 +1879,7 @@ function formatBuildTime(rawIso) {
 .brand-idle-layer {
   position: fixed;
   inset: 0;
-  z-index: 10015;
+  z-index: 10040;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -1877,8 +1893,22 @@ function formatBuildTime(rawIso) {
 
 .brand-idle-layer--intro {
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.22), transparent 34%),
-    rgba(15, 23, 42, 0.34);
+    radial-gradient(circle at 50% 42%, rgba(255, 179, 0, 0.3), transparent 38%),
+    rgba(15, 23, 42, 0.28);
+}
+
+.brand-idle-layer--intro .brand-idle-logo-wrap {
+  width: 196px;
+  height: 196px;
+}
+
+.brand-idle-layer--intro .brand-idle-logo {
+  width: 132px;
+  height: 132px;
+}
+
+.brand-idle-layer--intro .brand-idle-copy strong {
+  font-size: 26px;
 }
 
 .brand-idle-card {
