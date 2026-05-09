@@ -30,6 +30,12 @@
 
 ---
 
+## 2026-05-09 — ci(security): PR Dependency Review workflow（供應鏈，選用 GHAS）
+
+- Added `.github/workflows/dependency-review.yml`：`fail-on-severity: high`、`ubuntu-latest`；預設略過官方 action（未開 GHAS 時避免 PR 全紅），Repo 變數 `ENABLE_DEPENDENCY_REVIEW=true` 後啟用；`CONTRIBUTING`／`INDEX` 補說明；主線仍靠 `ci.yml` audit
+
+---
+
 ## 2026-05-09 — chore(github): PR 模板補 Refs／Closes 規則
 
 - Changed `.github/pull_request_template.md`：多階段／Epic issue 預設用 `Refs`，全案驗收完成才用 `Closes`；並調整 merge 前 CI／CHANGELOG／高風險模組檢查清單
