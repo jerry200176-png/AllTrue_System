@@ -67,10 +67,27 @@
 
     <!-- A. Today's Actions -->
     <div class="th-today card" data-guide="teacher-home-today">
-      <h3 class="th-section-title">
-        <span class="material-symbols-outlined th-section-icon">today</span>
-        今日待辦
-      </h3>
+      <div class="th-section-head-row">
+        <h3 class="th-section-title">
+          <span class="material-symbols-outlined th-section-icon">today</span>
+          今日待辦
+        </h3>
+        <div class="th-head-actions">
+          <button
+            v-if="pendingTodoTotal > 0 && !isPendingSoundSnoozedToday"
+            class="th-sound-toggle"
+            type="button"
+            @click="snoozePendingSoundToday"
+          >
+            <span class="material-symbols-outlined">snooze</span>
+            今日靜音
+          </button>
+          <button class="th-sound-toggle" type="button" @click="togglePendingSound">
+            <span class="material-symbols-outlined">{{ warningSoundEnabled ? 'notifications_active' : 'notifications_off' }}</span>
+            {{ warningSoundEnabled ? '提示音開啟' : '提示音關閉' }}
+          </button>
+        </div>
+      </div>
 
       <div class="th-actions">
         <!-- Pending Attendance CTA -->
@@ -155,6 +172,11 @@
             :key="item.id"
             type="button"
             class="th-priority-item"
+            :class="{
+              'th-priority-item--overdue': item.status === 'overdue',
+              'th-priority-item--pending': item.status === 'pending',
+              'th-priority-item--done': item.status === 'done',
+            }"
             @click="handleTodoCardClick(item)"
           >
             <span class="th-priority-rank">{{ item.rank }}</span>
@@ -414,6 +436,9 @@ const getToken = async () => {
 };
 
 const refreshing = ref(false);
+const warningSoundEnabled = ref(loadPendingSoundSetting());
+const pendingSoundPlayed = ref(false);
+const pendingSoundSnoozedDate = ref(loadPendingSoundSnoozedDate());
 
 // ── Teacher clock-in status ──
 const clockinLoading = ref(true);
@@ -535,6 +560,17 @@ const loadingLearning = ref(true);
 const todayOnlyLearningCount = ref(0);
 const changesRequestedLearningCount = ref(0);
 const pendingLearningCount = computed(() => todayOnlyLearningCount.value + overdueCount.value);
+const pendingTodoTotal = computed(
+  () => Number(pendingAttendanceCount.value || 0)
+    + Number(pendingLearningCount.value || 0)
+    + Number(props.unreadFeedbackCount || 0),
+);
+const pendingDataLoaded = computed(
+  () => !loadingAttendance.value && !loadingLearning.value && !loadingOverdue.value,
+);
+const isPendingSoundSnoozedToday = computed(
+  () => pendingSoundSnoozedDate.value === localTodayYmd(),
+);
 
 async function fetchPendingLearning() {
   loadingLearning.value = true;
@@ -1035,6 +1071,77 @@ function goFillRecord(ev) {
   });
 }
 
+function loadPendingSoundSetting() {
+  const raw = localStorage.getItem('teacher_pending_sound_enabled');
+  if (raw === '0') return false;
+  return true;
+}
+
+function savePendingSoundSetting(enabled) {
+  localStorage.setItem('teacher_pending_sound_enabled', enabled ? '1' : '0');
+}
+
+function loadPendingSoundSnoozedDate() {
+  return localStorage.getItem('teacher_pending_sound_snoozed_date') || '';
+}
+
+function savePendingSoundSnoozedDate(date) {
+  if (!date) {
+    localStorage.removeItem('teacher_pending_sound_snoozed_date');
+    return;
+  }
+  localStorage.setItem('teacher_pending_sound_snoozed_date', date);
+}
+
+function playPendingWarningSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const pattern = [0, 0.18, 0.42];
+    pattern.forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now + offset);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.08, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.16);
+    });
+    window.setTimeout(() => {
+      try { ctx.close(); } catch (_) { /* ignore */ }
+    }, 1200);
+  } catch (_) {
+    // Browser autoplay policies may block sound; ignore safely.
+  }
+}
+
+function maybePlayPendingSound() {
+  if (!warningSoundEnabled.value) return;
+  if (pendingSoundPlayed.value) return;
+  if (isPendingSoundSnoozedToday.value) return;
+  if (!pendingDataLoaded.value) return;
+  if (pendingTodoTotal.value <= 0) return;
+  pendingSoundPlayed.value = true;
+  playPendingWarningSound();
+}
+
+function togglePendingSound() {
+  warningSoundEnabled.value = !warningSoundEnabled.value;
+  savePendingSoundSetting(warningSoundEnabled.value);
+}
+
+function snoozePendingSoundToday() {
+  const today = localTodayYmd();
+  pendingSoundSnoozedDate.value = today;
+  savePendingSoundSnoozedDate(today);
+}
+
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
@@ -1126,6 +1233,10 @@ function handleReportWithdrawn() {
 }
 
 onMounted(() => {
+  if (pendingSoundSnoozedDate.value && pendingSoundSnoozedDate.value !== localTodayYmd()) {
+    pendingSoundSnoozedDate.value = '';
+    savePendingSoundSnoozedDate('');
+  }
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
   Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
   startPolling();
@@ -1143,6 +1254,10 @@ watch(() => props.branchId, () => {
   fetchLearningProgress();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
+watch(
+  () => [pendingDataLoaded.value, pendingTodoTotal.value, warningSoundEnabled.value],
+  () => { maybePlayPendingSound(); },
+);
 
 onBeforeUnmount(() => {
   if (weekAbort) weekAbort.abort();
@@ -1164,6 +1279,37 @@ onBeforeUnmount(() => {
 .th-section-title {
   display: flex; align-items: center; gap: 6px;
   font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 12px;
+}
+.th-section-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.th-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.th-section-head-row .th-section-title {
+  margin-bottom: 0;
+}
+.th-sound-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-light);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.th-sound-toggle .material-symbols-outlined {
+  font-size: 16px;
 }
 .th-section-icon { font-size: 20px; color: var(--accent); }
 
@@ -1212,6 +1358,15 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   cursor: pointer;
+}
+.th-priority-item--overdue {
+  border-left: 3px solid #dc2626;
+}
+.th-priority-item--pending {
+  border-left: 3px solid #f59e0b;
+}
+.th-priority-item--done {
+  border-left: 3px solid #16a34a;
 }
 
 .th-priority-rank {
