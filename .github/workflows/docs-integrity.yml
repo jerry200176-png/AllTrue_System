@@ -1,0 +1,39 @@
+name: Docs Integrity
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+      - ".cursorrules"
+      - ".cursor/rules/**"
+      - "scripts/docs-integrity-check.mjs"
+      - ".github/workflows/docs-integrity.yml"
+  schedule:
+    - cron: "20 1 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  integrity:
+    name: Docs Integrity Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Run docs integrity check
+        run: node scripts/docs-integrity-check.mjs --strict
