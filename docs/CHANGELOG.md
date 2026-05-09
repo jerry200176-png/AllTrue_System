@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — Fixed（ui）: Super Admin 「版本更新」空白
+
+- Fixed `notesForRole`：super_admin／admin 對齊可看主任／老師向發布備註；CI 增加 `npm run test:release-notes`
+
+---
+
 ## 2026-05-09 — Added（ops）: 主任／維運合併重複老師帳號 Artisan
 
 - Added `php artisan teachers:merge-users --keep-login=… --merge-login=…`（預設 dry-run；`--apply` 於備份後交易內重設 FK、停用重複帳號）；搭配 PHPUnit `TeacherUserMergeCommandTest`

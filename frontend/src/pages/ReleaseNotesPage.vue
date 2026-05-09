@@ -2,7 +2,7 @@
   <div class="rn-page card">
     <div class="rn-head">
       <h2>版本更新</h2>
-      <p>老師與主任可以在這裡快速查看每次系統新增功能。</p>
+      <p>超級管理員、主任與老師可在這裡快速查看每次系統新增功能的說明。</p>
     </div>
 
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>

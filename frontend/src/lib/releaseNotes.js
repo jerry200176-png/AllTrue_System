@@ -29,8 +29,26 @@ export const releaseNotes = [
   },
 ];
 
+/**
+ * Elevated campus roles should see whatever we ship to directors/teachers — they do not maintain
+ * a separate curated list in `audience` today (super_admin would otherwise see zero notes).
+ */
+function roleMatchesNoteAudience(note, role) {
+  if (!note.audience?.length) {
+    return true;
+  }
+  if (note.audience.includes(role)) {
+    return true;
+  }
+  const elevatedCampusStaff = ['super_admin', 'admin'];
+  if (elevatedCampusStaff.includes(role)) {
+    return note.audience.some((a) => a === 'director' || a === 'teacher');
+  }
+  return false;
+}
+
 export function notesForRole(role) {
-  return releaseNotes.filter((note) => !note.audience?.length || note.audience.includes(role));
+  return releaseNotes.filter((note) => roleMatchesNoteAudience(note, role));
 }
 
 export function latestReleaseVersionForRole(role) {
