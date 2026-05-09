@@ -569,7 +569,7 @@ function scheduleBrandIdleOverlay() {
 }
 
 function showBrandIntroOverlay() {
-  if (!brandOverlayAllowed.value || prefersReducedMotion()) {
+  if (!brandOverlayAllowed.value) {
     scheduleBrandIdleOverlay();
     return;
   }
