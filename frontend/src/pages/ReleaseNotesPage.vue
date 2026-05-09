@@ -2,7 +2,10 @@
   <div class="rn-page card">
     <div class="rn-head">
       <h2>版本更新</h2>
-      <p>超級管理員、主任與老師可在這裡快速查看每次系統新增功能的說明。</p>
+      <p>超級管理員、主任與老師可在這裡查看近期變更摘要；內容由 <code>docs/CHANGELOG.md</code> 自動整理（略過純維運／文件類條目）。</p>
+      <p class="rn-changelog-link">
+        <a :href="changelogUrl" target="_blank" rel="noopener noreferrer">在 GitHub 開啟完整 CHANGELOG</a>
+      </p>
     </div>
 
     <div v-if="notes.length === 0" class="rn-empty">目前尚無可顯示的更新內容。</div>
@@ -27,6 +30,9 @@ const props = defineProps({
   userRole: { type: String, default: '' },
 });
 
+const changelogUrl =
+  'https://github.com/jerry200176-png/AllTrue_System/blob/main/docs/CHANGELOG.md';
+
 const notes = computed(() => notesForRole(props.userRole));
 </script>
 
@@ -44,6 +50,17 @@ const notes = computed(() => notesForRole(props.userRole));
 .rn-head p {
   margin: 6px 0 14px;
   color: var(--text-light);
+}
+.rn-head code {
+  font-size: 0.9em;
+}
+.rn-changelog-link {
+  margin: -4px 0 10px;
+  font-size: 13px;
+}
+.rn-changelog-link a {
+  color: var(--accent, #2563eb);
+  font-weight: 600;
 }
 
 .rn-item {

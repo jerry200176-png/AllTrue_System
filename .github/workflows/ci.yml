@@ -347,6 +347,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Sync in-app release notes from CHANGELOG
+        working-directory: frontend
+        run: npm run sync-release-notes
+
       - name: Calendar occurrence regression tests
         working-directory: frontend
         run: npm run test:calendar
