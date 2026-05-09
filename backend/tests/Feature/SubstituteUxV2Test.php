@@ -350,6 +350,111 @@ class SubstituteUxV2Test extends TestCase
     }
 
     // ───────────────────────────────────────────────────────────
+    // 8a. 合約老師的課已有代課 → availability 不應標為忙碌（Issue #275 false positive）
+    // ───────────────────────────────────────────────────────────
+
+    /**
+     * 若老師 B 是他校（Campus 2）某課的合約老師，但該堂已指派代課老師 C，
+     * 則查 B 的 availability 時，那個時段不應出現在 busy_slots（B 實際不用去）。
+     * 且嘗試指派 B 為本校（Campus 1）同時段代課時，不應被跨分校衝堂阻擋。
+     */
+    public function test_availability_excludes_sessions_where_substitute_is_already_assigned(): void
+    {
+        [$dirToken, , $subId, $session, $campusId] = $this->seedScenarioSingleCampus();
+        // $session: Campus 1, 2026-04-19 13:00~15:00, contract teacher = regular, sub candidate = $subId
+
+        // 在 Campus 2 建立一堂「合約老師 = $subId」的課，同日同時段
+        $otherCampusId = 2;
+        UserCampus::firstOrCreate(
+            ['CampusID' => $otherCampusId, 'UserID' => $subId],
+            ['Admin' => 0, 'Approved' => 1]
+        );
+        $otherStudent = Student::create([
+            'name' => '他校學生B', 'CampusID' => $otherCampusId, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
+        $otherSc = StudentClass::create([
+            'StudentID' => $otherStudent->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => $subId, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 16,
+            'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 6, 'UsedSessions' => 2,
+            'Charge' => 1600, 'Pay' => 12800, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
+            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+        ]);
+        $otherSession = ClassSession::create([
+            'StudentClassID' => $otherSc->ID, 'SessionDate' => '2026-04-19',
+            'StartTime' => '13:00', 'EndTime' => '15:00', 'Status' => 'scheduled',
+        ]);
+
+        // 幫 $otherSession 建立代課安排（另一位老師 C 代課）
+        $teacherC = User::create([
+            'LoginName' => 'teacher-c@example.com', 'Name' => '代課老師C', 'PSW' => 'x',
+            'type' => 'B', 'phone' => '0988888888', 'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $otherCampusId, 'UserID' => $teacherC->id, 'Admin' => 0, 'Approved' => 1]);
+
+        // schedules: rescheduled（原老師 = $subId 的槽位被標記為已調動）
+        $rescheduled = Schedule::create([
+            'student_id' => $otherStudent->id,
+            'teacher_id' => $subId,
+            'subject' => '數學',
+            'day_of_week' => 7,
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => $otherCampusId,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $otherSc->ID,
+        ]);
+        // schedules: scheduled（老師 C 代課）
+        Schedule::create([
+            'student_id' => $otherStudent->id,
+            'teacher_id' => $teacherC->id,
+            'subject' => '數學',
+            'day_of_week' => 7,
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => $otherCampusId,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $otherSc->ID,
+            'original_schedule_id' => $rescheduled->id,
+        ]);
+
+        // Director 也需綁定 Campus 2 才能查詢跨分校 availability
+        $dirUserId = AuthToken::where('token', $dirToken)->first()->user_id;
+        UserCampus::firstOrCreate(
+            ['CampusID' => $otherCampusId, 'UserID' => $dirUserId],
+            ['Admin' => 1, 'Approved' => 1]
+        );
+
+        // availability 查詢：$subId 在 2026-04-19 的忙碌時段
+        // Bug 修前：13:00~15:00 會出現（Campus 2 的合約課誤標為忙碌）
+        // Bug 修後：13:00~15:00 不應出現（已有代課老師 C 代替）
+        $avail = $this->withAuth($dirToken)->getJson("/api/v1/teachers/{$subId}/availability?date=2026-04-19");
+        $avail->assertOk();
+        $slots = $avail->json('busy_slots');
+        $conflictingSlots = array_filter($slots, function ($s) {
+            return $s['start_time'] <= '13:00' && $s['end_time'] >= '15:00';
+        });
+        $this->assertEmpty($conflictingSlots, '合約老師的課已有代課指派，availability 不應標為忙碌');
+
+        // 指派 $subId 為 Campus 1 同時段代課 → 不應被跨分校衝堂阻擋
+        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+        ]);
+        $res->assertOk();
+    }
+
+    // ───────────────────────────────────────────────────────────
     // 8. GET /substitutes/recent 分校隔離
     // ───────────────────────────────────────────────────────────
     public function test_recent_substitutes_are_scoped_to_managed_campus(): void
