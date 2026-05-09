@@ -6,15 +6,6 @@
 
 ---
 
-## 2026-05-09 — feat(adoption): 提升系統開啟率與信任度第一版落地
-
-- Added 老師/主任首頁待辦卡統一排序與一鍵入口，點擊後會回寫已讀狀態，降低每日待辦認知負擔
-- Added 主任儀表板新增流程追蹤、近期操作履歷、7 天開啟率/完成率指標，強化「可追蹤、可回溯」信任感
-- Added 後端 adoption 聚合 API（task tracker / activity log / weekly metrics）與事件埋點入口（dashboard_opened、todo_card_clicked、flow_submitted、flow_undone）
-- Changed 調課與單堂狀態變更流程補上送出前影響預覽，與既有撤銷窗口形成「預覽→確認→撤銷→追蹤」閉環
-
----
-
 ## 2026-05-09 — chore(docs): 文件治理與記憶保鮮自動檢查
 
 - Added 新增文件治理 SOP（每日/每週/每月節奏）與 MemPalace 保鮮流程，降低 AI 文件失憶風險
