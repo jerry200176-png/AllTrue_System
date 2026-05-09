@@ -97,7 +97,8 @@
         <button
           class="th-action-btn th-action-learning"
           :class="{ 'th-done': pendingLearningCount === 0 && !loadingLearning }"
-          @click="goLearning"
+          type="button"
+          @click="fillNextPendingLearning"
         >
           <div class="th-action-icon-wrap">
             <span class="material-symbols-outlined">assignment</span>
@@ -109,7 +110,18 @@
               <span v-if="overdueCount > 0" class="th-overdue-hint">（含過往 {{ overdueCount }} 筆）</span>
             </div>
             <div class="th-action-label" v-else>今日評量已完成</div>
-            <div class="th-action-hint">前往課表與評量</div>
+            <div class="th-action-hint th-action-hint--split">
+              <span v-if="pendingLearningCount > 0">點擊優先開下一筆待填</span>
+              <span v-else>前往課表與評量</span>
+              <span
+                v-if="pendingLearningCount > 0"
+                class="th-inline-link"
+                role="button"
+                tabindex="0"
+                @click.stop="goLearning"
+                @keydown.enter.prevent.stop="goLearning"
+              >僅開列表</span>
+            </div>
           </div>
           <span class="material-symbols-outlined th-action-arrow">chevron_right</span>
         </button>
@@ -759,7 +771,32 @@ function goAttendance() {
 }
 
 function goLearning() {
-  emit('navigate', 'learning');
+  emit('navigate-learning', { listOnly: true });
+}
+
+/** 過往優先於今日待填；無明確堂次時只開評量列表（不帶錨點）。 */
+function fillNextPendingLearning() {
+  const o = overdueRecords.value[0];
+  if (o) {
+    goFillRecord({
+      branchId: o.branch_id,
+      recordId: null,
+      classSessionId: o.id,
+      sessionDate: o.session_date,
+    });
+    return;
+  }
+  const t = todayPendingEvents.value[0];
+  if (t) {
+    goFillRecord({
+      branchId: t.branchId,
+      recordId: t.recordId || null,
+      classSessionId: t.id,
+      sessionDate: t.date,
+    });
+    return;
+  }
+  goLearning();
 }
 
 function goFillRecord(ev) {
@@ -925,6 +962,14 @@ onBeforeUnmount(() => {
 .th-action-label strong { font-size: 18px; color: var(--primary); }
 .th-done .th-action-label strong { color: var(--success); }
 .th-action-hint { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+.th-action-hint--split {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 6px 10px;
+}
+.th-inline-link {
+  color: var(--accent); font-weight: 600; text-decoration: underline;
+  cursor: pointer; flex-shrink: 0;
+}
 .th-action-arrow { color: var(--text-light); font-size: 22px; flex-shrink: 0; }
 
 .th-cross-hint {
