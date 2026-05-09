@@ -181,6 +181,65 @@ class SubstituteUxV2Test extends TestCase
         $this->assertTrue((bool) ($notif->Payload['voided'] ?? false));
     }
 
+    public function test_restore_original_teacher_clears_stale_substitute_after_contract_teacher_changed(): void
+    {
+        [$dirToken, $oldTeacherId, $subId, $session, $campusId] = $this->seedScenarioSingleCampus();
+
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => '測試切換正班老師',
+        ])->assertOk();
+
+        $newContractTeacher = User::create([
+            'LoginName' => 'new-contract-uxv2@example.com',
+            'Name' => 'Coco老師',
+            'PSW' => 'x',
+            'type' => 'T',
+            'phone' => '0900000109',
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create([
+            'CampusID' => $campusId,
+            'UserID' => $newContractTeacher->id,
+            'Admin' => 0,
+            'Approved' => 1,
+        ]);
+
+        StudentClass::where('ID', $session->StudentClassID)->update([
+            'TeacherID' => $newContractTeacher->id,
+        ]);
+
+        // Simulate historical stale rows: substitute still points to old contract teacher.
+        Schedule::where('student_course_id', $session->StudentClassID)
+            ->whereDate('schedule_date', '2026-04-19')
+            ->where('status', 'scheduled')
+            ->whereNotNull('original_schedule_id')
+            ->update(['teacher_id' => $oldTeacherId]);
+
+        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => (int) $newContractTeacher->id,
+            'reason' => '回正班老師',
+        ]);
+
+        $res->assertOk()
+            ->assertJsonFragment([
+                'restored_teacher_id' => (int) $newContractTeacher->id,
+                'substitute_cleared' => true,
+            ]);
+
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $oldTeacherId,
+        ]);
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'rescheduled',
+        ]);
+    }
+
     // ───────────────────────────────────────────────────────────
     // 4. 老師請假 Preview
     // ───────────────────────────────────────────────────────────
