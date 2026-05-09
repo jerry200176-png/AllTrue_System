@@ -162,16 +162,20 @@
             <span class="pb__val"><strong>{{ pendingEvaluations.length }}</strong> <small>筆</small></span>
           </div>
           <div class="pb">
+            <span class="pb__label">今日應處理</span>
+            <span class="pb__val"><strong>{{ workflowDailySummary.due_total }}</strong></span>
+          </div>
+          <div class="pb">
+            <span class="pb__label">今日已完成</span>
+            <span class="pb__val"><strong>{{ workflowDailySummary.done_total }}</strong></span>
+          </div>
+          <div class="pb">
+            <span class="pb__label">已逾期</span>
+            <span class="pb__val"><strong>{{ workflowDailySummary.breached_total }}</strong></span>
+          </div>
+          <div class="pb">
             <span class="pb__label">未讀通知</span>
             <span class="pb__val"><strong>{{ unreadNotificationCount }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">未讀家長回饋</span>
-            <span class="pb__val"><strong>{{ unreadFeedbackCount }}</strong></span>
-          </div>
-          <div class="pb">
-            <span class="pb__label">本月科目數</span>
-            <span class="pb__val"><strong>{{ monthlySubjectCountWith }}</strong></span>
           </div>
         </section>
 
@@ -364,6 +368,10 @@
                   :key="task.id"
                   type="button"
                   class="todo-row"
+                  :class="{
+                    'todo-row--breached': task.slaLevel === 'breached',
+                    'todo-row--warning': task.slaLevel === 'warning',
+                  }"
                   @click="handleDirectorTodoClick(task)"
                 >
                   <span class="todo-row__title">{{ task.title }}</span>
@@ -443,10 +451,12 @@
               <div class="kpi-t">
                 <div class="kpi-t__label">老師開啟率（7天）</div>
                 <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.teacher_open_rate_pct ?? 0}%` }}</div>
+                <div class="kpi-t__delta" v-if="!adoptionWeeklyMetricsLoading">{{ openRateDeltaLabel('teacher') }}</div>
               </div>
               <div class="kpi-t">
                 <div class="kpi-t__label">主任開啟率（7天）</div>
                 <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.director_open_rate_pct ?? 0}%` }}</div>
+                <div class="kpi-t__delta" v-if="!adoptionWeeklyMetricsLoading">{{ openRateDeltaLabel('director') }}</div>
               </div>
               <div class="kpi-t">
                 <div class="kpi-t__label">系統內完成率（7天）</div>
@@ -738,18 +748,38 @@ const directorTodoCards = computed(() =>
   sortTodoCards((adoptionTaskRows.value || []).map((task) => {
     const dueAt = String(task?.due_at || '');
     const now = localTodayYmd();
-    const status = dueAt && dueAt < now ? 'overdue' : String(task?.status || 'pending');
+    const slaLevel = String(task?.sla_level || '');
+    const status = slaLevel === 'breached'
+      ? 'breached'
+      : (slaLevel === 'warning' ? 'warning' : (dueAt && dueAt < now ? 'overdue' : String(task?.status || 'pending')));
+    const blockedCount = Number(task?.blocked_count || 0);
     return {
       id: task.id,
       title: task.title || '待辦',
-      description: `${task.owner || '主任'} · 截止 ${dueAt || '未設定'}`,
+      description: `${task.owner || '主任'} · 截止 ${dueAt || '未設定'}${blockedCount > 0 ? ` · 影響 ${blockedCount} 項` : ''}`,
       owner: task.owner || '主任',
       status,
       dueAt,
+      slaLevel: task?.sla_level || 'normal',
+      blockedCount,
       target: task.target || {},
       acknowledged: isTodoAcknowledged(task.id),
     };
   })));
+
+const workflowDailySummary = computed(() => ({
+  due_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.due_total || 0),
+  done_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.done_total || 0),
+  breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
+}));
+
+const openRateDeltaLabel = (role) => {
+  const delta = role === 'teacher'
+    ? Number(adoptionWeeklyMetrics.value?.comparison?.delta_teacher_open_rate_pct || 0)
+    : Number(adoptionWeeklyMetrics.value?.comparison?.delta_director_open_rate_pct || 0);
+  const sign = delta > 0 ? '+' : '';
+  return `較上週 ${sign}${delta.toFixed(1)}%`;
+};
 
 /** 上方快捷列用：區分「真的未繳」與「已繳但低堂數／月結」避免誤以為催繳失敗 */
 const paymentActionLaneLabel = computed(() => {
@@ -1734,7 +1764,7 @@ onMounted(() => {
 /* ===== Progress Board ===== */
 .progress-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   background: rgba(255, 255, 255, 0.68);
   border: 1px solid var(--porsche-border);
@@ -1803,7 +1833,7 @@ onMounted(() => {
 /* ===== Work Grid ===== */
 .work-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.14fr) minmax(340px, 0.86fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
 }
 .work-col {
@@ -2077,6 +2107,12 @@ onMounted(() => {
   background: rgba(255,255,255,0.84);
   cursor: pointer;
 }
+.todo-row--breached {
+  border-left: 3px solid #dc2626;
+}
+.todo-row--warning {
+  border-left: 3px solid #f59e0b;
+}
 .todo-row:hover {
   border-color: rgba(37, 99, 235, 0.22);
   background: #f8fafc;
@@ -2156,6 +2192,11 @@ onMounted(() => {
   font-weight: 800;
   color: var(--text, #0f172a);
   margin-top: 2px;
+}
+.kpi-t__delta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .kpi-table {
@@ -2309,7 +2350,7 @@ onMounted(() => {
     font-size: 24px;
   }
   .dash.dash--desktop-dense .progress-board {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 8px;
     padding: 10px;
     border-radius: 22px;
@@ -2325,6 +2366,7 @@ onMounted(() => {
   .dash.dash--desktop-dense .work-grid {
     gap: 14px;
     align-items: flex-start;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .dash.dash--desktop-dense .work-col {
     gap: 14px;

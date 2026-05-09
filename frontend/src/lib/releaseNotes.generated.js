@@ -7,20 +7,31 @@ export const changelogReleaseNotes = [
     "version": "1.0.7",
     "date": "2026-05-09",
     "title": "1.0.7 版本更新",
-    "summary": "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡",
+    "summary": "一般請假新增 30 秒內撤銷；桌機登入動畫在 reduced-motion 設定下仍可見",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
       {
+        "title": "修正內容",
+        "items": [
+          "一般請假新增 30 秒內撤銷",
+          "桌機登入動畫在 reduced-motion 設定下仍可見"
+        ]
+      },
+      {
         "title": "體驗調整",
         "items": [
+          "登入 Logo 動畫升級為爆發式縮放",
           "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡"
         ]
       }
     ],
     "items": [
+      "一般請假新增 30 秒內撤銷",
+      "桌機登入動畫在 reduced-motion 設定下仍可見",
+      "登入 Logo 動畫升級為爆發式縮放",
       "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡"
     ]
   },
