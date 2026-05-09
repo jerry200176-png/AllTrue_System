@@ -144,6 +144,40 @@
         </button>
       </div>
 
+      <div class="th-task-board">
+        <div class="th-task-board-head">
+          <span class="material-symbols-outlined" style="font-size:16px">checklist</span>
+          每日任務清單
+        </div>
+        <div class="th-task-items">
+          <button class="th-task-item" type="button" @click="fillNextPendingLearning">
+            <span class="th-task-item-label">今日待填</span>
+            <span :class="['th-task-item-count', todayTaskCount > 0 ? 'warn' : 'ok']">{{ todayTaskCount }}</span>
+          </button>
+          <button class="th-task-item" type="button" @click="openOverdueTask">
+            <span class="th-task-item-label">逾期待補</span>
+            <span :class="['th-task-item-count', overdueTaskCount > 0 ? 'warn' : 'ok']">{{ overdueTaskCount }}</span>
+          </button>
+          <button class="th-task-item" type="button" @click="openChangesRequestedTask">
+            <span class="th-task-item-label">需修改</span>
+            <span :class="['th-task-item-count', changesRequestedTaskCount > 0 ? 'warn' : 'ok']">{{ changesRequestedTaskCount }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="th-progress-board" :class="{ loading: learningProgressLoading }">
+        <div class="th-progress-head">
+          <span class="material-symbols-outlined" style="font-size:16px">insights</span>
+          本週評量進度
+        </div>
+        <div class="th-progress-main">
+          <strong>{{ progressSummary.completed_sessions }} / {{ progressSummary.expected_sessions }}</strong>
+          <span>{{ progressSummary.completion_rate_pct }}%</span>
+          <span class="th-progress-streak">連續 {{ progressSummary.streak_days }} 天全完成</span>
+        </div>
+        <div class="th-progress-trend">{{ progressTrendText }}</div>
+      </div>
+
       <!-- Cross-branch hint -->
       <div v-if="otherBranchTodayCount > 0" class="th-cross-hint">
         <span class="material-symbols-outlined" style="font-size:16px">info</span>
@@ -474,6 +508,7 @@ const overdueCount = computed(() => overdueRecords.value.length);
 // ── Today's pending learning records ──
 const loadingLearning = ref(true);
 const todayOnlyLearningCount = ref(0);
+const changesRequestedLearningCount = ref(0);
 const pendingLearningCount = computed(() => todayOnlyLearningCount.value + overdueCount.value);
 
 async function fetchPendingLearning() {
@@ -494,6 +529,7 @@ async function fetchPendingLearning() {
       const status = r.Status || r.status || '';
       return status === 'pending' || status === 'changes_requested';
     });
+    changesRequestedLearningCount.value = pending.filter(r => (r.Status || r.status || '') === 'changes_requested').length;
     const missingToday = todayAllSessions.value.filter(s => {
       const st = String(s?.status || '').toLowerCase();
       return (st === 'scheduled' || st === 'attended') &&
@@ -503,6 +539,66 @@ async function fetchPendingLearning() {
     todayOnlyLearningCount.value = pending.length + missingToday.length;
   } catch { /* ignore */ } finally {
     loadingLearning.value = false;
+  }
+}
+
+const learningProgressLoading = ref(false);
+const learningProgress = ref({
+  summary: {
+    expected_sessions: 0,
+    completed_sessions: 0,
+    completion_rate_pct: 0,
+    today_expected_sessions: 0,
+    today_completed_sessions: 0,
+    today_completion_rate_pct: 0,
+    streak_days: 0,
+  },
+  by_day: [],
+});
+
+const progressSummary = computed(() => learningProgress.value?.summary || {
+  expected_sessions: 0,
+  completed_sessions: 0,
+  completion_rate_pct: 0,
+  today_expected_sessions: 0,
+  today_completed_sessions: 0,
+  today_completion_rate_pct: 0,
+  streak_days: 0,
+});
+
+const progressTrendText = computed(() => {
+  const byDay = Array.isArray(learningProgress.value?.by_day) ? learningProgress.value.by_day : [];
+  if (!byDay.length) return '近 7 天尚無已到班紀錄';
+  return byDay.slice(-7).map((d) => {
+    const dateLabel = String(d.date || '').slice(5);
+    return `${dateLabel} ${d.completed_sessions || 0}/${d.expected_sessions || 0}`;
+  }).join('｜');
+});
+
+const todayTaskCount = computed(() => todayPendingEvents.value.length);
+const overdueTaskCount = computed(() => overdueCount.value);
+const changesRequestedTaskCount = computed(() => changesRequestedLearningCount.value);
+
+async function fetchLearningProgress() {
+  learningProgressLoading.value = true;
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const params = new URLSearchParams({ days: '7' });
+    if (props.branchId) params.set('branch_id', String(props.branchId));
+    const res = await fetch(`/api/v1/me/learning-progress-summary?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json();
+    learningProgress.value = {
+      summary: json?.summary || learningProgress.value.summary,
+      by_day: Array.isArray(json?.by_day) ? json.by_day : [],
+    };
+  } catch {
+    // keep previous snapshot to avoid flicker
+  } finally {
+    learningProgressLoading.value = false;
   }
 }
 
@@ -799,6 +895,24 @@ function fillNextPendingLearning() {
   goLearning();
 }
 
+function openOverdueTask() {
+  const o = overdueRecords.value[0];
+  if (o) {
+    goFillRecord({
+      branchId: o.branch_id,
+      recordId: null,
+      classSessionId: o.id,
+      sessionDate: o.session_date,
+    });
+    return;
+  }
+  goLearning();
+}
+
+function openChangesRequestedTask() {
+  goLearning();
+}
+
 function goFillRecord(ev) {
   if (ev.branchId && Number(ev.branchId) !== Number(props.branchId)) {
     localStorage.setItem('app_branch', String(ev.branchId));
@@ -814,7 +928,7 @@ function goFillRecord(ev) {
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
-  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchClockinStatus()]);
+  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchClockinStatus(), fetchLearningProgress()]);
   refreshing.value = false;
 }
 
@@ -828,6 +942,7 @@ function startPolling() {
       fetchPendingAttendance();
       fetchOverdueLearning();
       fetchPendingLearning();
+      fetchLearningProgress();
     }
   }, POLL_INTERVAL);
 }
@@ -841,7 +956,12 @@ function onVisibilityChange() {
     fetchPendingAttendance();
     fetchOverdueLearning();
     fetchPendingLearning();
+    fetchLearningProgress();
   }
+}
+
+function onLearningProgressRefreshEvent() {
+  fetchLearningProgress();
 }
 
 // ── Report discrepancy helpers ──
@@ -896,9 +1016,10 @@ function handleReportWithdrawn() {
 }
 
 onMounted(() => {
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
+  window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
   // Refresh chat badge when app emits the badge refresh event
   window.addEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
@@ -908,6 +1029,7 @@ watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
   fetchPendingLearning();
+  fetchLearningProgress();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
 
@@ -915,6 +1037,7 @@ onBeforeUnmount(() => {
   if (weekAbort) weekAbort.abort();
   stopPolling();
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  window.removeEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
   window.removeEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
 </script>
@@ -936,6 +1059,74 @@ onBeforeUnmount(() => {
 /* ──────── A. Today Actions ──────── */
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
+.th-task-board,
+.th-progress-board {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-bg);
+}
+.th-task-board-head,
+.th-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--text-light);
+  font-weight: 600;
+}
+.th-task-items {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.th-task-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.th-task-item-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-light);
+}
+.th-task-item-count {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.th-task-item-count.warn { color: var(--warning); }
+.th-task-item-count.ok { color: var(--success); }
+
+.th-progress-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+}
+.th-progress-main strong {
+  font-size: 20px;
+  color: var(--primary);
+}
+.th-progress-streak {
+  font-size: 12px;
+  color: var(--text-light);
+}
+.th-progress-trend {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-light);
+}
+.th-progress-board.loading .th-progress-main,
+.th-progress-board.loading .th-progress-trend {
+  opacity: 0.6;
+}
 
 .th-action-btn {
   display: flex; align-items: center; gap: 14px;
@@ -1184,6 +1375,7 @@ onBeforeUnmount(() => {
   .th-action-btn { padding: 14px 10px; gap: 10px; }
   .th-action-icon-wrap { width: 38px; height: 38px; }
   .th-action-label { font-size: 14px; }
+  .th-task-items { grid-template-columns: 1fr; }
   .th-event { padding: 8px 6px; gap: 8px; }
   .th-event-time { font-size: 12px; min-width: 38px; }
   .th-event-student { font-size: 13px; }

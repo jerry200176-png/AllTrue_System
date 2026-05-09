@@ -386,6 +386,7 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-record-teacher-comments/{comment}/read', [LearningRecordTeacherCommentController::class, 'markRead']);
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
         Route::get('me/learning-pending-summary', [LearningRecordController::class, 'teacherPendingBadgeSummary']);
+        Route::get('me/learning-progress-summary', [LearningRecordController::class, 'teacherLearningProgressSummary']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
