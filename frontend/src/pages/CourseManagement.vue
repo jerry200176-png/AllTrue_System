@@ -520,6 +520,7 @@
       :session-options="leaveSessionOptions"
       :is-retro-leave="isSelectedRetroLeave"
       :day-label="dayLabel"
+      :impact-preview="leaveImpactPreview"
       @close="showLeaveModal = false"
       @submit="submitLeave"
     />
@@ -529,6 +530,7 @@
       :form="bulkLeaveForm"
       :result="bulkLeaveResult"
       :submitting="bulkLeaveSubmitting"
+      :impact-preview="bulkLeaveImpactPreview"
       @close="showBulkLeaveModal = false; bulkLeaveResult = null"
       @submit="submitBulkLeave"
     />
@@ -1002,6 +1004,25 @@ const showBulkLeaveModal = ref(false);
 const bulkLeaveSubmitting = ref(false);
 const bulkLeaveResult = ref(null);
 const bulkLeaveForm = ref({ start_date: '', end_date: '' });
+const bulkLeaveImpactPreview = computed(() => {
+  const start = bulkLeaveForm.value.start_date;
+  const end = bulkLeaveForm.value.end_date;
+  if (!start || !end) return null;
+  const startDate = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  const days = Number.isFinite(startDate.getTime()) && Number.isFinite(endDate.getTime())
+    ? Math.max(1, Math.round((endDate - startDate) / 86400000) + 1)
+    : 1;
+  return {
+    title: '批次請假送出前確認',
+    summary: `將掃描 ${start} 至 ${end}（共 ${days} 天）的可請假堂次。`,
+    items: [
+      '系統會逐堂執行請假與順延，無法只靠前端一次復原',
+      '已有核准評量、已取消、已請假的堂次會被略過',
+      '送出後請查看略過清單，必要時改用單堂補請假處理',
+    ],
+  };
+});
 
 // Backfill (aligned with edit form fields)
 const showBackfillModal = ref(false);
@@ -1925,6 +1946,36 @@ const isSelectedRetroLeave = computed(() => {
     return opt.date === date && opt.isRetro;
   });
 });
+const selectedLeaveOption = computed(() => {
+  const sid = leaveForm.value.session_id;
+  const date = leaveForm.value.schedule_date;
+  return leaveSessionOptions.value.find((opt) => {
+    if (sid && opt.session_id) return opt.session_id === sid;
+    return opt.date === date;
+  }) || null;
+});
+const leaveImpactPreview = computed(() => {
+  const form = leaveForm.value;
+  if (!form.schedule_date) return null;
+  const retro = isSelectedRetroLeave.value;
+  const option = selectedLeaveOption.value;
+  const label = option?.label || `${form.schedule_date} ${form.start_time || ''}`.trim();
+  return {
+    title: retro ? '補請假高風險影響預覽' : '請假送出前影響預覽',
+    summary: `${form.student_name || '學生'}｜${getSubjectLabel(form.subject)}｜${label}`,
+    items: retro
+      ? [
+          '會沖回該堂已扣堂數，並重新計算課程剩餘堂數',
+          '會作廢該堂出缺勤與學習評量紀錄',
+          '後續課程會依請假規則重新順延',
+        ]
+      : [
+          '本堂會標記為請假，不扣堂數',
+          '後續課程會自動順延並補上尾堂',
+          '該堂不需要填寫學習評量',
+        ],
+  };
+});
 async function openLeave(c) {
   await ensureCompletedSessionDatesLoaded(c);
   const opts = getLeaveSessionOptionsForCourse(c);
@@ -1958,10 +2009,6 @@ async function submitLeave() {
   const form = leaveForm.value;
   const isRetro = isSelectedRetroLeave.value;
 
-  if (isRetro && !confirm('此堂已上課/已點名，確認要執行補請假嗎？\n（將沖回堂數、作廢出缺勤與評量記錄）')) {
-    return;
-  }
-
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -1973,6 +2020,7 @@ async function submitLeave() {
     if (isRetro) {
       const retroPayload = {
         student_course_id: form.course_id,
+        class_session_id: form.session_id || undefined,
         session_date: form.schedule_date,
         reason: form.reason || '',
       };
@@ -2055,7 +2103,6 @@ async function submitBulkLeave() {
   const branchId = Number(props.branchId) || 0;
   if (!branchId) { alert('請先選擇分校'); return; }
   if (!bulkLeaveForm.value.start_date || !bulkLeaveForm.value.end_date) return;
-  if (!confirm(`確定要將「${bulkLeaveForm.value.start_date}」至「${bulkLeaveForm.value.end_date}」區間所有課程批次請假嗎？`)) return;
   bulkLeaveSubmitting.value = true;
   bulkLeaveResult.value = null;
   try {
@@ -2089,6 +2136,14 @@ async function submitBulkLeave() {
 watch(() => leaveForm.value.schedule_date, (date) => {
   if (!date) return;
   leaveForm.value.day_of_week = dayOfWeekFromDate(date);
+  const option = leaveSessionOptions.value.find((opt) => opt.date === date);
+  if (option) {
+    leaveForm.value.session_id = option.session_id || null;
+    if (option.start_time) {
+      leaveForm.value.start_time = option.start_time;
+      leaveForm.value.end_time = computeEndTime(option.start_time, leaveForm.value.duration_hours || 2);
+    }
+  }
 });
 function effectiveClosedReason(c) {
   if (c.closed_reason) return c.closed_reason;
