@@ -93,6 +93,16 @@
 
         <div class="controls-row">
           <label>
+            企業視圖
+            <select v-model="focusMode">
+              <option value="all">全部通知</option>
+              <option value="actionable">待處理優先</option>
+              <option value="sla">SLA／逾期優先</option>
+              <option value="high">僅高風險</option>
+            </select>
+          </label>
+
+          <label>
             狀態
             <select v-model="readFilter">
               <option value="unread">未讀</option>
@@ -109,6 +119,11 @@
           <label class="checkbox-wrap">
             <input v-model="soundEnabled" type="checkbox" />
             <span>急件提醒音</span>
+          </label>
+
+          <label class="checkbox-wrap">
+            <input v-model="quietMinor" type="checkbox" />
+            <span>次要提醒降噪</span>
           </label>
 
           <div class="stats-box">
@@ -178,6 +193,7 @@
             </div>
 
             <div class="main-title" :class="{ 'title-resolved': !!item.ResolvedAt }">{{ item.Title }}</div>
+            <div v-if="item.extra_count > 0" class="grouped-tag">同類 {{ item.extra_count + 1 }} 筆</div>
             <div v-if="notificationSummary(item)" class="notification-context">{{ notificationSummary(item) }}</div>
             <div v-if="item.Body" class="main-body">{{ item.Body }}</div>
 
@@ -235,6 +251,8 @@ const readFilter = ref('unread');
 const typeFilter = ref('');
 const includeResolved = ref(false);
 const soundEnabled = ref(localStorage.getItem('notifications_sound_enabled') !== '0');
+const quietMinor = ref(localStorage.getItem('notifications_quiet_minor') === '1');
+const focusMode = ref(localStorage.getItem('notifications_focus_mode') || 'all');
 const clearingResolved = ref(false);
 const severityRank = { high: 3, medium: 2, low: 1, info: 0 };
 const hasUrgentWatchInitialized = ref(false);
@@ -446,6 +464,13 @@ const byPriority = (a, b) => {
   const bRead = b.read_at ? 1 : 0;
   if (aRead !== bRead) return aRead - bRead;
 
+  const aSla = String(payloadOf(a).overdue_tier || '');
+  const bSla = String(payloadOf(b).overdue_tier || '');
+  const slaRank = { '急件': 3, '高': 2, '中': 1 };
+  const as = slaRank[aSla] ?? 0;
+  const bs = slaRank[bSla] ?? 0;
+  if (as !== bs) return bs - as;
+
   const aSeverity = severityRank[a.Severity] ?? 0;
   const bSeverity = severityRank[b.Severity] ?? 0;
   if (aSeverity !== bSeverity) return bSeverity - aSeverity;
@@ -456,7 +481,44 @@ const byPriority = (a, b) => {
 };
 
 const displayNotifications = computed(() => {
-  return [...notifications.value].sort(byPriority);
+  const sorted = [...notifications.value].sort(byPriority);
+  const filtered = sorted.filter((item) => {
+    const sev = severityRank[item.Severity] ?? 0;
+    const unresolved = !item.ResolvedAt && !item.read_at;
+    if (focusMode.value === 'high') return sev >= 3;
+    if (focusMode.value === 'sla') return sev >= 2 || String(payloadOf(item).overdue_tier || '') === '急件';
+    if (focusMode.value === 'actionable') return unresolved;
+    return true;
+  }).filter((item) => {
+    if (!quietMinor.value) return true;
+    const sev = severityRank[item.Severity] ?? 0;
+    const unresolved = !item.ResolvedAt && !item.read_at;
+    return unresolved || sev >= 2;
+  });
+
+  const groupedMap = new Map();
+  for (const item of filtered) {
+    const p = payloadOf(item);
+    const signature = [
+      item.Type || '',
+      item.SourceType || '',
+      p.student_id || p.student_name || '',
+      p.subject || '',
+      item.Title || '',
+    ].join('|');
+    if (!groupedMap.has(signature)) {
+      groupedMap.set(signature, { ...item, extra_count: 0 });
+      continue;
+    }
+    const current = groupedMap.get(signature);
+    current.extra_count += 1;
+    if ((new Date(item.OccurredAt || item.created_at || 0)).getTime() > (new Date(current.OccurredAt || current.created_at || 0)).getTime()) {
+      groupedMap.set(signature, { ...item, extra_count: current.extra_count });
+    } else {
+      groupedMap.set(signature, current);
+    }
+  }
+  return Array.from(groupedMap.values()).sort(byPriority);
 });
 
 const urgentNotifications = computed(() => {
@@ -731,6 +793,14 @@ watch([() => props.branchId, readFilter, typeFilter, includeResolved], () => {
 
 watch(soundEnabled, (value) => {
   localStorage.setItem('notifications_sound_enabled', value ? '1' : '0');
+});
+
+watch(quietMinor, (value) => {
+  localStorage.setItem('notifications_quiet_minor', value ? '1' : '0');
+});
+
+watch(focusMode, (value) => {
+  localStorage.setItem('notifications_focus_mode', value || 'all');
 });
 
 watch(urgentNotifications, async () => {
@@ -1184,6 +1254,11 @@ onUnmounted(() => {
 .main-title {
   font-size: 15px;
   font-weight: 700;
+}
+.grouped-tag {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #64748b;
 }
 
 .main-body {

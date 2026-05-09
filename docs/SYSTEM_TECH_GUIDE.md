@@ -17,6 +17,7 @@
 8. [已知非直覺行為（Gotchas）](#8-已知非直覺行為gotchas)
 9. [核心 Services 職責](#9-核心-services-職責)
 10. [資料庫 ID 對應關係](#10-資料庫-id-對應關係)
+11. [採用率與流程治理（Adoption v1.1）](#11-採用率與流程治理adoption-v11)
 
 ---
 
@@ -385,8 +386,46 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 ---
 
+## 11. 採用率與流程治理（Adoption v1.1）
+
+### 11.1 API 與資料流
+
+| API | 主要用途 | 主要欄位 |
+|---|---|---|
+| `GET /api/v1/adoption/task-tracker` | 首頁任務聚合與 SLA 分級 | `sla_level`, `blocked_count`, `owner_role`, `due_at` |
+| `GET /api/v1/adoption/activity-log` | 主任最近操作履歷 | `actor`, `action`, `at` |
+| `GET /api/v1/adoption/weekly-metrics` | 7 日採用率與流程摘要 | `workflow_daily`, `comparison`, `teacher_open_rate_pct`, `director_open_rate_pct` |
+| `POST /api/v1/adoption/events` | 非阻塞追蹤事件 | `event`, `branch_id`, `meta` |
+
+### 11.2 SLA 分級口徑
+
+- `breached`：`due_at` 早於現在（逾期）。
+- `warning`：距截止 <= 4 小時（預警）。
+- `normal`：其餘狀態。
+
+### 11.3 每日流程摘要口徑（workflow_daily）
+
+- `due_total`：今日仍需處理的學習評量 + 補課案件 + 課表回報。
+- `done_total`：今日完成（核准評量 + 已確認補課 + 已解決課表回報）。
+- `breached_total`：截至今日仍逾期未處理的項目數。
+
+### 11.4 週對比口徑（comparison）
+
+- `previous_window`：前一個 7 日視窗（非本週）。
+- `delta_teacher_open_rate_pct` / `delta_director_open_rate_pct`：本週開啟率 - 前週開啟率。
+- 用於主任首頁 KPI 顯示「較上週 +x%/-x%」。
+
+### 11.5 前端治理規則
+
+- `DirectorDashboard`：任務列表按 `sla_level` 優先；`breached`/`warning` 顯著標記。
+- `TeacherHome`：登入後有未完成事項只提醒一次；支援「提示音開關」與「今日靜音」避免疲勞提醒。
+- `NotificationsCenter`：支援企業視圖（待處理優先 / SLA 優先 / 高風險），並可同類通知聚合降噪。
+
+---
+
 ## 修訂記錄
 
 | 日期 | 變更 | 相關 PR |
 |---|---|---|
 | 2026-04-23 | 初版建立：Identity、Attendance、ClassSession、Swipe Flow、Gotchas | PR #23 |
+| 2026-05-09 | 新增 Adoption v1.1：SLA 分級、每日摘要與週對比口徑 | - |
