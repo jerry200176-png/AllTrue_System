@@ -25,9 +25,27 @@ function shouldSkipHeading(title) {
   );
 }
 
-function calendarVersion(date) {
-  const [y, m, d] = String(date || '').split('-');
-  return `v${Number(y) || y}.${Number(m) || m}.${Number(d) || d}`;
+function buildVersionMap(dates) {
+  const sorted = [...new Set(dates)].sort();
+  const baseYear = Number(String(sorted[0] || '').slice(0, 4)) || new Date().getFullYear();
+  /** @type {Map<string, number>} */
+  const monthPatchCounter = new Map();
+  /** @type {Map<string, string>} */
+  const versionByDate = new Map();
+
+  for (const date of sorted) {
+    const [yearText, monthText] = String(date || '').split('-');
+    const year = Number(yearText) || baseYear;
+    const month = Number(monthText) || 1;
+    const major = Math.max(1, year - baseYear + 1);
+    const minor = month;
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const patch = (monthPatchCounter.get(monthKey) || 0) + 1;
+    monthPatchCounter.set(monthKey, patch);
+    versionByDate.set(date, `${major}.${minor}.${patch}`);
+  }
+
+  return versionByDate;
 }
 
 function stripTechNoise(s) {
@@ -139,17 +157,19 @@ function parseChangelog(md) {
     if (!bucket.includes(text)) bucket.push(text);
   }
 
+  const versionByDate = buildVersionMap([...grouped.keys()]);
   const notes = [];
   for (const [date, sectionMap] of grouped.entries()) {
+    const version = versionByDate.get(date) || '1.1.1';
     const sectionOrder = ['新增內容', '修正內容', '體驗調整', '其他改善'];
     const sections = sectionOrder
       .map((title) => ({ title, items: (sectionMap.get(title) || []).slice(0, 6) }))
       .filter((section) => section.items.length > 0);
 
     notes.push({
-      version: calendarVersion(date),
+      version,
       date,
-      title: `${calendarVersion(date)} 更新內容`,
+      title: `${version} 版本更新`,
       summary: buildSummary(sections),
       audience: ['teacher', 'director'],
       sections,
@@ -163,7 +183,7 @@ function parseChangelog(md) {
 
   if (notes.length === 0) {
     notes.push({
-      version: calendarVersion(new Date().toISOString().slice(0, 10)),
+      version: '1.1.1',
       date: new Date().toISOString().slice(0, 10),
       title: '系統更新紀錄',
       summary: '可在這裡查看最近的系統更新。',
