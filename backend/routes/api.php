@@ -385,6 +385,7 @@ Route::prefix('v1')->group(function () {
         Route::put('learning-records/{learningRecord}/teacher-comment', [LearningRecordTeacherCommentController::class, 'upsert']);
         Route::post('learning-record-teacher-comments/{comment}/read', [LearningRecordTeacherCommentController::class, 'markRead']);
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
+        Route::get('me/learning-pending-summary', [LearningRecordController::class, 'teacherPendingBadgeSummary']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
@@ -500,6 +501,7 @@ Route::prefix('v1')->group(function () {
         Route::get('schedule-discrepancies', [ScheduleDiscrepancyController::class, 'index']);
         Route::get('schedule-discrepancies/summary', [ScheduleDiscrepancyController::class, 'summary']);
         Route::put('schedule-discrepancies/{id}', [ScheduleDiscrepancyController::class, 'updateStatus']);
+        Route::get('reports/teacher-learning-fill-rates', [ClassSessionController::class, 'directorTeacherLearningFillRates']);
     });
 
     // ── Bug Reports (director + teacher: submit & view own; super_admin: branch queue + status) ──
