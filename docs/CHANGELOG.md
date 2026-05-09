@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — chore(ci): Golden scenarios 自動報告（取代人工勾選）
+
+- Added `.github/scripts/golden-ci-report.sh`（放於 `.github/` 下，避免僅 CI 工具卻觸發 `deploy.yml` 的 `scripts/` deployable）；Presubmit CHECK 6、`ci.yml` **Golden scenarios report**；`QA_GOLDEN_SCENARIOS`／`INDEX`／PR 模板；`ENTERPRISE_WORKFLOW_ALIGNMENT.md`／`CONTRIBUTING` 導航
+
+---
+
 ## 2026-05-09 — fix(import): 學生名冊 CSV/XLSX 標題列與 0 列匯入
 
 - Fixed `ImportController`：標題列掃描加深至前 30 列、`normalizeHeader` 支援全形空白；若僅有表頭無資料列回 **422** 並寫入可讀 `ErrorLog`；補 `StudentImportTest` 迴歸案例（#205）
