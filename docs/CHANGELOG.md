@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-09 — fix(substitute): 代課老師衝堂誤報修正（#275）
+
+- Fixed `SubstituteService::collectTeacherBusySlots` / `collectTeacherBusySlotsWithCapacity`：合約老師的課若已有代課安排，不再誤標為忙碌；修正代課選人 modal 錯誤顯示「在其他分校有課」的 false positive
+
+---
+
 ## 2026-05-09 — feat(learning): 老師評量待辦角標與一鍵開填、主任填寫率報表
 
 - Added 教學工作台優先開下一筆待填／`GET me/learning-pending-summary` 角標；主任儀表板近 14 天各老師已到班堂次之評量進度填寫率（`GET reports/teacher-learning-fill-rates`）

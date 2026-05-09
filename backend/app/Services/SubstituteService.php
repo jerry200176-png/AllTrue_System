@@ -51,13 +51,25 @@ class SubstituteService
         $scheduleRows = $scheduleQuery->get();
 
         // 來源 2：ClassSession.SessionDate 當日 + StudentClass.TeacherID = 老師，
-        // 排除已 cancelled / leave。由 Student.CampusID 推斷分校。
+        // 排除已 cancelled / leave，以及已有其他代課老師的堂次（合約老師不需出席）。
+        // 由 Student.CampusID 推斷分校。
         $sessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
             ->whereNotIn('cs.Status', ['cancelled', 'leave'])
+            ->whereNotExists(function ($sub) use ($teacherId) {
+                // 若該堂已有「其他老師」的代課安排，合約老師視為空閒
+                $sub->select(DB::raw(1))
+                    ->from('schedules as sub_sched')
+                    ->whereColumn('sub_sched.student_course_id', 'cs.StudentClassID')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->where('sub_sched.status', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id')
+                    ->where('sub_sched.teacher_id', '!=', $teacherId);
+            })
             ->select(
                 'cs.id as class_session_id',
                 'cs.StartTime as start_time',
@@ -118,12 +130,23 @@ class SubstituteService
         $excludeScheduleIds = array_values(array_unique(array_filter(array_map('intval', $excludeScheduleIds))));
 
         // 來源 1：ClassSession（含 ClassType，用於計算容量）
+        // 排除已有其他代課老師的堂次（合約老師不需出席，不佔用容量）。
         $sessionRows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
             ->whereDate('cs.SessionDate', $ymd)
             ->whereNotIn('cs.Status', ['cancelled', 'leave'])
+            ->whereNotExists(function ($sub) use ($teacherId) {
+                $sub->select(DB::raw(1))
+                    ->from('schedules as sub_sched')
+                    ->whereColumn('sub_sched.student_course_id', 'cs.StudentClassID')
+                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                    ->where('sub_sched.status', 'scheduled')
+                    ->whereNotNull('sub_sched.original_schedule_id')
+                    ->where('sub_sched.teacher_id', '!=', $teacherId);
+            })
             ->select(
                 'cs.StartTime as start_time',
                 'cs.EndTime as end_time',
