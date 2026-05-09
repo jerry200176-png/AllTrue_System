@@ -65,6 +65,7 @@ class LearningRecordController extends Controller
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
             $this->applyTeacherScopedLearningRecordConstraint($query, (int) $teacherId);
+            $query->excludeCancelledClassSessionForTeacherList();
         }
 
         if ($role !== 'teacher' && ($request->filled('branch_id') || $request->filled('campus_id'))) {
@@ -244,10 +245,12 @@ class LearningRecordController extends Controller
         $lrQuery->whereIn('Status', ['pending', 'changes_requested']);
         $lrQuery->excludePausedCoursePendingReview();
         $lrQuery->excludeLeaveSessionPendingReview();
+        $lrQuery->excludeCancelledClassSessionForTeacherList();
         if ($branchId > 0) {
             $lrQuery->whereHas('studentClass.student', fn ($stu) => $stu->where('CampusID', $branchId));
         }
         $pendingLr = (int) $lrQuery->count();
+        $changesRequestedLr = (int) (clone $lrQuery)->where('Status', 'changes_requested')->count();
 
         $today = Carbon::today()->toDateString();
         $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
@@ -294,6 +297,7 @@ class LearningRecordController extends Controller
 
         return response()->json([
             'pending_learning_records'         => $pendingLr,
+            'changes_requested_learning_records' => $changesRequestedLr,
             'today_sessions_without_record' => $missingToday,
             'total'                           => $total,
         ]);

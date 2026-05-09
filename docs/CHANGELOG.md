@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-05-10 — fix(teacher): 教學工作台評量數與已取消堂次可見性
+
+- Fixed 教學工作台「待填／待修改」數改走 `GET me/learning-pending-summary`，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總
+- Changed 老師 `GET learning-records` 排除已取消堂次之綁定列；主任清單仍可查（行政追蹤）
+- Added `me/learning-pending-summary` 回傳 `changes_requested_learning_records` 供工作台「需修改」計數
+- Changed 老師評量頁課表不再列出已取消堂次（主任視角不變）
+
+---
+
 ## 2026-05-09 — feat(parent): 家長互動狀態流、更新卡與通知整併
 
 - Added 家長入口新增互動狀態流（`submitted / in_progress / resolved`）與最後更新時間，家長可直接知道學校是否已接手處理

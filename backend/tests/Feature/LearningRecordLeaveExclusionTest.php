@@ -101,6 +101,35 @@ class LearningRecordLeaveExclusionTest extends TestCase
         $this->assertContains((int) $record->id, $ids, '已核准評量即使堂次為請假狀態仍應可查');
     }
 
+    public function test_teacher_index_excludes_lr_bound_to_cancelled_session(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-cancelled-lr@example.com');
+        $student = $this->createStudent(1, '學生-取消堂評量');
+        $courseId = $this->seedCourse($student->id, $teacherId);
+        $cs = $this->seedSession($courseId, 'cancelled');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+
+        $teacherToken = $this->createTeacherToken($teacherId);
+        $resTeacher = $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $resTeacher->assertOk();
+        $teacherIds = collect($resTeacher->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $record->id, $teacherIds, '老師不應看到已取消堂次之評量列');
+
+        $directorToken = $this->createDirectorToken([1], 'director-cancelled-lr-visible@example.com');
+        $resDirector = $this->withHeaders([
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $resDirector->assertOk();
+        $dirIds = collect($resDirector->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $record->id, $dirIds, '主任仍應可查已取消堂次之評量（行政追蹤）');
+    }
+
     public function test_pending_lr_on_attended_session_remains_visible_regression(): void
     {
         // 回歸：leave → attended 恢復路徑，評量必須仍可顯示／待審。
@@ -282,6 +311,18 @@ class LearningRecordLeaveExclusionTest extends TestCase
             'Approved' => 1,
         ]);
         return (int) $teacher->id;
+    }
+
+    private function createTeacherToken(int $teacherUserId): string
+    {
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create([
+            'user_id' => $teacherUserId,
+            'token' => $token,
+            'expires_at' => now()->addDay(),
+        ]);
+
+        return $token;
     }
 
     private function createStudent(int $campusId, string $name): Student
