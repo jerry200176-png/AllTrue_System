@@ -2596,7 +2596,10 @@ const onSubstituteV2Submit = async (submitPayload) => {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (!token) throw new Error('請重新登入');
+    if (!token) {
+      substituteV2PickerRef.value?.setError?.('請重新登入');
+      return;
+    }
     const body = {
       substitute_teacher_id: Number(substitute_teacher_id),
       reason: reason || null,
@@ -2620,7 +2623,7 @@ const onSubstituteV2Submit = async (submitPayload) => {
     if (!res.ok) {
       const msg = json.message || res.statusText || '代課設定失敗';
       substituteV2PickerRef.value?.setError?.(msg);
-      throw new Error(msg);
+      return;
     }
     showSubstituteV2Modal.value = false;
 
@@ -2683,7 +2686,8 @@ const onSubstituteV2Submit = async (submitPayload) => {
     await loadCourses();
   } catch (e) {
     substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
-    throw e;
+    // Expected validation/business rejection should stay in form state, not global error channel.
+    console.warn('[CourseManagement] substitute submit failed', e);
   }
 };
 
