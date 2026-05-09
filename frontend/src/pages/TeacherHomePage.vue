@@ -144,6 +144,29 @@
         </button>
       </div>
 
+      <div class="th-priority-board">
+        <div class="th-priority-head">
+          <span class="material-symbols-outlined" style="font-size:16px">priority_high</span>
+          今日最重要 3 件事
+        </div>
+        <div class="th-priority-items">
+          <button
+            v-for="item in topPriorityItems"
+            :key="item.key"
+            type="button"
+            class="th-priority-item"
+            @click="item.onClick"
+          >
+            <span class="th-priority-rank">{{ item.rank }}</span>
+            <div class="th-priority-body">
+              <span class="th-priority-title">{{ item.title }}</span>
+              <span class="th-priority-desc">{{ item.description }}</span>
+            </div>
+            <span class="material-symbols-outlined">chevron_right</span>
+          </button>
+        </div>
+      </div>
+
       <div class="th-task-board">
         <div class="th-task-board-head">
           <span class="material-symbols-outlined" style="font-size:16px">checklist</span>
@@ -578,6 +601,64 @@ const progressTrendText = computed(() => {
 const todayTaskCount = computed(() => todayPendingEvents.value.length);
 const overdueTaskCount = computed(() => overdueCount.value);
 const changesRequestedTaskCount = computed(() => changesRequestedLearningCount.value);
+
+const topPriorityItems = computed(() => {
+  const items = [];
+  if (overdueTaskCount.value > 0) {
+    items.push({
+      key: 'overdue',
+      rank: '1',
+      title: `優先補填逾期評量（${overdueTaskCount.value}）`,
+      description: '先處理逾期內容，避免待辦持續累積',
+      onClick: openOverdueTask,
+      score: 100,
+    });
+  }
+  if (changesRequestedTaskCount.value > 0) {
+    items.push({
+      key: 'changes',
+      rank: '2',
+      title: `處理需修改評量（${changesRequestedTaskCount.value}）`,
+      description: '回覆主任修改建議，避免反覆退回',
+      onClick: openChangesRequestedTask,
+      score: 90,
+    });
+  }
+  if (todayTaskCount.value > 0) {
+    items.push({
+      key: 'today-learning',
+      rank: '3',
+      title: `完成今日待填評量（${todayTaskCount.value}）`,
+      description: '把今天課程評量一次完成',
+      onClick: fillNextPendingLearning,
+      score: 80,
+    });
+  }
+  if (pendingAttendanceCount.value > 0) {
+    items.push({
+      key: 'attendance',
+      rank: '3',
+      title: `完成待點名課程（${pendingAttendanceCount.value}）`,
+      description: '先完成點名，避免課程狀態延遲',
+      onClick: goAttendance,
+      score: 70,
+    });
+  }
+  if (items.length === 0) {
+    items.push({
+      key: 'done',
+      rank: '✓',
+      title: '今天重點任務已完成',
+      description: '可查看班級行事曆或科目數進度',
+      onClick: () => emit('navigate', 'calendar'),
+      score: 0,
+    });
+  }
+  return items
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((item, idx) => ({ ...item, rank: item.rank === '✓' ? '✓' : String(idx + 1) }));
+});
 
 async function fetchLearningProgress() {
   learningProgressLoading.value = true;
@@ -1060,7 +1141,8 @@ onBeforeUnmount(() => {
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
 .th-task-board,
-.th-progress-board {
+.th-progress-board,
+.th-priority-board {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid var(--border);
@@ -1068,7 +1150,8 @@ onBeforeUnmount(() => {
   background: var(--card-bg);
 }
 .th-task-board-head,
-.th-progress-head {
+.th-progress-head,
+.th-priority-head {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1081,6 +1164,58 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.th-priority-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.th-priority-item {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.th-priority-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.th-priority-body {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.th-priority-title {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.th-priority-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-light);
 }
 .th-task-item {
   border: 1px solid var(--border);
