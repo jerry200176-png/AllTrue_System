@@ -82,6 +82,7 @@ function plainTextFromEntry(rawTitle, itemLines) {
   const title = String(rawTitle || '');
 
   const rules = [
+    [/feat\(adoption\)|採用率|任務追蹤|weekly-metrics|task-tracker|activity-log/i, '首頁新增優先待辦、近期操作與每週使用率指標，協助主任與老師更穩定使用系統'],
     [/Dashboard 欄位|系統待機動畫|白話版本公告/i, '主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡'],
     [/版本更新.*CHANGELOG|sync release notes|release notes/i, '版本更新會自動整理最近變更，顯示成更好讀的更新公告'],
     [/主任總覽.*緊湊|desktop/i, '主任總覽在電腦版重新整理版面，畫面更平均也更不需要一直往下滑'],
