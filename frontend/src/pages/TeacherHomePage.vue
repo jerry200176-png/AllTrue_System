@@ -151,11 +151,11 @@
         </div>
         <div class="th-priority-items">
           <button
-            v-for="item in topPriorityItems"
-            :key="item.key"
+            v-for="item in teacherTodoCards"
+            :key="item.id"
             type="button"
             class="th-priority-item"
-            @click="item.onClick"
+            @click="handleTodoCardClick(item)"
           >
             <span class="th-priority-rank">{{ item.rank }}</span>
             <div class="th-priority-body">
@@ -395,6 +395,8 @@ import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
+import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
+import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -606,59 +608,86 @@ const topPriorityItems = computed(() => {
   const items = [];
   if (overdueTaskCount.value > 0) {
     items.push({
-      key: 'overdue',
-      rank: '1',
+      id: 'teacher-overdue',
       title: `優先補填逾期評量（${overdueTaskCount.value}）`,
       description: '先處理逾期內容，避免待辦持續累積',
       onClick: openOverdueTask,
       score: 100,
+      status: 'overdue',
+      owner: 'teacher',
+      dueAt: localTodayYmd(),
     });
   }
   if (changesRequestedTaskCount.value > 0) {
     items.push({
-      key: 'changes',
-      rank: '2',
+      id: 'teacher-changes',
       title: `處理需修改評量（${changesRequestedTaskCount.value}）`,
       description: '回覆主任修改建議，避免反覆退回',
       onClick: openChangesRequestedTask,
       score: 90,
+      status: 'pending',
+      owner: 'teacher',
+      dueAt: localTodayYmd(),
     });
   }
   if (todayTaskCount.value > 0) {
     items.push({
-      key: 'today-learning',
-      rank: '3',
+      id: 'teacher-today-learning',
       title: `完成今日待填評量（${todayTaskCount.value}）`,
       description: '把今天課程評量一次完成',
       onClick: fillNextPendingLearning,
       score: 80,
+      status: 'pending',
+      owner: 'teacher',
+      dueAt: localTodayYmd(),
     });
   }
   if (pendingAttendanceCount.value > 0) {
     items.push({
-      key: 'attendance',
-      rank: '3',
+      id: 'teacher-attendance',
       title: `完成待點名課程（${pendingAttendanceCount.value}）`,
       description: '先完成點名，避免課程狀態延遲',
       onClick: goAttendance,
       score: 70,
+      status: 'pending',
+      owner: 'teacher',
+      dueAt: localTodayYmd(),
     });
   }
   if (items.length === 0) {
     items.push({
-      key: 'done',
-      rank: '✓',
+      id: 'teacher-all-clear',
       title: '今天重點任務已完成',
       description: '可查看班級行事曆或科目數進度',
       onClick: () => emit('navigate', 'calendar'),
       score: 0,
+      status: 'done',
+      owner: 'teacher',
+      dueAt: localTodayYmd(),
     });
   }
-  return items
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map((item, idx) => ({ ...item, rank: item.rank === '✓' ? '✓' : String(idx + 1) }));
+  return items;
 });
+
+const teacherTodoCards = computed(() =>
+  sortTodoCards(topPriorityItems.value)
+    .slice(0, 3)
+    .map((item, idx) => ({
+      ...item,
+      rank: item.status === 'done' ? '✓' : String(idx + 1),
+      acknowledged: isTodoAcknowledged(item.id),
+    })));
+
+function handleTodoCardClick(item) {
+  if (!item) return;
+  markTodoAcknowledged(item.id);
+  trackAdoptionEvent('todo_card_clicked', props.branchId, {
+    todo_id: item.id,
+    status: item.status,
+    owner: item.owner,
+  });
+  item.onClick?.();
+}
 
 async function fetchLearningProgress() {
   learningProgressLoading.value = true;
@@ -1097,6 +1126,7 @@ function handleReportWithdrawn() {
 }
 
 onMounted(() => {
+  trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
   Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
