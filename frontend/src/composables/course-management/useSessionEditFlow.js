@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { getPerSessionFee, getRateUnit } from '../../lib/coursePricing';
+import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -195,7 +196,12 @@ export function useSessionEditFlow({
   async function doStatusChange(newStatus) {
     const form = sessionEditForm.value;
     if (!form.session_id) return;
-    if (!confirm(`確定要將此堂狀態改為「${sessionStatusLabel(newStatus)}」嗎？`)) return;
+    const preview = [
+      `目前狀態：${sessionStatusLabel(form.current_status)}`,
+      `變更後：${sessionStatusLabel(newStatus)}`,
+      '本次操作會寫入堂次紀錄，可於單堂編輯改回。',
+    ].join('\n');
+    if (!confirm(`狀態變更預覽\n\n${preview}\n\n確認送出？`)) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -216,6 +222,9 @@ export function useSessionEditFlow({
       if (json.session) {
         updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
       }
+      const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
+      const event = (form.current_status !== 'scheduled' && newStatus === 'scheduled') ? 'flow_undone' : 'flow_submitted';
+      trackAdoptionEvent(event, bid, { flow: 'session_status', from: form.current_status, to: newStatus });
       closeSessionEdit();
       alert(json.message || '狀態已更新');
       await loadCourses();
@@ -293,7 +302,12 @@ export function useSessionEditFlow({
   async function doSessionReschedule() {
     const form = sessionEditForm.value;
     if (!form.new_date || !form.session_id) return;
-    if (!confirm(`確定要將 ${form.session_date} 的課程調到 ${form.new_date} ${form.new_start} 嗎？`)) return;
+    const reschedulePreview = [
+      `原堂次：${form.session_date} ${form.start_time}~${form.end_time}`,
+      `新堂次：${form.new_date} ${form.new_start}`,
+      '系統會建立追蹤記錄，並同步評量堂次。',
+    ].join('\n');
+    if (!confirm(`調課影響預覽\n\n${reschedulePreview}\n\n確認送出？`)) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -386,6 +400,7 @@ export function useSessionEditFlow({
 
       closeSessionEdit();
       alert('調課完成');
+      trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'session-edit' });
       await loadCourses();
     } catch (e) {
       alert('調課失敗：' + (e?.message || '請稍後再試'));

@@ -350,6 +350,43 @@
             <!-- PRD 9c058f19：近 7 天代課記錄 -->
             <RecentSubstitutesCard :branch-id="branchId" :fetch-recent="fetchRecentSubstitutes" />
 
+            <section class="wp" id="director-task-tracker-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">checklist</span>
+                <h3>流程追蹤</h3>
+                <span v-if="directorTodoCards.length" class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
+              </header>
+              <div v-if="adoptionTaskLoading" class="wp__empty">載入追蹤中…</div>
+              <div v-else-if="!directorTodoCards.length" class="wp__empty">目前沒有待追蹤項目</div>
+              <div v-else class="wp-list-scroll-desktop">
+                <button
+                  v-for="task in directorTodoCards"
+                  :key="task.id"
+                  type="button"
+                  class="todo-row"
+                  @click="handleDirectorTodoClick(task)"
+                >
+                  <span class="todo-row__title">{{ task.title }}</span>
+                  <span class="todo-row__meta">{{ task.description }}</span>
+                </button>
+              </div>
+            </section>
+
+            <section class="wp" id="director-activity-log-sec">
+              <header class="wp__head">
+                <span class="material-symbols-outlined wp__hi">history</span>
+                <h3>近期操作履歷</h3>
+              </header>
+              <div v-if="adoptionActivityLoading" class="wp__empty">載入履歷中…</div>
+              <div v-else-if="!adoptionActivityRows.length" class="wp__empty">尚無近期履歷</div>
+              <div v-else class="wp-list-scroll-desktop">
+                <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
+                  <span>{{ log.actor }}：{{ log.action }}</span>
+                  <span class="badge-blue">{{ String(log.at || '').slice(5, 16).replace('T', ' ') }}</span>
+                </div>
+              </div>
+            </section>
+
             <!-- Teacher learning fill-rate -->
             <section class="wp" id="teacher-fill-rates-sec">
               <header class="wp__head">
@@ -402,6 +439,20 @@
             <span class="kpi__chev">&#x25BE;</span>
           </summary>
           <div class="kpi__body">
+            <div class="kpi-totals kpi-totals--adoption">
+              <div class="kpi-t">
+                <div class="kpi-t__label">老師開啟率（7天）</div>
+                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.teacher_open_rate_pct ?? 0}%` }}</div>
+              </div>
+              <div class="kpi-t">
+                <div class="kpi-t__label">主任開啟率（7天）</div>
+                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.director_open_rate_pct ?? 0}%` }}</div>
+              </div>
+              <div class="kpi-t">
+                <div class="kpi-t__label">系統內完成率（7天）</div>
+                <div class="kpi-t__val">{{ adoptionWeeklyMetricsLoading ? '…' : `${adoptionWeeklyMetrics?.system_completion_rate_pct ?? 0}%` }}</div>
+              </div>
+            </div>
             <div class="kpi-totals">
               <div class="kpi-t">
                 <div class="kpi-t__label">含輔導科目數</div>
@@ -483,6 +534,8 @@ import { getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
+import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
+import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import {
   listExceptionWorkflows,
   getExceptionWorkflow,
@@ -521,6 +574,12 @@ const teacherFillRatesDays = 14;
 const teacherFillRatesRows = ref([]);
 const teacherFillRatesMeta = ref({ start: '', end: '', days: teacherFillRatesDays });
 const teacherFillRatesLoading = ref(false);
+const adoptionTaskRows = ref([]);
+const adoptionTaskLoading = ref(false);
+const adoptionActivityRows = ref([]);
+const adoptionActivityLoading = ref(false);
+const adoptionWeeklyMetrics = ref(null);
+const adoptionWeeklyMetricsLoading = ref(false);
 
 const teacherFillRatesRangeLabel = computed(() => {
   const s = teacherFillRatesMeta.value?.start || '';
@@ -544,6 +603,82 @@ async function loadScheduleDiscrepancySummary() {
 
 function goToScheduleDiscrepancy() {
   emit('navigate', { target: 'schedule-discrepancy' });
+}
+
+async function loadAdoptionTaskTracker(token, baseUrl) {
+  if (!props.branchId) return;
+  adoptionTaskLoading.value = true;
+  try {
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`${baseUrl}/v1/adoption/task-tracker?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    adoptionTaskRows.value = Array.isArray(json?.data) ? json.data : [];
+  } catch (e) {
+    console.warn('loadAdoptionTaskTracker', e);
+  } finally {
+    adoptionTaskLoading.value = false;
+  }
+}
+
+async function loadAdoptionActivityLog(token, baseUrl) {
+  if (!props.branchId) return;
+  adoptionActivityLoading.value = true;
+  try {
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`${baseUrl}/v1/adoption/activity-log?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    adoptionActivityRows.value = Array.isArray(json?.data) ? json.data : [];
+  } catch (e) {
+    console.warn('loadAdoptionActivityLog', e);
+  } finally {
+    adoptionActivityLoading.value = false;
+  }
+}
+
+async function loadAdoptionWeeklyMetrics(token, baseUrl) {
+  if (!props.branchId) return;
+  adoptionWeeklyMetricsLoading.value = true;
+  try {
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`${baseUrl}/v1/adoption/weekly-metrics?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    adoptionWeeklyMetrics.value = json?.data || null;
+  } catch (e) {
+    console.warn('loadAdoptionWeeklyMetrics', e);
+  } finally {
+    adoptionWeeklyMetricsLoading.value = false;
+  }
+}
+
+function handleDirectorTodoClick(task) {
+  if (!task) return;
+  markTodoAcknowledged(task.id);
+  trackAdoptionEvent('todo_card_clicked', props.branchId, {
+    todo_id: task.id,
+    status: task.status,
+    owner: task.owner,
+  });
+  if (task?.target?.page === 'learning') {
+    emit('navigate', { target: 'learning', recordId: task.target.recordId || null });
+    return;
+  }
+  if (task?.target?.page === 'schedule-discrepancy') {
+    emit('navigate', { target: 'schedule-discrepancy' });
+    return;
+  }
+  if (task?.target?.section === 'exception-workflows') {
+    scrollTo('exception-workflows');
+    return;
+  }
 }
 
 const importFileInput = ref(null);
@@ -598,6 +733,23 @@ const displayPaymentAlerts = computed(() =>
     ? lowBalanceStudents.value
     : lowBalanceStudents.value.slice(0, paymentAlertLimit)
 );
+
+const directorTodoCards = computed(() =>
+  sortTodoCards((adoptionTaskRows.value || []).map((task) => {
+    const dueAt = String(task?.due_at || '');
+    const now = localTodayYmd();
+    const status = dueAt && dueAt < now ? 'overdue' : String(task?.status || 'pending');
+    return {
+      id: task.id,
+      title: task.title || '待辦',
+      description: `${task.owner || '主任'} · 截止 ${dueAt || '未設定'}`,
+      owner: task.owner || '主任',
+      status,
+      dueAt,
+      target: task.target || {},
+      acknowledged: isTodoAcknowledged(task.id),
+    };
+  })));
 
 /** 上方快捷列用：區分「真的未繳」與「已繳但低堂數／月結」避免誤以為催繳失敗 */
 const paymentActionLaneLabel = computed(() => {
@@ -789,6 +941,11 @@ const loadData = async () => {
 
   await loadNotificationSummary(token, baseUrl);
   await loadExceptionWorkflows();
+  await Promise.all([
+    loadAdoptionTaskTracker(token, baseUrl),
+    loadAdoptionActivityLog(token, baseUrl),
+    loadAdoptionWeeklyMetrics(token, baseUrl),
+  ]);
 
   const today = localTodayYmd();
   try {
@@ -1121,6 +1278,7 @@ watch(() => props.branchId, () => {
   loadScheduleDiscrepancySummary();
 });
 onMounted(() => {
+  trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'director', page: 'director-dashboard' });
   loadData();
   loadScheduleDiscrepancySummary();
 });
@@ -1906,6 +2064,33 @@ onMounted(() => {
   background: rgba(255,255,255,0.84);
 }
 
+.todo-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: calc(100% - 24px);
+  margin: 0 12px 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.84);
+  cursor: pointer;
+}
+.todo-row:hover {
+  border-color: rgba(37, 99, 235, 0.22);
+  background: #f8fafc;
+}
+.todo-row__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.todo-row__meta {
+  font-size: 12px;
+  color: #64748b;
+}
+
 /* ===== KPI Panel ===== */
 .kpi {
   background:
@@ -1955,6 +2140,9 @@ onMounted(() => {
   margin-bottom: 16px;
   padding-bottom: 14px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+.kpi-totals--adoption {
+  margin-bottom: 10px;
 }
 .kpi-t__label {
   font-size: 11px;

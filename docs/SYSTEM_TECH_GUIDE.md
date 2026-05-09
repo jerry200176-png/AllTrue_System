@@ -385,8 +385,56 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 ---
 
+## 11. 採用率與信任度資料流（Adoption v1）
+
+### 11.1 事件埋點（前端 → API）
+
+前端統一透過 `frontend/src/lib/adoptionTelemetry.js` 呼叫：
+
+```
+POST /api/v1/adoption/events
+{
+  event: "dashboard_opened" | "todo_card_clicked" | "flow_submitted" | "flow_undone",
+  branch_id: number,
+  meta: object
+}
+```
+
+後端 `AdoptionInsightsController::recordEvent()` 會把事件寫入 daily log（`adoption_event`），不阻塞主流程。
+
+### 11.2 待辦卡聚合（Task Tracker）
+
+```
+GET /api/v1/adoption/task-tracker?branch_id=...
+```
+
+資料來源：
+- `LearningRecord`（`pending` / `changes_requested` 且 SessionDate <= today）
+- `exception_workflows`（`open` / `candidate_ready`）
+- `schedule_discrepancies`（`pending` / `acknowledged`）
+
+輸出包含 `status`、`owner`、`due_at`、`target`（深連結資訊），供首頁待辦卡排序與一鍵導頁。
+
+### 11.3 活動履歷與週報
+
+```
+GET /api/v1/adoption/activity-log?branch_id=...
+GET /api/v1/adoption/weekly-metrics?branch_id=...
+```
+
+- `activity-log`：聚合登入活動、評量核准、課表回報狀態更新（管理視角「誰在何時做了什麼」）。
+- `weekly-metrics`：近 7 天老師/主任開啟率、系統內完成率、flow submitted/undone。
+
+### 11.4 前端回寫策略
+
+- 待辦卡已讀狀態使用 `frontend/src/lib/adoptionTodo.js` 寫入 localStorage（key: `alltrue_todo_ack_map_v1`）。
+- 卡片點擊後先回寫已讀，再觸發深連結與 `todo_card_clicked` 埋點，避免「有點擊但待辦無感」。
+
+---
+
 ## 修訂記錄
 
 | 日期 | 變更 | 相關 PR |
 |---|---|---|
+| 2026-05-09 | 新增 Adoption v1：待辦卡資料流、活動履歷、週報指標與埋點事件 | pending |
 | 2026-04-23 | 初版建立：Identity、Attendance、ClassSession、Swipe Flow、Gotchas | PR #23 |
