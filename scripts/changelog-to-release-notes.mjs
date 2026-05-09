@@ -25,9 +25,17 @@ function shouldSkipHeading(title) {
   );
 }
 
-function calendarVersion(date) {
-  const [y, m, d] = String(date || '').split('-');
-  return `v${Number(y) || y}.${Number(m) || m}.${Number(d) || d}`;
+function buildVersionMap(dates) {
+  const sorted = [...new Set(dates)].sort();
+  /** @type {Map<string, string>} */
+  const versionByDate = new Map();
+
+  for (let i = 0; i < sorted.length; i += 1) {
+    const date = sorted[i];
+    versionByDate.set(date, `1.0.${i + 1}`);
+  }
+
+  return versionByDate;
 }
 
 function stripTechNoise(s) {
@@ -45,14 +53,28 @@ function stripTechNoise(s) {
     .replace(/\b[a-zA-Z0-9_./-]+\.(vue|js|mjs|php|md|yml|json|cjs)\b/g, '')
     .replace(/\b[A-Za-z_][A-Za-z0-9_]*\(\)/g, '')
     .replace(/\bFR-\d+\b/g, '')
+    .replace(/\bPR\s*\)?/gi, '')
+    .replace(/^-+/g, '')
+    .replace(/-style/gi, ' 介面')
+    .replace(/-inspired/gi, ' 風格')
     .replace(/\s*[：:]\s*/g, '：')
     .replace(/\s+/g, ' ')
     .trim();
   t = t.replace(/^[A-Za-z]+(?:\([^)]+\))?[：:]?\s*/i, '').trim();
+  t = t.replace(/^[^A-Za-z0-9\u4e00-\u9fff]+/, '').trim();
+  t = t.replace(/\(\s*\)/g, '').trim();
   if (t.length > 240) {
     return `${t.slice(0, 237)}…`;
   }
   return t;
+}
+
+function isReadablePhrase(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  if (t.length < 4) return false;
+  if (/^[\W_]+$/.test(t)) return false;
+  return true;
 }
 
 function plainTextFromEntry(rawTitle, itemLines) {
@@ -84,9 +106,10 @@ function plainTextFromEntry(rawTitle, itemLines) {
   }
 
   const cleanTitle = stripTechNoise(title.replace(/^([^:：]+)[：:]\s*/, ''));
-  if (cleanTitle) return cleanTitle;
+  if (isReadablePhrase(cleanTitle)) return cleanTitle;
   const cleanItem = stripTechNoise(itemLines[0] || title);
-  return cleanItem || '改善系統操作體驗';
+  if (isReadablePhrase(cleanItem)) return cleanItem;
+  return '優化系統使用體驗';
 }
 
 function categoryForTitle(rawTitle) {
@@ -132,6 +155,9 @@ function parseChangelog(md) {
 
     const category = categoryForTitle(rawTitle);
     const text = plainTextFromEntry(rawTitle, items);
+    if (!isReadablePhrase(text)) {
+      continue;
+    }
     if (!grouped.has(date)) grouped.set(date, new Map());
     const sections = grouped.get(date);
     if (!sections.has(category)) sections.set(category, []);
@@ -139,17 +165,19 @@ function parseChangelog(md) {
     if (!bucket.includes(text)) bucket.push(text);
   }
 
+  const versionByDate = buildVersionMap([...grouped.keys()]);
   const notes = [];
   for (const [date, sectionMap] of grouped.entries()) {
+    const version = versionByDate.get(date) || '1.1.1';
     const sectionOrder = ['新增內容', '修正內容', '體驗調整', '其他改善'];
     const sections = sectionOrder
       .map((title) => ({ title, items: (sectionMap.get(title) || []).slice(0, 6) }))
       .filter((section) => section.items.length > 0);
 
     notes.push({
-      version: calendarVersion(date),
+      version,
       date,
-      title: `${calendarVersion(date)} 更新內容`,
+      title: `${version} 版本更新`,
       summary: buildSummary(sections),
       audience: ['teacher', 'director'],
       sections,
@@ -163,7 +191,7 @@ function parseChangelog(md) {
 
   if (notes.length === 0) {
     notes.push({
-      version: calendarVersion(new Date().toISOString().slice(0, 10)),
+      version: '1.1.1',
       date: new Date().toISOString().slice(0, 10),
       title: '系統更新紀錄',
       summary: '可在這裡查看最近的系統更新。',

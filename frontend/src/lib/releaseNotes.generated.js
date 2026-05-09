@@ -4,203 +4,227 @@
  */
 export const changelogReleaseNotes = [
   {
-    "version": "2026-05-09",
-    "title": "feat(ui): 版本更新由 CHANGELOG 同步、主任總覽桌面版更緊湊",
+    "version": "1.0.7",
+    "date": "2026-05-09",
+    "title": "1.0.7 版本更新",
+    "summary": "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "體驗調整",
+        "items": [
+          "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡"
+        ]
+      }
+    ],
     "items": [
-      "Added 「scripts/changelog-to-release-notes.mjs」＋「npm run sync-release-notes」：「build」 與 CI 先從 「docs/CHANGELOG.md」 產生課程向更新卡（略過純維運／chore／docs 類標題）",
-      "Changed 主任總覽 「≥1100px」 縮短上下節奏；長列表區塊改為區內捲動以降低整頁長度",
-      "Added「版本更新」頁底 GitHub CHANGELOG 連結"
+      "主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "Fixed（ui）: Super Admin 「版本更新」空白",
+    "version": "1.0.6",
+    "date": "2026-05-08",
+    "title": "1.0.6 版本更新",
+    "summary": "例外堂補建 ClassSession 避免灰色堂次消失；教學工作台補填提醒點入時會同步切換至對應分校並定位堂次，且評量頁可顯示近期需補填的非 active 課程，避免提醒可見但無法填寫",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "例外堂補建 ClassSession 避免灰色堂次消失",
+          "教學工作台補填提醒點入時會同步切換至對應分校並定位堂次，且評量頁可顯示近期需補填的非 active 課程，避免提醒可見但無法填寫"
+        ]
+      }
+    ],
     "items": [
-      "Fixed 「notesForRole」：super_admin／admin 對齊可看主任／老師向發布備註；CI 增加 「npm run test:release-notes」"
+      "例外堂補建 ClassSession 避免灰色堂次消失",
+      "教學工作台補填提醒點入時會同步切換至對應分校並定位堂次，且評量頁可顯示近期需補填的非 active 課程，避免提醒可見但無法填寫"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "fix(learning): 暫停課程最後堂 scheduled 未回寫仍可見待審評量",
+    "version": "1.0.5",
+    "date": "2026-04-29",
+    "title": "1.0.5 版本更新",
+    "summary": "課程管理例外堂被請假或取消後，日期 chip 外層標籤優先顯示請假/取消，例外堂改保留在提示資訊；同一學生課程同日多時段時，代課老師評量列表與儲存權限改以同日期同開始時間判定，避免看到非自己時段後儲存 Forbidden",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程管理例外堂被請假或取消後，日期 chip 外層標籤優先顯示請假/取消，例外堂改保留在提示資訊",
+          "同一學生課程同日多時段時，代課老師評量列表與儲存權限改以同日期同開始時間判定，避免看到非自己時段後儲存 Forbidden",
+          "老師自行註冊、主任新增老師與主任申請頁的密碼提示/前端檢查同步為 8 碼，並以緊急前端靜態檔部署上線",
+          "老師登入帳號診斷補充 User fallback",
+          "read-only teacher sign-in diagnostic workflow to support exact lookup when the displayed teacher name is unknown",
+          "read-only teacher sign-in diagnostic command and manual workflow to inspect missing sign-ins without modifying oduction data"
+        ]
+      }
+    ],
     "items": [
-      "Fixed 「LearningRecord::excludePausedCoursePendingReview」：課程已 Stop 且堂次結束時間已過但仍為 「scheduled」 時，保留 「pending」／「changes_requested」 於列表（避免最後一堂評量永遠載不出、主任無法退回）"
+      "課程管理例外堂被請假或取消後，日期 chip 外層標籤優先顯示請假/取消，例外堂改保留在提示資訊",
+      "同一學生課程同日多時段時，代課老師評量列表與儲存權限改以同日期同開始時間判定，避免看到非自己時段後儲存 Forbidden",
+      "老師自行註冊、主任新增老師與主任申請頁的密碼提示/前端檢查同步為 8 碼，並以緊急前端靜態檔部署上線",
+      "老師登入帳號診斷補充 User fallback",
+      "read-only teacher sign-in diagnostic workflow to support exact lookup when the displayed teacher name is unknown",
+      "read-only teacher sign-in diagnostic command and manual workflow to inspect missing sign-ins without modifying oduction data"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "fix(substitute): 調課時代課老師被合約老師時段誤阻修正",
+    "version": "1.0.4",
+    "date": "2026-04-28",
+    "title": "1.0.4 版本更新",
+    "summary": "主任總覽儀表板與近 7 天代課紀錄卡片的字體、間距與資訊層級，延續 Porsche 風格 light-first 視覺系統；學生帳務對帳視窗依 ledger 權限顯示一般作廢或沖銷作廢，避免未收款錯帳誤走沖銷流程",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "主任總覽儀表板與近 7 天代課紀錄卡片的字體、間距與資訊層級，延續 Porsche 風格 light-first 視覺系統"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "學生帳務對帳視窗依 ledger 權限顯示一般作廢或沖銷作廢，避免未收款錯帳誤走沖銷流程",
+          "錯帳沖銷作廢與 ledger 狀態",
+          "總覽代課動態卡片在子元件內補齊 header/badge 樣式，貼齊今日課表排版並避免裸排版",
+          "智慧行事曆同課程同日同時存在請假與 scheduled 例外時保留請假卡，避免張正樂 4/29 請假在課表消失",
+          "課程管理月結帳單作廢入口，限制未收款帳單必填原因並保留稽核紀錄，同時修正總覽代課動態卡片排版與 CJK 字型 fallback",
+          "同一張 RFID 同時命中大安老師分校卡與學生卡時，刷卡會優先建立老師打卡，避免老師出缺勤列表看不到本人刷卡紀錄"
+        ]
+      }
+    ],
     "items": [
-      "Fixed 「ScheduleController::store」 FR-003：建立調課目標排程列時，若合約老師(A)已有代課老師(B)指派，改以B為基準做衝堂檢查，避免A的其他課程錯誤阻擋有效的調課操作"
+      "主任總覽儀表板與近 7 天代課紀錄卡片的字體、間距與資訊層級，延續 Porsche 風格 light-first 視覺系統",
+      "學生帳務對帳視窗依 ledger 權限顯示一般作廢或沖銷作廢，避免未收款錯帳誤走沖銷流程",
+      "錯帳沖銷作廢與 ledger 狀態",
+      "總覽代課動態卡片在子元件內補齊 header/badge 樣式，貼齊今日課表排版並避免裸排版",
+      "智慧行事曆同課程同日同時存在請假與 scheduled 例外時保留請假卡，避免張正樂 4/29 請假在課表消失",
+      "課程管理月結帳單作廢入口，限制未收款帳單必填原因並保留稽核紀錄，同時修正總覽代課動態卡片排版與 CJK 字型 fallback",
+      "同一張 RFID 同時命中大安老師分校卡與學生卡時，刷卡會優先建立老師打卡，避免老師出缺勤列表看不到本人刷卡紀錄"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "fix(substitute): 代課老師衝堂誤報修正（#275）",
+    "version": "1.0.3",
+    "date": "2026-04-27",
+    "title": "1.0.3 版本更新",
+    "summary": "主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche 介面 霧面工作卡；主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche 介面 霧面工作卡",
+          "主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計",
+          "狀態與 Modal 補強",
+          "課程管理學生群組、課程 row、操作按鈕與詳情面板的戰術資訊列視覺，提升掃描速度與高風險狀態辨識度",
+          "風格 command center 首屏",
+          "課程管理主列表、學生群組卡、課程狀態標籤、歷史課程卡與空狀態的 emium 視覺層級，並補上初次載入 skeleton"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "課程管理加購、月結續約、暫停/恢復、刪除在送出中會鎖定按鈕與 modal，降低雙擊或重送造成重複操作的風險",
+          "課程管理月結課程「帳單」入口，主任可查看各期 billing period 的已繳、未繳、部分繳狀態",
+          "0元課程可核帳結算",
+          "課程管理補課與暫停 UI SaaS 化",
+          "課程直接改為歷史狀態時也會取消未來 scheduled 堂次，避免結算後仍顯示未來排課"
+        ]
+      },
+      {
+        "title": "體驗調整",
+        "items": [
+          "AllTrue Porsche 風格 light-first 視覺系統規格與共用前端 token/class，作為後續頁面升級的單一設計依據",
+          "課程管理與主任儀表板首屏為 light-first 高級霧面視覺，收斂過重 HUD/雷達感並統一 Porsche 風格 設計語言"
+        ]
+      }
+    ],
     "items": [
-      "Fixed 「SubstituteService::collectTeacherBusySlots」 / 「collectTeacherBusySlotsWithCapacity」：合約老師的課若已有代課安排，不再誤標為忙碌；修正代課選人 modal 錯誤顯示「在其他分校有課」的 false positive"
+      "主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche 介面 霧面工作卡",
+      "主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計",
+      "狀態與 Modal 補強",
+      "課程管理學生群組、課程 row、操作按鈕與詳情面板的戰術資訊列視覺，提升掃描速度與高風險狀態辨識度",
+      "風格 command center 首屏",
+      "課程管理主列表、學生群組卡、課程狀態標籤、歷史課程卡與空狀態的 emium 視覺層級，並補上初次載入 skeleton",
+      "課程管理加購、月結續約、暫停/恢復、刪除在送出中會鎖定按鈕與 modal，降低雙擊或重送造成重複操作的風險",
+      "課程管理月結課程「帳單」入口，主任可查看各期 billing period 的已繳、未繳、部分繳狀態"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "fix(schedule): 代課後調課寫 schedules 自動採 effective 代課老師",
+    "version": "1.0.2",
+    "date": "2026-04-26",
+    "title": "1.0.2 版本更新",
+    "summary": "學習評量「學習進度與家長溝通」快捷片語擴充為 10 個家長友善選項，預設顯示 6 個並可展開更多，降低老師撰寫評語負擔；通知中心「標記已繳費」可填繳費日期、方式、金額與備註，並同步建立 Payment / Invoice 核帳記錄",
     "audience": [
       "teacher",
       "director"
     ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "學習評量「學習進度與家長溝通」快捷片語擴充為 10 個家長友善選項，預設顯示 6 個並可展開更多，降低老師撰寫評語負擔",
+          "通知中心「標記已繳費」可填繳費日期、方式、金額與備註，並同步建立 Payment / Invoice 核帳記錄",
+          "三 Tab 架構改版，學習優先（）",
+          "通知中心 v2"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "家長回饋 mark-read 不再更新回饋內容時間，避免刷新後又變未讀；學習評量表新增有回饋／未讀回饋篩選",
+          "處理 MIME type 錯誤 及 N+1 誤判 （）",
+          "對月結制（payment_type=monthly）課程缺少保護，RemainingSessions=0 + 已繳費導致課程被過濾，補習科目/堂數欄顯示「尚未設定」",
+          "密碼改完撤銷全部 token + CSP Report-Only + debug_mode 監測"
+        ]
+      }
+    ],
     "items": [
-      "Fixed 「POST /schedules」 對 「scheduled」 + 「original_schedule_id」（調課目標列）先做 anchor 鏈結代課老師消解，避免請求沿用 「StudentClass.TeacherID」 觸發假性撞課；行事曆 「submitReschedule」 同步將 「teacher_id」 對齊已存在的代課列"
+      "學習評量「學習進度與家長溝通」快捷片語擴充為 10 個家長友善選項，預設顯示 6 個並可展開更多，降低老師撰寫評語負擔",
+      "通知中心「標記已繳費」可填繳費日期、方式、金額與備註，並同步建立 Payment / Invoice 核帳記錄",
+      "三 Tab 架構改版，學習優先（）",
+      "通知中心 v2",
+      "家長回饋 mark-read 不再更新回饋內容時間，避免刷新後又變未讀；學習評量表新增有回饋／未讀回饋篩選",
+      "處理 MIME type 錯誤 及 N+1 誤判 （）",
+      "對月結制（payment_type=monthly）課程缺少保護，RemainingSessions=0 + 已繳費導致課程被過濾，補習科目/堂數欄顯示「尚未設定」",
+      "密碼改完撤銷全部 token + CSP Report-Only + debug_mode 監測"
     ]
   },
   {
-    "version": "2026-05-09",
-    "title": "feat(learning): 老師評量待辦角標與一鍵開填、主任填寫率報表",
+    "version": "1.0.1",
+    "date": "2026-04-25",
+    "title": "1.0.1 版本更新",
+    "summary": "家長入口跨家庭學生資料洩漏修復 [SECURITY]",
     "audience": [
       "teacher",
       "director"
     ],
-    "items": [
-      "Added 教學工作台優先開下一筆待填／「GET me/learning-pending-summary」 角標；主任儀表板近 14 天各老師已到班堂次之評量進度填寫率（「GET reports/teacher-learning-fill-rates」）"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "feat(ui): 系統內建「版本更新」頁面（老師/主任）",
-    "audience": [
-      "teacher",
-      "director"
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "家長入口跨家庭學生資料洩漏修復 [SECURITY]"
+        ]
+      }
     ],
     "items": [
-      "Added 老師與主任側欄新增「版本更新」入口，集中顯示近期版本新增功能與修正重點，降低口頭公告成本"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "feat(ui): 首次登入顯示「新版重點」導覽卡",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Added 老師與主任登入後首次會看到簡短新版提醒，支援「立即查看 / 稍後再看」；文案改為非技術語言，讓現場同仁更容易理解"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "fix(import): 學生名冊 CSV/XLSX 標題列與 0 列匯入",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Fixed 「ImportController」：標題列掃描加深至前 30 列、「normalizeHeader」 支援全形空白；若僅有表頭無資料列回 **422** 並寫入可讀 「ErrorLog」；補 「StudentImportTest」 迴歸案例（#205）"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "fix(calendar): 行事曆改用 occurrence 合約合併",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Fixed 智慧行事曆週檢視以單一 occurrence resolver 合併 「StudentClass」、「ClassSession」 與 「schedules」，避免同一堂課重複掛兩位老師或被 scheduled 例外互相抵消而消失"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "fix(calendar): 停用舊課程不再重複掛兩位老師",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Fixed 智慧行事曆載入課程時排除 「status=inactive」 或 「Stop=1」 的舊課，避免同學生在舊/新老師欄位同時出現"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "ops(db): PITR/binlog 評估決策（先 defer）",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Ops/DBA 在 runbook 明確記錄 「#207」 決策：目前先不啟用 production binlog，補齊觸發條件與 pre-enable checklist（限 drill DB 驗證）後再啟動"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "ops(backups): nightly 移除 Pi 端 git push/tag",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Ops 調整 「scripts/nightly-backup.sh」 僅保留 DB 備份與保留策略，不再從 Pi 嘗試 「git-sync」 或 nightly tag push，與 protected-main 治理一致"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "ops(actions): 降低排程 Actions 依賴並補 fallback",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Ops 將 「pi-health.yml」 降為每日、「branch-hygiene.yml」 降為每週，並在 runbook 補齊「minutes 耗盡時由 Pi 本機 monitor-alert + UptimeRobot 承接」與恢復後 rerun 清單"
-    ]
-  },
-  {
-    "version": "2026-05-09",
-    "title": "ops(backups): 新增一鍵備份稽核腳本",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Ops 新增 「scripts/backup-audit.sh」，集中檢查本機備份、manifest、Google Drive 異地同步、restore drill 結果與只讀 row-count sanity，並以 GREEN/YELLOW/RED 輸出總結"
-    ]
-  },
-  {
-    "version": "2026-05-08",
-    "title": "security(ops): 維運 SSH 改為 host key pinning",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Security 將 「pi-health.yml」、「backup-restore-test.yml」、「slow-query-report.yml」 移除 「StrictHostKeyChecking no」，改用 「PI_HOST_KEY」 + 「known_hosts」 pinning，並在 Presubmit 增加禁止回歸檢查"
-    ]
-  },
-  {
-    "version": "2026-05-08",
-    "title": "fix(schedule): 代課堂次顯示在代課老師欄",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "items": [
-      "Fixed 同一堂代課若殘留原老師與代課老師的重複排程紀錄，行事曆會優先顯示在代課老師欄位"
+      "家長入口跨家庭學生資料洩漏修復 [SECURITY]"
     ]
   }
 ];
