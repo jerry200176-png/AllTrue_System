@@ -670,7 +670,7 @@ const mobileTabItems = computed(() => {
     return [
       { page: 'teacher-home', label: '工作台', icon: 'space_dashboard' },
       { page: 'attendance', label: '出勤', icon: 'fact_check' },
-      { page: 'learning', label: '評量', icon: 'assignment', badgeTypes: ['parent_feedback'] },
+      { page: 'learning', label: '評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
       { page: 'chat', label: '聊天', icon: 'forum', badgeTypes: ['chat'] },
       { page: 'more', label: '更多', icon: 'apps' },
     ];
@@ -716,6 +716,7 @@ function _startBadgePolling() {
     if (pauseOnHidden && document.visibilityState !== 'visible') return;
     if (_badgePollingPaused) return;
     mergeParentFeedbackBadge();
+    mergeTeacherLearningPendingBadge();
   }, feedbackInterval);
 }
 
@@ -787,10 +788,15 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
   if (targetBranchId > 0) {
     currentBranch.value = targetBranchId;
   }
-  learningTargetRecordId.value = payload?.recordId || null;
-  learningTargetSession.value = payload?.classSessionId
-    ? { classSessionId: payload.classSessionId, sessionDate: payload.sessionDate }
-    : null;
+  if (payload?.listOnly) {
+    learningTargetRecordId.value = null;
+    learningTargetSession.value = null;
+  } else {
+    learningTargetRecordId.value = payload?.recordId || null;
+    learningTargetSession.value = payload?.classSessionId
+      ? { classSessionId: payload.classSessionId, sessionDate: payload.sessionDate }
+      : null;
+  }
   setActivePage('learning');
 }
 
@@ -805,6 +811,7 @@ function setActivePage(page) {
   active.value = page;
   if (page === 'learning') {
     mergeParentFeedbackBadge();
+    mergeTeacherLearningPendingBadge();
   }
 }
 
@@ -924,7 +931,7 @@ const sidebarNavGroups = computed(() => {
         items: [
           { page: 'teacher-home', label: '教學工作台', icon: 'space_dashboard' },
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['attendance'] },
-          { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['parent_feedback'] },
+          { page: 'learning', label: '課表與評量', icon: 'assignment', badgeTypes: ['teacher_learning_pending', 'parent_feedback'] },
           { page: 'calendar', label: '班級行事曆', icon: 'calendar_today' },
           { page: 'subject-units', label: '科目數統計', icon: 'calculate' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
@@ -1316,6 +1323,40 @@ async function refreshUnreadNotifications() {
   await mergeTeacherAttendanceBadge();
   await mergeScheduleDiscrepancyBadge();
   await mergeParentFeedbackBadge();
+  await mergeTeacherLearningPendingBadge();
+}
+
+async function mergeTeacherLearningPendingBadge() {
+  if (!session.value?.access_token || !isTeacher.value || !currentBranch.value || isPasswordChangeLocked.value) {
+    const next = { ...badgeByType.value };
+    delete next.teacher_learning_pending;
+    badgeByType.value = next;
+    return;
+  }
+  try {
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
+    const res = await fetch(`${baseUrl}/v1/me/learning-pending-summary?${params}`, {
+      headers: {
+        Authorization: `Bearer ${session.value.access_token}`,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) throw new Error('learning pending summary failed');
+    const json = await res.json();
+    const total = Number(json.total || 0);
+    const next = { ...badgeByType.value };
+    if (total > 0) {
+      next.teacher_learning_pending = { total, urgent: total };
+    } else {
+      delete next.teacher_learning_pending;
+    }
+    badgeByType.value = next;
+  } catch {
+    const next = { ...badgeByType.value };
+    delete next.teacher_learning_pending;
+    badgeByType.value = next;
+  }
 }
 
 async function mergeParentFeedbackBadge() {
