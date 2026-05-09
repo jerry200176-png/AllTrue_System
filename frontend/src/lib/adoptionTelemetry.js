@@ -19,3 +19,23 @@ export async function trackAdoptionEvent(event, branchId, meta = {}) {
   }
 }
 
+export async function trackParentPortalEvent(token, event, meta = {}) {
+  if (!token) return;
+  try {
+    await fetch('/api/v1/parent/events', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        event,
+        meta,
+      }),
+    });
+  } catch {
+    // Keep UX non-blocking if telemetry endpoint is unavailable.
+  }
+}
+

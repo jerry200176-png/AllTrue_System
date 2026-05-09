@@ -450,6 +450,7 @@ Route::prefix('v1')->group(function () {
     Route::get('parent/dashboard', [ParentPortalController::class, 'dashboard']);
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
+    Route::post('parent/events', [ParentPortalController::class, 'recordParentEvent']);
     Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
         ->middleware('throttle:20,1');
