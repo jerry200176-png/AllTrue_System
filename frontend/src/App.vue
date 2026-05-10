@@ -465,6 +465,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
+import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
 import { latestReleaseVersionForRole } from './lib/releaseNotes';
 
@@ -1049,11 +1050,29 @@ function onUnreadChange(count) {
 const role = computed(() => session.value?.user?.role ?? userProfile.value?.role ?? 'student');
 const isDirector = computed(() => role.value === 'director' || role.value === 'admin' || role.value === 'super_admin');
 const isTeacher = computed(() => role.value === 'teacher');
+
 const isPasswordChangeLocked = computed(() => {
   const fromSession = session.value?.user?.must_change_password;
   const fromProfile = userProfile.value?.must_change_password;
   return Boolean(fromSession || fromProfile);
 });
+
+watch(
+  () => ({
+    uid: session.value?.user?.id,
+    teacher: isTeacher.value,
+    locked: isPasswordChangeLocked.value,
+  }),
+  ({ uid, teacher, locked }) => {
+    if (!uid || !teacher || locked) return;
+    try {
+      recordTeacherVisitToday();
+    } catch {
+      /* ignore */
+    }
+  },
+  { immediate: true },
+);
 const roleLabel = computed(() => {
   if (role.value === 'super_admin') return '超級管理員 Super Admin';
   if (isDirector.value) return '主任 Director';

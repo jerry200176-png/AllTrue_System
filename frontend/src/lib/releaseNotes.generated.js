@@ -7,13 +7,19 @@ export const changelogReleaseNotes = [
     "version": "1.0.8",
     "date": "2026-05-10",
     "title": "1.0.8 版本更新",
-    "summary": "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區；評量 409 bug 修復 + KPI bar + 快速語句擴充",
+    "summary": "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見；課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
     "audience": [
       "teacher",
       "director",
       "parent"
     ],
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -31,6 +37,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見",
       "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
       "評量 409 bug 修復 + KPI bar + 快速語句擴充",
       "教學工作台「待填／待修改」數改走 ，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總",
