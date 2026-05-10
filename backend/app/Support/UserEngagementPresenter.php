@@ -6,10 +6,6 @@ use App\Models\User;
 use App\Models\UserEngagement;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * Phase 1 (#324): read-only engagement payload for GET /api/v1/me.
- * XP mutation & promotion live in #325.
- */
 final class UserEngagementPresenter
 {
     public const DEFAULT_RANK_KEY = 'private_second';
