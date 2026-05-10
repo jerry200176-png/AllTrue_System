@@ -6,6 +6,14 @@
 
 ---
 
+## 2026-05-10 — fix(learning): 總覽待審自開課起 + 手機評量版面 + 主任快速評語
+
+- Changed 主任總覽「待審核評量」API 改 `only_started=1`（開課時間起可見），取代 `only_due`（下課後才見）；後端新增查詢參數 `only_started`
+- Fixed 評量頁 modal／草稿面板手機直向：內層捲動 + 底部提交欄固定、overlay z-index 高於底欄；快速語句列全寬橫向捲動與觸控高度
+- Added 主任於評量列表／卡片可點「主任評語」開輕量面板（不必先進完整編輯）
+
+---
+
 ## 2026-05-10 — fix(learning): 評量 409 bug 修復 + KPI bar + 快速語句擴充
 
 - Fixed 評量頁從課表點已填堂次時誤觸 CREATE → 409 alert：改為先 refresh 本地清單再重試，409 fallback 改自動開啟衝突記錄
