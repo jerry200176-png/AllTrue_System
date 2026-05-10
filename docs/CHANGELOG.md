@@ -7,6 +7,12 @@
 
 ---
 
+## 2026-05-10 — feat(engagement): 軍階／XP Phase 1—`user_engagement` + `GET /me`（#324）
+
+- Added 表 `user_engagement`（`role_track`、`rank_key`、`xp_total`、`rank_display_opt_out`）；`GET /api/v1/me` 附加 `engagement`（中文化 `rank_label`）；`super_admin` 固定五星上將且不回傳 `xp_total`；見 epic #323
+
+---
+
 ## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
 
 - Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
