@@ -92,6 +92,22 @@
           </div>
 
           <div class="form-group">
+            <label class="switch-row">
+              <input
+                type="checkbox"
+                :checked="teacherStreakDisplayEnabled"
+                @change="onTeacherStreakDisplayToggle($event)"
+              />
+              <span>顯示連續使用天數（僅本機）</span>
+            </label>
+            <p class="muted" style="margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.45">
+              依登入日本機日曆計算連續使用天數，僅存於此瀏覽器；不上傳伺服器。關閉後教學工作台不再顯示該摘要（計數仍保留）。與
+              <a href="https://github.com/jsjoeio/use-streak" target="_blank" rel="noopener noreferrer">use-streak</a>
+              等 OSS 一樣採 local-first；職場情境建議維持預設關閉、由老師自行開啟（ethical opt-in）。
+            </p>
+          </div>
+
+          <div class="form-group">
             <label>主分校</label>
             <select v-model.number="teachingForm.branch_id">
               <option v-for="b in branchOptions" :key="'tb-main-'+b.id" :value="b.id">{{ b.name }}</option>
@@ -330,6 +346,11 @@ import {
   setTeacherUiSfxEnabled,
   playTeacherUiSfx,
 } from '../lib/teacherUiSfx';
+import {
+  isTeacherStreakDisplayEnabled,
+  setTeacherStreakDisplayEnabled,
+  notifyTeacherStreakRefresh,
+} from '../lib/teacherLoginStreak';
 
 const props = defineProps({
   token: {
@@ -353,6 +374,7 @@ const activeTab = ref(props.forcePasswordChange ? 'security' : props.initialTab 
 const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
 const teacherUiSfxEnabled = ref(false);
+const teacherStreakDisplayEnabled = ref(false);
 const avatarUrl = ref('');
 const avatarInputRef = ref(null);
 const showAvatarCrop = ref(false);
@@ -445,6 +467,13 @@ function onTeacherUiSfxToggle(ev) {
   }
 }
 
+function onTeacherStreakDisplayToggle(ev) {
+  const on = Boolean(ev?.target?.checked);
+  teacherStreakDisplayEnabled.value = on;
+  setTeacherStreakDisplayEnabled(on);
+  notifyTeacherStreakRefresh();
+}
+
 async function loadData() {
   loading.value = true;
   profileMsg.value = null;
@@ -466,6 +495,7 @@ async function loadData() {
     const me = await getMe(props.token);
     isTeacher.value = (me?.role === 'teacher');
     teacherUiSfxEnabled.value = isTeacher.value && isTeacherUiSfxEnabled();
+    teacherStreakDisplayEnabled.value = isTeacher.value && isTeacherStreakDisplayEnabled();
     profileForm.value = {
       name: me?.name || '',
       email: me?.email || '',
