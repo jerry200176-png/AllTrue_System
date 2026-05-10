@@ -697,9 +697,11 @@ class LearningRecordController extends Controller
                 return $timeGateResponse;
             }
 
+            // 409 if an active (non-voided) record already exists for this session.
+            // Frontend should open the existing record for editing instead of creating a new one.
             $existing = LearningRecord::where('ClassSessionID', $classSessionId)->active()->first();
             if ($existing) {
-                return response()->json(['message' => 'Learning record already exists'], 409);
+                return response()->json(['message' => 'Learning record already exists', 'existing_id' => $existing->id], 409);
             }
 
             $authUser = request()->attributes->get('auth_user');
