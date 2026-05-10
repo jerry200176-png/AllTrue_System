@@ -7,6 +7,12 @@
 
 ---
 
+## 2026-05-10 — feat(engagement): 前端軍階／XP 摘要（#326，epic #323）
+
+- Added 教學工作台、主任總覽顯示軍階／XP 與升階進度條；個人資料可本機 opt-out；尊重 `prefers-reduced-motion`；門檻計算見 `engagementRankProgress.js`（與後端對齊）
+
+---
+
 ## 2026-05-10 — feat(engagement): 軍階／XP（#324–#325，epic #323）
 
 - Added `user_engagement`、`GET /api/v1/me` 之 `engagement`；`super_admin` 固定五星上將且無 `xp_total`

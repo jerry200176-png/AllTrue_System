@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "1.0.8",
     "date": "2026-05-10",
     "title": "1.0.8 版本更新",
-    "summary": "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見；課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
+    "summary": "前端軍階／XP 摘要（，epic ）；老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
+          "前端軍階／XP 摘要（，epic ）",
           "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見"
         ]
       },
@@ -37,6 +38,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "前端軍階／XP 摘要（，epic ）",
       "老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 、登入日更新；教學工作台顯示低調摘要； 納入 ；D 見",
       "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
       "評量 409 bug 修復 + KPI bar + 快速語句擴充",
