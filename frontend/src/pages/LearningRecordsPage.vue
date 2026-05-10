@@ -3103,11 +3103,14 @@ const submitForm = async () => {
     }
     closeModal();
   } else if (res.status === 409) {
+    const errBody = await res.json().catch(() => ({}));
     clearDraft();
     await fetchRecords();
-    const conflicting = records.value.find(
-      (r) => Number(r.ClassSessionID) === Number(form.ClassSessionID)
-    );
+    // Prefer looking up by existing_id (returned by backend), fall back to ClassSessionID match
+    const existingId = errBody?.existing_id;
+    const conflicting = existingId
+      ? records.value.find((r) => Number(r.id) === Number(existingId))
+      : records.value.find((r) => Number(r.ClassSessionID) === Number(form.ClassSessionID));
     closeModal();
     if (conflicting) {
       openRecordAction(conflicting);
