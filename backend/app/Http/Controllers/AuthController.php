@@ -9,6 +9,7 @@ use App\Models\UserLoginActivity;
 use App\Models\UserNotificationPreference;
 use App\Models\UserCampus;
 use App\Support\PublicAvatarUrl;
+use App\Support\UserEngagementPresenter;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -276,7 +277,7 @@ class AuthController extends Controller
             ? (bool) ($user->MustChangePassword ?? false)
             : false;
         $teacherConfig = $this->teacherConfigForResponse($user);
-        return response()->json([
+        $payload = [
             'id'       => $user->id,
             'name'     => $user->Name,
             'account'  => $user->LoginName,
@@ -289,7 +290,13 @@ class AuthController extends Controller
             'notification_preferences' => $notificationPreferences,
             'security_summary' => $securitySummary,
             'teacher_config' => $teacherConfig,
-        ]);
+        ];
+        $engagement = UserEngagementPresenter::forMe($user, (string) $role);
+        if ($engagement !== null) {
+            $payload['engagement'] = $engagement;
+        }
+
+        return response()->json($payload);
     }
 
     public function updateMe(Request $request)

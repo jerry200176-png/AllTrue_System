@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-05-10 — feat(engagement): 軍階／XP（#324–#325，epic #323）
+
+- Added `user_engagement`、`GET /api/v1/me` 之 `engagement`；`super_admin` 固定五星上將且無 `xp_total`
+- Added `user_engagement_xp_events`（idempotent）；**已核准且 `Progress` 非空** 對 `User.type=T` 授課老師 +10 XP；門檻表 `EngagementRankProgression`（teacher／staff）；Presenter 依 XP 推導軍階
+- `rollback-approval` 與作廢（`LearningRecord::booted` 偵測 `VoidedAt`）撤銷對應 XP
+
+---
+
 ## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
 
 - Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
