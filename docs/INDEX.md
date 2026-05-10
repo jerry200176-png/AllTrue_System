@@ -12,7 +12,8 @@
 >   ↓ session 開始 wake-up 喚醒上下文             │  TECH_DEBT)
 > AI Session（執行）──────────────────────────────┘
 > ```
-> 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。
+> 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。  
+> **長文不漏讀**：各檔「怎麼讀、讀哪段」→ [`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md)（速讀卡 + 版本更新鏈 + MemPalace 參照）。
 
 ---
 
@@ -109,6 +110,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
+| `docs/AI_DOC_LITERACY.md` | **AI 讀檔協議**：長文速讀卡、CHANGELOG→公告鏈、MemPalace 何時用（防漏讀） |
 | `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI（Presubmit CHECK 6 + `.github/scripts/golden-ci-report.sh`）|
 
 ### 業務規則
@@ -217,3 +219,4 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 3. **`.cursorrules` 已自動載入**，不需再 Read
 4. **`CLAUDE.md` = `.cursorrules` 的 Claude 版**，兩者不需同時讀
 5. **MemPalace `wake-up`** 在 session 開始時替代全讀文件
+6. **怕漏讀長文時** → 先打開 [`AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 對照「速讀卡」再下鑽
