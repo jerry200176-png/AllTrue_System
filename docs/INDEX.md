@@ -154,6 +154,18 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/CHAT_BUG_SYSTEM.md` | 問題回報系統設計 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 
+### 歷史／參考／易誤導（**勿當唯一真相；不通讀**）
+
+| 檔案 | AI 怎麼用 |
+|------|-----------|
+| [`CHANGELOG_ARCHIVE_2026-04.md`](CHANGELOG_ARCHIVE_2026-04.md) | 舊 CHANGELOG 彙整；只 `rg`；現況看 [`CHANGELOG.md`](CHANGELOG.md) |
+| [`AI_REGRESSION_LESSONS_ARCHIVE.md`](AI_REGRESSION_LESSONS_ARCHIVE.md) | 事故長文；只搜尋 §；摘要看 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) |
+| [`ENGINEERING_MATURITY_GAPS.md`](ENGINEERING_MATURITY_GAPS.md) | 流程／CI 缺口決策短記 |
+| [`TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md`](TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md) | 2026-04-12 技術調查；對照現程式碼 |
+| [`更新網站前端.md`](更新網站前端.md) | 本機手動覆蓋 `public`；**上線**勿當 SOP（見 deploy 規則） |
+| [`使用說明_主任與超級管理員.md`](使用說明_主任與超級管理員.md) | Developer Bypass 陷阱 FAQ；角色全貌見 [`ROLE_PLAYBOOK.md`](ROLE_PLAYBOOK.md) |
+| `PRD_*.md`、`CTO_SPEC_*.md` | 歷史或 Draft 規格；**實作與上線事實**以程式碼 + [`CHANGELOG.md`](CHANGELOG.md) 為準 |
+
 ---
 
 ## 🤖 GitHub（協作介面）

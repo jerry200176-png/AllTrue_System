@@ -94,7 +94,7 @@
 
 | 檔案 | 讀這份的目的 | 太長時怎麼讀 |
 |------|----------------|----------------|
-| [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) | 日常/事故 SOP | **只讀 § 標題**（如 §A-B）；勿全文 |
+| [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) | 日常/事故 SOP | **先讀開頭「章節導航」表**，再只打開對應 §（勿全文） |
 | [`DANGEROUS_OPERATIONS.md`](DANGEROUS_OPERATIONS.md) | P0 操作、禁止事項 | 執行任何 git/db/deploy 前先 `rg` 你的動作 |
 | [`DAILY_CHECKLIST.md`](DAILY_CHECKLIST.md) | 例行巡檢 | 當 checklist 用 |
 | [`DB_PERF.md`](DB_PERF.md) | 慢查詢/索引紀錄 | `rg` 表名 |
@@ -111,6 +111,19 @@
 | [`CHAT_BUG_SYSTEM.md`](CHAT_BUG_SYSTEM.md) | 問題回報設計 | 讀資料流段 |
 | [`LINE_LIFF_CHECKLIST.md`](LINE_LIFF_CHECKLIST.md) | LINE 上線檢查 | 當 checklist |
 | [`PORSCHE_VISUAL_SYSTEM.md`](PORSCHE_VISUAL_SYSTEM.md) | 視覺規格 | 僅 UI 大改時讀相關 token |
+
+---
+
+## 歷史、PRD、地端操作（易誤導）
+
+| 檔案 | 讀法 |
+|------|------|
+| [`CHANGELOG_ARCHIVE_2026-04.md`](CHANGELOG_ARCHIVE_2026-04.md) | 只搜尋；現況以 [`CHANGELOG.md`](CHANGELOG.md) |
+| [`更新網站前端.md`](更新網站前端.md) | 本機除錯用；**正式 deploy 依 CI** |
+| [`TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md`](TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md) | 調查紀錄；與現碼衝突時以程式碼為準 |
+| `PRD_*.md` / `CTO_SPEC_*.md` | 規格草稿或歷史；**勿單檔改商業邏輯** |
+
+完整列表見 [`INDEX.md`](INDEX.md)「歷史／參考／易誤導」表。
 
 ---
 
