@@ -14,6 +14,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ApprovalSessionSyncService;
+use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
 use Illuminate\Database\Eloquent\Builder;
@@ -1081,6 +1082,8 @@ class LearningRecordController extends Controller
                 ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, (int) ($data['DirectorID'] ?? 0));
             }
 
+            app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($learningRecord->fresh());
+
             return response()->json($learningRecord->fresh());
         });
     }
@@ -1096,6 +1099,8 @@ class LearningRecordController extends Controller
             if ($learningRecord->Status !== 'approved') {
                 return response()->json(['message' => 'Only approved records can be rolled back'], 409);
             }
+
+            app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $learningRecord->id);
 
             $learningRecord->Status = 'pending';
             $learningRecord->ReviewNote = $data['ReviewNote'] ?? null;
@@ -1191,6 +1196,8 @@ class LearningRecordController extends Controller
                 if ($sc) {
                     ApprovalSessionSyncService::syncOnApprove($learningRecord, $sc, $directorId);
                 }
+
+                app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($learningRecord->fresh());
 
                 $approved++;
             }
@@ -1313,11 +1320,12 @@ class LearningRecordController extends Controller
                     $existing->TeacherID = (int) ($data['TeacherID'] ?? $existing->TeacherID);
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                     $existing->save();
+                    app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($existing->fresh());
                 } else {
                     $this->syncRecordWithClassSession($existing, $classSession, (int) ($data['TeacherID'] ?? 0));
                 }
 
-                return response()->json($existing, 201);
+                return response()->json($existing->fresh(), 201);
             }
 
             $recordPayload = [
@@ -1339,8 +1347,9 @@ class LearningRecordController extends Controller
                 $recordPayload['ExcludeFromSubjectCount'] = 1; // 補登空白評量(單一課程) 不算入老師科目數
             }
             $record = LearningRecord::create($recordPayload);
+            app(UserEngagementXpAwardService::class)->awardOnLearningRecordApprovedIfEligible($record->fresh());
 
-            return response()->json($record, 201);
+            return response()->json($record->fresh(), 201);
         });
     }
 
