@@ -464,6 +464,7 @@ import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
+import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
 import { latestReleaseVersionForRole } from './lib/releaseNotes';
 
@@ -827,6 +828,9 @@ applyTheme(themePreference.value);
 function toggleSidebarCollapsed() {
   sidebarCollapsed.value = !sidebarCollapsed.value;
   localStorage.setItem('sidebar_collapsed', sidebarCollapsed.value);
+  if (isTeacher.value) {
+    playTeacherUiSfx('tap');
+  }
 }
 
 // Mobile bottom nav: 5 tabs + More
@@ -958,6 +962,8 @@ function onNavigateFromNotifications({ target, recordId }) {
   active.value = target;
 }
 
+let skipTeacherNavSfxOnce = false;
+
 function onNavigateLearningFromTeacherHome(payload = {}) {
   const targetBranchId = Number(payload?.branchId || 0);
   if (targetBranchId > 0) {
@@ -972,18 +978,42 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
       ? { classSessionId: payload.classSessionId, sessionDate: payload.sessionDate }
       : null;
   }
+  const isTaskJump = isTeacher.value
+    && !payload?.listOnly
+    && Boolean(payload?.classSessionId || payload?.recordId);
+  if (isTaskJump) {
+    playTeacherUiSfx('action');
+    skipTeacherNavSfxOnce = true;
+  }
   setActivePage('learning');
 }
 
 function setActivePage(page) {
+  const prev = active.value;
   if (isPasswordChangeLocked.value && page !== 'profile') {
     active.value = 'profile';
+    if (isTeacher.value && prev !== 'profile') {
+      if (skipTeacherNavSfxOnce) {
+        skipTeacherNavSfxOnce = false;
+      } else {
+        playTeacherUiSfx('nav');
+      }
+    }
     return;
   }
   if (page === 'calendar') {
     calendarResetToken.value += 1;
   }
   active.value = page;
+  if (isTeacher.value && page !== prev) {
+    if (skipTeacherNavSfxOnce) {
+      skipTeacherNavSfxOnce = false;
+    } else {
+      playTeacherUiSfx('nav');
+    }
+  } else if (skipTeacherNavSfxOnce && page === prev) {
+    skipTeacherNavSfxOnce = false;
+  }
   if (page === 'release-notes') {
     markReleaseNotesSeen();
   }

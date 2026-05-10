@@ -1207,6 +1207,166 @@ class LearningRecordApprovalDeductionTest extends TestCase
         }
     }
 
+    public function test_learning_record_store_duplicate_returns_existing_id_for_client(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-lr-dup-409@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-lr-dup-409@example.com');
+        $student = $this->createStudent(1, '重複評量 409');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '23:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $pastDate = now()->subDay()->toDateString();
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $pastDate,
+            'StartTime' => '23:00',
+            'EndTime' => '23:30',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $existing = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '已存在',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => $classSession->StartTime,
+            'EndTime' => $classSession->EndTime,
+        ]);
+
+        $payload = [
+            'StudentID' => $student->id,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Subject' => '數學',
+            'SessionDate' => $pastDate,
+            'StartTime' => '23:00',
+            'EndTime' => '23:30',
+            'Content' => '重送',
+        ];
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records', $payload)
+            ->assertStatus(409)
+            ->assertJsonPath('existing_id', $existing->id)
+            ->assertJsonPath('existing_record_id', $existing->id)
+            ->assertJsonFragment(['message' => '此堂評量表已存在，請重新整理頁面後查看。']);
+    }
+
+    public function test_learning_records_conflict_lookup_returns_matching_row(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-conflict-lu@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-conflict-lu@example.com');
+        $student = $this->createStudent(1, '衝突查詢學生');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '23:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $pastDate = now()->subDay()->toDateString();
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $pastDate,
+            'StartTime' => '23:00',
+            'EndTime' => '23:30',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $existing = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '已有評量',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => $classSession->StartTime,
+            'EndTime' => $classSession->EndTime,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&for_conflict_lookup=1&class_session_id='.$classSession->id)
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $existing->id);
+    }
+
+    public function test_learning_record_store_blocked_when_voided_row_occupies_class_session(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-lr-void-block@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-lr-void-block@example.com');
+        $student = $this->createStudent(1, '作廢占用測試');
+
+        $course = $this->createStudentClassForTest($student->id, $teacherId, [
+            'sessions_purchased' => 6,
+            'remaining_sessions' => 6,
+            'sessions_used' => 0,
+            'first_class_date' => '2026-03-01',
+            'days_of_week' => [1],
+            'start_time' => '23:00',
+        ]);
+        $courseId = (int) $course->ID;
+
+        $pastDate = now()->subDay()->toDateString();
+        $classSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $pastDate,
+            'StartTime' => '23:00',
+            'EndTime' => '23:30',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $voided = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Content' => '作廢',
+            'Status' => 'pending',
+            'SessionDate' => $classSession->SessionDate,
+            'StartTime' => $classSession->StartTime,
+            'EndTime' => $classSession->EndTime,
+            'VoidedAt' => now(),
+            'VoidReason' => 'test',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records', [
+            'StudentID' => $student->id,
+            'ClassSessionID' => $classSession->id,
+            'TeacherID' => $teacherId,
+            'Subject' => '數學',
+            'SessionDate' => $pastDate,
+            'StartTime' => '23:00',
+            'EndTime' => '23:30',
+            'Content' => '重送',
+        ])
+            ->assertStatus(409)
+            ->assertJsonPath('voided', true)
+            ->assertJsonPath('existing_id', $voided->id);
+    }
+
     /**
      * @param  array<int>  $campusIds
      */

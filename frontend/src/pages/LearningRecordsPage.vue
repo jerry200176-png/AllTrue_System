@@ -838,15 +838,19 @@
           </Transition>
         </div>
 
+        <!-- 固定在標題下方，避免捲動時與表頭重疊或被捲出視野（手機尤甚） -->
+        <div
+          v-if="draftStatusText && !isReadOnly"
+          class="lr-draft-bar lr-draft-bar--modal-anchor"
+          :class="{ 'lr-draft-bar--error': draftSaveError }"
+        >
+          <span class="material-symbols-outlined lr-draft-bar-icon">{{ draftSaveError ? 'warning' : 'edit_note' }}</span>
+          <span class="lr-draft-bar-text">{{ draftStatusText }}</span>
+          <button v-if="!draftSaveError" type="button" class="lr-draft-bar-clear" @click="clearDraft" title="清除草稿">清除草稿</button>
+        </div>
+
         <form @submit.prevent="submitForm" class="lr-form lr-form--stacked">
           <div class="lr-form-scroll">
-          <!-- Draft status bar -->
-          <div v-if="draftStatusText && !isReadOnly" class="lr-draft-bar" :class="{ 'lr-draft-bar--error': draftSaveError }">
-            <span class="material-symbols-outlined lr-draft-bar-icon">{{ draftSaveError ? 'warning' : 'edit_note' }}</span>
-            <span class="lr-draft-bar-text">{{ draftStatusText }}</span>
-            <button v-if="!draftSaveError" type="button" class="lr-draft-bar-clear" @click="clearDraft" title="清除草稿">清除草稿</button>
-          </div>
-
           <!-- Section 1: 基本資訊 -->
           <div class="lr-form-section">
             <div class="lr-form-section-title">基本資訊</div>
@@ -2484,9 +2488,10 @@ const buildEvents = (targetDates) => {
       const startTime = normalizeTime(rawSession?.start_time || rawSession?.StartTime) || resolveCourseStartTime(sc, dateStr);
       const endTime = normalizeTime(rawSession?.end_time || rawSession?.EndTime) || computedEndTimeForClass(sc, startTime);
       const csId = Number(rawSession?.id || 0);
-      const record = (csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null)
-        || (startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null)
-        || recordLookup.value.get(`${classId}|${dateStr}`);
+      const byCs = csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null;
+      const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
+      const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
+      const record = byCs || byTime || byDate;
       const rowStatus = String(rawSession?.learning_record_status || '');
       const sessionStatus = String(rawSession?.status || rawSession?.Status || '').toLowerCase();
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。
@@ -2497,9 +2502,12 @@ const buildEvents = (targetDates) => {
       if (isTeacher.value && isCancelledSession) continue;
       const baseFormStatus = rowStatus || record?.Status || 'missing';
       const formStatus = isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : baseFormStatus);
-      const recordId = rawSession?.learning_record_id != null
-        ? Number(rawSession.learning_record_id)
-        : null;
+      const apiLrId = rawSession?.learning_record_id != null ? Number(rawSession.learning_record_id) : null;
+      const safeLookupRecord = byCs || byTime;
+      let recordId = (apiLrId != null && apiLrId > 0) ? apiLrId : null;
+      if (!recordId && safeLookupRecord?.id) {
+        recordId = Number(safeLookupRecord.id);
+      }
 
       const lrTeacherId = Number(rawSession?.learning_record_teacher_id || 0);
       const isSubstituted = lrTeacherId > 0 && lrTeacherId !== myId && myId > 0;
@@ -3157,6 +3165,39 @@ const switchToTeacherLogin = async () => {
   window.location.reload();
 };
 
+/** 409 後精準拉取該堂次評量（含作廢列），避開清單分頁漏載 */
+const fetchLearningRecordsForConflictLookup = async (classSessionId, preferredId = null) => {
+  try {
+    const cs = Number(classSessionId || 0);
+    if (cs <= 0) return null;
+    const token = await getToken();
+    if (!token) return null;
+    const params = new URLSearchParams({
+      for_conflict_lookup: '1',
+      class_session_id: String(cs),
+      per_page: '5',
+    });
+    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const rows = data.data || [];
+    for (const r of rows) {
+      upsertRecordInList(r);
+    }
+    const want = preferredId != null && Number(preferredId) > 0 ? Number(preferredId) : null;
+    if (want) {
+      const byId = records.value.find((rec) => Number(rec.id) === want);
+      if (byId) return byId;
+    }
+    return records.value.find((rec) => Number(rec.ClassSessionID) === cs) || rows[0] || null;
+  } catch (e) {
+    console.error('[LR] conflict lookup failed', e);
+    return null;
+  }
+};
+
 const submitForm = async () => {
   if (timeLockMessage.value) {
     alert(timeLockMessage.value);
@@ -3198,18 +3239,45 @@ const submitForm = async () => {
   } else if (res.status === 409) {
     const errBody = await res.json().catch(() => ({}));
     clearDraft();
-    await fetchRecords();
-    // Prefer looking up by existing_id (returned by backend), fall back to ClassSessionID match
-    const existingId = errBody?.existing_id;
-    const conflicting = existingId
+    if (errBody.voided) {
+      closeModal();
+      alert(errBody.message || '此堂評量已作廢，請聯絡分校主任協助處理。');
+      await fetchRecords();
+      if (isTeacher.value) {
+        await fetchTeacherClasses();
+      }
+      return;
+    }
+    const csId = Number(form.ClassSessionID || 0);
+    const existingId = errBody?.existing_id ?? errBody?.existing_record_id;
+    let conflicting = existingId
       ? records.value.find((r) => Number(r.id) === Number(existingId))
-      : records.value.find((r) => Number(r.ClassSessionID) === Number(form.ClassSessionID));
+      : null;
+    if (!conflicting && csId > 0) {
+      conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
+    }
+    if (!conflicting && csId > 0) {
+      conflicting = await fetchLearningRecordsForConflictLookup(csId, existingId);
+    }
+    if (!conflicting) {
+      await fetchRecords();
+      conflicting = existingId
+        ? records.value.find((r) => Number(r.id) === Number(existingId))
+        : null;
+      if (!conflicting && csId > 0) {
+        conflicting = records.value.find((r) => Number(r.ClassSessionID) === csId);
+      }
+    }
     closeModal();
     if (conflicting) {
       openRecordAction(conflicting);
     } else {
-      alert('此堂評量已存在，請重新整理後查看。');
+      alert(errBody?.message || '此堂評量已存在，請重新整理後查看。');
     }
+    if (isTeacher.value) {
+      await fetchTeacherClasses();
+    }
+    await fetchRecords();
   } else {
     const err = await res.json().catch(() => ({}));
     alert('儲存失敗: ' + (err.message || `${res.status} ${res.statusText}` || '未知錯誤'));
@@ -6726,6 +6794,8 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   /* Modal: full screen bottom sheet on mobile */
   .modal-overlay {
     align-items: flex-end !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
   }
 
   .lr-modal {
@@ -6739,8 +6809,8 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   }
 
   .lr-modal--learning-form {
-    max-height: 96vh;
-    max-height: 96dvh;
+    max-height: calc(100dvh - env(safe-area-inset-bottom, 0px) - 12px);
+    max-height: calc(100vh - env(safe-area-inset-bottom, 0px) - 12px);
     overflow: hidden;
   }
 
@@ -6761,11 +6831,17 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   }
 
   .lr-form-scroll {
-    padding: 16px 20px 8px;
+    padding: 16px 20px 28px;
+    scroll-padding-bottom: 32px;
+  }
+
+  .lr-draft-bar--modal-anchor {
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
   .lr-form-actions--modal-footer {
-    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
     flex-direction: column-reverse;
     gap: 10px;
   }
@@ -6945,6 +7021,17 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   background: rgba(192, 57, 43, 0.08);
 }
 
+/* 評量 Modal：緊貼標題列下方，不參與表單捲動 */
+.lr-draft-bar--modal-anchor {
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  padding: 8px 28px;
+}
+
 /* ── Draft List Button (header) ── */
 .lr-draft-list-btn {
   position: relative;
@@ -7081,6 +7168,7 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   }
   .lr-draft-bar {
     font-size: 11px;
