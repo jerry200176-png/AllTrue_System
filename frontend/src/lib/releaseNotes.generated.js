@@ -10,7 +10,8 @@ export const changelogReleaseNotes = [
     "summary": "評量 409 bug 修復 + KPI bar + 快速語句擴充；教學工作台「待填／待修改」數改走 ，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -40,7 +41,8 @@ export const changelogReleaseNotes = [
     "summary": "一般請假新增 30 秒內撤銷；桌機登入動畫在 reduced-motion 設定下仍可見",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -72,7 +74,8 @@ export const changelogReleaseNotes = [
     "summary": "例外堂補建 ClassSession 避免灰色堂次消失；教學工作台補填提醒點入時會同步切換至對應分校並定位堂次，且評量頁可顯示近期需補填的非 active 課程，避免提醒可見但無法填寫",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -95,7 +98,8 @@ export const changelogReleaseNotes = [
     "summary": "課程管理例外堂被請假或取消後，日期 chip 外層標籤優先顯示請假/取消，例外堂改保留在提示資訊；同一學生課程同日多時段時，代課老師評量列表與儲存權限改以同日期同開始時間判定，避免看到非自己時段後儲存 Forbidden",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -126,7 +130,8 @@ export const changelogReleaseNotes = [
     "summary": "主任總覽儀表板與近 7 天代課紀錄卡片的字體、間距與資訊層級，延續 Porsche 風格 light-first 視覺系統；學生帳務對帳視窗依 ledger 權限顯示一般作廢或沖銷作廢，避免未收款錯帳誤走沖銷流程",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -164,7 +169,8 @@ export const changelogReleaseNotes = [
     "summary": "主任儀表板今日課表、繳費提醒、待審評量、通知與 KPI 面板為 light-first Porsche 介面 霧面工作卡；主任儀表板首屏的高級營運指揮艙視覺，包含分校 hero、每日待辦任務列與 performance HUD 統計",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -214,7 +220,8 @@ export const changelogReleaseNotes = [
     "summary": "學習評量「學習進度與家長溝通」快捷片語擴充為 10 個家長友善選項，預設顯示 6 個並可展開更多，降低老師撰寫評語負擔；通知中心「標記已繳費」可填繳費日期、方式、金額與備註，並同步建立 Payment / Invoice 核帳記錄",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -254,7 +261,8 @@ export const changelogReleaseNotes = [
     "summary": "家長入口跨家庭學生資料洩漏修復 [SECURITY]",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
