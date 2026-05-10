@@ -519,6 +519,16 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R46. 主任端評量「授課老師」不可只信 LearningRecord.TeacherID
+
+- **觸發情境**：單堂已指派代課，主任在學習評量表仍見正班老師，與行事曆／代課認知不一致。
+- **根因（與過往同族）**：「這一堂誰授課」存在多個寫入來源——合約在 `StudentClass.TeacherID`、單堂代課在 `schedules`（見 §R39、§R44）、評量列上又有物化的 `LearningRecord.TeacherID`（報表／審核用）。若列表／表單只 join `LearningRecord.TeacherID`，就會在代課列已寫入但 LR 尚未自癒時顯示錯誤。**歷史類似紀錄**：`CHANGELOG`／archive 曾載代課與 `schedules` 不同步時「畫面仍顯示原老師」；§R42 處理的是 **行事曆** `GET /class-sessions` 不可被舊評量姓名蓋掉顯示老師，本條處理 **評量 API／主任列表與編輯表單** 必須與代課列對齊。
+- **業界對齊（一句）**：多來源 domain 常見做法是選定 **權威事件或權威表**（此處單堂代課以 `schedules` 為準），物化欄位與其短暫不一致時，在 **讀取路徑做 reconciliation**（回應時重算）或 **交易內／背景作業同步**；本專案評量列表採與 `SubstituteScheduleService::effectiveInstructorUserId` 一致的 read reconciliation（`effective_teacher_id` + `teacher_name`），並保留 `ensure-past`／`syncRecordWithClassSession` 寫回自癒 DB。
+- **強制規則**：`LearningRecordController::decorateRecords`／`hydrateRecordForResponse` 之 `teacher_name` 與 `effective_teacher_id` 必須來自上述 effective 解析；前端開啟評量／更換授課老師預設以 `effective_teacher_id` 為準。禁止改回「主任列表只顯示 `LearningRecord.TeacherID` 對應姓名」。
+- **測試必補**：`SubstituteTeacherTest::test_director_learning_records_list_shows_substitute_when_lr_teacher_id_drifts`；任何代課或評量 hydrate 路徑變更須維持「LR.TeacherID 刻意漂移時列表仍顯示代課老師」。
+
+---
+
 ### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
 
 **觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
@@ -541,8 +551,8 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |

@@ -11,6 +11,9 @@
 
 - Fixed 評量頁課表事件在 API 未帶 `learning_record_id` 時改由 `ClassSessionID`／時段對應既有清單補 `recordId`，避免誤開「新增」而撞 409；409 回應統一含 `existing_id`（並相容 `existing_record_id`）；手機 Modal 草稿列改固定於標題下並加底部 safe-area／捲動留白
 - Added `GET learning-records?for_conflict_lookup=1&class_session_id=` 供 409 後精準載入該堂評量（含作廢列）；作廢仍占 unique 時改回明確 409；前端 409 自動補拉並開啟既有評量
+- Fixed 主任端評量列表「授課老師」與編輯表單預設：API 依 `schedules` 單堂代課解析 `effective_teacher_id`／`teacher_name`，避免 `LearningRecord.TeacherID` 與代課不同步時仍顯示正班老師
+- Docs `AI_REGRESSION_LESSONS.md` §R46：代課／評量多來源與 read reconciliation（對齊 §R39、§R42、§R44 同族問題）
+- Docs `AGENTS.md` 開工 SOP、`p0-gate` 黃線 Y4：高風險模組必讀 `INDEX` + `AI_REGRESSION` 模組索引後再改程式
 
 ---
 

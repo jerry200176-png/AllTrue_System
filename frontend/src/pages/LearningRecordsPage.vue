@@ -2074,12 +2074,13 @@ const bulkStudentOptions = computed(() => {
 
 const upsertRecordInList = (incoming) => {
   if (!incoming || !incoming.id) return;
+  const effTidForName = incoming.effective_teacher_id ?? incoming.TeacherID ?? incoming.teacher_id;
   const normalized = {
     ...incoming,
     id: Number(incoming.id),
     student_id: Number(incoming.student_id || incoming.StudentID || 0) || null,
     student_name: incoming.student_name || studentList.value.find((s) => String(s.id) === String(incoming.student_id || incoming.StudentID || ''))?.name || '',
-    teacher_name: incoming.teacher_name || teacherList.value.find((t) => String(t.id) === String(incoming.TeacherID || incoming.teacher_id || ''))?.Name || '',
+    teacher_name: incoming.teacher_name || teacherList.value.find((t) => String(t.id) === String(effTidForName || ''))?.Name || '',
     student_class_label: incoming.student_class_label || incoming.Subject || '',
   };
   const next = [...records.value];
@@ -2973,7 +2974,7 @@ const _fillForm = (record) => {
   Object.assign(form, {
     id: record.id,
     StudentID: Number(record.student_id) || '',
-    TeacherID: Number(record.TeacherID),
+    TeacherID: Number((record.effective_teacher_id ?? record.TeacherID) || 0) || '',
     ClassSessionID: Number(record.ClassSessionID) || 0,
     Subject: canonicalSubjectLabel(record.Subject) || record.Subject || '',
     SessionDate: record.SessionDate,
@@ -3351,7 +3352,7 @@ const rollbackApproval = async (record) => {
 
 const openChangeTeacherModal = (record) => {
   teacherChangeForm.record_id = record.id;
-  teacherChangeForm.teacher_id = Number(record.TeacherID || 0) || '';
+  teacherChangeForm.teacher_id = Number((record.effective_teacher_id ?? record.TeacherID) || 0) || '';
   teacherChangeForm.reason = '';
   teacherChangeForm.student_name = record.student_name || '';
   teacherChangeForm.current_teacher_name = record.teacher_name || '';

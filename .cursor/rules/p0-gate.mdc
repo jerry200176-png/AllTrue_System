@@ -27,6 +27,7 @@ alwaysApply: true
 | Y1 | 要在測試插入任何 DB 資料 | 先查 NOT NULL 欄位。`Campus` 用 Factory。`schedules` 記 **S.D.B.**（student_id, day_of_week, branch_id）|
 | Y2 | 要在測試用「今日日期」作為 future session | `start_time` 設 `23:00`，避免 `isEndedAtCreateTime=true` |
 | Y3 | 前端有改動要上線 | CI 全綠 → PR merge → 等 `deploy.yml` 自動部署 → 驗 health/version.json |
+| Y4 | 要改代課／評量／行事曆合併／排課／扣堂／出缺勤等高風險模組 | 開工前必讀 `docs/INDEX.md` 定位章節 + `docs/AI_REGRESSION_LESSONS.md`（含文末模組索引表對應 §）；禁止未讀文檔只靠記憶改 `backend/` 或 `frontend/src/` |
 
 ---
 
