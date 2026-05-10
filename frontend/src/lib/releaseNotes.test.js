@@ -2,11 +2,16 @@
  * Mirrors calendar tests: runnable with plain Node (npm run test:release-notes).
  */
 import assert from 'assert';
-import { latestReleaseVersionForRole, notesForRole } from './releaseNotes.js';
+import { latestReleaseVersionForRole, notesForRole, parentReleaseNoteTeaser } from './releaseNotes.js';
 
 assert.ok(notesForRole('director').length >= 3, 'director should see several CHANGELOG-derived entries');
 assert.ok(notesForRole('teacher').length > 0, 'teacher should see release entries');
-assert.ok(notesForRole('parent').length > 0, 'parent should see release entries');
+assert.ok(notesForRole('parent').length > 0, 'parent should see parent-tagged release entries');
+const p0 = notesForRole('parent')[0];
+assert.ok(
+  parentReleaseNoteTeaser(p0).length > 0 && parentReleaseNoteTeaser(p0).length <= 200,
+  'parent teaser should be a short non-empty line',
+);
 
 const directorCount = notesForRole('director').length;
 assert.strictEqual(notesForRole('super_admin').length, directorCount, 'super_admin should match director-facing notes');
