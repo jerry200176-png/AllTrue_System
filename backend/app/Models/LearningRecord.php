@@ -96,6 +96,26 @@ class LearningRecord extends Model
         });
     }
 
+    /**
+     * 老師評量清單：已取消堂次（ClassSession.Status=cancelled）不應出現；
+     * 主任仍可查（不在全域套用 excludeLeaveSessionPendingReview 以免影響主任）。
+     *
+     * 無綁定 ClassSessionID 的列仍保留（主任手動補登等邊界）。
+     */
+    public function scopeExcludeCancelledClassSessionForTeacherList($query)
+    {
+        $t = $query->getModel()->getTable();
+
+        return $query->where(function ($outer) use ($t) {
+            $outer->where(function ($q) use ($t) {
+                $q->whereNull("{$t}.ClassSessionID")->orWhere("{$t}.ClassSessionID", '<=', 0);
+            })->orWhereHas('classSession', function ($cs) {
+                $tbl = $cs->getModel()->getTable();
+                $cs->whereRaw('LOWER(`' . $tbl . '`.`Status`) != ?', ['cancelled']);
+            });
+        });
+    }
+
     public function isVoided(): bool
     {
         return $this->VoidedAt !== null;

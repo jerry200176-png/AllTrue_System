@@ -136,6 +136,7 @@ class TeacherLearningEngagementApisTest extends TestCase
         $this->getJson("/api/v1/me/learning-pending-summary?branch_id={$campus->id}", $this->bearer($token))
             ->assertOk()
             ->assertJsonPath('pending_learning_records', 1)
+            ->assertJsonPath('changes_requested_learning_records', 0)
             ->assertJsonPath('today_sessions_without_record', 1)
             ->assertJsonPath('total', 2);
     }
