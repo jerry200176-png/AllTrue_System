@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-10 — docs: 家長入口分眾與工程交接（對齊大廠式可追溯）
+
+- Added `AI_REGRESSION_LESSONS` §R45、模組索引列；更新 `ROLE_PLAYBOOK` 家長 SOP、`INDEX` 導覽、`ENTERPRISE_WORKFLOW_ALIGNMENT` 多角色列；`G-008`（`releaseNotes` 分眾）
+
+---
+
 ## 2026-05-10 — fix(parent): 家長入口進度中心與版本公告精簡（手機優先）
 
 - Changed 家長進度中心隱藏「待處理提醒／待處理事項」與內部向「處理進度」區塊；繳費改為全寬一列；版本更新僅顯示與家長相關之短摘要（最多兩則），教職員向條目不再洗版
