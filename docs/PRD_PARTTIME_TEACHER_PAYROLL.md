@@ -1,8 +1,7 @@
 # PRD — 兼職老師薪資計算與月結報表
 
-> 版本：1.0 | 日期：2026-04-14 | 狀態：待開發
->
-> **關聯**：個別老師費率覆寫見 [PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md](PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md)
+> 版本：1.0 | 日期：2026-04-14 | 狀態：**歷史 PRD（長文規格）** — 兼職薪資已落地，**實際行為以** `ParttimePayrollPage`／後端 Finance 相關程式與 [`CHANGELOG.md`](CHANGELOG.md) **為準**，勿單憑本檔改產品邏輯。  
+> **關聯**：個別老師費率覆寫見 [PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md](PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md)（已實作）
 
 ---
 
