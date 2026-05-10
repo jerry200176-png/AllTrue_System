@@ -6,6 +6,15 @@
 
 ---
 
+## 2026-05-10 — fix(learning): 評量 409 bug 修復 + KPI bar + 快速語句擴充
+
+- Fixed 評量頁從課表點已填堂次時誤觸 CREATE → 409 alert：改為先 refresh 本地清單再重試，409 fallback 改自動開啟衝突記錄
+- Added 評量頁頂部 4 格 KPI bar（未填 / 待審 / 需修改 / 已核准），teacher & director 點擊即切換 filter
+- Changed `changes_requested` status tag 改為橙色，與 `pending` 黃色視覺區分
+- Changed 評量表「學習進度與家長溝通」快速語句從 10 → 20 個，預設顯示 8 個
+
+---
+
 ## 2026-05-10 — feat(teacher-ui): 工作台資訊架構整合 + 手機評量表體驗優化
 
 - Changed 移除 `TeacherHomePage` 重複的「今日最重要 3 件事」與「每日任務清單」區塊，工作台子區塊從 5 降至 3
