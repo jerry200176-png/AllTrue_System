@@ -14,6 +14,7 @@
 | 敏感路徑 review | `.github/CODEOWNERS` |
 | 依賴與供應鏈 | Dependabot；選用 **Dependency Review**（需 GHAS + `ENABLE_DEPENDENCY_REVIEW=true`） |
 | 變更可追溯 | `CHANGELOG`、`AI_REGRESSION_LESSONS`、Golden 路徑對照（無手動勾選） |
+| 多角色資訊架構（家長 vs 教職員） | 家長端版本卡僅 `audience` 含 `parent`（見 `AI_REGRESSION_LESSONS` §R45）；教職員維持原 CHANGELOG 衍生卡 |
 | 部署不經 CI 本機 | 僅 `deploy.yml` 在 main CI 綠燈後 SSH Pi（見 `auto-frontend-deploy` 規則） |
 
 ---
