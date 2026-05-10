@@ -233,7 +233,7 @@
     </div>
 
     <!-- ===== 一鍵補登 Modal ===== -->
-    <div v-if="showBulkModal" class="modal-overlay">
+    <div v-if="showBulkModal" class="modal-overlay lr-modal-overlay">
       <div class="lr-modal" style="max-width: 600px;">
         <div class="lr-modal-header">
           <h3>一鍵補登</h3>
@@ -538,6 +538,7 @@
               </div>
               <div class="lr-record-card__actions" @click.stop>
                 <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
                 <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
                 <button v-if="canRequestChanges(record)" class="ghost xs" @click="requestChangesRecord(record)">需修改</button>
                 <button v-if="canReject(record)" class="danger xs" @click="rejectRecord(record)">退回</button>
@@ -694,6 +695,7 @@
                       <td class="lr-actions" @click.stop>
                         <div class="lr-actions-inner">
                           <button class="ghost xs" @click="openRecordAction(record)">{{ primaryActionLabel(record) }}</button>
+                          <button v-if="isDirectorRole && record.id" class="ghost xs lr-btn-director-note" @click="openDirectorNoteModal(record)">主任評語</button>
                           <button v-if="canChangeTeacher(record)" class="ghost xs" @click="openChangeTeacherModal(record)">換老師</button>
                           <span v-if="showTimeLockHint(record)" class="lr-lock-hint">未開放</span>
                           <button v-if="canApprove(record)" class="primary xs" @click="approveRecord(record)">核准</button>
@@ -755,7 +757,7 @@
       </transition>
     </div>
 
-    <div v-if="showChangeTeacherModal" class="modal-overlay">
+    <div v-if="showChangeTeacherModal" class="modal-overlay lr-modal-overlay">
       <div class="modal lr-modal" style="max-width: 520px;">
         <div class="lr-modal-header">
           <h3>更換授課老師</h3>
@@ -810,8 +812,8 @@
     </div>
 
     <!-- ======== Modal Form ======== -->
-    <div v-if="showModal" class="modal-overlay">
-      <div class="modal lr-modal">
+    <div v-if="showModal" class="modal-overlay lr-modal-overlay">
+      <div class="modal lr-modal lr-modal--learning-form">
         <!-- Modal Header -->
         <div class="lr-modal-header">
           <h3>{{ isEditing ? (isReadOnly ? '檢視評量' : '編輯評量') : '新增學習評量' }}<span v-if="_activeRecordRef?.session_number" class="lr-modal-session-num">第{{ _activeRecordRef.session_number }}堂</span></h3>
@@ -836,7 +838,8 @@
           </Transition>
         </div>
 
-        <form @submit.prevent="submitForm" class="lr-form">
+        <form @submit.prevent="submitForm" class="lr-form lr-form--stacked">
+          <div class="lr-form-scroll">
           <!-- Draft status bar -->
           <div v-if="draftStatusText && !isReadOnly" class="lr-draft-bar" :class="{ 'lr-draft-bar--error': draftSaveError }">
             <span class="material-symbols-outlined lr-draft-bar-icon">{{ draftSaveError ? 'warning' : 'edit_note' }}</span>
@@ -945,21 +948,21 @@
             <div class="form-group">
               <label>授課進度</label>
               <textarea v-model="form.Progress" rows="3" :disabled="isReadOnly" placeholder="紀錄本次上課內容..."></textarea>
-              <div v-if="!isReadOnly" class="lr-phrase-row">
+              <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll">
                 <button v-for="p in templatePhrases.Progress" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Progress', p)">{{ p }}</button>
               </div>
             </div>
             <div class="form-group">
               <label>本次作業範圍</label>
               <textarea v-model="form.NextHomework" rows="2" :disabled="isReadOnly" placeholder="指定下次作業..."></textarea>
-              <div v-if="!isReadOnly" class="lr-phrase-row">
+              <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll">
                 <button v-for="p in templatePhrases.NextHomework" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextHomework', p)">{{ p }}</button>
               </div>
             </div>
             <div class="form-group">
               <label>下次週考範圍</label>
               <textarea v-model="form.NextWeekTestScope" rows="2" :disabled="isReadOnly" placeholder="指定下次週考範圍..."></textarea>
-              <div v-if="!isReadOnly" class="lr-phrase-row">
+              <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll">
                 <button v-for="p in templatePhrases.NextWeekTestScope" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('NextWeekTestScope', p)">{{ p }}</button>
               </div>
             </div>
@@ -979,7 +982,7 @@
             <div class="form-group">
               <label>學習進度與家長溝通</label>
               <textarea v-model="form.Comment" rows="4" :disabled="isReadOnly" placeholder="綜合評語與聯絡事項..."></textarea>
-              <div v-if="!isReadOnly" class="lr-phrase-row">
+              <div v-if="!isReadOnly" class="lr-phrase-row lr-phrase-row--hscroll lr-phrase-row--comment">
                 <button v-for="p in visibleCommentPhrases" :key="p" class="lr-phrase-btn" type="button" @click="insertPhrase('Comment', p)">{{ p }}</button>
                 <button
                   v-if="commentExtraCount > 0"
@@ -1041,20 +1044,21 @@
             <span v-if="isTeacher">此評量已由主任核准，無法再修改。</span>
           </div>
 
-          <!-- Actions -->
-          <div class="lr-form-actions">
+          <div v-if="timeLockMessage && !forceReadOnly" class="lr-time-lock-note">{{ timeLockMessage }}</div>
+          </div>
+          <!-- Actions: fixed footer inside modal (mobile-safe; avoids overlap with sticky/chrome) -->
+          <div class="lr-form-actions lr-form-actions--modal-footer">
             <button type="button" class="ghost" @click="closeModal">關閉</button>
             <button v-if="!isReadOnly" type="submit" class="primary">
               {{ isEditing ? '儲存變更' : '提交評量' }}
             </button>
           </div>
-          <div v-if="timeLockMessage && !forceReadOnly" class="lr-time-lock-note">{{ timeLockMessage }}</div>
         </form>
       </div>
     </div>
 
     <!-- ===== Export Modal ===== -->
-    <div v-if="showExportModal" class="modal-overlay">
+    <div v-if="showExportModal" class="modal-overlay lr-modal-overlay">
       <div class="lr-modal" style="max-width: 480px;">
         <div class="lr-modal-header">
           <h3>匯出學習評量圖</h3>
@@ -1109,8 +1113,8 @@
     </div>
 
     <!-- ===== Draft List Panel ===== -->
-    <div v-if="showDraftPanel" class="modal-overlay" @click.self="closeDraftPanel">
-      <div class="lr-modal lr-draft-panel" style="max-width: 480px;">
+    <div v-if="showDraftPanel" class="modal-overlay lr-modal-overlay" @click.self="closeDraftPanel">
+      <div class="lr-modal lr-draft-panel lr-draft-panel--sheet" style="max-width: 480px;">
         <div class="lr-modal-header">
           <h3>
             <span class="material-symbols-outlined" style="font-size:20px;vertical-align:-4px;margin-right:4px">drafts</span>
@@ -1139,6 +1143,37 @@
                 <span class="material-symbols-outlined">delete_outline</span>
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Director: quick internal note to teacher (no full edit flow) -->
+    <div v-if="showDirectorNoteModal" class="modal-overlay lr-modal-overlay" @click.self="closeDirectorNoteModal">
+      <div class="lr-modal lr-director-note-modal" style="max-width: 440px" @click.stop>
+        <div class="lr-modal-header">
+          <h3>主任給老師評語</h3>
+          <button type="button" class="lr-modal-close" @click="closeDirectorNoteModal">&times;</button>
+        </div>
+        <div class="lr-director-note-body">
+          <p v-if="directorNoteTarget" class="lr-director-note-meta">
+            {{ directorNoteTarget.student_name }} · {{ directorNoteTarget.SessionDate }} {{ directorNoteTarget.StartTime || '' }}
+            <span v-if="directorNoteTarget.teacher_name"> · {{ directorNoteTarget.teacher_name }}</span>
+          </p>
+          <p class="lr-director-note-hint">內部留言，老師可見，不會顯示給家長。與「需修改說明」不同，可不送審狀態也能補充。</p>
+          <textarea
+            v-model="directorNoteDraft"
+            class="lr-director-note-textarea"
+            rows="5"
+            maxlength="500"
+            placeholder="例：請補上週考錯題類型、或提醒下堂帶課本…"
+          ></textarea>
+          <div v-if="directorNoteError" class="lr-teacher-comment-error">{{ directorNoteError }}</div>
+          <div class="lr-form-actions lr-director-note-actions">
+            <button type="button" class="ghost" @click="closeDirectorNoteModal">取消</button>
+            <button type="button" class="primary" :disabled="directorNoteSaving" @click="submitDirectorNoteModal">
+              {{ directorNoteSaving ? '儲存中…' : '儲存' }}
+            </button>
           </div>
         </div>
       </div>
@@ -1845,6 +1880,64 @@ const _activeRecordRef = ref(null);
 const teacherCommentContent = ref('');
 const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
+
+/** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
+const showDirectorNoteModal = ref(false);
+const directorNoteTarget = ref(null);
+const directorNoteDraft = ref('');
+const directorNoteSaving = ref(false);
+const directorNoteError = ref('');
+
+const openDirectorNoteModal = (record) => {
+  if (!isDirectorRole.value || !record?.id) return;
+  directorNoteTarget.value = record;
+  directorNoteDraft.value = String(record?.teacher_comment?.content || '').trim() || '';
+  directorNoteError.value = '';
+  showDirectorNoteModal.value = true;
+};
+
+const closeDirectorNoteModal = () => {
+  showDirectorNoteModal.value = false;
+  directorNoteTarget.value = null;
+  directorNoteDraft.value = '';
+  directorNoteError.value = '';
+  directorNoteSaving.value = false;
+};
+
+const submitDirectorNoteModal = async () => {
+  const recordId = Number(directorNoteTarget.value?.id || 0);
+  if (!recordId || directorNoteSaving.value) return;
+  const content = String(directorNoteDraft.value || '').trim();
+  if (!content || content.length > 500) {
+    directorNoteError.value = '主任評語需為 1-500 字';
+    return;
+  }
+  directorNoteSaving.value = true;
+  directorNoteError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-records/${recordId}/teacher-comment`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ content }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '儲存主任評語失敗');
+    updateRecordTeacherComment(recordId, json.comment || null);
+    if (Number(form.id) === recordId) {
+      teacherCommentContent.value = json.comment?.content || content;
+    }
+    closeDirectorNoteModal();
+  } catch (e) {
+    directorNoteError.value = e?.message || '儲存主任評語失敗';
+  } finally {
+    directorNoteSaving.value = false;
+  }
+};
 const teacherChangeForm = reactive({
   record_id: null,
   teacher_id: '',
@@ -5491,15 +5584,7 @@ select.lr-input {
   .lr-subject-show-all {
     margin-left: 0;
   }
-  .lr-phrase-row {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    -webkit-overflow-scrolling: touch;
-  }
-  .lr-phrase-btn {
-    flex-shrink: 0;
-  }
+  /* 快速語句改由 .lr-phrase-row--hscroll 全寬橫向捲動 */
 }
 
 /* ── Default time-window banner (FR-002) ──
@@ -6062,12 +6147,105 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
 }
 
 /* ── Modal ── */
+.lr-modal-overlay {
+  z-index: 13000;
+}
+
 .lr-modal {
   width: 720px;
   max-width: 95vw;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow-y: auto;
   padding: 0;
+}
+
+/* 評量主表單：標頭 + 可捲動內容 + 底部按鈕（手機不會被內容或底欄吃掉） */
+.lr-modal--learning-form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: min(90vh, 90dvh);
+}
+
+.lr-form--stacked {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+}
+
+.lr-form-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 24px 28px;
+}
+
+.lr-form-actions--modal-footer {
+  flex-shrink: 0;
+  margin-top: 0;
+  padding: 14px 28px calc(14px + env(safe-area-inset-bottom, 0px));
+  background: var(--card-bg);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgba(15, 23, 42, 0.06);
+}
+
+/* 橫向快速語句：避免窄螢幕被裁切；全寬可滑 */
+.lr-phrase-row--hscroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 2px 10px;
+  margin: 2px -4px 0;
+  gap: 8px;
+  min-height: 40px;
+  overscroll-behavior-x: contain;
+}
+
+.lr-phrase-row--hscroll .lr-phrase-btn {
+  flex-shrink: 0;
+  max-width: min(280px, 85vw);
+  white-space: normal;
+  text-align: left;
+  line-height: 1.25;
+  padding: 8px 12px;
+  min-height: 40px;
+}
+
+.lr-director-note-body {
+  padding: 0 20px 20px;
+}
+.lr-director-note-meta {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+.lr-director-note-hint {
+  font-size: 12px;
+  color: var(--text-light);
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+.lr-director-note-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 15px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  min-height: 120px;
+  resize: vertical;
+}
+.lr-director-note-actions {
+  margin-top: 14px;
+  padding-top: 0;
+  border-top: none;
+  justify-content: flex-end;
 }
 
 .lr-modal-header {
@@ -6554,9 +6732,16 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
     width: 100%;
     max-width: 100vw;
     max-height: 92vh;
+    max-height: 92dvh;
     border-radius: 20px 20px 0 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .lr-modal--learning-form {
+    max-height: 96vh;
+    max-height: 96dvh;
+    overflow: hidden;
   }
 
   .lr-modal-header {
@@ -6575,8 +6760,20 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
     padding: 6px 8px;
   }
 
-  .lr-form {
-    padding: 16px 20px 24px;
+  .lr-form-scroll {
+    padding: 16px 20px 8px;
+  }
+
+  .lr-form-actions--modal-footer {
+    padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+    flex-direction: column-reverse;
+    gap: 10px;
+  }
+
+  .lr-form-actions--modal-footer button {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
   }
 
   .lr-form-grid {
@@ -6677,24 +6874,7 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
     color: var(--danger);
   }
 
-  /* Sticky 提交按鈕 */
-  .lr-form-actions {
-    position: sticky;
-    bottom: 0;
-    background: var(--card-bg);
-    margin: 0 -20px;
-    padding: 12px 20px env(safe-area-inset-bottom, 12px);
-    border-top: 1px solid var(--border);
-    z-index: 10;
-    flex-direction: column-reverse;
-    gap: 10px;
-  }
-
-  .lr-form-actions button {
-    width: 100%;
-    padding: 14px;
-    font-size: 15px;
-  }
+  /* 評量 modal 改為內建底部欄，不再用 sticky（避免與主內容重疊） */
 
   .bulk-date-grid {
     max-height: 200px;
@@ -6884,13 +7064,23 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
 }
 
 @media (max-width: 600px) {
-  .lr-draft-panel {
+  .lr-draft-panel--sheet {
     max-width: 100% !important;
     margin: 0;
     border-radius: 12px 12px 0 0;
-    max-height: 85vh;
+    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 8px)) !important;
+    height: auto;
     align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .lr-draft-panel--sheet .lr-draft-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .lr-draft-bar {
     font-size: 11px;
