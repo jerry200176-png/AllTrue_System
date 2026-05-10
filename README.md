@@ -23,6 +23,7 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 - [GitHub 同步工作流程](#github-同步工作流程)
 - [AI 開發工作流程（Engineering Workflow）](#ai-開發工作流程engineering-workflow)
 - [重要文件索引](#重要文件索引)
+- [AI 讀檔與長期記憶（防漏讀）](#ai-讀檔與長期記憶防漏讀)
 - [⚠️ 安全警示（必讀）](#️-安全警示必讀)
 
 ---
@@ -46,8 +47,8 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 ## 近期重點更新（2026-05）
 
 - 主任總覽新增「核心檢視 / 完整檢視」雙模式，預設只顯示今日必處理事項，避免資訊過量造成決策疲勞。
-- 家長入口新增「進度中心」四卡：本週學習、下次課程、待處理事項、繳費狀態，每卡都有一鍵 CTA。
-- 家長入口新增互動狀態流與白話版版本更新卡，家長可看到「已送出/處理中/已完成」與最近更新重點。
+- 家長入口「進度中心」精簡為**本週學習、下次課程、繳費狀態**（手機優先）；「與您有關的更新」為**短摘要、分眾**（僅與家長相關之 CHANGELOG 衍生卡，見 `docs/AI_REGRESSION_LESSONS.md` §R45）。
+- **文件與 AI**：新增 `docs/AI_DOC_LITERACY.md`（長文速讀卡、版本更新鏈、MemPalace 何時用）；`AGENTS.md` / `INDEX.md` 已掛載導覽，降低長 docs 漏讀。
 - 主任與老師首頁新增「優先待辦卡 + 一鍵前往」，每天先處理最重要任務，減少回頭用紙本/Excel。
 - 主任首頁新增「流程追蹤 / 近期操作履歷 / 每週 KPI」，可以快速看到團隊使用狀態與待補流程。
 - 課程請假、調課、取消流程加入送出前影響提示，降低誤操作與事後補救成本。
@@ -558,6 +559,16 @@ gh pr create --fill
 
 ---
 
+## AI 讀檔與長期記憶（防漏讀）
+
+工程文件多且長，**預設不要通讀**；請依下列順序，與大廠「單一權威 + 可追溯」做法一致：
+
+1. **導航**：[`docs/INDEX.md`](docs/INDEX.md) — 任務對應到哪個檔、哪一節。
+2. **讀法**：[`docs/AI_DOC_LITERACY.md`](docs/AI_DOC_LITERACY.md) — 各檔「目的 / 太長時怎麼讀」速讀卡；**CHANGELOG → `npm run sync-release-notes` → 家長分眾 §R45** 的資料鏈。
+3. **不失憶**：[`docs/DOCS_GOVERNANCE_SOP.md`](docs/DOCS_GOVERNANCE_SOP.md) §4 MemPalace 保鮮；Agent 開工順序見 [`AGENTS.md`](AGENTS.md)。
+
+---
+
 ## 重要文件索引
 
 | 文件 | 說明 |
@@ -567,6 +578,7 @@ gh pr create --fill
 | `docs/SYSTEM_TECH_GUIDE.md` | 後端技術實作索引（Identity/Swipe/ClassSession/Service 職責） |
 | `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
 | `docs/INDEX.md` | 文件導航入口（開工先讀，避免 SOP 走偏） |
+| `docs/AI_DOC_LITERACY.md` | **AI 讀檔協議**：長文速讀卡、CHANGELOG→前端公告、MemPalace 參照（防漏讀） |
 | `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理與 MemPalace 保鮮節奏（每日/每週/每月） |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
