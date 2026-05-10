@@ -203,3 +203,7 @@ LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
 - **Occurrence 身分識別**：同一 `ClassSession.id` 只輸出一張卡；`scheduled` 例外若匹配同一堂只做 overlay，不另建第二張卡。
 - **API 合約**：`GET /api/v1/class-sessions` 必須回傳 `substitute_teacher_id`，前端 `normalizeClassSessionsPayload` 已解析此欄位。
 - **回歸測試**：`npm run test:calendar`（CI 中已整合），覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
+
+### G-008：家長入口 `releaseNotes` 必須分眾，不可餵教職員全量卡
+
+`notesForRole('parent')` 只應回傳 `audience` 含 **`parent`** 的卡片（由 `changelog-to-release-notes.mjs` 依條目關鍵字標記）。若把 director/teacher 卡全給家長 → 手機洗版、資訊與使用者無關。改 `docs/CHANGELOG.md` 後須 `npm run sync-release-notes`；見 `docs/AI_REGRESSION_LESSONS.md` §R45。

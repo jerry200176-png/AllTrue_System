@@ -199,6 +199,10 @@ PR #23 修復只對新刷卡有效，歷史記錄需手動 UPDATE。
 - **API 合約**：`GET /api/v1/class-sessions` 必須回傳 `substitute_teacher_id`（非 null 時表示代課老師），前端 `classSessionsApi.js` `normalizeClassSessionsPayload` 已解析此欄位。
 - **回歸測試**：任何修改都必須先跑 `npm run test:calendar`，覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
 
+### G-008：家長入口 `releaseNotes` 必須分眾（僅 `audience` 含 `parent`）
+
+見 `docs/AI_REGRESSION_LESSONS.md` §R45；`npm run sync-release-notes` 會從 `CHANGELOG.md` 重產 `releaseNotes.generated.js`。
+
 ### G-006：GitHub Actions SSH Secrets 格式嚴格，含 `@` 就爆
 - `PI_SSH_USER` / `PI_USER`：只能填 `admin`，含 `@hostname` → sshd 收到 `admin@admin` → Invalid user
 - `PI_SSH_HOST` / `PI_HOST`：只能填 `pi.lifenet.com.tw`，含 `user@` → 同上

@@ -519,6 +519,21 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
+
+**觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
+
+**根因**：`notesForRole('parent')` 曾用「只要 `audience` 含 director/teacher 就給家長」，等於把教職員向產品說明全部洗到家長手機畫面。
+
+**強制規則**：
+
+- `frontend/src/lib/releaseNotes.js`：`role === 'parent'` 時**只允許** `note.audience?.includes('parent')`；禁止改回「複製 director/teacher 全集」。
+- `scripts/changelog-to-release-notes.mjs`：依當日卡片內**白話條目**關鍵字（家長、繳費、課表、請假…等）決定是否把 `parent` 加進該卡的 `audience`；調整規則後跑 `npm run test:release-notes`。
+- `docs/CHANGELOG.md` 異動後必須重新產生 `frontend/src/lib/releaseNotes.generated.js`（`cd frontend && npm run sync-release-notes`；`vite build` / CI 亦會觸發）。
+- `ParentPortal.vue`：家長端最多兩則、用 `parentReleaseNoteTeaser()` 做短摘要；**不要**把 `interaction_statuses`／內部待辦用語當作家長首屏資訊。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
@@ -528,6 +543,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段） |
+| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏） |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）|
