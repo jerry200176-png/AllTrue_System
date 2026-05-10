@@ -15,8 +15,7 @@ function roleMatchesNoteAudience(note, role) {
     return true;
   }
   if (role === 'parent') {
-    // Parent portal shows the same curated product-level updates in plain language.
-    return note.audience.some((a) => a === 'director' || a === 'teacher');
+    return note.audience?.includes('parent');
   }
   const elevatedCampusStaff = ['super_admin', 'admin'];
   if (elevatedCampusStaff.includes(role)) {
@@ -32,4 +31,17 @@ export function notesForRole(role) {
 export function latestReleaseVersionForRole(role) {
   const notes = notesForRole(role);
   return notes.length > 0 ? notes[0].version : '';
+}
+
+const PARENT_TEASER_HINT =
+  /家長|家長端|家長入口|Parent|請假|繳費|帳務|課表|學習評量|評量|留言|互動|回饋|LINE|通知|出缺勤|月結|帳單|刷卡/i;
+
+/** One short line for parent mobile UI; prefers a parent-relevant bullet when present. */
+export function parentReleaseNoteTeaser(note, maxLen = 80) {
+  if (!note) return '';
+  const items = note.items || [];
+  const hit = items.find((t) => PARENT_TEASER_HINT.test(String(t)));
+  const text = String(hit || note.summary || '').trim();
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen - 1)}…`;
 }
