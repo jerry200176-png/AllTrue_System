@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-05-10 — docs: AI 讀檔協議與 README／INDEX 導覽（防長文漏讀）
+
+- Added `docs/AI_DOC_LITERACY.md`（速讀卡、CHANGELOG→公告鏈、MemPalace 參照）；更新 `README`、`INDEX`、`AGENTS`、`DOCS_GOVERNANCE_SOP`、`docs-integrity-check` 導覽與連結檢查
+
+---
+
 ## 2026-05-10 — docs: 家長入口分眾與工程交接（對齊大廠式可追溯）
 
 - Added `AI_REGRESSION_LESSONS` §R45、模組索引列；更新 `ROLE_PLAYBOOK` 家長 SOP、`INDEX` 導覽、`ENTERPRISE_WORKFLOW_ALIGNMENT` 多角色列；`G-008`（`releaseNotes` 分眾）

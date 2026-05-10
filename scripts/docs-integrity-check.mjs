@@ -109,6 +109,9 @@ if (exists('docs/INDEX.md')) {
   if (!indexText.includes('docs/DOCS_GOVERNANCE_SOP.md')) {
     warnings.push('docs/INDEX.md is missing docs governance SOP entry');
   }
+  if (!indexText.includes('AI_DOC_LITERACY.md')) {
+    warnings.push('docs/INDEX.md is missing AI_DOC_LITERACY entry');
+  }
 }
 
 const markdownFilesToCheck = [
@@ -116,6 +119,7 @@ const markdownFilesToCheck = [
   'AGENTS.md',
   'docs/INDEX.md',
   'docs/DOCS_GOVERNANCE_SOP.md',
+  'docs/AI_DOC_LITERACY.md',
 ];
 
 for (const rel of markdownFilesToCheck) {
