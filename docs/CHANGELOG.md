@@ -7,6 +7,19 @@
 
 ---
 
+## 2026-05-10 — fix(learning): 課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區
+
+- Fixed 評量頁課表事件在 API 未帶 `learning_record_id` 時改由 `ClassSessionID`／時段對應既有清單補 `recordId`，避免誤開「新增」而撞 409；409 回應統一含 `existing_id`（並相容 `existing_record_id`）；手機 Modal 草稿列改固定於標題下並加底部 safe-area／捲動留白
+- Added `GET learning-records?for_conflict_lookup=1&class_session_id=` 供 409 後精準載入該堂評量（含作廢列）；作廢仍占 unique 時改回明確 409；前端 409 自動補拉並開啟既有評量
+
+---
+
+## 2026-05-10 — feat(teacher): 可選介面操作音效（換頁／側欄／開評量）
+
+- Added 老師於個人資料「教學設定」可開啟 Web Audio 短提示音（預設關），與待辦提醒音分開
+
+---
+
 ## 2026-05-10 — docs: 長文導航與歷史檔狀態橫幅（RUNBOOK / CHANGELOG archive / 舊 PRD）
 
 - Changed `OPERATIONS_RUNBOOK` 開頭章節導航表、§I2 避免重複標題；`CHANGELOG`／`CHANGELOG_ARCHIVE` 閱讀提示；`更新網站前端`／主任說明／技術報告／兼職 PRD／`api-swipe-rfid` 狀態說明；`INDEX`＋`AI_DOC_LITERACY` 收錄「歷史／易誤導」表

@@ -78,6 +78,20 @@
           <div v-if="teachingMsg" :class="['section-msg', teachingMsg.type]">{{ teachingMsg.text }}</div>
 
           <div class="form-group">
+            <label class="switch-row">
+              <input
+                type="checkbox"
+                :checked="teacherUiSfxEnabled"
+                @change="onTeacherUiSfxToggle($event)"
+              />
+              <span>介面操作音效</span>
+            </label>
+            <p class="muted" style="margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.45">
+              切換頁面、側欄收合、從工作台開啟待填評量時播放極短提示音（Web Audio 合成，非取樣音檔）。與工作台「待辦提醒音」分開；預設關閉以免教室干擾。
+            </p>
+          </div>
+
+          <div class="form-group">
             <label>主分校</label>
             <select v-model.number="teachingForm.branch_id">
               <option v-for="b in branchOptions" :key="'tb-main-'+b.id" :value="b.id">{{ b.name }}</option>
@@ -311,6 +325,11 @@ import {
   updateNotificationPrefs,
   uploadAvatar,
 } from '../lib/profileService';
+import {
+  isTeacherUiSfxEnabled,
+  setTeacherUiSfxEnabled,
+  playTeacherUiSfx,
+} from '../lib/teacherUiSfx';
 
 const props = defineProps({
   token: {
@@ -333,6 +352,7 @@ const loading = ref(true);
 const activeTab = ref(props.forcePasswordChange ? 'security' : props.initialTab || 'profile');
 const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
+const teacherUiSfxEnabled = ref(false);
 const avatarUrl = ref('');
 const avatarInputRef = ref(null);
 const showAvatarCrop = ref(false);
@@ -416,6 +436,15 @@ function setActiveTab(tab) {
   activeTab.value = tab;
 }
 
+function onTeacherUiSfxToggle(ev) {
+  const on = Boolean(ev?.target?.checked);
+  teacherUiSfxEnabled.value = on;
+  setTeacherUiSfxEnabled(on);
+  if (on) {
+    playTeacherUiSfx('nav');
+  }
+}
+
 async function loadData() {
   loading.value = true;
   profileMsg.value = null;
@@ -436,6 +465,7 @@ async function loadData() {
   try {
     const me = await getMe(props.token);
     isTeacher.value = (me?.role === 'teacher');
+    teacherUiSfxEnabled.value = isTeacher.value && isTeacherUiSfxEnabled();
     profileForm.value = {
       name: me?.name || '',
       email: me?.email || '',
