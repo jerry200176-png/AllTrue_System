@@ -33,6 +33,29 @@ class LearningRecordController extends Controller
         return $hasColumn;
     }
 
+    /**
+     * 評量列／詳情顯示用：依 schedules 單堂代課列解析「實際授課老師」User id，
+     * 避免 LearningRecord.TeacherID 與代課不同步時主任端仍顯示正班老師。
+     */
+    private function resolveEffectiveInstructorUserId(LearningRecord $record): int
+    {
+        $record->loadMissing('studentClass');
+        $sc = $record->studentClass;
+        $contractTid = $sc ? (int) ($sc->TeacherID ?? 0) : 0;
+        $studentClassId = (int) ($record->StudentClassID ?? 0);
+        if ($studentClassId <= 0) {
+            return (int) ($record->TeacherID ?? 0);
+        }
+        $eff = SubstituteScheduleService::effectiveInstructorUserId(
+            $studentClassId,
+            $record->SessionDate,
+            $contractTid,
+            $record->StartTime
+        );
+
+        return $eff > 0 ? $eff : (int) ($record->TeacherID ?? 0);
+    }
+
     private function hydrateRecordForResponse(LearningRecord $record): LearningRecord
     {
         $record->loadMissing('studentClass.student');
@@ -43,8 +66,10 @@ class LearningRecordController extends Controller
             ? DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
             : null;
         $record->student_class_label = $subjectName ?? $record->Subject;
-        $teacherName = DB::table('Teacher')->where('id', $record->TeacherID)->value('T_Name')
-            ?? DB::table('User')->where('id', $record->TeacherID)->value('Name');
+        $effTid = $this->resolveEffectiveInstructorUserId($record);
+        $record->effective_teacher_id = $effTid;
+        $teacherName = DB::table('Teacher')->where('id', $effTid)->value('T_Name')
+            ?? DB::table('User')->where('id', $effTid)->value('Name');
         $record->teacher_name = $teacherName ?? '未指派';
         $comment = LearningRecordTeacherComment::where('learning_record_id', $record->id)->first();
         $record->teacher_comment = $comment ? $this->formatTeacherCommentForRecord($comment, [
@@ -581,10 +606,16 @@ class LearningRecordController extends Controller
             : collect();
 
         $teacherIds = $collection->pluck('TeacherID')->filter()->unique()->values();
+        $effTidByRecordId = [];
+        foreach ($collection as $r) {
+            $effTidByRecordId[(int) $r->id] = $this->resolveEffectiveInstructorUserId($r);
+        }
+        $effectiveIds = collect($effTidByRecordId)->filter(fn ($id) => $id > 0)->values();
+        $allNameIds = $teacherIds->merge($effectiveIds)->unique()->values();
         $teacherNameMap = collect();
-        if ($teacherIds->isNotEmpty()) {
-            $fromTeacher = DB::table('Teacher')->whereIn('id', $teacherIds)->pluck('T_Name', 'id');
-            $missingIds = $teacherIds->diff($fromTeacher->keys());
+        if ($allNameIds->isNotEmpty()) {
+            $fromTeacher = DB::table('Teacher')->whereIn('id', $allNameIds)->pluck('T_Name', 'id');
+            $missingIds = $allNameIds->diff($fromTeacher->keys());
             $fromUser = $missingIds->isNotEmpty()
                 ? DB::table('User')->whereIn('id', $missingIds)->pluck('Name', 'id')
                 : collect();
@@ -603,14 +634,16 @@ class LearningRecordController extends Controller
             ? DB::table('User')->whereIn('id', $authorIds)->pluck('Name', 'id')->toArray()
             : [];
 
-        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks, $teacherComments, $authorNameMap) {
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks, $teacherComments, $authorNameMap, $effTidByRecordId) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $subjectId = $record->studentClass->SubjectID ?? null;
             $record->student_class_label = ($subjectId && isset($subjectMap[$subjectId]))
                 ? $subjectMap[$subjectId]
                 : $record->Subject;
-            $record->teacher_name = $teacherNameMap[$record->TeacherID] ?? '未指派';
+            $effTid = $effTidByRecordId[(int) $record->id] ?? (int) ($record->TeacherID ?? 0);
+            $record->effective_teacher_id = $effTid;
+            $record->teacher_name = $teacherNameMap[$effTid] ?? '未指派';
             $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
             $fb = $feedbacks->get((int) $record->id);
             $record->parent_feedback = $fb ? [
