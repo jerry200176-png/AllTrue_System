@@ -286,7 +286,7 @@
       <div v-if="isPasswordChangeLocked" class="card password-lock-card">
         為了帳號安全，請先到「右上角帳號選單 > 個人管理 > 安全性」完成初始密碼修改後再繼續使用系統。
       </div>
-      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" @navigate="onNavigateFromNotifications" />
+      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
         :branch-id="currentBranch"
@@ -311,6 +311,7 @@
         :user-role="role"
         :teacher-branch-ids="teacherBranches.map(b => b.id)"
         :unread-feedback-count="unreadFeedbackCount"
+        :initial-engagement="userProfile?.engagement ?? null"
         @navigate="setActivePage($event)"
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
@@ -1348,6 +1349,7 @@ const fetchProfile = async (_uid) => {
             role: me.role,
             branch_ids: Array.isArray(me.campuses) ? me.campuses : [],
             must_change_password: mustChangePassword,
+            engagement: me.engagement ?? null,
         };
 
         if (session.value?.user) {
