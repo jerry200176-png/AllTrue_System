@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\UserEngagementXpAwardService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
@@ -144,5 +145,15 @@ class LearningRecord extends Model
     public function teacherComment()
     {
         return $this->hasOne(LearningRecordTeacherComment::class, 'learning_record_id', 'id');
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $lr) {
+            if (!$lr->isDirty('VoidedAt') || $lr->VoidedAt === null) {
+                return;
+            }
+            app(UserEngagementXpAwardService::class)->revokeLearningRecordApproved((int) $lr->id);
+        });
     }
 }

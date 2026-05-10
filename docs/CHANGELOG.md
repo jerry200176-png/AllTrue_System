@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-05-10 — feat(engagement): 軍階／XP Phase 2—核准評量發 XP、門檻晉階、作廢／退回撤銷（#325）
+
+- Added `user_engagement_xp_events`（`idempotency_key` 防重複）；評量 **已核准且 Progress 非空** 時對**授課老師**（`User.type=T`）+10 XP；`EngagementRankProgression` 老師／staff 雙門檻表驅動 `rank_key`
+- `UserEngagementPresenter` 改以 **XP + role_track** 推導顯示軍階；`rollback-approval` 與 **作廢**（`VoidedAt`）撤銷對應 XP 事件
+- `LearningRecord::booted` 綁定作廢撤銷（與 Schedule／ClassSession 作廢路徑一致）
+
+---
+
 ## 2026-05-10 — feat(engagement): 軍階／XP Phase 1—`user_engagement` + `GET /me`（#324）
 
 - Added 表 `user_engagement`（`role_track`、`rank_key`、`xp_total`、`rank_display_opt_out`）；`GET /api/v1/me` 附加 `engagement`（中文化 `rank_label`）；`super_admin` 固定五星上將且不回傳 `xp_total`；見 epic #323
