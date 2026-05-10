@@ -2,6 +2,23 @@
 
 This runbook captures the practical SOP to keep AllTrue stable during development and deployment.
 
+## 章節導航（先跳此表再讀）
+
+| 章節 | 主題 |
+|------|------|
+| **§A** | WSL2 本地開發、merge 後驗證 |
+| **§B** | GitHub／Dependabot／PR 衛生 |
+| **§C** | Incident lessons |
+| **§D** | Recovery（站看起來舊／API 異常） |
+| **§E–F** | Pre-merge checklist、高風險區 |
+| **§G–H** | 分校選單異常、全站 500 緊急恢復 |
+| **§I** | CI/CD 自動部署（Pi） |
+| **§I2** | Reference docs 清單 |
+| **§J–K** | 定價口徑、出勤／堂數／科目數強制規則 |
+| **§L–P** | 效能、Log、LINE、Secret rotation、工程成熟度 |
+
+> **讀法**：本篇很長；依任務**只開對應 §**，其餘略過。與 AI 協作時見 [`AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md)。
+
 ## A. Development SOP（2026-04-24 起：WSL2 本地開發）
 
 > ⛔ 禁止 SSH 到 Pi 直接改程式碼。所有改動必須在 WSL2 `~/alltrue` 進行。
@@ -430,7 +447,7 @@ GitHub Actions → Deploy to Pi → 最新 run 顯示 `success`
 
 ---
 
-## I. Reference docs
+## I2. Reference docs
 
 - `README.md`
 - `docs/INDEX.md`
