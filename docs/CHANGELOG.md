@@ -7,6 +7,12 @@
 
 ---
 
+## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
+
+- Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
+
+---
+
 ## 2026-05-10 — fix(learning): 課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區
 
 - Fixed 評量頁課表事件在 API 未帶 `learning_record_id` 時改由 `ClassSessionID`／時段對應既有清單補 `recordId`，避免誤開「新增」而撞 409；409 回應統一含 `existing_id`（並相容 `existing_record_id`）；手機 Modal 草稿列改固定於標題下並加底部 safe-area／捲動留白
