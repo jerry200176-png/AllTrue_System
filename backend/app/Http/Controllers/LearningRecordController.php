@@ -150,10 +150,16 @@ class LearningRecordController extends Controller
         }
 
         // Optional: only return records whose class session has already ended.
-        // Useful for dashboard "pending review" cards to avoid future classes.
+        // Useful when the product explicitly wants "post-class" slices.
         if ($request->boolean('only_due', false)) {
             $now = Carbon::now()->format('Y-m-d H:i:s');
             $query->whereRaw("CONCAT(SessionDate, ' ', COALESCE(EndTime, '23:59:59')) <= ?", [$now]);
+        }
+
+        // Optional: session start time has passed (director dashboard "待審" 自開課起可見).
+        if ($request->boolean('only_started', false)) {
+            $now = Carbon::now()->format('Y-m-d H:i:s');
+            $query->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now]);
         }
 
         $query->excludePausedCoursePendingReview();
