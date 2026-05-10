@@ -161,54 +161,6 @@
         </button>
       </div>
 
-      <div class="th-priority-board">
-        <div class="th-priority-head">
-          <span class="material-symbols-outlined" style="font-size:16px">priority_high</span>
-          今日最重要 3 件事
-        </div>
-        <div class="th-priority-items">
-          <button
-            v-for="item in teacherTodoCards"
-            :key="item.id"
-            type="button"
-            class="th-priority-item"
-            :class="{
-              'th-priority-item--overdue': item.status === 'overdue',
-              'th-priority-item--pending': item.status === 'pending',
-              'th-priority-item--done': item.status === 'done',
-            }"
-            @click="handleTodoCardClick(item)"
-          >
-            <span class="th-priority-rank">{{ item.rank }}</span>
-            <div class="th-priority-body">
-              <span class="th-priority-title">{{ item.title }}</span>
-              <span class="th-priority-desc">{{ item.description }}</span>
-            </div>
-            <span class="material-symbols-outlined">chevron_right</span>
-          </button>
-        </div>
-      </div>
-
-      <div class="th-task-board">
-        <div class="th-task-board-head">
-          <span class="material-symbols-outlined" style="font-size:16px">checklist</span>
-          每日任務清單
-        </div>
-        <div class="th-task-items">
-          <button class="th-task-item" type="button" @click="fillNextPendingLearning">
-            <span class="th-task-item-label">今日待填</span>
-            <span :class="['th-task-item-count', todayTaskCount > 0 ? 'warn' : 'ok']">{{ todayTaskCount }}</span>
-          </button>
-          <button class="th-task-item" type="button" @click="openOverdueTask">
-            <span class="th-task-item-label">逾期待補</span>
-            <span :class="['th-task-item-count', overdueTaskCount > 0 ? 'warn' : 'ok']">{{ overdueTaskCount }}</span>
-          </button>
-          <button class="th-task-item" type="button" @click="openChangesRequestedTask">
-            <span class="th-task-item-label">需修改</span>
-            <span :class="['th-task-item-count', changesRequestedTaskCount > 0 ? 'warn' : 'ok']">{{ changesRequestedTaskCount }}</span>
-          </button>
-        </div>
-      </div>
 
       <div class="th-progress-board" :class="{ loading: learningProgressLoading }">
         <div class="th-progress-head">
@@ -417,7 +369,6 @@ import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
-import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 
 const props = defineProps({
@@ -555,11 +506,11 @@ const loadingOverdue = ref(false);
 const overdueRecords = ref([]);
 const overdueCount = computed(() => overdueRecords.value.length);
 
-// ── Today's pending learning records ──
+// ── Today's pending learning records（與 GET me/learning-pending-summary 一致 + 逾期待補堂次）──
 const loadingLearning = ref(true);
-const todayOnlyLearningCount = ref(0);
+const pendingSummaryTotal = ref(0);
 const changesRequestedLearningCount = ref(0);
-const pendingLearningCount = computed(() => todayOnlyLearningCount.value + overdueCount.value);
+const pendingLearningCount = computed(() => pendingSummaryTotal.value + overdueCount.value);
 const pendingTodoTotal = computed(
   () => Number(pendingAttendanceCount.value || 0)
     + Number(pendingLearningCount.value || 0)
@@ -572,32 +523,20 @@ const isPendingSoundSnoozedToday = computed(
   () => pendingSoundSnoozedDate.value === localTodayYmd(),
 );
 
-async function fetchPendingLearning() {
+async function fetchPendingLearningSummary() {
   loadingLearning.value = true;
   try {
     const token = await getToken();
     if (!token) return;
-    const params = new URLSearchParams({ sort: 'session_date', per_page: '200' });
+    const params = new URLSearchParams();
     if (props.branchId) params.set('branch_id', String(props.branchId));
-    const res = await fetch(`/api/v1/learning-records?${params}`, {
+    const res = await fetch(`/api/v1/me/learning-pending-summary?${params}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     if (!res.ok) return;
     const json = await res.json();
-    const records = json.data || [];
-    const today = localTodayYmd();
-    const pending = records.filter(r => {
-      const status = r.Status || r.status || '';
-      return status === 'pending' || status === 'changes_requested';
-    });
-    changesRequestedLearningCount.value = pending.filter(r => (r.Status || r.status || '') === 'changes_requested').length;
-    const missingToday = todayAllSessions.value.filter(s => {
-      const st = String(s?.status || '').toLowerCase();
-      return (st === 'scheduled' || st === 'attended') &&
-        String(s?.session_date || '').slice(0, 10) === today &&
-        (!s?.learning_record_id || s.learning_record_status === 'missing');
-    });
-    todayOnlyLearningCount.value = pending.length + missingToday.length;
+    pendingSummaryTotal.value = Number(json.total || 0);
+    changesRequestedLearningCount.value = Number(json.changes_requested_learning_records ?? 0);
   } catch { /* ignore */ } finally {
     loadingLearning.value = false;
   }
@@ -636,94 +575,6 @@ const progressTrendText = computed(() => {
   }).join('｜');
 });
 
-const todayTaskCount = computed(() => todayPendingEvents.value.length);
-const overdueTaskCount = computed(() => overdueCount.value);
-const changesRequestedTaskCount = computed(() => changesRequestedLearningCount.value);
-
-const topPriorityItems = computed(() => {
-  const items = [];
-  if (overdueTaskCount.value > 0) {
-    items.push({
-      id: 'teacher-overdue',
-      title: `優先補填逾期評量（${overdueTaskCount.value}）`,
-      description: '先處理逾期內容，避免待辦持續累積',
-      onClick: openOverdueTask,
-      score: 100,
-      status: 'overdue',
-      owner: 'teacher',
-      dueAt: localTodayYmd(),
-    });
-  }
-  if (changesRequestedTaskCount.value > 0) {
-    items.push({
-      id: 'teacher-changes',
-      title: `處理需修改評量（${changesRequestedTaskCount.value}）`,
-      description: '回覆主任修改建議，避免反覆退回',
-      onClick: openChangesRequestedTask,
-      score: 90,
-      status: 'pending',
-      owner: 'teacher',
-      dueAt: localTodayYmd(),
-    });
-  }
-  if (todayTaskCount.value > 0) {
-    items.push({
-      id: 'teacher-today-learning',
-      title: `完成今日待填評量（${todayTaskCount.value}）`,
-      description: '把今天課程評量一次完成',
-      onClick: fillNextPendingLearning,
-      score: 80,
-      status: 'pending',
-      owner: 'teacher',
-      dueAt: localTodayYmd(),
-    });
-  }
-  if (pendingAttendanceCount.value > 0) {
-    items.push({
-      id: 'teacher-attendance',
-      title: `完成待點名課程（${pendingAttendanceCount.value}）`,
-      description: '先完成點名，避免課程狀態延遲',
-      onClick: goAttendance,
-      score: 70,
-      status: 'pending',
-      owner: 'teacher',
-      dueAt: localTodayYmd(),
-    });
-  }
-  if (items.length === 0) {
-    items.push({
-      id: 'teacher-all-clear',
-      title: '今天重點任務已完成',
-      description: '可查看班級行事曆或科目數進度',
-      onClick: () => emit('navigate', 'calendar'),
-      score: 0,
-      status: 'done',
-      owner: 'teacher',
-      dueAt: localTodayYmd(),
-    });
-  }
-  return items;
-});
-
-const teacherTodoCards = computed(() =>
-  sortTodoCards(topPriorityItems.value)
-    .slice(0, 3)
-    .map((item, idx) => ({
-      ...item,
-      rank: item.status === 'done' ? '✓' : String(idx + 1),
-      acknowledged: isTodoAcknowledged(item.id),
-    })));
-
-function handleTodoCardClick(item) {
-  if (!item) return;
-  markTodoAcknowledged(item.id);
-  trackAdoptionEvent('todo_card_clicked', props.branchId, {
-    todo_id: item.id,
-    status: item.status,
-    owner: item.owner,
-  });
-  item.onClick?.();
-}
 
 async function fetchLearningProgress() {
   learningProgressLoading.value = true;
@@ -1145,7 +996,7 @@ function snoozePendingSoundToday() {
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
-  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchClockinStatus(), fetchLearningProgress()]);
+  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchClockinStatus(), fetchLearningProgress()]);
   refreshing.value = false;
 }
 
@@ -1158,7 +1009,7 @@ function startPolling() {
     if (document.visibilityState === 'visible') {
       fetchPendingAttendance();
       fetchOverdueLearning();
-      fetchPendingLearning();
+      fetchPendingLearningSummary();
       fetchLearningProgress();
     }
   }, POLL_INTERVAL);
@@ -1172,7 +1023,7 @@ function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     fetchPendingAttendance();
     fetchOverdueLearning();
-    fetchPendingLearning();
+    fetchPendingLearningSummary();
     fetchLearningProgress();
   }
 }
@@ -1238,7 +1089,7 @@ onMounted(() => {
     savePendingSoundSnoozedDate('');
   }
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearning(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
@@ -1250,7 +1101,7 @@ watch(weekOffset, () => loadWeekSchedule());
 watch(() => props.branchId, () => {
   fetchPendingAttendance();
   fetchOverdueLearning();
-  fetchPendingLearning();
+  fetchPendingLearningSummary();
   fetchLearningProgress();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
@@ -1316,18 +1167,14 @@ onBeforeUnmount(() => {
 /* ──────── A. Today Actions ──────── */
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
-.th-task-board,
-.th-progress-board,
-.th-priority-board {
+.th-progress-board {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--card-bg);
 }
-.th-task-board-head,
-.th-progress-head,
-.th-priority-head {
+.th-progress-head {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1336,93 +1183,6 @@ onBeforeUnmount(() => {
   color: var(--text-light);
   font-weight: 600;
 }
-.th-task-items {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.th-priority-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.th-priority-item {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-}
-.th-priority-item--overdue {
-  border-left: 3px solid #dc2626;
-}
-.th-priority-item--pending {
-  border-left: 3px solid #f59e0b;
-}
-.th-priority-item--done {
-  border-left: 3px solid #16a34a;
-}
-
-.th-priority-rank {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  background: var(--primary-bg);
-  color: var(--primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.th-priority-body {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
-
-.th-priority-title {
-  display: block;
-  font-size: 13px;
-  color: var(--text);
-  font-weight: 600;
-}
-
-.th-priority-desc {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--text-light);
-}
-.th-task-item {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  padding: 8px;
-  text-align: left;
-  cursor: pointer;
-}
-.th-task-item-label {
-  display: block;
-  font-size: 12px;
-  color: var(--text-light);
-}
-.th-task-item-count {
-  display: block;
-  margin-top: 2px;
-  font-size: 18px;
-  font-weight: 700;
-}
-.th-task-item-count.warn { color: var(--warning); }
-.th-task-item-count.ok { color: var(--success); }
 
 .th-progress-main {
   display: flex;
@@ -1695,7 +1455,6 @@ onBeforeUnmount(() => {
   .th-action-btn { padding: 14px 10px; gap: 10px; }
   .th-action-icon-wrap { width: 38px; height: 38px; }
   .th-action-label { font-size: 14px; }
-  .th-task-items { grid-template-columns: 1fr; }
   .th-event { padding: 8px 6px; gap: 8px; }
   .th-event-time { font-size: 12px; min-width: 38px; }
   .th-event-student { font-size: 13px; }
