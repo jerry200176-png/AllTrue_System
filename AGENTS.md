@@ -7,11 +7,13 @@
 
 ## 開工前 First-read 順序
 
+**SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。高風險模組（代課／評量／智慧行事曆合併／扣堂／繳費提醒等）必須對照下面第 2、4 步與 `AI_REGRESSION_LESSONS` 文末**模組索引表**對應 §，再動 `backend/`、`frontend/src/`。
+
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
 2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
 2b. 任務牽涉 **長文件 / 多份 docs** 時：`docs/AI_DOC_LITERACY.md`（速讀卡、CHANGELOG→公告、MemPalace 何時 mine）
 3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`
-4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀）
+4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
 5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
 6. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
 
