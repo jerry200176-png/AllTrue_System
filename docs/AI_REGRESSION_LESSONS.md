@@ -152,6 +152,20 @@ Carbon::setTestNow(Carbon::today()->setTime(10, 0)); // in setUp()
 
 - 同理：`start_time='23:00'` + `duration_minutes=30` → EndTime=23:30；CI 在 23:31 跑 → 計數差一
 
+### Y2b. 測試用 `addDays(1)` 跨週 → 週日執行時次日落入下週，`weeklyScheduled` 少一
+
+```php
+// ❌ 危險：today=週日，addDays(1)=週一 → Carbon::now()->endOfWeek() 是週日 → 下週 session 不計入
+ClassSession::create([..., 'SessionDate' => $today->copy()->addDays(1)->toDateString(), 'Status' => 'scheduled']);
+$this->assertGreaterThanOrEqual(2, $weeklyScheduled); // CI 週日跑 → 1 < 2 → FAIL
+
+// ✅ 正確：兩個 session 都在 today（永遠在當週），future session 用 23:00 符合 Y2 規則
+ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' => '08:00', 'Status' => 'attended']);
+ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' => '23:00', 'Status' => 'scheduled']);
+```
+
+**強制規則**：測試中需要「當週 N 筆」時，所有 session 日期用 `$today` 或 `Carbon::now()->startOfWeek()->addDays(X)` + 確認 `addDays(X)` 不超出週末（X ≤ 6）。
+
 ### Y3. PhpSpreadsheet sheet 名稱不能為空
 
 - 動態 sheet name 必須 guard 空字串，fallback 到 `"Sheet"` 或 `"老師{$id}"`
