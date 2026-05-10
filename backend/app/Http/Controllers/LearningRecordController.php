@@ -55,9 +55,14 @@ class LearningRecordController extends Controller
 
     public function index(Request $request)
     {
-        $query = LearningRecord::active();
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        if ($request->boolean('for_conflict_lookup') && $request->filled('class_session_id')) {
+            return $this->learningRecordsForClassSessionConflictLookup($request, $role, $campusIds);
+        }
+
+        $query = LearningRecord::active();
 
         if ($role === 'teacher') {
             $teacherId = $request->attributes->get('auth_teacher_id');
@@ -214,6 +219,44 @@ class LearningRecordController extends Controller
         $this->decorateRecords($collection);
 
         return response()->json($records);
+    }
+
+    /**
+     * 供前端 409 後精準拉取「該堂次」評量（含作廢列），不受分頁／active 清單限制。
+     */
+    private function learningRecordsForClassSessionConflictLookup(Request $request, string $role, array $campusIds): \Illuminate\Http\JsonResponse
+    {
+        $csid = (int) $request->input('class_session_id');
+        if ($csid <= 0) {
+            return response()->json(['message' => 'Invalid class_session_id'], 422);
+        }
+
+        $query = LearningRecord::query()->where('ClassSessionID', $csid);
+
+        if ($role === 'teacher') {
+            $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            if ($teacherId <= 0) {
+                return response()->json(['message' => 'Teacher not linked'], 403);
+            }
+            $this->applyTeacherScopedLearningRecordConstraint($query, $teacherId);
+        } elseif ($role === 'super_admin') {
+            // no extra campus filter
+        } elseif (!empty($campusIds)) {
+            $query->whereHas('studentClass.student', function ($q) use ($campusIds) {
+                $q->whereIn('CampusID', $campusIds);
+            });
+        } else {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $rows = $query->with('studentClass.student')->orderBy('id', 'desc')->limit(5)->get();
+        $this->decorateRecords($rows);
+
+        return response()->json([
+            'data' => $rows->values(),
+            'pagination' => 'conflict_lookup',
+            'for_conflict_lookup' => true,
+        ]);
     }
 
     /**
@@ -703,11 +746,27 @@ class LearningRecordController extends Controller
                 return $timeGateResponse;
             }
 
-            // 409 if an active (non-voided) record already exists for this session.
-            // Frontend should open the existing record for editing instead of creating a new one.
-            $existing = LearningRecord::where('ClassSessionID', $classSessionId)->active()->first();
-            if ($existing) {
-                return response()->json(['message' => 'Learning record already exists', 'existing_id' => $existing->id], 409);
+            // 409：同一 ClassSession 僅能一筆 LearningRecord（unique）；作廢列仍占用鍵值。
+            $rowForSession = LearningRecord::where('ClassSessionID', $classSessionId)
+                ->orderByDesc('id')
+                ->first();
+            if ($rowForSession) {
+                if ($rowForSession->VoidedAt) {
+                    return response()->json([
+                        'message' => '此堂評量已作廢，無法從此入口重複建立。請聯絡分校主任協助處理。',
+                        'existing_id' => (int) $rowForSession->id,
+                        'existing_record_id' => (int) $rowForSession->id,
+                        'voided' => true,
+                    ], 409);
+                }
+
+                $eid = (int) $rowForSession->id;
+
+                return response()->json([
+                    'message' => '此堂評量表已存在，請重新整理頁面後查看。',
+                    'existing_id' => $eid,
+                    'existing_record_id' => $eid,
+                ], 409);
             }
 
             $authUser = request()->attributes->get('auth_user');
@@ -753,9 +812,12 @@ class LearningRecordController extends Controller
                 // the active() check above and this INSERT. Return the existing record instead.
                 if ($e->errorInfo[1] === 1062) {
                     $dup = LearningRecord::where('ClassSessionID', $classSessionId)->first();
+                    $dupId = $dup ? $dup->id : null;
                     return response()->json([
                         'message' => '此堂評量表已存在，請重新整理頁面後查看。',
-                        'existing_record_id' => $dup ? $dup->id : null,
+                        'existing_id' => $dupId,
+                        // 舊版前端鍵名，與 active() 檢查路徑一致
+                        'existing_record_id' => $dupId,
                     ], 409);
                 }
                 throw $e;
