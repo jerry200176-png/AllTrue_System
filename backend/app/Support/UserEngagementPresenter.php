@@ -70,24 +70,22 @@ final class UserEngagementPresenter
         $defaultTrack = $authRole === 'teacher' ? 'teacher' : 'staff';
         $row = UserEngagement::query()->where('user_id', (int) $user->id)->first();
 
-        $rankKey = (string) ($row->rank_key ?? self::DEFAULT_RANK_KEY);
-        if ($rankKey === self::SUPER_ONLY_RANK_KEY) {
-            $rankKey = self::DEFAULT_RANK_KEY;
-        }
-        if (!self::isKnownRankKey($rankKey)) {
-            $rankKey = self::DEFAULT_RANK_KEY;
-        }
-
         $roleTrack = (string) ($row->role_track ?? $defaultTrack);
         if (!in_array($roleTrack, ['teacher', 'staff'], true)) {
             $roleTrack = $defaultTrack;
+        }
+
+        $xp = (int) ($row->xp_total ?? 0);
+        $rankKey = EngagementRankProgression::rankKeyForXp($xp, $roleTrack);
+        if (!self::isKnownRankKey($rankKey)) {
+            $rankKey = self::DEFAULT_RANK_KEY;
         }
 
         return [
             'role_track' => $roleTrack,
             'rank_key' => $rankKey,
             'rank_label' => self::rankLabel($rankKey),
-            'xp_total' => (int) ($row->xp_total ?? 0),
+            'xp_total' => $xp,
         ];
     }
 }
