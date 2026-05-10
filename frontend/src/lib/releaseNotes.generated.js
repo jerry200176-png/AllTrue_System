@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "1.0.8",
     "date": "2026-05-10",
     "title": "1.0.8 版本更新",
-    "summary": "評量 409 bug 修復 + KPI bar + 快速語句擴充；教學工作台「待填／待修改」數改走 ，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總",
+    "summary": "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區；評量 409 bug 修復 + KPI bar + 快速語句擴充",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
           "評量 409 bug 修復 + KPI bar + 快速語句擴充",
           "教學工作台「待填／待修改」數改走 ，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總"
         ]
@@ -24,13 +25,16 @@ export const changelogReleaseNotes = [
       {
         "title": "體驗調整",
         "items": [
+          "老師於個人資料「教學設定」可開啟 Web Audio 短提示音（預設關），與待辦提醒音分開",
           "移除 重複的「今日最重要 3 件事」與「每日任務清單」區塊，工作台子區塊從 5 降至 3"
         ]
       }
     ],
     "items": [
+      "課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區",
       "評量 409 bug 修復 + KPI bar + 快速語句擴充",
       "教學工作台「待填／待修改」數改走 ，與側欄角標同源，避免把全時段 pending 與今日缺評量錯誤加總",
+      "老師於個人資料「教學設定」可開啟 Web Audio 短提示音（預設關），與待辦提醒音分開",
       "移除 重複的「今日最重要 3 件事」與「每日任務清單」區塊，工作台子區塊從 5 降至 3"
     ]
   },
