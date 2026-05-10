@@ -10,9 +10,6 @@ use App\Support\EngagementRankProgression;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-/**
- * #325: idempotent XP on learning record approval; revoke on rollback / void.
- */
 class UserEngagementXpAwardService
 {
     public const EVENT_LR_APPROVED = 'learning_record_approved';
@@ -24,9 +21,6 @@ class UserEngagementXpAwardService
         return 'lr_approved:' . $learningRecordId;
     }
 
-    /**
-     * 與前端「已填」一致：以 Progress 非空白為「有授課進度正文」。
-     */
     public function learningRecordHasAwardableProgress(LearningRecord $lr): bool
     {
         return trim((string) ($lr->Progress ?? '')) !== '';

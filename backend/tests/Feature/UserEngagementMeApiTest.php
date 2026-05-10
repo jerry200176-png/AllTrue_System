@@ -14,45 +14,20 @@ class UserEngagementMeApiTest extends TestCase
 
     public function test_super_admin_me_returns_fixed_five_star_rank_without_xp(): void
     {
-        $admin = User::create([
-            'LoginName' => 'super-engagement@example.com',
-            'Name' => 'Super',
-            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'S',
-            'phone' => '0900000001',
-        ]);
-        $token = $this->issueToken($admin->id);
-
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->getJson('/api/v1/me');
-
-        $res->assertOk()
-            ->assertJsonPath('engagement.rank_key', 'general_five_star')
+        $u = $this->makeUser('S', 'super-engagement@example.com');
+        $r = $this->getJson('/api/v1/me', $this->bearer($u['tok']))->assertOk();
+        $r->assertJsonPath('engagement.rank_key', 'general_five_star')
             ->assertJsonPath('engagement.rank_label', '五星上將')
             ->assertJsonPath('engagement.role_track', 'staff');
-        $eng = $res->json('engagement');
+        $eng = $r->json('engagement');
         $this->assertIsArray($eng);
         $this->assertArrayNotHasKey('xp_total', $eng);
     }
 
     public function test_teacher_without_engagement_row_gets_default_rank_and_zero_xp(): void
     {
-        $teacher = User::create([
-            'LoginName' => 'teacher-engagement@example.com',
-            'Name' => 'Teacher Eng',
-            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'T',
-            'phone' => '0900000002',
-        ]);
-        $token = $this->issueToken($teacher->id);
-
-        $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->getJson('/api/v1/me')
-            ->assertOk()
+        $u = $this->makeUser('T', 'teacher-engagement@example.com');
+        $this->getJson('/api/v1/me', $this->bearer($u['tok']))->assertOk()
             ->assertJsonPath('engagement.rank_key', 'private_second')
             ->assertJsonPath('engagement.rank_label', '二兵')
             ->assertJsonPath('engagement.role_track', 'teacher')
@@ -61,26 +36,11 @@ class UserEngagementMeApiTest extends TestCase
 
     public function test_teacher_with_engagement_row_gets_stored_rank_and_xp(): void
     {
-        $teacher = User::create([
-            'LoginName' => 'teacher-engagement-row@example.com',
-            'Name' => 'Teacher Row',
-            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'T',
-            'phone' => '0900000003',
-        ]);
+        $u = $this->makeUser('T', 'teacher-engagement-row@example.com');
         UserEngagement::factory()->create([
-            'user_id' => $teacher->id,
-            'role_track' => 'teacher',
-            'rank_key' => 'corporal',
-            'xp_total' => 120,
+            'user_id' => $u['id'], 'role_track' => 'teacher', 'rank_key' => 'corporal', 'xp_total' => 120,
         ]);
-        $token = $this->issueToken($teacher->id);
-
-        $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->getJson('/api/v1/me')
-            ->assertOk()
+        $this->getJson('/api/v1/me', $this->bearer($u['tok']))->assertOk()
             ->assertJsonPath('engagement.rank_key', 'corporal')
             ->assertJsonPath('engagement.rank_label', '下士')
             ->assertJsonPath('engagement.xp_total', 120);
@@ -88,33 +48,28 @@ class UserEngagementMeApiTest extends TestCase
 
     public function test_non_staff_pending_role_has_no_engagement_block(): void
     {
-        $pending = User::create([
-            'LoginName' => 'pending-engagement@example.com',
-            'Name' => 'Pending',
-            'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
-            'type' => 'U',
-            'phone' => '0900000004',
-        ]);
-        $token = $this->issueToken($pending->id);
-
-        $me = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->getJson('/api/v1/me');
-
+        $u = $this->makeUser('U', 'pending-engagement@example.com');
+        $me = $this->getJson('/api/v1/me', $this->bearer($u['tok']));
         $me->assertOk();
         $this->assertArrayNotHasKey('engagement', $me->json());
     }
 
-    private function issueToken(int $userId): string
+    /** @return array{id:int,tok:string} */
+    private function makeUser(string $type, string $email): array
     {
-        $token = bin2hex(random_bytes(16));
-        AuthToken::create([
-            'user_id' => $userId,
-            'token' => $token,
-            'expires_at' => now()->addDay(),
+        $row = User::create([
+            'LoginName' => $email, 'Name' => 'T', 'PSW' => password_hash('secret-123', PASSWORD_DEFAULT),
+            'type' => $type, 'phone' => '0900000000',
         ]);
+        $tok = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $row->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
 
-        return $token;
+        return ['id' => (int) $row->id, 'tok' => $tok];
+    }
+
+    /** @return array<string, string> */
+    private function bearer(string $token): array
+    {
+        return ['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'];
     }
 }
