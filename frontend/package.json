@@ -7,6 +7,7 @@
     "dev": "vite",
     "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
+    "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:release-notes": "node src/lib/releaseNotes.test.js",
     "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs",
     "build": "npm run sync-release-notes && vite build",

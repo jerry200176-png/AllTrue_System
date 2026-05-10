@@ -14,6 +14,9 @@
             <p class="dash-kicker">Campus Operations Command</p>
             <h2 class="dash-title">{{ branchName }}</h2>
             <p class="dash-subtitle">即時掌握今日課務、繳費風險、評量審核與分校營運節奏</p>
+            <div v-if="engagementRowVisible" class="dash-engagement-strip">
+              <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
+            </div>
           </div>
           <div class="dash-date-panel">
             <span class="dash-date-label">Today</span>
@@ -565,7 +568,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { supabase } from '../supabase';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -580,12 +583,63 @@ import {
   generateExceptionWorkflowCandidates,
   confirmExceptionWorkflowCandidate,
 } from '../api';
+import EngagementRankStrip from '../components/EngagementRankStrip.vue';
+import { fetchMe } from '../lib/meClient';
+import {
+  isUserEngagementRankDisplayEnabled,
+  USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
+} from '../lib/userEngagementDisplay';
 
 const props = defineProps({
   branchId: [String, Number],
   unreadFeedbackCount: { type: Number, default: 0 },
+  initialEngagement: { type: Object, default: null },
 });
 const emit = defineEmits(['navigate']);
+
+const engagementSnapshot = ref(null);
+const engagementDisplayOn = ref(true);
+const engagementReducedMotion = ref(false);
+
+const effectiveEngagement = computed(() => engagementSnapshot.value ?? props.initialEngagement ?? null);
+
+function refreshEngagementUi() {
+  engagementDisplayOn.value = isUserEngagementRankDisplayEnabled();
+}
+
+const engagementRowVisible = computed(
+  () => Boolean(effectiveEngagement.value) && engagementDisplayOn.value,
+);
+
+async function loadEngagementSnapshot() {
+  const token = getToken();
+  if (!token) return;
+  const me = await fetchMe(token);
+  engagementSnapshot.value = me?.engagement ?? null;
+}
+
+function setupEngagementReducedMotion() {
+  try {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    engagementReducedMotion.value = mq.matches;
+    mq.addEventListener?.('change', () => {
+      engagementReducedMotion.value = mq.matches;
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function onEngagementDisplayRefreshEvent() {
+  refreshEngagementUi();
+}
+
+function onDirectorVisibilityForEngagement() {
+  if (document.visibilityState === 'visible') {
+    refreshEngagementUi();
+    loadEngagementSnapshot();
+  }
+}
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
@@ -1357,8 +1411,18 @@ watch(() => props.branchId, () => {
 });
 onMounted(() => {
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'director', page: 'director-dashboard' });
+  refreshEngagementUi();
+  setupEngagementReducedMotion();
+  loadEngagementSnapshot();
+  document.addEventListener('visibilitychange', onDirectorVisibilityForEngagement);
+  window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   loadData();
   loadScheduleDiscrepancySummary();
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onDirectorVisibilityForEngagement);
+  window.removeEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
 });
 </script>
 
@@ -1587,6 +1651,14 @@ onMounted(() => {
   color: var(--porsche-ink-soft);
   font-size: 15px;
   font-weight: 600;
+  max-width: 42rem;
+}
+.dash-engagement-strip {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--porsche-border) 88%, transparent);
+  background: rgba(255, 255, 255, 0.55);
   max-width: 42rem;
 }
 .dash-date-panel {
