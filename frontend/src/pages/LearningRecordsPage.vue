@@ -2345,6 +2345,7 @@ const buildEvents = (targetDates) => {
       // 若未於此處攔截，評量頁會誤顯示「未填」並開放填寫 → 2026-04-17 修正。
       const isLeaveSession = LEAVE_STATUSES.has(sessionStatus);
       const isCancelledSession = sessionStatus === 'cancelled';
+      if (isTeacher.value && isCancelledSession) continue;
       const baseFormStatus = rowStatus || record?.Status || 'missing';
       const formStatus = isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : baseFormStatus);
       const recordId = rawSession?.learning_record_id != null
@@ -3529,6 +3530,7 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate } = {}) => 
     const status = String(row?.status || '').toLowerCase();
     const isLeaveSession = LEAVE_STATUSES.has(status);
     const isCancelledSession = status === 'cancelled';
+    if (isTeacher.value && isCancelledSession) return { skip: true };
     const fillLocked = !isSessionStarted(dateStr, row?.start_time);
     let fillLockReason = '';
     if (isLeaveSession) fillLockReason = '此堂為請假，無需填寫評量';
@@ -3586,6 +3588,10 @@ const openTargetSession = async ({ classSessionId, sessionDate } = {}) => {
     _pendingTargetSession.value = null;
   } else {
     const fetchedEvent = await fetchTargetSessionEvent({ classSessionId, sessionDate: dateStr });
+    if (fetchedEvent?.skip) {
+      _pendingTargetSession.value = null;
+      return;
+    }
     if (fetchedEvent) {
       openFromScheduleMaybe(fetchedEvent);
       _pendingTargetSession.value = null;
@@ -3934,6 +3940,7 @@ const executeExport = async () => {
 
 // ── Init ──
 onMounted(async () => {
+  if (window.innerWidth <= 640) scheduleView.value = 'today';
   migrateLegacyDrafts();
   if (props.userId) pruneOldDrafts(props.userId);
 
@@ -5372,6 +5379,15 @@ select.lr-input {
   }
   .lr-subject-show-all {
     margin-left: 0;
+  }
+  .lr-phrase-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lr-phrase-btn {
+    flex-shrink: 0;
   }
 }
 

@@ -34,14 +34,14 @@ class ParentPortalProgressSummaryTest extends TestCase
         $today = Carbon::today();
         ClassSession::create([
             'StudentClassID' => $course->ID,
-            'SessionDate' => $today->copy()->subDays(1)->toDateString(),
-            'StartTime' => '23:00',
-            'EndTime' => '23:30',
+            'SessionDate' => $today->toDateString(),
+            'StartTime' => '08:00',
+            'EndTime' => '08:30',
             'Status' => 'attended',
         ]);
         ClassSession::create([
             'StudentClassID' => $course->ID,
-            'SessionDate' => $today->copy()->addDays(1)->toDateString(),
+            'SessionDate' => $today->toDateString(),
             'StartTime' => '23:00',
             'EndTime' => '23:30',
             'Status' => 'scheduled',
