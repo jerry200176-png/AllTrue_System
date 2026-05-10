@@ -72,6 +72,21 @@
           @cancel="revokeAvatarCropSrc"
         />
 
+        <div v-if="hasEngagementRankOption" class="form-group" style="margin-top: 1rem">
+          <h4>軍階與經驗值</h4>
+          <label class="switch-row">
+            <input
+              type="checkbox"
+              :checked="engagementRankDisplayEnabled"
+              @change="onEngagementRankDisplayToggle($event)"
+            />
+            <span>顯示軍階／XP 摘要</span>
+          </label>
+          <p class="muted" style="margin-top: 0.35rem; font-size: 0.85rem; line-height: 1.45">
+            於教學工作台、主任總覽顯示軍階與 XP 進度條（預設開啟，本機 opt-out）。進度門檻與後端一致；亦請見系統無障礙「減少動態效果」。
+          </p>
+        </div>
+
         <div v-if="isTeacher" class="teacher-settings-block">
           <h4>教學設定</h4>
           <div class="muted">老師可自行調整跨校支援、可授課科目與授課學段。</div>
@@ -351,6 +366,11 @@ import {
   setTeacherStreakDisplayEnabled,
   notifyTeacherStreakRefresh,
 } from '../lib/teacherLoginStreak';
+import {
+  isUserEngagementRankDisplayEnabled,
+  setUserEngagementRankDisplayEnabled,
+  notifyUserEngagementDisplayRefresh,
+} from '../lib/userEngagementDisplay';
 
 const props = defineProps({
   token: {
@@ -375,6 +395,8 @@ const forcePasswordChange = computed(() => props.forcePasswordChange);
 const isTeacher = ref(false);
 const teacherUiSfxEnabled = ref(false);
 const teacherStreakDisplayEnabled = ref(false);
+const hasEngagementRankOption = ref(false);
+const engagementRankDisplayEnabled = ref(true);
 const avatarUrl = ref('');
 const avatarInputRef = ref(null);
 const showAvatarCrop = ref(false);
@@ -474,6 +496,13 @@ function onTeacherStreakDisplayToggle(ev) {
   notifyTeacherStreakRefresh();
 }
 
+function onEngagementRankDisplayToggle(ev) {
+  const on = Boolean(ev?.target?.checked);
+  engagementRankDisplayEnabled.value = on;
+  setUserEngagementRankDisplayEnabled(on);
+  notifyUserEngagementDisplayRefresh();
+}
+
 async function loadData() {
   loading.value = true;
   profileMsg.value = null;
@@ -496,6 +525,8 @@ async function loadData() {
     isTeacher.value = (me?.role === 'teacher');
     teacherUiSfxEnabled.value = isTeacher.value && isTeacherUiSfxEnabled();
     teacherStreakDisplayEnabled.value = isTeacher.value && isTeacherStreakDisplayEnabled();
+    hasEngagementRankOption.value = Boolean(me?.engagement);
+    engagementRankDisplayEnabled.value = isUserEngagementRankDisplayEnabled();
     profileForm.value = {
       name: me?.name || '',
       email: me?.email || '',

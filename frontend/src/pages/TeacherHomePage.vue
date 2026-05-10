@@ -10,6 +10,9 @@
           連續使用 <strong>{{ streakCurrent }}</strong> 天
           <span v-if="streakLongest > streakCurrent" class="th-streak-longest">（累積最高 {{ streakLongest }}）</span>
         </p>
+        <p v-if="engagementChipVisible" class="th-engagement-chip" role="status">
+          <EngagementRankStrip :engagement="effectiveEngagement" :reduced-motion="engagementReducedMotion" />
+        </p>
       </div>
       <div class="th-header-actions">
         <button class="ghost small" @click="refreshAll" :disabled="refreshing">
@@ -373,6 +376,12 @@ import { branches, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
+import EngagementRankStrip from '../components/EngagementRankStrip.vue';
+import { fetchMe } from '../lib/meClient';
+import {
+  isUserEngagementRankDisplayEnabled,
+  USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
+} from '../lib/userEngagementDisplay';
 import { fetchActiveForSession } from '../lib/scheduleDiscrepanciesApi.js';
 import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
 import {
@@ -387,6 +396,7 @@ const props = defineProps({
   userRole: { type: String, default: '' },
   teacherBranchIds: { type: Array, default: () => [] },
   unreadFeedbackCount: { type: Number, default: 0 },
+  initialEngagement: { type: Object, default: null },
 });
 
 const emit = defineEmits(['navigate', 'navigate-learning']);
@@ -401,6 +411,43 @@ const streakCurrent = ref(0);
 const streakLongest = ref(0);
 const streakDisplayOn = ref(false);
 const streakChipVisible = computed(() => streakDisplayOn.value && streakCurrent.value > 0);
+
+const engagementSnapshot = ref(null);
+const engagementDisplayOn = ref(true);
+const engagementReducedMotion = ref(false);
+
+const effectiveEngagement = computed(() => engagementSnapshot.value ?? props.initialEngagement ?? null);
+
+function refreshEngagementUi() {
+  engagementDisplayOn.value = isUserEngagementRankDisplayEnabled();
+}
+
+const engagementChipVisible = computed(
+  () => Boolean(effectiveEngagement.value) && engagementDisplayOn.value,
+);
+
+async function loadEngagementSnapshot() {
+  const token = await getToken();
+  if (!token) return;
+  const me = await fetchMe(token);
+  engagementSnapshot.value = me?.engagement ?? null;
+}
+
+function setupEngagementReducedMotion() {
+  try {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    engagementReducedMotion.value = mq.matches;
+    mq.addEventListener?.('change', () => {
+      engagementReducedMotion.value = mq.matches;
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function onEngagementDisplayRefreshEvent() {
+  refreshEngagementUi();
+}
 
 function refreshTeacherStreakUi() {
   streakDisplayOn.value = isTeacherStreakDisplayEnabled();
@@ -1018,7 +1065,15 @@ function snoozePendingSoundToday() {
 // ── Lifecycle ──
 async function refreshAll() {
   refreshing.value = true;
-  await Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchClockinStatus(), fetchLearningProgress()]);
+  await Promise.all([
+    fetchPendingAttendance(),
+    fetchOverdueLearning(),
+    fetchPendingLearningSummary(),
+    loadWeekSchedule(),
+    fetchClockinStatus(),
+    fetchLearningProgress(),
+    loadEngagementSnapshot(),
+  ]);
   refreshing.value = false;
 }
 
@@ -1044,6 +1099,8 @@ function stopPolling() {
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
     refreshTeacherStreakUi();
+    refreshEngagementUi();
+    loadEngagementSnapshot();
     fetchPendingAttendance();
     fetchOverdueLearning();
     fetchPendingLearningSummary();
@@ -1116,12 +1173,16 @@ onMounted(() => {
     savePendingSoundSnoozedDate('');
   }
   refreshTeacherStreakUi();
+  refreshEngagementUi();
+  setupEngagementReducedMotion();
+  loadEngagementSnapshot();
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
   Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
   window.addEventListener(TEACHER_STREAK_REFRESH_EVENT, onTeacherStreakRefreshEvent);
+  window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   // Refresh chat badge when app emits the badge refresh event
   window.addEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
@@ -1145,6 +1206,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
   window.removeEventListener(TEACHER_STREAK_REFRESH_EVENT, onTeacherStreakRefreshEvent);
+  window.removeEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   window.removeEventListener('alltrue-refresh-badges', fetchChatUnread);
 });
 </script>
@@ -1177,6 +1239,17 @@ onBeforeUnmount(() => {
 .th-streak-longest {
   opacity: 0.75;
   font-size: 12px;
+}
+
+.th-engagement-chip {
+  display: block;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--primary, #1976d2) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary, #1976d2) 18%, transparent);
 }
 
 /* ──────── Section Titles ──────── */

@@ -314,3 +314,17 @@
 | 建議做法 | 補一個只讀診斷/管理修復工具，列出 `Stop=1` 且未來仍 `scheduled` 的堂次；正式清償時讓所有停用/結案入口共用取消未來堂次邏輯，並加 regression tests。 |
 | 清償成本估計 | 中（半天） |
 | 不做的代價 | 每次新舊課程銜接都可能在今日點名或老師工作台重複出現，需臨時查 DB 單筆取消，增加 production 操作風險。 |
+
+### TD-017：軍階升階門檻表前端與後端重複
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-05-10 |
+| 發現來源 | 開發中（#326 前端進度條）|
+| 影響模組 | `frontend/src/lib/engagementRankProgress.js`、`App\Support\EngagementRankProgression` |
+| 描述 | 升階所需 XP 門檻在 PHP 與前端各有一份，日後調整軍階表需手動同步兩處，易漂移。 |
+| 建議做法 | 由 `GET /api/v1/me` 的 `engagement` 一併回傳 `next_rank_min_xp`、`xp_to_next` 或完整 thresholds 版本號；前端僅顯示。追蹤：Issue #331。 |
+| 清償成本估計 | 低（< 2hr）|
+| 不做的代價 | 營運若調整門檻，前端進度條與實際晉階可能短期不一致。 |

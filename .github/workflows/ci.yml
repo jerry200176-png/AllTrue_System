@@ -363,6 +363,10 @@ jobs:
         working-directory: frontend
         run: npm run test:teacher-streak
 
+      - name: Engagement rank progress (pure logic)
+        working-directory: frontend
+        run: npm run test:engagement-progress
+
       - name: Vite build
         working-directory: frontend
         run: npm run build
