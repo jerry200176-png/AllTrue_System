@@ -2,7 +2,14 @@
 
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
-> **舊記錄（2026-04-19 以前）**：[CHANGELOG_ARCHIVE_2026-04.md](CHANGELOG_ARCHIVE_2026-04.md)
+> **閱讀**：依日期標題搜尋；本篇很長屬正常，**勿逐行通讀**。  
+> **舊記錄（2026-04-19 以前）**：[CHANGELOG_ARCHIVE_2026-04.md](CHANGELOG_ARCHIVE_2026-04.md)（archive，只搜尋）
+
+---
+
+## 2026-05-10 — docs: 長文導航與歷史檔狀態橫幅（RUNBOOK / CHANGELOG archive / 舊 PRD）
+
+- Changed `OPERATIONS_RUNBOOK` 開頭章節導航表、§I2 避免重複標題；`CHANGELOG`／`CHANGELOG_ARCHIVE` 閱讀提示；`更新網站前端`／主任說明／技術報告／兼職 PRD／`api-swipe-rfid` 狀態說明；`INDEX`＋`AI_DOC_LITERACY` 收錄「歷史／易誤導」表
 
 ---
 
