@@ -2,15 +2,10 @@
 
 namespace App\Support;
 
-/**
- * Threshold-driven rank from XP (#325). Teacher vs staff (主任／行政軌) 分 curve。
- * Keys 順序須由低階到高階；取「最後一個 min_xp <= xp」為目前軍階。
- */
 final class EngagementRankProgression
 {
     public const DEFAULT_RANK_KEY = 'private_second';
 
-    /** @var array<string, int> rank_key => min total XP（老師軌） */
     private const TEACHER_MIN_XP = [
         'private_second' => 0,
         'private_first' => 25,
@@ -30,7 +25,6 @@ final class EngagementRankProgression
         'general_first_class' => 1620,
     ];
 
-    /** @var array<string, int> 主任／staff 軌（較慢晉升） */
     private const STAFF_MIN_XP = [
         'private_second' => 0,
         'private_first' => 40,
