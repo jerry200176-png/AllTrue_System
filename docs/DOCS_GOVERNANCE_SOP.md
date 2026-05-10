@@ -7,6 +7,7 @@
 ## 1) 單一真相來源
 
 - `docs/INDEX.md` 是文件導航唯一入口（先讀 INDEX，再讀對應章節）。
+- `docs/AI_DOC_LITERACY.md` 是 **AI 如何讀長文** 的協議（速讀卡、CHANGELOG→公告、MemPalace 參照）；不重複 INDEX 表格，只補「讀法」。
 - `README.md`、`AGENTS.md`、`.cursorrules` 只做導航與原則，不複製長版 SOP。
 - 流程或規則有異動時，只改「權威來源」並同步入口連結。
 
