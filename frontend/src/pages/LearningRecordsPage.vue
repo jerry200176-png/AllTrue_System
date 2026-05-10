@@ -17,6 +17,46 @@
       </div>
     </div>
 
+    <!-- KPI Status Overview Bar (teacher + director) -->
+    <div v-if="isTeacher || isDirectorRole" class="lr-kpi-bar card">
+      <button
+        :class="['lr-kpi-card', 'lr-kpi-missing', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+        @click="isTeacher
+          ? (teacherFilterTab = 'all', teacherPriorityFilter = 'unfilled')
+          : (reviewTab = 'pending', onlyUnfilled = true)"
+      >
+        <span class="lr-kpi-num">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
+        <span class="lr-kpi-label">未填</span>
+      </button>
+      <button
+        :class="['lr-kpi-card', 'lr-kpi-pending', { active: isTeacher ? teacherFilterTab === 'pending' && teacherPriorityFilter === 'all' : reviewTab === 'pending' && !onlyUnfilled }]"
+        @click="isTeacher
+          ? (teacherFilterTab = 'pending', teacherPriorityFilter = 'all')
+          : (reviewTab = 'pending', onlyUnfilled = false)"
+      >
+        <span class="lr-kpi-num">{{ kpiPendingOnlyCount }}</span>
+        <span class="lr-kpi-label">待審</span>
+      </button>
+      <button
+        :class="['lr-kpi-card', 'lr-kpi-changes', { active: isTeacher ? teacherFilterTab === 'changes_requested' : reviewTab === 'changes_requested' }]"
+        @click="isTeacher
+          ? (teacherFilterTab = 'changes_requested', teacherPriorityFilter = 'all')
+          : (reviewTab = 'changes_requested', onlyUnfilled = false)"
+      >
+        <span class="lr-kpi-num">{{ changesRequestedCount }}</span>
+        <span class="lr-kpi-label">需修改</span>
+      </button>
+      <button
+        :class="['lr-kpi-card', 'lr-kpi-approved', { active: isTeacher ? teacherFilterTab === 'approved' : reviewTab === 'approved' }]"
+        @click="isTeacher
+          ? (teacherFilterTab = 'approved', teacherPriorityFilter = 'all')
+          : (reviewTab = 'approved', onlyUnfilled = false)"
+      >
+        <span class="lr-kpi-num">{{ approvedCount }}</span>
+        <span class="lr-kpi-label">已核准</span>
+      </button>
+    </div>
+
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
       <div class="lr-tabs-row">
@@ -1319,10 +1359,20 @@ const templatePhrases = {
     '作業訂正請再留意計算與書寫細節',
     '考前可優先複習錯題與老師標記的重點',
     '鼓勵孩子上課多主動提問，有助於釐清觀念',
+    '今日複習狀況良好，建議持續維持進度',
+    '課堂問題問得很好，表示思考認真，請繼續保持',
+    '本次課程偏複雜，建議週末再複習一次',
+    '若作業遇到困難，可先跳過再回頭嘗試',
+    '考前一週建議每天固定複習 20 分鐘',
+    '本次測驗弱點已確認，下次課將針對性加強',
+    '孩子學習態度積極，值得多給正向鼓勵',
+    '建議每次上課前 5 分鐘快速翻閱上次筆記',
+    '本次課程涵蓋考試重要範圍，需特別留意',
+    '整體進度正常，預計下個月可完成本學期重點',
   ],
 };
 
-const COMMENT_PHRASE_PREVIEW_COUNT = 6;
+const COMMENT_PHRASE_PREVIEW_COUNT = 8;
 const showAllCommentPhrases = ref(false);
 const commentExtraCount = computed(() => Math.max(templatePhrases.Comment.length - COMMENT_PHRASE_PREVIEW_COUNT, 0));
 const visibleCommentPhrases = computed(() => (
@@ -1532,9 +1582,15 @@ const filteredGroupedRecords = computed(() => {
 });
 
 const pendingCount = computed(() => (records.value || []).filter(r => r.Status === 'pending' || r.Status === 'changes_requested').length);
+const kpiPendingOnlyCount = computed(() => (records.value || []).filter(r => r.Status === 'pending').length);
 const changesRequestedCount = computed(() => (records.value || []).filter(r => r.Status === 'changes_requested').length);
 const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
+const kpiUnfilledCount = computed(() =>
+  (records.value || []).filter(r =>
+    (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
+  ).length
+);
 const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
   return isTeacher.value ? !!fb?.unread_for_teacher : !!fb?.unread_for_director;
@@ -2542,9 +2598,14 @@ const syncFormTimesFromCourseSchedule = () => {
   }
 };
 
-const openFromSchedule = (ev) => {
+const openFromSchedule = async (ev) => {
   if (ev.recordId) {
-    const existing = records.value.find((r) => Number(r.id) === Number(ev.recordId));
+    let existing = records.value.find((r) => Number(r.id) === Number(ev.recordId));
+    if (!existing) {
+      // 記錄存在於伺服器但不在本地清單（90 天視窗外）→ 重新拉取後重試
+      await fetchRecords();
+      existing = records.value.find((r) => Number(r.id) === Number(ev.recordId));
+    }
     if (existing) {
       openRecordAction(existing);
       return;
@@ -3042,11 +3103,20 @@ const submitForm = async () => {
     }
     closeModal();
   } else if (res.status === 409) {
-    const err = await res.json().catch(() => ({}));
-    alert(err.message || '此堂評量表已存在，請重新整理頁面後查看。');
+    const errBody = await res.json().catch(() => ({}));
     clearDraft();
     await fetchRecords();
+    // Prefer looking up by existing_id (returned by backend), fall back to ClassSessionID match
+    const existingId = errBody?.existing_id;
+    const conflicting = existingId
+      ? records.value.find((r) => Number(r.id) === Number(existingId))
+      : records.value.find((r) => Number(r.ClassSessionID) === Number(form.ClassSessionID));
     closeModal();
+    if (conflicting) {
+      openRecordAction(conflicting);
+    } else {
+      alert('此堂評量已存在，請重新整理後查看。');
+    }
   } else {
     const err = await res.json().catch(() => ({}));
     alert('儲存失敗: ' + (err.message || `${res.status} ${res.statusText}` || '未知錯誤'));
@@ -3215,7 +3285,7 @@ const statusTagClass = (status) => {
     pending: 'pending',
     approved: 'active',
     rejected: 'rejected',
-    changes_requested: 'pending'
+    changes_requested: 'changes-requested'
   };
   return map[status] || '';
 };
@@ -4016,6 +4086,47 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 /* ── Review / Filter Tabs ── */
+/* ── KPI Status Bar ── */
+.lr-kpi-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.lr-kpi-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px 8px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: var(--card-bg, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  gap: 2px;
+}
+.lr-kpi-card:hover { border-color: var(--border); }
+.lr-kpi-card.active { border-color: currentColor; background: color-mix(in srgb, currentColor 8%, transparent); }
+.lr-kpi-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.lr-kpi-label {
+  font-size: 11px;
+  color: var(--text-light);
+  font-weight: 500;
+}
+.lr-kpi-missing { color: #6b7280; }
+.lr-kpi-pending { color: #d97706; }
+.lr-kpi-changes { color: #ea580c; }
+.lr-kpi-approved { color: #16a34a; }
+@media (max-width: 480px) {
+  .lr-kpi-bar { padding: 8px; gap: 6px; }
+  .lr-kpi-num { font-size: 18px; }
+}
+
 .lr-review-tabs {
   margin-bottom: 12px;
   padding: 12px 16px;
@@ -5851,10 +5962,14 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   display: none;
 }
 
-/* Status tag variant */
+/* Status tag variants */
 .status-tag.rejected {
   background: var(--danger-bg);
   color: var(--danger);
+}
+.status-tag.changes-requested {
+  background: #fff4ed;
+  color: #ea580c;
 }
 
 /* ── Mobile Card List ── */
