@@ -2,6 +2,8 @@
 
 本文件描述 AllTrue 補習班管理系統中，供讀卡機／樹莓派等裝置呼叫的 **RFID 刷卡 API**。內容依後端實作：`POST /api/v1/swipe-rfid`（`SwipeRfidController::swipe`）。
 
+> **交叉索引**：架構脈絡亦見 [`SYSTEM_TECH_GUIDE.md`](SYSTEM_TECH_GUIDE.md) §RFID／出缺勤；**行為不一致時以 Controller／路由為準**。
+
 ---
 
 ## 1. 用途與流程概覽

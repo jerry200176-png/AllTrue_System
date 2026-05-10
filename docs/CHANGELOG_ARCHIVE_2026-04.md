@@ -1,3 +1,10 @@
+# CHANGELOG Archive（2026-04 及更早彙整）
+
+> **性質**：歷史變更長檔（3000+ 行）。**禁止通讀**；用 `rg "關鍵字|日期" docs/CHANGELOG_ARCHIVE_2026-04.md`。  
+> **現行上線紀錄（權威）** → [`CHANGELOG.md`](CHANGELOG.md)。
+
+---
+
 ## 2026-04-19 (D) — 舊系統繳費收據補建（Legacy Payment Backfill）
 
 ### Problem
