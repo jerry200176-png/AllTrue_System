@@ -17,6 +17,10 @@
         <h2>家長 / 學生入口</h2>
         <p class="pp-hint" v-if="!autoLineMode">請輸入學生資料以查看學習狀況</p>
         <p class="pp-hint" v-else>偵測到 LINE 環境，正在自動登入…</p>
+        <ul v-if="!autoLineMode" class="pp-login-benefits" aria-label="登入後可使用">
+          <li><strong>逐堂留言給老師</strong>：在「學習評量」展開任一堂課，於底部填寫（老師與主任同步可看）</li>
+          <li>課表、出缺勤、繳費提醒集中在一處，不必再逐則訊息翻找</li>
+        </ul>
       </div>
       <div class="pp-login-form">
         <div class="pp-field">
@@ -179,6 +183,20 @@
             <span class="pp-hub-cell-cta">{{ paymentHubLabel }}</span>
           </button>
         </div>
+        <!-- 類 Remind / ClassDojo：把「雙向溝通」從隱藏欄位提升為一級入口 -->
+        <button
+          v-if="allLearningRecords.length"
+          type="button"
+          class="pp-hub-feedback-cta"
+          @click="inviteParentFeedbackFromHub"
+        >
+          <span class="material-symbols-outlined pp-hub-feedback-cta__icon">mark_chat_unread</span>
+          <span class="pp-hub-feedback-cta__main">
+            <span class="pp-hub-feedback-cta__title">想跟老師說什麼？</span>
+            <span class="pp-hub-feedback-cta__sub">前往學習評量，針對<strong>每一堂課</strong>留言，老師與主任都會收到</span>
+          </span>
+          <span class="material-symbols-outlined pp-hub-feedback-cta__chev">chevron_right</span>
+        </button>
       </div>
 
       <div class="pp-grid-dual" v-if="progressSummary">
@@ -236,6 +254,7 @@
         <button :class="['pp-tab', { active: activeTab === 'learning' }]" @click="activeTab = 'learning'">
           <span class="material-symbols-outlined">assignment</span>
           學習
+          <span v-if="lrRecordsMissingFeedbackCount > 0" class="pp-tab-badge pp-tab-badge--soft" :title="`有 ${lrRecordsMissingFeedbackCount} 堂尚未留言`">{{ lrRecordsMissingFeedbackCount > 9 ? '9+' : lrRecordsMissingFeedbackCount }}</span>
         </button>
         <button :class="['pp-tab', { active: activeTab === 'schedule' }]" @click="activeTab = 'schedule'">
           <span class="material-symbols-outlined">calendar_today</span>
@@ -271,6 +290,16 @@
           <h3>學習評量</h3>
           <span v-if="lrTotal > 0" class="pp-section-count">共 {{ lrTotal }} 筆</span>
         </div>
+        <div v-if="allLearningRecords.length" class="pp-lr-engage-strip">
+          <p class="pp-lr-engage-copy">
+            <span class="material-symbols-outlined pp-lr-engage-ic" aria-hidden="true">forum</span>
+            <span>點開任一堂課後，在<strong>「給老師的回饋」</strong>留言即可與老師互動（主任同步可見）。不會填？可先點下方捷徑。</span>
+          </p>
+          <button type="button" class="pp-lr-engage-jump" @click="jumpToFirstFeedbackSlot">
+            <span class="material-symbols-outlined" style="font-size:18px;">edit_note</span>
+            {{ lrRecordsMissingFeedbackCount > 0 ? `前往留言（尚有 ${lrRecordsMissingFeedbackCount} 堂未留）` : '前往補充／更新留言' }}
+          </button>
+        </div>
         <div v-if="allLearningRecords.length && learningRecordsBySubject.length > 1" class="pp-lr-filter-row">
           <button
             type="button"
@@ -299,6 +328,8 @@
                 <div class="pp-report-subject">
                   {{ record.Subject || '課程' }}
                   <span v-if="record.session_number" class="pp-session-num">第{{ record.session_number }}堂</span>
+                  <span v-if="!record.parent_feedback" class="pp-fb-badge pp-fb-badge--open">可留言</span>
+                  <span v-else class="pp-fb-badge pp-fb-badge--done">已回饋</span>
                 </div>
                 <div class="pp-report-meta">
                   <span class="material-symbols-outlined" style="font-size:14px;">calendar_today</span>
@@ -330,6 +361,10 @@
                 <span class="material-symbols-outlined pp-indicator-icon" style="color:#5c6bc0;">person</span>
                 <span class="pp-indicator-text">{{ record.teacher_name }}</span>
               </div>
+              <button type="button" class="pp-fb-quick" @click.stop="openFeedbackForRecord(record)">
+                <span class="material-symbols-outlined" style="font-size:16px;">chat</span>
+                {{ record.parent_feedback ? '更新給老師的留言' : '留言給老師' }}
+              </button>
             </div>
 
             <!-- Expanded Detail -->
@@ -362,7 +397,7 @@
                 </div>
                 <div class="pp-report-field-value pp-report-comment">{{ record.Comment }}</div>
               </div>
-              <div class="pp-feedback-box" @click.stop="prepareFeedbackDraft(record)">
+              <div class="pp-feedback-box" :id="'pp-fb-' + (record.id ?? record.ID)" @click.stop="prepareFeedbackDraft(record)">
                 <div class="pp-feedback-title">
                   <span class="material-symbols-outlined">rate_review</span>
                   給老師的回饋
@@ -370,7 +405,17 @@
                 <p class="pp-feedback-hint">
                   {{ record.parent_feedback ? '已送出給老師與主任查看。' : '有想補充給老師的嗎？可留下問題、觀察或鼓勵。' }}
                 </p>
+                <div class="pp-feedback-quick" role="group" aria-label="快速帶入開頭">
+                  <button
+                    v-for="(line, idx) in parentFeedbackStarters"
+                    :key="'pfs-' + idx"
+                    type="button"
+                    class="pp-feedback-chip"
+                    @click.stop="appendFeedbackStarter(record, line)"
+                  >{{ line }}</button>
+                </div>
                 <textarea
+                  :id="'pp-fb-ta-' + (record.id ?? record.ID)"
                   v-model="record._feedbackDraft"
                   class="pp-feedback-textarea"
                   maxlength="500"
@@ -449,8 +494,12 @@
           </div>
         </div>
 
-        <!-- 家長建議回饋卡片（Brand + Mobile-first） -->
+        <!-- 家長建議回饋卡片（Brand + Mobile-first） — 與「逐堂給老師留言」分區，避免誤以為只能填這一張 -->
         <div class="pp-card pp-voice-card">
+          <p class="pp-voice-scope-hint">
+            <span class="material-symbols-outlined pp-voice-scope-ic" aria-hidden="true">info</span>
+            此區是給<strong>校方／行政</strong>的意見箱。若要回應<strong>某位老師、某一堂課</strong>，請在上方該堂評量的「給老師的回饋」留言。
+          </p>
           <div class="pp-voice-brand">
             <span class="material-symbols-outlined pp-voice-logo">school</span>
             <div>
@@ -717,7 +766,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed, reactive } from 'vue';
+import { onMounted, ref, computed, reactive, nextTick } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
 import { notesForRole } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
@@ -943,6 +992,20 @@ const visibleLearningRecordGroups = computed(() => {
   return all.filter(([subj]) => subj === f);
 });
 
+/** 已載入的評量中，尚未填「給老師的回饋」的堂數（用於 Tab 角標／引導） */
+const lrRecordsMissingFeedbackCount = computed(
+  () => (allLearningRecords.value || []).filter((r) => !r.parent_feedback).length
+);
+
+/** 降低空白恐懼：一鍵帶入禮貌開頭（可再改寫）— 類似 Slack / Intercom quick replies */
+const parentFeedbackStarters = [
+  '謝謝老師這週的指導。',
+  '孩子回家說這堂課內容大致跟得上。',
+  '想請老師協助加強：',
+  '作業量對孩子來說',
+  '想約時間與老師電話／面談，請方便時回覆。',
+];
+
 const prepareFeedbackDraft = (record) => {
   if (record._feedbackDraft == null) record._feedbackDraft = record.parent_feedback?.content || '';
 };
@@ -976,6 +1039,42 @@ const submitFeedback = async (record) => {
   } finally {
     record._feedbackSaving = false;
   }
+};
+
+const appendFeedbackStarter = (record, line) => {
+  prepareFeedbackDraft(record);
+  const cur = String(record._feedbackDraft || '').trim();
+  record._feedbackDraft = cur ? `${cur}\n${line}` : line;
+  trackParentPortalEvent(token.value, 'parent.learning_feedback_starter', { line_len: line.length });
+};
+
+const openFeedbackForRecord = async (record, source = 'card_quick') => {
+  const id = record.id ?? record.ID;
+  if (id == null) return;
+  expandedRecords.add(id);
+  prepareFeedbackDraft(record);
+  await nextTick();
+  await new Promise((r) => setTimeout(r, 80));
+  document.getElementById(`pp-fb-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById(`pp-fb-ta-${id}`)?.focus();
+  trackParentPortalEvent(token.value, 'parent.learning_feedback_opened', { record_id: id, source });
+};
+
+const jumpToFirstFeedbackSlot = async (source = 'engage_strip') => {
+  const list = allLearningRecords.value || [];
+  if (!list.length) return;
+  const target = list.find((r) => !r.parent_feedback) || list[0];
+  await openFeedbackForRecord(target, source);
+};
+
+const inviteParentFeedbackFromHub = async () => {
+  activeTab.value = 'learning';
+  trackParentPortalEvent(token.value, 'parent.hub_feedback_cta', {
+    missing_count: lrRecordsMissingFeedbackCount.value,
+  });
+  await nextTick();
+  await new Promise((r) => setTimeout(r, 220));
+  await jumpToFirstFeedbackSlot('hub_cta');
 };
 
 const statusLabel = (s) => {
@@ -1685,6 +1784,199 @@ onMounted(async () => {
   font-size: 0.7em; padding: 1px 5px; font-weight: 700; min-width: 16px;
   text-align: center;
 }
+.pp-tab-badge--soft {
+  background: #3949ab;
+  color: #fff;
+  font-weight: 800;
+}
+
+.pp-login-benefits {
+  margin: 12px 0 0;
+  padding: 0 0 0 1.1em;
+  font-size: 0.82em;
+  color: #546e7a;
+  line-height: 1.55;
+}
+.pp-login-benefits li { margin: 6px 0; }
+
+.pp-hub-feedback-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #c5cae9;
+  background: linear-gradient(135deg, #faf8ff 0%, #f3f0ff 100%);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: #311b92;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-hub-feedback-cta:active {
+  box-shadow: inset 0 1px 4px rgba(49, 27, 146, 0.08);
+}
+.pp-hub-feedback-cta__icon {
+  font-size: 28px;
+  color: #5e35b1;
+  flex-shrink: 0;
+}
+.pp-hub-feedback-cta__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-hub-feedback-cta__title {
+  font-weight: 800;
+  font-size: 0.95em;
+}
+.pp-hub-feedback-cta__sub {
+  font-size: 0.78em;
+  color: #5e35b1;
+  opacity: 0.92;
+  line-height: 1.35;
+}
+.pp-hub-feedback-cta__chev {
+  font-size: 22px;
+  color: #7e57c2;
+  flex-shrink: 0;
+}
+
+.pp-lr-engage-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f3f6ff;
+  border: 1px solid #d7ddf0;
+}
+.pp-lr-engage-copy {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 0.82em;
+  color: #37474f;
+  line-height: 1.5;
+}
+.pp-lr-engage-ic {
+  font-size: 20px;
+  color: #3949ab;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.pp-lr-engage-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  background: #3949ab;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.88em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-lr-engage-jump:active {
+  filter: brightness(0.95);
+}
+
+.pp-fb-badge {
+  font-size: 0.68em;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.pp-fb-badge--open {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+}
+.pp-fb-badge--done {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+}
+
+.pp-fb-quick {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #c5cae9;
+  background: #fff;
+  color: #3949ab;
+  font-size: 0.8em;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-fb-quick:active {
+  background: #e8eaf6;
+}
+
+.pp-feedback-quick {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 8px 0 6px;
+  padding-bottom: 4px;
+}
+.pp-feedback-chip {
+  flex-shrink: 0;
+  max-width: 220px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px dashed #9fa8da;
+  background: #fff;
+  color: #3949ab;
+  font-size: 0.78em;
+  line-height: 1.25;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.pp-feedback-chip:active {
+  background: #e8eaf6;
+}
+
+.pp-voice-scope-hint {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid #90caf9;
+  font-size: 0.8em;
+  color: #37474f;
+  line-height: 1.45;
+}
+.pp-voice-scope-ic {
+  font-size: 18px;
+  color: #1565c0;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
 
 /* ═══ Info Card (帳務：非警報色，柔和藍) ═══ */
 .pp-info-card { border-left: 4px solid #90caf9; }
@@ -1878,7 +2170,14 @@ onMounted(async () => {
 .pp-detail-row { display: flex; align-items: flex-start; gap: 6px; font-size: 0.88em; }
 .pp-detail-icon { font-size: 16px; color: #90a4ae; flex-shrink: 0; margin-top: 1px; }
 .pp-detail-label { font-weight: 600; color: #607d8b; white-space: nowrap; margin-right: 4px; }
-.pp-feedback-box { margin-top: 12px; padding: 12px; border: 1px solid #e0e7ff; border-radius: 12px; background: rgba(92,107,192,.06); }
+.pp-feedback-box {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e0e7ff;
+  border-radius: 12px;
+  background: rgba(92,107,192,.06);
+  scroll-margin-top: 72px;
+}
 .pp-feedback-title { display: flex; align-items: center; gap: 6px; font-weight: 700; color: #3949ab; }
 .pp-feedback-hint, .pp-feedback-time { margin: 6px 0; font-size: .86em; color: #607d8b; }
 .pp-feedback-textarea { width: 100%; min-height: 96px; resize: vertical; border: 1px solid #c5cae9; border-radius: 10px; padding: 10px; font: inherit; box-sizing: border-box; }
@@ -1959,7 +2258,7 @@ onMounted(async () => {
 .pp-report-score-val { font-size: 1.1em; font-weight: 800; color: #1565c0; line-height: 1; }
 .pp-report-score-unit { font-size: 0.6em; color: #64b5f6; }
 .pp-report-indicators {
-  display: flex; flex-wrap: wrap; gap: 8px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
   margin-top: 10px; padding-top: 8px;
   border-top: 1px dashed #e8e8e8;
 }
