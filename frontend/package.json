@@ -19,7 +19,7 @@
   "dependencies": {
     "@sentry/vue": "^10.50.0",
     "@supabase/supabase-js": "^2.105.3",
-    "vue": "^3.5.33"
+    "vue": "^3.5.34"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
