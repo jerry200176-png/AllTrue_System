@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@sentry/vue": "^10.50.0",
-    "@supabase/supabase-js": "^2.105.3",
+    "@supabase/supabase-js": "^2.105.4",
     "vue": "^3.5.33"
   },
   "devDependencies": {
