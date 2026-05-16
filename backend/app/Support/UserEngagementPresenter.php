@@ -12,24 +12,32 @@ final class UserEngagementPresenter
 
     private const SUPER_ONLY_RANK_KEY = 'general_five_star';
 
-    /** @var array<string, string> Stable key => 中華民國軍階顯示名 */
+    /**
+     * 中華民國正式軍階中文名對照
+     * 士兵（3）→ 士官（6）→ 軍官（6）→ 將官（4）+ super_admin 五星上將
+     *
+     * @var array<string, string>
+     */
     private const RANK_LABELS_ZH = [
-        'private_second' => '二兵',
-        'private_first' => '一兵',
-        'private_specialist' => '上等兵',
-        'corporal' => '下士',
-        'sergeant' => '中士',
-        'staff_sergeant' => '上士',
-        'second_lieutenant' => '少尉',
-        'first_lieutenant' => '中尉',
-        'captain' => '上尉',
-        'major' => '少校',
-        'lieutenant_colonel' => '中校',
-        'colonel' => '上校',
-        'major_general' => '少將',
-        'lieutenant_general' => '中將',
-        'general' => '上將',
-        'general_first_class' => '一級上將',
+        'private_second'         => '二等兵',
+        'private_first'          => '一等兵',
+        'private_specialist'     => '上等兵',
+        'corporal'               => '下士',
+        'sergeant'               => '中士',
+        'staff_sergeant'         => '上士',
+        'master_sergeant_third'  => '三等士官長',
+        'master_sergeant_second' => '二等士官長',
+        'master_sergeant_first'  => '一等士官長',
+        'second_lieutenant'      => '少尉',
+        'first_lieutenant'       => '中尉',
+        'captain'                => '上尉',
+        'major'                  => '少校',
+        'lieutenant_colonel'     => '中校',
+        'colonel'                => '上校',
+        'major_general'          => '少將',
+        'lieutenant_general'     => '中將',
+        'general'                => '上將',
+        'general_first_class'    => '一級上將',
         self::SUPER_ONLY_RANK_KEY => '五星上將',
     ];
 
