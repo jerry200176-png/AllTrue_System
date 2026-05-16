@@ -43,6 +43,12 @@
 
 ---
 
+## 2026-05-10 — fix(director): 評量「已核准／全部」可篩「只看未填」（#322）
+
+- Fixed 主任端「已核准」「全部」分頁可勾「只看未填」（含已核准但正文仍空白）；頂部「未填」KPI 納入該類筆數，點擊改為切到「全部」並套用篩選
+
+---
+
 ## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
 
 - Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
