@@ -21,7 +21,7 @@ assert.ok(latestReleaseVersionForRole('super_admin').length > 0, 'version nudge 
 
 const latest = notesForRole('director')[0];
 assert.ok(/^\d+\.\d+\.\d+$/.test(latest.version), 'release notes should use three-part continuous version labels');
-assert.ok(Array.isArray(latest.sections) && latest.sections.length > 0, 'release cards should have Minecraft-style sections');
+assert.ok(Array.isArray(latest.sections) && latest.sections.length > 0, 'release cards should have grouped sections');
 
 const userFacingText = JSON.stringify(latest);
 assert.ok(!/Controller|Service|\.vue|\.php|GET\s+\/|POST\s+\/|::/.test(userFacingText), 'release notes should avoid technical implementation terms');

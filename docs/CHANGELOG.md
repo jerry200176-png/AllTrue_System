@@ -2,64 +2,81 @@
 
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
+> **版本公告（給老師／主任看的短卡）**：同一版建議 **第一條寫使用者白話**；技術細節請另起一行並以 **`開發備註：`** 開頭（`npm run sync-release-notes` 會略過不進 `releaseNotes.generated.js`）。  
 > **閱讀**：依日期標題搜尋；本篇很長屬正常，**勿逐行通讀**。  
 > **舊記錄（2026-04-19 以前）**：[CHANGELOG_ARCHIVE_2026-04.md](CHANGELOG_ARCHIVE_2026-04.md)（archive，只搜尋）
 
 ---
 
+## 2026-05-16 — feat(calendar): 行事曆取消單堂課 + Bug 回報驗收流程 (#355)
+
+- 行事曆「單堂操作」面板新增「🚫 取消本堂」按鈕（主任限定），可直接從行事曆取消當堂課程，無需跳轉課程管理頁。
+- Bug 回報系統新增驗收環節：Jerry 標記修復後，原回報老師／主任看到「✅ 確認已修好」與「❌ 問題仍存在」按鈕，親自確認才關閉，不再有「標了已解決但老師說沒修好」的問題。
+- Bug 回報表單標題改為選填（自動帶入頁面名稱），降低老師回報門檻。
+- 開發備註：`POST /api/v1/bugs/{id}/reporter-verify`（reporter 限定）；`resolved→closed` 需回報者確認；加課按鈕因業務流程未完整暫時隱藏。
+
+---
+
+## 2026-05-16 — chore(release-notes): 版本卡改日曆版號 + 白話與開發備註分流
+
+- 版本更新頁的版號改為 **YYYY.MM.DD**（與 `version.json` 建置時間分開）；CHANGELOG 可用「開發備註：」承接技術行而不洗版
+- 開發備註：`scripts/changelog-to-release-notes.mjs` 略過 `開發備註／Dev note` 行；補齊軍階／行事曆／堂數制／課程日期等白話對照規則
+
+---
+
 ## 2026-05-16 — feat(engagement): 新增士官長三階 + 修正 ROC 軍階徽章 (#353)
 
-- Added 三等/二等/一等士官長（XP 275/355/445）補齊 ROC 軍階完整 19 階
-- Fixed `RocRankBadge.vue` 徽章設計：尉官=橫槓、校官=梅花、將官=金星（先前尉/校完全對調）
-- Added `EngagementRankProgressionTest.php` PHPUnit 防回歸測試（XP 嚴格遞增、邊界值）
+- 側欄軍階圖示更貼近實際領章：尉官橫槓、校官梅花、將官星星；經驗值升階多了「三等／二等／一等士官長」三個階段。版本更新頁的版號改為西元年月日（例：2026.05.16），方便對照每次上線內容。
+- 開發備註：新增 master_sergeant_third/second/first（XP 275/355/445）；`RocRankBadge.vue`；`EngagementRankProgressionTest.php` 防回歸。
 
 ---
 
 ## 2026-05-16 — fix(scheduling): 堂數制取消堂次後不再於同日重插排課
 
-- Fixed `StudentClassController::extendSessionsIfNeeded` 未將 `cancelled` 堂次佔用 `date|start` 槽位，補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`（症狀：取消某週四後又補回同一週四）
+- 堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。
+- 開發備註：`StudentClassController::extendSessionsIfNeeded` 將 `cancelled` 堂次佔用 `date|start` 槽位，避免補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`。
 
 ---
 
 ## 2026-05-16 — fix(calendar): 行事曆週檢視漏格與資料未隨換週更新
 
-- Fixed `calendarOccurrenceMerge` 將 `SessionCount` 誤用作「同一 ISO 週內 emitted 格子數上限」並提前 `break`，週日到週末的 ClassSession-backed 日期（例如某日週日下午堂）可被整批略過（症狀與同日多格子課類似）；改由既有 `courseSessionSet`/`isOverSessionLimit` 等語意過濾
-- Fixed 智慧行事曆 `loadCourses` 仍以開頁 `displayMonth` 粗算區間且不隨換週重抓，若以週偏移看到鄰月的日期，`GET class-sessions` 可能不包含該週，`sessionDatesByCourseId` 空槽被誤以為「超排／幽靈格」— 改為依 `getDisplayDateFull(1..7) ± ~6 週` 對齊 API 範圍並對 `displayYear/displayMonth/displayWeek/weekOffset` 觸發重載；`calendarOccurrenceMerge.test.js` 補 Sun 漏格案例
-- Fixed ClassSession-backed 週合併對 `schedules.status=rescheduled` 同日無條件 `continue`，會蓋掉同日仍存在的 `scheduled` 堂次（歷史調課／重試残留與 §R43 同類髒資料）；改為僅在該日已無任何非 cancelled 之 ClassSession 時才略過；`calendarOccurrenceMerge.test.js` 補案例
+- 智慧行事曆「週」檢視：換週後會載入正確區間的堂次；較不會漏格、課表空白或出現幽靈課；調課／重試留下的特殊資料也不會把當天仍要上的課整排吃掉。
+- 開發備註：`calendarOccurrenceMerge`（SessionCount 週上限、`rescheduled` 同日略過條件）；`loadCourses` 依週視窗對齊 `class-sessions` API；`calendarOccurrenceMerge.test.js` 補案例。
 
 ---
 
 ## 2026-05-16 — fix(session-dates): 修正課程管理日期 chip 無故灰頻 (#344)
 
-- Fixed `POST /api/v1/student-classes/session-dates` 未對 ClassSession 查詢套用 `range_start`/`range_end`，導致所有歷史堂次日期回傳前端，前端的 `syntheticEffectiveUnits` 將 ±2 個月視窗外的舊堂次產生灰色 synthetic chip
-- Fixed `sessionDates` GET handler 的 `ScheduleMode='date'` 路徑，未過濾 `cancelled`/`leave` 狀態，`computeMonthlyEffectiveSessionDates` 以含取消的 `existingSet` 初始化，導致已取消堂次出現在日期區
-- Added 課程管理 `classSessionsByCourse` 載入失敗時顯示紅色錯誤提示，改善靜默灰頻的可見度；修正 synthetic chip tooltip 描述（移除月結專用措辭）
+- 課程管理裡，日期旁的小標記較不會無故變灰；讀不到堂次資料時會用紅字提示，而不是靜默怪怪的。
+- 開發備註：`POST student-classes/session-dates` 套用 `range_start`/`range_end`；`ScheduleMode='date'` 過濾 `cancelled`/`leave`；`classSessionsByCourse` 錯誤 UI 與 chip tooltip。
 
 ---
 
 ## 2026-05-10 — feat(engagement): 前端軍階／XP 摘要（#326，epic #323）
 
-- Added 教學工作台、主任總覽顯示軍階／XP 與升階進度條；個人資料可本機 opt-out；尊重 `prefers-reduced-motion`；門檻計算見 `engagementRankProgress.js`（與後端對齊）
+- 老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉；動態效果會尊重系統的「減少動態」設定。
+- 開發備註：教學工作台／主任總覽；`engagementRankProgress.js` 與後端門檻對齊；`prefers-reduced-motion`。
 
 ---
 
 ## 2026-05-10 — feat(engagement): 軍階／XP（#324–#325，epic #323）
 
-- Added `user_engagement`、`GET /api/v1/me` 之 `engagement`；`super_admin` 固定五星上將且無 `xp_total`
-- Added `user_engagement_xp_events`（idempotent）；**已核准且 `Progress` 非空** 對 `User.type=T` 授課老師 +10 XP；門檻表 `EngagementRankProgression`（teacher／staff）；Presenter 依 XP 推導軍階
-- `rollback-approval` 與作廢（`LearningRecord::booted` 偵測 `VoidedAt`）撤銷對應 XP
+- 核准評量後，系統會為授課老師累積經驗值並換算軍階；超級管理員維持專用最高軍階顯示。
+- 開發備註：`user_engagement`、`me.engagement`、`user_engagement_xp_events`；`EngagementRankProgression`；作廢／rollback 撤銷 XP。
 
 ---
 
 ## 2026-05-10 — fix(director): 評量「已核准／全部」可篩「只看未填」（#322）
 
-- Fixed 主任端「已核准」「全部」分頁可勾「只看未填」（含已核准但正文仍空白）；頂部「未填」KPI 納入該類筆數，點擊改為切到「全部」並套用篩選
+- 主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。
+- 開發備註：頂部「未填」KPI 與篩選聯動。
 
 ---
 
 ## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
 
-- Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
+- 老師可在個人資料「教學設定」選擇顯示連續使用天數（只存在這台裝置，預設關）；工作台會顯示低調摘要。
+- 開發備註：`localStorage`、登入日更新；`npm run test:teacher-streak`；PRD `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`。
 
 ---
 
