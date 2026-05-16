@@ -434,6 +434,8 @@ class StudentClassController extends Controller
                     ->select('student_course_id', 'schedule_date', 'status')
                     ->get();
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
+                    ->where('SessionDate', '>=', $rangeStart)
+                    ->where('SessionDate', '<=', $rangeEnd)
                     ->select('StudentClassID', 'SessionDate', 'Status')
                     ->get();
                 $leaveByClass = [];
@@ -644,6 +646,10 @@ class StudentClassController extends Controller
                 $set = [];
                 foreach ($sessions as $row) {
                     if ((int) $row->StudentClassID !== $id) {
+                        continue;
+                    }
+                    $status = strtolower((string) ($row->Status ?? ''));
+                    if (in_array($status, ['cancelled', 'leave'], true)) {
                         continue;
                     }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
