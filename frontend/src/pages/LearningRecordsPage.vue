@@ -1198,6 +1198,11 @@ import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
 import perfFlags, { loadRemoteFlags } from '../lib/perfFlags';
 import {
+  buildTeacherClassParams,
+  learningSessionStatusLabel,
+  resolveLearningSessionState,
+} from '../lib/sessionConsistency';
+import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
   applyDraftToForm,
@@ -2232,7 +2237,7 @@ const fetchTeacherClasses = async () => {
     if (!token) return;
     // Include inactive/closed classes as well. Teachers may still need to fill
     // recent learning records for sessions that were attended before closure.
-    const params = new URLSearchParams({ per_page: 200 });
+    const params = buildTeacherClassParams({ branchId: props.branchId, perPage: 200 });
     const res = await fetch(`/api/v1/student-classes?${params}`, {
       headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
     });
@@ -2346,15 +2351,7 @@ const scheduleStatusPriority = (status) => {
   return 0;
 };
 
-const scheduleStatusLabel = (status) => {
-  if (status === 'approved') return '已審';
-  if (status === 'pending') return '待審';
-  if (status === 'changes_requested') return '待修改';
-  if (status === 'rejected') return '已退回';
-  if (status === 'leave' || status === 'leave_adjusted' || status === 'excused') return '請假';
-  if (status === 'cancelled') return '取消';
-  return '未填';
-};
+const scheduleStatusLabel = learningSessionStatusLabel;
 
 // 與 SmartCalendar.vue 的 LEAVE_STATUSES 保持一致（請假類堂次不需填評量）。
 // 若未來新增請假類 ClassSession.Status，前後端（LearningRecord::scopeExcludeLeaveSessionPendingReview）
@@ -2520,11 +2517,22 @@ const buildEvents = (targetDates) => {
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。
       // 後端 LR 已被 CourseLeaveCascadeService 作廢（VoidedAt），learning_record_status 回 'missing'，
       // 若未於此處攔截，評量頁會誤顯示「未填」並開放填寫 → 2026-04-17 修正。
-      const isLeaveSession = LEAVE_STATUSES.has(sessionStatus);
-      const isCancelledSession = sessionStatus === 'cancelled';
+      const isSubstituted = Number(rawSession?.learning_record_teacher_id || 0) > 0
+        && Number(rawSession?.learning_record_teacher_id || 0) !== myId
+        && myId > 0;
+      const sessionStarted = isSessionStarted(dateStr, startTime);
+      const sessionState = resolveLearningSessionState({
+        sessionStatus,
+        learningRecordStatus: rowStatus,
+        recordStatus: record?.Status,
+        isSubstituted,
+        sessionStarted,
+      });
+      const isLeaveSession = sessionState.isLeave;
+      const isCancelledSession = sessionState.isCancelled;
+      const isAbsentSession = sessionState.isAbsent;
       if (isTeacher.value && isCancelledSession) continue;
-      const baseFormStatus = rowStatus || record?.Status || 'missing';
-      const formStatus = isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : baseFormStatus);
+      const formStatus = sessionState.formStatus;
       const apiLrId = rawSession?.learning_record_id != null ? Number(rawSession.learning_record_id) : null;
       const safeLookupRecord = byCs || byTime;
       let recordId = (apiLrId != null && apiLrId > 0) ? apiLrId : null;
@@ -2532,19 +2540,12 @@ const buildEvents = (targetDates) => {
         recordId = Number(safeLookupRecord.id);
       }
 
-      const lrTeacherId = Number(rawSession?.learning_record_teacher_id || 0);
-      const isSubstituted = lrTeacherId > 0 && lrTeacherId !== myId && myId > 0;
-
-      // 請假／取消：永遠鎖定不可填；其他沿用既有規則（代課 or 尚未開始）。
-      const fillLocked = isLeaveSession || isCancelledSession || isSubstituted || !isSessionStarted(dateStr, startTime);
+      // 請假／取消／缺席：永遠鎖定不可填；其他沿用既有規則（代課 or 尚未開始）。
+      const fillLocked = sessionState.fillLocked;
       const student = studentList.value.find(s => String(s.id) === String(sc.student_id || sc.StudentID));
       const studentName = student?.name || sc.student_name || `學生#${sc.student_id || sc.StudentID}`;
       const eventKey = csId > 0 ? `cs-${csId}` : `${classId}-${dateStr}-${startTime || ''}`;
-      let fillLockReason = '';
-      if (isLeaveSession) fillLockReason = '此堂已請假，無需填寫評量';
-      else if (isCancelledSession) fillLockReason = '此堂已取消，無需填寫評量';
-      else if (isSubstituted) fillLockReason = '此堂已由代課老師處理';
-      else if (fillLocked) fillLockReason = '上課開始後開放填寫';
+      const fillLockReason = sessionState.fillLockReason;
 
       events.push({
         key: eventKey,
@@ -2558,15 +2559,16 @@ const buildEvents = (targetDates) => {
         startTime,
         endTime,
         timeRange: endTime ? `${startTime}~${endTime}` : startTime,
-        // 請假／取消：不綁 recordId，避免誤觸 canEdit 分支開啟評量 modal。
-        recordId: (isLeaveSession || isCancelledSession || isSubstituted) ? null : (recordId || null),
+        // 請假／取消／缺席：不綁 recordId，避免誤觸 canEdit 分支開啟評量 modal。
+        recordId: sessionState.recordIdAllowed ? (recordId || null) : null,
         formStatus: isSubstituted ? 'substituted' : formStatus,
-        formStatusLabel: isSubstituted ? '代課' : scheduleStatusLabel(formStatus),
+        formStatusLabel: isSubstituted ? '代課' : sessionState.label,
         fillLocked,
         fillLockReason,
         isSubstituted,
         isLeave: isLeaveSession,
         isCancelled: isCancelledSession,
+        isAbsent: isAbsentSession,
       });
     }
   }
@@ -4756,6 +4758,11 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 .ts-status-chip.status-leave {
   background: #eef2f7;
   color: #475569;
+}
+
+.ts-status-chip.status-absent {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .ts-status-chip.status-cancelled {
