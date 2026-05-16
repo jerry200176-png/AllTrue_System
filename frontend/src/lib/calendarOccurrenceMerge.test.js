@@ -113,3 +113,96 @@ const leaveWithScheduled = merge({
 
 assert.equal(leaveWithScheduled.length, 1, 'leave card should remain visible when a scheduled exception also exists');
 assert.equal(leaveWithScheduled[0].class_session_id, 7003);
+
+/** Week 2026-05-11 … 05-17: Sun = 05-17. SessionCount (= sessions_purchased) is total purchased, not a per-week cap. */
+const weekWithSundaySession = {
+  1: '2026-05-11',
+  2: '2026-05-12',
+  3: '2026-05-13',
+  4: '2026-05-14',
+  5: '2026-05-15',
+  6: '2026-05-16',
+  7: '2026-05-17',
+};
+
+const sundayBugCourse = {
+  id: 501,
+  student_id: 2001,
+  student_name: '曾允栩',
+  teacher_id: 30,
+  teacher_name: '測師',
+  subject: 'English',
+  class_type: 'one_on_one',
+  days_of_week: [1],
+  day_time_slots: [{ day: 1, start_time: '09:00', duration_hours: 2 }],
+  duration_hours: 2,
+  sessions_purchased: 4,
+};
+
+const sundayRegression = merge({
+  courses: [sundayBugCourse],
+  allCourses: [sundayBugCourse],
+  weekDatesByDow: weekWithSundaySession,
+  sessionDatesByCourseId: {
+    501: [
+      { id: 8001, session_date: '2026-05-11', start_time: '09:00', end_time: '11:00', status: 'scheduled', teacher_id: 30 },
+      { id: 8002, session_date: '2026-05-12', start_time: '09:00', end_time: '11:00', status: 'scheduled', teacher_id: 30 },
+      { id: 8003, session_date: '2026-05-13', start_time: '09:00', end_time: '11:00', status: 'scheduled', teacher_id: 30 },
+      { id: 8004, session_date: '2026-05-14', start_time: '09:00', end_time: '11:00', status: 'scheduled', teacher_id: 30 },
+      { id: 8005, session_date: '2026-05-17', start_time: '10:00', end_time: '12:00', status: 'scheduled', teacher_id: 30 },
+    ],
+  },
+});
+
+const sunRow = sundayRegression.find(
+  (r) => Number(r.student_course_id ?? 0) === 501 && String(r?.start_time || '').startsWith('10:'),
+);
+assert.ok(sunRow, 'Sunday 05-17 ClassSession must render (SessionCount must not truncate the dow loop early)');
+assert.equal(sunRow.class_session_id, 8005);
+
+// `hasReschedule` used to skip the whole calendar day whenever a `schedules.status=rescheduled` row existed,
+// erasing occurrences that still had live ClassSessions (stale marker / retries / dirty edge case).
+const rescheduleGhostCourse = {
+  id: 502,
+  student_id: 2002,
+  student_name: '曾庭栩',
+  teacher_id: 31,
+  teacher_name: '測師B',
+  subject: 'Math',
+  class_type: 'one_on_one',
+  days_of_week: [7],
+  day_time_slots: [{ day: 7, start_time: '10:00', duration_hours: 2 }],
+  duration_hours: 2,
+  sessions_purchased: 20,
+};
+const rescheduleGhostMerge = merge({
+  courses: [rescheduleGhostCourse],
+  allCourses: [rescheduleGhostCourse],
+  weekDatesByDow: weekWithSundaySession,
+  sessionDatesByCourseId: {
+    502: [
+      {
+        id: 8101,
+        session_date: '2026-05-17',
+        start_time: '10:00',
+        end_time: '12:00',
+        status: 'scheduled',
+        teacher_id: 31,
+      },
+    ],
+  },
+  exceptions: [
+    {
+      id: 9001,
+      status: 'rescheduled',
+      schedule_date: '2026-05-17',
+      student_course_id: 502,
+      student_id: 2002,
+      start_time: '10:00',
+      teacher_id: 31,
+    },
+  ],
+});
+const ghostRow = rescheduleGhostMerge.find((r) => Number(r.student_course_id ?? 0) === 502);
+assert.ok(ghostRow, 'still render scheduled ClassSession when reschedule marker ghosts same calendar date');
+assert.equal(ghostRow.class_session_id, 8101);

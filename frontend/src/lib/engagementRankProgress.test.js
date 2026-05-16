@@ -4,7 +4,7 @@ import { rankKeyForXp, rankTierProgress, xpRemainingToNext } from './engagementR
 assert.strictEqual(rankKeyForXp(0, 'teacher'), 'private_second');
 assert.strictEqual(rankKeyForXp(24, 'teacher'), 'private_second');
 assert.strictEqual(rankKeyForXp(25, 'teacher'), 'private_first');
-assert.strictEqual(rankKeyForXp(1620, 'teacher'), 'general_first_class');
+assert.strictEqual(rankKeyForXp(1620, 'teacher'), 'major_general'); // 1425–1649
 
 assert.strictEqual(rankKeyForXp(0, 'staff'), 'private_second');
 assert.strictEqual(rankKeyForXp(39, 'staff'), 'private_second');
