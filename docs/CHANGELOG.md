@@ -7,6 +7,12 @@
 
 ---
 
+## 2026-05-16 — fix(scheduling): 堂數制取消堂次後不再於同日重插排課
+
+- Fixed `StudentClassController::extendSessionsIfNeeded` 未將 `cancelled` 堂次佔用 `date|start` 槽位，補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`（症狀：取消某週四後又補回同一週四）
+
+---
+
 ## 2026-05-16 — fix(session-dates): 修正課程管理日期 chip 無故灰頻 (#344)
 
 - Fixed `POST /api/v1/student-classes/session-dates` 未對 ClassSession 查詢套用 `range_start`/`range_end`，導致所有歷史堂次日期回傳前端，前端的 `syntheticEffectiveUnits` 將 ±2 個月視窗外的舊堂次產生灰色 synthetic chip
