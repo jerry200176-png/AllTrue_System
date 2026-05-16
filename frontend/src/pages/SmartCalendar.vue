@@ -858,6 +858,10 @@ import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
+import {
+  resolveCalendarDataFetchBoundsYmd,
+  shouldUseLegacyCalendarFallback,
+} from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
@@ -1276,7 +1280,7 @@ const getDisplayDateFull = (dayOfWeek) => {
 };
 
 /**
- * 以「目前週檢視實際渲染的週一～週日」計算 ClassSession / schedules 抓取範圍（再向兩側各約六週），
+ * 以「目前週檢視實際渲染的週一～週日」計算 ClassSession / schedules 抓取範圍（再向兩側各三週），
  * 避免僅依開頁月份或錯用之 Date month 索引導致週邊日期堂次載不到。
  */
 function getCalendarDataFetchBoundsYmd() {
@@ -1285,22 +1289,10 @@ function getCalendarDataFetchBoundsYmd() {
     const ymd = getDisplayDateFull(dow);
     if (ymd) ymds.push(String(ymd).slice(0, 10));
   }
-  ymds.sort();
-  if (!ymds.length) {
-    const mi = displayMonth.value - 1;
-    const start = new Date(displayYear.value, mi - 3, 1);
-    const end = new Date(displayYear.value, mi + 2, 0);
-    return {
-      schedStart: formatLocalDate(start),
-      schedEnd: formatLocalDate(end),
-    };
-  }
-  const min = ymds[0];
-  const max = ymds[ymds.length - 1];
-  return {
-    schedStart: addDays(min, -42),
-    schedEnd: addDays(max, 42),
-  };
+  return resolveCalendarDataFetchBoundsYmd(ymds, {
+    displayYear: displayYear.value,
+    displayMonth: displayMonth.value,
+  });
 }
 
 const prevWeek = () => { weekOffset.value -= 1; };
@@ -2040,6 +2032,7 @@ const loadCourses = async () => {
   });
 
   let courseList = [];
+  let courseApiSucceeded = false;
   if (token) {
     try {
       const scParams = new URLSearchParams();
@@ -2054,13 +2047,14 @@ const loadCourses = async () => {
         },
       });
       courseList = allCourses.map(mapCourse);
+      courseApiSucceeded = true;
     } catch (e) {
     // Keep fallback silent for end users; API failure is handled by fallback path.
     }
   }
 
   let supabaseList = [];
-  {
+  if (shouldUseLegacyCalendarFallback({ apiSucceeded: courseApiSucceeded })) {
     let query = supabase
       .from('student-classes')
       .select('*, student:students(name), teacher:profiles(username)');
@@ -2104,6 +2098,7 @@ const loadCourses = async () => {
   const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
   let excData = [];
+  let exceptionsApiSucceeded = false;
   if (token) {
     try {
       const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
@@ -2122,10 +2117,11 @@ const loadCourses = async () => {
           ...ex,
           schedule_date: ex.schedule_date != null ? String(ex.schedule_date).slice(0, 10) : ex.schedule_date
         }));
+        exceptionsApiSucceeded = true;
       }
     } catch (_) {}
   }
-  if (excData.length === 0) {
+  if (shouldUseLegacyCalendarFallback({ apiSucceeded: exceptionsApiSucceeded })) {
     let excQuery = supabase
       .from('schedules')
       .select('*');
@@ -3463,7 +3459,15 @@ const getStudentName = (sid) => {
   return s ? s.name : '—';
 };
 
-watch(() => props.branchId, () => { loadCourses(); loadStudents(); loadTeachers(); loadRooms(); });
+const reloadCalendarData = () => Promise.allSettled([
+  loadCourses(),
+  loadStudents(),
+  loadTeachers(),
+  loadRooms(),
+  loadSubjects(),
+]);
+
+watch(() => props.branchId, () => { reloadCalendarData(); });
 
 watch(
   [displayYear, displayMonth, displayWeek, weekOffset],
@@ -3519,7 +3523,7 @@ watch(isTeacher, (val) => {
   }
 });
 onMounted(() => {
-  loadCourses(); loadStudents(); loadTeachers(); loadRooms(); loadSubjects();
+  reloadCalendarData();
   // 僅在左鍵點擊時關閉右鍵選單，避免右鍵觸發的後續事件誤關選單
   document.addEventListener('click', (e) => {
     if (e.button === 0) contextMenu.value.show = false;
