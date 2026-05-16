@@ -434,6 +434,8 @@ class StudentClassController extends Controller
                     ->select('student_course_id', 'schedule_date', 'status')
                     ->get();
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
+                    ->where('SessionDate', '>=', $rangeStart)
+                    ->where('SessionDate', '<=', $rangeEnd)
                     ->select('StudentClassID', 'SessionDate', 'Status')
                     ->get();
                 $leaveByClass = [];
