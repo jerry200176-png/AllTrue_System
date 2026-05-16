@@ -2108,7 +2108,9 @@ const loadCourses = async () => {
     try {
       const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
       if (!isTeacher.value && branchId) excParams.set('branch_id', String(branchId));
-      if (isTeacher.value && props.userId) excParams.set('teacher_id', props.userId);
+      // Teacher week view needs substitute exceptions owned by other teachers to
+      // remove/transfer the original teacher's base occurrence before scoping.
+      if (!isTeacher.value && props.userId) excParams.set('teacher_id', props.userId);
       const excRes = await fetch(`${baseUrl}/v1/schedules?${excParams}`, {
         credentials: 'include',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
@@ -2128,7 +2130,7 @@ const loadCourses = async () => {
       .from('schedules')
       .select('*');
     if (!isTeacher.value && branchId) excQuery = excQuery.eq('branch_id', branchId);
-    if (isTeacher.value && props.userId) excQuery = excQuery.eq('teacher_id', props.userId);
+    if (!isTeacher.value && props.userId) excQuery = excQuery.eq('teacher_id', props.userId);
     const { data: excRaw } = await excQuery;
     excData = Array.isArray(excRaw) ? excRaw : (excRaw?.data || []);
   }
