@@ -13,6 +13,7 @@ use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
+use App\Http\Controllers\AdminCampusController;
 use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
@@ -206,6 +207,14 @@ Route::prefix('v1')->group(function () {
 
     // ── Super Admin only: 清空課程／學生／老師（保留 super_admin）────────────────
     Route::post('admin/reset-data', ResetDataController::class)->middleware(['role:director', 'require_password_change']);
+
+    // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
+    Route::middleware(['role:super_admin'])->group(function () {
+        Route::get('admin/campuses', [AdminCampusController::class, 'index']);
+        Route::post('admin/campuses', [AdminCampusController::class, 'store']);
+        Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
+        Route::delete('admin/campuses/{id}', [AdminCampusController::class, 'destroy'])->whereNumber('id');
+    });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('students', [StudentController::class, 'index']);
