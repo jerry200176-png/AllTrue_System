@@ -206,3 +206,74 @@ const rescheduleGhostMerge = merge({
 const ghostRow = rescheduleGhostMerge.find((r) => Number(r.student_course_id ?? 0) === 502);
 assert.ok(ghostRow, 'still render scheduled ClassSession when reschedule marker ghosts same calendar date');
 assert.equal(ghostRow.class_session_id, 8101);
+
+const substituteVisibilityCourse = {
+  id: 503,
+  student_id: 2003,
+  student_name: '代課可見性測試生',
+  teacher_id: 41,
+  teacher_name: '原老師C',
+  subject: 'Math',
+  class_type: 'one_on_one',
+  days_of_week: [7],
+  day_time_slots: [{ day: 7, start_time: '14:00', duration_hours: 2 }],
+  duration_hours: 2,
+  sessions_purchased: 20,
+};
+const substituteVisibilitySessions = {
+  503: [
+    {
+      id: 8201,
+      session_date: '2026-05-17',
+      start_time: '14:00',
+      end_time: '16:00',
+      status: 'scheduled',
+      teacher_id: 99,
+      teacher_name: '代課老師',
+      substitute_teacher_id: 99,
+    },
+  ],
+};
+const substituteVisibilityExceptions = [
+  {
+    id: 9101,
+    status: 'scheduled',
+    schedule_date: '2026-05-17',
+    student_course_id: 503,
+    student_id: 2003,
+    start_time: '14:00',
+    end_time: '16:00',
+    teacher_id: 99,
+    original_schedule_id: 9100,
+  },
+];
+
+const originalTeacherScopedRows = merge({
+  courses: [substituteVisibilityCourse],
+  allCourses: [substituteVisibilityCourse],
+  weekDatesByDow: weekWithSundaySession,
+  sessionDatesByCourseId: {},
+  exceptions: substituteVisibilityExceptions,
+  isTeacher: true,
+  currentTeacherId: '41',
+  teacherScopeId: '41',
+});
+assert.equal(
+  originalTeacherScopedRows.length,
+  0,
+  'original teacher week view must drop a substituted occurrence once the substitute exception is loaded',
+);
+
+const substituteTeacherScopedRows = merge({
+  courses: [substituteVisibilityCourse],
+  allCourses: [substituteVisibilityCourse],
+  weekDatesByDow: weekWithSundaySession,
+  sessionDatesByCourseId: substituteVisibilitySessions,
+  exceptions: substituteVisibilityExceptions,
+  isTeacher: true,
+  currentTeacherId: '99',
+  teacherScopeId: '99',
+});
+assert.equal(substituteTeacherScopedRows.length, 1, 'substitute teacher week view should include the substituted occurrence');
+assert.equal(substituteTeacherScopedRows[0].class_session_id, 8201);
+assert.equal(substituteTeacherScopedRows[0].teacher_id, 99);
