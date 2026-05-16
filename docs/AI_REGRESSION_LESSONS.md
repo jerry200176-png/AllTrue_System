@@ -557,6 +557,15 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R50. 智慧行事曆載入不可 REST 成功後再跑 legacy fallback
+
+- **觸發情境**：SmartCalendar 初次載入或切週體感偏慢，多個分校老師反映等待時間過長。
+- **根因**：`SmartCalendar.loadCourses()` 已從 Laravel REST 取得 `student-classes` / `schedules` 後，仍執行 legacy Supabase fallback；同時週資料窗口為 ±42 天，導致 `/class-sessions` payload 過大。
+- **強制規則**：Laravel REST 成功時不可再查 legacy Supabase fallback；週檢視 `ClassSession` / `schedules` prefetch buffer 預設為 ±21 天，若要放寬必須有回歸測試與實測理由。
+- **測試必補**：`calendarLoadPerformance.test.js` 覆蓋 fetch window 與 fallback gating；修改 SmartCalendar 載入路徑時必跑 `npm run test:calendar`。
+
+---
+
 ### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
 
 **觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
@@ -583,7 +592,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key） |
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback） |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
