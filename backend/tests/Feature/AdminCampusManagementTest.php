@@ -113,7 +113,7 @@ class AdminCampusManagementTest extends TestCase
             'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '',
         ]);
 
-        $res = $this->withToken($this->superToken)->getJson('/api/v1/admin/campuses');
+        $res = $this->auth($this->superToken)->getJson('/api/v1/admin/campuses');
         $res->assertOk();
         $names = collect($res->json())->pluck('name')->all();
         $this->assertContains('列表測試分校', $names);
@@ -122,7 +122,7 @@ class AdminCampusManagementTest extends TestCase
     /** @test */
     public function superadmin_can_create_campus(): void
     {
-        $res = $this->withToken($this->superToken)->postJson('/api/v1/admin/campuses', [
+        $res = $this->auth($this->superToken)->postJson('/api/v1/admin/campuses', [
             'name'   => '新竹分校',
             'code'   => 'hsinchu',
             'active' => true,
@@ -143,7 +143,7 @@ class AdminCampusManagementTest extends TestCase
             'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '',
         ]);
 
-        $res = $this->withToken($this->superToken)
+        $res = $this->auth($this->superToken)
             ->putJson("/api/v1/admin/campuses/{$campus->id}", [
                 'name' => '新名分校',
                 'active' => false,
@@ -163,7 +163,7 @@ class AdminCampusManagementTest extends TestCase
             'TelegramURL' => '', 'TeachLIFFID' => '', 'TeachLIFF_URL' => '',
         ]);
 
-        $res = $this->withToken($this->superToken)
+        $res = $this->auth($this->superToken)
             ->deleteJson("/api/v1/admin/campuses/{$campus->id}");
 
         $res->assertOk();
@@ -188,7 +188,7 @@ class AdminCampusManagementTest extends TestCase
             'UserID' => $user->id, 'CampusID' => $campus->id, 'Admin' => 0, 'Approved' => 1,
         ]);
 
-        $res = $this->withToken($this->superToken)
+        $res = $this->auth($this->superToken)
             ->deleteJson("/api/v1/admin/campuses/{$campus->id}");
 
         $res->assertStatus(422);
@@ -198,12 +198,12 @@ class AdminCampusManagementTest extends TestCase
     /** @test */
     public function director_cannot_access_admin_campus_api(): void
     {
-        $this->withToken($this->directorToken)
+        $this->auth($this->directorToken)
             ->getJson('/api/v1/admin/campuses')
             ->assertStatus(403);
     }
 
-    private function withToken(string $token): static
+    private function auth(string $token): static
     {
         return $this->withHeaders(['Authorization' => "Bearer {$token}"]);
     }
