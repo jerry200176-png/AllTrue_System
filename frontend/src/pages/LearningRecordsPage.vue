@@ -23,7 +23,7 @@
         :class="['lr-kpi-card', 'lr-kpi-missing', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
         @click="isTeacher
           ? (teacherFilterTab = 'all', teacherPriorityFilter = 'unfilled')
-          : (reviewTab = 'pending', onlyUnfilled = true)"
+          : (reviewTab = 'all', onlyUnfilled = true)"
       >
         <span class="lr-kpi-num">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
         <span class="lr-kpi-label">未填</span>
@@ -110,7 +110,11 @@
         </button>
       </div>
 
-      <label v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'all'" class="lr-unfilled-toggle">
+      <label
+        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+        class="lr-unfilled-toggle"
+        title="待審／需修改且正文未填；已核准但正文仍空白者僅在「已核准」或「全部」分頁會被篩出"
+      >
         <input type="checkbox" v-model="onlyUnfilled"> 只看未填
       </label>
 
@@ -1379,6 +1383,10 @@ const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
+watch(reviewTab, (t) => {
+  if (!isDirectorRole.value) return;
+  if (t === 'rejected' && onlyUnfilled.value) onlyUnfilled.value = false;
+});
 const selectedRecordIds = ref(new Set());
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
@@ -1487,9 +1495,14 @@ const filteredRecords = computed(() => {
     }
   }
   if (onlyUnfilled.value) {
-    list = list.filter(r =>
-      (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
-    );
+    list = list.filter((r) => {
+      if (hasLearningRecordBody(r)) return false;
+      if (r.Status === 'pending' || r.Status === 'changes_requested') return true;
+      if (r.Status === 'approved') {
+        return reviewTab.value === 'approved' || reviewTab.value === 'all';
+      }
+      return false;
+    });
   }
   if (feedbackFilter.value === 'has') {
     list = list.filter(r => !!r.parent_feedback);
@@ -1517,9 +1530,15 @@ const filteredGroupedRecords = computed(() => {
     return v;
   };
   const sortRecords = (list) => {
+    const missingBodyTier = (r) => {
+      if (!r || hasBody(r)) return 1;
+      if (r.Status === 'pending' || r.Status === 'changes_requested') return 0;
+      if (r.Status === 'approved') return 0;
+      return 1;
+    };
     list.sort((a, b) => {
-      const isPendingA = (a?.Status === 'pending' || a?.Status === 'changes_requested') && !hasBody(a) ? 0 : 1;
-      const isPendingB = (b?.Status === 'pending' || b?.Status === 'changes_requested') && !hasBody(b) ? 0 : 1;
+      const isPendingA = missingBodyTier(a);
+      const isPendingB = missingBodyTier(b);
       if (isPendingA !== isPendingB) return isPendingA - isPendingB;
       const aDate = String(a?.SessionDate || '');
       const bDate = String(b?.SessionDate || '');
@@ -1549,7 +1568,7 @@ const filteredGroupedRecords = computed(() => {
     else if (s === 'rejected') c.rejected += 1;
     else if (s === 'changes_requested') c.changes_requested += 1;
     else if (s === 'pending') c.pending += 1;
-    if ((s === 'pending' || s === 'changes_requested') && !hasBody(record)) c.unfilled += 1;
+    if (!hasBody(record) && (s === 'pending' || s === 'changes_requested' || s === 'approved')) c.unfilled += 1;
   }
 
   for (const record of filteredRecords.value) {
@@ -1575,6 +1594,8 @@ const filteredGroupedRecords = computed(() => {
     if (record?.Status === 'pending' || record?.Status === 'changes_requested') {
       group.pending_count += 1;
       if (!hasBody(record)) group.unfilled_body_count += 1;
+    } else if (record?.Status === 'approved' && !hasBody(record)) {
+      group.unfilled_body_count += 1;
     }
     const subjKey = recordSubjectKey(record);
     if (!group.subjectMap.has(subjKey)) group.subjectMap.set(subjKey, []);
@@ -1626,9 +1647,10 @@ const changesRequestedCount = computed(() => (records.value || []).filter(r => r
 const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
 const kpiUnfilledCount = computed(() =>
-  (records.value || []).filter(r =>
-    (r.Status === 'pending' || r.Status === 'changes_requested') && !hasLearningRecordBody(r)
-  ).length
+  (records.value || []).filter((r) => {
+    if (hasLearningRecordBody(r)) return false;
+    return r.Status === 'pending' || r.Status === 'changes_requested' || r.Status === 'approved';
+  }).length
 );
 const parentFeedbackUnread = (record) => {
   const fb = record?.parent_feedback;
