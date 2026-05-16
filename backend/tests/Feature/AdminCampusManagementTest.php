@@ -122,15 +122,16 @@ class AdminCampusManagementTest extends TestCase
     /** @test */
     public function superadmin_can_create_campus(): void
     {
+        $uniqueCode = 'test-branch-' . substr(md5((string) microtime(true)), 0, 8);
         $res = $this->auth($this->superToken)->postJson('/api/v1/admin/campuses', [
-            'name'   => '新竹分校',
-            'code'   => 'hsinchu',
+            'name'   => '測試新分校',
+            'code'   => $uniqueCode,
             'active' => true,
         ]);
 
         $res->assertStatus(201);
-        $this->assertSame('新竹分校', $res->json('name'));
-        $this->assertDatabaseHas('Campus', ['name' => '新竹分校', 'code' => 'hsinchu']);
+        $this->assertSame('測試新分校', $res->json('name'));
+        $this->assertDatabaseHas('Campus', ['name' => '測試新分校', 'code' => $uniqueCode]);
     }
 
     /** @test */
