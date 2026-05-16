@@ -3942,9 +3942,10 @@ class StudentClassController extends Controller
             }
             $key = $date . '|' . $start;
             $status = strtolower((string) ($session->Status ?? ''));
-            if ($status !== 'cancelled') {
-                $occupiedKeys[$key] = true;
-            }
+            // Cancelled sessions must still occupy the calendar key; otherwise we
+            // treat the slot as empty and refill from the contract sequence —
+            // recreating the same date/time (classic "取消了又補回" on count-mode courses).
+            $occupiedKeys[$key] = true;
             if (!in_array($status, $nonQuotaStatuses, true)) {
                 $existingQuotaKeys[$key] = true;
                 $currentCount++;
