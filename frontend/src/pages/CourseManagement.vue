@@ -433,7 +433,7 @@
           <CourseEditForm
             ref="editFormRef"
             v-model="editForm"
-            :teachers="teachers"
+            :teachers="editTeacherOptions"
             :rooms="rooms"
             :subjects="subjectOptions"
             :day-options="DAY_OPTIONS"
@@ -836,6 +836,7 @@ import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classS
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
+import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -1467,6 +1468,7 @@ const editContextTitle = computed(() => {
   const studentName = c.student_name || '';
   return studentName ? `正在編輯：${subjectLabel} ／ ${studentName}` : `正在編輯：${subjectLabel}`;
 });
+const editTeacherOptions = computed(() => buildEditTeacherOptions(teachers.value, editingCourseRaw.value));
 /** 開啟編輯時的排課指紋；儲存時若變更則自動 force_partial_rebuild 同步未上預排堂次 */
 const editScheduleBaseline = ref(null);
 const originalFirstClassDate = ref('');
@@ -2931,11 +2933,10 @@ const loadTeachers = async () => {
       branch_ids: Array.isArray(t.branch_ids) ? t.branch_ids : [],
     }));
 
-    const teacherIdSet = new Set(teachers.value.map((t) => String(t.id)));
-    if (backfillForm.value.teacher_id && !teacherIdSet.has(String(backfillForm.value.teacher_id))) {
+    if (shouldClearTeacherSelection(backfillForm.value.teacher_id, teachers.value)) {
       backfillForm.value.teacher_id = '';
     }
-    if (editForm.value?.teacher_id && !teacherIdSet.has(String(editForm.value.teacher_id))) {
+    if (shouldClearTeacherSelection(editForm.value?.teacher_id, teachers.value, { isEditing: showEditModal.value })) {
       editForm.value.teacher_id = '';
     }
   } catch (_) {
