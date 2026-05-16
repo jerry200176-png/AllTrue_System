@@ -434,6 +434,8 @@ class StudentClassController extends Controller
                     ->select('student_course_id', 'schedule_date', 'status')
                     ->get();
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
+                    ->where('SessionDate', '>=', $rangeStart)
+                    ->where('SessionDate', '<=', $rangeEnd)
                     ->select('StudentClassID', 'SessionDate', 'Status')
                     ->get();
                 $leaveByClass = [];
@@ -644,6 +646,10 @@ class StudentClassController extends Controller
                 $set = [];
                 foreach ($sessions as $row) {
                     if ((int) $row->StudentClassID !== $id) {
+                        continue;
+                    }
+                    $status = strtolower((string) ($row->Status ?? ''));
+                    if (in_array($status, ['cancelled', 'leave'], true)) {
                         continue;
                     }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
@@ -3936,9 +3942,10 @@ class StudentClassController extends Controller
             }
             $key = $date . '|' . $start;
             $status = strtolower((string) ($session->Status ?? ''));
-            if ($status !== 'cancelled') {
-                $occupiedKeys[$key] = true;
-            }
+            // Cancelled sessions must still occupy the calendar key; otherwise we
+            // treat the slot as empty and refill from the contract sequence —
+            // recreating the same date/time (classic "取消了又補回" on count-mode courses).
+            $occupiedKeys[$key] = true;
             if (!in_array($status, $nonQuotaStatuses, true)) {
                 $existingQuotaKeys[$key] = true;
                 $currentCount++;

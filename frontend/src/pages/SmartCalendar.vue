@@ -1259,6 +1259,34 @@ const getDisplayDateFull = (dayOfWeek) => {
   return addDays(actualMonday, dayOfWeek - 1);
 };
 
+/**
+ * 以「目前週檢視實際渲染的週一～週日」計算 ClassSession / schedules 抓取範圍（再向兩側各約六週），
+ * 避免僅依開頁月份或錯用之 Date month 索引導致週邊日期堂次載不到。
+ */
+function getCalendarDataFetchBoundsYmd() {
+  const ymds = [];
+  for (let dow = 1; dow <= 7; dow += 1) {
+    const ymd = getDisplayDateFull(dow);
+    if (ymd) ymds.push(String(ymd).slice(0, 10));
+  }
+  ymds.sort();
+  if (!ymds.length) {
+    const mi = displayMonth.value - 1;
+    const start = new Date(displayYear.value, mi - 3, 1);
+    const end = new Date(displayYear.value, mi + 2, 0);
+    return {
+      schedStart: formatLocalDate(start),
+      schedEnd: formatLocalDate(end),
+    };
+  }
+  const min = ymds[0];
+  const max = ymds[ymds.length - 1];
+  return {
+    schedStart: addDays(min, -42),
+    schedEnd: addDays(max, 42),
+  };
+}
+
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
 
@@ -2056,12 +2084,8 @@ const loadCourses = async () => {
 
   courseList = courseList.filter(isCourseActiveForCalendar);
 
-  // 優先從 Laravel API 載入請假/調課（與課程管理寫入的資料一致，該堂才會正確消失）
-  // Use a +-2 month window around the current display month to avoid full-table load
-  const schedRangeStart = new Date(displayYear.value, displayMonth.value - 3, 1);
-  const schedRangeEnd = new Date(displayYear.value, displayMonth.value + 1, 0);
-  const schedStart = `${schedRangeStart.getFullYear()}-${String(schedRangeStart.getMonth() + 1).padStart(2, '0')}-01`;
-  const schedEnd = `${schedRangeEnd.getFullYear()}-${String(schedRangeEnd.getMonth() + 1).padStart(2, '0')}-${String(schedRangeEnd.getDate()).padStart(2, '0')}`;
+  // schedules / ClassSession API：對齊「當前渲染週 ± 約六週」，換週換月會由 watch(loadCourses) 重抓
+  const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
   let excData = [];
   if (token) {
@@ -3372,6 +3396,19 @@ const getStudentName = (sid) => {
 };
 
 watch(() => props.branchId, () => { loadCourses(); loadStudents(); loadTeachers(); loadRooms(); });
+
+watch(
+  [displayYear, displayMonth, displayWeek, weekOffset],
+  () => {
+    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const token = session?.access_token || '';
+    const branchOk = Number(props.branchId || 0) > 0;
+    const teacherOk = isTeacher.value && currentTeacherId.value;
+    if (!token || (!branchOk && !teacherOk)) return;
+    loadCourses();
+  },
+);
+
 watch(() => props.resetWeekToken, () => { focusCalendarToday(); }, { immediate: true });
 watch(() => props.initialTeacherId, (id) => {
   if (id != null && id !== '') {
