@@ -648,6 +648,10 @@ class StudentClassController extends Controller
                     if ((int) $row->StudentClassID !== $id) {
                         continue;
                     }
+                    $status = strtolower((string) ($row->Status ?? ''));
+                    if (in_array($status, ['cancelled', 'leave'], true)) {
+                        continue;
+                    }
                     $d = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
                     if ($d) {
                         $set[$d] = true;
