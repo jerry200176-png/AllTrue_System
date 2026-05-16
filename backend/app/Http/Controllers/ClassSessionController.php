@@ -968,6 +968,11 @@ class ClassSessionController extends Controller
 
     private function tryExtendOnLeave(StudentClass $studentClass, ClassSession $leaveSession): ?ClassSession
     {
+        // 暫停中的課程（Stop=1）不補建堂次，避免「取消了又補回」症狀
+        if ((int) ($studentClass->Stop ?? 0) === 1) {
+            return null;
+        }
+
         $mode = strtolower(trim((string) ($studentClass->ScheduleMode ?? '')));
         if ($mode === 'date') {
             return null;
