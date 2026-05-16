@@ -57,10 +57,11 @@ class SwipeTeacherUserFallbackTest extends TestCase
 
     private function swipe(string $rfid): \Illuminate\Testing\TestResponse
     {
-        return $this->postJson('/api/v1/swipe-rfid', [
-            'rfid'  => $rfid,
-            'token' => 'fallback-token-xyz',
-        ]);
+        return $this->postJson(
+            '/api/v1/swipe-rfid',
+            ['branch_code' => (string) $this->campus->id, 'rfid' => $rfid],
+            ['Authorization' => 'Bearer fallback-token-xyz']
+        );
     }
 
     /**
