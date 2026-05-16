@@ -1202,6 +1202,7 @@ import {
   learningSessionStatusLabel,
   resolveLearningSessionState,
 } from '../lib/sessionConsistency';
+import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1305,16 +1306,16 @@ const defaultWindowDisabled = ref(false);
  */
 const resolvedDefaultWindowStart = computed(() => {
   const days = Number(perfFlags.LR_DEFAULT_WINDOW_DAYS || 0);
-  if (!(days > 0)) return '';
-  if (filters.start_date) return '';
-  if (defaultWindowDisabled.value) return '';
-  const tabBlocksWindow = isTeacher.value
-    ? (teacherFilterTab.value === 'pending' || teacherFilterTab.value === 'changes_requested')
-    : (reviewTab.value === 'pending' || reviewTab.value === 'changes_requested');
-  if (tabBlocksWindow) return '';
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return formatLocalDate(d);
+  return resolveLearningRecordsDefaultWindowStart({
+    days,
+    startDate: filters.start_date,
+    defaultWindowDisabled: defaultWindowDisabled.value,
+    isTeacher: isTeacher.value,
+    teacherFilterTab: teacherFilterTab.value,
+    teacherPriorityFilter: teacherPriorityFilter.value,
+    reviewTab: reviewTab.value,
+    now: new Date(),
+  });
 });
 
 /** 當下是否正在套用預設時間窗口（用於顯示 badge）。 */
