@@ -369,6 +369,23 @@
         </div>
       </template>
 
+      <div v-if="!pendingLoading && sessionStatusRows.length" class="att-status-summary">
+        <div class="att-status-summary-title">今日已標記狀態堂次</div>
+        <p class="att-status-summary-hint">
+          這些堂次已有課表狀態，但沒有出現在待點名清單中，可用來和課表／評量核對。
+        </p>
+        <div class="att-status-summary-list">
+          <div v-for="s in sessionStatusRows" :key="'status-' + s.class_session_id" class="att-status-summary-row">
+            <span class="att-time-range">{{ s.start_time }}–{{ s.end_time }}</span>
+            <span class="att-person-name">{{ s.student_name || '—' }}</span>
+            <span>{{ s.subject_name || '—' }}</span>
+            <span>{{ s.teacher_name || '—' }}</span>
+            <span class="att-status-readonly">{{ s.status_label }}</span>
+            <span v-if="s.status_note" class="att-status-note">{{ s.status_note }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- "Class missing from system" entry point (always visible per FR-004) -->
       <div class="att-missing-cta">
         <span class="material-symbols-outlined" aria-hidden="true">help</span>
@@ -1000,6 +1017,7 @@ import SearchableSelect from '../components/SearchableSelect.vue';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import TeacherAdjustModal from '../components/TeacherAdjustModal.vue';
 import { fetchMyDiscrepancies, STATUS_LABELS as DISCREPANCY_STATUS_LABELS } from '../lib/scheduleDiscrepanciesApi';
+import { classifyAttendanceSessionRows } from '../lib/sessionConsistency';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1287,6 +1305,7 @@ const manualMsg = ref('');
 const manualMsgType = ref('');
 
 const pendingSessions = ref([]);
+const sessionStatusRows = ref([]);
 const pendingLoading = ref(false);
 const pendingMarkStatus = ref({});
 const pendingMarkSubmitting = ref({});
@@ -1696,13 +1715,13 @@ const fetchRecords = async () => {
 
 // Single API call for both todaySessionTotal and pendingSessions (fixes duplicate fetch)
 const fetchPendingSessions = async () => {
-  if (!isTeacher.value && !props.branchId) { pendingSessions.value = []; return; }
+  if (!isTeacher.value && !props.branchId) { pendingSessions.value = []; sessionStatusRows.value = []; return; }
   pendingLoading.value = true;
   pendingMarkMsg.value = '';
   fetchError.value = '';
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) { sessionStatusRows.value = []; return; }
     const today = localTodayYmd();
     const qs = new URLSearchParams({ start: today, end: today, per_page: '500' });
     if (!isTeacher.value && props.branchId) qs.set('branch_id', String(props.branchId));
@@ -1713,6 +1732,7 @@ const fetchPendingSessions = async () => {
 
     if (!res.ok) {
       pendingSessions.value = [];
+      sessionStatusRows.value = [];
       todaySessionTotal.value = 0;
       if (res.status === 403) {
         fetchError.value = '無此分校的存取權限，請確認分校設定';
@@ -1725,46 +1745,13 @@ const fetchPendingSessions = async () => {
     const json = await res.json().catch(() => ({}));
     const rows = Array.isArray(json?.data) ? json.data : [];
 
-    const totalSlotKeys = new Set();
-    todaySessionTotal.value = rows.filter((row) => {
-      const status = String(row?.status || '').toLowerCase();
-      return !['cancelled', 'leave', 'leave_adjusted'].includes(status);
-    }).filter((row) => {
-      const key = [
-        Number(row?.student_class_id || row?.StudentClassID || 0),
-        String(row?.session_date || row?.SessionDate || '').slice(0, 10),
-        String(row?.start_time || row?.StartTime || '').slice(0, 5),
-      ].join('|');
-      if (totalSlotKeys.has(key)) return false;
-      totalSlotKeys.add(key);
-      return true;
-    }).length;
-
-    const pendingRows = rows
-      .filter(r => String(r?.status || '').toLowerCase() === 'scheduled')
-      .map(r => ({
-        class_session_id: Number(r.id || 0),
-        student_id: Number(r.student_id || 0),
-        student_class_id: Number(r.student_class_id || 0),
-        teacher_id: Number(r.teacher_id || (isTeacher.value ? props.userId : 0) || 0),
-        branch_id: Number(r.branch_id || r.CampusID || 0),
-        session_date: String(r.session_date || '').slice(0, 10),
-        start_time: String(r.start_time || '').slice(0, 5),
-        end_time: String(r.end_time || '').slice(0, 5),
-        student_name: r.student_name || '',
-        subject_name: r.subject_name || '',
-        teacher_name: r.teacher_name || '',
-      }))
-      .filter(r => r.class_session_id > 0 && r.student_id > 0 && r.student_class_id > 0)
-      .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
-
-    const pendingSlotKeys = new Set();
-    const pending = pendingRows.filter((r) => {
-      const key = `${r.student_class_id}|${r.session_date}|${r.start_time}`;
-      if (pendingSlotKeys.has(key)) return false;
-      pendingSlotKeys.add(key);
-      return true;
-    });
+    const classified = classifyAttendanceSessionRows(rows);
+    todaySessionTotal.value = classified.totalCount;
+    const pending = classified.pending.map((r) => ({
+      ...r,
+      teacher_id: Number(r.teacher_id || (isTeacher.value ? props.userId : 0) || 0),
+    }));
+    sessionStatusRows.value = classified.statusRows;
 
     pendingSessions.value = pending;
     const next = {};
@@ -1777,6 +1764,7 @@ const fetchPendingSessions = async () => {
   } catch (e) {
     console.error('fetchPendingSessions', e);
     pendingSessions.value = [];
+    sessionStatusRows.value = [];
   } finally {
     pendingLoading.value = false;
   }
@@ -2484,6 +2472,49 @@ watch(() => props.branchId, () => {
 .att-status-btn.active.att-st-late { background: #d97706; color: #fff; }
 .att-status-btn.active.att-st-excused, .att-status-btn.active.att-st-leave { background: #1565C0; color: #fff; }
 .att-status-btn.active.att-st-absent { background: #dc2626; color: #fff; }
+.att-status-summary {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 251, 235, 0.72);
+}
+.att-status-summary-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #92400e;
+}
+.att-status-summary-hint {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: #a16207;
+}
+.att-status-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.att-status-summary-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 1fr 1fr auto 1.5fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+.att-status-readonly {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 700;
+  text-align: center;
+}
+.att-status-note {
+  color: #92400e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Row selected highlight */
 .att-row-selected { background: rgba(232,121,36,0.04); }
@@ -2630,6 +2661,15 @@ watch(() => props.branchId, () => {
   .att-desktop-only { display: none; }
   .att-mobile-only { display: flex; }
   .att-sticky-batch { display: flex; }
+  .att-status-summary-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(245, 158, 11, 0.18);
+  }
+  .att-status-note {
+    white-space: normal;
+  }
 
   .att-makeup-card {
     padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
