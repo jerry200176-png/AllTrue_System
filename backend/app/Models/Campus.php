@@ -15,6 +15,7 @@ class Campus extends Model
     protected $fillable = [
         'name',
         'code',
+        'active',
         'Current',
         'SwipeWindowMinutes',
         'LineNotifyID',
