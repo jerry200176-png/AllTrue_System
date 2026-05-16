@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-05-16 — feat(engagement): 新增士官長三階 + 修正 ROC 軍階徽章 (#353)
+
+- Added 三等/二等/一等士官長（XP 275/355/445）補齊 ROC 軍階完整 19 階
+- Fixed `RocRankBadge.vue` 徽章設計：尉官=橫槓、校官=梅花、將官=金星（先前尉/校完全對調）
+- Added `EngagementRankProgressionTest.php` PHPUnit 防回歸測試（XP 嚴格遞增、邊界值）
+
+---
+
 ## 2026-05-16 — fix(scheduling): 堂數制取消堂次後不再於同日重插排課
 
 - Fixed `StudentClassController::extendSessionsIfNeeded` 未將 `cancelled` 堂次佔用 `date|start` 槽位，補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`（症狀：取消某週四後又補回同一週四）
