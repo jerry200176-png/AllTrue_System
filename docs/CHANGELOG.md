@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-05-16 — fix(billing): 共用方案合併繳費金額對齊
+
+- 共用方案在繳費提醒會顯示一筆合併帳務，金額依方案總堂數計算；核帳後會同步標記整個方案與所有科目已繳，避免同一方案被拆成單科金額。
+- 開發備註：`AlertController::tuition` 新增 count-mode package row；`PaymentReportController::directorRecord` 同步 package/member paid；覆蓋 #362/#363/#366。
+
+---
+
 ## 2026-05-16 — fix(learning): 課表、評量與出缺勤顯示一致
 
 - 老師的課表與評量列表會依同一個分校範圍顯示；缺席、請假、取消等堂次也會用更清楚的狀態呈現，不再看起來像評量突然不見。

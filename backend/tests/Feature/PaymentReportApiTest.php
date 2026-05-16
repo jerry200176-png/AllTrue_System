@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
@@ -272,6 +273,78 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(0, (int) $april->PaidAmount);
         $this->assertSame('paid', (string) $may->Status);
         $this->assertSame(8800, (int) $may->PaidAmount);
+    }
+
+    public function test_director_record_marks_count_package_and_all_members_paid(): void
+    {
+        Carbon::setTestNow('2026-05-16 12:00:00');
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id,
+            'campus_id' => 1,
+            'name' => '數學理化12堂',
+            'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'total_sessions' => 12,
+            'remaining_sessions' => 12,
+            'used_sessions' => 0,
+            'rate' => 1000,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_three',
+            'paid' => false,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+        $anchor = $this->createCountModeClass($student->id, [
+            'SubjectID' => 1,
+            'SessionCount' => 12,
+            'RemainingSessions' => 12,
+            'Rate' => 1000,
+            'Charge' => 2000,
+            'Paid' => 0,
+            'PackageID' => $pkg->id,
+            'PackageTotalSessions' => 12,
+            'PackageName' => $pkg->name,
+        ]);
+        $other = $this->createCountModeClass($student->id, [
+            'SubjectID' => 2,
+            'SessionCount' => 12,
+            'RemainingSessions' => 12,
+            'Rate' => 1000,
+            'Charge' => 2000,
+            'Paid' => 0,
+            'PackageID' => $pkg->id,
+            'PackageTotalSessions' => 12,
+            'PackageName' => $pkg->name,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $anchor->ID,
+            'payment_date' => '2026-05-16',
+            'payment_method' => 'cash',
+            'amount' => 12000,
+            'note' => '方案合繳',
+        ]);
+
+        $res->assertOk();
+        $invoice = Invoice::find($res->json('invoice_id'));
+        $this->assertNotNull($invoice);
+        $this->assertSame((int) $anchor->ID, (int) $invoice->StudentClassID);
+        $this->assertSame(12000, (int) $invoice->TotalAmount);
+        $this->assertSame('paid', (string) $invoice->Status);
+
+        $pkg->refresh();
+        $anchor->refresh();
+        $other->refresh();
+        $this->assertTrue((bool) $pkg->paid);
+        $this->assertSame('2026-05-16', substr((string) $pkg->paid_at, 0, 10));
+        $this->assertSame(1, (int) $anchor->Paid);
+        $this->assertSame(1, (int) $other->Paid);
+        $this->assertSame('2026-05-16', substr((string) $anchor->PayDate, 0, 10));
+        $this->assertSame('2026-05-16', substr((string) $other->PayDate, 0, 10));
     }
 
     public function test_student_class_invoices_include_payment_date_separate_from_due_date(): void
