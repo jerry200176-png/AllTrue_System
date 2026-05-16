@@ -528,6 +528,7 @@ Route::prefix('v1')->group(function () {
         Route::get('bugs/unread-badge', [BugReportController::class, 'unreadBadge']);
         Route::get('bugs/{id}', [BugReportController::class, 'show']);
         Route::post('bugs/{id}/comments', [BugReportController::class, 'addComment']);
+        Route::post('bugs/{id}/reporter-verify', [BugReportController::class, 'reporterVerify']);
     });
     Route::middleware(['super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);

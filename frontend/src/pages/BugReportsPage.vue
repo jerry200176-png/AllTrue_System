@@ -308,13 +308,28 @@
 
         <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
         <template v-else-if="detail">
-          <!-- Resolved / closed banner — shown to all roles so reporter sees resolution clearly -->
-          <div v-if="detail.status === 'resolved'" class="resolution-banner resolution-banner--resolved">
+          <!-- Resolved: reporter sees verification prompt; others see read-only banner -->
+          <div v-if="detail.status === 'resolved' && isReporter" class="verify-prompt">
+            <div class="verify-prompt__icon">🔍</div>
+            <div class="verify-prompt__body">
+              <strong>請確認問題是否已修好</strong>
+              <p>開發者已標記修復完成，請確認後讓此問題正式關閉。</p>
+              <div class="verify-prompt__btns">
+                <button class="btn-verify-reopen" :disabled="verifying" @click="doReporterVerify('reopened')">
+                  ❌ 問題仍存在
+                </button>
+                <button class="btn-verify-confirm" :disabled="verifying" @click="doReporterVerify('confirmed')">
+                  ✅ 確認已修好
+                </button>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="detail.status === 'resolved'" class="resolution-banner resolution-banner--resolved">
             <span class="material-symbols-outlined">task_alt</span>
             <div class="resolution-content">
-              <strong>已解決</strong>
+              <strong>已解決（待回報者確認）</strong>
               <span v-if="resolutionNote" class="resolution-note">{{ resolutionNote }}</span>
-              <span v-else class="resolution-note resolution-note--empty">管理員已標記為解決，如仍有問題請在留言中說明。</span>
+              <span v-else class="resolution-note resolution-note--empty">等待原始回報者確認後正式關閉。</span>
             </div>
           </div>
           <div v-else-if="detail.status === 'closed'" class="resolution-banner resolution-banner--closed">
@@ -425,7 +440,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
-  updateBugStatus, updateBugCommentVisibility,
+  updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
 } from '../lib/bugReportsApi';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
@@ -498,6 +513,34 @@ const listCardRef = ref(null);
 let debounceTimer = null;
 
 const isSuperAdmin = computed(() => props.userRole === 'super_admin');
+
+const currentUserId = computed(() => {
+  try {
+    const s = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    return s?.user?.id ? Number(s.user.id) : null;
+  } catch { return null; }
+});
+const isReporter = computed(() =>
+  !isSuperAdmin.value
+  && detail.value?.reporter_user_id != null
+  && currentUserId.value != null
+  && Number(detail.value.reporter_user_id) === currentUserId.value
+);
+const verifying = ref(false);
+
+async function doReporterVerify(verdict) {
+  if (verifying.value || !detail.value) return;
+  verifying.value = true;
+  try {
+    const res = await reporterVerifyBug(detail.value.id, verdict);
+    detail.value = { ...detail.value, status: res.new_status };
+    await loadBugs();
+  } catch (e) {
+    alert(e.message || '操作失敗，請重試');
+  } finally {
+    verifying.value = false;
+  }
+}
 
 // ─── 頁面層級 Tab（super_admin：Bug 回報 / 家長回饋）──────────────
 const pageTab = ref('bugs');
@@ -1189,6 +1232,28 @@ function formatDate(iso) {
 .resolution-content strong { font-size: 15px; }
 .resolution-note { font-size: 13px; line-height: 1.5; }
 .resolution-note--empty { opacity: 0.7; font-style: italic; }
+
+.verify-prompt {
+  display: flex; gap: 14px; align-items: flex-start;
+  background: #fffbeb; border: 1.5px solid #f59e0b; border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.verify-prompt__icon { font-size: 24px; flex-shrink: 0; }
+.verify-prompt__body { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.verify-prompt__body strong { font-size: 15px; }
+.verify-prompt__body p { font-size: 13px; margin: 0; color: #92400e; }
+.verify-prompt__btns { display: flex; gap: 10px; margin-top: 6px; }
+.btn-verify-confirm {
+  padding: 7px 16px; border-radius: 7px; border: none; cursor: pointer; font-size: 13px; font-weight: 600;
+  background: #10b981; color: #fff;
+}
+.btn-verify-confirm:hover:not(:disabled) { background: #059669; }
+.btn-verify-reopen {
+  padding: 7px 16px; border-radius: 7px; border: 1.5px solid #dc2626; cursor: pointer; font-size: 13px; font-weight: 600;
+  background: #fff; color: #dc2626;
+}
+.btn-verify-reopen:hover:not(:disabled) { background: #fef2f2; }
+.btn-verify-confirm:disabled, .btn-verify-reopen:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; font-size: 14px; }
 .detail-description { margin: 12px 0; }

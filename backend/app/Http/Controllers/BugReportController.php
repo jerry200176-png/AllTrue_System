@@ -239,6 +239,52 @@ class BugReportController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Reporter confirms or rejects a resolved bug.
+     * verdict=confirmed → closed; verdict=reopened → in_progress
+     * Only the original reporter may call this; bug must be in 'resolved' state.
+     */
+    public function reporterVerify(Request $request, $id)
+    {
+        $request->validate([
+            'verdict' => 'required|in:confirmed,reopened',
+            'note'    => 'nullable|string|max:500',
+        ]);
+
+        $userId    = $this->resolveUserId($request);
+        if (!$userId) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $bugId     = (int) $id;
+        $campusIds = $this->resolveCampusIds($request);
+
+        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $detail = BugReportService::getDetail($bugId, false);
+        if (!$detail) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        if ((int) $detail['reporter_user_id'] !== $userId) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        if ($detail['status'] !== 'resolved') {
+            return response()->json(['message' => '只有狀態為「已解決」的回報才能驗收'], 422);
+        }
+
+        $newStatus = $request->input('verdict') === 'confirmed' ? 'closed' : 'in_progress';
+        $note      = $request->input('note')
+            ?: ($newStatus === 'closed' ? '回報者確認已修好' : '回報者反映問題仍存在');
+
+        BugReportService::changeStatus($bugId, $userId, $newStatus, $note);
+
+        return response()->json(['ok' => true, 'new_status' => $newStatus]);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function resolveUserId(Request $request): ?int

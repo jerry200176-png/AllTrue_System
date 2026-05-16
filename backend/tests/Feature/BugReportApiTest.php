@@ -801,6 +801,90 @@ class BugReportApiTest extends TestCase
         $this->assertEquals(0, $json['total']);
     }
 
+    // ── Reporter Verify (待驗收流程) ───────────────────────────────
+
+    public function test_reporter_can_confirm_resolved_bug(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'rv-confirm@test.com', 'T');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Verify confirm', 'description' => 'D',
+            'severity' => 'low', 'status' => 'resolved',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/reporter-verify", [
+            'verdict' => 'confirmed',
+        ]);
+
+        $res->assertOk();
+        $this->assertEquals('closed', $res->json('new_status'));
+        $this->assertDatabaseHas('bug_reports', ['id' => $bug->id, 'status' => 'closed']);
+    }
+
+    public function test_reporter_can_reopen_resolved_bug(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'rv-reopen@test.com', 'T');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Verify reopen', 'description' => 'D',
+            'severity' => 'low', 'status' => 'resolved',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/reporter-verify", [
+            'verdict' => 'reopened',
+            'note'    => '重啟按鈕還是失靈',
+        ]);
+
+        $res->assertOk();
+        $this->assertEquals('in_progress', $res->json('new_status'));
+        $this->assertDatabaseHas('bug_reports', ['id' => $bug->id, 'status' => 'in_progress']);
+    }
+
+    public function test_non_reporter_cannot_verify_bug(): void
+    {
+        [$tokenOwner, $owner] = $this->createUserToken([1], 'rv-owner@test.com', 'T');
+        [$tokenOther, ] = $this->createUserToken([1], 'rv-other@test.com', 'T');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $owner->id,
+            'title' => 'Verify forbidden', 'description' => 'D',
+            'severity' => 'low', 'status' => 'resolved',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenOther}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/reporter-verify", [
+            'verdict' => 'confirmed',
+        ])->assertStatus(403);
+    }
+
+    public function test_reporter_cannot_verify_non_resolved_bug(): void
+    {
+        [$tokenTeacher, $teacher] = $this->createUserToken([1], 'rv-nostate@test.com', 'T');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $teacher->id,
+            'title' => 'Wrong state', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenTeacher}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/reporter-verify", [
+            'verdict' => 'confirmed',
+        ])->assertStatus(422);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array
