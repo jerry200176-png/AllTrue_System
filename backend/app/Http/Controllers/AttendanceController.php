@@ -419,21 +419,27 @@ class AttendanceController extends Controller
                     return response()->json(['message' => '無法識別老師身分，請重新登入'], 403);
                 }
                 $sessionDateForSub = null;
+                $sessionStartForSub = null;
                 if (!empty($data['ClassSessionID'])) {
                     $tmpCs = ClassSession::find((int) $data['ClassSessionID']);
                     if ($tmpCs && (int) $tmpCs->StudentClassID === (int) $studentClass->ID) {
                         $sessionDateForSub = $tmpCs->SessionDate;
+                        $sessionStartForSub = $tmpCs->StartTime;
                     }
                 } elseif (!empty($data['SessionDate'])) {
                     $sessionDateForSub = $data['SessionDate'];
+                    $sessionStartForSub = $data['StartTime'] ?? null;
                 }
                 $subTeacherId = $sessionDateForSub
-                    ? $this->resolveSubstituteTeacherUserIdForSession((int) $studentClass->ID, $sessionDateForSub)
+                    ? $this->resolveSubstituteTeacherUserIdForSession((int) $studentClass->ID, $sessionDateForSub, $sessionStartForSub)
                     : null;
                 $isContractTeacher = ((int) $studentClass->TeacherID === $teacherId);
                 $isSubstituteTeacher = ($subTeacherId !== null && (int) $subTeacherId === $teacherId);
-                if (!$isContractTeacher && !$isSubstituteTeacher) {
-                    return response()->json(['message' => '非該課程的授課或代課老師，無法操作'], 403);
+                $canMarkSession = $subTeacherId !== null
+                    ? $isSubstituteTeacher
+                    : $isContractTeacher;
+                if (!$canMarkSession) {
+                    return response()->json(['message' => '非該堂的授課老師，無法操作'], 403);
                 }
             }
 
@@ -722,7 +728,8 @@ class AttendanceController extends Controller
                 $swipeTeacherId = (int) ($studentClass->TeacherID ?? 0);
                 $subSwipeTid = $this->resolveSubstituteTeacherUserIdForSession(
                     (int) $studentClass->ID,
-                    $matchedSession->SessionDate
+                    $matchedSession->SessionDate,
+                    $matchedSession->StartTime
                 );
                 if ($subSwipeTid !== null && $subSwipeTid > 0) {
                     $swipeTeacherId = $subSwipeTid;
@@ -1160,9 +1167,9 @@ class AttendanceController extends Controller
     /**
      * Single-session substitute: schedules row (scheduled + original_schedule_id) carries 代課 User id.
      */
-    private function resolveSubstituteTeacherUserIdForSession(int $studentClassId, $sessionDate): ?int
+    private function resolveSubstituteTeacherUserIdForSession(int $studentClassId, $sessionDate, ?string $startTime = null): ?int
     {
-        return SubstituteScheduleService::resolveSubstituteUserId($studentClassId, $sessionDate);
+        return SubstituteScheduleService::resolveSubstituteUserId($studentClassId, $sessionDate, $startTime);
     }
 
     /**
@@ -1183,9 +1190,9 @@ class AttendanceController extends Controller
             ->where('status', 'scheduled')
             ->whereNotNull('original_schedule_id')
             ->orderByDesc('id')
-            ->get(['student_course_id', 'schedule_date', 'teacher_id']);
+            ->get(['student_course_id', 'schedule_date', 'start_time', 'teacher_id']);
 
-        $byCourseDate = [];
+        $byCourseDateStart = [];
         foreach ($rows as $r) {
             try {
                 $d = Carbon::parse((string) $r->schedule_date)->toDateString();
@@ -1194,12 +1201,13 @@ class AttendanceController extends Controller
             }
             $cid = (int) ($r->student_course_id ?? 0);
             $tid = (int) ($r->teacher_id ?? 0);
-            if ($cid <= 0 || $tid <= 0) {
+            $start = substr((string) ($r->start_time ?? ''), 0, 5);
+            if ($cid <= 0 || $tid <= 0 || $start === '') {
                 continue;
             }
-            $key = $cid . '|' . $d;
-            if (!isset($byCourseDate[$key])) {
-                $byCourseDate[$key] = $tid;
+            $key = $cid . '|' . $d . '|' . $start;
+            if (!isset($byCourseDateStart[$key])) {
+                $byCourseDateStart[$key] = $tid;
             }
         }
 
@@ -1210,9 +1218,10 @@ class AttendanceController extends Controller
             } catch (\Throwable) {
                 continue;
             }
-            $key = (int) $cs->StudentClassID . '|' . $d;
-            if (!empty($byCourseDate[$key])) {
-                $out[(int) $cs->id] = (int) $byCourseDate[$key];
+            $start = substr((string) ($cs->StartTime ?? ''), 0, 5);
+            $key = (int) $cs->StudentClassID . '|' . $d . '|' . $start;
+            if (!empty($byCourseDateStart[$key])) {
+                $out[(int) $cs->id] = (int) $byCourseDateStart[$key];
             }
         }
 

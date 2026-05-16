@@ -74,6 +74,43 @@ class AttendanceEndedSessionsSubstituteTest extends TestCase
             '代課老師不應因代過某課程而看到同課程其他非代課堂（AC-B4）');
     }
 
+    public function test_original_teacher_cannot_mark_substituted_session_attendance(): void
+    {
+        [$t1Token, , , , $subSession] = $this->seedEndedSubstitutedSession();
+
+        $this->postAttendance($t1Token, $subSession)
+            ->assertStatus(403)
+            ->assertJson(['message' => '非該堂的授課老師，無法操作']);
+    }
+
+    public function test_substitute_teacher_can_mark_substituted_session_attendance(): void
+    {
+        [, $t2Token, , $t2Id, $subSession] = $this->seedEndedSubstitutedSession();
+
+        $this->postAttendance($t2Token, $subSession)
+            ->assertCreated();
+
+        $this->assertDatabaseHas('StudentSingIn', [
+            'ClassSessionID' => $subSession->id,
+            'TeacherID' => $t2Id,
+            'Status' => 'present',
+        ]);
+    }
+
+    public function test_original_teacher_can_still_mark_same_day_non_substituted_session(): void
+    {
+        [$t1Token, , $t1Id, , , $normalSession] = $this->seedEndedSubstitutedSession();
+
+        $this->postAttendance($t1Token, $normalSession)
+            ->assertCreated();
+
+        $this->assertDatabaseHas('StudentSingIn', [
+            'ClassSessionID' => $normalSession->id,
+            'TeacherID' => $t1Id,
+            'Status' => 'present',
+        ]);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     /**
@@ -168,6 +205,22 @@ class AttendanceEndedSessionsSubstituteTest extends TestCase
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->getJson("/api/v1/attendance/ended-sessions?branch_id=1&start_date={$start}&end_date={$end}&per_page=100");
+    }
+
+    private function postAttendance(string $token, ClassSession $session): \Illuminate\Testing\TestResponse
+    {
+        $studentClass = StudentClass::findOrFail($session->StudentClassID);
+
+        return $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'ClassSessionID' => $session->id,
+            'StudentID' => (int) $studentClass->StudentID,
+            'StudentClassID' => (int) $studentClass->ID,
+            'Status' => 'present',
+            'mark_mode' => 'arrival',
+        ]);
     }
 
     private function extractIds(\Illuminate\Testing\TestResponse $res): array
