@@ -10,6 +10,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Teacher;
 use App\Models\TeacherSignIn;
+use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\AttendanceEffectsService;
 use App\Services\SessionDeductionService;
@@ -86,7 +87,10 @@ class SwipeRfidController extends Controller
                     ->where('RFID', '!=', '')
                     ->first();
                 if ($uc) {
-                    $teacher = Teacher::where('id', (int) $uc->UserID)->where('Enable', 1)->first();
+                    // 優先查 Teacher 表（舊有記錄）；找不到時 fallback 到 User 表
+                    // （新老師只建 User + UserCampus，不再同步建 Teacher）
+                    $teacher = Teacher::where('id', (int) $uc->UserID)->where('Enable', 1)->first()
+                        ?? User::where('id', (int) $uc->UserID)->where('status', 'active')->first();
                     $teacherInCampus = (bool) $teacher;
                 }
             }
@@ -469,10 +473,17 @@ class SwipeRfidController extends Controller
     private const STUDENT_SWIPE_DEBOUNCE_SECONDS = 60;
     private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
 
-    private function handleTeacherSwipe(Teacher $teacher, Campus $campus, Carbon $swipeAt)
+    /**
+     * Teacher 或 User 物件都接受（Teacher 用 T_Name，User 用 Name）。
+     * 新老師只建 User+UserCampus，舊老師同時有 Teacher 記錄，兩者都需要可打卡。
+     *
+     * @param Teacher|User $teacher
+     */
+    private function handleTeacherSwipe($teacher, Campus $campus, Carbon $swipeAt)
     {
-        $campusId = $campus->id;
-        $today = $swipeAt->toDateString();
+        $campusId    = $campus->id;
+        $today       = $swipeAt->toDateString();
+        $teacherName = $teacher->T_Name ?? $teacher->Name ?? '';
 
         $openRecord = TeacherSignIn::where('TeacherID', $teacher->id)
             ->whereDate('SignInDT', $today)
@@ -489,7 +500,7 @@ class SwipeRfidController extends Controller
                     'type'   => 'teacher',
                     'action' => 'duplicate_ignored',
                     'record' => $openRecord,
-                    'teacher' => ['id' => $teacher->id, 'name' => $teacher->T_Name],
+                    'teacher' => ['id' => $teacher->id, 'name' => $teacherName],
                     'campus' => [
                         'TelegramChatID' => $campus->TelegramChatID ?? null,
                         'TelegramToken'  => $campus->TelegramToken ?? null,
@@ -506,7 +517,7 @@ class SwipeRfidController extends Controller
                 'type'   => 'teacher',
                 'action' => 'sign_out',
                 'record' => $openRecord->fresh(),
-                'teacher' => ['id' => $teacher->id, 'name' => $teacher->T_Name],
+                'teacher' => ['id' => $teacher->id, 'name' => $teacherName],
                 'campus' => [
                     'TelegramChatID' => $campus->TelegramChatID ?? null,
                     'TelegramToken'  => $campus->TelegramToken ?? null,
@@ -531,7 +542,7 @@ class SwipeRfidController extends Controller
             'type'   => 'teacher',
             'action' => 'sign_in',
             'record' => $record,
-            'teacher' => ['id' => $teacher->id, 'name' => $teacher->T_Name],
+            'teacher' => ['id' => $teacher->id, 'name' => $teacherName],
             'campus' => [
                 'TelegramChatID' => $campus->TelegramChatID ?? null,
                 'TelegramToken'  => $campus->TelegramToken ?? null,
