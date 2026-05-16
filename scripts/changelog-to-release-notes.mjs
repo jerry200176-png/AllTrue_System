@@ -25,17 +25,15 @@ function shouldSkipHeading(title) {
   );
 }
 
-function buildVersionMap(dates) {
-  const sorted = [...new Set(dates)].sort();
-  /** @type {Map<string, string>} */
-  const versionByDate = new Map();
-
-  for (let i = 0; i < sorted.length; i += 1) {
-    const date = sorted[i];
-    versionByDate.set(date, `1.0.${i + 1}`);
-  }
-
-  return versionByDate;
+/**
+ * 日曆式版號（企業／SaaS 常見對外格式）：YYYY.MM.DD；同一天多條 CHANGELOG 合併為一張版本卡。
+ * 與 `public/version.json` 的建置時間戳分開；後者用於「有新 build」提示。
+ */
+function versionFromIsoDate(dateStr) {
+  const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '1.0.0';
+  const [, y, mo, d] = m;
+  return `${y}.${mo}.${d}`;
 }
 
 function stripTechNoise(s) {
@@ -73,7 +71,8 @@ function isReadablePhrase(text) {
   const t = String(text || '').trim();
   if (!t) return false;
   if (t.length < 4) return false;
-  if (/^[\W_]+$/.test(t)) return false;
+  // 至少含中文或英文字母（舊版 /^[\W_]+$/ 會把整句中文判成「只有 \W」而誤殺）
+  if (!/[\u4e00-\u9fffA-Za-z]/.test(t)) return false;
   return true;
 }
 
@@ -82,6 +81,15 @@ function plainTextFromEntry(rawTitle, itemLines) {
   const title = String(rawTitle || '');
 
   const rules = [
+    [/士官長|軍階徽章|尉官|校官|將官|RocRankBadge|三等士官長|二等士官長|一等士官長/i, '側欄軍階圖示更貼近實際領章（尉官橫槓、校官梅花、將官星星）；經驗值升階多了三等／二等／一等士官長三個階段。'],
+    [/堂數制.*取消|取消.*堂次|重插排課|補回同一/i, '堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。'],
+    [/行事曆.*週|週檢視|換週|漏格|幽靈格|calendarOccurrenceMerge/i, '智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。'],
+    [/session-dates|日期 chip|灰頻|課程管理.*日期/i, '課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。'],
+    [/教學工作台.*軍階|主任總覽.*軍階|軍階.*XP|升階進度|前端軍階/i, '老師與主任畫面可看到軍階與經驗值進度；不想顯示可在個人資料關閉。'],
+    [/user_engagement|me.*engagement|累積經驗值/i, '核准評量後，系統會為授課老師累積經驗值並換算軍階；超級管理員維持專用最高軍階顯示。'],
+    [/連續使用天數|教學設定.*天數/i, '老師可在個人資料「教學設定」選擇顯示連續使用天數（只存在這台裝置，預設關）；工作台會顯示低調摘要。'],
+    [/只看未填|已核准.*全部/i, '主任在「已核准／全部」列表可一鍵只看「還沒寫內容」的評量，數字也會跟著對齊，比較不會漏追。'],
+    [/release-notes|版本卡改日曆|開發備註分流/i, '版本更新頁的版號改為西元年月日格式；公告文字與工程細節分開，版面較不會洗技術詞。'],
     [/feat\(adoption\)|採用率|任務追蹤|weekly-metrics|task-tracker|activity-log/i, '首頁新增優先待辦、近期操作與每週使用率指標，協助主任與老師更穩定使用系統'],
     [/Dashboard 欄位|系統待機動畫|白話版本公告/i, '主任總覽欄位重新分配，系統新增登入後與閒置 Logo 動畫，版本更新改成白話版本卡'],
     [/版本更新.*CHANGELOG|sync release notes|release notes/i, '版本更新會自動整理最近變更，顯示成更好讀的更新公告'],
@@ -115,9 +123,10 @@ function plainTextFromEntry(rawTitle, itemLines) {
 
 function categoryForTitle(rawTitle) {
   const t = String(rawTitle || '');
-  if (/fix|Fixed|修正/i.test(t)) return '修正內容';
+  // 必須先判 feat：標題內可能含「修正」等字（例：修正 ROC 軍階徽章）但仍為新功能
+  if (/^feat\b/i.test(t) || /^Added\b/i.test(t)) return '新增內容';
+  if (/^fix\b|^Fixed\b|修正/i.test(t)) return '修正內容';
   if (/Changed|調整|ui|介面|體驗/i.test(t)) return '體驗調整';
-  if (/feat|Added|新增/i.test(t)) return '新增內容';
   return '其他改善';
 }
 
@@ -157,6 +166,10 @@ function parseChangelog(md) {
       }
       const bm = lines[j].match(/^\s*-\s+(.+)$/);
       if (bm) {
+        const line = String(bm[1]).trim();
+        if (/^(開發備註|Dev(?:eloper)? note|Technical)\s*[:：]/i.test(line)) {
+          continue;
+        }
         items.push(bm[1]);
       }
     }
@@ -173,10 +186,9 @@ function parseChangelog(md) {
     if (!bucket.includes(text)) bucket.push(text);
   }
 
-  const versionByDate = buildVersionMap([...grouped.keys()]);
   const notes = [];
   for (const [date, sectionMap] of grouped.entries()) {
-    const version = versionByDate.get(date) || '1.1.1';
+    const version = versionFromIsoDate(date);
     const sectionOrder = ['新增內容', '修正內容', '體驗調整', '其他改善'];
     const sections = sectionOrder
       .map((title) => ({ title, items: (sectionMap.get(title) || []).slice(0, 6) }))
