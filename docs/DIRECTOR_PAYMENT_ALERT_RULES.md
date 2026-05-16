@@ -26,6 +26,14 @@
 
 `alert_type`：`unpaid` 或 `low_sessions`（若同時符合，以前者優先欄位展示時前端以堂數／未繳狀態區分）。
 
+### 多科共用堂數方案（2026-05-16 補充）
+
+若堂數制課程屬於 `CoursePackage.billing_mode = count`：
+- 主任提醒必須以 **方案層** 顯示一筆合併提醒，不可拆成單一科目提醒。
+- `charge/outstanding` 以 `CoursePackage.total_sessions × CoursePackage.rate` 計算；`remaining_sessions` 以 `CoursePackage.remaining_sessions` 顯示。
+- `id` 使用方案內第一筆 `StudentClass.ID` 作為既有核帳 API 的錨點，並同時回傳 `package_id` 讓前端可辨識這是方案合繳。
+- 主任核帳成功後，必須同步 `CoursePackage.paid/paid_at` 與所有方案成員 `StudentClass.Paid/PayDate`，避免同一個共用方案繼續以其他科目出現在未繳提醒。
+
 ### 續課抑制（2026-04-16 新增）
 
 若一筆堂數制課程觸發 `low_sessions`，但**同一學生、同一科目**已存在另一筆進行中（`Stop=0`）且 `RemainingSessions > 2` 的課程（代表已續課），則該 `low_sessions` 提醒會被**自動抑制**，不再出現在催繳名單。`unpaid` 類型不受此邏輯影響。
@@ -74,6 +82,7 @@
 ## 回歸時請測
 
 - 堂數制：已繳但剩 1～2 堂（或 0 堂）仍應出現。
+- 堂數制多科共用方案：只出現一筆 `package_id` 合繳提醒，金額使用方案總堂數 × 方案費率，核帳後方案與所有成員都標記已繳。
 - 加購後：舊約自動 `Stop=1`，`alerts/tuition` 僅列新約。
 - 結案 UI：已繳 + 0 堂 → 結案後不再列。
 - 月結：未繳、繳費日前第 4 天出現、第 5 天不出現；未繳且過繳費日仍出現。

@@ -212,6 +212,51 @@ class CoursePackageTest extends TestCase
         }
     }
 
+    public function test_count_package_tuition_alert_uses_package_amount_and_single_anchor_row(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->makeStudent(1);
+        $teacher1 = $this->makeTeacher();
+        $teacher2 = $this->makeTeacher();
+        $pkg = CoursePackage::create([
+            'student_id' => $student->id,
+            'campus_id' => 1,
+            'name' => '數學理化12堂',
+            'billing_mode' => CoursePackage::BILLING_MODE_SESSION,
+            'total_sessions' => 12,
+            'remaining_sessions' => 12,
+            'used_sessions' => 0,
+            'rate' => 1000,
+            'rate_unit' => 'session',
+            'class_type' => 'one_on_three',
+            'paid' => false,
+            'stop' => false,
+            'enabled' => true,
+        ]);
+        $math = $this->makePackageMember($pkg, $student->id, $teacher1->id, 1);
+        $science = $this->makePackageMember($pkg, $student->id, $teacher2->id, 2);
+        $math->update(['RemainingSessions' => 2, 'SessionCount' => 12, 'Rate' => 1000, 'Charge' => 2000]);
+        $science->update(['RemainingSessions' => 10, 'SessionCount' => 12, 'Rate' => 1000, 'Charge' => 2000]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/alerts/tuition?branch_id=1');
+
+        $res->assertOk();
+        $rows = collect($res->json());
+        $packageRows = $rows->where('package_id', $pkg->id)->values();
+
+        $this->assertCount(1, $packageRows);
+        $this->assertSame((int) $math->ID, (int) $packageRows[0]['id']);
+        $this->assertSame('數學理化12堂', $packageRows[0]['subject']);
+        $this->assertSame(12, (int) $packageRows[0]['sessions_purchased']);
+        $this->assertSame(12, (int) $packageRows[0]['remaining_sessions']);
+        $this->assertSame(12000, (int) $packageRows[0]['charge']);
+        $this->assertSame(12000, (int) $packageRows[0]['outstanding']);
+        $this->assertFalse($rows->contains(fn ($row) => (int) ($row['id'] ?? 0) === (int) $science->ID));
+    }
+
     // ─── Test: Package Deduction Cross-Subject ────────────
 
     public function test_cross_subject_deduction_decrements_package_remaining(): void

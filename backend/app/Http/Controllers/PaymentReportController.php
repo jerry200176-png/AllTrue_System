@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentReport;
+use App\Models\CoursePackage;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
@@ -365,8 +366,9 @@ class PaymentReportController extends Controller
 
         return DB::transaction(function () use ($data, $sc, $userId) {
             $invoice = null;
+            $package = $this->lockPackageForCourse($sc);
 
-            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0))) {
+            if ($this->courseAlreadyHasConfirmedPayment((int) $sc->ID, (int) ($sc->Paid ?? 0)) || ($package && (bool) $package->paid)) {
                 return $this->duplicateCoursePaymentResponse();
             }
 
@@ -445,6 +447,9 @@ class PaymentReportController extends Controller
             if ($sc && !$sc->Paid) {
                 $sc->update(['Paid' => 1, 'PayDate' => Carbon::today()->toDateString()]);
             }
+            if ($package && $status === 'paid') {
+                $this->markPackagePaid($package, (string) $data['payment_date']);
+            }
 
             $report = PaymentReport::create([
                 'StudentID'         => $sc->StudentID,
@@ -488,6 +493,28 @@ class PaymentReportController extends Controller
         return Invoice::where('StudentClassID', $studentClassId)
             ->where('Status', 'paid')
             ->exists();
+    }
+
+    private function lockPackageForCourse(StudentClass $studentClass): ?CoursePackage
+    {
+        $packageId = (int) ($studentClass->PackageID ?? 0);
+        if ($packageId <= 0) {
+            return null;
+        }
+
+        return CoursePackage::where('id', $packageId)->lockForUpdate()->first();
+    }
+
+    private function markPackagePaid(CoursePackage $package, string $paidAt): void
+    {
+        $package->paid = true;
+        $package->paid_at = $paidAt;
+        $package->save();
+
+        StudentClass::where('PackageID', $package->id)->update([
+            'Paid' => 1,
+            'PayDate' => $paidAt,
+        ]);
     }
 
     private function duplicateCoursePaymentResponse()
