@@ -15,23 +15,6 @@ import { ref } from 'vue';
 
 const API_BASE = '/api/v1';
 
-/** Must match `CampusController::BRANCH_NAMES` (public /campuses + /branches). */
-const OFFICIAL_BRANCH_ORDER = [
-    '興隆分校',
-    '新店分校',
-    '大安分校',
-    '木柵分校',
-    '東湖分校',
-    '大直分校',
-    '汐止分校',
-    '內湖分校',
-    '石牌分校',
-    '敦化分校',
-    '蘆洲分校',
-    '大同分校',
-];
-const OFFICIAL_BRANCH_NAME_SET = new Set(OFFICIAL_BRANCH_ORDER);
-
 /**
  * Reactive array of branch objects: { id: number, name: string, code: string }
  * `id` is the integer campus ID used by the backend.
@@ -39,7 +22,7 @@ const OFFICIAL_BRANCH_NAME_SET = new Set(OFFICIAL_BRANCH_ORDER);
  * live API overwrites with real `Campus.id` values.
  */
 /** IDs match the actual `Campus.id` values in the MySQL database. */
-const DEFAULT_BRANCHES = [
+export const DEFAULT_BRANCHES = [
     { id: 17, name: '興隆分校', code: 'xinglong' },
     { id: 9,  name: '新店分校', code: 'xindian'  },
     { id: 15, name: '大安分校', code: 'daan'      },
@@ -52,6 +35,9 @@ const DEFAULT_BRANCHES = [
     { id: 22, name: '敦化分校', code: 'dunhua'    },
     { id: 7,  name: '蘆洲分校', code: 'luzhou'    },
     { id: 23, name: '大同分校', code: 'datong'    },
+    // 以下 id 以線上 daan /api/v1/branches 為準，僅供離線後備；實際仍以 API 為主
+    { id: 11, name: '新莊分校', code: 'xinzhuang' },
+    { id: 24, name: '中平分校', code: 'zhongping' },
 ];
 export const branches = ref([...DEFAULT_BRANCHES]);
 
@@ -109,41 +95,27 @@ export function resolveSavedBranchChoice(savedRaw, list) {
 }
 
 /**
- * Use only the official campuses the backend exposes. Stale `/branches.json` or
- * old merged lists may contain extra names — drop them here.
+ * 正規化 API 回傳的分校列表，完全信任 API 內容。
+ * DEFAULT_BRANCHES 僅在 API 回傳空陣列或失敗時作為離線後備，不做名稱白名單過濾。
+ * 新增分校只需改後端 Campus table + CampusController::BRANCH_NAMES，前端自動反映。
  */
 function mergeWithDefaults(list) {
     if (!list || list.length === 0) {
         return [...DEFAULT_BRANCHES];
     }
-    const codeByName = new Map(
-        DEFAULT_BRANCHES.map((b) => [String(b.name).trim(), b.code || ''])
-    );
-    const mapped = list
-        .map((item) => {
-            if (!item || (!item.name && !item.code)) return null;
-            const name = String(item.name || '').trim();
-            if (!OFFICIAL_BRANCH_NAME_SET.has(name)) return null;
-            const id = Number(item.id);
-            const code = String(item.code || '').trim() || codeByName.get(name) || '';
-            return {
-                id: Number.isFinite(id) ? id : null,
-                name: item.name || name,
-                code,
-            };
-        })
-        .filter(Boolean);
-
-    if (mapped.length === 0) {
-        return [...DEFAULT_BRANCHES];
+    const seen = new Set();
+    const mapped = [];
+    for (const item of list) {
+        if (!item) continue;
+        const name = String(item.name || '').trim();
+        if (!name) continue;
+        const id = Number(item.id);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        mapped.push({ id, name, code: String(item.code || '').trim() });
     }
-
-    const orderIdx = (n) => {
-        const i = OFFICIAL_BRANCH_ORDER.indexOf(String(n).trim());
-        return i === -1 ? 999 : i;
-    };
-    mapped.sort((a, b) => orderIdx(a.name) - orderIdx(b.name));
-    return mapped;
+    return mapped.length > 0 ? mapped : [...DEFAULT_BRANCHES];
 }
 
 /** For pages that fetch `/api/v1/branches` directly (e.g. DirectorRegister). */
