@@ -58,13 +58,14 @@ function dedupeByStudentSlot(items, normalizeTime) {
   };
 
   for (const row of items) {
-    const scid = row?.student_course_id != null ? `sc:${row.student_course_id}` : '';
     const sid = row?.student_id != null ? `sid:${row.student_id}` : '';
     const name = String(row?.student_name || '').trim().toLowerCase();
-    const studentKey = scid || sid || (name ? `name:${name}` : '');
+    const studentKey = sid || (name ? `name:${name}` : '');
+    const date = defaultToYmd(row?.schedule_date || row?.session_date || '');
     const dow = Number(row?.day_of_week || 0);
     const start = normalizeTime(row?.start_time || '');
-    const key = studentKey && dow && start ? `${studentKey}|${dow}|${start}` : '';
+    const dayKey = date || (dow ? `dow:${dow}` : '');
+    const key = studentKey && dayKey && start ? `${studentKey}|${dayKey}|${start}` : '';
     if (!key) continue;
     const prev = bestByKey.get(key);
     if (!prev || scoreRow(row) >= scoreRow(prev)) {
