@@ -328,6 +328,7 @@
       <ParentPortal v-if="!isPasswordChangeLocked && active === 'parent'" />
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
+      <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
@@ -454,6 +455,7 @@ const TuitionCollectionPage = defineAsyncComponent(() => import('./pages/Tuition
 const TuitionReportPage     = defineAsyncComponent(() => import('./pages/TuitionReportPage.vue'));
 const ParttimePayrollPage   = defineAsyncComponent(() => import('./pages/ParttimePayrollPage.vue'));
 const DirectorAccountsPage  = defineAsyncComponent(() => import('./pages/DirectorAccountsPage.vue'));
+const BranchManagementPage  = defineAsyncComponent(() => import('./pages/BranchManagementPage.vue'));
 const NotificationsCenter   = defineAsyncComponent(() => import('./pages/NotificationsCenter.vue'));
 const ProfileCenterPage     = defineAsyncComponent(() => import('./pages/ProfileCenterPage.vue'));
 const ChatPage              = defineAsyncComponent(() => import('./pages/ChatPage.vue'));
@@ -1097,6 +1099,11 @@ const sidebarNavGroups = computed(() => {
         label: '主任審核',
         icon: 'admin_panel_settings',
         badgeTypes: ['director_pending'],
+      });
+      systemItems.push({
+        page: 'branch-management',
+        label: '分校管理',
+        icon: 'store',
       });
     }
     return [
