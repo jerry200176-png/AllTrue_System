@@ -83,8 +83,10 @@ export function useCourseSessionsDisplay({
       const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
       const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, start, end, perPage: 2000 });
       classSessionsByCourse.value = byClass || {};
+      return true;
     } catch (_) {
       classSessionsByCourse.value = {};
+      return false;
     }
   }
 
