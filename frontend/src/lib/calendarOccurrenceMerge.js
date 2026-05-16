@@ -131,7 +131,6 @@ export function mergeWeekCalendarOccurrences({
   for (const course of courses) {
     const cid = String(course?.id ?? '');
     if (!cid) continue;
-    const purchased = Math.max(0, parseInt(course.sessions_purchased ?? course.SessionCount ?? 0, 10) || 0);
     const courseSessionSet = sessionDateSet(cid);
     const days = ((course.days_of_week && course.days_of_week.length)
       ? course.days_of_week
@@ -140,10 +139,6 @@ export function mergeWeekCalendarOccurrences({
     for (let dow = 1; dow <= 7; dow += 1) {
       const targetDate = defaultToYmd(weekDatesByDow[dow]);
       if (!targetDate) continue;
-      const existingCount = Array.from(mergedByOccurrence.values())
-        .filter((row) => String(row.student_course_id ?? row.id ?? '') === cid)
-        .length;
-      if (purchased > 0 && existingCount >= purchased) break;
 
       const rawHasReschedule = exceptions.some((ex) =>
         statusOf(ex) === 'rescheduled'
@@ -159,7 +154,10 @@ export function mergeWeekCalendarOccurrences({
         if (!courseSessionSet.has(targetDate)) continue;
         const lastDate = courseLastSessionDate[cid] ?? Array.from(courseSessionSet).sort().pop();
         if (lastDate != null && targetDate > lastDate) continue;
-        if (hasReschedule) continue;
+        // Stale schedules rows often keep status=rescheduled on a date that still holds a live
+        // ClassSession (e.g. same-day reschedule, partial writes, retries). Skip the whole day only
+        // when there are no remaining non-cancelled ClassSession rows (see §R39/R43-ish family).
+        if (hasReschedule && liveRows.length === 0) continue;
       } else {
         const isFirstDay = course.first_class_date && String(targetDate).trim() === String(course.first_class_date).trim();
         const isRecurringDay = days.includes(dow);
