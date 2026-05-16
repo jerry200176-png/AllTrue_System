@@ -7,6 +7,14 @@
 
 ---
 
+## 2026-05-16 — fix(session-dates): 修正課程管理日期 chip 無故灰頻 (#344)
+
+- Fixed `POST /api/v1/student-classes/session-dates` 未對 ClassSession 查詢套用 `range_start`/`range_end`，導致所有歷史堂次日期回傳前端，前端的 `syntheticEffectiveUnits` 將 ±2 個月視窗外的舊堂次產生灰色 synthetic chip
+- Fixed `sessionDates` GET handler 的 `ScheduleMode='date'` 路徑，未過濾 `cancelled`/`leave` 狀態，`computeMonthlyEffectiveSessionDates` 以含取消的 `existingSet` 初始化，導致已取消堂次出現在日期區
+- Added 課程管理 `classSessionsByCourse` 載入失敗時顯示紅色錯誤提示，改善靜默灰頻的可見度；修正 synthetic chip tooltip 描述（移除月結專用措辭）
+
+---
+
 ## 2026-05-10 — feat(engagement): 前端軍階／XP 摘要（#326，epic #323）
 
 - Added 教學工作台、主任總覽顯示軍階／XP 與升階進度條；個人資料可本機 opt-out；尊重 `prefers-reduced-motion`；門檻計算見 `engagementRankProgress.js`（與後端對齊）
