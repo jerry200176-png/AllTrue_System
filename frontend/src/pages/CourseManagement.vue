@@ -160,15 +160,21 @@
                   </tr>
                 </template>
                 <template v-for="c in activeCourses(group)" :key="c.id">
+                  <!-- Full-width status strip for paused courses (enterprise-style notice row) -->
+                  <tr v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-notice-row" role="status">
+                    <td colspan="6" class="paused-notice-td">
+                      <div class="paused-notice">
+                        <span class="paused-notice__dot" aria-hidden="true"></span>
+                        <span class="paused-notice__label">課程暫停中</span>
+                        <span class="paused-notice__sep" aria-hidden="true">·</span>
+                        <span class="paused-notice__desc">未恢復前不排新課、不計入待辦</span>
+                        <button class="paused-notice__btn" type="button" @click.stop="requestCoursePause(c)">▶ 恢復課程</button>
+                      </div>
+                    </td>
+                  </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="paused-course-callout" role="status">
-                        <span class="paused-course-callout__icon" aria-hidden="true">⏸</span>
-                        <span class="paused-course-callout__main">暫停中</span>
-                        <span class="paused-course-callout__sub">未恢復前不排新課、不計入待辦</span>
-                        <button class="paused-course-callout__action" type="button" @click.stop="requestCoursePause(c)">恢復課程</button>
-                      </div>
-                      <div v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
+                      <div v-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
                         <span class="settled-course-callout__main">已結案</span>
                         <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完' }}</span>
@@ -177,7 +183,6 @@
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-if="c.status === 'inactive' && !effectiveClosedReason(c)" class="tag tag-paused">暫停中</span>
                         <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
                       </div>
                       <div class="price-line">
@@ -288,6 +293,7 @@
                           <div class="dates-panel-heading">
                             <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(c) }} / 購買 {{ getPurchasedSessions(c) }} 堂<template v-if="cancelledSessionCount(c) > 0">，{{ cancelledSessionCount(c) }} 堂已取消</template>）</strong>
                             <span v-if="sessionCountWarning(c)" :class="['drift-hint', { 'drift-hint-info': sessionCountWarning(c)?.type === 'under_leave' }]">⚠ {{ sessionCountWarning(c)?.message }}</span>
+                            <span v-if="sessionDataLoadFailed" class="drift-hint session-load-error-hint">⚠ 堂次資料載入失敗，請重新整理頁面</span>
                             <span v-if="allSessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
                             <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
                               {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
@@ -303,7 +309,7 @@
                                 u._synthetic && 'date-chip-synthetic',
                                 getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)
                               ]"
-                              :title="u._synthetic ? '依月結固定時段推算；點擊後會建立實體堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              :title="u._synthetic ? '依排課規律推算（尚無出勤記錄）；點擊可建立堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
                               @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id, u)"
                             >
                               <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
@@ -946,6 +952,7 @@ function showCreationBanner(msg) {
 const completedSessionDatesByCourse = ref({});
 const classSessionsByCourse = ref({});
 const effectiveSessionDatesByCourse = ref({});
+const sessionDataLoadFailed = ref(false);
 const expandedStudentGroups = ref(new Set());
 const focusedStudentKey = ref(null);
 const focusStudent = (group, e) => {
@@ -2519,7 +2526,9 @@ const loadCourses = async (page = 1) => {
         };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
-        await loadClassSessionsForCourses(result, token);
+        sessionDataLoadFailed.value = false;
+        const sessionsOk = await loadClassSessionsForCourses(result, token);
+        if (sessionsOk === false) sessionDataLoadFailed.value = true;
         await loadEffectiveSessionDates(result, token);
         coursesLoading.value = false;
         return;
@@ -2566,11 +2575,14 @@ const loadCourses = async (page = 1) => {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    await loadClassSessionsForCourses(result, token || '');
+    sessionDataLoadFailed.value = false;
+    const sessionsOk = await loadClassSessionsForCourses(result, token || '');
+    if (sessionsOk === false) sessionDataLoadFailed.value = true;
     await loadEffectiveSessionDates(result, token || '');
   } catch (_) {
     classSessionsByCourse.value = {};
     effectiveSessionDatesByCourse.value = {};
+    sessionDataLoadFailed.value = true;
   }
   coursesLoading.value = false;
 };
@@ -4328,45 +4340,59 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.paused-course-callout {
+/* ── Enterprise-style paused notice row ─────────────────────────── */
+.paused-notice-row td {
+  padding: 0;
+  background: #fffbeb;
+  border-top: 1px solid #fde68a;
+  border-bottom: none;
+}
+.paused-notice-td {
+  padding: 0 !important;
+}
+.paused-notice {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding: 7px 10px;
-  border-radius: 999px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-}
-
-.paused-course-callout__icon {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.9;
-}
-
-.paused-course-callout__main {
+  gap: 6px;
+  padding: 5px 14px 5px 12px;
+  border-left: 3px solid #f59e0b;
   font-size: 12px;
-  font-weight: 800;
-  color: #7c2d12;
 }
-
-.paused-course-callout__sub {
-  font-size: 11px;
-  font-weight: 600;
-  color: #b45309;
+.paused-notice__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+}
+.paused-notice__label {
+  font-weight: 700;
+  color: #7c2d12;
+  white-space: nowrap;
+}
+.paused-notice__sep {
+  color: #d97706;
+  font-size: 10px;
+}
+.paused-notice__desc {
+  color: #92400e;
   flex: 1;
 }
-
-.paused-course-callout__action {
-  border: 0;
-  border-radius: 999px;
-  background: #2563eb;
-  color: #fff;
-  padding: 4px 10px;
+.paused-notice__btn {
+  background: none;
+  border: 1px solid #93c5fd;
+  color: #1d4ed8;
+  border-radius: 6px;
+  padding: 3px 10px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.paused-notice__btn:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
 }
 
 .subject-tag--paused {
@@ -5174,6 +5200,10 @@ button.danger:disabled {
   color: #1e40af;
   background: #dbeafe;
 }
+.session-load-error-hint {
+  color: #991b1b;
+  background: #fee2e2;
+}
 .dates-chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -5356,14 +5386,13 @@ button.danger:disabled {
 }
 
 .tag-paused {
-  background: #ffedd5;
-  color: #7c2d12;
-  border: 1px solid #ea580c;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
   border-radius: 6px;
-  font-size: 12px;
-  padding: 3px 8px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  font-size: 11px;
+  padding: 2px 7px;
+  font-weight: 600;
 }
 
 .pause-confirm-modal {
