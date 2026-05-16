@@ -55,6 +55,12 @@
 
 ---
 
+## 2026-05-10 — docs(plan): 評量「已核准未填」UX + ROC 軍階／XP 分階段
+
+- Docs `.cursor/plans/alltrue_engagement_ranks_and_lr_ux_prd_2026-05-10.md`；GitHub Issues [#322](https://github.com/jerry200176-png/AllTrue_System/issues/322)（主任篩選）、[#323](https://github.com/jerry200176-png/AllTrue_System/issues/323)（epic）、[#324](https://github.com/jerry200176-png/AllTrue_System/issues/324)–[#326](https://github.com/jerry200176-png/AllTrue_System/issues/326)（Phase 1–3）
+
+---
+
 ## 2026-05-10 — fix(learning): 課表補齊 recordId、409 回傳 existing_id、手機評量 Modal 上下安全區
 
 - Fixed 評量頁課表事件在 API 未帶 `learning_record_id` 時改由 `ClassSessionID`／時段對應既有清單補 `recordId`，避免誤開「新增」而撞 409；409 回應統一含 `existing_id`（並相容 `existing_record_id`）；手機 Modal 草稿列改固定於標題下並加底部 safe-area／捲動留白
