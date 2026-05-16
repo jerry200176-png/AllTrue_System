@@ -17,6 +17,7 @@
 
 - Fixed `calendarOccurrenceMerge` 將 `SessionCount` 誤用作「同一 ISO 週內 emitted 格子數上限」並提前 `break`，週日到週末的 ClassSession-backed 日期（例如某日週日下午堂）可被整批略過（症狀與同日多格子課類似）；改由既有 `courseSessionSet`/`isOverSessionLimit` 等語意過濾
 - Fixed 智慧行事曆 `loadCourses` 仍以開頁 `displayMonth` 粗算區間且不隨換週重抓，若以週偏移看到鄰月的日期，`GET class-sessions` 可能不包含該週，`sessionDatesByCourseId` 空槽被誤以為「超排／幽靈格」— 改為依 `getDisplayDateFull(1..7) ± ~6 週` 對齊 API 範圍並對 `displayYear/displayMonth/displayWeek/weekOffset` 觸發重載；`calendarOccurrenceMerge.test.js` 補 Sun 漏格案例
+- Fixed ClassSession-backed 週合併對 `schedules.status=rescheduled` 同日無條件 `continue`，會蓋掉同日仍存在的 `scheduled` 堂次（歷史調課／重試残留與 §R43 同類髒資料）；改為僅在該日已無任何非 cancelled 之 ClassSession 時才略過；`calendarOccurrenceMerge.test.js` 補案例
 
 ---
 
