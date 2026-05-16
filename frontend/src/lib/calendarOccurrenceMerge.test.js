@@ -277,3 +277,43 @@ const substituteTeacherScopedRows = merge({
 assert.equal(substituteTeacherScopedRows.length, 1, 'substitute teacher week view should include the substituted occurrence');
 assert.equal(substituteTeacherScopedRows[0].class_session_id, 8201);
 assert.equal(substituteTeacherScopedRows[0].teacher_id, 99);
+
+const legacyMuzhaMonthlyCourse = {
+  id: 94,
+  student_id: 160,
+  student_name: '洪家溱',
+  teacher_id: 29,
+  teacher_name: '李維',
+  subject: 'Math',
+  class_type: 'one_on_one',
+  days_of_week: [6],
+  day_time_slots: [{ day: 6, start_time: '10:00', duration_hours: 2 }],
+  duration_hours: 2,
+  sessions_purchased: 3,
+};
+const currentMuzhaCourse = {
+  ...legacyMuzhaMonthlyCourse,
+  id: 1256,
+  sessions_purchased: 4,
+};
+const muzhaDuplicateStudentSlot = merge({
+  courses: [legacyMuzhaMonthlyCourse, currentMuzhaCourse],
+  allCourses: [legacyMuzhaMonthlyCourse, currentMuzhaCourse],
+  weekDatesByDow: {
+    1: '2026-05-11',
+    2: '2026-05-12',
+    3: '2026-05-13',
+    4: '2026-05-14',
+    5: '2026-05-15',
+    6: '2026-05-16',
+    7: '2026-05-17',
+  },
+  sessionDatesByCourseId: {
+    1256: [
+      { id: 11262, session_date: '2026-05-16', start_time: '10:00', end_time: '12:00', status: 'leave', teacher_id: 29, teacher_name: '李維' },
+    ],
+  },
+});
+assert.equal(muzhaDuplicateStudentSlot.length, 1, 'same student/date/start should render once even when legacy active contracts exist');
+assert.equal(muzhaDuplicateStudentSlot[0].student_course_id, 1256);
+assert.equal(muzhaDuplicateStudentSlot[0].class_session_id, 11262);
