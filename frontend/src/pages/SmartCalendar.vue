@@ -403,7 +403,8 @@
         <div class="schedule-actions-box">
           <div class="schedule-actions-title">單堂操作</div>
           <div class="schedule-actions-btns">
-            <button class="action-btn extra" @click="openExtraLesson">＋ 加課</button>
+            <!-- 加課暫時隱藏：實際使用率極低，業務流程未完整（月結制費用、堂數制提前消耗） -->
+            <!-- <button class="action-btn extra" @click="openExtraLesson">＋ 加課</button> -->
             <button class="action-btn leave" @click="openLeaveModal">📋 請假</button>
             <button class="action-btn reschedule" @click="openRescheduleModal">🔄 調課</button>
             <button
