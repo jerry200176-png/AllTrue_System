@@ -288,6 +288,7 @@
                           <div class="dates-panel-heading">
                             <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(c) }} / 購買 {{ getPurchasedSessions(c) }} 堂<template v-if="cancelledSessionCount(c) > 0">，{{ cancelledSessionCount(c) }} 堂已取消</template>）</strong>
                             <span v-if="sessionCountWarning(c)" :class="['drift-hint', { 'drift-hint-info': sessionCountWarning(c)?.type === 'under_leave' }]">⚠ {{ sessionCountWarning(c)?.message }}</span>
+                            <span v-if="sessionDataLoadFailed" class="drift-hint session-load-error-hint">⚠ 堂次資料載入失敗，請重新整理頁面</span>
                             <span v-if="allSessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
                             <button class="notes-toggle-btn" @click.stop="toggleSessionNotes" :title="showSessionNotes ? '隱藏備註' : '顯示備註'">
                               {{ showSessionNotes ? '備註 ▲' : '備註 ▼' }}
@@ -303,7 +304,7 @@
                                 u._synthetic && 'date-chip-synthetic',
                                 getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)
                               ]"
-                              :title="u._synthetic ? '依月結固定時段推算；點擊後會建立實體堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              :title="u._synthetic ? '依排課規律推算（尚無出勤記錄）；點擊可建立堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
                               @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id, u)"
                             >
                               <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
@@ -946,6 +947,7 @@ function showCreationBanner(msg) {
 const completedSessionDatesByCourse = ref({});
 const classSessionsByCourse = ref({});
 const effectiveSessionDatesByCourse = ref({});
+const sessionDataLoadFailed = ref(false);
 const expandedStudentGroups = ref(new Set());
 const focusedStudentKey = ref(null);
 const focusStudent = (group, e) => {
@@ -2519,7 +2521,9 @@ const loadCourses = async (page = 1) => {
         };
         courses.value = result;
         resetExpandedStudentGroups(groupCoursesByStudent(result));
-        await loadClassSessionsForCourses(result, token);
+        sessionDataLoadFailed.value = false;
+        const sessionsOk = await loadClassSessionsForCourses(result, token);
+        if (sessionsOk === false) sessionDataLoadFailed.value = true;
         await loadEffectiveSessionDates(result, token);
         coursesLoading.value = false;
         return;
@@ -2566,11 +2570,14 @@ const loadCourses = async (page = 1) => {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    await loadClassSessionsForCourses(result, token || '');
+    sessionDataLoadFailed.value = false;
+    const sessionsOk = await loadClassSessionsForCourses(result, token || '');
+    if (sessionsOk === false) sessionDataLoadFailed.value = true;
     await loadEffectiveSessionDates(result, token || '');
   } catch (_) {
     classSessionsByCourse.value = {};
     effectiveSessionDatesByCourse.value = {};
+    sessionDataLoadFailed.value = true;
   }
   coursesLoading.value = false;
 };
@@ -5173,6 +5180,10 @@ button.danger:disabled {
 .drift-hint.drift-hint-info {
   color: #1e40af;
   background: #dbeafe;
+}
+.session-load-error-hint {
+  color: #991b1b;
+  background: #fee2e2;
 }
 .dates-chip-grid {
   display: flex;
