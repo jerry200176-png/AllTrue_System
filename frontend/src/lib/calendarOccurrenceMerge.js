@@ -131,7 +131,6 @@ export function mergeWeekCalendarOccurrences({
   for (const course of courses) {
     const cid = String(course?.id ?? '');
     if (!cid) continue;
-    const purchased = Math.max(0, parseInt(course.sessions_purchased ?? course.SessionCount ?? 0, 10) || 0);
     const courseSessionSet = sessionDateSet(cid);
     const days = ((course.days_of_week && course.days_of_week.length)
       ? course.days_of_week
@@ -140,10 +139,6 @@ export function mergeWeekCalendarOccurrences({
     for (let dow = 1; dow <= 7; dow += 1) {
       const targetDate = defaultToYmd(weekDatesByDow[dow]);
       if (!targetDate) continue;
-      const existingCount = Array.from(mergedByOccurrence.values())
-        .filter((row) => String(row.student_course_id ?? row.id ?? '') === cid)
-        .length;
-      if (purchased > 0 && existingCount >= purchased) break;
 
       const rawHasReschedule = exceptions.some((ex) =>
         statusOf(ex) === 'rescheduled'

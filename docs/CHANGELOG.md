@@ -7,6 +7,19 @@
 
 ---
 
+## 2026-05-16 — fix(scheduling): 堂數制取消堂次後不再於同日重插排課
+
+- Fixed `StudentClassController::extendSessionsIfNeeded` 未將 `cancelled` 堂次佔用 `date|start` 槽位，補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`（症狀：取消某週四後又補回同一週四）
+
+---
+
+## 2026-05-16 — fix(calendar): 行事曆週檢視漏格與資料未隨換週更新
+
+- Fixed `calendarOccurrenceMerge` 將 `SessionCount` 誤用作「同一 ISO 週內 emitted 格子數上限」並提前 `break`，週日到週末的 ClassSession-backed 日期（例如某日週日下午堂）可被整批略過（症狀與同日多格子課類似）；改由既有 `courseSessionSet`/`isOverSessionLimit` 等語意過濾
+- Fixed 智慧行事曆 `loadCourses` 仍以開頁 `displayMonth` 粗算區間且不隨換週重抓，若以週偏移看到鄰月的日期，`GET class-sessions` 可能不包含該週，`sessionDatesByCourseId` 空槽被誤以為「超排／幽靈格」— 改為依 `getDisplayDateFull(1..7) ± ~6 週` 對齊 API 範圍並對 `displayYear/displayMonth/displayWeek/weekOffset` 觸發重載；`calendarOccurrenceMerge.test.js` 補 Sun 漏格案例
+
+---
+
 ## 2026-05-16 — fix(session-dates): 修正課程管理日期 chip 無故灰頻 (#344)
 
 - Fixed `POST /api/v1/student-classes/session-dates` 未對 ClassSession 查詢套用 `range_start`/`range_end`，導致所有歷史堂次日期回傳前端，前端的 `syntheticEffectiveUnits` 將 ±2 個月視窗外的舊堂次產生灰色 synthetic chip
