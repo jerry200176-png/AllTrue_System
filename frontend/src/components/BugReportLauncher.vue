@@ -20,8 +20,8 @@
       <div class="modal-card">
         <h3><span class="material-symbols-outlined">bug_report</span> 回報系統問題</h3>
 
-        <label>問題標題 <span class="required">*</span></label>
-        <input v-model="title" class="form-input" placeholder="簡述問題" maxlength="200" />
+        <label>問題標題 <span class="optional">（選填，自動帶入頁面）</span></label>
+        <input v-model="title" class="form-input" placeholder="簡述問題（留空則自動填入）" maxlength="200" />
 
         <label>詳細描述 <span class="required">*</span></label>
         <textarea v-model="description" class="form-textarea" placeholder="發生什麼問題？在什麼情況下？" rows="4" maxlength="5000"></textarea>
@@ -92,7 +92,7 @@ const fileInputRef = ref(null);
 const maxFiles = MAX_BUG_ATTACHMENTS;
 const maxBytesPerFile = 5 * 1024 * 1024;
 
-const canSubmit = computed(() => title.value.trim() && description.value.trim() && props.branchId);
+const canSubmit = computed(() => description.value.trim() && props.branchId);
 
 const FAB_SIZE = 52;
 const FAB_MARGIN = 8;
@@ -270,7 +270,7 @@ async function doSubmit() {
 
     await submitBugReport({
       branch_id: Number(props.branchId),
-      title: title.value.trim(),
+      title: title.value.trim() || `[${props.currentPageKey || '未知頁面'}] ${new Date().toLocaleString('zh-TW')}`,
       description: description.value.trim(),
       severity: severity.value,
       page_key: props.currentPageKey,
@@ -322,6 +322,7 @@ async function doSubmit() {
 
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; margin-top: 12px; }
 .required { color: var(--danger); }
+.optional { color: #94a3b8; font-size: 12px; font-weight: normal; }
 .form-input, .form-select, .form-textarea {
   width: 100%; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14px; font-family: inherit;

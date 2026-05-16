@@ -105,3 +105,12 @@ export async function updateBugCommentVisibility(bugId, commentId, isInternalNot
   return json(res);
 }
 
+export async function reporterVerifyBug(bugId, verdict, note = '') {
+  const res = await fetch(`${API}/bugs/${bugId}/reporter-verify`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ verdict, note: note || undefined }),
+  });
+  return json(res);
+}
+

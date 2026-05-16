@@ -411,6 +411,21 @@
               class="action-btn substitute"
               @click="featureSubstituteV2 ? openSubstituteV2Modal() : openSubstituteModal()"
             >👤 換代課老師</button>
+            <button
+              v-if="!isTeacher && canCancelSelectedSession"
+              class="action-btn cancel-session"
+              @click="cancelState.show = true"
+            >🚫 取消本堂</button>
+          </div>
+          <!-- 取消本堂確認 -->
+          <div v-if="cancelState.show" class="cancel-session-confirm">
+            <p>確定取消這堂課？<br><small>此操作無法自動還原（可至課程管理手動設回「排程中」）。</small></p>
+            <div class="cancel-session-confirm-btns">
+              <button class="action-btn" style="background:#e2e8f0;color:#475569;" @click="cancelState.show = false">不取消</button>
+              <button class="action-btn cancel-session" :disabled="cancelState.loading" @click="doConfirmCancelSession">
+                {{ cancelState.loading ? '處理中...' : '確定取消本堂' }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -2701,6 +2716,56 @@ const deleteException = async () => {
   alert('已刪除此調課');
 };
 
+// ===== Cancel single session (取消本堂) =====
+
+const cancelState = ref({ show: false, loading: false });
+
+const cancelTargetSession = computed(() => {
+  if (!editingCourseId.value) return null;
+  const dateStr = editingActionDate.value || modalForm.value?.action_date || selectedDateStr.value;
+  if (!dateStr) return null;
+  const course = courses.value.find((c) => String(c.id) === String(editingCourseId.value));
+  if (!course) return null;
+  return findSessionRowForCell(course, dateStr);
+});
+
+const canCancelSelectedSession = computed(() => {
+  const row = cancelTargetSession.value;
+  if (!row?.id) return false;
+  const st = String(row?.status || '').toLowerCase();
+  return st !== 'cancelled' && st !== 'voided';
+});
+
+const doConfirmCancelSession = async () => {
+  const row = cancelTargetSession.value;
+  if (!row?.id || cancelState.value.loading) return;
+  cancelState.value.loading = true;
+  try {
+    const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+    const token = session?.access_token || '';
+    const res = await fetch(`/api/v1/class-sessions/${row.id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ status: 'cancelled' }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message || `HTTP ${res.status}`);
+    }
+    const cid = String(editingCourseId.value);
+    const rows = sessionDatesByCourseId.value[cid];
+    if (Array.isArray(rows)) {
+      const idx = rows.findIndex((r) => r.id === row.id);
+      if (idx >= 0) rows[idx] = { ...rows[idx], status: 'cancelled' };
+    }
+    cancelState.value = { show: false, loading: false };
+    showModal.value = false;
+  } catch (e) {
+    cancelState.value.loading = false;
+    alert(e.message || '取消失敗，請重試');
+  }
+};
+
 // ===== Leave (請假) =====
 const showLeaveModal = ref(false);
 const leaveForm = ref({
@@ -3440,6 +3505,8 @@ watch(
   },
   { immediate: true }
 );
+watch(showModal, (v) => { if (!v) cancelState.value = { show: false, loading: false }; });
+
 watch(isWeekOverview, () => {
   // Multi-select: no need to auto-select first teacher; empty = show all
 });
@@ -4504,6 +4571,30 @@ onMounted(() => {
 .action-btn.substitute:hover {
   background: #cffafe;
 }
+.action-btn.cancel-session {
+  background: #fff1f2;
+  color: #be123c;
+  border-color: #fda4af;
+}
+.action-btn.cancel-session:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+.action-btn.cancel-session:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.cancel-session-confirm {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: #fff1f2;
+  border: 1.5px solid #fda4af;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #be123c;
+}
+.cancel-session-confirm p { margin: 0 0 10px; line-height: 1.5; }
+.cancel-session-confirm small { color: #9f1239; }
+.cancel-session-confirm-btns { display: flex; gap: 8px; }
 
 /* Day Chips */
 .day-chip-row {
