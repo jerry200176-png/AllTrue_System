@@ -19,8 +19,8 @@ final class UserEngagementPresenter
      * @var array<string, string>
      */
     private const RANK_LABELS_ZH = [
-        'private_second'         => '二等兵',
-        'private_first'          => '一等兵',
+        'private_second'         => '二兵',
+        'private_first'          => '一兵',
         'private_specialist'     => '上等兵',
         'corporal'               => '下士',
         'sergeant'               => '中士',

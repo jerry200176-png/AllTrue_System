@@ -24,11 +24,8 @@ class EngagementRankProgressionTest extends TestCase
         $table = $this->getConst('TEACHER_MIN_XP');
         $prev = -1;
         foreach ($table as $key => $xp) {
-            $this->assertGreaterThan(
-                $prev,
-                $xp,
-                "TEACHER_MIN_XP[$key]=$xp 不大於前一個值 $prev，門檻順序錯誤"
-            );
+            $msg = "TEACHER_MIN_XP[{$key}]={$xp} 不大於前一個值 {$prev}，門檻順序錯誤";
+            $this->assertGreaterThan($prev, $xp, $msg);
             $prev = $xp;
         }
     }
@@ -38,11 +35,8 @@ class EngagementRankProgressionTest extends TestCase
         $table = $this->getConst('STAFF_MIN_XP');
         $prev = -1;
         foreach ($table as $key => $xp) {
-            $this->assertGreaterThan(
-                $prev,
-                $xp,
-                "STAFF_MIN_XP[$key]=$xp 不大於前一個值 $prev，門檻順序錯誤"
-            );
+            $msg = "STAFF_MIN_XP[{$key}]={$xp} 不大於前一個值 {$prev}，門檻順序錯誤";
+            $this->assertGreaterThan($prev, $xp, $msg);
             $prev = $xp;
         }
     }
