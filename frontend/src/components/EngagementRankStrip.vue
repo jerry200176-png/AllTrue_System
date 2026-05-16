@@ -1,6 +1,8 @@
 <template>
   <span class="ers" role="status">
-    <span class="material-symbols-outlined ers-icon" aria-hidden="true">military_tech</span>
+    <span class="ers-badge" :title="engagement.rank_label" aria-hidden="true">
+      <RocRankBadge :rank-key="engagement.rank_key" />
+    </span>
     <span class="ers-rank">{{ engagement.rank_label }}</span>
     <template v-if="showXp">
       <span class="ers-xp">XP {{ engagement.xp_total }}</span>
@@ -20,6 +22,7 @@
 <script setup>
 import { computed } from 'vue';
 import { rankTierProgress, xpRemainingToNext } from '../lib/engagementRankProgress';
+import RocRankBadge from './RocRankBadge.vue';
 
 const props = defineProps({
   engagement: {
@@ -61,10 +64,10 @@ const remainingXp = computed(() => {
   color: var(--text, #0f172a);
   line-height: 1.35;
 }
-.ers-icon {
-  font-size: 18px;
-  vertical-align: -4px;
-  color: var(--primary, #1976d2);
+.ers-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 .ers-rank {
   font-weight: 700;
