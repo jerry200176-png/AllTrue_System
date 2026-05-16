@@ -8,15 +8,20 @@ use PHPUnit\Framework\TestCase;
 class EngagementRankProgressionTest extends TestCase
 {
     /**
+     * 取出 private const（PHP 8.1+ ReflectionClassConstant）
+     */
+    private function getConst(string $name): array
+    {
+        $rc = new \ReflectionClassConstant(EngagementRankProgression::class, $name);
+        return $rc->getValue();
+    }
+
+    /**
      * XP 門檻必須嚴格遞增（不能有相等或逆序）
      */
     public function test_teacher_xp_thresholds_are_strictly_ascending(): void
     {
-        $reflection = new \ReflectionClass(EngagementRankProgression::class);
-        $prop = $reflection->getProperty('TEACHER_MIN_XP');
-        $prop->setAccessible(true);
-        $table = $prop->getValue();
-
+        $table = $this->getConst('TEACHER_MIN_XP');
         $prev = -1;
         foreach ($table as $key => $xp) {
             $this->assertGreaterThan(
@@ -30,11 +35,7 @@ class EngagementRankProgressionTest extends TestCase
 
     public function test_staff_xp_thresholds_are_strictly_ascending(): void
     {
-        $reflection = new \ReflectionClass(EngagementRankProgression::class);
-        $prop = $reflection->getProperty('STAFF_MIN_XP');
-        $prop->setAccessible(true);
-        $table = $prop->getValue();
-
+        $table = $this->getConst('STAFF_MIN_XP');
         $prev = -1;
         foreach ($table as $key => $xp) {
             $this->assertGreaterThan(
@@ -47,20 +48,12 @@ class EngagementRankProgressionTest extends TestCase
     }
 
     /**
-     * 兩個門檻表必須有完全相同的 rank key（前後端同步保證）
+     * 兩個門檻表必須有完全相同的 rank key 順序（前後端同步保證）
      */
     public function test_teacher_and_staff_tables_have_identical_rank_keys(): void
     {
-        $reflection = new \ReflectionClass(EngagementRankProgression::class);
-
-        $teacherProp = $reflection->getProperty('TEACHER_MIN_XP');
-        $teacherProp->setAccessible(true);
-        $teacherKeys = array_keys($teacherProp->getValue());
-
-        $staffProp = $reflection->getProperty('STAFF_MIN_XP');
-        $staffProp->setAccessible(true);
-        $staffKeys = array_keys($staffProp->getValue());
-
+        $teacherKeys = array_keys($this->getConst('TEACHER_MIN_XP'));
+        $staffKeys   = array_keys($this->getConst('STAFF_MIN_XP'));
         $this->assertSame($teacherKeys, $staffKeys, 'TEACHER_MIN_XP 與 STAFF_MIN_XP 的 key 順序不一致');
     }
 
@@ -69,14 +62,10 @@ class EngagementRankProgressionTest extends TestCase
      */
     public function test_all_three_master_sergeant_ranks_exist(): void
     {
-        $reflection = new \ReflectionClass(EngagementRankProgression::class);
-        $prop = $reflection->getProperty('TEACHER_MIN_XP');
-        $prop->setAccessible(true);
-        $keys = array_keys($prop->getValue());
-
-        $this->assertContains('master_sergeant_third', $keys);
+        $keys = array_keys($this->getConst('TEACHER_MIN_XP'));
+        $this->assertContains('master_sergeant_third',  $keys);
         $this->assertContains('master_sergeant_second', $keys);
-        $this->assertContains('master_sergeant_first', $keys);
+        $this->assertContains('master_sergeant_first',  $keys);
     }
 
     /**
@@ -96,8 +85,7 @@ class EngagementRankProgressionTest extends TestCase
         $this->assertSame('master_sergeant_third',  EngagementRankProgression::rankKeyForXp(275, 'teacher'));
         $this->assertSame('master_sergeant_second', EngagementRankProgression::rankKeyForXp(355, 'teacher'));
         $this->assertSame('master_sergeant_first',  EngagementRankProgression::rankKeyForXp(445, 'teacher'));
-        // 剛好進入下一階
-        $this->assertSame('second_lieutenant', EngagementRankProgression::rankKeyForXp(545, 'teacher'));
+        $this->assertSame('second_lieutenant',      EngagementRankProgression::rankKeyForXp(545, 'teacher'));
     }
 
     /**
