@@ -65,7 +65,37 @@ class AlertController extends Controller
         $countResults = $countQuery->with('student')->get();
         $dateResults  = $dateQuery->with('student')->get();
 
-        $allClassIds = $countResults->pluck('ID')->merge($dateResults->pluck('ID'))->unique()->values()->all();
+        $countPkgQuery = CoursePackage::query()
+            ->where('billing_mode', CoursePackage::BILLING_MODE_SESSION)
+            ->where('stop', false)
+            ->where(function ($q) {
+                $q->where('paid', false)
+                  ->orWhereNull('paid')
+                  ->orWhere('remaining_sessions', '<=', 2);
+            });
+        if ($studentIds !== null) {
+            $countPkgQuery->whereIn('student_id', $studentIds);
+        }
+        $countPkgs = $countPkgQuery->with('student')->get();
+        $countPkgMemberIds = collect();
+        $countPkgAnchorById = collect();
+        if ($countPkgs->isNotEmpty()) {
+            $members = StudentClass::whereIn('PackageID', $countPkgs->pluck('id'))
+                ->orderBy('Stop')
+                ->orderBy('ID')
+                ->get(['ID', 'PackageID', 'Stop']);
+            $countPkgMemberIds = $members->pluck('ID');
+            $countPkgAnchorById = $members
+                ->groupBy('PackageID')
+                ->map(fn ($items) => $items->first());
+        }
+
+        $allClassIds = $countResults->pluck('ID')
+            ->merge($dateResults->pluck('ID'))
+            ->merge($countPkgAnchorById->pluck('ID'))
+            ->unique()
+            ->values()
+            ->all();
         $paidAtMap = self::lastPaidAtByStudentClassIds($allClassIds);
         $invoiceAggMap = self::invoiceAggregateByStudentClassIds($allClassIds);
         $openMonthlyInvoiceMap = self::openInvoiceByStudentClassIds($dateResults->pluck('ID')->unique()->values()->all());
@@ -151,9 +181,58 @@ class AlertController extends Controller
             }
         }
 
+        $countPkgAlerts = $countPkgs->map(function (CoursePackage $pkg) use (
+            $countPkgAnchorById,
+            $paidAtMap,
+            $invoiceAggMap,
+            $pendingReportMap
+        ) {
+            $anchor = $countPkgAnchorById->get($pkg->id);
+            if (!$anchor) {
+                return null;
+            }
+            $anchorId = (int) $anchor->ID;
+            $charge = $this->packageCountModeCharge($pkg);
+            $invoiceAgg = $invoiceAggMap[$anchorId] ?? null;
+            $paidAmount = $invoiceAgg ? (int) $invoiceAgg['paid_amount'] : 0;
+            $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+            $pendingReportId = $pendingReportMap[$anchorId] ?? null;
+            $remaining = max(0, (int) ($pkg->remaining_sessions ?? 0));
+
+            return [
+                'id'                 => $anchorId,
+                'package_id'         => (int) $pkg->id,
+                'student_id'         => (int) $pkg->student_id,
+                'student_name'       => $pkg->student->name ?? 'Unknown',
+                'campus_id'          => (int) ($pkg->student->CampusID ?? $pkg->campus_id ?? 0),
+                'subject'            => $pkg->name,
+                'schedule_mode'      => 'count',
+                'remaining_sessions' => $remaining,
+                'sessions_purchased' => (int) ($pkg->total_sessions ?? 0),
+                'paid'               => $isPaid,
+                'alert_type'         => $isPaid ? 'low_sessions' : 'unpaid',
+                'days_until_settlement' => null,
+                'settlement_day'     => null,
+                'due_date'           => null,
+                'paid_at'            => $pkg->paid_at ? substr((string) $pkg->paid_at, 0, 10) : null,
+                'last_paid_at'       => ($pkg->paid_at ? substr((string) $pkg->paid_at, 0, 10) : null) ?? ($paidAtMap[$anchorId] ?? null),
+                'charge'             => $charge,
+                'paid_amount'        => $paidAmount,
+                'outstanding'        => $isPaid ? 0 : max(0, $charge - $paidAmount),
+                'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
+                'latest_payment_report_id' => $pendingReportId,
+                'has_newer_course'         => false,
+                'newer_course_id'          => null,
+                'newer_course_remaining'   => null,
+                'newer_course_start_date'  => null,
+            ];
+        })->filter()->values();
+
         $rows = collect()
             ->merge(
-                $countResults->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
+                $countResults
+                    ->filter(fn ($c) => !$countPkgMemberIds->contains($c->ID))
+                    ->map(fn ($c) => $this->mapCountModeAlert($c))->filter()
             )
             ->merge(
                 // Exclude monthly-package members from individual date-mode alerts
@@ -197,8 +276,8 @@ class AlertController extends Controller
 
         $rows = $this->suppressRenewedLowSessionAlerts($rows);
 
-        // Merge monthly billing package alerts (always included if within settlement window)
-        $rows = $rows->merge($monthlyPkgAlerts)->values();
+        // Merge package-level alerts after individual rows are normalized.
+        $rows = $rows->merge($countPkgAlerts)->merge($monthlyPkgAlerts)->values();
 
         return response()->json($rows);
     }
@@ -229,6 +308,28 @@ class AlertController extends Controller
             'settlement_day'     => $c->settlement_day !== null ? (int) $c->settlement_day : null,
             'due_date'           => null,
         ];
+    }
+
+    private function packageCountModeCharge(CoursePackage $pkg): int
+    {
+        $sessions = max(0, (int) ($pkg->total_sessions ?? 0));
+        $rate = (float) ($pkg->rate ?? 0);
+        return (int) round($sessions * $rate);
+    }
+
+    private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string
+    {
+        if ($hasPendingReport) {
+            return 'pending_report';
+        }
+        $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
+        if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
+            return 'partial';
+        }
+        if (!$isPaid) {
+            return 'unpaid';
+        }
+        return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
     private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null): ?array
