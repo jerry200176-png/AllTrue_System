@@ -100,4 +100,79 @@ class StudentClassExtendSessionsGapTest extends TestCase
                 ->value('Status')
         );
     }
+
+    /**
+     * Count-mode refill must not recreate a scheduled session on the same date/time
+     * as an admin-cancelled ClassSession (FR: 取消了又補回同一堂).
+     */
+    public function test_extend_sessions_does_not_resurrect_cancelled_contract_day(): void
+    {
+        $student = Student::create([
+            'name' => '張測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $course = StudentClass::create([
+            'StudentID' => $student->id,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => 99,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-04-01',
+            'TotalHours' => 24,
+            'Charge' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'RoomID' => '1',
+            'MDate' => now(),
+            'Stop' => 0,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 12,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 12,
+            'UsedSessions' => 0,
+            'ClassType' => 'one_on_one',
+            'week' => 3,
+            'time' => '18:00:00',
+        ]);
+
+        $dates = [
+            '2026-04-01', '2026-04-08', '2026-04-15', '2026-04-22',
+            '2026-04-29', '2026-05-06', '2026-05-13', '2026-05-20', '2026-05-27',
+            '2026-06-03', '2026-06-10', '2026-06-17',
+        ];
+        foreach ($dates as $date) {
+            ClassSession::create([
+                'StudentClassID' => $course->ID,
+                'SessionDate' => $date,
+                'StartTime' => '18:00:00',
+                'EndTime' => '20:00:00',
+                'Status' => 'scheduled',
+            ]);
+        }
+
+        ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-05-13')
+            ->update(['Status' => 'cancelled']);
+
+        app(StudentClassController::class)->extendSessionsIfNeeded($course, 12);
+
+        $may13 = ClassSession::where('StudentClassID', $course->ID)
+            ->whereDate('SessionDate', '2026-05-13')
+            ->orderBy('id')
+            ->get();
+
+        $this->assertCount(1, $may13, 'must not insert a second ClassSession on the cancelled date');
+        $this->assertSame('cancelled', strtolower((string) $may13[0]->Status));
+
+        $active = ClassSession::where('StudentClassID', $course->ID)
+            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->count();
+        $this->assertSame(12, $active);
+    }
 }

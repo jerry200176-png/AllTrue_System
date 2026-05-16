@@ -7,6 +7,36 @@
 
 ---
 
+## 2026-05-16 — feat(engagement): 新增士官長三階 + 修正 ROC 軍階徽章 (#353)
+
+- Added 三等/二等/一等士官長（XP 275/355/445）補齊 ROC 軍階完整 19 階
+- Fixed `RocRankBadge.vue` 徽章設計：尉官=橫槓、校官=梅花、將官=金星（先前尉/校完全對調）
+- Added `EngagementRankProgressionTest.php` PHPUnit 防回歸測試（XP 嚴格遞增、邊界值）
+
+---
+
+## 2026-05-16 — fix(scheduling): 堂數制取消堂次後不再於同日重插排課
+
+- Fixed `StudentClassController::extendSessionsIfNeeded` 未將 `cancelled` 堂次佔用 `date|start` 槽位，補齊 `SessionCount` 時誤以該日為空而依契約週期重建 `scheduled`（症狀：取消某週四後又補回同一週四）
+
+---
+
+## 2026-05-16 — fix(calendar): 行事曆週檢視漏格與資料未隨換週更新
+
+- Fixed `calendarOccurrenceMerge` 將 `SessionCount` 誤用作「同一 ISO 週內 emitted 格子數上限」並提前 `break`，週日到週末的 ClassSession-backed 日期（例如某日週日下午堂）可被整批略過（症狀與同日多格子課類似）；改由既有 `courseSessionSet`/`isOverSessionLimit` 等語意過濾
+- Fixed 智慧行事曆 `loadCourses` 仍以開頁 `displayMonth` 粗算區間且不隨換週重抓，若以週偏移看到鄰月的日期，`GET class-sessions` 可能不包含該週，`sessionDatesByCourseId` 空槽被誤以為「超排／幽靈格」— 改為依 `getDisplayDateFull(1..7) ± ~6 週` 對齊 API 範圍並對 `displayYear/displayMonth/displayWeek/weekOffset` 觸發重載；`calendarOccurrenceMerge.test.js` 補 Sun 漏格案例
+- Fixed ClassSession-backed 週合併對 `schedules.status=rescheduled` 同日無條件 `continue`，會蓋掉同日仍存在的 `scheduled` 堂次（歷史調課／重試残留與 §R43 同類髒資料）；改為僅在該日已無任何非 cancelled 之 ClassSession 時才略過；`calendarOccurrenceMerge.test.js` 補案例
+
+---
+
+## 2026-05-16 — fix(session-dates): 修正課程管理日期 chip 無故灰頻 (#344)
+
+- Fixed `POST /api/v1/student-classes/session-dates` 未對 ClassSession 查詢套用 `range_start`/`range_end`，導致所有歷史堂次日期回傳前端，前端的 `syntheticEffectiveUnits` 將 ±2 個月視窗外的舊堂次產生灰色 synthetic chip
+- Fixed `sessionDates` GET handler 的 `ScheduleMode='date'` 路徑，未過濾 `cancelled`/`leave` 狀態，`computeMonthlyEffectiveSessionDates` 以含取消的 `existingSet` 初始化，導致已取消堂次出現在日期區
+- Added 課程管理 `classSessionsByCourse` 載入失敗時顯示紅色錯誤提示，改善靜默灰頻的可見度；修正 synthetic chip tooltip 描述（移除月結專用措辭）
+
+---
+
 ## 2026-05-10 — feat(engagement): 前端軍階／XP 摘要（#326，epic #323）
 
 - Added 教學工作台、主任總覽顯示軍階／XP 與升階進度條；個人資料可本機 opt-out；尊重 `prefers-reduced-motion`；門檻計算見 `engagementRankProgress.js`（與後端對齊）
@@ -21,9 +51,21 @@
 
 ---
 
+## 2026-05-10 — fix(director): 評量「已核准／全部」可篩「只看未填」（#322）
+
+- Fixed 主任端「已核准」「全部」分頁可勾「只看未填」（含已核准但正文仍空白）；頂部「未填」KPI 納入該類筆數，點擊改為切到「全部」並套用篩選
+
+---
+
 ## 2026-05-10 — feat(teacher): 連續使用天數摘要（本機、預設關，#314）
 
 - Added 老師可於個人資料「教學設定」opt-in 顯示連續使用天數；計數僅存 `localStorage`、登入日更新；教學工作台顯示低調摘要；`npm run test:teacher-streak` 納入 CI；PRD 見 `.cursor/plans/teacher_engagement_streak_prd_2026-05-10.md`
+
+---
+
+## 2026-05-10 — docs(plan): 評量「已核准未填」UX + ROC 軍階／XP 分階段
+
+- Docs `.cursor/plans/alltrue_engagement_ranks_and_lr_ux_prd_2026-05-10.md`；GitHub Issues [#322](https://github.com/jerry200176-png/AllTrue_System/issues/322)（主任篩選）、[#323](https://github.com/jerry200176-png/AllTrue_System/issues/323)（epic）、[#324](https://github.com/jerry200176-png/AllTrue_System/issues/324)–[#326](https://github.com/jerry200176-png/AllTrue_System/issues/326)（Phase 1–3）
 
 ---
 
