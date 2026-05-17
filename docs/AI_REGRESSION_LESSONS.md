@@ -580,6 +580,16 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R52. 代課／調課例外必須保留原 occurrence anchor（不可讓 `scheduled.original_schedule_id` 為 NULL）
+
+- **觸發情境**：2026-05-17 in-app bug #108：吳艾潼 5/17 10:00 化學一對二已先調課、再追加代課給鄭翔祐；`schedules` 留下 `scheduled.original_schedule_id=NULL` 的代課 row，導致行事曆仍掛在鄒宇旻欄，但代課候選又把鄭翔祐算成已滿／衝堂。
+- **根因**：單堂 exception 沒有穩定 anchor。Google Calendar / Microsoft Graph / CalDAV 都用 `recurringEventId + originalStartTime`、`seriesMasterId + originalStartTime` 或 `UID + RECURRENCE-ID` 對齊「原本那一堂」；AllTrue 對應欄位就是 `schedules.original_schedule_id`。
+- **強制規則**：任何 `schedules.status='scheduled'` 且 `teacher_id != StudentClass.TeacherID` 的代課例外，都必須有非 NULL `original_schedule_id` 指向同課程同日的 `rescheduled` anchor；寫入路徑必須吸收並修補歷史 NULL anchor row，不可新增第二筆幽靈代課 row。
+- **資料修復規則**：歷史資料只可用 `schedules:backfill-substitute-anchors --dry-run` 先列清單，再備份 `schedules` 表後 `--apply`；此 command 只可更新 `schedules.original_schedule_id` 與刪除同 anchor 的 ghost `rescheduled` row，不可碰 `ClassSession`、堂數或評量。
+- **測試必補**：修改 `ClassSessionController::substitute`、`SubstituteService::collectTeacherBusySlotsWithCapacity` 或行事曆代課顯示時，必須覆蓋「先 pure reschedule、再 substitute」的 chained path，驗證不 409、不重複、不留下 NULL anchor。
+
+---
+
 ### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
 
 **觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
@@ -602,7 +612,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
