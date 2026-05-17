@@ -66,6 +66,34 @@
 - Quick tabs：待處理 / 全部 / 已關閉
 - 進入詳情返回保留查詢狀態
 
+### 3.6 ⛔ AI 處理 in-app bug 回報的 SOP（2026-05-17 起，違反 = 重複問使用者）
+
+```
+1. 一定要先撈 attachments：
+   SELECT id, stored_path, original_name FROM bug_report_attachments
+    WHERE bug_report_id = ?;
+   有附件 → SCP 到 /tmp 看完再決定根因。
+   /home/admin/backend/storage/app/public/<stored_path>
+
+2. 一定要看 status_logs / comments 全部歷史：
+   - 該 bug 是不是之前另一個人已經回過了？
+   - 是不是有同主題的舊單已 resolved（同性質回歸）？
+     SELECT * FROM bug_reports
+      WHERE reporter_user_id = ? ORDER BY id DESC;
+
+3. 一定要先看 reporter 的 CampusID 與當時提交分校：
+   - 不同分校的舊單會被分校過濾擋住，不是資料遺失（見 §R51）
+
+4. 留言／開 GitHub issue 之前自己跑一次 SQL 驗證假設，
+   不要只用「程式碼推論」就通知使用者。
+
+5. 開 GitHub issue 時把 attachment id 一起寫進去
+   （image 的描述 / 觀察 / 對應的程式碼行），
+   讓未來的 AI 不必重撈也能看懂。
+```
+
+**反面範例（2026-05-17 已發生）**：AI 處理 in-app bug #107 時只看 `description`，沒查 `bug_report_attachments`，回覆裡又叫使用者「請補一張截圖」（其實兩張早就附好了）。
+
 ### 關鍵檔案
 `BugReportController.php`、`BugReportService.php`、`RequireSuperAdmin.php`、`BugReportsPage.vue`、`BugReportLauncher.vue`、`bugReportsApi.js`
 
@@ -86,5 +114,6 @@
 - [ ] Bug 紅點：內部備註不驅動回報者未讀；super_admin 進入 Bug 頁 mark inbox
 - [ ] 前端變更後走 PR → CI → merge → `deploy.yml` 自動部署
 - [ ] 測試：GitHub Actions 跑 `ChatApiTest` / `BugReportApiTest` / `ProfileCenterApiTest`
+- [ ] AI 處理 bug 前：先撈 `bug_report_attachments` + reporter 全部歷史 + reporter 跨分校紀錄（§3.6）
 
-*最後更新：2026-04-27*
+*最後更新：2026-05-17*
