@@ -78,6 +78,67 @@ class SubstituteUxV2Test extends TestCase
         $this->assertEquals('正班老師請假', (string) ($notif->Payload['reason'] ?? ''));
     }
 
+    public function test_same_day_multiple_sessions_keep_independent_substitutes(): void
+    {
+        [$dirToken, , $subId, $firstSession] = $this->seedScenarioSingleCampus();
+        $courseId = (int) $firstSession->StudentClassID;
+
+        $secondSession = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+        ]);
+        LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $secondSession->id,
+            'TeacherID' => StudentClass::find($courseId)->TeacherID,
+            'Status' => 'pending',
+            'Content' => '',
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+        ]);
+
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$firstSession->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => '第一堂代課',
+        ])->assertOk();
+
+        $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$secondSession->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => '第二堂代課',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+        ]);
+
+        $this->assertSame(
+            2,
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', '2026-04-19')
+                ->where('status', 'scheduled')
+                ->where('teacher_id', $subId)
+                ->whereNotNull('original_schedule_id')
+                ->count()
+        );
+    }
+
     // ───────────────────────────────────────────────────────────
     // 2. 跨分校（物理不可分身）衝堂 → 422 + conflicts[]
     // ───────────────────────────────────────────────────────────
