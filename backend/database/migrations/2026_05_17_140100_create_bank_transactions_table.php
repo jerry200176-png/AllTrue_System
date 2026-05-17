@@ -23,7 +23,7 @@ return new class extends Migration
             $table->timestamps();
             $table->index(['campus_id', 'status']);
             $table->index(['transaction_date']);
-            $table->unique(['campus_id', 'transaction_date', 'amount', 'reference']);
+            $table->unique(['campus_id', 'transaction_date', 'amount', 'reference'], 'bank_txn_unique');
         });
     }
 
