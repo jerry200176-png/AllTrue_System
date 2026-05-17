@@ -82,15 +82,23 @@ class BugReportController extends Controller
         ]);
         $perPage = min((int) $request->input('per_page', 20), 100);
 
+        // #378: 一般 reporter（teacher/director）看自己的回報時，跨分校顯示
+        // （行業慣例：GitHub/Linear/Jira/ServiceNow 都讓 requester 看自己的全部）。
+        // 仍受限於使用者目前 auth_campus_ids（離開的分校 = 失去存取）。
+        $reporterCampusIds = $this->resolveReporterCampusIds($request);
+
         if ($userId) {
-            BugReportService::markReporterInboxSeenFromList($userId, $campusIds);
+            BugReportService::markReporterInboxSeenFromList(
+                $userId,
+                $isSuperAdmin ? $campusIds : $reporterCampusIds
+            );
         }
 
         if ($seesAllBranchBugs) {
             return response()->json(BugReportService::listForAdmin($campusIds, $filters, $perPage));
         }
 
-        return response()->json(BugReportService::listForUser($userId, $campusIds, $filters, $perPage));
+        return response()->json(BugReportService::listForUser($userId, $reporterCampusIds, $filters, $perPage));
     }
 
     public function show(Request $request, $id)
@@ -103,7 +111,13 @@ class BugReportController extends Controller
 
         $bugId = (int) $id;
 
-        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+        // #378: reporter 自己的回報跨分校可開（仍須仍隸屬於該分校），
+        // 否則沿用單分校 scope（避免越權看到別人單）。
+        $reporterCampusIds = $this->resolveReporterCampusIds($request);
+        $allowReporterCrossBranch = !$seesAllBranchBugs
+            && BugReportService::belongsToCampusForReporter($bugId, $userId, $reporterCampusIds);
+
+        if (!$allowReporterCrossBranch && !BugReportService::belongsToCampus($bugId, $campusIds)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -131,7 +145,11 @@ class BugReportController extends Controller
         }
 
         $role = (string) ($request->attributes->get('auth_role') ?? '');
-        $campusIds = $this->resolveCampusIds($request);
+        $isSuperAdmin = $role === 'super_admin';
+        // #378: reporter 紅點計數要跨自己所有分校，否則切到 A 分校後 B 分校的回信變成「看不見的紅點」
+        $campusIds = $isSuperAdmin
+            ? $this->resolveCampusIds($request)
+            : $this->resolveReporterCampusIds($request);
 
         return response()->json([
             'unread_count' => BugReportService::unreadBadgeCount($userId, $role, $campusIds),
@@ -310,5 +328,20 @@ class BugReportController extends Controller
         }
 
         return $campusIds;
+    }
+
+    /**
+     * #378: 「我自己的 bug 回報」永遠以使用者全部 auth_campus_ids 計算，
+     * 忽略 branch_id query。這是 reporter-mode 視角，與 store/super_admin 視角不同。
+     *
+     * 仍受 auth_campus_ids 限制（離開的分校不可看），避免越權。
+     */
+    private function resolveReporterCampusIds(Request $request): array
+    {
+        $role = $request->attributes->get('auth_role');
+        if ($role === 'super_admin') {
+            return [];
+        }
+        return array_map('intval', $request->attributes->get('auth_campus_ids', []));
     }
 }
