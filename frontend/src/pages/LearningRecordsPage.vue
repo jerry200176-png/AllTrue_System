@@ -6983,6 +6983,28 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
 
   /* 評量 modal 改為內建底部欄，不再用 sticky（避免與主內容重疊） */
 
+  /* 快捷語句 chip：手機改為 wrap 換行，不再橫向 scroll
+     業界做法：Material 3 Suggestion Chip / Apple HIG / WhatsApp 快捷回覆
+     皆為 flex-wrap，避免使用者看不到「還有幾顆 chip」與被迫橫滑。
+     桌面（min-width:641px）維持原本的 hscroll，避免長條 chip 擠壓表單。 */
+  .lr-phrase-row--hscroll {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: auto;
+    margin: 6px 0 0;
+    padding: 0;
+    gap: 6px;
+  }
+
+  .lr-phrase-row--hscroll .lr-phrase-btn {
+    flex: 0 0 auto;
+    max-width: 100%;
+    min-height: 44px; /* Apple HIG / Material 3 觸控目標 */
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
   .bulk-date-grid {
     max-height: 200px;
   }
