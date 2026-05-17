@@ -1512,6 +1512,8 @@ class ClassSessionController extends Controller
         $existingRescheduled = Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $origSessionDate)
             ->where('status', 'rescheduled')
+            ->orderByRaw('CASE WHEN teacher_id = ? THEN 0 ELSE 1 END', [$oldTeacherId])
+            ->orderByDesc('id')
             ->first();
         $rescheduledIdForGuard = $existingRescheduled ? (int) $existingRescheduled->id : null;
         $existingScheduled = null;
@@ -1531,6 +1533,19 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $origSessionDate)
                     ->where('status', 'scheduled')
                     ->where('original_schedule_id', $rescheduledIdForGuard)
+                    ->first();
+            }
+            if (!$existingScheduled) {
+                // Historical repair path (#364/#108): chained reschedule -> substitute used to
+                // leave a substitute scheduled row with NULL original_schedule_id. Treat it as
+                // the existing row so the guard excludes it and the transaction can repair it.
+                $existingScheduled = Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $origSessionDate)
+                    ->where('status', 'scheduled')
+                    ->whereNull('original_schedule_id')
+                    ->where('teacher_id', '!=', $oldTeacherId)
+                    ->where('start_time', $origStartTime)
+                    ->orderByDesc('id')
                     ->first();
             }
         }
@@ -1812,6 +1827,8 @@ class ClassSessionController extends Controller
             $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'rescheduled')
+                ->orderByRaw('CASE WHEN teacher_id = ? THEN 0 ELSE 1 END', [$oldTeacherId])
+                ->orderByDesc('id')
                 ->first();
 
             $rescheduledId = null;
@@ -1871,7 +1888,10 @@ class ClassSessionController extends Controller
             }
 
             if ($existingScheduledRow) {
-                $rowUpdate = ['teacher_id' => $newTeacherId];
+                $rowUpdate = [
+                    'teacher_id' => $newTeacherId,
+                    'original_schedule_id' => $rescheduledId,
+                ];
                 // Sync time if the ClassSession was rescheduled after the substitute was set
                 if ($existingScheduledRow->start_time !== $startTime) {
                     $rowUpdate['start_time'] = $startTime;
@@ -1909,6 +1929,14 @@ class ClassSessionController extends Controller
                 ]);
                 $scheduledId = $scheduled->id;
             }
+
+            Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'scheduled')
+                ->whereNull('original_schedule_id')
+                ->where('teacher_id', '!=', $oldTeacherId)
+                ->where('id', '!=', $scheduledId)
+                ->delete();
 
             $this->logSubstituteDiag('after_scheduled', [
                 'class_session_id' => $session->id,

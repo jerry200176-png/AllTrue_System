@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-05-17 — fix(calendar): 代課／調課連續操作不再卡成「已滿衝堂」
+
+- 連續做「調課後再換代課老師」時，系統會自動把代課例外接回原本的調課 anchor；老師候選不再因為自己留下的舊資料被誤判「已滿／衝堂」，行事曆也能正確顯示代課老師。
+- 開發備註：`ClassSessionController::substitute` 吸收並修補 `original_schedule_id=NULL` 的歷史 scheduled row；新增 `schedules:backfill-substitute-anchors` dry-run/apply command 只修 `schedules` anchor，不碰 `ClassSession`／堂數／評量；補 `SubstituteWithRescheduleTest` regression。Closes #364，對應 in-app #95/#108。
+
+---
+
 ## 2026-05-17 — fix(learning): 手機新增評量表單的快捷語句改為自動換行
 
 - 手機開啟新增學習評量時，快捷語句按鈕（授課進度／作業範圍／週考範圍）會自動換行，不必再左右滑也能看到完整選項；按鈕高度提升到 44px，符合 Apple/Google 觸控規範。

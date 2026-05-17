@@ -276,6 +276,156 @@ class SubstituteWithRescheduleTest extends TestCase
         $this->assertEquals('substitute', $notif->Payload['operation_type'] ?? '');
     }
 
+    public function test_substitute_repairs_unanchored_scheduled_row_after_prior_reschedule(): void
+    {
+        [$dirToken, $oldId, $subId, $session] = $this->seedScenarioSingleCampus();
+        $courseId = (int) $session->StudentClassID;
+        $studentId = (int) StudentClass::where('ID', $courseId)->value('StudentID');
+
+        $session->SessionDate = '2026-04-19';
+        $session->StartTime = '10:00';
+        $session->EndTime = '12:00';
+        $session->save();
+
+        $anchor = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $oldId,
+            'subject' => 'Math',
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $courseId,
+        ]);
+        $ghost = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $subId,
+            'subject' => 'Math',
+            'day_of_week' => 7,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $courseId,
+            'original_schedule_id' => null,
+        ]);
+
+        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => 'repair existing chained substitute row',
+        ]);
+
+        $res->assertOk();
+        $this->assertDatabaseHas('schedules', [
+            'id' => $ghost->id,
+            'student_course_id' => $courseId,
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+            'start_time' => '10:00',
+            'original_schedule_id' => $anchor->id,
+        ]);
+        $this->assertSame(0, Schedule::where('student_course_id', $courseId)
+            ->where('status', 'scheduled')
+            ->whereNull('original_schedule_id')
+            ->count());
+        $this->assertSame(1, Schedule::where('student_course_id', $courseId)
+            ->where('status', 'rescheduled')
+            ->where('teacher_id', $oldId)
+            ->count());
+    }
+
+    public function test_backfill_substitute_anchors_repairs_historical_null_anchor_rows(): void
+    {
+        [, $oldId, $subId, $session] = $this->seedScenarioSingleCampus();
+        $courseId = (int) $session->StudentClassID;
+        $studentId = (int) StudentClass::where('ID', $courseId)->value('StudentID');
+
+        $anchor = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $oldId,
+            'subject' => 'Math',
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $courseId,
+        ]);
+        $ghostAnchor = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $subId,
+            'subject' => 'Math',
+            'day_of_week' => 7,
+            'start_time' => '15:00',
+            'end_time' => '17:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'rescheduled',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $courseId,
+        ]);
+        $scheduled = Schedule::create([
+            'student_id' => $studentId,
+            'teacher_id' => $subId,
+            'subject' => 'Math',
+            'day_of_week' => 7,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => '2026-04-19',
+            'student_course_id' => $courseId,
+            'original_schedule_id' => null,
+        ]);
+
+        $this->artisan('schedules:backfill-substitute-anchors', ['--date' => '2026-04-19'])
+            ->assertExitCode(0);
+        $this->assertDatabaseHas('schedules', [
+            'id' => $scheduled->id,
+            'original_schedule_id' => null,
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'id' => $ghostAnchor->id,
+            'status' => 'rescheduled',
+        ]);
+
+        $this->artisan('schedules:backfill-substitute-anchors', [
+            '--date' => '2026-04-19',
+            '--apply' => true,
+        ])->assertExitCode(0);
+
+        $this->assertDatabaseHas('schedules', [
+            'id' => $scheduled->id,
+            'original_schedule_id' => $anchor->id,
+        ]);
+        $this->assertDatabaseMissing('schedules', [
+            'id' => $ghostAnchor->id,
+        ]);
+    }
+
     // ───────────────────────────────────────────────────────────
     // 6. 半填欄位 → 422（FR-003）
     // ───────────────────────────────────────────────────────────
