@@ -1538,6 +1538,24 @@ class ClassSessionController extends Controller
                 $existingRescheduled = $candidate;
                 break;
             }
+
+            // Historical repair path (#364/#108): chained reschedule -> substitute used to
+            // leave a substitute scheduled row with NULL original_schedule_id. Pair that
+            // exact-time ghost row with an existing anchor instead of creating a second
+            // substitute and tripping the capacity guard.
+            $ghostScheduled = Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $origSessionDate)
+                ->where('status', 'scheduled')
+                ->whereNull('original_schedule_id')
+                ->where('teacher_id', '!=', $oldTeacherId)
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$origStartTime])
+                ->orderByDesc('id')
+                ->first();
+            if ($ghostScheduled) {
+                $existingRescheduled = $candidate;
+                $existingScheduled = $ghostScheduled;
+                break;
+            }
         }
 
         if ($existingRescheduled && !$existingScheduled) {
