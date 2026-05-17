@@ -274,6 +274,12 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/periods', [\App\Http\Controllers\AccountingPeriodController::class, 'index']);
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
         Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
+
+        // ── Dunning (#400) ──
+        Route::get('dunning/rules', [\App\Http\Controllers\DunningController::class, 'rules']);
+        Route::get('dunning/history', [\App\Http\Controllers\DunningController::class, 'history']);
+        Route::post('dunning/trigger', [\App\Http\Controllers\DunningController::class, 'trigger']);
+
         // finance/subject-units is intentionally registered in the role:director,teacher group below
         // so that teachers can also call this endpoint for their own hours view (FR-008).
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
