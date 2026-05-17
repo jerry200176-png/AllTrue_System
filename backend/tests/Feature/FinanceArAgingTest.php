@@ -27,25 +27,13 @@ class FinanceArAgingTest extends TestCase
         ]);
 
         StudentClass::create([
-            'StudentID' => $student->id,
-            'TeacherID' => 1,
-            'GradeID' => 1,
-            'SubjectID' => 1,
-            'Rate' => 100,
-            'Charge' => 5000,
-            'Pay' => 2000,
-            'Stop' => 0,
-            'StartDate' => now()->subDays(45)->toDateString(),
-            'by1' => 1,
-            'TotalHours' => 10,
-            'Period' => 4,
-            'SessionCount' => 5,
-            'SessionDuration' => 120,
-            'RemainingSessions' => 5,
-            'UsedSessions' => 0,
-            'Paid' => 0,
-            'MDate' => now(),
-            'ScheduleMode' => 'count',
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 5, 'UsedSessions' => 0,
+            'Charge' => 5000, 'Pay' => 2000, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
+            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
@@ -68,25 +56,13 @@ class FinanceArAgingTest extends TestCase
         ]);
 
         StudentClass::create([
-            'StudentID' => $student->id,
-            'TeacherID' => 1,
-            'GradeID' => 1,
-            'SubjectID' => 1,
-            'Rate' => 100,
-            'Charge' => 5000,
-            'Pay' => 5000,
-            'Stop' => 0,
-            'StartDate' => now()->subDays(45)->toDateString(),
-            'by1' => 1,
-            'TotalHours' => 10,
-            'Period' => 4,
-            'SessionCount' => 5,
-            'SessionDuration' => 120,
-            'RemainingSessions' => 0,
-            'UsedSessions' => 5,
-            'Paid' => 1,
-            'MDate' => now(),
-            'ScheduleMode' => 'count',
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(45)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
+            'RemainingSessions' => 0, 'UsedSessions' => 5,
+            'Charge' => 5000, 'Pay' => 5000, 'Paid' => 1, 'Rate' => 100, 'Stop' => 0,
+            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
