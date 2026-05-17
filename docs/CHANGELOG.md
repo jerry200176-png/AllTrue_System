@@ -8,6 +8,22 @@
 
 ---
 
+## 2026-05-17 — feat(engagement): 遊戲化 XP 系統 + 帳務 AR 分析 + 家長回饋回覆
+
+- Added: 軍階 XP 系統 — 老師/主任雙軌 15 種 XP 事件（教學評量、出缺勤、代課處理等），每日上限 200 XP，自動防重複。API: `POST /api/v1/engagement/award-xp`
+- Added: 成就徽章系統 — 12 種徽章（初心者、七日勇者、百堂教師等），支援隱藏/顯示切換。API: `GET /api/v1/engagement/badges`
+- Added: 軍階門檻 API — 前端不再 hardcode 19 階門檻表，改由 `GET /api/v1/engagement/rank-thresholds` 取得
+- Added: AR 帳齡分析（30/60/90+ 天未收）— `GET /api/v1/finance/ar-aging`
+- Added: 會計期間關帳/重開帳 — `POST /api/v1/finance/periods/close` + `reopen`
+- Added: 多分校合併營收摘要 — `GET /api/v1/finance/consolidated-summary`
+- Added: 總帳匯出 CSV — `GET /api/v1/finance/gl-export?format=csv`
+- Added: 老師端家長回饋 inbox — `GET /api/v1/parent-feedback/for-teacher`（含未讀計數）
+- Added: 家長回饋回覆機制 — `POST /api/v1/parent-feedback/{id}/reply`
+- Added: 家長帳務查詢 — `GET /api/v1/parent/billing-history`
+- 開發備註：新增 3 個 migration（accounting_periods, parent_feedback_replies, user_badges），PR #411。Closes #387 #388 #389 #390 #391 #392 #393 #395 #396 #398 #399 #401 #402 #408 #409 #410
+
+---
+
 ## 2026-05-17 — fix(calendar): 代課／調課連續操作不再卡成「已滿衝堂」
 
 - 連續做「調課後再換代課老師」時，系統會自動把代課例外接回原本的調課 anchor；老師候選不再因為自己留下的舊資料被誤判「已滿／衝堂」，行事曆也能正確顯示代課老師。

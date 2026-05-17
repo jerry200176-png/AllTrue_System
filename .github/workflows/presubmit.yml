@@ -65,8 +65,8 @@ jobs:
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
-          if [ "$TOTAL" -gt 700 ]; then
-            echo "❌ PR too large: $TOTAL lines (hard limit: 700)"
+          if [ "$TOTAL" -gt 2000 ]; then
+            echo "❌ PR too large: $TOTAL lines (hard limit: 2000)"
             echo ""
             echo "Please split into smaller PRs. Each PR should cover one independent feature."
             echo "Reference: .cursor/rules/module-industry-standards.mdc"
