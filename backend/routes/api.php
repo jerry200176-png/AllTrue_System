@@ -202,6 +202,13 @@ Route::prefix('v1')->group(function () {
     Route::get('me/security', [AuthController::class, 'security']);
     Route::post('me/security/logout-others', [AuthController::class, 'logoutOtherSessions']);
 
+    // ── Engagement / Gamification ──
+    Route::get('engagement/rank-thresholds', [\App\Http\Controllers\EngagementController::class, 'rankThresholds']);
+    Route::get('engagement/my-progress', [\App\Http\Controllers\EngagementController::class, 'myProgress']);
+    Route::get('engagement/xp-history', [\App\Http\Controllers\EngagementController::class, 'xpHistory']);
+    Route::post('engagement/award-xp', [\App\Http\Controllers\EngagementController::class, 'awardXp']);
+    Route::get('engagement/event-types', [\App\Http\Controllers\EngagementController::class, 'eventTypes']);
+
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');
 
@@ -259,6 +266,11 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/revenue', [FinanceController::class, 'revenue']);
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
+        Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
+        Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);
+        Route::get('finance/periods', [\App\Http\Controllers\AccountingPeriodController::class, 'index']);
+        Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);
+        Route::post('finance/periods/reopen', [\App\Http\Controllers\AccountingPeriodController::class, 'reopen']);
         // finance/subject-units is intentionally registered in the role:director,teacher group below
         // so that teachers can also call this endpoint for their own hours view (FR-008).
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
@@ -474,6 +486,12 @@ Route::prefix('v1')->group(function () {
         Route::get('parent-feedback', [ParentFeedbackController::class, 'index']);
         Route::post('parent-feedback/{id}/mark-read', [ParentFeedbackController::class, 'markRead']);
     });
+
+    // ── Teacher/Director: 家長回饋 inbox + 回覆 (#409, #410) ─────────────────
+    Route::get('parent-feedback/for-teacher', [ParentFeedbackController::class, 'forTeacher']);
+    Route::post('parent-feedback/{id}/read', [ParentFeedbackController::class, 'markReadByTeacher']);
+    Route::post('parent-feedback/{id}/reply', [ParentFeedbackController::class, 'reply']);
+    Route::get('parent-feedback/{id}/replies', [ParentFeedbackController::class, 'replies']);
 
     // ── Director: payment message for LINE copy ──────────────────────────
     Route::middleware(['role:director', 'require_password_change'])->group(function () {
