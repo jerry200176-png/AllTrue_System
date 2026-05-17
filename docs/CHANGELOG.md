@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-17 — chore(docs): AI 處理 bug 回報前必查附件（§R51）
+
+- 開發備註：避免 AI 處理 in-app bug 時忽略 `bug_report_attachments`／reporter 歷史／跨分校紀錄，重複問使用者「請補截圖」（2026-05-17 實際發生於 #107）。新增 `AI_REGRESSION_LESSONS.md §R51` 與 `CHAT_BUG_SYSTEM.md §3.6` SOP。
+
+---
+
 ## 2026-05-16 — fix(calendar): 行事曆載入減少重複查詢
 
 - 課表／行事曆開啟與切週時會少抓不必要資料，降低載入等待時間，尤其是課程較多的分校。

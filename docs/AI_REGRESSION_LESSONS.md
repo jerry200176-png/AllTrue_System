@@ -566,6 +566,20 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R51. AI 處理 in-app bug 回報必須先讀 `bug_report_attachments` 與 reporter 全部歷史
+
+- **觸發情境**：2026-05-17 AI 處理 in-app bug #107 時只看 `bug_reports.description`，未查 `bug_report_attachments`，導致回覆裡叫使用者「請補一張截圖」——但其實 reporter 提交時就已經附了 2 張截圖（attachment id 75/76）。使用者必須再提醒 AI 一次，浪費往返。
+- **根因**：AI 預設用最少欄位推論，`bug_report_attachments` 是另一張表（不在 `bug_reports` 主 row 上），需要 JOIN 才看得到。同時也忘記檢查 reporter 的歷史回報（同性質的 #101 兩小時前才剛 resolved）與跨分校狀態（reporter 切分校會看不到舊單，#106 的根因）。
+- **強制規則**：處理任何 in-app bug 回報前一定要 SQL 撈：
+  1. `bug_report_attachments WHERE bug_report_id = ?` — 有附件就 SCP 下來看
+  2. `bug_reports WHERE reporter_user_id = ? ORDER BY id DESC` — 看是不是跨分校或同主題回歸
+  3. `bug_report_comments` / `bug_report_status_logs` 全部歷史 — 看之前怎麼回過、PR 修了什麼
+- **動作流程**：撈完資料 → 用 SQL 驗證假設 → 再留言／開 GitHub issue。**禁止**只憑程式碼推論就回覆使用者。
+- **強制更新**：如果發現附件，GitHub issue 要寫進 attachment id 與內容描述，方便下個 AI 不必重撈也能讀懂。
+- **詳細 SOP**：見 `docs/CHAT_BUG_SYSTEM.md` §3.6。
+
+---
+
 ### R45. 家長入口版本公告必須分眾（不可套用教職員全量 CHANGELOG 卡）
 
 **觸發情境**：2026-05-10 家長反映「版本更新太長、與家長無關」，且進度中心出現內部向文案。
@@ -597,7 +611,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive） |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（AI 處理回報前必查 attachments + reporter 歷史 + 跨分校）、`docs/CHAT_BUG_SYSTEM.md` §3.6 |
 
 ---
 
