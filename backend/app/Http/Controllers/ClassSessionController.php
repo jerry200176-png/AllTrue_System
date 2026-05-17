@@ -1509,32 +1509,39 @@ class ClassSessionController extends Controller
         // Pre-read + conflict check OUTSIDE the DB transaction so a 409 does not commit partial writes.
         // 注意：existingRescheduled / existingScheduled 仍需以「原日期」搜尋，因為目前資料庫中這兩列
         // 仍位於舊日期；合併路徑會在 transaction 內將它們遷移至新日期再套用代課老師。
-        $existingRescheduled = Schedule::where('student_course_id', $courseId)
+        $rescheduledCandidates = Schedule::where('student_course_id', $courseId)
             ->whereDate('schedule_date', $origSessionDate)
             ->where('status', 'rescheduled')
             ->orderByRaw('CASE WHEN teacher_id = ? THEN 0 ELSE 1 END', [$oldTeacherId])
             ->orderByDesc('id')
-            ->first();
-        $rescheduledIdForGuard = $existingRescheduled ? (int) $existingRescheduled->id : null;
+            ->get();
+        $existingRescheduled = null;
         $existingScheduled = null;
-        if ($rescheduledIdForGuard) {
-            // Prefer the scheduled row whose start_time matches the ClassSession's current time.
-            // This is necessary when the ClassSession was rescheduled after a substitute was set:
-            // the old substitute row (at the original time) and a new row (at the new time) may
-            // both exist. Picking by time ensures we operate on the correct one.
-            $existingScheduled = Schedule::where('student_course_id', $courseId)
+
+        foreach ($rescheduledCandidates as $candidate) {
+            $candidateId = (int) $candidate->id;
+            // Same course/date may contain multiple ClassSession rows. Only reuse the
+            // anchor whose paired substitute row matches this ClassSession start time.
+            $candidateScheduled = Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $origSessionDate)
                 ->where('status', 'scheduled')
-                ->where('original_schedule_id', $rescheduledIdForGuard)
-                ->where('start_time', $origStartTime)
+                ->where('original_schedule_id', $candidateId)
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$origStartTime])
                 ->first();
-            if (!$existingScheduled) {
-                $existingScheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $origSessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', $rescheduledIdForGuard)
-                    ->first();
+            if ($candidateScheduled) {
+                $existingRescheduled = $candidate;
+                $existingScheduled = $candidateScheduled;
+                break;
             }
+
+            if (substr((string) $candidate->start_time, 0, 5) === $origStartTime) {
+                $existingRescheduled = $candidate;
+                break;
+            }
+        }
+
+        if ($existingRescheduled && !$existingScheduled) {
+            $rescheduledIdForGuard = (int) $existingRescheduled->id;
             if (!$existingScheduled) {
                 // Historical repair path (#364/#108): chained reschedule -> substitute used to
                 // leave a substitute scheduled row with NULL original_schedule_id. Treat it as
@@ -1827,6 +1834,7 @@ class ClassSessionController extends Controller
             $existingRescheduledRow = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'rescheduled')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                 ->orderByRaw('CASE WHEN teacher_id = ? THEN 0 ELSE 1 END', [$oldTeacherId])
                 ->orderByDesc('id')
                 ->first();
@@ -1838,6 +1846,7 @@ class ClassSessionController extends Controller
                     ->where('student_course_id', $courseId)
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                     ->delete();
 
                 $rescheduled = Schedule::create([
@@ -1876,14 +1885,7 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
                     ->where('original_schedule_id', $rescheduledId)
-                    ->where('start_time', $startTime)
-                    ->first();
-            }
-            if (!$existingScheduledRow) {
-                $existingScheduledRow = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', $rescheduledId)
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                     ->first();
             }
 
@@ -1907,6 +1909,7 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
                     ->where('original_schedule_id', $rescheduledId)
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                     ->where('id', '!=', $scheduledId)
                     ->delete();
             } else {
@@ -1934,6 +1937,7 @@ class ClassSessionController extends Controller
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'scheduled')
                 ->whereNull('original_schedule_id')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                 ->where('teacher_id', '!=', $oldTeacherId)
                 ->where('id', '!=', $scheduledId)
                 ->delete();
@@ -2182,6 +2186,7 @@ class ClassSessionController extends Controller
             $rescheduled = $existingRescheduled ?: Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'rescheduled')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                 ->first();
 
             $scheduled = $existingScheduled;
@@ -2190,14 +2195,7 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
                     ->where('original_schedule_id', (int) $rescheduled->id)
-                    ->where('start_time', $startTime)
-                    ->first();
-            }
-            if (!$scheduled && $rescheduled) {
-                $scheduled = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'scheduled')
-                    ->where('original_schedule_id', (int) $rescheduled->id)
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                     ->first();
             }
 
@@ -2228,6 +2226,7 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'scheduled')
                     ->whereIn('original_schedule_id', $anchorIds)
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
                     ->delete();
             } elseif ($scheduled) {
                 $scheduledDeleted += Schedule::where('id', (int) $scheduled->id)->delete();
@@ -2239,6 +2238,12 @@ class ClassSessionController extends Controller
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'rescheduled')
                     ->whereIn('id', $anchorIds)
+                    ->whereNotExists(function ($sub) {
+                        $sub->select(DB::raw(1))
+                            ->from('schedules as sibling')
+                            ->whereColumn('sibling.original_schedule_id', 'schedules.id')
+                            ->where('sibling.status', 'scheduled');
+                    })
                     ->delete();
             } elseif ($rescheduled) {
                 $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
