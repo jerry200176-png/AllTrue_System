@@ -885,6 +885,165 @@ class BugReportApiTest extends TestCase
         ])->assertStatus(422);
     }
 
+    // ── Cross-branch reporter visibility (#378) ──────────────────
+
+    /**
+     * Reporter belonging to multiple campuses sees ALL their own reports
+     * regardless of currently-selected branch_id (industry norm: GitHub
+     * Issues / Linear / ServiceNow / Jira all let the requester see their
+     * own filings across workspaces).
+     */
+    public function test_reporter_sees_own_bugs_across_all_their_campuses(): void
+    {
+        [$tokenMulti, $userMulti] = $this->createUserToken([1, 2, 3], 'multi-camp@test.com', 'T');
+
+        $bug1 = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userMulti->id,
+            'title' => 'Filed at campus 1', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+        $bug2 = BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userMulti->id,
+            'title' => 'Filed at campus 2', 'description' => 'D', 'severity' => 'low', 'status' => 'resolved',
+        ]);
+        $bug3 = BugReport::create([
+            'CampusID' => 3, 'reporter_user_id' => $userMulti->id,
+            'title' => 'Filed at campus 3', 'description' => 'D', 'severity' => 'low', 'status' => 'closed',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenMulti}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1');
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+
+        $this->assertContains('Filed at campus 1', $titles, 'Reporter must see own bug from current branch');
+        $this->assertContains('Filed at campus 2', $titles, 'Reporter must see own bug from another branch they belong to');
+        $this->assertContains('Filed at campus 3', $titles, 'Reporter must see own bug from a third branch they belong to');
+    }
+
+    /**
+     * Reporter still cannot see other people's bugs even within own campuses.
+     * Regression guard for `reporter_user_id` filter — must NOT be relaxed.
+     */
+    public function test_reporter_cross_branch_does_not_leak_other_users_bugs(): void
+    {
+        [$tokenSelf, $userSelf] = $this->createUserToken([1, 2], 'self-multi@test.com', 'T');
+        [, $userOther] = $this->createUserToken([1, 2], 'other-multi@test.com', 'T');
+
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userOther->id,
+            'title' => 'Other user bug at campus 1', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+        BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userOther->id,
+            'title' => 'Other user bug at campus 2', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+        BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userSelf->id,
+            'title' => 'Mine at campus 1', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenSelf}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1');
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+
+        $this->assertContains('Mine at campus 1', $titles);
+        $this->assertNotContains('Other user bug at campus 1', $titles);
+        $this->assertNotContains('Other user bug at campus 2', $titles);
+    }
+
+    /**
+     * Reporter cannot see bug from a campus they do NOT belong to,
+     * even if branch_id query param mentions only one of theirs.
+     * Regression guard for analyst/teacher cross-tenant boundary.
+     */
+    public function test_reporter_does_not_see_own_bug_from_unbound_campus(): void
+    {
+        // user belongs to campus 1 only
+        [$tokenSingle, $userSingle] = $this->createUserToken([1], 'single-camp@test.com', 'T');
+
+        // Pretend an old report exists in campus 99 (e.g. they used to belong, but were removed)
+        BugReport::create([
+            'CampusID' => 99, 'reporter_user_id' => $userSingle->id,
+            'title' => 'Old bug from removed campus', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenSingle}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs?branch_id=1');
+
+        $res->assertOk();
+        $titles = collect($res->json('data'))->pluck('title')->all();
+        $this->assertNotContains('Old bug from removed campus', $titles, 'Reporter must NOT see bugs from campuses they no longer belong to');
+    }
+
+    /**
+     * Reporter can open detail of own bug filed at a different campus,
+     * as long as they still belong to that campus today.
+     */
+    public function test_reporter_can_open_own_bug_detail_from_another_branch(): void
+    {
+        [$tokenMulti, $userMulti] = $this->createUserToken([1, 2], 'detail-multi@test.com', 'T');
+
+        $bug = BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userMulti->id,
+            'title' => 'Filed at campus 2', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenMulti}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/bugs/{$bug->id}?branch_id=1");
+
+        $res->assertOk();
+        $this->assertEquals('Filed at campus 2', $res->json('title'));
+    }
+
+    /**
+     * unread-badge counts replies/status changes across reporter's all branches,
+     * not just current branch_id.
+     */
+    public function test_reporter_unread_badge_counts_replies_across_branches(): void
+    {
+        [$tokenSelf, $userSelf] = $this->createUserToken([1, 2], 'badge-multi@test.com', 'T');
+        [, $admin] = $this->createUserToken([1, 2], 'badge-admin@test.com', 'S');
+
+        // Two bugs, one per branch
+        $bug1 = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $userSelf->id,
+            'title' => 'B1', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+        $bug2 = BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userSelf->id,
+            'title' => 'B2', 'description' => 'D', 'severity' => 'low', 'status' => 'new',
+        ]);
+
+        // Admin replies on both
+        \App\Models\BugReportComment::create([
+            'bug_report_id' => $bug1->id, 'author_user_id' => $admin->id,
+            'body' => 'reply on b1', 'is_internal_note' => false,
+        ]);
+        \App\Models\BugReportComment::create([
+            'bug_report_id' => $bug2->id, 'author_user_id' => $admin->id,
+            'body' => 'reply on b2', 'is_internal_note' => false,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenSelf}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/bugs/unread-badge?branch_id=1');
+
+        $res->assertOk();
+        $this->assertEquals(2, $res->json('unread_count'), 'Badge must count both replies even when on branch 1');
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array

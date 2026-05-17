@@ -235,6 +235,27 @@ class BugReportService
     }
 
     /**
+     * #378: reporter mode — bug 屬於 reporter 自己，且 bug 所在分校仍是 reporter
+     * 隸屬的某個分校。允許 reporter 跨 branch_id 開自己的舊單。
+     *
+     * 不會放過：別人的單、reporter 已離開的分校的單。
+     */
+    public static function belongsToCampusForReporter(int $bugId, ?int $reporterUserId, array $reporterCampusIds): bool
+    {
+        if (!$reporterUserId) {
+            return false;
+        }
+        if (empty($reporterCampusIds)) {
+            // reporter 沒有任何分校（理論上不該發生），保守拒絕
+            return false;
+        }
+        return BugReport::where('id', $bugId)
+            ->where('reporter_user_id', $reporterUserId)
+            ->whereIn('CampusID', $reporterCampusIds)
+            ->exists();
+    }
+
+    /**
      * Reporter opened bug detail — clears unread badge for this bug (replies + status changes).
      */
     public static function markBugRead(int $userId, int $bugReportId): void
