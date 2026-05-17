@@ -1032,6 +1032,41 @@ class ParentPortalController extends Controller
         ];
     }
 
+    public function billingHistory(Request $request)
+    {
+        $session = $this->resolveSession($request);
+        if (!$session) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $student = Student::find($session->StudentID);
+        if (!$student) {
+            return response()->json(['message' => 'Student not found'], 404);
+        }
+
+        $classes = StudentClass::where('StudentID', $student->id)
+            ->where('Charge', '>', 0)
+            ->orderByDesc('StartDate')
+            ->get();
+
+        $records = $classes->map(function ($course) {
+            $charge = (int) ($course->Charge ?? 0);
+            $paid = (int) ($course->Pay ?? 0);
+            $isPaid = $paid >= $charge;
+
+            return [
+                'student_class_id' => (int) $course->ID,
+                'subject' => $course->displaySubjectName(),
+                'period' => $course->StartDate ? substr($course->StartDate, 0, 7) : null,
+                'charge' => $charge,
+                'paid' => min($paid, $charge),
+                'status' => $isPaid ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid'),
+            ];
+        })->values();
+
+        return response()->json(['records' => $records]);
+    }
+
     private function resolveSession(Request $request): ?ParentSession
     {
         $auth = $request->header('Authorization');

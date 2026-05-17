@@ -1902,6 +1902,246 @@ class FinanceController extends Controller
         return response()->json(['duplicates' => $results, 'count' => count($results)]);
     }
 
+    /**
+     * GET /api/v1/finance/gl-export
+     * General ledger export as CSV for accountants.
+     */
+    public function glExport(Request $request)
+    {
+        $campusIds = $this->getCampusIds($request);
+        $start = $request->input('start', now()->startOfMonth()->toDateString());
+        $end = $request->input('end', now()->endOfMonth()->toDateString());
+
+        $query = StudentClass::with('student')
+            ->where('Stop', 0)
+            ->where('Charge', '>', 0);
+
+        if (!empty($campusIds)) {
+            $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
+        }
+
+        if ($request->filled('start')) {
+            $query->where('StartDate', '>=', $start);
+        }
+        if ($request->filled('end')) {
+            $query->where('StartDate', '<=', $end);
+        }
+
+        $courses = $query->orderBy('StartDate')->get();
+
+        $rows = [];
+        foreach ($courses as $course) {
+            $charge = (int) ($course->Charge ?? 0);
+            $paid = (int) ($course->Pay ?? 0);
+            $studentName = $course->student->name ?? '';
+            $startDate = $course->StartDate ? substr($course->StartDate, 0, 10) : '';
+
+            if ($charge > 0) {
+                $rows[] = [
+                    'date' => $startDate,
+                    'account_code' => '1101',
+                    'account_name' => '應收學費',
+                    'debit' => $charge,
+                    'credit' => 0,
+                    'memo' => $studentName . ' 課程費用',
+                    'student' => $studentName,
+                ];
+            }
+            if ($paid > 0) {
+                $rows[] = [
+                    'date' => $course->PayDate ? substr($course->PayDate, 0, 10) : $startDate,
+                    'account_code' => '4101',
+                    'account_name' => '學費收入',
+                    'debit' => 0,
+                    'credit' => $paid,
+                    'memo' => $studentName . ' 繳費',
+                    'student' => $studentName,
+                ];
+            }
+        }
+
+        if ($request->input('format') === 'csv') {
+            $callback = function () use ($rows) {
+                $out = fopen('php://output', 'w');
+                fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+                fputcsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $row['date'], $row['account_code'], $row['account_name'],
+                        $row['debit'] ?: '', $row['credit'] ?: '',
+                        $row['memo'], $row['student'],
+                    ]);
+                }
+                fclose($out);
+            };
+
+            return new \Symfony\Component\HttpFoundation\StreamedResponse($callback, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="gl_export_' . $start . '_' . $end . '.csv"',
+            ]);
+        }
+
+        return response()->json([
+            'start' => $start,
+            'end' => $end,
+            'entries' => $rows,
+            'totals' => [
+                'debit' => array_sum(array_column($rows, 'debit')),
+                'credit' => array_sum(array_column($rows, 'credit')),
+            ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/finance/ar-aging
+     * Accounts Receivable aging analysis (30/60/90+ day buckets).
+     */
+    public function arAging(Request $request)
+    {
+        $campusIds = $this->getCampusIds($request);
+        $asOf = $request->filled('as_of')
+            ? \Carbon\Carbon::parse($request->input('as_of'))
+            : \Carbon\Carbon::today();
+
+        $query = StudentClass::with('student')
+            ->where('Stop', 0)
+            ->whereRaw('CAST(Charge AS SIGNED) > CAST(COALESCE(Pay, 0) AS SIGNED)');
+
+        if (!empty($campusIds)) {
+            $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
+        }
+
+        $courses = $query->get();
+
+        $students = [];
+        foreach ($courses as $course) {
+            $studentId = (int) $course->StudentID;
+            $charge = (int) ($course->Charge ?? 0);
+            $paid = (int) ($course->Pay ?? 0);
+            $outstanding = max(0, $charge - $paid);
+            if ($outstanding <= 0) {
+                continue;
+            }
+
+            $startDate = $course->StartDate
+                ? \Carbon\Carbon::parse($course->StartDate)
+                : $asOf;
+            $daysOverdue = max(0, $startDate->diffInDays($asOf));
+
+            if (!isset($students[$studentId])) {
+                $students[$studentId] = [
+                    'student_id' => $studentId,
+                    'name' => (string) ($course->student->name ?? ''),
+                    'current' => 0,
+                    'thirty' => 0,
+                    'sixty' => 0,
+                    'ninety_plus' => 0,
+                    'total' => 0,
+                ];
+            }
+
+            if ($daysOverdue < 30) {
+                $students[$studentId]['current'] += $outstanding;
+            } elseif ($daysOverdue < 60) {
+                $students[$studentId]['thirty'] += $outstanding;
+            } elseif ($daysOverdue < 90) {
+                $students[$studentId]['sixty'] += $outstanding;
+            } else {
+                $students[$studentId]['ninety_plus'] += $outstanding;
+            }
+            $students[$studentId]['total'] += $outstanding;
+        }
+
+        $rows = array_values($students);
+        usort($rows, fn ($a, $b) => $b['total'] - $a['total']);
+
+        $totals = [
+            'current' => array_sum(array_column($rows, 'current')),
+            'thirty' => array_sum(array_column($rows, 'thirty')),
+            'sixty' => array_sum(array_column($rows, 'sixty')),
+            'ninety_plus' => array_sum(array_column($rows, 'ninety_plus')),
+            'grand_total' => array_sum(array_column($rows, 'total')),
+        ];
+
+        return response()->json([
+            'as_of' => $asOf->toDateString(),
+            'buckets' => ['current', '30', '60', '90+'],
+            'students' => $rows,
+            'totals' => $totals,
+        ]);
+    }
+
+    /**
+     * GET /api/v1/finance/consolidated-summary
+     * Multi-branch revenue consolidation (super_admin only).
+     */
+    public function consolidatedSummary(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        $year = (int) $request->input('year', now()->year);
+        $month = (int) $request->input('month', now()->month);
+
+        $startOfMonth = \Carbon\Carbon::create($year, $month, 1)->startOfMonth();
+        $endOfMonth = $startOfMonth->copy()->endOfMonth();
+
+        $campuses = \App\Models\Campus::all();
+        $branches = [];
+
+        foreach ($campuses as $campus) {
+            $studentIds = Student::where('CampusID', $campus->id)->pluck('id')->all();
+            if (empty($studentIds)) {
+                $branches[] = [
+                    'branch_id' => (int) $campus->id,
+                    'name' => (string) $campus->name,
+                    'receivable' => 0,
+                    'collected' => 0,
+                    'rate' => 0,
+                    'yoy_change' => null,
+                ];
+                continue;
+            }
+
+            $receivable = (int) StudentClass::whereIn('StudentID', $studentIds)
+                ->where('Stop', 0)
+                ->sum('Charge');
+            $collected = (int) StudentClass::whereIn('StudentID', $studentIds)
+                ->where('Stop', 0)
+                ->sum('Pay');
+
+            $rate = $receivable > 0 ? round(($collected / $receivable) * 100, 1) : 0;
+
+            if ($role === 'super_admin') {
+                $branches[] = [
+                    'branch_id' => (int) $campus->id,
+                    'name' => (string) $campus->name,
+                    'receivable' => $receivable,
+                    'collected' => $collected,
+                    'rate' => $rate,
+                    'yoy_change' => null,
+                ];
+            }
+        }
+
+        if ($role !== 'super_admin') {
+            $campusIds = $request->attributes->get('auth_campus_ids', []);
+            $branches = array_values(array_filter($branches, fn ($b) => in_array($b['branch_id'], $campusIds, true)));
+        }
+
+        $totalReceivable = array_sum(array_column($branches, 'receivable'));
+        $totalCollected = array_sum(array_column($branches, 'collected'));
+
+        return response()->json([
+            'year' => $year,
+            'month' => $month,
+            'branches' => $branches,
+            'totals' => [
+                'receivable' => $totalReceivable,
+                'collected' => $totalCollected,
+                'rate' => $totalReceivable > 0 ? round(($totalCollected / $totalReceivable) * 100, 1) : 0,
+            ],
+        ]);
+    }
+
     private function getCampusIds(Request $request): array
     {
         $role = $request->attributes->get('auth_role');

@@ -1,14 +1,6 @@
 /**
- * Rank thresholds — MUST stay aligned with backend `App\Support\EngagementRankProgression`.
- *
- * 中華民國正式軍階（共 19 可解鎖階）：
- *   士兵：二等兵 一等兵 上等兵
- *   士官：下士 中士 上士 三等士官長 二等士官長 一等士官長
- *   軍官：少尉 中尉 上尉 少校 中校 上校
- *   將官：少將 中將 上將 一級上將
- *   super_admin 固定：五星上將（不在此表）
- *
- * Follow-up: expose next-tier XP via API to avoid drift (see docs/TECH_DEBT.md).
+ * Rank thresholds — fetched from backend API `GET /api/v1/engagement/rank-thresholds`.
+ * Fallback hardcoded values used until first API fetch succeeds.
  */
 
 const TEACHER_MIN_XP = {
@@ -55,8 +47,43 @@ const STAFF_MIN_XP = {
   general_first_class:      3480,
 };
 
+let _cachedTeacher = null;
+let _cachedStaff = null;
+let _fetchPromise = null;
+
+export function setCachedThresholds(teacher, staff) {
+  _cachedTeacher = teacher;
+  _cachedStaff = staff;
+}
+
+export async function fetchRankThresholds(apiBase) {
+  if (_cachedTeacher && _cachedStaff) return;
+  if (_fetchPromise) return _fetchPromise;
+  _fetchPromise = (async () => {
+    try {
+      const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+      const token = session.access_token || '';
+      const res = await fetch(`${apiBase}/engagement/rank-thresholds`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.teacher && data.staff) {
+          _cachedTeacher = {};
+          _cachedStaff = {};
+          for (const entry of data.teacher) _cachedTeacher[entry.key] = entry.min_xp;
+          for (const entry of data.staff) _cachedStaff[entry.key] = entry.min_xp;
+        }
+      }
+    } catch { /* use fallback */ }
+    _fetchPromise = null;
+  })();
+  return _fetchPromise;
+}
+
 function tableForTrack(roleTrack) {
-  return roleTrack === 'staff' ? STAFF_MIN_XP : TEACHER_MIN_XP;
+  if (roleTrack === 'staff') return _cachedStaff || STAFF_MIN_XP;
+  return _cachedTeacher || TEACHER_MIN_XP;
 }
 
 /** @param {number} xp @param {'teacher'|'staff'} roleTrack */

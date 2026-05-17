@@ -71,4 +71,35 @@ final class EngagementRankProgression
 
         return $selected;
     }
+
+    /** @return array{teacher: array<string,int>, staff: array<string,int>} */
+    public static function allThresholds(): array
+    {
+        $labels = \App\Support\UserEngagementPresenter::allRankLabels();
+
+        $format = function (array $table) use ($labels): array {
+            $result = [];
+            $level = 1;
+            foreach ($table as $key => $minXp) {
+                $result[] = [
+                    'level' => $level++,
+                    'key' => $key,
+                    'min_xp' => $minXp,
+                    'label' => $labels[$key] ?? $key,
+                ];
+            }
+            return $result;
+        };
+
+        return [
+            'teacher' => $format(self::TEACHER_MIN_XP),
+            'staff' => $format(self::STAFF_MIN_XP),
+        ];
+    }
+
+    /** @return array<string,int> */
+    public static function thresholdsForTrack(string $roleTrack): array
+    {
+        return $roleTrack === 'staff' ? self::STAFF_MIN_XP : self::TEACHER_MIN_XP;
+    }
 }

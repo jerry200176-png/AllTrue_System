@@ -46,6 +46,12 @@ final class UserEngagementPresenter
         return self::RANK_LABELS_ZH[$rankKey] ?? self::RANK_LABELS_ZH[self::DEFAULT_RANK_KEY];
     }
 
+    /** @return array<string, string> */
+    public static function allRankLabels(): array
+    {
+        return self::RANK_LABELS_ZH;
+    }
+
     public static function isKnownRankKey(string $rankKey): bool
     {
         return isset(self::RANK_LABELS_ZH[$rankKey]);
