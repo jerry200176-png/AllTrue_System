@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-05-17 — feat(finance): 自動催繳工作流 + 銀行入帳勾稽
+
+- Added: 自動催繳規則引擎 — 依 `DIRECTOR_PAYMENT_ALERT_RULES.md` 規則自動評估未繳/低堂/逾期，每學生每週上限 3 則，cooldown 7~30 天。API: `POST /api/v1/dunning/trigger`，CLI: `php artisan dunning:run`
+- Added: 催繳歷史與稽核 — `GET /api/v1/dunning/history`，`dunning_events` table 完整記錄
+- Added: 銀行對帳 — CSV 匯入銀行流水（`POST /api/v1/bank-reconciliation/import`），自動建議匹配（日期±3天+金額），手動勾稽（`POST /{id}/reconcile`），防重複勾稽
+- 開發備註：新增 2 個 migration（dunning_events, bank_transactions），PR #413。Closes #400, #397
+
+---
+
 ## 2026-05-17 — feat(engagement): 遊戲化 XP 系統 + 帳務 AR 分析 + 家長回饋回覆
 
 - Added: 軍階 XP 系統 — 老師/主任雙軌 15 種 XP 事件（教學評量、出缺勤、代課處理等），每日上限 200 XP，自動防重複。API: `POST /api/v1/engagement/award-xp`
