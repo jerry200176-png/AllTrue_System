@@ -463,12 +463,23 @@
           </svg>
         </div>
         <div class="lr-empty-title">
-          <template v-if="hasActiveFilters">找不到符合條件的評量記錄</template>
+          <template v-if="isTeacher && teacherPriorityFilter === 'unfilled' && weekTotalMissingCount > 0">
+            本週還有 {{ weekTotalMissingCount }} 堂尚未建立評量草稿
+          </template>
+          <template v-else-if="hasActiveFilters">找不到符合條件的評量記錄</template>
           <template v-else-if="isUsingDefaultWindow">近 {{ defaultWindowDays }} 天無評量記錄</template>
           <template v-else-if="isDirectorRole && reviewTab === 'pending'">目前沒有待審評量</template>
           <template v-else>尚無評量資料</template>
         </div>
-        <div v-if="hasActiveFilters" class="lr-empty-desc">試著調整日期範圍、科目或清除篩選條件</div>
+        <div
+          v-if="isTeacher && teacherPriorityFilter === 'unfilled' && weekTotalMissingCount > 0"
+          class="lr-empty-desc"
+        >
+          這些堂次因為還沒填寫過評量，所以列表上看不到記錄。
+          <br>
+          請從「<strong>今日待辦</strong>」或「<strong>行事曆</strong>」直接點該堂次填寫，系統會自動建立評量草稿。
+        </div>
+        <div v-else-if="hasActiveFilters" class="lr-empty-desc">試著調整日期範圍、科目或清除篩選條件</div>
         <div v-else-if="isUsingDefaultWindow" class="lr-empty-desc">若要查看更早的記錄，請點擊下方按鈕。</div>
         <button v-if="hasActiveFilters" class="primary lr-empty-cta" @click="clearAllFilters">清除篩選條件</button>
         <button v-else-if="isUsingDefaultWindow" class="primary lr-empty-cta" @click="clearDefaultWindow">查看全部歷史</button>

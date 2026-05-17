@@ -16,6 +16,13 @@
 
 ---
 
+## 2026-05-17 — fix(learning): 「未填」KPI 與列表對不上時顯示明確指示
+
+- 老師點「未填優先」如果列表是空的、但右上角 KPI 顯示還有 N 堂未填，會出現新文案告訴你：「這些堂次還沒建立評量草稿，請從『今日待辦』或『行事曆』直接點該堂次填寫」。不再讓人對著空白列表困惑。
+- 開發備註：`LearningRecordsPage.vue` 空狀態新增 isTeacher + teacherPriorityFilter='unfilled' + weekTotalMissingCount>0 分支；短期 UX 緩解，不改 KPI 與列表的資料源（KPI 用 buildEvents 堂次層級，列表用 LearningRecord 表）。長期方案另案規劃。覆蓋 #377、in-app bug #107 後續。
+
+---
+
 ## 2026-05-17 — chore(docs): AI 處理 bug 回報前必查附件（§R51）
 
 - 開發備註：避免 AI 處理 in-app bug 時忽略 `bug_report_attachments`／reporter 歷史／跨分校紀錄，重複問使用者「請補截圖」（2026-05-17 實際發生於 #107）。新增 `AI_REGRESSION_LESSONS.md §R51` 與 `CHAT_BUG_SYSTEM.md §3.6` SOP。
