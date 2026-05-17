@@ -1903,6 +1903,96 @@ class FinanceController extends Controller
     }
 
     /**
+     * GET /api/v1/finance/gl-export
+     * General ledger export as CSV for accountants.
+     */
+    public function glExport(Request $request)
+    {
+        $campusIds = $this->getCampusIds($request);
+        $start = $request->input('start', now()->startOfMonth()->toDateString());
+        $end = $request->input('end', now()->endOfMonth()->toDateString());
+
+        $query = StudentClass::with('student')
+            ->where('Stop', 0)
+            ->where('Charge', '>', 0);
+
+        if (!empty($campusIds)) {
+            $query->whereHas('student', fn ($q) => $q->whereIn('CampusID', $campusIds));
+        }
+
+        if ($request->filled('start')) {
+            $query->where('StartDate', '>=', $start);
+        }
+        if ($request->filled('end')) {
+            $query->where('StartDate', '<=', $end);
+        }
+
+        $courses = $query->orderBy('StartDate')->get();
+
+        $rows = [];
+        foreach ($courses as $course) {
+            $charge = (int) ($course->Charge ?? 0);
+            $paid = (int) ($course->Pay ?? 0);
+            $studentName = $course->student->name ?? '';
+            $startDate = $course->StartDate ? substr($course->StartDate, 0, 10) : '';
+
+            if ($charge > 0) {
+                $rows[] = [
+                    'date' => $startDate,
+                    'account_code' => '1101',
+                    'account_name' => '應收學費',
+                    'debit' => $charge,
+                    'credit' => 0,
+                    'memo' => $studentName . ' 課程費用',
+                    'student' => $studentName,
+                ];
+            }
+            if ($paid > 0) {
+                $rows[] = [
+                    'date' => $course->PayDate ? substr($course->PayDate, 0, 10) : $startDate,
+                    'account_code' => '4101',
+                    'account_name' => '學費收入',
+                    'debit' => 0,
+                    'credit' => $paid,
+                    'memo' => $studentName . ' 繳費',
+                    'student' => $studentName,
+                ];
+            }
+        }
+
+        if ($request->input('format') === 'csv') {
+            $callback = function () use ($rows) {
+                $out = fopen('php://output', 'w');
+                fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+                fputcsv($out, ['日期', '科目代碼', '科目名稱', '借方', '貸方', '摘要', '學生']);
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $row['date'], $row['account_code'], $row['account_name'],
+                        $row['debit'] ?: '', $row['credit'] ?: '',
+                        $row['memo'], $row['student'],
+                    ]);
+                }
+                fclose($out);
+            };
+
+            return new \Symfony\Component\HttpFoundation\StreamedResponse($callback, 200, [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="gl_export_' . $start . '_' . $end . '.csv"',
+            ]);
+        }
+
+        return response()->json([
+            'start' => $start,
+            'end' => $end,
+            'entries' => $rows,
+            'totals' => [
+                'debit' => array_sum(array_column($rows, 'debit')),
+                'credit' => array_sum(array_column($rows, 'credit')),
+            ],
+        ]);
+    }
+
+    /**
      * GET /api/v1/finance/ar-aging
      * Accounts Receivable aging analysis (30/60/90+ day buckets).
      */

@@ -208,6 +208,8 @@ Route::prefix('v1')->group(function () {
     Route::get('engagement/xp-history', [\App\Http\Controllers\EngagementController::class, 'xpHistory']);
     Route::post('engagement/award-xp', [\App\Http\Controllers\EngagementController::class, 'awardXp']);
     Route::get('engagement/event-types', [\App\Http\Controllers\EngagementController::class, 'eventTypes']);
+    Route::get('engagement/badges', [\App\Http\Controllers\EngagementController::class, 'badges']);
+    Route::post('engagement/badges/{key}/toggle-visibility', [\App\Http\Controllers\EngagementController::class, 'toggleBadgeVisibility']);
 
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');
@@ -267,6 +269,7 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
         Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
         Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
+        Route::get('finance/gl-export', [FinanceController::class, 'glExport']);
         Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);
         Route::get('finance/periods', [\App\Http\Controllers\AccountingPeriodController::class, 'index']);
         Route::post('finance/periods/close', [\App\Http\Controllers\AccountingPeriodController::class, 'close']);

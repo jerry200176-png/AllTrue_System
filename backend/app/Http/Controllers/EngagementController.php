@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\UserBadge;
 use App\Models\UserEngagement;
 use App\Models\UserEngagementXpEvent;
 use App\Services\EngagementXpService;
+use App\Support\BadgeDefinitions;
 use App\Support\EngagementRankProgression;
 use App\Support\UserEngagementPresenter;
 use Illuminate\Http\JsonResponse;
@@ -97,5 +99,47 @@ class EngagementController extends Controller
             ];
         }
         return response()->json(['event_types' => $types]);
+    }
+
+    public function badges(Request $request): JsonResponse
+    {
+        $user = $request->attributes->get('auth_user');
+        $userId = (int) $user->id;
+
+        if (!Schema::hasTable('user_badges')) {
+            return response()->json(['earned' => [], 'available' => []]);
+        }
+
+        $earned = UserBadge::where('user_id', $userId)->get();
+        $earnedKeys = $earned->pluck('badge_key')->all();
+
+        $earnedList = $earned->map(fn ($b) => array_merge(
+            BadgeDefinitions::get($b->badge_key) ?? ['title' => $b->badge_key, 'desc' => '', 'icon' => '', 'category' => 'unknown'],
+            ['key' => $b->badge_key, 'hidden' => (bool) $b->hidden, 'earned_at' => $b->created_at?->toIso8601String()]
+        ))->values();
+
+        $available = collect(BadgeDefinitions::ALL)
+            ->filter(fn ($def, $key) => !in_array($key, $earnedKeys, true))
+            ->map(fn ($def, $key) => array_merge($def, ['key' => $key]))
+            ->values();
+
+        return response()->json(['earned' => $earnedList, 'available' => $available]);
+    }
+
+    public function toggleBadgeVisibility(Request $request, string $key): JsonResponse
+    {
+        $user = $request->attributes->get('auth_user');
+
+        if (!Schema::hasTable('user_badges')) {
+            return response()->json(['message' => 'not available'], 503);
+        }
+
+        $badge = UserBadge::where('user_id', (int) $user->id)->where('badge_key', $key)->first();
+        if (!$badge) {
+            return response()->json(['message' => 'Badge not earned'], 404);
+        }
+
+        $badge->update(['hidden' => !$badge->hidden]);
+        return response()->json(['hidden' => (bool) $badge->hidden]);
     }
 }
