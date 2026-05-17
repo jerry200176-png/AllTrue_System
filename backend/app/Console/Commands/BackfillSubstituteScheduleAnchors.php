@@ -29,7 +29,7 @@ class BackfillSubstituteScheduleAnchors extends Command
         $query = DB::table('schedules as s')
             ->join('StudentClass as sc', 'sc.ID', '=', 's.student_course_id')
             ->select([
-                's.id',
+                's.id as id',
                 's.student_course_id',
                 's.teacher_id',
                 's.schedule_date',
@@ -120,7 +120,7 @@ class BackfillSubstituteScheduleAnchors extends Command
                     $duplicatesDeleted += (int) $ghostQuery->delete();
                 }
             }
-        }, 's.id');
+        }, 's.id', 'id');
 
         $mode = $apply ? 'APPLY' : 'DRY-RUN';
         $this->info("[{$mode}] checked={$checked}, repairable={$repairable}, updated={$updated}, duplicates_deleted={$duplicatesDeleted}, skipped_no_anchor={$skippedNoAnchor}");
