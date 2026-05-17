@@ -873,6 +873,7 @@ import {
   previewTeacherLeaves,
   batchSubstitute as batchSubstituteApi,
 } from '../lib/substituteApi.js';
+import { pickBestSessionRow, resolveSessionIdForSubstitute } from '../lib/classSessionPick.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
@@ -1465,24 +1466,6 @@ const ATTENDED_STATUSES = new Set(['attended', 'completed', 'late', 'absent']);
 
 function rollCallSessionKey(course) {
   return String(course.is_exception ? (course.student_course_id ?? course.id) : course.id);
-}
-
-const SESSION_STATUS_PRIORITY = {
-  attended: 0, completed: 0, late: 0, absent: 0,
-  scheduled: 1,
-  leave: 2, leave_adjusted: 2, excused: 2,
-  cancelled: 3,
-};
-
-function pickBestSessionRow(candidates) {
-  if (!candidates.length) return null;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.slice().sort((a, b) => {
-    const pa = SESSION_STATUS_PRIORITY[String(a.status || '').toLowerCase()] ?? 2;
-    const pb = SESSION_STATUS_PRIORITY[String(b.status || '').toLowerCase()] ?? 2;
-    if (pa !== pb) return pa - pb;
-    return (Number(b.id) || 0) - (Number(a.id) || 0);
-  })[0];
 }
 
 function findSessionRowForCell(course, ymd) {
@@ -2875,10 +2858,8 @@ const openSubstituteFromDrag = (course, dateStr, dropTeacherId) => {
   };
   if (baseId && sessionDatesByCourseId.value) {
     const sessions = sessionDatesByCourseId.value[String(baseId)] || [];
-    const ymd = String(dateStr).slice(0, 10);
-    const candidates = sessions.filter((s) => String(s.session_date || s.SessionDate || '').slice(0, 10) === ymd);
-    const match = pickBestSessionRow(candidates);
-    if (match) substituteForm.value.session_id = match.id;
+    const sid = resolveSessionIdForSubstitute(sessions, dateStr, course.start_time);
+    if (sid) substituteForm.value.session_id = sid;
   }
   showSubstituteModal.value = true;
 };
@@ -2903,9 +2884,8 @@ const openSubstituteModal = () => {
   const courseId = editingCourseId.value;
   if (courseId && sessionDatesByCourseId.value) {
     const sessions = sessionDatesByCourseId.value[String(courseId)] || [];
-    const candidates = sessions.filter(s => String(s.session_date || s.SessionDate || '').slice(0, 10) === exactDate);
-    const match = pickBestSessionRow(candidates);
-    if (match) substituteForm.value.session_id = match.id;
+    const sid = resolveSessionIdForSubstitute(sessions, exactDate, modalForm.value.start_time);
+    if (sid) substituteForm.value.session_id = sid;
   }
 
   showSubstituteModal.value = true;
@@ -2954,6 +2934,7 @@ const substituteV2PickerRef = ref(null);
 const toastRef = ref(null);
 const substituteV2Context = ref({});
 const substituteV2SessionId = ref(null);
+const substituteV2Submitting = ref(false);
 
 const showTeacherLeaveBatchModal = ref(false);
 
@@ -2971,9 +2952,7 @@ const openSubstituteV2Modal = () => {
   let sessionId = null;
   if (courseId && sessionDatesByCourseId.value) {
     const sessions = sessionDatesByCourseId.value[String(courseId)] || [];
-    const candidates = sessions.filter(s => String(s.session_date || s.SessionDate || '').slice(0, 10) === exactDate);
-    const match = pickBestSessionRow(candidates);
-    if (match) sessionId = match.id;
+    sessionId = resolveSessionIdForSubstitute(sessions, exactDate, modalForm.value.start_time);
   }
   if (!sessionId) {
     alert('找不到該堂次 ClassSession，無法設定代課。\n（可能此日期尚未有 ClassSession 紀錄）');
@@ -2996,8 +2975,10 @@ const openSubstituteV2Modal = () => {
 };
 
 const onSubstituteV2Submit = async (submitPayload) => {
+  if (substituteV2Submitting.value) return;
   const { substitute_teacher_id, reason, new_date, new_start_time, new_end_time } = submitPayload || {};
   const sessionId = substituteV2SessionId.value;
+  substituteV2Submitting.value = true;
   try {
     const ses = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
     const tkn = ses?.access_token || '';
@@ -3059,6 +3040,8 @@ const onSubstituteV2Submit = async (submitPayload) => {
   } catch (e) {
     substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
     throw e;
+  } finally {
+    substituteV2Submitting.value = false;
   }
 };
 
