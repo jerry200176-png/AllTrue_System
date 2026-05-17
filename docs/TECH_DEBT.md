@@ -328,3 +328,18 @@
 | 建議做法 | 由 `GET /api/v1/me` 的 `engagement` 一併回傳 `next_rank_min_xp`、`xp_to_next` 或完整 thresholds 版本號；前端僅顯示。追蹤：Issue #331。 |
 | 清償成本估計 | 低（< 2hr）|
 | 不做的代價 | 營運若調整門檻，前端進度條與實際晉階可能短期不一致。 |
+
+### TD-018：`/api/v1/class-sessions` 慢查詢／N+1 系統性審查（Sentry #341/#342/#343/#374/#375）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-05-13 ~ 2026-05-16（陸續被 Sentry 自動建單） |
+| 發現來源 | Sentry production monitor (`PHP-LARAVEL-14`～`PHP-LARAVEL-18`) + `perf-2026-05-17.log` |
+| 影響模組 | `ClassSessionController`、`ProfileController`、`SchedulesController`、`UserCampus`/`Subject`/`schedules` lookup paths |
+| 描述 | `GET /api/v1/class-sessions` 在 production 經常 1–3.5s（SLO 800ms），對應 Sentry 報告的 N+1（`UserCampus.CampusID`、`Subject.Subject_Name`、`schedules.teacher_id`）與慢 count(*)/ClassSession 主查詢。實際 trace 範例：`trace_id 4ccbe11bc093cc1c → 3574ms`、`aa443a26b60342ce → 3265ms`。 |
+| 建議做法 | 1) 用 Sentry full payload 對齊 N+1 來源（需要瀏覽器 access）；2) 在 `ClassSessionController::index` 加 `with(['studentClass.subjectRecord', 'studentClass.student.campus', 'teacher'])` 或對應 eager load；3) `Subject` lookup 改 cached map；4) `UserCampus` 解析改 single batch query；5) `schedules.teacher_id` 對應的迴圈處改 join。 |
+| 清償成本估計 | 中（半天～一天，含實測前後對比）|
+| 不做的代價 | 行事曆／教師工作台載入時間波動大，使用者體感差；Pi 資源與 SLO 都被 burn。 |
+| 對應 GitHub | Sentry auto-issues #341 / #342 / #343 / #374 / #375 已 close 並指向此 TD。需要 AI 有 Sentry 瀏覽器 access 才能精準下藥。 |
