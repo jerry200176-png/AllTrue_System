@@ -22,6 +22,7 @@ class FinanceArAgingTest extends TestCase
         $student = Student::create([
             'name' => 'Test Student',
             'CampusID' => $campus->id,
+            'ClassID' => 0,
             'SchoolName' => 'Test School',
         ]);
 
@@ -52,6 +53,7 @@ class FinanceArAgingTest extends TestCase
         $student = Student::create([
             'name' => 'Paid Student',
             'CampusID' => $campus->id,
+            'ClassID' => 0,
             'SchoolName' => 'Good School',
         ]);
 
