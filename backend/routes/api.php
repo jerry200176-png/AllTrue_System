@@ -479,6 +479,9 @@ Route::prefix('v1')->group(function () {
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
         ->middleware('throttle:20,1');
 
+    // ── Parent: billing history (#401) ──────────────────────────────────
+    Route::get('parent/billing-history', [ParentPortalController::class, 'billingHistory']);
+
     // ── Parent: 家長建議回饋（parent token 驗證在 Controller 內）────────────────
     Route::post('parent/feedback', [ParentFeedbackController::class, 'store'])
         ->middleware('throttle:20,1');
