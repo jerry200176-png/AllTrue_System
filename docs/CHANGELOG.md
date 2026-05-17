@@ -8,6 +8,14 @@
 
 ---
 
+## 2026-05-17 — fix(learning): 手機新增評量表單的快捷語句改為自動換行
+
+- 手機開啟新增學習評量時，快捷語句按鈕（授課進度／作業範圍／週考範圍）會自動換行，不必再左右滑也能看到完整選項；按鈕高度提升到 44px，符合 Apple/Google 觸控規範。
+- 桌面版維持原本的橫向捲動，避免長條按鈕擠壓表單。
+- 開發備註：`LearningRecordsPage.vue` `@media (max-width:640px)` 新增 `.lr-phrase-row--hscroll` wrap override；CSS-only 改動，無 logic／後端／DB 變動。覆蓋 #376。
+
+---
+
 ## 2026-05-17 — chore(docs): AI 處理 bug 回報前必查附件（§R51）
 
 - 開發備註：避免 AI 處理 in-app bug 時忽略 `bug_report_attachments`／reporter 歷史／跨分校紀錄，重複問使用者「請補截圖」（2026-05-17 實際發生於 #107）。新增 `AI_REGRESSION_LESSONS.md §R51` 與 `CHAT_BUG_SYSTEM.md §3.6` SOP。
