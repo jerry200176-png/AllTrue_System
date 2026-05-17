@@ -16,6 +16,15 @@
 
 ---
 
+## 2026-05-17 — feat(bugs): 自己的 bug 回報跨分校都看得到
+
+- 老師／主任在 Bug 回報頁切到任何分校，都會看到自己之前提交的全部回報，而不再因為分校切換漏掉舊單。
+- 紅點計數同步跨分校：別的分校有人回覆你的單，目前分校的紅點也會亮。
+- super_admin 處理流程不變（仍按目前分校 scope 過濾）；別人的回報也不會被你看見。
+- 開發備註：`BugReportController` 新增 `resolveReporterCampusIds()`；`index/show/unreadBadge` 對非 super_admin 改用此 scope；`BugReportService::belongsToCampusForReporter()` 守護 detail 端點。新增 5 個測試覆蓋 reporter 視角／regression／PII 邊界。Closes #378。對應 in-app bug #106。
+
+---
+
 ## 2026-05-17 — fix(learning): 「未填」KPI 與列表對不上時顯示明確指示
 
 - 老師點「未填優先」如果列表是空的、但右上角 KPI 顯示還有 N 堂未填，會出現新文案告訴你：「這些堂次還沒建立評量草稿，請從『今日待辦』或『行事曆』直接點該堂次填寫」。不再讓人對著空白列表困惑。
