@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-23 — fix(bugs): super_admin 回報者可直接驗收已解決單
+
+- Fixed: Bug 回報頁在 `resolved` 狀態下，若 super_admin 同時是原始回報者，現在也會顯示「確認已修好／問題仍存在」驗收按鈕，不再被角色誤擋。對應 in-app #122/#123 驗收流程。
+
+---
+
 ## 2026-05-23 — fix(schedule): 後續堂數顯示補齊 + feat(payroll): 兼職費率卡生效日 v1
 
 - Fixed: 課程管理堂數制在課程本身缺 week/time、但同方案兄弟課仍有固定週期時，`session-dates` 會自動套用 package sibling 週期補推算，避免只顯示歷史堂次漏掉後續應有堂次。Closes #440，對應 in-app #122。
