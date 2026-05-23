@@ -41,9 +41,20 @@
     <!-- 設定表單 -->
     <div class="card" data-guide="line-config">
       <h3>🔑 填入 LINE 設定</h3>
-      <p class="hint mb">以下資訊從 LINE 官方帳號管理後台取得，請見下方步驟說明</p>
+      <p class="hint mb">以下資訊從 LINE 官方帳號後台取得。先看「3 步驟快速開始」，卡住再看下方完整教學與排查。</p>
+
+      <div class="notify-warning mb">
+        <strong>重要更新：</strong>LINE Notify 已於 2025-03-31 結束。請使用 LINE Official Account + Messaging API 進行通知設定。
+      </div>
 
       <div v-if="status" class="campus-badge">設定分校：{{ status.campus_name }}</div>
+
+      <div class="quick-start mb">
+        <h4>⚡ 3 步驟快速開始（新手建議）</h4>
+        <ol>
+          <li v-for="(item, idx) in quickStart" :key="idx">{{ item }}</li>
+        </ol>
+      </div>
 
       <div class="field">
         <label>Channel Access Token <span class="required">*</span></label>
@@ -130,7 +141,24 @@
         <p>系統會自動回覆確認訊息，之後家長只要傳任何訊息，就會收到查看連結。</p>
         <p style="margin-top:8px;font-size:12px;color:#64748b;">※ 若有同名學生，系統會提示改用「綁定 學號」</p>
       </div>
-      <button class="ghost small mt" @click="copyParentGuide">{{ copied === 'guide' ? '✓ 已複製說明文字' : '複製說明文字' }}</button>
+      <div class="copy-row">
+        <button class="ghost small mt" @click="copyParentGuide('short')">
+          {{ copied === 'guide-short' ? '✓ 已複製（家長簡版）' : '複製家長簡版' }}
+        </button>
+        <button class="ghost small mt" @click="copyParentGuide('full')">
+          {{ copied === 'guide-full' ? '✓ 已複製（管理員長版）' : '複製管理員長版' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🧯 常見錯誤排查</h3>
+      <ul class="troubleshooting-list">
+        <li v-for="(item, idx) in troubleshooting" :key="idx">
+          <strong>{{ item.title }}</strong>
+          <p>{{ item.desc }}</p>
+        </li>
+      </ul>
     </div>
 
   </div>
@@ -153,6 +181,33 @@ const openStep = ref(0);
 
 const form = ref({ messaging_channel_token: '', messaging_channel_secret: '', liff_id: '' });
 const show = ref({ token: false, secret: false });
+const quickStart = [
+  '到 LINE Official Account Manager 啟用 Messaging API（會自動建立 channel）',
+  '從 LINE Developers 複製 Channel access token + Channel secret，貼回此頁並儲存',
+  '在 Messaging API 的 Webhook settings 貼上本頁網址，開啟 Use webhook 並 Verify',
+];
+const troubleshooting = [
+  {
+    title: 'Webhook Verify 失敗',
+    desc: '確認 URL 完整含分校參數、網址可外網連線，並在 LINE 後台開啟 Use webhook 再重試。',
+  },
+  {
+    title: 'Token 儲存後仍顯示未連線',
+    desc: '請重新產生長期 token 後貼上，避免複製到短期 token 或多餘空白字元。',
+  },
+  {
+    title: 'Channel secret 貼錯欄位',
+    desc: 'Channel secret 在 Basic settings，不在 Messaging API 的 token 區塊。',
+  },
+  {
+    title: 'LIFF 可建但家長點開錯頁',
+    desc: '請確認 LIFF Endpoint 使用本頁提供網址，不可沿用舊版 /#/parent 路徑。',
+  },
+  {
+    title: '家長綁定無回應',
+    desc: '確認 OA 已加為好友、Webhook Verify 成功，並先在本頁確認狀態卡顯示「LINE 官方帳號已連線」。',
+  },
+];
 
 const steps = computed(() => {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -288,9 +343,20 @@ function copy(text, key) {
   });
 }
 
-function copyParentGuide() {
-  const text = '加入補習班 LINE 官方帳號後，請傳送以下訊息完成綁定：\n\n綁定 學生姓名\n例：綁定 王小明\n\n綁定成功後，傳任何訊息都可以收到查看學習狀況的連結。';
-  copy(text, 'guide');
+function copyParentGuide(mode = 'short') {
+  const shortText = '加入補習班 LINE 官方帳號後，請傳送以下訊息完成綁定：\n\n綁定 學生姓名\n例：綁定 王小明\n\n綁定成功後，傳任何訊息都可以收到查看學習狀況的連結。';
+  const fullText = [
+    '【LINE 綁定操作（給家長）】',
+    '1) 請先加入補習班 LINE 官方帳號',
+    '2) 傳送：綁定 學生姓名（例：綁定 王小明）',
+    '3) 收到確認訊息後，日後只要傳任意訊息即可收到查看連結',
+    '※ 若同名學生，系統會提示改用學號綁定',
+  ].join('\n');
+  if (mode === 'full') {
+    copy(fullText, 'guide-full');
+    return;
+  }
+  copy(shortText, 'guide-short');
 }
 
 onMounted(loadStatus);
@@ -325,6 +391,37 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #1e293b; }
 .hint.mb { margin-bottom: 14px; }
 .mb { margin-bottom: 14px; }
 .mt { margin-top: 12px; }
+
+.notify-warning {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+}
+
+.quick-start {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.quick-start h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #166534;
+}
+.quick-start ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.quick-start li {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #1f2937;
+  line-height: 1.5;
+}
 
 .li-top {
   display: flex;
@@ -505,6 +602,26 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: #1e293b; }
   color: #0f172a;
   margin: 8px 0;
   line-height: 1.8;
+}
+
+.copy-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.troubleshooting-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.troubleshooting-list li {
+  margin-bottom: 12px;
+}
+.troubleshooting-list p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
 }
 
 @media (max-width: 640px) {

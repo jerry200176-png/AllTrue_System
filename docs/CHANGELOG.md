@@ -15,6 +15,12 @@
 
 ---
 
+## 2026-05-23 — docs(line): 串接教學改為新手友善三段式
+
+- Changed: LINE 串接頁改為「3 步驟快速開始 → 完整教學 → 常見錯誤排查」，並明示 LINE Notify 已於 2025-03-31 終止，主流程改採 LINE Official Account + Messaging API。Closes #451。
+
+---
+
 ## 2026-05-23 — fix(bugs): super_admin 回報者可直接驗收已解決單
 
 - Fixed: Bug 回報頁在 `resolved` 狀態下，若 super_admin 同時是原始回報者，現在也會顯示「確認已修好／問題仍存在」驗收按鈕，不再被角色誤擋。對應 in-app #122/#123 驗收流程。
