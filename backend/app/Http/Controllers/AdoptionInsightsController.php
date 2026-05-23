@@ -140,6 +140,7 @@ class AdoptionInsightsController extends Controller
         });
 
         $summary = $this->buildTaskSummary($tasks);
+        $missionCenter = $this->buildMissionCenterSummary($tasks);
 
         return response()->json([
             'data' => array_slice($tasks, 0, 30),
@@ -148,6 +149,7 @@ class AdoptionInsightsController extends Controller
                 'generated_at' => now()->toIso8601String(),
                 'count' => count($tasks),
                 'summary' => $summary,
+                'mission_center' => $missionCenter,
             ],
         ]);
     }
@@ -378,6 +380,8 @@ class AdoptionInsightsController extends Controller
             'warning_total' => 0,
             'blocked_total' => 0,
             'done_total' => 0,
+            'teacher_due_total' => 0,
+            'director_due_total' => 0,
         ];
         foreach ($tasks as $task) {
             if (($task['sla_level'] ?? '') === 'breached') {
@@ -386,8 +390,51 @@ class AdoptionInsightsController extends Controller
                 $summary['warning_total']++;
             }
             $summary['blocked_total'] += (int) ($task['blocked_count'] ?? 0);
+            $ownerRole = (string) ($task['owner_role'] ?? '');
+            if ($ownerRole === 'teacher') {
+                $summary['teacher_due_total']++;
+            } elseif ($ownerRole === 'director') {
+                $summary['director_due_total']++;
+            }
         }
         return $summary;
+    }
+
+    private function buildMissionCenterSummary(array $tasks): array
+    {
+        $teacherOpen = 0;
+        $directorOpen = 0;
+        $teacherBreached = 0;
+        $directorBreached = 0;
+
+        foreach ($tasks as $task) {
+            $ownerRole = (string) ($task['owner_role'] ?? '');
+            $slaLevel = (string) ($task['sla_level'] ?? 'normal');
+            if ($ownerRole === 'teacher') {
+                $teacherOpen++;
+                if ($slaLevel === 'breached') {
+                    $teacherBreached++;
+                }
+            } elseif ($ownerRole === 'director') {
+                $directorOpen++;
+                if ($slaLevel === 'breached') {
+                    $directorBreached++;
+                }
+            }
+        }
+
+        return [
+            'teacher' => [
+                'remaining_total' => $teacherOpen,
+                'breached_total' => $teacherBreached,
+                'completion_hint' => $teacherOpen === 0 ? 'all_clear' : 'action_required',
+            ],
+            'director' => [
+                'remaining_total' => $directorOpen,
+                'breached_total' => $directorBreached,
+                'completion_hint' => $directorOpen === 0 ? 'all_clear' : 'action_required',
+            ],
+        ];
     }
 
     private function buildTodayWorkflowSummary(int $branchId, Carbon $day): array
@@ -564,6 +611,8 @@ class AdoptionInsightsController extends Controller
         $directorActivatedUsers = $this->countDirectorActivatedUsers($branchId, $from, $to);
         $teacherActivationRate = count($teacherUserIds) > 0 ? round(($teacherActivatedUsers / count($teacherUserIds)) * 100, 1) : 0.0;
         $directorActivationRate = count($directorUserIds) > 0 ? round(($directorActivatedUsers / count($directorUserIds)) * 100, 1) : 0.0;
+        $teacherActivationWithin24h = $teacherOpened > 0 ? round(($teacherActivatedUsers / $teacherOpened) * 100, 1) : 0.0;
+        $directorActivationWithin24h = $directorOpened > 0 ? round(($directorActivatedUsers / $directorOpened) * 100, 1) : 0.0;
 
         $parentMetrics = $this->buildParentFeedbackMetrics($branchId, $from, $to);
         $qualityMetrics = $this->buildQualityMetrics($branchId, $from, $to, $todaySummary);
@@ -580,6 +629,18 @@ class AdoptionInsightsController extends Controller
             'director_activated_users' => $directorActivatedUsers,
             'teacher_activation_rate_pct' => $teacherActivationRate,
             'director_activation_rate_pct' => $directorActivationRate,
+            'activation_funnel' => [
+                'teacher' => [
+                    'opened_users' => $teacherOpened,
+                    'activated_users' => $teacherActivatedUsers,
+                    'activation_within_24h_pct' => $teacherActivationWithin24h,
+                ],
+                'director' => [
+                    'opened_users' => $directorOpened,
+                    'activated_users' => $directorActivatedUsers,
+                    'activation_within_24h_pct' => $directorActivationWithin24h,
+                ],
+            ],
             'system_completion_rate_pct' => $completionRate,
             'learning_records_filled' => $filledRecords,
             'attended_sessions' => $attendedSessions,
