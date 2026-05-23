@@ -15,6 +15,13 @@
 
 ---
 
+## 2026-05-23 — fix(schedule): 後續堂數顯示補齊 + feat(payroll): 兼職費率卡生效日 v1
+
+- Fixed: 課程管理堂數制在課程本身缺 week/time、但同方案兄弟課仍有固定週期時，`session-dates` 會自動套用 package sibling 週期補推算，避免只顯示歷史堂次漏掉後續應有堂次。Closes #440，對應 in-app #122。
+- Added: 兼職老師個別費率改為生效日費率卡（effective-dated）：新增 `effective_from` / `use_branch_default`，薪資計算依月份 as-of 套用，不再僅看最新一筆。Closes #444，對應 in-app #120。
+- 開發備註：新增 migration `2026_05_23_000100_add_effective_from_to_payroll_teacher_branch_rules.php`；`ParttimePayrollPage` 新增生效日與費率卡歷史顯示。
+
+---
 ## 2026-05-23 — fix: 聊天附件、行事曆 EndDate、CourseEditForm、N+1 查詢（#431）
 
 - Fixed: 聊天頁附件按鈕點擊無反應（TypeError: y.click is not a function）— Closes #421 #428
