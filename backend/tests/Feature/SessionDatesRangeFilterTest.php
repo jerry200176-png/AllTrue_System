@@ -193,4 +193,140 @@ class SessionDatesRangeFilterTest extends TestCase
         $this->assertNotContains('2026-04-11', $dates, 'Cancelled session must not appear');
         $this->assertContains('2026-04-18', $dates, 'Attended session must appear');
     }
+
+    public function test_count_mode_returns_future_contract_dates_when_only_history_exists(): void
+    {
+        $token = $this->makeToken([1]);
+        $student = Student::create([
+            'name' => '堂數制測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'SchoolName' => 'Test',
+        ]);
+
+        $courseId = $this->makeCourse($student->id, 1, [
+            'StartDate' => '2026-04-22 00:00:00',
+            'SessionCount' => 8,
+            'ScheduleMode' => 'count',
+            'week' => 3,
+            'time' => '19:00:00',
+            'week1' => 6,
+            'time1' => '13:00:00',
+            'RemainingSessions' => 5,
+            'UsedSessions' => 3,
+        ]);
+
+        // Only historical rows exist; future scheduled rows are missing.
+        ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-04-22',
+            'StartTime' => '19:00',
+            'EndTime' => '21:00',
+            'Status' => 'attended',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-04-29',
+            'StartTime' => '19:00',
+            'EndTime' => '21:00',
+            'Status' => 'attended',
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-05-06',
+            'StartTime' => '19:00',
+            'EndTime' => '21:00',
+            'Status' => 'attended',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ])->postJson('/api/v1/student-classes/session-dates', [
+            'branch_id' => 1,
+            'range_start' => '2026-04-01',
+            'range_end' => '2026-07-31',
+            'courses' => [[
+                'id' => $courseId,
+                'first_class_date' => '2026-04-22',
+                'sessions_purchased' => 8,
+                'days_of_week' => [3, 6],
+            ]],
+        ]);
+
+        $res->assertOk();
+        $dates = $res->json((string) $courseId) ?? [];
+
+        $this->assertContains('2026-05-13', $dates, 'Future contract date should be present');
+        $this->assertContains('2026-05-16', $dates, 'Future contract date should be present');
+        $this->assertCount(8, $dates, 'Count-mode list should still align with purchased sessions');
+    }
+
+    public function test_count_mode_can_fallback_to_package_sibling_weekdays_when_current_course_has_none(): void
+    {
+        $token = $this->makeToken([1]);
+        $student = Student::create([
+            'name' => '方案同步測試',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'SchoolName' => 'Test',
+        ]);
+
+        $seedCourseId = $this->makeCourse($student->id, 1, [
+            'StartDate' => '2026-04-22 00:00:00',
+            'SessionCount' => 8,
+            'ScheduleMode' => 'count',
+            'PackageID' => 99,
+            'week' => 3,
+            'time' => '19:00:00',
+            'week1' => 6,
+            'time1' => '13:00:00',
+        ]);
+
+        $targetCourseId = $this->makeCourse($student->id, 1, [
+            'StartDate' => '2026-04-22 00:00:00',
+            'SessionCount' => 8,
+            'ScheduleMode' => 'count',
+            'PackageID' => 99,
+            'week' => null,
+            'week1' => null,
+            'time' => null,
+            'time1' => null,
+        ]);
+
+        // Target course has only attended history and no contract weekdays.
+        ClassSession::create([
+            'StudentClassID' => $targetCourseId,
+            'SessionDate' => '2026-04-22',
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'attended',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+            'Content-Type' => 'application/json',
+        ])->postJson('/api/v1/student-classes/session-dates', [
+            'branch_id' => 1,
+            'range_start' => '2026-04-01',
+            'range_end' => '2026-07-31',
+            'courses' => [[
+                'id' => $targetCourseId,
+                'first_class_date' => '2026-04-22',
+                'sessions_purchased' => 8,
+                'days_of_week' => [],
+            ]],
+        ]);
+
+        $res->assertOk();
+        $dates = $res->json((string) $targetCourseId) ?? [];
+
+        $this->assertContains('2026-04-25', $dates, 'Fallback should include package sibling weekday');
+        $this->assertContains('2026-04-29', $dates, 'Fallback should include package sibling weekday');
+        $this->assertCount(8, $dates);
+    }
 }
