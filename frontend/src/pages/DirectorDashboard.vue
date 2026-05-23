@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div v-if="branchId == null" class="card no-branch-card">
+    <div v-if="branchId == null" class="card no-branch-card enterprise-empty">
       <h2>尚無分校資料</h2>
       <p>系統尚未載入您的分校權限，或您尚未被指派到任何分校。</p>
       <p class="hint">請聯繫系統管理員設定您的分校權限後重新整理頁面。</p>
@@ -9,7 +9,7 @@
     <template v-else>
       <div class="dash dash--desktop-dense">
         <!-- ===== Header ===== -->
-        <div class="dash-header">
+        <div class="dash-header enterprise-page-header">
           <div class="dash-title-block">
             <p class="dash-kicker">Campus Operations Command</p>
             <h2 class="dash-title">{{ branchName }}</h2>
@@ -216,7 +216,7 @@
                 <h3>今日課表</h3>
                 <span v-if="todaySchedules.length" class="wp__badge">{{ todaySchedules.length }}</span>
               </header>
-              <div v-if="!todaySchedules.length" class="wp__empty">今日無課程</div>
+              <div v-if="!todaySchedules.length" class="wp__empty enterprise-empty">今日無課程</div>
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="s in todaySchedules" :key="s.id" class="sched-row">
                   <span class="sched-row__time">{{ formatTime(s.start_time) }}</span>
@@ -239,7 +239,7 @@
                 <span v-if="lowBalanceStudents.length" class="wp__badge wp__badge--danger">{{ lowBalanceStudents.length }}</span>
               </header>
               <p class="wp__hint">堂數制：已標記繳費者，若剩 0～2 堂仍會列出（方便聯繫加購）；未繳費者亦會列出。</p>
-              <div v-if="!lowBalanceStudents.length" class="wp__empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
+              <div v-if="!lowBalanceStudents.length" class="wp__empty enterprise-empty">目前無待繳費、月結將届或低堂數需續課之課程</div>
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="s in displayPaymentAlerts" :key="s.id" class="pay-row">
                   <div class="pay-row__info">
@@ -263,9 +263,9 @@
                 <h3>補課案件</h3>
                 <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
               </header>
-              <div v-if="exceptionWorkflowLoading" class="wp__empty">補課案件載入中...</div>
+              <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
-              <div v-else-if="!exceptionWorkflows.length" class="wp__empty">目前沒有家長請假待安排</div>
+              <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
                 <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
                   <div class="ew-main">
@@ -312,7 +312,7 @@
                 <span v-if="pendingEvaluations.length" class="wp__badge">{{ pendingEvaluations.length }}</span>
               </header>
               <p class="wp__hint">核准後老師科目數自動累計</p>
-              <div v-if="!pendingEvaluations.length" class="wp__empty">無待審核評量</div>
+              <div v-if="!pendingEvaluations.length" class="wp__empty enterprise-empty">無待審核評量</div>
               <div v-else class="wp-list-scroll-desktop wp-list-scroll-desktop--primary">
                 <div v-for="ev in pendingEvaluations" :key="ev.id" class="eval-card">
                   <div class="eval-card__top">
@@ -391,8 +391,8 @@
                 <h3>流程追蹤</h3>
                 <span v-if="directorTodoCards.length" class="wp__badge wp__badge--warn">{{ directorTodoCards.length }}</span>
               </header>
-              <div v-if="adoptionTaskLoading" class="wp__empty">載入追蹤中…</div>
-              <div v-else-if="!directorTodoCards.length" class="wp__empty">目前沒有待追蹤項目</div>
+              <div v-if="adoptionTaskLoading" class="wp__empty enterprise-empty enterprise-loading">載入追蹤中…</div>
+              <div v-else-if="!directorTodoCards.length" class="wp__empty enterprise-empty">目前沒有待追蹤項目</div>
               <div v-else class="wp-list-scroll-desktop">
                 <button
                   v-for="task in directorTodoCards"
@@ -416,8 +416,8 @@
                 <span class="material-symbols-outlined wp__hi">history</span>
                 <h3>近期操作履歷</h3>
               </header>
-              <div v-if="adoptionActivityLoading" class="wp__empty">載入履歷中…</div>
-              <div v-else-if="!adoptionActivityRows.length" class="wp__empty">尚無近期履歷</div>
+              <div v-if="adoptionActivityLoading" class="wp__empty enterprise-empty enterprise-loading">載入履歷中…</div>
+              <div v-else-if="!adoptionActivityRows.length" class="wp__empty enterprise-empty">尚無近期履歷</div>
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="(log, idx) in adoptionActivityRows.slice(0, 20)" :key="`adoption-log-${idx}`" class="notif-row">
                   <span>{{ log.actor }}：{{ log.action }}</span>
@@ -436,9 +436,9 @@
                 <template v-if="teacherFillRatesRangeLabel">{{ teacherFillRatesRangeLabel }}　</template>
                 已到班／遲到堂次之評量進度有填計入（近 {{ teacherFillRatesDays }} 天）
               </p>
-              <div v-if="teacherFillRatesLoading" class="wp__empty">載入中…</div>
+              <div v-if="teacherFillRatesLoading" class="wp__empty enterprise-empty enterprise-loading">載入中…</div>
               <template v-else-if="!teacherFillRatesRows.length">
-                <div class="wp__empty">此區間內無已到班堂次</div>
+                <div class="wp__empty enterprise-empty">此區間內無已到班堂次</div>
               </template>
               <div class="wp-list-scroll-desktop">
                 <div v-for="row in teacherFillRatesRows" :key="row.teacher_id" class="notif-row">
@@ -455,7 +455,7 @@
                 <h3>通知摘要</h3>
                 <span v-if="unreadNotificationCount" class="wp__badge">{{ unreadNotificationCount }}</span>
               </header>
-              <div v-if="!notificationSummary.length" class="wp__empty">目前無未讀通知</div>
+              <div v-if="!notificationSummary.length" class="wp__empty enterprise-empty">目前無未讀通知</div>
               <div v-else class="wp-list-scroll-desktop">
                 <div v-for="n in notificationSummary" :key="n.id" class="notif-row">
                   <span>{{ n.title }}</span>

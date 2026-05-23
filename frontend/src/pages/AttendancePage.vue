@@ -1,6 +1,6 @@
 <template>
   <div class="att-page">
-    <div class="page-header att-header">
+    <div class="page-header att-header enterprise-page-header">
       <div>
         <h2>出缺勤管理</h2>
         <p class="page-desc">
@@ -8,7 +8,7 @@
         </p>
       </div>
       <div class="att-header-btns">
-        <button class="primary" @click="refreshAll">重新整理今日堂次</button>
+        <button class="primary enterprise-touch-target" @click="refreshAll">重新整理今日堂次</button>
       </div>
     </div>
 
@@ -54,8 +54,8 @@
           <div class="att-section-title">課表異常待處理</div>
           <span v-if="teacherAnomalies.length" class="att-badge">{{ teacherAnomalies.length }}</span>
         </div>
-        <div v-if="teacherLoading" class="att-empty">載入中…</div>
-        <div v-else-if="teacherAnomalies.length === 0" class="att-empty">
+      <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
+      <div v-else-if="teacherAnomalies.length === 0" class="att-empty enterprise-empty">
           今日無課表異常 ✓
         </div>
         <div v-else class="ta-anomaly-list">
@@ -117,8 +117,8 @@
             </button>
           </div>
         </div>
-        <div v-if="teacherLoading" class="att-empty">載入中…</div>
-        <div v-else-if="teacherRecords.length === 0" class="att-empty">今日無老師打卡紀錄</div>
+        <div v-if="teacherLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
+        <div v-else-if="teacherRecords.length === 0" class="att-empty enterprise-empty">今日無老師打卡紀錄</div>
         <div v-else class="att-table-scroll">
           <table>
             <thead>
@@ -211,9 +211,9 @@
           ? '你今天尚未點名的堂次。點名後立即核課並扣堂。'
           : '該分校今日已結束但尚未點名的堂次。點名後到班/遲到會自動扣堂。' }}
       </p>
-      <div v-if="!isTeacher && !branchId" class="att-empty">請先選擇分校</div>
-      <div v-else-if="pendingLoading" class="att-empty">載入中…</div>
-      <div v-else-if="pendingSessions.length === 0" class="att-empty">今日沒有待點名堂次</div>
+      <div v-if="!isTeacher && !branchId" class="att-empty enterprise-empty">請先選擇分校</div>
+      <div v-else-if="pendingLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
+      <div v-else-if="pendingSessions.length === 0" class="att-empty enterprise-empty">今日沒有待點名堂次</div>
       <template v-else>
         <!-- Batch action bar -->
         <div class="att-batch-bar">
@@ -764,9 +764,9 @@
           <button class="primary" :disabled="makeupLoading" @click="fetchMakeupSessions">查詢</button>
         </div>
       </div>
-      <div v-if="!isTeacher && !branchId" class="att-empty">請先選擇分校</div>
-      <div v-else-if="makeupLoading" class="att-empty">載入中…</div>
-      <div v-else-if="makeupSessions.length === 0" class="att-empty">此期間沒有尚未點名的已結束節次；已點名的課不會出現在這裡</div>
+      <div v-if="!isTeacher && !branchId" class="att-empty enterprise-empty">請先選擇分校</div>
+      <div v-else-if="makeupLoading" class="att-empty enterprise-empty enterprise-loading">載入中…</div>
+      <div v-else-if="makeupSessions.length === 0" class="att-empty enterprise-empty">此期間沒有尚未點名的已結束節次；已點名的課不會出現在這裡</div>
       <div v-else class="att-table-scroll">
         <table>
           <thead>
