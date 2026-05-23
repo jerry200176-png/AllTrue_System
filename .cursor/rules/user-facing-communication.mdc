@@ -1,0 +1,25 @@
+---
+description: 給老師／主任／家長的留言一律白話；技術細節留給 GitHub issue / 內部備註
+alwaysApply: true
+---
+
+# 對使用者溝通：白話優先（強制提醒）
+
+寫 `bug_report_comments`（非 internal）、聊天訊息、release notes 給老師／主任／家長前必看。完整 SOP、對照表、範例 → `docs/CHAT_BUG_SYSTEM.md` §3.8。
+
+## 禁止關鍵字漏到公開留言
+
+欄位／表名（`rate_unit`、`VoidedAt`、`StudentClass`...）、程式路徑（`XxxController::method()`）、SQL、框架名（Laravel/Vue/PHPUnit）、內部編號（B1/Phase A/P0/R51）、PR 編號。技術細節寫進 `is_internal_note=1` 或 GitHub issue。
+
+## 送出前 30 秒檢查
+
+1. 老師／主任看得懂每一句？
+2. 我們會做什麼，講清楚？
+3. 要使用者回覆的問題列清楚？
+4. 沒有欄位名／SQL／class 名漏出？
+
+## 反例 vs 正例
+
+❌ `rate_unit='hour'` 導致 Charge 2× → ✅ 系統把 1100 當「每小時」，8 堂 × 2 小時 = 17,600；應是 8,800
+
+完整對照表與更多場景 → `docs/CHAT_BUG_SYSTEM.md` §3.8。
