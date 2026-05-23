@@ -34,6 +34,12 @@ class AdoptionInsightsApiTest extends TestCase
                     'warning_total',
                     'blocked_total',
                     'done_total',
+                    'teacher_due_total',
+                    'director_due_total',
+                ],
+                'mission_center' => [
+                    'teacher' => ['remaining_total', 'breached_total', 'completion_hint'],
+                    'director' => ['remaining_total', 'breached_total', 'completion_hint'],
                 ],
             ],
         ]);
@@ -65,6 +71,10 @@ class AdoptionInsightsApiTest extends TestCase
                 'bug_reopen_rate_pct',
                 'p1p0_median_lead_hours',
                 'trust_contract_backlog',
+                'activation_funnel' => [
+                    'teacher' => ['opened_users', 'activated_users', 'activation_within_24h_pct'],
+                    'director' => ['opened_users', 'activated_users', 'activation_within_24h_pct'],
+                ],
             ],
             'meta' => ['branch_id', 'generated_at'],
         ]);

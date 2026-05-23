@@ -97,6 +97,27 @@
         </div>
       </div>
 
+      <div class="th-mission-card">
+        <div class="th-mission-head">
+          <span class="material-symbols-outlined" style="font-size:16px">checklist</span>
+          <strong>今日任務中心</strong>
+          <span class="th-mission-remain">{{ missionSummary.remaining_total }} 項</span>
+        </div>
+        <div v-if="missionLoading" class="th-mission-empty">載入任務中…</div>
+        <div v-else-if="!missionTasks.length" class="th-mission-empty">目前沒有待完成任務</div>
+        <button
+          v-else
+          v-for="task in missionTasks"
+          :key="task.id"
+          type="button"
+          class="th-mission-row"
+          @click="openMissionTask(task)"
+        >
+          <span class="th-mission-title">{{ task.title }}</span>
+          <span class="th-mission-meta">{{ missionTypeLabel(task.type) }} · {{ task.due_at || '今日' }}</span>
+        </button>
+      </div>
+
       <div class="th-actions">
         <!-- Pending Attendance CTA -->
         <button
@@ -535,6 +556,9 @@ const reportModalSession = ref(null); // { sessionId, date, time, subject, stude
 const reportModalExisting = ref(null);
 const activeReportMap = ref({});      // { [sessionId]: discrepancy | null }
 const reportFetching = ref(false);
+const missionLoading = ref(false);
+const missionTasks = ref([]);
+const missionSummary = ref({ remaining_total: 0, breached_total: 0, completion_hint: 'action_required' });
 
 // ── Chat unread count ──
 const chatUnreadCount   = ref(0);
@@ -580,6 +604,58 @@ async function fetchPendingAttendance() {
     todayAllSessions.value = rows;
   } catch { /* ignore */ } finally {
     loadingAttendance.value = false;
+  }
+}
+
+async function fetchMissionCenter() {
+  missionLoading.value = true;
+  try {
+    const token = await getToken();
+    if (!token || !props.branchId) return;
+    const params = new URLSearchParams({ branch_id: String(props.branchId) });
+    const res = await fetch(`/api/v1/adoption/task-tracker?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) return;
+    const json = await res.json().catch(() => ({}));
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    missionTasks.value = rows
+      .filter((row) => String(row?.owner_role || '') === 'teacher')
+      .slice(0, 3);
+    missionSummary.value = json?.meta?.mission_center?.teacher || {
+      remaining_total: missionTasks.value.length,
+      breached_total: 0,
+      completion_hint: missionTasks.value.length > 0 ? 'action_required' : 'all_clear',
+    };
+  } catch {
+    missionTasks.value = [];
+  } finally {
+    missionLoading.value = false;
+  }
+}
+
+function missionTypeLabel(type) {
+  const map = {
+    learning_review: '評量待辦',
+    exception_workflow: '補課流程',
+    schedule_discrepancy: '課表回報',
+  };
+  return map[String(type || '')] || '待辦';
+}
+
+function openMissionTask(task) {
+  if (!task) return;
+  if (task?.target?.page === 'learning') {
+    emit('navigate', 'learning');
+    return;
+  }
+  if (task?.target?.page === 'schedule-discrepancy') {
+    emit('navigate', 'schedule-discrepancy');
+    return;
+  }
+  if (task?.target?.section === 'exception-workflows') {
+    emit('navigate', 'calendar');
+    return;
   }
 }
 
@@ -1081,6 +1157,7 @@ async function refreshAll() {
   await Promise.all([
     refreshTrustToken(),
     fetchPendingAttendance(),
+    fetchMissionCenter(),
     fetchOverdueLearning(),
     fetchPendingLearningSummary(),
     loadWeekSchedule(),
@@ -1116,6 +1193,7 @@ function onVisibilityChange() {
     refreshEngagementUi();
     loadEngagementSnapshot();
     fetchPendingAttendance();
+    fetchMissionCenter();
     fetchOverdueLearning();
     fetchPendingLearningSummary();
     fetchLearningProgress();
@@ -1307,6 +1385,54 @@ onBeforeUnmount(() => {
 /* ──────── A. Today Actions ──────── */
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
+.th-mission-card {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.th-mission-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e3a8a;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.th-mission-remain {
+  margin-left: auto;
+  font-size: 12px;
+  color: #1d4ed8;
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.th-mission-empty {
+  font-size: 12px;
+  color: #475569;
+}
+.th-mission-row {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 10px;
+  text-align: left;
+  padding: 8px 10px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.th-mission-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.th-mission-meta {
+  font-size: 11px;
+  color: #64748b;
+}
 .th-progress-board {
   margin-top: 10px;
   padding: 10px;
