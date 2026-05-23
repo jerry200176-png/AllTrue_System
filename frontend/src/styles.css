@@ -242,6 +242,68 @@ body {
 .porsche-badge--red { border-color: rgba(185, 28, 28, 0.28); color: var(--porsche-red); }
 .porsche-badge--green { border-color: rgba(21, 128, 61, 0.28); color: var(--porsche-green); }
 
+/* High-traffic page polish utilities (Issue #461). */
+.enterprise-page-header {
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.95), rgba(246, 248, 252, 0.9));
+  border: 1px solid var(--porsche-border);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+  margin-bottom: 14px;
+  padding: clamp(14px, 2vw, 20px);
+}
+
+.enterprise-page-header h2,
+.enterprise-page-header .dash-title {
+  color: var(--porsche-ink);
+  letter-spacing: -0.02em;
+}
+
+.enterprise-page-header .page-desc,
+.enterprise-page-header .dash-subtitle {
+  color: var(--porsche-ink-soft);
+}
+
+.enterprise-empty {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--porsche-border);
+  border-radius: 12px;
+  color: var(--porsche-ink-soft);
+  display: flex;
+  font-size: 13px;
+  justify-content: center;
+  min-height: 56px;
+  padding: 12px;
+  text-align: center;
+}
+
+.enterprise-loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.enterprise-loading::after {
+  animation: enterprise-shimmer 1.25s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.18), transparent);
+  content: '';
+  inset: 0;
+  position: absolute;
+}
+
+@keyframes enterprise-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.enterprise-touch-target {
+  min-height: 44px;
+}
+
+[data-theme="dark"] .enterprise-page-header,
+[data-theme="dark"] .enterprise-empty {
+  background: rgba(15, 23, 42, 0.84);
+}
+
 [data-theme="dark"] .porsche-surface,
 [data-theme="dark"] .porsche-metric,
 [data-theme="dark"] .porsche-btn--secondary,
