@@ -17,6 +17,16 @@
 
 ---
 
+## 2026-05-17 — feat(finance): 銀行入帳勾稽（Closes #397）
+
+- Added: 銀行交易匯入 — `POST /api/v1/bank-reconciliation/import`（批次 max 500，自動去重）
+- Added: 自動建議匹配 — `GET /{id}/suggest`（日期±3天 + 金額一致）
+- Added: 手動勾稽 — `POST /{id}/reconcile`（防重複勾稽）
+- Added: 查詢+統計 — `GET /api/v1/bank-reconciliation`（含 unmatched/matched/reconciled summary）
+- 開發備註：新增 migration `bank_transactions`
+
+---
+
 ## 2026-05-17 — feat(engagement): 遊戲化 XP 系統 + 帳務 AR 分析 + 家長回饋回覆
 
 - Added: 軍階 XP 系統 — 老師/主任雙軌 15 種 XP 事件（教學評量、出缺勤、代課處理等），每日上限 200 XP，自動防重複。API: `POST /api/v1/engagement/award-xp`

@@ -280,6 +280,12 @@ Route::prefix('v1')->group(function () {
         Route::get('dunning/history', [\App\Http\Controllers\DunningController::class, 'history']);
         Route::post('dunning/trigger', [\App\Http\Controllers\DunningController::class, 'trigger']);
 
+        // ── Bank Reconciliation (#397) ──
+        Route::get('bank-reconciliation', [\App\Http\Controllers\BankReconciliationController::class, 'index']);
+        Route::post('bank-reconciliation/import', [\App\Http\Controllers\BankReconciliationController::class, 'importCsv']);
+        Route::get('bank-reconciliation/{id}/suggest', [\App\Http\Controllers\BankReconciliationController::class, 'suggestMatches']);
+        Route::post('bank-reconciliation/{id}/reconcile', [\App\Http\Controllers\BankReconciliationController::class, 'reconcile']);
+
         // finance/subject-units is intentionally registered in the role:director,teacher group below
         // so that teachers can also call this endpoint for their own hours view (FR-008).
         Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
