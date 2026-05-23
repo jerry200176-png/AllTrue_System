@@ -576,7 +576,18 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
   3. `bug_report_comments` / `bug_report_status_logs` 全部歷史 — 看之前怎麼回過、PR 修了什麼
 - **動作流程**：撈完資料 → 用 SQL 驗證假設 → 再留言／開 GitHub issue。**禁止**只憑程式碼推論就回覆使用者。
 - **強制更新**：如果發現附件，GitHub issue 要寫進 attachment id 與內容描述，方便下個 AI 不必重撈也能讀懂。
-- **詳細 SOP**：見 `docs/CHAT_BUG_SYSTEM.md` §3.6。
+- **詳細 SOP**：見 `docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7。
+
+---
+
+### R53. 修完 in-app bug 上線後必須回寫 Bug 回報系統（不可只關 GitHub）
+
+- **觸發情境**：2026-05-23 分診流程已建立「開 issue + in-app 回覆」，但 AI 容易在 PR merge 後只更新 GitHub／CHANGELOG，忘記在 App 內留言請回報者驗收，老師以為沒下文。
+- **強制規則**：
+  1. **分診**（未改 code）：`triaged` + **公開**留言（含 GitHub 連結、已看附件 id）— 見 `CHAT_BUG_SYSTEM.md` §3.7 Phase A。
+  2. **上線後**（有 deployable 修復）：`resolved` + **公開**留言（請按「確認已修好／問題仍存在」）— 見 §3.7 Phase C；等 `reporter-verify` 才視為結案。
+  3. 禁止只 `Closes #nnn` 而不動 in-app 狀態／留言。
+- **詳細 SOP**：`docs/CHAT_BUG_SYSTEM.md` §3.7（Claude／Cursor 同適用）。
 
 ---
 
@@ -621,7 +632,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
-| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（AI 處理回報前必查 attachments + reporter 歷史 + 跨分校）、`docs/CHAT_BUG_SYSTEM.md` §3.6 |
+| Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 
 ---
 
