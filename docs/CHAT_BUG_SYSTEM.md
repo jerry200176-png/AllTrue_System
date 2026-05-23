@@ -170,6 +170,32 @@
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
+### 3.8 公開留言寫作：白話優先（給老師／主任）
+
+**權威規則**：`.cursor/rules/user-facing-communication.mdc`（always-applied，本節是同步副本之導引）。
+
+**核心原則**：寫 `is_internal_note=false` 的留言（會通知回報者），一律白話。技術術語留給 GitHub issue 或內部備註。
+
+**禁止關鍵字**（漏在公開留言裡 = 違規）：
+- 欄位／表名：`rate_unit`、`VoidedAt`、`ClassSession.Status`、`StudentClass`、`schedules`
+- 程式路徑：`XxxController::method()`、`XxxService`
+- SQL / 工具：`SELECT`、`Laravel`、`migration`、`CI`、`deploy.yml`、`Phase A/B/C`、`R51`
+- 縮寫：`B1`、`P0`、`PR #nnn`（純內部）
+
+**送出前自我檢查**（30 秒）：
+1. 老師／主任看得懂每一句嗎？
+2. 我們會做什麼，有講清楚嗎？
+3. 要他回覆的話，有列清楚問題嗎？
+4. 有沒有欄位名 / SQL / class 名漏出去？
+
+**對照範例**：
+
+❌ 反例 → `蔡羽絜 SC#182 的 rate_unit 欄位被存成 hour，Charge 計算為 1100 × (8 × 2) = 17600...已建 GitHub #509 P1`
+
+✅ 正例 → `已看您的截圖。系統把「1100」當成「每小時」的費用，所以 8 堂 × 2 小時 = 17,600 元。如果原意是「每一堂 1100」，正確應是 8,800 元才對。我們發現有 12 個學生課程是一樣的情況...麻煩確認三件事：1) ... 2) ... 3) ...`
+
+完整對照表與更多範例見 `.cursor/rules/user-facing-communication.mdc`。
+
 ### 關鍵檔案
 `BugReportController.php`、`BugReportService.php`、`RequireSuperAdmin.php`、`BugReportsPage.vue`、`BugReportLauncher.vue`、`bugReportsApi.js`
 
@@ -193,5 +219,6 @@
 - [ ] AI 處理 bug 前：先撈 `bug_report_attachments` + reporter 全部歷史 + reporter 跨分校紀錄（§3.6）
 - [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆）
 - [ ] 修完上線：§3.7 Phase C（`resolved` + 公開回覆 + 等回報者驗收）（§R53）
+- [ ] 公開留言：§3.8 白話檢查（無欄位名 / SQL / class 名漏出）
 
-*最後更新：2026-05-23*
+*最後更新：2026-05-24*

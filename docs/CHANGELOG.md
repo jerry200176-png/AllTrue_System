@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-05-24 — chore(docs/sop): plain-language bug replies + docs consolidation plan
+
+- Added: 新增 `.cursor/rules/user-facing-communication.mdc`（always-applied）規範 AI 對老師／主任／家長的留言一律白話，禁止欄位名 / SQL / class 名 / PR 編號漏到公開留言；同步 `docs/CHAT_BUG_SYSTEM.md` §3.8 加入「白話留言檢查清單 + 對照範例」。
+- Plan: `.cursor/plans/docs-consolidation_2026-05-24.md` 列出 docs 整理提案（Tier 0/1/2/3 階層、命名 prefix、archive 規劃、MemPalace 自動化、doc owner 制度），參考 Google docs style guide / Stripe 三層金字塔 / Vercel flat 結構 / Kubernetes CONTRIBUTING+DEVELOPMENT 分工，**待 CEO 圈選 Phase A-F 再分 PR 推進**。
+
+---
+
 ## 2026-05-24 — chore(login): iOS-style v0 refresh + design tokens（#510）
 
 - Changed: 登入頁視覺更新為 iOS 風格簡潔版——柔和暖色背景（無動畫漸層）、系統字體（PingFang TC / SF）、segmented control 風格的身分切換、實心 primary、44px 觸控區、軟陰影；**邏輯零變更**（PR #510）。
