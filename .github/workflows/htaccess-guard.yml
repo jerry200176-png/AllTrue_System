@@ -1,0 +1,65 @@
+name: .htaccess Guard
+
+# Execution #481：改 backend/public/.htaccess 必須有 PR label `htaccess-reviewed`，
+# 否則 fail，避免重演 2026-04-23 事故 D（CSP/nosniff 直推 production 全站變英文）。
+# 與 CODEOWNERS（已含 .htaccess line in DANGEROUS_OPERATIONS）配套使用。
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: htaccess-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Require htaccess-reviewed label
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect .htaccess change
+        id: detect
+        run: |
+          set -euo pipefail
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- backend/public/.htaccess || true)
+          if [ -n "$CHANGED" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Diff preview:"
+            git diff "$BASE_SHA" "$HEAD_SHA" -- backend/public/.htaccess | head -120
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No .htaccess change in this PR."
+          fi
+
+      - name: Require htaccess-reviewed label
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          echo "PR labels: $LABELS"
+          if echo "$LABELS" | grep -q '"htaccess-reviewed"'; then
+            echo "✅ htaccess-reviewed label present"
+          else
+            echo "❌ This PR changes backend/public/.htaccess but is missing the 'htaccess-reviewed' label."
+            echo ""
+            echo "事故 D（2026-04-23）：未經審查的 .htaccess 變更會立即影響 production CSP / MIME headers，"
+            echo "整站 i18n inline script 被 CSP 擋導致全站英文化。"
+            echo ""
+            echo "請：(1) 人工 review CSP / nosniff / RewriteRule diff；(2) 加 'htaccess-reviewed' label；(3) 觀察 deploy 後 5 分鐘前端行為。"
+            echo "詳見 docs/DANGEROUS_OPERATIONS.md 與 P0 R4。"
+            exit 1
+          fi

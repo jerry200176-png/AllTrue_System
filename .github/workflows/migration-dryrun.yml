@@ -1,0 +1,108 @@
+name: Migration Dry-run
+
+# Execution #476：含 backend/database/migrations/** 變更的 PR，
+# 在 ephemeral MySQL container 跑 `php artisan migrate --force`，
+# 確認 schema 變更可乾淨套用 + 不破壞 fresh DB。
+# 防：OFFSET/chunk 漂移、新欄位無 DEFAULT、down() 缺失等問題上 production 才爆。
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "backend/database/migrations/**"
+      - ".github/workflows/migration-dryrun.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-dryrun-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dryrun:
+    name: Apply migrations against ephemeral MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      # Production runs MariaDB 10.11 — match it to catch portability issues
+      # (e.g., DEFAULT CURRENT_DATE without parens, ENUM behavior differences).
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: rootpw
+          MARIADB_DATABASE: alltrue_dry
+          MARIADB_USER: alltrue
+          MARIADB_PASSWORD: alltruepw
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, intl
+          coverage: none
+
+      - name: Wait for MariaDB
+        run: |
+          for i in $(seq 1 30); do
+            if mysql -h 127.0.0.1 -uroot -prootpw -e "SELECT 1" >/dev/null 2>&1; then
+              echo "MariaDB ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Composer install
+        working-directory: backend
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Configure .env for dry-run
+        working-directory: backend
+        run: |
+          cp .env.example .env || true
+          cat > .env <<'EOF'
+          APP_NAME=AllTrue
+          APP_ENV=testing
+          APP_KEY=
+          APP_DEBUG=true
+          APP_URL=http://localhost
+          DB_CONNECTION=mysql
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_DATABASE=alltrue_dry
+          DB_USERNAME=alltrue
+          DB_PASSWORD=alltruepw
+          CACHE_DRIVER=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          LOG_CHANNEL=stderr
+          EOF
+          php artisan key:generate
+
+      - name: Migrate fresh (validates up())
+        working-directory: backend
+        run: php artisan migrate --force --no-interaction
+
+      - name: Migrate rollback then re-up (validates down() where defined)
+        working-directory: backend
+        continue-on-error: true
+        run: |
+          set +e
+          php artisan migrate:rollback --step=5 --force --no-interaction
+          RC=$?
+          if [ $RC -ne 0 ]; then
+            echo "::warning title=migration rollback failed::down() 沒寫或寫錯。對於 chunkById backfill / DROP COLUMN 類遷移可接受，但請在 PR 描述說明。"
+          fi
+          php artisan migrate --force --no-interaction
