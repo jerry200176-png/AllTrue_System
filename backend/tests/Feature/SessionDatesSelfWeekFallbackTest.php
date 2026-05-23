@@ -170,6 +170,7 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
             'RemainingSessions' => 24,
             'UsedSessions'    => 0,
             'Stop'            => 0,
+            'ScheduleMode'    => 'count',
         ], $extra));
     }
 }

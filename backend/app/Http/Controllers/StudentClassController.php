@@ -512,18 +512,24 @@ class StudentClassController extends Controller
                     // 因該課自身 week 欄位已有值而被略過時（buildPackageFallbackDaysMap 只填補空白
                     // 的 sibling），仍應退回讀自身 `week, week1..week6`，否則 SessionCount=24 的
                     // 月度課只會回傳已實體化的 ClassSession 日期，後續週期堂次完全消失。
-                    if (empty($daysOfWeek) && $cid !== null && isset($bodyClasses[(int) $cid])) {
-                        $self = $bodyClasses[(int) $cid];
-                        $selfDays = [];
-                        foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $wf) {
-                            $d = (int) ($self->{$wf} ?? 0);
-                            if ($d >= 1 && $d <= 7 && !in_array($d, $selfDays, true)) {
-                                $selfDays[] = $d;
+                    //
+                    // 注意：上方 `$bodyClasses = $bodyClasses->merge($packageSiblings)` 因 array_merge
+                    // 行為會把整數鍵重新索引，不能再用 `$bodyClasses[(int) $cid]`；
+                    // 用 firstWhere('ID', ...) 才能精確命中該課。
+                    if (empty($daysOfWeek) && $cid !== null) {
+                        $self = $bodyClasses->firstWhere('ID', (int) $cid);
+                        if ($self) {
+                            $selfDays = [];
+                            foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $wf) {
+                                $d = (int) ($self->{$wf} ?? 0);
+                                if ($d >= 1 && $d <= 7 && !in_array($d, $selfDays, true)) {
+                                    $selfDays[] = $d;
+                                }
                             }
-                        }
-                        if (!empty($selfDays)) {
-                            sort($selfDays);
-                            $daysOfWeek = $selfDays;
+                            if (!empty($selfDays)) {
+                                sort($selfDays);
+                                $daysOfWeek = $selfDays;
+                            }
                         }
                     }
                     $actualSessionSet = [];
