@@ -204,6 +204,29 @@
         <div class="th-progress-trend">{{ progressTrendText }}</div>
       </div>
 
+      <div class="th-feedback-metric card-lite">
+        <div class="th-feedback-metric__head">
+          <span class="material-symbols-outlined" style="font-size:16px">mark_chat_unread</span>
+          家長回饋追蹤
+        </div>
+        <div v-if="feedbackAnalyticsLoading" class="th-feedback-metric__empty">載入中…</div>
+        <div v-else-if="feedbackAnalytics">
+          <div class="th-feedback-metric__row">
+            <span>回覆率（7天）</span>
+            <strong>{{ feedbackAnalytics.summary.reply_rate_pct }}%</strong>
+          </div>
+          <div class="th-feedback-metric__row">
+            <span>待回覆堂數</span>
+            <strong>{{ feedbackAnalytics.summary.unreplied_records }}</strong>
+          </div>
+          <div class="th-feedback-metric__row">
+            <span>新回覆未讀</span>
+            <strong>{{ feedbackAnalytics.summary.new_replies_unread }}</strong>
+          </div>
+        </div>
+        <div v-else class="th-feedback-metric__empty">目前無回饋指標</div>
+      </div>
+
       <!-- Cross-branch hint -->
       <div v-if="otherBranchTodayCount > 0" class="th-cross-hint">
         <span class="material-symbols-outlined" style="font-size:16px">info</span>
@@ -559,6 +582,8 @@ const reportFetching = ref(false);
 const missionLoading = ref(false);
 const missionTasks = ref([]);
 const missionSummary = ref({ remaining_total: 0, breached_total: 0, completion_hint: 'action_required' });
+const feedbackAnalytics = ref(null);
+const feedbackAnalyticsLoading = ref(false);
 
 // ── Chat unread count ──
 const chatUnreadCount   = ref(0);
@@ -631,6 +656,28 @@ async function fetchMissionCenter() {
     missionTasks.value = [];
   } finally {
     missionLoading.value = false;
+  }
+}
+
+async function fetchFeedbackAnalytics() {
+  feedbackAnalyticsLoading.value = true;
+  try {
+    const token = await getToken();
+    if (!token || !props.branchId) return;
+    const params = new URLSearchParams({ branch_id: String(props.branchId), days: '7' });
+    const res = await fetch(`/api/v1/learning-record-feedbacks/analytics?${params}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      feedbackAnalytics.value = null;
+      return;
+    }
+    const json = await res.json().catch(() => ({}));
+    feedbackAnalytics.value = json?.data || null;
+  } catch {
+    feedbackAnalytics.value = null;
+  } finally {
+    feedbackAnalyticsLoading.value = false;
   }
 }
 
@@ -1158,6 +1205,7 @@ async function refreshAll() {
     refreshTrustToken(),
     fetchPendingAttendance(),
     fetchMissionCenter(),
+    fetchFeedbackAnalytics(),
     fetchOverdueLearning(),
     fetchPendingLearningSummary(),
     loadWeekSchedule(),
@@ -1194,6 +1242,7 @@ function onVisibilityChange() {
     loadEngagementSnapshot();
     fetchPendingAttendance();
     fetchMissionCenter();
+    fetchFeedbackAnalytics();
     fetchOverdueLearning();
     fetchPendingLearningSummary();
     fetchLearningProgress();
@@ -1472,6 +1521,34 @@ onBeforeUnmount(() => {
 .th-progress-board.loading .th-progress-main,
 .th-progress-board.loading .th-progress-trend {
   opacity: 0.6;
+}
+.th-feedback-metric {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.th-feedback-metric__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e3a8a;
+  margin-bottom: 8px;
+}
+.th-feedback-metric__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #334155;
+  margin-top: 4px;
+}
+.th-feedback-metric__empty {
+  font-size: 12px;
+  color: var(--text-light);
 }
 
 .th-action-btn {
