@@ -47,6 +47,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 1. `.cursor/rules/plan-as-prd-cross-functional.mdc` — PRD 14 節格式
 2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP
 3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑
+4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -151,7 +152,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表出入差異審核流程 |
 | `docs/SUBSTITUTE_UX.md` | 代課 UX 設計 |
 | `docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md` | 排課日期語義 |
-| `docs/CHAT_BUG_SYSTEM.md` | 問題回報系統設計 |
+| `docs/CHAT_BUG_SYSTEM.md` | 聊天／Bug 回報；**§3.6–§3.7**＝分診 + 修完回 in-app 完整 SOP |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 
 ### 歷史／參考／易誤導（**勿當唯一真相；不通讀**）

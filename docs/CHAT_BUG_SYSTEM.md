@@ -94,6 +94,82 @@
 
 **反面範例（2026-05-17 已發生）**：AI 處理 in-app bug #107 時只看 `description`，沒查 `bug_report_attachments`，回覆裡又叫使用者「請補一張截圖」（其實兩張早就附好了）。
 
+### 3.7 In-app Bug 完整生命週期（分診 → 修 code → 回寫系統）
+
+**權威流程**：本節 + §3.6。修程式仍走 `.cursor/rules/bug-fix-plan.mdc`（B1 根因 → Bug Fix Plan → CI → merge）。
+
+**口訣**：**開 GitHub issue 時回系統一次；merge 上線後一定要再回系統一次**。不能只關 GitHub。
+
+#### 狀態機（`BugReportService::VALID_TRANSITIONS`）
+
+| 目前狀態 | 可轉到 |
+|----------|--------|
+| `new` | `triaged`, `in_progress`, `closed` |
+| `triaged` | `in_progress`, `closed` |
+| `in_progress` | `resolved`, `closed` |
+| `resolved` | `in_progress`, `closed` |
+| `closed` | `in_progress` |
+
+- **回報者驗收**（2026-05-16 起）：`resolved` → `closed` 需回報者呼叫 `POST /api/v1/bugs/{id}/reporter-verify`。AI 標 `resolved` 後要請老師在 App 按「確認已修好／問題仍存在」。
+- **內部備註**（`is_internal_note=1`）：不驅動回報者未讀紅點；分診給工程師用，不要當成給老師的回覆。
+
+#### Phase A — 分診（收到「看 bug 回報／開 issue」；不改 production 程式碼）
+
+| 步驟 | 動作 |
+|------|------|
+| A1 | 讀 §3.6：附件、reporter 歷史、跨分校、comments／status_logs |
+| A2 | 必要時查業務表驗證假設（`StudentClass`、`ClassSession`…）；高風險帳務先對 `DIRECTOR_PAYMENT_ALERT_RULES.md` |
+| A3 | `gh issue create`：title 含現象；body 必含 **in-app #**、**附件 id**、分校、B1 發現、預期 vs 實際 |
+| A4 | **回寫 in-app**：`new` → `triaged`；**公開留言**（非 internal）含 GitHub URL |
+| A5 | 回報 CEO：in-app # ↔ GitHub # 對照表 |
+
+**分診留言範本（公開）**：已收到 #___、已看附件 #___（若有）、已建 GitHub #___ 追蹤；勿叫補截圖若附件已存在。
+
+#### Phase B — 修復（改 `backend/`／`frontend/`）
+
+| 步驟 | 動作 |
+|------|------|
+| B1 | [BUG] 根因確認 → 使用者批准（見 `bug-fix-plan.mdc` §0） |
+| B2 | Bug Fix Plan → 批准 → `fix/<slug>` branch → 測試 RED → 改 code → CI 綠 → PR |
+| B3 | PR body：`Closes #<github>`（或 Epic 用 `Refs`，見 PR 模板） |
+| B4 | merge → `deploy.yml` → `GET /api/v1/health`（前端有改再查 `version.json`） |
+
+#### Phase C — 上線後回寫 in-app（與 B4 綁定）
+
+| 步驟 | 動作 |
+|------|------|
+| C1 | `in_progress` → `resolved`（若仍在 `triaged`，先轉 `in_progress` 再轉 `resolved`） |
+| C2 | **公開留言**：已上線、請至 Bug 回報頁按「確認已修好」或「問題仍存在」 |
+| C3 | 回報者 `reporter-verify` 通過後系統才會 `closed`；若「仍存在」→ 回到 B1，重開或新開 GitHub issue |
+| C4 | `docs/CHANGELOG.md` 一行（有 deployable 修復時） |
+
+**上線留言範本（公開）**：#___ 已於 YYYY-MM-DD 上線（PR #___）。請您更新頁面後按「確認已修好」；若仍有問題請按「問題仍存在」並簡述，我們會再追。
+
+#### 系統回覆（寫入 `bug_report_comments`／`bug_report_status_logs`）
+
+優先順序：
+
+1. **super_admin UI**（`BugReportsPage`，`User.type=S`）— 留言 + 更新狀態。
+2. **API**（Bearer token）：`POST /api/v1/bugs/{id}/comments`、`POST /api/v1/bugs/{id}/status`（status 僅 super_admin）。
+3. **維運分診**（僅 Phase A／C 留言與狀態，禁止跑測試）：Pi 上可用 `php artisan tinker --execute="App\Services\BugReportService::changeStatus(...); App\Services\BugReportService::addComment(...);"`；`changed_by`／`author_user_id` 用 super_admin。⛔ 不可在 Pi 跑 `php artisan test` 或 `config:clear`（見 P0）。
+
+#### Definition of Done（in-app bug 任務）
+
+- [ ] §3.6 資料已撈（含附件 id 寫進 GitHub issue）
+- [ ] GitHub issue 已開；in-app 已 `triaged` + 公開回覆含連結
+- [ ]（若修 code）CI 綠、已 merge、health OK
+- [ ]（若修 code）in-app 已 `resolved` + 公開回覆請回報者驗收
+- [ ]（可選）CHANGELOG 已記
+
+#### 雙軌對照（避免只做一半）
+
+| 軌道 | 分診後 | 修完上線後 |
+|------|--------|------------|
+| GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Closes #nnn`；必要時補 comment |
+| In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
+
+**相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
+
 ### 關鍵檔案
 `BugReportController.php`、`BugReportService.php`、`RequireSuperAdmin.php`、`BugReportsPage.vue`、`BugReportLauncher.vue`、`bugReportsApi.js`
 
@@ -115,5 +191,7 @@
 - [ ] 前端變更後走 PR → CI → merge → `deploy.yml` 自動部署
 - [ ] 測試：GitHub Actions 跑 `ChatApiTest` / `BugReportApiTest` / `ProfileCenterApiTest`
 - [ ] AI 處理 bug 前：先撈 `bug_report_attachments` + reporter 全部歷史 + reporter 跨分校紀錄（§3.6）
+- [ ] 分診：§3.7 Phase A（開 issue + in-app `triaged` + 公開回覆）
+- [ ] 修完上線：§3.7 Phase C（`resolved` + 公開回覆 + 等回報者驗收）（§R53）
 
-*最後更新：2026-05-17*
+*最後更新：2026-05-23*
