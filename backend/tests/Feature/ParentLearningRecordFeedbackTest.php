@@ -154,6 +154,42 @@ class ParentLearningRecordFeedbackTest extends TestCase
         }
     }
 
+    public function test_feedback_analytics_returns_reply_rate_and_pending_preview(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $teacherA = $this->user('T');
+        $teacherB = $this->user('T');
+
+        $a1 = $this->record(['campus' => $campus, 'teacher' => $teacherA]);
+        $a2 = $this->record(['campus' => $campus, 'teacher' => $teacherA]);
+        $b1 = $this->record(['campus' => $campus, 'teacher' => $teacherB]);
+        $this->submit($a1, '第一筆回饋');
+        $this->submit($b1, '第二筆回饋');
+
+        $director = $this->user('A');
+        $directorToken = $this->staffToken($director, [$campus->id]);
+        $res = $this->getJson("/api/v1/learning-record-feedbacks/analytics?branch_id={$campus->id}&days=14", $this->bearer($directorToken));
+        $res->assertOk()
+            ->assertJsonPath('data.summary.approved_records', 3)
+            ->assertJsonPath('data.summary.replied_records', 2)
+            ->assertJsonPath('data.summary.unreplied_records', 1);
+
+        $teacherRows = collect($res->json('data.by_teacher'));
+        $teacherARow = $teacherRows->firstWhere('teacher_id', $teacherA->id);
+        $this->assertNotNull($teacherARow);
+        $this->assertSame(2, (int) $teacherARow['approved_records']);
+        $this->assertSame(1, (int) $teacherARow['replied_records']);
+        $this->assertSame(1, (int) $teacherARow['unreplied_records']);
+
+        $teacherRes = $this->getJson('/api/v1/learning-record-feedbacks/analytics?days=14', $this->bearer($this->staffToken($teacherA, [$campus->id])));
+        $teacherRes->assertOk()
+            ->assertJsonPath('data.summary.approved_records', 2)
+            ->assertJsonPath('meta.scope_role', 'teacher');
+        $this->assertCount(1, $teacherRes->json('data.by_teacher'));
+        $this->assertNotEmpty($res->json('data.pending_preview'));
+        $this->assertSame($a2['record_id'], $res->json('data.pending_preview.0.learning_record_id'));
+    }
+
     private function submit(array $s, string $content): void
     {
         $this->putJson($this->parentUrl($s), ['content' => $content], $this->bearer($this->parentToken($s['student_id'])))->assertOk();
