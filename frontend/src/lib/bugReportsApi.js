@@ -105,8 +105,13 @@ export async function updateBugCommentVisibility(bugId, commentId, isInternalNot
   return json(res);
 }
 
-export async function reporterVerifyBug(bugId, verdict, note = '') {
-  const res = await fetch(`${API}/bugs/${bugId}/reporter-verify`, {
+export async function reporterVerifyBug(bugId, verdict, note = '', branchId = null) {
+  const params = new URLSearchParams();
+  if (branchId != null && branchId !== '') {
+    params.set('branch_id', String(branchId));
+  }
+  const qs = params.toString();
+  const res = await fetch(`${API}/bugs/${bugId}/reporter-verify${qs ? `?${qs}` : ''}`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ verdict, note: note || undefined }),

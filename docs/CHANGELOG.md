@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-23 — fix(bugs): reporter-verify cross-branch access (P1 hotfix)
+
+- Fixed: 回報者在 Bug 回報頁對「已解決」單按「確認已修好／問題仍存在」時，若當前分校與回報當時分校不同會誤回 404（#378 列表/詳情已跨分校，但 `reporter-verify` 未對齊）。修復後與 `show()` 共用 `canAccessBug()` 授權。
+
+---
+
 ## 2026-05-23 — feat(ui): enterprise visual polish rollout phase 1（#461）
 
 - Changed: `DirectorDashboard`、`TeacherHomePage`、`LearningRecordsPage`、`AttendancePage`、`ParentPortal` 套用統一 light-first 企業視覺語言（header surface、empty/loading 狀態、44px 觸控目標與 CTA 層級一致化），並以共用 `enterprise-*` utility class 收斂跨頁不一致樣式。Closes #461。
