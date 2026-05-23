@@ -8,6 +8,14 @@
 
 ---
 
+## 2026-05-23 — feat(adoption): KPI cockpit + trust layer v1（#462 / #460）
+
+- Added: 主任儀表板新增 Adoption/Quality KPI 集群（老師/主任開啟率、家長回覆率、Bug 重開率、P1/P0 lead time、trust backlog），並支援 super_admin 跨分校比較。Closes #462。
+- Added: 新增 `GET /api/v1/system/trust-summary`（教職端）與 `GET /api/v1/parent/system-trust-summary`（家長端）供前端顯示「最近改善 / 已知問題 / 穩定性快照」，已套用分校隔離與最小揭露。Closes #460。
+- Changed: 新增可重用 `SystemTrustPanel`，已掛載到主任儀表板、老師教學工作台與家長入口（teaser），讓系統品質狀態可見且可追蹤。
+
+---
+
 ## 2026-05-23 — fix(auth): 改密碼錯誤提示改為中文
 
 - Fixed: 個人檔案改密碼時，新密碼規則統一為至少 8 碼，錯誤提示改成中文，不再顯示 `validation.min.string`。Closes #433，對應 in-app #118。
