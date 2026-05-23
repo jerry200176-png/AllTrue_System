@@ -16,6 +16,7 @@
 4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
 5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
 6. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
+7. **處理 in-app Bug 回報**（分診或修完上線）：`docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）
 
 ## 公司治理記錄原則
 
