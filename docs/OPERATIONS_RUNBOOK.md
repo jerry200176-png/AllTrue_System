@@ -926,3 +926,218 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 - Parent trust endpoint 401：檢查 parent session token 是否過期（`ParentSession.ExpiresAt`）。
 - 指標異常跳動：先用 `docs/ADOPTION_QUALITY_METRICS.md` 的公式比對分子/分母，再決定是否修公式。
 
+---
+
+## R. Branch Protection（GitHub Settings）— Issue #470
+
+> **必須在 GitHub Web UI 啟用**：`Settings → Branches → Branch protection rules → main`
+
+### R1. 必啟設定（截至 2026-05-23）
+
+| 設定 | 值 | 為什麼 |
+|------|---|------|
+| Require a pull request before merging | ✅ | 阻擋直推 main（事故 A 防再犯）|
+| Required approvals | 1（CEO 或 trusted reviewer）| CODEOWNERS 觸發時必須 owner approve |
+| Require review from Code Owners | ✅ | 高風險路徑必須 owner approve（#472）|
+| Dismiss stale approvals on new push | ✅ | 防 approve 後偷塞 commit |
+| Require status checks before merging | ✅ | 必須全綠才能 merge |
+| Required checks | `Presubmit Gate` / `CI — PHPUnit Tests` / `Security Scan` / `Block secret file types` / `gitleaks scan` / `Vite Frontend Build` / `Docs Integrity Check` / `Golden scenarios report` | 確保 CI 完整跑 |
+| Require branches to be up to date | ✅ | 避免 stale rebase merge |
+| Require conversation resolution | ✅ | review comment 必須解決 |
+| Restrict pushes that create matching branches | （main only）| 一般 contributor 無法直接 push |
+| Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |
+| Allow deletions | ❌ | 防 main 被刪 |
+
+### R2. Break-glass 流程
+
+- 重大事故需直接 push main 時：
+  1. 先把當下 SHA 記到 `docs/INCIDENT_LOG.md`（包含原因）
+  2. Temporarily uncheck 「Restrict force pushes」（記時間）
+  3. 完成後立即恢復
+  4. 24 小時內 retro PR + comment in event log
+
+### R3. 驗證已啟用
+
+```bash
+gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
+  --jq '{required_pull_request_reviews,required_status_checks,enforce_admins,allow_force_pushes,allow_deletions}'
+```
+
+---
+
+## S. Deploy Credentials — SSH Key Rotation SOP — Issue #474
+
+### S1. 決策（v1）
+
+短期維持 SSH key 模式（GitHub OIDC 到 Pi 需額外 federation 元件，CP 值偏低）。
+**強制每季輪替**：每年 1/4/7/10 月第一週。
+
+### S2. 輪替步驟
+
+```bash
+# 在 Pi：
+TS=$(date '+%Y-%m-%d')
+ssh-keygen -t ed25519 -C "rpi_actions_deploy_${TS}" -f ~/.ssh/rpi_actions_deploy_${TS} -N ""
+cat ~/.ssh/rpi_actions_deploy_${TS}.pub >> ~/.ssh/authorized_keys
+
+# WSL2：把 private key base64 一次性貼到 GitHub Secrets PI_SSH_KEY
+base64 -w0 < ~/.ssh/rpi_actions_deploy_${TS}
+# → 更新 https://github.com/.../settings/secrets/actions PI_SSH_KEY
+
+# 驗證 deploy.yml 可用
+gh workflow run deploy.yml --ref main  # 或等下一次 PR merge
+
+# 確認新 key 成功部署後，移除舊 key
+sed -i '/rpi_actions_deploy_<OLD_TS>/d' ~/.ssh/authorized_keys
+```
+
+### S3. 輪替紀錄
+
+| 日期 | 操作者 | 上一把 key fingerprint | 新 key fingerprint | 備註 |
+|------|--------|---------------------|----------------------|------|
+| _待填_ | _待填_ | _待填_ | _待填_ | 初版 SOP 建立 |
+
+### S4. Format 自檢（事故 G-006 防再犯）
+
+- `PI_SSH_USER`：純 `admin`，不含 `@`
+- `PI_SSH_HOST`：純 hostname，不含 `user@`
+- `PI_SSH_KEY`：`base64 -w0` 的單行輸出
+- deploy.yml 啟動時用 `ssh-keygen -l -f` 預檢 key 是否合法
+
+---
+
+## T. Dependabot SLA — Issue #493
+
+| 嚴重度 | SLA（合進 main） | 範例 |
+|--------|-------------------|------|
+| critical | **7 天** | CVE 9.0+；known active exploit |
+| high | **30 天** | CVE 7.0-8.9 |
+| medium | **90 天** | CVE 4.0-6.9 |
+| low / devDependency-only | **best effort** | dev 工具升級 |
+
+### Triage 規則
+
+- **devDependency only**（test runner、lint、build tool）→ 可累積到 docs batch
+- **runtime dependency**（Laravel core、symfony、vue、axios）→ 單獨 PR + CI 綠後 24h 內 merge
+- **breaking semver-major**（dependabot.yml 已 ignore）→ 開獨立 issue 評估，不自動 PR
+- 連續 3 週 dependabot PR 累積未 merge → 加入週會討論
+
+### 與 #485 結構化 log 的對接
+
+- 每週 cron：彙整 `npm audit` + `composer audit` JSON → digest LINE / email
+- 連續 2 週 critical 未處理 → 自動建 issue + assign
+
+---
+
+## U. Staging Environment — Issue #475（v1 plan，未實作）
+
+### U1. 為什麼
+
+目前 WSL2 dev → production Pi 直接 cut over，缺少 production-like 驗證層。
+歷史事故：D（.htaccess）、E（cache permission）若有 staging 都能提前發現。
+
+### U2. v1 設計（low cost）
+
+- **基礎設施**：第 2 台 Raspberry Pi 4（或 4GB VM）+ 獨立 hostname `staging.daan.lifenet.com.tw`
+- **DB**：獨立 MySQL `AllTrue_staging`，每週日凌晨從 production sixhour 備份**脫敏**還原（移除 phone / LineID）
+- **部署觸發**：`deploy-staging.yml` manual `workflow_dispatch`（不自動跟 main）
+- **資料同步**：僅 staging 寫入測試資料，不回 production
+
+### U3. 流程定位
+
+| 變更類型 | 必須走 staging？ |
+|---------|------------------|
+| migration（新增表/欄位 + backfill） | **必須** |
+| auth / session / RBAC 變更 | **必須** |
+| public endpoint 新增 | 建議 |
+| UI-only / docs | 不需要 |
+
+### U4. 為什麼還沒做（gating decision）
+
+- 多一台 Pi 硬體 / 月度電費 / SSL cert 維護
+- 等 CEO 決定預算 → 開 `feat/staging-env-v1` PR
+
+---
+
+## V. Feature Flags Lite — Issue #488（v1 plan，未實作）
+
+### V1. 設計原則
+
+不引入 LaunchDarkly / Unleash 等 SaaS（成本 / vendor lock-in）。
+用 DB 表 + Laravel config helper 達成 90% 場景。
+
+### V2. v1 設計
+
+```sql
+CREATE TABLE feature_flags (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  flag_key VARCHAR(64) UNIQUE NOT NULL,
+  enabled_all TINYINT NOT NULL DEFAULT 0,
+  enabled_campus_ids JSON NULL,   -- ["1","2"] 試點分校 allowlist
+  rollout_percent TINYINT NULL,   -- 0-100，按 user_id hash
+  description TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NULL
+);
+```
+
+```php
+// 使用範例
+if (FeatureFlag::isEnabled('parent_perception_pulse_v1', user: $user, campusId: $campusId)) {
+    // 顯示 pulse modal
+}
+```
+
+### V3. Rollout 流程
+
+1. 開 flag、預設 `enabled_all=0`、`enabled_campus_ids=null`
+2. 試點 1 個分校 7 天 → 評估
+3. 擴大 4 個分校 → 監測 SLI 1 週
+4. `enabled_all=1` 且 28 天無 incident → 移除 flag check（清理債）
+
+### V4. 與其他 SOP
+
+- 試點分校期間：依 `docs/PRODUCT_OPS.md` 跑 T+7 metrics review
+- 任何 production code 用 flag 必須在 PR description 寫 rollout plan
+- Flag 超過 90 天未清理 → 進入 TECH_DEBT
+
+---
+
+## W. Visual Regression — Issue #479（v1 plan，未實作）
+
+### W1. 範圍
+
+5 個高流量頁面：
+- DirectorDashboard
+- TeacherHomePage
+- LearningRecordsPage
+- AttendancePage
+- ParentPortal
+
+### W2. 工具選擇
+
+- **Playwright**（Chromium baseline，跨 OS 一致性最好）
+- 不選 Percy / Chromatic（外部 SaaS + cost）
+
+### W3. CI 整合
+
+```yaml
+# .github/workflows/visual-regression.yml（v1 草案）
+on:
+  push: [main]
+  pull_request:
+    types: [labeled]   # 只在加 label 'visual' 時跑，省 minutes
+```
+
+### W4. Baseline 管理
+
+- baseline 截圖存 `frontend/tests/visual/__snapshots__/`（git LFS 評估）
+- diff 失敗 → PR comment 附 diff 圖
+- 接受新 baseline：手動 commit + label `visual-baseline-updated`
+
+### W5. 還沒做的原因
+
+- 5 頁 baseline 第一次跑要約 1 小時
+- baseline 維護成本（每次設計改一律要更新）
+- 待 #461 visual polish 進入維護期再啟動
+

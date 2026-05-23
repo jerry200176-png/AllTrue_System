@@ -343,3 +343,30 @@
 | 清償成本估計 | 中（半天～一天，含實測前後對比）|
 | 不做的代價 | 行事曆／教師工作台載入時間波動大，使用者體感差；Pi 資源與 SLO 都被 burn。 |
 | 對應 GitHub | Sentry auto-issues #341 / #342 / #343 / #374 / #375 已 close 並指向此 TD。需要 AI 有 Sentry 瀏覽器 access 才能精準下藥。 |
+
+---
+
+### TD-019 ~ TD-027：Enterprise Ops Execution Batch（Epic #469 子項）
+
+| TD | 來源 issue | 標題 | 狀態 | 優先級 | 備註 |
+|----|----------|------|------|------|------|
+| TD-019 | #475 | Staging / pre-production 環境 | Deferred — 需 CEO 預算決策 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §U |
+| TD-020 | #488 | Feature flags lite framework | Deferred — 等第一個試點 feature 出現再實作 | P2 | 設計 → `OPERATIONS_RUNBOOK.md` §V |
+| TD-021 | #479 | Playwright visual regression（5 頁） | Deferred — #461 進維護期再啟動 | P3 | 設計 → `OPERATIONS_RUNBOOK.md` §W |
+| TD-022 | #478 | Core API contract / golden tests | Deferred — 等 `route:list` snapshot 工具確定 | P2 | 既有 `QA_GOLDEN_SCENARIOS.md` 已涵蓋部分 |
+| TD-023 | #490 | Perception pulse survey 實作 | Deferred — 設計完成，等 #488 flags 後試點 | P2 | 設計 → `PROFESSIONAL_PERCEPTION_SURVEY.md` |
+| TD-024 | #492 | Audit log for sensitive admin actions（v1 實作）| Open — 設計完成 | P1 | 設計 → `security/AUDIT_LOG_POLICY.md`；獨立 PRD 待開 |
+| TD-025 | #485 | Structured logging + 5xx digest cron | Open | P2 | request_id / campus_id structured field |
+| TD-026 | #470 | Branch protection 啟用驗證 | Open — runbook 已寫，等 admin 在 GitHub Web UI 套用 | P1 | `OPERATIONS_RUNBOOK.md` §R |
+| TD-027 | #474 | SSH key 季度輪替啟動 + 第一次紀錄 | Open — SOP 已寫，等第一次輪替 | P2 | `OPERATIONS_RUNBOOK.md` §S |
+
+---
+
+### TD-051 ~ TD-054：OWASP ASVS L1 缺口（#491）
+
+| TD | ASVS | 標題 | 優先級 | 備註 |
+|----|------|------|------|------|
+| TD-051 | 2.1.1 | 密碼最小長度 8 → 12 | P2 | 需評估老師現有帳號遷移 |
+| TD-052 | 2.1.3 | 登入錯誤訊息（帳號 vs 密碼）收斂 | P3 | 小工程 |
+| TD-053 | 3.4.1 | session idle timeout 全系統統一 | P2 | RFID / parent / staff 三套 TTL 不一致 |
+| TD-054 | 13.4.1 | `/swipe-rfid` 端點 rate limit | P2 | 防 RFID reader 異常爆量 |
