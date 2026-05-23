@@ -8,6 +8,13 @@
 
 ---
 
+## 2026-05-23 — fix(auth): 改密碼錯誤提示改為中文
+
+- Fixed: 個人檔案改密碼時，新密碼規則統一為至少 8 碼，錯誤提示改成中文，不再顯示 `validation.min.string`。Closes #433，對應 in-app #118。
+- 開發備註：本次補齊 in-app Bug 分診／上線後回寫 SOP：`CHAT_BUG_SYSTEM.md` §3.7、`AI_REGRESSION_LESSONS.md` §R53、`CLAUDE.md`／`AGENTS.md`／`INDEX.md` 導航。
+
+---
+
 ## 2026-05-23 — fix: 聊天附件、行事曆 EndDate、CourseEditForm、N+1 查詢（#431）
 
 - Fixed: 聊天頁附件按鈕點擊無反應（TypeError: y.click is not a function）— Closes #421 #428
