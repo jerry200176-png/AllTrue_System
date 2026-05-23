@@ -885,6 +885,31 @@ class BugReportApiTest extends TestCase
         ])->assertStatus(422);
     }
 
+    /**
+     * Regression: reporter-verify must use same cross-branch scope as show() (#378).
+     * Frontend list is scoped by branch_id; verify must not 404 when bug was filed at another campus.
+     */
+    public function test_reporter_can_verify_resolved_bug_from_another_branch_with_branch_id(): void
+    {
+        [$tokenMulti, $userMulti] = $this->createUserToken([1, 2], 'rv-cross-branch@test.com', 'D');
+
+        $bug = BugReport::create([
+            'CampusID' => 2, 'reporter_user_id' => $userMulti->id,
+            'title' => 'Resolved at campus 2', 'description' => 'D',
+            'severity' => 'low', 'status' => 'resolved',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenMulti}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/reporter-verify?branch_id=1", [
+            'verdict' => 'confirmed',
+        ]);
+
+        $res->assertOk();
+        $this->assertEquals('closed', $res->json('new_status'));
+    }
+
     // ── Cross-branch reporter visibility (#378) ──────────────────
 
     /**
