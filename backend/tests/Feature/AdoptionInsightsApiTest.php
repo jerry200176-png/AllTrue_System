@@ -60,18 +60,47 @@ class AdoptionInsightsApiTest extends TestCase
                     'delta_teacher_open_rate_pct',
                     'delta_director_open_rate_pct',
                 ],
+                'parent_feedback_reply_rate_pct',
+                'parent_feedback_unread_backlog',
+                'bug_reopen_rate_pct',
+                'p1p0_median_lead_hours',
+                'trust_contract_backlog',
             ],
             'meta' => ['branch_id', 'generated_at'],
         ]);
     }
 
+    public function test_cross_branch_metrics_requires_super_admin_role(): void
+    {
+        $directorToken = $this->createDirectorToken([1], 'adoption-director-role-check@example.com');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/adoption/cross-branch-metrics')
+            ->assertForbidden();
+
+        $superAdminToken = $this->createUserToken([], 'adoption-super-admin@example.com', 'S');
+        $this->withHeaders([
+            'Authorization' => "Bearer {$superAdminToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/adoption/cross-branch-metrics')
+            ->assertOk()
+            ->assertJsonPath('meta.scope', 'super_admin_all_branches');
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
+    {
+        return $this->createUserToken($campusIds, $loginName, 'A');
+    }
+
+    private function createUserToken(array $campusIds, string $loginName, string $type): string
     {
         $user = User::create([
             'LoginName' => $loginName,
             'Name' => 'Adoption 測試主任',
             'PSW' => 'secret',
-            'type' => 'A',
+            'type' => $type,
             'phone' => 923456789,
         ]);
 
