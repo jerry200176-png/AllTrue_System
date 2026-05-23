@@ -174,7 +174,7 @@
 
               <div class="message-input-bar">
                 <!-- Attach button -->
-                <button class="btn-attach" @click="fileInput.value?.click()" title="傳送附件">
+                <button class="btn-attach" @click="fileInput?.click()" title="傳送附件">
                   <span class="material-symbols-outlined">attach_file</span>
                 </button>
                 <input
@@ -1084,7 +1084,7 @@ function formatTime(iso) {
 .empty-threads .hint { font-size: 13px; margin-top: 4px; }
 
 /* Message panel */
-.message-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.message-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .no-thread-selected {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   color: var(--text-light);
@@ -1179,7 +1179,7 @@ function formatTime(iso) {
 
 .message-input-bar {
   display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border);
-  align-items: center;
+  align-items: center; flex-shrink: 0;
 }
 .btn-attach {
   background: none; border: none; cursor: pointer; color: var(--text-light);
