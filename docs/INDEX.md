@@ -73,10 +73,20 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | 部署 SOP（Phase 7） | `docs/OPERATIONS_RUNBOOK.md §A-B` |
 | 緊急事故 / 回滾 | `docs/DANGEROUS_OPERATIONS.md` |
-| Dependabot merge SOP | `docs/OPERATIONS_RUNBOOK.md §B0` |
+| Dependabot merge SOP / SLA | `docs/OPERATIONS_RUNBOOK.md §B0 / §T` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
+| Branch protection 啟用步驟 | `docs/OPERATIONS_RUNBOOK.md §R` |
+| SSH key 季度輪替 SOP | `docs/OPERATIONS_RUNBOOK.md §S` |
+| Staging 設計 / Feature flag / Visual regression | `docs/OPERATIONS_RUNBOOK.md §U / §V / §W` |
 | AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |
+
+### SRE / Product Ops
+| 需要什麼 | 去哪裡找 |
+|----------|---------|
+| SLI / SLO / Error Budget / Release Freeze | `docs/SRE_POLICY.md` |
+| Post-release T+7/T+14/T+30 metrics review | `docs/PRODUCT_OPS.md` |
+| Perception pulse survey 設計 | `docs/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
 | 需要什麼 | 去哪裡找 |
@@ -84,6 +94,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | STRIDE 速查 | `.cursor/rules/module-security.mdc` |
 | 已知安全漏洞 | `docs/SECURITY.md` |
 | 家長入口安全規則 | `docs/AI_REGRESSION_LESSONS.md §R18` |
+| OWASP ASVS L1 自查（年度） | `docs/security/ASVS_L1_2026.md` |
+| Audit log 政策（敏感 admin 行為） | `docs/security/AUDIT_LOG_POLICY.md` |
 
 ### 技術債
 | 需要什麼 | 去哪裡找 |
