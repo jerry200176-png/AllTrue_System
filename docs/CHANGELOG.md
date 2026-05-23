@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-23 — feat(ui): enterprise visual polish rollout phase 1（#461）
+
+- Changed: `DirectorDashboard`、`TeacherHomePage`、`LearningRecordsPage`、`AttendancePage`、`ParentPortal` 套用統一 light-first 企業視覺語言（header surface、empty/loading 狀態、44px 觸控目標與 CTA 層級一致化），並以共用 `enterprise-*` utility class 收斂跨頁不一致樣式。Closes #461。
+
+---
+
 ## 2026-05-23 — feat(parent-feedback): response program timing + template + digest v1（#459）
 
 - Added: 家長端學習評量回饋導入三組受管控模板（鼓勵/提問/請老師加強）與未回覆摘要；後端新增 `learning-record-feedbacks/analytics` 供老師/主任查看 7 日回覆率、未回覆堂數與待處理預覽，並在 dashboard 回傳 `feedback_program`（trigger window、quiet hours、throttle/mute policy）作為提醒節流合約。Closes #459。
