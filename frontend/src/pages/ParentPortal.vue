@@ -3,7 +3,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
 
     <!-- LIFF auto-login loading -->
-    <div class="pp-card pp-loading-card" v-if="liffLoading">
+    <div class="pp-card pp-loading-card enterprise-loading" v-if="liffLoading">
       <div class="pp-spinner"></div>
       <p class="pp-loading-text">正在透過 LINE 驗證身分…</p>
     </div>
@@ -85,7 +85,7 @@
     <template v-if="token && dashboard">
 
       <!-- Student Profile Card (simplified — no fee ring) -->
-      <div class="pp-card pp-profile-card" data-guide="parent-student-card">
+      <div class="pp-card pp-profile-card enterprise-page-header" data-guide="parent-student-card">
         <div class="pp-profile-top">
           <div class="pp-avatar">{{ (dashboard.student?.name || '?')[0] }}</div>
           <div class="pp-profile-info">
@@ -120,7 +120,7 @@
       </div>
 
       <!-- ═══ Progress Hub (PRD enterprise v2) ═══ -->
-      <div class="pp-card pp-hub-card" v-if="progressSummary" data-guide="parent-progress-hub">
+      <div class="pp-card pp-hub-card enterprise-page-header" v-if="progressSummary" data-guide="parent-progress-hub">
         <div class="pp-hub-header">
           <div class="pp-hub-title">
             <span class="material-symbols-outlined">flag</span>
@@ -403,7 +403,7 @@
             載入更多（已顯示 {{ allLearningRecords.length }} / {{ lrTotal }} 筆）
           </template>
         </button>
-        <div class="pp-empty" v-if="!allLearningRecords.length">
+        <div class="pp-empty enterprise-empty" v-if="!allLearningRecords.length">
           <span class="material-symbols-outlined">description</span>
           <p>尚無已核准的學習評量紀錄</p>
         </div>
@@ -443,7 +443,7 @@
               顯示更多（共 {{ dashboard.attendance_history.length }} 筆）
             </button>
           </template>
-          <div class="pp-empty" v-else>
+          <div class="pp-empty enterprise-empty" v-else>
             <span class="material-symbols-outlined">event_busy</span>
             <p>目前無出缺勤記錄</p>
             <p class="pp-empty-hint">老師完成點名後將自動顯示於此</p>
@@ -583,7 +583,7 @@
           </div>
           <p v-if="leaveSuccess" class="pp-success-msg">{{ leaveSuccess }}</p>
         </div>
-        <div class="pp-empty" v-if="!(dashboard.upcoming_sessions || []).length">
+        <div class="pp-empty enterprise-empty" v-if="!(dashboard.upcoming_sessions || []).length">
           <span class="material-symbols-outlined">event_available</span>
           <p>近期無安排課程</p>
         </div>
@@ -669,7 +669,7 @@
           </div>
           <p class="pp-info-hint">如需繳費，請聯絡補習班。</p>
         </div>
-        <div class="pp-empty" v-if="!(dashboard.payment_alerts || []).length">
+        <div class="pp-empty enterprise-empty" v-if="!(dashboard.payment_alerts || []).length">
           <span class="material-symbols-outlined" style="color:#43a047;">check_circle</span>
           <p>目前無待繳費項目</p>
         </div>
