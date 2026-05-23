@@ -521,8 +521,7 @@ const currentUserId = computed(() => {
   } catch { return null; }
 });
 const isReporter = computed(() =>
-  !isSuperAdmin.value
-  && detail.value?.reporter_user_id != null
+  detail.value?.reporter_user_id != null
   && currentUserId.value != null
   && Number(detail.value.reporter_user_id) === currentUserId.value
 );
