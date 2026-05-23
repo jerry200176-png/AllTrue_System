@@ -796,6 +796,7 @@ class ParentPortalController extends Controller
         $totalCourses = is_countable($perCourse) ? count($perCourse) : 0;
         $paidCount = max(0, $totalCourses - $unpaidCount);
         $paymentStatus = $unpaidCount === 0 ? 'all_clear' : ($unpaidCount >= $totalCourses ? 'all_pending' : 'partial');
+        $feedbackProgram = $this->buildParentFeedbackProgramSummary($student);
 
         return [
             'week_label' => $weekStart->format('m/d') . '–' . $weekEnd->format('m/d'),
@@ -815,8 +816,101 @@ class ParentPortalController extends Controller
                 'unpaid_courses' => $unpaidCount,
                 'total_courses' => $totalCourses,
             ],
+            'feedback_program' => $feedbackProgram,
+            'feedback_program_version' => 'v1',
             'generated_at' => Carbon::now()->toIso8601String(),
         ];
+    }
+
+    private function buildParentFeedbackProgramSummary(Student $student): array
+    {
+        // v1 contract: timing policy + digest preview are read-only hints for parent portal UX.
+        $windowStart = Carbon::now()->subDays(89)->startOfDay();
+        $windowEnd = Carbon::now()->endOfDay();
+
+        $approvedBase = LearningRecord::query()
+            ->where('StudentID', $student->id)
+            ->where('LearningRecord.Status', 'approved')
+            ->whereNotNull('LearningRecord.ApprovedAt')
+            ->whereBetween('LearningRecord.ApprovedAt', [$windowStart, $windowEnd]);
+
+        $approvedCount = (clone $approvedBase)->count();
+        $repliedCount = (clone $approvedBase)
+            ->join('learning_record_feedbacks as lf', 'lf.learning_record_id', '=', 'LearningRecord.id')
+            ->distinct('LearningRecord.id')
+            ->count('LearningRecord.id');
+        $unrepliedCount = max(0, $approvedCount - $repliedCount);
+        $replyRate = $approvedCount > 0 ? round(($repliedCount / $approvedCount) * 100, 1) : 0.0;
+
+        $unrepliedPreview = (clone $approvedBase)
+            ->leftJoin('learning_record_feedbacks as lf', 'lf.learning_record_id', '=', 'LearningRecord.id')
+            ->leftJoin('User as u', 'u.id', '=', 'LearningRecord.TeacherID')
+            ->whereNull('lf.id')
+            ->orderByDesc('LearningRecord.ApprovedAt')
+            ->limit(3)
+            ->get([
+                'LearningRecord.id as learning_record_id',
+                'LearningRecord.SessionDate as session_date',
+                'LearningRecord.Subject as subject',
+                'LearningRecord.ApprovedAt as approved_at',
+                'u.Name as teacher_name',
+            ])
+            ->map(function ($row) {
+                $approvedAt = $row->approved_at ? Carbon::parse($row->approved_at) : null;
+                return [
+                    'learning_record_id' => (int) $row->learning_record_id,
+                    'session_date' => (string) ($row->session_date ?? ''),
+                    'subject' => (string) ($row->subject ?? ''),
+                    'teacher_name' => (string) ($row->teacher_name ?? ''),
+                    'approved_at' => $approvedAt ? $approvedAt->toIso8601String() : null,
+                    'recommended_reminder_at' => $this->toReminderWindow($approvedAt)->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'version' => 'v1',
+            'window' => [
+                'start' => $windowStart->toDateString(),
+                'end' => $windowEnd->toDateString(),
+                'days' => 90,
+            ],
+            'funnel' => [
+                'approved_records' => (int) $approvedCount,
+                'replied_records' => (int) $repliedCount,
+                'reply_rate_pct' => $replyRate,
+                'unreplied_records' => (int) $unrepliedCount,
+            ],
+            'quick_templates' => [
+                ['id' => 'encourage', 'label' => '鼓勵', 'text' => '謝謝老師這週的指導，孩子回家有主動分享上課內容。'],
+                ['id' => 'question', 'label' => '提問', 'text' => '想請老師補充：孩子在這個單元還有哪一段需要再練習？'],
+                ['id' => 'focus', 'label' => '請老師加強', 'text' => '想請老師下堂課優先協助加強這次作業／測驗的弱項。'],
+            ],
+            'reminder_policy' => [
+                'trigger_window_hours' => ['min' => 2, 'max' => 4],
+                'quiet_hours' => ['start' => '22:00', 'end' => '08:00'],
+                'throttle' => ['daily_cap' => 1, 'weekly_digest_cap' => 1],
+                'mute_options' => ['today', 'this_week'],
+            ],
+            'digest' => [
+                'unreplied_preview' => $unrepliedPreview,
+                'next_digest_at' => Carbon::now()->next(Carbon::SUNDAY)->setTime(19, 0)->toIso8601String(),
+            ],
+        ];
+    }
+
+    private function toReminderWindow(?Carbon $approvedAt): Carbon
+    {
+        $base = ($approvedAt ? $approvedAt->copy() : Carbon::now())->addHours(2);
+        $hour = (int) $base->format('H');
+        if ($hour < 8) {
+            return $base->setTime(9, 0);
+        }
+        if ($hour >= 21) {
+            return $base->addDay()->setTime(9, 0);
+        }
+        return $base;
     }
 
     private function mapParentFlowStatus(string $status): string
