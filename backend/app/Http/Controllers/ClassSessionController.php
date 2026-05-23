@@ -240,6 +240,20 @@ class ClassSessionController extends Controller
             $query->whereDate('cs.SessionDate', '<=', $request->input('end'));
         }
 
+        // Bug #496 / in-app #124：cancelAutoMaterializedDuplicateSession() 會把調課同槽
+        // 的 auto-materialized placeholder 標 cancelled + Note .= 'cancelled-duplicate-
+        // reschedule-placeholder'。這些列屬內部 bookkeeping，預設不外露給課程管理／
+        // 日曆／出缺勤等任何 UI 消費端。提供 include_internal_placeholder=1 給 audit/QA。
+        if (!$request->boolean('include_internal_placeholder')) {
+            $query->where(function ($q) {
+                $q->where('cs.Status', '<>', 'cancelled')
+                    ->orWhere(function ($inner) {
+                        $inner->where('cs.Note', 'NOT LIKE', '%cancelled-duplicate-reschedule-placeholder%')
+                            ->orWhereNull('cs.Note');
+                    });
+            });
+        }
+
         $perPage = min(max((int) $request->input('per_page', 1000), 1), 2000);
         $rows = $query
             ->orderBy('cs.SessionDate', 'asc')
