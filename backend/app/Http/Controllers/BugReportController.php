@@ -111,13 +111,7 @@ class BugReportController extends Controller
 
         $bugId = (int) $id;
 
-        // #378: reporter 自己的回報跨分校可開（仍須仍隸屬於該分校），
-        // 否則沿用單分校 scope（避免越權看到別人單）。
-        $reporterCampusIds = $this->resolveReporterCampusIds($request);
-        $allowReporterCrossBranch = !$seesAllBranchBugs
-            && BugReportService::belongsToCampusForReporter($bugId, $userId, $reporterCampusIds);
-
-        if (!$allowReporterCrossBranch && !BugReportService::belongsToCampus($bugId, $campusIds)) {
+        if (!$this->canAccessBug($request, $bugId)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -177,11 +171,10 @@ class BugReportController extends Controller
 
         $userId = $this->resolveUserId($request);
         $role = $request->attributes->get('auth_role');
-        $campusIds = $this->resolveCampusIds($request);
         $bugId = (int) $id;
         $isSuperAdmin = $role === 'super_admin';
 
-        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+        if (!$this->canAccessBug($request, $bugId)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -216,10 +209,9 @@ class BugReportController extends Controller
         ]);
 
         $userId = $this->resolveUserId($request);
-        $campusIds = $this->resolveCampusIds($request);
         $bugId = (int) $id;
 
-        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+        if (!$this->canAccessBug($request, $bugId)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -237,11 +229,10 @@ class BugReportController extends Controller
             'is_internal_note' => 'required|boolean',
         ]);
 
-        $campusIds = $this->resolveCampusIds($request);
         $bugId = (int) $id;
         $commentIdInt = (int) $commentId;
 
-        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+        if (!$this->canAccessBug($request, $bugId)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -274,10 +265,9 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $bugId     = (int) $id;
-        $campusIds = $this->resolveCampusIds($request);
+        $bugId = (int) $id;
 
-        if (!BugReportService::belongsToCampus($bugId, $campusIds)) {
+        if (!$this->canAccessBug($request, $bugId)) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
@@ -304,6 +294,28 @@ class BugReportController extends Controller
     }
 
     // ── Helpers ───────────────────────────────────────────────────
+
+    /**
+     * #378: reporter 自己的回報跨分校可存取（仍須仍隸屬於該分校），
+     * 與 index/show 一致；避免 branch_id 查詢參數讓 reporter-verify 誤 404。
+     */
+    private function canAccessBug(Request $request, int $bugId): bool
+    {
+        $userId = $this->resolveUserId($request);
+        $role = $request->attributes->get('auth_role');
+        $isSuperAdmin = $role === 'super_admin';
+
+        if ($isSuperAdmin) {
+            return BugReportService::belongsToCampus($bugId, $this->resolveCampusIds($request));
+        }
+
+        $reporterCampusIds = $this->resolveReporterCampusIds($request);
+        if ($userId && BugReportService::belongsToCampusForReporter($bugId, $userId, $reporterCampusIds)) {
+            return true;
+        }
+
+        return BugReportService::belongsToCampus($bugId, $this->resolveCampusIds($request));
+    }
 
     private function resolveUserId(Request $request): ?int
     {
