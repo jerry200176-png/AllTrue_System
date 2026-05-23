@@ -8,6 +8,15 @@
 
 ---
 
+## 2026-05-23 — fix(course-mgmt/learning/session-dates): batch bug triage 收尾（#495 #496 #497）
+
+- Fixed: 課程管理在調課完成後不再多顯示一筆「取消」狀態的同時段堂次；系統內部建立的 `cancelled-duplicate-reschedule-placeholder` 已改為預設不對前端 API 回傳（in-app #124 / Closes #496 / PR #499）。需稽核時可帶 `?include_internal_placeholder=1` 取得。
+- Fixed: 學習評量若先前因「一般請假」自動連動而被作廢、但 `ClassSession` 後續恢復為已上課/已排定/已完成/遲到，老師重新提交評量會自動把舊評量復活並覆蓋為新內容，不再被 409 衝突永久卡住；手動作廢與真實取消狀態仍維持原本拒絕（in-app #125 / Closes #495 / PR #498）。
+- Fixed: 課程建立時若 request 沒夾帶 `days_of_week`、且該課程在 package 內也沒有同伴可借 week*，sessionDates 現在會 fallback 讀自身 `week, week1..week6`；月度 24 堂課的後續週期日期不再消失（in-app #126 / Closes #497 / PR #500）。
+- 開發備註：`StudentClassController::sessionDates()` 內 `$bodyClasses` 經 `merge()` 後會被 array_merge 重新索引整數鍵，新加的 self-week fallback 改用 `firstWhere('ID', $cid)` 才能命中；測試 fixture 需 `ScheduleMode='count'` 才會走入 body path（否則 GET path 會覆寫成空集合）。
+
+---
+
 ## 2026-05-23 — fix(bugs): reporter-verify cross-branch access (P1 hotfix)
 
 - Fixed: 回報者在 Bug 回報頁對「已解決」單按「確認已修好／問題仍存在」時，若當前分校與回報當時分校不同會誤回 404（#378 列表/詳情已跨分校，但 `reporter-verify` 未對齊）。修復後與 `show()` 共用 `canAccessBug()` 授權。
