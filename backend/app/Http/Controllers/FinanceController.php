@@ -851,7 +851,7 @@ class FinanceController extends Controller
         $branchId  = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
 
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
-        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow);
+        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
         $rows = $this->buildParttimePayrollData($month, $campusIds, $ruleCtx);
 
@@ -916,7 +916,7 @@ class FinanceController extends Controller
 
         $branchId = $request->filled('branch_id') ? (int) $request->input('branch_id') : ($campusIds[0] ?? null);
         $lockRow  = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
-        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow);
+        $ruleCtx  = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
         $query = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)
             ->where('LearningRecord.TeacherID', $teacherId);
@@ -997,7 +997,7 @@ class FinanceController extends Controller
         $endDate   = date('Y-m-t', strtotime($startDate));
 
         $lockRow   = $branchId ? PayrollMonthStatus::where('branch_id', $branchId)->where('month', $month)->first() : null;
-        $ruleCtx   = $this->resolvePayrollRule($branchId, $lockRow);
+        $ruleCtx   = $this->resolvePayrollRule($branchId, $lockRow, $month);
 
         $totalRows = $this->parttimeBaseQuery($campusIds, $startDate, $endDate)->count();
         $maxExport = config('payroll.max_export_rows', 5000);
@@ -1074,7 +1074,8 @@ class FinanceController extends Controller
 
         DB::transaction(function () use ($row, $branchId, $month, $userId) {
             $currentRule = PayrollBranchRule::latestForBranch($branchId);
-            $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId);
+            $asOfDate    = date('Y-m-t', strtotime($month . '-01'));
+            $teacherMap  = PayrollTeacherBranchRule::latestMapForBranch($branchId, $asOfDate);
 
             $teacherSnapshots = [];
             foreach ($teacherMap as $tid => $rule) {
@@ -1578,7 +1579,6 @@ class FinanceController extends Controller
         if ($headcountBonus < 0 || $headcountBonus > 500) {
             return response()->json(['error' => 'headcount_bonus must be between 0 and 500'], 422);
         }
-
         $authUser = $request->attributes->get('auth_user');
         $userId   = $authUser ? (int) $authUser->id : null;
 
@@ -1639,8 +1639,25 @@ class FinanceController extends Controller
         $teacherId = $request->filled('teacher_id') ? (int) $request->input('teacher_id') : null;
 
         if ($teacherId) {
-            $rule = PayrollTeacherBranchRule::latestForTeacherBranch($teacherId, $branchId);
+            $asOfDate = $request->filled('as_of_date')
+                ? (string) $request->input('as_of_date')
+                : now()->toDateString();
+            $rule = PayrollTeacherBranchRule::latestForTeacherBranch($teacherId, $branchId, $asOfDate);
             $branchRule = PayrollBranchRule::latestForBranch($branchId);
+            $history = PayrollTeacherBranchRule::query()
+                ->where('teacher_user_id', $teacherId)
+                ->where('branch_id', $branchId)
+                ->orderByDesc('effective_from')
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => (int) $row->id,
+                    'effective_from' => optional($row->effective_from)->toDateString(),
+                    'use_branch_default' => (bool) $row->use_branch_default,
+                    'base_rates' => $row->base_rates,
+                    'headcount_bonus' => (int) $row->headcount_bonus,
+                ])
+                ->values();
             return response()->json([
                 'teacher_user_id'  => $teacherId,
                 'branch_id'        => $branchId,
@@ -1650,10 +1667,12 @@ class FinanceController extends Controller
                 'headcount_bonus'  => $rule ? $rule->headcount_bonus : ($branchRule ? $branchRule->headcount_bonus : config('payroll.headcount_bonus', 50)),
                 'created_by'       => $rule?->created_by,
                 'created_at'       => $rule?->created_at?->toIso8601String(),
+                'effective_from'   => $rule?->effective_from?->toDateString(),
                 'branch_defaults'  => [
                     'base_rates'      => $branchRule ? $branchRule->base_rates : config('payroll.base_rates', []),
                     'headcount_bonus' => $branchRule ? $branchRule->headcount_bonus : config('payroll.headcount_bonus', 50),
                 ],
+                'history'          => $history,
             ]);
         }
 
@@ -1666,6 +1685,7 @@ class FinanceController extends Controller
                 'rule_version_id'  => $rule->id,
                 'base_rates'       => $rule->base_rates,
                 'headcount_bonus'  => $rule->headcount_bonus,
+                'effective_from'   => $rule->effective_from?->toDateString(),
                 'created_at'       => $rule->created_at?->toIso8601String(),
             ];
         }
@@ -1722,6 +1742,10 @@ class FinanceController extends Controller
         if ($headcountBonus < 0 || $headcountBonus > 500) {
             return response()->json(['error' => 'headcount_bonus must be between 0 and 500'], 422);
         }
+        $effectiveFrom = (string) ($request->input('effective_from') ?: '1970-01-01');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $effectiveFrom)) {
+            return response()->json(['error' => 'effective_from must be date (YYYY-MM-DD)'], 422);
+        }
 
         $authUser = $request->attributes->get('auth_user');
         $userId   = $authUser ? (int) $authUser->id : null;
@@ -1738,6 +1762,8 @@ class FinanceController extends Controller
             'branch_id'       => $branchId,
             'base_rates'      => $cleanRates,
             'headcount_bonus' => $headcountBonus,
+            'effective_from'  => $effectiveFrom,
+            'use_branch_default' => false,
             'created_by'      => $userId,
             'created_at'      => now(),
         ]);
@@ -1747,13 +1773,14 @@ class FinanceController extends Controller
             'month'      => now()->format('Y-m'),
             'action'     => 'teacher_rule_update',
             'user_id'    => $userId,
-            'reason'     => json_encode(['teacher_id' => $teacherId, 'rule_id' => $newRule->id, 'base_rates' => $cleanRates, 'headcount_bonus' => $headcountBonus]),
+            'reason'     => json_encode(['teacher_id' => $teacherId, 'rule_id' => $newRule->id, 'effective_from' => $effectiveFrom, 'base_rates' => $cleanRates, 'headcount_bonus' => $headcountBonus]),
             'created_at' => now(),
         ]);
 
         return response()->json([
             'ok'              => true,
             'rule_version_id' => $newRule->id,
+            'effective_from'  => $newRule->effective_from?->toDateString(),
             'base_rates'      => $newRule->base_rates,
             'headcount_bonus' => $newRule->headcount_bonus,
         ]);
@@ -1786,23 +1813,59 @@ class FinanceController extends Controller
             return response()->json(['error' => 'Forbidden'], 403);
         }
 
-        $deleted = PayrollTeacherBranchRule::where('teacher_user_id', $teacherId)
-            ->where('branch_id', $branchId)
-            ->delete();
-
         $authUser = $request->attributes->get('auth_user');
         $userId   = $authUser ? (int) $authUser->id : null;
+        $effectiveFromInput = $request->input('effective_from');
+        $newRule = null;
+        $legacyDeleted = 0;
+        $effectiveFrom = null;
+
+        if ($effectiveFromInput === null || $effectiveFromInput === '') {
+            // Backward compatibility: legacy callers expect immediate revert.
+            $legacyDeleted = PayrollTeacherBranchRule::where('teacher_user_id', $teacherId)
+                ->where('branch_id', $branchId)
+                ->delete();
+        } else {
+            $effectiveFrom = (string) $effectiveFromInput;
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $effectiveFrom)) {
+                return response()->json(['error' => 'effective_from must be date (YYYY-MM-DD)'], 422);
+            }
+            $branchRule = PayrollBranchRule::latestForBranch($branchId);
+            $baseRates = $branchRule ? $branchRule->base_rates : config('payroll.base_rates', []);
+            $headcountBonus = $branchRule ? (int) $branchRule->headcount_bonus : (int) config('payroll.headcount_bonus', 50);
+
+            $newRule = PayrollTeacherBranchRule::create([
+                'teacher_user_id' => $teacherId,
+                'branch_id' => $branchId,
+                'base_rates' => $baseRates,
+                'headcount_bonus' => $headcountBonus,
+                'effective_from' => $effectiveFrom,
+                'use_branch_default' => true,
+                'created_by' => $userId,
+                'created_at' => now(),
+            ]);
+        }
 
         PayrollAuditLog::create([
             'branch_id'  => $branchId,
             'month'      => now()->format('Y-m'),
             'action'     => 'teacher_rule_revert',
             'user_id'    => $userId,
-            'reason'     => json_encode(['teacher_id' => $teacherId, 'deleted_count' => $deleted]),
+            'reason'     => json_encode([
+                'teacher_id' => $teacherId,
+                'rule_id' => $newRule?->id,
+                'effective_from' => $effectiveFrom,
+                'legacy_deleted' => $legacyDeleted,
+            ]),
             'created_at' => now(),
         ]);
 
-        return response()->json(['ok' => true, 'reverted' => true]);
+        return response()->json([
+            'ok' => true,
+            'reverted' => true,
+            'rule_version_id' => $newRule?->id,
+            'legacy_deleted' => $legacyDeleted,
+        ]);
     }
 
     /**
@@ -1810,7 +1873,7 @@ class FinanceController extends Controller
      * Returns ['base_rates' => ..., 'headcount_bonus' => ..., 'rule_id' => ..., 'teacher_overrides' => [tid => [...]]].
      * Locked months use snapshot rule_version_id + teacher_rule_snapshots; draft months use latest.
      */
-    private function resolvePayrollRule(?int $branchId, ?PayrollMonthStatus $lockRow): array
+    private function resolvePayrollRule(?int $branchId, ?PayrollMonthStatus $lockRow, ?string $month = null): array
     {
         if (!$branchId) {
             return [];
@@ -1825,11 +1888,12 @@ class FinanceController extends Controller
             $snapshots = $lockRow->teacher_rule_snapshots ?? [];
             foreach ($snapshots as $tid => $ruleId) {
                 $rule = PayrollTeacherBranchRule::find($ruleId);
-                if ($rule) {
+                if ($rule && !$rule->use_branch_default) {
                     $teacherOverrides[(int) $tid] = [
                         'base_rates'      => $rule->base_rates,
                         'headcount_bonus' => $rule->headcount_bonus,
                         'rule_id'         => $rule->id,
+                        'effective_from'  => $rule->effective_from?->toDateString(),
                     ];
                 }
             }
@@ -1837,14 +1901,18 @@ class FinanceController extends Controller
             return $branchCtx;
         }
 
+        $asOfDate = $month && preg_match('/^\d{4}-\d{2}$/', $month)
+            ? date('Y-m-t', strtotime($month . '-01'))
+            : now()->toDateString();
         $branchCtx = PayrollBranchRule::resolveForBranch($branchId);
-        $teacherMap = PayrollTeacherBranchRule::latestMapForBranch($branchId);
+        $teacherMap = PayrollTeacherBranchRule::latestMapForBranch($branchId, $asOfDate);
         $teacherOverrides = [];
         foreach ($teacherMap as $tid => $rule) {
             $teacherOverrides[$tid] = [
                 'base_rates'      => $rule->base_rates,
                 'headcount_bonus' => $rule->headcount_bonus,
                 'rule_id'         => $rule->id,
+                'effective_from'  => optional($rule->effective_from)->toDateString(),
             ];
         }
         $branchCtx['teacher_overrides'] = $teacherOverrides;
