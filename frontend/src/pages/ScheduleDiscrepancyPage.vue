@@ -26,6 +26,15 @@
       </button>
     </nav>
 
+    <section class="sdp-sop-card" aria-label="處理流程說明">
+      <h3>快速處理 SOP（建議流程）</h3>
+      <ol>
+        <li>先按「已確認」：代表你已接手此回報，避免同事重複處理。</li>
+        <li>確認堂次與時段：必要時先複製老師建議時間，完成資料修正後再關單。</li>
+        <li>填寫處理說明後按「標記已修正」：請寫清楚「修了什麼」與「影響範圍」。</li>
+      </ol>
+    </section>
+
     <section class="sdp-list-wrap">
       <div v-if="!hasBranch" class="sdp-state sdp-state-empty sdp-state-no-branch">
         <span class="material-symbols-outlined sdp-empty-icon sdp-empty-icon-info" aria-hidden="true">location_city</span>
@@ -164,6 +173,17 @@
                       v-model="resolutionDrafts[row.id]"
                       placeholder="請簡述系統已補登 / 已修正哪些資料…"
                     ></textarea>
+                    <div class="sdp-template-row">
+                      <button
+                        v-for="tpl in noteTemplates"
+                        :key="`${row.id}-${tpl.key}`"
+                        type="button"
+                        class="ghost xs"
+                        @click="applyTemplate(row, tpl.key)"
+                      >
+                        {{ tpl.label }}
+                      </button>
+                    </div>
                     <div class="sdp-resolve-actions">
                       <span class="sdp-counter" :class="{ 'sdp-counter-ok': (resolutionDrafts[row.id] || '').trim().length >= 10 }">
                         {{ (resolutionDrafts[row.id] || '').length }} / 500
@@ -225,6 +245,17 @@
           <div v-if="expandedId === row.id && row.status !== 'resolved' && row.status !== 'withdrawn'" class="sdp-resolve-form">
             <label class="sdp-detail-label">處理說明 <span class="sdp-required">*</span></label>
             <textarea class="sdp-textarea" rows="3" maxlength="500" v-model="resolutionDrafts[row.id]" placeholder="至少 10 字"></textarea>
+            <div class="sdp-template-row">
+              <button
+                v-for="tpl in noteTemplates"
+                :key="`m-${row.id}-${tpl.key}`"
+                type="button"
+                class="ghost xs"
+                @click="applyTemplate(row, tpl.key)"
+              >
+                {{ tpl.label }}
+              </button>
+            </div>
             <div class="sdp-resolve-actions">
               <span class="sdp-counter" :class="{ 'sdp-counter-ok': (resolutionDrafts[row.id] || '').trim().length >= 10 }">
                 {{ (resolutionDrafts[row.id] || '').length }} / 500
@@ -281,6 +312,23 @@ const busyAction = ref('');
 
 const toast = reactive({ visible: false, text: '', tone: 'success' });
 let toastTimer = null;
+const noteTemplates = [
+  {
+    key: 'time-adjusted',
+    label: '時段已修正',
+    text: '已依老師回報修正堂次時段，並確認後續課表顯示一致。',
+  },
+  {
+    key: 'session-linked',
+    label: '堂次已補登',
+    text: '已補齊對應堂次資料並重新對齊課表，後續處理流程可正常延續。',
+  },
+  {
+    key: 'no-action',
+    label: '回報已釐清',
+    text: '經查為顯示時差/操作順序差異，資料本體正確，已與回報老師確認。',
+  },
+];
 
 const emptyIcon = computed(() => {
   if (activeTab.value === 'resolved') return 'flag_circle';
@@ -371,6 +419,13 @@ function toggleExpand(row) {
 function canResolve(row) {
   const note = (resolutionDrafts[row.id] || '').trim();
   return note.length >= 10 && row.status !== 'resolved' && row.status !== 'withdrawn';
+}
+
+function applyTemplate(row, templateKey) {
+  const tpl = noteTemplates.find((item) => item.key === templateKey);
+  if (!tpl) return;
+  resolutionDrafts[row.id] = tpl.text;
+  resolveError[row.id] = '';
 }
 
 async function load() {
@@ -549,6 +604,29 @@ onBeforeUnmount(() => {
 .sdp-tab-badge-acknowledged { background: var(--info-soft, #eff6ff); color: var(--info-strong, #1d4ed8); }
 .sdp-tab-badge-resolved { background: var(--success-soft, #ecfdf5); color: var(--success-strong, #047857); }
 
+.sdp-sop-card {
+  margin-bottom: 12px;
+  border: 1px solid var(--info-border, #bfdbfe);
+  background: var(--info-soft, #eff6ff);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.sdp-sop-card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--info-strong, #1d4ed8);
+}
+.sdp-sop-card ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.sdp-sop-card li {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--text, #0f172a);
+  line-height: 1.5;
+}
+
 .sdp-list-wrap { background: var(--card-bg, #fff); border: 1px solid var(--border-soft, #e5e7eb); border-radius: 12px; padding: 12px; }
 
 .sdp-state {
@@ -700,6 +778,7 @@ onBeforeUnmount(() => {
   color: inherit;
 }
 .sdp-textarea:focus { outline: none; border-color: var(--primary, #2563eb); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+.sdp-template-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .sdp-resolve-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .sdp-counter { font-size: 12px; color: var(--text-light, #64748b); }
 .sdp-counter-ok { color: var(--success-strong, #047857); font-weight: 600; }
