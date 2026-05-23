@@ -22,6 +22,12 @@
 - 開發備註：新增 migration `2026_05_23_000100_add_effective_from_to_payroll_teacher_branch_rules.php`；`ParttimePayrollPage` 新增生效日與費率卡歷史顯示。
 
 ---
+## 2026-05-23 — feat(learning): 上一堂已核准摘要 + feat(engagement): 軍階一覽 modal
+
+- Added: 評量表新增「上一堂已核准評量摘要」，會自動帶出同課程最近一次已核准內容，填寫新評量時可快速延續脈絡。Closes #443。
+- Added: 老師/主任軍階徽章可點開「軍階一覽」modal，顯示完整門檻與目前所在階級。Closes #445。
+
+---
 ## 2026-05-23 — fix: 聊天附件、行事曆 EndDate、CourseEditForm、N+1 查詢（#431）
 
 - Fixed: 聊天頁附件按鈕點擊無反應（TypeError: y.click is not a function）— Closes #421 #428
