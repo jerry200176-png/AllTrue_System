@@ -469,7 +469,7 @@ function syncDayTimeSlotsFromSelection() {
 function addTimeSlot() {
   if ((form.day_time_slots || []).length >= 7) return;
   const usedDays = new Set((form.day_time_slots || []).map((slot) => Number(slot?.day || 0)));
-  const firstUnused = (dayOptions || []).map((d) => Number(d.value)).find((day) => day >= 1 && day <= 7 && !usedDays.has(day));
+  const firstUnused = (props.dayOptions || []).map((d) => Number(d.value)).find((day) => day >= 1 && day <= 7 && !usedDays.has(day));
   const days = sortedSelectedDays.value;
   const day = firstUnused || (days.length ? days[days.length - 1] : 1);
   const baseTime = String(form.start_time || '16:00').slice(0, 5);
