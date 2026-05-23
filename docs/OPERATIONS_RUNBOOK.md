@@ -902,3 +902,27 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 - `conversations` = true
 - `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`PHPStan (php)`
 
+## Q. Adoption KPI + Trust Layer SOP（#462 / #460）
+
+### Q1. 例行檢查（每週）
+
+1. `super_admin` 開啟主任儀表板確認跨分校比較卡有資料（非空陣列可接受 0 值）。
+2. 主任角色確認本校 KPI 卡（Staff / Parent / Quality）可讀取，無 401/403。
+3. 老師工作台與家長入口確認 `SystemTrustPanel` 可載入（最近改善 + 已知問題 + snapshot）。
+4. 檢查 `/api/v1/system/trust-summary` 與 `/api/v1/parent/system-trust-summary` 回傳 200 且 JSON 完整。
+
+### Q2. 發版前內容治理
+
+- 先更新 `docs/CHANGELOG.md`，再確認 trust panel 的「最近改善」文案能被正確解析。
+- `backend/config/system_trust.php` 僅可放「已淨化」資訊：
+  - ✅ 可放：狀態、嚴重度、暫行作法、更新日期
+  - ❌ 禁放：學生姓名、電話、token、stack trace、內網路徑
+- 若已知問題已修復，需同次 PR 一併調整 `known_issues` 狀態或移除。
+
+### Q3. 故障分流
+
+- KPI endpoint 403：先檢查角色與 `require_campus` 邊界是否符合預期。
+- KPI endpoint 422：確認 `branch_id` 是否存在（非 `super_admin` 需帶可存取分校）。
+- Parent trust endpoint 401：檢查 parent session token 是否過期（`ParentSession.ExpiresAt`）。
+- 指標異常跳動：先用 `docs/ADOPTION_QUALITY_METRICS.md` 的公式比對分子/分母，再決定是否修公式。
+

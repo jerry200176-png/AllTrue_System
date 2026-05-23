@@ -355,6 +355,13 @@
         <span>班級行事曆</span>
       </button>
     </div>
+
+    <SystemTrustPanel
+      :branch-id="branchId"
+      :token="trustToken"
+      compact
+      @report-problem="$emit('navigate', 'bugs')"
+    />
   </div>
 
   <ReportDiscrepancyModal
@@ -377,6 +384,7 @@ import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
+import SystemTrustPanel from '../components/SystemTrustPanel.vue';
 import { fetchMe } from '../lib/meClient';
 import {
   isUserEngagementRankDisplayEnabled,
@@ -407,6 +415,7 @@ const getToken = async () => {
 };
 
 const refreshing = ref(false);
+const trustToken = ref('');
 const streakCurrent = ref(0);
 const streakLongest = ref(0);
 const streakDisplayOn = ref(false);
@@ -431,6 +440,10 @@ async function loadEngagementSnapshot() {
   if (!token) return;
   const me = await fetchMe(token);
   engagementSnapshot.value = me?.engagement ?? null;
+}
+
+async function refreshTrustToken() {
+  trustToken.value = (await getToken()) || '';
 }
 
 function setupEngagementReducedMotion() {
@@ -1066,6 +1079,7 @@ function snoozePendingSoundToday() {
 async function refreshAll() {
   refreshing.value = true;
   await Promise.all([
+    refreshTrustToken(),
     fetchPendingAttendance(),
     fetchOverdueLearning(),
     fetchPendingLearningSummary(),
