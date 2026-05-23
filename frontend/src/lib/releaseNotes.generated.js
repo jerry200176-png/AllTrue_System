@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.05.23",
     "date": "2026-05-23",
     "title": "2026.05.23 版本更新",
-    "summary": "ogram timing + template + digest v1（）；首頁新增優先待辦、近期操作與每週使用率指標，協助主任與老師更穩定使用系統",
+    "summary": "visual polish rollout phase 1（）；ogram timing + template + digest v1（）",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
+          "visual polish rollout phase 1（）",
           "ogram timing + template + digest v1（）",
           "首頁新增優先待辦、近期操作與每週使用率指標，協助主任與老師更穩定使用系統",
           "側欄軍階圖示更貼近實際領章（尉官橫槓、校官梅花、將官星星）；經驗值升階多了三等／二等／一等士官長三個階段。"
@@ -35,14 +36,14 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "visual polish rollout phase 1（）",
       "ogram timing + template + digest v1（）",
       "首頁新增優先待辦、近期操作與每週使用率指標，協助主任與老師更穩定使用系統",
       "側欄軍階圖示更貼近實際領章（尉官橫槓、校官梅花、將官星星）；經驗值升階多了三等／二等／一等士官長三個階段。",
       "改密碼錯誤提示改為中文",
       "課程回報管理補上頁內 SOP 與處理範本",
       "問號教學改為角色分眾與 fallback 導覽",
-      "修正超級管理員看不到版本更新內容的問題",
-      "課程管理裡日期旁標記較不會無故變灰；讀不到堂次時會顯示清楚錯誤提示。"
+      "修正超級管理員看不到版本更新內容的問題"
     ]
   },
   {
