@@ -63,6 +63,13 @@ class ParentPortalProgressSummaryTest extends TestCase
                 'notifications',
                 'pending_total',
                 'payment' => ['status', 'paid_courses', 'unpaid_courses', 'total_courses'],
+                'feedback_program' => [
+                    'window' => ['start', 'end', 'days'],
+                    'funnel' => ['approved_records', 'replied_records', 'reply_rate_pct', 'unreplied_records'],
+                    'quick_templates',
+                    'reminder_policy' => ['trigger_window_hours', 'quiet_hours', 'throttle', 'mute_options'],
+                    'digest' => ['unreplied_preview', 'next_digest_at'],
+                ],
                 'generated_at',
             ],
         ]);
@@ -74,6 +81,8 @@ class ParentPortalProgressSummaryTest extends TestCase
         $this->assertSame(1, (int) $payload['payment']['unpaid_courses']);
         $this->assertSame(1, (int) $payload['payment']['total_courses']);
         $this->assertContains($payload['payment']['status'], ['all_pending', 'partial', 'all_clear']);
+        $this->assertSame(3, count($payload['feedback_program']['quick_templates']));
+        $this->assertArrayHasKey('daily_cap', $payload['feedback_program']['reminder_policy']['throttle']);
         $this->assertIsArray($payload['interaction_statuses']);
         $this->assertIsArray($payload['notifications']);
     }
