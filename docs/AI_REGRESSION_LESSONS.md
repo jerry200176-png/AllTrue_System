@@ -591,6 +591,14 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R54. Bug 回報 `reporter-verify` 必須與 `show()` 共用跨分校授權（#378 延伸）
+
+- **觸發情境**：2026-05-23 回報者對 `resolved` 單按「確認已修好」出現 HTTP 404；列表／詳情可開，但 `POST reporter-verify?branch_id=` 當前分校與回報分校不同時誤拒。
+- **強制規則**：`reporter-verify`、`addComment`（回報者）等寫入路徑必須走與 `show()` 相同的 `canAccessBug`／`belongsToCampusForReporter`；不可只用 `resolveCampusIds` + `belongsToCampus`。
+- **測試必補**：`BugReportApiTest::test_reporter_can_verify_resolved_bug_from_another_branch_with_branch_id`。
+
+---
+
 ### R52. 代課／調課例外必須保留原 occurrence anchor（不可讓 `scheduled.original_schedule_id` 為 NULL）
 
 - **觸發情境**：2026-05-17 in-app bug #108：吳艾潼 5/17 10:00 化學一對二已先調課、再追加代課給鄭翔祐；`schedules` 留下 `scheduled.original_schedule_id=NULL` 的代課 row，導致行事曆仍掛在鄒宇旻欄，但代課候選又把鄭翔祐算成已滿／衝堂。

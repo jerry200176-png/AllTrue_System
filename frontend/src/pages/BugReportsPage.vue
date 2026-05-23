@@ -531,7 +531,7 @@ async function doReporterVerify(verdict) {
   if (verifying.value || !detail.value) return;
   verifying.value = true;
   try {
-    const res = await reporterVerifyBug(detail.value.id, verdict);
+    const res = await reporterVerifyBug(detail.value.id, verdict, '', props.branchId);
     detail.value = { ...detail.value, status: res.new_status };
     await loadBugs();
   } catch (e) {
