@@ -106,6 +106,7 @@ alwaysApply: false
 | Code Review（逐條對照 FR） | `[REVIEW]` | 必填 |
 | CHANGELOG + AI_REGRESSION_LESSONS 更新 | `[DOCS]` | 必填 |
 | 部署（migration + cache + health check） | `[OPS]` | 必填 |
+| **In-app Bug 回寫**（`resolved` + 公開留言請驗收；若有 in-app #） | `[DOCS]` | 來自 in-app 回報者時**必填**；見 `docs/CHAT_BUG_SYSTEM.md` §3.7 Phase C、§R53 |
 
 **`[REVIEW]` 資安審查觸發條件（滿足任一即必填）：**
 - Bug 涉及 auth / middleware / token 驗證
@@ -124,6 +125,7 @@ alwaysApply: false
 - [ ] Revert-proof：驗證方式：`git stash && [測試命令]` 各新增 case 至少 1 failure
 - [ ] CHANGELOG：驗證方式：`git diff docs/CHANGELOG.md` 含 `[日期]` 新增條目
 - [ ] Health check：驗證方式：`curl -sk [URL]/health` 回傳 `{"status":"ok",...}` HTTP 200
+- [ ] In-app Bug（若有 in-app #）：驗證方式：生產 `bug_reports.status=resolved` 且 `bug_report_comments` 有公開留言含「確認已修好」；見 `CHAT_BUG_SYSTEM.md` §3.7 Phase C
 ```
 
 ---
