@@ -99,21 +99,27 @@ export async function fetchTeacherPayrollRules({ branchId, teacherId }) {
   return res.json();
 }
 
-export async function updateTeacherPayrollRules({ branchId, teacherId, baseRates, headcountBonus }) {
+export async function updateTeacherPayrollRules({ branchId, teacherId, baseRates, headcountBonus, effectiveFrom }) {
   const res = await fetch(`${API_BASE}/finance/parttime-payroll/teacher-rules`, {
     method: 'PUT',
     headers: { ...headers(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, base_rates: baseRates, headcount_bonus: headcountBonus }),
+    body: JSON.stringify({
+      branch_id: branchId,
+      teacher_id: teacherId,
+      base_rates: baseRates,
+      headcount_bonus: headcountBonus,
+      effective_from: effectiveFrom,
+    }),
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Update failed');
   return res.json();
 }
 
-export async function deleteTeacherPayrollRules({ branchId, teacherId }) {
-  const params = new URLSearchParams({ branch_id: branchId, teacher_id: teacherId });
-  const res = await fetch(`${API_BASE}/finance/parttime-payroll/teacher-rules?${params}`, {
+export async function deleteTeacherPayrollRules({ branchId, teacherId, effectiveFrom }) {
+  const res = await fetch(`${API_BASE}/finance/parttime-payroll/teacher-rules`, {
     method: 'DELETE',
-    headers: headers(),
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch_id: branchId, teacher_id: teacherId, effective_from: effectiveFrom }),
   });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Delete failed');
   return res.json();
