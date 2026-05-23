@@ -415,7 +415,6 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/subject-units', [FinanceController::class, 'subjectUnits']);
 
         Route::get('learning-records', [LearningRecordController::class, 'index']);
-        Route::get('learning-records/latest-approved-summary', [LearningRecordController::class, 'latestApprovedSummary']);
         Route::post('learning-records', [LearningRecordController::class, 'store']);
         Route::post('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
         Route::put('learning-records/{learningRecord}', [LearningRecordController::class, 'update']);
