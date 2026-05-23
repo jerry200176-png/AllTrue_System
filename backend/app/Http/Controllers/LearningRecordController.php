@@ -247,6 +247,76 @@ class LearningRecordController extends Controller
         return response()->json($records);
     }
 
+    public function latestApprovedSummary(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate([
+            'student_class_id' => 'required|integer|min:1',
+            'session_date' => 'nullable|date',
+            'exclude_id' => 'nullable|integer|min:1',
+        ]);
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        $query = LearningRecord::active()
+            ->where('StudentClassID', (int) $data['student_class_id'])
+            ->where('Status', 'approved');
+
+        if (!empty($data['exclude_id'])) {
+            $query->where('id', '!=', (int) $data['exclude_id']);
+        }
+
+        if (!empty($data['session_date'])) {
+            $query->whereDate('SessionDate', '<=', $data['session_date']);
+        }
+
+        if ($role === 'teacher') {
+            $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+            if ($teacherId <= 0) {
+                return response()->json(['message' => 'Teacher not linked'], 403);
+            }
+            $this->applyTeacherScopedLearningRecordConstraint($query, $teacherId);
+            $query->excludeCancelledClassSessionForTeacherList();
+        } elseif ($role !== 'super_admin' && !empty($campusIds)) {
+            $query->whereHas('studentClass.student', function ($q) use ($campusIds) {
+                $q->whereIn('CampusID', $campusIds);
+            });
+        }
+
+        /** @var LearningRecord|null $record */
+        $record = $query
+            ->with('studentClass.student')
+            ->orderBy('SessionDate', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (!$record) {
+            return response()->json(['summary' => null]);
+        }
+
+        $subjectId = $record->studentClass->SubjectID ?? null;
+        $subjectName = $subjectId
+            ? DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
+            : null;
+        $effectiveTeacherId = $this->resolveEffectiveInstructorUserId($record);
+        $teacherName = DB::table('Teacher')->where('id', $effectiveTeacherId)->value('T_Name')
+            ?? DB::table('User')->where('id', $effectiveTeacherId)->value('Name')
+            ?? '未指派';
+
+        return response()->json([
+            'summary' => [
+                'id' => (int) $record->id,
+                'student_class_id' => (int) $record->StudentClassID,
+                'session_date' => $record->SessionDate ? Carbon::parse($record->SessionDate)->toDateString() : null,
+                'teacher_name' => $teacherName,
+                'subject' => $subjectName ?? $record->Subject,
+                'progress' => (string) ($record->Progress ?? ''),
+                'next_homework' => (string) ($record->NextHomework ?? ''),
+                'comment' => (string) ($record->Comment ?? ''),
+            ],
+        ]);
+    }
+
     /**
      * 供前端 409 後精準拉取「該堂次」評量（含作廢列），不受分頁／active 清單限制。
      */

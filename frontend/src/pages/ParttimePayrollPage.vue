@@ -409,6 +409,12 @@
 
           <fieldset class="rules-fieldset">
             <legend>基礎時薪（元／小時）</legend>
+            <div class="rules-field" style="margin-bottom:12px">
+              <label for="tr-effective-from">生效日</label>
+              <div class="input-with-unit">
+                <input id="tr-effective-from" type="date" v-model="trEffectiveFrom" />
+              </div>
+            </div>
             <div class="rules-grid">
               <div class="rules-field" v-for="item in rateFields" :key="'tr-' + item.key">
                 <label :for="'tr-rate-' + item.key">
@@ -424,6 +430,16 @@
                   />
                   <span class="unit">元/h</span>
                 </div>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset class="rules-fieldset" v-if="trHistory.length">
+            <legend>費率卡歷史</legend>
+            <div class="rule-history-list">
+              <div v-for="item in trHistory" :key="item.id" class="rule-history-row">
+                <span class="rh-date">{{ item.effective_from }}</span>
+                <span class="rh-type">{{ item.use_branch_default ? '恢復分校預設' : '個別費率卡' }}</span>
               </div>
             </div>
           </fieldset>
@@ -707,6 +723,8 @@ const trHasOverride = ref(false);
 const trTeacherName = ref('');
 const trTeacherId = ref(null);
 const trForm = ref({ base_rates: { high: 400, junior: 350, elementary: 300, tutoring: 200 }, headcount_bonus: 50 });
+const trEffectiveFrom = ref(new Date().toISOString().slice(0, 10));
+const trHistory = ref([]);
 
 async function openTeacherRuleModal(teacherId) {
   trTeacherId.value = teacherId;
@@ -721,6 +739,8 @@ async function openTeacherRuleModal(teacherId) {
       base_rates: { ...data.base_rates },
       headcount_bonus: data.headcount_bonus,
     };
+    trEffectiveFrom.value = data.effective_from || new Date().toISOString().slice(0, 10);
+    trHistory.value = Array.isArray(data.history) ? data.history : [];
   } catch (e) {
     alert('載入失敗：' + (e.message || ''));
     showTeacherRuleModal.value = false;
@@ -737,6 +757,7 @@ async function saveTeacherRule() {
       teacherId: trTeacherId.value,
       baseRates: trForm.value.base_rates,
       headcountBonus: trForm.value.headcount_bonus,
+      effectiveFrom: trEffectiveFrom.value,
     });
     showTeacherRuleModal.value = false;
     await loadData();
@@ -751,7 +772,11 @@ async function revertTeacherRule() {
   if (!confirm('確定要恢復此老師為分校預設費率嗎？')) return;
   trSaving.value = true;
   try {
-    await deleteTeacherPayrollRules({ branchId: props.branchId, teacherId: trTeacherId.value });
+    await deleteTeacherPayrollRules({
+      branchId: props.branchId,
+      teacherId: trTeacherId.value,
+      effectiveFrom: trEffectiveFrom.value,
+    });
     showTeacherRuleModal.value = false;
     await loadData();
   } catch (e) {
@@ -1435,6 +1460,19 @@ onMounted(loadData);
 .input-with-unit .unit { font-size: 0.75rem; color: #9ca3af; white-space: nowrap; }
 .field-error { font-size: 0.72rem; color: #dc2626; }
 .rules-hint { font-size: 0.78rem; color: #9ca3af; margin: 0 0 12px; display: flex; align-items: center; gap: 4px; }
+.rule-history-list { display: flex; flex-direction: column; gap: 6px; }
+.rule-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
+}
+.rh-date { color: #374151; font-weight: 600; }
+.rh-type { color: #6b7280; }
 
 /* ─── Spinner ────────────────────────────── */
 .spin { animation: spin 1s linear infinite; }
