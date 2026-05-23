@@ -3041,7 +3041,8 @@ const onSubstituteV2Submit = async (submitPayload) => {
     await loadCourses();
   } catch (e) {
     substituteV2PickerRef.value?.setError?.(e?.message || '代課設定失敗');
-    throw e;
+    // Do not re-throw: error is already displayed in UI via setError.
+    // Re-throwing would cause Sentry to capture expected business conflicts (409).
   } finally {
     substituteV2Submitting.value = false;
   }
