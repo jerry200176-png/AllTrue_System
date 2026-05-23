@@ -8,6 +8,14 @@
 
 ---
 
+## 2026-05-24 — chore(login): iOS-style v0 refresh + design tokens（#510）
+
+- Changed: 登入頁視覺更新為 iOS 風格簡潔版——柔和暖色背景（無動畫漸層）、系統字體（PingFang TC / SF）、segmented control 風格的身分切換、實心 primary、44px 觸控區、軟陰影；**邏輯零變更**（PR #510）。
+- Added: `frontend/src/styles.css` 新增 `--ios-*` design tokens（system font / soft shadows / 圓角 12/16/22 / 灰階基底），與既有 `--porsche-*` 共存不取代。
+- 設計提案見 `.cursor/plans/ios-simplify-direction_2026-05-24.md`（Tier A/B/C 候選頁清單），CEO 圈選後再分 PR 推進其他頁。
+
+---
+
 ## 2026-05-23 — fix(course-mgmt/learning/session-dates): batch bug triage 收尾（#495 #496 #497）
 
 - Fixed: 課程管理在調課完成後不再多顯示一筆「取消」狀態的同時段堂次；系統內部建立的 `cancelled-duplicate-reschedule-placeholder` 已改為預設不對前端 API 回傳（in-app #124 / Closes #496 / PR #499）。需稽核時可帶 `?include_internal_placeholder=1` 取得。
