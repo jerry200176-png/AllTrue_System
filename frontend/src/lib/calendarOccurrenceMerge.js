@@ -164,7 +164,8 @@ export function mergeWeekCalendarOccurrences({
         const isRecurringDay = days.includes(dow);
         if (!isFirstDay && !isRecurringDay) continue;
         const isBeforeStart = course.first_class_date && String(targetDate).trim() < String(course.first_class_date).trim();
-        if (hasReschedule || isBeforeStart || isOverSessionLimit(course.id, targetDate)) continue;
+        const isAfterEnd = course.end_date && String(targetDate).trim() > String(course.end_date).trim();
+        if (hasReschedule || isBeforeStart || isAfterEnd || isOverSessionLimit(course.id, targetDate)) continue;
       }
 
       const times = resolveAllCourseGridTimesForDate
