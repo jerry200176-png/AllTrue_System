@@ -165,6 +165,178 @@ class LearningRecordFeedbackController extends Controller
         return response()->json(['count' => (int) $count]);
     }
 
+    public function analytics(Request $request)
+    {
+        $role = (string) $request->attributes->get('auth_role');
+        $days = min(30, max(1, (int) $request->input('days', 7)));
+        $windowStart = Carbon::now()->subDays($days - 1)->startOfDay();
+        $windowEnd = Carbon::now()->endOfDay();
+        $branchId = (int) ($request->input('branch_id') ?: $request->input('campus_id'));
+
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if ($role !== 'super_admin' && $role !== 'teacher' && empty($campusIds)) {
+            return response()->json(['message' => 'Campus required'], 403);
+        }
+        if ($role !== 'super_admin' && $role !== 'teacher' && $branchId > 0 && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden: branch not accessible'], 403);
+        }
+
+        $teacherId = 0;
+        if ($role === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if ($teacherId <= 0) {
+                return response()->json(['message' => 'Teacher not linked'], 403);
+            }
+        }
+
+        $approvedQuery = DB::table('LearningRecord as lr')
+            ->join('Student as st', 'st.id', '=', 'lr.StudentID')
+            ->where('lr.Status', 'approved')
+            ->whereNotNull('lr.ApprovedAt')
+            ->whereBetween('lr.ApprovedAt', [$windowStart, $windowEnd]);
+
+        if ($teacherId > 0) {
+            $approvedQuery->where('lr.TeacherID', $teacherId);
+        } elseif ($role !== 'super_admin') {
+            if ($branchId > 0) {
+                $approvedQuery->where('st.CampusID', $branchId);
+            } else {
+                $approvedQuery->whereIn('st.CampusID', $campusIds);
+            }
+        } elseif ($branchId > 0) {
+            $approvedQuery->where('st.CampusID', $branchId);
+        }
+
+        if ($branchId > 0 && $teacherId > 0) {
+            $approvedQuery->where('st.CampusID', $branchId);
+        }
+
+        $approvedRows = $approvedQuery->get([
+            'lr.id as learning_record_id',
+            'lr.TeacherID as teacher_id',
+            'st.CampusID as campus_id',
+            'lr.SessionDate as session_date',
+            'lr.Subject as subject',
+            'lr.ApprovedAt as approved_at',
+            'st.name as student_name',
+        ]);
+
+        $approvedTotal = $approvedRows->count();
+        if ($approvedTotal === 0) {
+            return response()->json([
+                'data' => [
+                    'window' => ['start' => $windowStart->toDateString(), 'end' => $windowEnd->toDateString(), 'days' => $days],
+                    'summary' => [
+                        'approved_records' => 0,
+                        'replied_records' => 0,
+                        'reply_rate_pct' => 0.0,
+                        'unreplied_records' => 0,
+                        'new_replies_unread' => 0,
+                    ],
+                    'by_teacher' => [],
+                    'pending_preview' => [],
+                ],
+                'meta' => ['scope_role' => $role, 'branch_id' => $branchId > 0 ? $branchId : null],
+            ]);
+        }
+
+        $approvedIds = $approvedRows->pluck('learning_record_id')->map(fn ($id) => (int) $id)->all();
+        $feedbackRows = LearningRecordFeedback::query()
+            ->whereIn('learning_record_id', $approvedIds)
+            ->get(['learning_record_id', 'teacher_id', 'last_read_by_teacher_at', 'last_read_by_director_at', 'updated_at']);
+
+        $repliedIds = $feedbackRows->pluck('learning_record_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $repliedTotal = $repliedIds->count();
+        $unrepliedSet = array_fill_keys(array_diff($approvedIds, $repliedIds->all()), true);
+        $unrepliedTotal = count($unrepliedSet);
+        $replyRate = $approvedTotal > 0 ? round(($repliedTotal / $approvedTotal) * 100, 1) : 0.0;
+
+        $unreadNew = $feedbackRows->filter(function ($row) use ($role) {
+            if ($role === 'teacher') {
+                return !$row->last_read_by_teacher_at || $row->last_read_by_teacher_at->lt($row->updated_at);
+            }
+            return !$row->last_read_by_director_at || $row->last_read_by_director_at->lt($row->updated_at);
+        })->count();
+
+        $approvedByTeacher = [];
+        foreach ($approvedRows as $row) {
+            $tid = (int) $row->teacher_id;
+            if ($tid <= 0) {
+                continue;
+            }
+            $approvedByTeacher[$tid] = ($approvedByTeacher[$tid] ?? 0) + 1;
+        }
+        $repliedByTeacher = [];
+        foreach ($feedbackRows as $row) {
+            $tid = (int) $row->teacher_id;
+            if ($tid <= 0) {
+                continue;
+            }
+            $repliedByTeacher[$tid] = ($repliedByTeacher[$tid] ?? 0) + 1;
+        }
+
+        $teacherIds = array_keys($approvedByTeacher);
+        $teacherNames = empty($teacherIds)
+            ? collect()
+            : DB::table('User')->whereIn('id', $teacherIds)->pluck('Name', 'id');
+
+        $byTeacher = collect($teacherIds)->map(function ($tid) use ($approvedByTeacher, $repliedByTeacher, $teacherNames) {
+            $approved = (int) ($approvedByTeacher[$tid] ?? 0);
+            $replied = (int) ($repliedByTeacher[$tid] ?? 0);
+            $unreplied = max(0, $approved - $replied);
+            return [
+                'teacher_id' => (int) $tid,
+                'teacher_name' => (string) ($teacherNames[$tid] ?? ('#' . $tid)),
+                'approved_records' => $approved,
+                'replied_records' => $replied,
+                'unreplied_records' => $unreplied,
+                'reply_rate_pct' => $approved > 0 ? round(($replied / $approved) * 100, 1) : 0.0,
+            ];
+        })
+            ->sortBy([
+                ['unreplied_records', 'desc'],
+                ['reply_rate_pct', 'asc'],
+                ['teacher_name', 'asc'],
+            ])
+            ->values()
+            ->all();
+
+        $pendingPreview = [];
+        foreach ($approvedRows as $row) {
+            if (!isset($unrepliedSet[(int) $row->learning_record_id])) {
+                continue;
+            }
+            if (count($pendingPreview) >= 5) {
+                break;
+            }
+            $pendingPreview[] = [
+                'learning_record_id' => (int) $row->learning_record_id,
+                'student_name' => (string) ($row->student_name ?? ''),
+                'teacher_id' => (int) $row->teacher_id,
+                'teacher_name' => (string) ($teacherNames[(int) $row->teacher_id] ?? ('#' . (int) $row->teacher_id)),
+                'session_date' => (string) ($row->session_date ?? ''),
+                'subject' => (string) ($row->subject ?? ''),
+                'approved_at' => optional($row->approved_at)->toIso8601String(),
+            ];
+        }
+
+        return response()->json([
+            'data' => [
+                'window' => ['start' => $windowStart->toDateString(), 'end' => $windowEnd->toDateString(), 'days' => $days],
+                'summary' => [
+                    'approved_records' => $approvedTotal,
+                    'replied_records' => $repliedTotal,
+                    'reply_rate_pct' => $replyRate,
+                    'unreplied_records' => $unrepliedTotal,
+                    'new_replies_unread' => (int) $unreadNew,
+                ],
+                'by_teacher' => $byTeacher,
+                'pending_preview' => $pendingPreview,
+            ],
+            'meta' => ['scope_role' => $role, 'branch_id' => $branchId > 0 ? $branchId : null],
+        ]);
+    }
+
     private function resolveParentSession(Request $request): ?ParentSession
     {
         $token = $request->bearerToken();

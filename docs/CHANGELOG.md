@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-23 — feat(parent-feedback): response program timing + template + digest v1（#459）
+
+- Added: 家長端學習評量回饋導入三組受管控模板（鼓勵/提問/請老師加強）與未回覆摘要；後端新增 `learning-record-feedbacks/analytics` 供老師/主任查看 7 日回覆率、未回覆堂數與待處理預覽，並在 dashboard 回傳 `feedback_program`（trigger window、quiet hours、throttle/mute policy）作為提醒節流合約。Closes #459。
+
+---
+
 ## 2026-05-23 — feat(adoption): staff mission center + activation funnel v1（#458）
 
 - Added: 老師與主任首頁導入「今日任務中心」閉環（待辦剩餘件數 + 一鍵跳轉），並在 adoption 指標新增 `activation_funnel`（teacher/director 24h activation）供管理層追蹤採用率。Closes #458。
