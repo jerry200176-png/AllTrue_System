@@ -26,6 +26,8 @@
 |---|---|---|---|
 | `parent_feedback_reply_rate_pct` | approved learning records with parent feedback / approved learning records × 100 (7 days) | `LearningRecord`, `learning_record_feedbacks` | Campus-scoped via `Student.CampusID` |
 | `parent_feedback_unread_backlog` | feedback rows where `last_read_by_director_at` is null or `< updated_at` | `learning_record_feedbacks` | Real-time backlog |
+| `learning-record-feedbacks/analytics.summary.reply_rate_pct` | replied records / approved records in selected branch + window × 100 | `LearningRecord`, `learning_record_feedbacks` | Used by teacher/director response-program card |
+| `learning-record-feedbacks/analytics.summary.unreplied_records` | approved records without parent feedback in selected branch + window | `LearningRecord` left join `learning_record_feedbacks` | Drives weekly digest + pending preview list |
 
 ---
 
