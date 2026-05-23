@@ -20,7 +20,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.52.0",
+    "@sentry/vue": "^10.53.1",
     "@supabase/supabase-js": "^2.106.1",
     "vue": "^3.5.34"
   },
