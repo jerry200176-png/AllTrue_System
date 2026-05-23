@@ -26,8 +26,17 @@
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test
 - [ ] 有前端 deployable diff → merge 後確認 `deploy.yml` 成功，必要時驗 `version.json` / health
 - [ ] 未擅自改 `AlertController::tuition` / `SessionDeductionService` 等高風險邏輯（若有改必須有測試 + 審核）
-- [ ] 新 query 有多校區隔離：`CampusID` / `branch_id`
+- [ ] **多校區隔離**：新 query / endpoint 都帶 `CampusID` / `branch_id`；跨校 join 經 `require_campus` 或 `resolveCampusIds`（Execution #482）
 - [ ] 未 `git push --force`、未直推 `main`
+
+## Threat Note（T2/T3 必填；T0/T1 可略）
+<!-- 對齊 .cursor/rules/module-security.mdc / Execution #480。若改 auth / PII / RFID / LINE webhook / 跨校資料邊界、新增公開端點，務必填寫。 -->
+- **資產 (Asset)**：<!-- e.g., StudentClass 堂數、家長手機、LINE userId -->
+- **威脅 (Threat / STRIDE)**：<!-- S/T/R/I/D/E 哪一面，1–2 句 -->
+- **緩解 (Mitigation)**：<!-- middleware / rate limit / authz check / audit log / 多校區 filter -->
+- **殘餘風險 (Residual)**：<!-- 可接受或要追新 issue -->
+
+> 若本 PR 只是 docs / CSS / 純 refactor 無安全邊界變更，請在此節寫 `N/A — 無 auth/PII/邊界變更`。
 
 ## Screenshots（前端有 UI 改動時填）
 <!-- 貼 before / after 截圖 -->
