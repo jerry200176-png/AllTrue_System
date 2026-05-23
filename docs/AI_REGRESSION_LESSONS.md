@@ -591,6 +591,36 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R57. `StudentClassController::sessionDates()` self-week fallback 不可用 array key 存取（merge 會 reindex）
+
+- **觸發情境**：2026-05-23 in-app #126 / GitHub #497：施景媛 SC#1841 設定好的 24 堂課，課程管理只顯示已實體化的 ClassSession 日期，後續週期堂次全部消失。
+- **根因 1**：`sessionDates()` body path 的 fallback 鏈只覆蓋 (a) request `days_of_week` (b) 同 package sibling 的 days，沒覆蓋 (c) 該課自身 `week, week1..week6`；月度課的 `bodyCourses[].days_of_week` 為空時整批掉空。
+- **根因 2**：上方 `$bodyClasses = $bodyClasses->merge($packageSiblings)` 會走 `array_merge`，把整數鍵全部重新索引成 `[0, 1, 2, ...]`；新加的 fallback 若用 `$bodyClasses[(int) $cid]` 永遠拿不到該課（測試一直回 0）。
+- **強制規則**：
+  - sessionDates fallback 鏈必須包含 self-week (`week, week1..week6`) 這層；不能假設前端一定會帶 `days_of_week`。
+  - 任何在 `merge()` 之後對 collection 的 key lookup，一律用 `firstWhere('ID', $id)` 或自己 `keyBy('ID')` 一次，**不可用** array key 存取整數 ID。
+- **測試必補**：`SessionDatesSelfWeekFallbackTest` 三案：(1) self-week 24 堂全產出 (2) sibling fallback（#440 回歸）仍生效 (3) request `days_of_week` 仍 precedence 最高；fixture 必須 `ScheduleMode='count'`，否則 GET path 會用 ClassSession 覆寫成空。
+
+---
+
+### R56. 課程管理 / 行事曆不可顯示內部 `cancelled-duplicate-reschedule-placeholder`
+
+- **觸發情境**：2026-05-23 in-app #124 / GitHub #496：調課完成後課程管理同時段多出一筆「取消」狀態的同課堂次，老師誤以為系統 double book。
+- **根因**：調課流程會在 `ClassSession` 留下 `Status='cancelled'` + `Note='...cancelled-duplicate-reschedule-placeholder'` 的內部 bookkeeping row，但 `ClassSessionController::index()` 直接連這些 row 一起回給前端。
+- **強制規則**：所有走 `GET /api/v1/class-sessions` 的列表（課程管理、行事曆、補課空檔）預設必須過濾掉 `Status='cancelled' AND Note LIKE '%cancelled-duplicate-reschedule-placeholder%'`；只有稽核需要時用顯式 `include_internal_placeholder=1` 帶回。
+- **測試必補**：`ClassSessionPlaceholderHideTest`：(1) 預設不回傳 placeholder (2) 一般取消堂次仍可見 (3) 顯式 opt-in 才回 placeholder。
+
+---
+
+### R55. 學習評量 `VoidedAt` 必須與 `ClassSession.Status` 對齊（resurrect-on-write）
+
+- **觸發情境**：2026-05-23 in-app #125 / GitHub #495：沈宇璿評量提交 409，原因是先前因「一般請假」自動連動 cascade void 了 LR，但同堂 ClassSession 後續又被改回 `attended/scheduled`，DB 留下 `VoidedAt!=NULL` 但堂次活著的孤兒 LR。
+- **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason='一般請假'` 且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。
+- **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided + 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非「一般請假」）仍 409 (3) 堂次仍 leave/cancelled 仍 409。
+- **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。
+
+---
+
 ### R54. Bug 回報 `reporter-verify` 必須與 `show()` 共用跨分校授權（#378 延伸）
 
 - **觸發情境**：2026-05-23 回報者對 `resolved` 單按「確認已修好」出現 HTTP 404；列表／詳情可開，但 `POST reporter-verify?branch_id=` 當前分校與回報分校不同時誤拒。
