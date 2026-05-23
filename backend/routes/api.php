@@ -43,6 +43,7 @@ use App\Http\Controllers\PaymentReportController;
 use App\Http\Controllers\ScheduleDiscrepancyController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
+use App\Http\Controllers\SystemTrustController;
 
 
 if (app()->environment('local')) {
@@ -425,10 +426,6 @@ Route::prefix('v1')->group(function () {
         Route::get('me/unread-feedback-count', [LearningRecordFeedbackController::class, 'unreadCount']);
         Route::get('me/learning-pending-summary', [LearningRecordController::class, 'teacherPendingBadgeSummary']);
         Route::get('me/learning-progress-summary', [LearningRecordController::class, 'teacherLearningProgressSummary']);
-        Route::get('adoption/task-tracker', [AdoptionInsightsController::class, 'taskTracker']);
-        Route::get('adoption/activity-log', [AdoptionInsightsController::class, 'activityLog']);
-        Route::get('adoption/weekly-metrics', [AdoptionInsightsController::class, 'weeklyMetrics']);
-        Route::post('adoption/events', [AdoptionInsightsController::class, 'recordEvent']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
@@ -466,6 +463,18 @@ Route::prefix('v1')->group(function () {
         Route::delete('rooms/{room}', [RoomController::class, 'destroy']);
     });
 
+    Route::middleware(['role:director,teacher,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('adoption/task-tracker', [AdoptionInsightsController::class, 'taskTracker']);
+        Route::get('adoption/activity-log', [AdoptionInsightsController::class, 'activityLog']);
+        Route::get('adoption/weekly-metrics', [AdoptionInsightsController::class, 'weeklyMetrics']);
+        Route::post('adoption/events', [AdoptionInsightsController::class, 'recordEvent']);
+        Route::get('system/trust-summary', [SystemTrustController::class, 'summary']);
+    });
+
+    Route::middleware(['super_admin', 'require_password_change'])->group(function () {
+        Route::get('adoption/cross-branch-metrics', [AdoptionInsightsController::class, 'crossBranchMetrics']);
+    });
+
     // ── Teacher Management (Profiles) ────────────────────────────────
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
         Route::post('profiles', [ProfileController::class, 'store']);
@@ -488,6 +497,7 @@ Route::prefix('v1')->group(function () {
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
     Route::post('parent/events', [ParentPortalController::class, 'recordParentEvent']);
+    Route::get('parent/system-trust-summary', [SystemTrustController::class, 'parentSummary']);
     Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
         ->middleware('throttle:20,1');
