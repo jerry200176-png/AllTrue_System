@@ -54,6 +54,32 @@
   --porsche-radius-md: 18px;
   --porsche-shadow-soft: 0 24px 60px rgba(15, 23, 42, 0.1);
   --porsche-shadow-hover: 0 30px 70px rgba(15, 23, 42, 0.14);
+
+  /* iOS-inspired tokens — additive, used by pages migrated to iOS-style
+   * simplification (Login v0 first). See .cursor/plans/ios-simplify-direction_2026-05-24.md.
+   * 不取代 --porsche-* / brand orange，僅提供 system-font / 柔和陰影 / 統一圓角 / 灰階基底。 */
+  --ios-font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", system-ui, "Segoe UI", sans-serif;
+  --ios-radius-card: 16px;
+  --ios-radius-control: 12px;
+  --ios-radius-pill: 999px;
+  --ios-spacing-1: 8px;
+  --ios-spacing-2: 12px;
+  --ios-spacing-3: 16px;
+  --ios-spacing-4: 24px;
+  --ios-spacing-5: 32px;
+  --ios-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.04);
+  --ios-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 16px 40px rgba(0, 0, 0, 0.06);
+  --ios-border-faint: rgba(0, 0, 0, 0.06);
+  --ios-border-default: rgba(0, 0, 0, 0.1);
+  --ios-bg-page: #f2f2f7;
+  --ios-bg-card: #ffffff;
+  --ios-text-primary: #1c1c1e;
+  --ios-text-secondary: #6e6e73;
+  --ios-text-tertiary: #c7c7cc;
+  --ios-accent-brand: #F57C00;
+  --ios-accent-blue: #007AFF;
+  --ios-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ios-touch-target: 44px;
 }
 
 /* ===== 夜間模式（Dark Theme） ===== */
