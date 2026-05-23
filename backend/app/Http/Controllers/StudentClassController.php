@@ -428,6 +428,30 @@ class StudentClassController extends Controller
                 }
             }
             if (!empty($courseIds)) {
+                $bodyClasses = StudentClass::whereIn('ID', $courseIds)
+                    ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                    ->get()
+                    ->keyBy('ID');
+                $packageIds = $bodyClasses->pluck('PackageID')
+                    ->map(fn ($pid) => (int) $pid)
+                    ->filter(fn ($pid) => $pid > 0)
+                    ->unique()
+                    ->values();
+                $studentIds = $bodyClasses->pluck('StudentID')
+                    ->map(fn ($sid) => (int) $sid)
+                    ->filter(fn ($sid) => $sid > 0)
+                    ->unique()
+                    ->values();
+                if ($packageIds->isNotEmpty() && $studentIds->isNotEmpty()) {
+                    $packageSiblings = StudentClass::whereIn('PackageID', $packageIds->all())
+                        ->whereIn('StudentID', $studentIds->all())
+                        ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                        ->get()
+                        ->keyBy('ID');
+                    $bodyClasses = $bodyClasses->merge($packageSiblings);
+                }
+                $bodyPackageFallbackDays = $this->buildPackageFallbackDaysMap($bodyClasses);
+
                 $schedulesBody = Schedule::where('branch_id', $branchId)
                     ->whereNotNull('student_course_id')
                     ->whereIn('student_course_id', $courseIds)
@@ -481,17 +505,86 @@ class StudentClassController extends Controller
                     $daysOfWeek = isset($c['days_of_week']) && is_array($c['days_of_week'])
                         ? array_values(array_unique(array_map('intval', array_filter($c['days_of_week'], function ($d) { return $d >= 1 && $d <= 7; }))))
                         : [];
-                    if ($cid !== null && isset($sessionDatesByClass[(string) $cid])) {
-                        $list = $sessionDatesByClass[(string) $cid];
-                        sort($list);
-                        $result[(string) $cid] = array_values($list);
-                        continue;
+                    if (empty($daysOfWeek) && $cid !== null) {
+                        $daysOfWeek = $bodyPackageFallbackDays[(int) $cid] ?? [];
                     }
+                    // Bug #497 / in-app #126：當 bodyCourses 未夾帶 days_of_week，且 package fallback
+                    // 因該課自身 week 欄位已有值而被略過時（buildPackageFallbackDaysMap 只填補空白
+                    // 的 sibling），仍應退回讀自身 `week, week1..week6`，否則 SessionCount=24 的
+                    // 月度課只會回傳已實體化的 ClassSession 日期，後續週期堂次完全消失。
+                    //
+                    // 注意：上方 `$bodyClasses = $bodyClasses->merge($packageSiblings)` 因 array_merge
+                    // 行為會把整數鍵重新索引，不能再用 `$bodyClasses[(int) $cid]`；
+                    // 用 firstWhere('ID', ...) 才能精確命中該課。
+                    if (empty($daysOfWeek) && $cid !== null) {
+                        $self = $bodyClasses->firstWhere('ID', (int) $cid);
+                        if ($self) {
+                            $selfDays = [];
+                            foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $wf) {
+                                $d = (int) ($self->{$wf} ?? 0);
+                                if ($d >= 1 && $d <= 7 && !in_array($d, $selfDays, true)) {
+                                    $selfDays[] = $d;
+                                }
+                            }
+                            if (!empty($selfDays)) {
+                                sort($selfDays);
+                                $daysOfWeek = $selfDays;
+                            }
+                        }
+                    }
+                    $actualSessionSet = [];
+                    if ($cid !== null && isset($sessionDatesByClass[(string) $cid])) {
+                        foreach ($sessionDatesByClass[(string) $cid] as $date) {
+                            $actualSessionSet[(string) $date] = true;
+                        }
+                    }
+
                     if ($cid !== null && $startDate && $n > 0 && !empty($daysOfWeek)) {
                         $leaveSet = $leaveByClass[$cid] ?? [];
                         $scheduledSet = $scheduledByClass[$cid] ?? [];
-                        $list = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                        $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                        $mergedSet = [];
+                        foreach ($contractList as $date) {
+                            $mergedSet[$date] = true;
+                        }
+                        foreach (array_keys($actualSessionSet) as $date) {
+                            $mergedSet[$date] = true;
+                        }
+                        $list = array_keys($mergedSet);
+                        sort($list);
+
+                        if (count($list) > $n) {
+                            $selected = [];
+                            $actualDates = array_keys($actualSessionSet);
+                            sort($actualDates);
+                            foreach ($actualDates as $date) {
+                                $selected[$date] = true;
+                                if (count($selected) >= $n) {
+                                    break;
+                                }
+                            }
+                            if (count($selected) < $n) {
+                                foreach ($contractList as $date) {
+                                    if (isset($selected[$date])) {
+                                        continue;
+                                    }
+                                    $selected[$date] = true;
+                                    if (count($selected) >= $n) {
+                                        break;
+                                    }
+                                }
+                            }
+                            $list = array_keys($selected);
+                            sort($list);
+                        }
                         $result[(string) $cid] = $list;
+                        continue;
+                    }
+
+                    if ($cid !== null && !empty($actualSessionSet)) {
+                        $list = array_keys($actualSessionSet);
+                        sort($list);
+                        $result[(string) $cid] = array_values($list);
                     }
                 }
             }
@@ -531,6 +624,8 @@ class StudentClassController extends Controller
             $classes = StudentClass::whereIn('ID', $classIds)
                 ->select(
                     'ID',
+                    'StudentID',
+                    'PackageID',
                     'StartDate',
                     'EndDate',
                     'SessionCount',
@@ -559,6 +654,7 @@ class StudentClassController extends Controller
                 )
                 ->get()
                 ->keyBy('ID');
+            $packageFallbackDaysByClassId = $this->buildPackageFallbackDaysMap($classes);
 
             $schedules = Schedule::where('branch_id', $branchId)
                 ->whereNotNull('student_course_id')
@@ -611,6 +707,9 @@ class StudentClassController extends Controller
                     if (empty($daysOfWeek) && (int) ($class->week ?? 0) >= 1 && (int) ($class->week ?? 0) <= 7) {
                         $daysOfWeek = [(int) $class->week];
                     }
+                    if (empty($daysOfWeek)) {
+                        $daysOfWeek = $packageFallbackDaysByClassId[$id] ?? [];
+                    }
                 }
 
                 if ($isSessionMode && $startDate && !empty($daysOfWeek)) {
@@ -628,17 +727,50 @@ class StudentClassController extends Controller
                             $actualSessionSet[$d] = true;
                         }
                     }
-                    if (!empty($actualSessionSet)) {
-                        $list = array_keys($actualSessionSet);
-                        sort($list);
-                        $result[(string) $id] = $list;
-                        continue;
-                    }
-
                     $n = (int) $class->SessionCount;
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
-                    $list = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+                    $contractList = self::computeEffectiveSessionDates($startDate, $n, $daysOfWeek, $leaveSet, $scheduledSet);
+
+                    // Regression guard (#440): when a count-mode course already has historical
+                    // ClassSession rows but future scheduled rows are missing, we must not return
+                    // "history only". Merge actual rows with contract dates so the UI can still
+                    // show upcoming sessions.
+                    $mergedSet = [];
+                    foreach ($contractList as $date) {
+                        $mergedSet[$date] = true;
+                    }
+                    foreach (array_keys($actualSessionSet) as $date) {
+                        $mergedSet[$date] = true;
+                    }
+                    $list = array_keys($mergedSet);
+                    sort($list);
+
+                    if ($n > 0 && count($list) > $n) {
+                        // Keep existing actual rows first, then fill remaining slots by contract order.
+                        $selected = [];
+                        $actualDates = array_keys($actualSessionSet);
+                        sort($actualDates);
+                        foreach ($actualDates as $date) {
+                            $selected[$date] = true;
+                            if (count($selected) >= $n) {
+                                break;
+                            }
+                        }
+                        if (count($selected) < $n) {
+                            foreach ($contractList as $date) {
+                                if (isset($selected[$date])) {
+                                    continue;
+                                }
+                                $selected[$date] = true;
+                                if (count($selected) >= $n) {
+                                    break;
+                                }
+                            }
+                        }
+                        $list = array_keys($selected);
+                        sort($list);
+                    }
                     $result[(string) $id] = $list;
                     continue;
                 }
@@ -785,6 +917,67 @@ class StudentClassController extends Controller
             $d->addDay();
         }
         return array_slice($list, 0, $n);
+    }
+
+    /**
+     * For package courses missing contract weekday fields, fallback to a sibling member
+     * in the same package that has valid weekdays configured.
+     *
+     * @param  \Illuminate\Support\Collection<int, StudentClass>  $classes
+     * @return array<int, array<int, int>>
+     */
+    private function buildPackageFallbackDaysMap($classes): array
+    {
+        $fallback = [];
+        if ($classes->isEmpty()) {
+            return $fallback;
+        }
+
+        $daysByClass = [];
+        $classIdsByPackageStudent = [];
+        foreach ($classes as $class) {
+            $classId = (int) ($class->ID ?? 0);
+            if ($classId <= 0) {
+                continue;
+            }
+            $days = [];
+            foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $wf) {
+                $d = (int) ($class->{$wf} ?? 0);
+                if ($d >= 1 && $d <= 7 && !in_array($d, $days, true)) {
+                    $days[] = $d;
+                }
+            }
+            sort($days);
+            $daysByClass[$classId] = $days;
+
+            $packageId = (int) ($class->PackageID ?? 0);
+            $studentId = (int) ($class->StudentID ?? 0);
+            if ($packageId > 0 && $studentId > 0) {
+                $key = $packageId . ':' . $studentId;
+                $classIdsByPackageStudent[$key][] = $classId;
+            }
+        }
+
+        foreach ($classIdsByPackageStudent as $classIdsInPackage) {
+            $packageFallback = [];
+            foreach ($classIdsInPackage as $cid) {
+                $candidate = $daysByClass[$cid] ?? [];
+                if (!empty($candidate)) {
+                    $packageFallback = $candidate;
+                    break;
+                }
+            }
+            if (empty($packageFallback)) {
+                continue;
+            }
+            foreach ($classIdsInPackage as $cid) {
+                if (empty($daysByClass[$cid] ?? [])) {
+                    $fallback[$cid] = $packageFallback;
+                }
+            }
+        }
+
+        return $fallback;
     }
 
     public function show(StudentClass $studentClass)
