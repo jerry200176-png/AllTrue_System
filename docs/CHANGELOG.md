@@ -22,7 +22,6 @@
 - 開發備註：新增 migration `2026_05_23_000100_add_effective_from_to_payroll_teacher_branch_rules.php`；`ParttimePayrollPage` 新增生效日與費率卡歷史顯示。
 
 ---
-
 ## 2026-05-23 — fix: 聊天附件、行事曆 EndDate、CourseEditForm、N+1 查詢（#431）
 
 - Fixed: 聊天頁附件按鈕點擊無反應（TypeError: y.click is not a function）— Closes #421 #428
