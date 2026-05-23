@@ -25,17 +25,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
-      mysql:
-        image: mysql:8.0
+      # Production runs MariaDB 10.11 — match it to catch portability issues
+      # (e.g., DEFAULT CURRENT_DATE without parens, ENUM behavior differences).
+      mariadb:
+        image: mariadb:10.11
         env:
-          MYSQL_ROOT_PASSWORD: rootpw
-          MYSQL_DATABASE: alltrue_dry
-          MYSQL_USER: alltrue
-          MYSQL_PASSWORD: alltruepw
+          MARIADB_ROOT_PASSWORD: rootpw
+          MARIADB_DATABASE: alltrue_dry
+          MARIADB_USER: alltrue
+          MARIADB_PASSWORD: alltruepw
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -prootpw"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=12
@@ -51,11 +53,11 @@ jobs:
           extensions: mbstring, pdo, pdo_mysql, bcmath, intl
           coverage: none
 
-      - name: Wait for MySQL
+      - name: Wait for MariaDB
         run: |
           for i in $(seq 1 30); do
-            if mysqladmin ping -h 127.0.0.1 -uroot -prootpw --silent 2>/dev/null; then
-              echo "MySQL ready"
+            if mysql -h 127.0.0.1 -uroot -prootpw -e "SELECT 1" >/dev/null 2>&1; then
+              echo "MariaDB ready"
               break
             fi
             sleep 2
