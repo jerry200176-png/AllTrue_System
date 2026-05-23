@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-23 — feat(adoption): staff mission center + activation funnel v1（#458）
+
+- Added: 老師與主任首頁導入「今日任務中心」閉環（待辦剩餘件數 + 一鍵跳轉），並在 adoption 指標新增 `activation_funnel`（teacher/director 24h activation）供管理層追蹤採用率。Closes #458。
+
+---
+
 ## 2026-05-23 — feat(adoption): KPI cockpit + trust layer v1（#462 / #460）
 
 - Added: 主任儀表板新增 Adoption/Quality KPI 集群（老師/主任開啟率、家長回覆率、Bug 重開率、P1/P0 lead time、trust backlog），並支援 super_admin 跨分校比較。Closes #462。

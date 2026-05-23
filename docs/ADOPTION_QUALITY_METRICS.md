@@ -14,6 +14,8 @@
 | `director_open_rate_pct` | distinct director/admin users with successful login in 7-day window / total director/admin users in campus × 100 | `user_login_activities`, `UserCampus`, `User` | Campus-scoped |
 | `teacher_activation_rate_pct` | distinct teacher users with at least one core action in 7 days / total teacher users × 100 | `LearningRecord`, `StudentSingIn` | Core actions: learning record input or attendance sign-in |
 | `director_activation_rate_pct` | distinct director/admin users with at least one core action in 7 days / total director/admin users × 100 | `LearningRecord.ApprovedBy`, `bug_report_status_logs.changed_by` | Core actions: approval or defect workflow action |
+| `activation_funnel.teacher.activation_within_24h_pct` | teacher activated users / teacher opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | v1 uses 7-day open/activation proxy for same-day completion trend |
+| `activation_funnel.director.activation_within_24h_pct` | director activated users / director opened users × 100 (v1 proxy) | `user_login_activities`, activation aggregates | used by mission-center adoption review |
 | `system_completion_rate_pct` | `learning_records_filled / attended_sessions × 100` | `LearningRecord`, `ClassSession` | Guard zero denominator |
 
 ---
