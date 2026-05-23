@@ -30,6 +30,20 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 
 ---
 
+## In-app Bug 回報（Claude／Cursor 必讀）
+
+處理「系統上 bug 回報」時，**唯一長文 SOP**：[`docs/CHAT_BUG_SYSTEM.md`](docs/CHAT_BUG_SYSTEM.md) **§3.6–§3.7**。
+
+| 階段 | 要做什麼 |
+|------|----------|
+| 分診（常不改 code） | §3.6 撈附件與歷史 → 開 GitHub issue → in-app `triaged` + **公開回覆** |
+| 修復 | `bug-fix-plan.mdc` → branch → CI → PR merge |
+| 上線後（常忘） | in-app `resolved` + **公開回覆**請回報者按「確認已修好」→ `reporter-verify` 後 `closed` |
+
+防再犯：`docs/AI_REGRESSION_LESSONS.md` **§R51**（分診前）、**§R53**（上線後必回 in-app）。**禁止**只關 GitHub issue 而不回 App 留言。
+
+---
+
 ## ⛔ 5 條紅線（違反 = P0 故障，零容忍）
 
 | # | 觸發情境 | 強制行動 |
