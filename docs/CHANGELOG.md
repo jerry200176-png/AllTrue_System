@@ -8,6 +8,16 @@
 
 ---
 
+## 2026-05-23 — fix: 聊天附件、行事曆 EndDate、CourseEditForm、N+1 查詢（#431）
+
+- Fixed: 聊天頁附件按鈕點擊無反應（TypeError: y.click is not a function）— Closes #421 #428
+- Fixed: 手機聊天長訊息時輸入框被擠出視窗 — Closes #429
+- Fixed: 新增課程時間段 ReferenceError: dayOptions is not defined — Closes #422
+- Fixed: 已停課（EndDate 過期）課程仍出現在行事曆週檢視 — Closes #427
+- Fixed: ensurePastRecords N+1 查詢（Subject 逐筆查 → 批次預載） — Closes #420
+
+---
+
 ## 2026-05-17 — feat(finance): 自動催繳工作流（Closes #400）
 
 - Added: 自動催繳規則引擎 — 依 `DIRECTOR_PAYMENT_ALERT_RULES.md` 規則自動評估未繳/低堂/逾期，每學生每週上限 3 則，cooldown 7~30 天
