@@ -1,7 +1,7 @@
 <template>
   <div class="th-page">
     <!-- Page Header -->
-    <div class="page-header th-header">
+    <div class="page-header th-header enterprise-page-header">
       <div>
         <h2>教學工作台</h2>
         <p class="page-desc">今日待辦一覽、本週跨分校課表</p>
@@ -15,7 +15,7 @@
         </p>
       </div>
       <div class="th-header-actions">
-        <button class="ghost small" @click="refreshAll" :disabled="refreshing">
+        <button class="ghost small enterprise-touch-target" @click="refreshAll" :disabled="refreshing">
           <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle">refresh</span>
           重新整理
         </button>

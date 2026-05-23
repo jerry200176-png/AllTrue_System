@@ -1,19 +1,19 @@
 <template>
   <div class="lr-page">
     <!-- Page Header -->
-    <div class="page-header lr-header" data-guide="learning-header">
+    <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
       <div>
         <h2>{{ isTeacher ? '我的課表 & 評量' : '學習評量表' }}</h2>
         <p class="page-desc">{{ isTeacher ? '查看本週課表，填寫學習評量' : '查看、新增與審核學生每堂課的學習評量' }}</p>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button v-if="isTeacher" class="ghost lr-draft-list-btn" @click="openDraftPanel">
+        <button v-if="isTeacher" class="ghost lr-draft-list-btn enterprise-touch-target" @click="openDraftPanel">
           <span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">drafts</span>
           草稿
           <span v-if="draftList.length > 0" class="lr-draft-badge">{{ draftList.length }}</span>
         </button>
-        <button class="ghost" @click="openExportModal">匯出評量圖</button>
-        <button v-if="isTeacher" class="primary" @click="focusTeacherSchedule">從課表填寫</button>
+        <button class="ghost enterprise-touch-target" @click="openExportModal">匯出評量圖</button>
+        <button v-if="isTeacher" class="primary enterprise-touch-target" @click="focusTeacherSchedule">從課表填寫</button>
       </div>
     </div>
 
@@ -166,7 +166,7 @@
 
       <!-- Today view -->
       <div v-if="scheduleView === 'today'" class="ts-today">
-        <div v-if="todayEvents.length === 0" class="ts-empty">今日無排課</div>
+        <div v-if="todayEvents.length === 0" class="ts-empty enterprise-empty">今日無排課</div>
         <div
           v-for="ev in todayEvents"
           :key="ev.key"
@@ -454,7 +454,7 @@
         </div>
       </div>
 
-      <div v-else-if="filteredGroupedRecords.length === 0" class="lr-empty-state">
+      <div v-else-if="filteredGroupedRecords.length === 0" class="lr-empty-state enterprise-empty">
         <div class="lr-empty-icon" aria-hidden="true">
           <svg viewBox="0 0 64 64" width="64" height="64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="28" cy="28" r="16"></circle>
