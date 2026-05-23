@@ -1894,6 +1894,8 @@ class LearningRecordController extends Controller
 
         $classes = StudentClass::whereIn('StudentID', $studentIds)->get();
 
+        $subjectNameMap = DB::table('Subject')->pluck('Subject_Name', 'id')->all();
+
         $created = 0;
 
         foreach ($classes as $sc) {
@@ -1929,9 +1931,7 @@ class LearningRecordController extends Controller
                     continue;
                 }
 
-                $subjectName = DB::table('Subject')->where('id', $sc->SubjectID)->value('Subject_Name')
-                    ?? DB::table('BaseData')->where('Name', '課程')->where('id', $sc->SubjectID)->value('Val')
-                    ?? '未知';
+                $subjectName = $subjectNameMap[(int) $sc->SubjectID] ?? '未知';
 
                 $tid = SubstituteScheduleService::effectiveInstructorUserId(
                     (int) $sc->ID,
