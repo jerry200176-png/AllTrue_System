@@ -428,6 +428,7 @@ Route::prefix('v1')->group(function () {
         Route::get('me/learning-progress-summary', [LearningRecordController::class, 'teacherLearningProgressSummary']);
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
+        Route::get('learning-record-feedbacks/analytics', [LearningRecordFeedbackController::class, 'analytics']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
