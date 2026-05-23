@@ -57,6 +57,67 @@ class LearningRecordController extends Controller
         return $eff > 0 ? $eff : (int) ($record->TeacherID ?? 0);
     }
 
+    /**
+     * Bug #495 / in-app #125：cascade-void 復原 helper。
+     *
+     * 條件已在呼叫端確認：
+     *   1) `$voided->VoidReason === '一般請假'`
+     *   2) `$classSession->Status` 屬 fillable 集合
+     * 此處只負責 in-place 更新欄位，保留 LR id 與審計時間戳。
+     */
+    private function resurrectVoidedLearningRecord(
+        LearningRecord $voided,
+        StudentClass $studentClass,
+        ClassSession $classSession,
+        array $data
+    ): LearningRecord {
+        $authUser = request()->attributes->get('auth_user');
+        $content = $data['Content'] ?? ($data['Progress'] ?? '') ?: '（評量表）';
+        $sessionDate = $this->normalizeDateValue($classSession->SessionDate) ?? ($data['SessionDate'] ?? null);
+        $startTime = $this->normalizeTimeValue($classSession->StartTime) ?? ($data['StartTime'] ?? null);
+        $endTime = $this->normalizeTimeValue($classSession->EndTime) ?? ($data['EndTime'] ?? null);
+
+        $lrTeacherId = SubstituteScheduleService::effectiveInstructorUserId(
+            (int) $studentClass->ID,
+            $classSession->SessionDate,
+            (int) ($studentClass->TeacherID ?? 0),
+            $classSession->StartTime
+        );
+        if ($lrTeacherId <= 0) {
+            $lrTeacherId = (int) ($data['TeacherID'] ?? $voided->TeacherID ?? 0);
+        }
+
+        $voided->fill([
+            'StudentClassID' => $studentClass->ID,
+            'TeacherID' => $lrTeacherId,
+            'CreatedByUserID' => $authUser ? (int) $authUser->id : $voided->CreatedByUserID,
+            'Content' => $content,
+            'AttachmentUrl' => $data['AttachmentUrl'] ?? null,
+            'Subject' => $data['Subject'] ?? $voided->Subject,
+            'SessionDate' => $sessionDate,
+            'StartTime' => $startTime,
+            'EndTime' => $endTime,
+            'HomeworkStatus' => $data['HomeworkStatus'] ?? null,
+            'QuizScore' => $data['QuizScore'] ?? null,
+            'Progress' => $data['Progress'] ?? null,
+            'NextHomework' => $data['NextHomework'] ?? null,
+            'NextWeekTestScope' => $data['NextWeekTestScope'] ?? null,
+            'Performance' => $data['Performance'] ?? null,
+            'Comment' => $data['Comment'] ?? null,
+            'Status' => 'pending',
+            'VoidedAt' => null,
+            'VoidedByUserID' => null,
+            'VoidReason' => null,
+            'ApprovedBy' => null,
+            'ApprovedAt' => null,
+            'ReviewNote' => null,
+            'SessionDeducted' => false,
+        ]);
+        $voided->save();
+
+        return $voided;
+    }
+
     private function hydrateRecordForResponse(LearningRecord $record): LearningRecord
     {
         $record->loadMissing('studentClass.student');
@@ -856,6 +917,24 @@ class LearningRecordController extends Controller
                 ->first();
             if ($rowForSession) {
                 if ($rowForSession->VoidedAt) {
+                    // Bug #495 / in-app #125：CourseLeaveCascadeService 標的 VoidReason='一般請假'
+                    // 是系統 cascade 副作用；若該 ClassSession 已被回復為 fillable 狀態
+                    // (attended/scheduled/completed/late)，自動 resurrect 舊 LR，避免老師被永久 409 擋住。
+                    // 人工作廢（其他 VoidReason）維持原 409，不覆寫管理員決策。
+                    $fillableStatuses = ['attended', 'scheduled', 'completed', 'late'];
+                    $csStatus = strtolower((string) ($classSession->Status ?? ''));
+                    $isCascadeVoid = (string) ($rowForSession->VoidReason ?? '') === '一般請假';
+
+                    if ($isCascadeVoid && in_array($csStatus, $fillableStatuses, true)) {
+                        $resurrected = $this->resurrectVoidedLearningRecord(
+                            $rowForSession,
+                            $studentClass,
+                            $classSession,
+                            $data
+                        );
+                        return response()->json($this->hydrateRecordForResponse($resurrected), 200);
+                    }
+
                     return response()->json([
                         'message' => '此堂評量已作廢，無法從此入口重複建立。請聯絡分校主任協助處理。',
                         'existing_id' => (int) $rowForSession->id,
