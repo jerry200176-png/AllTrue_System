@@ -1,4 +1,37 @@
+function roleHomeSteps({ role } = {}) {
+  const roleLabel = role === 'teacher'
+    ? '老師'
+    : (role === 'super_admin' ? '超級管理員' : '主任');
+  const firstTask = role === 'teacher'
+    ? '先看「教學工作台」今日待辦，再進入點名與評量。'
+    : '先看「主任儀表板」提醒，再分流到排課、評量與課表回報處理。';
+  return [
+    {
+      target: '[data-guide="app-sidebar-nav"]',
+      icon: '🧭',
+      title: `${roleLabel}導覽入口`,
+      description: `左側選單是主要工作入口。建議 ${firstTask}`,
+      placement: 'right',
+    },
+    {
+      target: '[data-guide="app-branch-switcher"]',
+      icon: '🏫',
+      title: '分校切換',
+      description: '操作前先確認分校，避免在錯誤分校新增或修改資料。',
+      placement: 'right',
+    },
+    {
+      target: '[data-guide="app-account-menu"]',
+      icon: '👤',
+      title: '帳號與安全',
+      description: '從這裡可進入個人設定、修改密碼與登出。',
+      placement: 'left',
+    },
+  ];
+}
+
 const pageGuideConfig = {
+  'role-home': (context) => roleHomeSteps(context),
   director: [
     {
       target: '[data-guide="director-summary"]',
@@ -29,6 +62,34 @@ const pageGuideConfig = {
       placement: 'left',
     },
   ],
+
+  'teacher-home': ({ role }) => {
+    const base = roleHomeSteps({ role });
+    return [
+      ...base,
+      {
+        target: '[data-guide="teacher-home-today"]',
+        icon: '📌',
+        title: '今日待辦',
+        description: '先處理今天的點名與評量待辦，這裡會優先列出最急迫項目。',
+        placement: 'bottom',
+      },
+      {
+        target: '[data-guide="teacher-home-week"]',
+        icon: '🗓️',
+        title: '本週課表',
+        description: '可快速查看接下來課堂安排，提前準備教材與課前提醒。',
+        placement: 'top',
+      },
+      {
+        target: '[data-guide="teacher-home-links"]',
+        icon: '🚀',
+        title: '快速入口',
+        description: '從這裡直接跳到點名、評量、排課等高頻功能，減少切頁時間。',
+        placement: 'top',
+      },
+    ];
+  },
 
   notifications: [
     {
@@ -424,6 +485,30 @@ const pageGuideConfig = {
       title: '已綁定家長數',
       description: '家長加入 LINE 官方帳號後即自動綁定。這個數字代表目前可透過 LINE 接收推播的家長總數，設定完成後通知家長掃碼加入。',
       placement: 'bottom',
+    },
+  ],
+
+  'schedule-discrepancy': [
+    {
+      target: '.sdp-sop-card',
+      icon: '🧯',
+      title: '先看處理 SOP',
+      description: '建議流程是「已確認 -> 核對資料 -> 填寫處理說明後標記已修正」。',
+      placement: 'bottom',
+    },
+    {
+      target: '.sdp-tabs',
+      icon: '🗂️',
+      title: '狀態分頁',
+      description: '待處理、處理中、已解決分頁分別對應不同階段，請依流程推進。',
+      placement: 'bottom',
+    },
+    {
+      target: '.sdp-list-wrap',
+      icon: '📝',
+      title: '回報清單',
+      description: '展開每筆可看備註、堂次與建議時段，處理後務必留下可追溯說明。',
+      placement: 'top',
     },
   ],
 };
