@@ -750,8 +750,8 @@ async function submitPassword() {
     passwordMsg.value = { type: 'error', text: '請輸入目前密碼。' };
     return;
   }
-  if (!passwordForm.value.newPassword || passwordForm.value.newPassword.length < 6) {
-    passwordMsg.value = { type: 'error', text: '新密碼至少 6 碼。' };
+  if (!passwordForm.value.newPassword || passwordForm.value.newPassword.length < 8) {
+    passwordMsg.value = { type: 'error', text: '新密碼至少 8 碼。' };
     return;
   }
   if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
@@ -780,7 +780,10 @@ async function submitPassword() {
     });
     emit('password-change-complete');
   } catch (error) {
-    passwordMsg.value = { type: 'error', text: error.message || '密碼更新失敗。' };
+    let errText = error.message || '密碼更新失敗。';
+    if (/validation\.min/i.test(errText)) errText = '新密碼至少 8 碼。';
+    else if (/validation\./i.test(errText)) errText = '密碼格式不符，請確認後再試。';
+    passwordMsg.value = { type: 'error', text: errText };
   } finally {
     savingPassword.value = false;
   }
