@@ -134,9 +134,6 @@ const LEGACY_EXEMPT = new Set([
   'PRD_PARTTIME_TEACHER_PAYROLL.md', 'PRD_SINGLE_SESSION_UX_CLARITY.md',
   'CTO_SPEC_BRANCH_MONTHLY_TUITION_REPORT.md',
   '更新網站前端.md', '使用說明_主任與超級管理員.md',
-  // Pre-existing files that don't follow Phase C naming prefix (grandfathered)
-  'ADOPTION_QUALITY_METRICS.md', 'AMBIENT_AUDIO_LICENSES.md',
-  'SMOKE_TEST_RUNBOOK.md', 'SUPER_ADMIN_AND_MIGRATIONS.md', 'api-swipe-rfid.md',
 ]);
 const docsDir = path.join(root, 'docs');
 if (fs.existsSync(docsDir)) {
