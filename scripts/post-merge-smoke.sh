@@ -7,7 +7,31 @@ set -euo pipefail
 BASE_URL="${SMOKE_BASE_URL:-https://daan.lifenet.com.tw}"
 API_BASE="${BASE_URL%/}/api/v1"
 PI_SSH="${SMOKE_PI_SSH:-admin@pi.lifenet.com.tw}"
+PI_BACKEND="${SMOKE_PI_BACKEND:-/home/admin/backend}"
 EXPECTED_HASH="${SMOKE_EXPECTED_HASH:-$(git rev-parse --short=8 HEAD 2>/dev/null || echo '')}"
+
+# Running on Pi during deploy.yml (no SSH hop)
+if [[ -z "${SMOKE_ON_PI:-}" && -d "${PI_BACKEND}/public/assets" ]]; then
+  SMOKE_ON_PI=1
+fi
+
+pi_sh() {
+  if [[ "${SMOKE_ON_PI:-}" == "1" ]]; then
+    bash -lc "$1"
+  else
+    ssh -o BatchMode=yes "$PI_SSH" "$1"
+  fi
+}
+
+pi_mysql() {
+  local sql="$1"
+  if [[ "${SMOKE_ON_PI:-}" == "1" ]]; then
+    DB_PASS="$(grep ^DB_PASSWORD= "${PI_BACKEND}/.env" | cut -d= -f2-)"
+    mysql -u admin -p"$DB_PASS" AllTrue -N -e "$sql" 2>/dev/null
+  else
+    ssh -o BatchMode=yes "$PI_SSH" "DB_PASS=\$(grep ^DB_PASSWORD= ${PI_BACKEND}/.env | cut -d= -f2-); mysql -u admin -p\"\$DB_PASS\" AllTrue -N -e \"$sql\"" 2>/dev/null
+  fi
+}
 
 failures=0
 pass() { echo "✅ $1"; }
@@ -35,24 +59,28 @@ PY
 if [[ -z "$ver_hash" ]]; then
   fail "version.json missing or invalid"
 elif [[ -n "$EXPECTED_HASH" && "$ver_hash" != "$EXPECTED_HASH" ]]; then
-  warn "version.json hash=$ver_hash (expected $EXPECTED_HASH from local HEAD — may lag if not deployed yet)"
+  if [[ "${SMOKE_STRICT_VERSION:-}" == "1" ]]; then
+    fail "version.json hash=$ver_hash (expected $EXPECTED_HASH after frontend deploy)"
+  else
+    warn "version.json hash=$ver_hash (expected $EXPECTED_HASH from local HEAD — may lag if docs-only)"
+  fi
 else
   pass "version.json hash=$ver_hash"
 fi
 
-if ssh -o BatchMode=yes -o ConnectTimeout=8 "$PI_SSH" true 2>/dev/null; then
-  pi_commit="$(ssh -o BatchMode=yes "$PI_SSH" 'cd /home/admin/backend && git rev-parse --short=8 HEAD' 2>/dev/null || echo '')"
+if [[ "${SMOKE_ON_PI:-}" == "1" ]] || ssh -o BatchMode=yes -o ConnectTimeout=8 "$PI_SSH" true 2>/dev/null; then
+  pi_commit="$(pi_sh "cd ${PI_BACKEND} && git rev-parse --short=8 HEAD" 2>/dev/null || echo '')"
   [[ -n "$pi_commit" ]] && pass "Pi git HEAD=$pi_commit" || warn "Could not read Pi git HEAD"
 
   for needle in cancelMakeupSchedule fetchPendingMakeups pending-makeups-panel; do
-    if ssh -o BatchMode=yes "$PI_SSH" "grep -q '$needle' /home/admin/backend/public/assets/CourseManagement-*.js 2>/dev/null"; then
+    if pi_sh "grep -q '$needle' ${PI_BACKEND}/public/assets/CourseManagement-*.js 2>/dev/null"; then
       pass "bundle contains $needle"
     else
       fail "CourseManagement bundle missing $needle"
     fi
   done
 
-  if ssh -o BatchMode=yes "$PI_SSH" "grep -q 'trust-summary' /home/admin/backend/public/assets/TeacherHomePage-*.js 2>/dev/null"; then
+  if pi_sh "grep -q 'trust-summary' ${PI_BACKEND}/public/assets/TeacherHomePage-*.js 2>/dev/null"; then
     pass "TeacherHome bundle contains trust-summary"
   else
     fail "TeacherHome bundle missing trust-summary"
@@ -92,17 +120,12 @@ PY
 
 fetch_pi_token() {
   local user_type="$1"
-  ssh -o BatchMode=yes "$PI_SSH" "DB_PASS=\$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-); mysql -u admin -p\"\$DB_PASS\" AllTrue -N -e \"
-SELECT t.token FROM auth_tokens t
-JOIN User u ON u.id=t.user_id
-WHERE u.type='$user_type' AND t.expires_at > NOW()
-ORDER BY t.expires_at DESC LIMIT 1;\"" 2>/dev/null | head -1
+  pi_mysql "SELECT t.token FROM auth_tokens t JOIN User u ON u.id=t.user_id WHERE u.type='${user_type}' AND t.expires_at > NOW() ORDER BY t.expires_at DESC LIMIT 1;" | head -1
 }
 
 fetch_pi_campus() {
   local user_id="$1"
-  ssh -o BatchMode=yes "$PI_SSH" "DB_PASS=\$(grep ^DB_PASSWORD= /home/admin/backend/.env | cut -d= -f2-); mysql -u admin -p\"\$DB_PASS\" AllTrue -N -e \"
-SELECT CampusID FROM UserCampus WHERE UserID=$user_id AND Approved=1 LIMIT 1;\"" 2>/dev/null | head -1
+  pi_mysql "SELECT CampusID FROM UserCampus WHERE UserID=${user_id} AND Approved=1 LIMIT 1;" | head -1
 }
 
 http_auth_code() {
