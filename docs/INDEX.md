@@ -77,6 +77,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
 | Branch protection 啟用步驟 | `docs/OPERATIONS_RUNBOOK.md §R` |
+| **Solo + AI GitHub 週期 SOP** | `docs/OPERATIONS_RUNBOOK.md §B5` |
 | SSH key 季度輪替 SOP | `docs/OPERATIONS_RUNBOOK.md §S` |
 | Staging 設計 / Feature flag / Visual regression | `docs/OPERATIONS_RUNBOOK.md §U / §V / §W` |
 | AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |

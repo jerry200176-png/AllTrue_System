@@ -13,7 +13,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 | 章節 | 主題 |
 |------|------|
 | **§A** | WSL2 本地開發、merge 後驗證 |
-| **§B** | GitHub／Dependabot／PR 衛生 |
+| **§B** | GitHub／Dependabot／PR 衛生／**Solo+AI 週期（§B5）** |
 | **§C** | Incident lessons |
 | **§D** | Recovery（站看起來舊／API 異常） |
 | **§E–F** | Pre-merge checklist、高風險區 |
@@ -244,6 +244,74 @@ node -v
 **Monthly hygiene**
 - 每月一次更新 runner runtime（WSL2 packages, PHP, Node, Composer）並抽跑 `presubmit.yml` + `ci.yml`。
 - 每月一次檢查 labels 仍為 `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，避免誤接 production workflow。
+
+### B5. Solo + AI GitHub 週期 SOP（一人團隊 × 大廠 baseline）
+
+**適用**：CEO + AI agents；無第二位 maintainer。CI 取代 human review；Issue/PR 是唯一工作佇列。
+
+**啟用（必做）**
+
+| 項目 | 設定 / 工具 | 為什麼 |
+|------|------------|--------|
+| Branch protection | `main`：required checks + no force push + up-to-date | 事故 A 防再犯 |
+| Required approvals | **0**（單人）| 避免自己卡自己；§R 稽核 `reviews` 應為 0 |
+| Auto-delete head branches | Settings → General | 減少 stale branch |
+| Squash merge | 預設 squash；一 PR 一議題 | 大廠 trunk-based 習慣 |
+| Presubmit + CI gate | AI **必須**等 checks completed 再報告可 merge | CI = 自動 reviewer |
+| CODEOWNERS | 保留；觸發時 CEO 自審即可 | 高風險路徑提醒 |
+| Dependabot SLA | §B0 / §T | 供應鏈 |
+| Branch hygiene | `branch-hygiene.yml` + `./scripts/branch-hygiene.sh` | 每週清理 |
+
+**刻意不開（等第二人再加入）**
+
+| 項目 | 原因 |
+|------|------|
+| Merge queue | 單人無並行 merge 競態 |
+| Required 1+ approval | 會 dead-lock |
+| GitHub Projects 當 Jira | Issue + labels 已夠 |
+| GitHub Discussions | 決策寫 docs / issue |
+| Mandatory signed commits | 維護成本 > 效益 |
+
+**每個任務（AI 必跑）**
+
+```bash
+git checkout main && git pull origin main
+git checkout -b feat|fix|chore/<slug>
+# …改動…
+git push -u origin HEAD
+gh pr create --fill
+gh pr checks --watch          # 等到全綠或自己修
+gh pr merge --squash --delete-branch   # CEO 批准後；docs-only 亦同
+curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
+```
+
+- 一 PR 一議題；**≤ 400 行**（hard 700；`chore/docs-*` 純 docs 整併 ≤ 1200，見 presubmit CHECK 2）。
+- 多階段 issue：中間 PR 用 `Refs #N`，最後一個 PR 才 `Closes #N`。
+- **禁止** AI 報「完成」而 CI 還在 running / PR 未 merge。
+
+**每週一（10 分鐘，CEO 或 AI）**
+
+```bash
+gh issue list --state open --limit 20
+gh pr list --state open
+gh pr list --author "app/dependabot" --state open
+./scripts/branch-hygiene.sh
+gh api repos/jerry200176-png/AllTrue_System/actions/runners \
+  --jq '.runners[] | {name, status, busy}'
+gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
+  --jq '{checks: .required_status_checks.contexts, reviews: .required_pull_request_reviews.required_approving_review_count, force: .allow_force_pushes.enabled}'
+```
+
+| 檢查 | 動作 |
+|------|------|
+| Open PR 全綠但 behind main | `gh api -X PUT repos/jerry200176-png/AllTrue_System/pulls/<N>/update-branch` |
+| Dependabot 堆積 | 依 §T SLA merge 或 `@dependabot rebase` |
+| `reviews` ≠ 0 | Settings → Branch protection → 0 approval |
+| Runner offline | §B4 recovery |
+
+**每月 1 日**：`mempalace-monthly.yml` comment issue #519 → WSL2 手動 mempalace mine；`node scripts/docs-integrity-check.mjs --strict`；SSH 輪替月 → §S。
+
+**對照大廠**：Trunk + PR + automated gates + ownership + supply chain。詳 [`docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
 
 ## C. Incident lessons (must remember)
 
@@ -938,19 +1006,18 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 
 > **必須在 GitHub Web UI 啟用**：`Settings → Branches → Branch protection rules → main`
 
-### R1. 必啟設定（截至 2026-05-23）
+### R1. 必啟設定（截至 2026-05-24，**Solo + AI 模式**）
 
 | 設定 | 值 | 為什麼 |
 |------|---|------|
 | Require a pull request before merging | ✅ | 阻擋直推 main（事故 A 防再犯）|
-| Required approvals | 1（CEO 或 trusted reviewer）| CODEOWNERS 觸發時必須 owner approve |
-| Require review from Code Owners | ✅ | 高風險路徑必須 owner approve（#472）|
-| Dismiss stale approvals on new push | ✅ | 防 approve 後偷塞 commit |
+| Required approvals | **0**（單人 repo）| 避免自己卡自己；有第二位 maintainer 後改 **1** |
+| Require review from Code Owners | 選用 | 單人時 CODEOWNERS 僅提醒；多人時 ✅ |
+| Dismiss stale approvals on new push | ✅（多人時）| 防 approve 後偷塞 commit |
 | Require status checks before merging | ✅ | 必須全綠才能 merge |
-| Required checks | `Presubmit Gate` / `CI — PHPUnit Tests` / `Security Scan` / `Block secret file types` / `gitleaks scan` / `Vite Frontend Build` / `Docs Integrity Check` / `Golden scenarios report` | 確保 CI 完整跑 |
-| Require branches to be up to date | ✅ | 避免 stale rebase merge |
+| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` | 其餘（Security Scan、gitleaks、Docs Integrity、Golden scenarios）為 advisory，可逐步納入 required |
+| Require branches to be up to date | ✅ | PR behind 時先 `update-branch`（§B5）|
 | Require conversation resolution | ✅ | review comment 必須解決 |
-| Restrict pushes that create matching branches | （main only）| 一般 contributor 無法直接 push |
 | Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |
 | Allow deletions | ❌ | 防 main 被刪 |
 
