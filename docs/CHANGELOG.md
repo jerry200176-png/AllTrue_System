@@ -8,6 +8,18 @@
 
 ---
 
+## 2026-05-24 — fix(schedule+billing): 調課時間同步修正 + 費率切換 UI（#127 #129 PR#521 #522）
+
+- Fixed 調課後老師評量頁面仍顯示舊時間（`schedules` 已更新但 `ClassSession` 未同步）
+- Fixed 課程費率顯示：課程設定頁新增「按堂 / 按時」切換按鈕，舊 `rate_unit='hour'` 資料問題不再隱藏
+- Fixed 4 筆未付費課程費用計算錯誤（蔡羽絜 SC#182/#1054、吳睿哲 SC#671/#673），金額從 ~17,600 修正為正確的 8,800 / 8,000
+- 開發備註：ScheduleController `ensureClassSessionForScheduleData` 改用 updateOrCreate 避免 cancelled 狀態被 firstOrCreate 跳過；migration 2026_05_24_000100 backfill unpaid courses
+- 待確認：已收費 8 筆課程（CampusID=9/17）需主任確認退費意向後再處理
+
+## 2026-05-24 — docs(consolidation): 建立 GitHub issues #515–#520（Phase A–F docs restructure）
+
+- 開發備註：docs consolidation Phase A–F 計畫逐步執行，issues 依優先序建立
+
 ## 2026-05-24 — chore(docs/sop): plain-language bug replies + docs consolidation plan
 
 - Added: 新增 `.cursor/rules/user-facing-communication.mdc`（always-applied）規範 AI 對老師／主任／家長的留言一律白話，禁止欄位名 / SQL / class 名 / PR 編號漏到公開留言；同步 `docs/CHAT_BUG_SYSTEM.md` §3.8 加入「白話留言檢查清單 + 對照範例」。
