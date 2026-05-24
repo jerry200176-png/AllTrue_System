@@ -32,7 +32,7 @@ class RescheduleClassSessionSyncTest extends TestCase
      */
     public function test_rescheduled_schedule_cancels_original_class_session(): void
     {
-        [$token, $courseId] = $this->seed();
+        [$token, $courseId] = $this->makeFixture();
 
         $oldSession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -63,7 +63,7 @@ class RescheduleClassSessionSyncTest extends TestCase
      */
     public function test_scheduled_destination_reactivates_cancelled_class_session(): void
     {
-        [$token, $courseId] = $this->seed();
+        [$token, $courseId] = $this->makeFixture();
 
         // Simulate a previously cancelled slot at the new destination time
         $newSession = ClassSession::create([
@@ -96,7 +96,7 @@ class RescheduleClassSessionSyncTest extends TestCase
      */
     public function test_attended_class_session_is_never_cancelled_by_reschedule(): void
     {
-        [$token, $courseId] = $this->seed();
+        [$token, $courseId] = $this->makeFixture();
 
         $attendedSession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -125,7 +125,7 @@ class RescheduleClassSessionSyncTest extends TestCase
     // Helpers
     // -------------------------------------------------------------------------
 
-    private function seed(): array
+    private function makeFixture(): array
     {
         $director = User::create([
             'LoginName' => 'dir-127-' . uniqid() . '@test.com',
