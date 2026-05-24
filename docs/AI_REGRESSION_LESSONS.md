@@ -627,6 +627,18 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R58. 禁止對 tracked 原始碼使用 `assume-unchanged` / `skip-worktree`（2026-05-24 #527 延伸）
+
+- **觸發情境**：`CourseManagement.vue`、`branch-hygiene.sh` 被設 `assume-unchanged`（`git ls-files -v` 顯示 `h`），working tree 已改但 `git status` 乾淨 → #527 主任端 UI 未進 PR #530，本地 WIP 被 AI 誤判「已上線」。
+- **根因**：`git update-index --assume-unchanged` 原設計給**本機暫時**加速大 repo diff，不是 team 工作流；GitHub／Google 等皆靠 **PR + CI** 看 diff，不靠隱藏 index。
+- **強制規則**：
+  - ⛔ 禁止對 `backend/`、`frontend/`、`scripts/`、`.github/`、`docs/` 下任何 tracked 檔設 `--assume-unchanged` 或 `--skip-worktree`。
+  - 開工前／§B5 週例：`./scripts/git-index-audit.sh`（或 `git ls-files -v | grep '^[hs]'` 必須為空）。
+  - AI 若 `git show HEAD:path` 與磁碟 `path` 不一致但 `git status` 無該檔 → **先** `git update-index --no-assume-unchanged path` 再繼續。
+- **大廠對齊**：可見 diff + required checks（§B5）；本地藏檔 = 繞過 review gate，等同未審即改 production 路徑。
+
+---
+
 ### R54. Bug 回報 `reporter-verify` 必須與 `show()` 共用跨分校授權（#378 延伸）
 
 - **觸發情境**：2026-05-23 回報者對 `resolved` 單按「確認已修好」出現 HTTP 404；列表／詳情可開，但 `POST reporter-verify?branch_id=` 當前分校與回報分校不同時誤拒。
@@ -677,6 +689,7 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
+| Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
 
 ---
 

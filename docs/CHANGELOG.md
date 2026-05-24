@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-24 — ops(git): 防止 assume-unchanged 藏檔漏進 PR（#535）
+
+- Ops: 新增 `scripts/git-index-audit.sh` 與 §R58 防再犯規則，週例檢查 protected 路徑是否被 `assume-unchanged` / `skip-worktree` 隱藏；同步把 audit 流程接進 Solo+AI §B5。
+- Fixed: 清出先前被 Git index 隱藏的 `scripts/smoke-api.sh` 登入 payload / token parser 修正，避免 smoke secrets 設定後仍誤判登入路徑。
+
 ## 2026-05-24 — feat(course-mgmt): 補課取消流程 — 主任可取消待補課排程（#527）
 
 - Added 主任端課程管理頁「待補課」列表：展開課程詳情後顯示尚未上課的補課排程（`type='extra', status='scheduled'`）
