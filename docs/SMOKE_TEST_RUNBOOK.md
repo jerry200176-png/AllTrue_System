@@ -10,9 +10,8 @@ This runbook defines the read-only post-deploy smoke checks used by `deploy.yml`
 
 ## Script
 
-- Path: `scripts/smoke-api.sh`
-- Default mode: public read-only checks
-- Optional mode: teacher authenticated read-path checks (when secrets are provided)
+- Path: `scripts/smoke-api.sh` — deploy.yml 內嵌 smoke（公開 + 可選 teacher 登入）
+- Path: `scripts/post-merge-smoke.sh` — **§B5 post-merge 完整驗收**（公開 + Pi bundle 指紋 + auth API；無密碼時從 Pi DB 讀最新有效 token，唯讀）
 
 ## Checks Performed
 
@@ -21,6 +20,14 @@ Without credentials:
 - `GET /api/v1/health`
 - `GET /api/v1/branches`
 - `POST /api/v1/auth/login` with empty payload (route liveness, non-5xx)
+
+`post-merge-smoke.sh` 額外（Layer 2–3）：
+
+- `version.json` hash 與 Pi `git HEAD` 一致
+- 部署 bundle 含 `cancelMakeupSchedule` / `trust-summary` 等關鍵字
+- Teacher `GET /system/trust-summary` → 200（#529 驗證路徑）
+- Director `GET /schedules?type=extra&status=scheduled` → 200
+- Director `POST /schedules/{id}/cancel-makeup` probe → 404（auth 正常，非 401）
 
 With teacher credentials (`SMOKE_TEACHER_LOGIN`, `SMOKE_TEACHER_PASSWORD`):
 
@@ -56,6 +63,15 @@ SMOKE_TEACHER_PASSWORD="***" \
 SMOKE_BRANCH_ID="15" \
 bash scripts/smoke-api.sh
 ```
+
+Post-merge 完整驗收（§B5，merge + deploy 後 AI/CEO 執行）：
+
+```bash
+cd ~/alltrue && git pull origin main
+bash scripts/post-merge-smoke.sh
+```
+
+可選：`.cursor/.local/smoke.env`（gitignore）放置 `SMOKE_TEACHER_LOGIN` 等；未設定時腳本從 Pi 讀最新有效 session token（唯讀，不寫入 DB）。
 
 ## Failure Handling
 

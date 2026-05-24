@@ -282,6 +282,7 @@ git push -u origin HEAD
 gh pr create --fill
 gh pr checks --watch          # 等到全綠或自己修
 gh pr merge --squash --delete-branch   # CEO 批准後；docs-only 亦同
+bash scripts/post-merge-smoke.sh       # deploy 後必跑（取代手動點 UI）
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```
 
