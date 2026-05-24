@@ -44,16 +44,21 @@ class RescheduleClassSessionSyncTest extends TestCase
             'Status'         => 'cancelled',
         ]);
 
+        $studentId = (int) StudentClass::where('ID', $courseId)->value('StudentID');
+
         // Director creates a scheduled (make-up/reschedule destination) record
         $this->withToken($token)->postJson('/api/v1/schedules', [
+            'student_id'         => $studentId,
             'student_course_id'  => $courseId,
             'schedule_date'      => '2026-06-10',
             'start_time'         => '13:00',
             'end_time'           => '15:00',
+            'duration_hours'     => 2,
+            'class_type'         => 'one_on_one',
             'day_of_week'        => 2,
             'branch_id'          => 1,
             'status'             => 'scheduled',
-            'original_schedule_id' => 999, // non-zero to trigger dedup path
+            'original_schedule_id' => 999,
         ])->assertStatus(201);
 
         $newSession->refresh();
