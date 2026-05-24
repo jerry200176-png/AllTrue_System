@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # 技術問題報告：課程管理「改時段」異常與相關 API 行為
 
 > **性質**：2026-04-12 **單次技術調查**長文；保留根因與堆疊脈絡。若與**現行**程式碼或行為不符，以 repo 與 [`CHANGELOG.md`](CHANGELOG.md) 為準；調查續行請 `rg student-classes/sync` / `410` 對照 `SmartCalendar.vue`／Controller。
