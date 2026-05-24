@@ -947,19 +947,28 @@ class ScheduleController extends Controller
             $endTime .= ':00';
         }
 
-        ClassSession::firstOrCreate(
-            [
+        $existing = ClassSession::where('StudentClassID', $courseId)
+            ->where('SessionDate', $sessionDate)
+            ->where('StartTime', $startTime)
+            ->first();
+
+        if ($existing) {
+            // Re-activate a previously cancelled slot (e.g. reschedule destination that
+            // was cancelled by an earlier operation). Never override 'attended' or 'leave'.
+            if (in_array($existing->Status, ['cancelled'], true)) {
+                $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
+            }
+        } else {
+            ClassSession::create([
                 'StudentClassID' => $courseId,
-                'SessionDate' => $sessionDate,
-                'StartTime' => $startTime,
-            ],
-            [
-                'SubjectID' => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
-                'EndTime' => $endTime,
-                'Status' => 'scheduled',
-                'Note' => 'auto-materialized-from-schedule',
-            ]
-        );
+                'SessionDate'    => $sessionDate,
+                'StartTime'      => $startTime,
+                'SubjectID'      => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
+                'EndTime'        => $endTime,
+                'Status'         => 'scheduled',
+                'Note'           => 'auto-materialized-from-schedule',
+            ]);
+        }
     }
 
     public function destroy(Schedule $schedule)
