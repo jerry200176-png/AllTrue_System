@@ -68,7 +68,11 @@ check_non_5xx "POST /auth/login (route alive)" "$code"
 
 token=""
 if [[ -n "$TEACHER_LOGIN" && -n "$TEACHER_PASSWORD" ]]; then
-  payload="$(printf '{"login":"%s","password":"%s"}' "$TEACHER_LOGIN" "$TEACHER_PASSWORD")"
+  payload="$(python3 - <<PY
+import json
+print(json.dumps({"account": "$TEACHER_LOGIN", "password": "$TEACHER_PASSWORD", "role": "teacher"}))
+PY
+)"
   login_json="$(curl -skL -X POST "$API_BASE/auth/login" -H "Content-Type: application/json" --data "$payload")"
   token="$(python3 - <<'PYEOF' "$login_json"
 import json, sys
@@ -77,18 +81,16 @@ try:
 except Exception:
     print("")
     raise SystemExit(0)
-for key in ("token", "access_token"):
-    v = data.get(key)
+candidates = [
+    data.get("data", {}).get("session", {}).get("access_token"),
+    data.get("session", {}).get("access_token"),
+    data.get("token"),
+    data.get("access_token"),
+]
+for v in candidates:
     if isinstance(v, str) and v.strip():
         print(v.strip())
         raise SystemExit(0)
-session = data.get("session")
-if isinstance(session, dict):
-    for key in ("token", "access_token"):
-        v = session.get(key)
-        if isinstance(v, str) and v.strip():
-            print(v.strip())
-            raise SystemExit(0)
 print("")
 PYEOF
 )"
@@ -105,6 +107,14 @@ PYEOF
 
     code="$(http_code GET "$API_BASE/learning-records?branch_id=$BRANCH_ID&per_page=$PER_PAGE" "" "$token")"
     check_non_5xx "GET /learning-records" "$code"
+
+    code="$(http_code GET "$API_BASE/system/trust-summary?branch_id=$BRANCH_ID" "" "$token")"
+    if [[ "$code" == "200" || "$code" == "403" ]]; then
+      echo "✅ GET /system/trust-summary -> $code"
+    else
+      echo "❌ GET /system/trust-summary -> $code (expected 200/403, not 401)"
+      failures=$((failures + 1))
+    fi
   fi
 else
   echo "ℹ️ Skip authenticated smoke: SMOKE_TEACHER_LOGIN / SMOKE_TEACHER_PASSWORD not set"
