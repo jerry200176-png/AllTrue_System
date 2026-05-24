@@ -1318,7 +1318,7 @@ onMounted(() => {
   setupEngagementReducedMotion();
   loadEngagementSnapshot();
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress(), refreshTrustToken()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
