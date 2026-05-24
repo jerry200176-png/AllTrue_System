@@ -412,7 +412,8 @@ export function useRescheduleAndMakeup({
       if (!res.ok) return;
       const data = await res.json();
       const schedules = Array.isArray(data) ? data : (data.data ?? []);
-      pendingMakeupsByCourse.value = { ...pendingMakeupsByCourse.value, [course.id]: schedules };
+      const pendingMakeups = schedules.filter((s) => s?.type === 'extra' && s?.status === 'scheduled');
+      pendingMakeupsByCourse.value = { ...pendingMakeupsByCourse.value, [course.id]: pendingMakeups };
     } catch { /* non-critical */ }
   }
 
