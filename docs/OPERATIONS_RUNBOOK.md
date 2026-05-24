@@ -285,7 +285,7 @@ gh pr merge --squash --delete-branch   # CEO 批准後；docs-only 亦同
 curl -sk https://daan.lifenet.com.tw/api/v1/health | python3 -m json.tool
 ```
 
-- 一 PR 一議題；**≤ 400 行**（hard 700；`chore/docs-*` 純 docs 整併 ≤ 1200，見 presubmit CHECK 2）。
+- 一 PR 一議題；**≤ 400 行**（hard 700；`chore/docs-*` 無 production 路徑 ≤ 1300，見 presubmit CHECK 2）。
 - 多階段 issue：中間 PR 用 `Refs #N`，最後一個 PR 才 `Closes #N`。
 - **禁止** AI 報「完成」而 CI 還在 running / PR 未 merge。
 
