@@ -396,6 +396,51 @@ export function useRescheduleAndMakeup({
     showMakeupSlotsModal.value = false;
   }
 
+
+  // ── Cancel makeup schedule (issue #527) ──────────────────────────────
+  const pendingMakeupsByCourse = ref({});
+
+  async function fetchPendingMakeups(course) {
+    if (!course?.id) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+      const res = await fetch(
+        `/api/v1/schedules?student_course_id=${course.id}&type=extra&status=scheduled&per_page=all`,
+        { headers: { Authorization: `Bearer ${session.access_token}` } }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const schedules = Array.isArray(data) ? data : (data.data ?? []);
+      pendingMakeupsByCourse.value = { ...pendingMakeupsByCourse.value, [course.id]: schedules };
+    } catch { /* non-critical */ }
+  }
+
+  async function cancelMakeupSchedule(schedule, course) {
+    const dateLabel = `${schedule.schedule_date} ${(schedule.start_time || '').slice(0, 5)}`.trim();
+    if (!confirm(`確定取消 ${dateLabel} 的補課？\n取消後可在堂次記錄中查閱（不退還原請假堂次）。`)) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/v1/schedules/${schedule.id}/cancel-makeup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || '取消補課失敗，請重試。');
+        return;
+      }
+      const cur = pendingMakeupsByCourse.value[course.id] ?? [];
+      pendingMakeupsByCourse.value = {
+        ...pendingMakeupsByCourse.value,
+        [course.id]: cur.filter(s => s.id !== schedule.id),
+      };
+      await loadCourses();
+    } catch (e) {
+      alert('取消補課失敗：' + (e?.message || '請稍後再試'));
+    }
+  }
+
   return {
     showRescheduleModal,
     rescheduleCourse,
@@ -411,5 +456,8 @@ export function useRescheduleAndMakeup({
     makeupSlotsGrouped,
     fetchMakeupSlots,
     selectMakeupSlot,
+    pendingMakeupsByCourse,
+    fetchPendingMakeups,
+    cancelMakeupSchedule,
   };
 }
