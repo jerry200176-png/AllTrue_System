@@ -15,13 +15,12 @@
 
 ---
 
-## 2026-05-24 — chore(login): iOS-style v0 refresh + design tokens（#510）
+## 2026-05-24 — revert(login): iOS-style v0 回退為原版（#510 / #511）
 
-- Changed: 登入頁視覺更新為 iOS 風格簡潔版——柔和暖色背景（無動畫漸層）、系統字體（PingFang TC / SF）、segmented control 風格的身分切換、實心 primary、44px 觸控區、軟陰影；**邏輯零變更**（PR #510）。
-- Added: `frontend/src/styles.css` 新增 `--ios-*` design tokens（system font / soft shadows / 圓角 12/16/22 / 灰階基底），與既有 `--porsche-*` 共存不取代。
-- 設計提案見 `.cursor/plans/ios-simplify-direction_2026-05-24.md`（Tier A/B/C 候選頁清單），CEO 圈選後再分 PR 推進其他頁。
+- Reverted: 還原登入頁原本的金桔漸層 + glassmorphism 視覺。iOS-style v0（PR #510）經 CEO 看完後決定不採用，整組 revert 含設計 token、`.cursor/plans/ios-simplify-direction_2026-05-24.md`、CHANGELOG 條目。`--ios-*` design tokens 一併移除（後續若再做 iOS 風格頁面時重新引入）。
 
 ---
+
 
 ## 2026-05-23 — fix(course-mgmt/learning/session-dates): batch bug triage 收尾（#495 #496 #497）
 
