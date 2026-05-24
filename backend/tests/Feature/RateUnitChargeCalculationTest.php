@@ -2,6 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuthToken;
+use App\Models\Student;
+use App\Models\StudentClass;
+use App\Models\User;
+use App\Models\UserCampus;
+use Database\Factories\CampusFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -12,7 +18,6 @@ use Tests\TestCase;
  * Verifies:
  * 1. StudentClass with rate_unit='session' → Charge = Rate × SessionCount.
  * 2. StudentClass with rate_unit='hour' → Charge = Rate × totalHours (SessionCount × avg_hours).
- * 3. CourseEditForm behaviour: when rate_unit is submitted as 'session', backend stores 'session'.
  */
 class RateUnitChargeCalculationTest extends TestCase
 {
@@ -21,13 +26,18 @@ class RateUnitChargeCalculationTest extends TestCase
     /** rate_unit=session: Charge = Rate × SessionCount */
     public function test_session_rate_unit_charge_is_rate_times_sessions(): void
     {
-        $campus   = \App\Models\Campus::factory()->create();
-        $student  = \App\Models\Student::factory()->create(['CampusID' => $campus->id, 'SchoolName' => 'TestSchool']);
-        $teacher  = \App\Models\User::factory()->create(['type' => 'T']);
+        [$token, $campus, $teacher] = $this->makeFixture();
 
-        $token = $this->createDirectorToken($campus->id);
+        $student = Student::create([
+            'name' => 'Rate-Test-A-' . uniqid(),
+            'CampusID' => $campus->id,
+            'ClassID' => 1,
+            'SchoolName' => 'TestSchool',
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
 
-        // Create a course via API with rate_unit=session
         $response = $this->withToken($token)->postJson('/api/v1/student-classes', [
             'student_id'         => $student->id,
             'teacher_id'         => $teacher->id,
@@ -49,14 +59,20 @@ class RateUnitChargeCalculationTest extends TestCase
         $this->assertEquals(8800, (int) $sc->Charge, 'Charge should be 1100 × 8 = 8800');
     }
 
-    /** rate_unit=hour: Charge = Rate × (sessions × avg_hours/session) */
+    /** rate_unit=hour: Charge = Rate × (sessions × avg_hours_per_session) */
     public function test_hour_rate_unit_charge_is_rate_times_hours(): void
     {
-        $campus  = \App\Models\Campus::factory()->create();
-        $student = \App\Models\Student::factory()->create(['CampusID' => $campus->id, 'SchoolName' => 'TestSchool']);
-        $teacher = \App\Models\User::factory()->create(['type' => 'T']);
+        [$token, $campus, $teacher] = $this->makeFixture();
 
-        $token = $this->createDirectorToken($campus->id);
+        $student = Student::create([
+            'name' => 'Rate-Test-B-' . uniqid(),
+            'CampusID' => $campus->id,
+            'ClassID' => 1,
+            'SchoolName' => 'TestSchool',
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
 
         $response = $this->withToken($token)->postJson('/api/v1/student-classes', [
             'student_id'       => $student->id,
@@ -83,16 +99,26 @@ class RateUnitChargeCalculationTest extends TestCase
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
-    private function createDirectorToken(int $campusId): string
+    private function makeFixture(): array
     {
-        $director = \App\Models\User::factory()->create(['type' => 'A', 'status' => 'active']);
-        \App\Models\UserCampus::create(['UserID' => $director->id, 'CampusID' => $campusId, 'Approved' => 1]);
-        $raw   = \Illuminate\Support\Str::random(40);
-        $token = \App\Models\AuthToken::create([
-            'user_id'    => $director->id,
-            'token_hash' => hash('sha256', $raw),
-            'expires_at' => now()->addHours(2),
+        $campus = CampusFactory::new()->create();
+        $teacher = User::create([
+            'LoginName' => 'teacher-rate-' . uniqid() . '@test.com',
+            'Name' => '老師', 'PSW' => 'x', 'type' => 'T',
+            'phone' => '091' . random_int(1000000, 9999999),
+            'MustChangePassword' => false,
         ]);
-        return $raw;
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
+
+        $director = User::create([
+            'LoginName' => 'dir-rate-' . uniqid() . '@test.com',
+            'Name' => '主任', 'PSW' => 'x', 'type' => 'A',
+            'phone' => '092' . random_int(1000000, 9999999),
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campus->id, 'UserID' => $director->id, 'Admin' => 1, 'Approved' => 1]);
+        $raw = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $director->id, 'token' => $raw, 'expires_at' => now()->addHours(2)]);
+        return [$raw, $campus, $teacher];
     }
 }
