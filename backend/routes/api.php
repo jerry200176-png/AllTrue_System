@@ -447,6 +447,7 @@ Route::prefix('v1')->group(function () {
 
         Route::get('schedules', [\App\Http\Controllers\ScheduleController::class, 'index']);
         Route::post('schedules', [\App\Http\Controllers\ScheduleController::class, 'store']);
+        Route::post('schedules/{schedule}/cancel-makeup', [\App\Http\Controllers\ScheduleController::class, 'cancelMakeup']);
         Route::post('schedules/{schedule}/undo-leave', [\App\Http\Controllers\ScheduleController::class, 'undoLeave']);
         Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
         Route::post('schedules/leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'leaveBySession']);
