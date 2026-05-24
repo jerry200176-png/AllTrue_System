@@ -297,6 +297,7 @@ gh issue list --state open --limit 20
 gh pr list --state open
 gh pr list --author "app/dependabot" --state open
 ./scripts/branch-hygiene.sh
+./scripts/git-index-audit.sh
 gh api repos/jerry200176-png/AllTrue_System/actions/runners \
   --jq '.runners[] | {name, status, busy}'
 gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
