@@ -2016,7 +2016,7 @@ async function submit() {
       (form.days_of_week || []).map(Number).filter((d) => d >= 1 && d <= 7)
     );
     if (previewCount === 0) {
-      alert('此期間無符合的課堂日期，請調整固定星期或日期範圍');
+      alert('選擇的期間內沒有符合固定星期的上課日，請調整結束日或上課星期。');
       return;
     }
   }

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { normalizeUniversalScheduleErrorMessage } from './universalSchedulerErrorMessage.js';
 
 async function getAccessToken() {
   try {
@@ -53,21 +54,7 @@ export async function createUniversalClassSchedule(payload) {
       err.originalPayload = normalizedPayload;
       throw err;
     }
-    const validationPairs = body?.errors && typeof body.errors === 'object'
-      ? Object.entries(body.errors)
-        .map(([field, messages]) => {
-          const text = Array.isArray(messages) ? messages.join('、') : String(messages || '');
-          return `${field}: ${String(text).trim()}`;
-        })
-        .filter((line) => line && !line.endsWith(':'))
-      : [];
-    const validation = validationPairs.join(' | ');
-    const textFallback = String(rawText || '').trim();
-    const compactText = textFallback.replace(/\s+/g, ' ').slice(0, 220);
-    const message = validation
-      || body?.message
-      || body?.error
-      || (compactText ? `排課請求失敗 (HTTP ${res.status}) - ${compactText}` : `排課請求失敗 (HTTP ${res.status})`);
+    const message = normalizeUniversalScheduleErrorMessage(body, rawText, res.status);
     console.error('createUniversalClassSchedule failed', { status: res.status, body, rawText, payload: normalizedPayload });
     throw new Error(message);
   }
