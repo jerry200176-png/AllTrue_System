@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # ⛔ AllTrue 系統危險操作清單
 
 > **任何 AI 或工程師執行下列操作前，必須先閱讀此文件。**

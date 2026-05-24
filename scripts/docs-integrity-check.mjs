@@ -151,6 +151,41 @@ if (fs.existsSync(docsDir)) {
   }
 }
 
+// Phase F: stale-doc detection — warn/error based on last_reviewed + review_cycle
+const CYCLE_DAYS = { monthly: 30, quarterly: 90, 'as-needed': Infinity };
+function checkStaleFrontMatter(relPath) {
+  const raw = readText(relPath);
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return;
+  const fm = fmMatch[1];
+  const ownerM = fm.match(/owner:\s*(.+)/);
+  const cycleM = fm.match(/review_cycle:\s*(.+)/);
+  const reviewedM = fm.match(/last_reviewed:\s*(.+)/);
+  if (!ownerM || !cycleM || !reviewedM) return;
+  const cycleDays = CYCLE_DAYS[cycleM[1].trim()] ?? 90;
+  if (!isFinite(cycleDays)) return;
+  const lastReviewed = new Date(reviewedM[1].trim());
+  const daysSince = Math.floor((Date.now() - lastReviewed.getTime()) / 86400000);
+  if (daysSince > cycleDays * 2) {
+    errors.push(`${relPath}: stale doc — last_reviewed ${reviewedM[1].trim()} is ${daysSince}d ago (cycle=${cycleM[1].trim()}, 2× limit=${cycleDays * 2}d)`);
+  } else if (daysSince > cycleDays) {
+    warnings.push(`${relPath}: doc overdue for review — last_reviewed ${daysSince}d ago (cycle=${cycleM[1].trim()})`);
+  }
+}
+
+const STALE_CHECK_FILES = [
+  'docs/DIRECTOR_PAYMENT_ALERT_RULES.md',
+  'docs/OPERATIONS_RUNBOOK.md',
+  'docs/CHAT_BUG_SYSTEM.md',
+  'docs/DANGEROUS_OPERATIONS.md',
+  'docs/AI_REGRESSION_LESSONS.md',
+  'docs/SRE_POLICY.md',
+];
+
+for (const rel of STALE_CHECK_FILES) {
+  if (exists(rel)) checkStaleFrontMatter(rel);
+}
+
 const markdownFilesToCheck = [
   'README.md',
   'AGENTS.md',

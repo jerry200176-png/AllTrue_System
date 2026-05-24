@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # Operations Runbook (SOP + Lessons Learned)
 
 This runbook captures the practical SOP to keep AllTrue stable during development and deployment.
