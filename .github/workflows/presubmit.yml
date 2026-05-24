@@ -56,10 +56,12 @@ jobs:
       # ─────────────────────────────────────────────
       - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
         run: |
-          # 計算加減總行數，排除 lock 檔和純資料檔
+          # 計算加減總行數，排除 lock 檔、純資料檔、Markdown 文件
+          # Markdown 文件排除理由：docs 整理類 PR 常有大量刪減，不應被 code-size gate 攔截
           TOTAL=$(git diff --numstat origin/main...HEAD \
             -- ':!*.lock' ':!package-lock.json' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
+               ':!*.md' ':!*.mdc' \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
 
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
