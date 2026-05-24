@@ -40,7 +40,7 @@ All checks are non-5xx contract checks; any failed check exits non-zero.
 
 ## CI/Deploy Integration
 
-`deploy.yml` exports the following optional secrets before running the script:
+`deploy.yml` exports the following optional secrets before running **`scripts/post-merge-smoke.sh`** (replaces inline smoke):
 
 - `SMOKE_TEACHER_LOGIN`
 - `SMOKE_TEACHER_PASSWORD`

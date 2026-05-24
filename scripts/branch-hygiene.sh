@@ -56,7 +56,7 @@ echo "Current branch: $CURRENT_BRANCH"
 echo
 
 echo "Checking local merged branches..."
-mapfile -t LOCAL_MERGED < <(git branch --merged "$BASE_BRANCH" | sed 's/^[* ]*//')
+mapfile -t LOCAL_MERGED < <(git branch --merged "$BASE_BRANCH" | sed 's/^[* ]*//' | sed 's/^+ //')
 
 LOCAL_DELETE=()
 for b in "${LOCAL_MERGED[@]}"; do
@@ -75,7 +75,7 @@ fi
 echo
 
 echo "Checking remote merged branches..."
-mapfile -t REMOTE_MERGED < <(git branch -r --merged "$BASE_BRANCH" | sed 's/^[ ]*//' | sed 's#^origin/##' | grep -v '^HEAD$' || true)
+mapfile -t REMOTE_MERGED < <(git branch -r --merged "$BASE_BRANCH" | sed 's/^[ ]*//' | sed 's#^origin/##' | sed 's/^+ //' | grep -v '^HEAD$' || true)
 
 REMOTE_DELETE=()
 for b in "${REMOTE_MERGED[@]}"; do

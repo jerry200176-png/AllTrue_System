@@ -185,12 +185,16 @@ jobs:
           else
             echo "✅ Health check passed"
 
-            # Smoke test（唯讀）：使用共用腳本，若提供 smoke 帳密則額外驗證 teacher read-path。
+            # Smoke test（唯讀）：post-merge 完整驗收（bundle + auth API）
             export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
+            export SMOKE_ON_PI=1
             export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
             export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
             export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
-            if bash /home/admin/scripts/smoke-api.sh; then
+            if [ "$FRONTEND_CHANGED" -gt 0 ]; then
+              export SMOKE_STRICT_VERSION=1
+            fi
+            if bash /home/admin/scripts/post-merge-smoke.sh; then
               echo ""
               echo "🚀 部署完成 — Health + Smoke test 全通過"
               exit 0
