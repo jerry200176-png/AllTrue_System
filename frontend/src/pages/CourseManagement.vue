@@ -240,7 +240,7 @@
                           :title="canQuickAddSession(c) ? '補課／補登（總堂數不變）' : quickAddDisabledReason(c)"
                           @click="canQuickAddSession(c) && openQuickAddSessionModal(c)"
                         >+ 補課</button>
-                        <button class="small ghost btn-toggle" @click="toggleDates(c)">
+                        <button class="small ghost btn-toggle" @click="toggleDatesAndMakeups(c)">
                           {{ expandedDates.has(c.id) ? '收起' : '詳情' }}
                         </button>
                         <button class="small ghost btn-invoices" @click="openInvoiceModal(c)">帳單/對帳</button>
@@ -314,6 +314,20 @@
                             >
                               <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </span>
+                          </div>
+                        </div>
+                        <!-- Pending makeup schedules (issue #527) -->
+                        <div v-if="(pendingMakeupsByCourse[c.id] ?? []).length > 0" class="pending-makeups-panel">
+                          <strong class="pending-makeups-title">待補課（{{ (pendingMakeupsByCourse[c.id] ?? []).length }} 堂）</strong>
+                          <div class="pending-makeups-list">
+                            <div
+                              v-for="ms in pendingMakeupsByCourse[c.id]"
+                              :key="ms.id"
+                              class="pending-makeup-row"
+                            >
+                              <span class="pending-makeup-date">{{ formatMakeupDate(ms) }}</span>
+                              <button class="small pending-makeup-cancel" @click="cancelMakeupSchedule(ms, c)">取消補課</button>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2594,6 +2608,7 @@ const {
   openReschedule, onRescheduleNewStartChange, submitReschedule,
   showMakeupSlotsModal, makeupLoading, makeupDateRange, availableMakeupSlots,
   makeupSlotsGrouped, fetchMakeupSlots, selectMakeupSlot,
+  pendingMakeupsByCourse, fetchPendingMakeups, cancelMakeupSchedule,
 } = useRescheduleAndMakeup({
   supabase,
   branchId: computed(() => props.branchId),
@@ -2606,6 +2621,24 @@ const {
   loadCourses,
   getCapacityForClassType,
 });
+
+function toggleDatesAndMakeups(c) {
+  const wasExpanded = expandedDates.value.has(c.id);
+  toggleDates(c);
+  if (!wasExpanded) fetchPendingMakeups(c).catch(() => {});
+}
+
+function formatMakeupDate(ms) {
+  const days = ['日', '一', '二', '三', '四', '五', '六'];
+  const d = new Date(ms.schedule_date + 'T00:00:00');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const dow = days[d.getDay()] ?? '';
+  const start = (ms.start_time || '').slice(0, 5);
+  const end = (ms.end_time || '').slice(0, 5);
+  return `${mm}/${dd}（${dow}）${start}${end ? '–' + end : ''}`;
+}
+
 
 const {
   showSessionEditModal, sessionEditMode, sessionEditSubmitting, sessionEditForm,
@@ -5164,6 +5197,34 @@ button.danger:disabled {
 }
 
 .dates-row td { padding: 0; }
+.pending-makeups-panel {
+  margin-top: 4px;
+  padding: 10px 14px;
+  background: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+.pending-makeups-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #92400e;
+  display: block;
+  margin-bottom: 8px;
+}
+.pending-makeups-list { display: flex; flex-direction: column; gap: 6px; }
+.pending-makeup-row { display: flex; align-items: center; gap: 12px; }
+.pending-makeup-date { font-size: 13px; color: #44403c; flex: 1; }
+.pending-makeup-cancel {
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pending-makeup-cancel:hover { background: #fee2e2; }
 .dates-panel {
   background:
     linear-gradient(180deg, rgba(248,251,255,0.98), rgba(241,245,249,0.92));
