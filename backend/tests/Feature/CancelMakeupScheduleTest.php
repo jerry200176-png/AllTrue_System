@@ -187,6 +187,41 @@ class CancelMakeupScheduleTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_schedule_index_type_filter_excludes_normal_schedules(): void
+    {
+        $normalSchedule = Schedule::create([
+            'student_id'        => $this->studentId,
+            'teacher_id'        => $this->teacherId,
+            'subject'           => 'Math',
+            'day_of_week'       => 1,
+            'start_time'        => '23:00',
+            'end_time'          => '23:30',
+            'branch_id'         => $this->campusId,
+            'schedule_date'     => '2026-06-15',
+            'status'            => 'scheduled',
+            'type'              => 'normal',
+            'student_course_id' => $this->courseId,
+            'class_type'        => 'one_on_one',
+        ]);
+        $extraSchedule = $this->makeExtraSchedule('2026-06-16');
+
+        $filtered = $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}"])
+            ->getJson("/api/v1/schedules?student_course_id={$this->courseId}&type=extra&status=scheduled&per_page=all");
+
+        $filtered->assertStatus(200);
+        $filteredIds = collect($filtered->json())->pluck('id')->all();
+        $this->assertContains($extraSchedule->id, $filteredIds);
+        $this->assertNotContains($normalSchedule->id, $filteredIds);
+
+        $unfiltered = $this->withHeaders(['Authorization' => "Bearer {$this->dirToken}"])
+            ->getJson("/api/v1/schedules?student_course_id={$this->courseId}&status=scheduled&per_page=all");
+
+        $unfiltered->assertStatus(200);
+        $unfilteredIds = collect($unfiltered->json())->pluck('id')->all();
+        $this->assertContains($normalSchedule->id, $unfilteredIds);
+        $this->assertContains($extraSchedule->id, $unfilteredIds);
+    }
+
     public function test_cancel_without_class_session_still_succeeds(): void
     {
         $schedule = $this->makeExtraSchedule();
