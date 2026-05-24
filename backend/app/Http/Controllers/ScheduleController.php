@@ -385,18 +385,6 @@ class ScheduleController extends Controller
                 ->where('schedule_date', $data['schedule_date'])
                 ->where('status', 'scheduled')
                 ->delete();
-
-            // Sync ClassSession: mark the original slot as 'cancelled' so teachers see
-            // it disappear from the learning-records view (Bug #127 fix).
-            // Only touch 'scheduled' sessions — never override 'attended' retroactively.
-            $origStartTime = substr((string) ($data['start_time'] ?? ''), 0, 5);
-            if ($origStartTime) {
-                ClassSession::where('StudentClassID', $courseId)
-                    ->whereDate('SessionDate', $data['schedule_date'])
-                    ->where('StartTime', 'LIKE', $origStartTime . '%')
-                    ->where('Status', 'scheduled')
-                    ->update(['Status' => 'cancelled']);
-            }
         }
 
         // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
