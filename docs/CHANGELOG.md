@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-24 — feat(learning): 老師評量頁 iOS 風格重設計 + 合約 ID 顯示（#128 PR#524）
+
+- Changed 老師登入後評量頁改為 iOS 風格：KPI 數字條、課表列表、篩選 tab、評量卡片全面更新，字型採用系統 SF Pro，色彩使用 iOS 系統調色（藍/橘/紅/綠）
+- Fixed 評量列表並存合約顯示問題：各記錄旁加上合約 ID（如 #810）幫助主任區分同學生同科目的兩個合約
+- 開發備註：全以 `.lr-page--teacher` scope 隔離，不影響主任視角
+
 ## 2026-05-24 — fix(schedule+billing): 調課時間同步修正 + 費率切換 UI（#127 #129 PR#521 #522）
 
 - Fixed 調課後老師評量頁面仍顯示舊時間（`schedules` 已更新但 `ClassSession` 未同步）
