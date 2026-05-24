@@ -1,5 +1,5 @@
 <template>
-  <div class="lr-page">
+  <div :class="['lr-page', { 'lr-page--teacher': isTeacher }]">
     <!-- Page Header -->
     <div class="page-header lr-header enterprise-page-header" data-guide="learning-header">
       <div>
@@ -152,8 +152,8 @@
     <!-- ===== TEACHER: Week Schedule Widget ===== -->
     <div v-if="isTeacher" class="teacher-schedule card" data-guide="learning-teacher-schedule">
       <div class="ts-header">
-        <h3>📅 課表</h3>
-        <div class="ts-tabs">
+        <h3>課表</h3>
+        <div class="ts-tabs ts-tabs--ios">
           <button :class="{ active: scheduleView === 'today' }" @click="scheduleView = 'today'">今日</button>
           <button :class="{ active: scheduleView === 'week' }" @click="scheduleView = 'week'">本週</button>
         </div>
@@ -515,7 +515,10 @@
               <div class="lr-record-card__top">
                 <div>
                   <div class="lr-record-card__student">{{ record.student_name }}</div>
-                  <div class="lr-record-card__meta">{{ record.student_class_label || record.Subject || '未分類' }}</div>
+                  <div class="lr-record-card__meta">
+                    {{ record.student_class_label || record.Subject || '未分類' }}
+                    <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                  </div>
                 </div>
                 <span :class="statusTagClass(record.Status)" class="status-tag">{{ statusLabel(record.Status) }}</span>
               </div>
@@ -673,7 +676,10 @@
                       </td>
                       <td>
                         <div class="lr-student-name">{{ record.student_name }}</div>
-                        <div class="lr-class-label">{{ record.student_class_label || record.Subject }}</div>
+                        <div class="lr-class-label">
+                          {{ record.student_class_label || record.Subject }}
+                          <span v-if="record.StudentClassID" class="lr-contract-id">#{{ record.StudentClassID }}</span>
+                        </div>
                         <span
                           v-if="record.parent_feedback"
                           :class="['lr-parent-feedback-chip', parentFeedbackUnread(record) ? 'unread' : 'read']"
@@ -5337,6 +5343,15 @@ select.lr-input {
   font-size: 13px;
 }
 
+.lr-contract-id {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 11px;
+  color: #9ca3af;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  letter-spacing: 0;
+}
+
 .lr-record-card__time {
   display: flex;
   align-items: center;
@@ -7248,5 +7263,497 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   .lr-draft-list-btn {
     min-height: 44px;
   }
+}
+
+/* ─────────────────────────────────────────
+   iOS-style Teacher View overrides
+   Scoped to .lr-page--teacher to avoid
+   touching the director view.
+───────────────────────────────────────── */
+.lr-page--teacher {
+  --ios-radius: 14px;
+  --ios-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+  --ios-accent: var(--primary, #007aff);
+  --ios-surface: #ffffff;
+  --ios-surface-secondary: #f2f2f7;
+  --ios-separator: rgba(0, 0, 0, 0.08);
+  --ios-label: #1c1c1e;
+  --ios-label-secondary: #6e6e73;
+  --ios-label-tertiary: #aeaeb2;
+  --ios-font: -apple-system, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif;
+}
+
+/* Page header */
+.lr-page--teacher .lr-header {
+  padding: 4px 0 16px;
+  border-bottom: none;
+}
+.lr-page--teacher .lr-header h2 {
+  font-family: var(--ios-font);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ios-label);
+  letter-spacing: -0.5px;
+  margin-bottom: 2px;
+}
+.lr-page--teacher .lr-header .page-desc {
+  font-family: var(--ios-font);
+  font-size: 15px;
+  color: var(--ios-label-secondary);
+}
+
+/* KPI bar → iOS widget-style pills */
+.lr-page--teacher .lr-kpi-bar {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--ios-radius);
+  background: var(--ios-surface);
+  box-shadow: var(--ios-shadow);
+  border: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lr-page--teacher .lr-kpi-bar::-webkit-scrollbar { display: none; }
+.lr-page--teacher .lr-kpi-card {
+  flex: 1;
+  min-width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  background: var(--ios-surface-secondary);
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.lr-page--teacher .lr-kpi-card:active { opacity: 0.7; }
+.lr-page--teacher .lr-kpi-card.active {
+  background: var(--ios-accent);
+}
+.lr-page--teacher .lr-kpi-card.active .lr-kpi-num,
+.lr-page--teacher .lr-kpi-card.active .lr-kpi-label {
+  color: #fff;
+}
+.lr-page--teacher .lr-kpi-num {
+  font-family: var(--ios-font);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ios-label);
+  line-height: 1;
+}
+.lr-page--teacher .lr-kpi-label {
+  font-family: var(--ios-font);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ios-label-secondary);
+  letter-spacing: 0.2px;
+}
+.lr-page--teacher .lr-kpi-missing .lr-kpi-num { color: #ff3b30; }
+.lr-page--teacher .lr-kpi-pending .lr-kpi-num { color: #ff9500; }
+.lr-page--teacher .lr-kpi-changes .lr-kpi-num { color: #ff6b00; }
+.lr-page--teacher .lr-kpi-approved .lr-kpi-num { color: #34c759; }
+.lr-page--teacher .lr-kpi-missing.active .lr-kpi-num,
+.lr-page--teacher .lr-kpi-pending.active .lr-kpi-num,
+.lr-page--teacher .lr-kpi-changes.active .lr-kpi-num,
+.lr-page--teacher .lr-kpi-approved.active .lr-kpi-num { color: #fff; }
+
+/* Teacher schedule card */
+.lr-page--teacher .teacher-schedule {
+  background: var(--ios-surface);
+  border-radius: var(--ios-radius);
+  box-shadow: var(--ios-shadow);
+  border: none;
+  padding: 0;
+  overflow: hidden;
+}
+.lr-page--teacher .ts-header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--ios-separator);
+  gap: 10px;
+}
+.lr-page--teacher .ts-header h3 {
+  font-family: var(--ios-font);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ios-label);
+}
+
+/* iOS segmented control */
+.lr-page--teacher .ts-tabs--ios {
+  display: flex;
+  background: var(--ios-surface-secondary);
+  border-radius: 9px;
+  padding: 2px;
+  border: none;
+  gap: 0;
+}
+.lr-page--teacher .ts-tabs--ios button {
+  padding: 6px 14px;
+  font-family: var(--ios-font);
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 32px;
+  border-radius: 7px;
+  color: var(--ios-label-secondary);
+  background: transparent;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+.lr-page--teacher .ts-tabs--ios button.active {
+  background: var(--ios-surface);
+  color: var(--ios-label);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+}
+.lr-page--teacher .ts-nav {
+  margin-left: auto;
+}
+.lr-page--teacher .icon-btn {
+  border: none;
+  background: var(--ios-surface-secondary);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--ios-accent);
+  padding: 0;
+}
+.lr-page--teacher .ts-week-label {
+  font-family: var(--ios-font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ios-label);
+}
+
+/* Today events — iOS list rows */
+.lr-page--teacher .ts-today {
+  padding: 6px 0;
+  gap: 0;
+}
+.lr-page--teacher .ts-event {
+  padding: 13px 18px;
+  border-radius: 0;
+  background: var(--ios-surface);
+  border: none;
+  border-bottom: 1px solid var(--ios-separator);
+  gap: 14px;
+  min-height: 64px;
+}
+.lr-page--teacher .ts-today .ts-event:last-child {
+  border-bottom: none;
+}
+.lr-page--teacher .ts-time {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ios-label-secondary);
+  min-width: 56px;
+}
+.lr-page--teacher .ts-student {
+  font-family: var(--ios-font);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ios-label);
+}
+.lr-page--teacher .ts-subject {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  color: var(--ios-label-secondary);
+}
+.lr-page--teacher .ts-fill-btn {
+  font-family: var(--ios-font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ios-accent);
+  background: none;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.lr-page--teacher .ts-fill-btn:disabled {
+  color: var(--ios-label-tertiary);
+}
+.lr-page--teacher .ts-fill-hint {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  color: var(--ios-accent);
+  margin-left: auto;
+}
+.lr-page--teacher .ts-empty {
+  padding: 24px 18px;
+  font-family: var(--ios-font);
+  font-size: 15px;
+  color: var(--ios-label-tertiary);
+  text-align: center;
+}
+
+/* Week view grid */
+.lr-page--teacher .ts-week {
+  gap: 0;
+}
+.lr-page--teacher .ts-day {
+  padding: 14px 18px;
+  border-right: 1px solid var(--ios-separator);
+}
+.lr-page--teacher .ts-day:last-child { border-right: none; }
+.lr-page--teacher .ts-day-header {
+  margin-bottom: 10px;
+}
+.lr-page--teacher .ts-day-name {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-label-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.lr-page--teacher .ts-day-date {
+  font-family: var(--ios-font);
+  font-size: 11px;
+  color: var(--ios-label-tertiary);
+}
+.lr-page--teacher .ts-day.today .ts-day-name {
+  color: var(--ios-accent);
+}
+.lr-page--teacher .ts-event-sm {
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: var(--ios-surface-secondary);
+  border: none;
+  margin-bottom: 6px;
+  gap: 6px;
+  min-height: 0;
+}
+.lr-page--teacher .ts-event-sm:last-child { margin-bottom: 0; }
+.lr-page--teacher .ts-event-sm .ts-time {
+  font-size: 11px;
+  min-width: 0;
+}
+.lr-page--teacher .ts-event-sm .ts-student {
+  font-size: 14px;
+}
+.lr-page--teacher .ts-missing-pill {
+  font-size: 10px;
+  background: #ff3b30;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 5px;
+  font-weight: 600;
+}
+.lr-page--teacher .ts-week-allclear {
+  padding: 20px 18px;
+  font-family: var(--ios-font);
+  font-size: 15px;
+  color: #34c759;
+  font-weight: 500;
+  text-align: center;
+}
+.lr-page--teacher .ts-day-empty {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  color: var(--ios-label-tertiary);
+}
+
+/* Status chips → iOS pills */
+.lr-page--teacher .ts-status-chip {
+  font-family: var(--ios-font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.2px;
+}
+.lr-page--teacher .ts-status-chip.status-pending { background: #fff3cd; color: #9a6700; }
+.lr-page--teacher .ts-status-chip.status-approved { background: #d1fae5; color: #065f46; }
+.lr-page--teacher .ts-status-chip.status-rejected,
+.lr-page--teacher .ts-status-chip.status-changes_requested { background: #fee2e2; color: #991b1b; }
+.lr-page--teacher .ts-status-chip.status-unfilled { background: #e0e7ff; color: #3730a3; }
+.lr-page--teacher .ts-status-chip.status-locked { background: var(--ios-surface-secondary); color: var(--ios-label-tertiary); }
+
+/* Teacher filter tabs → iOS segmented control */
+.lr-page--teacher .lr-review-tabs {
+  background: var(--ios-surface);
+  border-radius: var(--ios-radius);
+  box-shadow: var(--ios-shadow);
+  border: none;
+  padding: 12px 16px;
+}
+.lr-page--teacher .lr-tabs-row {
+  background: var(--ios-surface-secondary);
+  border-radius: 9px;
+  padding: 2px;
+  display: inline-flex;
+  gap: 0;
+  width: 100%;
+}
+.lr-page--teacher .lr-tab {
+  flex: 1;
+  font-family: var(--ios-font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 8px;
+  border-radius: 7px;
+  min-height: 34px;
+  color: var(--ios-label-secondary);
+  background: transparent;
+  border: none;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
+}
+.lr-page--teacher .lr-tab.active {
+  background: var(--ios-surface);
+  color: var(--ios-label);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.lr-page--teacher .lr-tab-count {
+  font-size: 11px;
+  background: none;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 600;
+}
+.lr-page--teacher .lr-tab-hint {
+  font-family: var(--ios-font);
+  font-size: 12px;
+  color: var(--ios-label-tertiary);
+  margin-top: 10px;
+}
+.lr-page--teacher .lr-teacher-priority-chips {
+  margin-top: 10px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.lr-page--teacher .lr-feedback-filter-chip {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--ios-separator);
+  background: var(--ios-surface-secondary);
+  color: var(--ios-label-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lr-page--teacher .lr-feedback-filter-chip.active {
+  background: var(--ios-accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* Record cards → iOS grouped table rows */
+.lr-page--teacher .lr-card-view .lr-groups {
+  gap: 20px;
+  padding: 0;
+}
+.lr-page--teacher .lr-group {
+  background: var(--ios-surface);
+  border-radius: var(--ios-radius);
+  box-shadow: var(--ios-shadow);
+  border: none;
+  overflow: hidden;
+}
+.lr-page--teacher .lr-group-summary {
+  padding: 12px 16px;
+  background: var(--ios-surface);
+  border-bottom: 1px solid var(--ios-separator);
+  font-family: var(--ios-font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ios-label-secondary);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.lr-page--teacher .lr-group-detail {
+  border-top: none;
+  padding: 0;
+}
+.lr-page--teacher .lr-card-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+.lr-page--teacher .lr-record-card {
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--ios-separator);
+  box-shadow: none;
+  padding: 14px 16px;
+  background: var(--ios-surface);
+  transition: background 0.15s;
+}
+.lr-page--teacher .lr-record-card:last-child {
+  border-bottom: none;
+}
+.lr-page--teacher .lr-record-card:hover {
+  transform: none;
+  box-shadow: none;
+  background: rgba(0, 0, 0, 0.02);
+  border-color: var(--ios-separator);
+}
+.lr-page--teacher .lr-record-card:active {
+  background: rgba(0, 0, 0, 0.05);
+}
+.lr-page--teacher .lr-record-card.is-unread {
+  border-left: 3px solid #ff9500;
+  border-color: var(--ios-separator);
+  box-shadow: none;
+}
+.lr-page--teacher .lr-record-card__student {
+  font-family: var(--ios-font);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ios-label);
+}
+.lr-page--teacher .lr-record-card__meta {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  color: var(--ios-label-secondary);
+}
+.lr-page--teacher .lr-record-card__time {
+  font-family: var(--ios-font);
+  font-size: 13px;
+  color: var(--ios-label-secondary);
+  margin-top: 6px;
+}
+.lr-page--teacher .lr-record-card__actions {
+  margin-top: 10px;
+  gap: 8px;
+}
+.lr-page--teacher .lr-record-card__actions .ghost.xs {
+  font-family: var(--ios-font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ios-accent);
+  background: none;
+  border: none;
+  padding: 4px 2px;
+}
+.lr-page--teacher .lr-record-card__actions .primary.xs {
+  font-family: var(--ios-font);
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--ios-accent);
+  border-radius: 8px;
+  padding: 6px 14px;
+  border: none;
+}
+/* Status tags */
+.lr-page--teacher .status-tag {
+  font-family: var(--ios-font);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 10px;
+  letter-spacing: 0.2px;
 }
 </style>
