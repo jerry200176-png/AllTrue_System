@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-24 — fix(course-mgmt): 待補課列表只顯示真正補課（#538）
+
+- Fixed: 課程管理「待補課」列表不再混入一般排程，避免主任點「取消補課」時看到錯誤提示。
+- 開發備註：`GET /api/v1/schedules` 新增 `type` 篩選；前端待補課列表加 fail-closed guard。覆蓋 in-app #130。
+
 ## 2026-05-24 — ops(git): 防止 assume-unchanged 藏檔漏進 PR（#535）
 
 - Ops: 新增 `scripts/git-index-audit.sh` 與 §R58 防再犯規則，週例檢查 protected 路徑是否被 `assume-unchanged` / `skip-worktree` 隱藏；同步把 audit 流程接進 Solo+AI §B5。
