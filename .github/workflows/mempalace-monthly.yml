@@ -1,0 +1,37 @@
+name: MemPalace Monthly Reminder
+
+on:
+  schedule:
+    # 1st of every month at 16:00 UTC = 00:00 UTC+8
+    - cron: '0 16 1 * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    name: Monthly MemPalace mine reminder
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run docs integrity check
+        run: node scripts/docs-integrity-check.mjs --strict
+
+      - name: Post monthly reminder issue comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MONTH=$(date '+%Y-%m')
+          gh issue comment 519 --body "## 🧠 MemPalace 月度提醒 — ${MONTH}
+
+          **Action required (manual):** MemPalace 是 local-first 工具，無法在 CI 自動執行。請在 WSL2 執行：
+
+          \`\`\`bash
+          # Mine all recent session transcripts
+          ~/.local/bin/mempalace mine ~/.cursor/projects/home-jerry-alltrue/agent-transcripts \
+            --mode convos --wing alltrue-sessions
+
+          # Mine docs wing
+          ~/.local/bin/mempalace mine ~/alltrue/docs --wing alltrue-docs
+          \`\`\`
+
+          Docs integrity check: ✅ passed (run timestamp: $(date -u '+%Y-%m-%dT%H:%M:%SZ'))" || true

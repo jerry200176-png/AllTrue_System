@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # AllTrue SRE Policy — SLI / SLO / Error Budget / Release Freeze
 
 > **狀態**：v1（2026-05-23）｜**權威來源**：本檔｜**Epic**：#469 ｜**子 issue**：#483 #484

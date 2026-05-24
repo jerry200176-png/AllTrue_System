@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # 主任儀表板「繳費提醒」規則（不可漏）
 
 資料來源：`GET /api/v1/alerts/tuition`（`AlertController::tuition`）。  

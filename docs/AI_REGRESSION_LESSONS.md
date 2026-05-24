@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # AI／工程師防再犯紀錄（必讀）
 
 本檔記錄**已發生過的產品／實作缺口**，避免下次改壞或改漏。  
