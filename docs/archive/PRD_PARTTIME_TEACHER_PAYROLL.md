@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # PRD — 兼職老師薪資計算與月結報表
 
 > 版本：1.0 | 日期：2026-04-14 | 狀態：**歷史 PRD（長文規格）** — 兼職薪資已落地，**實際行為以** `ParttimePayrollPage`／後端 Finance 相關程式與 [`CHANGELOG.md`](CHANGELOG.md) **為準**，勿單憑本檔改產品邏輯。  

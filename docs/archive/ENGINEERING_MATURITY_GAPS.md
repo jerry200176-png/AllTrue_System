@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # Engineering Maturity Gaps
 
 This file tracks CI/CD and process gaps that block reliable day-to-day delivery.

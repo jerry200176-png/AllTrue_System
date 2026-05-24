@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # 分校學收月報 — CTO／產品／資安／UI·UX 規格
 
 > **狀態**：Draft — 等待產品／CTO 定案後由工程實作。  

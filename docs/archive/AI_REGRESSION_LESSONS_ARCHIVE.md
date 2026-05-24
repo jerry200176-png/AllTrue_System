@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # AI Regression Lessons — 詳細事故記錄（Archive）
 
 > 速查摘要（紅線/黃線/模組索引）→ [AI_REGRESSION_LESSONS.md](AI_REGRESSION_LESSONS.md)  
