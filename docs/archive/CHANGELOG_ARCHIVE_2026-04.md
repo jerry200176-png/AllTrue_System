@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # CHANGELOG Archive（2026-04 及更早彙整）
 
 > **性質**：歷史變更長檔（3000+ 行）。**禁止通讀**；用 `rg "關鍵字|日期" docs/CHANGELOG_ARCHIVE_2026-04.md`。  

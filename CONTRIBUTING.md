@@ -38,6 +38,7 @@
 
 | 項目 | 說明 |
 |------|------|
+| **Solo + AI 週期 SOP** | 一人團隊必讀 [`docs/OPERATIONS_RUNBOOK.md §B5`](docs/OPERATIONS_RUNBOOK.md)（每週稽核、PR 流程、刻意不開的功能）。 |
 | **CODEOWNERS** | 敏感路徑自動請求 review（見 [`.github/CODEOWNERS`](.github/CODEOWNERS)）。 |
 | **Branch protection** | `main` 上 required checks + 禁止 force push（設定在 GitHub 端）。 |
 | **Dependabot** | [`.github/dependabot.yml`](.github/dependabot.yml) 每週／每月自動開升級 PR。 |

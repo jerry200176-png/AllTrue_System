@@ -65,8 +65,21 @@ jobs:
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
-          if [ "$TOTAL" -gt 700 ]; then
-            echo "❌ PR too large: $TOTAL lines (hard limit: 700)"
+          # docs 整併 epic（chore/docs-*）允許較大 diff；仍禁止混 production code
+          HARD_LIMIT=700
+          BRANCH="${GITHUB_HEAD_REF}"
+          if echo "$BRANCH" | grep -qE '^chore/docs-'; then
+            PROD=$(git diff --name-only origin/main...HEAD \
+              | sed 's/^"//;s/"$//' \
+              | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
+            if [ "$PROD" -eq 0 ]; then
+              HARD_LIMIT=1300
+              echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
+            fi
+          fi
+
+          if [ "$TOTAL" -gt "$HARD_LIMIT" ]; then
+            echo "❌ PR too large: $TOTAL lines (hard limit: $HARD_LIMIT)"
             echo ""
             echo "Please split into smaller PRs. Each PR should cover one independent feature."
             echo "Reference: .cursor/rules/module-industry-standards.mdc"

@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-05-24
+---
+
 # AI 操作手冊：內部聊天、Bug 回報、使用者頭像
 
 **目的**：後續任何 AI／工程師修改下列功能前請讀此檔，避免已修好的行為被改壞。

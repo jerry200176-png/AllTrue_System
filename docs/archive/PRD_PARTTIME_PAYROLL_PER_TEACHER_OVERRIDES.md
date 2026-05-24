@@ -1,3 +1,5 @@
+> **[ARCHIVED 2026-05-24]** 此文件已移入 docs/archive/，僅供搜尋參考，不再維護。現行規格見 docs/INDEX.md。
+
 # PRD — 兼職老師「個別費率／計價規則」（Per-Teacher Payroll Overrides）
 
 > 版本：1.0 | 日期：2026-04-15 | 狀態：**已實作**

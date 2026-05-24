@@ -77,6 +77,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
 | Branch protection 啟用步驟 | `docs/OPERATIONS_RUNBOOK.md §R` |
+| **Solo + AI GitHub 週期 SOP** | `docs/OPERATIONS_RUNBOOK.md §B5` |
 | SSH key 季度輪替 SOP | `docs/OPERATIONS_RUNBOOK.md §S` |
 | Staging 設計 / Feature flag / Visual regression | `docs/OPERATIONS_RUNBOOK.md §U / §V / §W` |
 | AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |
@@ -86,7 +87,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | SLI / SLO / Error Budget / Release Freeze | `docs/SRE_POLICY.md` |
 | Post-release T+7/T+14/T+30 metrics review | `docs/PRODUCT_OPS.md` |
-| Perception pulse survey 設計 | `docs/PROFESSIONAL_PERCEPTION_SURVEY.md` |
+| Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
 | 需要什麼 | 去哪裡找 |
@@ -108,6 +109,23 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ---
 
+## 📝 新建 docs 命名規範（Phase C 起生效）
+
+新建 `docs/` 檔案請加 prefix，讓 AI 從名稱判斷文件類型：
+
+| 前綴 | 用途 | 範例 |
+|------|------|------|
+| `RULE_` | 規範性，read-before-doing | `RULE_PAYMENT_ALERTS.md` |
+| `RUNBOOK_` | 操作手冊 | `RUNBOOK_DEPLOY.md` |
+| `REF_` | 純參考查表 | `REF_API_ROUTES.md` |
+| `MODULE_` | 模組設計 | `MODULE_CHAT_BUG.md` |
+| `GUIDE_` | 教學 how-to | `GUIDE_WSL2_SETUP.md` |
+| `POLICY_` | 政策決策 | `POLICY_SRE.md` |
+
+舊檔按現有名稱延用（不強制改名，但下次大改時順手 rename）。CI 會對不符合 prefix 且非既有清單的新檔發出 `warning`。
+
+---
+
 ## 🗄️ 文件目錄（完整）
 
 ### 核心規則（每次任務按需查）
@@ -122,7 +140,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
-| `docs/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
+| `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
 | `docs/AI_DOC_LITERACY.md` | **AI 讀檔協議**：長文速讀卡、CHANGELOG→公告鏈、MemPalace 何時用（防漏讀） |
 | `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI（Presubmit CHECK 6 + `.github/scripts/golden-ci-report.sh`）|
 
@@ -139,10 +157,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
-| `docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md` | 與大廠式流程對齊摘要（merge queue、deploy 邊界、Golden 自動化）|
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
-| `docs/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |
+| `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
@@ -161,7 +178,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 模組文件
 | 檔案 | 一行說明 |
 |------|---------|
-| `docs/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表出入差異審核流程 |
+| `docs/archive/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表出入差異審核流程（已移入 archive）|
 | `docs/SUBSTITUTE_UX.md` | 代課 UX 設計 |
 | `docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md` | 排課日期語義 |
 | `docs/CHAT_BUG_SYSTEM.md` | 聊天／Bug 回報；**§3.6–§3.7**＝分診 + 修完回 in-app 完整 SOP |
@@ -171,13 +188,13 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 | 檔案 | AI 怎麼用 |
 |------|-----------|
-| [`CHANGELOG_ARCHIVE_2026-04.md`](CHANGELOG_ARCHIVE_2026-04.md) | 舊 CHANGELOG 彙整；只 `rg`；現況看 [`CHANGELOG.md`](CHANGELOG.md) |
-| [`AI_REGRESSION_LESSONS_ARCHIVE.md`](AI_REGRESSION_LESSONS_ARCHIVE.md) | 事故長文；只搜尋 §；摘要看 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) |
-| [`ENGINEERING_MATURITY_GAPS.md`](ENGINEERING_MATURITY_GAPS.md) | 流程／CI 缺口決策短記 |
-| [`TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md`](TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md) | 2026-04-12 技術調查；對照現程式碼 |
-| [`更新網站前端.md`](更新網站前端.md) | 本機手動覆蓋 `public`；**上線**勿當 SOP（見 deploy 規則） |
-| [`使用說明_主任與超級管理員.md`](使用說明_主任與超級管理員.md) | Developer Bypass 陷阱 FAQ；角色全貌見 [`ROLE_PLAYBOOK.md`](ROLE_PLAYBOOK.md) |
-| `PRD_*.md`、`CTO_SPEC_*.md` | 歷史或 Draft 規格；**實作與上線事實**以程式碼 + [`CHANGELOG.md`](CHANGELOG.md) 為準 |
+| [`docs/archive/CHANGELOG_ARCHIVE_2026-04.md`](archive/CHANGELOG_ARCHIVE_2026-04.md) | 舊 CHANGELOG 彙整；只 `rg`；現況看 [`CHANGELOG.md`](CHANGELOG.md) |
+| [`docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md`](archive/AI_REGRESSION_LESSONS_ARCHIVE.md) | 事故長文；只搜尋 §；摘要看 [`AI_REGRESSION_LESSONS.md`](AI_REGRESSION_LESSONS.md) |
+| [`docs/archive/ENGINEERING_MATURITY_GAPS.md`](archive/ENGINEERING_MATURITY_GAPS.md) | 流程／CI 缺口決策短記 |
+| [`docs/archive/TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md`](archive/TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md) | 2026-04-12 技術調查；對照現程式碼 |
+| `docs/archive/更新網站前端.md` | 本機手動覆蓋 `public`；**正式 deploy 依 CI，勿用本檔** |
+| `docs/archive/使用說明_主任與超級管理員.md` | Developer Bypass FAQ；角色全貌見 [`ROLE_PLAYBOOK.md`](ROLE_PLAYBOOK.md) |
+| `docs/archive/PRD_*.md`、`docs/archive/CTO_SPEC_*.md` | 歷史或 Draft 規格；**實作與上線事實**以程式碼 + [`CHANGELOG.md`](CHANGELOG.md) 為準 |
 
 ---
 
@@ -237,11 +254,82 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 
 ---
 
-## ⚡ 省 Token 原則
+## ⚡ 省 Token 原則 + 五步讀檔法
 
-1. **先讀 INDEX.md（本檔）** → 確定要讀哪個文件 → 只讀那個
-2. **不要全讀 SYSTEM_TECH_GUIDE.md**（延伸閱讀，按需查對應節）
-3. **`.cursorrules` 已自動載入**，不需再 Read
-4. **`CLAUDE.md` = `.cursorrules` 的 Claude 版**，兩者不需同時讀
-5. **MemPalace `wake-up`** 在 session 開始時替代全讀文件
-6. **怕漏讀長文時** → 先打開 [`AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 對照「速讀卡」再下鑽
+1. **先讀 INDEX.md（本檔）** → 確定要讀哪個文件 → 只讀那個。
+2. **只讀必讀錨點**；其餘章節除非 INDEX 點名否則不讀。
+3. **長文用 `rg`**：`rg -n "關鍵字" docs/某檔.md`（或 MemPalace `search`），不 eyeball 掃全文。
+4. **歷史 / archive**（`*ARCHIVE*`、`.cursor/plans/**`）→ 不通讀，只搜尋。
+5. **做完寫回**：`CHANGELOG`（使用者可感知）、`AI_REGRESSION`（新紅線）、`TECH_DEBT`（欠債）。
+
+**`.cursorrules` 已自動載入**，不需再 Read；`CLAUDE.md` 是 Claude Code 版總覽，兩者不需同時讀。
+
+---
+
+## 📚 速讀卡（如何讀各類長文）
+
+| 檔案 | 讀這份的目的 | 太長時怎麼讀 |
+|------|------------|------------|
+| `AGENTS.md` | Agent 流程、Commit、Risk tier | 讀 §開工前 + §Orchestration + §DoD |
+| `AI_REGRESSION_LESSONS.md` | 防再犯紅黃線 | **先讀開頭摘要 + 模組索引表** + 相關 Rxx 全文 |
+| `OPERATIONS_RUNBOOK.md` | 日常/事故 SOP | **先讀章節導航表**，再只打開對應 § |
+| `DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒邏輯 | **擅改前必問使用者**；用 `rg` 找條件 |
+| `SYSTEM_TECH_GUIDE.md` | 架構深度 | **只讀目錄對應章節**；預設不全讀 |
+| `CHANGELOG.md` | 近期上線事實 | 從最新日期往回；配合 `rg` |
+| `CHANGELOG → 公告卡` | 版本公告 | `npm run sync-release-notes`（改 CHANGELOG 後）|
+| `docs/archive/*.md` | 歷史草稿（已移入 archive）| **禁止通讀**；`rg` / MemPalace |
+
+---
+
+## 🗓️ 治理節奏（文件保鮮）
+
+**每日（PR/任務完成時）**
+- 更新 `docs/CHANGELOG.md`（一行原則）。
+- 若發現 AI 新踩坑 → 更新 `docs/AI_REGRESSION_LESSONS.md`。
+
+**每週（文件巡檢）**
+- `node scripts/docs-integrity-check.mjs --strict`
+- 修正斷鏈、遺漏導航、入口與章節不一致。
+
+**每月（記憶保鮮）**
+- `mempalace mine` 重新索引近期對話與 docs。
+- 抽查高風險關鍵字是否可被 `mempalace search` 命中。
+
+**變更守則**：先改權威文件，再補 INDEX 導航；不在多份文件複製完整 SOP（避免版本漂移）。
+
+---
+
+## 📁 docs/archive/ — 歷史文件區
+
+下列 11 份文件已移入 `docs/archive/`，不再主動維護。只搜尋用，禁止通讀。
+
+| 檔案 | 說明 |
+|------|------|
+| `AI_REGRESSION_LESSONS_ARCHIVE.md` | 事故長文 archive；摘要在 `AI_REGRESSION_LESSONS.md` |
+| `CHANGELOG_ARCHIVE_2026-04.md` | 2026-04 以前的 changelog |
+| `PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md` | 已完成的分攤薪資 PRD |
+| `PRD_PARTTIME_TEACHER_PAYROLL.md` | 已完成的兼職薪資 PRD |
+| `PRD_SINGLE_SESSION_UX_CLARITY.md` | 已完成的單堂 UX PRD |
+| `CTO_SPEC_BRANCH_MONTHLY_TUITION_REPORT.md` | 歷史 CTO spec |
+| `ENGINEERING_MATURITY_GAPS.md` | 歷史工程成熟度評估 |
+| `ENTERPRISE_WORKFLOW_ALIGNMENT.md` | 歷史流程對齊文件 |
+| `PROFESSIONAL_PERCEPTION_SURVEY.md` | 歷史使用者調研 |
+| `SCHEDULE_DISCREPANCY_REVIEW.md` | 歷史排課差異審查 |
+| `TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md` | 歷史技術報告 |
+
+---
+
+## 🏷️ 新文件命名 prefix 規範（Phase C）
+
+新建 `docs/` 文件時，依用途選擇 prefix：
+
+| Prefix | 用途 | 範例 |
+|--------|------|------|
+| `RULE_` | 規則、限制、條件（不可擅改） | `RULE_PAYMENT_ALERTS.md` |
+| `RUNBOOK_` | 操作 SOP（step-by-step） | `RUNBOOK_DEPLOY.md` |
+| `REF_` | 參照資料（API、schema、對照表） | `REF_DB_SCHEMA.md` |
+| `MODULE_` | 模組深度說明（架構 + 流程） | `MODULE_BILLING.md` |
+| `ADR_` | Architecture Decision Record | `ADR_001_calendar_merge.md` |
+| `(無 prefix)` | 既有文件維持現狀，不強制改名 | — |
+
+> 只對**新建文件**套用；既有文件不因命名規範而強制 rename（會破壞參照）。

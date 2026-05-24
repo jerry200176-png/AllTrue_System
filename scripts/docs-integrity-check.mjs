@@ -106,12 +106,84 @@ if (exists('AGENTS.md') && !readText('AGENTS.md').includes('docs/INDEX.md')) {
 
 if (exists('docs/INDEX.md')) {
   const indexText = readText('docs/INDEX.md');
-  if (!indexText.includes('docs/DOCS_GOVERNANCE_SOP.md')) {
-    warnings.push('docs/INDEX.md is missing docs governance SOP entry');
+  // Phase B: governance content merged into INDEX — check for key sections
+  if (!indexText.includes('治理節奏') && !indexText.includes('DOCS_GOVERNANCE_SOP')) {
+    warnings.push('docs/INDEX.md is missing governance rhythm section (§治理節奏)');
   }
-  if (!indexText.includes('AI_DOC_LITERACY.md')) {
-    warnings.push('docs/INDEX.md is missing AI_DOC_LITERACY entry');
+  if (!indexText.includes('速讀卡') && !indexText.includes('AI_DOC_LITERACY')) {
+    warnings.push('docs/INDEX.md is missing quick-read cards section (§速讀卡)');
   }
+}
+
+// Phase C: naming prefix convention — warn if any NEW docs/ file lacks an approved prefix
+// (grandfathered legacy names are exempt; this warns on clearly non-conforming new files)
+const APPROVED_PREFIXES = ['RULE_', 'RUNBOOK_', 'REF_', 'MODULE_', 'GUIDE_', 'POLICY_'];
+const LEGACY_EXEMPT = new Set([
+  'INDEX.md', 'CHANGELOG.md', 'CHANGELOG_ARCHIVE_2026-04.md',
+  'AI_REGRESSION_LESSONS.md', 'AI_REGRESSION_LESSONS_ARCHIVE.md', 'AI_DOC_LITERACY.md',
+  'DOCS_GOVERNANCE_SOP.md', 'TECH_DEBT.md', 'SYSTEM_TECH_GUIDE.md', 'SECURITY.md',
+  'DEPLOYMENT.md', 'DB_PERF.md', 'OPERATIONS_RUNBOOK.md', 'DANGEROUS_OPERATIONS.md',
+  'DAILY_CHECKLIST.md', 'CONTRIBUTING.md', 'SRE_POLICY.md', 'PRODUCT_OPS.md',
+  'DIRECTOR_PAYMENT_ALERT_RULES.md', 'DIRECTOR_SCALING_FAQ.md', 'PRICING_CONTRACT.md',
+  'ROLE_PLAYBOOK.md', 'FAQ.md', 'CHAT_BUG_SYSTEM.md', 'SUBSTITUTE_UX.md',
+  'SCHEDULE_DISCREPANCY_REVIEW.md', 'MANUAL_SCHEDULE_DATE_SEMANTICS.md',
+  'LINE_LIFF_CHECKLIST.md', 'PORSCHE_VISUAL_SYSTEM.md', 'WSL2_DEV_SETUP.md',
+  'ENTERPRISE_WORKFLOW_ALIGNMENT.md', 'ENGINEERING_MATURITY_GAPS.md',
+  'TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md', 'QA_GOLDEN_SCENARIOS.md',
+  'PROFESSIONAL_PERCEPTION_SURVEY.md', 'PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md',
+  'PRD_PARTTIME_TEACHER_PAYROLL.md', 'PRD_SINGLE_SESSION_UX_CLARITY.md',
+  'CTO_SPEC_BRANCH_MONTHLY_TUITION_REPORT.md',
+  '更新網站前端.md', '使用說明_主任與超級管理員.md',
+  // Pre-existing files that don't follow Phase C naming prefix (grandfathered)
+  'ADOPTION_QUALITY_METRICS.md', 'AMBIENT_AUDIO_LICENSES.md',
+  'SMOKE_TEST_RUNBOOK.md', 'SUPER_ADMIN_AND_MIGRATIONS.md', 'api-swipe-rfid.md',
+]);
+const docsDir = path.join(root, 'docs');
+if (fs.existsSync(docsDir)) {
+  for (const f of fs.readdirSync(docsDir)) {
+    if (!f.endsWith('.md')) continue;
+    if (LEGACY_EXEMPT.has(f)) continue;
+    if (f.startsWith('archive/')) continue;
+    const hasPrefix = APPROVED_PREFIXES.some(p => f.startsWith(p));
+    if (!hasPrefix) {
+      warnings.push(`docs/${f}: new doc does not follow naming prefix convention (RULE_/RUNBOOK_/REF_/MODULE_/GUIDE_/POLICY_)`);
+    }
+  }
+}
+
+// Phase F: stale-doc detection — warn/error based on last_reviewed + review_cycle
+const CYCLE_DAYS = { monthly: 30, quarterly: 90, 'as-needed': Infinity };
+function checkStaleFrontMatter(relPath) {
+  const raw = readText(relPath);
+  const fmMatch = raw.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return;
+  const fm = fmMatch[1];
+  const ownerM = fm.match(/owner:\s*(.+)/);
+  const cycleM = fm.match(/review_cycle:\s*(.+)/);
+  const reviewedM = fm.match(/last_reviewed:\s*(.+)/);
+  if (!ownerM || !cycleM || !reviewedM) return;
+  const cycleDays = CYCLE_DAYS[cycleM[1].trim()] ?? 90;
+  if (!isFinite(cycleDays)) return;
+  const lastReviewed = new Date(reviewedM[1].trim());
+  const daysSince = Math.floor((Date.now() - lastReviewed.getTime()) / 86400000);
+  if (daysSince > cycleDays * 2) {
+    errors.push(`${relPath}: stale doc — last_reviewed ${reviewedM[1].trim()} is ${daysSince}d ago (cycle=${cycleM[1].trim()}, 2× limit=${cycleDays * 2}d)`);
+  } else if (daysSince > cycleDays) {
+    warnings.push(`${relPath}: doc overdue for review — last_reviewed ${daysSince}d ago (cycle=${cycleM[1].trim()})`);
+  }
+}
+
+const STALE_CHECK_FILES = [
+  'docs/DIRECTOR_PAYMENT_ALERT_RULES.md',
+  'docs/OPERATIONS_RUNBOOK.md',
+  'docs/CHAT_BUG_SYSTEM.md',
+  'docs/DANGEROUS_OPERATIONS.md',
+  'docs/AI_REGRESSION_LESSONS.md',
+  'docs/SRE_POLICY.md',
+];
+
+for (const rel of STALE_CHECK_FILES) {
+  if (exists(rel)) checkStaleFrontMatter(rel);
 }
 
 const markdownFilesToCheck = [

@@ -12,18 +12,18 @@ alwaysApply: true
 | | |
 |---|---|
 | 前端 | Vue 3.4 + Vite 5，`<script setup>`，無 Vue Router（用 `active` ref 切頁） |
-| 後端 | Laravel (PHP 8+)，MySQL（database: `alltrue`） |
-| 部署 | Raspberry Pi；PR merge 後由 GitHub Actions `deploy.yml` 自動 build/deploy（docs-only merge 跳過 production deploy）；見 `auto-frontend-deploy.mdc` |
+| 後端 | Laravel (PHP 8+)，MySQL（database: `AllTrue`） |
+| 部署 | Raspberry Pi；PR merge 後由 `deploy.yml` 自動 build/deploy（docs-only merge 跳過） |
 | 認證 | 自建 Bearer token，存 `localStorage.alltrue_session`，**非真實 Supabase** |
-| 刷卡 | RFID 讀卡機 → `POST /api/v1/swipe-rfid` |
+| 刷卡 | RFID → `POST /api/v1/swipe-rfid` |
 | 通知 | LINE Webhook / LINE Login |
 
-> `frontend/src/supabase.js` 是模擬 Supabase 介面的自建 client，實際打 Laravel `/api/v1/*`。大部分頁面用 `supabase.auth.getSession()` 取 token；`SubjectUnitsPage` 和 `DirectorDashboard` 直接讀 `localStorage.getItem('alltrue_session')`，兩者等價。
+> `frontend/src/supabase.js` 是自建 client（非真 Supabase），大部分頁面用 `supabase.auth.getSession()` 取 token；`SubjectUnitsPage`/`DirectorDashboard` 直讀 `localStorage.getItem('alltrue_session')`，兩者等價。
 
 ## 防再犯（AI 必讀）
 
-- **`docs/AI_REGRESSION_LESSONS.md`**：已踩過的坑（暫停課程與評量待審、繳費提醒漏月結／0 堂、暫停 UI 不明顯、**老師教學工作台 TeacherHome** 等）。
-- **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：`AlertController::tuition`／主任「繳費／續課提醒」規則（**變更前必問使用者**，見該檔）。
+- **`docs/AI_REGRESSION_LESSONS.md`**：已踩過的坑（暫停課程評量待審、繳費提醒漏月結、TeacherHome 等）。
+- **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：繳費／續課提醒規則（**變更前必問使用者**）。
 
 ## 角色與權限
 
@@ -31,179 +31,53 @@ alwaysApply: true
 |------|---------|
 | `super_admin` | 全部 + 主任審核、清空資料 |
 | `admin` / `director` | 全部（除主任審核） |
-| `teacher` | **教學工作台**（預設首頁）、出缺勤、學習評量表、行事曆、科目數、帳號設定 |
+| `teacher` | 教學工作台（預設首頁）、出缺勤、學習評量、行事曆、科目數、帳號設定 |
 | 家長 | ParentPortal 獨立入口（學生姓名+手機 或 LINE 登入） |
 
 ## 前端頁面（`frontend/src/pages/`）
 
 | 頁面 active key | 檔案 | 功能 |
 |---|---|---|
-| `teacher-home` | TeacherHomePage.vue | 老師預設：今日待辦、跨分校本週課表、捷徑 |
-| `director` | DirectorDashboard.vue | 總覽：繳費／續課提醒、今日排課、待審評量、堂數統計 |
-| `calendar` | SmartCalendar.vue | 智慧排課：週/日課表、拖曳、衝堂偵測、請假/調課 |
-| `students` | StudentsList.vue | 學生管理、課程建立、加購堂數、CSV 匯入 |
-| `teachers` | TeachersList.vue | 老師管理、RFID 綁定、跨校支援設定 |
-| `course-mgmt` | CourseManagement.vue | 課程管理：費率、排課、請假、調課、補課空檔查詢 |
-| `classroom` | ClassroomManagement.vue | 教室管理（名稱、容量、停用） |
-| `subject-units` | SubjectUnitsPage.vue | 科目數統計（依月份切換） |
+| `teacher-home` | TeacherHomePage.vue | 老師預設：今日待辦、跨分校本週課表 |
+| `director` | DirectorDashboard.vue | 總覽：繳費提醒、今日排課、待審評量 |
+| `calendar` | SmartCalendar.vue | 智慧排課：週/日、拖曳、請假/調課 |
+| `students` | StudentsList.vue | 學生管理、課程建立、CSV 匯入 |
+| `teachers` | TeachersList.vue | 老師管理、RFID 綁定 |
+| `course-mgmt` | CourseManagement.vue | 費率、排課、請假、調課、補課空檔 |
 | `attendance` | AttendancePage.vue | 出缺勤點名、刷卡記錄 |
 | `learning` | LearningRecordsPage.vue | 學習評量表（填寫、審核） |
 | `parent` | ParentPortal.vue | 家長入口（獨立，無側欄） |
+| `subject-units` | SubjectUnitsPage.vue | 科目數統計 |
+| `classroom` | ClassroomManagement.vue | 教室管理 |
 | `director-accounts` | DirectorAccountsPage.vue | 主任申請審核（super_admin 限定） |
 
-**共用元件**：`HelpGuide.vue`（可折疊說明欄）、`SearchableSelect.vue`（可搜尋下拉）  
-**Lib**：`constants.js`（常數）、`sessionDates.js`（排課日期計算）、`useBranches.js`（分校 store）
+**共用**：`HelpGuide.vue`（說明欄）、`SearchableSelect.vue`（可搜尋下拉）
+**Lib**：`constants.js`、`sessionDates.js`（排課計算）、`useBranches.js`（分校 store）
 
-## 分校（Branch / Campus）
+## 分校
 
 - `currentBranch` ref 存目前分校 ID，持久化 `localStorage.app_branch`
-- 所有子頁面以 `:branch-id="currentBranch"` prop 接收
 - 後端 middleware `require_campus` 從 token 解析所屬分校
 
-## 資料庫核心表格
+## 命名慣例（必記）
 
-### Student（學生）
-`id`, `name`, `CampusID`, `ClassID`, `SchoolName`, `RFID`, `Phone`, `LineID`, `enable`
-
-### StudentClass（學生課程）
-`ID`, `StudentID`, `GradeID`, `SubjectID`, `TeacherID`  
-`ClassType` (one_on_one / one_on_two / one_on_three / tutoring)  
-`RemainingSessions`, `UsedSessions`, `SessionCount`, `SessionDuration`  
-`StartDate`, `EndDate`, `Rate`, `Charge`, `Pay`, `Paid`  
-`room_id`→rooms, `settlement_day`, `monthly_sessions`, `Memo`, `Stop`
-
-### ClassSession（排課堂次）
-`id`, `StudentClassID`, `SessionDate`, `StartTime`, `EndTime`  
-`Status`: scheduled / attended / cancelled / leave
-
-### schedules（請假 / 調課 / 補課 記錄）
-`id`, `student_id`, `teacher_id`, `subject`, `branch_id`  
-`schedule_date`, `day_of_week`, `start_time`, `end_time`, `duration_hours`, `class_type`  
-`status`: scheduled / leave / rescheduled / attended / cancelled  
-`type`: normal / extra  
-`deduction`, `student_course_id`, `original_schedule_id`（補課關聯原堂次）
-
-### LearningRecord（學習評量）
-`id`, `StudentClassID`, `ClassSessionID`, `TeacherID`  
-`Subject`, `SessionDate`, `StartTime`, `EndTime`  
-`Content`, `HomeworkStatus`, `QuizScore`, `Progress`, `NextHomework`, `Performance`, `Comment`  
-`Status`: pending / approved / rejected / changes_requested  
-`ApprovedBy`, `ApprovedAt`, `ReviewNote`
-
-### User（老師 / 主任）
-`id`, `LoginName`(email), `Name`, `PSW`, `type`(U/T/A), `status`, `employment_type`, `phone`
-
-### Campus（分校）
-`id`, `name`, `code`, `SwipeWindowMinutes`  
-LINE: `Client_ID`, `Client_Secret`, `LIFFID`, `LineNotifyID`
-
-### rooms（教室）
-`id`, `campus_id`, `name`, `capacity`, `memo`, `is_active`
-
-### StudentSingIn（出缺勤，注意 typo: Sing≠Sign）
-`id`, `StudentClassID`, `StudentID`, `TeacherID`, `CampusID`  
-`SignInDT`, `SignOutDT`, `Status`(present/absent), `SessionDeducted`
-
-## API 路由 (`/api/v1/`)
-
-### 公開（無認證）
-`POST auth/login` · `POST auth/register` · `GET branches`  
-`POST swipe-rfid` · `POST directors/register`  
-`POST parent/login` · `POST parent/login-line` · `POST line/webhook`
-
-### director + teacher 共用
-`GET/PUT me` · `GET students` · `GET/POST/PUT/DELETE student-classes`  
-`GET/POST/PUT/DELETE schedules` · `GET/POST learning-records`  
-`POST learning-records/{id}/approve` · `POST learning-records/reschedule-session`  
-`GET/POST attendance` · `GET/POST/PUT/DELETE rooms`
-
-### director 限定
-`POST students` · `PUT students/{id}` · `POST/GET invoices`  
-`GET finance/summary|revenue|outstanding|teacher-payroll|subject-units`  
-`GET/POST/DELETE pending-swipes` · `GET/POST profiles` · `GET campuses`
-
-## 商業邏輯
-
-### 科目數統計（SubjectUnitsPage → `GET /api/v1/finance/subject-units?start&end&branch_id`）
-加權規則：一對一×1.5、一對二×0.75、一對三×0.5、輔導×0.5  
-科目數 = 各老師加權總分 ÷ 8  
-前端期望回傳：`{ teachers: [{ teacher_name, one_on_one_hours, …, subject_count_with, subject_count_without, share_pct }], totals: {…} }`  
-**⚠️ 已知問題**：後端 `FinanceController::subjectUnits` 目前只回傳 `TeacherID/Subject/unit_count`（approved LearningRecord 分組），格式與前端期望不符，導致頁面顯示空白。
-
-### 補課空檔演算法（CourseManagement.vue `fetchMakeupSlots`）
-容量：`one_on_one=1, one_on_two=2, one_on_three=3, tutoring=4`  
-- `occMap[date][slotIdx] = count`：每 30 分鐘格子的在場人數
-- `slotStudentsMap[date][slotIdx] = [name, …]`：在場學生名單
-- 請假/調課(原日) → 不計入；補課(新日) → +1 人
-- 掃描 09:00-21:00，`count < capacity` 的連續足夠長區間 → 補課候選
-- 輸出每筆含 `currentStudentCount`, `capacity`, `existingStudents`
-
-## 常數
-
-| 類別 | 值 |
-|---|---|
-| 科目 | Chinese/English/Math/Physics/Chemistry/Science/Social |
-| 年級 | P1-P6（國小）、J1-J3（國中）、H1-H3（高中） |
-| 課程類型 | one_on_one / one_on_two / one_on_three / tutoring |
-| 排課狀態 | scheduled / leave / rescheduled / attended / cancelled |
-| 評量狀態 | pending / approved / rejected / changes_requested |
-
-## 命名慣例
-
-- DB 混用 PascalCase / snake_case（歷史遺留，勿改）
-- `StudentSingIn` / `TeacherSingIn` 是 typo，實際表名就是這樣
+- `StudentSingIn`（Sing ≠ Sign，歷史 typo）→ Model 必須 `protected $table = 'StudentSingIn'`
+- `schedules`（snake_case 新表）vs `StudentClass`（PascalCase 舊表）：並存，勿混用
 - 前端 `student_course_id` = 後端 `StudentClassID`
-- API path `student-classes` = DB table `StudentClass`
+- DB 混用 PascalCase / snake_case（歷史遺留，勿改）
 
-## 📝 實作後記錄原則（每次完成任務後執行）
+## 實作後記錄原則
 
-| 發現了什麼 | 記在哪裡 | 格式 |
-|---|---|---|
-| 非直覺的 DB / 流程行為 | `alltrue-system.mdc` §Gotchas | `G-NNN: 一句話 + 後果` |
-| AI 犯的錯誤（行為/流程） | `docs/AI_REGRESSION_LESSONS.md` | `§XXX-NNN + 強制規則` |
-| 新功能 / bug 修復上線 | `docs/CHANGELOG.md` | **一行原則** (Added/Fixed/Changed/Security) |
-| 技術債發現 | `docs/TECH_DEBT.md` | TD-NNN 表格 |
-| 複雜系統流程 / 架構決策 | `docs/SYSTEM_TECH_GUIDE.md` | 對應節補充（延伸閱讀，非必讀） |
+| 發現了什麼 | 記在哪裡 |
+|---|---|
+| 非直覺 DB / 流程行為 | `CLAUDE.md` §Gotchas（G-NNN 格式）|
+| AI 犯的錯誤 | `docs/AI_REGRESSION_LESSONS.md` |
+| 功能上線 | `docs/CHANGELOG.md`（一行原則）|
+| 技術債 | `docs/TECH_DEBT.md`（TD-NNN 表格）|
 
-**CHANGELOG 寫法**：`- 一句話說明`（含受影響 PR/Issue 編號），不寫實作細節。
+## 查更多（on-demand）
 
-## ⚠️ 高頻 Gotchas（bug 偵查前必讀）
-
-### G-001：Teacher.id === User.id（同一個人，兩張表 ID 相同）
-`StudentClass.TeacherID`、`StudentSingIn.TeacherID` 存的都是 `User.id`。  
-`auth_teacher_id` = `User.id`（`AttachAuthUser.php`）。  
-查詢 `Teacher` 或 `User` table 用同一個 ID 都能命中同一個人。
-
-### G-002：TeacherID = NULL → 老師查不到該記錄
-`AttendanceController::index()` 過濾：`WHERE si.TeacherID = auth_teacher_id`。  
-`NULL = X` → false → 記錄從老師視角消失（但 director 可見，因為用 CampusID 過濾）。  
-成因：`StudentClass.TeacherID` 為 null 時，刷卡記錄繼承 null。  
-**修補 SQL**：`UPDATE StudentSingIn si JOIN ClassSession cs ... JOIN StudentClass sc ... SET si.TeacherID = sc.TeacherID WHERE si.TeacherID IS NULL AND sc.TeacherID IS NOT NULL`
-
-### G-003：ClassSession.Status 不由刷卡自動更新（2026-04-23 前的歷史記錄）
-2026-04-23 前刷卡建立的 StudentSingIn，ClassSession.Status 仍為 `scheduled`。  
-修復（PR #23）只對新刷卡有效，歷史記錄需手動 UPDATE。  
-`AttendanceEffectsService::applySessionStatus()` 有 guard：只更新 `scheduled`，不覆寫人工決策。
-
-### G-004：SwipeRfidController 時間窗口硬寫 30 分鐘，不讀 Campus.SwipeWindowMinutes
-`findMatchingClass()` 的窗口是 hardcoded 30min。  
-`AttendanceController::resolveSwipeWindowMinutes()` 有讀 campus 設定，但刷卡路徑沒用到（TD 待清償）。
-
-### G-005：Memo 欄位識別記錄來源
-- `'swipe-rfid'`：刷卡且比對到 StudentClass  
-- `'self_study'`：刷卡但無匹配課程  
-- `'presence-window'`：刷退時 backfill 補建  
-- `NULL`：老師手動點名或 legacy 記錄（不含 Memo 欄位）
-
-### G-007：智慧行事曆週檢視必須走 occurrence resolver，不可分散 if 合併
-
-三個資料源（`StudentClass` 常態規則、`ClassSession` 實際堂次、`schedules` 例外）若在 Vue component 內分段 `if` 合併，必然出現「base 先跳過 + exception 又跳過」的雙殺，導致課消失或同一堂掛兩位老師（吳艾潼 SC#382 / 2026-05-10）。
-
-- **唯一合法路徑**：`SmartCalendar.vue` 週檢視呼叫 `frontend/src/lib/calendarOccurrenceMerge.js` 的 `mergeWeekCalendarOccurrences()`，產生單一 occurrence list。
-- **Occurrence 身分識別**：同一 `ClassSession.id` 只輸出一張卡；`scheduled` 例外若匹配同一堂只做 overlay，不另建第二張卡。
-- **API 合約**：`GET /api/v1/class-sessions` 必須回傳 `substitute_teacher_id`，前端 `normalizeClassSessionsPayload` 已解析此欄位。
-- **回歸測試**：`npm run test:calendar`（CI 中已整合），覆蓋「不重複、不消失、leave 不被遮蔽」三種 fixture。
-
-### G-008：家長入口 `releaseNotes` 必須分眾，不可餵教職員全量卡
-
-`notesForRole('parent')` 只應回傳 `audience` 含 **`parent`** 的卡片（由 `changelog-to-release-notes.mjs` 依條目關鍵字標記）。若把 director/teacher 卡全給家長 → 手機洗版、資訊與使用者無關。改 `docs/CHANGELOG.md` 後須 `npm run sync-release-notes`；見 `docs/AI_REGRESSION_LESSONS.md` §R45。
+- API 路由：`CLAUDE.md` §API 路由 或 `.cursorrules`
+- DB schema 詳情：`CLAUDE.md` §核心資料表 或 `.cursorrules`
+- Gotchas G-001~G-008：`CLAUDE.md` §核心資料表 Gotchas 或 `.cursorrules`
+- 商業邏輯（科目數/補課演算法）：`CLAUDE.md` §商業邏輯
