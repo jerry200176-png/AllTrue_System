@@ -976,4 +976,45 @@ class ScheduleController extends Controller
         $schedule->delete();
         return response()->json(['message' => 'Deleted']);
     }
+
+    public function cancelMakeup(Request $request, Schedule $schedule)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        if (!in_array($role, ['director', 'super_admin', 'admin'], true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        $branchId = (int) ($schedule->branch_id ?? 0);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
+            return response()->json(['error' => 'Forbidden'], 403);
+        }
+
+        if ($schedule->type !== 'extra') {
+            return response()->json(['error' => 'Only extra (makeup) schedules can be cancelled via this endpoint'], 422);
+        }
+
+        if ($schedule->status !== 'scheduled') {
+            return response()->json(['error' => 'Schedule is not in scheduled status'], 422);
+        }
+
+        DB::transaction(function () use ($schedule) {
+            $schedule->update(['status' => 'cancelled']);
+
+            if ($schedule->student_course_id && $schedule->schedule_date && $schedule->start_time) {
+                $session = ClassSession::where('StudentClassID', $schedule->student_course_id)
+                    ->whereDate('SessionDate', $schedule->schedule_date)
+                    ->where('StartTime', $schedule->start_time)
+                    ->whereNotIn('Status', ['attended', 'leave', 'leave_adjusted'])
+                    ->first();
+
+                if ($session) {
+                    $session->update(['Status' => 'cancelled']);
+                }
+            }
+        });
+
+        return response()->json(['message' => 'Makeup class cancelled', 'id' => $schedule->id]);
+    }
 }

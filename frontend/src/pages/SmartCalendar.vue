@@ -624,7 +624,8 @@
         <div v-else-if="editingCourseId && courseEvalRecords.length === 0 && !evalRecordsLoading" style="padding:8px; color:#aaa; font-size:13px;">（尚無評量紀錄）</div>
 
         <div class="actions">
-          <button v-if="editingException" class="danger" @click="deleteException">刪除此調課/加課</button>
+          <button v-if="editingException && editingExceptionIsExtra" class="danger" @click="cancelMakeupClass">取消補課</button>
+          <button v-if="editingException && !editingExceptionIsExtra" class="danger" @click="deleteException">刪除此調課</button>
           <button v-if="editingCourseId && !editingException" class="danger" @click="deleteCourse">刪除整門課</button>
           <div style="flex:1"></div>
           <button class="ghost" @click="showModal = false">{{ editingCourseId ? '關閉' : '取消' }}</button>
@@ -2698,6 +2699,40 @@ const deleteException = async () => {
   showModal.value = false;
   await loadCourses();
   alert('已刪除此調課');
+};
+
+// ===== Cancel makeup class (取消補課) =====
+
+const editingExceptionIsExtra = computed(() => {
+  const exc = editingException.value;
+  if (!exc?.original_id) return false;
+  const src = exceptions.value.find(e => e.id === exc.original_id);
+  return src?.type === 'extra' && src?.status === 'scheduled';
+});
+
+const cancelMakeupClass = async () => {
+  const exc = editingException.value;
+  if (!exc?.original_id) return;
+  const label = [exc.student_name, getSubjectLabel(exc.subject || '')].filter(Boolean).join(' ');
+  if (!confirm(`確定取消此補課排程？${label ? `（${label}）` : ''}\n取消後仍可在歷史記錄查閱，堂數不退還。`)) return;
+
+  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
+  const token = session?.access_token || '';
+  const res = await fetch(`/api/v1/schedules/${exc.original_id}/cancel-makeup`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    alert(data.error || '取消失敗，請稍後再試');
+    return;
+  }
+
+  editingException.value = null;
+  showModal.value = false;
+  await loadCourses();
+  alert('補課已取消');
 };
 
 // ===== Cancel single session (取消本堂) =====
