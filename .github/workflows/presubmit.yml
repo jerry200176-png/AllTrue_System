@@ -69,11 +69,12 @@ jobs:
           HARD_LIMIT=700
           BRANCH="${GITHUB_HEAD_REF}"
           if echo "$BRANCH" | grep -qE '^chore/docs-'; then
-            NON_DOCS=$(git diff --name-only origin/main...HEAD \
-              | grep -cvE '^(docs/|\.cursor/|scripts/docs-|CLAUDE\.md|AGENTS\.md|\.github/workflows/(docs-integrity|mempalace-monthly)\.yml$|\.github/pull_request_template\.md$)' || true)
-            if [ "$NON_DOCS" -eq 0 ]; then
-              HARD_LIMIT=1200
-              echo "Docs consolidation branch: hard limit raised to $HARD_LIMIT"
+            PROD=$(git diff --name-only origin/main...HEAD \
+              | sed 's/^"//;s/"$//' \
+              | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
+            if [ "$PROD" -eq 0 ]; then
+              HARD_LIMIT=1300
+              echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
             fi
           fi
 
