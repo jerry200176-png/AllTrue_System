@@ -77,7 +77,27 @@
       <h4 class="form-section-title">費用與繳費</h4>
       <div class="form-section-grid">
         <div class="form-group">
-          <label>{{ hasPerDayDuration ? '每小時費用（元）' : '單堂費用（元）' }}</label>
+          <label>費率計算方式</label>
+          <div class="rate-unit-toggle">
+            <button
+              type="button"
+              class="rate-unit-btn"
+              :class="{ active: effectiveRateUnit === 'session' }"
+              @click="form.rate_unit = 'session'"
+              :disabled="hasPerDayDuration"
+            >按堂計費</button>
+            <button
+              type="button"
+              class="rate-unit-btn"
+              :class="{ active: effectiveRateUnit === 'hour' }"
+              @click="form.rate_unit = 'hour'"
+            >按時計費</button>
+          </div>
+          <span v-if="hasPerDayDuration" class="rate-unit-hint">不同時段時長不一，自動切換為按時計費</span>
+        </div>
+
+        <div class="form-group">
+          <label>{{ effectiveRateUnit === 'hour' ? '每小時費用（元）' : '單堂費用（元）' }}</label>
           <input v-model.number="form.rate_per_30min" type="number" min="0" step="1" placeholder="1500" />
         </div>
 
@@ -248,6 +268,7 @@ const defaultForm = {
   teacher_id: '',
   class_type: 'one_on_one',
   rate_per_30min: 0,
+  rate_unit: 'session',
   duration_hours: 2,
   payment_type: 'session',
   sessions_purchased: 8,
@@ -310,6 +331,10 @@ const hasPerDayDuration = computed(() => {
     .filter((v) => v > 0);
   if (vals.length < 2) return false;
   return new Set(vals.map((v) => v.toFixed(1))).size > 1;
+});
+const effectiveRateUnit = computed(() => {
+  if (hasPerDayDuration.value) return 'hour';
+  return form.rate_unit === 'hour' ? 'hour' : 'session';
 });
 const teacherChanged = computed(() => {
   if (!form.original_teacher_id || !form.teacher_id) return false;
@@ -400,7 +425,7 @@ watch(
     if (syncingFromParent) return;
     const payload = {
       ...form,
-      rate_unit: hasPerDayDuration.value ? 'hour' : (form.rate_unit || 'session'),
+      rate_unit: effectiveRateUnit.value,
       days_of_week: sortedSelectedDays.value,
       day_time_slots: [...(form.day_time_slots || [])].map((slot) => ({
         day: Number(slot?.day || 0),
@@ -594,6 +619,33 @@ function computeEndTime(startRaw, durHours) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px 16px;
+}
+
+.rate-unit-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-main, #d1d5db);
+  border-radius: 6px;
+  overflow: hidden;
+  width: fit-content;
+}
+.rate-unit-btn {
+  padding: 5px 14px;
+  font-size: 0.85rem;
+  border: none;
+  background: #fff;
+  cursor: pointer;
+  color: #374151;
+  transition: background 0.15s, color 0.15s;
+  &:first-child { border-right: 1px solid var(--border-main, #d1d5db); }
+  &.active { background: var(--color-primary, #1a56db); color: #fff; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+.rate-unit-hint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 2px;
+  display: block;
 }
 
 .span-full {
