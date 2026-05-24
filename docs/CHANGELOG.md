@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-24 — feat(course-mgmt): 補課取消流程 — 主任可取消待補課排程（#527）
+
+- Added 主任端課程管理頁「待補課」列表：展開課程詳情後顯示尚未上課的補課排程（`type='extra', status='scheduled'`）
+- Added 「取消補課」按鈕：點擊確認後將 `schedules.status` 改為 `cancelled`，對應 `ClassSession` 同步取消，`RemainingSessions` 不變
+- 開發備註：後端 `POST /api/v1/schedules/{id}/cancel-makeup` + 前端 `pendingMakeupsByCourse` 狀態，7 個 PHPUnit 測試全通過
+
 ## 2026-05-24 — feat(learning): 老師評量頁 iOS 風格重設計 + 合約 ID 顯示（#128 PR#524）
 
 - Changed 老師登入後評量頁改為 iOS 風格：KPI 數字條、課表列表、篩選 tab、評量卡片全面更新，字型採用系統 SF Pro，色彩使用 iOS 系統調色（藍/橘/紅/綠）
