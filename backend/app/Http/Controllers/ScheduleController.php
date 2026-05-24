@@ -63,6 +63,18 @@ class ScheduleController extends Controller
             }
         }
 
+        if ($request->filled('type')) {
+            $typeInput = $request->input('type');
+            if (str_contains($typeInput, ',')) {
+                $types = array_filter(array_map('trim', explode(',', $typeInput)), fn ($type) => $type !== '');
+                if (!empty($types)) {
+                    $query->whereIn('type', $types);
+                }
+            } else {
+                $query->where('type', $typeInput);
+            }
+        }
+
         // day_of_week filter (used by DirectorDashboard recurring schedules)
         if ($request->filled('day_of_week')) {
             $query->where('day_of_week', $request->input('day_of_week'));
