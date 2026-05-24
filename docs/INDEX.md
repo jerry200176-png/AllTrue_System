@@ -67,6 +67,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 | 家長入口 UX、分眾版本公告 | `docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 `releaseNotes.js` / changelog 產生器時） |
+| `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
 ### 部署 / 維運
 | 需要什麼 | 去哪裡找 |
