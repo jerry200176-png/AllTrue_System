@@ -73,8 +73,15 @@ export function attendanceSessionStatusLabel(status) {
   return '已處理';
 }
 
+const ATTENDED_LIKE_STATUSES = ['attended', 'present', 'late'];
+
 function normalizeSessionRow(row) {
   const status = String(row?.status || row?.Status || '').toLowerCase();
+  const rawNote = String(row?.note || row?.Note || '').trim();
+  // A leave-deferral provenance note (e.g. "請假自動順延") lives on the session for
+  // its whole lifetime; once the student actually attends it becomes contradictory.
+  // Only surface the note marker for non-attended states. (#555)
+  const statusNote = ATTENDED_LIKE_STATUSES.includes(status) ? '' : rawNote;
   return {
     class_session_id: Number(row?.id || 0),
     student_id: Number(row?.student_id || row?.StudentID || 0),
@@ -89,7 +96,7 @@ function normalizeSessionRow(row) {
     teacher_name: row?.teacher_name || '',
     status,
     status_label: attendanceSessionStatusLabel(status),
-    status_note: String(row?.note || row?.Note || '').trim(),
+    status_note: statusNote,
   };
 }
 
