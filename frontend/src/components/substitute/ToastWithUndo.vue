@@ -205,15 +205,15 @@ defineExpose({ show, dismiss });
 }
 .twu__undo {
   background: transparent;
-  color: #2563eb;
-  border: 1px solid rgba(37, 99, 235, 0.4);
+  color: var(--ds-primary-deep, #e65100);
+  border: 1px solid rgba(245, 124, 0, 0.4);
   border-radius: 6px;
   padding: 4px 10px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.twu__undo:hover { background: rgba(37, 99, 235, 0.08); }
+.twu__undo:hover { background: rgba(245, 124, 0, 0.08); }
 .twu__undo:disabled { opacity: 0.6; cursor: not-allowed; }
 .twu__close {
   background: transparent;
@@ -230,12 +230,12 @@ defineExpose({ show, dismiss });
   bottom: 0;
   height: 3px;
   width: 100%;
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(245, 124, 0, 0.12);
 }
 .twu__bar-inner {
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
 }
 .twu-enter-active,
 .twu-leave-active {
