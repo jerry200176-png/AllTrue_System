@@ -89,10 +89,10 @@ const packageNote = computed(() => {
 .premium-renewal-modal {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(245, 124, 0, 0.2);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.7);
   background:
-    radial-gradient(circle at top right, rgba(59,130,246,0.16), transparent 34%),
+    radial-gradient(circle at top right, rgba(245,124,0,0.14), transparent 34%),
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
 }
 .premium-renewal-modal::before {
@@ -100,7 +100,7 @@ const packageNote = computed(() => {
   position: absolute;
   inset: 0 0 auto;
   height: 4px;
-  background: linear-gradient(90deg, #38bdf8, #6366f1, #f59e0b);
+  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
 }
 .premium-modal-header { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
 .premium-modal-icon {
@@ -110,13 +110,13 @@ const packageNote = computed(() => {
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  color: #1d4ed8;
-  background: linear-gradient(135deg, #dbeafe, #eef2ff);
-  border: 1px solid #bfdbfe;
-  box-shadow: 0 10px 26px rgba(37,99,235,0.18);
+  color: var(--ds-primary-deep, #e65100);
+  background: var(--ds-primary-wash, #fff8e1);
+  border: 1px solid rgba(245, 124, 0, 0.3);
+  box-shadow: 0 10px 26px rgba(245,124,0,0.18);
   font-weight: 900;
 }
-.premium-kicker { margin: 0 0 2px; color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.premium-kicker { margin: 0 0 2px; color: var(--ds-brand-orange, #ef6c00); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
 .package-op-toggle { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; background: var(--ds-canvas-soft, #f6f9fc); border: 1px solid var(--ds-hairline, #e3e8ee); border-radius: 12px; }
 .package-op-btn { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-light, #64748d); font-size: 13px; font-weight: 700; cursor: pointer; transition: var(--transition, all 0.2s ease); }
 .package-op-btn:hover:not(.active):not(:disabled) { color: var(--text, #0d253d); }
