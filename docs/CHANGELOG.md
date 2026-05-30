@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 繳費回報頁改套品牌暖色、金額等寬對齊（DS rollout 金流頁）
+
+- Changed: 家長用的「繳費回報」頁原本是藍色頂條與藍色送出鈕，與品牌不一致；改成 logo 橘黃暖色，金額改等寬數字對齊更好讀。「當月學收」頁的統計數字也統一等寬對齊。功能不變。
+- 開發備註：`PayReportPage.vue` `.pr-brand-bar`/`.pr-submit-btn` 藍漸層 → `--ds-brand-gradient`，`.pr-amount`/`.pr-info-value` + 焦點環改 `--ds-*`、加 `tabular-nums`；`TuitionReportPage.vue` `.tr-stat strong` 加 `tabular-nums`。`TuitionCollectionPage` 既已用 token + tabular，無需更動。對應 GitHub #563。無 DB／API 異動。
+
 ## 2026-05-30 — fix(learning): 主任點「家長回饋待看」導到評量頁能直接看到回饋（#138）
 
 - Fixed: 主任在總覽點「家長回饋待看 → 去查看」，導到評量頁卻看不到任何家長回饋的問題。現在點過去會自動切到「未讀回饋」、放大資料範圍（全部分頁、解除近 90 天預設視窗），並捲到回饋篩選列，確保有回饋的紀錄一定列出；若剛好沒有未讀，會自動退回顯示「有回饋」。
