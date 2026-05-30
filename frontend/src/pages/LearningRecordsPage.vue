@@ -74,20 +74,6 @@
         </button>
       </div>
       <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
-      <div class="lr-teacher-priority-chips">
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">
-          全部
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">
-          未填優先
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">
-          需修改
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">
-          逾期
-        </button>
-      </div>
     </div>
 
     <!-- Director review queue tabs -->
@@ -128,17 +114,46 @@
       </div>
     </div>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-feedback-filter-row card">
-      <span class="lr-feedback-filter-label">家長回饋</span>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">
-        全部
-      </button>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
-        有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
-      </button>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
-        未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
-      </button>
+    <div v-if="isTeacher || isDirectorRole" class="lr-filters-bar card">
+      <div class="lr-filters-quick">
+        <button
+          v-if="unreadParentFeedbackCount > 0"
+          :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+          @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
+        >
+          未讀回饋 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+        </button>
+        <button
+          type="button"
+          class="lr-more-filters-toggle"
+          :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
+          :aria-expanded="showMoreFilters ? 'true' : 'false'"
+          @click="showMoreFilters = !showMoreFilters"
+        >
+          篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
+          <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+
+      <div v-show="showMoreFilters" class="lr-filters-panel">
+        <div v-if="isTeacher" class="lr-filter-group">
+          <span class="lr-feedback-filter-label">優先</span>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
+        </div>
+        <div class="lr-filter-group">
+          <span class="lr-feedback-filter-label">家長回饋</span>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
+            有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
+          </button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
+            未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="!isTeacher && !isDirectorRole" class="card lr-teacher-entry" data-guide="learning-teacher-login-entry">
@@ -1407,6 +1422,13 @@ const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
+const showMoreFilters = ref(false);
+const activeSecondaryFilterCount = computed(() => {
+  let n = 0;
+  if (isTeacher.value && teacherPriorityFilter.value !== 'all') n += 1;
+  if (feedbackFilter.value !== 'all') n += 1;
+  return n;
+});
 watch(reviewTab, (t) => {
   if (!isDirectorRole.value) return;
   if (t === 'rejected' && onlyUnfilled.value) onlyUnfilled.value = false;
@@ -3958,6 +3980,7 @@ async function applyFeedbackFocus() {
   feedbackFilter.value = s.feedbackFilter;
   onlyUnfilled.value = s.onlyUnfilled;
   defaultWindowDisabled.value = s.liftWindow;
+  showMoreFilters.value = true;
   if (isTeacher.value) {
     teacherFilterTab.value = s.teacherFilterTab;
     teacherPriorityFilter.value = 'all';
@@ -3972,7 +3995,7 @@ async function applyFeedbackFocus() {
     feedbackFilter.value = 'has';
   }
   nextTick(() => {
-    const el = document.querySelector('.lr-feedback-filter-row');
+    const el = document.querySelector('.lr-filters-bar');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
@@ -4452,23 +4475,66 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   color: var(--ds-ink-mute);
 }
 
-.lr-teacher-priority-chips {
-  position: sticky;
-  top: 8px;
-  z-index: 2;
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.lr-filters-bar {
+  margin-bottom: 12px;
+  padding: 10px 16px;
 }
 
-.lr-feedback-filter-row {
+.lr-filters-quick {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px 16px;
+}
+
+.lr-more-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lr-more-filters-toggle:hover {
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
+}
+
+.lr-more-filters-toggle.active {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
+}
+
+.lr-more-filters-chev {
+  transition: transform 0.15s ease;
+}
+
+.lr-more-filters-chev.open {
+  transform: rotate(180deg);
+}
+
+.lr-filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-hairline);
+}
+
+.lr-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .lr-feedback-filter-label {
@@ -7672,12 +7738,6 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   font-size: 12px;
   color: var(--ios-label-tertiary);
   margin-top: 10px;
-}
-.lr-page--teacher .lr-teacher-priority-chips {
-  margin-top: 10px;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 .lr-page--teacher .lr-feedback-filter-chip {
   font-family: var(--ios-font);
