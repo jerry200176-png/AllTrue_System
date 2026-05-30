@@ -653,7 +653,9 @@ class ScheduleGuardService
             ->where('sc.Stop', 0)
             ->where('st.CampusID', $branchId)
             ->whereDate('cs.SessionDate', $date)
-            ->whereNotIn('cs.Status', ['cancelled'])
+            // Leave-type sessions free up the slot, matching the frontend capacity
+            // badge (LEAVE_STATUSES) and LearningRecordController's skip set. (#557)
+            ->whereNotIn('cs.Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
             ->select([
                 'cs.StudentClassID',
                 'cs.StartTime',

@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — fix(schedule): 調課時請假學生不再佔用老師名額（#557）
+
+- Fixed: 調課到某時段時，若該時段有學生請假，系統不再把請假學生算進老師人數，避免「明明有空位卻顯示老師人數已滿」而擋住調課。
+- 開發備註：`ScheduleGuardService::buildTeacherDateOccupancyEntries` 的 ClassSession 佔用查詢，排除集合由 `['cancelled']` 對齊為 `['cancelled','leave','leave_adjusted','excused']`（與前端 LEAVE_STATUSES、`LearningRecordController` 一致）。新增回歸測試 `ScheduleGuardrailsTest::test_reschedule_allowed_when_a_slot_occupant_is_on_leave`。in-app #136。
+
 ## 2026-05-30 — feat(design): 全站介面改採統一設計系統（Stripe 風格地基）
 
 - Changed: 系統介面換上全新統一視覺——更專業沉穩的藍色系、淺色乾淨底色，金額與數字對齊更整齊好讀；操作邏輯不變。
