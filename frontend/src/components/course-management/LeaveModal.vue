@@ -106,9 +106,9 @@ watch(
   margin: 12px 0 4px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
-  color: #1e3a8a;
+  border: 1px solid var(--ds-hairline, #e3e8ee);
+  background: var(--ds-canvas-soft, #f6f9fc);
+  color: var(--ds-ink, #1a1a1a);
 }
 .impact-preview--danger {
   border-color: #fdba74;
