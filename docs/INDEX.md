@@ -62,6 +62,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
 | 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
+| **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/DESIGN_SYSTEM.md`（唯一真相來源，改 UI 前必讀）|
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
@@ -166,7 +167,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
-| `docs/PORSCHE_VISUAL_SYSTEM.md` | Porsche-inspired light-first 視覺系統規格 |
+| `docs/DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（Stripe-inspired：淺色+navy+indigo、金額 tabular）；所有前端 UI 照此生成 |
+| `docs/PORSCHE_VISUAL_SYSTEM.md` | ⛔ Superseded，改用 `DESIGN_SYSTEM.md`（保留歷史參考）|
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 
 ### 維運 SOP
