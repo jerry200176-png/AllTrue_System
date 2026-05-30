@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 學習評量頁的篩選列改套統一品牌色，減少雜亂
+
+- Changed: 學習評量／我的課表評量頁面，原本分頁、家長回饋、優先篩選用了藍色、橘色等好幾種不同顏色按鈕，看起來雜亂。現在統一成同一套品牌橘黃（選中態）＋灰底膠囊（未選），數字統計顏色也對齊系統的待辦/警示/完成語意色，整頁更清爽好讀。功能與篩選邏輯完全不變。
+- 開發備註：`LearningRecordsPage.vue` scoped CSS：`.lr-tab`（active 由 `#1a73e8` → `--ds-primary`）、`.lr-feedback-filter-chip`/優先 chips（橘 `#f97316` → 中性膠囊 + brand active）、`.lr-kpi-*` 與 `.lr-tab-count.warn/.ok` 改 `--ds-warning/danger/success/-wash`、`.lr-input:focus` 改 `--ds-focus-ring`、`.lr-batch-bar`/`.lr-phrase-*` 藍 → brand wash。數字加 `tabular-nums`。對應 docs/RULE_DESIGN_SYSTEM.md rollout（評量頁）。無 DB／API 異動。
+
 ## 2026-05-30 — feat(ui): 全站主色改回 logo 橘黃暖色（與登入頁一致）
 
 - Changed: 系統的主要強調色（按鈕、連結、重點標示、焦點）統一改成 logo／登入頁那種溫暖的橘黃色，取代先前的靛藍，讓整體更有品牌一致感、更耐看。主任儀表板頂端也加了一條品牌暖色識別條。版面結構與功能完全不變。
