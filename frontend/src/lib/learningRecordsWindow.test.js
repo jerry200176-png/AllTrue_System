@@ -57,3 +57,40 @@ assert.equal(
   }),
   '2026-02-15'
 );
+
+// #138/#139: filtering by parent feedback must lift the window so older feedback is reachable.
+assert.equal(
+  shouldApplyLearningRecordsDefaultWindow({
+    days: 90,
+    isTeacher: false,
+    reviewTab: 'approved',
+    feedbackFilter: 'unread',
+  }),
+  false,
+  'director unread-feedback filter must not hide older feedback behind the default window'
+);
+
+assert.equal(
+  shouldApplyLearningRecordsDefaultWindow({
+    days: 90,
+    isTeacher: true,
+    teacherFilterTab: 'approved',
+    teacherPriorityFilter: 'all',
+    feedbackFilter: 'has',
+  }),
+  false,
+  'teacher has-feedback filter must not apply the default window'
+);
+
+assert.equal(
+  shouldApplyLearningRecordsDefaultWindow({
+    days: 90,
+    isTeacher: false,
+    reviewTab: 'approved',
+    feedbackFilter: 'all',
+  }),
+  true,
+  'feedback filter "all" keeps the normal default history window'
+);
+
+console.log('learningRecordsWindow.test.js: all assertions passed');
