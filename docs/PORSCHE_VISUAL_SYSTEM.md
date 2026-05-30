@@ -1,5 +1,8 @@
 # AllTrue Porsche-Inspired Visual System
 
+> ⛔ **SUPERSEDED（2026-05-30 起）。** 視覺系統已改採 **Stripe-inspired**，唯一真相來源為 [`docs/RULE_DESIGN_SYSTEM.md`](RULE_DESIGN_SYSTEM.md)。
+> 本文件僅保留作歷史參考；新頁面與精修一律照 `RULE_DESIGN_SYSTEM.md`，`--porsche-*` token 現已 alias 到 `--ds-*`。
+
 > Scope: front-end UI visual language for AllTrue web app pages and components.
 > Goal: make AllTrue feel like a premium operations product with the restraint and precision of Porsche's official web experience, without copying Porsche branding or assets.
 
