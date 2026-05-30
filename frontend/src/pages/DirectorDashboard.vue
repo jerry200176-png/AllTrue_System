@@ -1568,7 +1568,7 @@ onBeforeUnmount(() => {
 .no-branch-card .hint { margin-top: 1rem; font-size: 0.9rem; color: var(--text-light); }
 
 /* ===== Header ===== */
-/* (DS) Stripe 後台風：淺色乾淨面板、細邊框、輕陰影；不用 mesh／網格／oversized 標題。 */
+/* (DS) 淺色乾淨面板、細邊框、輕陰影；頂端一條品牌暖色（logo 橘黃）做識別。 */
 .dash-header {
   position: relative;
   overflow: hidden;
@@ -1584,6 +1584,13 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 3px rgba(0, 55, 112, 0.08);
   color: var(--ds-ink);
 }
+.dash-header::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--ds-brand-gradient);
+}
 .dash-title-block,
 .dash-date-panel {
   position: relative;
@@ -1595,7 +1602,7 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--ds-ink-mute);
+  color: var(--ds-brand-orange);
 }
 .dash-title {
   font-size: clamp(1.75rem, 3vw, 2.5rem);

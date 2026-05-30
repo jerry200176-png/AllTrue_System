@@ -12,7 +12,7 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 - 淺色為底（白／冷調近白），長時間在明亮辦公室看不刺眼；
 - 海軍藍墨（navy ink）取代純黑，沉穩專業；
-- 單一靛藍（indigo）作為唯一主行動色，克制使用；
+- **品牌主色採 logo 的橘黃暖色（amber→orange，與登入頁一致）**，作為唯一主行動色，克制使用；
 - **金額／堂數／日期一律等寬數字（tabular）**，這是金流產品的隱性信任訊號；
 - 圓角藥丸按鈕、細邊框卡片、輕陰影；
 - 行銷頁那種彩色 gradient mesh **不採用**（那是 Stripe 官網行銷用，後台不需要）。
@@ -20,9 +20,9 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 ## 2. Design Principles（設計原則）
 
 1. **淺色優先**：預設底色白／冷調近白；深色只用於側欄與夜間模式。
-2. **靛藍要稀有**：`--ds-primary` 只給主 CTA、連結強調、焦點環。一個區塊只放一顆實心主按鈕。
+2. **主色要稀有**：`--ds-primary`（橘黃暖色）只給主 CTA、連結強調、焦點環。一個區塊只放一顆實心主按鈕。
 3. **navy 取代黑**：所有內文用 `--ds-ink`（#0d253d），不用純黑 #000。
-4. **色彩克制**：黑/白/灰/navy 撐起整頁；indigo 是行動，semantic 顏色只表達狀態。
+4. **色彩克制**：黑/白/灰/navy 撐起整頁；橘黃是行動/品牌，semantic 顏色只表達狀態。
 5. **金額必 tabular**：任何金額、堂數、人數、百分比用 `font-variant-numeric: tabular-nums`，避免跳動。
 6. **品牌一致勝於單頁花俏**：新頁面重用既有 hero / metric / panel / row / badge / button 語言，不自創。
 
@@ -32,11 +32,14 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 
 | DS Token | 值（light） | 用途 | 對應既有變數 |
 |---|---|---|---|
-| `--ds-primary` | `#533afd` | 主 CTA、連結、焦點 | `--primary` `--accent` |
-| `--ds-primary-deep` | `#4434d4` | gradient 中段、hover | `--accent-hover` |
-| `--ds-primary-press` | `#2e2b8c` | 按下狀態 | — |
-| `--ds-primary-soft` | `#665efd` | 圖表/UI 點綴 | `--primary-light` |
-| `--ds-primary-wash` | `#eef0ff` | 淡靛藍底（tag/選中底）| `--primary-bg` |
+| `--ds-primary` | `#EF6C00` | 主 CTA、連結、焦點（logo 橘黃暖色）| `--primary` `--accent` |
+| `--ds-primary-deep` | `#E65100` | gradient 中段、hover | `--accent-hover` |
+| `--ds-primary-press` | `#D84315` | 按下狀態 | — |
+| `--ds-primary-soft` | `#FFB300` | 圖表/UI 點綴（amber）| `--primary-light` |
+| `--ds-primary-wash` | `#FFF8E1` | 淡奶油暖底（tag/選中底）| `--primary-bg` |
+| `--ds-brand-amber` | `#FFB300` | 品牌 amber（hero gradient 起點）| — |
+| `--ds-brand-orange` | `#F57C00` | 品牌 orange（kicker/強調）| — |
+| `--ds-brand-gradient` | `linear-gradient(135deg,#FFB300,#F57C00)` | hero/header 品牌暖色條 | — |
 | `--ds-ink` | `#0d253d` | 內文主色（navy，非純黑）| `--text` `--porsche-ink` |
 | `--ds-ink-secondary` | `#273951` | 次要文字 | — |
 | `--ds-ink-mute` | `#64748d` | 輔助文字、表頭、說明 | `--text-light` `--porsche-ink-soft` |
