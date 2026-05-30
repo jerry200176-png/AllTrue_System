@@ -197,7 +197,7 @@ async function openRankOverview() {
 .ers-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--primary, #1976d2) 55%, #0ea5e9), var(--primary, #1976d2));
+  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
   transition: width 0.45s ease;
 }
 .ers-bar-fill--still {
