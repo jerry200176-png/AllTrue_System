@@ -7,10 +7,11 @@ export const changelogReleaseNotes = [
     "version": "2026.05.30",
     "date": "2026-05-30",
     "title": "2026.05.30 版本更新",
-    "summary": "全站介面改採統一設計系統（Stripe 風格地基）",
+    "summary": "全站介面改採統一設計系統（Stripe 風格地基）；共用方案可直接設定總堂數（）",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
@@ -18,10 +19,21 @@ export const changelogReleaseNotes = [
         "items": [
           "全站介面改採統一設計系統（Stripe 風格地基）"
         ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "共用方案可直接設定總堂數（）",
+          "調課時請假學生不再佔用老師名額（）",
+          "學生到班後不再同時顯示「請假自動順延」（）"
+        ]
       }
     ],
     "items": [
-      "全站介面改採統一設計系統（Stripe 風格地基）"
+      "全站介面改採統一設計系統（Stripe 風格地基）",
+      "共用方案可直接設定總堂數（）",
+      "調課時請假學生不再佔用老師名額（）",
+      "學生到班後不再同時顯示「請假自動順延」（）"
     ]
   },
   {

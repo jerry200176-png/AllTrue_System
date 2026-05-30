@@ -477,6 +477,8 @@
       :form="purchaseForm"
       :submitting="purchaseSubmitting"
       :is-package-mode="isPackageMember(purchaseCourse)"
+      :current-total="getPackageTotalSessions(purchaseCourse)"
+      :used-sessions="getPackageUsedSessions(purchaseCourse)"
       @close="!purchaseSubmitting && (showPurchaseModal = false)"
       @submit="submitPurchaseSessions"
     />
@@ -851,6 +853,7 @@ import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
+import { computePackageNextTotal } from '../lib/packageSessions';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -883,6 +886,12 @@ const isPackageMember = (course) => Number(course?.PackageID ?? course?.package_
 const getPackageTotalSessions = (course) => {
   const total = Number(course?.package_total_sessions ?? course?.PackageTotalSessions ?? course?.sessions_purchased ?? 0);
   return Number.isFinite(total) && total > 0 ? total : 0;
+};
+const getPackageUsedSessions = (course) => {
+  const total = getPackageTotalSessions(course);
+  const remaining = Number(course?.package_remaining_sessions ?? course?.PackageRemainingSessions ?? 0);
+  const used = total - (Number.isFinite(remaining) ? remaining : 0);
+  return used > 0 ? used : 0;
 };
 // 時間以半小時為單位：07:00 ~ 22:30
 const TIME_OPTIONS_30 = (() => {
@@ -1654,6 +1663,7 @@ function openPurchaseModal(course) {
     start_date: localTodayYmd(),
     student_name: course?.student_name || '—',
     subject: course?.subject || 'Math',
+    package_op: 'add', // 'add' (加購) | 'set' (設定總堂數) — package members only (#553)
   };
   showPurchaseModal.value = true;
 }
@@ -1662,23 +1672,34 @@ async function submitPurchaseSessions() {
   if (purchaseSubmitting.value) return;
   const course = purchaseCourse.value;
   if (!course?.id) return;
-  if (!Number.isFinite(Number(purchaseForm.value.sessions)) || Number(purchaseForm.value.sessions) <= 0) {
+  const isPackage = isPackageMember(course);
+  if (!isPackage && (!Number.isFinite(Number(purchaseForm.value.sessions)) || Number(purchaseForm.value.sessions) <= 0)) {
     alert('請輸入正確堂數');
     return;
   }
-  if (!isPackageMember(course) && !purchaseForm.value.start_date) {
+  if (!isPackage && !purchaseForm.value.start_date) {
     alert('請選擇新批次開始日期');
     return;
   }
   purchaseSubmitting.value = true;
   try {
-    if (isPackageMember(course)) {
+    if (isPackage) {
       const packageId = Number(course.PackageID ?? course.package_id);
-      const addSessions = Number(purchaseForm.value.sessions);
+      const op = purchaseForm.value.package_op === 'set' ? 'set' : 'add';
       const currentTotal = getPackageTotalSessions(course);
-      const nextTotal = currentTotal + addSessions;
-      if (!packageId || currentTotal <= 0) {
-        alert('找不到方案總堂數，請先重新整理後再試');
+      const usedSessions = getPackageUsedSessions(course);
+      const { ok, nextTotal, error } = computePackageNextTotal({
+        mode: op,
+        currentTotal,
+        value: Number(purchaseForm.value.sessions),
+        usedSessions,
+      });
+      if (!ok) {
+        alert(error);
+        return;
+      }
+      if (!packageId) {
+        alert('找不到方案，請先重新整理後再試');
         return;
       }
       await updatePackage(packageId, { total_sessions: nextTotal });
@@ -1690,8 +1711,8 @@ async function submitPurchaseSessions() {
         focusedStudentKey.value = groupKey;
       }
       toastRef.value?.show?.({
-        title: '已加購共用方案堂數',
-        description: `方案總堂數已由 ${currentTotal} 堂增加為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
+        title: op === 'set' ? '已設定共用方案總堂數' : '已加購共用方案堂數',
+        description: `方案總堂數已由 ${currentTotal} 堂調整為 ${nextTotal} 堂；此方案的所有科目共用同一個堂數池。`,
         variant: 'success',
         durationMs: 7000,
       });

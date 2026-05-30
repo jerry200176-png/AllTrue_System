@@ -5,19 +5,35 @@
         <span class="premium-modal-icon">＋</span>
         <div>
           <p class="premium-kicker">Renewal Batch</p>
-          <h3 class="modal-title">加購堂數</h3>
+          <h3 class="modal-title">{{ isPackageMode ? '調整共用方案堂數' : '加購堂數' }}</h3>
           <p class="modal-desc">{{ form.student_name }} - {{ subjectLabel }}</p>
         </div>
       </div>
+
+      <div v-if="isPackageMode" class="package-op-toggle" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          :class="['package-op-btn', { active: form.package_op !== 'set' }]"
+          :disabled="submitting"
+          @click="selectOp('add')"
+        >加購堂數</button>
+        <button
+          type="button"
+          role="tab"
+          :class="['package-op-btn', { active: form.package_op === 'set' }]"
+          :disabled="submitting"
+          @click="selectOp('set')"
+        >設定總堂數</button>
+      </div>
+
       <p class="modal-note premium-note">
-        {{ isPackageMode
-          ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
-          : '加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
-        }}
+        {{ packageNote }}
       </p>
       <div class="form-group">
-        <label>加購堂數</label>
+        <label>{{ sessionsLabel }}</label>
         <input v-model.number="form.sessions" type="number" min="1" step="1" />
+        <span v-if="isPackageMode" class="field-hint">目前共用總堂數 {{ currentTotal }} 堂，已使用 {{ usedSessions }} 堂。</span>
       </div>
       <div v-if="!isPackageMode" class="form-group">
         <label>新批次開始日期</label>
@@ -26,7 +42,7 @@
       <div class="actions">
         <button class="ghost" :disabled="submitting" @click="$emit('close')">取消</button>
         <button class="primary" :disabled="submitting" @click="$emit('submit')">
-          {{ submitting ? '建立中…' : '確認加購' }}
+          {{ submitting ? '處理中…' : submitLabel }}
         </button>
       </div>
     </div>
@@ -42,9 +58,30 @@ const props = defineProps({
   form: Object,
   submitting: { type: Boolean, default: false },
   isPackageMode: { type: Boolean, default: false },
+  currentTotal: { type: Number, default: 0 },
+  usedSessions: { type: Number, default: 0 },
 });
 defineEmits(['close', 'submit']);
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
+const isSetMode = computed(() => props.isPackageMode && props.form?.package_op === 'set');
+const sessionsLabel = computed(() => (isSetMode.value ? '設定後的總堂數' : '加購堂數'));
+const submitLabel = computed(() => (isSetMode.value ? '確認設定' : '確認加購'));
+function selectOp(op) {
+  if (!props.form || props.form.package_op === op) return;
+  props.form.package_op = op;
+  // Pre-fill the shared input with a sensible value for the chosen operation:
+  // 'set' starts from the current total (an absolute), 'add' from a small delta.
+  props.form.sessions = op === 'set' ? (Number(props.currentTotal) || 0) : 8;
+}
+const packageNote = computed(() => {
+  if (!props.isPackageMode) {
+    return '加購會建立一筆新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。';
+  }
+  if (isSetMode.value) {
+    return '此課程屬於多科共用方案。設定總堂數會把整個方案的共用總堂數改為你輸入的數字（所有方案科目共用同一個堂數池）；不可低於已使用堂數。';
+  }
+  return '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。';
+});
 </script>
 
 <style scoped>
@@ -80,6 +117,12 @@ const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
   font-weight: 900;
 }
 .premium-kicker { margin: 0 0 2px; color: #2563eb; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.package-op-toggle { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; background: var(--ds-canvas-soft, #f6f9fc); border: 1px solid var(--ds-hairline, #e3e8ee); border-radius: 12px; }
+.package-op-btn { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-light, #64748d); font-size: 13px; font-weight: 700; cursor: pointer; transition: var(--transition, all 0.2s ease); }
+.package-op-btn:hover:not(.active):not(:disabled) { color: var(--text, #0d253d); }
+.package-op-btn.active { background: var(--card-bg, #fff); color: var(--primary, #533afd); box-shadow: var(--ds-shadow-1, 0 1px 3px rgba(0,55,112,0.08)); }
+.package-op-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+.field-hint { display: block; margin-top: 6px; color: var(--text-light, #64748d); font-size: 12px; }
 .modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0; line-height: 1.6; }
 .modal-note { background: #fff8e1; border: 1px solid #ffe0a3; border-radius: 8px; color: #7a4b00; font-size: 13px; line-height: 1.6; margin: -8px 0 16px; padding: 10px 12px; }
