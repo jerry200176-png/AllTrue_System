@@ -1314,6 +1314,7 @@ const resolvedDefaultWindowStart = computed(() => {
     teacherFilterTab: teacherFilterTab.value,
     teacherPriorityFilter: teacherPriorityFilter.value,
     reviewTab: reviewTab.value,
+    feedbackFilter: feedbackFilter.value,
     now: new Date(),
   });
 });
@@ -2819,6 +2820,10 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
     }
     if (filters.end_date) params.set('end_date', filters.end_date);
   }
+  // 家長回饋篩選改走伺服器端，確保跨頁/跨日期的回饋紀錄都撈得到（#138/#139）。
+  if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread') {
+    params.set('feedback', feedbackFilter.value);
+  }
   params.set('sort', 'session_date');
   params.set('per_page', String(perfFlags.LR_DEFAULT_PER_PAGE));
   if (beforeId != null && beforeId > 0) {
@@ -3954,24 +3959,36 @@ watch(() => props.targetSession, (newSession) => {
  * 從「家長回饋待看」CTA 導入時，把資料集放到最大並切到未讀回饋，確保有回饋的紀錄一定被載入並列出。
  * 因 badge 計數（server 通知）與列表載入 pipeline 不同，預設待審分頁 + 90 天視窗會把回饋紀錄濾掉。(#138)
  */
+// 切換家長回饋篩選時改走伺服器端重新抓取（feedback 已是 server 篩選參數，#138/#139）。
+// applyFeedbackFocus 內部自行抓取，故以此旗標避免重複請求。
+let _suppressFeedbackRefetch = false;
+watch(feedbackFilter, () => {
+  if (_suppressFeedbackRefetch) return;
+  fetchRecords();
+});
+
 async function applyFeedbackFocus() {
   const s = feedbackFocusState({ isTeacher: isTeacher.value });
-  feedbackFilter.value = s.feedbackFilter;
-  onlyUnfilled.value = s.onlyUnfilled;
-  defaultWindowDisabled.value = s.liftWindow;
-  showMoreFilters.value = true;
-  if (isTeacher.value) {
-    teacherFilterTab.value = s.teacherFilterTab;
-    teacherPriorityFilter.value = 'all';
-  } else {
-    reviewTab.value = s.reviewTab;
-  }
-  await fetchRecords();
-  // 若導入時剛好沒有「未讀」（可能已被讀過），但確實有回饋，退回「有回饋」讓使用者仍看得到。
-  if (feedbackFilter.value === 'unread'
-      && unreadParentFeedbackCount.value === 0
-      && parentFeedbackCount.value > 0) {
-    feedbackFilter.value = 'has';
+  _suppressFeedbackRefetch = true;
+  try {
+    onlyUnfilled.value = s.onlyUnfilled;
+    defaultWindowDisabled.value = s.liftWindow;
+    showMoreFilters.value = true;
+    if (isTeacher.value) {
+      teacherFilterTab.value = s.teacherFilterTab;
+      teacherPriorityFilter.value = 'all';
+    } else {
+      reviewTab.value = s.reviewTab;
+    }
+    feedbackFilter.value = s.feedbackFilter; // 'unread'
+    await fetchRecords();
+    // 伺服器已按 unread 篩選；若沒有未讀（可能都讀過了），退回「有回饋」讓使用者仍看得到全部回饋。
+    if (feedbackFilter.value === 'unread' && (records.value || []).length === 0) {
+      feedbackFilter.value = 'has';
+      await fetchRecords();
+    }
+  } finally {
+    _suppressFeedbackRefetch = false;
   }
   nextTick(() => {
     const el = document.querySelector('.lr-filters-bar');
