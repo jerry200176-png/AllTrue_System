@@ -16,12 +16,16 @@
      See docs/RULE_DESIGN_SYSTEM.md. Change these values to re-skin
      the whole app; legacy + porsche tokens below alias to these.
      ============================================================ */
-  --ds-primary: #533afd;
-  --ds-primary-deep: #4434d4;
-  --ds-primary-press: #2e2b8c;
-  --ds-primary-soft: #665efd;
-  --ds-primary-wash: #eef0ff;
+  /* Brand = logo / 登入頁 amber→orange 暖色（取代原 indigo），全站主要強調色。 */
+  --ds-primary: #EF6C00;
+  --ds-primary-deep: #E65100;
+  --ds-primary-press: #D84315;
+  --ds-primary-soft: #FFB300;
+  --ds-primary-wash: #FFF8E1;
   --ds-on-primary: #ffffff;
+  --ds-brand-amber: #FFB300;
+  --ds-brand-orange: #F57C00;
+  --ds-brand-gradient: linear-gradient(135deg, #FFB300 0%, #F57C00 100%);
   --ds-ink: #0d253d;
   --ds-ink-secondary: #273951;
   --ds-ink-mute: #64748d;
@@ -35,9 +39,9 @@
   --ds-warning-wash: #fdf0e6;
   --ds-danger: #e11d48;
   --ds-danger-wash: #fdeaef;
-  --ds-info: #533afd;
-  --ds-info-wash: #eef0ff;
-  --ds-focus-ring: rgba(83, 58, 253, 0.18);
+  --ds-info: #EF6C00;
+  --ds-info-wash: #FFF8E1;
+  --ds-focus-ring: rgba(245, 124, 0, 0.22);
   --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
   --ds-shadow-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
 
@@ -90,11 +94,14 @@
 
 /* ===== 夜間模式（Dark Theme） ===== */
 [data-theme="dark"] {
-  --ds-primary: #818cf8;
-  --ds-primary-deep: #a5b4fc;
-  --ds-primary-press: #6366f1;
-  --ds-primary-soft: #a5b4fc;
-  --ds-primary-wash: rgba(129, 140, 248, 0.16);
+  --ds-primary: #FFB74D;
+  --ds-primary-deep: #FFCC80;
+  --ds-primary-press: #FB8C00;
+  --ds-primary-soft: #FFCC80;
+  --ds-primary-wash: rgba(255, 167, 38, 0.16);
+  --ds-brand-amber: #FFCA28;
+  --ds-brand-orange: #FFB74D;
+  --ds-brand-gradient: linear-gradient(135deg, #FFCA28 0%, #FB8C00 100%);
   --ds-ink: #e2e8f0;
   --ds-ink-secondary: #cbd5e1;
   --ds-ink-mute: #94a3b8;
@@ -105,8 +112,8 @@
   --ds-success-wash: #052e16;
   --ds-warning-wash: #431407;
   --ds-danger-wash: #450a0a;
-  --ds-info-wash: rgba(129, 140, 248, 0.16);
-  --ds-focus-ring: rgba(129, 140, 248, 0.28);
+  --ds-info-wash: rgba(255, 167, 38, 0.16);
+  --ds-focus-ring: rgba(255, 183, 77, 0.30);
   --ds-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.4);
   --ds-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.55);
   --bg: #0f172a;
