@@ -1220,7 +1220,7 @@ import {
   resolveLearningSessionState,
 } from '../lib/sessionConsistency';
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
-import { resolveDeepLinkBranchId } from '../lib/learningRecordTarget';
+import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate } from '../lib/learningRecordTarget';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -3272,6 +3272,12 @@ const submitForm = async () => {
     const savedRecord = await res.json().catch(() => null);
     const localRecord = buildLocalRecordFromForm(savedRecord);
     clearDraft();
+    // (#105) 若剛存的評量日期早於預設「近 N 天」視窗，自動解除視窗，
+    // 否則 fetchRecords 會把它濾掉 → 老師誤以為「新增評量後列表卻看不到」。
+    const savedDate = String(localRecord?.SessionDate || form.SessionDate || '').slice(0, 10);
+    if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
+      defaultWindowDisabled.value = true;
+    }
     await fetchRecords();
     if (localRecord?.id) {
       upsertRecordInList(localRecord);
