@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.05.30",
     "date": "2026-05-30",
     "title": "2026.05.30 版本更新",
-    "summary": "出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）；學生/老師清單頁殘留藍色互動元素改套品牌暖色（DS rollout 清單頁）",
+    "summary": "智慧行事曆載入列/評量摘要/提示框藍底改中性或品牌暖色（DS rollout 行事曆）；出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）",
     "audience": [
       "teacher",
       "director",
@@ -17,12 +17,12 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
+          "智慧行事曆載入列/評量摘要/提示框藍底改中性或品牌暖色（DS rollout 行事曆）",
           "出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）",
           "學生/老師清單頁殘留藍色互動元素改套品牌暖色（DS rollout 清單頁）",
           "繳費回報頁改套品牌暖色、金額等寬對齊（DS rollout 金流頁）",
           "老師工作台內層區塊改用一致色系，減少雜亂",
-          "學習評量頁的篩選列改套統一品牌色，減少雜亂",
-          "全站主色改回 logo 橘黃暖色（與登入頁一致）"
+          "學習評量頁的篩選列改套統一品牌色，減少雜亂"
         ]
       },
       {
@@ -38,12 +38,12 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "智慧行事曆載入列/評量摘要/提示框藍底改中性或品牌暖色（DS rollout 行事曆）",
       "出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）",
       "學生/老師清單頁殘留藍色互動元素改套品牌暖色（DS rollout 清單頁）",
       "繳費回報頁改套品牌暖色、金額等寬對齊（DS rollout 金流頁）",
       "老師工作台內層區塊改用一致色系，減少雜亂",
       "學習評量頁的篩選列改套統一品牌色，減少雜亂",
-      "全站主色改回 logo 橘黃暖色（與登入頁一致）",
       "主任點「家長回饋待看」導到評量頁能直接看到回饋（）",
       "補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（）"
     ]
