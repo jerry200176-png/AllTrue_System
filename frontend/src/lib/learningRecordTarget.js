@@ -42,3 +42,28 @@ export function shouldLiftDefaultWindowForDate({ savedDate, windowStart } = {}) 
   if (!start || !date || date.length !== 10) return false;
   return date < start;
 }
+
+/**
+ * 主任／老師從「家長回饋待看」CTA 導進評量頁時，要套用的篩選狀態。
+ *
+ * 問題（in-app #138，與 #54/#105 同類）：CTA 的未讀回饋計數來自「server 通知 badge」，
+ * 但評量列表預設用「待審分頁 + 近 90 天視窗」載入，而家長回饋多發生在「已核准」且可能較舊的
+ * 課次 → 那些有回饋的紀錄根本不在列表內 → 導過去切「未讀回饋」也是空的。
+ *
+ * 解法：導入時把資料集放到最大（reviewTab=all、不只看未填、解除近 90 天視窗），
+ * 並把回饋篩選設為「未讀」，讓有回饋的紀錄一定被載入並列出。
+ *
+ * @param {Object} args
+ * @param {boolean} [args.isTeacher]
+ * @returns {{ feedbackFilter:'unread', reviewTab:'all', teacherFilterTab:'all', onlyUnfilled:false, liftWindow:true }}
+ */
+export function feedbackFocusState({ isTeacher = false } = {}) {
+  return {
+    feedbackFilter: 'unread',
+    reviewTab: 'all',
+    teacherFilterTab: 'all',
+    onlyUnfilled: false,
+    liftWindow: true,
+    isTeacher: Boolean(isTeacher),
+  };
+}

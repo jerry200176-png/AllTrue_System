@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — fix(learning): 主任點「家長回饋待看」導到評量頁能直接看到回饋（#138）
+
+- Fixed: 主任在總覽點「家長回饋待看 → 去查看」，導到評量頁卻看不到任何家長回饋的問題。現在點過去會自動切到「未讀回饋」、放大資料範圍（全部分頁、解除近 90 天預設視窗），並捲到回饋篩選列，確保有回饋的紀錄一定列出；若剛好沒有未讀，會自動退回顯示「有回饋」。
+- 開發備註：根因與 #54/#105 同類——CTA 未讀數來自 server 通知 badge，但列表預設用待審分頁＋90 天視窗載入，回饋多在較舊的已核准課次而被濾掉。`DirectorDashboard` 回饋 CTA 改 emit `{target:'learning',focus:'feedback'}`；`App.vue` 以 `learningFeedbackFocusToken` 傳給 `LearningRecordsPage`；新增純函式 `lib/learningRecordTarget.js::feedbackFocusState` + 單元測試，元件 `applyFeedbackFocus()` 套用篩選後重抓並含 unread→has 退回。in-app #138（GitHub #580）。無 DB／API 異動。
+
 ## 2026-05-30 — feat(ui): 老師工作台內層區塊改用一致色系，減少雜亂
 
 - Changed: 老師「今日待辦」卡片內的「今日任務中心」「家長回饋追蹤」等小區塊，原本用藍色點綴，和全站品牌橘黃不一致、看起來雜。現在統一成乾淨灰底＋細邊框，標題用一致的深墨色，需處理數量徽章改品牌暖色，整張卡更協調。功能不變。
