@@ -198,6 +198,32 @@ class LearningRecordController extends Controller
             }
         }
 
+        // Optional: only records that carry parent feedback (#138/#139).
+        // The director "家長回饋待看" CTA needs the records WITH feedback regardless of the
+        // default 90-day window or pagination page — counts/lists are otherwise derived from a
+        // single client page and silently hide older feedback. `feedback=unread` narrows to the
+        // viewer's unread state; `feedback=has` returns any record that has parent feedback.
+        if ($request->filled('feedback')) {
+            $fbMode = (string) $request->input('feedback');
+            if (in_array($fbMode, ['has', 'unread'], true)) {
+                $lrTbl = (new LearningRecord())->getTable();
+                $query->whereExists(function ($sub) use ($lrTbl, $fbMode, $role) {
+                    $sub->select(DB::raw(1))
+                        ->from('learning_record_feedbacks as lrf')
+                        ->whereColumn('lrf.learning_record_id', "{$lrTbl}.id");
+                    if ($fbMode === 'unread') {
+                        $col = $role === 'teacher'
+                            ? 'lrf.last_read_by_teacher_at'
+                            : 'lrf.last_read_by_director_at';
+                        $sub->where(function ($q) use ($col) {
+                            $q->whereNull($col)
+                                ->orWhereColumn($col, '<', 'lrf.updated_at');
+                        });
+                    }
+                });
+            }
+        }
+
         if ($request->filled('teacher_id')) {
             $filterTid = (int) $request->input('teacher_id');
             $lrTable = (new LearningRecord())->getTable();
