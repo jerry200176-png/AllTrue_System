@@ -410,7 +410,7 @@ watch(() => props.existing, () => { errorMsg.value = ''; });
   gap: 8px;
 }
 .sd-title .material-symbols-outlined { color: var(--warning, #f59e0b); font-size: 22px; }
-.sd-sheet-readonly .sd-title .material-symbols-outlined { color: var(--info, #3b82f6); }
+.sd-sheet-readonly .sd-title .material-symbols-outlined { color: var(--ds-ink-mute, #64748b); }
 .sd-close {
   background: none;
   border: 0;
@@ -472,8 +472,8 @@ watch(() => props.existing, () => { errorMsg.value = ''; });
 .sd-textarea { min-height: 88px; resize: vertical; }
 .sd-input:focus, .sd-textarea:focus {
   outline: none;
-  border-color: var(--primary, #2563eb);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: var(--primary, #ef6c00);
+  box-shadow: var(--ds-focus-ring, 0 0 0 3px rgba(245, 124, 0, 0.22));
 }
 
 .sd-radio-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
@@ -520,8 +520,8 @@ watch(() => props.existing, () => { errorMsg.value = ''; });
   line-height: 1.4;
 }
 .sd-input-emphasis {
-  border-color: var(--primary, #2563eb) !important;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+  border-color: var(--primary, #ef6c00) !important;
+  box-shadow: 0 0 0 2px rgba(245, 124, 0, 0.1);
 }
 .sd-input-error {
   border-color: var(--danger, #ef4444) !important;
@@ -554,9 +554,9 @@ watch(() => props.existing, () => { errorMsg.value = ''; });
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--info-soft, #eff6ff);
-  border: 1px solid var(--info-border, #bfdbfe);
-  color: var(--info-strong, #1d4ed8);
+  background: var(--ds-canvas-soft, #f6f9fc);
+  border: 1px solid var(--ds-hairline, #e3e8ee);
+  color: var(--ds-ink, #1a1a1a);
   padding: 10px 12px;
   border-radius: 8px;
   font-size: 13px;
@@ -592,8 +592,8 @@ watch(() => props.existing, () => { errorMsg.value = ''; });
 }
 .sd-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .sd-btn-ghost { background: transparent; color: var(--text-primary, #0f172a); border: 1px solid var(--border, #cbd5e1); }
-.sd-btn-primary { background: var(--primary, #2563eb); color: #fff; }
-.sd-btn-primary:hover:not(:disabled) { background: var(--primary-hover, #1d4ed8); }
+.sd-btn-primary { background: var(--primary, #ef6c00); color: #fff; }
+.sd-btn-primary:hover:not(:disabled) { background: var(--ds-primary-press, #d84315); }
 .sd-btn-danger { background: transparent; color: var(--danger, #ef4444); border: 1px solid var(--danger, #ef4444); }
 .sd-btn-danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.08); }
 
