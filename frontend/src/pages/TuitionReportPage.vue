@@ -293,6 +293,7 @@ loadData();
   background: var(--bg);
   border-radius: 8px;
 }
+.tr-stat strong { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .tr-stat--primary { color: var(--primary); font-weight: 600; }
 
 .tr-table-wrap { overflow-x: auto; }
