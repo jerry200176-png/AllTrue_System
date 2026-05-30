@@ -10,54 +10,105 @@
 :root {
   --font-sans: 'Inter', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-ui: var(--font-sans);
-  --primary: #E65100;
-  --primary-light: #FF8A65;
-  --primary-bg: #FFF3E0;
-  --accent: #FFA726;
-  --accent-hover: #FB8C00;
+
+  /* ============================================================
+     DESIGN SYSTEM (Stripe-inspired) — single source of truth.
+     See docs/RULE_DESIGN_SYSTEM.md. Change these values to re-skin
+     the whole app; legacy + porsche tokens below alias to these.
+     ============================================================ */
+  --ds-primary: #533afd;
+  --ds-primary-deep: #4434d4;
+  --ds-primary-press: #2e2b8c;
+  --ds-primary-soft: #665efd;
+  --ds-primary-wash: #eef0ff;
+  --ds-on-primary: #ffffff;
+  --ds-ink: #0d253d;
+  --ds-ink-secondary: #273951;
+  --ds-ink-mute: #64748d;
+  --ds-canvas: #ffffff;
+  --ds-canvas-soft: #f6f9fc;
+  --ds-hairline: #e3e8ee;
+  --ds-hairline-input: #a8c3de;
+  --ds-success: #1a8245;
+  --ds-success-wash: #e7f4ec;
+  --ds-warning: #b54708;
+  --ds-warning-wash: #fdf0e6;
+  --ds-danger: #e11d48;
+  --ds-danger-wash: #fdeaef;
+  --ds-info: #533afd;
+  --ds-info-wash: #eef0ff;
+  --ds-focus-ring: rgba(83, 58, 253, 0.18);
+  --ds-shadow-1: 0 1px 3px rgba(0, 55, 112, 0.08);
+  --ds-shadow-2: 0 8px 24px rgba(0, 55, 112, 0.08), 0 2px 6px rgba(0, 55, 112, 0.04);
+
+  /* Legacy tokens — aliased to the design system above. */
+  --primary: var(--ds-primary);
+  --primary-light: var(--ds-primary-soft);
+  --primary-bg: var(--ds-primary-wash);
+  --accent: var(--ds-primary);
+  --accent-hover: var(--ds-primary-deep);
   --sidebar-bg: linear-gradient(180deg, #0f172a 0%, #111827 100%);
   --sidebar-w: 284px;
-  --bg: #F5F5F5;
-  --card-bg: #FFFFFF;
-  --text: #37474F;
-  --text-light: #78909C;
-  --border: #E0E0E0;
-  --success: #43A047;
-  --success-bg: #E8F5E9;
-  --danger: #E53935;
-  --danger-bg: #FFEBEE;
-  --warning: #FB8C00;
-  --warning-bg: #FFF3E0;
+  --bg: var(--ds-canvas-soft);
+  --card-bg: var(--ds-canvas);
+  --text: var(--ds-ink);
+  --text-light: var(--ds-ink-mute);
+  --border: var(--ds-hairline);
+  --success: var(--ds-success);
+  --success-bg: var(--ds-success-wash);
+  --danger: var(--ds-danger);
+  --danger-bg: var(--ds-danger-wash);
+  --warning: var(--ds-warning);
+  --warning-bg: var(--ds-warning-wash);
   --radius: 12px;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow: var(--ds-shadow-1);
+  --shadow-hover: var(--ds-shadow-2);
   --transition: all 0.2s ease;
   /* Input / modal surface (overridden in dark) */
-  --input-bg: #FAFAFA;
-  --input-focus-bg: #FFFFFF;
-  --modal-bg: #FFFFFF;
-  --topbar-bg: #FFFFFF;
-  --topbar-border: #F0F0F0;
+  --input-bg: var(--ds-canvas-soft);
+  --input-focus-bg: var(--ds-canvas);
+  --modal-bg: var(--ds-canvas);
+  --topbar-bg: var(--ds-canvas);
+  --topbar-border: #eef2f6;
 
-  /* Porsche-inspired visual system tokens. See docs/PORSCHE_VISUAL_SYSTEM.md. */
-  --porsche-ink: #111827;
-  --porsche-ink-soft: #64748b;
-  --porsche-surface: rgba(255, 255, 255, 0.94);
-  --porsche-surface-muted: #f5f5f3;
-  --porsche-border: rgba(17, 24, 39, 0.1);
-  --porsche-border-strong: rgba(17, 24, 39, 0.22);
-  --porsche-amber: #c47a18;
-  --porsche-blue: #2563eb;
-  --porsche-red: #b91c1c;
-  --porsche-green: #15803d;
-  --porsche-radius-lg: 28px;
-  --porsche-radius-md: 18px;
-  --porsche-shadow-soft: 0 24px 60px rgba(15, 23, 42, 0.1);
-  --porsche-shadow-hover: 0 30px 70px rgba(15, 23, 42, 0.14);
+  /* Porsche tokens — superseded, aliased to design system (see docs/RULE_DESIGN_SYSTEM.md). */
+  --porsche-ink: var(--ds-ink);
+  --porsche-ink-soft: var(--ds-ink-mute);
+  --porsche-surface: rgba(255, 255, 255, 0.96);
+  --porsche-surface-muted: var(--ds-canvas-soft);
+  --porsche-border: var(--ds-hairline);
+  --porsche-border-strong: var(--ds-hairline-input);
+  --porsche-amber: var(--ds-warning);
+  --porsche-blue: var(--ds-primary);
+  --porsche-red: var(--ds-danger);
+  --porsche-green: var(--ds-success);
+  --porsche-radius-lg: 16px;
+  --porsche-radius-md: 12px;
+  --porsche-shadow-soft: var(--ds-shadow-1);
+  --porsche-shadow-hover: var(--ds-shadow-2);
 }
 
 /* ===== 夜間模式（Dark Theme） ===== */
 [data-theme="dark"] {
+  --ds-primary: #818cf8;
+  --ds-primary-deep: #a5b4fc;
+  --ds-primary-press: #6366f1;
+  --ds-primary-soft: #a5b4fc;
+  --ds-primary-wash: rgba(129, 140, 248, 0.16);
+  --ds-ink: #e2e8f0;
+  --ds-ink-secondary: #cbd5e1;
+  --ds-ink-mute: #94a3b8;
+  --ds-canvas: #1e293b;
+  --ds-canvas-soft: #0f172a;
+  --ds-hairline: #334155;
+  --ds-hairline-input: #475569;
+  --ds-success-wash: #052e16;
+  --ds-warning-wash: #431407;
+  --ds-danger-wash: #450a0a;
+  --ds-info-wash: rgba(129, 140, 248, 0.16);
+  --ds-focus-ring: rgba(129, 140, 248, 0.28);
+  --ds-shadow-1: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --ds-shadow-2: 0 8px 24px rgba(0, 0, 0, 0.55);
   --bg: #0f172a;
   --card-bg: #1e293b;
   --text: #e2e8f0;
@@ -207,9 +258,14 @@ body {
 }
 
 .porsche-btn--primary {
-  background: var(--porsche-ink);
-  border-color: var(--porsche-ink);
-  color: #fff;
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: var(--ds-on-primary);
+}
+
+.porsche-btn--primary:hover:not(:disabled) {
+  background: var(--ds-primary-deep);
+  border-color: var(--ds-primary-deep);
 }
 
 .porsche-btn--secondary {
@@ -237,10 +293,24 @@ body {
   padding: 7px 10px;
 }
 
-.porsche-badge--amber { border-color: rgba(196, 122, 24, 0.3); color: var(--porsche-amber); }
-.porsche-badge--blue { border-color: rgba(37, 99, 235, 0.28); color: var(--porsche-blue); }
-.porsche-badge--red { border-color: rgba(185, 28, 28, 0.28); color: var(--porsche-red); }
-.porsche-badge--green { border-color: rgba(21, 128, 61, 0.28); color: var(--porsche-green); }
+.porsche-badge--amber { border-color: rgba(181, 71, 8, 0.3); color: var(--porsche-amber); }
+.porsche-badge--blue { border-color: rgba(83, 58, 253, 0.28); color: var(--porsche-blue); }
+.porsche-badge--red { border-color: rgba(225, 29, 72, 0.28); color: var(--porsche-red); }
+.porsche-badge--green { border-color: rgba(26, 130, 69, 0.28); color: var(--porsche-green); }
+
+/* ===================== DESIGN SYSTEM UTILITIES ===================== */
+/* Tabular figures for money / counts / dates — the Stripe financial-data signal.
+   See docs/RULE_DESIGN_SYSTEM.md §4. Apply to any cell rendering currency or numbers. */
+.ds-num,
+.ds-money {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.01em;
+}
+.ds-money {
+  font-weight: 600;
+  color: var(--ds-ink);
+}
 
 /* High-traffic page polish utilities (Issue #461). */
 .enterprise-page-header {
@@ -415,10 +485,10 @@ body {
 }
 
 .sidebar-nav button.active {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.25), rgba(59, 130, 246, 0.35));
+  background: linear-gradient(135deg, rgba(83, 58, 253, 0.28), rgba(102, 94, 253, 0.42));
   color: #f8fafc;
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.4), 0 8px 14px rgba(37, 99, 235, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(165, 180, 252, 0.45), 0 8px 14px rgba(83, 58, 253, 0.24);
 }
 
 .sidebar-nav button .nav-icon {
@@ -533,17 +603,17 @@ body {
 }
 
 .sidebar-footer .branch-btn:hover {
-  background: rgba(14, 165, 233, 0.22);
-  border-color: rgba(125, 211, 252, 0.45);
+  background: rgba(83, 58, 253, 0.22);
+  border-color: rgba(165, 180, 252, 0.5);
   color: #f8fafc;
 }
 
 .sidebar-footer .branch-btn.active {
-  background: linear-gradient(135deg, #0369a1, #2563eb);
+  background: linear-gradient(135deg, #4434d4, #533afd);
   border-color: transparent;
   color: #fff;
   font-weight: 700;
-  box-shadow: 0 6px 12px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 6px 12px rgba(83, 58, 253, 0.38);
 }
 
 .sidebar-footer .logout-btn {
@@ -706,7 +776,7 @@ body {
     width: 4px;
     height: 4px;
     border-radius: 50%;
-    background: #3b82f6;
+    background: var(--ds-primary);
   }
   .mob-tab-icon {
     font-size: 22px;
@@ -824,9 +894,9 @@ body {
     color: #f8fafc;
   }
   .more-item.active {
-    background: rgba(59, 130, 246, 0.2);
-    border-color: rgba(59, 130, 246, 0.4);
-    color: #93c5fd;
+    background: rgba(83, 58, 253, 0.2);
+    border-color: rgba(83, 58, 253, 0.4);
+    color: #a5b4fc;
     font-weight: 600;
   }
   .more-item .material-symbols-outlined {
@@ -867,9 +937,9 @@ body {
     background: rgba(148, 163, 184, 0.2);
   }
   .more-theme-btn.active {
-    background: rgba(14, 165, 233, 0.22);
-    border-color: rgba(125, 211, 252, 0.45);
-    color: #7dd3fc;
+    background: rgba(83, 58, 253, 0.22);
+    border-color: rgba(165, 180, 252, 0.5);
+    color: #a5b4fc;
     font-weight: 600;
   }
 }
@@ -1001,7 +1071,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(255, 167, 38, 0.15);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
   background: var(--input-focus-bg);
 }
 
@@ -1012,20 +1082,20 @@ button {
 }
 
 button.primary {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-  color: #fff;
+  background: linear-gradient(135deg, var(--ds-primary) 0%, var(--ds-primary-deep) 100%);
+  color: var(--ds-on-primary);
   border: none;
   padding: 10px 22px;
-  border-radius: 8px;
+  border-radius: 999px;
   font-weight: 600;
   font-size: 14px;
   transition: var(--transition);
-  box-shadow: 0 2px 6px rgba(255, 167, 38, 0.25);
+  box-shadow: 0 2px 6px rgba(83, 58, 253, 0.25);
 }
 
 button.primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 167, 38, 0.35);
+  box-shadow: 0 4px 12px rgba(83, 58, 253, 0.32);
 }
 
 button.small,
@@ -1575,5 +1645,5 @@ body.guide-tour-open {
   position: relative;
   z-index: 2147482900 !important;
   border-radius: 10px;
-  box-shadow: 0 0 0 4px rgba(255, 167, 38, 0.9), 0 0 0 9999px rgba(24, 31, 38, 0.55);
+  box-shadow: 0 0 0 4px rgba(83, 58, 253, 0.9), 0 0 0 9999px rgba(24, 31, 38, 0.55);
 }
