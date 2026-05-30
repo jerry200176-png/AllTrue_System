@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 老師工作台內層區塊改用一致色系，減少雜亂
+
+- Changed: 老師「今日待辦」卡片內的「今日任務中心」「家長回饋追蹤」等小區塊，原本用藍色點綴，和全站品牌橘黃不一致、看起來雜。現在統一成乾淨灰底＋細邊框，標題用一致的深墨色，需處理數量徽章改品牌暖色，整張卡更協調。功能不變。
+- 開發備註：`TeacherHomePage.vue` scoped CSS：`.th-mission-card`/`.th-mission-row` 藍 `#eff6ff/#bfdbfe/#cbd5e1` → `--ds-canvas-soft/-hairline`；`.th-mission-head`、`.th-feedback-metric__head` `#1e3a8a` → `--ds-ink`；`.th-mission-remain` 藍徽章 → `--ds-primary-wash/-deep` + tabular。無 DB／API 異動。
+
 ## 2026-05-30 — feat(ui): 學習評量頁的篩選列改套統一品牌色，減少雜亂
 
 - Changed: 學習評量／我的課表評量頁面，原本分頁、家長回饋、優先篩選用了藍色、橘色等好幾種不同顏色按鈕，看起來雜亂。現在統一成同一套品牌橘黃（選中態）＋灰底膠囊（未選），數字統計顏色也對齊系統的待辦/警示/完成語意色，整頁更清爽好讀。功能與篩選邏輯完全不變。
