@@ -254,7 +254,7 @@ async function submitReport() {
   align-items: center;
   gap: 8px;
   padding: 16px 20px;
-  background: linear-gradient(135deg, #1565C0, #42A5F5);
+  background: var(--ds-brand-gradient, linear-gradient(135deg, #FFB300, #F57C00));
   color: #fff;
   font-size: 18px;
   font-weight: 600;
@@ -284,10 +284,13 @@ async function submitReport() {
   font-size: 15px;
   font-weight: 600;
   color: var(--text, #263238);
+  font-variant-numeric: tabular-nums;
 }
 .pr-amount {
-  color: var(--primary, #1565C0);
+  color: var(--primary, #F57C00);
   font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 .pr-divider {
@@ -328,8 +331,8 @@ async function submitReport() {
   box-sizing: border-box;
 }
 .pr-field input:focus {
-  border-color: var(--primary, #1565C0);
-  box-shadow: 0 0 0 2px rgba(21,101,192,0.12);
+  border-color: var(--primary, #F57C00);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring, rgba(245,124,0,0.22));
 }
 
 .pr-method-btns {
@@ -407,7 +410,7 @@ async function submitReport() {
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(135deg, #1565C0, #42A5F5);
+  background: var(--ds-brand-gradient, linear-gradient(135deg, #FFB300, #F57C00));
   color: #fff;
   font-size: 16px;
   font-weight: 600;
