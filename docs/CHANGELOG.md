@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — ops(deps): 修補 symfony/mime HIGH 安全漏洞，解除後端 PR merge 阻擋
+
+- Security: `composer update symfony/mime` v5.4.45 → v5.4.52（修補 CVE-2026-45067 CRLF/SMTP header injection，HIGH）；連帶小幅升級 guzzle/pusher、移除已不需要的 paragonie/sodium_compat。CI composer audit HIGH/CRITICAL gate 恢復通過。
+- 開發備註：先前所有 backend PR 因此 HIGH CVE 被 composer audit gate 擋住（#557 等）。本次僅動 `backend/composer.lock`（無直接 constraint 變更）。
+
 ## 2026-05-30 — fix(attendance): 學生到班後不再同時顯示「請假自動順延」（#555）
 
 - Fixed: 學生實際到班並點名後，出缺勤畫面不再殘留「請假自動順延」標記，避免「到班」與「請假順延」狀態矛盾。
