@@ -674,6 +674,10 @@ class PaymentReportController extends Controller
         $periodStart = null;
         $periodEnd = null;
         $attendedDates = [];
+        // (#554) 收據上課日期：除了已上課（attended）日期外，堂數制再補列「已購但尚未上課」
+        // 的預期堂次，補足到已購堂數，讓家長看到的堂數與實付堂數一致。
+        // 結構：[{ date: 'Y/m/d', expected: bool }]。attended_dates 保留供既有相容。
+        $sessionDates = [];
         if ($sc) {
             if ($sc->ScheduleMode === 'date') {
                 $periodStart = $report->payment_date ? Carbon::parse($report->payment_date)->startOfMonth()->format('Y/m/d') : null;
@@ -698,6 +702,30 @@ class PaymentReportController extends Controller
                 ->map(fn ($d) => Carbon::parse((string) $d)->format('Y/m/d'))
                 ->values()
                 ->all();
+
+            $sessionDates = array_map(fn ($d) => ['date' => $d, 'expected' => false], $attendedDates);
+
+            // 月結制（date）以月份為單位，不補預期堂次；僅堂數制補足到已購堂數。
+            if ($sc->ScheduleMode !== 'date') {
+                $purchased = (int) ($sc->SessionCount ?? 0);
+                // $needed = null 代表未設已購堂數（不限制，列出全部尚未上課的排課）
+                $needed = $purchased > 0 ? max(0, $purchased - count($attendedDates)) : null;
+                if ($needed === null || $needed > 0) {
+                    $upcoming = \App\Models\ClassSession::where('StudentClassID', $sc->ID)
+                        ->whereIn('Status', ['scheduled', 'rescheduled'])
+                        ->orderBy('SessionDate')
+                        ->pluck('SessionDate')
+                        ->map(fn ($d) => Carbon::parse((string) $d)->format('Y/m/d'))
+                        ->values()
+                        ->all();
+                    if ($needed !== null) {
+                        $upcoming = array_slice($upcoming, 0, $needed);
+                    }
+                    foreach ($upcoming as $d) {
+                        $sessionDates[] = ['date' => $d, 'expected' => true];
+                    }
+                }
+            }
         }
 
         $campusName = '';
@@ -715,6 +743,7 @@ class PaymentReportController extends Controller
             'period_start'     => $periodStart,
             'period_end'       => $periodEnd,
             'attended_dates'   => $attendedDates,
+            'session_dates'    => $sessionDates,
             'payment_date'     => $report->payment_date?->format('Y/m/d'),
             'payment_method'   => $report->payment_method,
             'amount'           => (float) $report->reported_amount,

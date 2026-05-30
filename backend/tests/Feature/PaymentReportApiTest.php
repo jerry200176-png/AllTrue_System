@@ -789,6 +789,112 @@ class PaymentReportApiTest extends TestCase
         $this->assertStringStartsWith('R-', $res->json('receipt_no'));
     }
 
+    // (#554) 堂數制收據：除已上課堂次外，補列「已購但尚未上課」的預期堂次，補足到已購堂數
+    public function test_receipt_lists_expected_future_sessions_for_count_mode(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['SessionCount' => 8, 'Charge' => 8800]);
+
+        for ($i = 1; $i <= 7; $i++) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-05-' . str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+        // 第 8 堂：已排課、尚未上課（預期）
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-05-29',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-05-01',
+            'payment_method' => 'cash',
+            'reported_amount' => 8800,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'receipt-expected-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk();
+        // attended_dates 維持只含已上課（向後相容）
+        $this->assertCount(7, $res->json('attended_dates'));
+        // session_dates 補足到 8 堂，最後一堂為預期
+        $sessionDates = $res->json('session_dates');
+        $this->assertCount(8, $sessionDates);
+        $expectedOnly = array_values(array_filter($sessionDates, fn ($s) => $s['expected'] === true));
+        $attendedOnly = array_values(array_filter($sessionDates, fn ($s) => $s['expected'] === false));
+        $this->assertCount(7, $attendedOnly);
+        $this->assertCount(1, $expectedOnly);
+        $this->assertSame('2026/05/29', $expectedOnly[0]['date']);
+    }
+
+    // 已上課堂數已達已購堂數時，不再補預期（即使仍有未來排課）
+    public function test_receipt_does_not_add_expected_when_attended_reaches_purchased_count(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, ['SessionCount' => 3, 'Charge' => 3300]);
+
+        for ($i = 1; $i <= 3; $i++) {
+            ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-05-0' . $i,
+                'StartTime' => '18:00',
+                'EndTime' => '20:00',
+                'Status' => 'attended',
+            ]);
+        }
+        ClassSession::create([
+            'StudentClassID' => $sc->ID,
+            'SessionDate' => '2026-05-20',
+            'StartTime' => '18:00',
+            'EndTime' => '20:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $report = PaymentReport::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'reported_by_name' => $student->name,
+            'payment_date' => '2026-05-01',
+            'payment_method' => 'cash',
+            'reported_amount' => 3300,
+            'status' => 'confirmed',
+            'confirmed_at' => Carbon::now(),
+            'confirmed_by' => 1,
+            'report_token_hash' => hash('sha256', 'receipt-nocap-' . uniqid()),
+            'token_expires_at' => Carbon::now()->addDay(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/payment-reports/{$report->id}/receipt");
+
+        $res->assertOk();
+        $sessionDates = $res->json('session_dates');
+        $this->assertCount(3, $sessionDates);
+        $this->assertSame(0, count(array_filter($sessionDates, fn ($s) => $s['expected'] === true)));
+    }
+
     public function test_receipt_rejects_cross_campus_report(): void
     {
         $token = $this->createDirectorToken([2]);
