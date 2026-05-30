@@ -1220,6 +1220,7 @@ import {
   resolveLearningSessionState,
 } from '../lib/sessionConsistency';
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
+import { resolveDeepLinkBranchId } from '../lib/learningRecordTarget';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -3785,16 +3786,20 @@ const openTargetRecord = () => {
  * 若 sessionDatesByClassId 尚未載入，由後續 watch 補觸發。
  */
 const _pendingTargetSession = ref(null);
-const fetchTargetSessionEvent = async ({ classSessionId, sessionDate } = {}) => {
+const fetchTargetSessionEvent = async ({ classSessionId, sessionDate, branchId } = {}) => {
   const targetId = Number(classSessionId || 0);
   const dateStr = String(sessionDate || '').slice(0, 10);
   if (!targetId || !dateStr) return null;
   try {
     const token = await getToken();
     if (!token) return null;
+    // (#54 / #82) 補填提醒可跨分校，且從工作台切換分校未必已生效；用深連結帶入的
+    // 目標分校查（退回目前分校），避免「提醒看得到、點進去查無該堂」。
+    const lookupBranchId = resolveDeepLinkBranchId({ targetBranchId: branchId, currentBranchId: props.branchId });
+    if (!lookupBranchId) return null;
     const { items } = await fetchClassSessions({
       token,
-      branchId: props.branchId,
+      branchId: lookupBranchId,
       start: dateStr,
       end: dateStr,
       perPage: perfFlags.SESSION_MAX_PER_PAGE,
@@ -3837,7 +3842,7 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate } = {}) => 
   }
 };
 
-const openTargetSession = async ({ classSessionId, sessionDate } = {}) => {
+const openTargetSession = async ({ classSessionId, sessionDate, branchId } = {}) => {
   if (!classSessionId || !sessionDate) return;
   const dateStr = String(sessionDate).slice(0, 10);
 
@@ -3861,7 +3866,7 @@ const openTargetSession = async ({ classSessionId, sessionDate } = {}) => {
     openFromScheduleMaybe(targetEv);
     _pendingTargetSession.value = null;
   } else {
-    const fetchedEvent = await fetchTargetSessionEvent({ classSessionId, sessionDate: dateStr });
+    const fetchedEvent = await fetchTargetSessionEvent({ classSessionId, sessionDate: dateStr, branchId });
     if (fetchedEvent?.skip) {
       _pendingTargetSession.value = null;
       return;
@@ -3871,8 +3876,8 @@ const openTargetSession = async ({ classSessionId, sessionDate } = {}) => {
       _pendingTargetSession.value = null;
       return;
     }
-    // sessionDatesByClassId 可能還沒載入，先暫存等資料到齊後觸發
-    _pendingTargetSession.value = { classSessionId, sessionDate };
+    // sessionDatesByClassId 可能還沒載入，先暫存等資料到齊後觸發（保留目標分校）
+    _pendingTargetSession.value = { classSessionId, sessionDate, branchId };
   }
 };
 
