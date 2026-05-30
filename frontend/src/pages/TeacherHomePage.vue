@@ -1435,8 +1435,8 @@ onBeforeUnmount(() => {
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
 .th-mission-card {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
   border-radius: 12px;
   padding: 10px;
   margin-bottom: 10px;
@@ -1445,17 +1445,20 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #1e3a8a;
+  color: var(--ds-ink);
+  font-weight: 700;
   font-size: 13px;
   margin-bottom: 6px;
 }
 .th-mission-remain {
   margin-left: auto;
   font-size: 12px;
-  color: #1d4ed8;
-  background: #dbeafe;
+  font-weight: 600;
+  color: var(--ds-primary-deep);
+  background: var(--ds-primary-wash);
   border-radius: 999px;
   padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
 }
 .th-mission-empty {
   font-size: 12px;
@@ -1463,8 +1466,8 @@ onBeforeUnmount(() => {
 }
 .th-mission-row {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  background: #fff;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
   border-radius: 10px;
   text-align: left;
   padding: 8px 10px;
@@ -1535,7 +1538,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #1e3a8a;
+  color: var(--ds-ink);
   margin-bottom: 8px;
 }
 .th-feedback-metric__row {
