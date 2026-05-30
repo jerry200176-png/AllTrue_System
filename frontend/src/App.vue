@@ -978,8 +978,14 @@ function onNavigateLearningFromTeacherHome(payload = {}) {
     learningTargetSession.value = null;
   } else {
     learningTargetRecordId.value = payload?.recordId || null;
+    // 帶上目標分校：補填提醒可跨分校，currentBranch 的 prop 更新與 target 的 watcher
+    // 可能同 tick 競態；讓 LearningRecordsPage 用此分校查課次，避免查無該堂。(#54 / #82)
     learningTargetSession.value = payload?.classSessionId
-      ? { classSessionId: payload.classSessionId, sessionDate: payload.sessionDate }
+      ? {
+          classSessionId: payload.classSessionId,
+          sessionDate: payload.sessionDate,
+          branchId: targetBranchId > 0 ? targetBranchId : null,
+        }
       : null;
   }
   const isTaskJump = isTeacher.value

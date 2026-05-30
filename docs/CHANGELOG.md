@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — fix(learning): 補填提醒跨分校點入也能正確開啟該堂評量（#54 / #82）
+
+- Fixed: 從教學工作台「補填提醒」點入填寫評量時，若該堂屬於其他分校，現在也能正確開啟該堂的評量填寫，不再出現「提醒看得到、點進去卻找不到該堂課」。
+- 開發備註：補填提醒跨分校列出 attended+missing 課次，但填寫頁深連結原以 `props.branchId` 查 class-sessions，分校切換 prop 更新與 target watcher 同 tick 競態時會查無。改由深連結事件帶 `branchId`（App.vue `onNavigateLearningFromTeacherHome` 補上），`LearningRecordsPage::fetchTargetSessionEvent` 以新純函式 `lib/learningRecordTarget.js::resolveDeepLinkBranchId`（目標分校優先、退回目前分校）決定查詢分校。新增 node 測試 `test:learning-record-target`（併入 build）。in-app #54 / #82。
+
 ## 2026-05-30 — fix(course-mgmt): 共用方案可直接設定總堂數（#553）
 
 - Fixed: 共用堂數（多科共用方案）的課程，現在主任可在「加購／設定總堂數」中直接把方案總堂數設定為指定數字（不再只能加購）；調整會同步方案所有科目，且不可低於已使用堂數。
