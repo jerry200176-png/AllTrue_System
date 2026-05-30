@@ -1557,7 +1557,7 @@ onBeforeUnmount(() => {
   border: 1.5px solid var(--border); background: var(--card-bg);
   cursor: pointer; transition: var(--transition); text-align: left;
 }
-.th-action-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(255,167,38,0.12); }
+.th-action-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(83,58,253,0.12); }
 .th-action-btn:active { transform: scale(0.99); }
 
 .th-action-icon-wrap {
@@ -1631,7 +1631,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border); background: var(--card-bg);
   transition: var(--transition);
 }
-.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(255,167,38,0.10); }
+.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(83,58,253,0.10); }
 .th-overdue-date {
   font-size: 13px; font-weight: 600; color: var(--accent);
   min-width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -1643,11 +1643,11 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; margin-top: 10px; padding: 8px 0;
   border: none; border-radius: 8px;
-  background: rgba(255,167,38,0.08); color: var(--accent);
+  background: rgba(83,58,253,0.08); color: var(--accent);
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: var(--transition);
 }
-.th-overdue-more:hover { background: rgba(255,167,38,0.16); }
+.th-overdue-more:hover { background: rgba(83,58,253,0.16); }
 
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }
@@ -1683,7 +1683,7 @@ onBeforeUnmount(() => {
 .th-day-summary::-webkit-details-marker { display: none; }
 
 .th-day-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
-.th-day-dot-today { background: var(--accent); box-shadow: 0 0 0 3px rgba(255,167,38,0.25); }
+.th-day-dot-today { background: var(--accent); box-shadow: 0 0 0 3px rgba(83,58,253,0.25); }
 .th-day-label { min-width: 36px; }
 .th-day-short-date { color: var(--text-light); font-weight: 500; }
 .th-today-tag {
@@ -1692,8 +1692,8 @@ onBeforeUnmount(() => {
 }
 .th-day-count { margin-left: auto; font-size: 12px; color: var(--text-light); font-weight: 500; }
 
-.th-day-today { background: rgba(255,167,38,0.04); }
-[data-theme="dark"] .th-day-today { background: rgba(255,167,38,0.06); }
+.th-day-today { background: rgba(83,58,253,0.04); }
+[data-theme="dark"] .th-day-today { background: rgba(83,58,253,0.06); }
 
 .th-day-empty { padding: 8px 20px; font-size: 13px; color: var(--text-light); }
 
