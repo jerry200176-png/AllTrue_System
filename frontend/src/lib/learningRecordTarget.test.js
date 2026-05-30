@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveDeepLinkBranchId } from './learningRecordTarget.js';
+import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate } from './learningRecordTarget.js';
 
 // 核心回歸 (#54 / #82)：深連結帶的目標分校與目前分校不同時，必須用「目標分校」查課次，
 // 否則跨分校的補填提醒點進去會查無該堂。
@@ -35,6 +35,31 @@ import { resolveDeepLinkBranchId } from './learningRecordTarget.js';
 {
   assert.equal(resolveDeepLinkBranchId({}), null);
   assert.equal(resolveDeepLinkBranchId({ targetBranchId: 0, currentBranchId: 0 }), null);
+}
+
+// shouldLiftDefaultWindowForDate (#105 UX)
+// 存檔的評量早於視窗起點 → 需解除視窗，否則新增後會被濾掉看不到
+{
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-01-10', windowStart: '2026-03-01' }), true);
+}
+// 視窗內 → 不需解除
+{
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-03-15', windowStart: '2026-03-01' }), false);
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-03-01', windowStart: '2026-03-01' }), false);
+}
+// 未套用視窗（windowStart 空，例如待審 tab 或已關閉視窗）→ 永不解除
+{
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-01-10', windowStart: '' }), false);
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-01-10' }), false);
+}
+// 無有效日期 → 不解除（避免誤觸）
+{
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '', windowStart: '2026-03-01' }), false);
+  assert.equal(shouldLiftDefaultWindowForDate({ windowStart: '2026-03-01' }), false);
+}
+// 含時間字串會被切到日期再比較
+{
+  assert.equal(shouldLiftDefaultWindowForDate({ savedDate: '2026-01-10T19:00:00', windowStart: '2026-03-01' }), true);
 }
 
 console.log('learningRecordTarget.test.js OK');
