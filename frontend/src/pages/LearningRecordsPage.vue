@@ -17,46 +17,6 @@
       </div>
     </div>
 
-    <!-- KPI Status Overview Bar (teacher + director) -->
-    <div v-if="isTeacher || isDirectorRole" class="lr-kpi-bar card">
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-missing', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'all', teacherPriorityFilter = 'unfilled')
-          : (reviewTab = 'all', onlyUnfilled = true)"
-      >
-        <span class="lr-kpi-num">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
-        <span class="lr-kpi-label">未填</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-pending', { active: isTeacher ? teacherFilterTab === 'pending' && teacherPriorityFilter === 'all' : reviewTab === 'pending' && !onlyUnfilled }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'pending', teacherPriorityFilter = 'all')
-          : (reviewTab = 'pending', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ kpiPendingOnlyCount }}</span>
-        <span class="lr-kpi-label">待審</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-changes', { active: isTeacher ? teacherFilterTab === 'changes_requested' : reviewTab === 'changes_requested' }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'changes_requested', teacherPriorityFilter = 'all')
-          : (reviewTab = 'changes_requested', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ changesRequestedCount }}</span>
-        <span class="lr-kpi-label">需修改</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-approved', { active: isTeacher ? teacherFilterTab === 'approved' : reviewTab === 'approved' }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'approved', teacherPriorityFilter = 'all')
-          : (reviewTab = 'approved', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ approvedCount }}</span>
-        <span class="lr-kpi-label">已核准</span>
-      </button>
-    </div>
-
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
       <div class="lr-tabs-row">
@@ -64,7 +24,7 @@
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
         </button>
         <button :class="['lr-tab', { active: teacherFilterTab === 'pending' }]" @click="teacherFilterTab = 'pending'">
-          待審核
+          待審核 <span v-if="kpiPendingOnlyCount > 0" class="lr-tab-count">{{ kpiPendingOnlyCount }}</span>
         </button>
         <button :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]" @click="teacherFilterTab = 'changes_requested'">
           需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
@@ -116,6 +76,13 @@
 
     <div v-if="isTeacher || isDirectorRole" class="lr-filters-bar card">
       <div class="lr-filters-quick">
+        <button
+          v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+          :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+          @click="toggleUnfilledShortcut()"
+        >
+          未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
+        </button>
         <button
           v-if="unreadParentFeedbackCount > 0"
           :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
@@ -1429,6 +1396,18 @@ const activeSecondaryFilterCount = computed(() => {
   if (feedbackFilter.value !== 'all') n += 1;
   return n;
 });
+function toggleUnfilledShortcut() {
+  if (isTeacher.value) {
+    const on = teacherPriorityFilter.value === 'unfilled';
+    teacherFilterTab.value = 'all';
+    teacherPriorityFilter.value = on ? 'all' : 'unfilled';
+    if (!on) showMoreFilters.value = true;
+  } else {
+    const on = onlyUnfilled.value;
+    if (!on) reviewTab.value = 'all';
+    onlyUnfilled.value = !on;
+  }
+}
 watch(reviewTab, (t) => {
   if (!isDirectorRole.value) return;
   if (t === 'rejected' && onlyUnfilled.value) onlyUnfilled.value = false;
@@ -4358,46 +4337,6 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 /* ── Review / Filter Tabs ── */
-/* ── KPI Status Bar ── */
-.lr-kpi-bar {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-}
-.lr-kpi-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 8px 8px;
-  border-radius: 10px;
-  border: 1.5px solid transparent;
-  background: var(--card-bg, #fff);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  gap: 2px;
-}
-.lr-kpi-card:hover { border-color: var(--border); }
-.lr-kpi-card.active { border-color: currentColor; background: color-mix(in srgb, currentColor 8%, transparent); }
-.lr-kpi-num {
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-.lr-kpi-label {
-  font-size: 11px;
-  color: var(--text-light);
-  font-weight: 500;
-}
-.lr-kpi-missing { color: var(--ds-ink-mute); }
-.lr-kpi-pending { color: var(--ds-warning); }
-.lr-kpi-changes { color: var(--ds-danger); }
-.lr-kpi-approved { color: var(--ds-success); }
-@media (max-width: 480px) {
-  .lr-kpi-bar { padding: 8px; gap: 6px; }
-  .lr-kpi-num { font-size: 18px; }
-}
 
 .lr-review-tabs {
   margin-bottom: 12px;
@@ -7415,64 +7354,6 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   font-size: 15px;
   color: var(--ios-label-secondary);
 }
-
-/* KPI bar → iOS widget-style pills */
-.lr-page--teacher .lr-kpi-bar {
-  display: flex;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--ios-radius);
-  background: var(--ios-surface);
-  box-shadow: var(--ios-shadow);
-  border: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.lr-page--teacher .lr-kpi-bar::-webkit-scrollbar { display: none; }
-.lr-page--teacher .lr-kpi-card {
-  flex: 1;
-  min-width: 64px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 12px 8px;
-  border-radius: 12px;
-  background: var(--ios-surface-secondary);
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.lr-page--teacher .lr-kpi-card:active { opacity: 0.7; }
-.lr-page--teacher .lr-kpi-card.active {
-  background: var(--ios-accent);
-}
-.lr-page--teacher .lr-kpi-card.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-card.active .lr-kpi-label {
-  color: #fff;
-}
-.lr-page--teacher .lr-kpi-num {
-  font-family: var(--ios-font);
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--ios-label);
-  line-height: 1;
-}
-.lr-page--teacher .lr-kpi-label {
-  font-family: var(--ios-font);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ios-label-secondary);
-  letter-spacing: 0.2px;
-}
-.lr-page--teacher .lr-kpi-missing .lr-kpi-num { color: #ff3b30; }
-.lr-page--teacher .lr-kpi-pending .lr-kpi-num { color: #ff9500; }
-.lr-page--teacher .lr-kpi-changes .lr-kpi-num { color: #ff6b00; }
-.lr-page--teacher .lr-kpi-approved .lr-kpi-num { color: #34c759; }
-.lr-page--teacher .lr-kpi-missing.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-pending.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-changes.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-approved.active .lr-kpi-num { color: #fff; }
 
 /* Teacher schedule card */
 .lr-page--teacher .teacher-schedule {
