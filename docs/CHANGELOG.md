@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 全站主色改回 logo 橘黃暖色（與登入頁一致）
+
+- Changed: 系統的主要強調色（按鈕、連結、重點標示、焦點）統一改成 logo／登入頁那種溫暖的橘黃色，取代先前的靛藍，讓整體更有品牌一致感、更耐看。主任儀表板頂端也加了一條品牌暖色識別條。版面結構與功能完全不變。
+- 開發備註：純前端，`styles.css` 把 `--ds-primary*` / `--ds-info*` token（light + dark）重新指向 amber→orange（`#EF6C00`/`#E65100`/`#FFB300`/cream `#FFF8E1`；dark 用 `#FFB74D` 系），新增 `--ds-brand-amber/-orange/-gradient`。因主色由 token 驅動，全站 60+ 頁自動套用。`TeacherHomePage.vue` 殘留 hover 光暈改回暖色；`DirectorDashboard.vue` header 加 `--ds-brand-gradient` 頂條、kicker 改品牌橘。同步更新 docs/RULE_DESIGN_SYSTEM.md。無 DB／API 異動。
+
 ## 2026-05-30 — feat(ui): 主任儀表板與老師工作台改套 Stripe 設計系統，畫面更乾淨一致
 
 - Changed: 主任「總覽」與老師「教學工作台」改用統一的淺色設計系統，視覺更清爽不雜亂——標題與面板回歸乾淨白底細邊框、移除過重的陰影與彩色漸層底，待辦卡片不再用 7 種顏色，改為一致白卡＋單一語意色標示，數字統一等寬對齊，整體更好閱讀。功能與資料完全不變。
