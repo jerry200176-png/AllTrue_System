@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — fix(learning): 補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（#105）
+
+- Fixed: 老師替較舊的課次補填評量後，若該日期已超出「近 90 天」預設顯示範圍，系統會自動展開全部歷史，讓剛新增的那一筆立刻出現在評量列表，不會再出現「我剛新增、列表卻看不到」的困惑。
+- 開發備註：`LearningRecordsPage::submitForm` 存檔成功後，以新純函式 `lib/learningRecordTarget.js::shouldLiftDefaultWindowForDate`（剛存日期 < 視窗起點則 true）判斷，必要時設 `defaultWindowDisabled=true` 再 `fetchRecords`。既有空狀態／banner 已有「查看全部歷史」affordance。新增測試併入 `test:learning-record-target`。in-app #105。
+
 ## 2026-05-30 — fix(learning): 補填提醒跨分校點入也能正確開啟該堂評量（#54 / #82）
 
 - Fixed: 從教學工作台「補填提醒」點入填寫評量時，若該堂屬於其他分校，現在也能正確開啟該堂的評量填寫，不再出現「提醒看得到、點進去卻找不到該堂課」。

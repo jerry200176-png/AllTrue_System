@@ -22,3 +22,23 @@ export function resolveDeepLinkBranchId({ targetBranchId, currentBranchId } = {}
   if (Number.isFinite(current) && current > 0) return current;
   return null;
 }
+
+/**
+ * 剛儲存的評量是否落在「近 N 天」預設視窗之外，需自動解除視窗才看得到。
+ *
+ * 評量列表預設只顯示近 90 天，較舊記錄收在「查看全部歷史」。老師若替較舊的課次補填評量，
+ * 存檔後重新抓清單時該筆會被視窗濾掉 → 造成「我剛新增，列表卻看不到」的困惑（in-app #105）。
+ * 存檔後若日期早於視窗起點，呼叫端應解除視窗，讓剛新增的那筆穩定顯示。
+ *
+ * @param {Object} args
+ * @param {string} [args.savedDate]  剛存評量的上課日期（YYYY-MM-DD）
+ * @param {string} [args.windowStart] 目前套用的視窗起點（YYYY-MM-DD）；未套用視窗時為空字串
+ * @returns {boolean} true = 需解除預設視窗
+ */
+export function shouldLiftDefaultWindowForDate({ savedDate, windowStart } = {}) {
+  const date = String(savedDate || '').slice(0, 10);
+  const start = String(windowStart || '').slice(0, 10);
+  // 未套用視窗（start 空）或無有效日期時無需解除。日期皆 YYYY-MM-DD，可直接字串比較。
+  if (!start || !date || date.length !== 10) return false;
+  return date < start;
+}
