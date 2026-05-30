@@ -8,6 +8,8 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）
+
 ## 2026-05-30 — feat(ui): 學生/老師清單頁殘留藍色互動元素改套品牌暖色（DS rollout 清單頁）
 
 ## 2026-05-30 — feat(ui): 繳費回報頁改套品牌暖色、金額等寬對齊（DS rollout 金流頁）
