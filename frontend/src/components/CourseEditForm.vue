@@ -129,7 +129,7 @@
             placeholder="8"
             :disabled="!!packageInfo"
           />
-          <span v-if="packageInfo" class="field-hint field-hint--info">此欄位由共用方案管理，不可直接修改</span>
+          <span v-if="packageInfo" class="field-hint field-hint--info">此為共用方案堂數，請用課程列的「加購／設定總堂數」調整（會同步方案所有科目）</span>
         </div>
 
         <template v-if="form.payment_type === 'monthly'">

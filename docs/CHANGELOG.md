@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — fix(course-mgmt): 共用方案可直接設定總堂數（#553）
+
+- Fixed: 共用堂數（多科共用方案）的課程，現在主任可在「加購／設定總堂數」中直接把方案總堂數設定為指定數字（不再只能加購）；調整會同步方案所有科目，且不可低於已使用堂數。
+- 開發備註：`PurchaseSessionsModal` 在 package 模式新增「加購／設定總堂數」切換；新增純函式 `lib/packageSessions.js::computePackageNextTotal`（含 node 測試 `test:package-sessions`，已併入 build）。set 模式走既有 `PUT /course-packages/{id}` 絕對值更新（後端已支援、會同步成員），符合 §R22。編輯表單堂數欄提示改為指向此入口。in-app #132。
+
 ## 2026-05-30 — ops(deps): 修補 symfony/mime HIGH 安全漏洞，解除後端 PR merge 阻擋
 
 - Security: `composer update symfony/mime` v5.4.45 → v5.4.52（修補 CVE-2026-45067 CRLF/SMTP header injection，HIGH）；連帶小幅升級 guzzle/pusher、移除已不需要的 paragonie/sodium_compat。CI composer audit HIGH/CRITICAL gate 恢復通過。
