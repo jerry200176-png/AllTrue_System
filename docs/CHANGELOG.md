@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(billing): 堂數制收據列出預期課程並標記「(預期)」（#554）
+
+- Added: 堂數制（買 N 堂）的電子收據，除了已上課日期外，會把已購但尚未上課的堂次也列出並標記「(預期)」，補足到實付堂數，讓家長看到的堂數與實付一致（例：付 8 堂、已上 7 堂，收據會列 8 堂、最後一堂標「(預期)」）。月結制不受影響。
+- 開發備註：`PaymentReportController::receipt` 新增 `session_dates`（`[{date, expected}]`），堂數制以 `scheduled/rescheduled` 排課補足到 `SessionCount`（已上課達已購堂數則不補）；`attended_dates` 保留相容。`ReceiptModal.vue` 改讀 `session_dates`，預期堂次以灰點＋「(預期)」呈現。新增測試 `PaymentReportApiTest::test_receipt_lists_expected_future_sessions_for_count_mode`、`..._does_not_add_expected_when_attended_reaches_purchased_count`。in-app #133。
+
 ## 2026-05-30 — fix(learning): 補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（#105）
 
 - Fixed: 老師替較舊的課次補填評量後，若該日期已超出「近 90 天」預設顯示範圍，系統會自動展開全部歷史，讓剛新增的那一筆立刻出現在評量列表，不會再出現「我剛新增、列表卻看不到」的困惑。
