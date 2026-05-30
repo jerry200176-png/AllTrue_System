@@ -87,14 +87,14 @@
 
           <div v-if="unreadFeedbackCount > 0"
                class="ac ac--feedback" tabindex="0"
-               @click="emit('navigate', { target: 'learning' })"
-               @keydown.enter="emit('navigate', { target: 'learning' })">
+               @click="emit('navigate', { target: 'learning', focus: 'feedback' })"
+               @keydown.enter="emit('navigate', { target: 'learning', focus: 'feedback' })">
             <span class="material-symbols-outlined ac__icon">mark_unread_chat_alt</span>
             <div class="ac__body">
               <span class="ac__count">{{ unreadFeedbackCount }}</span>
               <span class="ac__label">筆家長回饋待看</span>
             </div>
-            <button class="ac__cta" @click.stop="emit('navigate', { target: 'learning' })">去查看</button>
+            <button class="ac__cta" @click.stop="emit('navigate', { target: 'learning', focus: 'feedback' })">去查看</button>
           </div>
 
           <div class="ac ac--import" tabindex="0"
