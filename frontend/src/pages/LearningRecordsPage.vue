@@ -1220,7 +1220,7 @@ import {
   resolveLearningSessionState,
 } from '../lib/sessionConsistency';
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
-import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate } from '../lib/learningRecordTarget';
+import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1232,7 +1232,7 @@ import {
   migrateLegacyDrafts,
 } from '../lib/learningRecordDrafts';
 
-const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read']);
 
 const feedbackPreviewOpen = ref(new Set());
@@ -3949,6 +3949,38 @@ watch(() => props.targetSession, (newSession) => {
   }
 });
 
+/**
+ * 從「家長回饋待看」CTA 導入時，把資料集放到最大並切到未讀回饋，確保有回饋的紀錄一定被載入並列出。
+ * 因 badge 計數（server 通知）與列表載入 pipeline 不同，預設待審分頁 + 90 天視窗會把回饋紀錄濾掉。(#138)
+ */
+async function applyFeedbackFocus() {
+  const s = feedbackFocusState({ isTeacher: isTeacher.value });
+  feedbackFilter.value = s.feedbackFilter;
+  onlyUnfilled.value = s.onlyUnfilled;
+  defaultWindowDisabled.value = s.liftWindow;
+  if (isTeacher.value) {
+    teacherFilterTab.value = s.teacherFilterTab;
+    teacherPriorityFilter.value = 'all';
+  } else {
+    reviewTab.value = s.reviewTab;
+  }
+  await fetchRecords();
+  // 若導入時剛好沒有「未讀」（可能已被讀過），但確實有回饋，退回「有回饋」讓使用者仍看得到。
+  if (feedbackFilter.value === 'unread'
+      && unreadParentFeedbackCount.value === 0
+      && parentFeedbackCount.value > 0) {
+    feedbackFilter.value = 'has';
+  }
+  nextTick(() => {
+    const el = document.querySelector('.lr-feedback-filter-row');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+watch(() => props.feedbackFocusToken, (t) => {
+  if (t) nextTick(() => applyFeedbackFocus());
+});
+
 // 當 sessionDatesByClassId 載入完成後，消化未完成的 pending target
 watch(
   () => Object.keys(sessionDatesByClassId.value || {}).length,
@@ -4259,6 +4291,8 @@ onMounted(async () => {
   }
 
   nextTick(() => openTargetRecord());
+  // 首次掛載即帶有回饋 focus（從其他頁點 CTA 切過來）→ 套用回饋篩選。(#138)
+  if (props.feedbackFocusToken) nextTick(() => applyFeedbackFocus());
 });
 
 watch(() => props.branchId, () => {

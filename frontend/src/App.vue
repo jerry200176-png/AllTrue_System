@@ -316,7 +316,7 @@
         @navigate-learning="onNavigateLearningFromTeacherHome"
       />
       <AttendancePage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'attendance'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" />
-      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" @feedback-read="refreshUnreadNotifications" />
+      <LearningRecordsPage v-if="!isPasswordChangeLocked && active === 'learning'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :target-record-id="learningTargetRecordId" :target-session="learningTargetSession" :feedback-focus-token="learningFeedbackFocusToken" @feedback-read="refreshUnreadNotifications" />
       <ProfileCenterPage
         v-if="(isTeacher || isDirector) && active === 'profile'"
         :token="session?.access_token ?? ''"
@@ -797,6 +797,7 @@ const active = ref('director');
 const currentBranch = ref(null); // Will be set after branches load
 const learningTargetRecordId = ref(null);
 const learningTargetSession = ref(null);
+const learningFeedbackFocusToken = ref(0);
 
 // Sidebar collapse state (desktop)
 const sidebarCollapsed = ref(localStorage.getItem('sidebar_collapsed') === 'true');
@@ -949,7 +950,7 @@ function onNavigateToSchedule({ teacherId, target }) {
   else active.value = 'course-mgmt';
 }
 
-function onNavigateFromNotifications({ target, recordId }) {
+function onNavigateFromNotifications({ target, recordId, focus }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -962,6 +963,10 @@ function onNavigateFromNotifications({ target, recordId }) {
     learningTargetRecordId.value = Number(recordId);
   } else {
     learningTargetRecordId.value = null;
+  }
+  // 「家長回饋待看」CTA：請評量頁切到回饋篩選並放大資料集，否則導過去看不到回饋。(#138)
+  if (target === 'learning' && focus === 'feedback') {
+    learningFeedbackFocusToken.value += 1;
   }
   active.value = target;
 }
