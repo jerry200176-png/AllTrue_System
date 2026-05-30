@@ -172,6 +172,57 @@ class ScheduleGuardrailsTest extends TestCase
     }
 
     /**
+     * Bug #557: a student on leave must NOT occupy teacher capacity.
+     * Two one_on_two ClassSessions sit on the same slot, but one is on leave.
+     * Rescheduling a third student in must succeed (1 real occupant < capacity 2).
+     * Revert-proof: before the fix the leave session is counted (2 occupants) → 409.
+     */
+    public function test_reschedule_allowed_when_a_slot_occupant_is_on_leave(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-leave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-leave@example.com');
+
+        $studentA = $this->createStudent(1, '在班學生A');
+        $studentB = $this->createStudent(1, '請假學生B');
+        $studentC = $this->createStudent(1, '欲調入學生C');
+
+        $date = '2026-06-08'; // Monday, fixed future date
+        $courseA = $this->createOneOnTwoCourse($studentA->id, $teacherId, '16:00');
+        $courseB = $this->createOneOnTwoCourse($studentB->id, $teacherId, '16:00');
+
+        // A attends normally; B is on leave that day.
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $courseA, 'SessionDate' => $date,
+            'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'scheduled',
+        ]);
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $courseB, 'SessionDate' => $date,
+            'StartTime' => '16:00', 'EndTime' => '18:00', 'Status' => 'leave',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $studentC->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_two',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+        ]);
+
+        $res->assertStatus(201);
+    }
+
+    /**
      * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
      * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
      */
@@ -745,6 +796,39 @@ class ScheduleGuardrailsTest extends TestCase
             'enable' => 1,
             'MDT' => now(),
             'Notify_Token' => '',
+        ]);
+    }
+
+    /**
+     * Insert a one_on_two StudentClass (used by capacity tests that drive
+     * occupancy through ClassSession rows). Returns the StudentClass ID.
+     */
+    private function createOneOnTwoCourse(int $studentId, int $teacherId, string $startTime): int
+    {
+        return (int) StudentClass::query()->insertGetId([
+            'StudentID' => $studentId,
+            'TeacherID' => $teacherId,
+            'ClassType' => 'one_on_two',
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'by1' => 1,
+            'Period' => 4,
+            'StartDate' => '2026-06-01',
+            'TotalHours' => 16,
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 8,
+            'UsedSessions' => 0,
+            'Charge' => 1600,
+            'Pay' => 1600,
+            'Paid' => 0,
+            'Rate' => 800,
+            'Stop' => 0,
+            'RoomID' => '1',
+            'MDate' => now(),
+            'week' => 1,
+            'time' => $startTime,
+            'ScheduleMode' => 'count',
         ]);
     }
 
