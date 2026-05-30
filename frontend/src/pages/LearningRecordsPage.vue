@@ -17,46 +17,6 @@
       </div>
     </div>
 
-    <!-- KPI Status Overview Bar (teacher + director) -->
-    <div v-if="isTeacher || isDirectorRole" class="lr-kpi-bar card">
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-missing', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'all', teacherPriorityFilter = 'unfilled')
-          : (reviewTab = 'all', onlyUnfilled = true)"
-      >
-        <span class="lr-kpi-num">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
-        <span class="lr-kpi-label">未填</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-pending', { active: isTeacher ? teacherFilterTab === 'pending' && teacherPriorityFilter === 'all' : reviewTab === 'pending' && !onlyUnfilled }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'pending', teacherPriorityFilter = 'all')
-          : (reviewTab = 'pending', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ kpiPendingOnlyCount }}</span>
-        <span class="lr-kpi-label">待審</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-changes', { active: isTeacher ? teacherFilterTab === 'changes_requested' : reviewTab === 'changes_requested' }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'changes_requested', teacherPriorityFilter = 'all')
-          : (reviewTab = 'changes_requested', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ changesRequestedCount }}</span>
-        <span class="lr-kpi-label">需修改</span>
-      </button>
-      <button
-        :class="['lr-kpi-card', 'lr-kpi-approved', { active: isTeacher ? teacherFilterTab === 'approved' : reviewTab === 'approved' }]"
-        @click="isTeacher
-          ? (teacherFilterTab = 'approved', teacherPriorityFilter = 'all')
-          : (reviewTab = 'approved', onlyUnfilled = false)"
-      >
-        <span class="lr-kpi-num">{{ approvedCount }}</span>
-        <span class="lr-kpi-label">已核准</span>
-      </button>
-    </div>
-
     <!-- Teacher quick-filter tabs -->
     <div v-if="isTeacher" class="lr-review-tabs card" data-guide="learning-teacher-tabs">
       <div class="lr-tabs-row">
@@ -64,7 +24,7 @@
           全部 <span class="lr-tab-count">{{ (records || []).length }}</span>
         </button>
         <button :class="['lr-tab', { active: teacherFilterTab === 'pending' }]" @click="teacherFilterTab = 'pending'">
-          待審核
+          待審核 <span v-if="kpiPendingOnlyCount > 0" class="lr-tab-count">{{ kpiPendingOnlyCount }}</span>
         </button>
         <button :class="['lr-tab', { active: teacherFilterTab === 'changes_requested' }]" @click="teacherFilterTab = 'changes_requested'">
           需修改 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
@@ -74,20 +34,6 @@
         </button>
       </div>
       <div class="lr-tab-hint">從課表點擊堂次 → 填寫或編輯評量。已核准的評量僅供檢視。</div>
-      <div class="lr-teacher-priority-chips">
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">
-          全部
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">
-          未填優先
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">
-          需修改
-        </button>
-        <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">
-          逾期
-        </button>
-      </div>
     </div>
 
     <!-- Director review queue tabs -->
@@ -128,17 +74,53 @@
       </div>
     </div>
 
-    <div v-if="isTeacher || isDirectorRole" class="lr-feedback-filter-row card">
-      <span class="lr-feedback-filter-label">家長回饋</span>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">
-        全部
-      </button>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
-        有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
-      </button>
-      <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
-        未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
-      </button>
+    <div v-if="isTeacher || isDirectorRole" class="lr-filters-bar card">
+      <div class="lr-filters-quick">
+        <button
+          v-if="(isTeacher ? weekTotalMissingCount : kpiUnfilledCount) > 0"
+          :class="['lr-feedback-filter-chip', 'lr-unfilled-shortcut', { active: isTeacher ? teacherPriorityFilter === 'unfilled' : onlyUnfilled }]"
+          @click="toggleUnfilledShortcut()"
+        >
+          未填 <span class="lr-tab-count warn">{{ isTeacher ? weekTotalMissingCount : kpiUnfilledCount }}</span>
+        </button>
+        <button
+          v-if="unreadParentFeedbackCount > 0"
+          :class="['lr-feedback-filter-chip', 'lr-unread-shortcut', { active: feedbackFilter === 'unread' }]"
+          @click="feedbackFilter = feedbackFilter === 'unread' ? 'all' : 'unread'; showMoreFilters = true"
+        >
+          未讀回饋 <span class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+        </button>
+        <button
+          type="button"
+          class="lr-more-filters-toggle"
+          :class="{ active: showMoreFilters || activeSecondaryFilterCount > 0 }"
+          :aria-expanded="showMoreFilters ? 'true' : 'false'"
+          @click="showMoreFilters = !showMoreFilters"
+        >
+          篩選<span v-if="activeSecondaryFilterCount > 0" class="lr-tab-count">{{ activeSecondaryFilterCount }}</span>
+          <svg class="lr-more-filters-chev" :class="{ open: showMoreFilters }" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+
+      <div v-show="showMoreFilters" class="lr-filters-panel">
+        <div v-if="isTeacher" class="lr-filter-group">
+          <span class="lr-feedback-filter-label">優先</span>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'all' }]" @click="teacherPriorityFilter = 'all'">全部</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'unfilled' }]" @click="teacherPriorityFilter = 'unfilled'">未填優先</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'changes_requested' }]" @click="teacherPriorityFilter = 'changes_requested'">需修改</button>
+          <button :class="['lr-feedback-filter-chip', { active: teacherPriorityFilter === 'overdue' }]" @click="teacherPriorityFilter = 'overdue'">逾期</button>
+        </div>
+        <div class="lr-filter-group">
+          <span class="lr-feedback-filter-label">家長回饋</span>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'all' }]" @click="feedbackFilter = 'all'">全部</button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'has' }]" @click="feedbackFilter = 'has'">
+            有回饋 <span v-if="parentFeedbackCount > 0" class="lr-tab-count">{{ parentFeedbackCount }}</span>
+          </button>
+          <button :class="['lr-feedback-filter-chip', { active: feedbackFilter === 'unread' }]" @click="feedbackFilter = 'unread'">
+            未讀回饋 <span v-if="unreadParentFeedbackCount > 0" class="lr-tab-count warn">{{ unreadParentFeedbackCount }}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <div v-if="!isTeacher && !isDirectorRole" class="card lr-teacher-entry" data-guide="learning-teacher-login-entry">
@@ -1220,7 +1202,7 @@ import {
   resolveLearningSessionState,
 } from '../lib/sessionConsistency';
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
-import { resolveDeepLinkBranchId } from '../lib/learningRecordTarget';
+import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1232,7 +1214,7 @@ import {
   migrateLegacyDrafts,
 } from '../lib/learningRecordDrafts';
 
-const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession']);
+const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', 'targetSession', 'feedbackFocusToken']);
 const emit = defineEmits(['feedback-read']);
 
 const feedbackPreviewOpen = ref(new Set());
@@ -1407,6 +1389,25 @@ const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
+const showMoreFilters = ref(false);
+const activeSecondaryFilterCount = computed(() => {
+  let n = 0;
+  if (isTeacher.value && teacherPriorityFilter.value !== 'all') n += 1;
+  if (feedbackFilter.value !== 'all') n += 1;
+  return n;
+});
+function toggleUnfilledShortcut() {
+  if (isTeacher.value) {
+    const on = teacherPriorityFilter.value === 'unfilled';
+    teacherFilterTab.value = 'all';
+    teacherPriorityFilter.value = on ? 'all' : 'unfilled';
+    if (!on) showMoreFilters.value = true;
+  } else {
+    const on = onlyUnfilled.value;
+    if (!on) reviewTab.value = 'all';
+    onlyUnfilled.value = !on;
+  }
+}
 watch(reviewTab, (t) => {
   if (!isDirectorRole.value) return;
   if (t === 'rejected' && onlyUnfilled.value) onlyUnfilled.value = false;
@@ -3272,6 +3273,12 @@ const submitForm = async () => {
     const savedRecord = await res.json().catch(() => null);
     const localRecord = buildLocalRecordFromForm(savedRecord);
     clearDraft();
+    // (#105) 若剛存的評量日期早於預設「近 N 天」視窗，自動解除視窗，
+    // 否則 fetchRecords 會把它濾掉 → 老師誤以為「新增評量後列表卻看不到」。
+    const savedDate = String(localRecord?.SessionDate || form.SessionDate || '').slice(0, 10);
+    if (shouldLiftDefaultWindowForDate({ savedDate, windowStart: resolvedDefaultWindowStart.value })) {
+      defaultWindowDisabled.value = true;
+    }
     await fetchRecords();
     if (localRecord?.id) {
       upsertRecordInList(localRecord);
@@ -3943,6 +3950,39 @@ watch(() => props.targetSession, (newSession) => {
   }
 });
 
+/**
+ * 從「家長回饋待看」CTA 導入時，把資料集放到最大並切到未讀回饋，確保有回饋的紀錄一定被載入並列出。
+ * 因 badge 計數（server 通知）與列表載入 pipeline 不同，預設待審分頁 + 90 天視窗會把回饋紀錄濾掉。(#138)
+ */
+async function applyFeedbackFocus() {
+  const s = feedbackFocusState({ isTeacher: isTeacher.value });
+  feedbackFilter.value = s.feedbackFilter;
+  onlyUnfilled.value = s.onlyUnfilled;
+  defaultWindowDisabled.value = s.liftWindow;
+  showMoreFilters.value = true;
+  if (isTeacher.value) {
+    teacherFilterTab.value = s.teacherFilterTab;
+    teacherPriorityFilter.value = 'all';
+  } else {
+    reviewTab.value = s.reviewTab;
+  }
+  await fetchRecords();
+  // 若導入時剛好沒有「未讀」（可能已被讀過），但確實有回饋，退回「有回饋」讓使用者仍看得到。
+  if (feedbackFilter.value === 'unread'
+      && unreadParentFeedbackCount.value === 0
+      && parentFeedbackCount.value > 0) {
+    feedbackFilter.value = 'has';
+  }
+  nextTick(() => {
+    const el = document.querySelector('.lr-filters-bar');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+watch(() => props.feedbackFocusToken, (t) => {
+  if (t) nextTick(() => applyFeedbackFocus());
+});
+
 // 當 sessionDatesByClassId 載入完成後，消化未完成的 pending target
 watch(
   () => Object.keys(sessionDatesByClassId.value || {}).length,
@@ -4253,6 +4293,8 @@ onMounted(async () => {
   }
 
   nextTick(() => openTargetRecord());
+  // 首次掛載即帶有回饋 focus（從其他頁點 CTA 切過來）→ 套用回饋篩選。(#138)
+  if (props.feedbackFocusToken) nextTick(() => applyFeedbackFocus());
 });
 
 watch(() => props.branchId, () => {
@@ -4295,46 +4337,6 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 /* ── Review / Filter Tabs ── */
-/* ── KPI Status Bar ── */
-.lr-kpi-bar {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
-}
-.lr-kpi-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 10px 8px 8px;
-  border-radius: 10px;
-  border: 1.5px solid transparent;
-  background: var(--card-bg, #fff);
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  gap: 2px;
-}
-.lr-kpi-card:hover { border-color: var(--border); }
-.lr-kpi-card.active { border-color: currentColor; background: color-mix(in srgb, currentColor 8%, transparent); }
-.lr-kpi-num {
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-.lr-kpi-label {
-  font-size: 11px;
-  color: var(--text-light);
-  font-weight: 500;
-}
-.lr-kpi-missing { color: #6b7280; }
-.lr-kpi-pending { color: #d97706; }
-.lr-kpi-changes { color: #ea580c; }
-.lr-kpi-approved { color: #16a34a; }
-@media (max-width: 480px) {
-  .lr-kpi-bar { padding: 8px; gap: 6px; }
-  .lr-kpi-num { font-size: 18px; }
-}
 
 .lr-review-tabs {
   margin-bottom: 12px;
@@ -4349,12 +4351,12 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 
 .lr-tab {
   padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid #e0e0e0;
-  background: #fff;
+  border-radius: 999px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
   font-size: 13px;
   cursor: pointer;
-  color: #555;
+  color: var(--ds-ink-secondary);
   transition: all 0.15s;
   display: inline-flex;
   align-items: center;
@@ -4362,14 +4364,14 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 .lr-tab:hover {
-  background: #f5f5f5;
-  border-color: #ccc;
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
 }
 
 .lr-tab.active {
-  background: #1a73e8;
-  color: #fff;
-  border-color: #1a73e8;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
+  border-color: var(--ds-primary);
 }
 
 .lr-tab-count {
@@ -4378,6 +4380,7 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   border-radius: 10px;
   background: rgba(0,0,0,0.08);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .lr-tab.active .lr-tab-count {
@@ -4386,8 +4389,8 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 .lr-tab-count.warn {
-  background: #fff3e0;
-  color: #e65100;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
 }
 
 .lr-tab.active .lr-tab-count.warn {
@@ -4396,8 +4399,8 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 }
 
 .lr-tab-count.ok {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
 }
 
 .lr-tab.active .lr-tab-count.ok {
@@ -4408,32 +4411,75 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 .lr-tab-hint {
   margin-top: 8px;
   font-size: 12px;
-  color: #888;
+  color: var(--ds-ink-mute);
 }
 
-.lr-teacher-priority-chips {
-  position: sticky;
-  top: 8px;
-  z-index: 2;
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+.lr-filters-bar {
+  margin-bottom: 12px;
+  padding: 10px 16px;
 }
 
-.lr-feedback-filter-row {
+.lr-filters-quick {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px 16px;
+}
+
+.lr-more-filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lr-more-filters-toggle:hover {
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
+}
+
+.lr-more-filters-toggle.active {
+  border-color: var(--ds-primary);
+  color: var(--ds-primary-deep);
+}
+
+.lr-more-filters-chev {
+  transition: transform 0.15s ease;
+}
+
+.lr-more-filters-chev.open {
+  transform: rotate(180deg);
+}
+
+.lr-filters-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ds-hairline);
+}
+
+.lr-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .lr-feedback-filter-label {
   font-size: 13px;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--ds-ink-mute);
 }
 
 .lr-feedback-filter-chip {
@@ -4442,24 +4488,24 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   gap: 6px;
   min-height: 32px;
   padding: 5px 12px;
-  border-radius: 16px;
-  border: 1px solid #fed7aa;
-  background: #fff7ed;
-  color: #9a3412;
+  border-radius: 999px;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .lr-feedback-filter-chip:hover {
-  background: #ffedd5;
-  border-color: #fdba74;
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
 }
 
 .lr-feedback-filter-chip.active {
-  background: #f97316;
-  border-color: #f97316;
-  color: #fff;
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+  color: var(--ds-on-primary);
 }
 
 .lr-feedback-filter-chip.active .lr-tab-count {
@@ -4486,7 +4532,8 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   gap: 8px;
   margin-top: 10px;
   padding: 8px 12px;
-  background: #e3f2fd;
+  background: var(--ds-primary-wash);
+  border: 1px solid var(--ds-hairline);
   border-radius: 8px;
   flex-wrap: wrap;
 }
@@ -4494,8 +4541,9 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 .lr-batch-count {
   font-size: 13px;
   font-weight: 600;
-  color: #1565c0;
+  color: var(--ds-primary-deep);
   margin-right: 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Template Phrases ── */
@@ -4510,23 +4558,23 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 12px;
-  border: 1px solid #e0e0e0;
-  background: #fafafa;
-  color: #555;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .lr-phrase-btn:hover {
-  background: #e3f2fd;
-  border-color: #90caf9;
-  color: #1565c0;
+  background: var(--ds-primary-wash);
+  border-color: var(--ds-primary-soft);
+  color: var(--ds-primary-deep);
 }
 
 .lr-phrase-toggle {
   border-style: dashed;
-  color: #1565c0;
-  background: #f5f9ff;
+  color: var(--ds-primary);
+  background: var(--ds-primary-wash);
 }
 
 /* ── Approved Note ── */
@@ -5086,8 +5134,8 @@ watch(resolvedDefaultWindowStart, (next, prev) => {
 .lr-input:focus,
 .lr-input:focus-visible {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  border-color: var(--ds-primary);
+  box-shadow: 0 0 0 3px var(--ds-focus-ring);
 }
 .lr-input:disabled {
   background: #f1f5f9;
@@ -7307,64 +7355,6 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   color: var(--ios-label-secondary);
 }
 
-/* KPI bar → iOS widget-style pills */
-.lr-page--teacher .lr-kpi-bar {
-  display: flex;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: var(--ios-radius);
-  background: var(--ios-surface);
-  box-shadow: var(--ios-shadow);
-  border: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.lr-page--teacher .lr-kpi-bar::-webkit-scrollbar { display: none; }
-.lr-page--teacher .lr-kpi-card {
-  flex: 1;
-  min-width: 64px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 12px 8px;
-  border-radius: 12px;
-  background: var(--ios-surface-secondary);
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.lr-page--teacher .lr-kpi-card:active { opacity: 0.7; }
-.lr-page--teacher .lr-kpi-card.active {
-  background: var(--ios-accent);
-}
-.lr-page--teacher .lr-kpi-card.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-card.active .lr-kpi-label {
-  color: #fff;
-}
-.lr-page--teacher .lr-kpi-num {
-  font-family: var(--ios-font);
-  font-size: 24px;
-  font-weight: 700;
-  color: var(--ios-label);
-  line-height: 1;
-}
-.lr-page--teacher .lr-kpi-label {
-  font-family: var(--ios-font);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ios-label-secondary);
-  letter-spacing: 0.2px;
-}
-.lr-page--teacher .lr-kpi-missing .lr-kpi-num { color: #ff3b30; }
-.lr-page--teacher .lr-kpi-pending .lr-kpi-num { color: #ff9500; }
-.lr-page--teacher .lr-kpi-changes .lr-kpi-num { color: #ff6b00; }
-.lr-page--teacher .lr-kpi-approved .lr-kpi-num { color: #34c759; }
-.lr-page--teacher .lr-kpi-missing.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-pending.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-changes.active .lr-kpi-num,
-.lr-page--teacher .lr-kpi-approved.active .lr-kpi-num { color: #fff; }
-
 /* Teacher schedule card */
 .lr-page--teacher .teacher-schedule {
   background: var(--ios-surface);
@@ -7629,12 +7619,6 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   font-size: 12px;
   color: var(--ios-label-tertiary);
   margin-top: 10px;
-}
-.lr-page--teacher .lr-teacher-priority-chips {
-  margin-top: 10px;
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
 }
 .lr-page--teacher .lr-feedback-filter-chip {
   font-family: var(--ios-font);

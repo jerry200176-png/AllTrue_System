@@ -4477,9 +4477,9 @@ onUnmounted(() => {
   border-radius: 20px;
   font-size: 13px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--primary-bg), #eef2ff);
+  background: var(--ds-primary-wash);
   color: var(--primary);
-  border: 1px solid rgba(79, 70, 229, 0.16);
+  border: 1px solid rgba(245, 124, 0, 0.18);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.78);
 }
 
@@ -4611,11 +4611,11 @@ onUnmounted(() => {
 }
 
 .action-dropdown-item:hover {
-  background: rgba(56, 189, 248, 0.12);
+  background: rgba(245, 124, 0, 0.10);
 }
 
 .action-dropdown-resume {
-  color: #2563eb;
+  color: var(--ds-primary-deep);
   font-weight: 600;
 }
 
@@ -4701,9 +4701,9 @@ button.danger:disabled {
 .btn-add-session {
   white-space: nowrap;
   border-radius: 999px;
-  border: 1px solid rgba(14, 165, 233, 0.36);
-  background: linear-gradient(135deg, #e0f2fe, #eef2ff);
-  color: #075985;
+  border: 1px solid rgba(245, 124, 0, 0.36);
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
   font-weight: 900;
   font-size: 13px;
   padding: 5px 12px;
@@ -4711,10 +4711,10 @@ button.danger:disabled {
   transition: all 0.15s ease;
 }
 .btn-add-session:hover:not(:disabled) {
-  background: linear-gradient(135deg, #bae6fd, #dbeafe);
-  border-color: #38bdf8;
+  background: var(--ds-primary-soft);
+  border-color: var(--ds-primary);
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.18);
+  box-shadow: 0 10px 24px rgba(245, 124, 0, 0.18);
 }
 .btn-add-session:disabled,
 .btn-add-session.disabled {
@@ -5349,14 +5349,14 @@ button.danger:disabled {
 .notes-toggle-btn {
   font-size: 11px;
   padding: 2px 8px;
-  border: 1px solid #c7d2fe;
+  border: 1px solid var(--ds-hairline);
   border-radius: 999px;
-  background: #eef2ff;
-  color: #4f46e5;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
   cursor: pointer;
   white-space: nowrap;
 }
-.notes-toggle-btn:hover { background: #e0e7ff; }
+.notes-toggle-btn:hover { background: var(--ds-canvas); }
 .date-chip:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(14, 165, 233, 0.14);
@@ -5534,7 +5534,7 @@ button.danger:disabled {
 }
 
 .btn-resume-primary {
-  background: #2563eb;
+  background: var(--ds-primary);
 }
 
 .tag-package {
@@ -5747,20 +5747,20 @@ button.danger:disabled {
 }
 .paid-date-hint { font-size: 11px; color: #2e7d32; margin-top: 2px; white-space: nowrap; }
 .btn-invoices {
-  border-color: #bfdbfe !important;
-  color: #1d4ed8 !important;
-  background: #eff6ff !important;
+  border-color: var(--ds-hairline) !important;
+  color: var(--ds-ink-secondary) !important;
+  background: var(--ds-canvas) !important;
 }
 .btn-invoices:hover {
-  background: #dbeafe !important;
+  background: var(--ds-canvas-soft) !important;
 }
 .btn-ledger {
-  border-color: #c7d2fe !important;
-  color: #4338ca !important;
-  background: #eef2ff !important;
+  border-color: var(--ds-hairline) !important;
+  color: var(--ds-ink-secondary) !important;
+  background: var(--ds-canvas) !important;
 }
 .btn-ledger:hover {
-  background: #e0e7ff !important;
+  background: var(--ds-canvas-soft) !important;
 }
 .invoice-modal {
   width: min(920px, calc(100vw - 32px));
@@ -6144,7 +6144,7 @@ button.danger:disabled {
 [data-theme="dark"] .history-section {
   border-top-color: #334155;
   background:
-    radial-gradient(circle at top right, rgba(59,130,246,0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(255,167,38,0.10), transparent 34%),
     #0f172a;
 }
 [data-theme="dark"] .course-page::before {
@@ -6165,7 +6165,7 @@ button.danger:disabled {
 [data-theme="dark"] .course-skeleton-group {
   border-color: #334155;
   background:
-    radial-gradient(circle at top right, rgba(59,130,246,0.13), transparent 30%),
+    radial-gradient(circle at top right, rgba(255,167,38,0.11), transparent 30%),
     #0f172a;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
 }

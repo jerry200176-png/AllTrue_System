@@ -8,6 +8,64 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 排課精靈/異常回報彈窗/互動排行條殘留藍色改套品牌暖色（DS rollout 收尾零星元件）
+
+## 2026-05-30 — feat(ui): 代課相關彈窗/卡片（選代課老師、批次請假、撤銷 Toast、近期代課）主色藍改品牌暖色（DS rollout 代課 modal 群）
+
+## 2026-05-30 — feat(ui): 課程相關彈窗（加購/續約/請假/堂次編輯/課程編輯）藍色裝飾改套品牌暖色（DS rollout 課程 modal 群）
+
+## 2026-05-30 — feat(ui): 課程管理頁殘留藍/靛色互動元素改套品牌暖色、報表按鈕統一中性（DS rollout 課程管理）
+
+## 2026-05-30 — feat(ui): 學習評量頁移除重複的 KPI 卡列，狀態分頁成為單一控制、未填/未讀回饋以捷徑呈現（#583 Phase B）
+
+## 2026-05-30 — feat(ui): 學習評量頁次要篩選（優先/家長回饋）收進「篩選」漸進揭露，預設畫面更乾淨（#583 Phase A）
+
+## 2026-05-30 — feat(ui): 智慧行事曆載入列/評量摘要/提示框藍底改中性或品牌暖色（DS rollout 行事曆）
+
+## 2026-05-30 — feat(ui): 出缺勤頁殘留藍色互動元素（focus/hover/spinner）改套品牌暖色（DS rollout 出缺勤頁）
+
+## 2026-05-30 — feat(ui): 學生/老師清單頁殘留藍色互動元素改套品牌暖色（DS rollout 清單頁）
+
+## 2026-05-30 — feat(ui): 繳費回報頁改套品牌暖色、金額等寬對齊（DS rollout 金流頁）
+
+- Changed: 家長用的「繳費回報」頁原本是藍色頂條與藍色送出鈕，與品牌不一致；改成 logo 橘黃暖色，金額改等寬數字對齊更好讀。「當月學收」頁的統計數字也統一等寬對齊。功能不變。
+- 開發備註：`PayReportPage.vue` `.pr-brand-bar`/`.pr-submit-btn` 藍漸層 → `--ds-brand-gradient`，`.pr-amount`/`.pr-info-value` + 焦點環改 `--ds-*`、加 `tabular-nums`；`TuitionReportPage.vue` `.tr-stat strong` 加 `tabular-nums`。`TuitionCollectionPage` 既已用 token + tabular，無需更動。對應 GitHub #563。無 DB／API 異動。
+
+## 2026-05-30 — fix(learning): 主任點「家長回饋待看」導到評量頁能直接看到回饋（#138）
+
+- Fixed: 主任在總覽點「家長回饋待看 → 去查看」，導到評量頁卻看不到任何家長回饋的問題。現在點過去會自動切到「未讀回饋」、放大資料範圍（全部分頁、解除近 90 天預設視窗），並捲到回饋篩選列，確保有回饋的紀錄一定列出；若剛好沒有未讀，會自動退回顯示「有回饋」。
+- 開發備註：根因與 #54/#105 同類——CTA 未讀數來自 server 通知 badge，但列表預設用待審分頁＋90 天視窗載入，回饋多在較舊的已核准課次而被濾掉。`DirectorDashboard` 回饋 CTA 改 emit `{target:'learning',focus:'feedback'}`；`App.vue` 以 `learningFeedbackFocusToken` 傳給 `LearningRecordsPage`；新增純函式 `lib/learningRecordTarget.js::feedbackFocusState` + 單元測試，元件 `applyFeedbackFocus()` 套用篩選後重抓並含 unread→has 退回。in-app #138（GitHub #580）。無 DB／API 異動。
+
+## 2026-05-30 — feat(ui): 老師工作台內層區塊改用一致色系，減少雜亂
+
+- Changed: 老師「今日待辦」卡片內的「今日任務中心」「家長回饋追蹤」等小區塊，原本用藍色點綴，和全站品牌橘黃不一致、看起來雜。現在統一成乾淨灰底＋細邊框，標題用一致的深墨色，需處理數量徽章改品牌暖色，整張卡更協調。功能不變。
+- 開發備註：`TeacherHomePage.vue` scoped CSS：`.th-mission-card`/`.th-mission-row` 藍 `#eff6ff/#bfdbfe/#cbd5e1` → `--ds-canvas-soft/-hairline`；`.th-mission-head`、`.th-feedback-metric__head` `#1e3a8a` → `--ds-ink`；`.th-mission-remain` 藍徽章 → `--ds-primary-wash/-deep` + tabular。無 DB／API 異動。
+
+## 2026-05-30 — feat(ui): 學習評量頁的篩選列改套統一品牌色，減少雜亂
+
+- Changed: 學習評量／我的課表評量頁面，原本分頁、家長回饋、優先篩選用了藍色、橘色等好幾種不同顏色按鈕，看起來雜亂。現在統一成同一套品牌橘黃（選中態）＋灰底膠囊（未選），數字統計顏色也對齊系統的待辦/警示/完成語意色，整頁更清爽好讀。功能與篩選邏輯完全不變。
+- 開發備註：`LearningRecordsPage.vue` scoped CSS：`.lr-tab`（active 由 `#1a73e8` → `--ds-primary`）、`.lr-feedback-filter-chip`/優先 chips（橘 `#f97316` → 中性膠囊 + brand active）、`.lr-kpi-*` 與 `.lr-tab-count.warn/.ok` 改 `--ds-warning/danger/success/-wash`、`.lr-input:focus` 改 `--ds-focus-ring`、`.lr-batch-bar`/`.lr-phrase-*` 藍 → brand wash。數字加 `tabular-nums`。對應 docs/RULE_DESIGN_SYSTEM.md rollout（評量頁）。無 DB／API 異動。
+
+## 2026-05-30 — feat(ui): 全站主色改回 logo 橘黃暖色（與登入頁一致）
+
+- Changed: 系統的主要強調色（按鈕、連結、重點標示、焦點）統一改成 logo／登入頁那種溫暖的橘黃色，取代先前的靛藍，讓整體更有品牌一致感、更耐看。主任儀表板頂端也加了一條品牌暖色識別條。版面結構與功能完全不變。
+- 開發備註：純前端，`styles.css` 把 `--ds-primary*` / `--ds-info*` token（light + dark）重新指向 amber→orange（`#EF6C00`/`#E65100`/`#FFB300`/cream `#FFF8E1`；dark 用 `#FFB74D` 系），新增 `--ds-brand-amber/-orange/-gradient`。因主色由 token 驅動，全站 60+ 頁自動套用。`TeacherHomePage.vue` 殘留 hover 光暈改回暖色；`DirectorDashboard.vue` header 加 `--ds-brand-gradient` 頂條、kicker 改品牌橘。同步更新 docs/RULE_DESIGN_SYSTEM.md。無 DB／API 異動。
+
+## 2026-05-30 — feat(ui): 主任儀表板與老師工作台改套 Stripe 設計系統，畫面更乾淨一致
+
+- Changed: 主任「總覽」與老師「教學工作台」改用統一的淺色設計系統，視覺更清爽不雜亂——標題與面板回歸乾淨白底細邊框、移除過重的陰影與彩色漸層底，待辦卡片不再用 7 種顏色，改為一致白卡＋單一語意色標示，數字統一等寬對齊，整體更好閱讀。功能與資料完全不變。
+- 開發備註：純前端 scoped CSS 調整。`DirectorDashboard.vue` 移除 `.dash::before` gradient mesh、header 改 16px 圓角／輕陰影／標題縮至 spec、`.ac` 待辦卡彩虹 `::before` 收斂為單一 `border-left` 語意色＋icon 色、`.progress-board`/`.pb`/`.wp` 改 `--ds-*` token 與輕陰影；`TeacherHomePage.vue` 將殘留橘色 `rgba(255,167,38,*)` hover/底色重新指向 indigo。對應 docs/RULE_DESIGN_SYSTEM.md 逐頁 rollout #1。無 DB／API 異動。
+
+## 2026-05-30 — feat(billing): 堂數制收據列出預期課程並標記「(預期)」（#554）
+
+- Added: 堂數制（買 N 堂）的電子收據，除了已上課日期外，會把已購但尚未上課的堂次也列出並標記「(預期)」，補足到實付堂數，讓家長看到的堂數與實付一致（例：付 8 堂、已上 7 堂，收據會列 8 堂、最後一堂標「(預期)」）。月結制不受影響。
+- 開發備註：`PaymentReportController::receipt` 新增 `session_dates`（`[{date, expected}]`），堂數制以 `scheduled/rescheduled` 排課補足到 `SessionCount`（已上課達已購堂數則不補）；`attended_dates` 保留相容。`ReceiptModal.vue` 改讀 `session_dates`，預期堂次以灰點＋「(預期)」呈現。新增測試 `PaymentReportApiTest::test_receipt_lists_expected_future_sessions_for_count_mode`、`..._does_not_add_expected_when_attended_reaches_purchased_count`。in-app #133。
+
+## 2026-05-30 — fix(learning): 補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（#105）
+
+- Fixed: 老師替較舊的課次補填評量後，若該日期已超出「近 90 天」預設顯示範圍，系統會自動展開全部歷史，讓剛新增的那一筆立刻出現在評量列表，不會再出現「我剛新增、列表卻看不到」的困惑。
+- 開發備註：`LearningRecordsPage::submitForm` 存檔成功後，以新純函式 `lib/learningRecordTarget.js::shouldLiftDefaultWindowForDate`（剛存日期 < 視窗起點則 true）判斷，必要時設 `defaultWindowDisabled=true` 再 `fetchRecords`。既有空狀態／banner 已有「查看全部歷史」affordance。新增測試併入 `test:learning-record-target`。in-app #105。
+
 ## 2026-05-30 — fix(learning): 補填提醒跨分校點入也能正確開啟該堂評量（#54 / #82）
 
 - Fixed: 從教學工作台「補填提醒」點入填寫評量時，若該堂屬於其他分校，現在也能正確開啟該堂的評量填寫，不再出現「提醒看得到、點進去卻找不到該堂課」。

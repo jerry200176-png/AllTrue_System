@@ -1435,8 +1435,8 @@ onBeforeUnmount(() => {
 .th-today { padding: 20px; }
 .th-actions { display: flex; flex-direction: column; gap: 10px; }
 .th-mission-card {
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
   border-radius: 12px;
   padding: 10px;
   margin-bottom: 10px;
@@ -1445,17 +1445,20 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #1e3a8a;
+  color: var(--ds-ink);
+  font-weight: 700;
   font-size: 13px;
   margin-bottom: 6px;
 }
 .th-mission-remain {
   margin-left: auto;
   font-size: 12px;
-  color: #1d4ed8;
-  background: #dbeafe;
+  font-weight: 600;
+  color: var(--ds-primary-deep);
+  background: var(--ds-primary-wash);
   border-radius: 999px;
   padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
 }
 .th-mission-empty {
   font-size: 12px;
@@ -1463,8 +1466,8 @@ onBeforeUnmount(() => {
 }
 .th-mission-row {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  background: #fff;
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-canvas);
   border-radius: 10px;
   text-align: left;
   padding: 8px 10px;
@@ -1535,7 +1538,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   font-size: 13px;
   font-weight: 700;
-  color: #1e3a8a;
+  color: var(--ds-ink);
   margin-bottom: 8px;
 }
 .th-feedback-metric__row {
@@ -1557,7 +1560,7 @@ onBeforeUnmount(() => {
   border: 1.5px solid var(--border); background: var(--card-bg);
   cursor: pointer; transition: var(--transition); text-align: left;
 }
-.th-action-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(255,167,38,0.12); }
+.th-action-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(245,124,0,0.12); }
 .th-action-btn:active { transform: scale(0.99); }
 
 .th-action-icon-wrap {
@@ -1631,7 +1634,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border); background: var(--card-bg);
   transition: var(--transition);
 }
-.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(255,167,38,0.10); }
+.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(245,124,0,0.10); }
 .th-overdue-date {
   font-size: 13px; font-weight: 600; color: var(--accent);
   min-width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -1643,11 +1646,11 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; margin-top: 10px; padding: 8px 0;
   border: none; border-radius: 8px;
-  background: rgba(255,167,38,0.08); color: var(--accent);
+  background: rgba(245,124,0,0.08); color: var(--accent);
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: var(--transition);
 }
-.th-overdue-more:hover { background: rgba(255,167,38,0.16); }
+.th-overdue-more:hover { background: rgba(245,124,0,0.16); }
 
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }
@@ -1683,7 +1686,7 @@ onBeforeUnmount(() => {
 .th-day-summary::-webkit-details-marker { display: none; }
 
 .th-day-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
-.th-day-dot-today { background: var(--accent); box-shadow: 0 0 0 3px rgba(255,167,38,0.25); }
+.th-day-dot-today { background: var(--accent); box-shadow: 0 0 0 3px rgba(245,124,0,0.25); }
 .th-day-label { min-width: 36px; }
 .th-day-short-date { color: var(--text-light); font-weight: 500; }
 .th-today-tag {
@@ -1692,8 +1695,8 @@ onBeforeUnmount(() => {
 }
 .th-day-count { margin-left: auto; font-size: 12px; color: var(--text-light); font-weight: 500; }
 
-.th-day-today { background: rgba(255,167,38,0.04); }
-[data-theme="dark"] .th-day-today { background: rgba(255,167,38,0.06); }
+.th-day-today { background: rgba(245,124,0,0.04); }
+[data-theme="dark"] .th-day-today { background: rgba(245,124,0,0.06); }
 
 .th-day-empty { padding: 8px 20px; font-size: 13px; color: var(--text-light); }
 
