@@ -638,7 +638,7 @@ function computeEndTime(startRaw, durHours) {
   color: #374151;
   transition: background 0.15s, color 0.15s;
   &:first-child { border-right: 1px solid var(--border-main, #d1d5db); }
-  &.active { background: var(--color-primary, #1a56db); color: #fff; }
+  &.active { background: var(--ds-primary, #ef6c00); color: #fff; }
   &:disabled { opacity: 0.5; cursor: default; }
 }
 .rate-unit-hint {
