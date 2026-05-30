@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.05.30",
     "date": "2026-05-30",
     "title": "2026.05.30 版本更新",
-    "summary": "全站介面改採統一設計系統（Stripe 風格地基）；補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（）",
+    "summary": "堂數制收據列出預期課程並標記「(預期)」（）；全站介面改採統一設計系統（Stripe 風格地基）",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
+          "堂數制收據列出預期課程並標記「(預期)」（）",
           "全站介面改採統一設計系統（Stripe 風格地基）"
         ]
       },
@@ -32,6 +33,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "堂數制收據列出預期課程並標記「(預期)」（）",
       "全站介面改採統一設計系統（Stripe 風格地基）",
       "補填較舊課次評量後，列表不再因「近 90 天」視窗而看不到（）",
       "補填提醒跨分校點入也能正確開啟該堂評量（ / ）",

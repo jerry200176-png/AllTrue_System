@@ -137,8 +137,11 @@ function drawReceipt(canvas, d) {
     { label: '核帳人員', value: d.confirmed_by || '—' },
   ].filter(Boolean);
 
-  // 上課日期：直式列表，每堂一行
-  const dates = Array.isArray(d.attended_dates) && d.attended_dates.length ? d.attended_dates : [];
+  // 上課日期：直式列表，每堂一行。優先用 session_dates（含「預期」標記，#554），
+  // 否則退回舊的 attended_dates（全部視為已上課）。
+  const dates = Array.isArray(d.session_dates) && d.session_dates.length
+    ? d.session_dates.map((e) => ({ date: e?.date ?? e, expected: !!(e && e.expected) }))
+    : (Array.isArray(d.attended_dates) ? d.attended_dates.map((date) => ({ date, expected: false })) : []);
   const DATE_ROW_H = 24;
   const datesBlockH = dates.length > 0 ? 36 + dates.length * DATE_ROW_H + 8 : 36;
 
@@ -227,20 +230,23 @@ function drawReceipt(canvas, d) {
   } else {
     y += rowH;
     const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
-    dates.forEach((dateStr) => {
-      // 綠色小圓點
-      ctx.fillStyle = '#43A047';
+    dates.forEach((entry) => {
+      const dateStr = entry.date;
+      const isExpected = entry.expected;
+      // 小圓點：已上課綠色，預期（尚未上課）灰色
+      ctx.fillStyle = isExpected ? '#B0BEC5' : '#43A047';
       ctx.beginPath();
       ctx.arc(PAD + 20, y + 8, 3.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // 日期 + 星期
+      // 日期 + 星期（預期堂次加註「(預期)」）
       const dt = new Date(String(dateStr).replace(/\//g, '-') + 'T12:00:00');
       const dayLabel = isNaN(dt.getTime()) ? '' : `（週${DAY_NAMES[dt.getDay()]}）`;
-      ctx.fillStyle = '#37474F';
+      const suffix = isExpected ? '　(預期)' : '';
+      ctx.fillStyle = isExpected ? '#90A4AE' : '#37474F';
       ctx.font = '500 12px "Noto Sans TC", "Inter", sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`${dateStr}${dayLabel}`, PAD + 32, y + 12);
+      ctx.fillText(`${dateStr}${dayLabel}${suffix}`, PAD + 32, y + 12);
 
       y += DATE_ROW_H;
     });
