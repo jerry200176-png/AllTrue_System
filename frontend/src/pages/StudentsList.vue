@@ -2726,7 +2726,8 @@ table th { font-size: 12.5px; }
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #1565c0;
+  color: var(--ds-primary-deep);
+  font-variant-numeric: tabular-nums;
 }
 .bulk-btns {
   display: flex;
@@ -2736,7 +2737,7 @@ table th { font-size: 12.5px; }
 /* ═══ Filter Bar ═══ */
 .filter-bar {
   margin-bottom: 20px;
-  background: #FAFAFA;
+  background: var(--ds-canvas-soft);
   padding: 16px;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -2858,6 +2859,7 @@ table th { font-size: 12.5px; }
 }
 .subject-pill strong {
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 .subject-pill.low {
   background: #FFEBEE;
