@@ -351,10 +351,10 @@ defineExpose({ reload: load });
   color: var(--porsche-amber);
 }
 .rsc-row__badge {
-  background: rgba(37, 99, 235, 0.08);
-  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: rgba(245, 124, 0, 0.08);
+  border: 1px solid rgba(245, 124, 0, 0.18);
   border-radius: 999px;
-  color: var(--porsche-blue);
+  color: var(--ds-primary-deep, #e65100);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;

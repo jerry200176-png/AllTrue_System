@@ -357,7 +357,7 @@ async function submit() {
 }
 .tlb-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: #111827; }
 .tlb-stepper { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 6px; }
-.tlb-step--active { color: #2563eb; font-weight: 700; }
+.tlb-step--active { color: var(--ds-primary-deep, #e65100); font-weight: 700; }
 .tlb-close { background: transparent; border: 0; color: #6b7280; cursor: pointer; font-size: 14px; }
 
 /* Step 1 */
@@ -374,7 +374,7 @@ async function submit() {
   font-size: 14px;
   background: #fff;
 }
-.tlb-input:focus { border-color: #2563eb; outline: none; }
+.tlb-input:focus { border-color: var(--ds-primary, #ef6c00); outline: none; }
 
 /* Step 2 */
 .tlb-step2 {
@@ -470,8 +470,8 @@ async function submit() {
 }
 .tlb-btn--ghost { background: #fff; color: #374151; border-color: #e5e7eb; }
 .tlb-btn--ghost:hover { background: #f9fafb; }
-.tlb-btn--primary { background: #2563eb; color: #fff; }
-.tlb-btn--primary:hover { background: #1d4ed8; }
+.tlb-btn--primary { background: var(--ds-primary, #ef6c00); color: #fff; }
+.tlb-btn--primary:hover { background: var(--ds-primary-press, #d84315); }
 .tlb-btn--primary:disabled { background: #cbd5f5; cursor: not-allowed; }
 .tlb-spinner {
   width: 14px;
