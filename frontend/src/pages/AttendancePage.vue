@@ -2613,7 +2613,7 @@ watch(() => props.branchId, () => {
 .att-person-name { font-weight: 600; font-size: 13.5px; }
 .att-rfid { font-family: 'Courier New', monospace; font-size: 13px; letter-spacing: 1px; color: var(--text-light); }
 
-.att-record-row:hover { background: rgba(59,130,246,0.03); }
+.att-record-row:hover { background: rgba(245,124,0,0.04); }
 
 /* Inline edit */
 .att-inline-edit { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
@@ -3104,7 +3104,7 @@ watch(() => props.branchId, () => {
   background: var(--card-bg, #fff);
   color: var(--text-primary, #111);
 }
-.att-dialog-textarea:focus { outline: 2px solid var(--color-primary, #1a73e8); outline-offset: 1px; }
+.att-dialog-textarea:focus { outline: 2px solid var(--ds-primary, #ef6c00); outline-offset: 1px; }
 .att-dialog-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
 }
@@ -3124,7 +3124,7 @@ button.danger:hover:not(:disabled) { background: #b71c1c !important; }
   border-radius: 8px; cursor: pointer;
   transition: border-color .15s, background .15s;
 }
-.att-course-item:hover:not(.disabled) { border-color: var(--color-primary, #1a73e8); background: #f0f4ff; }
+.att-course-item:hover:not(.disabled) { border-color: var(--ds-primary, #ef6c00); background: var(--ds-primary-wash, #fff8e1); }
 .att-course-item.disabled { opacity: 0.5; cursor: not-allowed; }
 .att-course-info { display: flex; flex-direction: column; gap: 2px; }
 .att-course-name { font-size: 14px; font-weight: 500; }
@@ -3135,7 +3135,7 @@ button.danger:hover:not(:disabled) { background: #b71c1c !important; }
 /* ── spinner for month export loading ── */
 .att-spinner {
   border: 2px solid rgba(0,0,0,0.15);
-  border-top-color: var(--color-primary, #1a73e8);
+  border-top-color: var(--ds-primary, #ef6c00);
   border-radius: 50%; animation: spin .7s linear infinite;
   vertical-align: -2px;
 }
