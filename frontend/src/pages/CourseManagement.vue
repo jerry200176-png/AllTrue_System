@@ -258,9 +258,10 @@
                               @click="canQuickAddSession(c) && (openQuickAddSessionModal(c), closeActionMenu())"
                             ><span class="action-icon">＋</span> 補課 / 補登</button>
                             <button
-                              :class="['action-dropdown-item', { 'action-dropdown-renew': isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 }]"
+                              :class="['action-dropdown-item', { 'action-dropdown-renew': purchaseActionIsRenew(c) }]"
+                              :title="purchaseActionTitle(c)"
                               @click="openPurchaseModal(c); closeActionMenu()"
-                            ><span class="action-icon">⚡</span> {{ isSessionMode(c) && Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數' }}</button>
+                            ><span class="action-icon">⚡</span> {{ purchaseActionLabel(c) }}</button>
                             <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
@@ -1640,6 +1641,20 @@ function duplicateCourseForTeacher(course) {
   schedulerInitialTeacherId.value = '';
   showBackfillModal.value = true;
   loadRoomsForBranch();
+}
+
+// 月結課程的此入口其實是「結算／續約下月」（開 RenewMonthlyModal），
+// 但舊標籤「加購堂數」對月結語意不通，主任找不到結算功能（in-app #141）。
+function purchaseActionLabel(c) {
+  if (!isSessionMode(c)) return '結算 / 續約下月';
+  return Number(displayRemainingSessions(c) ?? 0) <= 2 ? '續報加購' : '加購堂數';
+}
+function purchaseActionIsRenew(c) {
+  if (!isSessionMode(c)) return true;
+  return Number(displayRemainingSessions(c) ?? 0) <= 2;
+}
+function purchaseActionTitle(c) {
+  return isSessionMode(c) ? '加購／續報堂數' : '月結課程結算本期並續約下個月';
 }
 
 function openPurchaseModal(course) {
