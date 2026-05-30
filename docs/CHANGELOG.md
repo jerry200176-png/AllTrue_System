@@ -8,6 +8,11 @@
 
 ---
 
+## 2026-05-30 — feat(ui): 主任儀表板與老師工作台改套 Stripe 設計系統，畫面更乾淨一致
+
+- Changed: 主任「總覽」與老師「教學工作台」改用統一的淺色設計系統，視覺更清爽不雜亂——標題與面板回歸乾淨白底細邊框、移除過重的陰影與彩色漸層底，待辦卡片不再用 7 種顏色，改為一致白卡＋單一語意色標示，數字統一等寬對齊，整體更好閱讀。功能與資料完全不變。
+- 開發備註：純前端 scoped CSS 調整。`DirectorDashboard.vue` 移除 `.dash::before` gradient mesh、header 改 16px 圓角／輕陰影／標題縮至 spec、`.ac` 待辦卡彩虹 `::before` 收斂為單一 `border-left` 語意色＋icon 色、`.progress-board`/`.pb`/`.wp` 改 `--ds-*` token 與輕陰影；`TeacherHomePage.vue` 將殘留橘色 `rgba(255,167,38,*)` hover/底色重新指向 indigo。對應 docs/RULE_DESIGN_SYSTEM.md 逐頁 rollout #1。無 DB／API 異動。
+
 ## 2026-05-30 — feat(billing): 堂數制收據列出預期課程並標記「(預期)」（#554）
 
 - Added: 堂數制（買 N 堂）的電子收據，除了已上課日期外，會把已購但尚未上課的堂次也列出並標記「(預期)」，補足到實付堂數，讓家長看到的堂數與實付一致（例：付 8 堂、已上 7 堂，收據會列 8 堂、最後一堂標「(預期)」）。月結制不受影響。
