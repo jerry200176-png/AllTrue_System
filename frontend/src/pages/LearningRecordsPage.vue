@@ -40,13 +40,13 @@
     <div v-if="isDirectorRole" class="lr-review-tabs card" data-guide="learning-director-review-tabs">
       <div class="lr-tabs-row">
         <button :class="['lr-tab', { active: reviewTab === 'pending' }]" @click="reviewTab = 'pending'; selectedRecordIds = new Set()">
-          待審佇列 <span v-if="pendingCount > 0" class="lr-tab-count warn">{{ pendingCount }}</span>
+          待審佇列 <span v-if="serverPendingBadge > 0" class="lr-tab-count warn">{{ serverPendingBadge }}</span>
         </button>
         <button :class="['lr-tab', { active: reviewTab === 'changes_requested' }]" @click="reviewTab = 'changes_requested'; selectedRecordIds = new Set()">
-          需修改追蹤 <span v-if="changesRequestedCount > 0" class="lr-tab-count warn">{{ changesRequestedCount }}</span>
+          需修改追蹤 <span v-if="serverChangesBadge > 0" class="lr-tab-count warn">{{ serverChangesBadge }}</span>
         </button>
         <button :class="['lr-tab', { active: reviewTab === 'approved' }]" @click="reviewTab = 'approved'; selectedRecordIds = new Set()">
-          已核准 <span class="lr-tab-count ok">{{ approvedCount }}</span>
+          已核准 <span class="lr-tab-count ok">{{ serverApprovedBadge }}</span>
         </button>
         <button :class="['lr-tab', { active: reviewTab === 'rejected' }]" @click="reviewTab = 'rejected'; selectedRecordIds = new Set()">
           已退回
@@ -1672,6 +1672,23 @@ const kpiPendingOnlyCount = computed(() => (records.value || []).filter(r => r.S
 const changesRequestedCount = computed(() => (records.value || []).filter(r => r.Status === 'changes_requested').length);
 const approvedCount = computed(() => (records.value || []).filter(r => r.Status === 'approved').length);
 const rejectedCount = computed(() => (records.value || []).filter(r => r.Status === 'rejected').length);
+
+// 主任審核分頁 badge 的權威來源：伺服器端全量 per-status 計數（#139/#595）。
+// 列表分頁只載一頁，client 計數會與總覽（server 全量）對不起來；badge 改用 server 計數，
+// 載入前以 client 計數 fallback，避免閃爍。
+const serverStatusCounts = ref(null);
+const serverPendingBadge = computed(() => {
+  if (!serverStatusCounts.value) return pendingCount.value;
+  return Number(serverStatusCounts.value.pending || 0) + Number(serverStatusCounts.value.changes_requested || 0);
+});
+const serverChangesBadge = computed(() => {
+  if (!serverStatusCounts.value) return changesRequestedCount.value;
+  return Number(serverStatusCounts.value.changes_requested || 0);
+});
+const serverApprovedBadge = computed(() => {
+  if (!serverStatusCounts.value) return approvedCount.value;
+  return Number(serverStatusCounts.value.approved || 0);
+});
 const kpiUnfilledCount = computed(() =>
   (records.value || []).filter((r) => {
     if (hasLearningRecordBody(r)) return false;
@@ -2824,6 +2841,16 @@ const _buildRecordsParams = (page = 1, { beforeId = null } = {}) => {
   if (feedbackFilter.value === 'has' || feedbackFilter.value === 'unread') {
     params.set('feedback', feedbackFilter.value);
   }
+  // 主任審核分頁改走伺服器端 status 篩選，讓列表＝該狀態全量（分頁載入），與 badge/總覽一致（#139/#595）。
+  if (isDirectorRole.value && !isTeacher.value) {
+    const tabStatus = {
+      pending: 'pending,changes_requested',
+      changes_requested: 'changes_requested',
+      approved: 'approved',
+      rejected: 'rejected',
+    }[reviewTab.value];
+    if (tabStatus) params.set('status', tabStatus);
+  }
   params.set('sort', 'session_date');
   params.set('per_page', String(perfFlags.LR_DEFAULT_PER_PAGE));
   if (beforeId != null && beforeId > 0) {
@@ -2851,6 +2878,26 @@ const clearAllFilters = () => {
   teacherPriorityFilter.value = 'all';
   defaultWindowDisabled.value = false;
   fetchRecords();
+};
+
+// 抓主任審核分頁 badge 用的伺服器端全量 per-status 計數（#139/#595）。
+// 與列表查詢分離，不帶 status/feedback，故得到該分校全量、權威的各狀態總數。
+const fetchStatusCounts = async () => {
+  if (!isDirectorRole.value || isTeacher.value) return;
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const params = new URLSearchParams({ with_status_counts: '1', per_page: '1' });
+    if (props.branchId) params.set('branch_id', props.branchId);
+    const res = await fetch(`/api/v1/learning-records?${params.toString()}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    serverStatusCounts.value = data.status_counts || {};
+  } catch (e) {
+    console.error('[LR] fetchStatusCounts failed', e);
+  }
 };
 
 const fetchRecords = async () => {
@@ -3356,6 +3403,7 @@ const approveRecord = async (record) => {
 
   if (res.ok) {
     fetchRecords();
+    fetchStatusCounts();
   } else {
     const err = await res.json().catch(() => ({}));
     alert('核准失敗: ' + (err.message || '未知錯誤'));
@@ -3377,6 +3425,7 @@ const rejectRecord = async (record) => {
   });
   if (res.ok) {
     fetchRecords();
+    fetchStatusCounts();
   } else {
     const err = await res.json().catch(() => ({}));
     alert('退回失敗: ' + (err.message || '未知錯誤'));
@@ -3399,6 +3448,7 @@ const rollbackApproval = async (record) => {
 
   if (res.ok) {
     fetchRecords();
+    fetchStatusCounts();
   } else {
     const err = await res.json().catch(() => ({}));
     alert('退回待審失敗: ' + (err.message || '未知錯誤'));
@@ -3619,6 +3669,7 @@ const batchApproveSelected = async () => {
       alert(json.message || '批次核准完成');
       selectedRecordIds.value = new Set();
       await fetchRecords();
+      fetchStatusCounts();
     } else {
       const err = await res.json().catch(() => ({}));
       alert('批次核准失敗: ' + (err.message || ''));
@@ -3645,6 +3696,7 @@ const batchRejectSelected = async () => {
       alert(json.message || '批次退回完成');
       selectedRecordIds.value = new Set();
       await fetchRecords();
+      fetchStatusCounts();
     } else {
       const err = await res.json().catch(() => ({}));
       alert('批次退回失敗: ' + (err.message || ''));
@@ -3671,6 +3723,7 @@ const batchRequestChangesSelected = async () => {
       alert(json.message || '批次標記需修改完成');
       selectedRecordIds.value = new Set();
       await fetchRecords();
+      fetchStatusCounts();
     } else {
       const err = await res.json().catch(() => ({}));
       alert('操作失敗: ' + (err.message || ''));
@@ -3690,6 +3743,7 @@ const requestChangesRecord = async (record) => {
   });
   if (res.ok) {
     fetchRecords();
+    fetchStatusCounts();
   } else {
     const err = await res.json().catch(() => ({}));
     alert('操作失敗: ' + (err.message || ''));
@@ -4296,6 +4350,9 @@ onMounted(async () => {
   if (props.branchId && isDirectorRole.value) {
     secondaryLoads.push(perf.trackAsync('fetchCourses', () => fetchCourses()));
   }
+  if (isDirectorRole.value && !isTeacher.value) {
+    secondaryLoads.push(perf.trackAsync('fetchStatusCounts', () => fetchStatusCounts()));
+  }
   if (isTeacher.value) {
     secondaryLoads.push(perf.trackAsync('fetchTeacherClasses', () => fetchTeacherClasses()));
   }
@@ -4320,6 +4377,7 @@ watch(() => props.branchId, () => {
   fetchSubjects();
   fetchCourses();
   fetchStudents();
+  fetchStatusCounts();
   if (isTeacher.value) fetchTeacherClasses();
 });
 
@@ -4328,9 +4386,10 @@ watch(() => props.branchId, () => {
  * 自動重抓記錄以確保資料集與 tab 語意一致（Jira Kanban：未完成工作永不受窗口限制）。
  * 以 resolvedDefaultWindowStart 字串值為追蹤源，只在值真正變動時觸發。
  */
-watch(resolvedDefaultWindowStart, (next, prev) => {
-  if (next === prev) return;
-  // 初始 fetch 已在 onMounted 處理，這裡只針對使用者互動造成的窗口狀態變化。
+watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
+  if (rt === prt && win === pwin) return;
+  // 主任切換審核分頁（status 改走 server 篩選）或窗口狀態變化時，重抓列表。
+  // 監聽陣列在同一 tick 多源變動只觸發一次，避免重複請求。初始 fetch 由 onMounted 處理。
   fetchRecords();
 });
 </script>

@@ -283,6 +283,18 @@ class LearningRecordController extends Controller
         $query->excludePausedCoursePendingReview();
         $query->excludeLeaveSessionPendingReview();
 
+        // Optional: per-status totals over the full filtered scope (#139/#595). The eval page
+        // derives its review-tab badges from a single client page, so the counts never matched the
+        // director dashboard (server-side total). When `with_status_counts=1` (and no status filter),
+        // return authoritative per-status counts so badges become a single source of truth.
+        $statusCounts = null;
+        if ($request->boolean('with_status_counts') && !$request->filled('status')) {
+            $statusCounts = (clone $query)
+                ->select('Status', DB::raw('COUNT(*) as aggregate'))
+                ->groupBy('Status')
+                ->pluck('aggregate', 'Status');
+        }
+
         $defaultPerPage = config('perfflags.learning_records_default_per_page', 50);
         $maxPerPage = config('perfflags.learning_records_max_per_page', 200);
         $perPage = min((int) $request->input('per_page', $defaultPerPage), $maxPerPage);
@@ -330,6 +342,13 @@ class LearningRecordController extends Controller
 
         $collection = $records->getCollection();
         $this->decorateRecords($collection);
+
+        if ($statusCounts !== null) {
+            $payload = $records->toArray();
+            $payload['status_counts'] = $statusCounts;
+
+            return response()->json($payload);
+        }
 
         return response()->json($records);
     }
