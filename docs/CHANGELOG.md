@@ -13,6 +13,16 @@
 - Fixed: 調課到某時段時，若該時段有學生請假，系統不再把請假學生算進老師人數，避免「明明有空位卻顯示老師人數已滿」而擋住調課。
 - 開發備註：`ScheduleGuardService::buildTeacherDateOccupancyEntries` 的 ClassSession 佔用查詢，排除集合由 `['cancelled']` 對齊為 `['cancelled','leave','leave_adjusted','excused']`（與前端 LEAVE_STATUSES、`LearningRecordController` 一致）。新增回歸測試 `ScheduleGuardrailsTest::test_reschedule_allowed_when_a_slot_occupant_is_on_leave`。in-app #136。
 
+## 2026-05-30 — ops(deps): 修補 symfony/mime HIGH 安全漏洞，解除後端 PR merge 阻擋
+
+- Security: `composer update symfony/mime` v5.4.45 → v5.4.52（修補 CVE-2026-45067 CRLF/SMTP header injection，HIGH）；連帶小幅升級 guzzle/pusher、移除已不需要的 paragonie/sodium_compat。CI composer audit HIGH/CRITICAL gate 恢復通過。
+- 開發備註：先前所有 backend PR 因此 HIGH CVE 被 composer audit gate 擋住（#557 等）。本次僅動 `backend/composer.lock`（無直接 constraint 變更）。
+
+## 2026-05-30 — fix(attendance): 學生到班後不再同時顯示「請假自動順延」（#555）
+
+- Fixed: 學生實際到班並點名後，出缺勤畫面不再殘留「請假自動順延」標記，避免「到班」與「請假順延」狀態矛盾。
+- 開發備註：`sessionConsistency.js` `normalizeSessionRow` 在 attended/present/late 狀態時不輸出 `status_note`（順延 note 屬課次生命週期 provenance，到班後即失去意義）。新增回歸測試於 `sessionConsistency.test.js`。in-app #134。
+
 ## 2026-05-30 — feat(design): 全站介面改採統一設計系統（Stripe 風格地基）
 
 - Changed: 系統介面換上全新統一視覺——更專業沉穩的藍色系、淺色乾淨底色，金額與數字對齊更整齊好讀；操作邏輯不變。
