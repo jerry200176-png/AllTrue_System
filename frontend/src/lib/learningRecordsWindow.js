@@ -6,10 +6,14 @@ export function shouldApplyLearningRecordsDefaultWindow({
   teacherFilterTab,
   teacherPriorityFilter,
   reviewTab,
+  feedbackFilter,
 } = {}) {
   if (!(Number(days) > 0)) return false;
   if (startDate) return false;
   if (defaultWindowDisabled) return false;
+
+  // 篩選家長回饋時不套時間窗口：回饋常落在較舊、已核准的紀錄，套窗口會把它們藏掉（#138/#139）。
+  if (['has', 'unread'].includes(String(feedbackFilter || ''))) return false;
 
   if (isTeacher) {
     return ![
