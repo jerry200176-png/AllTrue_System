@@ -11,7 +11,7 @@
 ## 2026-05-30 — feat(design): 全站介面改採統一設計系統（Stripe 風格地基）
 
 - Changed: 系統介面換上全新統一視覺——更專業沉穩的藍色系、淺色乾淨底色，金額與數字對齊更整齊好讀；操作邏輯不變。
-- 開發備註：新增 `docs/DESIGN_SYSTEM.md`（Stripe-inspired 單一真相來源，取代 `PORSCHE_VISUAL_SYSTEM.md`）；`styles.css` 建立 `--ds-*` token 並把 legacy/`--porsche-*` alias 至其上（token-level rebrand），primary 由橘改 indigo、加 `.ds-money/.ds-num` tabular 工具。逐頁精修以 Epic 追蹤。
+- 開發備註：新增 `docs/RULE_DESIGN_SYSTEM.md`（Stripe-inspired 單一真相來源，取代 `PORSCHE_VISUAL_SYSTEM.md`）；`styles.css` 建立 `--ds-*` token 並把 legacy/`--porsche-*` alias 至其上（token-level rebrand），primary 由橘改 indigo、加 `.ds-money/.ds-num` tabular 工具。逐頁精修以 Epic 追蹤。
 
 ## 2026-05-24 — fix(course-mgmt): 新增月結課程錯誤訊息改為白話提示（#539）
 

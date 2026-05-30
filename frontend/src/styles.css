@@ -13,7 +13,7 @@
 
   /* ============================================================
      DESIGN SYSTEM (Stripe-inspired) — single source of truth.
-     See docs/DESIGN_SYSTEM.md. Change these values to re-skin
+     See docs/RULE_DESIGN_SYSTEM.md. Change these values to re-skin
      the whole app; legacy + porsche tokens below alias to these.
      ============================================================ */
   --ds-primary: #533afd;
@@ -71,7 +71,7 @@
   --topbar-bg: var(--ds-canvas);
   --topbar-border: #eef2f6;
 
-  /* Porsche tokens — superseded, aliased to design system (see docs/DESIGN_SYSTEM.md). */
+  /* Porsche tokens — superseded, aliased to design system (see docs/RULE_DESIGN_SYSTEM.md). */
   --porsche-ink: var(--ds-ink);
   --porsche-ink-soft: var(--ds-ink-mute);
   --porsche-surface: rgba(255, 255, 255, 0.96);
@@ -300,7 +300,7 @@ body {
 
 /* ===================== DESIGN SYSTEM UTILITIES ===================== */
 /* Tabular figures for money / counts / dates — the Stripe financial-data signal.
-   See docs/DESIGN_SYSTEM.md §4. Apply to any cell rendering currency or numbers. */
+   See docs/RULE_DESIGN_SYSTEM.md §4. Apply to any cell rendering currency or numbers. */
 .ds-num,
 .ds-money {
   font-variant-numeric: tabular-nums;
