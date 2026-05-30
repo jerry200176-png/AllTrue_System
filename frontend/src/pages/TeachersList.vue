@@ -2069,7 +2069,7 @@ button.small.danger {
 .chip-check {
   font-size: 12px;
   width: 14px;
-  color: #1565C0;
+  color: var(--ds-primary);
 }
 .actions { display: flex; justify-content: flex-end; gap: 8px; }
 
