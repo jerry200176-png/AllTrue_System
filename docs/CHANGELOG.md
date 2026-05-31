@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: 本地 pre-commit 加入 git index 稽核護欄（#542）
+
+開發備註：#542 / Epic #535 Phase 0.3。`scripts/install-git-hooks.sh` 的 pre-commit 新增呼叫 `scripts/git-index-audit.sh protected`，commit 前若保護路徑（`backend/ frontend/ scripts/ .github/ docs/`）的 tracked 檔被 `assume-unchanged`/`skip-worktree` 隱藏即擋下（防 §R58 重演）。修正 `git-index-audit.sh` 過濾 bug：skip-worktree 在 `git ls-files -v` 為大寫 `S`，原 `^[hs]` 只抓小寫、漏掉 skip-worktree，改為 `^[hS]`（h=assume-unchanged、S=skip-worktree）。新增 `--uninstall` 一鍵卸載；`OPERATIONS_RUNBOOK.md` 補本地 hooks 安裝/卸載/bypass 文件。純本地 hooks，不影響 CI checkout。
+
 ## 2026-05-31 — feat: 家長回饋可以雙向對話了，老師／主任能直接回覆家長
 
 以前家長在「學習評量」留給老師的回饋，老師看得到卻沒辦法回覆，家長也不知道有沒有被看到。現在升級成雙向對話：老師或主任可以在評量裡直接回覆家長，家長在家長入口就會看到回覆，還能再追問；只要家長有新訊息，老師端「家長回饋待看」的提醒（含側欄學習評量的紅點）就會亮起，回覆過就會消掉。回覆內容家長看得到，主任原本「給老師的內部評語」維持只有自己人看得到、不會外流給家長（請重新整理頁面後使用）。
