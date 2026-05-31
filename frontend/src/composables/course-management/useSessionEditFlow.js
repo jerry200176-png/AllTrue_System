@@ -196,12 +196,23 @@ export function useSessionEditFlow({
   async function doStatusChange(newStatus) {
     const form = sessionEditForm.value;
     if (!form.session_id) return;
-    const preview = [
-      `目前狀態：${sessionStatusLabel(form.current_status)}`,
-      `變更後：${sessionStatusLabel(newStatus)}`,
-      '本次操作會寫入堂次紀錄，可於單堂編輯改回。',
-    ].join('\n');
-    if (!confirm(`狀態變更預覽\n\n${preview}\n\n確認送出？`)) return;
+
+    // #142§1/#596：請假 → 未上（取消請假）必須走 cascade-correct 的 undo 路徑，
+    // 否則請假時自動順延的尾堂與 EndDate 不會回復，會多出一堂。一般狀態轉換維持原 PATCH。
+    const isUndoLeave = form.current_status === 'leave' && newStatus === 'scheduled';
+
+    const preview = isUndoLeave
+      ? [
+          '取消這次請假，並回復被順延的後續課程與結束日。',
+          '（若後續堂次已有上課/補請假記錄，系統會擋下並提示。）',
+        ].join('\n')
+      : [
+          `目前狀態：${sessionStatusLabel(form.current_status)}`,
+          `變更後：${sessionStatusLabel(newStatus)}`,
+          '本次操作會寫入堂次紀錄，可於單堂編輯改回。',
+        ].join('\n');
+    const confirmTitle = isUndoLeave ? '取消請假預覽' : '狀態變更預覽';
+    if (!confirm(`${confirmTitle}\n\n${preview}\n\n確認送出？`)) return;
 
     sessionEditSubmitting.value = true;
     try {
@@ -209,24 +220,30 @@ export function useSessionEditFlow({
       const token = sess?.access_token;
       if (!token) { alert('請重新登入'); return; }
 
-      const res = await fetch(`/api/v1/class-sessions/${form.session_id}`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ status: newStatus, reason: form.reason || '' }),
-      });
+      const res = isUndoLeave
+        ? await fetch('/api/v1/schedules/undo-leave-by-session', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ class_session_id: form.session_id }),
+          })
+        : await fetch(`/api/v1/class-sessions/${form.session_id}`, {
+            method: 'PATCH', credentials: 'include',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ status: newStatus, reason: form.reason || '' }),
+          });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert('狀態更新失敗：' + (json.message || res.statusText));
+        alert((isUndoLeave ? '取消請假失敗：' : '狀態更新失敗：') + (json.message || res.statusText));
         return;
       }
-      if (json.session) {
+      if (!isUndoLeave && json.session) {
         updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
       }
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
       const event = (form.current_status !== 'scheduled' && newStatus === 'scheduled') ? 'flow_undone' : 'flow_submitted';
       trackAdoptionEvent(event, bid, { flow: 'session_status', from: form.current_status, to: newStatus });
       closeSessionEdit();
-      alert(json.message || '狀態已更新');
+      alert(json.message || (isUndoLeave ? '已取消請假' : '狀態已更新'));
       await loadCourses();
     } catch (e) {
       alert('操作失敗：' + (e?.message || '請稍後再試'));
