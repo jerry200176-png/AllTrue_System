@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: 強化 main 分支保護 required checks（#543 部分）
+
+開發備註：#543。將 `gitleaks scan`（secret-scan.yml，每個 PR 無 paths 過濾）與 `Golden scenarios report`（ci.yml，`if: pull_request` job）加入 `main` required status checks。判準：只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾的 check（如 Docs Integrity）若設 required 會讓不觸發的 PR 永遠 pending→卡死，故維持 advisory。`PHPStan Advisory (php)` 因跑 self-hosted runner（單點）暫不設 required（見 #545，待決策）。回滾指令與判準寫入 `OPERATIONS_RUNBOOK.md` §R1b。純文件/設定，無程式碼變更。
+
 ## 2026-05-31 — chore: 前端 UI smoke（Playwright）scaffold（#547）
 
 開發備註：#547 / Epic #535 Phase 4.3。新增 `frontend/playwright.config.js` + `frontend/e2e/smoke.spec.js`（主任課程管理頁 + 老師 TeacherHome 載入兩條關鍵路徑）、`npm run test:e2e`、`@playwright/test` devDep。設計為「無 secrets 即 `test.skip()`」：未設 `SMOKE_BASE_URL`/`SMOKE_*_USER`/`SMOKE_*_PASS` 時整檔 skip、CI 仍綠，本機/CI 跑都安全。CI 走新增的 `ui-smoke.yml`（`workflow_dispatch` + 每週排程，**不掛每個 PR** 以省 Actions minutes，見 OPERATIONS_RUNBOOK §B2）。實際執行待 #537 提供 `SMOKE_*` secrets；屆時可把 spec 內 TODO 的 data-testid 補上讓選擇器更穩。npm audit gate 為 `--audit-level=high --omit=dev`，Playwright 帶入的 moderate dev 漏洞不影響 CI。
