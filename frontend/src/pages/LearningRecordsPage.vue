@@ -1006,6 +1006,38 @@
               <div class="lr-parent-feedback-title">家長回饋</div>
               <div class="lr-parent-feedback-content">{{ _activeRecordRef.parent_feedback.content }}</div>
               <div class="lr-parent-feedback-time">更新：{{ formatParentFeedbackTime(_activeRecordRef.parent_feedback.updated_at) }}</div>
+
+              <!-- 回覆對話串（家長看得到，與下方內部「主任評語」嚴格區隔）-->
+              <div v-if="_activeRecordRef.parent_feedback.replies?.length" class="lr-feedback-replies">
+                <div
+                  v-for="rep in _activeRecordRef.parent_feedback.replies"
+                  :key="'lrfr-' + rep.id"
+                  :class="['lr-feedback-reply', rep.author_role === 'parent' ? 'is-parent' : 'is-staff']"
+                >
+                  <div class="lr-feedback-reply-who">
+                    {{ rep.author_role === 'parent' ? '家長' : (rep.author_name || (rep.author_role === 'director' ? '主任' : '老師')) }}
+                    <span class="lr-feedback-reply-time">{{ formatParentFeedbackTime(rep.created_at) }}</span>
+                  </div>
+                  <div class="lr-feedback-reply-body">{{ rep.content }}</div>
+                </div>
+              </div>
+
+              <!-- 回覆家長輸入（老師與主任皆可，家長可見）-->
+              <div class="lr-feedback-reply-form">
+                <label class="lr-feedback-reply-label">回覆家長（這則訊息家長會看到）</label>
+                <textarea
+                  v-model="feedbackReplyDraft"
+                  rows="2"
+                  maxlength="1000"
+                  placeholder="例如：謝謝家長的回饋，我們這週會加強單字默寫，下次小考再觀察。"
+                ></textarea>
+                <div class="lr-teacher-comment-actions">
+                  <span v-if="feedbackReplyError" class="lr-teacher-comment-error">{{ feedbackReplyError }}</span>
+                  <button type="button" class="primary small" :disabled="feedbackReplySaving || !feedbackReplyDraft.trim()" @click="submitFeedbackReply">
+                    {{ feedbackReplySaving ? '送出中...' : '回覆家長' }}
+                  </button>
+                </div>
+              </div>
             </div>
             <div v-if="form.id && (isDirectorRole || _activeRecordRef?.teacher_comment)" class="lr-teacher-comment-box">
               <div class="lr-teacher-comment-title">
@@ -1783,6 +1815,44 @@ const saveTeacherComment = async () => {
   }
 };
 
+// 老師/主任回覆家長（家長可見）；送出後重新取得回覆串並同步清單。
+const submitFeedbackReply = async () => {
+  const fb = _activeRecordRef.value?.parent_feedback;
+  if (!fb?.id || feedbackReplySaving.value) return;
+  const content = String(feedbackReplyDraft.value || '').trim();
+  if (!content || content.length > 1000) {
+    feedbackReplyError.value = '回覆需為 1-1000 字';
+    return;
+  }
+  feedbackReplySaving.value = true;
+  feedbackReplyError.value = '';
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const res = await fetch(`/api/v1/learning-record-feedbacks/${fb.id}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ content }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '回覆失敗');
+    const repRes = await fetch(`/api/v1/learning-record-feedbacks/${fb.id}/replies`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const repJson = await repRes.json().catch(() => ({}));
+    const replies = repJson?.data || [];
+    const newFb = { ...fb, replies };
+    const rid = Number(_activeRecordRef.value?.id || 0);
+    _activeRecordRef.value = { ..._activeRecordRef.value, parent_feedback: newFb };
+    records.value = (records.value || []).map(r => Number(r?.id || 0) === rid ? { ...r, parent_feedback: newFb } : r);
+    feedbackReplyDraft.value = '';
+  } catch (e) {
+    feedbackReplyError.value = e?.message || '回覆失敗';
+  } finally {
+    feedbackReplySaving.value = false;
+  }
+};
+
 const parentFeedbackCount = computed(() => (records.value || []).filter(r => !!r.parent_feedback).length);
 const unreadParentFeedbackCount = computed(() => (records.value || []).filter(parentFeedbackUnread).length);
 
@@ -1949,6 +2019,9 @@ const _activeRecordRef = ref(null);
 const teacherCommentContent = ref('');
 const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
+const feedbackReplyDraft = ref('');
+const feedbackReplySaving = ref(false);
+const feedbackReplyError = ref('');
 
 /** 主任從列表／卡片直接開「給老師評語」，不必先進完整編輯 */
 const showDirectorNoteModal = ref(false);
@@ -3067,6 +3140,8 @@ const _fillForm = (record) => {
   _activeRecordRef.value = record;
   teacherCommentContent.value = record?.teacher_comment?.content || '';
   teacherCommentError.value = '';
+  feedbackReplyDraft.value = '';
+  feedbackReplyError.value = '';
   Object.assign(form, {
     id: record.id,
     StudentID: Number(record.student_id) || '',
@@ -3095,6 +3170,9 @@ const _clearForm = () => {
   teacherCommentContent.value = '';
   teacherCommentError.value = '';
   teacherCommentSaving.value = false;
+  feedbackReplyDraft.value = '';
+  feedbackReplyError.value = '';
+  feedbackReplySaving.value = false;
   Object.assign(form, {
     id: null,
     StudentID: '',
@@ -6147,6 +6225,16 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
 .lr-parent-feedback-title { font-weight:700; color:#3949ab; margin-bottom:6px; }
 .lr-parent-feedback-content { white-space:pre-wrap; line-height:1.6; }
 .lr-parent-feedback-time { margin-top:6px; font-size:12px; color:#78909c; }
+.lr-feedback-replies { margin-top:10px; padding-top:10px; border-top:1px dashed #c5cae9; display:flex; flex-direction:column; gap:8px; }
+.lr-feedback-reply { padding:8px 10px; border-radius:10px; font-size:13px; max-width:92%; }
+.lr-feedback-reply.is-staff { background:#fff; border:1px solid #e0e7ff; align-self:flex-start; }
+.lr-feedback-reply.is-parent { background:#e8f0fe; align-self:flex-end; }
+.lr-feedback-reply-who { font-size:12px; font-weight:700; color:#3949ab; display:flex; gap:8px; align-items:baseline; }
+.lr-feedback-reply-time { font-weight:400; color:#90a4ae; }
+.lr-feedback-reply-body { margin-top:3px; color:#37474f; white-space:pre-wrap; word-break:break-word; }
+.lr-feedback-reply-form { margin-top:10px; }
+.lr-feedback-reply-label { display:block; font-size:12px; font-weight:600; color:#3949ab; margin-bottom:4px; }
+.lr-feedback-reply-form textarea { width:100%; resize:vertical; border:1px solid #c5cae9; border-radius:10px; padding:8px; font:inherit; box-sizing:border-box; }
 .lr-teacher-comment-box { margin-top:12px; padding:12px; border:1px solid #C7D2FE; border-radius:12px; background:#F8FAFF; }
 .lr-teacher-comment-title { display:flex; align-items:center; gap:8px; font-weight:700; color:#3730A3; margin-bottom:8px; }
 .lr-teacher-comment-author { font-size:12px; font-weight:500; color:#64748B; }

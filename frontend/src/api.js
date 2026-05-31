@@ -128,6 +128,50 @@ export async function upsertParentLearningRecordFeedback(token, learningRecordId
   return data.feedback;
 }
 
+// 家長端：取得某筆評量回饋（含老師/主任回覆串），同時標記家長已讀。
+export async function getParentLearningRecordFeedback(token, learningRecordId) {
+  const res = await fetch(`${API_BASE}/parent/learning-records/${learningRecordId}/feedback`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '載入回饋失敗');
+  return data.feedback;
+}
+
+// 家長端：對既有回饋追問（雙向對話）。
+export async function parentReplyLearningRecordFeedback(token, learningRecordId, content) {
+  const res = await fetch(`${API_BASE}/parent/learning-records/${learningRecordId}/feedback/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ content }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '送出失敗');
+  return data.reply;
+}
+
+// 員工端（老師/主任）：回覆家長回饋。
+export async function replyLearningRecordFeedback(token, feedbackId, content) {
+  const res = await fetch(`${API_BASE}/learning-record-feedbacks/${feedbackId}/reply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ content }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '回覆失敗');
+  return data.reply;
+}
+
+// 員工端：取得某筆回饋的回覆串。
+export async function getLearningRecordFeedbackReplies(token, feedbackId) {
+  const res = await fetch(`${API_BASE}/learning-record-feedbacks/${feedbackId}/replies`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '載入回覆失敗');
+  return data?.data || [];
+}
+
 export async function submitParentFeedback(token, { category, content, rating }) {
   const res = await fetch(`${API_BASE}/parent/feedback`, {
     method: 'POST',

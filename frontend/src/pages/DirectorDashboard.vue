@@ -92,7 +92,7 @@
             <span class="material-symbols-outlined ac__icon">mark_unread_chat_alt</span>
             <div class="ac__body">
               <span class="ac__count">{{ unreadFeedbackCount }}</span>
-              <span class="ac__label">筆家長回饋待看</span>
+              <span class="ac__label">筆家長回饋待看（可直接回覆）</span>
             </div>
             <button class="ac__cta" @click.stop="emit('navigate', { target: 'learning', focus: 'feedback' })">去查看</button>
           </div>

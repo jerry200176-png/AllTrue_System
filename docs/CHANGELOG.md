@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — feat: 家長回饋可以雙向對話了，老師／主任能直接回覆家長
+
+以前家長在「學習評量」留給老師的回饋，老師看得到卻沒辦法回覆，家長也不知道有沒有被看到。現在升級成雙向對話：老師或主任可以在評量裡直接回覆家長，家長在家長入口就會看到回覆，還能再追問；只要家長有新訊息，老師端「家長回饋待看」的提醒（含側欄學習評量的紅點）就會亮起，回覆過就會消掉。回覆內容家長看得到，主任原本「給老師的內部評語」維持只有自己人看得到、不會外流給家長（請重新整理頁面後使用）。
+
+開發備註：System A（`learning_record_feedbacks`）。新增 `learning_record_feedback_replies`（feedback_id idx、author_user_id、author_role=teacher/director/parent、parent_session_id、content）+ `last_read_by_parent_at`（idempotent migration 含 down）。員工端 `POST/GET learning-record-feedbacks/{feedback}/reply|replies` 放在 `role:teacher,director,super_admin` + `require_campus`，ownership 鏡像 `index`（teacher 限自己 teacher_id、director 限 campus_id）；員工回覆只標記該角色已讀、不 touch `updated_at`，避免其他員工假未讀。家長端 `parentShow` 回傳 `replies[]`+`has_unread_reply` 並標記家長已讀；`POST parent/learning-records/{lr}/feedback/reply`（author_role=parent、touch `updated_at` 重新觸發員工未讀、`throttle:20,1`）。員工 `learning-records` 與家長 portal 清單批次載入 replies 避免 N+1。前端：ParentPortal 對話串+追問+「老師回覆了」紅點；LearningRecordsPage modal 回覆框（家長可見，與內部 `teacher_comment` 嚴格分離）；TeacherHome/Director CTA 文案；`api.js` 新增 reply/replies/parentReply helpers。未讀徽章沿用既有 `me/unread-feedback-count`（touch 後自動涵蓋家長追問）。順手收斂安全漏洞：System B `parent-feedback/{for-teacher,read,reply,replies}` 原本在任何 `role`/`require_campus` 群組外（等同未強制認證），改納入 `role:teacher,director,super_admin`+`require_campus`。KPI 儀表板／System A/B 合併列為 Phase 2。測試 `LearningRecordFeedbackReplyTest`（5 案）。計畫 `.cursor/plans/Parent Feedback Reply Thread-88fe50aa.plan.md`。
+
 ## 2026-05-31 — fix: 修復評量被「上課狀態調整」作廢後無法重新填寫（#146）
 
 某堂課的上課狀態被調整過（例如曾改成未上課、後來又改回已上課）時，原本那筆評量被系統自動作廢；改回「已上課」後評量沒有自動恢復，老師重新填寫會被擋住、顯示「此堂評量已作廢」。現已修正：只要該堂最後是「已上課／已排定」狀態，老師重填就會自動沿用原評量、不再被擋，且堂數不會重複計算（請重新整理頁面後使用）。
