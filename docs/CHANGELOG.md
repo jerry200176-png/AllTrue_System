@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — fix: 老師管理頁新增「停用」分頁，可查看與復職停用老師（#145）
+
+開發備註：#145 / GH#608。`TeachersList.vue` 原本只有「正式老師(active)」「待審核(pending)」兩個分頁，`filteredTeachers` 無 `suspended` 路徑 → 停用老師被前端過濾隱藏（後端 `ProfileController::index` 其實已回傳全部狀態）。修復（純前端）：新增「停用」分頁 + `suspendedCount`，並讓狀態下拉（含「停用」）優先生效。PR #610。
+
 ## 2026-05-31 — fix: 主任補登的空白評量不再灌水老師科目數（#137/#575）
 
 開發備註：#137。`ExcludeFromSubjectCount`（`LearningRecordController` 補登空白評量時設為 1，意為「不算入老師科目數」）只有程式碼引用、無對應 migration，且 `FinanceController::subjectUnits` 從未過濾 → 補登空白評量被誤計入科目數。修復：新增 `ExcludeFromSubjectCount` 欄位 migration（boolean 預設 0，既有評量維持原行為、不回溯改動科目數/薪資）；`subjectUnits` 排除 `=1`（`hasColumn` 防呆）。部署確認 production 原無此欄位（全新建立、零回溯影響）。孤兒評量（無對應堂次）已由 2026_03_15 FK migration 防止。PR #606。
