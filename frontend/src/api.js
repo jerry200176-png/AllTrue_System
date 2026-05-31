@@ -106,6 +106,17 @@ export async function confirmExceptionWorkflowCandidate(token, workflowId, candi
   return data?.data || {};
 }
 
+export async function waiveExceptionWorkflow(token, workflowId, { reason = '' } = {}) {
+  const res = await fetch(`${API_BASE}/exception-workflows/${workflowId}/waive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '標記不補課失敗');
+  return data?.data || {};
+}
+
 export async function upsertParentLearningRecordFeedback(token, learningRecordId, content) {
   const res = await fetch(`${API_BASE}/parent/learning-records/${learningRecordId}/feedback`, {
     method: 'PUT',

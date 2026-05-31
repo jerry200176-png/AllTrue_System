@@ -198,6 +198,58 @@ class ExceptionWorkflowController extends Controller
         ]);
     }
 
+    /**
+     * #144：學生不想補課時，主任將補課案件標記為「不補課」結案。
+     *
+     * 設計（對齊業界 forfeit/no-show 處理）：waive 只關閉案件、不安排補課、
+     * **不額外扣堂或退堂**。原本缺席/請假堂次的扣堂與否，已在當初請假/缺勤流程
+     * （CourseLeaveCascadeService / SessionDeductionService）處理，waive 不再變動，
+     * 以避免重複扣堂或誤動高風險堂數邏輯。
+     */
+    public function waive(Request $request, int $id)
+    {
+        $workflow = ExceptionWorkflow::with(['studentClass', 'classSession'])->findOrFail($id);
+
+        if (!$this->canAccessCampus($request, (int) $workflow->campus_id)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $data = $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        // 已安排補課(confirmed)或已結案的案件不可在此標記不補課，避免覆蓋既有結果。
+        if ($workflow->closed_at || in_array($workflow->status, ['confirmed', 'waived', 'closed'], true)) {
+            return response()->json([
+                'message' => '此補課案件已結案，無法再標記為不補課',
+                'current_status' => $workflow->status,
+            ], 422);
+        }
+
+        $reason = trim((string) ($data['reason'] ?? ''));
+        $authUserId = (int) ($request->attributes->get('auth_user')->id ?? 0);
+
+        $workflow->status = 'waived';
+        $workflow->closed_at = now();
+        $workflow->closed_reason = 'no_makeup_needed';
+        $payload = $workflow->payload ?? [];
+        $payload['waived_at'] = now()->toIso8601String();
+        $payload['waived_by_user_id'] = $authUserId;
+        if ($reason !== '') {
+            $payload['waive_reason'] = $reason;
+        }
+        $workflow->payload = $payload;
+        $workflow->save();
+
+        $workflow->refresh()->load(['student', 'studentClass', 'classSession', 'candidates']);
+
+        return response()->json([
+            'data' => [
+                'workflow' => $this->serialize($workflow),
+            ],
+        ]);
+    }
+
     private function authorizedCampusIds(Request $request, int $branchId): ?array
     {
         if ($request->attributes->get('auth_role') === 'super_admin') {
