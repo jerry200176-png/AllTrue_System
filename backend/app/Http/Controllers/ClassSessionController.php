@@ -373,6 +373,28 @@ class ClassSessionController extends Controller
             ->select('StudentClass.*')
             ->get();
 
+        // #546/TD-018：批次預載「抑制例外（請假/調課等）」與「既有堂次」，
+        // 取代原本逐 slot 兩次 exists()（N+1，會隨老師當日課數線性增長）。
+        // 以 classId|HH:MM 為鍵；TIME 欄位比較本就忽略秒，與原 SQL 語意一致。
+        $classIds = $classes->pluck('ID')->map(fn ($v) => (int) $v)->all();
+        $suppressedSet = [];
+        $existingSet = [];
+        if (!empty($classIds)) {
+            Schedule::whereIn('student_course_id', $classIds)
+                ->whereDate('schedule_date', $targetDate)
+                ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
+                ->get(['student_course_id', 'start_time'])
+                ->each(function ($r) use (&$suppressedSet) {
+                    $suppressedSet[(int) $r->student_course_id . '|' . substr((string) $r->start_time, 0, 5)] = true;
+                });
+            ClassSession::whereIn('StudentClassID', $classIds)
+                ->whereDate('SessionDate', $targetDate)
+                ->get(['StudentClassID', 'StartTime'])
+                ->each(function ($r) use (&$existingSet) {
+                    $existingSet[(int) $r->StudentClassID . '|' . substr((string) $r->StartTime, 0, 5)] = true;
+                });
+        }
+
         foreach ($classes as $studentClass) {
             $startDate = $studentClass->StartDate ? Carbon::parse($studentClass->StartDate)->toDateString() : null;
             $endDate = $studentClass->EndDate ? Carbon::parse($studentClass->EndDate)->toDateString() : null;
@@ -394,20 +416,11 @@ class ClassSessionController extends Controller
                     continue;
                 }
 
-                $hasSuppressedException = Schedule::where('student_course_id', (int) $studentClass->ID)
-                    ->whereDate('schedule_date', $targetDate)
-                    ->where('start_time', $startHm)
-                    ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
-                    ->exists();
-                if ($hasSuppressedException) {
+                $key = (int) $studentClass->ID . '|' . $startHm;
+                if (isset($suppressedSet[$key])) {
                     continue;
                 }
-
-                $exists = ClassSession::where('StudentClassID', (int) $studentClass->ID)
-                    ->whereDate('SessionDate', $targetDate)
-                    ->where('StartTime', (string) $slot['start_time'])
-                    ->exists();
-                if ($exists) {
+                if (isset($existingSet[$key])) {
                     continue;
                 }
 
@@ -421,6 +434,8 @@ class ClassSessionController extends Controller
                     'Note'                => 'projected-monthly-materialized-auto',
                     'IsContractException' => 0,
                 ]);
+                // 同一請求內避免重複建立（多 slot 同時段時的防呆，等同原 exists() 在建立後轉真）。
+                $existingSet[$key] = true;
             }
         }
     }
@@ -2612,8 +2627,14 @@ class ClassSessionController extends Controller
         static $nonQuota = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
         $branchId = (int) ($request->input('branch_id') ?? 0);
 
+        // #546/TD-018：一次撈齊各課程的 SessionCount，取代每課程一次 value() 查詢（N+1）。
+        $courseIds = array_map('intval', array_keys($byClass));
+        $purchasedMap = !empty($courseIds)
+            ? DB::table('StudentClass')->whereIn('ID', $courseIds)->pluck('SessionCount', 'ID')
+            : collect();
+
         foreach ($byClass as $courseId => $sessions) {
-            $purchased = DB::table('StudentClass')->where('ID', $courseId)->value('SessionCount');
+            $purchased = $purchasedMap[(int) $courseId] ?? null;
             if (!$purchased || $purchased <= 0) {
                 continue;
             }

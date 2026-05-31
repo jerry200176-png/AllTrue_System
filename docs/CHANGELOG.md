@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — perf: 老師當日課表載入更快（class-sessions N+1 批次化，#546）
+
+開發備註：#546 / TD-018。`ClassSessionController` 兩處迴圈 N+1 清償：(A) `autoMaterializeTeacherMonthlySessionsForRange` 老師當日載入時，原每堂做 2 次 `exists()`（隨課數線性成長，TeacherHome/SmartCalendar 熱路徑）→ 改為 2 次批次 SELECT 預載「抑制例外 + 既有堂次」into in-memory set，以 `classId|HH:MM` 為鍵（TIME 欄位比較忽略秒，語意與原 SQL 一致）；同請求內建立後即更新 set 防重複。(B) `logSessionCountMismatches`（flag-gated）每課程一次 `SessionCount` → 單次 `whereIn pluck`。主查詢輸出 JSON 合約未變。Code review 發現主查詢的 Subject/schedules/campus 早已單一多 join（非 N+1）、所需複合索引已存在；剩餘的代課 correlated subquery 去索引化（Offender C）風險高，拆 TD-058 待 Sentry payload 對齊。回歸測試 `ClassSessionsTeacherAutoMaterializeMonthlyTest` 新增 query-count 不隨課數成長 + 無重複建立。純後端，無 schema 變更。
+
 ## 2026-05-31 — feat: 兼職老師薪資明細顯示「本段採用最高時薪」併堂說明（#614）
 
 主任在兼職老師薪資明細裡，現在每一筆併堂（同時段多位學生）的堂次下方會多一行綠色說明：「本段採用 $X 最高時薪（同時段 N 位學生 · M 分）」，讓主任一眼看懂這段薪資是用同時段最高時薪計算、以及當下有幾位學生併堂。金額計算邏輯完全沒變，只是把原本算給你看的依據顯示出來。請重新整理頁面後使用。
