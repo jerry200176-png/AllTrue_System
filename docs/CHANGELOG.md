@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: Docs Integrity 改 job-level skip 並納入 required（#543 完成）
+
+開發備註：#543。`docs-integrity.yml` 移除 workflow-level `paths:` 過濾，改為 `changes` 偵測 job + `integrity` job-level `if`（非文件 PR → skip＝中性回報，不卡合併）；schedule/手動觸發一律跑。確認在每個 PR 都回報 `Docs Integrity Check` status 後，加入 `main` required status checks，#543 三目標全數完成（gitleaks / golden / docs-integrity）。剩 `PHPStan Advisory (php)` 因 self-hosted runner 單點維持 advisory（見 #545）。純 CI 設定。
+
 ## 2026-05-31 — chore: 強化 main 分支保護 required checks（#543 部分）
 
 開發備註：#543。將 `gitleaks scan`（secret-scan.yml，每個 PR 無 paths 過濾）與 `Golden scenarios report`（ci.yml，`if: pull_request` job）加入 `main` required status checks。判準：只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾的 check（如 Docs Integrity）若設 required 會讓不觸發的 PR 永遠 pending→卡死，故維持 advisory。`PHPStan Advisory (php)` 因跑 self-hosted runner（單點）暫不設 required（見 #545，待決策）。回滾指令與判準寫入 `OPERATIONS_RUNBOOK.md` §R1b。純文件/設定，無程式碼變更。
