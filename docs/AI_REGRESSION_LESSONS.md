@@ -701,13 +701,28 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 - `docs/CHANGELOG.md` 異動後必須重新產生 `frontend/src/lib/releaseNotes.generated.js`（`cd frontend && npm run sync-release-notes`；`vite build` / CI 亦會觸發）。
 - `ParentPortal.vue`：家長端最多兩則、用 `parentReleaseNoteTeaser()` 做短摘要；**不要**把 `interaction_statuses`／內部待辦用語當作家長首屏資訊。
 
+### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
+
+**觸發情境**：2026-05-31 #613 落地「補課部分時數比例扣堂」。
+
+**根因 / 設計**：扣堂權威單位由「堂數」改為「分鐘」。權威來源＝`StudentClass.PurchasedMinutes/RemainingMinutes` + `session_deduction_ledger.minutes`；`RemainingSessions` 變成由 `ROUND_HALF_UP(RemainingMinutes / perSessionMinutes)` 衍生的整數**顯示值**（整數運算、無浮點）。
+
+**強制規則（改扣堂/堂數顯示前必讀）**：
+- **唯一權威扣堂路徑**＝`SessionDeductionService::recomputeCounters()`；分鐘換算 chokepoint＝`deductOnAttendance`（自載 ClassSession，`clamp(EndTime−StartTime, 0..perSession)`，完整時長傳 `null`＝整堂、byte-identical）。
+- 比例扣堂**只**作用於 `schedules.type='extra'` 補課且時長 < 每堂分鐘；正常課堂、完整時長補課一律整堂。**禁止**把規則擴大到所有堂次。
+- 任何讀取端**不可**用 count-based observed 值覆寫已有「部分時數」（fractional `RemainingMinutes`）課程的 `RemainingSessions`（`StudentClassController::index` 已加 `hasFractionalBalance` 守門）；要顯示精確值用 `remaining_minutes`。
+- `reverseForSession` 必須沖回對應 deduct 的 `minutes`（否則淨值漂移）。
+- ⚠️ 共用課程包池鏡像（`PackageDeductionService`）尚未分鐘感知（TD-059）；`recalculateSessionCounters` 為死碼勿誤用（TD-060）。
+
+**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含列表端點不被覆寫）。
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
-| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定 |
+| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |
