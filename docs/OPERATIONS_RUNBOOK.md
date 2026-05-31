@@ -988,7 +988,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 - `force_pushes` = false
 - `deletions` = false
 - `conversations` = true
-- `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`（2026-05-31 #543 起；`PHPStan Advisory (php)` 仍 advisory，見 #545）
+- `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`、`PHPStan Advisory (php)`（2026-05-31 #543/#545 起）
 
 ## Q. Adoption KPI + Trust Layer SOP（#462 / #460）
 
@@ -1029,7 +1029,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 | Require review from Code Owners | 選用 | 單人時 CODEOWNERS 僅提醒；多人時 ✅ |
 | Dismiss stale approvals on new push | ✅（多人時）| 防 approve 後偷塞 commit |
 | Require status checks before merging | ✅ | 必須全綠才能 merge |
-| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` | 2026-05-31（#543）全數納入：皆**每個 PR 無條件回報 status**（gitleaks 無 paths 過濾；golden 為 `if: pull_request` job；docs-integrity 已改 job-level skip，非文件 PR skip＝中性）。仍為 advisory：`PHPStan Advisory (php)`（self-hosted runner 單點，見 #545）|
+| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` / `PHPStan Advisory (php)` | 2026-05-31 全數納入。`PHPStan Advisory (php)`（#545）於移至 GitHub-hosted runner + baseline、連續 3 個 PR 綠燈後納入；job-level `if` skip（非 backend PR → 中性），baseline 既有問題、只擋新增問題 |
 | Require branches to be up to date | ✅ | PR behind 時先 `update-branch`（§B5）|
 | Require conversation resolution | ✅ | review comment 必須解決 |
 | Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |
