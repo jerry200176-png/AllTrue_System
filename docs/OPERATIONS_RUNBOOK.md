@@ -876,14 +876,14 @@ DB password 輪換屬高風險操作。執行前需先讀 `docs/DANGEROUS_OPERAT
 | CI/CD 自動部署 | GitHub Actions `deploy.yml` → Pi auto-deploy |
 | PR template | `.github/pull_request_template.md` |
 | CODEOWNERS | `.github/CODEOWNERS`（高風險模組自動 request review）|
-| PHPStan 靜態分析 | `codeql.yml` → `PHPStan Advisory (php)`（目前為 advisory，不擋 merge） |
+| PHPStan 靜態分析 | `codeql.yml` → `PHPStan Advisory (php)`（**已為 required check**，baseline-gated 只擋新增問題；#545，見 §R1）|
 | API smoke test | `deploy.yml` 驗 health + branches + swipe-rfid |
 | Coverage gate | CI 70% 門檻（warning），目標 80% |
 | Branch protection | GitHub Pro 已啟用 main 保護：required checks + admin enforcement + 禁止 force push/delete；單人 repo 暫不強制 approval，避免審核死鎖 |
 | Rate limiting | 所有公開端點（swipe-rfid 30/min, login 5/hr）|
 | 前端錯誤監控 | Sentry（`@sentry/vue`）+ GitHub issue 自動建立 |
 | Uptime 監控 | UptimeRobot 每 5 分鐘（主站 + /health）|
-| Pi 健康 alerting | `pi-health.yml` 每 6h：磁碟/溫度/備份年齡 |
+| Pi 健康 alerting | `pi-health.yml` 每日 09:00 台灣：磁碟/溫度/備份年齡/UptimeRobot（門檻見 §Z；關鍵告警由 Pi 本機 `monitor-alert` cron 補位）|
 | 週期慢查詢報告 | `slow-query-report.yml` 每週一 |
 | 6 小時自動備份 | Pi cron → `/home/admin/backups/sixhour/` |
 | Secret rotation policy | OPERATIONS_RUNBOOK.md §O（90 天輪換）|
