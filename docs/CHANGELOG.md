@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: PHPStan 升為 backend PR required gate（#545 完成）
+
+開發備註：#545。PHPStan 在移至 GitHub-hosted runner + baseline、連續 3 個 PR（#632/#633/#634）綠燈後，正式加入 `main` required status checks（共 7 項）。job-level `if` 使非 backend PR skip＝中性、不卡 docs/前端 PR；baseline 豁免既有問題，只擋新增。回滾指令見 `OPERATIONS_RUNBOOK.md` §R1b。對齊 Google「static analysis presubmit」實務（Epic #535 Phase 1.4）。
+
 ## 2026-05-31 — chore: Epic #535 ops 收尾（release 標題清理 + DORA 月度 review SOP）
 
 開發備註：#535。(1) `release.yml` 產生 Release 標題時清掉 `## YYYY-MM-DD — ` 前綴，標題變為 `vTAG — <type: title>`。(2) `OPERATIONS_RUNBOOK.md` §Y 新增 DORA Metrics 月度 review SOP（四指標來源、判讀門檻、每月檢查指令）。(3) §Z 文件化 Pi Health 告警門檻（Phase 2.4 Exit：磁碟 85/95%、溫度 75/85°C+throttle、備份 8h/24h、UptimeRobot），與 `pi-health.yml` 對齊。Phase 0.3（pre-commit 呼叫 git-index-audit）確認既有 `scripts/install-git-hooks.sh` 已實作。純 CI/docs。
