@@ -1,17 +1,12 @@
 name: Docs Integrity
 
+# #543：改為 job-level skip（移除 workflow-level paths 過濾），讓本 workflow 在每個 PR
+# 都觸發、「Docs Integrity Check」一定會回報 status —— 非文件變更時該 job skip（＝中性，
+# 不阻擋），才能安全納入 main branch protection 的 required status checks。
+# （workflow-level paths 過濾的 check 在不觸發的 PR 上「永遠 pending」會卡死合併。）
 on:
   pull_request:
     branches: ["main"]
-    paths:
-      - "docs/**"
-      - "README.md"
-      - "AGENTS.md"
-      - "CLAUDE.md"
-      - ".cursorrules"
-      - ".cursor/rules/**"
-      - "scripts/docs-integrity-check.mjs"
-      - ".github/workflows/docs-integrity.yml"
   schedule:
     - cron: "20 1 * * 1"
   workflow_dispatch:
@@ -20,9 +15,40 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    name: Detect docs changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - 'AGENTS.md'
+              - 'CLAUDE.md'
+              - '.cursorrules'
+              - '.cursor/rules/**'
+              - 'scripts/docs-integrity-check.mjs'
+              - '.github/workflows/docs-integrity.yml'
+
   integrity:
     name: Docs Integrity Check
+    needs: changes
+    # schedule / 手動觸發一律跑；PR 僅在有文件相關變更時跑，否則 skip（中性、不阻擋合併）。
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
