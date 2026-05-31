@@ -597,6 +597,19 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 
 ---
 
+### R59. 共用 `useScrollLock` 的 lock/unlock 必須在元件卸載時平衡（否則整頁灰白遮罩、無法點選）
+
+- **觸發情境**：2026-05-31 in-app #143 / GitHub #600：主任先展開／聚焦某學生課程後切換頁面，整頁變灰白、無法點選也無法捲動。
+- **根因**：`useScrollLock` 是**模組級 reference count**，`lockScroll()` 對 `body` 套 `position:fixed; overflow:hidden`。`CourseManagement.vue` 聚焦學生時 `lockScroll()`，但 `focusedStudentKey` watcher 只在 `key→null` 解鎖；使用者在「聚焦中」直接換頁 → `onUnmounted` 不觸發 watcher → count 不歸零、body 永久凍結，且因 count 是跨元件共用，之後每一頁都被凍結。
+- **強制規則**：
+  - 任何呼叫 `lockScroll()` 的元件／composable，必須保證**所有離開路徑**（含 `onUnmounted`、錯誤 early-return、route 切換）都有對應的 `unlockScroll()`；不要假設 watcher 一定會在卸載時觸發。
+  - App 層換頁（`watch(active)`）應呼叫 `forceUnlockScroll()` 作為防護網，確保任何頁洩漏的鎖都不會殘留到下一頁。
+  - 開啟 modal/overlay 用 `body position:fixed` 鎖捲動時，務必 lock 與 unlock 成對；多個 overlay 疊加靠 reference count，但「洩漏一次」就會永久卡死。
+- **測試必補**：`frontend/src/lib/useScrollLock.test.js`：基本平衡、nested count（兩 lock 需兩 unlock）、`forceUnlockScroll` 能清除洩漏；納入 `build` 測試鏈於 CI。
+- **大廠對齊**：body-scroll-lock 類函式庫（如 `body-scroll-lock`、Radix `RemoveScroll`）都以 reference count + 明確 `enable/disable` 成對使用為前提；元件卸載必清，否則 SPA 換頁後鎖殘留是已知陷阱。
+
+---
+
 ### R57. `StudentClassController::sessionDates()` self-week fallback 不可用 array key 存取（merge 會 reindex）
 
 - **觸發情境**：2026-05-23 in-app #126 / GitHub #497：施景媛 SC#1841 設定好的 24 堂課，課程管理只顯示已實體化的 ClassSession 日期，後續週期堂次全部消失。
