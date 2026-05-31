@@ -385,14 +385,19 @@ class CoursePackageMonthlyBillingTest extends TestCase
         $createRes->assertStatus(201);
         $pkgId = (int) $createRes->json('package_id');
 
-        // 本月加入 4 堂出席（跨兩科）
+        // 本月加入 4 堂出席（跨兩科）。alerts/tuition 只計 SessionDate ∈ [本月初, 今天]，
+        // 故堂次日期須夾在今天（含）以內，否則月初（如每月 1 號）會把月內未來日期排除。
         $members = StudentClass::where('PackageID', $pkgId)->get();
         $today = Carbon::today();
         foreach ([[$members[0], 3], [$members[1], 1]] as [$m, $n]) {
             for ($i = 0; $i < $n; $i++) {
+                $sessionDate = $today->copy()->startOfMonth()->addDays($i);
+                if ($sessionDate->greaterThan($today)) {
+                    $sessionDate = $today->copy();
+                }
                 ClassSession::create([
                     'StudentClassID' => $m->ID,
-                    'SessionDate'    => $today->copy()->startOfMonth()->addDays($i)->toDateString(),
+                    'SessionDate'    => $sessionDate->toDateString(),
                     'StartTime'      => '16:00',
                     'EndTime'        => '18:00',
                     'Status'         => 'attended',
