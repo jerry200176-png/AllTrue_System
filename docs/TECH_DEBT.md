@@ -434,3 +434,31 @@
 | 建議做法 | 將 correlated `MAX(sub2.id)` 改為「每 (student_course_id, schedule_date, start_time) 取最新代課 schedule」的單一 derived-table join（鏡像現有 `lr`/`si` 衍生表 join），保持 `substitute_teacher_id`/COALESCE 老師名稱與 `effective_status` 結果 byte-identical；評估改存正規化 `HH:MM` 以移除 `SUBSTRING()`。先以 Sentry full payload + golden-output 快照保護再下藥。|
 | 清償成本估計 | 中（半天，含 golden 快照與 EXPLAIN 前後對比）|
 | 不做的代價 | 行事曆／點名主查詢持續慢、SLO burn；代課解析邏輯複雜，貿然改易回歸（曾有 schedules.id=611 HH:MM:SS 遺留坑）|
+
+### TD-059：共用課程包（PackageDeductionService）尚未支援部分時數扣堂（#613 後續）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [DEV] #613 A1 落地 |
+| 影響模組 | `App\Services\PackageDeductionService`（共用池 ledger 鏡像）|
+| 描述 | #613 讓單一 `StudentClass` 支援分鐘制部分扣堂，但共用課程包的池鏡像仍以 `delta=±1`（整堂）同步。若部分時數補課發生在**共用包**成員身上，池餘額與個別課的分鐘餘額會漂移。目前單人課程（多數情境）已正確。|
+| 建議做法 | 將 `PackageDeductionService` 的池 ledger 改為分鐘感知（鏡像 `session_deduction_ledger.minutes`），或在包成員觸發部分扣堂時換算池分鐘。需配 golden 包測試（`CoursePackageTest`/`PackageE2EFlowTest`）。|
+| 清償成本估計 | 中（半天）|
+| 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
+
+### TD-060：`ClassSessionController::recalculateSessionCounters` 為死碼（無 caller）且非分鐘感知
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [REVIEW] #613 調查 |
+| 影響模組 | `ClassSessionController::recalculateSessionCounters`（private）|
+| 描述 | 此方法以 count-based（completed+attended）重算 `RemainingSessions`，與權威引擎 `SessionDeductionService::recomputeCounters` 並存。調查確認目前**無任何 caller**（死碼），故不會覆寫 #613 的分鐘衍生值；但保留會誤導，且若日後被誤用會與分鐘制分歧。|
+| 建議做法 | 移除該方法，或改為薄包裝委派 `SessionDeductionService::recomputeCounters`，統一單一扣堂權威路徑。|
+| 清償成本估計 | 低（< 1hr）|
+| 不做的代價 | 死碼誤導後續開發者；潛在被誤用導致與分鐘制不一致 |
