@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — fix: 修復切換頁面後整頁灰白遮罩、無法點選的問題（#143）
+
+先展開／聚焦某位學生的課程後再切換到別的頁面時，畫面有時會卡住、像被一層灰白色蓋住而且點不動、也無法捲動。現已修正：切換頁面會自動解除鎖定，不再卡住（請重新整理頁面後使用）。
+
+開發備註：#143 / GH#600。根因：`CourseManagement.vue` 聚焦學生時 `lockScroll()`（`useScrollLock` 對 body 套 `position:fixed/overflow:hidden`，模組級 reference count），`focusedStudentKey` watcher 只在 `key→null` 解鎖；聚焦中換頁時 `onUnmounted` 不觸發 watcher → scroll lock 洩漏、count 不歸零 → body 永久凍結。修復：`onUnmounted` 聚焦中補 `unlockScroll()` + `App.vue` 換頁 `forceUnlockScroll()` 防護網 + 關閉行動版選單；新增 `useScrollLock.test.js` 回歸測試納入 build 鏈。PR #616。
+
 ## 2026-05-31 — feat: 補課案件可標記「不補課」結案，遇到不需補課的學生不再卡在待安排（#144）
 
 主任在總覽的「補課案件」遇到不想補課的學生時，現在可以按「不補課」直接結案，案件會從待安排清單移除，且不會多扣或多加堂數。
