@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\ClassSession;
 use App\Models\LearningRecord;
+use App\Models\Schedule;
 use App\Models\SessionDeductionLedger;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class SessionDeductionService
@@ -128,6 +130,19 @@ class SessionDeductionService
                 ->exists();
             if ($exists) {
                 return false;
+            }
+        }
+
+        // #613 A1：還原必須沖回「對應 deduct 當初記錄的分鐘」，否則部分扣堂的淨值會漂移。
+        // 未指定 minutes 時，查回同一堂次的 deduct 列分鐘（整堂 deduct 為 null → 維持 null）。
+        if ($minutes === null && $classSessionId && $classSessionId > 0) {
+            $matched = SessionDeductionLedger::query()
+                ->where('student_class_id', $studentClassId)
+                ->where('class_session_id', $classSessionId)
+                ->where('event_type', 'deduct')
+                ->value('minutes');
+            if ($matched !== null) {
+                $minutes = (int) $matched;
             }
         }
 
@@ -284,12 +299,18 @@ class SessionDeductionService
                 return false;
             }
 
+            // #613 A1：補課只覆蓋部分時數時，扣除該補課實際分鐘（否則 null＝整堂）。
+            $partialMinutes = self::resolvePartialMakeupMinutes($sc, $resolvedClassSessionId);
+
             $deducted = false;
-            DB::transaction(function () use ($sc, $signIn, $resolvedClassSessionId, &$deducted) {
+            DB::transaction(function () use ($sc, $signIn, $resolvedClassSessionId, $partialMinutes, &$deducted) {
                 $wrote = self::deductForSession(
                     $sc->ID,
                     $resolvedClassSessionId > 0 ? $resolvedClassSessionId : null,
-                    'attendance'
+                    'attendance',
+                    null,
+                    null,
+                    $partialMinutes
                 );
 
                 if ($signIn) {
@@ -304,6 +325,57 @@ class SessionDeductionService
             return $deducted;
         } catch (\Throwable $e) {
             return false;
+        }
+    }
+
+    /**
+     * #613 A1：補課（schedules.type='extra'）只覆蓋部分時數時，回傳該補課實際分鐘
+     * （上限為每堂分鐘）。非補課、完整時長補課、或時間資料不足 → null（＝整堂，行為不變）。
+     * 刻意只對補課做比例扣除，正常課堂一律整堂，最小化 blast radius。
+     */
+    private static function resolvePartialMakeupMinutes(StudentClass $sc, int $classSessionId): ?int
+    {
+        if ($classSessionId <= 0) {
+            return null;
+        }
+        $cs = ClassSession::find($classSessionId);
+        if (!$cs || empty($cs->StartTime) || empty($cs->EndTime) || empty($cs->SessionDate)) {
+            return null;
+        }
+
+        $csStart  = substr((string) $cs->StartTime, 0, 5);
+        $isMakeup = Schedule::query()
+            ->where('student_course_id', $sc->ID)
+            ->whereDate('schedule_date', $cs->SessionDate)
+            ->where('type', 'extra')
+            ->get(['start_time'])
+            ->contains(fn ($r) => substr((string) $r->start_time, 0, 5) === $csStart);
+        if (!$isMakeup) {
+            return null;
+        }
+
+        $perSession = max(1, $sc->perSessionMinutes());
+        $mins = self::durationMinutes($cs->StartTime, $cs->EndTime);
+        if ($mins <= 0 || $mins >= $perSession) {
+            return null; // 完整（或更長）時長補課 → 整堂，保持 byte-identical
+        }
+
+        return $mins;
+    }
+
+    /** StartTime/EndTime（HH:MM[:SS]）換算分鐘，處理跨午夜（沿用 StudentClassController 慣例）。 */
+    private static function durationMinutes($start, $end): int
+    {
+        try {
+            $s = Carbon::createFromFormat('H:i', substr((string) $start, 0, 5));
+            $e = Carbon::createFromFormat('H:i', substr((string) $end, 0, 5));
+            $d = $s->diffInMinutes($e, false);
+            if ($d <= 0) {
+                $d += 24 * 60;
+            }
+            return (int) $d;
+        } catch (\Throwable $e) {
+            return 0;
         }
     }
 

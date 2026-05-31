@@ -359,13 +359,22 @@ class StudentClassController extends Controller
 
             // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
 
-            if ($class->sessions_purchased > 0) {
+            // #613 A1：若課程有「部分時數」事件（RemainingMinutes 非整堂倍數），分鐘為權威，
+            // 不可用 count-based observed 覆寫 recomputeCounters 已寫入的衍生值；否則沿用既有 self-heal。
+            $perSessionMin = max(1, (int) ($class->SessionDuration ?: 60));
+            $storedRemainingMinutes = $class->RemainingMinutes;
+            $hasFractionalBalance = $storedRemainingMinutes !== null
+                && ((int) $storedRemainingMinutes % $perSessionMin !== 0);
+
+            if ($class->sessions_purchased > 0 && !$hasFractionalBalance) {
                 $observedUsedSessions = min($class->sessions_purchased, $observedUsedSessions);
                 $class->UsedSessions = $observedUsedSessions;
                 $class->RemainingSessions = max(0, $class->sessions_purchased - $observedUsedSessions);
             }
             $class->sessions_used = (int) ($class->UsedSessions ?? 0);
             $class->remaining_sessions = (int) ($class->RemainingSessions ?? 0);
+            // 精確剩餘分鐘（部分補課顯示用）；null = 尚未分鐘化的舊資料。
+            $class->remaining_minutes = $storedRemainingMinutes !== null ? (int) $storedRemainingMinutes : null;
 
             if ($class->isPartOfPackage() && isset($packageMap[$class->PackageID])) {
                 $pkg = $packageMap[$class->PackageID];
