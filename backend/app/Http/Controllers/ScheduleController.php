@@ -447,15 +447,9 @@ class ScheduleController extends Controller
             return response()->json(['message' => '缺少課程或請假日期，無法撤銷'], 422);
         }
 
-        $createdAt = $schedule->created_at ? Carbon::parse($schedule->created_at) : null;
-        if (!$createdAt || $createdAt->diffInSeconds(now()) > self::LEAVE_UNDO_WINDOW_SECONDS) {
-            return response()->json([
-                'message' => '撤銷時限已過，請重新發起調整流程',
-                'code' => 'undo_window_expired',
-                'undo_window_seconds' => self::LEAVE_UNDO_WINDOW_SECONDS,
-            ], 422);
-        }
-
+        // #142 §1 / #596: 取消請假不再受 LEAVE_UNDO_WINDOW_SECONDS（前端 undo-toast 用途）限制。
+        // 撤銷安全性由 CourseLeaveCascadeService::undoLeaveCascade 的「下游已上課堂次」護欄把關，
+        // 與請假建立時間無關，主任因此可隨時取消尚未產生後續上課記錄的請假。
         try {
             return DB::transaction(function () use ($schedule, $courseId, $scheduleDate) {
                 [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::undoLeaveCascade($courseId, $scheduleDate);
