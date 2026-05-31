@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: 自動 CalVer tag + GitHub Releases（Epic #535 Phase 3.1/3.3）
+
+開發備註：#535 Phase 3.1/3.3。新增 `.github/workflows/release.yml` + `.github/scripts/changelog-latest.sh`：當 `docs/CHANGELOG.md` 變更合併進 `main` 時，自動以最新節標題日期建立 `vYYYY.MM.DD[.N]` tag + GitHub Release（notes 取該節全文）。採 CalVer 而非 SemVer，因本系統為持續部署的內部應用、無對外 API 相容性語意（理由與 version.json↔tag 對照見 `OPERATIONS_RUNBOOK.md` §X）。獨立工作流、不碰 `deploy.yml`；唯一副作用為建立 tag/Release，回滾為純中繼資料操作。本次 merge 後將產生首個 Release `v2026.05.31`。
+
 ## 2026-05-31 — chore: PHPStan 移至 GitHub-hosted runner + baseline（#545 選項 A 前置）
 
 開發備註：#545（使用者選 A）。將 `Security Scan` 的 `changes` 與 `PHPStan Advisory (php)` job 從 self-hosted `wsl-ci` 移至 `ubuntu-latest`（消除單點，未來升 required 不會因本機 runner 離線卡死 backend 合併）；新增 `phpstan/phpstan:^2.0` dev 依賴 + `backend/phpstan.neon`（level 5、analyse `app`）+ `backend/phpstan-baseline.neon`（baseline 既有 1952 問題）。移除舊的 `|| true`：現在 PHPStan 會真正對「新增」問題報錯（既有問題經 baseline 豁免），本機驗證 `[OK] No errors`。仍維持 advisory（非 required）；待連續綠燈穩定後再於 #545 升為 backend PR required gate。composer audit 既有 advisories 皆 medium/low（laravel/symfony，與 phpstan 無關），不影響 HIGH/CRITICAL gate。純 CI/tooling，無 production 程式碼變更（deploy 用 --no-dev，不含 phpstan）。
