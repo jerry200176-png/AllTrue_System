@@ -299,6 +299,89 @@ class ExceptionWorkflowApiTest extends TestCase
         $this->assertSame(2, ClassSession::where('StudentClassID', $course->ID)->count());
     }
 
+    public function test_director_can_waive_makeup_workflow_without_scheduling_or_deduction(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '不補課學生', '0912000011');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $remainingBefore = (int) StudentClass::where('ID', $course->ID)->value('RemainingSessions');
+        $sessionCountBefore = ClassSession::where('StudentClassID', $course->ID)->count();
+        $token = $this->createDirectorToken([1]);
+
+        $res = $this->postJson("/api/v1/exception-workflows/{$workflow->id}/waive", [
+            'reason' => '家長表示不需補課',
+        ], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ]);
+
+        $res->assertOk()->assertJsonPath('data.workflow.status', 'waived');
+
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'waived',
+            'closed_reason' => 'no_makeup_needed',
+        ]);
+        // 不安排補課：不得新增 schedule / class session。
+        $this->assertDatabaseCount('schedules', 0);
+        $this->assertSame($sessionCountBefore, ClassSession::where('StudentClassID', $course->ID)->count());
+        // 不額外扣堂：RemainingSessions 不變。
+        $this->assertSame($remainingBefore, (int) StudentClass::where('ID', $course->ID)->value('RemainingSessions'));
+    }
+
+    public function test_waive_rejects_already_closed_workflow(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(1, '已結案學生', '0912000012');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 1,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $workflow->update(['status' => 'confirmed', 'closed_at' => now(), 'closed_reason' => 'candidate_confirmed']);
+        $token = $this->createDirectorToken([1]);
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/waive", [], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertStatus(422);
+    }
+
+    public function test_waive_rejects_cross_campus_director(): void
+    {
+        [$student, $course, $session] = $this->makeStudentCourseSession(2, '跨校不補課學生', '0912000013');
+        $workflow = app(ExceptionWorkflowService::class)->createOrGet([
+            'source_key' => "parent_leave:class_session:{$session->id}",
+            'campus_id' => 2,
+            'student_id' => $student->id,
+            'student_class_id' => $course->ID,
+            'class_session_id' => $session->id,
+            'type' => 'student_leave',
+            'status' => 'open',
+        ]);
+        $token = $this->createDirectorToken([1], 'director-waive-blocked@example.com');
+
+        $this->postJson("/api/v1/exception-workflows/{$workflow->id}/waive", [], [
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->assertStatus(403);
+
+        $this->assertDatabaseHas('exception_workflows', [
+            'id' => $workflow->id,
+            'status' => 'open',
+        ]);
+    }
+
     private function makeStudentCourseSession(int $campusId, string $name, string $phone): array
     {
         $student = Student::create([
