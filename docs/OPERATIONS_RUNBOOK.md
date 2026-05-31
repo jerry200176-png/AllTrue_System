@@ -988,7 +988,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 - `force_pushes` = false
 - `deletions` = false
 - `conversations` = true
-- `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`（2026-05-31 #543 起；`PHPStan Advisory (php)` 仍 advisory，見 #545）
+- `checks` 至少包含 `Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`（2026-05-31 #543 起；`PHPStan Advisory (php)` 仍 advisory，見 #545）
 
 ## Q. Adoption KPI + Trust Layer SOP（#462 / #460）
 
@@ -1029,7 +1029,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 | Require review from Code Owners | 選用 | 單人時 CODEOWNERS 僅提醒；多人時 ✅ |
 | Dismiss stale approvals on new push | ✅（多人時）| 防 approve 後偷塞 commit |
 | Require status checks before merging | ✅ | 必須全綠才能 merge |
-| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` | 2026-05-31（#543）新增後兩者：兩者皆**每個 PR 無條件回報 status**（gitleaks 無 paths 過濾；golden 為 `if: pull_request` job），設 required 不會誤卡不相關 PR。仍為 advisory：`Docs Integrity Check`（workflow-level `paths:` 過濾，非 docs PR 不回報→不可貿然 required）、`PHPStan Advisory (php)`（self-hosted runner 單點，見 #545）|
+| Required checks（**GitHub 實際 job 名稱**）| `Presubmit Checks` / `PHPUnit Feature & Unit Tests` / `Vite Frontend Build` / `gitleaks scan` / `Golden scenarios report` / `Docs Integrity Check` | 2026-05-31（#543）全數納入：皆**每個 PR 無條件回報 status**（gitleaks 無 paths 過濾；golden 為 `if: pull_request` job；docs-integrity 已改 job-level skip，非文件 PR skip＝中性）。仍為 advisory：`PHPStan Advisory (php)`（self-hosted runner 單點，見 #545）|
 | Require branches to be up to date | ✅ | PR behind 時先 `update-branch`（§B5）|
 | Require conversation resolution | ✅ | review comment 必須解決 |
 | Restrict force pushes | ✅（即使 admin 也禁止）| 事故 A 防再犯 |
@@ -1046,7 +1046,7 @@ gh api -X PUT repos/jerry200176-png/AllTrue_System/branches/main/protection/requ
   -F strict=true -f 'contexts[]=Presubmit Checks' -f 'contexts[]=PHPUnit Feature & Unit Tests' \
   -f 'contexts[]=Vite Frontend Build' -f 'contexts[]=gitleaks scan' -f 'contexts[]=Golden scenarios report'
 ```
-⚠️ 只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾掉整個 workflow 的 check（如 Docs Integrity）設 required 會讓不觸發的 PR 永遠 pending → 卡死。job-level `if` skip（如 PHPStan、PHPUnit、Vite）回報 skipped＝中性，可安全 required。
+⚠️ 只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾掉整個 workflow 的 check 設 required 會讓不觸發的 PR 永遠 pending → 卡死。job-level `if` skip（如 PHPStan、PHPUnit、Vite、改寫後的 Docs Integrity）回報 skipped＝中性，可安全 required。若某 check 仍是 workflow-level `paths:` 過濾，先比照 `docs-integrity.yml`（#543）改為「`changes` 偵測 job + `integrity` job-level `if`」再 required。
 
 ### R2. Break-glass 流程
 
