@@ -10,7 +10,7 @@
 
 ## 2026-05-31 — chore: Epic #535 ops 收尾（release 標題清理 + DORA 月度 review SOP）
 
-開發備註：#535。(1) `release.yml` 產生 Release 標題時清掉 `## YYYY-MM-DD — ` 前綴，標題變為 `vTAG — <type: title>`。(2) `OPERATIONS_RUNBOOK.md` §Y 新增 DORA Metrics 月度 review SOP（四指標來源、判讀門檻、每月檢查指令）；Phase 0.3（pre-commit 呼叫 git-index-audit）確認既有 `scripts/install-git-hooks.sh` 已實作。純 CI/docs。
+開發備註：#535。(1) `release.yml` 產生 Release 標題時清掉 `## YYYY-MM-DD — ` 前綴，標題變為 `vTAG — <type: title>`。(2) `OPERATIONS_RUNBOOK.md` §Y 新增 DORA Metrics 月度 review SOP（四指標來源、判讀門檻、每月檢查指令）。(3) §Z 文件化 Pi Health 告警門檻（Phase 2.4 Exit：磁碟 85/95%、溫度 75/85°C+throttle、備份 8h/24h、UptimeRobot），與 `pi-health.yml` 對齊。Phase 0.3（pre-commit 呼叫 git-index-audit）確認既有 `scripts/install-git-hooks.sh` 已實作。純 CI/docs。
 
 ## 2026-05-31 — chore: 自動 CalVer tag + GitHub Releases（Epic #535 Phase 3.1/3.3）
 

@@ -1309,3 +1309,24 @@ gh run view <run_id>                                  # 讀 Step Summary 四指�
 - 指標為「健康趨勢」非 KPI 考核；solo + AI 模式下重點在抓「異常變化」。
 - CFR 以「PR 標題關鍵字」近似，標題規範（Conventional Commits）越一致越準。
 
+---
+
+## Z. Pi Health 告警門檻（文件化）— Epic #535 Phase 2.4
+
+`/.github/workflows/pi-health.yml`（每日 09:00 台灣時間，GitHub-hosted SSH 進 Pi）採**兩級告警**；只有 CRITICAL 會讓 workflow failure（觸發 GitHub 通知），WARNING 僅記錄不失敗。Pi 本機 `scripts/monitor-alert.sh`（cron）補位即時告警（Telegram）。
+
+| 指標 | ⚠️ WARNING | 🔴 CRITICAL | 備註 |
+|---|---|---|---|
+| 磁碟使用率 `/` | > 85% | > 95% | 清 `/var/log/*`、舊備份 |
+| CPU 溫度 | > 75°C | > 85°C **且** `get_throttled` 有 throttling/undervoltage | >85°C 但無 throttling 視為 sensor 尖峰，僅 WARNING |
+| 最新備份年齡（`backups/sixhour`）| > 8h | > 24h 或目錄/檔案不存在 | 對應 sixhour cron；> 24h 視為備份失敗 |
+| UptimeRobot monitor | status 8/9 → DOWN（error） | — | 未設 `UPTIMEROBOT_API_KEY` 則略過 |
+
+### Z1. 調整門檻
+
+直接改 `pi-health.yml` 對應數字並同步本表（兩處一致是 Phase 2.4 的 Exit）。改完走一般 PR → CI；`workflow_dispatch` 可手動驗證：`gh workflow run pi-health.yml`。
+
+### Z2. 缺 secrets 行為
+
+未設 `PI_HOST`/`PI_USER`/`PI_SSH_KEY`/`PI_HOST_KEY` 時，workflow 以 `::notice::` 略過（不 failure），不阻塞。設定後自動生效。
+
