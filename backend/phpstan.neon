@@ -1,0 +1,8 @@
+parameters:
+    level: 5
+    paths:
+        - app
+    # #545：baseline 既有問題，讓 PHPStan 之後只對「新增」問題報錯，
+    # 以便穩定全綠後可從 advisory 升為 backend PR required gate。
+includes:
+    - phpstan-baseline.neon
