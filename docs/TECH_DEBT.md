@@ -375,7 +375,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done（2026-05-31，PR fix/556）|
 | 優先級 | P2 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [BUG] #135/#556 根因調查 |
@@ -384,6 +384,7 @@
 | 建議做法 | 單堂改時間且新時段 ≠ 契約時段時，標記 `IsContractException=1`（或新增 `manual_reschedule` 旗標），使其從 drift 偵測與 realign 中排除；並在 UI 標示為「已調整」。需產品確認語意（調課 vs 補課例外）後設計。|
 | 清償成本估計 | 中（半天，含測試 + drift 回歸）|
 | 不做的代價 | 主任刻意調課顯示為錯誤、或被 realign 還原；#135 類問題會反覆出現 |
+| 清償紀錄 | 採「標記 IsContractException」做法：`ClassSessionController::applyTimeAndNoteUpdates` 於有時間異動時呼叫 `syncContractExceptionFlag`，依新時段是否吻合契約（鏡像 `StudentClassController::sessionMatchesContract`）設/清旗標。語意定為「單堂刻意調課＝契約例外」（沿用既有 add-session 例外語意，非補課）。回歸測試見 `StudentClassScheduleDriftExceptionTest`（3 新案）。|
 
 ---
 
