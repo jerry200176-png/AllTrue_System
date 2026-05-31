@@ -470,6 +470,72 @@ class ScheduleController extends Controller
         }
     }
 
+    /**
+     * Cancel a leave identified by its ClassSession id (the unit the calendar/
+     * attendance UI actually holds). Resolves the course + date and reuses the
+     * same cascade reversal + safety guard as undoLeave; cleans up the snake_case
+     * schedules leave row(s). #142 §1 / #596.
+     */
+    public function undoLeaveBySession(Request $request)
+    {
+        $data = $request->validate([
+            'class_session_id' => 'required|integer',
+        ]);
+        $sessionId = (int) $data['class_session_id'];
+
+        $role = $request->attributes->get('auth_role');
+        if (!in_array($role, ['director', 'admin', 'super_admin'], true)) {
+            return response()->json(['message' => '僅主任/管理員可撤銷請假'], 403);
+        }
+
+        try {
+            return DB::transaction(function () use ($sessionId, $request, $role) {
+                $session = ClassSession::where('id', $sessionId)->lockForUpdate()->first();
+                if (!$session) {
+                    return response()->json(['message' => '找不到堂次'], 404);
+                }
+
+                if (strtolower((string) ($session->Status ?? '')) !== 'leave') {
+                    return response()->json(['message' => '僅能撤銷請假狀態的堂次'], 422);
+                }
+
+                $courseId = (int) $session->StudentClassID;
+                $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
+                if (!$course) {
+                    return response()->json(['message' => '找不到課程'], 404);
+                }
+
+                $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+                $studentCampusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
+                if ($role !== 'super_admin' && !empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+                    return response()->json(['message' => 'Forbidden'], 403);
+                }
+
+                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
+
+                [$rows, $extendedEndDate, $leaveSessionDate] =
+                    CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
+
+                Schedule::where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $sessionDate)
+                    ->where('status', 'leave')
+                    ->delete();
+
+                return response()->json([
+                    'message' => '已撤銷請假，堂次與順延排程已回復',
+                    'leave_session_date' => $leaveSessionDate,
+                    'extended_end_date' => $extendedEndDate,
+                    'class_sessions' => $rows,
+                ]);
+            });
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'code' => 'undo_leave_blocked',
+            ], 422);
+        }
+    }
+
     public function retroLeave(Request $request)
     {
         $data = $request->validate([
