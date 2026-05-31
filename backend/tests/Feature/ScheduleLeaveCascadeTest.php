@@ -749,6 +749,201 @@ class ScheduleLeaveCascadeTest extends TestCase
         $this->assertSame(1, $reverseCount);
     }
 
+    public function test_director_can_undo_leave_after_undo_window_expires(): void
+    {
+        // #142 §1 / #596: 取消請假不應受 30 秒 undo-toast 窗口限制；
+        // 安全性由 cascade 的「下游已上課堂次」護欄把關（見下一個測試）。
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-window@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-window@example.com');
+        $student = $this->createStudent(1, '逾窗撤銷測試');
+
+        $firstWednesday = Carbon::now()->next(Carbon::WEDNESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 8; $i++) {
+            $futureDates[] = $firstWednesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [3],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+        $this->assertTrue($courseId > 0);
+
+        $leaveDate = $futureDates[6];
+        $leaveRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 3,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => $leaveDate,
+            'student_course_id' => $courseId,
+        ])->assertCreated();
+
+        $scheduleId = (int) $leaveRes->json('schedule.id');
+        $this->assertTrue($scheduleId > 0);
+        $this->assertSame(9, ClassSession::where('StudentClassID', $courseId)->count());
+
+        // Move well past the 30s undo-toast window.
+        Carbon::setTestNow(Carbon::parse('2026-04-01 09:00:00', 'Asia/Taipei'));
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/schedules/{$scheduleId}/undo-leave")
+            ->assertOk();
+
+        // Leave session restored to scheduled, appended tail removed.
+        $leaveSession = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $leaveDate)
+            ->first();
+        $this->assertNotNull($leaveSession);
+        $this->assertSame('scheduled', strtolower((string) $leaveSession->Status));
+        $this->assertSame(8, ClassSession::where('StudentClassID', $courseId)->count());
+        $this->assertDatabaseMissing('schedules', ['id' => $scheduleId]);
+    }
+
+    public function test_undo_leave_still_blocked_when_downstream_session_attended(): void
+    {
+        // Safety net must survive removing the time window: if a later session is
+        // already attended, the cascade refuses to auto-undo (regardless of age).
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-guard@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-guard@example.com');
+        $student = $this->createStudent(1, '下游已上課護欄');
+
+        $firstWednesday = Carbon::now()->next(Carbon::WEDNESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 8; $i++) {
+            $futureDates[] = $firstWednesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [3],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+
+        $leaveDate = $futureDates[2];
+        $leaveRes = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 3,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => $leaveDate,
+            'student_course_id' => $courseId,
+        ])->assertCreated();
+        $scheduleId = (int) $leaveRes->json('schedule.id');
+
+        // Mark a session after the leave date as attended.
+        $downstream = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', '>', $leaveDate)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->first();
+        $this->assertNotNull($downstream);
+        $downstream->Status = 'attended';
+        $downstream->save();
+
+        Carbon::setTestNow(Carbon::parse('2026-04-01 09:00:00', 'Asia/Taipei'));
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/schedules/{$scheduleId}/undo-leave")
+            ->assertStatus(422);
+        $this->assertStringContainsString('後續堂次', (string) $res->json('message'));
+    }
+
+    public function test_undo_leave_forbidden_for_teacher(): void
+    {
+        $dirToken = $this->createDirectorToken([1], 'director-undo-perm@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-perm@example.com');
+        $teacherToken = $this->createTeacherToken($teacherId, 1);
+        $student = $this->createStudent(1, '撤銷權限測試');
+
+        $firstWednesday = Carbon::now()->next(Carbon::WEDNESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstWednesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($dirToken, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [3],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->max('ID');
+
+        $leaveRes = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 3,
+            'start_time' => '16:00',
+            'end_time' => '18:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => $futureDates[1],
+            'student_course_id' => $courseId,
+        ])->assertCreated();
+        $scheduleId = (int) $leaveRes->json('schedule.id');
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/schedules/{$scheduleId}/undo-leave")
+            ->assertForbidden();
+    }
+
     /**
      * @param  array<int>  $campusIds
      */
