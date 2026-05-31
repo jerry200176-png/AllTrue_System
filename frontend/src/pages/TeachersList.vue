@@ -9,6 +9,7 @@
       <div class="tabs">
           <button :class="{ active: tab === 'active' }" @click="tab = 'active'">正式老師</button>
           <button :class="{ active: tab === 'pending' }" @click="tab = 'pending'">待審核 <span v-if="pendingCount > 0" class="badge">{{ pendingCount }}</span></button>
+          <button :class="{ active: tab === 'suspended' }" @click="tab = 'suspended'">停用 <span v-if="suspendedCount > 0" class="badge">{{ suspendedCount }}</span></button>
       </div>
       <div class="header-btns">
         <button class="ghost" @click="openBulkModal">批次新增老師</button>
@@ -920,9 +921,18 @@ const bulkParseSummary = computed(() => {
 });
 
 const filteredTeachers = computed(() => {
-    let list = tab.value === 'active'
-      ? teachers.value.filter(t => t.status === 'active')
-      : teachers.value.filter(t => t.status === 'pending');
+    // #145：原本只有 active/pending 兩條路徑，停用(suspended)老師被隱藏。
+    // 狀態下拉（含「停用」）若有選取則優先生效；否則依分頁（含新增的停用分頁）。
+    let list;
+    if (filterStatus.value) {
+      list = teachers.value.filter(t => t.status === filterStatus.value);
+    } else if (tab.value === 'suspended') {
+      list = teachers.value.filter(t => t.status === 'suspended');
+    } else if (tab.value === 'active') {
+      list = teachers.value.filter(t => t.status === 'active');
+    } else {
+      list = teachers.value.filter(t => t.status === 'pending');
+    }
 
     if (selectedTeacherIds.value.length > 0) {
       list = list.filter(t => selectedTeacherIdSet.value.has(String(t.id)));
@@ -943,6 +953,7 @@ const filteredTeachers = computed(() => {
 
 const pendingCount = computed(() => teachers.value.filter(t => t.status === 'pending').length);
 const activeTeachersCount = computed(() => teachers.value.filter(t => t.status === 'active').length);
+const suspendedCount = computed(() => teachers.value.filter(t => t.status === 'suspended').length);
 
 function getBranchName(bid) {
   const numericId = Number(bid);
