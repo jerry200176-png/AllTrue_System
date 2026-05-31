@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
+use App\Models\LearningRecordFeedbackReply;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
@@ -20,9 +21,99 @@ class LearningRecordFeedbackController extends Controller
         $auth = $this->authorizeParentRecord($session, $learningRecord);
         if ($auth !== true) return $auth;
 
-        return response()->json([
-            'feedback' => $this->formatParentFeedback($learningRecord->feedback),
+        $feedback = $learningRecord->feedback;
+        // 先以「讀取前」狀態組出回應（含新回覆紅點），再標記家長已讀，避免清掉本次紅點。
+        $payload = $this->formatParentFeedback($feedback);
+        if ($feedback) {
+            DB::table($feedback->getTable())->where('id', $feedback->id)->update(['last_read_by_parent_at' => now()]);
+        }
+
+        return response()->json(['feedback' => $payload]);
+    }
+
+    /**
+     * 家長追問：在既有回饋上追加一則家長回覆，並 touch feedback 讓員工重新未讀。
+     */
+    public function parentReply(Request $request, LearningRecord $learningRecord)
+    {
+        $session = $this->resolveParentSession($request);
+        if (!$session) return response()->json(['message' => 'Unauthorized'], 401);
+        $auth = $this->authorizeParentRecord($session, $learningRecord);
+        if ($auth !== true) return $auth;
+
+        $feedback = $learningRecord->feedback;
+        if (!$feedback) {
+            return response()->json(['message' => '尚未有回饋可回覆，請先送出回饋'], 409);
+        }
+
+        $content = trim((string) $request->input('content', ''));
+        if ($content === '' || mb_strlen($content) > 500) {
+            return response()->json(['message' => '內容需為 1-500 字'], 422);
+        }
+
+        $reply = LearningRecordFeedbackReply::create([
+            'feedback_id' => $feedback->id,
+            'author_user_id' => null,
+            'author_role' => 'parent',
+            'parent_session_id' => $session->id,
+            'content' => $content,
         ]);
+
+        // 家長追問 → touch updated_at 觸發員工未讀；家長自己視為已讀。
+        DB::table($feedback->getTable())
+            ->where('id', $feedback->id)
+            ->update(['updated_at' => now(), 'last_read_by_parent_at' => now()]);
+
+        return response()->json([
+            'reply' => $this->formatReply($reply),
+            'message' => '已送出',
+        ]);
+    }
+
+    /**
+     * 員工（老師/主任）回覆家長。不 touch updated_at（避免讓其他員工產生假未讀）；
+     * 家長端紅點改以「員工回覆 created_at > last_read_by_parent_at」判定。
+     */
+    public function staffReply(Request $request, LearningRecordFeedback $feedback)
+    {
+        $auth = $this->authorizeStaffFeedback($request, $feedback);
+        if ($auth !== true) return $auth;
+
+        $content = trim((string) $request->input('content', ''));
+        if ($content === '' || mb_strlen($content) > 1000) {
+            return response()->json(['message' => '回覆內容需為 1-1000 字'], 422);
+        }
+
+        $role = (string) $request->attributes->get('auth_role');
+        $authUser = $request->attributes->get('auth_user');
+        $replierRole = $role === 'teacher' ? 'teacher' : 'director';
+
+        $reply = LearningRecordFeedbackReply::create([
+            'feedback_id' => $feedback->id,
+            'author_user_id' => $authUser ? (int) $authUser->id : null,
+            'author_role' => $replierRole,
+            'content' => $content,
+        ]);
+
+        // 回覆者該角色標記已讀（不影響另一員工角色、不 touch updated_at）。
+        $readCol = $replierRole === 'teacher' ? 'last_read_by_teacher_at' : 'last_read_by_director_at';
+        DB::table($feedback->getTable())->where('id', $feedback->id)->update([$readCol => now()]);
+
+        return response()->json([
+            'reply' => $this->formatReply($reply),
+            'message' => '已回覆家長',
+        ]);
+    }
+
+    /**
+     * 員工端取得某筆回饋的回覆串（modal 內顯示/重新整理用）。
+     */
+    public function replies(Request $request, LearningRecordFeedback $feedback)
+    {
+        $auth = $this->authorizeStaffFeedback($request, $feedback);
+        if ($auth !== true) return $auth;
+
+        return response()->json(['data' => $this->serializeReplies($feedback)]);
     }
 
     public function parentUpsert(Request $request, LearningRecord $learningRecord)
@@ -377,15 +468,82 @@ class LearningRecordFeedbackController extends Controller
         ];
     }
 
+    /**
+     * 員工端回覆/讀取的分校與師別授權，鏡像 markRead 的隔離邏輯。
+     * teacher 僅限自己 teacher_id；director 限 campus_id ∈ auth_campus_ids；super_admin 全部。
+     *
+     * @return true|\Illuminate\Http\JsonResponse
+     */
+    private function authorizeStaffFeedback(Request $request, LearningRecordFeedback $feedback)
+    {
+        $role = (string) $request->attributes->get('auth_role');
+        if ($role === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if ($teacherId <= 0) return response()->json(['message' => 'Teacher not linked'], 403);
+            if ($teacherId !== (int) $feedback->teacher_id) return response()->json(['message' => 'Forbidden'], 403);
+            return true;
+        }
+        if ($role === 'super_admin') return true;
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!in_array((int) $feedback->campus_id, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        return true;
+    }
+
+    private function serializeReplies(LearningRecordFeedback $f): array
+    {
+        return LearningRecordFeedbackReply::where('feedback_id', $f->id)
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($r) => $this->formatReply($r))
+            ->all();
+    }
+
+    private function formatReply(LearningRecordFeedbackReply $r): array
+    {
+        $authorName = null;
+        if ($r->author_role !== 'parent' && $r->author_user_id) {
+            $authorName = DB::table('User')->where('id', $r->author_user_id)->value('Name');
+        }
+        return [
+            'id' => (int) $r->id,
+            'feedback_id' => (int) $r->feedback_id,
+            'author_role' => (string) $r->author_role,
+            'author_name' => $authorName,
+            'content' => $r->content,
+            'created_at' => optional($r->created_at)->toIso8601String(),
+        ];
+    }
+
+    /**
+     * 家長端「有新回覆」紅點：存在員工回覆其 created_at 晚於 last_read_by_parent_at（或從未讀過）。
+     */
+    private function hasUnreadReplyForParent(LearningRecordFeedback $f, ?array $replies = null): bool
+    {
+        $replies = $replies ?? $this->serializeReplies($f);
+        $lastRead = $f->last_read_by_parent_at;
+        foreach ($replies as $r) {
+            if (($r['author_role'] ?? '') === 'parent') continue;
+            if (empty($r['created_at'])) continue;
+            if (!$lastRead) return true;
+            if (Carbon::parse($r['created_at'])->gt($lastRead)) return true;
+        }
+        return false;
+    }
+
     private function formatParentFeedback(?LearningRecordFeedback $f): ?array
     {
         if (!$f) return null;
+        $replies = $this->serializeReplies($f);
         return [
             'id' => (int) $f->id,
             'learning_record_id' => (int) $f->learning_record_id,
             'content' => $f->content,
             'created_at' => optional($f->created_at)->toIso8601String(),
             'updated_at' => optional($f->updated_at)->toIso8601String(),
+            'replies' => $replies,
+            'has_unread_reply' => $this->hasUnreadReplyForParent($f, $replies),
         ];
     }
 
