@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — fix: 主任可以隨時「取消請假」了，課表會正確回復（不再多出一堂）（#142/#596）
+
+開發備註：#142 §1。原因有二：(1) `ScheduleController::undoLeave` 受 `LEAVE_UNDO_WINDOW_SECONDS=30` 限制（僅前端 undo-toast 用途），逾 30 秒回 `undo_window_expired`，主任之後無取消途徑；(2) `SessionEditModal` 的「改為未上」對 leave 堂次送 `PATCH /class-sessions/{id}` 純改狀態，後端 `update` 未反轉請假時自動順延的尾堂與 `EndDate`，課程憑空多一堂。修復：移除時間窗（撤銷安全改由 `CourseLeaveCascadeService::undoLeaveCascade` 的下游已上課堂次護欄把關，與時間無關）；新增 `POST /schedules/undo-leave-by-session`（以 class_session_id 取消）；前端 `doStatusChange` 對 leave→scheduled 改走此 cascade-correct 端點。PR #602/#603/#604。
+
 ## 2026-05-31 — ops: 修復 Pi 健康監控（pi-health.yml）SSH 連線被靜默略過
 
 開發備註：`PI_HOST_KEY` GitHub secret 遺失導致 `pi-health.yml` 的「Run health checks on Pi」步驟長期 skip（known_hosts 驗證失敗 → SSH 不執行），Pi 端磁碟/溫度/備份指標未實際採集。以 `ssh-keyscan pi.lifenet.com.tw` 取回 host key 並重設 secret，重跑 workflow 確認 SSH 健檢恢復（Pi 磁碟 6%、備份新鮮）。教訓：監控 workflow「成功但跳過關鍵步驟」需與「失敗」同等告警。
