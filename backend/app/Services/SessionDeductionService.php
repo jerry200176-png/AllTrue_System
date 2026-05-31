@@ -338,14 +338,14 @@ class SessionDeductionService
         if ($classSessionId <= 0) {
             return null;
         }
-        $cs = ClassSession::find($classSessionId);
+        $cs = ClassSession::query()->find($classSessionId);
         if (!$cs || empty($cs->StartTime) || empty($cs->EndTime) || empty($cs->SessionDate)) {
             return null;
         }
 
         $csStart  = substr((string) $cs->StartTime, 0, 5);
         $isMakeup = Schedule::query()
-            ->where('student_course_id', $sc->ID)
+            ->where('student_course_id', (int) $sc->getKey())
             ->whereDate('schedule_date', $cs->SessionDate)
             ->where('type', 'extra')
             ->get(['start_time'])
