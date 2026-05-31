@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — feat: 補課案件可標記「不補課」結案，遇到不需補課的學生不再卡在待安排（#144）
+
+主任在總覽的「補課案件」遇到不想補課的學生時，現在可以按「不補課」直接結案，案件會從待安排清單移除，且不會多扣或多加堂數。
+
+開發備註：#144 / GH#609。新增 `POST /exception-workflows/{id}/waive`（director、多校區隔離）：`status='waived'`、`closed_reason='no_makeup_needed'`，payload 記 `waived_by_user_id`/`waive_reason`。對齊業界 forfeit/no-show：waive 不安排補課、不額外扣堂/退堂（原缺席/請假堂次扣堂已在當初流程處理），避免重複扣堂或誤動 `SessionDeductionService`。已結案案件拒絕重複 waive(422)。前端 DirectorDashboard 補課案件列新增「不補課」按鈕（二次確認＋選填原因）。PR #612。
+
 ## 2026-05-31 — fix: 老師管理頁新增「停用」分頁，可查看與復職停用老師（#145）
 
 開發備註：#145 / GH#608。`TeachersList.vue` 原本只有「正式老師(active)」「待審核(pending)」兩個分頁，`filteredTeachers` 無 `suspended` 路徑 → 停用老師被前端過濾隱藏（後端 `ProfileController::index` 其實已回傳全部狀態）。修復（純前端）：新增「停用」分頁 + `suspendedCount`，並讓狀態下拉（含「停用」）優先生效。PR #610。
