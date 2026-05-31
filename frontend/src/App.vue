@@ -432,7 +432,7 @@ import {
 } from './lib/useBranches';
 import { usePageGuideTour } from './lib/usePageGuideTour';
 import { useUpdateChecker } from './composables/useUpdateChecker';
-import { lockScroll, unlockScroll } from './lib/useScrollLock';
+import { lockScroll, unlockScroll, forceUnlockScroll } from './lib/useScrollLock';
 import logoUrl from './assets/logo.png';
 
 // Pages — lazy-loaded per route for code splitting (reduces initial bundle size)
@@ -1460,6 +1460,10 @@ watch(currentBranch, (value) => {
 
 watch([active, isStandaloneParent], async ([p]) => {
   guideTour.closeTour();
+  // #143 防護：切換頁面時強制清除任何殘留的 scroll lock（body position:fixed/overflow:hidden）
+  // 與行動版選單，避免某頁洩漏的鎖讓下一頁看起來被灰白遮罩蓋住、無法點選。
+  showMoreMenu.value = false;
+  forceUnlockScroll();
   if (p !== 'bugs' || !session.value?.access_token || !currentBranch.value) return;
   if (role.value !== 'super_admin') return;
   try {
