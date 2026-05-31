@@ -1048,6 +1048,19 @@ gh api -X PUT repos/jerry200176-png/AllTrue_System/branches/main/protection/requ
 ```
 ⚠️ 只把「每個 PR 都會回報 status」的 check 設 required；workflow-level `paths:` 過濾掉整個 workflow 的 check 設 required 會讓不觸發的 PR 永遠 pending → 卡死。job-level `if` skip（如 PHPStan、PHPUnit、Vite、改寫後的 Docs Integrity）回報 skipped＝中性，可安全 required。若某 check 仍是 workflow-level `paths:` 過濾，先比照 `docs-integrity.yml`（#543）改為「`changes` 偵測 job + `integrity` job-level `if`」再 required。
 
+### R1c. 供應鏈安全控制（OSS，無需 GHAS）— #544
+
+GitHub Advanced Security（GHAS）未購買期間，供應鏈把關**不等 GHAS**，由 OSS 控制覆蓋：
+
+| 層級 | 工具 | 觸發 | 行為 |
+|---|---|---|---|
+| PR 逐次 gate | `composer audit`（ci.yml）| 每個 backend PR | HIGH/CRITICAL **擋 merge**，MEDIUM/LOW 警告 |
+| PR 逐次 gate | `npm audit --audit-level=high`（ci.yml）| 每個 frontend PR | high 以上失敗 |
+| 每週深掃 | **OSV-Scanner**（`osv-scanner.yml`）| cron 週一 03:00 UTC + 手動 | 掃 `composer.lock`/`package-lock.json` 對 OSV.dev，發現漏洞 → run 紅燈 |
+| （升級路徑）| `dependency-review-action`（`dependency-review.yml`）| 購買 GHAS 後設 `ENABLE_DEPENDENCY_REVIEW=true` | 逐 PR 依賴 diff 審查 |
+
+OSV-Scanner 刻意只跑排程／手動（掃受信任的 main、`upload-sarif=false` 不需 GHAS code scanning），避免官方 action 在不受信任 PR 內容下的輸出注入風險（osv-scanner#2749）。手動觸發：`gh workflow run osv-scanner.yml`。
+
 ### R2. Break-glass 流程
 
 - 重大事故需直接 push main 時：

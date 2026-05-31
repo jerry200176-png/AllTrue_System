@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: OSS 供應鏈深掃（OSV-Scanner），不等 GHAS（#544 完成）
+
+開發備註：#544。供應鏈把關不依賴付費 GHAS：PR 逐次已由 `composer audit`（HIGH/CRITICAL 擋 merge）+ `npm audit --audit-level=high`（皆 required）覆蓋；新增 `osv-scanner.yml` 以 Google OSV-Scanner 每週深掃 `composer.lock`/`package-lock.json`（OSS、OSV.dev 資料庫、`upload-sarif=false` 不需 code scanning）。僅排程／手動觸發（掃受信任 main），規避官方 action 在不受信任 PR 的輸出注入風險（osv-scanner#2749）。`dependency-review.yml` 保留為購買 GHAS 後的逐 PR 升級路徑。控制矩陣見 `OPERATIONS_RUNBOOK.md` §R1c。
+
 ## 2026-05-31 — feat: 補課部分時數可按比例扣堂（#613 完成）
 
 補課如果只上了一部分時間（例如原本 2 小時、只補 1 小時），系統現在會依「實際上課時間」按比例扣堂，不再一律扣整堂；學生會保留剩下的時數。
