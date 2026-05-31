@@ -25,6 +25,25 @@ use Carbon\Carbon;
 
 class LearningRecordController extends Controller
 {
+    /**
+     * 系統自動作廢（非人工作廢）的 LearningRecord VoidReason 白名單。
+     * 這些都是「請假 / 狀態調整」cascade 產生的副作用，且在作廢當下已對應沖回堂數
+     * （或該堂從未扣堂）。當對應 ClassSession 後續回到 fillable 狀態時，老師重新填寫
+     * 應 resurrect 舊列、避免被 409 永久擋住。人工作廢（其他 VoidReason）維持 409，
+     * 不覆寫管理員決策。
+     *
+     *  - '一般請假'            CourseLeaveCascadeService（整門/批次請假，#125/#495）
+     *  - '由已上調整狀態'      ClassSessionController attended→scheduled/cancelled（已 reverseForSession 沖回，#146）
+     *  - '補請假：已上課改請假' ClassSessionController::handleRetroLeaveTransition（已沖回）
+     *  - '單堂標記請假'        ClassSessionController scheduled→leave（scheduled 未扣堂）
+     */
+    private const SYSTEM_RESURRECTABLE_VOID_REASONS = [
+        '一般請假',
+        '由已上調整狀態',
+        '補請假：已上課改請假',
+        '單堂標記請假',
+    ];
+
     private function hasLearningRecordSessionDeductedColumn(): bool
     {
         static $hasColumn = null;
@@ -61,7 +80,7 @@ class LearningRecordController extends Controller
      * Bug #495 / in-app #125：cascade-void 復原 helper。
      *
      * 條件已在呼叫端確認：
-     *   1) `$voided->VoidReason === '一般請假'`
+     *   1) `$voided->VoidReason` 屬 SYSTEM_RESURRECTABLE_VOID_REASONS（系統 cascade 作廢）
      *   2) `$classSession->Status` 屬 fillable 集合
      * 此處只負責 in-place 更新欄位，保留 LR id 與審計時間戳。
      */
@@ -962,13 +981,18 @@ class LearningRecordController extends Controller
                 ->first();
             if ($rowForSession) {
                 if ($rowForSession->VoidedAt) {
-                    // Bug #495 / in-app #125：CourseLeaveCascadeService 標的 VoidReason='一般請假'
-                    // 是系統 cascade 副作用；若該 ClassSession 已被回復為 fillable 狀態
-                    // (attended/scheduled/completed/late)，自動 resurrect 舊 LR，避免老師被永久 409 擋住。
-                    // 人工作廢（其他 VoidReason）維持原 409，不覆寫管理員決策。
+                    // Bug #495 / in-app #125 / #146：系統 cascade（請假 / 狀態調整）作廢的 LR，
+                    // 若該 ClassSession 已被回復為 fillable 狀態 (attended/scheduled/completed/late)，
+                    // 自動 resurrect 舊 LR，避免老師被永久 409 擋住。人工作廢（其他 VoidReason）維持原
+                    // 409，不覆寫管理員決策。#146：attended→scheduled→attended 會以 '由已上調整狀態'
+                    // 作廢且已沖回堂數，原本只認 '一般請假' → 老師無法重填，故改用系統白名單。
                     $fillableStatuses = ['attended', 'scheduled', 'completed', 'late'];
                     $csStatus = strtolower((string) ($classSession->Status ?? ''));
-                    $isCascadeVoid = (string) ($rowForSession->VoidReason ?? '') === '一般請假';
+                    $isCascadeVoid = in_array(
+                        (string) ($rowForSession->VoidReason ?? ''),
+                        self::SYSTEM_RESURRECTABLE_VOID_REASONS,
+                        true
+                    );
 
                     if ($isCascadeVoid && in_array($csStatus, $fillableStatuses, true)) {
                         $resurrected = $this->resurrectVoidedLearningRecord(

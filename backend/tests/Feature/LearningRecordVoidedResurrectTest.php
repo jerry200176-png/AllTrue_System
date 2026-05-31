@@ -18,11 +18,57 @@ use Tests\TestCase;
  * 之後 ClassSession 被點為 attended（或調課回復），LR 的 VoidedAt 沒清，
  * 老師再來填評量就被 store() 永久 409 擋住。
  *
- * 修復：store() 對「VoidReason='一般請假' + CS 為 fillable 狀態」自動 resurrect 舊 LR。
+ * 修復：store() 對「VoidReason 屬系統 cascade 白名單 + CS 為 fillable 狀態」自動 resurrect 舊 LR。
+ *
+ * in-app #146 延伸：attended→scheduled 會以 VoidReason='由已上調整狀態' 作廢並沖回堂數；
+ * 之後 scheduled→attended 不會還原該 LR，老師重填被原本只認 '一般請假' 的判斷擋住。
+ * 修復：改用 SYSTEM_RESURRECTABLE_VOID_REASONS 白名單（含 '由已上調整狀態' 等系統作廢原因）。
  */
 class LearningRecordVoidedResurrectTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * #146：attended→scheduled→attended 後，'由已上調整狀態' 作廢的 LR 應可重填 resurrect。
+     */
+    public function test_resurrect_voided_when_session_attended_after_status_adjust_void_146(): void
+    {
+        [$token, $teacherId, $student, $course, $cs, $voidedLr] = $this->seedResurrectScenario(
+            classSessionStatus: 'attended',
+            voidReason: '由已上調整狀態',
+            classSessionNote: 'revert-to-scheduled',
+        );
+
+        $resp = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/learning-records', [
+            'StudentID' => $student->id,
+            'ClassSessionID' => $cs->id,
+            'TeacherID' => $teacherId,
+            'Subject' => '化學',
+            'SessionDate' => $cs->SessionDate,
+            'StartTime' => $cs->StartTime,
+            'EndTime' => $cs->EndTime,
+            'Content' => '狀態調整後重新填寫',
+            'Progress' => '本週進度',
+        ]);
+
+        $resp->assertOk();
+        $resp->assertJsonPath('id', $voidedLr->id);
+
+        $voidedLr->refresh();
+        $this->assertNull($voidedLr->VoidedAt, '由已上調整狀態 void 應在重填時被清除');
+        $this->assertNull($voidedLr->VoidReason);
+        $this->assertSame('pending', $voidedLr->Status, 'resurrect 後應為 pending，扣堂走後續核准流程');
+        $this->assertFalse((bool) $voidedLr->SessionDeducted, 'resurrect 不可直接標記已扣堂');
+
+        $this->assertSame(
+            1,
+            (int) DB::table('LearningRecord')->where('ClassSessionID', $cs->id)->count(),
+            'should not create a second LR row',
+        );
+    }
 
     public function test_resurrect_voided_when_session_attended(): void
     {
