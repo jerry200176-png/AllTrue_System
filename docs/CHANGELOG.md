@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — feat: 兼職老師薪資明細顯示「本段採用最高時薪」併堂說明（#614）
+
+主任在兼職老師薪資明細裡，現在每一筆併堂（同時段多位學生）的堂次下方會多一行綠色說明：「本段採用 $X 最高時薪（同時段 N 位學生 · M 分）」，讓主任一眼看懂這段薪資是用同時段最高時薪計算、以及當下有幾位學生併堂。金額計算邏輯完全沒變，只是把原本算給你看的依據顯示出來。請重新整理頁面後使用。
+
+開發備註：#614。併堂「最高薪 time-slice」計算（`FinanceController::buildConcurrencyBonusMap`）早已實作，本次純呈現：為該 private 方法加一個可選 out-param `&$segmentsOut`，在 n>1 的 sweep-line 區段回填 `{max_base, headcount, minutes}`（不動 `$bonusMap`/`$attributed`/`$segPay` 任何金額邏輯）；`parttimePayrollSessions` 取得 `$segmentsMap` 後在 session row 附加 `concurrency_segments`（僅歸屬 primary LR 有值，其餘為 `[]`）。前端 `ParttimePayrollPage.vue` 在堂次列下方加併堂說明列。FinanceController 非 DEV-forbidden 檔；附加欄位 non-breaking。測試 `PayrollConcurrencyTest` 新增 2 案（primary 帶段明細且金額不變 800、無重疊為空陣列），既有 10 案金額回歸全綠。
+
 ## 2026-05-31 — fix: 主任「單堂調課」不會再被系統自動還原回原本時段（#556）
 
 修正石牌等分校回報的「固定排課課程，有幾天出現在錯誤時段」問題。原因是主任用「單堂編輯」把某一堂改到不同時間後，系統沒把它記成「刻意調整」，於是之後對該課程按「編輯→儲存」時，系統會誤以為這堂跑掉了、把它「拉回」原本的固定時段，覆蓋掉主任的調整。現在改好了：只要單堂改到跟固定排課不同的時段，系統會自動記成「已調整」、不再被自動還原；若改回原本時段則自動取消標記。請重新整理頁面後使用。
