@@ -2,6 +2,11 @@
 # 正式執行 dependency-review-action 需：Dependency graph + **GitHub Advanced Security**（私人 repo 多數要付費方案）。
 # 預設不跑該 action（避免 PR 因未開 GHAS 而全失敗）；啟用方式見下方 `ENABLE_DEPENDENCY_REVIEW`。
 # Runner 使用 GitHub-hosted，不消耗 self-hosted WSL CI minutes。
+#
+# #544 決策（GHAS 未購買期間的 OSS 替代）：供應鏈把關不等 GHAS，已由以下 OSS 控制覆蓋——
+#   1) PR 逐次 required gate：ci.yml 的 `composer audit`（HIGH/CRITICAL 擋 merge）+ `npm audit --audit-level=high`
+#   2) 每週深掃：osv-scanner.yml（Google OSV-Scanner，OSS，OSV.dev 資料庫）
+# 本 dependency-review.yml 保留為「日後購買 GHAS 時的逐 PR 依賴審查升級路徑」。
 
 name: Dependency Review
 
