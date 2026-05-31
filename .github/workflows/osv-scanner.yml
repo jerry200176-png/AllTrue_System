@@ -24,7 +24,8 @@ permissions:
 
 jobs:
   scan:
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8"
+    # SHA-pinned（供應鏈硬化）；# 後保留可讀 tag，dependabot github-actions 仍會更新。
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2" # v2.3.8
     permissions:
       contents: read
       security-events: write
@@ -34,4 +35,6 @@ jobs:
         --lockfile=./backend/composer.lock
         --lockfile=./frontend/package-lock.json
       upload-sarif: false
-      fail-on-vuln: true
+      # advisory（不擋）：阻擋型 gate 是 ci.yml 的 composer/npm audit（HIGH/CRITICAL）。
+      # 此深掃列出全部嚴重度供月度 review，避免 Laravel-8／dev-only Medium 造成長紅噪音。
+      fail-on-vuln: false

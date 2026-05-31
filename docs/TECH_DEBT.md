@@ -462,3 +462,17 @@
 | 建議做法 | 移除該方法，或改為薄包裝委派 `SessionDeductionService::recomputeCounters`，統一單一扣堂權威路徑。|
 | 清償成本估計 | 低（< 1hr）|
 | 不做的代價 | 死碼誤導後續開發者；潛在被誤用導致與分鐘制不一致 |
+
+### TD-061：相依套件已知漏洞待升版（OSV 深掃 #544 首次結果）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | `osv-scanner.yml` 首次深掃（#544）|
+| 影響模組 | `backend/composer.lock`、`frontend/package-lock.json` |
+| 描述 | OSV 深掃發現 5 筆已知漏洞（**0 Critical / 0 High**；3 Medium、1 Low、1 Unknown），故 PR 阻擋型 gate（composer/npm audit on HIGH/CRITICAL）正確未擋：<br>1. `laravel/framework` 8.x → GHSA-78fx-h6xr-vch4（6.9，fixed 10.48.29）— 需 Laravel 8→10 大版遷移，獨立 epic。<br>2. `symfony/routing` v5.4.48 → 5.4.52（patch，Laravel 8 相容，易升）。<br>3. `symfony/polyfill-intl-idn` v1.33.0 → 1.38.1（patch，易升）。<br>4. `esbuild` 0.21.5 → 0.25.0（dev-only，5.3）。<br>5. `vite` 5.4.21 → 6.4.2（dev-only，6.3；vite 5→6 為 major，需驗 build）。|
+| 建議做法 | 易升的 symfony patch 先隨 dependabot minor/patch group PR 處理；vite/esbuild dev major 升級單獨驗 `npm run build` + `test:calendar`；Laravel 8→10 列為獨立 epic（大工程，非本批）。每月 review OSV 深掃結果（RUNBOOK §Y/§R1c）。|
+| 清償成本估計 | symfony patch 低；vite/esbuild 中；Laravel 升級 高 |
+| 不做的代價 | Medium 漏洞累積；dev 工具鏈落後。皆非 Critical/High，無立即生產風險 |
