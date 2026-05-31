@@ -210,23 +210,32 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `.github/ISSUE_TEMPLATE/` | 建立 Issue 時選擇：Bug／工程變更／Ops（`config.yml` 含導航連結）|
 | `SECURITY.md`（根目錄） | GitHub **Security policy** 與漏洞通報入口；細節見 `docs/SECURITY.md` |
 | `.github/CODEOWNERS` | 敏感路徑自動請求 review |
-| `dependency-review.yml` | PR **供應鏈（選用）**：官方 dependency-review；需 GHAS + 變數 `ENABLE_DEPENDENCY_REVIEW=true`；未開時僅 notice |
+| 供應鏈安全 | PR gate＝`composer audit` + `npm audit`（ci.yml，required，不需 GHAS）；每週深掃＝`osv-scanner.yml`；GHAS 升級路徑＝`dependency-review.yml`（`ENABLE_DEPENDENCY_REVIEW=true`）。矩陣見 `OPERATIONS_RUNBOOK.md §R1c` |
 
 ## 🤖 GitHub Workflows（自動化）
 
 | Workflow | 觸發時機 | 功能 |
 |----------|---------|------|
-| `ci.yml` | PR / main push | 所有 PR 都觸發 required checks context；再依 changed areas 決定是否跑 PHPUnit、Vite、coverage gate、composer/npm audit |
+| `ci.yml` | PR / main push | **required**：所有 PR 觸發 context；依 changed areas 跑 PHPUnit、Vite、coverage gate、composer/npm audit、Golden scenarios |
+| `presubmit.yml` | 每次 PR | **required**：Branch 命名規範檢查 |
+| `secret-scan.yml` | 每次 PR | **required**：`gitleaks scan` 機密外洩偵測 |
+| `codeql.yml` | PR / main push / weekly | **required**：後端或 workflow 改動才跑 `PHPStan Advisory (php)` level 5（baseline-gated，只擋新增）|
+| `docs-integrity.yml` | PR / 每週一 | **required**：文件連結完整性、INDEX 導航與核心文件存在性檢查 |
 | `deploy.yml` | main CI success | 有 deployable diff 才自動部署 Pi + smoke test + rollback；docs-only merge 跳過 |
-| `presubmit.yml` | 每次 PR | Branch 命名規範檢查 |
-| `codeql.yml` | PR / main push / weekly | 後端或 workflow 相關改動才跑 PHPStan level 5 |
-| `dependency-review.yml` | 每次 PR | 選用 GHAS 依賴審查（見變數 `ENABLE_DEPENDENCY_REVIEW`）；見 `CONTRIBUTING.md` |
-| `pi-health.yml` | 每 6 小時 | 磁碟/溫度/備份年齡/UptimeRobot |
+| `release.yml` | main push（CHANGELOG 變更）/ 手動 | CalVer 自動打 tag + GitHub Release（見 `OPERATIONS_RUNBOOK.md §X`）|
+| `ui-smoke.yml` | 每週 / 手動 | Playwright UI 煙霧測試（需 `SMOKE_*` secrets，否則 skip）|
+| `dependency-review.yml` | 每次 PR | 供應鏈（選用 GHAS 升級路徑）；需 `ENABLE_DEPENDENCY_REVIEW=true`，未開僅 notice |
+| `osv-scanner.yml` | 每週一 / 手動 | **OSS 供應鏈深掃**：OSV-Scanner 掃 lockfiles（不需 GHAS）；控制矩陣見 `OPERATIONS_RUNBOOK.md §R1c` |
+| `pi-health.yml` | 每日 09:00 台灣 | 磁碟/溫度/備份年齡/UptimeRobot（門檻見 §Z）|
 | `slow-query-report.yml` | 每週一 | MySQL 慢查詢報告 |
+| `migration-dryrun.yml` | 每次 PR | migration 變更時 `migrate --pretend` 乾跑 |
+| `missing-tests-warn.yml` | 每次 PR | 改 controller/service 未附測試時警告（advisory）|
+| `htaccess-guard.yml` | 每次 PR | `public/.htaccess` 變更守門（事故 D 防再犯）|
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
-| `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR）|
+| `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR；review SOP 見 §Y）|
+| `mempalace-monthly.yml` | 每月 | MemPalace 記憶索引重建 |
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
-| `docs-integrity.yml` | PR / 每週一 | 文件連結完整性、INDEX 導航與核心文件存在性檢查 |
+| `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |
 
 > `ci.yml` / `presubmit.yml` / `codeql.yml` 使用 WSL2 self-hosted runner `wsl2-jerry-alltrue`（labels: `self-hosted`, `Linux`, `X64`, `wsl-ci`, `alltrue-ci`）節省 GitHub-hosted minutes；`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上部署 production。
 > `main` branch protection 已啟用：required checks + admin enforcement + 禁止 force push/delete。備份同步會產生 Google Drive manifest（檔名 / 大小 / sha256），詳見 `OPERATIONS_RUNBOOK.md §P`。

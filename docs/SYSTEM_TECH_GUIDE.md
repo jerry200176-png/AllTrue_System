@@ -222,6 +222,24 @@ SessionDeductionService::deductOnAttendance($studentClass, $signIn)
 | `deduct` | 出席點名（attend/late） |
 | `reverse` | 請假後回滾（leave），或管理員手動補堂 |
 
+每筆 ledger 另有 nullable `minutes` 欄（#613）：`null` = 整堂（依 `perSessionMinutes`）；非 null = 該事件的實際分鐘數。
+
+### 5.3 分鐘制權威餘額（#613 A1）
+
+扣堂權威單位為「分鐘」，`RemainingSessions` 為衍生顯示值：
+
+- **權威欄位**：`StudentClass.PurchasedMinutes`（= `SessionCount × perSessionMinutes`）、`StudentClass.RemainingMinutes`、`session_deduction_ledger.minutes`。
+- **`perSessionMinutes()`**：`StudentClass.SessionDuration`，未設則 fallback `DEFAULT_SESSION_MINUTES`（60）。
+- **recomputeCounters() 雙模式**：
+  - 課程**無**「部分時數」事件（無 `minutes != perSession` 的 ledger 列）→ 完全沿用舊 count-based 邏輯（byte-identical），僅補寫衍生分鐘欄。
+  - 課程**有**部分時數事件 → 分鐘為權威：`RemainingMinutes = PurchasedMinutes − 淨用分鐘`，`RemainingSessions = ROUND_HALF_UP(RemainingMinutes / perSession)`（整數運算 `floor((2a+b)/(2b))`，無浮點），`UsedSessions = SessionCount − RemainingSessions`。
+- **比例扣堂範圍**：只對 `schedules.type='extra'` 補課且實際時長 < 每堂分鐘（chokepoint `deductOnAttendance` 自載 ClassSession 算 `clamp(EndTime−StartTime, 0..perSession)`，完整時長傳 `null`）。正常課堂、完整時長補課一律整堂。
+- **reverse 一致性**：`reverseForSession` 未指定 minutes 時，沖回對應 `deduct` 列的 `minutes`，避免淨值漂移。
+- **讀取端守門**：`StudentClassController::index` 對 fractional 餘額不可用 count-based observed 覆寫（`hasFractionalBalance`），並回傳精確 `remaining_minutes`。
+- **已知限制**：`PackageDeductionService` 池鏡像仍 `delta=±1` 整堂（TD-059）；`ClassSessionController::recalculateSessionCounters` 為死碼（TD-060）。
+
+詳見 `docs/AI_REGRESSION_LESSONS.md §R59`。
+
 ---
 
 ## 6. Teacher 可見性規則
