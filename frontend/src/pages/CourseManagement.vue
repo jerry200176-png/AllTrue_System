@@ -3673,6 +3673,11 @@ onMounted(() => {
 });
 onUnmounted(() => {
   document.removeEventListener('click', closeActionMenu);
+  // #143：聚焦單一學生時會 lockScroll（body position:fixed/overflow:hidden）。
+  // 若使用者在「聚焦中」直接切換頁面，元件卸載不會觸發 focusedStudentKey watcher，
+  // scroll lock 會洩漏並殘留在 body，導致之後的頁面看起來像蓋了一層灰白遮罩、無法點選/捲動。
+  // 卸載時若仍處於聚焦狀態，補一次解除以平衡計數。
+  if (focusedStudentKey.value) unlockScroll();
 });
 </script>
 
