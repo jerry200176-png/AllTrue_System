@@ -333,7 +333,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | In Progress（2026-05-31：Offender A/B 已批次化清償；主查詢相關 subquery 重寫 → 拆出 TD-058）|
 | 優先級 | P1 |
 | 發現日期 | 2026-05-13 ~ 2026-05-16（陸續被 Sentry 自動建單） |
 | 發現來源 | Sentry production monitor (`PHP-LARAVEL-14`～`PHP-LARAVEL-18`) + `perf-2026-05-17.log` |
@@ -342,7 +342,8 @@
 | 建議做法 | 1) 用 Sentry full payload 對齊 N+1 來源（需要瀏覽器 access）；2) 在 `ClassSessionController::index` 加 `with(['studentClass.subjectRecord', 'studentClass.student.campus', 'teacher'])` 或對應 eager load；3) `Subject` lookup 改 cached map；4) `UserCampus` 解析改 single batch query；5) `schedules.teacher_id` 對應的迴圈處改 join。 |
 | 清償成本估計 | 中（半天～一天，含實測前後對比）|
 | 不做的代價 | 行事曆／教師工作台載入時間波動大，使用者體感差；Pi 資源與 SLO 都被 burn。 |
-| 對應 GitHub | Sentry auto-issues #341 / #342 / #343 / #374 / #375 已 close 並指向此 TD。需要 AI 有 Sentry 瀏覽器 access 才能精準下藥。 |
+| 對應 GitHub | Sentry auto-issues #341 / #342 / #343 / #374 / #375 已 close 並指向此 TD；GitHub #546。需要 AI 有 Sentry 瀏覽器 access 才能精準下藥。 |
+| 清償紀錄（2026-05-31 / PR fix/546）| 實測 code review 後發現主查詢的 `Subject`/`schedules`/campus 早已改為單一多 join（非 N+1），主查詢用的複合索引 `idx_sched_course_date_time_status`、`cs_scid_sessiondate_idx` **均已存在**。真正剩下的 N+1 為兩處迴圈：**Offender A** `autoMaterializeTeacherMonthlySessionsForRange`（老師當日載入時每堂 2 次 `exists()`，隨課數線性成長＝TeacherHome/SmartCalendar 熱路徑）→ 改為 2 次批次 SELECT + in-memory set；**Offender B** `logSessionCountMismatches`（flag-gated，每課程一次 `SessionCount` 查詢）→ 改為單次 `whereIn pluck`。回歸測試 `ClassSessionsTeacherAutoMaterializeMonthlyTest`（query-count 不隨課數成長 + 無重複建立）。輸出 JSON 合約未變。主查詢的相關子查詢（Offender C：`MAX(sub2.id)` correlated subquery + `DATE()/SUBSTRING()` 去索引化）重寫風險高（牽動代課老師解析），拆 TD-058 待 Sentry payload 對齊後處理。 |
 
 ---
 
@@ -417,3 +418,19 @@
 | 建議做法 | (1) Phase 2：以 `learning_record_feedback_replies`（author_role∈teacher/director）計算真實回覆率與時效，更新 `analytics` 與 `AdoptionInsightsController`，並做老師 KPI 儀表板。(2) 評估 System A/B 合併為單一家長訊息中心，下架 System B 未用路由。|
 | 清償成本估計 | 高（> 1 天）|
 | 不做的代價 | 兩套系統持續分歧；KPI 指標失真（reply_rate 不代表真有回覆）|
+
+---
+
+### TD-058：`/class-sessions` 主查詢代課老師 correlated subquery 去索引化（TD-018 Offender C）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [SRE/ARCH] #546 / TD-018 清償時拆出 |
+| 影響模組 | `ClassSessionController::index`（代課老師 `sub_sched` leftJoin）、`teacherTrust`（同款 subquery）|
+| 描述 | 主查詢以 `sub_sched` leftJoin 解析代課老師，ON 條件含 per-row correlated subquery `sub_sched.id = (SELECT MAX(sub2.id) ...)`，且 `DATE(schedule_date)`、`SUBSTRING(start_time,1,5)` 包裹欄位使既有複合索引 `idx_sched_course_date_time_status` 無法命中。這是主查詢 1–3.5s 慢的主因（非 transform N+1，transform 已是純記憶體）。|
+| 建議做法 | 將 correlated `MAX(sub2.id)` 改為「每 (student_course_id, schedule_date, start_time) 取最新代課 schedule」的單一 derived-table join（鏡像現有 `lr`/`si` 衍生表 join），保持 `substitute_teacher_id`/COALESCE 老師名稱與 `effective_status` 結果 byte-identical；評估改存正規化 `HH:MM` 以移除 `SUBSTRING()`。先以 Sentry full payload + golden-output 快照保護再下藥。|
+| 清償成本估計 | 中（半天，含 golden 快照與 EXPLAIN 前後對比）|
+| 不做的代價 | 行事曆／點名主查詢持續慢、SLO burn；代課解析邏輯複雜，貿然改易回歸（曾有 schedules.id=611 HH:MM:SS 遺留坑）|
