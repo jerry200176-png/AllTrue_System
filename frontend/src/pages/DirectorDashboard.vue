@@ -286,6 +286,9 @@
                     <button class="btn-p btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="generateCandidates(workflow)">
                       {{ workflowActionId === workflow.id ? '處理中...' : '產生候選' }}
                     </button>
+                    <button class="btn-o btn-xs" type="button" :disabled="workflowActionId === workflow.id" @click="waiveWorkflow(workflow)">
+                      不補課
+                    </button>
                   </div>
                   <div v-if="workflowCandidates[workflow.id]?.length" class="ew-candidates">
                     <button
@@ -582,6 +585,7 @@ import {
   getExceptionWorkflow,
   generateExceptionWorkflowCandidates,
   confirmExceptionWorkflowCandidate,
+  waiveExceptionWorkflow,
 } from '../api';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
 import { fetchMe } from '../lib/meClient';
@@ -1028,6 +1032,25 @@ const confirmCandidate = async (workflow, candidate) => {
     loadData();
   } catch (e) {
     exceptionWorkflowError.value = e?.message || '確認補課失敗';
+  } finally {
+    workflowActionId.value = null;
+  }
+};
+
+const waiveWorkflow = async (workflow) => {
+  const studentName = workflow.student?.name || '此學生';
+  if (!confirm(`確認「${studentName}」這次不補課並結案？\n\n結案後此案件會從待安排清單移除，且不會額外增減堂數。`)) return;
+  const reason = (window.prompt('結案原因（選填，例如：家長表示不需補課）', '') || '').trim();
+  const token = getToken();
+  workflowActionId.value = workflow.id;
+  exceptionWorkflowError.value = '';
+  try {
+    await waiveExceptionWorkflow(token, workflow.id, { reason });
+    setWorkflowCandidates(workflow.id, []);
+    await loadExceptionWorkflows();
+    loadData();
+  } catch (e) {
+    exceptionWorkflowError.value = e?.message || '標記不補課失敗';
   } finally {
     workflowActionId.value = null;
   }
