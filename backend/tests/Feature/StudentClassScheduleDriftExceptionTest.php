@@ -323,6 +323,128 @@ class StudentClassScheduleDriftExceptionTest extends TestCase
         }
     }
 
+    /**
+     * #556/TD-055：主任「單堂編輯」改時間（狀態維持 scheduled）→ 新時段不吻合契約時
+     * 必須標記 IsContractException=1，使其不被 schedule_drift 誤判、也不被 realign 還原。
+     */
+    public function test_single_session_time_edit_marks_contract_exception(): void
+    {
+        Carbon::setTestNow('2026-04-14 10:00:00');
+        try {
+            [$token, $sc] = $this->setupCourse(['week' => 5, 'time' => '17:00:00']); // 契約：週五 17:00-19:00
+
+            $cs = ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-04-17', // Friday
+                'StartTime' => '17:00:00',
+                'EndTime' => '19:00:00',
+                'Status' => 'scheduled',
+                'IsContractException' => false,
+            ]);
+
+            $res = $this->withAuth($token)->patchJson(
+                "/api/v1/class-sessions/{$cs->id}",
+                ['status' => 'scheduled', 'start_time' => '14:00', 'end_time' => '16:00']
+            );
+            $res->assertOk();
+
+            $cs->refresh();
+            $this->assertStringStartsWith('14:00', (string) $cs->StartTime, '時間應已改為 14:00');
+            $this->assertTrue((bool) $cs->IsContractException, '改到非契約時段必須標記 IsContractException');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * #556：把堂次時間「改回」契約時段時，IsContractException 必須清回 0（避免假例外）。
+     */
+    public function test_single_session_time_edit_back_to_contract_clears_exception(): void
+    {
+        Carbon::setTestNow('2026-04-14 10:00:00');
+        try {
+            [$token, $sc] = $this->setupCourse(['week' => 5, 'time' => '17:00:00']);
+
+            $cs = ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-04-17',
+                'StartTime' => '14:00:00',
+                'EndTime' => '16:00:00',
+                'Status' => 'scheduled',
+                'IsContractException' => true,
+            ]);
+
+            $res = $this->withAuth($token)->patchJson(
+                "/api/v1/class-sessions/{$cs->id}",
+                ['status' => 'scheduled', 'start_time' => '17:00', 'end_time' => '19:00']
+            );
+            $res->assertOk();
+
+            $cs->refresh();
+            $this->assertStringStartsWith('17:00', (string) $cs->StartTime);
+            $this->assertFalse((bool) $cs->IsContractException, '改回契約時段必須清除例外旗標');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * #556 核心回歸：單堂手動調課後，再對課程「編輯→儲存」(force_partial_rebuild)
+     * 不可把刻意調整的時段還原回契約時段。
+     */
+    public function test_force_partial_rebuild_does_not_revert_manual_single_edit(): void
+    {
+        Carbon::setTestNow('2026-04-14 10:00:00');
+        try {
+            [$token, $sc] = $this->setupCourse([
+                'week' => 5, 'time' => '17:00:00',
+                'SessionCount' => 8, 'RemainingSessions' => 6, 'UsedSessions' => 2,
+            ]);
+
+            $cs = ClassSession::create([
+                'StudentClassID' => $sc->ID,
+                'SessionDate' => '2026-04-17', // Friday contract slot
+                'StartTime' => '17:00:00',
+                'EndTime' => '19:00:00',
+                'Status' => 'scheduled',
+                'IsContractException' => false,
+            ]);
+
+            // 1) 主任單堂改到 14:00-16:00（應自動標記例外）
+            $this->withAuth($token)->patchJson(
+                "/api/v1/class-sessions/{$cs->id}",
+                ['status' => 'scheduled', 'start_time' => '14:00', 'end_time' => '16:00']
+            )->assertOk();
+            $cs->refresh();
+            $this->assertTrue((bool) $cs->IsContractException);
+
+            // 2) 課程「編輯→儲存」force_partial_rebuild
+            $this->withAuth($token)->putJson(
+                "/api/v1/student-classes/{$sc->ID}",
+                [
+                    'subject' => 'Math',
+                    'class_type' => 'one_on_one',
+                    'rate_per_30min' => 500,
+                    'duration_hours' => 2,
+                    'payment_type' => 'session',
+                    'sessions_purchased' => 8,
+                    'days_of_week' => [5],
+                    'day_time_slots' => [['day' => 5, 'start_time' => '17:00', 'duration_hours' => 2]],
+                    'start_time' => '17:00',
+                    'first_class_date' => '2026-04-04',
+                    'force_partial_rebuild' => true,
+                ]
+            )->assertOk();
+
+            // 3) 刻意調整的時段必須保留，不被還原成 17:00
+            $cs->refresh();
+            $this->assertStringStartsWith('14:00', (string) $cs->StartTime,
+                '單堂刻意調課不可被 force_partial_rebuild 還原回契約時段');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     // --- Helpers ---
 
     private function setupCourse(array $overrides = []): array
