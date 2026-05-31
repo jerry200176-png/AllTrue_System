@@ -944,6 +944,121 @@ class ScheduleLeaveCascadeTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_undo_leave_by_session_restores_scheduled(): void
+    {
+        // #142 §1 / #596: 前端持有 class_session_id，提供 by-session 取消路徑。
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-bysess@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-bysess@example.com');
+        $student = $this->createStudent(1, '依堂次撤銷');
+
+        $firstTuesday = Carbon::now()->next(Carbon::TUESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 8; $i++) {
+            $futureDates[] = $firstTuesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+
+        $leaveDate = $futureDates[6];
+        $leaveSession = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $leaveDate)
+            ->first();
+        $this->assertNotNull($leaveSession);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/leave-by-session', [
+            'class_session_id' => (int) $leaveSession->id,
+        ])->assertOk();
+
+        $leaveSession->refresh();
+        $this->assertSame('leave', strtolower((string) $leaveSession->Status));
+        $this->assertSame(9, ClassSession::where('StudentClassID', $courseId)->count());
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $courseId,
+            'status' => 'leave',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => (int) $leaveSession->id,
+        ])->assertOk();
+
+        $leaveSession->refresh();
+        $this->assertSame('scheduled', strtolower((string) $leaveSession->Status));
+        $this->assertSame(8, ClassSession::where('StudentClassID', $courseId)->count());
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $courseId,
+            'status' => 'leave',
+        ]);
+    }
+
+    public function test_undo_leave_by_session_rejects_non_leave_session(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-bysess-nonleave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-bysess-nonleave@example.com');
+        $student = $this->createStudent(1, '非請假堂次');
+
+        $firstTuesday = Carbon::now()->next(Carbon::TUESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstTuesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->max('ID');
+        $scheduled = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->first();
+        $this->assertNotNull($scheduled);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => (int) $scheduled->id,
+        ])->assertStatus(422);
+    }
+
+    public function test_undo_leave_by_session_forbidden_for_teacher(): void
+    {
+        $dirToken = $this->createDirectorToken([1], 'director-undo-bysess-perm@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-bysess-perm@example.com');
+        $teacherToken = $this->createTeacherToken($teacherId, 1);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => 999999,
+        ])->assertForbidden();
+    }
+
     /**
      * @param  array<int>  $campusIds
      */
