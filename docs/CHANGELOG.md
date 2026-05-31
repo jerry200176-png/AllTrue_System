@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — feat: 補課部分時數可按比例扣堂（#613 完成）
+
+補課如果只上了一部分時間（例如原本 2 小時、只補 1 小時），系統現在會依「實際上課時間」按比例扣堂，不再一律扣整堂；學生會保留剩下的時數。
+
+開發備註：#613（A1 minutes-based，PR1 #636 + PR2 #637 + PR3/PR4）。扣堂改以「分鐘」為權威單位（`StudentClass.PurchasedMinutes/RemainingMinutes`、`session_deduction_ledger.minutes`），`RemainingSessions` 變成 ROUND_HALF_UP 整數衍生顯示值（整數運算、無浮點）。比例扣堂**只**作用於 `schedules.type='extra'` 的補課且實際時長 < 每堂分鐘；正常課堂與完整時長補課維持整堂、byte-identical。單一 chokepoint `SessionDeductionService::deductOnAttendance` 自載 ClassSession 算分鐘；reverse 會沖回對應 deduct 的分鐘避免漂移；課程列表端點對 fractional 餘額不再以 count-based 覆寫並回傳精確 `remaining_minutes`。涵蓋 swipe／手動點名／堂次狀態／評量核准四個觸發點。
+
 ## 2026-05-31 — chore: PHPStan 升為 backend PR required gate（#545 完成）
 
 開發備註：#545。PHPStan 在移至 GitHub-hosted runner + baseline、連續 3 個 PR（#632/#633/#634）綠燈後，正式加入 `main` required status checks（共 7 項）。job-level `if` 使非 backend PR skip＝中性、不卡 docs/前端 PR；baseline 豁免既有問題，只擋新增。回滾指令見 `OPERATIONS_RUNBOOK.md` §R1b。對齊 Google「static analysis presubmit」實務（Epic #535 Phase 1.4）。
