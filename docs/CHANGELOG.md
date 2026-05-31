@@ -8,6 +8,14 @@
 
 ---
 
+## 2026-05-31 — ops: 修復 Pi 健康監控（pi-health.yml）SSH 連線被靜默略過
+
+開發備註：`PI_HOST_KEY` GitHub secret 遺失導致 `pi-health.yml` 的「Run health checks on Pi」步驟長期 skip（known_hosts 驗證失敗 → SSH 不執行），Pi 端磁碟/溫度/備份指標未實際採集。以 `ssh-keyscan pi.lifenet.com.tw` 取回 host key 並重設 secret，重跑 workflow 確認 SSH 健檢恢復（Pi 磁碟 6%、備份新鮮）。教訓：監控 workflow「成功但跳過關鍵步驟」需與「失敗」同等告警。
+
+## 2026-05-31 — ops: WSL2 開發機磁碟告警（93%）根因為 MemPalace 向量索引損毀，已回復
+
+開發備註：Telegram 資源告警（磁碟 93%）來源為**本地 WSL2 開發機**（非 Pi）。根因為 `~/.mempalace/palace/.../link_lists.bin`（ChromaDB HNSW 索引）損毀膨脹成稀疏檔（邏輯 ~3.3TB、實佔 870GB）。備份 `chroma.sqlite3` 後刪除損毀索引並由原始 transcript/docs 重新 mine 重建，磁碟 93%→2%。教訓：MemPalace 索引損毀會以稀疏檔吃滿磁碟；repair 失敗時 fallback 為從來源重建。
+
 ## 2026-05-30 — fix: 學習評量主任審核分頁的待審/已核准數量改用伺服器全量計算，與總覽一致（#139/#595）
 
 開發備註：審核分頁 badge 原本由 client 端單頁 records 計算，與總覽（server 全量）對不起來。後端 `/learning-records` 加 `with_status_counts=1` 回傳全 scope per-status 總數；前端 badge 改讀 server 計數，主任審核分頁改走伺服器端 `status` 篩選（列表＝該狀態全量、分頁載入），切分頁/核准/退回後刷新計數。
