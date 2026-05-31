@@ -223,6 +223,15 @@ class FinanceController extends Controller
         $query = LearningRecord::active()->where('Status', 'approved')
             ->with('studentClass');
 
+        // #137/#575：主任補登的空白評量（ExcludeFromSubjectCount=1）不計入科目數。
+        // 以 hasColumn 防呆（部分環境可能尚未有此欄位）。
+        if (\Illuminate\Support\Facades\Schema::hasColumn('LearningRecord', 'ExcludeFromSubjectCount')) {
+            $query->where(function ($q) {
+                $q->whereNull('ExcludeFromSubjectCount')
+                  ->orWhere('ExcludeFromSubjectCount', 0);
+            });
+        }
+
         if (!empty($classIds)) {
             $query->whereIn('StudentClassID', $classIds);
         }
