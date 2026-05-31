@@ -822,6 +822,15 @@ class LearningRecordController extends Controller
         $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $collection->pluck('id'))
             ->get()
             ->keyBy('learning_record_id');
+        // 批次載入回覆串（避免 N+1），依 feedback_id 分組。
+        $repliesByFeedback = \App\Models\LearningRecordFeedbackReply::whereIn('feedback_id', $feedbacks->pluck('id'))
+            ->orderBy('id')
+            ->get()
+            ->groupBy('feedback_id');
+        $replyAuthorIds = $repliesByFeedback->flatten(1)->pluck('author_user_id')->filter()->unique()->values();
+        $replyAuthorNames = $replyAuthorIds->isNotEmpty()
+            ? DB::table('User')->whereIn('id', $replyAuthorIds)->pluck('Name', 'id')->toArray()
+            : [];
         $teacherComments = LearningRecordTeacherComment::whereIn('learning_record_id', $collection->pluck('id'))
             ->get()
             ->keyBy('learning_record_id');
@@ -830,7 +839,7 @@ class LearningRecordController extends Controller
             ? DB::table('User')->whereIn('id', $authorIds)->pluck('Name', 'id')->toArray()
             : [];
 
-        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks, $teacherComments, $authorNameMap, $effTidByRecordId) {
+        $collection->transform(function ($record) use ($subjectMap, $teacherNameMap, $sessionNumbers, $feedbacks, $teacherComments, $authorNameMap, $effTidByRecordId, $repliesByFeedback, $replyAuthorNames) {
             $record->student_name = $record->studentClass->student->name ?? '—';
             $record->student_id = $record->studentClass->student->id ?? null;
             $subjectId = $record->studentClass->SubjectID ?? null;
@@ -842,12 +851,22 @@ class LearningRecordController extends Controller
             $record->teacher_name = $teacherNameMap[$effTid] ?? '未指派';
             $record->session_number = $sessionNumbers[(int) $record->id] ?? null;
             $fb = $feedbacks->get((int) $record->id);
+            $fbReplies = $fb ? ($repliesByFeedback->get((int) $fb->id) ?? collect()) : collect();
             $record->parent_feedback = $fb ? [
                 'id' => (int) $fb->id,
                 'content' => $fb->content,
                 'updated_at' => optional($fb->updated_at)->toIso8601String(),
                 'unread_for_teacher' => !$fb->last_read_by_teacher_at || $fb->last_read_by_teacher_at->lt($fb->updated_at),
                 'unread_for_director' => !$fb->last_read_by_director_at || $fb->last_read_by_director_at->lt($fb->updated_at),
+                'reply_count' => $fbReplies->count(),
+                'replies' => $fbReplies->map(fn ($r) => [
+                    'id' => (int) $r->id,
+                    'author_role' => (string) $r->author_role,
+                    'author_name' => $r->author_role !== 'parent' && $r->author_user_id
+                        ? ($replyAuthorNames[$r->author_user_id] ?? null) : null,
+                    'content' => $r->content,
+                    'created_at' => optional($r->created_at)->toIso8601String(),
+                ])->values()->all(),
             ] : null;
             $comment = $teacherComments->get((int) $record->id);
             $record->teacher_comment = $comment
