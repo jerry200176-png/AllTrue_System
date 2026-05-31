@@ -60,6 +60,7 @@ jobs:
           TOTAL=$(git diff --numstat origin/main...HEAD \
             -- ':!*.lock' ':!package-lock.json' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
+               ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
 
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
