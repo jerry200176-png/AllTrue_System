@@ -1241,3 +1241,38 @@ on:
 - baseline 維護成本（每次設計改一律要更新）
 - 待 #461 visual polish 進入維護期再啟動
 
+---
+
+## X. Release Tagging（CalVer）+ GitHub Releases — Epic #535 Phase 3.1/3.3
+
+### X1. 機制
+
+`/.github/workflows/release.yml`：當 **`docs/CHANGELOG.md` 變更被合併進 `main`** 時自動：
+1. 取出 CHANGELOG「最新一節」（`.github/scripts/changelog-latest.sh`）。
+2. 由節標題日期算 tag `vYYYY.MM.DD`；同日多次合併 → `.2` / `.3` 遞增。
+3. 建立 annotated git tag + push。
+4. `gh release create` 以該節內容當 release notes。
+
+可手動觸發：`gh workflow run release.yml --ref main`。
+
+### X2. 為什麼是 CalVer 不是 SemVer
+
+本系統是**持續部署的內部應用**，不是被他人依賴的 library/API，沒有 major/minor/patch 的相容性語意。
+CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判斷版號級別，是這類部署系統的業界常見選擇（Ubuntu / pip / JetBrains 等）。SemVer 留給「對外 API 契約」場景。
+
+### X3. version.json ↔ Release tag 對照
+
+| 來源 | 內容 | 何時更新 |
+|---|---|---|
+| `backend/public/version.json` | 前端 build 時間戳（Vite `deploy.yml`）| **只在前端有重 build 時** |
+| Git tag `vYYYY.MM.DD[.N]` | 該次 notable merge（CHANGELOG 有變更）| CHANGELOG 變更合併進 main 時 |
+| GitHub Release | tag + CHANGELOG 該節全文 | 同上 |
+
+排查「線上是哪一版」：先看 `version.json` 時間戳對應到最接近、且早於它的 tag/Release；backend-only deploy 不更新 `version.json`，以 tag 時間為準。
+
+### X4. 注意
+
+- 本工作流**不碰 `deploy.yml`**（事故 A 教訓），唯一副作用是建立 tag/Release。
+- tag push 不會觸發 `branches:[main]` 的 push workflow（不成迴圈）。
+- 回滾：刪除誤建 tag/Release 為純中繼資料操作（`git push --delete origin <tag>` + `gh release delete <tag>`），不影響 production。
+
