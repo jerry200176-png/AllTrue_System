@@ -268,6 +268,105 @@ class FinanceSubjectUnitsTest extends TestCase
         $this->assertNull($response->json('totals'), 'totals must be absent from teacher-role response');
     }
 
+    public function test_subject_units_excludes_records_flagged_exclude_from_subject_count(): void
+    {
+        // #137/#575：主任補登的空白評量（ExcludeFromSubjectCount=1）不應計入科目數/薪資時數。
+        $director = $this->createDirector('director-exclude-subj@example.com', [1]);
+        $token = $director['token'];
+        $directorId = $director['user_id'];
+        $teacher = $this->createTeacher(1, 'teacher-exclude-subj@example.com', '排除老師');
+        $student = $this->createStudent(1, '排除科目數測試');
+
+        $studentClass = StudentClass::create([
+            'StudentID' => $student->id,
+            'TeacherID' => $teacher,
+            'GradeID' => 7,
+            'SubjectID' => 1,
+            'ClassType' => 'one_on_one',
+            'by1' => 1,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'RemainingSessions' => 6,
+            'UsedSessions' => 2,
+            'Rate' => 500,
+            'Charge' => 4000,
+            'Pay' => 0,
+            'Paid' => 0,
+            'Period' => 4,
+            'SessionDuration' => 120,
+            'TotalHours' => 16,
+            'StartDate' => now()->subWeek()->toDateString(),
+            'EndDate' => now()->addWeek()->toDateString(),
+            'week' => 2,
+            'time' => '16:00:00',
+            'RoomID' => 'R1',
+            'Stop' => 0,
+            'MDate' => now(),
+        ]);
+
+        $sessionDate = now()->subDay()->toDateString();
+        $countedSession = ClassSession::create([
+            'StudentClassID' => $studentClass->ID,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+        $excludedSession = ClassSession::create([
+            'StudentClassID' => $studentClass->ID,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'Status' => 'completed',
+            'Note' => '',
+        ]);
+
+        // Normal approved assessment (2h) — must count.
+        LearningRecord::create([
+            'StudentClassID' => $studentClass->ID,
+            'ClassSessionID' => $countedSession->id,
+            'TeacherID' => $teacher,
+            'Content' => '正常評量',
+            'Subject' => 'Math',
+            'Status' => 'approved',
+            'ApprovedBy' => $directorId,
+            'ApprovedAt' => now(),
+            'SessionDate' => $sessionDate,
+            'StartTime' => '16:00:00',
+            'EndTime' => '18:00:00',
+            'SessionDeducted' => true,
+            'ExcludeFromSubjectCount' => 0,
+        ]);
+        // Backfilled blank assessment (2h) flagged exclude — must NOT count.
+        LearningRecord::create([
+            'StudentClassID' => $studentClass->ID,
+            'ClassSessionID' => $excludedSession->id,
+            'TeacherID' => $teacher,
+            'Content' => '補登空白評量',
+            'Subject' => 'Math',
+            'Status' => 'approved',
+            'ApprovedBy' => $directorId,
+            'ApprovedAt' => now(),
+            'SessionDate' => $sessionDate,
+            'StartTime' => '18:00:00',
+            'EndTime' => '20:00:00',
+            'SessionDeducted' => true,
+            'ExcludeFromSubjectCount' => 1,
+        ]);
+
+        $teachers = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson("/api/v1/finance/subject-units?branch_id=1&start={$sessionDate}&end={$sessionDate}")
+            ->assertOk()
+            ->json('teachers');
+
+        $this->assertCount(1, $teachers);
+        // Only the 2h normal assessment counts; the excluded one's 2h must be dropped.
+        $this->assertSame(2.0, (float) ($teachers[0]['one_on_one_hours'] ?? 0));
+    }
+
     /**
      * @param  array<int>  $campusIds
      * @return array{token: string, user_id: int}
