@@ -22,7 +22,9 @@ permissions:
 jobs:
   changes:
     name: Detect backend/security changes
-    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
+    # #545(A)：移至 GitHub-hosted runner，移除「self-hosted wsl-ci 單點」
+    # ——將來把本 gate 升為 required 時不會因本機 runner 離線而卡死 backend 合併。
+    runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -41,29 +43,43 @@ jobs:
               - '.github/workflows/**'
 
   # PHP 靜態分析（PHPStan level 5）
-  # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan
+  # CodeQL 需要 GitHub Advanced Security（私有 repo 需付費），改用 PHPStan。
+  # #545(A)：改用 hosted runner + 專案內 phpstan/phpstan dev 依賴 + baseline。
+  # 既有 1952 個問題已 baseline（backend/phpstan-baseline.neon），故本 gate 只對
+  # 「新增」問題報錯。移除舊的 `|| true`：現在會真正失敗於新問題（仍非 required，
+  # 等連續綠燈穩定後再於 #545 升為 backend PR required gate）。
   phpstan:
     name: PHPStan Advisory (php)
     needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
-    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Verify local PHP runtime
-        run: php -v
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: backend/vendor
+          key: phpstan-composer-${{ hashFiles('backend/composer.lock') }}
+          restore-keys: phpstan-composer-
 
       - name: Install PHP dependencies
         working-directory: backend
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Run PHPStan
+      - name: Run PHPStan (baseline-gated; fails only on NEW issues)
         working-directory: backend
         run: |
-          ./vendor/bin/phpstan analyse app \
-            --level=5 \
-            --memory-limit=512M \
+          ./vendor/bin/phpstan analyse \
+            --memory-limit=1G \
             --no-progress \
-            --error-format=github \
-            2>&1 || true   # Advisory mode: emit findings, do not block merge
+            --error-format=github
