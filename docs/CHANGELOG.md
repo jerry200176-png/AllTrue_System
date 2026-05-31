@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: Epic #535 ops 收尾（release 標題清理 + DORA 月度 review SOP）
+
+開發備註：#535。(1) `release.yml` 產生 Release 標題時清掉 `## YYYY-MM-DD — ` 前綴，標題變為 `vTAG — <type: title>`。(2) `OPERATIONS_RUNBOOK.md` §Y 新增 DORA Metrics 月度 review SOP（四指標來源、判讀門檻、每月檢查指令）；Phase 0.3（pre-commit 呼叫 git-index-audit）確認既有 `scripts/install-git-hooks.sh` 已實作。純 CI/docs。
+
 ## 2026-05-31 — chore: 自動 CalVer tag + GitHub Releases（Epic #535 Phase 3.1/3.3）
 
 開發備註：#535 Phase 3.1/3.3。新增 `.github/workflows/release.yml` + `.github/scripts/changelog-latest.sh`：當 `docs/CHANGELOG.md` 變更合併進 `main` 時，自動以最新節標題日期建立 `vYYYY.MM.DD[.N]` tag + GitHub Release（notes 取該節全文）。採 CalVer 而非 SemVer，因本系統為持續部署的內部應用、無對外 API 相容性語意（理由與 version.json↔tag 對照見 `OPERATIONS_RUNBOOK.md` §X）。獨立工作流、不碰 `deploy.yml`；唯一副作用為建立 tag/Release，回滾為純中繼資料操作。本次 merge 後將產生首個 Release `v2026.05.31`。

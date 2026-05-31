@@ -1276,3 +1276,36 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 - tag push 不會觸發 `branches:[main]` 的 push workflow（不成迴圈）。
 - 回滾：刪除誤建 tag/Release 為純中繼資料操作（`git push --delete origin <tag>` + `gh release delete <tag>`），不影響 production。
 
+---
+
+## Y. DORA Metrics 月度 Review — Epic #535 Phase 2.3
+
+### Y1. 來源
+
+`/.github/workflows/dora-metrics.yml` 每週一 09:00 UTC 自動計算近 30 天四指標，輸出到該次 **workflow run 的 Step Summary** 頁。可手動觸發：`gh workflow run dora-metrics.yml`。
+
+| 指標 | 計算方式 | Elite 門檻 |
+|---|---|---|
+| Deployment Frequency | 合進 main 的 PR 數 / 週 | ≥ 1/day |
+| Lead Time for Changes | PR open → merge 平均時數 | < 24h |
+| Change Failure Rate | 標題含 fix/hotfix/revert 的 PR 占比 | < 5% |
+| MTTR | 手動追蹤（記 `AI_REGRESSION_LESSONS.md`）| — |
+
+### Y2. 月度 Review SOP（每月第一個工作日）
+
+```bash
+gh run list --workflow=dora-metrics.yml --limit 1     # 找最近一次 run
+gh run view <run_id>                                  # 讀 Step Summary 四指標
+```
+
+判讀與行動：
+- **CFR 連續 2 個月 > 15%（Low）**→ 檢視近期 fix/hotfix 是否集中某模組，排 [REVIEW]/技術債清償。
+- **Lead Time > 1 週（Medium↓）**→ PR 是否過大（presubmit ≤700 行）、是否卡 review，考慮拆小。
+- **Deployment Frequency 驟降**→ 確認是否 CI/部署卡關或進入凍結期。
+- 將每月數字記一行到 `docs/CHANGELOG.md`（或 SRE 週報），形成趨勢線。
+
+### Y3. 注意
+
+- 指標為「健康趨勢」非 KPI 考核；solo + AI 模式下重點在抓「異常變化」。
+- CFR 以「PR 標題關鍵字」近似，標題規範（Conventional Commits）越一致越準。
+
