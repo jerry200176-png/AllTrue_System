@@ -634,9 +634,10 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 ### R55. 學習評量 `VoidedAt` 必須與 `ClassSession.Status` 對齊（resurrect-on-write）
 
 - **觸發情境**：2026-05-23 in-app #125 / GitHub #495：沈宇璿評量提交 409，原因是先前因「一般請假」自動連動 cascade void 了 LR，但同堂 ClassSession 後續又被改回 `attended/scheduled`，DB 留下 `VoidedAt!=NULL` 但堂次活著的孤兒 LR。
-- **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason='一般請假'` 且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。
-- **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided + 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非「一般請假」）仍 409 (3) 堂次仍 leave/cancelled 仍 409。
-- **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。
+- **2026-05-31 延伸 in-app #146 / GitHub #618**：陳嘉軒 5/31 12:30-14:30（LR#7737, CS#9426）評量被作廢無法填寫。根因同類但 **VoidReason 不只「一般請假」**：`ClassSessionController` attended→scheduled 以 `voidAttendanceArtifacts('由已上調整狀態')` 作廢並沖回堂數；之後 scheduled→attended 走 generic 分支不還原（`restoreVoidedLearningRecord` 僅 `leave→attended` 觸發）。原 `=== '一般請假'` 字串相等判斷漏掉 `'由已上調整狀態'` → 老師永久 409。
+- **強制規則**：`LearningRecordController::store()` 遇到既有 LR `VoidedAt!=NULL` 時，必須檢查 `VoidReason` 屬 **`SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單**（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`，皆為系統 cascade 作廢且作廢當下已沖回堂數或該堂未扣堂）且 `ClassSession.Status` 屬於 fillable（`attended/scheduled/completed/late`）→ 自動 resurrect（清 void 欄位、轉 `pending`、用新 payload 覆寫）；其他情境（手動作廢、真實取消 / leave）維持 409 拒絕。**新增系統作廢原因時，務必同步加入此白名單**（用 `in_array` 不要再寫死單一字串）。
+- **測試必補**：`LearningRecordVoidedResurrectTest`：(1) cascade voided（一般請假）+ 堂次 attended → 200 + LR 復活 (2) 手動作廢（VoidReason 非白名單）仍 409 (3) 堂次仍 leave/cancelled 仍 409 (4) #146：`由已上調整狀態` + 堂次 attended → 200 + 復活 + `SessionDeducted=false`。
+- **副作用提醒**：resurrect 後不可自動再扣 `RemainingSessions`（扣堂仍走 `LearningRecord approved → AttendanceEffectsService` 路徑）；本規則只是把卡關打開，不改業務語意。白名單原因在作廢時都已沖回堂數，resurrect→pending→核准會 net-correct 扣 1 堂。
 
 ---
 
