@@ -216,31 +216,42 @@
                     <span class="s-cb hide-mobile">併堂</span>
                     <span class="s-salary">薪資</span>
                   </div>
-                  <div v-for="s in sessions" :key="s.learning_record_id" class="session-row">
-                    <span class="s-date">{{ s.session_date?.substring(5) }}</span>
-                    <span class="s-student">{{ s.student_name }}</span>
-                    <span class="s-subject hide-mobile">{{ s.subject }}</span>
-                    <span class="s-level">
-                      <span class="level-tag" :class="s.level_key">{{ s.level_label }}</span>
-                    </span>
-                    <span class="s-type hide-mobile">
-                      <span class="type-tag">{{ classTypeLabel(s.class_type) }}</span>
-                    </span>
-                    <span class="s-hours">{{ s.hours }}h</span>
-                    <span class="s-rate hide-mobile rate-formula">
-                      <span class="rate-base">{{ s.base_rate }}</span>
-                      <template v-if="s.headcount_bonus > 0">
-                        <span class="rate-op">+</span>
-                        <span class="rate-bonus">{{ s.headcount_bonus }}</span>
-                        <span class="rate-op">=</span>
-                        <span class="rate-eff">{{ s.effective_rate }}</span>
-                      </template>
-                    </span>
-                    <span class="s-cb hide-mobile" :class="{ 'has-cb': s.concurrency_bonus_amount > 0 }">
-                      {{ s.concurrency_bonus_amount > 0 ? '+' + s.concurrency_bonus_amount : '—' }}
-                    </span>
-                    <span class="s-salary">{{ formatNum(s.session_salary) }}</span>
-                  </div>
+                  <template v-for="s in sessions" :key="s.learning_record_id">
+                    <div class="session-row">
+                      <span class="s-date">{{ s.session_date?.substring(5) }}</span>
+                      <span class="s-student">{{ s.student_name }}</span>
+                      <span class="s-subject hide-mobile">{{ s.subject }}</span>
+                      <span class="s-level">
+                        <span class="level-tag" :class="s.level_key">{{ s.level_label }}</span>
+                      </span>
+                      <span class="s-type hide-mobile">
+                        <span class="type-tag">{{ classTypeLabel(s.class_type) }}</span>
+                      </span>
+                      <span class="s-hours">{{ s.hours }}h</span>
+                      <span class="s-rate hide-mobile rate-formula">
+                        <span class="rate-base">{{ s.base_rate }}</span>
+                        <template v-if="s.headcount_bonus > 0">
+                          <span class="rate-op">+</span>
+                          <span class="rate-bonus">{{ s.headcount_bonus }}</span>
+                          <span class="rate-op">=</span>
+                          <span class="rate-eff">{{ s.effective_rate }}</span>
+                        </template>
+                      </span>
+                      <span class="s-cb hide-mobile" :class="{ 'has-cb': s.concurrency_bonus_amount > 0 }">
+                        {{ s.concurrency_bonus_amount > 0 ? '+' + s.concurrency_bonus_amount : '—' }}
+                      </span>
+                      <span class="s-salary">{{ formatNum(s.session_salary) }}</span>
+                    </div>
+                    <!-- #614：併堂時段採「最高時薪」說明（僅歸屬此堂的併堂段才顯示）-->
+                    <div v-if="s.concurrency_segments?.length" class="session-concurrency-note">
+                      <span class="material-symbols-outlined">groups</span>
+                      <span
+                        v-for="(seg, i) in s.concurrency_segments"
+                        :key="i"
+                        class="cc-seg"
+                      >本段採用 ${{ seg.max_base }} 最高時薪（同時段 {{ seg.headcount }} 位學生 · {{ seg.minutes }} 分）</span>
+                    </div>
+                  </template>
                 </div>
                 <div class="session-footer">
                   <div class="session-subtotal">
@@ -1308,6 +1319,22 @@ onMounted(loadData);
 
 .s-cb { font-size: 0.75rem; color: #9ca3af; text-align: center; }
 .s-cb.has-cb { color: #059669; font-weight: 600; }
+
+/* #614：併堂「最高時薪」說明列（橫跨整列，視覺上附屬於上一堂）*/
+.session-concurrency-note {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 4px 10px 8px 28px;
+  margin-top: -4px;
+  font-size: 0.72rem;
+  color: #047857;
+  background: #ecfdf5;
+  border-bottom: 1px solid #f1f5f9;
+}
+.session-concurrency-note .material-symbols-outlined { font-size: 1rem; color: #059669; }
+.session-concurrency-note .cc-seg { white-space: nowrap; }
 
 .session-footer {
   display: flex;

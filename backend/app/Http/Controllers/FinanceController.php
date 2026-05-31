@@ -937,7 +937,8 @@ class FinanceController extends Controller
             ->where('LearningRecord.TeacherID', $teacherId)
             ->get();
         $rateMap  = $this->buildRateMap($allTeacherRecords, $ruleCtx);
-        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap, $ruleCtx);
+        $segmentsMap = [];
+        $bonusMap = $this->buildConcurrencyBonusMap($allTeacherRecords, $rateMap, $ruleCtx, $segmentsMap);
 
         $records = $query->orderBy('LearningRecord.SessionDate')
             ->offset(($page - 1) * $perPage)
@@ -954,6 +955,8 @@ class FinanceController extends Controller
 
         foreach ($records as $r) {
             $row = $this->buildSessionRow($r, $ruleCtx, $bonusMap);
+            // #614：附上併堂時段明細（僅歸屬 LR 有值），供前端呈現「本段採用最高時薪」。
+            $row['concurrency_segments'] = $segmentsMap[$r->id] ?? [];
             $sessions[] = $row;
             $sumSalary += $row['session_salary'];
             $sumHours  += $row['hours'];
@@ -1379,7 +1382,12 @@ class FinanceController extends Controller
      * @param  \Illuminate\Support\Collection  $records
      * @param  array  $rateMap  [lr_id => ['base_rate' => int, 'level_weight' => int]]
      */
-    private function buildConcurrencyBonusMap($records, array $rateMap = [], array $ruleCtx = []): array
+    /**
+     * @param array|null $segmentsOut #614：可選 out-param，回填每筆「歸屬 LR」的併堂時段明細
+     *        （max_base / headcount / minutes），供薪資明細呈現「本段採用最高時薪」。
+     *        只在同時段 n>1 時記錄；不影響既有 $bonusMap 計算與回傳值。
+     */
+    private function buildConcurrencyBonusMap($records, array $rateMap = [], array $ruleCtx = [], array &$segmentsOut = null): array
     {
         $defaultBonus    = config('payroll.concurrency_bonus_per_student', 50);
         $gradeLevelMap   = config('payroll.grade_level_map', []);
@@ -1475,6 +1483,15 @@ class FinanceController extends Controller
                 $segPay      = $ratePerHour * ($b - $a) / 60.0;
 
                 $attributed[$primaryId] = ($attributed[$primaryId] ?? 0.0) + $segPay;
+
+                // #614：記錄併堂時段明細（僅同時段多人才算併堂），供呈現「本段採用最高時薪」。
+                if ($segmentsOut !== null && $n > 1) {
+                    $segmentsOut[$primaryId][] = [
+                        'max_base'  => (int) $maxBase,
+                        'headcount' => (int) $n,
+                        'minutes'   => (int) ($b - $a),
+                    ];
+                }
             }
 
             foreach ($intervals as $iv) {
