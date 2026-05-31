@@ -370,3 +370,17 @@
 | TD-052 | 2.1.3 | 登入錯誤訊息（帳號 vs 密碼）收斂 | P3 | 小工程 |
 | TD-053 | 3.4.1 | session idle timeout 全系統統一 | P2 | RFID / parent / staff 三套 TTL 不一致 |
 | TD-054 | 13.4.1 | `/swipe-rfid` 端點 rate limit | P2 | 防 RFID reader 異常爆量 |
+
+### TD-055：單堂改時間未標記 `IsContractException`，刻意調課會被誤判為「堂次偏移」並可能被 realign 還原
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [BUG] #135/#556 根因調查 |
+| 影響模組 | `ClassSessionController::update`、`StudentClassController`（schedule_drift / force_partial_rebuild）|
+| 描述 | 主任用「單堂編輯」改某堂時間（`PATCH /class-sessions/{id}`）時，不會設 `IsContractException=1`。因此該堂會被 `schedule_drift` 判為偏移；若之後對課程按「編輯→儲存」(force_partial_rebuild)，會把這堂「還原」回固定排課時段，覆蓋主任刻意的調整。這是 #135「固定排課錯時段」歧義的根因之一（無法區分『不小心漂移』與『刻意單堂調課』）。|
+| 建議做法 | 單堂改時間且新時段 ≠ 契約時段時，標記 `IsContractException=1`（或新增 `manual_reschedule` 旗標），使其從 drift 偵測與 realign 中排除；並在 UI 標示為「已調整」。需產品確認語意（調課 vs 補課例外）後設計。|
+| 清償成本估計 | 中（半天，含測試 + drift 回歸）|
+| 不做的代價 | 主任刻意調課顯示為錯誤、或被 realign 還原；#135 類問題會反覆出現 |
