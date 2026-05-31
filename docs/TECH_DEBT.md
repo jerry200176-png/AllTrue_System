@@ -472,7 +472,7 @@
 | 發現日期 | 2026-05-31 |
 | 發現來源 | `osv-scanner.yml` 首次深掃（#544）|
 | 影響模組 | `backend/composer.lock`、`frontend/package-lock.json` |
-| 描述 | OSV 深掃發現 5 筆已知漏洞（**0 Critical / 0 High**；3 Medium、1 Low、1 Unknown），故 PR 阻擋型 gate（composer/npm audit on HIGH/CRITICAL）正確未擋：<br>1. `laravel/framework` 8.x → GHSA-78fx-h6xr-vch4（6.9，fixed 10.48.29）— 需 Laravel 8→10 大版遷移，獨立 epic。<br>2. `symfony/routing` v5.4.48 → 5.4.52（patch，Laravel 8 相容，易升）。<br>3. `symfony/polyfill-intl-idn` v1.33.0 → 1.38.1（patch，易升）。<br>4. `esbuild` 0.21.5 → 0.25.0（dev-only，5.3）。<br>5. `vite` 5.4.21 → 6.4.2（dev-only，6.3；vite 5→6 為 major，需驗 build）。|
-| 建議做法 | 易升的 symfony patch 先隨 dependabot minor/patch group PR 處理；vite/esbuild dev major 升級單獨驗 `npm run build` + `test:calendar`；Laravel 8→10 列為獨立 epic（大工程，非本批）。每月 review OSV 深掃結果（RUNBOOK §Y/§R1c）。|
-| 清償成本估計 | symfony patch 低；vite/esbuild 中；Laravel 升級 高 |
-| 不做的代價 | Medium 漏洞累積；dev 工具鏈落後。皆非 Critical/High，無立即生產風險 |
+| 描述 | OSV 深掃發現 5 筆已知漏洞（**0 Critical / 0 High**；3 Medium、1 Low、1 Unknown），PR 阻擋型 gate（composer/npm audit on HIGH/CRITICAL）正確未擋。處理進度：<br>1. ✅ **已修** `symfony/routing` v5.4.48 → v5.4.53（PR #649，platform pin 後）。<br>2. ✅ **已修** `symfony/polyfill-intl-idn` v1.33.0 → v1.38.1（PR #649）。<br>3. ⏳ `laravel/framework` 8.x → GHSA-78fx-h6xr-vch4 / CVE-2025-27515（6.9 Medium，fixed 10.x）— 已先 pin 至穩定 `v8.83.29`；根治需 Laravel 8→10 大版遷移（見 **TD-014**）。<br>4. ⏳ `esbuild` 0.21.5 → 0.25.0（dev-only，5.3；vite 連動）。<br>5. ⏳ `vite` 5.4.21 → 6.4.2（dev-only，6.3；vite 5→6 為 major，需驗 `npm run build`）。|
+| 建議做法 | symfony patch ✅ 已隨 platform pin 收斂；vite/esbuild dev major 單獨 PR 驗 `npm run build` + `test:calendar`；Laravel 8→10 併入 TD-014 epic。每月 review OSV 深掃（RUNBOOK §Y/§R1c）。|
+| 清償成本估計 | symfony ✅ 完成；vite/esbuild 中；Laravel 升級 高 |
+| 不做的代價 | 剩餘為 dev-only + Laravel-8 EOL；皆非 Critical/High，無立即生產風險 |
