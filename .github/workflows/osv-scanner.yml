@@ -1,0 +1,37 @@
+# OSS 供應鏈深掃（無需 GitHub Advanced Security）—— #544
+#
+# 背景：PR 逐次的供應鏈把關已由 ci.yml 的 `composer audit`（HIGH/CRITICAL 擋 merge）
+# 與 `npm audit --audit-level=high` 負責，皆為 required check、不需 GHAS。
+# 本工作流以 Google OSV-Scanner 做「每週深掃」做 defense-in-depth：OSV.dev 資料庫
+# 覆蓋面比各 registry advisory 廣，且為 OSS、不依賴付費 GHAS。
+#
+# 刻意只在「排程 / 手動」執行（掃 main 受信任內容），不掛在 PR：
+# 避免官方 osv-scanner-action 在不受信任 PR 內容下的已揭露輸出注入風險（osv-scanner#2749），
+# 且不需 code scanning 上傳（upload-sarif=false → 不需 GHAS）。
+#
+# 啟用 GHAS 後若要逐 PR 依賴審查，另見 dependency-review.yml（ENABLE_DEPENDENCY_REVIEW）。
+
+name: OSV Supply-chain Deep Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1" # 每週一 03:00 UTC
+
+permissions:
+  contents: read
+  security-events: write # upload-sarif=false 時不會實際使用，僅避免 reusable workflow 權限不符
+
+jobs:
+  scan:
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8"
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      scan-args: |-
+        --lockfile=./backend/composer.lock
+        --lockfile=./frontend/package-lock.json
+      upload-sarif: false
+      fail-on-vuln: true
