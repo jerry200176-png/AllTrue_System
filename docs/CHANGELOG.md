@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — chore: 前端 UI smoke（Playwright）scaffold（#547）
+
+開發備註：#547 / Epic #535 Phase 4.3。新增 `frontend/playwright.config.js` + `frontend/e2e/smoke.spec.js`（主任課程管理頁 + 老師 TeacherHome 載入兩條關鍵路徑）、`npm run test:e2e`、`@playwright/test` devDep。設計為「無 secrets 即 `test.skip()`」：未設 `SMOKE_BASE_URL`/`SMOKE_*_USER`/`SMOKE_*_PASS` 時整檔 skip、CI 仍綠，本機/CI 跑都安全。CI 走新增的 `ui-smoke.yml`（`workflow_dispatch` + 每週排程，**不掛每個 PR** 以省 Actions minutes，見 OPERATIONS_RUNBOOK §B2）。實際執行待 #537 提供 `SMOKE_*` secrets；屆時可把 spec 內 TODO 的 data-testid 補上讓選擇器更穩。npm audit gate 為 `--audit-level=high --omit=dev`，Playwright 帶入的 moderate dev 漏洞不影響 CI。
+
 ## 2026-05-31 — perf: 老師當日課表載入更快（class-sessions N+1 批次化，#546）
 
 開發備註：#546 / TD-018。`ClassSessionController` 兩處迴圈 N+1 清償：(A) `autoMaterializeTeacherMonthlySessionsForRange` 老師當日載入時，原每堂做 2 次 `exists()`（隨課數線性成長，TeacherHome/SmartCalendar 熱路徑）→ 改為 2 次批次 SELECT 預載「抑制例外 + 既有堂次」into in-memory set，以 `classId|HH:MM` 為鍵（TIME 欄位比較忽略秒，語意與原 SQL 一致）；同請求內建立後即更新 set 防重複。(B) `logSessionCountMismatches`（flag-gated）每課程一次 `SessionCount` → 單次 `whereIn pluck`。主查詢輸出 JSON 合約未變。Code review 發現主查詢的 Subject/schedules/campus 早已單一多 join（非 N+1）、所需複合索引已存在；剩餘的代課 correlated subquery 去索引化（Offender C）風險高，拆 TD-058 待 Sentry payload 對齊。回歸測試 `ClassSessionsTeacherAutoMaterializeMonthlyTest` 新增 query-count 不隨課數成長 + 無重複建立。純後端，無 schema 變更。

@@ -1,1 +1,8 @@
 dist_build/
+
+# Playwright (#547 UI smoke)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+.last-run.json
