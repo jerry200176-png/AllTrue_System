@@ -19,15 +19,22 @@ class LearningRecordFeedback extends Model
         'parent_session_id',
         'last_read_by_teacher_at',
         'last_read_by_director_at',
+        'last_read_by_parent_at',
     ];
 
     protected $casts = [
         'last_read_by_teacher_at' => 'datetime',
         'last_read_by_director_at' => 'datetime',
+        'last_read_by_parent_at' => 'datetime',
     ];
 
     public function learningRecord()
     {
         return $this->belongsTo(LearningRecord::class, 'learning_record_id', 'id');
+    }
+
+    public function replies()
+    {
+        return $this->hasMany(LearningRecordFeedbackReply::class, 'feedback_id', 'id');
     }
 }
