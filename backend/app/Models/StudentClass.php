@@ -20,6 +20,7 @@ class StudentClass extends Model
         'Rate', 'LearnTimeID', 'RoomID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop', 'closed_reason',
         'ScheduleMode', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
+        'PurchasedMinutes', 'RemainingMinutes',
         'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6',
         'rate_unit',
         'PackageID', 'PackageTotalSessions', 'PackageName',
@@ -98,6 +99,19 @@ class StudentClass extends Model
         }
         $fallback = (int) ($this->SessionDuration ?? 0);
         return $fallback > 0 ? $fallback : 0;
+    }
+
+    /**
+     * #613 A1：契約「每堂標準分鐘」。分鐘制扣堂以此把分鐘換算為堂數顯示值。
+     * 來源優先序：SessionDuration（契約預設）→ 60（無資料時的安全 fallback）。
+     * 變動時長課（duration1..6 不一）仍以契約 SessionDuration 為準，差異由人工複核。
+     */
+    public const DEFAULT_SESSION_MINUTES = 60;
+
+    public function perSessionMinutes(): int
+    {
+        $dur = (int) ($this->SessionDuration ?? 0);
+        return $dur >= 1 ? $dur : self::DEFAULT_SESSION_MINUTES;
     }
 
     /** Human-readable subject for UI / slips (Subject 欄位或 SubjectID 對照). */

@@ -13,6 +13,7 @@ class SessionDeductionLedger extends Model
         'class_session_id',
         'event_type',
         'source',
+        'minutes',
         'created_by',
         'note',
     ];
