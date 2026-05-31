@@ -826,7 +826,79 @@ class ClassSessionController extends Controller
         // 避免「課程管理 18:30，行事曆還顯示 18:00」的顯示漂移。
         if ($hasTimeChange) {
             $this->syncScheduleExceptionTime($session, $oldStartHm, $oldEndHm);
+            // #556/TD-055：單堂手動改時間後，依新時段是否仍吻合契約標記 IsContractException，
+            // 否則該堂會被 schedule_drift 誤判為漂移、並被 force_partial_rebuild realign 還原回契約時段。
+            $this->syncContractExceptionFlag($session);
         }
+    }
+
+    /**
+     * #556/TD-055：依「新時段是否仍吻合課程契約固定時段」設定 IsContractException。
+     * 不吻合（主任刻意調課）→ 1，使其從 drift 偵測與 realign 排除；吻合（改回契約）→ 0。
+     */
+    private function syncContractExceptionFlag(ClassSession $session): void
+    {
+        $sessionDate = $session->SessionDate ? substr((string) $session->SessionDate, 0, 10) : null;
+        if (!$sessionDate) {
+            return;
+        }
+        $studentClass = StudentClass::where('ID', $session->StudentClassID)->first();
+        if (!$studentClass) {
+            return;
+        }
+        $startHm = substr((string) $session->StartTime, 0, 5);
+        $endHm = $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null;
+        $isException = !$this->sessionMatchesContract($sessionDate, $startHm, $endHm, $studentClass);
+        if ((bool) $session->IsContractException !== $isException) {
+            $session->IsContractException = $isException;
+            $session->save();
+        }
+    }
+
+    /**
+     * 判斷某堂 (日期, 開始時間, 結束時間) 是否吻合課程的固定排課契約時段。
+     * 鏡像 StudentClassController::sessionMatchesContract（避免跨 controller 私有耦合）。
+     */
+    private function sessionMatchesContract(string $sessionDate, string $startTime, ?string $endTime, StudentClass $studentClass): bool
+    {
+        $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+        $startHm = substr($startTime, 0, 5);
+        $globalDurHours = $studentClass->SessionDuration
+            ? round((int) $studentClass->SessionDuration / 60, 1)
+            : 2;
+
+        $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
+        $timeFields = ['time', 'time1', 'time2', 'time3', 'time4', 'time5', 'time6'];
+        $durationFields = [null, 'duration1', 'duration2', 'duration3', 'duration4', 'duration5', 'duration6'];
+
+        foreach ($weekFields as $index => $wf) {
+            $day = (int) ($studentClass->{$wf} ?? 0);
+            if ($day < 1 || $day > 7) {
+                continue;
+            }
+            $tf = $timeFields[$index] ?? 'time';
+            $rawTime = (string) ($studentClass->{$tf} ?? $studentClass->time ?? '');
+            $slotStart = $rawTime ? substr($rawTime, 0, 5) : '';
+            if ($slotStart === '') {
+                continue;
+            }
+            $df = $durationFields[$index] ?? null;
+            $perDayMin = $df ? (int) ($studentClass->{$df} ?? 0) : 0;
+            $slotDurHours = $perDayMin > 0 ? round($perDayMin / 60, 1) : $globalDurHours;
+
+            $sessDurHours = $globalDurHours;
+            if ($endTime) {
+                $startM = ((int) substr($startHm, 0, 2)) * 60 + (int) substr($startHm, 3, 2);
+                $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
+                $sessDurHours = max(0, $endM - $startM) > 0 ? round(($endM - $startM) / 60, 1) : $globalDurHours;
+            }
+
+            if ($day === $isoDow && $slotStart === $startHm && $slotDurHours === $sessDurHours) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
