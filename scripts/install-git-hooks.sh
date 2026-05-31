@@ -1,10 +1,27 @@
 #!/bin/bash
-# 安裝本地 git hooks（一次性設定，不進 git 追蹤）
-# 執行：bash scripts/install-git-hooks.sh
+# 安裝／卸載本地 git hooks（一次性設定，不進 git 追蹤）
+# 安裝：bash scripts/install-git-hooks.sh
+# 卸載：bash scripts/install-git-hooks.sh --uninstall
+#
+# 這些是「本地」hooks，只影響你這台開發機的 commit/push，不影響 CI checkout 行為。
+# bypass 政策：緊急時可用 `git commit --no-verify` 跳過，但 CI 仍會把關（pre-commit 的檢查多數
+# 在 CI 有對應 gate）。git-index-audit 屬安全護欄，請勿長期 --no-verify 規避（見 §R58）。
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOKS_DIR="$REPO_ROOT/.git/hooks"
+
+if [ "${1:-}" = "--uninstall" ]; then
+  echo "=== 卸載 git hooks ==="
+  for h in pre-push pre-commit commit-msg post-merge; do
+    if [ -f "$HOOKS_DIR/$h" ]; then
+      rm -f "$HOOKS_DIR/$h"
+      echo "🗑️  移除 $h"
+    fi
+  done
+  echo "完成！已移除本地 hooks（不影響 git 追蹤檔案與 CI）。"
+  exit 0
+fi
 
 echo "=== 安裝 git hooks ==="
 
@@ -26,6 +43,18 @@ cat > "$HOOKS_DIR/pre-commit" << 'EOF'
 #!/bin/bash
 set -euo pipefail
 ERRORS=0
+
+# 0. git index 稽核（§R58）：保護路徑（backend/ frontend/ scripts/ .github/ docs/）的
+#    tracked 檔案不得被 assume-unchanged / skip-worktree 旗標隱藏，否則改動會在 status/diff
+#    中隱形、規避 PR review。偵測到就擋下 commit。
+if [ -x scripts/git-index-audit.sh ]; then
+  if ! scripts/git-index-audit.sh protected >/dev/null 2>&1; then
+    echo "❌ 偵測到保護路徑檔案被 git index flag 隱藏（assume-unchanged/skip-worktree）："
+    scripts/git-index-audit.sh protected || true
+    echo "   請先清除旗標再 commit；詳見 docs/AI_REGRESSION_LESSONS.md §R58"
+    exit 1
+  fi
+fi
 
 # PHP syntax check（只掃暫存的 .php 檔；若環境沒裝 PHP 則跳過）
 if command -v php &>/dev/null; then
@@ -95,8 +124,9 @@ EOF
 chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/commit-msg" "$HOOKS_DIR/post-merge"
 
 echo "✅ pre-push hook   → 禁止直接 push main"
-echo "✅ pre-commit hook → PHP syntax check + debug 語句警告"
+echo "✅ pre-commit hook → git index 稽核(§R58) + PHP syntax check + debug 語句警告"
 echo "✅ commit-msg hook → Conventional Commits 格式驗證"
 echo "✅ post-merge hook → 自動 mine MemPalace"
 echo ""
 echo "完成！hooks 已安裝到 .git/hooks/"
+echo "卸載：bash scripts/install-git-hooks.sh --uninstall"
