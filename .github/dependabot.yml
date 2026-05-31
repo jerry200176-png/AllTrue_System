@@ -6,6 +6,9 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -16,6 +19,9 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 3
+    groups:
+      composer-minor-patch:
+        update-types: ["minor", "patch"]
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
@@ -24,3 +30,6 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    groups:
+      github-actions:
+        update-types: ["minor", "patch"]

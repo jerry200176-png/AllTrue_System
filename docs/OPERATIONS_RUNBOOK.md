@@ -1056,10 +1056,10 @@ GitHub Advanced Security（GHAS）未購買期間，供應鏈把關**不等 GHAS
 |---|---|---|---|
 | PR 逐次 gate | `composer audit`（ci.yml）| 每個 backend PR | HIGH/CRITICAL **擋 merge**，MEDIUM/LOW 警告 |
 | PR 逐次 gate | `npm audit --audit-level=high`（ci.yml）| 每個 frontend PR | high 以上失敗 |
-| 每週深掃 | **OSV-Scanner**（`osv-scanner.yml`）| cron 週一 03:00 UTC + 手動 | 掃 `composer.lock`/`package-lock.json` 對 OSV.dev，發現漏洞 → run 紅燈 |
+| 每週深掃（advisory）| **OSV-Scanner**（`osv-scanner.yml`）| cron 週一 03:00 UTC + 手動 | 掃 `composer.lock`/`package-lock.json` 對 OSV.dev，列出**全部嚴重度**（`fail-on-vuln=false`，不擋）。結果供月度 review；追蹤見 `TECH_DEBT.md` TD-061 |
 | （升級路徑）| `dependency-review-action`（`dependency-review.yml`）| 購買 GHAS 後設 `ENABLE_DEPENDENCY_REVIEW=true` | 逐 PR 依賴 diff 審查 |
 
-OSV-Scanner 刻意只跑排程／手動（掃受信任的 main、`upload-sarif=false` 不需 GHAS code scanning），避免官方 action 在不受信任 PR 內容下的輸出注入風險（osv-scanner#2749）。手動觸發：`gh workflow run osv-scanner.yml`。
+OSV-Scanner 刻意只跑排程／手動（掃受信任的 main、`upload-sarif=false` 不需 GHAS code scanning），避免官方 action 在不受信任 PR 內容下的輸出注入風險（osv-scanner#2749）。手動觸發：`gh workflow run osv-scanner.yml`。**分工**：阻擋型 gate＝composer/npm audit（HIGH/CRITICAL）；OSV 深掃＝advisory 可見度（含 Medium/Low/dev），每月隨 DORA review 一起看一次並更新 TD-061。第三方 action 已 SHA-pin（供應鏈硬化），由 dependabot github-actions group 維護更新。
 
 ### R2. Break-glass 流程
 
