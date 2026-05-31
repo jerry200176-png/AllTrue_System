@@ -278,6 +278,10 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 - `learning_record_feedbacks.updated_at` 代表家長最後送出/修改回饋的時間，未讀判斷用 `last_read_by_*_at < updated_at`。
 - 若 staff mark-read 用 Eloquent `save()`，會同步更新 `updated_at`，造成「讀完刷新又變未讀」。
 - **強制規則**：mark-read 只能更新 `last_read_by_teacher_at` / `last_read_by_director_at`，不可碰 `updated_at`；測試必斷言 `updated_at` 不變。
+- **雙向回覆延伸（2026-05-31）**：`learning_record_feedback_replies` 上線後，未讀語意分三條，勿混淆：
+  - 員工回覆（teacher/director）：**只**標記該角色 `last_read_by_*_at`，**不可** touch `updated_at`（否則另一員工角色會被假未讀）。
+  - 家長追問（author_role=parent）：**必須** touch `updated_at`（重新觸發員工未讀，沿用 `me/unread-feedback-count`）。
+  - 家長端「有新回覆」紅點：用「員工回覆 `created_at` > `last_read_by_parent_at`」判定，**不可**沿用 `updated_at`（因員工回覆刻意不 touch `updated_at`）。`parentShow` 須先組回應再標記家長已讀。
 
 ---
 
@@ -607,6 +611,19 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
   - 開啟 modal/overlay 用 `body position:fixed` 鎖捲動時，務必 lock 與 unlock 成對；多個 overlay 疊加靠 reference count，但「洩漏一次」就會永久卡死。
 - **測試必補**：`frontend/src/lib/useScrollLock.test.js`：基本平衡、nested count（兩 lock 需兩 unlock）、`forceUnlockScroll` 能清除洩漏；納入 `build` 測試鏈於 CI。
 - **大廠對齊**：body-scroll-lock 類函式庫（如 `body-scroll-lock`、Radix `RemoveScroll`）都以 reference count + 明確 `enable/disable` 成對使用為前提；元件卸載必清，否則 SPA 換頁後鎖殘留是已知陷阱。
+
+---
+
+### R60. 新增 API 路由必須確認落在 `role` + `require_campus` 認證群組內（不可裸放在群組外）
+
+- **觸發情境**：2026-05-31 開發家長回饋雙向回覆時審查發現，System B 的 `parent-feedback/{for-teacher,read,reply,replies}`（#409/#410）被加在所有 `role:`/`require_campus` 群組**之外**，只剩全域 `AttachAuthUser`（只附掛 user、不強制認證/授權）→ 等同未認證即可呼叫的端點。所幸前端 0 引用，未被利用。
+- **根因**：`routes/api.php` 很長且巢狀多個 `Route::middleware([...])->group(...)`；在群組**結束後**（`});` 之外）接著寫新路由，會誤以為仍在群組內，實際已落到無認證區。
+- **強制規則**：
+  - 新增任何需登入的端點後，**必看它前後的 `});` 與縮排**，確認確實在預期的 `role`/`require_campus` 群組內；員工端最少 `role:...` + `require_campus`，家長端 parent token + ownership + `throttle`。
+  - 寫權限/越權測試（403 跨師、403 跨校）才算完成；不要只測 happy path。
+  - Code review 對 `routes/api.php` 的 diff 必須逐條確認所屬群組，不可只看路由字串對不對。
+- **本次處置**：四個 System B 端點收斂進 `role:teacher,director,super_admin`+`require_campus`+`require_password_change`；per-row campus ownership 仍待補 → `TECH_DEBT` TD-056。新做的 System A 回覆端點一律放在既有 `role:teacher,director,super_admin`+`require_campus` 群組並做 per-row ownership（`authorizeStaffFeedback`）。
+- **大廠對齊**：OWASP API Top 10 之 API1 BOLA / API5 Broken Function Level Authorization — 端點預設拒絕、明確授權；路由表應以「群組預設帶 auth」而非「逐條補 auth」設計，降低漏網。
 
 ---
 

@@ -384,3 +384,35 @@
 | 建議做法 | 單堂改時間且新時段 ≠ 契約時段時，標記 `IsContractException=1`（或新增 `manual_reschedule` 旗標），使其從 drift 偵測與 realign 中排除；並在 UI 標示為「已調整」。需產品確認語意（調課 vs 補課例外）後設計。|
 | 清償成本估計 | 中（半天，含測試 + drift 回歸）|
 | 不做的代價 | 主任刻意調課顯示為錯誤、或被 realign 還原；#135 類問題會反覆出現 |
+
+---
+
+### TD-056：System B（意見箱 `parent_feedback`）回覆端點缺 per-row 分校 ownership
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [SEC] 家長回饋雙向回覆（System A）開發中順手審查 |
+| 影響模組 | `ParentFeedbackController::{forTeacher,markReadByTeacher,reply,replies}`、`routes/api.php` |
+| 描述 | System B 的 `parent-feedback/{for-teacher,read,reply,replies}` 原本在任何 `role`/`require_campus` 群組外（等同未強制認證），本次已收斂進 `role:teacher,director,super_admin`+`require_campus`，移除未認證暴露。但 `{id}/read`、`{id}/reply`、`{id}/replies` 仍只做群組層級 role+campus 檢查，未驗證該筆 feedback 是否屬於呼叫者的分校／老師（per-row ownership）。目前這四個端點前端 0 引用，實際風險低。|
+| 建議做法 | 在 controller 內鏡像 System A `authorizeStaffFeedback` 的 per-row 檢查（teacher 限自己 teacher_id、director 限 feedback 的 campus_id ∈ auth_campus_ids）；或評估 System A/B 合併後直接下架 System B 未用路由。|
+| 清償成本估計 | 低（< 2hr，含測試）|
+| 不做的代價 | 若日後接上 System B 前端，跨校員工可能讀／回他校意見箱；與 System A 隔離標準不一致 |
+
+---
+
+### TD-057：家長回饋 System A / System B 雙軌並存 + Phase 2 KPI
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-05-31 |
+| 發現來源 | [PLAN/REVIEW] 家長回饋雙向回覆 |
+| 影響模組 | `learning_record_feedbacks`(+replies) / `parent_feedback`(+replies)、`LearningRecordFeedbackController`、`ParentFeedbackController`、`AdoptionInsightsController` |
+| 描述 | 家長回饋有兩套獨立系統：System A（每筆評量回饋，已是主要入口、已雙向回覆）與 System B（意見箱，UI 幾乎未接）。兩套 schema/權限/通知各自為政，長期維護成本高。另外 Phase 2 規劃的 KPI（真實回覆率／平均回覆時效／未回覆積壓）需以本次新增的 replies 資料為基礎，且 `analytics` 目前的 `replied_records` 仍以「有回饋」近似，非「真正有員工回覆」。|
+| 建議做法 | (1) Phase 2：以 `learning_record_feedback_replies`（author_role∈teacher/director）計算真實回覆率與時效，更新 `analytics` 與 `AdoptionInsightsController`，並做老師 KPI 儀表板。(2) 評估 System A/B 合併為單一家長訊息中心，下架 System B 未用路由。|
+| 清償成本估計 | 高（> 1 天）|
+| 不做的代價 | 兩套系統持續分歧；KPI 指標失真（reply_rate 不代表真有回覆）|
