@@ -1,0 +1,56 @@
+name: UI Smoke (Playwright)
+
+# #547 / Epic #535 Phase 4.3 — 前端 UI smoke。
+# 刻意「不掛在每次 PR」：Playwright 需下載瀏覽器，跑在每個 PR 會浪費 Actions
+# minutes（見 OPERATIONS_RUNBOOK §B2 節流原則）。改為手動 / 排程觸發。
+# 實際執行需 #537 提供 SMOKE_* secrets；缺 secrets 時 spec 內 test.skip()，
+# workflow 仍會綠燈（只是全部 skipped）。
+on:
+  workflow_dispatch:
+  schedule:
+    # 每週一 02:30 UTC（台灣 10:30）對 production 跑一次煙霧測試
+    - cron: '30 2 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright browser (chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI smoke
+        env:
+          CI: 'true'
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          SMOKE_DIRECTOR_USER: ${{ secrets.SMOKE_DIRECTOR_USER }}
+          SMOKE_DIRECTOR_PASS: ${{ secrets.SMOKE_DIRECTOR_PASS }}
+          SMOKE_TEACHER_USER: ${{ secrets.SMOKE_TEACHER_USER }}
+          SMOKE_TEACHER_PASS: ${{ secrets.SMOKE_TEACHER_PASS }}
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
