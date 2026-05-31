@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — perf: 老師當日課表載入更快（class-sessions N+1 批次化，#546）
+
+開發備註：#546 / TD-018。`ClassSessionController` 兩處迴圈 N+1 清償：(A) `autoMaterializeTeacherMonthlySessionsForRange` 老師當日載入時，原每堂做 2 次 `exists()`（隨課數線性成長，TeacherHome/SmartCalendar 熱路徑）→ 改為 2 次批次 SELECT 預載「抑制例外 + 既有堂次」into in-memory set，以 `classId|HH:MM` 為鍵（TIME 欄位比較忽略秒，語意與原 SQL 一致）；同請求內建立後即更新 set 防重複。(B) `logSessionCountMismatches`（flag-gated）每課程一次 `SessionCount` → 單次 `whereIn pluck`。主查詢輸出 JSON 合約未變。Code review 發現主查詢的 Subject/schedules/campus 早已單一多 join（非 N+1）、所需複合索引已存在；剩餘的代課 correlated subquery 去索引化（Offender C）風險高，拆 TD-058 待 Sentry payload 對齊。回歸測試 `ClassSessionsTeacherAutoMaterializeMonthlyTest` 新增 query-count 不隨課數成長 + 無重複建立。純後端，無 schema 變更。
+
 ## 2026-05-31 — fix: 主任「單堂調課」不會再被系統自動還原回原本時段（#556）
 
 修正石牌等分校回報的「固定排課課程，有幾天出現在錯誤時段」問題。原因是主任用「單堂編輯」把某一堂改到不同時間後，系統沒把它記成「刻意調整」，於是之後對該課程按「編輯→儲存」時，系統會誤以為這堂跑掉了、把它「拉回」原本的固定時段，覆蓋掉主任的調整。現在改好了：只要單堂改到跟固定排課不同的時段，系統會自動記成「已調整」、不再被自動還原；若改回原本時段則自動取消標記。請重新整理頁面後使用。
