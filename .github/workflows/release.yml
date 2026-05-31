@@ -60,10 +60,13 @@ jobs:
             TAG="${BASE}.${n}"
           fi
 
+          # 清掉標題的 '## ' 與前綴 'YYYY-MM-DD — '，讓 Release 標題乾淨：vTAG — <type: title>
+          CLEAN=$(printf '%s' "$HEADING" | sed 's/^## //' | sed 's/^[0-9-]\{10\} — //')
+
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "title=$HEADING" >> "$GITHUB_OUTPUT"
-          echo "Resolved tag: $TAG"
+          echo "title=$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG | title: $CLEAN"
 
       - name: Create annotated tag
         if: steps.meta.outputs.skip != 'true'

@@ -1276,3 +1276,57 @@ CalVer（`vYYYY.MM.DD`）與既有 dated CHANGELOG 1:1 對應、無需人工判�
 - tag push 不會觸發 `branches:[main]` 的 push workflow（不成迴圈）。
 - 回滾：刪除誤建 tag/Release 為純中繼資料操作（`git push --delete origin <tag>` + `gh release delete <tag>`），不影響 production。
 
+---
+
+## Y. DORA Metrics 月度 Review — Epic #535 Phase 2.3
+
+### Y1. 來源
+
+`/.github/workflows/dora-metrics.yml` 每週一 09:00 UTC 自動計算近 30 天四指標，輸出到該次 **workflow run 的 Step Summary** 頁。可手動觸發：`gh workflow run dora-metrics.yml`。
+
+| 指標 | 計算方式 | Elite 門檻 |
+|---|---|---|
+| Deployment Frequency | 合進 main 的 PR 數 / 週 | ≥ 1/day |
+| Lead Time for Changes | PR open → merge 平均時數 | < 24h |
+| Change Failure Rate | 標題含 fix/hotfix/revert 的 PR 占比 | < 5% |
+| MTTR | 手動追蹤（記 `AI_REGRESSION_LESSONS.md`）| — |
+
+### Y2. 月度 Review SOP（每月第一個工作日）
+
+```bash
+gh run list --workflow=dora-metrics.yml --limit 1     # 找最近一次 run
+gh run view <run_id>                                  # 讀 Step Summary 四指標
+```
+
+判讀與行動：
+- **CFR 連續 2 個月 > 15%（Low）**→ 檢視近期 fix/hotfix 是否集中某模組，排 [REVIEW]/技術債清償。
+- **Lead Time > 1 週（Medium↓）**→ PR 是否過大（presubmit ≤700 行）、是否卡 review，考慮拆小。
+- **Deployment Frequency 驟降**→ 確認是否 CI/部署卡關或進入凍結期。
+- 將每月數字記一行到 `docs/CHANGELOG.md`（或 SRE 週報），形成趨勢線。
+
+### Y3. 注意
+
+- 指標為「健康趨勢」非 KPI 考核；solo + AI 模式下重點在抓「異常變化」。
+- CFR 以「PR 標題關鍵字」近似，標題規範（Conventional Commits）越一致越準。
+
+---
+
+## Z. Pi Health 告警門檻（文件化）— Epic #535 Phase 2.4
+
+`/.github/workflows/pi-health.yml`（每日 09:00 台灣時間，GitHub-hosted SSH 進 Pi）採**兩級告警**；只有 CRITICAL 會讓 workflow failure（觸發 GitHub 通知），WARNING 僅記錄不失敗。Pi 本機 `scripts/monitor-alert.sh`（cron）補位即時告警（Telegram）。
+
+| 指標 | ⚠️ WARNING | 🔴 CRITICAL | 備註 |
+|---|---|---|---|
+| 磁碟使用率 `/` | > 85% | > 95% | 清 `/var/log/*`、舊備份 |
+| CPU 溫度 | > 75°C | > 85°C **且** `get_throttled` 有 throttling/undervoltage | >85°C 但無 throttling 視為 sensor 尖峰，僅 WARNING |
+| 最新備份年齡（`backups/sixhour`）| > 8h | > 24h 或目錄/檔案不存在 | 對應 sixhour cron；> 24h 視為備份失敗 |
+| UptimeRobot monitor | status 8/9 → DOWN（error） | — | 未設 `UPTIMEROBOT_API_KEY` 則略過 |
+
+### Z1. 調整門檻
+
+直接改 `pi-health.yml` 對應數字並同步本表（兩處一致是 Phase 2.4 的 Exit）。改完走一般 PR → CI；`workflow_dispatch` 可手動驗證：`gh workflow run pi-health.yml`。
+
+### Z2. 缺 secrets 行為
+
+未設 `PI_HOST`/`PI_USER`/`PI_SSH_KEY`/`PI_HOST_KEY` 時，workflow 以 `::notice::` 略過（不 failure），不阻塞。設定後自動生效。
+
