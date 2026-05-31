@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — fix: 修復評量被「上課狀態調整」作廢後無法重新填寫（#146）
+
+某堂課的上課狀態被調整過（例如曾改成未上課、後來又改回已上課）時，原本那筆評量被系統自動作廢；改回「已上課」後評量沒有自動恢復，老師重新填寫會被擋住、顯示「此堂評量已作廢」。現已修正：只要該堂最後是「已上課／已排定」狀態，老師重填就會自動沿用原評量、不再被擋，且堂數不會重複計算（請重新整理頁面後使用）。
+
+開發備註：#146 / GH#618。實例：陳嘉軒 5/31 12:30-14:30（LR#7737, CS#9426, attended，VoidReason='由已上調整狀態'）。根因：`ClassSessionController` attended→scheduled 以 `voidAttendanceArtifacts('由已上調整狀態')` 作廢 LR 並 `SessionDeductionService::reverseForSession` 沖回堂數；之後 scheduled→attended 走 generic 分支、不呼叫 `restoreVoidedLearningRecord`（僅 leave→attended 才還原）。`LearningRecordController::store()` 的 resurrect（#125/#495 R55）原只認 `VoidReason='一般請假'` → 永久 409。修復：新增 `SYSTEM_RESURRECTABLE_VOID_REASONS` 白名單（`一般請假`/`由已上調整狀態`/`補請假：已上課改請假`/`單堂標記請假`），CS 為 fillable 才 resurrect；resurrect 只設 pending + `SessionDeducted=false`，扣堂走核准流程，不重複扣堂；人工作廢維持 409。回歸測試 `LearningRecordVoidedResurrectTest` 新增 #146 案。PR #619。
+
 ## 2026-05-31 — fix: 修復切換頁面後整頁灰白遮罩、無法點選的問題（#143）
 
 先展開／聚焦某位學生的課程後再切換到別的頁面時，畫面有時會卡住、像被一層灰白色蓋住而且點不動、也無法捲動。現已修正：切換頁面會自動解除鎖定，不再卡住（請重新整理頁面後使用）。
