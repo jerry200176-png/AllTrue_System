@@ -78,7 +78,8 @@ class SessionDeductionService
         ?int $classSessionId,
         string $source = 'attendance',
         ?int $createdBy = null,
-        ?string $note = null
+        ?string $note = null,
+        ?int $minutes = null
     ): bool {
         if ($classSessionId && $classSessionId > 0) {
             $exists = SessionDeductionLedger::where('student_class_id', $studentClassId)
@@ -95,6 +96,8 @@ class SessionDeductionService
             'class_session_id' => $classSessionId ?: null,
             'event_type'       => 'deduct',
             'source'           => $source,
+            // #613 A1：null＝整堂（引擎以 perSessionMinutes 換算），>0＝部分時數。
+            'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
             'created_by'       => $createdBy,
             'note'             => $note,
         ]);
@@ -115,7 +118,8 @@ class SessionDeductionService
         ?int $classSessionId,
         string $source = 'retro_leave',
         ?int $createdBy = null,
-        ?string $note = null
+        ?string $note = null,
+        ?int $minutes = null
     ): bool {
         if ($classSessionId && $classSessionId > 0) {
             $exists = SessionDeductionLedger::where('student_class_id', $studentClassId)
@@ -132,6 +136,7 @@ class SessionDeductionService
             'class_session_id' => $classSessionId ?: null,
             'event_type'       => 'reverse',
             'source'           => $source,
+            'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
             'created_by'       => $createdBy,
             'note'             => $note,
         ]);
@@ -195,11 +200,48 @@ class SessionDeductionService
 
             $isSessionMode = (string) ($sc->ScheduleMode ?? 'count') === 'count';
             $sessionCount  = max(0, (int) ($sc->SessionCount ?? 0));
+            $perSession    = max(1, $sc->perSessionMinutes());
 
             if ($isSessionMode && $sessionCount > 0) {
-                $usedSessions = min($sessionCount, $usedByAttendance);
-                $sc->UsedSessions      = $usedSessions;
-                $sc->RemainingSessions  = max(0, $sessionCount - $usedSessions);
+                $purchasedMinutes = $sessionCount * $perSession;
+
+                // #613 A1：是否存在「部分時數」事件（minutes 已記錄且 ≠ 整堂）。
+                // 否 → 完全沿用既有 count-based 邏輯（行為 byte-identical），僅補寫衍生分鐘欄。
+                // 是 → 分鐘為權威，RemainingSessions 改為 ROUND_HALF_UP 衍生顯示值。
+                $hasPartial = SessionDeductionLedger::query()
+                    ->where('student_class_id', $studentClassId)
+                    ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust'])
+                    ->whereNotNull('minutes')
+                    ->where('minutes', '!=', $perSession)
+                    ->exists();
+
+                if ($hasPartial) {
+                    $netMinutes = (int) (SessionDeductionLedger::query()
+                        ->where('student_class_id', $studentClassId)
+                        ->whereIn('source', ['attendance', 'retro_leave', 'status_adjust'])
+                        ->selectRaw(
+                            "SUM(CASE WHEN event_type = 'deduct' THEN COALESCE(minutes, ?) "
+                            . "ELSE -COALESCE(minutes, ?) END) as net",
+                            [$perSession, $perSession]
+                        )
+                        ->value('net') ?? 0);
+
+                    $usedMinutes       = max(0, min($purchasedMinutes, $netMinutes));
+                    $remainingMinutes  = max(0, $purchasedMinutes - $usedMinutes);
+                    $remainingSessions = max(0, min($sessionCount, self::roundHalfUp($remainingMinutes, $perSession)));
+
+                    $sc->RemainingMinutes  = $remainingMinutes;
+                    $sc->PurchasedMinutes  = $purchasedMinutes;
+                    $sc->RemainingSessions = $remainingSessions;
+                    $sc->UsedSessions      = $sessionCount - $remainingSessions;
+                } else {
+                    $usedSessions = min($sessionCount, $usedByAttendance);
+                    $sc->UsedSessions      = $usedSessions;
+                    $sc->RemainingSessions  = max(0, $sessionCount - $usedSessions);
+                    // 衍生分鐘欄（display/權威化準備），不影響上面整數結果。
+                    $sc->PurchasedMinutes  = $purchasedMinutes;
+                    $sc->RemainingMinutes  = max(0, $sessionCount - $usedSessions) * $perSession;
+                }
                 // Do not auto-set Stop when remaining hits 0; pause is manual (StudentClassController pause/resume).
                 // NOTE: Paid/PayDate must NOT be touched here. Session counting is independent of
                 // payment status. Paid is only written via three authorised paths:
@@ -210,6 +252,8 @@ class SessionDeductionService
                 $sc->UsedSessions      = $usedByAttendance;
                 $sc->RemainingSessions  = 0;
                 $sc->Stop               = 0;
+                $sc->RemainingMinutes  = 0;
+                $sc->PurchasedMinutes  = null;
             }
 
             $sc->save();
@@ -261,6 +305,18 @@ class SessionDeductionService
         } catch (\Throwable $e) {
             return false;
         }
+    }
+
+    /**
+     * #613 A1：以整數運算做 ROUND_HALF_UP(minutes / perSession)，不使用 float。
+     * round_half_up(a/b) = floor((2a + b) / (2b))。
+     */
+    private static function roundHalfUp(int $minutes, int $perSession): int
+    {
+        if ($perSession <= 0) {
+            return 0;
+        }
+        return intdiv($minutes * 2 + $perSession, $perSession * 2);
     }
 
 }
