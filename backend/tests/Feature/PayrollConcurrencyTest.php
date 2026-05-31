@@ -313,8 +313,70 @@ class PayrollConcurrencyTest extends TestCase
     }
 
     // ──────────────────────────────────────────────────────────
+    // #614：薪資明細呈現「本段採用最高時薪（同時段 N 位學生）」
+    // 併堂段明細為純呈現附加欄位，不得改動既有金額。
+    // ──────────────────────────────────────────────────────────
+    public function test_concurrency_segments_exposed_on_primary(): void
+    {
+        $dir = $this->createDirector('dir-seg-n2@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-seg-n2@test.com', '併堂段n2');
+        $stuA = $this->createStudent(1, 'seg-A');
+        $stuB = $this->createStudent(1, 'seg-B');
+        $scA = $this->makeStudentClass($stuA, $tid, 8, 'one_on_one'); // junior 350/h
+        $scB = $this->makeStudentClass($stuB, $tid, 8, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-03', '14:00', '16:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-03', '14:00', '16:00');
+
+        $data = $this->fetchSessions($dir['token'], $tid);
+
+        $withSeg = array_values(array_filter(
+            $data['sessions'],
+            fn ($s) => !empty($s['concurrency_segments'])
+        ));
+        $this->assertCount(1, $withSeg, '只有歸屬（primary）LR 應帶併堂段明細');
+        $seg = $withSeg[0]['concurrency_segments'][0];
+        $this->assertSame(350, $seg['max_base'], '本段最高時薪應為 350');
+        $this->assertSame(2, $seg['headcount'], '同時段應為 2 位學生');
+        $this->assertSame(120, $seg['minutes'], '併堂時段應為 120 分鐘');
+
+        // 回歸：附加欄位不得改動金額（n=2 全重疊 → 800）
+        $this->assertSame(800, (int) $data['teacher']['total_salary']);
+    }
+
+    public function test_no_overlap_has_empty_concurrency_segments(): void
+    {
+        $dir = $this->createDirector('dir-seg-no@test.com', [1]);
+        $tid = $this->createPartTimeTeacher(1, 'pt-seg-no@test.com', '無併堂段');
+        $stuA = $this->createStudent(1, 'segno-A');
+        $stuB = $this->createStudent(1, 'segno-B');
+        $scA = $this->makeStudentClass($stuA, $tid, 8, 'one_on_one');
+        $scB = $this->makeStudentClass($stuB, $tid, 8, 'one_on_one');
+
+        $this->makeApprovedLR($scA, $tid, '2026-04-09', '14:00', '16:00');
+        $this->makeApprovedLR($scB, $tid, '2026-04-09', '17:00', '19:00');
+
+        $data = $this->fetchSessions($dir['token'], $tid);
+        foreach ($data['sessions'] as $s) {
+            $this->assertSame([], $s['concurrency_segments'], '無重疊不應出現併堂段明細');
+        }
+        $this->assertSame(1400, (int) $data['teacher']['total_salary']);
+    }
+
+    // ──────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────
+
+    private function fetchSessions(string $token, int $teacherId): array
+    {
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->getJson("/api/v1/finance/parttime-payroll/{$teacherId}/sessions?month=2026-04&branch_id=1");
+
+        $res->assertOk();
+        return $res->json();
+    }
 
     private function fetchPayroll(string $token): array
     {
