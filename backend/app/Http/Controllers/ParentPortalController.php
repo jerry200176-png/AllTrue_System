@@ -354,8 +354,17 @@ class ParentPortalController extends Controller
             $feedbacks = LearningRecordFeedback::whereIn('learning_record_id', $recordsRaw->pluck('id'))
                 ->get()
                 ->keyBy('learning_record_id');
+            // 批次載入回覆串 + 員工姓名（避免 N+1），供家長端顯示老師/主任回覆與「有新回覆」紅點。
+            $repliesByFeedback = \App\Models\LearningRecordFeedbackReply::whereIn('feedback_id', $feedbacks->pluck('id'))
+                ->orderBy('id')
+                ->get()
+                ->groupBy('feedback_id');
+            $replyAuthorIds = $repliesByFeedback->flatten(1)->pluck('author_user_id')->filter()->unique()->values();
+            $replyAuthorNames = $replyAuthorIds->isNotEmpty()
+                ? \Illuminate\Support\Facades\DB::table('User')->whereIn('id', $replyAuthorIds)->pluck('Name', 'id')->toArray()
+                : [];
 
-            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks) {
+            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames) {
                     $teacher = User::find($rec->TeacherID);
                     $rec->teacher_name = $teacher ? $teacher->Name : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
@@ -374,10 +383,25 @@ class ParentPortalController extends Controller
                     }
                     $rec->session_number = $sessionNumbers[(int) $rec->id] ?? null;
                     $fb = $feedbacks->get((int) $rec->id);
+                    $fbReplies = $fb ? ($repliesByFeedback->get((int) $fb->id) ?? collect()) : collect();
+                    $lastParentRead = $fb && $fb->last_read_by_parent_at ? $fb->last_read_by_parent_at : null;
+                    $hasUnreadReply = $fbReplies->contains(function ($r) use ($lastParentRead) {
+                        if ((string) $r->author_role === 'parent' || !$r->created_at) return false;
+                        return !$lastParentRead || $r->created_at->gt($lastParentRead);
+                    });
                     $rec->parent_feedback = $fb ? [
                         'id' => (int) $fb->id,
                         'content' => $fb->content,
                         'updated_at' => optional($fb->updated_at)->toIso8601String(),
+                        'has_unread_reply' => $hasUnreadReply,
+                        'replies' => $fbReplies->map(fn ($r) => [
+                            'id' => (int) $r->id,
+                            'author_role' => (string) $r->author_role,
+                            'author_name' => ((string) $r->author_role !== 'parent' && $r->author_user_id)
+                                ? ($replyAuthorNames[$r->author_user_id] ?? null) : null,
+                            'content' => $r->content,
+                            'created_at' => optional($r->created_at)->toIso8601String(),
+                        ])->values()->all(),
                     ] : null;
                     return $rec;
                 });

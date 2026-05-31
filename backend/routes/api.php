@@ -430,6 +430,9 @@ Route::prefix('v1')->group(function () {
         Route::get('learning-record-feedbacks', [LearningRecordFeedbackController::class, 'index']);
         Route::post('learning-record-feedbacks/{feedback}/read', [LearningRecordFeedbackController::class, 'markRead']);
         Route::get('learning-record-feedbacks/analytics', [LearningRecordFeedbackController::class, 'analytics']);
+        // 家長回饋雙向回覆（員工端，沿用本群組 role:teacher,director + require_campus）
+        Route::get('learning-record-feedbacks/{feedback}/replies', [LearningRecordFeedbackController::class, 'replies']);
+        Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
@@ -505,6 +508,8 @@ Route::prefix('v1')->group(function () {
     Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])
         ->middleware('throttle:20,1');
+    Route::post('parent/learning-records/{learningRecord}/feedback/reply', [LearningRecordFeedbackController::class, 'parentReply'])
+        ->middleware('throttle:20,1');
 
     // ── Parent: billing history (#401) ──────────────────────────────────
     Route::get('parent/billing-history', [ParentPortalController::class, 'billingHistory']);
@@ -521,10 +526,15 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Teacher/Director: 家長回饋 inbox + 回覆 (#409, #410) ─────────────────
-    Route::get('parent-feedback/for-teacher', [ParentFeedbackController::class, 'forTeacher']);
-    Route::post('parent-feedback/{id}/read', [ParentFeedbackController::class, 'markReadByTeacher']);
-    Route::post('parent-feedback/{id}/reply', [ParentFeedbackController::class, 'reply']);
-    Route::get('parent-feedback/{id}/replies', [ParentFeedbackController::class, 'replies']);
+    // 安全收斂：原本這四個端點在任何 role/require_campus 群組之外，僅有全域 AttachAuthUser，
+    // 等同未強制認證/授權。改納入 role:teacher,director,super_admin + require_campus，
+    // 移除未認證即可呼叫的暴露。（per-row campus ownership 仍待補，記 TECH_DEBT）
+    Route::middleware(['role:teacher,director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('parent-feedback/for-teacher', [ParentFeedbackController::class, 'forTeacher']);
+        Route::post('parent-feedback/{id}/read', [ParentFeedbackController::class, 'markReadByTeacher']);
+        Route::post('parent-feedback/{id}/reply', [ParentFeedbackController::class, 'reply']);
+        Route::get('parent-feedback/{id}/replies', [ParentFeedbackController::class, 'replies']);
+    });
 
     // ── Director: payment message for LINE copy ──────────────────────────
     Route::middleware(['role:director', 'require_password_change'])->group(function () {
