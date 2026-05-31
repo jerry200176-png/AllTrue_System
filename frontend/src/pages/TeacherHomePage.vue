@@ -184,7 +184,7 @@
             <div class="th-action-label">
               家長回饋待看 <strong>{{ unreadFeedbackCount }}</strong> 筆
             </div>
-            <div class="th-action-hint">點此查看評量表回饋</div>
+            <div class="th-action-hint">點此查看並直接回覆家長（含家長新追問）</div>
           </div>
           <span class="material-symbols-outlined th-action-arrow">chevron_right</span>
         </button>

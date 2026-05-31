@@ -353,10 +353,11 @@
                 </div>
                 <div class="pp-report-field-value pp-report-comment">{{ record.Comment }}</div>
               </div>
-              <div class="pp-feedback-box" :id="'pp-fb-' + (record.id ?? record.ID)" @click.stop="prepareFeedbackDraft(record)">
+              <div class="pp-feedback-box" :id="'pp-fb-' + (record.id ?? record.ID)" @click.stop="onFeedbackBoxOpen(record)">
                 <div class="pp-feedback-title">
                   <span class="material-symbols-outlined">rate_review</span>
                   給老師的回饋
+                  <span v-if="record.parent_feedback?.has_unread_reply" class="pp-feedback-newdot">老師回覆了</span>
                 </div>
                 <p class="pp-feedback-hint">
                   {{ record.parent_feedback ? '已送出給老師與主任查看。' : '有想補充給老師的嗎？可留下問題、觀察或鼓勵。' }}
@@ -387,6 +388,42 @@
                 </div>
                 <p v-if="record._feedbackError" class="pp-error pp-feedback-error">{{ record._feedbackError }}</p>
                 <p v-if="record.parent_feedback?.updated_at" class="pp-feedback-time">上次更新：{{ formatFeedbackTime(record.parent_feedback.updated_at) }}</p>
+
+                <!-- 雙向對話串：老師/主任回覆 + 家長追問 -->
+                <div v-if="record.parent_feedback?.replies?.length" class="pp-feedback-thread">
+                  <div class="pp-feedback-thread-title">
+                    <span class="material-symbols-outlined">forum</span>
+                    對話紀錄
+                  </div>
+                  <div
+                    v-for="rep in record.parent_feedback.replies"
+                    :key="'pfr-' + rep.id"
+                    :class="['pp-feedback-reply', rep.author_role === 'parent' ? 'is-parent' : 'is-staff']"
+                  >
+                    <div class="pp-feedback-reply-who">
+                      {{ rep.author_role === 'parent' ? '我（家長）' : (rep.author_name || (rep.author_role === 'director' ? '主任' : '老師')) }}
+                      <span class="pp-feedback-reply-time">{{ formatFeedbackTime(rep.created_at) }}</span>
+                    </div>
+                    <div class="pp-feedback-reply-body">{{ rep.content }}</div>
+                  </div>
+                </div>
+                <div v-if="record.parent_feedback" class="pp-feedback-followup">
+                  <textarea
+                    v-model="record._replyDraft"
+                    class="pp-feedback-textarea"
+                    maxlength="500"
+                    aria-label="回覆老師"
+                    placeholder="想再回覆老師嗎？例如：謝謝老師，孩子這週有按進度複習。"
+                    @click.stop
+                  ></textarea>
+                  <div class="pp-feedback-actions">
+                    <span :class="['pp-feedback-count', { warn: (record._replyDraft || '').length >= 480 }]">{{ (record._replyDraft || '').length }}/500</span>
+                    <button class="pp-btn pp-btn-primary pp-feedback-submit" :disabled="record._replySaving || !(record._replyDraft || '').trim()" @click.stop="submitParentReply(record)">
+                      {{ record._replySaving ? '送出中...' : '回覆老師' }}
+                    </button>
+                  </div>
+                  <p v-if="record._replyError" class="pp-error pp-feedback-error">{{ record._replyError }}</p>
+                </div>
               </div>
             </div>
             </div>
@@ -723,7 +760,7 @@
 
 <script setup>
 import { onMounted, ref, computed, reactive, nextTick } from 'vue';
-import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
+import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 
@@ -960,6 +997,54 @@ const submitFeedback = async (record) => {
     record._feedbackError = e?.message || '暫時無法送出，請稍後再試';
   } finally {
     record._feedbackSaving = false;
+  }
+};
+
+// 家長追問：在既有評量回饋上追加一則家長回覆，送出後重新取得對話串（同時清掉「有新回覆」紅點）。
+const submitParentReply = async (record) => {
+  const content = String(record._replyDraft || '').trim();
+  record._replyError = '';
+  if (!content) {
+    record._replyError = '請輸入回覆內容';
+    return;
+  }
+  if (content.length > 500) {
+    record._replyError = '回覆內容不可超過 500 字';
+    return;
+  }
+  const id = record.id ?? record.ID;
+  record._replySaving = true;
+  try {
+    await parentReplyLearningRecordFeedback(token.value, id, content);
+    record._replyDraft = '';
+    const refreshed = await getParentLearningRecordFeedback(token.value, id);
+    if (refreshed) record.parent_feedback = refreshed;
+    trackParentPortalEvent(token.value, 'parent.learning_feedback_reply', { record_id: id });
+  } catch (e) {
+    record._replyError = e?.message || '暫時無法送出，請稍後再試';
+  } finally {
+    record._replySaving = false;
+  }
+};
+
+// 家長點開回饋區塊：準備草稿並（若已有回饋）載入最新對話串、標記已讀。
+const onFeedbackBoxOpen = (record) => {
+  prepareFeedbackDraft(record);
+  if (record.parent_feedback && !record._threadLoaded) {
+    record._threadLoaded = true;
+    loadFeedbackThread(record);
+  }
+};
+
+// 家長展開對話時取得最新回覆並標記已讀（清除紅點）。
+const loadFeedbackThread = async (record) => {
+  const id = record.id ?? record.ID;
+  if (id == null || !record.parent_feedback) return;
+  try {
+    const refreshed = await getParentLearningRecordFeedback(token.value, id);
+    if (refreshed) record.parent_feedback = refreshed;
+  } catch (e) {
+    // 靜默：對話串載入失敗不影響評量本身顯示
   }
 };
 
@@ -2135,6 +2220,16 @@ onMounted(async () => {
 .pp-feedback-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 8px; }
 .pp-feedback-count { font-size: .8em; color: #78909c; }
 .pp-feedback-count.warn { color: #e65100; }
+.pp-feedback-newdot { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e53935; color: #fff; font-size: .72em; font-weight: 700; }
+.pp-feedback-thread { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #c5cae9; display: flex; flex-direction: column; gap: 8px; }
+.pp-feedback-thread-title { display: flex; align-items: center; gap: 6px; font-size: .84em; font-weight: 700; color: #5c6bc0; }
+.pp-feedback-reply { padding: 8px 10px; border-radius: 10px; font-size: .9em; max-width: 92%; }
+.pp-feedback-reply.is-staff { background: #fff; border: 1px solid #e0e7ff; align-self: flex-start; }
+.pp-feedback-reply.is-parent { background: #e8f0fe; align-self: flex-end; }
+.pp-feedback-reply-who { font-size: .8em; font-weight: 700; color: #3949ab; display: flex; gap: 8px; align-items: baseline; }
+.pp-feedback-reply-time { font-weight: 400; color: #90a4ae; font-size: .92em; }
+.pp-feedback-reply-body { margin-top: 3px; color: #37474f; white-space: pre-wrap; word-break: break-word; }
+.pp-feedback-followup { margin-top: 10px; }
 .pp-feedback-submit { min-height: 44px; }
 .pp-feedback-error { margin-top: 6px; }
 
