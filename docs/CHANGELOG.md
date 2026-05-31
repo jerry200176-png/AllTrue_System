@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-05-31 — fix: 主任補登的空白評量不再灌水老師科目數（#137/#575）
+
+開發備註：#137。`ExcludeFromSubjectCount`（`LearningRecordController` 補登空白評量時設為 1，意為「不算入老師科目數」）只有程式碼引用、無對應 migration，且 `FinanceController::subjectUnits` 從未過濾 → 補登空白評量被誤計入科目數。修復：新增 `ExcludeFromSubjectCount` 欄位 migration（boolean 預設 0，既有評量維持原行為、不回溯改動科目數/薪資）；`subjectUnits` 排除 `=1`（`hasColumn` 防呆）。部署確認 production 原無此欄位（全新建立、零回溯影響）。孤兒評量（無對應堂次）已由 2026_03_15 FK migration 防止。PR #606。
+
 ## 2026-05-31 — fix: 主任可以隨時「取消請假」了，課表會正確回復（不再多出一堂）（#142/#596）
 
 開發備註：#142 §1。原因有二：(1) `ScheduleController::undoLeave` 受 `LEAVE_UNDO_WINDOW_SECONDS=30` 限制（僅前端 undo-toast 用途），逾 30 秒回 `undo_window_expired`，主任之後無取消途徑；(2) `SessionEditModal` 的「改為未上」對 leave 堂次送 `PATCH /class-sessions/{id}` 純改狀態，後端 `update` 未反轉請假時自動順延的尾堂與 `EndDate`，課程憑空多一堂。修復：移除時間窗（撤銷安全改由 `CourseLeaveCascadeService::undoLeaveCascade` 的下游已上課堂次護欄把關，與時間無關）；新增 `POST /schedules/undo-leave-by-session`（以 class_session_id 取消）；前端 `doStatusChange` 對 leave→scheduled 改走此 cascade-correct 端點。PR #602/#603/#604。
