@@ -8,6 +8,12 @@
 
 ---
 
+## 2026-05-31 — fix: 主任「單堂調課」不會再被系統自動還原回原本時段（#556）
+
+修正石牌等分校回報的「固定排課課程，有幾天出現在錯誤時段」問題。原因是主任用「單堂編輯」把某一堂改到不同時間後，系統沒把它記成「刻意調整」，於是之後對該課程按「編輯→儲存」時，系統會誤以為這堂跑掉了、把它「拉回」原本的固定時段，覆蓋掉主任的調整。現在改好了：只要單堂改到跟固定排課不同的時段，系統會自動記成「已調整」、不再被自動還原；若改回原本時段則自動取消標記。請重新整理頁面後使用。
+
+開發備註：#556 / TD-055。`ClassSessionController::applyTimeAndNoteUpdates` 有時間異動時呼叫新增的 `syncContractExceptionFlag`，依新 (weekday, start, duration) 是否吻合契約設/清 `IsContractException`（鏡像 `StudentClassController::sessionMatchesContract`，避免跨 controller 私有耦合）。flag=1 使該堂同時被 `schedule_drift` 偵測與 `syncFutureScheduledSessionTimes`(force_partial_rebuild realign) 排除，保留主任刻意時段；改回契約則 flag=0。語意定為「單堂刻意調課＝契約例外」（沿用 add-session 既有例外語意）。回歸測試 `StudentClassScheduleDriftExceptionTest` 新增 3 案（標記/清除/force_partial_rebuild 不還原）。純後端，無 schema 變更。
+
 ## 2026-05-31 — chore: 本地 pre-commit 加入 git index 稽核護欄（#542）
 
 開發備註：#542 / Epic #535 Phase 0.3。`scripts/install-git-hooks.sh` 的 pre-commit 新增呼叫 `scripts/git-index-audit.sh protected`，commit 前若保護路徑（`backend/ frontend/ scripts/ .github/ docs/`）的 tracked 檔被 `assume-unchanged`/`skip-worktree` 隱藏即擋下（防 §R58 重演）。修正 `git-index-audit.sh` 過濾 bug：skip-worktree 在 `git ls-files -v` 為大寫 `S`，原 `^[hs]` 只抓小寫、漏掉 skip-worktree，改為 `^[hS]`（h=assume-unchanged、S=skip-worktree）。新增 `--uninstall` 一鍵卸載；`OPERATIONS_RUNBOOK.md` 補本地 hooks 安裝/卸載/bypass 文件。純本地 hooks，不影響 CI checkout。
