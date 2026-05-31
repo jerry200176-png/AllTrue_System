@@ -26,7 +26,7 @@
 
 - 開 PR 時會載入 [`.github/pull_request_template.md`](.github/pull_request_template.md)。
 - **多階段 Issue**：描述欄用 **`Refs #123`**；**全部驗收完成的最後一個 PR** 才用 **`Closes #123`**。
-- **Merge 前**：`Presubmit Gate`、`CI — PHPUnit Tests`、`Security Scan` 等 required checks 需 **success**（負責人跟到 completed）。
+- **Merge 前**：7 項 required checks 需 **success**（負責人跟到 completed）：`Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`、`PHPStan Advisory (php)`。清單見 `docs/OPERATIONS_RUNBOOK.md §R1`。
 - 變更 `backend/app/`、`backend/routes/`、`frontend/src/` 時更新 [`docs/CHANGELOG.md`](docs/CHANGELOG.md)（docs-only 或純 workflow 可依團隊慣例省略）。
 
 ## Issue
@@ -51,7 +51,7 @@
 - **Required reviewers**：第二位 maintainer 出現後，對 `main` 要求至少 1 approve。
 - **Staging**：單機 Pi 可維持現狀；若要 staging，另備環境與 deploy workflow 分流（屬架構決策）。
 
-延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
+延伸閱讀（deploy 邊界、merge queue、Golden 自動化）：[`docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
 
 ## Security
 
