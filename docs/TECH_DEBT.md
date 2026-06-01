@@ -476,3 +476,17 @@
 | 建議做法 | symfony patch ✅ 已隨 platform pin 收斂；vite/esbuild dev major 單獨 PR 驗 `npm run build` + `test:calendar`；Laravel 8→10 併入 TD-014 epic。每月 review OSV 深掃（RUNBOOK §Y/§R1c）。|
 | 清償成本估計 | symfony ✅ 完成；vite/esbuild 中；Laravel 升級 高 |
 | 不做的代價 | 剩餘為 dev-only + Laravel-8 EOL；皆非 Critical/High，無立即生產風險 |
+
+### TD-062：行事曆載入慢（前端換週全量重抓 + 後端主查詢慢）
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | In Progress（Phase 1 視窗快取已落地；PRD：`.cursor/plans/calendar-performance-epic_2026-06-01.md`）|
+| 優先級 | P1 |
+| 發現日期 | 2026-06-01 |
+| 發現來源 | [SRE] 行事曆載入慢調查（使用者回報）；對標 Cal.com / FullCalendar |
+| 影響模組 | `frontend/src/pages/SmartCalendar.vue`、`frontend/src/lib/calendarLoadPerformance.js`；後端 `ClassSessionController::index`（另見 TD-018/TD-058）|
+| 描述 | 換週/換日只重跑 `loadCourses()`，但其為 3 個 await 串行 waterfall，且 `student-classes` 無日期視窗（最多 ~10k 列）、無 client 快取 → 每次導覽都付全量延遲。後端主查詢慢（代課 correlated subquery）另見 TD-058。|
+| 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。⏳ **Phase 2**：後端 `whereDate`→裸欄位 range 命中索引。⏳ **Phase 3**：TD-058 代課 subquery 重寫（golden 快照先行）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），待 P3 後依實測決定。|
+| 清償成本估計 | 中（前端 Phase 1）+ 中（後端 P2/P3）|
+| 不做的代價 | 行事曆互動體感持續慢；與後端慢查詢疊加放大 |
