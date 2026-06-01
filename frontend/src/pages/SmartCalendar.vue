@@ -862,6 +862,7 @@ import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import {
   resolveCalendarDataFetchBoundsYmd,
   shouldUseLegacyCalendarFallback,
+  isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SearchableSelect from '../components/SearchableSelect.vue';
@@ -1296,6 +1297,22 @@ function getCalendarDataFetchBoundsYmd() {
     displayMonth: displayMonth.value,
   });
 }
+
+// TD-062 Phase 1：記錄上一次 loadCourses 實際抓取的視窗（分校 + ±buffer 日期範圍）。
+// 換週/換日若仍落在此視窗內，可跳過全量重抓，由 reactive computed 直接重渲染既有資料。
+// 僅在「資料成功載入」時設定；任何 mutation 仍走完整 loadCourses（不讀此快取）→ 無 staleness。
+const lastCalendarFetch = ref(null);
+
+// 目前週檢視實際渲染的週一～週日日期範圍（YYYY-MM-DD），供視窗包含判斷用。
+const getVisibleWeekRangeYmd = () => {
+  const ymds = [];
+  for (let dow = 1; dow <= 7; dow += 1) {
+    const ymd = getDisplayDateFull(dow);
+    if (ymd) ymds.push(String(ymd).slice(0, 10));
+  }
+  ymds.sort();
+  return ymds.length ? { min: ymds[0], max: ymds[ymds.length - 1] } : null;
+};
 
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
@@ -1985,6 +2002,7 @@ const loadCourses = async () => {
     sessionDatesByCourseId.value = {};
     calendarLoading.value = false;
     calendarLoadProgress.value = '';
+    lastCalendarFetch.value = null;
     return;
   }
 
@@ -2162,6 +2180,10 @@ const loadCourses = async () => {
   // Legacy Supabase→MySQL sync removed (backend returns 410 since the
   // endpoint was retired).  Course data now lives exclusively in MySQL
   // and is managed through the standard student-classes CRUD endpoints.
+  // TD-062 Phase 1：僅在 student-classes API 成功時記錄已抓視窗，避免失敗（空資料）污染快取。
+  lastCalendarFetch.value = courseApiSucceeded
+    ? { branchId, schedStart, schedEnd }
+    : null;
   calendarLoading.value = false;
   calendarLoadProgress.value = '';
 };
@@ -3498,6 +3520,12 @@ watch(
     const branchOk = Number(props.branchId || 0) > 0;
     const teacherOk = isTeacher.value && currentTeacherId.value;
     if (!token || (!branchOk && !teacherOk)) return;
+    // TD-062 Phase 1：目標週若仍在上次抓取視窗內（同分校），跳過網路重抓——
+    // 既有 courses/exceptions/sessionDates 已涵蓋此範圍，reactive computed 會直接重渲染。
+    // 保守判斷：缺快取、跨分校、或超出視窗一律重抓；mutation 路徑不經此處（仍完整重抓）。
+    if (isRangeWithinFetchedBounds(getVisibleWeekRangeYmd(), lastCalendarFetch.value, props.branchId)) {
+      return;
+    }
     loadCourses();
   },
 );
