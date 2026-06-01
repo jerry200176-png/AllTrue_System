@@ -232,12 +232,15 @@ class ClassSessionController extends Controller
             }
         }
 
+        // TD-062 Phase 2：`cs.SessionDate` 為 DATE 欄位，故裸欄位比較與 whereDate() 結果
+        // byte-identical，但不再以 DATE() 包裹欄位 → 可命中 (StudentClassID, SessionDate)
+        // 複合索引的 range 段（characterization：ClassSessionDateWindowFilterTest）。
         if ($request->filled('start')) {
-            $query->whereDate('cs.SessionDate', '>=', $request->input('start'));
+            $query->where('cs.SessionDate', '>=', $request->input('start'));
         }
 
         if ($request->filled('end')) {
-            $query->whereDate('cs.SessionDate', '<=', $request->input('end'));
+            $query->where('cs.SessionDate', '<=', $request->input('end'));
         }
 
         // Bug #496 / in-app #124：cancelAutoMaterializedDuplicateSession() 會把調課同槽
