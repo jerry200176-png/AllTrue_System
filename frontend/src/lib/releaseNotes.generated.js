@@ -4,6 +4,27 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.06.01",
+    "date": "2026-06-01",
+    "title": "2026.06.01 版本更新",
+    "summary": "建課即時費用試算與計價方式提示",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "建課即時費用試算與計價方式提示"
+        ]
+      }
+    ],
+    "items": [
+      "建課即時費用試算與計價方式提示"
+    ]
+  },
+  {
     "version": "2026.05.31",
     "date": "2026-05-31",
     "title": "2026.05.31 版本更新",
