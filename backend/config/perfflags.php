@@ -37,4 +37,14 @@ return [
     // Log session-count mismatch diagnostics (course_id, purchased, status breakdown).
     // Only fires when effective != purchased. Default off to avoid Pi I/O noise.
     'log_session_count_mismatch' => (bool) env('PERF_LOG_SESSION_MISMATCH', false),
+
+    // Learning-record feedback/reply push notifications (學習回饋接推播).
+    // DARK LAUNCH: default OFF. When false, FeedbackPushNotifier is a complete no-op
+    // (no in-app Notification rows, no parent LINE push) — production behaviour unchanged.
+    // Flip to true (PERF_FEEDBACK_PUSH=true) only after notification cadence/opt-out copy is confirmed.
+    'feedback_push_enabled' => (bool) env('PERF_FEEDBACK_PUSH', false),
+
+    // Merge window (seconds): within this window, repeated feedback/reply events on the same
+    // thread+direction are merged into a single push (anti-notification-fatigue). Default 600 = 10 min.
+    'feedback_push_merge_window_seconds' => (int) env('PERF_FEEDBACK_PUSH_MERGE_WINDOW', 600),
 ];

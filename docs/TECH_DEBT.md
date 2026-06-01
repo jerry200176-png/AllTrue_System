@@ -491,3 +491,17 @@
 | 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。✅ **Phase 2（已做）**：`ClassSessionController::index` 的 `start`/`end` 由 `whereDate`→裸欄位 range（`SessionDate` 為 DATE 欄位，byte-identical），命中 `(StudentClassID, SessionDate)` 索引；characterization `ClassSessionDateWindowFilterTest`。✅ **Phase 3（已做）**：TD-058 代課 correlated subquery → derived-table join（golden：18 代課測試 byte-identical）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），P1–P3 完成後依實測再決定。|
 | 清償成本估計 | 中（前端 Phase 1）+ 中（後端 P2/P3）|
 | 不做的代價 | 行事曆互動體感持續慢；與後端慢查詢疊加放大 |
+
+### TD-063：學習回饋推播 flip flag 前的 fast-follow
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2 |
+| 發現日期 | 2026-06-01 |
+| 發現來源 | 開發中（feedback push dark launch，PRD：`.cursor/plans/feedback-push-notifications_2026-06-01.md`）|
+| 影響模組 | `frontend/src/pages/ParentPortal.vue`；perfflag `feedback_push_enabled` |
+| 描述 | 後端推播機制 + 退出權儲存/端點（`GET/PUT parent/notification-preferences`）已上線但 dark launch（flag 預設 false）。家長端尚無「關閉學習回饋通知」UI toggle。|
+| 建議做法 | (1) ParentPortal 設定區加 toggle 串 `parent/notification-preferences`；(2) 確認推播文案/節奏後，設 `PERF_FEEDBACK_PUSH=true` 開啟；(3) 觀察 TD-013（LINE 綁定率）影響觸達上限、補 TD-057 reply-rate KPI。|
+| 清償成本估計 | 低（前端 toggle）|
+| 不做的代價 | 推播功能停在 dark launch 無法對外；家長無自助退訂 UI（僅後端可改）|
