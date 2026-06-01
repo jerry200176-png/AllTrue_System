@@ -626,6 +626,27 @@
               </div>
             </div>
 
+            <div v-if="previewPricePerSession > 0" class="fee-estimate">
+              <div class="fee-estimate-head">
+                <span class="fee-estimate-label">計價方式</span>
+                <strong :class="['fee-estimate-unit', previewRateUnit === 'hour' ? 'is-hour' : 'is-session']">
+                  {{ previewRateUnit === 'hour' ? '每小時計費' : '每堂計費' }}
+                </strong>
+              </div>
+              <div class="fee-estimate-amount">
+                預估費用 <strong>NT$ {{ feeEstimate.charge.toLocaleString() }}</strong>
+              </div>
+              <div class="fee-estimate-formula">
+                <template v-if="previewRateUnit === 'hour'">
+                  每小時 NT$ {{ previewPricePerSession.toLocaleString() }} × 約 {{ feeEstimate.totalHours }} 小時（{{ previewSessions }} 堂）
+                </template>
+                <template v-else>
+                  每堂 NT$ {{ previewPricePerSession.toLocaleString() }} × {{ previewSessions }} 堂
+                </template>
+              </div>
+              <div class="fee-estimate-note">預估金額，實際以建立後課程為準</div>
+            </div>
+
             <div v-if="form.course_start_date" class="course-start-info">
               開課日：<strong>{{ form.course_start_date }}</strong>
               <span v-if="form.course_start_date > getCurrentTodayYmd()" class="course-start-badge">尚未開課</span>
@@ -720,6 +741,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope } from '../lib/constants';
+import { estimateCreateCharge } from '../lib/coursePricing';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
 
@@ -1253,6 +1275,30 @@ const hasPerDayDuration = computed(() => {
 const plannedCountLabel = computed(() => (
   form.payment_type === 'monthly' ? '本月預排堂數' : '購買總堂數'
 ));
+
+// 費用試算（預估）：建課當下提示「每堂／每小時 + 預估總額」，防 rate_unit 單位混淆造成 ×2 錯帳。
+// rate_unit 與送出 payload（hasPerDayDuration）同源，故預覽的計價方式必與實際入帳一致。
+const previewPricePerSession = computed(() => Math.max(0, Number(form.price_per_session) || 0));
+const previewRateUnit = computed(() => (hasPerDayDuration.value ? 'hour' : 'session'));
+const previewSessions = computed(() => safePlannedSessions.value);
+const previewAvgSlotMinutes = computed(() => {
+  let mins = 0;
+  let n = 0;
+  for (const day of selectedDays.value) {
+    for (const slot of orderedSlotsForWeekday(day)) {
+      mins += slot.duration_minutes;
+      n += 1;
+    }
+  }
+  if (n === 0) return durationHoursToMinutes(Number(form.duration_hours) || 0);
+  return mins / n;
+});
+const feeEstimate = computed(() => estimateCreateCharge({
+  pricePerSession: previewPricePerSession.value,
+  rateUnit: previewRateUnit.value,
+  sessions: previewSessions.value,
+  avgSessionMinutes: previewAvgSlotMinutes.value,
+}));
 
 const courseStartDateFarWarning = computed(() => {
   if (!form.course_start_date) return '';
@@ -2561,6 +2607,56 @@ async function submit() {
   background: #edf4ff;
   border-color: #bed7ff;
   color: #1858bc;
+}
+
+.fee-estimate {
+  margin: 4px 0 12px;
+  padding: 10px 12px;
+  background: #f5f8ff;
+  border: 1px solid #d6e2ff;
+  border-radius: 8px;
+}
+.fee-estimate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fee-estimate-label {
+  font-size: 12px;
+  color: #64748b;
+}
+.fee-estimate-unit {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+.fee-estimate-unit.is-session {
+  background: #ecf9ef;
+  color: #177a3c;
+}
+.fee-estimate-unit.is-hour {
+  background: #fff7ed;
+  color: #b45309;
+}
+.fee-estimate-amount {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #1e293b;
+}
+.fee-estimate-amount strong {
+  font-size: 18px;
+  color: #1858bc;
+}
+.fee-estimate-formula {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #475569;
+}
+.fee-estimate-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 .legend-row {
