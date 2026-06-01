@@ -15,6 +15,11 @@ class StudentLineBinding extends Model
         'line_user_id',
         'campus_id',
         'bound_at',
+        'notify_learning_feedback',
+    ];
+
+    protected $casts = [
+        'notify_learning_feedback' => 'boolean',
     ];
 
     public function student()
