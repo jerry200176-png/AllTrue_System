@@ -98,27 +98,38 @@ class ClassSessionController extends Controller
             // Substitute teacher: pick latest scheduled row whose teacher differs
             // from the course teacher. Stale scheduled rows pointing back to the
             // regular teacher must not override the real substitute.
-            // Bug fix C1 (2026-04-21)：join 兩側都取 SUBSTRING(...,1,5)，容錯 schedules.start_time
-            // 意外存成 HH:MM:SS（len=8）的歷史資料（schedules.id=611 遺留狀況）；
-            // 只做單側 SUBSTRING 時 'HH:MM:SS' ≠ 'HH:MM' 會使 sub_sched 為 NULL，
-            // COALESCE 跌回契約老師，導致課程管理單堂檢視顯示錯師。
-            ->leftJoin('schedules as sub_sched', function ($join) {
+            // Substitute teacher: pick latest scheduled exception row whose teacher differs
+            // from the course teacher, per (course, date, HH:MM) slot.
+            // TD-058：原本以 per-row correlated subquery `sub_sched.id = (SELECT MAX(sub2.id) …)`
+            // 解析，且 `DATE()`/`SUBSTRING()` 包裹欄位使索引失效 → 主查詢 1–3.5s 主因。
+            // 改為預先彙總的 derived-table join（鏡像下方 lr/si 的 MAX(id) 衍生表寫法）：
+            //   inner aggregate 取每 (student_course_id, schedule_date, HH:MM) 的 MAX(id)，
+            //   且 `teacher_id <> StudentClass.TeacherID`、`status='scheduled'`、
+            //   `original_schedule_id IS NOT NULL` 都在彙總內過濾——與原 subquery 等價。
+            // `schedule_date` 為 DATE 欄位、`start_time` 為字串，故 GROUP BY 該兩鍵
+            // 等同原本的 DATE()/SUBSTRING() 正規化，不會多出列（characterization：
+            // SubstituteTeacherTest / ClassSessionsSubstituteStartTimeFormatTest）。
+            // Bug fix C1 (2026-04-21)：兩側 SUBSTRING(...,1,5) 容錯 HH:MM:SS 歷史資料
+            // （schedules.id=611 遺留狀況）保留於 ON 條件。
+            ->leftJoin(DB::raw('(
+                SELECT ss.*
+                FROM `schedules` ss
+                INNER JOIN (
+                    SELECT sub2.student_course_id,
+                           sub2.schedule_date,
+                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
+                           MAX(sub2.id) AS max_id
+                    FROM `schedules` sub2
+                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
+                    WHERE sub2.status = "scheduled"
+                      AND sub2.original_schedule_id IS NOT NULL
+                      AND sub2.teacher_id <> sc2.TeacherID
+                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
+                ) sub_latest ON ss.id = sub_latest.max_id
+            ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
-                    ->whereRaw('sub_sched.id = (
-                        SELECT MAX(sub2.id)
-                        FROM `schedules` sub2
-                        WHERE sub2.student_course_id = sc.ID
-                          AND sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
-                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
-                          AND sub2.teacher_id <> sc.TeacherID
-                    )');
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin('Teacher as subt', 'subt.id', '=', 'sub_sched.teacher_id')
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
