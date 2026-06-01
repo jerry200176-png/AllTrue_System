@@ -8,6 +8,7 @@ use App\Models\LearningRecordFeedbackReply;
 use App\Models\ParentSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\FeedbackPushNotifier;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,8 @@ class LearningRecordFeedbackController extends Controller
             ->where('id', $feedback->id)
             ->update(['updated_at' => now(), 'last_read_by_parent_at' => now()]);
 
+        app(FeedbackPushNotifier::class)->notifyParentReplied($feedback);
+
         return response()->json([
             'reply' => $this->formatReply($reply),
             'message' => '已送出',
@@ -98,6 +101,8 @@ class LearningRecordFeedbackController extends Controller
         // 回覆者該角色標記已讀（不影響另一員工角色、不 touch updated_at）。
         $readCol = $replierRole === 'teacher' ? 'last_read_by_teacher_at' : 'last_read_by_director_at';
         DB::table($feedback->getTable())->where('id', $feedback->id)->update([$readCol => now()]);
+
+        app(FeedbackPushNotifier::class)->notifyStaffReplied($feedback);
 
         return response()->json([
             'reply' => $this->formatReply($reply),
@@ -145,6 +150,8 @@ class LearningRecordFeedbackController extends Controller
                 'last_read_by_director_at' => null,
             ]
         );
+
+        app(FeedbackPushNotifier::class)->notifyParentSubmitted($feedback);
 
         return response()->json([
             'feedback' => $this->formatParentFeedback($feedback),

@@ -504,6 +504,9 @@ Route::prefix('v1')->group(function () {
     Route::post('parent/switch-student', [ParentPortalController::class, 'switchStudent']);
     Route::post('parent/sessions/{sessionId}/leave', [ParentPortalController::class, 'requestLeave']);
     Route::post('parent/events', [ParentPortalController::class, 'recordParentEvent']);
+    Route::get('parent/notification-preferences', [ParentPortalController::class, 'getNotificationPreferences']);
+    Route::put('parent/notification-preferences', [ParentPortalController::class, 'setNotificationPreferences'])
+        ->middleware('throttle:20,1');
     Route::get('parent/system-trust-summary', [SystemTrustController::class, 'parentSummary']);
     Route::get('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentShow']);
     Route::put('parent/learning-records/{learningRecord}/feedback', [LearningRecordFeedbackController::class, 'parentUpsert'])

@@ -975,6 +975,45 @@ class ParentPortalController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * 家長通知偏好：學習回饋 LINE 推播開關（個資退出權）。
+     * 以目前 session 的學生 binding 為單位（per-student）；預設開啟。
+     */
+    public function getNotificationPreferences(Request $request)
+    {
+        $session = $this->resolveSession($request);
+        if (!$session) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $bindings = StudentLineBinding::where('student_id', $session->StudentID)->get();
+        $enabled = $bindings->isEmpty()
+            ? true
+            : $bindings->every(fn ($b) => (bool) ($b->notify_learning_feedback ?? true));
+
+        return response()->json([
+            'learning_feedback_push' => (bool) $enabled,
+            'line_linked' => $bindings->isNotEmpty(),
+        ]);
+    }
+
+    public function setNotificationPreferences(Request $request)
+    {
+        $session = $this->resolveSession($request);
+        if (!$session) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
+        $data = $request->validate(['learning_feedback_push' => 'required|boolean']);
+        StudentLineBinding::where('student_id', $session->StudentID)
+            ->update(['notify_learning_feedback' => $data['learning_feedback_push'] ? 1 : 0]);
+
+        return response()->json([
+            'ok' => true,
+            'learning_feedback_push' => (bool) $data['learning_feedback_push'],
+        ]);
+    }
+
     // ── Director: generate copyable payment notification text ─────────────
 
     public function paymentMessage(Request $request, int $studentId)
