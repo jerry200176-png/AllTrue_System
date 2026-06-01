@@ -487,6 +487,6 @@
 | 發現來源 | [SRE] 行事曆載入慢調查（使用者回報）；對標 Cal.com / FullCalendar |
 | 影響模組 | `frontend/src/pages/SmartCalendar.vue`、`frontend/src/lib/calendarLoadPerformance.js`；後端 `ClassSessionController::index`（另見 TD-018/TD-058）|
 | 描述 | 換週/換日只重跑 `loadCourses()`，但其為 3 個 await 串行 waterfall，且 `student-classes` 無日期視窗（最多 ~10k 列）、無 client 快取 → 每次導覽都付全量延遲。後端主查詢慢（代課 correlated subquery）另見 TD-058。|
-| 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。⏳ **Phase 2**：後端 `whereDate`→裸欄位 range 命中索引。⏳ **Phase 3**：TD-058 代課 subquery 重寫（golden 快照先行）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），待 P3 後依實測決定。|
+| 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。✅ **Phase 2（已做）**：`ClassSessionController::index` 的 `start`/`end` 由 `whereDate`→裸欄位 range（`SessionDate` 為 DATE 欄位，byte-identical），命中 `(StudentClassID, SessionDate)` 索引；characterization `ClassSessionDateWindowFilterTest`。⏳ **Phase 3**：TD-058 代課 subquery 重寫（golden 快照先行）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），待 P3 後依實測決定。|
 | 清償成本估計 | 中（前端 Phase 1）+ 中（後端 P2/P3）|
 | 不做的代價 | 行事曆互動體感持續慢；與後端慢查詢疊加放大 |
