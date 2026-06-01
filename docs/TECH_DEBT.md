@@ -425,7 +425,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done（2026-06-01，`index()` 已改 derived-table join；`teacherTrust` 同款 subquery 待後續）|
 | 優先級 | P2 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [SRE/ARCH] #546 / TD-018 清償時拆出 |
@@ -434,6 +434,7 @@
 | 建議做法 | 將 correlated `MAX(sub2.id)` 改為「每 (student_course_id, schedule_date, start_time) 取最新代課 schedule」的單一 derived-table join（鏡像現有 `lr`/`si` 衍生表 join），保持 `substitute_teacher_id`/COALESCE 老師名稱與 `effective_status` 結果 byte-identical；評估改存正規化 `HH:MM` 以移除 `SUBSTRING()`。先以 Sentry full payload + golden-output 快照保護再下藥。|
 | 清償成本估計 | 中（半天，含 golden 快照與 EXPLAIN 前後對比）|
 | 不做的代價 | 行事曆／點名主查詢持續慢、SLO burn；代課解析邏輯複雜，貿然改易回歸（曾有 schedules.id=611 HH:MM:SS 遺留坑）|
+| 清償紀錄（2026-06-01）| `index()` 的 `sub_sched` leftJoin 由 per-row correlated `MAX(sub2.id)` subquery 改為預彙總 derived-table join（鏡像 `lr`/`si`）：inner `GROUP BY (student_course_id, schedule_date, SUBSTRING(start_time,1,5))` 取 `MAX(id)`，`teacher_id <> sc2.TeacherID`/`status`/`original_schedule_id` 過濾移入彙總。`schedule_date`=DATE、`start_time`=string → GROUP BY 等同原 DATE()/SUBSTRING() 正規化，無多出列。golden：18 代課測試 + ClassSessionApi/SameDayMultiSlot/Batch/Duplicate/TimeSync/Reschedule 全綠 byte-identical；PHPStan 0。**殘留**：`teacherTrust` 同款 subquery 未改（流量低，另開）。|
 
 ### TD-059：共用課程包（PackageDeductionService）尚未支援部分時數扣堂（#613 後續）
 
@@ -481,12 +482,12 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | In Progress（Phase 1 視窗快取已落地；PRD：`.cursor/plans/calendar-performance-epic_2026-06-01.md`）|
+| 狀態 | Done（Phase 1–3 已落地；僅低 ROI 平行化選配待實測；PRD：`.cursor/plans/calendar-performance-epic_2026-06-01.md`）|
 | 優先級 | P1 |
 | 發現日期 | 2026-06-01 |
 | 發現來源 | [SRE] 行事曆載入慢調查（使用者回報）；對標 Cal.com / FullCalendar |
 | 影響模組 | `frontend/src/pages/SmartCalendar.vue`、`frontend/src/lib/calendarLoadPerformance.js`；後端 `ClassSessionController::index`（另見 TD-018/TD-058）|
 | 描述 | 換週/換日只重跑 `loadCourses()`，但其為 3 個 await 串行 waterfall，且 `student-classes` 無日期視窗（最多 ~10k 列）、無 client 快取 → 每次導覽都付全量延遲。後端主查詢慢（代課 correlated subquery）另見 TD-058。|
-| 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。✅ **Phase 2（已做）**：`ClassSessionController::index` 的 `start`/`end` 由 `whereDate`→裸欄位 range（`SessionDate` 為 DATE 欄位，byte-identical），命中 `(StudentClassID, SessionDate)` 索引；characterization `ClassSessionDateWindowFilterTest`。⏳ **Phase 3**：TD-058 代課 subquery 重寫（golden 快照先行）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），待 P3 後依實測決定。|
+| 建議做法 | ✅ **Phase 1（已做）**：視窗快取——記錄上次抓取 `{branchId, ±21天}`，目標週落在視窗內（同分校）即跳過重抓（純函式 `isRangeWithinFetchedBounds`，已單元測試）；`loadCourses` 與 occurrence 合併未動，mutation/換分校仍完整重抓 → 無 staleness。✅ **Phase 2（已做）**：`ClassSessionController::index` 的 `start`/`end` 由 `whereDate`→裸欄位 range（`SessionDate` 為 DATE 欄位，byte-identical），命中 `(StudentClassID, SessionDate)` 索引；characterization `ClassSessionDateWindowFilterTest`。✅ **Phase 3（已做）**：TD-058 代課 correlated subquery → derived-table join（golden：18 代課測試 byte-identical）。⏳ 平行化 `student-classes`∥`schedules`：低 ROI（冷載延遲主由後端主導），P1–P3 完成後依實測再決定。|
 | 清償成本估計 | 中（前端 Phase 1）+ 中（後端 P2/P3）|
 | 不做的代價 | 行事曆互動體感持續慢；與後端慢查詢疊加放大 |
