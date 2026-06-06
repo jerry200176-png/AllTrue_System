@@ -81,6 +81,7 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 | 環境 | 說明 |
 |---|---|
 | **本地開發** | Windows WSL2（Ubuntu）`~/alltrue` — 所有程式碼改動在這裡 |
+| **多 agent 並行** | ⛔ 勿在主 `~/alltrue` working tree 共改（會被別的 agent checkout 沖掉）。用獨立 `git worktree add /tmp/<task> origin/main -b <type>/<slug>`。詳見 `docs/AI_REGRESSION_LESSONS.md §Y6` |
 | **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
 | **部署方式** | WSL2 push → GitHub CI 通過 → `deploy.yml` 自動 SSH 部署到 Pi |
 
