@@ -8,7 +8,13 @@
 
 ---
 
-## 2026-06-06 — feat(ui): 課程 modal 中性結構色 token 化（#691 第三階段）
+## 2026-06-06 — feat(ui): App 外殼去裝飾、品牌色統一（#698 topbar/FAB/banner）
+
+全站共用外殼的視覺收斂：頭像、說明浮動鈕、系統更新提示列從多色漸層統一為單一品牌色，與設計系統一致。
+
+開發備註：#698 App shell chrome 去裝飾。`App.vue` `<style>`：(1) `.update-banner` 藍漸層（`#0ea5e9→#2563eb`）→ `--ds-primary` 實底 + `--ds-shadow-1`；按鈕改 `--ds-canvas`/`--ds-primary-deep`/hover `--ds-primary-wash`。(2) `.account-avatar` 橘漸層（`#f97316→#fb923c`）→ `--ds-primary` 實色。(3) `.global-guide-btn`（說明 FAB）橘漸層（`#ff9800→#ff6f00`）→ `--ds-primary` + `--ds-shadow-2`。(4) `.account-role`/`.account-menu-chevron` → `--ds-ink-mute`；`.account-menu-btn-danger` → `--ds-danger`/`--ds-danger-wash`。登入頁品牌 hero radial 光暈屬品牌動畫，依設計系統保留。`npm run build` 通過。
+
+
 
 課程相關彈窗（堂次編輯、續約月結）的容器底色、標題、輸入框邊框等中性樣式統一對齊設計系統；出缺勤狀態色、計費比較色等「功能語意色」維持不變（屬設計 token 擴充議題，另議）。
 
