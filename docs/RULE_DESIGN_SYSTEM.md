@@ -1,4 +1,10 @@
-# AllTrue Design System — Stripe-Inspired
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-06-06
+---
+
+# AllTrue Design System
 
 > **單一真相來源（Single Source of Truth）。** 所有前端頁面、元件、新功能 UI 一律照本文件生成，確保介面統一協調。
 > 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
@@ -88,14 +94,14 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 | **Input** | 白底、`--ds-hairline-input` 1px 邊、圓角 6–8；focus 邊框換 `--ds-primary` + 3px wash 外環。 |
 | **Card** | 白底、`--ds-hairline` 1px 邊、圓角 12、Level-1 陰影；hover 邊框加深。 |
 | **Metric tile** | 白底；大號 tabular 數字 + 小寫 uppercase 標籤；底部可 2–3px 類別線。 |
-| **Badge / Pill** | 藥丸；semantic 色只用於狀態（amber 繳費/期限、green 完成、red 緊急、indigo 資訊）。 |
+| **Badge / Pill** | 藥丸；semantic 色只用於狀態（warning 繳費/期限、success 完成、danger 緊急、info 資訊）。多態功能色（出缺勤 scheduled/reschedule 等）token 不足，見 `TECH_DEBT.md` TD-064。 |
 | **Table** | 表頭 `--ds-ink-mute` uppercase；金額欄靠右 + tabular；row hover `--ds-canvas-soft`。 |
 | **Dashboard mockup/panel** | 白底細邊框面板，內含表格/圖；陰影 Level-2。 |
 
 ## 7. Forbidden Patterns（禁止）
 
 - 純黑 `#000` 內文（用 navy `--ds-ink`）。
-- 橘色舊主色當 CTA（已全面換 indigo）。
+- 用 navy/indigo 等冷色當主 CTA（主色一律 `--ds-primary` 品牌橘黃）。
 - 行銷頁彩色 gradient mesh 進後台。
 - 一個元件超過兩個 accent 色。
 - 金額/數字不套 tabular。

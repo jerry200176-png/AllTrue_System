@@ -117,7 +117,7 @@ if (exists('docs/INDEX.md')) {
 
 // Phase C: naming prefix convention — warn if any NEW docs/ file lacks an approved prefix
 // (grandfathered legacy names are exempt; this warns on clearly non-conforming new files)
-const APPROVED_PREFIXES = ['RULE_', 'RUNBOOK_', 'REF_', 'MODULE_', 'GUIDE_', 'POLICY_'];
+const APPROVED_PREFIXES = ['RULE_', 'RUNBOOK_', 'REF_', 'MODULE_', 'GUIDE_', 'POLICY_', 'ADR_'];
 const LEGACY_EXEMPT = new Set([
   'INDEX.md', 'CHANGELOG.md', 'CHANGELOG_ARCHIVE_2026-04.md',
   'AI_REGRESSION_LESSONS.md', 'AI_REGRESSION_LESSONS_ARCHIVE.md', 'AI_DOC_LITERACY.md',
@@ -180,6 +180,9 @@ const STALE_CHECK_FILES = [
   'docs/DANGEROUS_OPERATIONS.md',
   'docs/AI_REGRESSION_LESSONS.md',
   'docs/SRE_POLICY.md',
+  'docs/RULE_DESIGN_SYSTEM.md',
+  'docs/PRICING_CONTRACT.md',
+  'docs/ROLE_PLAYBOOK.md',
 ];
 
 for (const rel of STALE_CHECK_FILES) {
