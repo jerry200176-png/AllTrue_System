@@ -128,6 +128,63 @@ class StudentClassPurchaseBatchTest extends TestCase
         $this->assertSame(16000, (int) $source->Charge);
     }
 
+    public function test_purchase_batch_builds_full_multi_day_contract_sessions(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-purchase-multiday@example.com');
+
+        $student = Student::create([
+            'name' => '多時段學生',
+            'CampusID' => 1,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+        ]);
+
+        $source = $this->createStudentClass($student->id, [
+            'SessionCount' => 8,
+            'RemainingSessions' => 1,
+            'UsedSessions' => 7,
+            'Paid' => 1,
+            'Rate' => 1000,
+            'SessionDuration' => 120,
+            'Charge' => 8000,
+            'StartDate' => '2026-04-01',
+            'week' => 1,
+            'time' => '18:00:00',
+            'week1' => 4,
+            'time1' => '18:00:00',
+            'duration1' => 120,
+            'ClassType' => 'one_on_three',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$source->ID}/purchase-batch", [
+            'sessions' => 12,
+            'start_date' => '2026-05-25',
+            'mode' => 'new_purchase',
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('new_course.created_sessions', 12)
+            ->assertJsonPath('new_course.first_session_date', '2026-05-25')
+            ->assertJsonPath('new_course.last_session_date', '2026-07-02');
+
+        $newId = (int) $res->json('new_course.id');
+        $sessions = ClassSession::where('StudentClassID', $newId)
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->get();
+        $this->assertCount(12, $sessions);
+
+        $this->assertTrue(
+            $sessions->contains(fn ($s) => substr((string) $s->SessionDate, 0, 10) === '2026-05-28'),
+            'multi-day contract must include Thursday slot in generated sessions'
+        );
+    }
+
     private function createDirectorToken(array $campusIds, string $loginName): string
     {
         $user = User::create([
