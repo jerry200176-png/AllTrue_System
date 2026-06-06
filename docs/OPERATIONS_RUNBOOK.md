@@ -89,10 +89,22 @@ gh auth refresh -h github.com -s workflow
 ### B1. Branch Hygiene
 
 **Policy**
-- PR merged = branch deleted (local + remote).
-- Branch lifetime target: 1-3 days.
+- PR merged = branch deleted (local + remote)。
+- Branch lifetime target: 1-3 days。
 - `backup-*` 分支：**只用於還原，不合併，不主動清除**（max 1-2 個）。
 - Protect `main`（required checks + admin enforcement + no force-push/delete；單人 repo 暫不強制 approval，有第二位 maintainer 後再升級為 1 approval）。
+
+**Stale unmerged branch（無 open PR 的廢棄/WIP 分支）**——對齊大廠 GitHub Flow 做法：
+- 門檻：最後 commit ≥ 30 天且無 open PR → 視為 stale；排除 `main` / `dependabot/*` / `backup-*` / `archive/*`。
+- ⛔ **Archive, don't delete**（業界安全護欄）：刪除前先把分支 tip 打成永久 tag `archive/<branch>`，再刪遠端分支。commit 永久保留、隨時可還原（優於 GitHub 90 天 restore 窗）。
+- 還原：`git fetch origin --tags` → `git checkout -b <branch> archive/<branch>`。
+- 執行方式（pre-push hook 會擋 `git push --delete`，故用 GitHub API）：
+  ```bash
+  sha=$(git rev-parse origin/<branch>)
+  gh api -X POST repos/<owner>/<repo>/git/refs -f ref="refs/tags/archive/<branch>" -f sha="$sha"
+  gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>
+  ```
+- 2026-06-06 首次清理：archive + prune 11 個 stale 分支（`fix/lr-409-bug-kpi-bar-phrases`、`td-batch3-orphan-sessions`、`feat/enterprise-dashboard-parent-hub-v2`、`feat/superadmin-branch-management` 等，皆 4/28–5/23 無動靜），對應 `archive/*` tag 已保留。
 
 **Automation（每週一至五 08:00 自動 dry-run）**  
 GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫入 Actions Job Summary。
