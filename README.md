@@ -590,9 +590,9 @@ gh pr create --fill
 | `docs/SECURITY.md` | 安全設計說明 |
 | `docs/TECH_DEBT.md` | 技術債清單 |
 | `docs/FAQ.md` | 常見問題 |
-| `docs/使用說明_主任與超級管理員.md` | 使用者操作手冊（中文） |
-| `docs/PRD_PARTTIME_TEACHER_PAYROLL.md` | 兼職薪資功能 PRD |
-| `docs/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表回報審核流程 |
+| `docs/archive/使用說明_主任與超級管理員.md` | 使用者操作手冊（中文，已封存）|
+| `docs/archive/PRD_PARTTIME_TEACHER_PAYROLL.md` | 兼職薪資功能 PRD（已封存）|
+| `docs/archive/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表回報審核流程（已封存）|
 | `docs/ROLE_PLAYBOOK.md` | 各角色操作手冊 |
 
 ---
