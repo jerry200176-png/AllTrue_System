@@ -55,9 +55,9 @@
               <span class="rc-legend"><span class="rc-tag rc-done">✓</span>已點 <span class="rc-tag rc-missed">!</span>漏點 <span class="rc-tag rc-leave">假</span>請假 <span class="rc-tag rc-eval-missing">評</span>未填評量</span>
               <span v-if="viewMode === 'day'" class="rc-legend capacity-legend" title="每格右上角顯示：此時段學生人數 / 班型上限">
                 <span class="capacity-legend-label">班型容量</span>
-                <span class="capacity-legend-chip" style="background:#10b981">1/3</span>可加
-                <span class="capacity-legend-chip" style="background:#f59e0b">2/3</span>剩 1 位
-                <span class="capacity-legend-chip" style="background:#ef4444">3/3</span>已滿
+                <span class="capacity-legend-chip capacity-legend-chip--ok">1/3</span>可加
+                <span class="capacity-legend-chip capacity-legend-chip--warn">2/3</span>剩 1 位
+                <span class="capacity-legend-chip capacity-legend-chip--full">3/3</span>已滿
               </span>
             </div>
           </div>
@@ -74,10 +74,9 @@
                   v-if="featureSubstituteV2 && !isTeacher"
                   type="button"
                   class="filter-input toolbar-teacher-leave-btn"
-                  style="background:#fff7ed;border:1px solid #fed7aa;color:#c2410c;cursor:pointer;"
                   title="老師請假一次處理當日多堂代課"
                   @click="openTeacherLeaveBatch"
-                >🗓️ 老師請假</button>
+                ><span class="material-symbols-outlined btn-icon">event_busy</span>老師請假</button>
                 <label
                   v-if="!isWeekOverview && !isTeacher"
                   class="filter-toggle toolbar-hide-empty-toggle"
@@ -116,8 +115,8 @@
               </div>
             </div>
             <div class="toolbar-secondary-actions">
-              <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="btn-emoji">🏫</span><span class="btn-text">教室</span></button>
-              <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="btn-emoji">＋</span><span class="btn-text">快速排課</span></button>
+              <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
+              <button type="button" class="btn-primary btn-icon-text toolbar-action-btn" data-guide="calendar-quick-add" @click="openQuickAdd"><span class="material-symbols-outlined btn-icon">add_circle</span><span class="btn-text">快速排課</span></button>
             </div>
           </div>
         </div>
@@ -392,7 +391,7 @@
 
         <!-- Conflict Warning：明顯色塊＋圖示 -->
         <div v-if="conflictWarning" class="conflict-box conflict-box-prominent">
-          <span class="conflict-icon">⚠️</span>
+          <span class="material-symbols-outlined conflict-icon">warning</span>
           <div>
             <strong>衝堂警告</strong>
             <p>{{ conflictWarning }}</p>
@@ -3958,8 +3957,24 @@ onMounted(() => {
   gap: 6px;
   white-space: nowrap;
 }
-.btn-icon-text .btn-emoji { font-size: 1em; line-height: 1; }
+.btn-icon-text .btn-icon {
+  font-size: 18px;
+  line-height: 1;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+}
 .btn-icon-text .btn-text { font-weight: 600; }
+.toolbar-teacher-leave-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ds-primary-wash, #fff7ed);
+  border: 1px solid color-mix(in srgb, var(--ds-primary-deep, #e65100) 30%, #ffffff);
+  color: var(--ds-primary-deep, #e65100);
+  cursor: pointer;
+}
+.toolbar-teacher-leave-btn:hover {
+  background: color-mix(in srgb, var(--ds-primary-wash, #fff7ed) 70%, #ffffff);
+}
 .teacher-filter .filter-select {
   padding: 8px 12px;
   border: 1px solid var(--border-color, #e2e8f0);
@@ -5220,6 +5235,9 @@ onMounted(() => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   margin: 0 2px 0 4px;
 }
+.capacity-legend-chip--ok { background: var(--ds-success, #10b981); }
+.capacity-legend-chip--warn { background: var(--ds-warning, #f59e0b); }
+.capacity-legend-chip--full { background: var(--ds-danger, #ef4444); }
 @media (max-width: 768px) {
   .capacity-badge {
     font-size: 8px;
