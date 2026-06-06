@@ -1,6 +1,9 @@
 ## Summary
 <!-- 一句話說明這個 PR 做了什麼，以及為什麼 -->
 
+> **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
+> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。請當成 reviewer 逐項自審，不要當作純自審 rubber-stamp。
+
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
 - **Refs**：`Refs #123`（本 PR 只完成其中一部分、後續還有 Phase 2 / follow-up）
