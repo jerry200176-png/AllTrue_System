@@ -38,10 +38,32 @@ async function login(page, role, creds) {
   await expect(page.locator('#login-account')).toHaveCount(0, { timeout: 15_000 });
 }
 
-/** 點側欄導航文字切頁（SPA 用 active ref，無 Vue Router），等網路靜置。 */
+/**
+ * 關閉登入後可能自動彈出的覆蓋層（onboarding 導覽 popover、版本公告 nudge）。
+ * 這些覆蓋層有 backdrop（pointer-events:auto），會攔截側欄點擊導致 click 逾時。
+ * best-effort：不存在就略過。
+ */
+async function dismissOverlays(page) {
+  for (const sel of ['.guide-tour-close', '.release-nudge-btn:has-text("稍後再看")']) {
+    const el = page.locator(sel).first();
+    if (await el.isVisible().catch(() => false)) {
+      await el.click().catch(() => {});
+      await page.waitForTimeout(200);
+    }
+  }
+}
+
+/**
+ * 點側欄導航切頁（SPA 用 active ref，無 Vue Router）。點 <button>（label span 為 pointer 容器），
+ * 先清覆蓋層；點完斷言該 nav 按鈕進入 active，確保確實切頁而非空點。
+ */
 async function navTo(page, navLabel) {
-  await page.getByText(navLabel, { exact: false }).first().click();
+  await dismissOverlays(page);
+  // 側欄項目是 <button>，可及名稱含 nav-label 文字；可能尾隨 badge 數字故用 substring。
+  const navBtn = page.getByRole('button', { name: navLabel, exact: false }).first();
+  await navBtn.click();
   await page.waitForLoadState('networkidle').catch(() => {});
+  await expect(navBtn).toHaveClass(/active/, { timeout: 10_000 });
 }
 
 test.describe('UI smoke — director', () => {
