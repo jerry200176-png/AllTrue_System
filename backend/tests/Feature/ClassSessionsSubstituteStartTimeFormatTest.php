@@ -20,7 +20,7 @@ use Tests\TestCase;
  * 根因：`ClassSessionController::index` 的 sub_sched 衍生表 join 條件
  *   `sub_sched.start_time = SUBSTRING(cs.StartTime, 1, 5)`
  *   期望 schedules.start_time 為 HH:MM；若誤存為 HH:MM:SS（len=8）即比對失敗，
- *   sub_sched 為 NULL，COALESCE(subt.T_Name, subu.Name, ...) 跌回契約老師。
+ *   sub_sched 為 NULL，COALESCE(subu.Name, ...) 跌回契約老師。
  *
  * 修正：join 兩側都 SUBSTRING(...,1,5)，並以 migration 標準化歷史資料。
  *

@@ -6,6 +6,7 @@ use App\Models\LearningRecord;
 use App\Models\LearningRecordTeacherComment;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Support\TeacherProfileDirectory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -112,8 +113,7 @@ class LearningRecordTeacherCommentController extends Controller
     private function formatComment(LearningRecordTeacherComment $comment): array
     {
         $authorName = DB::table('User')->where('id', $comment->author_user_id)->value('Name');
-        $teacherName = DB::table('Teacher')->where('id', $comment->teacher_id)->value('T_Name')
-            ?? DB::table('User')->where('id', $comment->teacher_id)->value('Name');
+        $teacherName = TeacherProfileDirectory::nameFor((int) $comment->teacher_id, '');
 
         return [
             'id' => (int) $comment->id,

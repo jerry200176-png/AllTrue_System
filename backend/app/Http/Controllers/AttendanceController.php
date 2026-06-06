@@ -24,23 +24,21 @@ class AttendanceController extends Controller
         $query = DB::table('StudentSingIn as si')
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
             ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
-            ->leftJoin('Teacher as t', 't.id', '=', 'si.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
             ->leftJoin('Campus as c', 'c.id', '=', 'si.CampusID')
             // Subject: prefer StudentClass (contract), fall back to snapshot on StudentSingIn
             // (many legacy rows have SubjectID on the sign-in only).
             ->leftJoin('Subject as sub_sc', 'sub_sc.id', '=', 'sc.SubjectID')
             ->leftJoin('Subject as sub_si', 'sub_si.id', '=', 'si.SubjectID')
-            ->leftJoin('Teacher as sct', 'sct.id', '=', 'sc.TeacherID')
             ->leftJoin('User as scu', 'scu.id', '=', 'sc.TeacherID')
             ->select([
                 'si.*',
                 'st.name as student_name',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'st.CampusID as student_campus_id',
                 'c.name as campus_name',
                 DB::raw('COALESCE(sub_sc.Subject_Name, sub_si.Subject_Name) as subject_name'),
-                DB::raw("COALESCE(sct.T_Name, scu.Name, '') as course_teacher_name"),
+                DB::raw("COALESCE(scu.Name, '') as course_teacher_name"),
                 'sc.ClassType as class_type',
             ]);
         $role = $request->attributes->get('auth_role');
@@ -134,7 +132,6 @@ class AttendanceController extends Controller
                     ->leftJoin('Student as st', 'st.id', '=', 'sc.StudentID')
                     ->leftJoin('Campus as c', 'c.id', '=', 'st.CampusID')
                     ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
-                    ->leftJoin('Teacher as sct', 'sct.id', '=', 'sc.TeacherID')
                     ->leftJoin('User as scu', 'scu.id', '=', 'sc.TeacherID')
                     ->whereDate('cs.SessionDate', $leaveDate)
                     ->whereIn('cs.Status', ['leave', 'leave_adjusted'])
@@ -180,11 +177,11 @@ class AttendanceController extends Controller
                     DB::raw('NULL as VoidedByUserID'),
                     DB::raw('NULL as VoidReason'),
                     'st.name as student_name',
-                    DB::raw("COALESCE(sct.T_Name, scu.Name, '') as teacher_name"),
+                    DB::raw("COALESCE(scu.Name, '') as teacher_name"),
                     'st.CampusID as student_campus_id',
                     'c.name as campus_name',
                     'sub.Subject_Name as subject_name',
-                    DB::raw("COALESCE(sct.T_Name, scu.Name, '') as course_teacher_name"),
+                    DB::raw("COALESCE(scu.Name, '') as course_teacher_name"),
                     'sc.ClassType as class_type',
                 ])->get();
 
