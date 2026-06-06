@@ -302,9 +302,9 @@ function onSaveClick() {
 .course-modal { width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
 .modal-title { font-size: 1.15rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
-.session-edit-info { background: #f8fafc; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.session-edit-info { background: var(--ds-canvas-soft); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
 .se-row { display: flex; align-items: center; gap: 8px; font-size: 0.93em; }
-.se-label { font-weight: 600; color: #475569; min-width: 70px; }
+.se-label { font-weight: 600; color: var(--ds-ink-mute); min-width: 70px; }
 .se-status-badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.85em; font-weight: 600; }
 .se-st-scheduled { background: #e0f2fe; color: #0369a1; }
 .se-st-attended, .se-st-late { background: #dcfce7; color: #166534; }
@@ -312,11 +312,11 @@ function onSaveClick() {
 .se-st-excused, .se-st-leave { background: #fef3c7; color: #92400e; }
 .se-st-leave_adjusted { background: #ffedd5; color: #9a3412; }
 .se-st-cancelled { background: #f3f4f6; color: #6b7280; }
-.se-section-title { font-size: 0.95em; font-weight: 600; color: #334155; margin: 0 0 10px; }
+.se-section-title { font-size: 0.95em; font-weight: 600; color: var(--ds-ink-secondary); margin: 0 0 10px; }
 .se-action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
 .se-action-grid-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .se-action-btn {
-  padding: 8px 12px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff;
+  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--ds-hairline); background: var(--ds-canvas);
   font-size: 0.88em; font-weight: 500; cursor: pointer; text-align: center; transition: all 0.15s ease;
 }
 .se-action-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
@@ -324,8 +324,8 @@ function onSaveClick() {
 .se-btn-scheduled { border-color: #93c5fd; color: #1d4ed8; } .se-btn-scheduled:hover { background: #dbeafe; }
 .se-btn-reschedule { border-color: #a78bfa; color: #6d28d9; } .se-btn-reschedule:hover { background: #ede9fe; }
 .se-btn-substitute { border-color: #67e8f9; color: #0e7490; } .se-btn-substitute:hover { background: #ecfeff; }
-.se-sub-hint { font-size: 0.85em; color: #64748b; margin: 0 0 12px; }
-.se-loading { text-align: center; color: #64748b; padding: 8px 0; font-size: 0.9em; }
+.se-sub-hint { font-size: 0.85em; color: var(--ds-ink-mute); margin: 0 0 12px; }
+.se-loading { text-align: center; color: var(--ds-ink-mute); padding: 8px 0; font-size: 0.9em; }
 .session-edit-reschedule .se-reschedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .session-edit-reschedule .se-reschedule-grid .form-group:last-child { grid-column: 1 / -1; }
 .retro-leave-warning { margin: 8px 0; padding: 10px 14px; border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.92em; }
@@ -345,7 +345,7 @@ function onSaveClick() {
 .se-btn-cancelled { border-color: #d1d5db; color: #4b5563; } .se-btn-cancelled:hover { background: #f3f4f6; }
 .se-info-banner { margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; font-size: 0.88em; }
 .se-banner-info { background: var(--ds-canvas-soft, #f6f9fc); border: 1px solid var(--ds-hairline, #e3e8ee); color: var(--ds-ink, #1a1a1a); }
-.field-note { display: block; margin-top: 4px; font-size: 0.8em; color: #64748b; }
+.field-note { display: block; margin-top: 4px; font-size: 0.8em; color: var(--ds-ink-mute); }
 .se-secondary-add { font-size: 0.82em !important; color: #94a3b8 !important; border-color: transparent !important; }
 .se-secondary-add:hover { color: #64748b !important; }
 
@@ -359,7 +359,7 @@ function onSaveClick() {
   width: 100%;
   min-height: 44px;
   padding: 8px 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ds-hairline-input);
   border-radius: 8px;
   font-size: 15px;
 }
@@ -384,10 +384,10 @@ function onSaveClick() {
   border: 1px solid transparent;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.se-charge-label { font-size: 0.85em; font-weight: 600; color: #475569; min-width: 64px; }
+.se-charge-label { font-size: 0.85em; font-weight: 600; color: var(--ds-ink-mute); min-width: 64px; }
 .se-charge-value { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.3px; }
 .se-charge-delta { font-size: 0.85em; font-weight: 600; }
-.se-charge-hint { width: 100%; font-size: 0.78em; color: #64748b; }
+.se-charge-hint { width: 100%; font-size: 0.78em; color: var(--ds-ink-mute); }
 .se-charge-empty { font-size: 0.9em; color: #94a3b8; font-style: italic; }
 .se-charge-standard { background: #eff6ff; border-color: #bfdbfe; }
 .se-charge-standard .se-charge-value { color: #1d4ed8; }

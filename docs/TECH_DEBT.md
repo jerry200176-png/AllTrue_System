@@ -505,3 +505,17 @@
 | 建議做法 | (1) ParentPortal 設定區加 toggle 串 `parent/notification-preferences`；(2) 確認推播文案/節奏後，設 `PERF_FEEDBACK_PUSH=true` 開啟；(3) 觀察 TD-013（LINE 綁定率）影響觸達上限、補 TD-057 reply-rate KPI。|
 | 清償成本估計 | 低（前端 toggle）|
 | 不做的代價 | 推播功能停在 dark launch 無法對外；家長無自助退訂 UI（僅後端可改）|
+
+### TD-064：設計系統 semantic token 不足以表達多態功能色
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P3 |
+| 發現日期 | 2026-06-06 |
+| 發現來源 | 開發中（#691 reference page UI 治理，modal wave C）|
+| 影響模組 | `frontend/src/styles.css`（`--ds-*` token）；`SessionEditModal.vue` 出缺勤/計費狀態色；其餘狀態 chip |
+| 描述 | 現有 ds semantic token 只有 success(綠)/warning(橘)/danger(紅)/info(=primary 橘)，不足以表達出缺勤多態（scheduled 藍、reschedule 紫、substitute 青）與計費比較（標準/較高/較低）等「功能語意色」。治理 UI 時這些只能保留原始 hex，無法 token 化。|
+| 建議做法 | 由 [ARCH] 擴充一組「狀態色票」token（例：`--ds-state-scheduled`/`-reschedule`/`-substitute` + wash 版），定義於 `RULE_DESIGN_SYSTEM.md` §3，再逐頁把功能色 chip 改 token；需確保色盲友善（色 + 文字標籤）。|
+| 清償成本估計 | 中（需設計決策 + 多檔替換）|
+| 不做的代價 | 狀態 chip 持續用零散原始 hex，hex baseline 降不下去；跨頁狀態色不一致風險 |

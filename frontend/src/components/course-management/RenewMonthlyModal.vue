@@ -131,7 +131,7 @@ const finalEndDate = computed(() => {
 .modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0; }
 .renewal-hud { display: grid; gap: 8px; margin-bottom: 14px; }
-.info-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 11px; font-size: 13px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(255,255,255,0.68); }
+.info-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 11px; font-size: 13px; border: 1px solid var(--ds-hairline); border-radius: 12px; background: var(--ds-canvas); }
 .info-label { color: var(--text-light); }
 .info-value { font-weight: 800; color: var(--text); }
 .divider { border: none; border-top: 1px solid var(--border, #e0e0e0); margin: 14px 0; }
@@ -143,8 +143,8 @@ const finalEndDate = computed(() => {
   margin: 10px 0 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: #f8fafc;
-  color: #475569;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
   font-size: 12px;
   line-height: 1.5;
 }
