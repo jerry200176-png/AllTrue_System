@@ -138,16 +138,16 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 | 層級 | 主題 | Issue | 狀態 |
 |---|---|---|---|
 | 基礎建設 | 共用元件 AtButton/AtCard/AtEmpty/AtMetric | [#688](https://github.com/jerry200176-png/AllTrue_System/issues/688) | Open |
-| 基礎建設 | CI lint：擋新增 raw hex | [#689](https://github.com/jerry200176-png/AllTrue_System/issues/689) | Open |
+| 基礎建設 | CI lint：擋新增 raw hex | [#689](https://github.com/jerry200176-png/AllTrue_System/issues/689) | **Done** |
 | 基礎建設 | UI 文案規範 `GUIDE_UI_COPY.md` | [#690](https://github.com/jerry200176-png/AllTrue_System/issues/690) | **Done** |
 | 基礎建設 | 表單欄位標準化 AtInput/Select/Textarea | [#702](https://github.com/jerry200176-png/AllTrue_System/issues/702) | Open |
 | 基礎建設 | Toast / 通知樣式統一 | [#708](https://github.com/jerry200176-png/AllTrue_System/issues/708) | Open |
-| 外殼 | App 側欄 / Topbar / FAB / loading | [#698](https://github.com/jerry200176-png/AllTrue_System/issues/698) | Open |
+| 外殼 | App 側欄 / Topbar / FAB / loading | [#698](https://github.com/jerry200176-png/AllTrue_System/issues/698) | **Done** |
 | Wave 1 輕量 | DirectorDashboard/TeacherHome/LearningRecords/SmartCalendar | PR [#686](https://github.com/jerry200176-png/AllTrue_System/pull/686) | **Done** |
 | Wave 1 補完 | DirectorDashboard / TeacherHome / LearningRecords 深度 | [#699](https://github.com/jerry200176-png/AllTrue_System/issues/699) | Open |
 | Wave 1 補完 | SmartCalendar 深度（G-007 回歸必測）| [#700](https://github.com/jerry200176-png/AllTrue_System/issues/700) | Open |
-| Wave 2 頁面 | CourseManagement + modals | [#691](https://github.com/jerry200176-png/AllTrue_System/issues/691) | Open |
-| Wave 2 頁面 | StudentsList | [#692](https://github.com/jerry200176-png/AllTrue_System/issues/692) | Open |
+| Wave 2 頁面 | CourseManagement + modals | [#691](https://github.com/jerry200176-png/AllTrue_System/issues/691) | **Done** |
+| Wave 2 頁面 | StudentsList | [#692](https://github.com/jerry200176-png/AllTrue_System/issues/692) | **Done** |
 | Wave 2 頁面 | TeachersList | [#693](https://github.com/jerry200176-png/AllTrue_System/issues/693) | Open |
 | Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
 | Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
@@ -164,3 +164,31 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 > **Baseline（2026-06-06）**：pages 2966 hex、components 834 hex、grand total 3800。  
 > 目標：高曝光 10 頁完成後 pages hex 降 ≥80%。  
 > 執行 `npm run metrics:design-hex` 可隨時更新計數。
+
+---
+
+## 11. Design Hex Guard（CI 防回歸，#689）
+
+為避免「越治理越亂」，CI 以 **advisory lint** 擋住**新增**的 raw hex 色票（首期 `continue-on-error`，只 warn 不擋 merge）。
+
+**機制**：`docs/design-hex-baseline.json`（由 `scripts/design-hex-count.sh` 產生的每檔 hex 快照）為基準；`scripts/check-no-raw-hex.sh` 重算當前每檔數量，任何 `.vue` 檔**高於 baseline** 即報違規。
+
+**本機檢查**：
+
+```bash
+cd frontend && npm run lint:design
+```
+
+**如何修一筆違規**：
+
+1. 找到違規檔與行（lint 輸出 `path: base → cur`）。
+2. 把 raw `#hex` 改成對應 design token：`var(--ds-ink)`、`var(--ds-primary)`、`var(--ds-canvas-soft)` 等（見 §3）。
+3. 功能語意色 token 不足時（出缺勤多態等），暫保留並登記 `TECH_DEBT.md` TD-064。
+
+**治理既有頁面使 hex 下降後**（baseline 需同步下修，才能鎖住新成果）：
+
+```bash
+bash scripts/design-hex-count.sh > docs/design-hex-baseline.json
+```
+
+> Phase 2b（後續）：穩定後可把 `continue-on-error` 移除，將 guard 升為 blocking required check。
