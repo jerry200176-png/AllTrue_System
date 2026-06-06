@@ -232,6 +232,42 @@ class SubstituteTeacherTest extends TestCase
         $this->assertSame($regularTeacherId, (int) ($hit['TeacherID'] ?? 0));
     }
 
+    public function test_latest_approved_summary_uses_effective_substitute_teacher(): void
+    {
+        [$dirToken, $regularTeacherId, $subTeacherId, $session, $lr] = $this->seedSubstituteScenario();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subTeacherId,
+        ])->assertOk();
+
+        // 模擬歷史漂移：LR.TeacherID 被還原成正班，摘要仍必須顯示 effective 代課老師。
+        DB::table('LearningRecord')->where('id', $lr->id)->update([
+            'TeacherID' => $regularTeacherId,
+            'Status' => 'approved',
+            'Progress' => '第 5 課複習',
+            'NextHomework' => '習作 p.42-45',
+            'HomeworkStatus' => 'completed',
+            'QuizScore' => '95',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$dirToken}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records/latest-approved-summary?student_class_id=' . $session->StudentClassID . '&session_date=2026-04-19');
+
+        $res->assertOk()
+            ->assertJsonPath('summary.id', (int) $lr->id)
+            ->assertJsonPath('summary.teacher_name', '代課老師')
+            ->assertJsonPath('summary.is_substitute', true)
+            ->assertJsonPath('summary.homework_status', 'completed')
+            ->assertJsonPath('summary.quiz_score', '95')
+            ->assertJsonPath('summary.progress', '第 5 課複習')
+            ->assertJsonPath('summary.next_homework', '習作 p.42-45');
+    }
+
     /** 核准後科目數（subject-units）依 LearningRecord.TeacherID 歸代課老師。 */
     public function test_subject_units_credits_substitute_teacher_after_approve(): void
     {
