@@ -1,0 +1,41 @@
+name: Rollback Readiness
+
+# #733 — 非破壞性「回滾就緒度」檢查，零 production 風險（全在 CI checkout 內驗）。
+# 觸發：
+#   - 每月 1 日 03:00 UTC 常態演練（與 backup-restore-test 同日，組成完整回滾就緒月檢）
+#   - 手動 workflow_dispatch
+#   - PR 動到 deploy.yml 或 migrations 時（防止改壞回滾路徑 / 加入不可逆 migration）
+# 檢查內容見 scripts/rollback-readiness.sh 與 docs/RUNBOOK_ROLLBACK.md。
+
+on:
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/rollback-readiness.yml'
+      - 'backend/database/migrations/**'
+      - 'scripts/rollback-readiness.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rollback-readiness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    name: Rollback readiness check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (full history for revert simulation)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run rollback readiness checks
+        run: bash scripts/rollback-readiness.sh
