@@ -63,6 +63,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | 頁面清單 + active key | `CLAUDE.md` §前端頁面 |
 | **設計系統 / 視覺規格（色票/按鈕/金額）** | `docs/RULE_DESIGN_SYSTEM.md`（唯一真相來源，改 UI 前必讀）|
+| **UI 文案 / 空狀態 / Loading 規範** | `docs/GUIDE_UI_COPY.md` |
+| **前端 PR 設計驗收清單** | `docs/GUIDE_DESIGN_QA_SMOKE.md` |
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
