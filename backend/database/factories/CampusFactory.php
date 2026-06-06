@@ -12,7 +12,7 @@ class CampusFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => $this->faker->unique()->city() . '分校',
+            'name' => mb_substr($this->faker->unique()->city() . '分校', 0, 32),
             'code' => $this->faker->unique()->lexify('branch???'),
             'Current' => 0,
             'LineNotifyID' => '',

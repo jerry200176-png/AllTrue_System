@@ -14,7 +14,7 @@ class UserFactory extends Factory
     {
         return [
             'LoginName' => $this->faker->unique()->safeEmail(),
-            'Name' => $this->faker->name(),
+            'Name' => mb_substr($this->faker->name(), 0, 32),
             'PSW' => Hash::make('password'),
             'type' => 'U',
             'phone' => (int) $this->faker->numerify('09########'),
