@@ -8,7 +8,13 @@
 
 ---
 
-## 2026-06-06 — feat(ui): 課程管理頁首與篩選列去裝飾、對齊設計系統（#691 第一階段）
+## 2026-06-06 — feat(ui): 課程管理內容區去裝飾、對齊設計系統（#691 第二階段）
+
+課程管理頁的統計列、課程列表卡片、表格從多層漸層光暈與彩虹裝飾條收斂為乾淨的白底卡片與中性表格，狀態標記（暫停、聚焦）改用統一的語意色，整體視覺一致、好掃讀。
+
+開發備註：#691 reference page 治理第二階段（內容容器；狀態 chip 細節與 modal 留後續 PR）。`CourseManagement.vue` `<style>`：(1) `.stats-strip`/`.stats-orb` 移除漸層底與 `::after` 彩線（`#0f172a→#f59e0b`）、`.stats-orb-total` radial 改 `--ds-primary` 底邊；數字字重 950→700。(2) `.table-card`/`.student-group-card` 移除多層 gradient 背景、彩虹 `::before` 頂條（`#38bdf8`/`#f59e0b`）、hover transform/大陰影 → `--ds-canvas` + `--ds-shadow-1`，圓角 22→12。(3) skeleton 彩虹 shimmer → 中性 `--ds-canvas-soft`/`--ds-hairline`。(4) `.creation-success-banner`/`.focus-mode-banner`/`.student-group-paused-badge` 改 success/info/warning token wash。(5) `.expand-indicator`/`.student-group-meta`/`.focus-btn`/`.student-group-add-row` 色票 → `--ds-*`。(6) `.course-table` thead/th/td 與 `.course-row` 左側 accent bar（`rgba(14,165,233)`→`--ds-primary`）token 化。頁面 hex 347→311。`npm run build` 通過。
+
+
 
 課程管理頁的頁首從浮誇的漸層光暈 hero（多層放射/旋轉光暈、超粗大標題）收斂為乾淨的白底卡片，標題字級字重回到後台應有的沉穩感；篩選列、主要按鈕統一品牌色，整體更專業、更好掃讀。
 
