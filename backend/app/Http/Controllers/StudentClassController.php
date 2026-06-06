@@ -1896,7 +1896,7 @@ class StudentClassController extends Controller
             $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
             $periodSessions = !empty($slots)
                 ? $this->buildSessionsFromWeeklySchedule(
-                    (int) $studentClass->ID,
+                    (int) $studentClass->getKey(),
                     $newStartDate,
                     $newEndDate,
                     $slots,
@@ -2983,7 +2983,7 @@ class StudentClassController extends Controller
                 $previewDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
                 $previewSessions = !empty($previewSlots)
                     ? $this->buildSessionsFromWeeklySchedule(
-                        (int) $studentClass->ID,
+                        (int) $studentClass->getKey(),
                         $newStart,
                         $newEnd,
                         $previewSlots,
