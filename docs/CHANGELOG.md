@@ -8,7 +8,13 @@
 
 ---
 
-## 2026-06-06 — feat(ui): 課程管理內容區去裝飾、對齊設計系統（#691 第二階段）
+## 2026-06-06 — feat(ui): 課程 modal 中性結構色 token 化（#691 第三階段）
+
+課程相關彈窗（堂次編輯、續約月結）的容器底色、標題、輸入框邊框等中性樣式統一對齊設計系統；出缺勤狀態色、計費比較色等「功能語意色」維持不變（屬設計 token 擴充議題，另議）。
+
+開發備註：#691 reference page 治理第三階段（modal 群中性結構）。`SessionEditModal.vue`：`.session-edit-info` 底色、`.se-label`/`.se-section-title`/`.se-sub-hint`/`.se-loading`/`.field-note`/`.se-charge-label`/`.se-charge-hint` 文字色、動作按鈕與 `.se-time-input` 邊框 → `--ds-*`。`RenewMonthlyModal.vue`：`.period-hint`、`.info-row` → token。**保留**：`.se-st-*`（出缺勤狀態）、`.se-btn-*`（動作色）、`.se-charge-standard/higher/lower`（計費比較）等功能語意色——現有 ds semantic token（success/warning/danger/info）不足以表達 scheduled 藍/reschedule 紫等多態區分，貿然替換會降低可辨識度，登記為後續 design token 擴充。`npm run build` 通過。
+
+
 
 課程管理頁的統計列、課程列表卡片、表格從多層漸層光暈與彩虹裝飾條收斂為乾淨的白底卡片與中性表格，狀態標記（暫停、聚焦）改用統一的語意色，整體視覺一致、好掃讀。
 
