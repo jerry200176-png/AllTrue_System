@@ -189,6 +189,20 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 // ✅ 使用 resolveEffectiveCampusIds() 統一驗證，空 auth_campus_ids 非 super_admin → 403
 ```
 
+### Y6. 多 agent／多 session 並行 → 用 git worktree 隔離，勿在主 working tree `~/alltrue` 共改
+
+- 本專案常多個 AI agent 並行（#692／#699／maturity／ops…）。**共用同一個 `~/alltrue` git working tree 會 race**：別的 agent 一 `git checkout`／切分支，就把你**尚未 commit 的改動還原成 HEAD**。症狀：`git status` 顯示乾淨、但你的編輯不見了；branch ref 在不同 commit 間跳動。
+- ✅ 正確：每個任務在**獨立 worktree** 做（已有 `alltrue-maturity-docs`、`alltrue-ops-split` 範例）：
+
+```bash
+git worktree add /tmp/<task> origin/main -b <type>/<slug>
+cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree checkout 影響
+# 完成後：git worktree remove /tmp/<task> --force
+```
+
+- `gh pr create` 要從 worktree 內跑，或加 `--head <branch>`，否則會誤用主 working tree 當前分支（曾誤抓到並行 agent 的 `feat/699`）。
+- 教訓來源：2026-06-06 docs 治理在主 working tree 改，被並行 #692 agent 反覆沖掉、重做兩次後改用 worktree 才完成。
+
 ---
 
 # 🔁 復發家族（Recurring Defect Families）— 高復發檢討

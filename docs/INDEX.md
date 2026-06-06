@@ -313,9 +313,10 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 - `node scripts/docs-integrity-check.mjs --strict`
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
-**每月（記憶保鮮）**
+**每月（記憶保鮮 + CHANGELOG 滾動歸檔）**
 - `mempalace mine` 重新索引近期對話與 docs。
 - 抽查高風險關鍵字是否可被 `mempalace search` 命中。
+- **CHANGELOG 滾動歸檔**（對齊 Keep a Changelog）：月初把上月條目從 `docs/CHANGELOG.md` 移入 `docs/archive/CHANGELOG_ARCHIVE_YYYY-MM.md`，主檔只留當月 + 頂部 archive 導航。size gate 已對 `chore/docs-*` 分支排除 CHANGELOG/archive 搬移（presubmit CHECK 2）。
 
 **變更守則**：先改權威文件，再補 INDEX 導航；不在多份文件複製完整 SOP（避免版本漂移）。
 
