@@ -33,7 +33,7 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 | 指標 | 現況 |
 |---|---|
 | **前端頁面** | 33 個 Vue 頁面（管理後台 + 家長入口） |
-| **API 端點** | 70+ RESTful routes（`/api/v1/*`） |
+| **API 端點** | 300+ RESTful routes（`/api/v1/*`） |
 | **資料庫** | MySQL，核心表 15+，含核心關聯欄位與效能索引 |
 | **部署平台** | Raspberry Pi 5，含自動備份 + Telegram 告警 |
 | **RFID 整合** | 刷卡自動點名，60s debounce 防重複，重複卡 422 保護 |
@@ -46,13 +46,12 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
 
 ## 近期重點更新（2026-06）
 
+- **介面一致化（Epic #687 Phase 2 進行中）**：建立設計系統共用元件（`AtButton` / `AtCard` / `AtEmpty` / `AtMetric`），逐頁以 design token 取代頁面級硬編碼色票。已完成 CourseManagement + 課程 modal、StudentsList、App 外殼（側欄 / Topbar / FAB）；老師工作台、智慧行事曆等持續進行。設計規範見 `docs/RULE_DESIGN_SYSTEM.md`。
+- **身分模型簡化**：runtime 移除對 `Teacher` 資料表的依賴，老師權威來源統一為 `User` + `UserCampus`（`StudentClass.TeacherID` 等欄位仍存 `User.id`，向下相容）。
+- **文件治理**：CHANGELOG 採月度滾動歸檔（主檔只留當月）、INDEX 去重、核心規則檔加上 `last_reviewed` 文件保鮮 metadata；多 agent 並行改用 `git worktree` 隔離。
 - **學習評量**：老師/主任在評量表可直接看「上一堂摘要」（含代課老師），省去翻歷史記錄的步驟。
-- **介面一致化**：啟動全站 UI 去 AI 感治理計畫（Epic #687），首批四頁（主任儀表板、老師工作台、評量、智慧行事曆）視覺對齊設計系統；設計規範見 `docs/RULE_DESIGN_SYSTEM.md`。
 - 建立課程時排課摘要即時顯示計費單位（每堂/每小時）與預估總額，降低金額填錯風險。
-- 學習回饋推播基礎建設（dark launch，預設關閉）：家長留言時通知老師，老師回覆時推播家長 LINE。
-- 主任總覽新增「核心檢視 / 完整檢視」雙模式，預設只顯示今日必處理事項。
-- 家長入口「進度中心」精簡為**本週學習、下次課程、繳費狀態**（手機優先）。
-- 通知中心新增企業視圖（待處理優先 / SLA 優先 / 高風險）與同類通知聚合。
+- 主任總覽「核心檢視 / 完整檢視」雙模式，預設只顯示今日必處理事項；家長入口「進度中心」精簡為本週學習、下次課程、繳費狀態（手機優先）。
 
 ---
 
@@ -121,7 +120,8 @@ AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、�
   ├── 財務表：Invoice, InvoiceItem, Payment
   ├── 評量表：LearningRecord
   ├── 方案表：course_packages, package_session_ledger
-  └── 其他：User, UserCampus, Campus, Teacher, rooms, schedules, Notification…
+  └── 其他：User, UserCampus, Campus, rooms, schedules, Notification…
+       （老師權威來源＝User + UserCampus；舊 Teacher 表 runtime 已不依賴）
 
 排程任務（Laravel Scheduler）
   ├── 每日 02:30 — CloseOrphanStudentSignIns（清孤兒出缺勤）
@@ -207,7 +207,7 @@ flowchart LR
 
 ## ERD - Entity Relationship Diagram
 
-> 精簡展示版，聚焦核心營運資料流。完整欄位以 `backend/database/migrations/` 為準；歷史表名 `StudentSingIn` 是 production schema 的實際拼字。
+> 精簡展示版，聚焦核心營運資料流。完整欄位以 `backend/database/migrations/` 為準；歷史表名 `StudentSingIn` 是 production schema 的實際拼字。`StudentClass.TeacherID` / `StudentSingIn.TeacherID` 存的是 `User.id`（老師＝User，runtime 已不再 join 舊 `Teacher` 表，見 G-001）。
 
 ```mermaid
 erDiagram
@@ -565,9 +565,9 @@ gh pr create --fill
 
 工程文件多且長，**預設不要通讀**；請依下列順序，與大廠「單一權威 + 可追溯」做法一致：
 
-1. **導航**：[`docs/INDEX.md`](docs/INDEX.md) — 任務對應到哪個檔、哪一節。
-2. **讀法**：[`docs/AI_DOC_LITERACY.md`](docs/AI_DOC_LITERACY.md) — 各檔「目的 / 太長時怎麼讀」速讀卡；**CHANGELOG → `npm run sync-release-notes` → 家長分眾 §R45** 的資料鏈。
-3. **不失憶**：[`docs/DOCS_GOVERNANCE_SOP.md`](docs/DOCS_GOVERNANCE_SOP.md) §4 MemPalace 保鮮；Agent 開工順序見 [`AGENTS.md`](AGENTS.md)。
+1. **導航 + 讀法 + 治理**：[`docs/INDEX.md`](docs/INDEX.md) — 任務對應到哪個檔、哪一節，含速讀卡（各檔「目的 / 太長時怎麼讀」）、治理節奏與 MemPalace 保鮮。（`AI_DOC_LITERACY` / `DOCS_GOVERNANCE_SOP` 已整併入 INDEX，僅保留 stub 供索引。）
+2. **資料鏈**：CHANGELOG → `npm run sync-release-notes` → 家長分眾版本公告（見 INDEX §速讀卡、`AI_REGRESSION_LESSONS.md §R45`）。
+3. **開工順序**：見 [`AGENTS.md`](AGENTS.md)；**多 agent 並行務必用 `git worktree` 隔離**，勿在主 working tree 共改（`AI_REGRESSION_LESSONS.md §Y6`）。
 
 ---
 
@@ -575,13 +575,14 @@ gh pr create --fill
 
 | 文件 | 說明 |
 |---|---|
-| `docs/CHANGELOG.md` | 功能異動歷程（最新） |
-| `docs/CHANGELOG_ARCHIVE_2026-04.md` | 歷史變更紀錄 |
+| `docs/CHANGELOG.md` | 功能異動歷程（當月；採月度滾動歸檔） |
+| `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 變更紀錄（archive，只搜尋） |
+| `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）變更紀錄（archive，只搜尋） |
 | `docs/SYSTEM_TECH_GUIDE.md` | 後端技術實作索引（Identity/Swipe/ClassSession/Service 職責） |
 | `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
 | `docs/INDEX.md` | 文件導航入口（開工先讀，避免 SOP 走偏） |
-| `docs/AI_DOC_LITERACY.md` | **AI 讀檔協議**：長文速讀卡、CHANGELOG→前端公告、MemPalace 參照（防漏讀） |
-| `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理與 MemPalace 保鮮節奏（每日/每週/每月） |
+| `docs/AI_DOC_LITERACY.md` | （已整併入 `docs/INDEX.md` §速讀卡；stub 供 MemPalace 索引） |
+| `docs/DOCS_GOVERNANCE_SOP.md` | （已整併入 `docs/INDEX.md` §治理節奏；stub 供 MemPalace 索引） |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
 | `AGENTS.md` | AI / 協作者開工順序與 commit SOP |
@@ -619,4 +620,4 @@ gh pr create --fill
 
 ---
 
-*最後更新：2026-05-16*
+*最後更新：2026-06-06*
