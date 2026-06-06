@@ -12,7 +12,7 @@ class StudentFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => $this->faker->name(),
+            'name' => mb_substr($this->faker->name(), 0, 32),
             'CampusID' => 1,
             'ClassID' => 7,
             'SchoolName' => mb_substr($this->faker->company(), 0, 32),
