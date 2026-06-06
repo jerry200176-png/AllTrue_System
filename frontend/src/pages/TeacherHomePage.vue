@@ -1429,7 +1429,7 @@ onBeforeUnmount(() => {
 .th-sound-toggle .material-symbols-outlined {
   font-size: 16px;
 }
-.th-section-icon { font-size: 20px; color: var(--accent); }
+.th-section-icon { font-size: 20px; color: var(--ds-primary, #EF6C00); }
 
 /* ──────── A. Today Actions ──────── */
 .th-today { padding: 20px; }
@@ -1560,7 +1560,7 @@ onBeforeUnmount(() => {
   border: 1.5px solid var(--border); background: var(--card-bg);
   cursor: pointer; transition: var(--transition); text-align: left;
 }
-.th-action-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(245,124,0,0.12); }
+.th-action-btn:hover { border-color: color-mix(in srgb, var(--ds-primary, #EF6C00) 45%, #ffffff); box-shadow: 0 2px 8px rgba(239,108,0,0.12); }
 .th-action-btn:active { transform: scale(0.99); }
 
 .th-action-icon-wrap {
@@ -1570,7 +1570,7 @@ onBeforeUnmount(() => {
 .th-action-attendance .th-action-icon-wrap { background: var(--primary-bg); color: var(--primary); }
 .th-action-learning .th-action-icon-wrap { background: #e3f2fd; color: #1565c0; }
 [data-theme="dark"] .th-action-learning .th-action-icon-wrap { background: #1a237e; color: #90caf9; }
-.th-action-feedback .th-action-icon-wrap { background: #fff3e0; color: #ef6c00; }
+.th-action-feedback .th-action-icon-wrap { background: var(--ds-primary-wash, #fff8e1); color: var(--ds-primary-deep, #E65100); }
 [data-theme="dark"] .th-action-feedback .th-action-icon-wrap { background: #3b2612; color: #ffb74d; }
 .th-done .th-action-icon-wrap { background: var(--success-bg); color: var(--success); }
 
@@ -1584,7 +1584,7 @@ onBeforeUnmount(() => {
   gap: 6px 10px;
 }
 .th-inline-link {
-  color: var(--accent); font-weight: 600; text-decoration: underline;
+  color: var(--ds-primary, #EF6C00); font-weight: 600; text-decoration: underline;
   cursor: pointer; flex-shrink: 0;
 }
 .th-action-arrow { color: var(--text-light); font-size: 22px; flex-shrink: 0; }
@@ -1617,12 +1617,12 @@ onBeforeUnmount(() => {
 /* ──────── A2. Overdue Reminder ──────── */
 .th-overdue {
   padding: 16px 20px;
-  border-left: 4px solid var(--accent);
+  border-left: 4px solid var(--ds-primary, #EF6C00);
 }
-.th-overdue-icon { color: var(--accent) !important; }
+.th-overdue-icon { color: var(--ds-primary, #EF6C00) !important; }
 .th-overdue-badge {
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
-  background: var(--accent); color: #fff; margin-left: 4px;
+  background: var(--ds-primary, #EF6C00); color: #fff; margin-left: 4px;
 }
 .th-overdue-hint {
   font-size: 12px; font-weight: 400; color: var(--text-light); margin-left: 2px;
@@ -1634,9 +1634,9 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border); background: var(--card-bg);
   transition: var(--transition);
 }
-.th-overdue-row:hover { border-color: var(--accent); box-shadow: 0 1px 6px rgba(245,124,0,0.10); }
+.th-overdue-row:hover { border-color: color-mix(in srgb, var(--ds-primary, #EF6C00) 48%, #ffffff); box-shadow: 0 1px 6px rgba(239,108,0,0.10); }
 .th-overdue-date {
-  font-size: 13px; font-weight: 600; color: var(--accent);
+  font-size: 13px; font-weight: 600; color: var(--ds-primary, #EF6C00);
   min-width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .th-overdue-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1646,11 +1646,11 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; margin-top: 10px; padding: 8px 0;
   border: none; border-radius: 8px;
-  background: rgba(245,124,0,0.08); color: var(--accent);
+  background: color-mix(in srgb, var(--ds-primary, #EF6C00) 10%, #ffffff); color: var(--ds-primary-deep, #E65100);
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: var(--transition);
 }
-.th-overdue-more:hover { background: rgba(245,124,0,0.16); }
+.th-overdue-more:hover { background: color-mix(in srgb, var(--ds-primary, #EF6C00) 18%, #ffffff); }
 
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }

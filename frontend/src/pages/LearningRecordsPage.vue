@@ -933,13 +933,47 @@
           <!-- Section 2: 作業與進度 -->
           <div class="lr-form-section">
             <div class="lr-form-section-title">作業與進度</div>
+            <div class="lr-prev-summary" aria-live="polite">
+              <div class="lr-prev-summary-head">
+                <span class="material-symbols-outlined">history</span>
+                <span>上一堂摘要</span>
+              </div>
+              <div v-if="previousSummaryLoading" class="lr-prev-summary-state">載入上一堂資料中...</div>
+              <div v-else-if="previousSummaryError" class="lr-prev-summary-state lr-prev-summary-state--error">
+                {{ previousSummaryError }}
+              </div>
+              <div v-else-if="previousLessonSummary" class="lr-prev-summary-body">
+                <div class="lr-prev-summary-meta">
+                  <span>{{ previousLessonSummary.session_date || '—' }}</span>
+                  <span>授課老師：{{ previousLessonSummary.teacher_name || '未指派' }}</span>
+                  <span v-if="previousLessonSummary.is_substitute" class="lr-prev-summary-chip">代課</span>
+                </div>
+                <div class="lr-prev-summary-row">
+                  <strong>上次作業</strong>
+                  <span>{{ homeworkStatusLabel(previousLessonSummary.homework_status) }}</span>
+                </div>
+                <div class="lr-prev-summary-row">
+                  <strong>週考成績</strong>
+                  <span>{{ previousLessonSummary.quiz_score || '—' }}</span>
+                </div>
+                <div class="lr-prev-summary-row">
+                  <strong>授課進度</strong>
+                  <span>{{ previousLessonSummary.progress || '—' }}</span>
+                </div>
+                <div class="lr-prev-summary-row">
+                  <strong>作業範圍</strong>
+                  <span>{{ previousLessonSummary.next_homework || '—' }}</span>
+                </div>
+              </div>
+              <div v-else class="lr-prev-summary-state">尚無上一堂評量資料</div>
+            </div>
             <div class="form-group">
               <label>上次作業</label>
               <div class="lr-radio-group" data-group="homework">
-                <label class="lr-radio" data-value="completed"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"><span class="lr-radio-emoji">✓</span> 已完成</label>
-                <label class="lr-radio" data-value="partial"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"><span class="lr-radio-emoji">◐</span> 部分完成</label>
-                <label class="lr-radio" data-value="incomplete"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"><span class="lr-radio-emoji">✕</span> 未完成</label>
-                <label class="lr-radio" data-value="missing"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"><span class="lr-radio-emoji">?</span> 未攜帶</label>
+                <label class="lr-radio" data-value="completed"><input v-model="form.HomeworkStatus" type="radio" value="completed" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">check_circle</span> 已完成</label>
+                <label class="lr-radio" data-value="partial"><input v-model="form.HomeworkStatus" type="radio" value="partial" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">hourglass_top</span> 部分完成</label>
+                <label class="lr-radio" data-value="incomplete"><input v-model="form.HomeworkStatus" type="radio" value="incomplete" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">cancel</span> 未完成</label>
+                <label class="lr-radio" data-value="missing"><input v-model="form.HomeworkStatus" type="radio" value="missing" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">help</span> 未攜帶</label>
               </div>
             </div>
             <div class="form-group">
@@ -981,9 +1015,9 @@
             <div class="form-group">
               <label>上課狀況</label>
               <div class="lr-radio-group" data-group="performance">
-                <label class="lr-radio" data-value="good"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"><span class="lr-radio-emoji">😊</span> 良好</label>
-                <label class="lr-radio" data-value="average"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"><span class="lr-radio-emoji">😐</span> 普通</label>
-                <label class="lr-radio" data-value="bad"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"><span class="lr-radio-emoji">😟</span> 不良</label>
+                <label class="lr-radio" data-value="good"><input v-model="form.Performance" type="radio" value="good" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">sentiment_satisfied</span> 良好</label>
+                <label class="lr-radio" data-value="average"><input v-model="form.Performance" type="radio" value="average" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">sentiment_neutral</span> 普通</label>
+                <label class="lr-radio" data-value="bad"><input v-model="form.Performance" type="radio" value="bad" :disabled="isReadOnly"><span class="material-symbols-outlined lr-radio-icon">sentiment_dissatisfied</span> 不良</label>
               </div>
             </div>
             <div class="form-group">
@@ -1073,7 +1107,7 @@
           <!-- Status Context -->
           <div v-if="form.Status === 'rejected' || form.Status === 'changes_requested'" class="lr-reject-note">
             <div class="lr-reject-note-title">
-              {{ form.Status === 'rejected' ? '⚠️ 退回原因' : '📝 需修改說明' }}
+              {{ form.Status === 'rejected' ? '退回原因' : '需修改說明' }}
             </div>
             <p>{{ form.ReviewNote || '（無說明）' }}</p>
           </div>
@@ -2024,6 +2058,10 @@ const form = reactive({
 
 const forceReadOnly = ref(false);
 const _activeRecordRef = ref(null);
+const previousLessonSummary = ref(null);
+const previousSummaryLoading = ref(false);
+const previousSummaryError = ref('');
+const previousSummaryContext = ref({ studentClassId: 0, sessionDate: '', excludeId: 0 });
 const teacherCommentContent = ref('');
 const teacherCommentSaving = ref(false);
 const teacherCommentError = ref('');
@@ -2275,6 +2313,61 @@ const buildLocalRecordFromForm = (savedRecord = null) => {
 const getToken = async () => {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token;
+};
+
+const homeworkStatusLabel = (status) => {
+  const map = {
+    completed: '已完成',
+    partial: '部分完成',
+    incomplete: '未完成',
+    missing: '未攜帶',
+  };
+  return map[String(status || '').trim()] || '—';
+};
+
+const resetPreviousSummaryState = () => {
+  previousLessonSummary.value = null;
+  previousSummaryError.value = '';
+  previousSummaryLoading.value = false;
+  previousSummaryContext.value = { studentClassId: 0, sessionDate: '', excludeId: 0 };
+};
+
+const loadLatestApprovedSummary = async ({ studentClassId = 0, sessionDate = '', excludeId = 0 } = {}) => {
+  const sid = Number(studentClassId || 0);
+  if (sid <= 0) {
+    previousLessonSummary.value = null;
+    previousSummaryError.value = '';
+    previousSummaryLoading.value = false;
+    return;
+  }
+
+  previousSummaryContext.value = {
+    studentClassId: sid,
+    sessionDate: String(sessionDate || '').slice(0, 10),
+    excludeId: Number(excludeId || 0),
+  };
+  previousSummaryLoading.value = true;
+  previousSummaryError.value = '';
+
+  try {
+    const token = await getToken();
+    if (!token) throw new Error('請重新登入');
+    const params = new URLSearchParams({ student_class_id: String(sid) });
+    if (previousSummaryContext.value.sessionDate) params.set('session_date', previousSummaryContext.value.sessionDate);
+    if (previousSummaryContext.value.excludeId > 0) params.set('exclude_id', String(previousSummaryContext.value.excludeId));
+    const res = await fetch(`/api/v1/learning-records/latest-approved-summary?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json?.message || '上一堂資料載入失敗');
+    previousLessonSummary.value = json?.summary || null;
+  } catch (e) {
+    console.error('[LR] load latest-approved-summary failed:', e);
+    previousLessonSummary.value = null;
+    previousSummaryError.value = '上一堂資料暫時無法讀取，請稍後再試';
+  } finally {
+    previousSummaryLoading.value = false;
+  }
 };
 
 // ── Fetch dropdown data ──
@@ -2567,6 +2660,41 @@ const canonicalSubjectLabel = (s) => {
 };
 
 const subjectsMatch = (a, b) => canonicalSubjectLabel(a) === canonicalSubjectLabel(b);
+
+const resolveStudentClassIdForCurrentForm = () => {
+  const activeClassId = Number(_activeRecordRef.value?.StudentClassID || _activeRecordRef.value?.student_class_id || 0);
+  if (activeClassId > 0) return activeClassId;
+  const studentId = String(form.StudentID || '').trim();
+  if (!studentId) return 0;
+  let candidates = courseList.value.filter((course) => {
+    if (String(course.student_id || course.StudentID || '') !== studentId) return false;
+    return subjectsMatch(course.subject || course.Subject, form.Subject);
+  });
+  if (form.TeacherID) {
+    const filtered = candidates.filter((course) => String(course.teacher_id || course.TeacherID || '') === String(form.TeacherID));
+    if (filtered.length > 0) candidates = filtered;
+  }
+  return Number(candidates[0]?.id || candidates[0]?.ID || 0);
+};
+
+watch(
+  () => [showModal.value, isEditing.value, form.StudentID, form.Subject, form.TeacherID, form.SessionDate],
+  ([visible, editing]) => {
+    if (!visible || editing) return;
+    const studentClassId = resolveStudentClassIdForCurrentForm();
+    if (studentClassId <= 0) return;
+    const sessionDate = String(form.SessionDate || '').slice(0, 10);
+    const current = previousSummaryContext.value;
+    if (
+      Number(current.studentClassId || 0) === studentClassId &&
+      String(current.sessionDate || '') === sessionDate &&
+      Number(current.excludeId || 0) === 0
+    ) {
+      return;
+    }
+    void loadLatestApprovedSummary({ studentClassId, sessionDate, excludeId: 0 });
+  }
+);
 
 const formatTimeForDisplay = (t) => {
   const n = normalizeTime(t);
@@ -2866,6 +2994,11 @@ const openFromSchedule = async (ev) => {
     SessionDate: ev.date,
     StartTime: normalizeTime(ev.startTime) || String(ev.startTime || '').slice(0, 5),
     EndTime: normalizeTime(ev.endTime) || String(ev.endTime || '').slice(0, 5),
+  });
+  void loadLatestApprovedSummary({
+    studentClassId: Number(ev.classId || 0),
+    sessionDate: ev.date || form.SessionDate || '',
+    excludeId: 0,
   });
   _openedFromScheduleSession.value = ev.classSessionId || -1;
   formTimesFromBinding.value = false;
@@ -3169,6 +3302,12 @@ const _fillForm = (record) => {
     Status: record.Status,
     ReviewNote: record.ReviewNote || ''
   });
+  const studentClassId = Number(record.StudentClassID || record.student_class_id || 0);
+  void loadLatestApprovedSummary({
+    studentClassId,
+    sessionDate: form.SessionDate || record.SessionDate || '',
+    excludeId: Number(record.id || 0),
+  });
 };
 
 const _clearForm = () => {
@@ -3203,6 +3342,7 @@ const _clearForm = () => {
   if (isTeacher.value) {
     applyTeacherFormDefaults();
   }
+  resetPreviousSummaryState();
 };
 
 const _attachTextareaResize = () => {
@@ -3269,6 +3409,7 @@ const closeModal = () => {
   draftSaveError.value = false;
   showAllCommentPhrases.value = false;
   showModal.value = false;
+  resetPreviousSummaryState();
   _openedFromScheduleSession.value = 0;
   if (isTeacher.value) refreshDraftList();
 };
@@ -6395,8 +6536,8 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   margin-top: -2px;
 }
 
-/* emoji 圖示預設隱藏，手機版才顯示 */
-.lr-radio-emoji {
+/* 選項圖示預設隱藏，手機版才顯示 */
+.lr-radio-icon {
   display: none;
 }
 
@@ -6717,6 +6858,72 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
   margin-bottom: 14px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--primary-bg);
+}
+
+.lr-prev-summary {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.lr-prev-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.lr-prev-summary-state {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.lr-prev-summary-state--error {
+  color: #b91c1c;
+}
+
+.lr-prev-summary-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lr-prev-summary-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+}
+
+.lr-prev-summary-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.lr-prev-summary-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.lr-prev-summary-row strong {
+  color: #475569;
 }
 
 .lr-form-grid {
@@ -7205,11 +7412,12 @@ tr.lr-row-unread { border-left: 3px solid #F97316; background: rgba(249,115,22,.
     border-radius: 10px;
   }
 
-  /* Emoji 圖示手機版顯示 */
-  .lr-radio-emoji {
+  /* 選項圖示手機版顯示 */
+  .lr-radio-icon {
     display: block;
-    font-size: 22px;
+    font-size: 20px;
     line-height: 1;
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
   }
 
   /* 選中語意顏色 */
