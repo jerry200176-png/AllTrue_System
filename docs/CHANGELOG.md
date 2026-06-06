@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-06 — fix(learning): 學習評量表日期排序修正（in-app #155）
+
+學習評量表不再把「已核准但內容空白」的舊評量頂到最上面；需要填寫的優先顯示，已核准的依上課日期由新到舊排列，日期不再看起來亂。
+
+開發備註：根因為 `LearningRecordsPage.vue` `sortRecords` 的 `missingBodyTier` 把 approved-empty 設 tier 0 置頂。抽出純函式 `lib/learningRecordSort.js`（approved/rejected/其他→tier1 依日期；僅 pending/changes_requested 未填→tier0）+ 單元測試 `learningRecordSort.test.js`（含 bug 端到端情境）；`sortRecords` 改呼叫 lib。篩選（「只看未填」toggle／分頁）不受影響。Closes #742。
+
 ## 2026-06-06 — feat(ui): 老師工作台 token 對齊 + dark mode 整併（#699 step 1）
 
 開發備註：#699 Wave 1 補完三頁第一步（TeacherHomePage.vue）。raw hex 48 → 9，降 81.25%（AC ≥80%）。批次處理：(1) 移除 `var(--primary, #1976d2)` / `var(--ds-primary, #EF6C00)` / `var(--ds-primary-deep, #E65100)` / `var(--ds-primary-wash, #fff8e1)` fallback hex（13 處）— 全域已定義；(2) `#475569`/`#0f172a`/`#64748b`/`#334155` slate-tone → `--ds-ink-{secondary,,mute,secondary}`；(3) `#f8fafc` feedback-metric 底色 → `--ds-canvas-soft`；(4) `color: #fff` on primary/accent bg → `--ds-on-primary`（5 處：badge、day-tag、branch-chip、fill-btn hover、chat-btn）；(5) clockin-card hover / icon-empty `var(--bg-hover, #f5f5f5)` / `var(--bg, #f5f5f5)` / `var(--card-bg, #fff)` legacy fallback → DS token；(6) `.th-ckin-late` `#c62828` → `--ds-danger`；(7) `.th-icon-late`/`.th-badge-late` `#fce8e6`/`#c62828` → `--ds-danger-wash`/`--ds-danger`，並**移除 4 條 dark mode override（`#3b0c0c`/`#ef9a9a`/`#424242`/`#bdbdbd`/`#3b2612`/`#ffb74d` 系列）**——ds token 已自適應；(8) `.th-report-btn` red `#fef2f2`/`#ef4444`/`#fee2e2` → `--ds-danger-*`（active hover 改 filter brightness）；(9) `.th-form-substituted` `#e0e0e0`/`#757575` → `--ds-canvas-soft`/`--ds-ink-mute`。**保留 raw**：`.th-action-learning` 藍（`#e3f2fd`/`#1565c0`，多態語意色）、`.th-form-leave`/`.th-event-leave` 暖橘（`#fff7ed`/`#c2410c`/`#f97316`，請假狀態需與 warning 區別）、`color-mix(... #ffffff)` tint blend（4 處，tint 基色語法需求）。`npm run build` 通過。DirectorDashboard 與 LearningRecords 屬後續 step。
