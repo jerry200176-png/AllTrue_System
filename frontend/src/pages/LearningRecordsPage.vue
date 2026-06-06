@@ -938,7 +938,7 @@
                 <span class="material-symbols-outlined">history</span>
                 <span>上一堂摘要</span>
               </div>
-              <div v-if="previousSummaryLoading" class="lr-prev-summary-state">載入上一堂資料中...</div>
+              <div v-if="previousSummaryLoading" class="lr-prev-summary-state">載入上一堂資料中…</div>
               <div v-else-if="previousSummaryError" class="lr-prev-summary-state lr-prev-summary-state--error">
                 {{ previousSummaryError }}
               </div>
@@ -965,7 +965,12 @@
                   <span>{{ previousLessonSummary.next_homework || '—' }}</span>
                 </div>
               </div>
-              <div v-else class="lr-prev-summary-state">尚無上一堂評量資料</div>
+              <AtEmpty
+                v-else
+                icon="history_edu"
+                title="尚無上一堂評量資料"
+                description="這可能是該課程第一堂，或前一堂評量尚未經主任審核通過。"
+              />
             </div>
             <div class="form-group">
               <label>上次作業</label>
@@ -1258,6 +1263,7 @@
 import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
+import AtEmpty from '../components/design-system/AtEmpty.vue';
 import { fetchClassSessions } from '../lib/classSessionsApi';
 import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
