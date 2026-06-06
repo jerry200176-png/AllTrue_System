@@ -188,13 +188,13 @@
               <div v-for="h in hours" :key="h" class="time-label">{{ String(h).padStart(2, '0') }}:00</div>
             </div>
             <div v-for="teacher in dayViewTeacherColumns" :key="teacher.id" class="teacher-col">
-              <div class="teacher-col-header" :style="{ borderTopColor: getTeacherColor(teacher.id) }">
-                <div class="teacher-col-avatar" :style="{ background: getTeacherColor(teacher.id) }">{{ teacher.username.charAt(0) }}</div>
-                <div class="teacher-col-info">
-                  <div class="teacher-col-name">{{ teacher.username }}</div>
-                  <div v-if="teacher.roomLabel" class="teacher-col-room">{{ teacher.roomLabel }}</div>
-                </div>
-              </div>
+              <!-- #740 Step 4a：老師欄表頭剝離為 presentational 元件 -->
+              <TeacherColumnHeader
+                :name="teacher.username"
+                :room="teacher.roomLabel"
+                :color="getTeacherColor(teacher.id)"
+                :compact="isTeacherGridCompact"
+              />
               <div v-for="h in hours" :key="h" class="slot"
                 :class="{
                   'no-click': isTeacher,
@@ -868,6 +868,7 @@ import SearchableSelect from '../components/SearchableSelect.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
+import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue';
 import {
   fetchTeacherAvailability,
   undoSubstitute,
@@ -3980,26 +3981,10 @@ onMounted(() => {
   display: grid;
   min-width: 0;
 }
-.teacher-grid.teacher-grid-compact .teacher-col-header {
-  height: 56px;
-  padding: 6px 6px;
-  gap: 5px;
-}
 .teacher-grid.teacher-grid-compact .col-header-blank {
   height: 56px;
 }
-.teacher-grid.teacher-grid-compact .teacher-col-avatar {
-  width: 24px;
-  height: 24px;
-  font-size: 11px;
-  border-radius: 6px;
-}
-.teacher-grid.teacher-grid-compact .teacher-col-name {
-  font-size: 12px;
-}
-.teacher-grid.teacher-grid-compact .teacher-col-room {
-  font-size: 9px;
-}
+/* #740 Step 4a：teacher-col-header/-avatar/-name/-room 的 compact 變體已移至 TeacherColumnHeader.vue（改 prop 驅動） */
 .teacher-grid.teacher-grid-compact .course-block {
   padding: 4px 3px;
   border-radius: 6px;
@@ -4047,50 +4032,8 @@ onMounted(() => {
   min-width: 0;
 }
 .teacher-col:last-child { border-right: none; }
-.teacher-col-header {
-  height: 64px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  background: var(--bg-muted, #f8fafc);
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
-  border-top: 3px solid transparent;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
-}
-.teacher-col-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.teacher-col-info { min-width: 0; flex: 1; }
-.teacher-col-name {
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--text-color, #1a1a1a);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.teacher-col-room {
-  font-size: 10px;
-  line-height: 1.3;
-  color: var(--text-light, #94a3b8);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* #740 Step 4a：.teacher-col-header / -avatar / -info / -name / -room（base + compact + RWD）
+   已隨 markup 搬移至 components/calendar/TeacherColumnHeader.vue */
 .slot {
   height: 56px;
   border-top: 1px solid var(--border-color, #f1f5f9);
@@ -4737,11 +4680,7 @@ onMounted(() => {
   .day-col-badge { min-width: 14px; height: 14px; font-size: 8px; top: 3px; right: 3px; }
   /* 平板下固定欄寬避免壓縮，讓 wrapper 水平捲動 */
   .teacher-grid { min-width: max-content; }
-  .teacher-col-header { height: 56px; padding: 6px; gap: 4px; overflow: hidden; }
   .col-header-blank { height: 56px; }
-  .teacher-col-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
-  .teacher-col-name { font-size: 11px; }
-  .teacher-col-room { font-size: 9px; }
   .course-block { font-size: 10px; padding: 4px 4px; border-radius: 6px; }
   .cb-student { font-size: 12px; }
   .cb-detail, .cb-type { font-size: 8px; margin-top: 1px; }
@@ -4793,11 +4732,7 @@ onMounted(() => {
   .week-view { overflow-x: auto; }
   .teacher-grid-wrapper { overflow-x: auto; }
   .teacher-grid { min-width: max-content; }
-  .teacher-col-header { padding: 6px 6px; gap: 4px; height: 56px; }
   .col-header-blank { height: 56px; }
-  .teacher-col-avatar { width: 26px; height: 26px; font-size: 12px; }
-  .teacher-col-name { font-size: 11px; }
-  .teacher-col-room { font-size: 9px; }
   .time-col { min-width: 40px; width: 40px; }
   .time-label { font-size: 10px; padding: 4px 2px 0 0; }
   .course-block {
@@ -4845,10 +4780,6 @@ onMounted(() => {
   .day-tab-date { font-size: 8px; }
   .day-tab-badge { min-width: 14px; height: 14px; font-size: 8px; }
   .teacher-col { min-width: 0; }
-  .teacher-col-header { height: 48px; padding: 4px; }
-  .teacher-col-avatar { width: 22px; height: 22px; font-size: 10px; border-radius: 6px; }
-  .teacher-col-name { font-size: 10px; }
-  .teacher-col-room { font-size: 8px; }
   .time-col { min-width: 36px; width: 36px; }
   .time-label { font-size: 9px; padding: 2px 1px 0 0; }
   .col-header-blank { height: 48px; }
