@@ -87,9 +87,10 @@ class TeacherBulkAccountOnboardingTest extends TestCase
         ]);
 
         $teacherId = (int) DB::table('User')->where('LoginName', 'teacher-new-001')->value('id');
-        $this->assertDatabaseHas('Teacher', [
-            'id' => $teacherId,
+        $this->assertDatabaseHas('UserCampus', [
+            'UserID' => $teacherId,
             'CampusID' => $campusId,
+            'Approved' => 1,
         ]);
         $this->assertDatabaseHas('teacher_subjects', [
             'teacher_id' => $teacherId,
