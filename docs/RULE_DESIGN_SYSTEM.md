@@ -1,7 +1,7 @@
 # AllTrue Design System — Stripe-Inspired
 
 > **單一真相來源（Single Source of Truth）。** 所有前端頁面、元件、新功能 UI 一律照本文件生成，確保介面統一協調。
-> 取代 `docs/PORSCHE_VISUAL_SYSTEM.md`（已 superseded）。
+> 取代 `docs/archive/PORSCHE_VISUAL_SYSTEM.md`（已 superseded，移入 archive）。
 > 風格來源：`VoltAgent/awesome-design-md` 的 Stripe `DESIGN.md`，改寫為 AllTrue 補習班管理系統可落地的版本。
 
 ## 1. Intent（設計意圖）

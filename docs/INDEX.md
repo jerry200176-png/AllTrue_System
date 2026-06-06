@@ -89,6 +89,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | SLI / SLO / Error Budget / Release Freeze | `docs/SRE_POLICY.md` |
 | Post-release T+7/T+14/T+30 metrics review | `docs/PRODUCT_OPS.md` |
+| 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
+| 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
@@ -168,15 +170,19 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（Stripe-inspired：淺色+navy+indigo、金額 tabular）；所有前端 UI 照此生成 |
-| `docs/PORSCHE_VISUAL_SYSTEM.md` | ⛔ Superseded，改用 `RULE_DESIGN_SYSTEM.md`（保留歷史參考）|
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
+| `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）|
+| `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
+| `docs/AMBIENT_AUDIO_LICENSES.md` | 環境音效彩蛋的音檔授權清單 |
 
 ### 維運 SOP
 | 檔案 | 一行說明 |
 |------|---------|
 | `docs/OPERATIONS_RUNBOOK.md` | 完整 SOP 手冊（§A-P，按節查）|
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
-| `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（每日/每週/每月）與 MemPalace 保鮮 SOP |
+| `docs/SMOKE_TEST_RUNBOOK.md` | 部署後 smoke test SOP（`scripts/post-merge-smoke.sh`）|
+| `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（已整合進本 INDEX §治理節奏；stub 供索引）|
+| `docs/AI_DOC_LITERACY.md` | AI 讀檔協議（已整合進本 INDEX §速讀卡；stub 供索引）|
 
 ### 模組文件
 | 檔案 | 一行說明 |
@@ -313,10 +319,13 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 
 ## 📁 docs/archive/ — 歷史文件區
 
-下列 11 份文件已移入 `docs/archive/`，不再主動維護。只搜尋用，禁止通讀。
+下列文件已移入 `docs/archive/`，不再主動維護。只搜尋用，禁止通讀。
 
 | 檔案 | 說明 |
 |------|------|
+| `PORSCHE_VISUAL_SYSTEM.md` | ⛔ Superseded 設計系統；現行看 `RULE_DESIGN_SYSTEM.md` |
+| `使用說明_主任與超級管理員.md` | Developer Bypass FAQ（歷史）；角色全貌見 `ROLE_PLAYBOOK.md` |
+| `更新網站前端.md` | 本機手動覆蓋 `public`（歷史）；正式 deploy 依 CI |
 | `AI_REGRESSION_LESSONS_ARCHIVE.md` | 事故長文 archive；摘要在 `AI_REGRESSION_LESSONS.md` |
 | `CHANGELOG_ARCHIVE_2026-04.md` | 2026-04 以前的 changelog |
 | `PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md` | 已完成的分攤薪資 PRD |
