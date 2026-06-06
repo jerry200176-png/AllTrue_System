@@ -884,6 +884,16 @@ import {
   addDays,
   getWeekNumberOfDate,
 } from '../lib/calendarDateUtils.js';
+// #740 Step 2：純格式化工具
+import {
+  classTypeLabel,
+  dayLabel,
+  dayOfWeekFromDate,
+  getWeekLabel,
+  parseHour,
+  normalizeTimeTo30,
+  computeEndTime,
+} from '../lib/calendarFormat.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
@@ -1170,50 +1180,9 @@ const getTeacherColor = (teacherId) => {
 
 // --- Helpers ---
 const getSubjectLabel = (val) => getSubjectText(val);
-const classTypeLabel = (type) => ({ one_on_one: '一對一', one_on_two: '一對二', one_on_three: '一對三', tutoring: '輔導', trial: '試聽' }[type] || type);
-const dayLabel = (d) => ['', '週一', '週二', '週三', '週四', '週五', '週六', '週日'][d] || '';
-/** 從 YYYY-MM-DD 得到星期幾，1=週一 … 7=週日 */
-const dayOfWeekFromDate = (ymd) => {
-  if (!ymd) return 1;
-  const d = new Date(ymd + 'T12:00:00');
-  const n = d.getDay();
-  return n === 0 ? 7 : n;
-};
-
-const getWeekLabel = (weeks) => {
-  if (!weeks || weeks.length === 0 || weeks.length === 5) return '';
-  return `第${weeks.join(',')}週`;
-};
-
-// Parse time string "HH:MM" to hour number
-const parseHour = (t) => {
-  if (!t) return 0;
-  return parseInt(t.split(':')[0], 10);
-};
-
-// 排課以 30 分鐘為單位：將時間正規化為整點或半點 (08:14 → 08:00 或 08:30)
-const TIME_STEP_MINUTES = 30;
-const normalizeTimeTo30 = (timeStr) => {
-  if (!timeStr) return '08:00';
-  const [h, m] = timeStr.split(':').map(Number);
-  const totalM = (h || 0) * 60 + (m || 0);
-  const rounded = Math.round(totalM / TIME_STEP_MINUTES) * TIME_STEP_MINUTES;
-  const hours = Math.min(23, Math.floor(rounded / 60));
-  const mins = rounded % 60;
-  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-};
-
-// 由開始時間 + 時長計算結束時間
-const computeEndTime = (startTime, durationHours) => {
-  if (!startTime) return '--:--';
-  const [h, m] = startTime.split(':').map(Number);
-  const startM = (h || 0) * 60 + (m || 0);
-  const durM = Math.round((durationHours || 2) * 60);
-  const endM = startM + durM;
-  const endH = Math.min(23, Math.floor(endM / 60));
-  const endMin = endM % 60;
-  return `${String(endH).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
-};
+// #740 Step 2：classTypeLabel / dayLabel / dayOfWeekFromDate / getWeekLabel /
+// parseHour / TIME_STEP_MINUTES / normalizeTimeTo30 / computeEndTime
+// 已剝離至 ../lib/calendarFormat.js（純函式 + 單元測試 calendarFormat.test.js）。
 
 // 取得「下一個星期一」作為首堂日預設（若今天已過則下週一）
 const getDefaultFirstClassDate = () => {
