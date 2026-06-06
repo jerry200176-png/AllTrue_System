@@ -801,13 +801,13 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 5
 			path: app/Http/Controllers/AuthController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$type\.$#'
 			identifier: property.notFound
-			count: 5
+			count: 4
 			path: app/Http/Controllers/AuthController.php
 
 		-
@@ -879,18 +879,6 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\UserNotificationPreference\:\:firstOrNew\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/AuthController.php
-
-		-
-			message: '#^Comparison operation "\>" between int\<1, max\> and 0 is always true\.$#'
-			identifier: greater.alwaysTrue
-			count: 1
-			path: app/Http/Controllers/AuthController.php
-
-		-
-			message: '#^Left side of && is always true\.$#'
-			identifier: booleanAnd.leftAlwaysTrue
 			count: 1
 			path: app/Http/Controllers/AuthController.php
 
@@ -2209,13 +2197,13 @@ parameters:
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Offset ''_weighted_with'' on array\{teacher_id\: \(int\|string\), teacher_name\: mixed, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''_weighted_with'' on array\{teacher_id\: \(int\|string\), teacher_name\: string, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/FinanceController.php
 
 		-
-			message: '#^Offset ''teacher_id'' on array\{teacher_id\: \(int\|string\), teacher_name\: mixed, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
+			message: '#^Offset ''teacher_id'' on array\{teacher_id\: \(int\|string\), teacher_name\: string, one_on_one_hours\: float, one_on_two_hours\: float, one_on_three_hours\: float, tutoring_hours\: float, total_hours\: float, subject_count_with\: string, \.\.\.\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
 			count: 1
 			path: app/Http/Controllers/FinanceController.php
@@ -2907,7 +2895,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecordTeacherComment\:\:\$teacher_id\.$#'
 			identifier: property.notFound
-			count: 4
+			count: 3
 			path: app/Http/Controllers/LearningRecordTeacherCommentController.php
 
 		-
@@ -3735,7 +3723,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
 			identifier: property.notFound
-			count: 10
+			count: 7
 			path: app/Http/Controllers/ProfileController.php
 
 		-
@@ -4681,7 +4669,7 @@ parameters:
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\Teacher\|App\\Models\\User\:\:\$id\.$#'
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 6
 			path: app/Http/Controllers/SwipeRfidController.php
@@ -4741,12 +4729,6 @@ parameters:
 			path: app/Http/Controllers/SwipeRfidController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Teacher\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\TeacherSignIn\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -4766,12 +4748,6 @@ parameters:
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/SwipeRfidController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/SwipeRfidController.php

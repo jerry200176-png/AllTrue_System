@@ -71,7 +71,7 @@ class DiagnoseTeacherSignIn extends Command
     private function findTeachers(?int $teacherId, string $teacherName, string $loginName, ?int $campusId)
     {
         $query = DB::table('User as u')
-            ->leftJoin('UserCampus as uc', 'uc.UserID', '=', 'u.id')
+            ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
             ->leftJoin('Campus as c', 'c.id', '=', 'uc.CampusID')
             ->select([
                 'u.id as teacher_id',
