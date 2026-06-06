@@ -366,6 +366,25 @@ class StudentClassController extends Controller
             $class->end_time = $class->start_time ? date('H:i', strtotime($class->start_time) + $durationSecs) : null;
             $class->payment_type = ($class->ScheduleMode ?? 'count') === 'count' ? 'session' : 'monthly';
             $class->sessions_purchased = (int) ($class->SessionCount ?? 0);
+            $storedCharge = (int) ($class->Charge ?? 0);
+            $effectiveCharge = $storedCharge;
+            if (
+                $effectiveCharge <= 0
+                && $class->payment_type === 'session'
+                && !$class->isPartOfPackage()
+                && (float) ($class->Rate ?? 0) > 0
+                && $class->sessions_purchased > 0
+            ) {
+                $effectiveCharge = $this->calculateCourseChargeFromRate(
+                    (float) ($class->Rate ?? 0),
+                    (string) ($class->rate_unit ?? 'session'),
+                    $class->sessions_purchased,
+                    (int) ($class->TotalHours ?? 0)
+                );
+            }
+            $class->charge = $effectiveCharge;
+            $class->effective_charge = $effectiveCharge;
+            $class->charge_is_fallback = $storedCharge <= 0 && $effectiveCharge > 0;
             $observedUsedSessions = (int) ($observedUsedByClass[$class->ID] ?? 0);
 
             // Remaining = 購買堂數 − 實際已上（扣點、已完成堂次、已核准評量取最大後再與購買數取 cap）
@@ -1868,6 +1887,48 @@ class StudentClassController extends Controller
                 ], 409);
             }
 
+            $rate = (float) ($studentClass->Rate ?? 0);
+            $rateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+            if (!in_array($rateUnit, ['session', 'hour'], true)) {
+                $rateUnit = 'session';
+            }
+            $globalDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
+            $slots = $this->resolveScheduleSlotsForRebuild($studentClass);
+            $periodSessions = !empty($slots)
+                ? $this->buildSessionsFromWeeklySchedule(
+                    (int) $studentClass->getKey(),
+                    $newStartDate,
+                    $newEndDate,
+                    $slots,
+                    $globalDur
+                )
+                : [];
+            $periodSessionCount = count($periodSessions);
+            if ($periodSessionCount <= 0) {
+                $periodSessionCount = max(0, (int) ($studentClass->monthly_sessions ?? 0));
+            }
+            $periodTotalHours = !empty($periodSessions)
+                ? (int) round(array_reduce($periodSessions, function ($carry, $session) {
+                    $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+                    $end = substr((string) ($session['EndTime'] ?? ''), 0, 5);
+                    if ($start === '' || $end === '') {
+                        return $carry;
+                    }
+                    $startM = ((int) substr($start, 0, 2)) * 60 + (int) substr($start, 3, 2);
+                    $endM = ((int) substr($end, 0, 2)) * 60 + (int) substr($end, 3, 2);
+                    return $carry + max(0, $endM - $startM);
+                }, 0) / 60)
+                : (int) round(($periodSessionCount * $globalDur) / 60);
+            $periodCharge = $this->calculateCourseChargeFromRate(
+                $rate,
+                $rateUnit,
+                $periodSessionCount,
+                $periodTotalHours
+            );
+            if ($periodCharge <= 0) {
+                $periodCharge = max(0, (int) ($studentClass->Charge ?? 0));
+            }
+
             $newPayload = [
                 'StudentID' => (int) $studentClass->StudentID,
                 'GradeID' => (int) ($studentClass->GradeID ?? 1),
@@ -1897,15 +1958,15 @@ class StudentClassController extends Controller
                 'duration4' => $studentClass->duration4,
                 'duration5' => $studentClass->duration5,
                 'duration6' => $studentClass->duration6,
-                'TotalHours' => (int) ($studentClass->TotalHours ?? 0),
+                'TotalHours' => $periodTotalHours,
                 'Memo' => $studentClass->Memo,
-                'Charge' => (int) ($studentClass->Charge ?? 0),
+                'Charge' => $periodCharge,
                 'Pay' => 0,
                 'PayDate' => null,
                 'Paid' => 0,
                 'Disconunt' => $studentClass->Disconunt,
-                'Rate' => (float) ($studentClass->Rate ?? 0),
-                'rate_unit' => $studentClass->rate_unit,
+                'Rate' => $rate,
+                'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
                 'RoomID' => $studentClass->RoomID,
                 'room_id' => $studentClass->room_id,
@@ -1914,9 +1975,9 @@ class StudentClassController extends Controller
                 'MDate' => now(),
                 'Stop' => 0,
                 'ScheduleMode' => 'date',
-                'SessionCount' => 0,
-                'SessionDuration' => (int) ($studentClass->SessionDuration ?? 120),
-                'RemainingSessions' => 0,
+                'SessionCount' => $periodSessionCount,
+                'SessionDuration' => $globalDur,
+                'RemainingSessions' => $periodSessionCount,
                 'ClassType' => $studentClass->ClassType ?: 'one_on_one',
                 'UsedSessions' => 0,
             ];
@@ -2907,7 +2968,51 @@ class StudentClassController extends Controller
             $dueDate = $newEnd
                 ? Carbon::parse($newEnd)->startOfMonth()->addDays($dueDay - 1)->toDateString()
                 : null;
-            $amount = max(0, (int) ($studentClass->Charge ?? 0));
+            $previewRate = (float) ($studentClass->Rate ?? 0);
+            $previewRateUnit = strtolower(trim((string) ($studentClass->rate_unit ?? 'session')));
+            if (!in_array($previewRateUnit, ['session', 'hour'], true)) {
+                $previewRateUnit = 'session';
+            }
+            $previewSessionCount = max(0, (int) ($studentClass->monthly_sessions ?? 0));
+            $previewTotalHours = (int) ($studentClass->TotalHours ?? 0);
+            if ($newEnd) {
+                $newStart = $currentEnd
+                    ? Carbon::parse($currentEnd)->addDay()->toDateString()
+                    : Carbon::today()->toDateString();
+                $previewSlots = $this->resolveScheduleSlotsForRebuild($studentClass);
+                $previewDur = max(30, (int) ($studentClass->SessionDuration ?? 120));
+                $previewSessions = !empty($previewSlots)
+                    ? $this->buildSessionsFromWeeklySchedule(
+                        (int) $studentClass->getKey(),
+                        $newStart,
+                        $newEnd,
+                        $previewSlots,
+                        $previewDur
+                    )
+                    : [];
+                if (!empty($previewSessions)) {
+                    $previewSessionCount = count($previewSessions);
+                    $previewTotalHours = (int) round(array_reduce($previewSessions, function ($carry, $session) {
+                        $start = substr((string) ($session['StartTime'] ?? ''), 0, 5);
+                        $end = substr((string) ($session['EndTime'] ?? ''), 0, 5);
+                        if ($start === '' || $end === '') {
+                            return $carry;
+                        }
+                        $startM = ((int) substr($start, 0, 2)) * 60 + (int) substr($start, 3, 2);
+                        $endM = ((int) substr($end, 0, 2)) * 60 + (int) substr($end, 3, 2);
+                        return $carry + max(0, $endM - $startM);
+                    }, 0) / 60);
+                }
+            }
+            $amount = $this->calculateCourseChargeFromRate(
+                $previewRate,
+                $previewRateUnit,
+                $previewSessionCount,
+                $previewTotalHours
+            );
+            if ($amount <= 0) {
+                $amount = max(0, (int) ($studentClass->Charge ?? 0));
+            }
 
             $proposedCourse = [
                 'schedule_mode' => 'date',
@@ -4668,6 +4773,23 @@ class StudentClassController extends Controller
         } catch (\Throwable $e) {
             return null;
         }
+    }
+
+    private function calculateCourseChargeFromRate(
+        float $rate,
+        string $rateUnit,
+        int $sessionCount,
+        int $totalHours
+    ): int {
+        if ($rate <= 0) {
+            return 0;
+        }
+
+        if ($rateUnit === 'hour') {
+            return (int) round($rate * max(0, $totalHours));
+        }
+
+        return (int) round($rate * max(0, $sessionCount));
     }
 
     /**
