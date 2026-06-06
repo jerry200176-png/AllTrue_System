@@ -45,7 +45,7 @@ jobs:
 
       - name: Run dependency review
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # 與 frontend「npm audit --audit-level=high」、backend composer HIGH/CRITICAL 精神一致
           fail-on-severity: high
