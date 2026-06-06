@@ -894,6 +894,8 @@ import {
   normalizeTimeTo30,
   computeEndTime,
 } from '../lib/calendarFormat.js';
+// #740 Step 3：教師配色（有狀態 memo）
+import { getTeacherColor } from '../lib/teacherColor.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
@@ -1162,21 +1164,8 @@ function syncRatePer2hBeforeSubmitModal() {
   syncRatePer2hToModel();
 }
 
-// Teacher colors
-const teacherColorMap = {};
-const palette = [
-  '#1E88E5', '#43A047', '#E53935', '#FB8C00', '#8E24AA',
-  '#00ACC1', '#D81B60', '#6D4C41', '#546E7A', '#F4511E',
-  '#3949AB', '#00897B', '#C0CA33', '#5E35B1', '#039BE5'
-];
-const getTeacherColor = (teacherId) => {
-  if (!teacherId) return '#90A4AE';
-  if (!teacherColorMap[teacherId]) {
-    const idx = Object.keys(teacherColorMap).length % palette.length;
-    teacherColorMap[teacherId] = palette[idx];
-  }
-  return teacherColorMap[teacherId];
-};
+// #740 Step 3：getTeacherColor（含 memo 快取 palette/teacherColorMap）已剝離至
+// ../lib/teacherColor.js（含 Cache Hit/Miss 單元測試 teacherColor.test.js）。
 
 // --- Helpers ---
 const getSubjectLabel = (val) => getSubjectText(val);
