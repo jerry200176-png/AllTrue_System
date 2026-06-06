@@ -121,4 +121,16 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 6. 修補優先計畫
 7. 附錄（工具版本、掃描日誌）
 
+---
+
+## 6. PII：DB dump 誤入 repo（2026-06-06 發現與決策）
+
+**發現**：3 個含 production PII 的 SQL dump 被 commit 進 repo——`docs/AllTrue_backup.sql`、`AllTrue (3).sql`（root）、`backend/storage/backups/prd-e-20260418-232201.sql`，含 `Student`/`StudentClass`/`StudentSingIn`/`Teacher` 等真實資料（姓名、RFID、LineID）。非憑證（dump 內無 `User`/password 表），故無「rotate」必要。
+
+**已處置**：三檔皆 `git rm` 出 HEAD；新增 `.gitignore`：`*.sql`（保留 `!scripts/*.sql` 查詢腳本）+ `backend/storage/backups/`，防再犯（GitHub「prevent repeats」步驟）。
+
+**歷史清除決策（風險取捨，對齊 GitHub 官方指引）**：GitHub 官方說 history rewrite 屬「heavy-handed」，憑證類 rotate 後常不必重寫；資料類雖只能靠重寫移除，但需權衡成本。本 repo 為 **private + 單一 committer + 無 fork/他人 clone**，且 `git filter-repo` 需 **force-push main**——而 force-push main 是本專案 **#1 P0 事故（事故 A，曾造成 production downtime）**，`deploy.yml` 綁 main、branch protection + enforce_admins 已開。結論：**暫不重寫歷史**，接受 private repo 的殘留風險（從 HEAD 移除 + 防再犯 + 本決策留檔）。**觸發重評**：repo 轉 public、新增協作者、或對外開源前，必須先做 filter-repo 清史（規劃維護窗 + 使用者明確批准，暫時關 branch protection）。
+
+---
+
 *本文件版本：v1.0 | 參考：OWASP TG v4.2、NIST SP 800-115、CVSS v3.1*

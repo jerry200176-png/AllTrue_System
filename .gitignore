@@ -40,6 +40,12 @@ frontend/ios/App/App/DerivedData/
 # Emergency backups (too large for git)
 backups/emergency/code_*.tar.gz
 
+# DB dumps / backups must never be committed — contain production PII
+# (see CHANGELOG 2026-06-06; query scripts under scripts/ are allowed)
+*.sql
+!scripts/*.sql
+backend/storage/backups/
+
 # OS / editor
 .DS_Store
 *.swp
