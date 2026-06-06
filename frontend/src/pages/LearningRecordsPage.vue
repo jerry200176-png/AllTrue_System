@@ -1275,6 +1275,7 @@ import {
 } from '../lib/sessionConsistency';
 import { resolveLearningRecordsDefaultWindowStart } from '../lib/learningRecordsWindow';
 import { resolveDeepLinkBranchId, shouldLiftDefaultWindowForDate, feedbackFocusState } from '../lib/learningRecordTarget';
+import { compareLearningRecords } from '../lib/learningRecordSort';
 import {
   saveDraft as _saveDraftToStorage,
   loadDraft as _loadDraftFromStorage,
@@ -1628,22 +1629,10 @@ const filteredGroupedRecords = computed(() => {
     bodyCache.set(r, v);
     return v;
   };
+  // 排序：需老師動作的（pending / changes_requested 且未填）置頂；
+  // 已核准（含空白）依日期新→舊（修正 in-app 155 / GitHub 742，見 lib/learningRecordSort.js）。
   const sortRecords = (list) => {
-    const missingBodyTier = (r) => {
-      if (!r || hasBody(r)) return 1;
-      if (r.Status === 'pending' || r.Status === 'changes_requested') return 0;
-      if (r.Status === 'approved') return 0;
-      return 1;
-    };
-    list.sort((a, b) => {
-      const isPendingA = missingBodyTier(a);
-      const isPendingB = missingBodyTier(b);
-      if (isPendingA !== isPendingB) return isPendingA - isPendingB;
-      const aDate = String(a?.SessionDate || '');
-      const bDate = String(b?.SessionDate || '');
-      if (aDate !== bDate) return bDate.localeCompare(aDate);
-      return String(b?.StartTime || '').localeCompare(String(a?.StartTime || ''));
-    });
+    list.sort((a, b) => compareLearningRecords(a, b, hasBody));
     return list;
   };
 
