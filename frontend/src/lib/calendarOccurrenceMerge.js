@@ -133,6 +133,9 @@ export function mergeWeekCalendarOccurrences({
     const cid = String(course?.id ?? '');
     if (!cid) continue;
     const courseSessionSet = sessionDateSet(cid);
+    const isHistoricalCourse = Number(course?.stop ?? course?.Stop ?? 0) === 1
+      || String(course?.status || '').toLowerCase() === 'inactive';
+    if (isHistoricalCourse && !courseSessionSet) continue;
     const days = ((course.days_of_week && course.days_of_week.length)
       ? course.days_of_week
       : [parseInt(course.day_of_week, 10) || 0]).map(Number);
