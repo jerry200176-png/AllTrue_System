@@ -46,18 +46,15 @@ class DiagnoseTeacherSignIn extends Command
             return self::SUCCESS;
         }
 
-        $this->table(['teacher_id', 'teacher_name', 'user_name', 'teacher_campus_id', 'user_campus_id', 'approved', 'admin', 'user_status', 'uc_rfid', 'legacy_rfid'], $teachers->map(function ($row) {
+        $this->table(['teacher_id', 'teacher_name', 'user_campus_id', 'approved', 'admin', 'user_status', 'uc_rfid'], $teachers->map(function ($row) {
             return [
                 $row->teacher_id,
                 $row->teacher_name,
-                $row->user_name,
-                $row->teacher_campus_id,
                 $row->user_campus_id,
                 $row->approved,
                 $row->admin,
                 $row->user_status,
                 $this->fingerprint($row->uc_rfid),
-                $this->fingerprint($row->legacy_rfid),
             ];
         })->all());
 
@@ -73,44 +70,38 @@ class DiagnoseTeacherSignIn extends Command
 
     private function findTeachers(?int $teacherId, string $teacherName, string $loginName, ?int $campusId)
     {
-        $query = DB::table('Teacher as t')
-            ->leftJoin('User as u', 'u.id', '=', 't.id')
-            ->leftJoin('UserCampus as uc', 'uc.UserID', '=', 't.id')
+        $query = DB::table('User as u')
+            ->join('UserCampus as uc', 'uc.UserID', '=', 'u.id')
             ->leftJoin('Campus as c', 'c.id', '=', 'uc.CampusID')
             ->select([
-                't.id as teacher_id',
-                DB::raw("COALESCE(t.T_Name, '') as teacher_name"),
-                DB::raw("COALESCE(u.Name, '') as user_name"),
-                't.CampusID as teacher_campus_id',
+                'u.id as teacher_id',
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'uc.CampusID as user_campus_id',
                 'uc.Approved as approved',
                 'uc.Admin as admin',
                 'u.status as user_status',
                 'uc.RFID as uc_rfid',
-                't.RFID as legacy_rfid',
                 'c.name as campus_name',
             ])
-            ->where('t.Enable', 1);
+            ->where('u.type', 'T')
+            ->where(function ($q) {
+                $q->whereNull('u.status')->orWhere('u.status', 'active');
+            });
 
         if ($teacherId) {
-            $query->where('t.id', $teacherId);
+            $query->where('u.id', $teacherId);
         }
         if ($teacherName !== '') {
-            $query->where(function ($q) use ($teacherName) {
-                $q->where('t.T_Name', 'like', "%{$teacherName}%")
-                    ->orWhere('u.Name', 'like', "%{$teacherName}%");
-            });
+            $query->where('u.Name', 'like', "%{$teacherName}%");
         }
         if ($loginName !== '') {
             $query->where('u.LoginName', $loginName);
         }
         if ($campusId) {
-            $query->where(function ($q) use ($campusId) {
-                $q->where('t.CampusID', $campusId)->orWhere('uc.CampusID', $campusId);
-            });
+            $query->where('uc.CampusID', $campusId);
         }
 
-        return $query->orderBy('t.id')->limit(20)->get();
+        return $query->orderBy('u.id')->limit(20)->get();
     }
 
     private function printTeacherSignIns(int $teacherId, string $date): void
@@ -140,7 +131,6 @@ class DiagnoseTeacherSignIn extends Command
         $users = DB::table('User as u')
             ->leftJoin('UserCampus as uc', 'uc.UserID', '=', 'u.id')
             ->leftJoin('Campus as c', 'c.id', '=', 'uc.CampusID')
-            ->leftJoin('Teacher as t', 't.id', '=', 'u.id')
             ->where('u.LoginName', $loginName)
             ->orderBy('u.id')
             ->get([
@@ -153,19 +143,14 @@ class DiagnoseTeacherSignIn extends Command
                 'uc.Admin as admin',
                 'uc.RFID as uc_rfid',
                 'c.name as campus_name',
-                't.id as teacher_id',
-                't.T_Name as teacher_name',
-                't.CampusID as teacher_campus_id',
-                't.Enable as teacher_enable',
-                't.RFID as legacy_rfid',
             ]);
 
-        $this->info("Login fallback User/UserCampus/Teacher rows: {$users->count()}");
+        $this->info("Login fallback User/UserCampus rows: {$users->count()}");
         if ($users->isEmpty()) {
             return;
         }
 
-        $this->table(['user_id', 'user_name', 'user_type', 'user_status', 'user_campus_id', 'campus_name', 'approved', 'admin', 'uc_rfid', 'teacher_id', 'teacher_name', 'teacher_campus_id', 'teacher_enable', 'legacy_rfid'], $users->map(fn ($row) => [
+        $this->table(['user_id', 'user_name', 'user_type', 'user_status', 'user_campus_id', 'campus_name', 'approved', 'admin', 'uc_rfid'], $users->map(fn ($row) => [
             $row->user_id,
             $row->user_name,
             $row->user_type,
@@ -175,17 +160,12 @@ class DiagnoseTeacherSignIn extends Command
             $row->approved,
             $row->admin,
             $this->fingerprint($row->uc_rfid),
-            $row->teacher_id,
-            $row->teacher_name,
-            $row->teacher_campus_id,
-            $row->teacher_enable,
-            $this->fingerprint($row->legacy_rfid),
         ])->all());
     }
 
     private function printRelatedRfidRows(object $teacher, string $date): void
     {
-        $rfids = collect([$teacher->uc_rfid, $teacher->legacy_rfid])
+        $rfids = collect([$teacher->uc_rfid])
             ->filter(fn ($rfid) => is_string($rfid) && trim($rfid) !== '')
             ->map(fn ($rfid) => trim($rfid))
             ->unique()
