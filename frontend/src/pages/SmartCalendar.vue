@@ -1919,12 +1919,16 @@ const resolveTeacherName = (tid) => {
 };
 
 const isCourseActiveForCalendar = (course) => {
-  // Calendar should not render explicitly paused/closed courses.
-  // Legacy payloads may expose either `status=inactive` or Stop/stop=1.
+  // Calendar day view hides historical courses; week view keeps them so
+  // past ClassSession rows remain visible after close/settle.
   const status = String(course?.status || '').toLowerCase();
-  if (status === 'inactive') return false;
+  const teacherStatus = String(course?.teacher_status || '').toLowerCase();
+  if (teacherStatus === 'suspended' || teacherStatus === 'inactive' || teacherStatus === 'disabled') return false;
   const stopFlag = Number(course?.stop ?? course?.Stop ?? 0);
-  return stopFlag !== 1;
+  if (status === 'inactive' || stopFlag === 1) {
+    return viewMode.value === 'week';
+  }
+  return true;
 };
 
 const filteredCourses = computed(() => {
@@ -2024,6 +2028,7 @@ const loadCourses = async () => {
     day_time_slots: Array.isArray(c.day_time_slots) && c.day_time_slots.length ? c.day_time_slots : null,
     student_name: c.student_name || '—',
     teacher_name: c.teacher_name || '未指派',
+    teacher_status: String(c.teacher_status || '').toLowerCase(),
     weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
     first_class_date: c.first_class_date || c.StartDate || null,
     end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : null),

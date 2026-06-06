@@ -222,6 +222,56 @@ class ScheduleGuardrailsTest extends TestCase
         $res->assertStatus(201);
     }
 
+    public function test_schedule_update_excludes_same_student_from_capacity_guard(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-guard-update-self@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-guard-update-self@example.com');
+        $student = $this->createStudent(1, '更新同一筆學生');
+
+        $courseId = $this->createOneOnTwoCourse($student->id, $teacherId, '20:00');
+        $date = '2026-06-09';
+
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $date,
+            'StartTime' => '20:00',
+            'EndTime' => '22:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $scheduleId = (int) DB::table('schedules')->insertGetId([
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => 2,
+            'start_time' => '20:00',
+            'end_time' => '22:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'scheduled',
+            'type' => 'normal',
+            'deduction' => 1,
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => $courseId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->putJson("/api/v1/schedules/{$scheduleId}", [
+            'schedule_date' => $date,
+            'start_time' => '20:00',
+            'end_time' => '22:00',
+            'status' => 'scheduled',
+            'class_type' => 'one_on_one',
+        ]);
+
+        $res->assertOk();
+    }
+
     /**
      * 調課寫 schedules 時，若請求仍帶合約 TeacherID（正班）但鏈結上已有「代課 scheduled」，
      * 伺服器改用代課老師檢 capacity — 避免因正班同日已滿而誤擋『代課老師為空』的跨日調課。
