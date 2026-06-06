@@ -45,8 +45,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ### 新功能 / Bug 修復
 1. `.cursor/rules/plan-as-prd-cross-functional.mdc` — PRD 14 節格式
-2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP
-3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑
+2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP（**§B0：修 bug 前必翻歷史 + 認領復發家族，降低復發率**）
+3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53
 
 ### 後端開發
