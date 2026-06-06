@@ -213,6 +213,12 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 3. 修任一家族成員，PR 必須引用本節家族代號（F1～F6）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
 4. DB 文字欄若為 `utf8mb3`，所有以使用者輸入做 `like` 的查詢，**先濾掉非 BMP（4-byte）字元**（F6）。
 
+**度量與工具（業界對齊，2026-06-06）：**
+- **復發率＝主指標**：同根因 6 個月內再現的比例（業界 postmortem 通用 KPI）。本節家族成員再現即計入；目標逐季下降。
+- **修 bug 前流程**：見 `.cursor/rules/bug-fix-plan.mdc` §B0（查 closed issues + 認領家族 + MemPalace + Sentry regression）。
+- **Sentry**：crash 類請用 Sentry「Resolve」——resolved 後再現會**自動標 regression** 並通知；issue 連回對應 GitHub issue 保留脈絡（this failed before, see #N）。
+- **本節即本專案的 known-issues registry**（OSS 無獨立工具）；新家族成員修完務必回寫本節，讓下一個 AI 不重學。
+
 ---
 
 ### R11. 家長入口評量科目名稱：LearningRecord.Subject 必須過 mapSubjectLabel
