@@ -158,19 +158,8 @@
 
       <!-- ── Day View (default) ── -->
       <template v-if="!isWeekOverview">
-        <div class="day-tabs-bar">
-          <button
-            v-for="(dayName, idx) in dayNames"
-            :key="idx"
-            type="button"
-            :class="['day-tab', { active: selectedDayIdx === idx }]"
-            @click="selectedDayIdx = idx"
-          >
-            <span class="day-tab-name">{{ dayName }}</span>
-            <span class="day-tab-date">{{ getDisplayDateString(idx + 1) }}</span>
-            <span v-if="getDayCourseCount(idx + 1) > 0" class="day-tab-badge">{{ getDayCourseCount(idx + 1) }}</span>
-          </button>
-        </div>
+        <!-- #740 Step 4b：日分頁列剝離為 presentational 元件 DayTabsBar -->
+        <DayTabsBar :tabs="dayTabs" :active-idx="selectedDayIdx" @select="selectedDayIdx = $event" />
         <div class="teacher-grid-wrapper" data-guide="calendar-grid">
           <div v-if="visibleTeachers.length === 0" class="teacher-empty">
             <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
@@ -869,6 +858,7 @@ import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTea
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue';
+import DayTabsBar from '../components/calendar/DayTabsBar.vue';
 import {
   fetchTeacherAvailability,
   undoSubstitute,
@@ -1601,6 +1591,13 @@ const getDayCourseCount = (dow) => {
     !isSessionCancelledOnDate(c, ymd)
   ).length;
 };
+
+// #740 Step 4b：DayTabsBar 的資料來源（父層 Container 計算，子層純渲染）
+const dayTabs = computed(() => dayNames.map((name, idx) => ({
+  name,
+  dateLabel: getDisplayDateString(idx + 1),
+  count: getDayCourseCount(idx + 1),
+})));
 
 // Week Overview helpers
 const getCoursesForWeekCell = (dow, hour) => {
@@ -3912,57 +3909,8 @@ onMounted(() => {
 .btn-primary:active { transform: scale(0.98); }
 
 /* ----- Day Tabs ----- */
-.day-tabs-bar {
-  display: flex;
-  gap: 2px;
-  padding: 12px 16px 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.day-tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 10px 16px 8px;
-  border: none;
-  border-radius: 10px 10px 0 0;
-  background: var(--bg-muted, #f0f1f3);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-light, #64748b);
-  transition: background 0.2s, color 0.2s;
-  position: relative;
-  min-width: 72px;
-  flex-shrink: 0;
-}
-.day-tab:hover { background: #e8e9ec; color: var(--text-color, #1a1a1a); }
-.day-tab.active {
-  background: #fff;
-  color: var(--primary, #2563eb);
-  box-shadow: 0 -2px 0 var(--primary, #2563eb) inset;
-}
-.day-tab-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
-.day-tab-date { font-size: 11px; font-weight: 400; opacity: 0.8; line-height: 1.2; }
-.day-tab-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  background: var(--primary, #2563eb);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  line-height: 1;
-}
-.day-tab.active .day-tab-badge { background: #1d4ed8; }
+/* #740 Step 4b：.day-tabs-bar / .day-tab*（base + 768px RWD）已隨 markup 搬移至
+   components/calendar/DayTabsBar.vue（.active 改由 activeIdx 驅動） */
 
 /* ----- Week/Teacher Grid View ----- */
 .week-view {
@@ -4717,17 +4665,6 @@ onMounted(() => {
     flex-wrap: wrap;
     gap: 6px;
   }
-  .day-tabs-bar {
-    padding: 8px 8px 0;
-    gap: 1px;
-  }
-  .day-tab {
-    min-width: 56px;
-    padding: 8px 8px 6px;
-    font-size: 11px;
-  }
-  .day-tab-name { font-size: 11px; }
-  .day-tab-date { font-size: 9px; }
   .teacher-col { min-width: 80px; }
   .week-view { overflow-x: auto; }
   .teacher-grid-wrapper { overflow-x: auto; }
@@ -4774,11 +4711,6 @@ onMounted(() => {
     min-width: 0;
     font-size: 13px;
   }
-  .day-tabs-bar { padding: 6px 4px 0; }
-  .day-tab { min-width: 44px; padding: 6px 4px 4px; }
-  .day-tab-name { font-size: 10px; }
-  .day-tab-date { font-size: 8px; }
-  .day-tab-badge { min-width: 14px; height: 14px; font-size: 8px; }
   .teacher-col { min-width: 0; }
   .time-col { min-width: 36px; width: 36px; }
   .time-label { font-size: 9px; padding: 2px 1px 0 0; }
