@@ -957,6 +957,7 @@ class ScheduleController extends Controller
                 'schedule_date' => $merged['schedule_date'] ?? null,
                 'start_time' => $merged['start_time'] ?? null,
                 'end_time' => $merged['end_time'] ?? null,
+                'exclude_student_id' => (int) ($merged['student_id'] ?? 0),
                 'exclude_schedule_id' => (int) $schedule->id,
             ]);
             if (!empty($guardConflicts)) {
