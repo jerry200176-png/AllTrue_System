@@ -23,18 +23,19 @@
 
 ## 1. Identity & Auth 層
 
-### 1.1 Teacher.id === User.id（同一個人的兩張表）
+### 1.1 老師身份權威：User + UserCampus
 
 ```
-Teacher table  (id=17, T_Name='鄭翔祐', CampusID=1)
-                 ↕ id 相同
-User table     (id=17, Name='鄭翔祐', type='T', LoginName='...')
+User table       (id=17, Name='鄭翔祐', type='T', LoginName='...', LineID='...')
+UserCampus table (UserID=17, CampusID=1, RFID='...')
 ```
 
-**實際驗證（2026-04-23）**：SELECT u.id, t.id FROM User u JOIN Teacher t ON t.id = u.id WHERE u.type='T' → 全部吻合，無例外。
+**決策（2026-06-06）**：`Teacher` table 已退為 legacy/backfill 來源；runtime 老師資料不可再 join 或寫入 `Teacher` table。
 
 **後果**：
-- `StudentClass.TeacherID` / `StudentSingIn.TeacherID` 存的是 `User.id`（因為前端選老師從 `/api/v1/teachers` → `ProfileController` → 查 `User` table）
+- `StudentClass.TeacherID` / `StudentSingIn.TeacherID` / `TeacherSingIn.TeacherID` / `schedules.teacher_id` 存的是 `User.id`
+- 老師姓名、手機、LINE ID 取 `User`
+- 老師分校、RFID 取 `UserCampus`
 - `AttendanceController` 用 `auth_teacher_id` 過濾，等同於過濾 `User.id`
 
 ### 1.2 auth_teacher_id 的解析路徑
@@ -319,11 +320,16 @@ class StudentSignIn extends Model  // app/Models/StudentSignIn.php
 
 一律用 Model class，勿直接寫 SQL 用 `StudentSignIn`（表名是 `StudentSingIn`）。
 
-### G-002：Teacher table 與 User table 共用同一 id（歷史遺留）
+### G-002：Teacher table 是 legacy archive / backfill source
 
-**來源**：系統早期使用獨立 Teacher table，後遷移到 User table 管理帳號，但 Teacher table 未廢棄，兩表 id 值保持一致（migration 同步寫入）。
+**來源**：系統早期使用獨立 `Teacher` table，後遷移到 `User` / `UserCampus` 管理帳號、分校與 RFID。2026-06-06 Phase 2 後，runtime 不再依賴 `Teacher` table。
 
-**影響**：任何 join Teacher 或 User 用同一個 ID 都能命中對應記錄。
+**強制規則**：
+- 老師身份與姓名：`User.id` / `User.Name`
+- 老師 LINE：`User.LineID`
+- 老師分校與 RFID：`UserCampus.UserID` / `UserCampus.CampusID` / `UserCampus.RFID`
+- `TeacherSingIn.TeacherID` 仍是 `User.id`，不代表 `Teacher.id`
+- `Teacher` table 只可在 migration/one-time backfill 中讀取，不可在 controller/service/runtime 測試 fixture 中建立新依賴。
 
 ### G-003：StudentSingIn.TeacherID = null 記錄老師看不見
 
@@ -386,7 +392,7 @@ backfill 補建的 StudentSingIn `SignInDT` 設為 session.StartTime（非實際
 
 | 概念 | DB 欄位 | 對應到哪個 table | 備註 |
 |---|---|---|---|
-| 登入老師 | `User.id` = `Teacher.id` | User + Teacher（兩表 ID 相同） | 詳見 §1.1 |
+| 登入老師 | `User.id` | User | 詳見 §1.1 |
 | auth_teacher_id | `User.id` | User table | 非 Teacher table 的 T_Name 欄位 |
 | StudentClass.TeacherID | `User.id` | User（前端從 `/api/v1/teachers` 取，實際查 User table） | 若 null → StudentSingIn.TeacherID 也 null |
 | StudentSingIn.TeacherID | `User.id` | User | null 時老師查不到 |

@@ -17,6 +17,7 @@ class User extends Model
         'employment_type',
         'status',
         'phone',
+        'LineID',
         'AvatarUrl',
         'TeachingSessionCount',
         'MustChangePassword',

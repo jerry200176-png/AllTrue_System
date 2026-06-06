@@ -266,15 +266,6 @@ class SwipeRfidEdgeCaseTest extends TestCase
             'type' => 'T',
             'phone' => '0900000000',
         ]);
-        DB::table('Teacher')->insert([
-            'id' => $teacherId,
-            'CampusID' => $this->campus->id,
-            'T_Name' => '黃芝琳',
-            'RFID' => null,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
-        ]);
         DB::table('UserCampus')->insert([
             'CampusID' => $this->campus->id,
             'UserID' => $teacherId,

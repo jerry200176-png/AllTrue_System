@@ -108,11 +108,7 @@ class RecoverTeacherRfidCollisionSignIns extends Command
                 $join->on('uc.CampusID', '=', 'si.CampusID')
                     ->on('uc.RFID', '=', 's.RFID');
             })
-            ->join('Teacher as t', function ($join) {
-                $join->on('t.id', '=', 'uc.UserID')
-                    ->where('t.Enable', '=', 1);
-            })
-            ->leftJoin('User as u', 'u.id', '=', 'uc.UserID')
+            ->join('User as u', 'u.id', '=', 'uc.UserID')
             ->select([
                 'si.id as student_signin_id',
                 'si.StudentID as student_id',
@@ -122,12 +118,16 @@ class RecoverTeacherRfidCollisionSignIns extends Command
                 'si.SignInDT as sign_in_dt',
                 'si.SignOutDT as sign_out_dt',
                 'uc.UserID as teacher_id',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
             ])
             ->whereDate('si.SignInDT', $date)
             ->whereNull('si.VoidedAt')
             ->whereNotNull('s.RFID')
             ->where('s.RFID', '!=', '')
+            ->where('u.type', 'T')
+            ->where(function ($q) {
+                $q->whereNull('u.status')->orWhere('u.status', 'active');
+            })
             ->where(function ($q) {
                 $q->where('uc.Approved', true)->orWhereNull('uc.Approved');
             })
