@@ -516,6 +516,45 @@ class MonthlyRenewTest extends TestCase
         );
     }
 
+    public function test_renew_monthly_recalculates_session_count_and_charge_from_new_period_slots(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-recalc@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'     => 'date',
+            'SessionCount'     => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'   => 31,
+            'monthly_sessions' => 8,
+            'StartDate'        => '2026-04-01',
+            'EndDate'          => '2026-04-30',
+            'week'             => 1, // Monday
+            'time'             => '18:00:00',
+            'SessionDuration'  => 120,
+            'Paid'             => 1,
+            'Charge'           => 13200, // legacy value from 8 sessions
+            'Rate'             => 1650,
+            'rate_unit'        => 'session',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-05-31',
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('invoice.total_amount', 6600);
+
+        $newCourseId = (int) $res->json('new_course.id');
+        $newCourse = StudentClass::findOrFail($newCourseId);
+        $this->assertSame(4, (int) $newCourse->SessionCount);
+        $this->assertSame(4, (int) $newCourse->RemainingSessions);
+        $this->assertSame(6600, (int) $newCourse->Charge);
+    }
+
     public function test_legacy_monthly_course_without_charge_creates_zero_invoice(): void
     {
         $token = $this->createDirectorToken([1], 'director-invoice-legacy@example.com');
