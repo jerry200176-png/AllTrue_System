@@ -58,6 +58,7 @@ class StudentClassIndexChargeFallbackTest extends TestCase
             'SessionCount' => 8,
             'RemainingSessions' => 8,
             'SessionDuration' => 120,
+            'TotalHours' => 16,
             'ScheduleMode' => 'count',
             'ClassType' => 'one_on_three',
             'Rate' => 1000,
