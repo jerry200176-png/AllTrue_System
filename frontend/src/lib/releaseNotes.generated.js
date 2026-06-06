@@ -4,6 +4,28 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.06.06",
+    "date": "2026-06-06",
+    "title": "2026.06.06 版本更新",
+    "summary": "評量新增「上一堂摘要」+ 首批四頁視覺治理（）",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "評量新增「上一堂摘要」+ 首批四頁視覺治理（）"
+        ]
+      }
+    ],
+    "items": [
+      "評量新增「上一堂摘要」+ 首批四頁視覺治理（）"
+    ]
+  },
+  {
     "version": "2026.06.01",
     "date": "2026-06-01",
     "title": "2026.06.01 版本更新",
