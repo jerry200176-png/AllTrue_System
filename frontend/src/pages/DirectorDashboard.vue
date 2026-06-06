@@ -2406,31 +2406,33 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   font-weight: 800;
   cursor: pointer;
-  background: linear-gradient(135deg, #0f172a, #334155);
+  background: var(--ds-primary, #EF6C00);
   color: #fff;
-  transition: opacity 0.15s;
+  transition: background 0.15s, transform 0.1s;
 }
-.btn-p:hover { opacity: 0.92; }
+.btn-p:hover { background: var(--ds-primary-deep, #E65100); }
+.btn-p:active { transform: scale(0.98); }
 .btn-d {
   border: none;
   border-radius: 999px;
   font-weight: 800;
   cursor: pointer;
-  background: #ef4444;
+  background: var(--ds-danger, #e11d48);
   color: #fff;
-  transition: opacity 0.15s;
+  transition: background 0.15s, transform 0.1s;
 }
-.btn-d:hover { opacity: 0.88; }
+.btn-d:hover { background: color-mix(in srgb, var(--ds-danger, #e11d48) 86%, #000000); }
+.btn-d:active { transform: scale(0.98); }
 .btn-o {
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  border: 1px solid var(--ds-hairline, #e3e8ee);
   border-radius: 999px;
   font-weight: 800;
   cursor: pointer;
-  background: rgba(255,255,255,0.88);
-  color: #475569;
+  background: var(--ds-canvas, #ffffff);
+  color: var(--ds-ink-secondary, #273951);
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.btn-o:hover { background: #f8fafc; border-color: rgba(15,23,42,0.18); color: #0f172a; }
+.btn-o:hover { background: var(--ds-canvas-soft, #f6f9fc); border-color: color-mix(in srgb, var(--ds-primary, #EF6C00) 28%, #ffffff); color: var(--ds-ink, #0d253d); }
 
 .btn-sm { padding: 6px 14px; font-size: 12px; }
 .btn-xs { padding: 4px 10px; font-size: 11px; }

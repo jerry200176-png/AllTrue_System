@@ -423,6 +423,7 @@ class LearningRecordController extends Controller
         $subjectName = $subjectId
             ? DB::table('Subject')->where('id', $subjectId)->value('Subject_Name')
             : null;
+        $regularTeacherId = (int) ($record->studentClass->TeacherID ?? 0);
         $effectiveTeacherId = $this->resolveEffectiveInstructorUserId($record);
         $teacherName = DB::table('Teacher')->where('id', $effectiveTeacherId)->value('T_Name')
             ?? DB::table('User')->where('id', $effectiveTeacherId)->value('Name')
@@ -433,10 +434,15 @@ class LearningRecordController extends Controller
                 'id' => (int) $record->id,
                 'student_class_id' => (int) $record->StudentClassID,
                 'session_date' => $record->SessionDate ? Carbon::parse($record->SessionDate)->toDateString() : null,
+                'effective_teacher_id' => $effectiveTeacherId,
                 'teacher_name' => $teacherName,
+                'is_substitute' => $regularTeacherId > 0 && $effectiveTeacherId > 0 && $regularTeacherId !== $effectiveTeacherId,
                 'subject' => $subjectName ?? $record->Subject,
+                'homework_status' => (string) ($record->HomeworkStatus ?? ''),
+                'quiz_score' => (string) ($record->QuizScore ?? ''),
                 'progress' => (string) ($record->Progress ?? ''),
                 'next_homework' => (string) ($record->NextHomework ?? ''),
+                'next_week_test_scope' => (string) ($record->NextWeekTestScope ?? ''),
                 'comment' => (string) ($record->Comment ?? ''),
             ],
         ]);
