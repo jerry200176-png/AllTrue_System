@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-06-06
+---
+
 # Pricing Contract (Course Management)
 
 Date: 2026-04-10

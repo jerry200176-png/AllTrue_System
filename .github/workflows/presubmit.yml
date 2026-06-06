@@ -56,11 +56,19 @@ jobs:
       # ─────────────────────────────────────────────
       - name: "[CHECK 2] PR size check (≤ 700 lines hard limit)"
         run: |
+          BRANCH="${GITHUB_HEAD_REF}"
+          # docs 整併分支（chore/docs-*）：CHANGELOG 滾動歸檔與 archive 屬「機械搬移」，
+          # 非邏輯複雜度，不計入 size（對齊大公司 size gate 排除 generated/vendored/歷史）
+          EXTRA_EXCLUDE=()
+          if echo "$BRANCH" | grep -qE '^chore/docs-'; then
+            EXTRA_EXCLUDE=(':!docs/CHANGELOG.md' ':!docs/archive/**')
+          fi
           # 計算加減總行數，排除 lock 檔和純資料檔
           TOTAL=$(git diff --numstat origin/main...HEAD \
             -- ':!*.lock' ':!package-lock.json' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
+               "${EXTRA_EXCLUDE[@]}" \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
 
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"

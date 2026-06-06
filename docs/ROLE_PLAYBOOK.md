@@ -1,3 +1,9 @@
+---
+owner: jerry (CEO)
+review_cycle: quarterly
+last_reviewed: 2026-06-06
+---
+
 # Role Playbook（角色操作手冊）
 
 本文件給新進同仁、外部協作者、以及 AI agent 使用。  
