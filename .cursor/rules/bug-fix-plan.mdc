@@ -15,6 +15,26 @@ alwaysApply: false
 
 ---
 
+## 🔁 B0 強制前置：修 bug 前必翻歷史（降低復發率）
+
+> **業界共識**（postmortem / bug-fix-by-test）：降低復發＝「把一次性教訓變成永久回歸測試」＋「新失敗連回舊脈絡（this failed before, see #N）」＋「量測同根因 6 個月內復發率」。本專案 2026-06-06 批次 8 件回報 **7 件有前例**＝復發率過高，故設此前置關卡。
+> OSS 無獨立 known-issues registry；本專案的 registry＝`docs/AI_REGRESSION_LESSONS.md` §復發家族。Sentry 自帶 regression 偵測（resolved 後再現自動標 regression），crash 類務必善用。
+
+**寫 §0 根因前，必做四步（缺任一 = 不合格）：**
+
+1. **查 closed issues**：`gh issue list --state all --search "<關鍵字/學生名/模組>"`，找同型已修單與其修法。
+2. **認領復發家族**：讀 `docs/AI_REGRESSION_LESSONS.md` §復發家族，標出屬 F1–F6 哪一個（或宣告「首發、無前例」），並讀對應 §Rxx 全文。
+3. **查記憶**：`~/.local/bin/mempalace search "<關鍵字>"`（回顧過去決策/對話）。
+4. **查 Sentry**（crash 類）：確認該 issue 是否為 resolved 後再現的 regression。
+
+**強制產出：**
+- §0 根因表新增一列 **「歷史比對」**：命中的舊 issue # / 家族代號 / §Rxx，或「首發無前例」。
+- **修法必須對齊家族不變式**：屬某家族者，修復範圍與回歸測試必須涵蓋該家族的不變式，**不可只修觸發 symptom**（否則必再復發）。
+- **回歸測試＝revert-proof**（見 §10）：git stash 後該測試至少 1 case fail。
+- **新 bug 若無前例但可能再犯** → 修完在 §復發家族新增一條/或新 §Rxx，把這次變成下一個 AI 的前例（前人種樹）。
+
+---
+
 ## ⛔ 必填章節清單（缺任何一節 = 不合格）
 
 | # | 章節 | 關鍵約束 |
@@ -52,6 +72,7 @@ alwaysApply: false
 | 錯誤行為 | [系統現在做什麼] |
 | 預期行為 | [系統應該做什麼] |
 | 影響範圍 | [哪些角色 / 哪些 API / 哪些資料受影響] |
+| **歷史比對** | [B0 結果：命中舊 issue #／復發家族 F1–F6／§Rxx；或「首發無前例」] |
 | B1 偵查來源 | [引用 B1 報告的根因候選編號，或「本計畫整合 B1 內容」] |
 ```
 
