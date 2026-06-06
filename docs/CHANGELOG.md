@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-07 — ops(rollback): 回滾就緒度檢查 + Rollback Runbook（#733）
+
+新增「回滾就緒度」自動檢查與標準作業程序文件，確保萬一某次更新出問題時，系統能用最短時間、最小破壞地恢復到前一個正常版本。
+
+開發備註：新增 `scripts/rollback-readiness.sh`（4 項非破壞性檢查：deploy.yml 自動回滾區塊完整、全 migration 有 down()、最新 commit 可乾淨 git revert、DB 備份還原 workflow 存在）+ `rollback-readiness.yml`（月排程 / 手動 / 改 deploy.yml 或 migration 的 PR 觸發）+ `docs/RUNBOOK_ROLLBACK.md`（含自動/手動回滾 SOP、DB 回滾、MTTR 量測）。零 production 風險。Refs #733。
+
 ## 2026-06-07 — test(frontend): 導入 Vitest 元件測試基礎建設（#729）
 
 新增前端元件自動化測試護欄，未來改動共用 UI 元件若破壞行為，CI 會在合併前擋下，降低介面回歸風險。

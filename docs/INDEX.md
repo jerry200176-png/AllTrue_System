@@ -76,7 +76,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
 | 部署 SOP（Phase 7） | `docs/OPERATIONS_RUNBOOK.md §A-B` |
-| 緊急事故 / 回滾 | `docs/DANGEROUS_OPERATIONS.md` |
+| 緊急事故 / 危險操作 | `docs/DANGEROUS_OPERATIONS.md` |
+| **回滾 SOP（何時/如何回滾 + MTTR）** | `docs/RUNBOOK_ROLLBACK.md`；就緒度檢查 `scripts/rollback-readiness.sh` |
 | Dependabot merge SOP / SLA | `docs/OPERATIONS_RUNBOOK.md §B0 / §T` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
