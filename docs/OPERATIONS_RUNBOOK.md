@@ -139,6 +139,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
 13. **WSL2 self-hosted runner 只跑 CI**：`wsl2-jerry-alltrue` labels = `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，只可用於 `ci.yml` / `presubmit.yml` / `codeql.yml`。`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上持有 production deploy secrets 或執行部署。
 14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
+15. **E2E 只在前端 PR 跑（#730）**：`ui-smoke.yml` 在 PR 一律啟動（穩定 check 名稱、可當 required），但內部 `Detect frontend diff` 判斷是否動到 `frontend/src/**` 或 `frontend/e2e/**`；沒動就秒過、不下載 Chromium、不跑 Playwright；有動才跑。**刻意不用 workflow 層 `paths:`**（path-filtered 的 required check 在不符路徑時會永遠 pending、卡 merge）。週排程 + 手動觸發仍完整跑。
 
 **Token Conservation SOP**
 - 先讀 `docs/INDEX.md`，再按任務讀對應章節；不要全讀大型文件或完整 transcript。
