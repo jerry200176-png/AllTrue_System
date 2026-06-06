@@ -45,6 +45,16 @@
 | **工作流** | `.github/workflows/`：`ci.yml`、`presubmit.yml`、`deploy.yml` 等；deploy 僅在合併後且有 deployable diff 時執行。 |
 | **Dependency Review** | [`.github/workflows/dependency-review.yml`](.github/workflows/dependency-review.yml)：可選用 GitHub 官方的 **dependency-review**（與 `npm audit` / `composer audit` 互補）。需 **Dependency graph + GitHub Advanced Security**（私人 repo 常需付費方案）；啟用後在 **Repo settings → Variables → Actions** 設 `ENABLE_DEPENDENCY_REVIEW=true`，否則 workflow 只發 notice、不阻擋合併。主線供應鏈 gate 仍以 `ci.yml` 的 audit 為準。 |
 
+### 單人 repo 的 Review 替代機制（#736）
+
+無第二位強制 reviewer 時，用三層「自動代理人 + 強制檢查」近似大廠「每個 CL 至少一個 reviewer + 高風險 owner 把關」：
+
+1. **自動 AI review**：每個 PR 由 AI bot（Bugbot / Copilot review）自動留 review comment（repo Settings 端啟用，屬一次性管理者設定）。
+2. **高風險檔強制測試（required）**：[`.github/workflows/high-risk-test-gate.yml`](.github/workflows/high-risk-test-gate.yml)——觸碰堂數扣除 / 繳費 / 刷卡 / 核准同步 / migration 但同 PR 無 `backend/tests/**` 時**擋 merge**。例外需加 label `risk-ack-no-test` 並於描述說明。設為 required：Settings → Branches → main → Require status checks → 勾 `High-risk change requires tests`。
+3. **Self-review checklist**：PR 模板的 Checklist / Design System / Threat Note 三段，提交者以 reviewer 視角逐項自審（多校區隔離、tabular-nums、一區一 CTA、無 raw hex）。
+
+> `missing-tests-warn.yml` 仍對「所有 production code 無測試」做 advisory 提醒；`high-risk-test-gate.yml` 則對高風險子集做 blocking。兩者互補。
+
 ### 再靠近一點大廠（選配、不強制）
 
 - **Merge queue**：多人協作時在 **Settings → Rules** 開啟，減少「綠燈但合併後 main 紅」。
