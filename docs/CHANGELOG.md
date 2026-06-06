@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-07 — test(frontend): 導入 Vitest 元件測試基礎建設（#729）
+
+新增前端元件自動化測試護欄，未來改動共用 UI 元件若破壞行為，CI 會在合併前擋下，降低介面回歸風險。
+
+開發備註：導入 `vitest` + `@vue/test-utils` + `jsdom`。新增 `vitest.config.js`（範圍限 `components/**/__tests__`，與 `src/lib/*.test.js` 純函式測試分離）、4 個 design-system 元件測試（AtButton/AtCard/AtEmpty/AtMetric，共 18 cases）、`npm run test:unit` script，並以 blocking step 納入 `ci.yml` 的 `vite-build` job。Closes #729。
+
 ## 2026-06-06 — fix(learning): 學習評量表日期排序修正（in-app #155）
 
 學習評量表不再把「已核准但內容空白」的舊評量頂到最上面；需要填寫的優先顯示，已核准的依上課日期由新到舊排列，日期不再看起來亂。
