@@ -460,7 +460,8 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 ### R33. 老師每分校 RFID 不可被學生 RFID 靜默吃掉
 
 - `SwipeRfidController` 若先查 `Student.RFID`，同一張卡同時綁到學生與 `UserCampus.RFID` 時，老師本人刷卡會被寫成 `StudentSingIn`，不會建立 `TeacherSingIn`，主任「老師打卡」列表看不到。
-- **強制規則**：同分校 `UserCampus.RFID` 明確命中有效老師時，必須優先走老師打卡；legacy `Teacher.RFID` 仍為學生查詢後的備援。
+- **強制規則**：同分校 `UserCampus.RFID` 明確命中有效老師時，必須優先走老師打卡；`Teacher.RFID` 已由 `UserCampus.RFID` 完全取代，runtime 不可再 fallback 到 `Teacher` table。
+- **強制規則**：`StudentClass.TeacherID`、`StudentSingIn.TeacherID`、`TeacherSingIn.TeacherID`、`schedules.teacher_id` 一律存 `User.id`。老師姓名/手機/LINE 取 `User`，老師分校/RFID 取 `UserCampus`；`Teacher` table 只可作 migration backfill/legacy archive 來源。
 - **補救規則**：修復前已被吃掉的歷史資料不可手工直接改 DB；先跑 `teacher-signin:recover-rfid-collisions --date=YYYY-MM-DD --teacher-id=<id>` dry-run，確認候選後才可在備份後加 `--apply`，且工具只新增 `TeacherSingIn`，不刪除原始 `StudentSingIn`。
 - **測試必補**：RFID 同時存在於同分校學生與老師 `UserCampus.RFID` 時，API 回 `type=teacher` 且只建立 `TeacherSingIn`。
 
