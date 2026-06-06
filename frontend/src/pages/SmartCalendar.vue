@@ -22,14 +22,8 @@
           </div>
           <div class="toolbar-group">
             <span class="toolbar-label">週次</span>
-            <div class="week-nav">
-              <button type="button" class="week-nav-btn" @click="prevWeek">‹ 上週</button>
-              <select v-model.number="displayWeek" class="week-select">
-                <option :value="0">全部</option>
-                <option v-for="w in weekOptions" :key="w.value" :value="w.value">{{ w.label }}</option>
-              </select>
-              <button type="button" class="week-nav-btn" @click="nextWeek">下週 ›</button>
-            </div>
+            <!-- #740 Step 4d：週次導航剝離為 presentational 元件 -->
+            <WeekNavBar v-model="displayWeek" :week-options="weekOptions" @prev="prevWeek" @next="nextWeek" />
           </div>
           <div class="toolbar-group">
             <span class="toolbar-label">跳至日期</span>
@@ -86,33 +80,14 @@
                   <span>只看有課老師</span>
                 </label>
               </div>
-              <div
+              <!-- #740 Step 4c：老師篩選 chips 剝離為 presentational 元件 -->
+              <WeekTeacherChips
                 v-if="visibleTeachers.length > 1 && !isTeacher"
-                class="week-teacher-chips"
-                role="group"
-                aria-label="篩選老師（可多選）"
-              >
-                <span class="week-teacher-chips-label">老師</span>
-                <div class="week-teacher-chips-scroll">
-                  <button
-                    v-for="t in visibleTeachers"
-                    :key="t.id"
-                    type="button"
-                    :aria-pressed="weekViewTeacherIdSet.has(String(t.id))"
-                    :class="['week-teacher-chip', { active: weekViewTeacherIdSet.has(String(t.id)) }]"
-                    :style="weekViewTeacherIdSet.has(String(t.id)) ? { background: getTeacherColor(t.id), borderColor: getTeacherColor(t.id), color: '#fff' } : {}"
-                    @click="toggleTeacherSelection(t.id)"
-                  >
-                    {{ t.username }}
-                  </button>
-                </div>
-                <button
-                  v-if="weekViewTeacherIds.length > 0"
-                  type="button"
-                  class="week-teacher-chip-clear"
-                  @click="clearTeacherSelection"
-                >全清除</button>
-              </div>
+                :teachers="teacherChips"
+                :selected-ids="selectedTeacherChipIds"
+                @toggle="toggleTeacherSelection"
+                @clear="clearTeacherSelection"
+              />
             </div>
             <div class="toolbar-secondary-actions">
               <button type="button" class="btn-secondary btn-icon-text toolbar-action-btn" @click="showRoomManager = !showRoomManager" title="管理教室"><span class="material-symbols-outlined btn-icon">meeting_room</span><span class="btn-text">教室</span></button>
@@ -859,6 +834,8 @@ import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchMo
 import ToastWithUndo from '../components/substitute/ToastWithUndo.vue';
 import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue';
 import DayTabsBar from '../components/calendar/DayTabsBar.vue';
+import WeekTeacherChips from '../components/calendar/WeekTeacherChips.vue';
+import WeekNavBar from '../components/calendar/WeekNavBar.vue';
 import {
   fetchTeacherAvailability,
   undoSubstitute,
@@ -1766,6 +1743,14 @@ const visibleTeachers = computed(() => {
     return a.username.localeCompare(b.username);
   });
 });
+
+// #740 Step 4c：WeekTeacherChips 資料源（color 由父層預算，active 時套用）
+const teacherChips = computed(() => visibleTeachers.value.map(t => ({
+  id: t.id,
+  username: t.username,
+  color: getTeacherColor(t.id),
+})));
+const selectedTeacherChipIds = computed(() => weekViewTeacherIds.value.map(String));
 
 const dayViewTeacherColumns = computed(() => {
   if (isWeekOverview.value) return visibleTeachers.value;
@@ -3655,62 +3640,7 @@ onMounted(() => {
   border-radius: 9px;
   font-size: 13px;
 }
-.week-teacher-chips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.week-teacher-chips-label {
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-light, #64748b);
-}
-.week-teacher-chips-scroll {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-  max-height: 5.5rem;
-  overflow-y: auto;
-  padding: 2px 0;
-}
-.week-teacher-chip {
-  padding: 6px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--text-color, #1a1a1a);
-  background: #fff;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.week-teacher-chip:hover {
-  background: var(--bg-muted, #f8fafc);
-  border-color: #cbd5e1;
-}
-.week-teacher-chip.active {
-  color: #fff;
-}
-.week-teacher-chip-clear {
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border: 1px dashed var(--border-color, #cbd5e1);
-  border-radius: 999px;
-  font-size: 12px;
-  color: var(--text-light, #64748b);
-  background: transparent;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-.week-teacher-chip-clear:hover {
-  color: #e53935;
-  border-color: #e53935;
-}
+/* #740 Step 4c：.week-teacher-chip* 已隨 markup 搬移至 components/calendar/WeekTeacherChips.vue */
 .cb-teacher-tag {
   font-size: 10px;
   font-weight: 700;
@@ -3792,26 +3722,7 @@ onMounted(() => {
   background: var(--bg-muted, #f0f1f3);
   border-color: var(--border, #cbd5e1);
 }
-.week-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 10px;
-  height: 30px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 20px;
-  background: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-color);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.2s, border-color 0.2s;
-}
-.week-nav-btn:hover {
-  background: var(--bg-muted, #f0f1f3);
-  border-color: var(--border, #cbd5e1);
-}
+/* #740 Step 4d：.week-nav* / .week-select 已隨 markup 搬移至 components/calendar/WeekNavBar.vue */
 .month-display {
   min-width: 82px;
   text-align: center;
@@ -3819,11 +3730,6 @@ onMounted(() => {
   font-weight: 600;
   line-height: 1.4;
   color: var(--text-color);
-}
-.week-nav {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }
 .day-nav-bar {
   display: flex;
@@ -3838,19 +3744,6 @@ onMounted(() => {
   background: #fff;
   color: var(--text-color);
   cursor: pointer;
-}
-.week-nav .week-select {
-  min-width: 180px;
-}
-.week-select {
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 8px;
-  font-size: 14px;
-  line-height: 1.4;
-  background: #fff;
-  color: var(--text-color);
-  min-width: 96px;
 }
 .toolbar-fill { flex: 1; min-width: 12px; }
 .week-stat {
@@ -4661,10 +4554,6 @@ onMounted(() => {
     padding: 6px 12px;
     font-size: 12px;
   }
-  .week-nav {
-    flex-wrap: wrap;
-    gap: 6px;
-  }
   .teacher-col { min-width: 80px; }
   .week-view { overflow-x: auto; }
   .teacher-grid-wrapper { overflow-x: auto; }
@@ -4701,8 +4590,6 @@ onMounted(() => {
   .smart-cal-title { font-size: 1rem; text-align: center; }
   .view-tabs { justify-content: center; }
   .view-tabs button { padding: 6px 10px; font-size: 11px; }
-  .week-nav { flex-wrap: wrap; justify-content: center; gap: 4px; }
-  .week-nav button { padding: 5px 10px; font-size: 11px; }
   .toolbar-filters {
     width: 100%;
   }
