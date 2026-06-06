@@ -124,3 +124,37 @@ AllTrue 的視覺方向是 **淺色優先、專業可信、為「資料與金流
 每頁 PR 必含：本地 `npm run build` → PR CI 綠 → merge → deploy success → `/api/v1/health` OK → 前端有改時確認 `/version.json` 更新。
 
 進度追蹤見 GitHub Epic issue（逐頁子 issue + Project 看板）。
+
+## 10. Rollout Tracker（2026-06-06 起）
+
+Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
+
+| 層級 | 主題 | Issue | 狀態 |
+|---|---|---|---|
+| 基礎建設 | 共用元件 AtButton/AtCard/AtEmpty/AtMetric | [#688](https://github.com/jerry200176-png/AllTrue_System/issues/688) | Open |
+| 基礎建設 | CI lint：擋新增 raw hex | [#689](https://github.com/jerry200176-png/AllTrue_System/issues/689) | Open |
+| 基礎建設 | UI 文案規範 `UI_COPY_GUIDE.md` | [#690](https://github.com/jerry200176-png/AllTrue_System/issues/690) | **Done** |
+| 基礎建設 | 表單欄位標準化 AtInput/Select/Textarea | [#702](https://github.com/jerry200176-png/AllTrue_System/issues/702) | Open |
+| 基礎建設 | Toast / 通知樣式統一 | [#708](https://github.com/jerry200176-png/AllTrue_System/issues/708) | Open |
+| 外殼 | App 側欄 / Topbar / FAB / loading | [#698](https://github.com/jerry200176-png/AllTrue_System/issues/698) | Open |
+| Wave 1 輕量 | DirectorDashboard/TeacherHome/LearningRecords/SmartCalendar | PR [#686](https://github.com/jerry200176-png/AllTrue_System/pull/686) | **Done** |
+| Wave 1 補完 | DirectorDashboard / TeacherHome / LearningRecords 深度 | [#699](https://github.com/jerry200176-png/AllTrue_System/issues/699) | Open |
+| Wave 1 補完 | SmartCalendar 深度（G-007 回歸必測）| [#700](https://github.com/jerry200176-png/AllTrue_System/issues/700) | Open |
+| Wave 2 頁面 | CourseManagement + modals | [#691](https://github.com/jerry200176-png/AllTrue_System/issues/691) | Open |
+| Wave 2 頁面 | StudentsList | [#692](https://github.com/jerry200176-png/AllTrue_System/issues/692) | Open |
+| Wave 2 頁面 | TeachersList | [#693](https://github.com/jerry200176-png/AllTrue_System/issues/693) | Open |
+| Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
+| Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
+| Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | Open |
+| 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | Open |
+| UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | Open |
+| 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **待 CEO 決策** |
+| 流程 | PR Design Review Gate（PR template checklist）| [#697](https://github.com/jerry200176-png/AllTrue_System/issues/697) | **Done** |
+| 流程 | QA smoke 手冊 `DESIGN_QA_SMOKE.md` | [#705](https://github.com/jerry200176-png/AllTrue_System/issues/705) | **Done** |
+| 流程 | hex baseline KPI 腳本 | [#706](https://github.com/jerry200176-png/AllTrue_System/issues/706) | **Done** |
+| 流程 | in-app #154 回報者驗收結案流程 | [#707](https://github.com/jerry200176-png/AllTrue_System/issues/707) | Open |
+| 文件 | RULE_DESIGN_SYSTEM rollout tracker | [#709](https://github.com/jerry200176-png/AllTrue_System/issues/709) | **Done** |
+
+> **Baseline（2026-06-06）**：pages 2966 hex、components 834 hex、grand total 3800。  
+> 目標：高曝光 10 頁完成後 pages hex 降 ≥80%。  
+> 執行 `npm run metrics:design-hex` 可隨時更新計數。
