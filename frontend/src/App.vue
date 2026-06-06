@@ -29,7 +29,7 @@
 
   <div v-else-if="loading" class="loading-screen">
     <div class="spinner"></div>
-    <span>載入中...</span>
+    <span>載入中…</span>
   </div>
 
   <Login v-else-if="!session" @login-success="handleLoginSuccess" />
