@@ -1,0 +1,85 @@
+name: High-Risk Test Gate
+
+# #736（Review 線 V1）：單人 repo 無第二位強制 reviewer，以「高風險檔強制附測試」
+# 作為 review 的硬護欄。當 PR 觸碰下列高風險邏輯但同 PR 沒有對應測試時，**擋下 merge**。
+#
+# 與 missing-tests-warn.yml 的差異：
+#   - missing-tests-warn：所有 production code 無測試 → 只「提醒」(advisory)
+#   - high-risk-test-gate：僅限堂數扣除／繳費／刷卡／核准同步／migration → 「阻擋」(required)
+#
+# 逃生門（罕用，需明確理由）：PR 加 label `risk-ack-no-test` 即放行（仍留紀錄）。
+# 設為 required check：Settings → Branches → main → Require status checks → 勾選本 job。
+
+on:
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: high-risk-test-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: High-risk change requires tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: ${{ !github.event.pull_request.draft }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Enforce tests on high-risk paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HAS_OVERRIDE: ${{ contains(github.event.pull_request.labels.*.name, 'risk-ack-no-test') }}
+        run: |
+          set -euo pipefail
+          FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          echo "Changed files:"
+          echo "$FILES"
+          echo "----"
+
+          # 高風險邏輯路徑（對齊 CODEOWNERS 高風險區 + P0 高風險模組）
+          HIGH_RISK=$(echo "$FILES" | grep -E \
+            -e '^backend/app/Http/Controllers/Alert.*\.php$' \
+            -e '^backend/app/Services/SessionDeduction.*\.php$' \
+            -e '^backend/app/Services/ApprovalSessionSync.*\.php$' \
+            -e '^backend/app/Http/Controllers/SwipeRfid.*\.php$' \
+            -e '^backend/database/migrations/.*\.php$' \
+            || true)
+
+          if [ -z "$HIGH_RISK" ]; then
+            echo "✅ No high-risk files touched — gate passes."
+            exit 0
+          fi
+
+          echo "⚠️ High-risk files changed:"
+          echo "$HIGH_RISK"
+          echo "----"
+
+          TESTS=$(echo "$FILES" | grep -E '^backend/tests/.*\.php$' || true)
+
+          if [ -n "$TESTS" ]; then
+            echo "✅ Tests present in this PR:"
+            echo "$TESTS"
+            exit 0
+          fi
+
+          if [ "$HAS_OVERRIDE" = "true" ]; then
+            echo "::warning title=High-risk gate overridden::PR labelled 'risk-ack-no-test' — merged WITHOUT tests on high-risk paths. Ensure justification is in the PR description."
+            exit 0
+          fi
+
+          echo "::error title=High-risk change without tests::高風險檔（堂數扣除／繳費／刷卡／核准同步／migration）被修改，但本 PR 沒有 backend/tests/** 測試。"
+          echo ""
+          echo "依 P0 規則 R1 + #736：高風險邏輯必須在同一個 PR 附上對應 PHPUnit 測試才能 merge。"
+          echo "若確屬例外（例如純資料 migration、已人工審核），請加 label 'risk-ack-no-test' 並在 PR 描述說明理由。"
+          exit 1

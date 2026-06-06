@@ -65,7 +65,8 @@ jobs:
           fi
           # 計算加減總行數，排除 lock 檔和純資料檔
           TOTAL=$(git diff --numstat origin/main...HEAD \
-            -- ':!*.lock' ':!package-lock.json' ':!composer.lock' \
+            -- ':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
+               ':!**/composer.lock' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
                "${EXTRA_EXCLUDE[@]}" \
