@@ -4,7 +4,9 @@
 import assert from 'assert';
 import { latestReleaseVersionForRole, notesForRole, parentReleaseNoteTeaser } from './releaseNotes.js';
 
-assert.ok(notesForRole('director').length >= 3, 'director should see several CHANGELOG-derived entries');
+// 門檻 ≥1：自 PR #726 起 CHANGELOG 採月度滾動歸檔（主檔只留當月），月初當月仍空時生成卡片可能僅 1 張。
+// 至少 1 張 + 後面斷言（有 version / sections / 不含技術詞）即可確認 release notes pipeline 正常。
+assert.ok(notesForRole('director').length >= 1, 'director should see at least one CHANGELOG-derived entry');
 assert.ok(notesForRole('teacher').length > 0, 'teacher should see release entries');
 assert.ok(notesForRole('parent').length > 0, 'parent should see parent-tagged release entries');
 const p0 = notesForRole('parent')[0];
