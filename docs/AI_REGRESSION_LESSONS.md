@@ -1,7 +1,7 @@
 ---
 owner: jerry (CEO)
 review_cycle: quarterly
-last_reviewed: 2026-05-24
+last_reviewed: 2026-06-06
 ---
 
 # AI／工程師防再犯紀錄（必讀）
@@ -10,6 +10,8 @@ last_reviewed: 2026-05-24
 **任何 AI Agent 或新進開發者**：請與 `AGENTS.md` 的 First-read 順序一併閱讀；修改下列模組前**先對照本檔**。
 
 > 詳細事故記錄（33 條）→ [AI_REGRESSION_LESSONS_ARCHIVE.md](AI_REGRESSION_LESSONS_ARCHIVE.md)
+>
+> **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F6，對照不變式並補回歸測試 —— 否則點修會再復發。
 
 ---
 
@@ -186,6 +188,30 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 // ❌ campus 過濾漏掉 → 跨分校資料洩漏
 // ✅ 使用 resolveEffectiveCampusIds() 統一驗證，空 auth_campus_ids 非 super_admin → 403
 ```
+
+---
+
+# 🔁 復發家族（Recurring Defect Families）— 高復發檢討
+
+> **為什麼一再復發？**（2026-06-06 批次檢討，8 件回報中 7 件有前例）
+> 過去多是**點修**：只改觸發那一個畫面/那一筆資料，沒有把「狀態變更後其衍生資料要對齊」這條**不變式**補成回歸測試。
+> 下次改下列模組，**先認領家族 → 對照不變式 → 補該家族的回歸測試**，不要只修單一 symptom。
+> 追蹤 Epic：見 GitHub `[Epic] 復發家族根治`。各家族成員 issue 與 production 佐證寫在該 Epic。
+
+| 家族 | 共同根因（不變式被違反） | 前例 | 必補回歸測試守門 |
+|------|--------------------------|------|------------------|
+| **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
+| **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
+| **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23 | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end |
+| **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
+| **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
+| **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash（**首發，無前例**） | #657 | 含 emoji 關鍵字搜尋學生姓名不得 500（查詢前濾 4-byte 字元） |
+
+**通用防再犯規則（跨家族）：**
+1. 任何「**狀態變更**」（停用、結束、結算、續期、調課）寫主檔時，必須在**同一交易內**決定其衍生 `ClassSession`/`schedules`/名額/金額如何對齊，並寫測試覆蓋「變更後衍生資料正確」。
+2. 任何「**列表/行事曆/收據**」呈現課程資料時，先確認資料來源是否涵蓋 **歷史/停用/未來/月結推算** 四種狀態，缺一即為潛在 F1/F2/F5 復發。
+3. 修任一家族成員，PR 必須引用本節家族代號（F1～F6）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
+4. DB 文字欄若為 `utf8mb3`，所有以使用者輸入做 `like` 的查詢，**先濾掉非 BMP（4-byte）字元**（F6）。
 
 ---
 
@@ -719,6 +745,8 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
+
+> 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F6（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界），再讀以下細項。
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
