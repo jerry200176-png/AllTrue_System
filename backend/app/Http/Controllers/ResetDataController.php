@@ -40,10 +40,6 @@ class ResetDataController extends Controller
                 }
 
                 // 4. 老師（Teacher 表）
-                if (Schema::hasTable('Teacher')) {
-                    DB::table('Teacher')->delete();
-                }
-
                 // 5. User / UserCampus / auth_tokens：
                 //    - 只刪除 type = 'T','U','D'（老師、待審、主任）
                 //    - 保留 type = 'S' 的 super_admin 帳號

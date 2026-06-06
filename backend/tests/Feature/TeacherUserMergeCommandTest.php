@@ -76,8 +76,10 @@ class TeacherUserMergeCommandTest extends TestCase
         $this->assertStringStartsWith('merged', (string) DB::table('User')->where('id', $mergeId)->value('LoginName'));
         $this->assertStringContainsString((string) $keepId, (string) DB::table('User')->where('id', $mergeId)->value('LoginName'));
 
-        $this->assertDatabaseMissing('Teacher', ['id' => $mergeId]);
-        $this->assertDatabaseHas('Teacher', ['id' => $keepId]);
+        $this->assertDatabaseHas('UserCampus', [
+            'UserID' => $keepId,
+            'Approved' => 1,
+        ]);
     }
 
     /**
@@ -115,30 +117,6 @@ class TeacherUserMergeCommandTest extends TestCase
             'UserID' => $merge->id,
             'Admin' => 0,
             'Approved' => 1,
-        ]);
-
-        $now = now();
-        DB::table('Teacher')->insert([
-            [
-                'id' => $keep->id,
-                'CampusID' => $campus->id,
-                'T_Name' => 'Keep',
-                'Phone' => null,
-                'RFID' => null,
-                'TelegramID' => '',
-                'Enable' => 1,
-                'MDT' => $now,
-            ],
-            [
-                'id' => $merge->id,
-                'CampusID' => $campus->id,
-                'T_Name' => 'Merge',
-                'Phone' => null,
-                'RFID' => 'RF123',
-                'TelegramID' => '',
-                'Enable' => 1,
-                'MDT' => $now,
-            ],
         ]);
 
         $student = Student::create([

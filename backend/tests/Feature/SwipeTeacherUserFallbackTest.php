@@ -12,12 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * Regression: 刷卡系統必須支援「只存在 User 表、不存在 Teacher 表」的老師。
- *
- * 背景：新增老師現在統一寫入 User + UserCampus。但 SwipeRfidController
- * 原來只查 Teacher 表，導致新老師刷卡失敗。
- *
- * 修法：找不到 Teacher 記錄時，改以 User 表作為 fallback。
+ * Regression: 刷卡系統必須支援 User + UserCampus.RFID 老師資料。
  */
 class SwipeTeacherUserFallbackTest extends TestCase
 {
@@ -111,9 +106,9 @@ class SwipeTeacherUserFallbackTest extends TestCase
 
     /**
      * @test
-     * 既有老師（同時有 User + Teacher 記錄）不受影響，刷卡仍正常。
+     * 老師刷卡只依 User + UserCampus.RFID，無需 Teacher legacy row。
      */
-    public function teacher_with_both_user_and_teacher_records_can_swipe_in(): void
+    public function teacher_with_user_campus_rfid_can_swipe_in(): void
     {
         $rfid = 'BOTH-RECORDS-RFID-001';
 
@@ -124,16 +119,6 @@ class SwipeTeacherUserFallbackTest extends TestCase
             'type'      => 'T',
             'status'    => 'active',
             'phone'     => '',
-        ]);
-
-        DB::table('Teacher')->insert([
-            'id'       => $userId,
-            'CampusID' => $this->campus->id,
-            'T_Name'   => '王大明',
-            'RFID'     => null,
-            'Enable'   => 1,
-            'MDT'      => now(),
-            'TelegramID' => '',
         ]);
 
         UserCampus::create([

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exports\TeacherMonthlyAttendanceExport;
 use App\Models\TeacherSignIn;
 use App\Models\TeacherSignInAdjustment;
+use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -54,9 +55,7 @@ class TeacherAttendanceController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
-        $teacherName = DB::table('Teacher')->where('id', $teacherId)->value('T_Name')
-            ?? DB::table('User')->where('id', $teacherId)->value('Name')
-            ?? '';
+        $teacherName = TeacherProfileDirectory::nameFor((int) $teacherId, '');
 
         // 查今日第一堂課
         $firstClass = DB::table('schedules')
@@ -138,12 +137,11 @@ class TeacherAttendanceController extends Controller
         $perPage   = 50;
 
         $query = DB::table('TeacherSingIn as ts')
-            ->leftJoin('Teacher as t', 't.id', '=', 'ts.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
             ->select([
                 'ts.id',
                 'ts.TeacherID as teacher_id',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'ts.CampusID as campus_id',
                 'ts.SignInDT as sign_in_dt',
                 'ts.SignOutDT as sign_out_dt',
@@ -252,11 +250,10 @@ class TeacherAttendanceController extends Controller
         $cutoffDT = Carbon::parse("{$date} {$cutoffTime}");
 
         $query = DB::table('TeacherSingIn as ts')
-            ->leftJoin('Teacher as t', 't.id', '=', 'ts.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
             ->select([
                 'ts.TeacherID as teacher_id',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'ts.SignInDT as sign_in_dt',
                 'ts.SignOutDT as sign_out_dt',
                 'ts.Status as status',
@@ -294,12 +291,11 @@ class TeacherAttendanceController extends Controller
         $format   = $request->query('format', 'csv');
 
         $query = DB::table('TeacherSingIn as ts')
-            ->leftJoin('Teacher as t', 't.id', '=', 'ts.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
             ->select([
                 'ts.id',
                 'ts.TeacherID as teacher_id',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'ts.CampusID as campus_id',
                 'ts.SignInDT as sign_in_dt',
                 'ts.SignOutDT as sign_out_dt',
@@ -376,13 +372,12 @@ class TeacherAttendanceController extends Controller
         }
 
         $query = DB::table('TeacherSingIn as ts')
-            ->leftJoin('Teacher as t', 't.id', '=', 'ts.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'ts.TeacherID')
             ->leftJoin('Campus as c', 'c.id', '=', 'ts.CampusID')
             ->select([
                 'ts.id',
                 'ts.TeacherID as teacher_id',
-                DB::raw("COALESCE(t.T_Name, u.Name, '') as teacher_name"),
+                DB::raw("COALESCE(u.Name, '') as teacher_name"),
                 'ts.CampusID as campus_id',
                 'c.name as campus_name',
                 'ts.SignInDT as sign_in_dt',

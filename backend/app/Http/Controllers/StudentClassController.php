@@ -88,19 +88,13 @@ class StudentClassController extends Controller
             $teacherTerm = Utf8mb3SearchSanitizer::forLike((string) $request->input('teacher_name'));
             if ($teacherTerm !== '') {
                 $pattern = '%' . $teacherTerm . '%';
-                // Resolve matching teacher IDs at PHP level:
-                // 1. Teacher.T_Name (Chinese name stored in Teacher table)
-                // 2. User.Name (display name / English name stored in User table)
-                // TeacherID = User.id = Teacher.id in this system.
-                // Avoid JOIN and LoginName to prevent false positives from admin/director emails.
-                $byTName = DB::table('Teacher')
-                    ->where('T_Name', 'like', $pattern)
-                    ->pluck('id');
-                $byUserName = DB::table('User')
+                // TeacherID = User.id in this system. Avoid LoginName to prevent
+                // false positives from admin/director emails.
+                $matchedIds = DB::table('User')
                     ->whereIn('type', ['T', 'U'])
                     ->where('Name', 'like', $pattern)
                     ->pluck('id');
-                $matchedIds = $byTName->merge($byUserName)->unique()->values()->all();
+                $matchedIds = $matchedIds->unique()->values()->all();
                 if (empty($matchedIds)) {
                     $query->whereRaw('1 = 0');
                 } else {
@@ -142,10 +136,7 @@ class StudentClassController extends Controller
         $subjectNames = DB::table('Subject')
             ->pluck('Subject_Name', 'id')
             ->toArray();
-        $teacherNames = DB::table('Teacher')
-            ->pluck('T_Name', 'id')
-            ->toArray();
-        $userNames = DB::table('User')
+        $teacherNames = DB::table('User')
             ->whereIn('type', ['T', 'U'])
             ->pluck('Name', 'id')
             ->toArray();
@@ -217,12 +208,11 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
             $class->teacher_name = $teacherNames[$class->TeacherID]
-                ?? $userNames[$class->TeacherID]
                 ?? null;
             $class->teacher_status = strtolower((string) ($userStatuses[$class->TeacherID] ?? 'active'));
 
@@ -1137,22 +1127,6 @@ class StudentClassController extends Controller
             }
         }
 
-        // Auto-create Teacher row if User exists but Teacher doesn't
-        if (!empty($data['TeacherID'])) {
-            $tid = (int) $data['TeacherID'];
-            if ($tid && !DB::table('Teacher')->where('id', $tid)->exists()) {
-                $userName = DB::table('User')->where('id', $tid)->value('Name') ?? '';
-                DB::table('Teacher')->insert([
-                    'id' => $tid,
-                    'T_Name' => $userName,
-                    'CampusID' => 0,
-                    'Enable' => 1,
-                    'MDT' => now(),
-                    'TelegramID' => '',
-                ]);
-            }
-        }
-
         $scheduleSlots = $data['ScheduleSlots'] ?? [];
         $skipAutoSessions = (bool) ($data['skip_auto_sessions'] ?? false);
 
@@ -1526,18 +1500,6 @@ class StudentClassController extends Controller
                 $teacherId = DB::table('User')->where('id', $supabaseTeacherId)->value('id');
             }
 
-            // Auto-create Teacher row if User exists but Teacher doesn't
-            if ($teacherId && !DB::table('Teacher')->where('id', $teacherId)->exists()) {
-                $userName = DB::table('User')->where('id', $teacherId)->value('Name') ?? '';
-                DB::table('Teacher')->insert([
-                    'id' => $teacherId,
-                    'T_Name' => $userName,
-                    'CampusID' => 0,
-                    'Enable' => 1,
-                    'MDT' => now(),
-                    'TelegramID' => '',
-                ]);
-            }
             $frontendSubject = $c['subject'] ?? 'Math';
             $subjectName = $subjectMap[$frontendSubject] ?? $frontendSubject;
             $subjectId = DB::table('Subject')->where('Subject_Name', 'like', "%{$subjectName}%")->value('id')

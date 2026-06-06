@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-06-06 — refactor(identity): runtime 移除 Teacher table 依賴，改以 User/UserCampus 為老師權威來源
+
+開發備註：Phase 2。老師資料 runtime 改以 `User`（姓名、電話、LineID）與 `UserCampus`（分校、RFID）為權威來源；`Teacher.RFID` 已由 `UserCampus.RFID` 完全取代。更新老師建帳/更新/刪除、RFID 刷卡、老師打卡、LINE 通知、課程/評量/財務/出勤查詢與合併工具，不再 join/write `Teacher` table。`TeacherSingIn.TeacherID`、`StudentClass.TeacherID`、`StudentSingIn.TeacherID`、`schedules.teacher_id` 語意維持 `User.id`。新增 migration 將 legacy `Teacher` 的 phone/LineID/CampusID/RFID 補回 `User`/`UserCampus`，`down()` 不刪 live data。測試 fixture 同步移除 `Teacher` table 假設；本機 PHP 不可用且依使用者指示改由 GitHub Actions 執行測試。
+
 ## 2026-06-06 — feat(learning/ui): 評量新增「上一堂摘要」+ 首批四頁視覺治理（#154）
 
 老師/主任在學習評量表可直接看到「上一堂上到哪裡」（含代課老師那堂），不用再翻歷史；同時完成首批四個高曝光頁面的視覺一致化，降低介面割裂感與 AI 模板感。

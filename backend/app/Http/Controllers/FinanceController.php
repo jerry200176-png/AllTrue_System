@@ -12,6 +12,7 @@ use App\Models\PayrollTeacherBranchRule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Support\TeacherProfileDirectory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -170,8 +171,7 @@ class FinanceController extends Controller
             ->groupBy('TeacherID')
             ->get();
 
-        $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray()
-            + DB::table('User')->whereIn('type', ['T', 'D'])->pluck('Name', 'id')->toArray();
+        $teacherNames = TeacherProfileDirectory::names();
 
         $payroll = $records->map(function ($r) use ($teacherNames) {
             return [
@@ -243,9 +243,7 @@ class FinanceController extends Controller
         }
         $records = $query->get();
 
-        // Teacher name lookup (User table + Teacher table)
-        $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
-        $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
+        $teacherNames = TeacherProfileDirectory::names();
 
         $includeLevel = $request->boolean('include_level', false);
         $gradeIdLevelMap = [
@@ -353,7 +351,7 @@ class FinanceController extends Controller
 
             $result[] = [
                 'teacher_id'             => $tid,
-                'teacher_name'           => $userNames[$tid] ?? ($teacherNames[$tid] ?? 'Unknown'),
+                'teacher_name'           => $teacherNames[$tid] ?? 'Unknown',
                 'one_on_one_hours'       => $o1,
                 'one_on_two_hours'       => $o2,
                 'one_on_three_hours'     => $o3,
@@ -945,9 +943,7 @@ class FinanceController extends Controller
             ->limit($perPage)
             ->get();
 
-        $teacherName = DB::table('User')->where('id', $teacherId)->value('Name')
-            ?? DB::table('Teacher')->where('id', $teacherId)->value('T_Name')
-            ?? 'Unknown';
+        $teacherName = TeacherProfileDirectory::nameFor((int) $teacherId, 'Unknown');
 
         $sessions   = [];
         $sumSalary  = 0;
@@ -1197,8 +1193,7 @@ class FinanceController extends Controller
         $rateMap  = $this->buildRateMap($records, $ruleCtx);
         $bonusMap = $this->buildConcurrencyBonusMap($records, $rateMap, $ruleCtx);
 
-        $userNames    = DB::table('User')->pluck('Name', 'id')->toArray();
-        $teacherNames = DB::table('Teacher')->pluck('T_Name', 'id')->toArray();
+        $teacherNames = TeacherProfileDirectory::names();
 
         $teacherOverrides = $ruleCtx['teacher_overrides'] ?? [];
 
@@ -1209,7 +1204,7 @@ class FinanceController extends Controller
                 $hasOverride = isset($teacherOverrides[$tid]);
                 $buckets[$tid] = [
                     'teacher_id'       => $tid,
-                    'teacher_name'     => $userNames[$tid] ?? ($teacherNames[$tid] ?? 'Unknown'),
+                    'teacher_name'     => $teacherNames[$tid] ?? 'Unknown',
                     'high_hours'       => 0, 'junior_hours' => 0,
                     'elementary_hours' => 0, 'tutoring_hours' => 0,
                     'total_hours'      => 0, 'total_salary' => 0,

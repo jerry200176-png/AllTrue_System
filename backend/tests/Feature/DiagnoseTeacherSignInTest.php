@@ -71,7 +71,7 @@ class DiagnoseTeacherSignInTest extends TestCase
         ]);
 
         $this->assertSame(0, $exit);
-        $this->assertStringContainsString('Login fallback User/UserCampus/Teacher rows: 1', Artisan::output());
+        $this->assertStringContainsString('Login fallback User/UserCampus rows: 1', Artisan::output());
         $this->assertDatabaseCount('TeacherSingIn', 0);
         $this->assertDatabaseCount('StudentSingIn', 0);
     }
@@ -114,15 +114,6 @@ class DiagnoseTeacherSignInTest extends TestCase
             'PSW' => 'secret',
             'type' => 'T',
             'phone' => '0900000000',
-        ]);
-        DB::table('Teacher')->insert([
-            'id' => $teacherId,
-            'CampusID' => $campus->id,
-            'T_Name' => '黃芝琳',
-            'RFID' => null,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
         ]);
         DB::table('UserCampus')->insert([
             'CampusID' => $campus->id,
