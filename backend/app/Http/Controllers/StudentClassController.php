@@ -14,6 +14,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
+use App\Support\Utf8mb3SearchSanitizer;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
@@ -84,7 +85,7 @@ class StudentClassController extends Controller
         }
 
         if ($request->filled('teacher_name')) {
-            $teacherTerm = trim((string) $request->input('teacher_name'));
+            $teacherTerm = Utf8mb3SearchSanitizer::forLike((string) $request->input('teacher_name'));
             if ($teacherTerm !== '') {
                 $pattern = '%' . $teacherTerm . '%';
                 // Resolve matching teacher IDs at PHP level:
@@ -120,10 +121,15 @@ class StudentClassController extends Controller
         }
 
         if ($request->filled('name')) {
-            $nameTerm = $request->input('name');
-            $query->whereHas('student', function ($sub) use ($nameTerm) {
-                $sub->where('name', 'like', '%' . $nameTerm . '%');
-            });
+            $nameTerm = Utf8mb3SearchSanitizer::forLike((string) $request->input('name'));
+            if ($nameTerm === '') {
+                // utf8mb3 Student.name cannot match 4-byte-only terms (emoji).
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereHas('student', function ($sub) use ($nameTerm) {
+                    $sub->where('name', 'like', '%' . $nameTerm . '%');
+                });
+            }
         }
 
         $perPage = min((int) $request->input('per_page', 20), 1000);
@@ -142,6 +148,10 @@ class StudentClassController extends Controller
         $userNames = DB::table('User')
             ->whereIn('type', ['T', 'U'])
             ->pluck('Name', 'id')
+            ->toArray();
+        $userStatuses = DB::table('User')
+            ->whereIn('type', ['T', 'U'])
+            ->pluck('status', 'id')
             ->toArray();
         $classIds = $classes->getCollection()->pluck('ID')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->values()->all();
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
@@ -207,13 +217,14 @@ class StudentClassController extends Controller
             }
         }
 
-        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
+        $classes->getCollection()->transform(function ($class) use ($courseNames, $subjectNames, $teacherNames, $userNames, $userStatuses, $observedUsedByClass, $sessionSlotsByClassId, $contractExceptionCountByClassId, $paidAtMap, $packageMap) {
             $class->subject_name = $courseNames[$class->SubjectID]
                 ?? $subjectNames[$class->SubjectID]
                 ?? null;
             $class->teacher_name = $teacherNames[$class->TeacherID]
                 ?? $userNames[$class->TeacherID]
                 ?? null;
+            $class->teacher_status = strtolower((string) ($userStatuses[$class->TeacherID] ?? 'active'));
 
             // Map backend PascalCase to frontend snake_case
             $class->id = (int) $class->ID;
