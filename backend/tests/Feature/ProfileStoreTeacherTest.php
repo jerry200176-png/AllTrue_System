@@ -65,9 +65,9 @@ class ProfileStoreTeacherTest extends TestCase
             'type' => 'T',
         ]);
 
-        $this->assertDatabaseHas('Teacher', [
-            'id' => $teacherId,
-            'T_Name' => '王老師',
+        $this->assertDatabaseHas('UserCampus', [
+            'UserID' => $teacherId,
+            'CampusID' => 1,
         ]);
 
         $this->assertDatabaseHas('teacher_subjects', [
@@ -142,17 +142,6 @@ class ProfileStoreTeacherTest extends TestCase
             'Approved' => 1,
         ]);
 
-        DB::table('Teacher')->insert([
-            'id' => $teacher->id,
-            'T_Name' => '老師舊帳號',
-            'CampusID' => 1,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
-            'Phone' => '0900111222',
-            'LineID' => '',
-        ]);
-
         $token = $this->issueToken($director->id);
 
         $this->withHeaders([
@@ -203,17 +192,6 @@ class ProfileStoreTeacherTest extends TestCase
             'UserID' => $teacher->id,
             'Admin' => 0,
             'Approved' => 1,
-        ]);
-
-        DB::table('Teacher')->insert([
-            'id' => $teacher->id,
-            'T_Name' => '重設測試老師',
-            'CampusID' => 1,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
-            'Phone' => '0900123000',
-            'LineID' => '',
         ]);
 
         $token = $this->issueToken($director->id);
@@ -271,17 +249,6 @@ class ProfileStoreTeacherTest extends TestCase
             'Admin' => 0,
             'Approved' => 1,
         ]);
-        DB::table('Teacher')->insert([
-            'id' => $teacher->id,
-            'T_Name' => '可刪除老師',
-            'CampusID' => 1,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
-            'Phone' => '0900123001',
-            'LineID' => '',
-        ]);
-
         $token = $this->issueToken($director->id);
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
@@ -291,7 +258,6 @@ class ProfileStoreTeacherTest extends TestCase
             ->assertJsonPath('id', $teacher->id);
 
         $this->assertDatabaseMissing('User', ['id' => $teacher->id]);
-        $this->assertDatabaseMissing('Teacher', ['id' => $teacher->id]);
         $this->assertDatabaseMissing('UserCampus', ['UserID' => $teacher->id]);
     }
 
@@ -325,17 +291,6 @@ class ProfileStoreTeacherTest extends TestCase
             'Admin' => 0,
             'Approved' => 1,
         ]);
-        DB::table('Teacher')->insert([
-            'id' => $teacher->id,
-            'T_Name' => '不可刪除老師',
-            'CampusID' => 1,
-            'Enable' => 1,
-            'MDT' => now(),
-            'TelegramID' => '',
-            'Phone' => '0900123002',
-            'LineID' => '',
-        ]);
-
         if (Schema::hasTable('TeacherSingIn') && Schema::hasColumn('TeacherSingIn', 'TeacherID')) {
             DB::table('TeacherSingIn')->insert([
                 'TeacherID' => $teacher->id,

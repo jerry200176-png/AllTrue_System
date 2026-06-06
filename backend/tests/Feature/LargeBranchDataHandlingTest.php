@@ -4,16 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
-use App\Models\ClassSession;
 use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
-use App\Models\Teacher;
 use App\Models\User;
 use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class LargeBranchDataHandlingTest extends TestCase
@@ -66,13 +63,14 @@ class LargeBranchDataHandlingTest extends TestCase
             'name' => '學生老師篩', 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
         ]);
-        $teacher = Teacher::create([
-            'CampusID' => 1,
-            'T_Name' => '唯一篩選老師',
-            'TelegramID' => '',
-            'MDT' => now(),
-            'Enable' => 1,
+        $teacher = User::create([
+            'LoginName' => 'unique-teacher-filter-' . mt_rand(10000, 99999) . '@test.com',
+            'Name' => '唯一篩選老師',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => 912345671,
         ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $teacher->id, 'Admin' => 0, 'Approved' => 1]);
         $this->createCourse($student->id, ['TeacherID' => $teacher->id]);
         $this->seedCoursesForBranch(1, 4);
 
@@ -96,14 +94,7 @@ class LargeBranchDataHandlingTest extends TestCase
             'type' => 'T',
             'phone' => 912345670,
         ]);
-        DB::table('Teacher')->insert([
-            'id' => $teacherUser->id,
-            'CampusID' => 1,
-            'T_Name' => '可可',
-            'TelegramID' => '',
-            'MDT' => now(),
-            'Enable' => 1,
-        ]);
+        UserCampus::create(['CampusID' => 1, 'UserID' => $teacherUser->id, 'Admin' => 0, 'Approved' => 1]);
         $student = Student::create([
             'name' => '學生老師英', 'CampusID' => 1, 'ClassID' => 1,
             'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',

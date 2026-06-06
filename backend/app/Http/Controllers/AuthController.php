@@ -222,18 +222,6 @@ class AuthController extends Controller
             }
 
             if ($type === 'T') {
-                if (Schema::hasTable('Teacher') && !DB::table('Teacher')->where('id', $user->id)->exists()) {
-                    DB::table('Teacher')->insertOrIgnore([
-                        'id' => $user->id,
-                        'T_Name' => $user->Name,
-                        'CampusID' => $branchId ?? 0,
-                        'Enable' => 1,
-                        'MDT' => now(),
-                        'TelegramID' => '',
-                        'Phone' => $normalizedPhone,
-                        'LineID' => '',
-                    ]);
-                }
                 if (Schema::hasTable('teacher_branches') && !empty($allBranches)) {
                     foreach ($allBranches as $campusId) {
                         DB::table('teacher_branches')->insertOrIgnore([
@@ -377,18 +365,7 @@ class AuthController extends Controller
         }
         $user->save();
 
-        if ($user->type === 'T' && Schema::hasTable('Teacher')) {
-            $teacherUpdates = [];
-            if (!empty($data['name']) && Schema::hasColumn('Teacher', 'T_Name')) {
-                $teacherUpdates['T_Name'] = $data['name'];
-            }
-            if ($hasPhoneInput && Schema::hasColumn('Teacher', 'Phone')) {
-                $teacherUpdates['Phone'] = $normalizedPhone;
-            }
-            if (!empty($teacherUpdates)) {
-                DB::table('Teacher')->where('id', $user->id)->update($teacherUpdates);
-            }
-
+        if ($user->type === 'T') {
             if (array_key_exists('branch_id', $data) || array_key_exists('multi_branches', $data)) {
                 $mainBranchId = isset($data['branch_id'])
                     ? (int) $data['branch_id']
@@ -423,9 +400,6 @@ class AuthController extends Controller
                                 'branch_id' => $campusId,
                             ]);
                         }
-                    }
-                    if (Schema::hasTable('Teacher') && Schema::hasColumn('Teacher', 'CampusID') && $mainBranchId > 0) {
-                        DB::table('Teacher')->where('id', $user->id)->update(['CampusID' => $mainBranchId]);
                     }
                 }
             }
@@ -869,13 +843,6 @@ class AuthController extends Controller
 
     private function resolvePhoneForResponse(User $user): ?string
     {
-        if ((string) $user->type === 'T' && Schema::hasTable('Teacher') && Schema::hasColumn('Teacher', 'Phone')) {
-            $teacherPhone = DB::table('Teacher')->where('id', $user->id)->value('Phone');
-            if ($teacherPhone !== null && trim((string) $teacherPhone) !== '') {
-                return (string) $teacherPhone;
-            }
-        }
-
         return $this->normalizePhone($user->phone ?? null);
     }
 

@@ -38,7 +38,7 @@ class TeacherBranchControllerTest extends TestCase
             'type'      => 'T',
             'phone'     => 912000004,
         ]);
-        DB::table('Teacher')->insert(['id' => $user->id, 'CampusID' => $campusId, 'T_Name' => 'TB Teacher']);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
         return $user->id;
     }
 
