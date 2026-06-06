@@ -15,6 +15,7 @@ use App\Services\EnrollmentService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteService;
+use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -131,16 +132,12 @@ class ClassSessionController extends Controller
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
                     ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
-            ->leftJoin('Teacher as subt', 'subt.id', '=', 'sub_sched.teacher_id')
             ->leftJoin('User as subu', 'subu.id', '=', 'sub_sched.teacher_id')
             ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->leftJoin(DB::raw('(SELECT si_inner.* FROM `StudentSingIn` si_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `StudentSingIn` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) si_latest ON si_inner.id = si_latest.max_id) AS si'), 'si.ClassSessionID', '=', 'cs.id')
-            ->leftJoin('Teacher as t', 't.id', '=', 'sc.TeacherID')
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
             // lr_teacher: 評量紀錄上記錄的老師（儲存授課當下的老師，不隨契約換師而變動）
-            ->leftJoin('Teacher as lrt', 'lrt.id', '=', 'lr.TeacherID')
             ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
-            ->leftJoin('Teacher as sit', 'sit.id', '=', 'si.TeacherID')
             ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')
             ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
             ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
@@ -176,7 +173,7 @@ class ClassSessionController extends Controller
                 's.name as student_name',
                 // 行事曆/點名顯示應與 teacher_id 一致：代課老師 > 現任課程老師。
                 // 評量老師是歷史歸屬，保留在 learning_record_teacher_id，不覆蓋堂次顯示名稱。
-                DB::raw('COALESCE(subt.T_Name, subu.Name, t.T_Name, u.Name, lrt.T_Name, lru.Name, "") as teacher_name'),
+                DB::raw('COALESCE(subu.Name, u.Name, lru.Name, "") as teacher_name'),
                 DB::raw('COALESCE(sub.Subject_Name, "") as subject_name'),
                 'lr.id as learning_record_id',
                 'lr.Status as learning_record_status',
@@ -184,7 +181,7 @@ class ClassSessionController extends Controller
                 'lr.Progress as learning_record_progress',
                 'si.SignInDT as attendance_sign_in_at',
                 'si.Memo as attendance_memo',
-                DB::raw('COALESCE(rbu.Name, sit.T_Name, siu.Name, "") as recorded_by_name'),
+                DB::raw('COALESCE(rbu.Name, siu.Name, "") as recorded_by_name'),
             ]);
 
         if ($role === 'teacher') {
@@ -2162,8 +2159,7 @@ class ClassSessionController extends Controller
                 'learning_record_id' => $lrId,
             ]);
 
-            $teacherRaw = DB::table('Teacher')->where('id', $newTeacherId)->value('T_Name')
-                ?? DB::table('User')->where('id', $newTeacherId)->value('Name');
+            $teacherRaw = TeacherProfileDirectory::nameFor((int) $newTeacherId, '');
             $teacherName = $this->scrubSubstituteUtf8($teacherRaw);
             if ($teacherName === '') {
                 $teacherName = '未指派';
@@ -2187,8 +2183,7 @@ class ClassSessionController extends Controller
             // PRD FR-010：同一交易建立家長代課通知
             $oldTeacherName = '';
             if ($oldTeacherId > 0) {
-                $oldRaw = DB::table('Teacher')->where('id', $oldTeacherId)->value('T_Name')
-                    ?? DB::table('User')->where('id', $oldTeacherId)->value('Name');
+                $oldRaw = TeacherProfileDirectory::nameFor((int) $oldTeacherId, '');
                 $oldTeacherName = $this->scrubSubstituteUtf8($oldRaw);
             }
             $studentName = $this->scrubSubstituteUtf8(DB::table('Student')->where('id', $studentId)->value('Name') ?? '');
