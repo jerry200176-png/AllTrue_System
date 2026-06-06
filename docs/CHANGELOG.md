@@ -8,6 +8,10 @@
 
 ---
 
+## 2026-06-06 — feat(ui): 學生管理頁首+篩選列+批次工具列 token 對齊（#692 wave A）
+
+開發備註：#692 StudentsList Wave 2-2 第一階段（header + filter + bulk + 共用 chip）。`.close-btn`/`.paid-date-hint`/`.invoice-status-chip.{paid,unpaid,partial}`/`.invoice-skeleton` 原 raw hex 改 `--ds-{success,warning,primary}-wash` + 對應 ink；`.header-icon` `var(--primary)` → `var(--ds-primary)`；`.stat-badge` `#FFF3E0`/`#E65100` → `--ds-primary-wash`/`--ds-primary-deep` 並補 `tabular-nums`；`.stat-badge-light` `#f5f5f5`/`#78909c` → `--ds-canvas-soft`/`--ds-ink-mute`；`.button-outline` legacy var → `--ds-canvas`/`--ds-hairline` 並對齊 secondary 按鈕語意；`.bulk-toolbar` `#E3F2FD`/`#90CAF9`（藍 info）→ `--ds-primary-wash`/`--ds-hairline-input`（品牌橘 wash）；`.filter-bar`/`.search-icon` legacy + `#bdbdbd` → `--ds-hairline`/`--ds-ink-mute`。Body/列表狀態色/RFID/課程展開區屬 wave B，modal/表單/package/history/LINE 屬 wave C。raw hex 143 → 129。`npm run build` 通過。
+
 ## 2026-06-06 — refactor(identity): runtime 移除 Teacher table 依賴，改以 User/UserCampus 為老師權威來源
 
 開發備註：Phase 2。老師資料 runtime 改以 `User`（姓名、電話、LineID）與 `UserCampus`（分校、RFID）為權威來源；`Teacher.RFID` 已由 `UserCampus.RFID` 完全取代。更新老師建帳/更新/刪除、RFID 刷卡、老師打卡、LINE 通知、課程/評量/財務/出勤查詢與合併工具，不再 join/write `Teacher` table。`TeacherSingIn.TeacherID`、`StudentClass.TeacherID`、`StudentSingIn.TeacherID`、`schedules.teacher_id` 語意維持 `User.id`。新增 migration 將 legacy `Teacher` 的 phone/LineID/CampusID/RFID 補回 `User`/`UserCampus`，`down()` 不刪 live data。測試 fixture 同步移除 `Teacher` table 假設；本機 PHP 不可用且依使用者指示改由 GitHub Actions 執行測試。
