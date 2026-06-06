@@ -2317,11 +2317,11 @@ function formatBuildTime(rawIso) {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #f97316, #fb923c);
+  background: var(--ds-primary);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--ds-on-primary);
   font-weight: 700;
   font-size: 13px;
   flex-shrink: 0;
@@ -2350,13 +2350,13 @@ function formatBuildTime(rawIso) {
 }
 
 .account-role {
-  color: #64748b;
+  color: var(--ds-ink-mute);
   font-size: 11px;
   line-height: 1.25;
 }
 
 .account-menu-chevron {
-  color: #64748b;
+  color: var(--ds-ink-mute);
   font-size: 18px;
   transition: transform 0.2s ease;
 }
@@ -2401,11 +2401,11 @@ function formatBuildTime(rawIso) {
 }
 
 .account-menu-btn-danger {
-  color: #b91c1c;
+  color: var(--ds-danger);
 }
 
 .account-menu-btn-danger:hover {
-  background: #fef2f2;
+  background: var(--ds-danger-wash);
 }
 
 .standalone-parent-shell {
@@ -2418,13 +2418,13 @@ function formatBuildTime(rawIso) {
   height: 46px;
   border-radius: 50%;
   border: none;
-  background: linear-gradient(135deg, #ff9800, #ff6f00);
-  color: #fff;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
   font-size: 22px;
   font-weight: 700;
   cursor: grab;
   touch-action: none;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--ds-shadow-2);
   z-index: 10010;
   will-change: transform;
   transition:
@@ -2788,11 +2788,11 @@ function formatBuildTime(rawIso) {
   justify-content: center;
   gap: 10px;
   padding: 10px 18px;
-  background: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
-  color: #fff;
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
   font-size: 14px;
   font-weight: 500;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--ds-shadow-1);
 }
 
 .update-banner-icon {
@@ -2804,8 +2804,8 @@ function formatBuildTime(rawIso) {
 }
 
 .update-banner-btn {
-  background: #fff;
-  color: #2563eb;
+  background: var(--ds-canvas);
+  color: var(--ds-primary-deep);
   border: none;
   border-radius: 6px;
   padding: 5px 16px;
@@ -2817,7 +2817,7 @@ function formatBuildTime(rawIso) {
 }
 
 .update-banner-btn:hover {
-  background: #e0edff;
+  background: var(--ds-primary-wash);
 }
 
 .update-banner-close {
