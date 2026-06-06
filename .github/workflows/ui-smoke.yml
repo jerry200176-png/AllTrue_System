@@ -1,11 +1,22 @@
 name: UI Smoke (Playwright)
 
-# #547 / Epic #535 Phase 4.3 — 前端 UI smoke。
-# 刻意「不掛在每次 PR」：Playwright 需下載瀏覽器，跑在每個 PR 會浪費 Actions
-# minutes（見 OPERATIONS_RUNBOOK §B2 節流原則）。改為手動 / 排程觸發。
-# 實際執行需 #537 提供 SMOKE_* secrets；缺 secrets 時 spec 內 test.skip()，
-# workflow 仍會綠燈（只是全部 skipped）。
+# #547 / Epic #535 Phase 4.3 起 — 前端 UI smoke（對 production 只讀導航）。
+#
+# 觸發策略（#730，FinOps 節流 + 可當 required check）：
+#   - pull_request：job 一律啟動（check 名稱穩定，可加入 branch protection required），
+#     但「Detect frontend diff」判斷本 PR 是否動到 frontend/src/** 或 frontend/e2e/**；
+#     沒動 → 秒過、不下載瀏覽器、不跑 Playwright（省 Actions minutes）；
+#     有動 → 才真正跑 E2E。
+#     ⚠️ 刻意「不用 workflow 層 paths:」過濾——path-filtered 的 required check 在不符路徑時
+#     會永遠 pending、卡住 merge（GitHub 已知陷阱）。改用「always-run + 內部偵測」。
+#   - schedule / workflow_dispatch：一律完整跑（對 production 週檢 / 手動）。
+#
+# Secrets：teacher 路徑只需 SMOKE_TEACHER_*；director 路徑需 SMOKE_DIRECTOR_*（缺則 spec 內 skip）。
+# 見 OPERATIONS_RUNBOOK §B2 節流原則。
+
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
   schedule:
     # 每週一 02:30 UTC（台灣 10:30）對 production 跑一次煙霧測試
@@ -16,27 +27,61 @@ permissions:
 
 jobs:
   ui-smoke:
+    name: UI Smoke (Playwright)
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect frontend diff (PR only)
+        id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Event=$EVENT → 完整跑 E2E"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          echo "Changed files:"; echo "$CHANGED"
+          if echo "$CHANGED" | grep -qE '^frontend/(src|e2e)/'; then
+            echo "→ 前端有變動，跑 E2E"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "→ 本 PR 未動 frontend/src 或 frontend/e2e，略過 E2E（FinOps 節流）"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No frontend diff — skipping E2E
+        if: steps.detect.outputs.run != 'true'
+        run: echo "✅ 無前端 diff，UI smoke 略過（gate 視為通過）。"
 
       - uses: actions/setup-node@v6
+        if: steps.detect.outputs.run == 'true'
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install deps
+        if: steps.detect.outputs.run == 'true'
+        working-directory: frontend
         run: npm ci
 
       - name: Install Playwright browser (chromium)
+        if: steps.detect.outputs.run == 'true'
+        working-directory: frontend
         run: npx playwright install --with-deps chromium
 
       - name: Run UI smoke
+        if: steps.detect.outputs.run == 'true'
+        working-directory: frontend
         env:
           CI: 'true'
           SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
@@ -47,7 +92,7 @@ jobs:
         run: npm run test:e2e
 
       - name: Upload Playwright report
-        if: ${{ !cancelled() }}
+        if: ${{ steps.detect.outputs.run == 'true' && !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
