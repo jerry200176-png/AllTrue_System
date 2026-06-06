@@ -36,19 +36,18 @@ class NotificationLineDispatcher
 
         // 找該分校所有有 LineID 且 line_enabled=true 的在職人員
         $staff = DB::table('UserCampus as uc')
-            ->join('Teacher as t', 't.id', '=', 'uc.UserID')
             ->join('User as u', 'u.id', '=', 'uc.UserID')
             ->leftJoin('user_notification_preferences as pref', 'pref.user_id', '=', 'uc.UserID')
             ->where('uc.CampusID', $campusId)
             ->where('uc.Approved', 1)
             ->where('u.status', 'active')
-            ->whereNotNull('t.LineID')
-            ->where('t.LineID', '!=', '')
+            ->whereNotNull('u.LineID')
+            ->where('u.LineID', '!=', '')
             ->where(function ($q) {
                 $q->whereNull('pref.line_enabled')
                   ->orWhere('pref.line_enabled', true);
             })
-            ->select('uc.UserID', 't.LineID', 'pref.quiet_hours_start', 'pref.quiet_hours_end')
+            ->select('uc.UserID', 'u.LineID', 'pref.quiet_hours_start', 'pref.quiet_hours_end')
             ->get();
 
         foreach ($staff as $member) {

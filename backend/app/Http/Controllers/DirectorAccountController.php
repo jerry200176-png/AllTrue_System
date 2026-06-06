@@ -77,15 +77,8 @@ class DirectorAccountController extends Controller
         }
 
         // Only show director/admin applicants (type=U or A), not teachers (type=T).
-        // Guard against mis-typed teacher accounts by excluding any User that
-        // already exists in the Teacher table.
         $users = User::whereIn('id', $userIds)
             ->whereIn('type', ['U', 'A'])
-            ->whereNotExists(function ($query) {
-                $query->select(DB::raw(1))
-                    ->from('Teacher')
-                    ->whereColumn('Teacher.id', 'User.id');
-            })
             ->get();
         $campuses = Campus::all()->keyBy('id');
 

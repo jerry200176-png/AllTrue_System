@@ -81,13 +81,7 @@ class ProfileController extends Controller
             $q = $request->input('q');
             $query->where(function ($qry) use ($q) {
                 $qry->where('User.Name', 'like', '%' . $q . '%')
-                    ->orWhere('User.phone', 'like', '%' . $q . '%')
-                    ->orWhereExists(function ($sub) use ($q) {
-                        $sub->select(DB::raw(1))
-                            ->from('Teacher')
-                            ->whereColumn('Teacher.id', 'User.id')
-                            ->where('Teacher.Phone', 'like', '%' . $q . '%');
-                    });
+                    ->orWhere('User.phone', 'like', '%' . $q . '%');
             });
         }
 
@@ -131,8 +125,6 @@ class ProfileController extends Controller
             if (empty($teacherIds)) {
                 return $extras;
             }
-            $teachers = DB::table('Teacher')->whereIn('id', $teacherIds)->get()->keyBy('id');
-            $userPhones = DB::table('User')->whereIn('id', $teacherIds)->pluck('phone', 'id');
             $tsRows = Schema::hasTable('teacher_subjects')
                 ? DB::table('teacher_subjects')->whereIn('teacher_id', $teacherIds)->get()->groupBy('teacher_id')
                 : collect();
@@ -144,10 +136,12 @@ class ProfileController extends Controller
             if (Schema::hasColumn('UserCampus', 'RFID')) {
                 $ucByTeacher = DB::table('UserCampus')->whereIn('UserID', $teacherIds)->get()->groupBy('UserID');
             }
+            $userRows = DB::table('User')->whereIn('id', $teacherIds)->get()->keyBy('id');
+            $hasUserLineId = Schema::hasColumn('User', 'LineID');
             foreach ($teacherIds as $tid) {
-                $t = $teachers->get($tid);
-                $extras[$tid]['phone'] = $t->Phone ?? $userPhones[$tid] ?? '';
-                $extras[$tid]['line_id'] = $t->LineID ?? '';
+                $u = $userRows->get($tid);
+                $extras[$tid]['phone'] = $u->phone ?? '';
+                $extras[$tid]['line_id'] = $hasUserLineId ? ($u->LineID ?? '') : '';
                 $byBranch = [];
                 foreach ($ucByTeacher->get($tid, collect()) as $ucRow) {
                     $r = isset($ucRow->RFID) ? trim((string) $ucRow->RFID) : '';
@@ -156,14 +150,8 @@ class ProfileController extends Controller
                     }
                 }
                 $extras[$tid]['rfid_by_branch'] = $byBranch;
-                $mainC = (int) ($t->CampusID ?? 0);
-                $legacyRfid = trim((string) ($t->RFID ?? ''));
                 $displayRfid = '';
-                if ($mainC && isset($byBranch[(string) $mainC])) {
-                    $displayRfid = $byBranch[(string) $mainC];
-                } elseif ($legacyRfid !== '') {
-                    $displayRfid = $legacyRfid;
-                } elseif (!empty($byBranch)) {
+                if (!empty($byBranch)) {
                     $displayRfid = (string) reset($byBranch);
                 }
                 $extras[$tid]['rfid'] = $displayRfid;
@@ -235,10 +223,7 @@ class ProfileController extends Controller
                 $q = $request->input('q');
                 $fallbackQuery->where(function ($qry) use ($q) {
                     $qry->where('User.Name', 'like', '%' . $q . '%')
-                        ->orWhere('User.phone', 'like', '%' . $q . '%')
-                        ->orWhereExists(function ($sub) use ($q) {
-                            $sub->select(DB::raw(1))->from('Teacher')->whereColumn('Teacher.id', 'User.id')->where('Teacher.Phone', 'like', '%' . $q . '%');
-                        });
+                        ->orWhere('User.phone', 'like', '%' . $q . '%');
                 });
             }
             if ($request->filled('status')) {
@@ -318,7 +303,6 @@ class ProfileController extends Controller
     private function getTeacherExtra(int $userId): array
     {
         $user = DB::table('User')->where('id', $userId)->first();
-        $teacher = DB::table('Teacher')->where('id', $userId)->first();
         $subjectIds = [];
         if (Schema::hasTable('teacher_subjects')) {
             $subjectIds = DB::table('teacher_subjects')->where('teacher_id', $userId)->pluck('subject_id')->all();
@@ -337,14 +321,8 @@ class ProfileController extends Controller
                 }
             }
         }
-        $mainC = (int) ($teacher->CampusID ?? 0);
-        $legacyRfid = trim((string) ($teacher->RFID ?? ''));
         $displayRfid = '';
-        if ($mainC && isset($rfidByBranch[(string) $mainC])) {
-            $displayRfid = $rfidByBranch[(string) $mainC];
-        } elseif ($legacyRfid !== '') {
-            $displayRfid = $legacyRfid;
-        } elseif (!empty($rfidByBranch)) {
+        if (!empty($rfidByBranch)) {
             $displayRfid = (string) reset($rfidByBranch);
         }
 
@@ -352,8 +330,8 @@ class ProfileController extends Controller
         $subjectLevelScopes = $scopes[(int) $userId] ?? [];
 
         return [
-            'phone'        => $teacher->Phone ?? $user->phone ?? '',
-            'line_id'      => $teacher->LineID ?? '',
+            'phone'        => $user->phone ?? '',
+            'line_id'      => Schema::hasColumn('User', 'LineID') ? ($user->LineID ?? '') : '',
             'rfid'         => $displayRfid,
             'rfid_by_branch' => $rfidByBranch,
             'subject_ids'   => array_map('intval', $subjectIds),
@@ -401,14 +379,19 @@ class ProfileController extends Controller
             return response()->json(['message' => '此帳號已存在'], 409);
         }
 
-        $user = User::create([
+        $attributes = [
             'LoginName' => $loginName,
             'Name'      => $data['name'],
             'PSW'       => password_hash($data['password'], PASSWORD_DEFAULT),
             'type'      => $type,
             'status'   => $data['status'] ?? 'active',
             'phone'    => $normalizedPhone,
-        ]);
+        ];
+        if (Schema::hasColumn('User', 'LineID')) {
+            $attributes['LineID'] = $data['line_id'] ?? null;
+        }
+
+        $user = User::create($attributes);
 
         $campusId = $data['campus_id'] ?? $data['branch_id'] ?? null;
         if (!$campusId) {
@@ -433,19 +416,6 @@ class ProfileController extends Controller
                     UserCampus::firstOrCreate(['UserID' => $user->id, 'CampusID' => (int) $bid], ['Approved' => true]);
                 }
             }
-        }
-
-        if ($type === 'T' && !DB::table('Teacher')->where('id', $user->id)->exists()) {
-            DB::table('Teacher')->insert([
-                'id'         => $user->id,
-                'T_Name'     => $user->Name,
-                'CampusID'   => $campusId ?? 0,
-                'Enable'     => 1,
-                'MDT'        => now(),
-                'TelegramID' => '',
-                'Phone'      => $normalizedPhone,
-                'LineID'     => $data['line_id'] ?? '',
-            ]);
         }
 
         if ($type === 'T' && !empty($data['subject_ids']) && Schema::hasTable('teacher_subjects')) {
@@ -610,6 +580,9 @@ class ProfileController extends Controller
                         'status' => $status,
                         'phone' => $normalizedPhone,
                     ];
+                    if (Schema::hasColumn('User', 'LineID')) {
+                        $attributes['LineID'] = $lineId !== '' ? $lineId : null;
+                    }
 
                     if (Schema::hasColumn('User', 'MustChangePassword')) {
                         $attributes['MustChangePassword'] = true;
@@ -634,19 +607,6 @@ class ProfileController extends Controller
                             ['UserID' => $user->id, 'CampusID' => $multiBranchId],
                             $approvedAttr
                         );
-                    }
-
-                    if (!DB::table('Teacher')->where('id', $user->id)->exists()) {
-                        DB::table('Teacher')->insert([
-                            'id' => $user->id,
-                            'T_Name' => $user->Name,
-                            'CampusID' => $branchId,
-                            'Enable' => 1,
-                            'MDT' => now(),
-                            'TelegramID' => '',
-                            'Phone' => $normalizedPhone,
-                            'LineID' => $lineId,
-                        ]);
                     }
 
                     if (Schema::hasTable('teacher_branches')) {
@@ -744,15 +704,9 @@ class ProfileController extends Controller
 
         if (!empty($input['username'])) {
             $user->Name = $input['username'];
-            if ($user->type === 'T' && Schema::hasTable('Teacher')) {
-                DB::table('Teacher')->where('id', $user->id)->update(['T_Name' => $input['username']]);
-            }
         }
         if (!empty($input['name'])) {
             $user->Name = $input['name'];
-            if ($user->type === 'T' && Schema::hasTable('Teacher')) {
-                DB::table('Teacher')->where('id', $user->id)->update(['T_Name' => $input['name']]);
-            }
         }
         if (!empty($input['password'])) {
             $user->PSW = password_hash($input['password'], PASSWORD_DEFAULT);
@@ -771,6 +725,10 @@ class ProfileController extends Controller
         }
         if ($hasPhoneInput && Schema::hasColumn('User', 'phone')) {
             $user->phone = $normalizedPhone;
+        }
+        if (array_key_exists('line_id', $input) && Schema::hasColumn('User', 'LineID')) {
+            $lineId = trim((string) ($input['line_id'] ?? ''));
+            $user->LineID = $lineId !== '' ? $lineId : null;
         }
         $user->save();
 
@@ -797,10 +755,6 @@ class ProfileController extends Controller
             } else {
                 UserCampus::create(array_merge(['UserID' => $user->id, 'CampusID' => (int) $input['branch_id']], $approvedAttr));
             }
-            // 與 swipe-rfid 一致：Teacher.CampusID 需與主任設定的主分校同步，否則只會更新 UserCampus 時刷卡找不到老師。
-            if ($user->type === 'T' && Schema::hasTable('Teacher')) {
-                DB::table('Teacher')->where('id', $user->id)->update(['CampusID' => (int) $input['branch_id']]);
-            }
         }
 
         if (isset($input['multi_branches']) && is_array($input['multi_branches'])) {
@@ -822,16 +776,6 @@ class ProfileController extends Controller
         }
 
         if ($user->type === 'T') {
-            $teacherUpdates = [];
-            if ($hasPhoneInput) {
-                $teacherUpdates['Phone'] = $normalizedPhone;
-            }
-            if (array_key_exists('line_id', $input)) {
-                $teacherUpdates['LineID'] = $input['line_id'] ?? '';
-            }
-            if (!empty($teacherUpdates)) {
-                DB::table('Teacher')->where('id', $user->id)->update($teacherUpdates);
-            }
             $rfidErr = $this->applyTeacherRfidInput($user, $input);
             if ($rfidErr !== null) {
                 return $rfidErr;
@@ -940,9 +884,6 @@ class ProfileController extends Controller
             if (Schema::hasTable('teacher_branches')) {
                 DB::table('teacher_branches')->where('teacher_id', $user->id)->delete();
             }
-            if (Schema::hasTable('Teacher')) {
-                DB::table('Teacher')->where('id', $user->id)->delete();
-            }
 
             DB::table('UserCampus')->where('UserID', $user->id)->delete();
 
@@ -971,26 +912,13 @@ class ProfileController extends Controller
     }
 
     /**
-     * 寫入老師 RFID：優先使用 rfid_by_branch（每分校一筆 UserCampus.RFID），否則沿用單一 rfid（寫入主分校 + Teacher.RFID）。
+     * 寫入老師 RFID：UserCampus.RFID 是唯一權威來源。
      *
      * @return \Illuminate\Http\JsonResponse|null 錯誤時回傳 JSON，成功為 null
      */
     private function applyTeacherRfidInput(User $user, array $input): ?\Illuminate\Http\JsonResponse
     {
-        if (!Schema::hasTable('Teacher')) {
-            return null;
-        }
-
         if (!Schema::hasColumn('UserCampus', 'RFID')) {
-            if (array_key_exists('rfid', $input)) {
-                $raw = $input['rfid'];
-                $val = $raw === null || $raw === '' ? null : trim((string) $raw);
-                if ($val !== null && strlen($val) > 32) {
-                    return response()->json(['message' => 'RFID 長度不可超過 32 字元'], 422);
-                }
-                DB::table('Teacher')->where('id', $user->id)->update(['RFID' => $val]);
-            }
-
             return null;
         }
 
@@ -1025,21 +953,19 @@ class ProfileController extends Controller
                 }
                 DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $cid)->update(['RFID' => $val]);
             }
-            $this->mirrorTeacherRfidFromUserCampus((int) $user->id);
         } elseif (array_key_exists('rfid', $input)) {
             $raw = $input['rfid'];
             $val = $raw === null || $raw === '' ? null : trim((string) $raw);
             if ($val !== null && strlen($val) > 32) {
                 return response()->json(['message' => 'RFID 長度不可超過 32 字元'], 422);
             }
-            $mainCampusId = (int) (DB::table('Teacher')->where('id', $user->id)->value('CampusID') ?? 0);
+            $mainCampusId = (int) (DB::table('UserCampus')->where('UserID', $user->id)->value('CampusID') ?? 0);
             if ($mainCampusId > 0 && in_array($mainCampusId, $allowed, true)) {
                 if ($val !== null && !$this->teacherRfidUniqueAtCampus($mainCampusId, $val, (int) $user->id)) {
                     return response()->json(['message' => 'RFID 於主分校已被其他老師使用'], 422);
                 }
                 DB::table('UserCampus')->where('UserID', $user->id)->where('CampusID', $mainCampusId)->update(['RFID' => $val]);
             }
-            DB::table('Teacher')->where('id', $user->id)->update(['RFID' => $val]);
         }
 
         return null;
@@ -1062,23 +988,6 @@ class ProfileController extends Controller
         $name = DB::table('Campus')->where('id', $campusId)->value('name');
 
         return $name ? "「{$name}」" : '該分校';
-    }
-
-    private function mirrorTeacherRfidFromUserCampus(int $userId): void
-    {
-        if (!Schema::hasColumn('UserCampus', 'RFID')) {
-            return;
-        }
-        $teacherRow = DB::table('Teacher')->where('id', $userId)->first();
-        if (!$teacherRow) {
-            return;
-        }
-        $cid = (int) ($teacherRow->CampusID ?? 0);
-        if ($cid <= 0) {
-            return;
-        }
-        $r = DB::table('UserCampus')->where('UserID', $userId)->where('CampusID', $cid)->value('RFID');
-        DB::table('Teacher')->where('id', $userId)->update(['RFID' => $r]);
     }
 
     private function generateInitialPassword(): string
@@ -1147,13 +1056,6 @@ class ProfileController extends Controller
             if ($hasTeacherBranch) {
                 return true;
             }
-        }
-
-        if (Schema::hasTable('Teacher')) {
-            return DB::table('Teacher')
-                ->where('id', $teacherUserId)
-                ->whereIn('CampusID', $campusIds)
-                ->exists();
         }
 
         return false;

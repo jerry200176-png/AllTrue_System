@@ -17,6 +17,7 @@ use App\Services\ApprovalSessionSyncService;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
+use App\Support\TeacherProfileDirectory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,9 +150,7 @@ class LearningRecordController extends Controller
         $record->student_class_label = $subjectName ?? $record->Subject;
         $effTid = $this->resolveEffectiveInstructorUserId($record);
         $record->effective_teacher_id = $effTid;
-        $teacherName = DB::table('Teacher')->where('id', $effTid)->value('T_Name')
-            ?? DB::table('User')->where('id', $effTid)->value('Name');
-        $record->teacher_name = $teacherName ?? '未指派';
+        $record->teacher_name = TeacherProfileDirectory::nameFor((int) $effTid, '未指派');
         $comment = LearningRecordTeacherComment::where('learning_record_id', $record->id)->first();
         $record->teacher_comment = $comment ? $this->formatTeacherCommentForRecord($comment, [
             (int) $comment->author_user_id => DB::table('User')->where('id', $comment->author_user_id)->value('Name'),
@@ -425,9 +424,7 @@ class LearningRecordController extends Controller
             : null;
         $regularTeacherId = (int) ($record->studentClass->TeacherID ?? 0);
         $effectiveTeacherId = $this->resolveEffectiveInstructorUserId($record);
-        $teacherName = DB::table('Teacher')->where('id', $effectiveTeacherId)->value('T_Name')
-            ?? DB::table('User')->where('id', $effectiveTeacherId)->value('Name')
-            ?? '未指派';
+        $teacherName = TeacherProfileDirectory::nameFor((int) $effectiveTeacherId, '未指派');
 
         return response()->json([
             'summary' => [
@@ -816,12 +813,7 @@ class LearningRecordController extends Controller
         $allNameIds = $teacherIds->merge($effectiveIds)->unique()->values();
         $teacherNameMap = collect();
         if ($allNameIds->isNotEmpty()) {
-            $fromTeacher = DB::table('Teacher')->whereIn('id', $allNameIds)->pluck('T_Name', 'id');
-            $missingIds = $allNameIds->diff($fromTeacher->keys());
-            $fromUser = $missingIds->isNotEmpty()
-                ? DB::table('User')->whereIn('id', $missingIds)->pluck('Name', 'id')
-                : collect();
-            $teacherNameMap = $fromTeacher->union($fromUser);
+            $teacherNameMap = collect(TeacherProfileDirectory::names($allNameIds->all()));
         }
 
         $sessionNumbers = static::batchSessionNumbers($collection);

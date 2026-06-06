@@ -6,11 +6,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
-use RuntimeException;
 
 /**
- * Merges a duplicate teacher User (and matching Teacher row) into the canonical account.
- * TeacherID / teacher_id across the app reference User.id (G-001).
+ * Merges a duplicate teacher User into the canonical account.
+ * TeacherID / teacher_id across the app reference User.id (G-002).
  */
 class TeacherUserMergeService
 {
@@ -102,16 +101,13 @@ class TeacherUserMergeService
             }
             $this->bulkRetarget('payroll_audit_log', 'user_id', $keepId, $mergeId);
 
-            $this->mergeTeacherRows($keepId, $mergeId);
+            $this->mergeUserProfileFields($keepId, $mergeId);
             $this->finalizeMergedUser($keepId, $mergeId);
 
             if ($this->hasTable('auth_tokens')) {
                 DB::table('auth_tokens')->where('user_id', $mergeId)->delete();
             }
 
-            if ($this->hasTable('Teacher') && DB::table('Teacher')->where('id', $mergeId)->exists()) {
-                throw new RuntimeException('Teacher row for merge id still exists after merge.');
-            }
         });
     }
 
@@ -303,42 +299,33 @@ class TeacherUserMergeService
         $this->bulkRetarget('bug_report_status_logs', 'changed_by', $keepId, $mergeId);
     }
 
-    private function mergeTeacherRows(int $keepId, int $mergeId): void
+    private function mergeUserProfileFields(int $keepId, int $mergeId): void
     {
-        if (!$this->hasTable('Teacher')) {
+        if (!$this->hasTable('User')) {
             return;
         }
 
-        $keepT = DB::table('Teacher')->where('id', $keepId)->first();
-        $mergeT = DB::table('Teacher')->where('id', $mergeId)->first();
-
-        if (!$mergeT) {
+        $keep = DB::table('User')->where('id', $keepId)->first();
+        $merge = DB::table('User')->where('id', $mergeId)->first();
+        if (!$keep || !$merge) {
             return;
         }
 
-        if ($keepT) {
-            $patch = [];
-            foreach (['RFID', 'Phone', 'LineID', 'T_Name'] as $col) {
-                if (!isset($mergeT->$col) || $mergeT->$col === null || $mergeT->$col === '') {
-                    continue;
-                }
-                if (!isset($keepT->$col) || $keepT->$col === null || $keepT->$col === '') {
-                    $patch[$col] = $mergeT->$col;
-                }
+        $patch = [];
+        foreach (['phone', 'LineID'] as $col) {
+            if (!$this->hasColumn('User', $col)) {
+                continue;
             }
-            if (isset($patch['RFID']) && $this->hasColumn('Teacher', 'RFID')) {
-                DB::table('Teacher')->where('id', $mergeId)->update(['RFID' => null]);
+            if (!isset($merge->$col) || $merge->$col === null || $merge->$col === '') {
+                continue;
             }
-            if ($patch !== []) {
-                DB::table('Teacher')->where('id', $keepId)->update($patch);
+            if (!isset($keep->$col) || $keep->$col === null || $keep->$col === '') {
+                $patch[$col] = $merge->$col;
             }
-        } else {
-            DB::table('Teacher')->where('id', $mergeId)->update(['id' => $keepId]);
-
-            return;
         }
-
-        DB::table('Teacher')->where('id', $mergeId)->delete();
+        if ($patch !== []) {
+            DB::table('User')->where('id', $keepId)->update($patch);
+        }
     }
 
     private function finalizeMergedUser(int $keepId, int $mergeId): void
