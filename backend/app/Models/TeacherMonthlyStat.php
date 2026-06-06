@@ -16,6 +16,6 @@ class TeacherMonthlyStat extends Model
 
     public function teacher()
     {
-        return $this->belongsTo(Teacher::class, 'TeacherID');
+        return $this->belongsTo(User::class, 'TeacherID');
     }
 }

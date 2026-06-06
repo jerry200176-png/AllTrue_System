@@ -8,10 +8,8 @@ use App\Models\Student;
 use App\Models\TempRfid;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
-use App\Models\Teacher;
 use App\Models\TeacherSignIn;
 use App\Models\User;
-use App\Models\UserCampus;
 use App\Services\AttendanceEffectsService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
@@ -78,7 +76,6 @@ class SwipeRfidController extends Controller
             // 仍應進 TeacherSingIn，避免靜默寫成學生出勤而在老師打卡列表消失。
             $teacher = null;
             $teacherInCampus = false;
-            $matchedUserCampus = false;
             if (Schema::hasColumn('UserCampus', 'RFID')) {
                 $uc = DB::table('UserCampus')
                     ->where('CampusID', $campusId)
@@ -87,10 +84,12 @@ class SwipeRfidController extends Controller
                     ->where('RFID', '!=', '')
                     ->first();
                 if ($uc) {
-                    // 優先查 Teacher 表（舊有記錄）；找不到時 fallback 到 User 表
-                    // （新老師只建 User + UserCampus，不再同步建 Teacher）
-                    $teacher = Teacher::where('id', (int) $uc->UserID)->where('Enable', 1)->first()
-                        ?? User::where('id', (int) $uc->UserID)->where('status', 'active')->first();
+                    $teacher = User::where('id', (int) $uc->UserID)
+                        ->where('type', 'T')
+                        ->where(function ($query) {
+                            $query->whereNull('status')->orWhere('status', 'active');
+                        })
+                        ->first();
                     $teacherInCampus = (bool) $teacher;
                 }
             }
@@ -101,20 +100,6 @@ class SwipeRfidController extends Controller
             $student = Student::where('RFID', $rfid)->where('CampusID', $campusId)->where('enable', 1)->first();
             if ($student) {
                 return $this->handleStudentSwipe($student, $campus, $swipeAt);
-            }
-
-            // 備援：舊版 Teacher.RFID（單一欄位）
-            if (!$teacher) {
-                $teacher = Teacher::where('RFID', $rfid)->where('Enable', 1)->first();
-                if ($teacher) {
-                    $matchedUserCampus = UserCampus::where('UserID', $teacher->id)
-                        ->where('CampusID', $campusId)
-                        ->exists();
-                    $teacherInCampus = (int) $teacher->CampusID === (int) $campusId || $matchedUserCampus;
-                }
-            }
-            if ($teacherInCampus) {
-                return $this->handleTeacherSwipe($teacher, $campus, $swipeAt);
             }
 
             // 每分校僅一筆：更新 RFID 時必須刷新 created_at，否則效期仍沿用舊時間，
@@ -474,16 +459,13 @@ class SwipeRfidController extends Controller
     private const TEACHER_SWIPE_DEBOUNCE_SECONDS = 60;
 
     /**
-     * Teacher 或 User 物件都接受（Teacher 用 T_Name，User 用 Name）。
-     * 新老師只建 User+UserCampus，舊老師同時有 Teacher 記錄，兩者都需要可打卡。
-     *
-     * @param Teacher|User $teacher
+     * @param User $teacher
      */
-    private function handleTeacherSwipe($teacher, Campus $campus, Carbon $swipeAt)
+    private function handleTeacherSwipe(User $teacher, Campus $campus, Carbon $swipeAt)
     {
         $campusId    = $campus->id;
         $today       = $swipeAt->toDateString();
-        $teacherName = $teacher->T_Name ?? $teacher->Name ?? '';
+        $teacherName = $teacher->Name ?? '';
 
         $openRecord = TeacherSignIn::where('TeacherID', $teacher->id)
             ->whereDate('SignInDT', $today)
