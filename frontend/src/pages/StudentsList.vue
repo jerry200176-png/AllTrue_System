@@ -2774,27 +2774,29 @@ table th { font-size: 12.5px; }
   width: 16px;
   height: 16px;
   cursor: pointer;
-  accent-color: var(--primary);
+  accent-color: var(--ds-primary);
 }
 .student-row {
   cursor: pointer;
   transition: background 0.2s ease;
 }
 .student-row:hover td {
-  background: #FFF8E1 !important;
+  background: var(--ds-primary-wash) !important;
 }
 .student-row.expanded td {
-  background: #FFF3E0;
-  border-bottom-color: var(--accent);
+  background: var(--ds-primary-wash);
+  border-bottom-color: var(--ds-primary);
 }
 
-/* Status left border on student rows */
+/* Status left border on student rows.
+   active/paused 對應 ds-success/ds-warning；graduated 藍、transferred 紫
+   屬多態語意色（無對應 ds semantic token），維持 raw 待 token 擴充。*/
 .student-row td:first-child {
   border-left: 3px solid transparent;
 }
-.student-row.status-active td:first-child { border-left-color: #43a047; }
+.student-row.status-active td:first-child { border-left-color: var(--ds-success); }
 .student-row.status-graduated td:first-child { border-left-color: #1565c0; }
-.student-row.status-paused td:first-child { border-left-color: #e65100; }
+.student-row.status-paused td:first-child { border-left-color: var(--ds-warning); }
 .student-row.status-transferred td:first-child { border-left-color: #7b1fa2; }
 
 /* Expand icon */
@@ -2804,7 +2806,7 @@ table th { font-size: 12.5px; }
 }
 .expand-chevron {
   font-size: 20px;
-  color: #90a4ae;
+  color: var(--ds-ink-mute);
   transition: transform 0.2s ease;
   display: inline-block;
 }
@@ -2832,13 +2834,15 @@ table th { font-size: 12.5px; }
   justify-content: center;
   font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ds-on-primary);
   flex-shrink: 0;
-  background: linear-gradient(135deg, #43a047, #66bb6a);
+  background: var(--ds-success);
 }
-.student-avatar-mini.graduated { background: linear-gradient(135deg, #1565c0, #42a5f5); }
-.student-avatar-mini.paused { background: linear-gradient(135deg, #e65100, #ff9800); }
-.student-avatar-mini.transferred { background: linear-gradient(135deg, #7b1fa2, #ab47bc); }
+/* graduated/transferred 屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。
+   移除原裝飾性 linear-gradient → 改用實色，與 RULE_DESIGN_SYSTEM §7 一致。 */
+.student-avatar-mini.graduated { background: #1565c0; }
+.student-avatar-mini.paused { background: var(--ds-warning); }
+.student-avatar-mini.transferred { background: #7b1fa2; }
 
 .text-red {
   color: var(--danger) !important;
@@ -2857,8 +2861,8 @@ table th { font-size: 12.5px; }
   padding: 3px 9px;
   border-radius: 12px;
   font-size: 12.5px;
-  background: #E8F5E9;
-  color: #2E7D32;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
   white-space: nowrap;
 }
 .subject-pill strong {
@@ -2866,14 +2870,14 @@ table th { font-size: 12.5px; }
   font-variant-numeric: tabular-nums;
 }
 .subject-pill.low {
-  background: #FFEBEE;
-  color: #C62828;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
 }
 
 .note-icon {
   margin-left: 4px;
   cursor: help;
-  color: #ffab00;
+  color: var(--ds-warning);
 }
 
 .student-status-badge {
@@ -2884,8 +2888,9 @@ table th { font-size: 12.5px; }
   margin-left: 6px;
   font-weight: 600;
 }
+/* paused 對應 ds-warning；graduated 藍、transferred 紫無 ds token，維持 raw。 */
 .student-status-badge.graduated { background: #E3F2FD; color: #1565C0; }
-.student-status-badge.paused { background: #FFF3E0; color: #E65100; }
+.student-status-badge.paused { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .student-status-badge.transferred { background: #F3E5F5; color: #6A1B9A; }
 
 /* RFID */
@@ -2898,14 +2903,14 @@ table th { font-size: 12.5px; }
 .rfid-tag {
   font-size: 12px;
   font-family: monospace;
-  color: var(--primary);
+  color: var(--ds-primary);
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 .rfid-unbound {
   font-size: 12px;
-  color: #bdbdbd;
+  color: var(--ds-ink-mute);
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -2940,7 +2945,7 @@ table th { font-size: 12.5px; }
 }
 .mini-progress {
   height: 4px;
-  background: #e8e8e8;
+  background: var(--ds-hairline);
   border-radius: 2px;
   overflow: hidden;
   width: 80px;
@@ -2964,33 +2969,33 @@ table th { font-size: 12.5px; }
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 2px solid #E0E0E0;
-  background: #FAFAFA;
+  border: 2px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #616161;
+  color: var(--ds-ink-secondary);
   transition: all 0.2s;
   user-select: none;
 }
 .day-chip:hover {
-  border-color: #FF9800;
-  background: #FFF3E0;
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
 }
 .day-chip.selected {
-  border-color: #E65100;
-  background: #FF9800;
-  color: #fff;
+  border-color: var(--ds-primary-deep);
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
 }
 
 /* ═══ Course Detail Panel ═══ */
 .course-detail-row td {
   padding: 0 !important;
-  background: #FAFAFA !important;
+  background: var(--ds-canvas-soft) !important;
 }
 .course-panel {
   padding: 20px 24px;
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--ds-primary);
   margin: 0;
 }
 .course-panel-header {
@@ -3005,13 +3010,13 @@ table th { font-size: 12.5px; }
   gap: 6px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--ds-primary);
   margin: 0;
 }
 .student-note-line {
   margin-bottom: 12px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .student-note-label {
   font-weight: 700;
@@ -3022,23 +3027,25 @@ table th { font-size: 12.5px; }
   font-size: 14px;
 }
 .course-inner-table th {
-  background: #F0F0F0;
+  background: var(--ds-canvas-soft);
   font-size: 12px;
   padding: 9px 8px;
 }
 .course-inner-table td {
   padding: 10px 8px;
-  border-bottom: 1px solid #EEEEEE;
+  border-bottom: 1px solid var(--ds-hairline);
 }
-.status-tag.one_on_one { background: #FFF3E0; color: #E65100; }
+/* one_on_one 對應 ds-primary（1對1=主打）、tutoring 對應 ds-success；
+   1對2/1對3/trial 屬多態語意色（無對應 ds token），維持 raw。 */
+.status-tag.one_on_one { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
-.status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.status-tag.tutoring { background: var(--ds-success-wash); color: var(--ds-success); }
 .status-tag.trial { background: #E8EAF6; color: #3949AB; }
 .course-memo-line {
   margin-top: 4px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
   line-height: 1.4;
   word-break: break-word;
 }
