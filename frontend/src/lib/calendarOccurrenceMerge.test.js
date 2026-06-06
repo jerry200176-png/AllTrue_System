@@ -317,3 +317,31 @@ const muzhaDuplicateStudentSlot = merge({
 assert.equal(muzhaDuplicateStudentSlot.length, 1, 'same student/date/start should render once even when legacy active contracts exist');
 assert.equal(muzhaDuplicateStudentSlot[0].student_course_id, 1256);
 assert.equal(muzhaDuplicateStudentSlot[0].class_session_id, 11262);
+
+const historicalStoppedCourse = {
+  ...baseCourse,
+  id: 777,
+  stop: 1,
+  status: 'inactive',
+  day_of_week: 5,
+  days_of_week: [5],
+  day_time_slots: [{ day: 5, start_time: '13:00', duration_hours: 2 }],
+};
+const historicalStoppedMerge = merge({
+  courses: [historicalStoppedCourse],
+  allCourses: [historicalStoppedCourse],
+  sessionDatesByCourseId: {
+    777: [
+      { id: 9901, session_date: '2026-05-08', start_time: '13:00', end_time: '15:00', status: 'attended', teacher_id: 17, teacher_name: '原老師' },
+    ],
+  },
+});
+assert.equal(historicalStoppedMerge.length, 1, 'historical stopped course should still render past ClassSession rows in week view');
+assert.equal(historicalStoppedMerge[0].class_session_id, 9901);
+
+const historicalWithoutSessions = merge({
+  courses: [historicalStoppedCourse],
+  allCourses: [historicalStoppedCourse],
+  sessionDatesByCourseId: {},
+});
+assert.equal(historicalWithoutSessions.length, 0, 'historical stopped course without ClassSession rows should not render recurring ghosts');

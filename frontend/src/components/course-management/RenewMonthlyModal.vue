@@ -98,7 +98,8 @@ const finalEndDate = computed(() => {
 .course-modal { width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; }
 .premium-renewal-modal {
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgba(245, 124, 0, 0.2);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(255,255,255,0.7);
   background:
@@ -146,5 +147,12 @@ const finalEndDate = computed(() => {
   color: #475569;
   font-size: 12px;
   line-height: 1.5;
+}
+.actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  padding-top: 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0) 0%, rgba(248, 250, 252, 0.98) 24%);
 }
 </style>

@@ -1250,6 +1250,7 @@ const props = defineProps(['branchId', 'userRole', 'userId', 'targetRecordId', '
 const emit = defineEmits(['feedback-read']);
 
 const feedbackPreviewOpen = ref(new Set());
+const recentlyReadFeedbackIds = ref(new Set());
 const toggleFeedbackPreview = (record) => {
   const id = record.id;
   if (feedbackPreviewOpen.value.has(id)) {
@@ -1565,7 +1566,7 @@ const filteredRecords = computed(() => {
   if (feedbackFilter.value === 'has') {
     list = list.filter(r => !!r.parent_feedback);
   } else if (feedbackFilter.value === 'unread') {
-    list = list.filter(parentFeedbackUnread);
+    list = list.filter((r) => parentFeedbackUnread(r) || recentlyReadFeedbackIds.value.has(Number(r?.id || 0)));
   }
   return list;
 });
@@ -1751,6 +1752,13 @@ const markParentFeedbackRead = async (record) => {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     if (!res.ok) throw new Error(`mark read failed: ${res.status}`);
+    if (feedbackFilter.value === 'unread') {
+      const id = Number(record?.id || 0);
+      if (id > 0) {
+        recentlyReadFeedbackIds.value.add(id);
+        recentlyReadFeedbackIds.value = new Set(recentlyReadFeedbackIds.value);
+      }
+    }
     if (isTeacher.value) feedback.unread_for_teacher = false;
     else feedback.unread_for_director = false;
     emit('feedback-read');
@@ -4095,6 +4103,9 @@ watch(() => props.targetSession, (newSession) => {
 // applyFeedbackFocus 內部自行抓取，故以此旗標避免重複請求。
 let _suppressFeedbackRefetch = false;
 watch(feedbackFilter, () => {
+  if (feedbackFilter.value !== 'unread' && recentlyReadFeedbackIds.value.size > 0) {
+    recentlyReadFeedbackIds.value = new Set();
+  }
   if (_suppressFeedbackRefetch) return;
   fetchRecords();
 });
