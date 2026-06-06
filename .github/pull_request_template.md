@@ -46,5 +46,5 @@
 - [ ] 無新增 raw `#hex`（或已在 lint baseline 內）
 - [ ] 每個區塊 Primary CTA ≤ 1 顆
 - [ ] 金額 / 堂數 / 日期已套 `tabular-nums`
-- [ ] 空狀態含「下一步」行動說明（`docs/UI_COPY_GUIDE.md` §2）
+- [ ] 空狀態含「下一步」行動說明（`docs/GUIDE_UI_COPY.md` §2）
 - [ ] 未改業務邏輯 / 繳費規則（只動樣式 / 文案 / 空狀態）
