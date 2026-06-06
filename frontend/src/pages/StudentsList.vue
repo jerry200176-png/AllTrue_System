@@ -2613,9 +2613,9 @@ table th { font-size: 12.5px; }
 
 .text-secondary { color: var(--text-light); font-size: 0.9rem; }
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
-.close-btn { color: #92400e; border-color: #d97706; }
-.close-btn:hover { background: #fef3c7; }
-.paid-date-hint { display: inline-block; font-size: 12px; color: var(--success, #2e7d32); margin-left: 4px; white-space: nowrap; }
+.close-btn { color: var(--ds-warning); border-color: var(--ds-warning); }
+.close-btn:hover { background: var(--ds-warning-wash); }
+.paid-date-hint { display: inline-block; font-size: 12px; color: var(--ds-success); margin-left: 4px; white-space: nowrap; }
 
 /* ── Monthly Invoice Modal ── */
 .invoice-status-chip {
@@ -2625,13 +2625,13 @@ table th { font-size: 12.5px; }
   font-size: 12px;
   font-weight: 600;
 }
-.invoice-status-chip.paid    { background: #e8f5e9; color: #2e7d32; }
-.invoice-status-chip.unpaid  { background: #fff3e0; color: #e65100; }
-.invoice-status-chip.partial { background: #fff8e1; color: #f57f17; }
+.invoice-status-chip.paid    { background: var(--ds-success-wash); color: var(--ds-success); }
+.invoice-status-chip.unpaid  { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .invoice-skeleton {
   height: 20px;
   width: 100%;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-hairline) 50%, var(--ds-canvas-soft) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite;
   border-radius: 4px;
@@ -2654,7 +2654,7 @@ table th { font-size: 12.5px; }
 }
 .header-icon {
   font-size: 26px;
-  color: var(--primary);
+  color: var(--ds-primary);
 }
 .header-stats {
   display: flex;
@@ -2669,13 +2669,14 @@ table th { font-size: 12.5px; }
   padding: 3px 10px;
   border-radius: 6px;
   font-size: 13px;
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .stat-badge-light {
-  background: #f5f5f5;
-  color: #78909c;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
   font-weight: 500;
 }
 .header-buttons {
@@ -2684,20 +2685,23 @@ table th { font-size: 12.5px; }
   align-items: center;
 }
 .button-outline {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ds-hairline);
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
-  background: var(--card-bg);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
   font-size: 13px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: var(--transition);
 }
 .button-outline:hover {
-  background: var(--bg);
-  border-color: var(--accent);
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
+  color: var(--ds-ink);
 }
 .btn-icon {
   font-size: 18px;
@@ -2711,8 +2715,8 @@ table th { font-size: 12.5px; }
   justify-content: space-between;
   padding: 10px 16px;
   margin-bottom: 12px;
-  background: #E3F2FD;
-  border: 1px solid #90CAF9;
+  background: var(--ds-primary-wash);
+  border: 1px solid var(--ds-hairline-input);
   border-radius: 8px;
   animation: slideDown 0.2s ease;
 }
@@ -2740,7 +2744,7 @@ table th { font-size: 12.5px; }
   background: var(--ds-canvas-soft);
   padding: 16px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ds-hairline);
 }
 .filter-search { position: relative; }
 .search-input-wrap { position: relative; }
@@ -2750,7 +2754,7 @@ table th { font-size: 12.5px; }
   top: 50%;
   transform: translateY(-50%);
   font-size: 20px;
-  color: #bdbdbd;
+  color: var(--ds-ink-mute);
   pointer-events: none;
 }
 .search-input-wrap input { padding-left: 36px; }
