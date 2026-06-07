@@ -371,9 +371,19 @@ jobs:
         working-directory: frontend
         run: npm run test:unit
 
-      - name: "Design raw-hex guard (advisory, #689)"
+      - name: "Design hex delta metric (PR annotation)"
         working-directory: frontend
+        if: github.event_name == 'pull_request'
         continue-on-error: true
+        run: |
+          COUNT=$(npm run --silent metrics:design-hex 2>/dev/null | node -e "let d='';process.stdin.on("data",c=>d+=c).on("end",()=>{try{const j=JSON.parse(d);console.log(j.pages_total+j.components_total)}catch{console.log(0)}})" 2>/dev/null || echo 0)
+          echo "metrics:design-hex total=${COUNT}" >> $GITHUB_STEP_SUMMARY
+          echo "::notice title=Design Hex Count::Total raw-hex usages: ${COUNT} (新增任何 raw hex 將被下一個步驟 block)"
+
+      - name: "Design raw-hex guard (blocking, #689/#737)"
+        working-directory: frontend
+        # SEC: advisory → blocking (#737). Fails if any .vue file has MORE raw hex than baseline.
+        # To update baseline after intentional cleanup: bash scripts/design-hex-count.sh > docs/design-hex-baseline.json
         run: npm run lint:design
 
       - name: Vite build
