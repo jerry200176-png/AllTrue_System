@@ -2137,8 +2137,6 @@ const onCourseRightClick = (course, date, event) => {
   contextMenu.value = { show: true, x, y, course, date };
 };
 
-};
-
 // ===== Drag-to-Reschedule =====
 const onCourseDragStart = (course, date, event) => {
   draggingCourse.value = { course, originalDate: date };
