@@ -32,6 +32,19 @@ assert.match(
 );
 
 assert.match(
+  buildStudentClassesApiUrl({
+    baseUrl: '/api',
+    branchId: 1,
+    isTeacher: false,
+    userId: null,
+    schedStart: '2026-04-13',
+    schedEnd: '2026-05-31',
+  }),
+  /start=2026-04-13.*end=2026-05-31/,
+  'student-classes URL should include calendar window when provided',
+);
+
+assert.match(
   buildSchedulesApiUrl({
     baseUrl: '/api',
     schedStart: '2026-04-01',
@@ -73,4 +86,4 @@ assert.equal(savings.serialMs, 1550, 'serial total is sum');
 assert.equal(savings.parallelMs, 1200, 'parallel total is max');
 assert.equal(savings.savedMs, 350, 'saved ms equals shorter leg');
 
-console.log('calendarCourseLoad.test.js — 9 passed ✅');
+console.log('calendarCourseLoad.test.js — 10 passed ✅');
