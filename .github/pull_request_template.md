@@ -23,6 +23,14 @@
 
 > **Golden**：無需人工勾選。Presubmit **CHECK 6** 與 CI job **Golden scenarios report** 會依 diff 對應 §0–§4；見 [`docs/QA_GOLDEN_SCENARIOS.md`](../docs/QA_GOLDEN_SCENARIOS.md)。
 
+## Migration Compatibility（有 DB migration 時必填）
+<!-- 見 docs/RULE_MIGRATION_COMPAT.md -->
+- **Phase**: Expand / Backfill / Contract / Simple Add / N/A
+- **Reversibility**: `down()` 可逆 ✅ / 不可逆（原因：___）
+- **Big table risk**: 表名 + 預估 row 數（> 10K 需評估）
+- **Rollback impact**: code rollback 後舊 schema 是否仍可運行？
+
+
 ## Checklist
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
 - [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
