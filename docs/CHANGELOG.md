@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-07 — refactor(calendar): SmartCalendar Modals 群拆分（#740 Step 6）
+
+班級行事曆五個 inline modal 剝離為獨立 presentational 元件，單堂檢視 modal 移除死碼分支，行數再降 661 行。
+
+開發備註：`CalendarSessionEditModal` / `CalendarLeaveModal` / `CalendarRescheduleModal` / `CalendarSubstituteLegacyModal` / `CalendarExtraLessonModal` + `calendarModalRwd.css`。父層保留 form state 與 submit API。`SmartCalendar.vue` 4845→4184。`test:unit` 56 passed。技術文件 → `GUIDE_SMARTCALENDAR_REFACTOR.md` §4.6。Refs #740。
+
 ## 2026-06-07 — refactor(calendar): SmartCalendar 受控拆分暫時收尾（#740 Phase 4c）
 
 班級行事曆大檔案完成第一階段受控拆分：純工具與五個 UI 葉子元件剝離，課程卡 CSS 祖先耦合改為 prop 驅動，視覺驗收通過；Modals 與效能平行化延後。
