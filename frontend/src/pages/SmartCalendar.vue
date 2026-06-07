@@ -598,33 +598,16 @@
       </div>
     </div>
 
-    <!-- ===== Leave Modal (請假) ===== -->
-    <div v-if="showLeaveModal" class="modal-overlay" @click.self="showLeaveModal = false">
-      <div class="modal" style="width: 420px;">
-        <h3>📋 請假登記</h3>
-        <p class="hint">請假不扣堂數、不需填寫評量表</p>
-        <div class="form-group">
-          <label>學生</label>
-          <p style="font-weight: 600;">{{ getStudentName(leaveForm.student_id) }}</p>
-        </div>
-        <div class="form-group">
-          <label>科目</label>
-          <p>{{ getSubjectLabel(leaveForm.subject) }}</p>
-        </div>
-        <div class="form-group">
-          <label>請假日期</label>
-          <input v-model="leaveForm.schedule_date" type="date" />
-        </div>
-        <div class="form-group">
-          <label>原時段</label>
-          <p>{{ dayLabel(leaveForm.day_of_week) }} {{ leaveForm.start_time }}~{{ leaveForm.end_time }}</p>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showLeaveModal = false">取消</button>
-          <button class="primary" @click="submitLeave">確認請假</button>
-        </div>
-      </div>
-    </div>
+    <!-- #740 Modals：請假 -->
+    <CalendarLeaveModal
+      :show="showLeaveModal"
+      :form="leaveForm"
+      :student-name="leaveDisplay.studentName"
+      :subject-label="leaveDisplay.subjectLabel"
+      :original-slot-label="leaveDisplay.originalSlot"
+      @close="showLeaveModal = false"
+      @submit="submitLeave"
+    />
 
     <!-- ===== PRD 9c058f19：代課 V2 Modal + Toast + 批次請假 ===== -->
     <SubstituteTeacherPickerModal
@@ -648,159 +631,47 @@
     />
     <ToastWithUndo v-if="featureSubstituteV2" ref="toastRef" />
 
-    <!-- ===== Substitute Teacher Modal (legacy, 舊版 select 版；Feature flag 關閉時使用) ===== -->
-    <div v-if="showSubstituteModal" class="modal-overlay" @click.self="showSubstituteModal = false">
-      <div class="modal" style="width: 440px;">
-        <h3>👤 換代課老師</h3>
-        <p class="hint">僅替換此堂授課老師，不影響課程主檔與後續排課。</p>
-        <div class="form-group">
-          <label>學生</label>
-          <p style="font-weight: 600;">{{ getStudentName(substituteForm.student_id) }}</p>
-        </div>
-        <div class="form-group">
-          <label>科目</label>
-          <p>{{ getSubjectLabel(substituteForm.subject) }}</p>
-        </div>
-        <div class="form-group">
-          <label>日期 / 時段</label>
-          <p>{{ substituteForm.session_date }} {{ substituteForm.start_time }}~{{ substituteForm.end_time }}</p>
-        </div>
-        <div class="form-group">
-          <label>正班老師</label>
-          <p>{{ substituteForm.original_teacher_name || '—' }}</p>
-        </div>
-        <div class="form-group">
-          <label>代課老師 <span style="color: #ef4444;">*</span></label>
-          <select v-model="substituteForm.substitute_teacher_id">
-            <option value="">請選擇</option>
-            <option v-for="t in (teachers || [])" :key="t.id" :value="t.id">{{ t.username }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>原因（選填）</label>
-          <input v-model="substituteForm.reason" type="text" placeholder="例：正班老師請假" style="width: 100%;" />
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showSubstituteModal = false">取消</button>
-          <button class="primary" @click="submitSubstitute" :disabled="substituteSubmitting || !substituteForm.substitute_teacher_id">
-            {{ substituteSubmitting ? '處理中…' : '確認代課' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- #740 Modals：舊版代課 -->
+    <CalendarSubstituteLegacyModal
+      :show="showSubstituteModal"
+      :form="substituteForm"
+      :student-name="substituteDisplay.studentName"
+      :subject-label="substituteDisplay.subjectLabel"
+      :session-slot-label="substituteDisplay.sessionSlot"
+      :teachers="teachers || []"
+      :submitting="substituteSubmitting"
+      @close="showSubstituteModal = false"
+      @submit="submitSubstitute"
+    />
 
-    <!-- ===== Extra Lesson Modal (加課) ===== -->
-    <div v-if="showExtraModal" class="modal-overlay" @click.self="showExtraModal = false">
-      <div class="modal" style="width: 480px;">
-        <h3>＋ 加課</h3>
-        <p class="hint" v-if="extraParentPaymentType === 'monthly'">月結制加課需額外繳費，老師需上傳評量表</p>
-        <p class="hint" v-else>堂數制加課會提早用完堂數（不額外收費），老師需上傳評量表</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-          <div class="form-group">
-            <label>學生</label>
-            <SearchableSelect
-              v-model="extraForm.student_id"
-              :options="studentSelectOptions"
-              placeholder="輸入學生姓名搜尋..."
-            />
-          </div>
-          <div class="form-group">
-            <label>科目</label>
-            <select v-model="extraForm.subject">
-              <option v-for="s in subjectOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>老師</label>
-            <select v-model="extraForm.teacher_id">
-              <option value="">請選擇</option>
-              <option v-for="t in (teachers || [])" :key="t.id" :value="t.id">{{ t.username }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>類型</label>
-            <select v-model="extraForm.class_type">
-              <option value="one_on_one">一對一</option>
-              <option value="one_on_two">一對二</option>
-              <option value="one_on_three">一對三</option>
-              <option value="tutoring">輔導</option>
-              <option value="trial">試聽</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>日期</label>
-            <input v-model="extraForm.schedule_date" type="date" />
-          </div>
-          <div class="form-group">
-            <label>時長</label>
-            <select v-model.number="extraForm.duration_hours" @change="onExtraFormTimeChange">
-              <option :value="1">1 小時</option>
-              <option :value="1.5">1.5 小時</option>
-              <option :value="2">2 小時</option>
-              <option :value="2.5">2.5 小時</option>
-              <option :value="3">3 小時</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>開始時間</label>
-            <input
-              v-model="extraForm.start_time"
-              type="time"
-              step="1800"
-              @change="onExtraFormStartTimeChange"
-            />
-            <p class="hint" style="margin-top: 4px;">僅可選整點或半點</p>
-          </div>
-          <div class="form-group">
-            <label>預計結束時間</label>
-            <p class="computed-time">{{ computedExtraEndTime }}</p>
-          </div>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showExtraModal = false">取消</button>
-          <button class="primary" @click="submitExtraLesson">確認加課</button>
-        </div>
-      </div>
-    </div>
+    <!-- #740 Modals：加課 -->
+    <CalendarExtraLessonModal
+      :show="showExtraModal"
+      :form="extraForm"
+      :student-options="studentSelectOptions"
+      :subject-options="subjectOptions"
+      :teachers="teachers || []"
+      :new-end-time="computedExtraEndTime"
+      :is-monthly="extraParentPaymentType === 'monthly'"
+      @close="showExtraModal = false"
+      @submit="submitExtraLesson"
+      @duration-change="onExtraFormTimeChange"
+      @start-time-change="onExtraFormStartTimeChange"
+    />
 
-    <!-- ===== Reschedule Modal (調課) ===== -->
-    <div v-if="showRescheduleModal" class="modal-overlay" @click.self="showRescheduleModal = false">
-      <div class="modal" style="width: 420px;">
-        <h3>🔄 調課</h3>
-        <p class="hint">將原本的課程改到新的日期時間</p>
-        <div class="form-group">
-          <label>學生</label>
-          <p style="font-weight: 600;">{{ getStudentName(rescheduleForm.student_id) }}</p>
-        </div>
-        <div class="form-group">
-          <label>科目</label>
-          <p>{{ getSubjectLabel(rescheduleForm.subject) }}</p>
-        </div>
-        <div class="form-group">
-          <label>原時段</label>
-          <p>{{ dayLabel(rescheduleForm.original_day) }} {{ rescheduleForm.original_start }}~{{ rescheduleForm.original_end }}</p>
-        </div>
-        <hr style="border: none; border-top: 1px solid #eee; margin: 12px 0;" />
-        <div class="form-group">
-          <label>新日期</label>
-          <input v-model="rescheduleForm.new_date" type="date" />
-        </div>
-        <div class="form-group">
-          <label>新開始時間</label>
-          <select v-model="rescheduleForm.new_start" @change="onRescheduleNewStartChange">
-            <option v-for="t in timeOptions30" :key="t" :value="t">{{ t }}</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>預計新結束時間</label>
-          <p class="computed-time">{{ computedRescheduleNewEnd }}</p>
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showRescheduleModal = false">取消</button>
-          <button class="primary" @click="submitReschedule">確認調課</button>
-        </div>
-      </div>
-    </div>
+    <!-- #740 Modals：調課 -->
+    <CalendarRescheduleModal
+      :show="showRescheduleModal"
+      :form="rescheduleForm"
+      :student-name="rescheduleDisplay.studentName"
+      :subject-label="rescheduleDisplay.subjectLabel"
+      :original-slot-label="rescheduleDisplay.originalSlot"
+      :new-end-time="computedRescheduleNewEnd"
+      :time-options="timeOptions30"
+      @close="showRescheduleModal = false"
+      @submit="submitReschedule"
+      @new-start-change="onRescheduleNewStartChange"
+    />
 
     <!-- ===== Right-click Context Menu ===== -->
     <div
@@ -838,6 +709,10 @@ import DayTabsBar from '../components/calendar/DayTabsBar.vue';
 import WeekTeacherChips from '../components/calendar/WeekTeacherChips.vue';
 import WeekNavBar from '../components/calendar/WeekNavBar.vue';
 import CourseBlockContent from '../components/calendar/CourseBlockContent.vue';
+import CalendarLeaveModal from '../components/calendar/modals/CalendarLeaveModal.vue';
+import CalendarRescheduleModal from '../components/calendar/modals/CalendarRescheduleModal.vue';
+import CalendarSubstituteLegacyModal from '../components/calendar/modals/CalendarSubstituteLegacyModal.vue';
+import CalendarExtraLessonModal from '../components/calendar/modals/CalendarExtraLessonModal.vue';
 import {
   fetchTeacherAvailability,
   undoSubstitute,
@@ -3401,6 +3276,22 @@ const getStudentName = (sid) => {
   const s = allStudents.value.find(s => s.id === sid);
   return s ? s.name : '—';
 };
+
+const leaveDisplay = computed(() => ({
+  studentName: getStudentName(leaveForm.value.student_id),
+  subjectLabel: getSubjectLabel(leaveForm.value.subject),
+  originalSlot: `${dayLabel(leaveForm.value.day_of_week)} ${leaveForm.value.start_time}~${leaveForm.value.end_time}`,
+}));
+const rescheduleDisplay = computed(() => ({
+  studentName: getStudentName(rescheduleForm.value.student_id),
+  subjectLabel: getSubjectLabel(rescheduleForm.value.subject),
+  originalSlot: `${dayLabel(rescheduleForm.value.original_day)} ${rescheduleForm.value.original_start}~${rescheduleForm.value.original_end}`,
+}));
+const substituteDisplay = computed(() => ({
+  studentName: getStudentName(substituteForm.value.student_id),
+  subjectLabel: getSubjectLabel(substituteForm.value.subject),
+  sessionSlot: `${substituteForm.value.session_date} ${substituteForm.value.start_time}~${substituteForm.value.end_time}`,
+}));
 
 const reloadCalendarData = () => Promise.allSettled([
   loadCourses(),
