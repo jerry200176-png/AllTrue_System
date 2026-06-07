@@ -441,19 +441,11 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { fetchClassSessions } from '../lib/classSessionsApi';
-import { fetchAllPages } from '../lib/pagedFetchAll';
 import { mergeWeekCalendarOccurrences } from '../lib/calendarOccurrenceMerge';
 import {
   resolveCalendarDataFetchBoundsYmd,
-  shouldUseLegacyCalendarFallback,
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
-import {
-  fetchCalendarCoursesAndSchedulesParallel,
-  fetchCalendarStudentClassesApi,
-  fetchCalendarSchedulesApi,
-} from '../lib/calendarCourseLoad';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
@@ -496,6 +488,7 @@ import {
 } from '../lib/calendarFormat.js';
 // #740 Step 3：教師配色（有狀態 memo）
 import { getTeacherColor } from '../lib/teacherColor.js';
+import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad.js';
 
 // PRD 9c058f19 — 代課流程 UX 優化旗標；env 為字串，需解析。
 const FEATURE_SUBSTITUTE_V2 = ((import.meta?.env?.VITE_FEATURE_SUBSTITUTE_V2 ?? '1') + '') !== '0';
@@ -597,14 +590,7 @@ const viewMode = ref('week');
 const displayWeek = ref(0);
 const weekOffset = ref(0); // 上週/下週偏移
 const jumpToDate = ref(formatLocalDate(new Date()));
-const courses = ref([]);
-const exceptions = ref([]); // Store schedules (leaves, extras, reschedules)
-const calendarLoading = ref(false);
-const calendarLoadProgress = ref('');
-/** 與課程管理相同：每門課的實際上課日期列表（來自 session-dates API），用於智慧排課只顯示到最後一堂 */
-const sessionDatesByCourseId = ref({});
-const allStudents = ref([]);
-const teachers = ref([]);
+// courses / exceptions / loaders → useCalendarDataLoad（#740 Step 7，見 getCalendarDataFetchBoundsYmd 之後）
 const filterTeacherId = ref('');
 const showModal = ref(false);
 const editingCourseId = ref(null);
@@ -803,11 +789,6 @@ function getCalendarDataFetchBoundsYmd() {
   });
 }
 
-// TD-062 Phase 1：記錄上一次 loadCourses 實際抓取的視窗（分校 + ±buffer 日期範圍）。
-// 換週/換日若仍落在此視窗內，可跳過全量重抓，由 reactive computed 直接重渲染既有資料。
-// 僅在「資料成功載入」時設定；任何 mutation 仍走完整 loadCourses（不讀此快取）→ 無 staleness。
-const lastCalendarFetch = ref(null);
-
 // 目前週檢視實際渲染的週一～週日日期範圍（YYYY-MM-DD），供視窗包含判斷用。
 const getVisibleWeekRangeYmd = () => {
   const ymds = [];
@@ -818,6 +799,26 @@ const getVisibleWeekRangeYmd = () => {
   ymds.sort();
   return ymds.length ? { min: ymds[0], max: ymds[ymds.length - 1] } : null;
 };
+
+const {
+  courses,
+  exceptions,
+  calendarLoading,
+  calendarLoadProgress,
+  sessionDatesByCourseId,
+  allStudents,
+  teachers,
+  lastCalendarFetch,
+  loadCourses,
+  loadTeachers,
+  reloadCalendarData: reloadCalendarDataCore,
+} = useCalendarDataLoad({
+  branchId: computed(() => props.branchId),
+  userId: computed(() => props.userId),
+  isTeacher,
+  viewMode,
+  getCalendarDataFetchBoundsYmd,
+});
 
 const prevWeek = () => { weekOffset.value -= 1; };
 const nextWeek = () => { weekOffset.value += 1; };
@@ -1438,19 +1439,6 @@ const resolveTeacherName = (tid) => {
   return fromList?.username || null;
 };
 
-const isCourseActiveForCalendar = (course) => {
-  // Calendar day view hides historical courses; week view keeps them so
-  // past ClassSession rows remain visible after close/settle.
-  const status = String(course?.status || '').toLowerCase();
-  const teacherStatus = String(course?.teacher_status || '').toLowerCase();
-  if (teacherStatus === 'suspended' || teacherStatus === 'inactive' || teacherStatus === 'disabled') return false;
-  const stopFlag = Number(course?.stop ?? course?.Stop ?? 0);
-  if (status === 'inactive' || stopFlag === 1) {
-    return viewMode.value === 'week';
-  }
-  return true;
-};
-
 const filteredCourses = computed(() => {
   let list = displayWeekFilteredCourses.value;
   const teacherScopeId = isTeacher.value && currentTeacherId.value ? String(currentTeacherId.value) : '';
@@ -1512,234 +1500,6 @@ const teacherGroups = computed(() => {
   });
   return Object.values(map).sort((a, b) => b.courses.length - a.courses.length);
 });
-
-// --- Data Loading ---
-// 優先從 Laravel API 載入課程（含 days_of_week），固定一四才會在週一與週四都顯示
-const loadCourses = async () => {
-  const session = JSON.parse(localStorage.getItem('alltrue_session') || '{}');
-  const token = session?.access_token || '';
-  const baseUrl = import.meta.env.VITE_API_BASE || '/api';
-  const branchId = Number(props.branchId) || 0;
-  if (!branchId && !isTeacher.value) {
-    courses.value = [];
-    exceptions.value = [];
-    sessionDatesByCourseId.value = {};
-    calendarLoading.value = false;
-    calendarLoadProgress.value = '';
-    lastCalendarFetch.value = null;
-    return;
-  }
-
-  calendarLoading.value = true;
-  calendarLoadProgress.value = '載入課程與排程中…';
-  const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
-
-  let courseList = [];
-  let courseApiSucceeded = false;
-  let excData = [];
-  let exceptionsApiSucceeded = false;
-  if (token) {
-    const { courses, schedules } = await fetchCalendarCoursesAndSchedulesParallel({
-      fetchCourses: () => fetchCalendarStudentClassesApi({
-        baseUrl,
-        token,
-        branchId,
-        isTeacher: isTeacher.value,
-        userId: props.userId,
-        fetchAllPages,
-        onProgress: (loaded, total) => {
-          calendarLoadProgress.value = `載入課程與排程中… ${loaded}/${total}`;
-        },
-      }),
-      fetchSchedules: () => fetchCalendarSchedulesApi({
-        baseUrl,
-        token,
-        schedStart,
-        schedEnd,
-        branchId,
-        isTeacher: isTeacher.value,
-        userId: props.userId,
-      }),
-    });
-    courseList = courses.list;
-    courseApiSucceeded = courses.apiSucceeded;
-    excData = schedules.list;
-    exceptionsApiSucceeded = schedules.apiSucceeded;
-  }
-
-  let supabaseList = [];
-  if (shouldUseLegacyCalendarFallback({ apiSucceeded: courseApiSucceeded })) {
-    let query = supabase
-      .from('student-classes')
-      .select('*, student:students(name), teacher:profiles(username)');
-    if (!isTeacher.value && branchId) query = query.eq('branch_id', branchId);
-    if (isTeacher.value && props.userId) query = query.eq('teacher_id', props.userId);
-    const { data } = await query;
-    supabaseList = (data || []).map(c => ({
-      ...c,
-      student_name: c.student?.name || c.student_name || '—',
-      teacher_name: c.teacher_name || c.teacher?.username || '未指派',
-      day_of_week: parseInt(c.day_of_week) || 0,
-      days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
-      weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
-      first_class_date: c.first_class_date || c.StartDate || null,
-      end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : null),
-      status: c.status || '',
-      stop: c.stop ?? c.Stop ?? 0,
-      payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
-      sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0
-    }));
-  }
-  // Laravel API is primary (has correct student_name, teacher_name, days_of_week).
-  // Merge: use API data, enrich with any Supabase-only fields (remaining_sessions from Supabase may be fresher).
-  if (courseList.length > 0) {
-    const sbMap = Object.fromEntries(supabaseList.map(c => [c.id, c]));
-    courseList = courseList.map(c => {
-      const sb = sbMap[c.id];
-      if (sb) {
-        const hasApiRemaining = c.remaining_sessions !== null && c.remaining_sessions !== undefined;
-        if (!hasApiRemaining && sb.remaining_sessions != null) c.remaining_sessions = sb.remaining_sessions;
-        if (sb.first_class_date && !c.first_class_date) c.first_class_date = sb.first_class_date;
-      }
-      return c;
-    });
-  } else {
-    courseList = supabaseList;
-  }
-
-  courseList = courseList.filter(isCourseActiveForCalendar);
-
-  // schedules：已與 student-classes 平行抓取；失敗時走 legacy fallback
-  if (shouldUseLegacyCalendarFallback({ apiSucceeded: exceptionsApiSucceeded })) {
-    let excQuery = supabase
-      .from('schedules')
-      .select('*');
-    if (!isTeacher.value && branchId) excQuery = excQuery.eq('branch_id', branchId);
-    if (!isTeacher.value && props.userId) excQuery = excQuery.eq('teacher_id', props.userId);
-    const { data: excRaw } = await excQuery;
-    excData = Array.isArray(excRaw) ? excRaw : (excRaw?.data || []);
-  }
-
-  // Build name lookup maps from courses (which already have correct names from Laravel API)
-  const studentNameMap = {};
-  const teacherNameMap = {};
-  courseList.forEach(c => {
-    if (c.student_id && c.student_name) studentNameMap[c.student_id] = c.student_name;
-    if (c.teacher_id && c.teacher_name) teacherNameMap[c.teacher_id] = c.teacher_name;
-  });
-  // Also from loaded teachers/students
-  (teachers.value || []).forEach(t => { if (t.id && t.username) teacherNameMap[t.id] = t.username; });
-  (allStudents.value || []).forEach(s => { if (s.id && s.name) studentNameMap[s.id] = s.name; });
-
-  // Enrich exceptions with student/teacher names
-  excData = excData.map(ex => ({
-    ...ex,
-    student: ex.student || (ex.student_id ? { name: studentNameMap[ex.student_id] || null } : null),
-    teacher: ex.teacher || (ex.teacher_id ? { username: teacherNameMap[ex.teacher_id] || null } : null),
-  }));
-
-  courses.value = courseList;
-  exceptions.value = excData;
-
-  // Single source of truth: class session dates come from backend ClassSession API.
-  sessionDatesByCourseId.value = {};
-  if (token && (branchId || isTeacher.value) && courseList.length > 0) {
-    const ids = courseList.map((c) => Number(c?.id || 0)).filter((id) => id > 0);
-    if (ids.length > 0) {
-      try {
-        const { byClass } = await fetchClassSessions({
-          token,
-          branchId: isTeacher.value ? 0 : branchId,
-          studentClassIds: ids,
-          start: schedStart,
-          end: schedEnd,
-          perPage: 2000,
-        });
-        sessionDatesByCourseId.value = byClass || {};
-      } catch (_) {
-        sessionDatesByCourseId.value = {};
-      }
-    }
-  }
-
-  // Legacy Supabase→MySQL sync removed (backend returns 410 since the
-  // endpoint was retired).  Course data now lives exclusively in MySQL
-  // and is managed through the standard student-classes CRUD endpoints.
-  // TD-062 Phase 1：僅在 student-classes API 成功時記錄已抓視窗，避免失敗（空資料）污染快取。
-  lastCalendarFetch.value = courseApiSucceeded
-    ? { branchId, schedStart, schedEnd }
-    : null;
-  calendarLoading.value = false;
-  calendarLoadProgress.value = '';
-};
-
-const loadStudents = async () => {
-  const { data: { session: sess } } = await supabase.auth.getSession();
-  const token = sess?.access_token;
-  if (!token) return;
-  const stuParams = new URLSearchParams({ per_page: '500' });
-  if (!isTeacher.value && props.branchId) stuParams.set('branch_id', String(props.branchId));
-  try {
-    const res = await fetch(`/api/v1/students?${stuParams.toString()}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const json = await res.json();
-    allStudents.value = Array.isArray(json) ? json : (json?.data || []);
-  } catch (e) {
-    // Keep UI usable even if student options fail to load.
-    let query = supabase.from('students').select('id, name');
-    if (!isTeacher.value && props.branchId) query = query.eq('branch_id', props.branchId);
-    const { data } = await query;
-    allStudents.value = Array.isArray(data) ? data : (data?.data || []);
-  }
-};
-
-const loadTeachers = async () => {
-  const { data: { session: sess } } = await supabase.auth.getSession();
-  const token = sess?.access_token;
-  if (!token) return;
-  const branchId = Number(props.branchId) || 0;
-  if (!branchId && !isTeacher.value) {
-    teachers.value = [];
-    return;
-  }
-  try {
-    const params = new URLSearchParams({ per_page: 'all' });
-    if (!isTeacher.value && branchId) {
-      params.set('branch_id', String(branchId));
-      params.set('strict_branch', '1');
-    }
-    const res = await fetch(`/api/v1/teachers?${params.toString()}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const json = await res.json();
-    const list = Array.isArray(json) ? json : (json?.data || []);
-    const normalized = list
-      .map((t) => {
-        const id = Number(t?.id ?? 0);
-        if (!Number.isFinite(id) || id <= 0) return null;
-        const branchIds = Array.isArray(t?.branch_ids)
-          ? t.branch_ids.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0)
-          : [];
-        const branch = Number(t?.branch_id || 0) || null;
-        return {
-          id,
-          name: t?.name || t?.Name || t?.T_Name || t?.username || t?.LoginName || `老師#${id}`,
-          username: t?.username || '',
-          email: t?.email || '',
-          branch_ids: branchIds,
-          branch_id: branch,
-        };
-      })
-      .filter(Boolean);
-    teachers.value = isTeacher.value
-      ? normalized
-      : normalized.filter((t) => (t.branch_ids || []).includes(branchId) || Number(t.branch_id || 0) === branchId);
-  } catch (e) {
-    // Keep UI usable even if teacher options fail to load.
-    teachers.value = [];
-  }
-};
 
 // --- Room Loading & CRUD ---
 const loadRooms = async () => {
@@ -3026,13 +2786,7 @@ const substituteDisplay = computed(() => ({
   sessionSlot: `${substituteForm.value.session_date} ${substituteForm.value.start_time}~${substituteForm.value.end_time}`,
 }));
 
-const reloadCalendarData = () => Promise.allSettled([
-  loadCourses(),
-  loadStudents(),
-  loadTeachers(),
-  loadRooms(),
-  loadSubjects(),
-]);
+const reloadCalendarData = () => reloadCalendarDataCore(loadRooms, loadSubjects);
 
 watch(() => props.branchId, () => { reloadCalendarData(); });
 
