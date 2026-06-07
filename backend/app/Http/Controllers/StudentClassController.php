@@ -126,6 +126,12 @@ class StudentClassController extends Controller
             }
         }
 
+        // TD-062 P4-b (#740): optional calendar window — align with schedules/class-sessions start/end.
+        // Omitted params preserve legacy full-branch fetch (StudentsList, CourseManagement, etc.).
+        if ($request->filled('start') && $request->filled('end')) {
+            $this->applyCalendarWindowFilter($query, $request->input('start'), $request->input('end'));
+        }
+
         $perPage = min((int) $request->input('per_page', 20), 1000);
         $classes = $query->orderBy('ID', 'desc')->paginate($perPage);
 
@@ -3130,6 +3136,38 @@ class StudentClassController extends Controller
                         ->where('schedules.status', 'scheduled')
                         ->whereNotNull('schedules.original_schedule_id');
                 });
+        });
+    }
+
+    /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */
+    private function applyCalendarWindowFilter($query, $start, $end): void
+    {
+        $rangeStart = $this->normalizeDateString($start);
+        $rangeEnd = $this->normalizeDateString($end);
+        if (!$rangeStart || !$rangeEnd || $rangeEnd < $rangeStart) {
+            return;
+        }
+
+        $query->where(function ($q) use ($rangeStart, $rangeEnd) {
+            $q->where(function ($sub) use ($rangeStart, $rangeEnd) {
+                $sub->where(function ($dates) use ($rangeStart) {
+                    $dates->whereNull('EndDate')->orWhere('EndDate', '>=', $rangeStart);
+                })->where(function ($dates) use ($rangeEnd) {
+                    $dates->whereNull('StartDate')->orWhere('StartDate', '<=', $rangeEnd);
+                });
+            })->orWhereExists(function ($sub) use ($rangeStart, $rangeEnd) {
+                $sub->select(DB::raw(1))
+                    ->from('ClassSession')
+                    ->whereColumn('ClassSession.StudentClassID', 'StudentClass.ID')
+                    ->where('ClassSession.SessionDate', '>=', $rangeStart)
+                    ->where('ClassSession.SessionDate', '<=', $rangeEnd);
+            })->orWhereExists(function ($sub) use ($rangeStart, $rangeEnd) {
+                $sub->select(DB::raw(1))
+                    ->from('schedules')
+                    ->whereColumn('schedules.student_course_id', 'StudentClass.ID')
+                    ->where('schedules.schedule_date', '>=', $rangeStart)
+                    ->where('schedules.schedule_date', '<=', $rangeEnd);
+            });
         });
     }
 
