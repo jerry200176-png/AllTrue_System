@@ -188,11 +188,12 @@
                   @dragstart.stop="!isTeacher && onCourseDragStart(course, selectedDateStr, $event)"
                   @dragend="draggingCourse = null; dragOverSlot = null"
                 >
-                  <div class="cb-student">{{ course.student_name }}</div>
-                  <div class="cb-detail">{{ getSubjectLabel(course.subject) }}</div>
-                  <div class="cb-type">{{ classTypeLabel(course.class_type) }}</div>
-                  <span v-if="rollCallBadge(course, selectedDateStr)" class="rc-tag" :class="'rc-' + rollCallBadge(course, selectedDateStr).kind">{{ rollCallBadge(course, selectedDateStr).label }}</span>
-                  <span v-if="evalBadge(course, selectedDateStr)" class="rc-tag rc-eval-missing" :class="{ 'rc-tag-second': !!rollCallBadge(course, selectedDateStr) }">{{ evalBadge(course, selectedDateStr).label }}</span>
+                  <!-- #740 Step 5：課程卡內容剝離為 presentational 元件（日檢視） -->
+                  <CourseBlockContent
+                    :course="course"
+                    :badges="{ rollCall: rollCallBadge(course, selectedDateStr), evalMissing: evalBadge(course, selectedDateStr), teacherTag: null }"
+                    :layout="{ compact: isTeacherGridCompact, firstBadge: (cIdx === 0 && getSlotOccupancy(teacher.id, selectedDow, h).count > 0) ? (isTeacherGridCompact ? 'compact' : 'full') : null }"
+                  />
                 </div>
               </div>
             </div>
@@ -243,12 +244,12 @@
                   @dragstart.stop="!isTeacher && onCourseDragStart(course, getDisplayDateFull(idx + 1), $event)"
                   @dragend="draggingCourse = null; dragOverSlot = null"
                 >
-                  <div v-if="weekViewTeacherIds.length !== 1" class="cb-teacher-tag" :style="{ background: getTeacherColor(course.teacher_id) }">{{ course.teacher_name }}</div>
-                  <div class="cb-student">{{ course.student_name }}</div>
-                  <div class="cb-detail">{{ getSubjectLabel(course.subject) }}</div>
-                  <div class="cb-type">{{ classTypeLabel(course.class_type) }}</div>
-                  <span v-if="rollCallBadge(course, getDisplayDateFull(idx + 1))" class="rc-tag" :class="'rc-' + rollCallBadge(course, getDisplayDateFull(idx + 1)).kind">{{ rollCallBadge(course, getDisplayDateFull(idx + 1)).label }}</span>
-                  <span v-if="evalBadge(course, getDisplayDateFull(idx + 1))" class="rc-tag rc-eval-missing" :class="{ 'rc-tag-second': !!rollCallBadge(course, getDisplayDateFull(idx + 1)) }">{{ evalBadge(course, getDisplayDateFull(idx + 1)).label }}</span>
+                  <!-- #740 Step 5：課程卡內容剝離為 presentational 元件（週檢視，含老師標籤） -->
+                  <CourseBlockContent
+                    :course="course"
+                    :badges="{ rollCall: rollCallBadge(course, getDisplayDateFull(idx + 1)), evalMissing: evalBadge(course, getDisplayDateFull(idx + 1)), teacherTag: weekViewTeacherIds.length !== 1 ? { name: course.teacher_name, color: getTeacherColor(course.teacher_id) } : null }"
+                    :layout="{ compact: false, firstBadge: null }"
+                  />
                 </div>
               </div>
             </div>
@@ -836,6 +837,7 @@ import TeacherColumnHeader from '../components/calendar/TeacherColumnHeader.vue'
 import DayTabsBar from '../components/calendar/DayTabsBar.vue';
 import WeekTeacherChips from '../components/calendar/WeekTeacherChips.vue';
 import WeekNavBar from '../components/calendar/WeekNavBar.vue';
+import CourseBlockContent from '../components/calendar/CourseBlockContent.vue';
 import {
   fetchTeacherAvailability,
   undoSubstitute,
@@ -3641,18 +3643,7 @@ onMounted(() => {
   font-size: 13px;
 }
 /* #740 Step 4c：.week-teacher-chip* 已隨 markup 搬移至 components/calendar/WeekTeacherChips.vue */
-.cb-teacher-tag {
-  font-size: 10px;
-  font-weight: 700;
-  color: #fff;
-  border-radius: 3px;
-  padding: 1px 4px;
-  margin-bottom: 1px;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* #740 Step 5：.cb-teacher-tag 已搬移至 components/calendar/CourseBlockContent.vue */
 .week-overview-body {
   display: flex;
   flex-direction: column;
@@ -3830,15 +3821,7 @@ onMounted(() => {
   padding: 4px 3px;
   border-radius: 6px;
 }
-.teacher-grid.teacher-grid-compact .cb-student {
-  font-size: 12px;
-  line-height: 1.15;
-}
-.teacher-grid.teacher-grid-compact .cb-detail,
-.teacher-grid.teacher-grid-compact .cb-type {
-  font-size: 8px;
-  margin-top: 1px;
-}
+/* #740 Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
 .time-col {
   position: sticky;
   left: 0;
@@ -3910,37 +3893,7 @@ onMounted(() => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
-.cb-student {
-  font-weight: 800;
-  font-size: 14px;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  letter-spacing: -0.2px;
-  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
-}
-.cb-detail {
-  font-size: 9px;
-  line-height: 1.2;
-  opacity: 0.9;
-  margin-top: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
-.cb-type {
-  font-size: 9px;
-  line-height: 1.2;
-  opacity: 0.78;
-  margin-top: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-}
+/* #740 Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
 .rc-tag {
   position: absolute;
   top: 2px;
@@ -4523,8 +4476,6 @@ onMounted(() => {
   .teacher-grid { min-width: max-content; }
   .col-header-blank { height: 56px; }
   .course-block { font-size: 10px; padding: 4px 4px; border-radius: 6px; }
-  .cb-student { font-size: 12px; }
-  .cb-detail, .cb-type { font-size: 8px; margin-top: 1px; }
   .teacher-courses { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .teacher-table { min-width: 500px; }
   .time-col { min-width: 40px; width: 40px; }
@@ -4566,8 +4517,6 @@ onMounted(() => {
     padding: 3px 4px;
     border-radius: 6px;
   }
-  .cb-student { font-size: 12px; }
-  .cb-detail, .cb-type { font-size: 8px; }
   .modal {
     width: 100% !important;
     max-width: 100vw !important;
@@ -4603,8 +4552,6 @@ onMounted(() => {
   .time-label { font-size: 9px; padding: 2px 1px 0 0; }
   .col-header-blank { height: 48px; }
   .course-block { font-size: 9px; padding: 2px 3px; border-radius: 4px; }
-  .cb-student { font-size: 11px; line-height: 1.15; }
-  .cb-detail, .cb-type { font-size: 7px; }
   .teacher-card { padding: 10px; }
   .teacher-card h3 { font-size: 14px; }
   .modal {
@@ -4843,31 +4790,8 @@ onMounted(() => {
   left: 2px;
   letter-spacing: -0.3px;
 }
-/* 當時段有容量徽章時，讓第一張課程卡的學生姓名向右讓位，避免遮擋 */
-.slot:has(.capacity-badge) .course-block:first-of-type .cb-student {
-  padding-left: 20px;
-}
-.slot:has(.capacity-badge-compact) .course-block:first-of-type .cb-student {
-  padding-left: 12px;
-}
-/* 緊湊模式的角標（到班/漏點/請假/未填評量）：字更小、邊距更緊，讓 split 卡片有更多姓名空間 */
-.teacher-grid.teacher-grid-compact .rc-tag {
-  font-size: 8px;
-  padding: 0 2px;
-  right: 2px;
-}
-/* 修正：第二個角標（rc-tag-second）須維持在底部，避免特異性衝突讓 top/bottom 同時生效而縱向撐開 */
-.teacher-grid.teacher-grid-compact .rc-tag.rc-tag-second {
-  top: auto;
-  bottom: 2px;
-}
-/* 當課程卡有「到班 / 漏點 / 請假 / 未填評量」角標時，讓學生姓名留出右側空間，避免被遮擋 */
-.course-block:has(.rc-tag) .cb-student {
-  padding-right: 18px;
-}
-.teacher-grid.teacher-grid-compact .course-block:has(.rc-tag) .cb-student {
-  padding-right: 10px;
-}
+/* #740 Step 5：容量徽章讓位 / compact 角標 / :has(.rc-tag) 讓位 全部改 prop 旗標驅動，
+   移至 CourseBlockContent.vue（.cbc-badge-* / .cbc-compact / .cbc-has-rc）。 */
 .capacity-legend {
   display: inline-flex;
   align-items: center;
