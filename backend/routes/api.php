@@ -136,50 +136,13 @@ Route::prefix('v1')->group(function () {
     Route::get('branches', [CampusController::class, 'listPublic']);
     Route::get('subjects-public', [SubjectController::class, 'indexPublic']);
 
-    // ── Health / Perf Metrics (public, lightweight) ──────────────────
-    Route::get('health', function () {
-        $logDir = storage_path('logs');
-        $tmpfsMount = '/var/log/alltrue-tmpfs';
-        $tmpfsActive = is_dir($tmpfsMount) && @disk_total_space($tmpfsMount) > 0;
-
-        $logPipeline = [
-            'driver'        => config('logging.channels.stack.channels.0', 'daily'),
-            'tmpfs_active'  => $tmpfsActive,
-        ];
-
-        if ($tmpfsActive) {
-            $total = @disk_total_space($tmpfsMount) ?: 0;
-            $free  = @disk_free_space($tmpfsMount) ?: 0;
-            $used  = $total - $free;
-            $logPipeline['tmpfs_total_mb']   = round($total / 1048576, 1);
-            $logPipeline['tmpfs_used_mb']    = round($used / 1048576, 1);
-            $logPipeline['tmpfs_usage_pct']  = $total > 0 ? round($used / $total * 100, 1) : 0;
-            $logPipeline['tmpfs_healthy']    = $logPipeline['tmpfs_usage_pct'] < 80;
-        }
-
-        $logPipeline['logs_dir_writable'] = is_writable($logDir);
-
-        $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
-
-        return response()->json([
-            'status' => 'ok',
-            'timestamp' => now()->toIso8601String(),
-            'perf_flags' => [
-                'throttle_notif_sync'     => config('perfflags.throttle_notification_sync'),
-                'lr_default_per_page'     => config('perfflags.learning_records_default_per_page'),
-                'lr_max_per_page'         => config('perfflags.learning_records_max_per_page'),
-                'lr_default_window_days'  => config('perfflags.learning_records_default_window_days'),
-            ],
-            'log_pipeline' => $logPipeline,
-            'sentry' => [
-                'configured' => !empty($sentryDsn),
-                'sdk_bound'  => app()->bound('sentry'),
-            ],
-            'security' => [
-                'debug_mode' => config('app.debug'),
-            ],
-        ]);
-    });
+    // ── Health (public, minimal) ─────────────────────────────────────
+    // SEC-F3: Only status+timestamp exposed publicly. Operational metrics
+    // (perf_flags, log_pipeline, sentry details) are on /health/detailed (auth required).
+    Route::get('health', fn() => response()->json([
+        'status'    => 'ok',
+        'timestamp' => now()->toIso8601String(),
+    ]));
 
     // ── RFID 刷卡 (public，供讀卡機呼叫) ─────────────────────────────
     // SEC-006: 30 req/IP/1 min — blocks RFID brute-force enumeration.
@@ -202,6 +165,42 @@ Route::prefix('v1')->group(function () {
     Route::put('me/notification-preferences', [AuthController::class, 'updateNotificationPreferences']);
     Route::get('me/security', [AuthController::class, 'security']);
     Route::post('me/security/logout-others', [AuthController::class, 'logoutOtherSessions']);
+
+    // ── Health Detailed (auth required) ─────────────────────────────
+    // SEC-F3: Operational metrics behind auth — not exposed to unauthenticated requests.
+    Route::get('health/detailed', function () {
+        $logDir = storage_path('logs');
+        $tmpfsMount = '/var/log/alltrue-tmpfs';
+        $tmpfsActive = is_dir($tmpfsMount) && @disk_total_space($tmpfsMount) > 0;
+        $logPipeline = [
+            'driver'        => config('logging.channels.stack.channels.0', 'daily'),
+            'tmpfs_active'  => $tmpfsActive,
+            'logs_dir_writable' => is_writable($logDir),
+        ];
+        if ($tmpfsActive) {
+            $total = @disk_total_space($tmpfsMount) ?: 0;
+            $free  = @disk_free_space($tmpfsMount) ?: 0;
+            $used  = $total - $free;
+            $logPipeline['tmpfs_total_mb']  = round($total / 1048576, 1);
+            $logPipeline['tmpfs_used_mb']   = round($used / 1048576, 1);
+            $logPipeline['tmpfs_usage_pct'] = $total > 0 ? round($used / $total * 100, 1) : 0;
+            $logPipeline['tmpfs_healthy']   = $logPipeline['tmpfs_usage_pct'] < 80;
+        }
+        $sentryDsn = config('sentry.dsn') ?: env('SENTRY_LARAVEL_DSN');
+        return response()->json([
+            'status'    => 'ok',
+            'timestamp' => now()->toIso8601String(),
+            'perf_flags' => [
+                'throttle_notif_sync'    => config('perfflags.throttle_notification_sync'),
+                'lr_default_per_page'    => config('perfflags.learning_records_default_per_page'),
+                'lr_max_per_page'        => config('perfflags.learning_records_max_per_page'),
+                'lr_default_window_days' => config('perfflags.learning_records_default_window_days'),
+            ],
+            'log_pipeline' => $logPipeline,
+            'sentry' => ['configured' => !empty($sentryDsn), 'sdk_bound' => app()->bound('sentry')],
+            'security' => ['debug_mode' => config('app.debug')],
+        ]);
+    });
 
     // ── Engagement / Gamification ──
     Route::get('engagement/rank-thresholds', [\App\Http\Controllers\EngagementController::class, 'rankThresholds']);
