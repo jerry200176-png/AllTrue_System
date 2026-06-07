@@ -2390,11 +2390,6 @@ const rescheduleDisplay = computed(() => ({
   subjectLabel: getSubjectLabel(rescheduleForm.value.subject),
   originalSlot: `${dayLabel(rescheduleForm.value.original_day)} ${rescheduleForm.value.original_start}~${rescheduleForm.value.original_end}`,
 }));
-const substituteDisplay = computed(() => ({
-  studentName: getStudentName(substituteForm.value.student_id),
-  subjectLabel: getSubjectLabel(substituteForm.value.subject),
-  sessionSlot: `${substituteForm.value.session_date} ${substituteForm.value.start_time}~${substituteForm.value.end_time}`,
-}));
 
 const reloadCalendarData = () => reloadCalendarDataCore(loadRooms, loadSubjects);
 
