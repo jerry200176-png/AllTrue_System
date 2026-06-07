@@ -184,8 +184,8 @@ class PartTimeRateCardTest extends TestCase
     }
 
     /** @test */
-    public function unauthenticated_returns_403(): void
+    public function unauthenticated_returns_401(): void
     {
-        $this->getJson('/api/v1/part-time-rate-cards')->assertStatus(403);
+        $this->getJson('/api/v1/part-time-rate-cards')->assertStatus(401);
     }
 }
