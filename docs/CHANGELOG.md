@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-07 — perf(calendar): loadCourses 平行化 student-classes ∥ schedules（#740 P4-a）
+
+班級行事曆冷載時，課程清單與排程例外改為同時抓取，縮短等待時間；顯示結果與合併邏輯不變。
+
+開發備註：新增 `calendarCourseLoad.js`（`fetchCalendarCoursesAndSchedulesParallel`）；`class-sessions` 仍串行（依賴 course ids）。理論節省 ≈ schedules 端點延遲（實測見 TD-062）。`test:calendar` +9 cases。Refs #740。
+
 ## 2026-06-07 — refactor(calendar): SmartCalendar Modals 群拆分（#740 Step 6）
 
 班級行事曆五個 inline modal 剝離為獨立 presentational 元件，單堂檢視 modal 移除死碼分支，行數再降 661 行。
