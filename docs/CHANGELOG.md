@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-06-07 — feat(audit): schedule_audit_logs + ClassSessionObserver (#766)
+- Added `schedule_audit_logs` 資料表，記錄課堂建立／更新／刪除的完整 old/new JSON 快照及操作人員
+- Added `ClassSessionObserver`，自動在每次 `ClassSession` CRUD 時寫入稽核日誌
+- Added `GET /api/v1/schedule-audit` API，支援分校／日期範圍／課堂 ID 篩選（分頁）
+
 ## 2026-06-07 — perf(calendar): loadCourses 平行化 student-classes ∥ schedules（#740 P4-a）
 
 班級行事曆冷載時，課程清單與排程例外改為同時抓取，縮短等待時間；顯示結果與合併邏輯不變。
