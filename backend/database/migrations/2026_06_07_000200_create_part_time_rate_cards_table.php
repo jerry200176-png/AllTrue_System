@@ -19,7 +19,7 @@ return new class extends Migration
             $table->date('effective_until')->nullable();
             $table->timestamps();
 
-            $table->index(['user_id', 'branch_id', 'class_size', 'effective_from']);
+            $table->index(['user_id', 'branch_id', 'class_size', 'effective_from'], 'ptrc_lookup');
         });
     }
 
