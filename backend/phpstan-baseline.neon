@@ -6157,25 +6157,25 @@ parameters:
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
-			message: '#^Call to an undefined static method App\Models\UserCampus\:\:where\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/PartTimeRateCardController.php
 
 		-
-			message: '#^Call to an undefined static method App\Models\PartTimeRateCard\:\:create\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/PartTimeRateCardController.php
 
 		-
-			message: '#^Call to an undefined static method App\Models\PartTimeRateCard\:\:findOrFail\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:findOrFail\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 2
 			path: app/Http/Controllers/PartTimeRateCardController.php
 
 		-
-			message: '#^Call to an undefined static method App\Models\PartTimeRateCard\:\:where\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Models/PartTimeRateCard.php
