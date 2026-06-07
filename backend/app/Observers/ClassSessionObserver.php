@@ -4,10 +4,13 @@ namespace App\Observers;
 
 use App\Models\ClassSession;
 use App\Models\ScheduleAuditLog;
-use Illuminate\Support\Facades\Request;
 
 class ClassSessionObserver
 {
+    /** @var array<int|string, array<string, mixed>> */
+    private static array $oldSnapshots = [];
+
+    /** @return array<string, mixed> */
     private function sessionSnapshot(ClassSession $session): array
     {
         return $session->only([
@@ -19,17 +22,14 @@ class ClassSessionObserver
 
     private function operatorId(): ?int
     {
-        $user = Request::attributes()->get('auth_user');
+        $user = request()->attributes->get('auth_user');
         return $user ? (int) $user->id : null;
     }
 
     private function branchId(ClassSession $session): ?int
     {
         try {
-            // StudentClass → Student → CampusID
-            $sc = $session->studentClass()->with('student')->first();
-            $campusId = $sc?->student?->CampusID;
-            return $campusId ? (int) $campusId : null;
+            return (int) optional($session->studentClass)->BranchID ?: null;
         } catch (\Throwable) {
             return null;
         }
@@ -50,26 +50,25 @@ class ClassSessionObserver
 
     public function updating(ClassSession $session): void
     {
-        // Snapshot original values before the UPDATE query runs.
-        $session->_auditOldSnapshot = array_intersect_key(
-            $session->getOriginal(),
-            array_flip([
-                'id', 'StudentClassID', 'SubjectID',
-                'SessionDate', 'StartTime', 'EndTime',
-                'Status', 'Note', 'IsContractException', 'session_charge',
-            ])
+        $key = (string) $session->getKey();
+        self::$oldSnapshots[$key] = $this->sessionSnapshot(
+            (new ClassSession())->fill($session->getOriginal())
         );
     }
 
     public function updated(ClassSession $session): void
     {
+        $key = (string) $session->getKey();
+        $old = self::$oldSnapshots[$key] ?? null;
+        unset(self::$oldSnapshots[$key]);
+
         ScheduleAuditLog::create([
             'session_id'  => $session->id,
             'action_type' => 'update',
             'description' => "更新課堂 #{$session->id}（{$session->SessionDate}）",
             'operator_id' => $this->operatorId(),
             'branch_id'   => $this->branchId($session),
-            'old_data'    => $session->_auditOldSnapshot ?? null,
+            'old_data'    => $old,
             'new_data'    => $this->sessionSnapshot($session),
         ]);
     }
