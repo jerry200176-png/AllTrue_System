@@ -33,10 +33,21 @@ export function mapCalendarCourse(c) {
   };
 }
 
-export function buildStudentClassesApiUrl({ baseUrl, branchId, isTeacher, userId }) {
+export function buildStudentClassesApiUrl({
+  baseUrl,
+  branchId,
+  isTeacher,
+  userId,
+  schedStart,
+  schedEnd,
+}) {
   const scParams = new URLSearchParams();
   if (!isTeacher && branchId) scParams.set('branch_id', String(branchId));
   if (isTeacher && userId) scParams.set('teacher_id', String(userId));
+  if (schedStart && schedEnd) {
+    scParams.set('start', schedStart);
+    scParams.set('end', schedEnd);
+  }
   const qs = scParams.toString();
   return `${baseUrl}/v1/student-classes${qs ? `?${qs}` : ''}`;
 }
@@ -100,10 +111,19 @@ export async function fetchCalendarStudentClassesApi({
   branchId,
   isTeacher,
   userId,
+  schedStart,
+  schedEnd,
   fetchAllPages,
   onProgress,
 }) {
-  const apiUrl = buildStudentClassesApiUrl({ baseUrl, branchId, isTeacher, userId });
+  const apiUrl = buildStudentClassesApiUrl({
+    baseUrl,
+    branchId,
+    isTeacher,
+    userId,
+    schedStart,
+    schedEnd,
+  });
   const { data: allCourses } = await fetchAllPages(apiUrl, token, {
     perPage: 200,
     concurrency: 4,
