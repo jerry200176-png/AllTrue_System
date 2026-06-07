@@ -1,6 +1,6 @@
 # SmartCalendar 受控拆分 — 技術文件（#740 Phase 4c）
 
-> **狀態**：2026-06-07 暫時收尾（CEO 視覺驗收通過）。Modals 與 P4-a/b 延後。  
+> **狀態**：2026-06-07 Modals 群拆分完成（Step 6）。P4-a/b 效能優化仍延後。  
 > **Issue**：[#740](https://github.com/jerry200176-png/AllTrue_System/issues/740)  
 > **紅線**：`CLAUDE.md §G-007` — 週檢視 occurrence 合併**唯一合法路徑**仍為 `calendarOccurrenceMerge.js`；本重構**未動**合併邏輯。
 
@@ -10,10 +10,10 @@
 
 | 指標 | Before | After | Δ |
 |------|--------|-------|---|
-| `SmartCalendar.vue` 行數 | 5260 | 4845 | **−415** |
+| `SmartCalendar.vue` 行數 | 5260 | 4184 | **−1076** |
 | 剝離純函式模組 | 0 | 3 | `calendarDateUtils` / `calendarFormat` / `teacherColor` |
-| 剝離 presentational 元件 | 0 | 5 | `components/calendar/*` |
-| 元件單元測試（vitest） | 0 | 22 cases | 5 元件 × 3–7 cases |
+| 剝離 presentational 元件 | 0 | 10 | `components/calendar/*` + `modals/*` |
+| 元件單元測試（vitest） | 0 | 56 cases | 10 元件（含 5 modals） |
 | 回歸測試 | `test:calendar` 全綠 | 全綠 | G-007 occurrence merge 零回歸 |
 
 **重構鐵律（全程遵守）**
@@ -42,9 +42,17 @@ frontend/src/
 │   ├── WeekTeacherChips.vue      ← Step 4c
 │   ├── WeekNavBar.vue            ← Step 4d
 │   ├── CourseBlockContent.vue    ← Step 5（CSS 解耦）
-│   └── __tests__/*.test.js       ← 各元件 vitest
+│   ├── modals/
+│   │   ├── CalendarSessionEditModal.vue   ← Step 6（單堂檢視，最大）
+│   │   ├── CalendarLeaveModal.vue
+│   │   ├── CalendarRescheduleModal.vue
+│   │   ├── CalendarSubstituteLegacyModal.vue
+│   │   ├── CalendarExtraLessonModal.vue
+│   │   ├── calendarModalRwd.css           ← 共用 RWD（768/640）
+│   │   └── __tests__/*.test.js
+│   └── __tests__/*.test.js
 └── pages/
-    └── SmartCalendar.vue         ← 容器：狀態、API、modals、.course-block 外殼
+    └── SmartCalendar.vue         ← 容器：狀態、API、submit 邏輯、.course-block 外殼
 ```
 
 **既有、未動的 calendar lib**（G-007 核心，重構前已存在）：
@@ -215,6 +223,25 @@ CSS 解耦：`.teacher-grid-compact .teacher-col-header` → `compact` prop → 
 
 Events：無。
 
+### 4.6 Modals 群（Step 6 — Presentational + 父層 submit）
+
+模式對齊 `QuickAddSessionModal`：父層持有 form ref + API submit；子元件 `show` + `form` + display props，`emit('close'|'submit'|action)`。
+
+| 元件 | 觸發 | 主要 props | 主要 emits |
+|------|------|------------|------------|
+| `CalendarSessionEditModal` | `showModal && editingCourseId` | `form`, `ratePer2h`, `session`, `options` | `close`, `leave`, `reschedule`, `substitute`/`substitute-v2`, `confirm-cancel`, `delete-course`… |
+| `CalendarLeaveModal` | `showLeaveModal` | `form`, `studentName`, `subjectLabel`, `originalSlotLabel` | `close`, `submit` |
+| `CalendarRescheduleModal` | `showRescheduleModal` | `form`, display labels, `newEndTime`, `timeOptions` | `close`, `submit`, `new-start-change` |
+| `CalendarSubstituteLegacyModal` | `showSubstituteModal` | `form`, `teachers`, `submitting` | `close`, `submit` |
+| `CalendarExtraLessonModal` | `showExtraModal` | `form`, options, `newEndTime`, `isMonthly` | `close`, `submit`, `duration-change` |
+
+**已外置（不重複拆）**：`UniversalClassScheduler`（快速排課）、`SubstituteTeacherPickerModal`（V2）、`TeacherLeaveBatchModal`。
+
+**SessionEdit 解耦決策**：
+- 移除 modal 內 `!editingCourseId` 死碼分支（建立新課走 `UniversalClassScheduler`）。
+- CSS（session-info / schedule-actions / eval-summary / conflict）搬入 `CalendarSessionEditModal.vue` scoped。
+- RWD `.modal` breakpoint 搬入 `calendarModalRwd.css`（子元件 scoped 無法繼承父層 `@media .modal`）。
+
 ---
 
 ## 5. CSS 解耦決策（CourseBlockContent）
@@ -251,22 +278,21 @@ Events：無。
 
 | 類別 | 內容 |
 |------|------|
-| 狀態 / 業務 | `loadCourses`、篩選、拖曳調課、點名、請假、所有 modal 開關 |
+| 狀態 / 業務 | `loadCourses`、篩選、拖曳調課、`submitLeave`/`submitReschedule`/… API |
 | 資料合併 | 呼叫 `mergeWeekCalendarOccurrences`（G-007） |
 | 外殼 DOM | `.course-block` div + `@click` / `@dragstart` / `getTeacherCourseBlockStyle` |
-| Modals | 建課、調課、代課、請假等（**延後 Step 6**） |
+| Modal 開關 | `showModal`/`showLeaveModal`/… + `open*` 填表邏輯 |
 | Toolbar | 篩選、legend、視圖切換 |
 
 ---
 
-## 7. 延後項目（#740 未結）
+## 7. 延後項目（#740 部分未結）
 
 | 項目 | 原因 | 建議下一步 |
 |------|------|------------|
-| **Modals 群拆分** | 有狀態父層、表單驗證與 API 耦合深 | 獨立 PRD；每個 modal 一 PR |
 | **P4-a 請求平行化** | 原 issue 範圍；與拆分正交 | 實測冷載 before/after 再決策 |
 | **P4-b student-classes 抓取量** | 需後端 API 契約 | 與 ARCH 評估日期視窗 |
-| **行數目標 < 3000** | 目前 4845；Modals 佔大宗 | Modals 拆完再評估 |
+| **行數目標 < 3000** | 目前 4184；核心業務邏輯仍集中 | 持續剝離 composables（非本次範圍） |
 
 ---
 
@@ -286,6 +312,11 @@ npm run test:unit
 | `calendarFormat.test.js` | 21 | normalizeTimeTo30、computeEndTime 邊界 |
 | `teacherColor.test.js` | 6 | cache hit/miss、palette 輪替 |
 | `CourseBlockContent.test.js` | 7 | 徽章、compact、firstBadge、空值 |
+| `CalendarSessionEditModal.test.js` | 4 | session info、conflict、action emits |
+| `CalendarLeaveModal.test.js` | 3 | 渲染、show、emit |
+| `CalendarRescheduleModal.test.js` | 3 | 渲染、new-start-change |
+| `CalendarSubstituteLegacyModal.test.js` | 3 | submit disabled、submitting |
+| `CalendarExtraLessonModal.test.js` | 3 | monthly hint、duration-change |
 | `TeacherColumnHeader.test.js` | 4 | compact、空名、預設色 |
 | `DayTabsBar.test.js` | 3 | active、emit、空 tabs |
 | `WeekTeacherChips.test.js` | 4 | toggle/clear、active 色 |
@@ -307,6 +338,7 @@ CI：`test:unit` blocking（#729）；`frontend/src/**` 變更觸發 UI Smoke E2
 | 4b | [#755](https://github.com/jerry200176-png/AllTrue_System/pull/755) | 2026-06-06 | `DayTabsBar` |
 | 4c/4d | [#756](https://github.com/jerry200176-png/AllTrue_System/pull/756) | 2026-06-06 | `WeekTeacherChips` + `WeekNavBar` |
 | 5 | [#757](https://github.com/jerry200176-png/AllTrue_System/pull/757) | 2026-06-07 | `CourseBlockContent` + CSS 解耦 |
+| 6 | （本 PR） | 2026-06-07 | Modals 群 5 元件 + RWD + 死碼清除 |
 
 ---
 
