@@ -9,6 +9,7 @@ use App\Http\Controllers\LearningRecordController;
 use App\Http\Controllers\LearningRecordFeedbackController;
 use App\Http\Controllers\LearningRecordTeacherCommentController;
 use App\Http\Controllers\FinanceController;
+use App\Http\Controllers\PartTimeRateCardController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
@@ -299,6 +300,11 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRules']);
         Route::put('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesUpdate']);
         Route::delete('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesDelete']);
+        // #767: part-time teacher rate cards (class-size-based rates)
+        Route::get('part-time-rate-cards', [PartTimeRateCardController::class, 'index']);
+        Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store']);
+        Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id');
+        Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id');
         Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport']);
         Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId');
         Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock']);
