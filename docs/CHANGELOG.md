@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-07 — refactor(calendar): SmartCalendar 受控拆分暫時收尾（#740 Phase 4c）
+
+班級行事曆大檔案完成第一階段受控拆分：純工具與五個 UI 葉子元件剝離，課程卡 CSS 祖先耦合改為 prop 驅動，視覺驗收通過；Modals 與效能平行化延後。
+
+開發備註：`SmartCalendar.vue` 5260→4845 行（−415）。剝離 `lib/calendarDateUtils|calendarFormat|teacherColor` + `components/calendar/{TeacherColumnHeader,DayTabsBar,WeekTeacherChips,WeekNavBar,CourseBlockContent}`；`CourseBlockContent` 3 props（course/badges/layout）解耦 `:has()`/compact/容量徽章。PR #751–#757 全綠部署。技術文件 → `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`。Modals、P4-a/b 仍 open，#740 暫不收案。
+
 ## 2026-06-07 — ops(rollback): 回滾就緒度檢查 + Rollback Runbook（#733）
 
 新增「回滾就緒度」自動檢查與標準作業程序文件，確保萬一某次更新出問題時，系統能用最短時間、最小破壞地恢復到前一個正常版本。
