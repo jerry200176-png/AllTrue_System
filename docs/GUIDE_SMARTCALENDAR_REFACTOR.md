@@ -1,6 +1,6 @@
 # SmartCalendar 受控拆分 — 技術文件（#740 Phase 4c）
 
-> **狀態**：2026-06-07 Modals 群拆分完成（Step 6）。P4-a/b 效能優化仍延後。  
+> **狀態**：2026-06-07 Modals 群拆分完成（Step 6）；P4-a 平行化已落地。P4-b 仍延後。  
 > **Issue**：[#740](https://github.com/jerry200176-png/AllTrue_System/issues/740)  
 > **紅線**：`CLAUDE.md §G-007` — 週檢視 occurrence 合併**唯一合法路徑**仍為 `calendarOccurrenceMerge.js`；本重構**未動**合併邏輯。
 
@@ -60,6 +60,7 @@ frontend/src/
 - `calendarOccurrenceMerge.js` — 週檢視合併 resolver（⛔ 禁止繞過）
 - `calendarExceptionMerge.js` — 例外合併
 - `calendarLoadPerformance.js` — 視窗快取 `isRangeWithinFetchedBounds`
+- `calendarCourseLoad.js` — P4-a：`student-classes` ∥ `schedules` 平行抓取編排
 
 ---
 
@@ -290,7 +291,7 @@ Events：無。
 
 | 項目 | 原因 | 建議下一步 |
 |------|------|------------|
-| **P4-a 請求平行化** | 原 issue 範圍；與拆分正交 | 實測冷載 before/after 再決策 |
+| ~~**P4-a 請求平行化**~~ | ✅ 已做：`calendarCourseLoad.js` + `Promise.all` | 冷載理論節省 ≈ schedules 延遲；見 TD-062 |
 | **P4-b student-classes 抓取量** | 需後端 API 契約 | 與 ARCH 評估日期視窗 |
 | **行數目標 < 3000** | 目前 4184；核心業務邏輯仍集中 | 持續剝離 composables（非本次範圍） |
 

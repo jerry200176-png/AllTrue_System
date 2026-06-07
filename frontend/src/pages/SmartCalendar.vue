@@ -449,6 +449,11 @@ import {
   shouldUseLegacyCalendarFallback,
   isRangeWithinFetchedBounds,
 } from '../lib/calendarLoadPerformance';
+import {
+  fetchCalendarCoursesAndSchedulesParallel,
+  fetchCalendarStudentClassesApi,
+  fetchCalendarSchedulesApi,
+} from '../lib/calendarCourseLoad';
 import UniversalClassScheduler from '../components/UniversalClassScheduler.vue';
 import SubstituteTeacherPickerModal from '../components/substitute/SubstituteTeacherPickerModal.vue';
 import TeacherLeaveBatchModal from '../components/substitute/TeacherLeaveBatchModal.vue';
@@ -1526,54 +1531,40 @@ const loadCourses = async () => {
   }
 
   calendarLoading.value = true;
-  calendarLoadProgress.value = '載入課程中…';
-  const mapCourse = (c) => ({
-    id: c.id,
-    student_id: c.student_id,
-    teacher_id: c.teacher_id,
-    subject: c.subject,
-    class_type: c.class_type,
-    rate_per_30min: c.rate_per_30min,
-    rate_unit: c.rate_unit || 'session',
-    duration_hours: c.duration_hours ?? 2,
-    day_of_week: parseInt(c.day_of_week) || 0,
-    days_of_week: Array.isArray(c.days_of_week) && c.days_of_week.length ? c.days_of_week : null,
-    start_time: c.start_time || '',
-    end_time: c.end_time || '',
-    day_time_slots: Array.isArray(c.day_time_slots) && c.day_time_slots.length ? c.day_time_slots : null,
-    student_name: c.student_name || '—',
-    teacher_name: c.teacher_name || '未指派',
-    teacher_status: String(c.teacher_status || '').toLowerCase(),
-    weeks: Array.isArray(c.weeks) && c.weeks.length ? c.weeks : [1, 2, 3, 4, 5],
-    first_class_date: c.first_class_date || c.StartDate || null,
-    end_date: c.end_date || (c.EndDate ? String(c.EndDate).slice(0, 10) : null),
-    status: c.status || '',
-    stop: c.stop ?? c.Stop ?? 0,
-    payment_type: c.payment_type || (c.ScheduleMode === 'count' ? 'session' : 'monthly'),
-    sessions_purchased: c.sessions_purchased ?? c.SessionCount ?? 0,
-    room_id: c.RoomID || c.room_id || ''
-  });
+  calendarLoadProgress.value = '載入課程與排程中…';
+  const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
 
   let courseList = [];
   let courseApiSucceeded = false;
+  let excData = [];
+  let exceptionsApiSucceeded = false;
   if (token) {
-    try {
-      const scParams = new URLSearchParams();
-      if (!isTeacher.value && branchId) scParams.set('branch_id', String(branchId));
-      if (isTeacher.value && props.userId) scParams.set('teacher_id', String(props.userId));
-      const apiUrl = `${baseUrl}/v1/student-classes?${scParams.toString()}`;
-      const { data: allCourses } = await fetchAllPages(apiUrl, token, {
-        perPage: 200,
-        concurrency: 4,
+    const { courses, schedules } = await fetchCalendarCoursesAndSchedulesParallel({
+      fetchCourses: () => fetchCalendarStudentClassesApi({
+        baseUrl,
+        token,
+        branchId,
+        isTeacher: isTeacher.value,
+        userId: props.userId,
+        fetchAllPages,
         onProgress: (loaded, total) => {
-          calendarLoadProgress.value = `載入課程中… ${loaded}/${total}`;
+          calendarLoadProgress.value = `載入課程與排程中… ${loaded}/${total}`;
         },
-      });
-      courseList = allCourses.map(mapCourse);
-      courseApiSucceeded = true;
-    } catch (e) {
-    // Keep fallback silent for end users; API failure is handled by fallback path.
-    }
+      }),
+      fetchSchedules: () => fetchCalendarSchedulesApi({
+        baseUrl,
+        token,
+        schedStart,
+        schedEnd,
+        branchId,
+        isTeacher: isTeacher.value,
+        userId: props.userId,
+      }),
+    });
+    courseList = courses.list;
+    courseApiSucceeded = courses.apiSucceeded;
+    excData = schedules.list;
+    exceptionsApiSucceeded = schedules.apiSucceeded;
   }
 
   let supabaseList = [];
@@ -1618,33 +1609,7 @@ const loadCourses = async () => {
 
   courseList = courseList.filter(isCourseActiveForCalendar);
 
-  // schedules / ClassSession API：對齊「當前渲染週 ± 約六週」，換週換月會由 watch(loadCourses) 重抓
-  const { schedStart, schedEnd } = getCalendarDataFetchBoundsYmd();
-
-  let excData = [];
-  let exceptionsApiSucceeded = false;
-  if (token) {
-    try {
-      const excParams = new URLSearchParams({ per_page: '2000', start: schedStart, end: schedEnd });
-      if (!isTeacher.value && branchId) excParams.set('branch_id', String(branchId));
-      // Teacher week view needs substitute exceptions owned by other teachers to
-      // remove/transfer the original teacher's base occurrence before scoping.
-      if (!isTeacher.value && props.userId) excParams.set('teacher_id', props.userId);
-      const excRes = await fetch(`${baseUrl}/v1/schedules?${excParams}`, {
-        credentials: 'include',
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' }
-      });
-      if (excRes.ok) {
-        const excJson = await excRes.json();
-        const excList = Array.isArray(excJson) ? excJson : (excJson?.data ?? []);
-        excData = excList.map(ex => ({
-          ...ex,
-          schedule_date: ex.schedule_date != null ? String(ex.schedule_date).slice(0, 10) : ex.schedule_date
-        }));
-        exceptionsApiSucceeded = true;
-      }
-    } catch (_) {}
-  }
+  // schedules：已與 student-classes 平行抓取；失敗時走 legacy fallback
   if (shouldUseLegacyCalendarFallback({ apiSucceeded: exceptionsApiSucceeded })) {
     let excQuery = supabase
       .from('schedules')
