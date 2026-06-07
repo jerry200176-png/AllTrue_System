@@ -11,6 +11,15 @@
 
 ---
 
+## 2026-06-07 — feat(calendar): SmartCalendar composables 剝離完成（#740 Step 7）
+
+- `useCalendarDataLoad` / `useCalendarLeaveExtra` / `useCalendarSubstitute` / `useCalendarReschedule`
+- `SmartCalendar.vue` **5260 → 3308** 行；拖曳調課 handler 仍留父層
+- P4-b：`GET /api/v1/student-classes` 支援 `start`/`end` 視窗過濾 + 前端傳參
+- 測試：`npm run test:calendar` 全綠（含 4 組 composable vitest）
+
+開發備註：PR #773/#777/#778/#782/#787/#789；行數 <3000 留作 Step 7c（course-edit composable）後續。
+
 ## 2026-06-07 — perf(calendar): loadCourses 平行化 student-classes ∥ schedules（#740 P4-a）
 
 班級行事曆冷載時，課程清單與排程例外改為同時抓取，縮短等待時間；顯示結果與合併邏輯不變。

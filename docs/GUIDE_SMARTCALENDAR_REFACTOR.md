@@ -275,25 +275,29 @@ Events：無。
 
 ---
 
-## 6. SmartCalendar.vue 仍持有（未拆分）
+## 6. Composables（#740 Step 7，2026-06-07）
 
-| 類別 | 內容 |
-|------|------|
-| 狀態 / 業務 | `loadCourses`、篩選、拖曳調課、`submitLeave`/`submitReschedule`/… API |
-| 資料合併 | 呼叫 `mergeWeekCalendarOccurrences`（G-007） |
-| 外殼 DOM | `.course-block` div + `@click` / `@dragstart` / `getTeacherCourseBlockStyle` |
-| Modal 開關 | `showModal`/`showLeaveModal`/… + `open*` 填表邏輯 |
-| Toolbar | 篩選、legend、視圖切換 |
+| Composable | 職責 | 測試 |
+|------------|------|------|
+| `useCalendarDataLoad` | `loadCourses` / teachers / students / 視窗快取 | `calendarCourseLoad.test.js` |
+| `useCalendarLeaveExtra` | 請假 + 加課 modal | `useCalendarLeaveExtra.test.js` |
+| `useCalendarSubstitute` | 代課 legacy/V2/batch | `useCalendarSubstitute.test.js` |
+| `useCalendarReschedule` | 調課 modal + submit | `useCalendarReschedule.test.js` |
+
+**仍留父層**：拖曳調課（`onCourseDragStart` / `onSlotDrop`）、單堂編輯 `submitModal`、週 occurrence 合併（G-007）、toolbar 篩選。
+
+行數：**5260 → 3308**（2026-06-07 main）。
 
 ---
 
-## 7. 延後項目（#740 部分未結）
+## 7. 延後項目
 
-| 項目 | 原因 | 建議下一步 |
-|------|------|------------|
-| ~~**P4-a 請求平行化**~~ | ✅ 已做：`calendarCourseLoad.js` + `Promise.all` | 冷載理論節省 ≈ schedules 延遲；見 TD-062 |
-| **P4-b student-classes 抓取量** | 需後端 API 契約 | 與 ARCH 評估日期視窗 |
-| **行數目標 < 3000** | 目前 4184；核心業務邏輯仍集中 | 持續剝離 composables（非本次範圍） |
+| 項目 | 狀態 | 備註 |
+|------|------|------|
+| ~~P4-a 平行化~~ | ✅ | #773 |
+| ~~P4-b student-classes 視窗~~ | ✅ | #777/#778 |
+| ~~Step 7 composables~~ | ✅ | #782/#787/#789 |
+| **行數 < 3000** | ⏳ | 差 ~308 行；可選 `useCalendarCourseEdit` |
 
 ---
 
