@@ -489,8 +489,7 @@ import {
 import { getTeacherColor } from '../lib/teacherColor.js';
 import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad.js';
 import { useCalendarLeaveExtra } from '../composables/calendar/useCalendarLeaveExtra.js';
-import { useCalendarSubstitute } from '../composables/calendar/useCalendarSubstitute.js';
-import { useCalendarReschedule } from '../composables/calendar/useCalendarReschedule.js';
+import { useCalendarSubstituteReschedule } from '../composables/calendar/useCalendarSubstituteReschedule.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -844,22 +843,9 @@ const {
   substituteV2SessionId, substituteV2Submitting, branchNameMap,
   openSubstituteV2Modal, onSubstituteV2Submit, showTeacherLeaveBatchModal,
   openTeacherLeaveBatch, onBatchSubstituteSubmitted,
-} = useCalendarSubstitute({
-  branchId: computed(() => props.branchId),
-  showModal,
-  modalForm,
-  editingCourseId,
-  loadCourses,
-  teachers,
-  sessionDatesByCourseId,
-  allStudents,
-  getSubjectLabel,
-});
-
-const {
   showRescheduleModal, rescheduleForm, rescheduleDisplay, computedRescheduleNewEnd,
   onRescheduleNewStartChange, openRescheduleModal, submitReschedule,
-} = useCalendarReschedule({
+} = useCalendarSubstituteReschedule({
   supabase,
   branchId: computed(() => props.branchId),
   showModal,
@@ -867,6 +853,8 @@ const {
   editingCourseId,
   loadCourses,
   getToken,
+  teachers,
+  sessionDatesByCourseId,
   allStudents,
   courses,
   exceptions,
@@ -2128,6 +2116,7 @@ const doConfirmCancelSession = async () => {
   }
 };
 
+
 // ===== Right-click context menu =====
 const onCourseRightClick = (course, date, event) => {
   event.preventDefault();
@@ -2136,6 +2125,7 @@ const onCourseRightClick = (course, date, event) => {
   const y = event.clientY;
   contextMenu.value = { show: true, x, y, course, date };
 };
+
 
 // ===== Drag-to-Reschedule =====
 const onCourseDragStart = (course, date, event) => {
@@ -2185,11 +2175,13 @@ const onSlotDrop = (dow, h, targetDate, teacherId) => {
   showRescheduleModal.value = true;
 };
 
+
 // ===== Helpers =====
 const getStudentName = (sid) => {
   const s = allStudents.value.find(s => s.id === sid);
   return s ? s.name : '—';
 };
+
 
 const reloadCalendarData = () => reloadCalendarDataCore(loadRooms, loadSubjects);
 
