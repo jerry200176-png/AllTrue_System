@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.06.07",
     "date": "2026-06-07",
     "title": "2026.06.07 版本更新",
-    "summary": "導入 Vitest 元件測試基礎建設（）",
+    "summary": "受控拆分暫時收尾（ Phase 4c）；導入 Vitest 元件測試基礎建設（）",
     "audience": [
       "teacher",
       "director"
@@ -16,11 +16,13 @@ export const changelogReleaseNotes = [
       {
         "title": "其他改善",
         "items": [
+          "受控拆分暫時收尾（ Phase 4c）",
           "導入 Vitest 元件測試基礎建設（）"
         ]
       }
     ],
     "items": [
+      "受控拆分暫時收尾（ Phase 4c）",
       "導入 Vitest 元件測試基礎建設（）"
     ]
   },
