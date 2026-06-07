@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js",
+    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
