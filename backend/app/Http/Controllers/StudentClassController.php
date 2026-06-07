@@ -3139,12 +3139,7 @@ class StudentClassController extends Controller
         });
     }
 
-    /**
-     * Conservative calendar window: include contracts overlapping the range OR any
-     * ClassSession / Schedule in range (stopped courses with history stay visible).
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder<\App\Models\StudentClass>  $query
-     */
+    /** Conservative calendar window: contract overlap OR ClassSession/Schedule in range. */
     private function applyCalendarWindowFilter($query, $start, $end): void
     {
         $rangeStart = $this->normalizeDateString($start);
