@@ -169,6 +169,10 @@ Route::prefix('v1')->group(function () {
     // ── Health Detailed (auth required) ─────────────────────────────
     // SEC-F3: Operational metrics behind auth — not exposed to unauthenticated requests.
     Route::get('health/detailed', function () {
+        // Require any authenticated user — AttachAuthUser sets auth_user for valid tokens.
+        if (!request()->attributes->has("auth_user") || !request()->attributes->get("auth_user")) {
+            return response()->json(["message" => "Unauthenticated"], 401);
+        }
         $logDir = storage_path('logs');
         $tmpfsMount = '/var/log/alltrue-tmpfs';
         $tmpfsActive = is_dir($tmpfsMount) && @disk_total_space($tmpfsMount) > 0;

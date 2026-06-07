@@ -157,8 +157,11 @@ class LearningRecordsKeysetTest extends TestCase
 
     public function test_health_endpoint_exposes_lr_default_window_days_flag(): void
     {
+        // SEC-F3: perf_flags moved to /health/detailed (auth required).
         config(['perfflags.learning_records_default_window_days' => 90]);
-        $response = $this->getJson('/api/v1/health');
+        [$token] = $this->createTeacherWithRecords(1, 'keyset_health_test');
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/health/detailed');
         $response->assertOk();
         $response->assertJsonStructure([
             'perf_flags' => [
