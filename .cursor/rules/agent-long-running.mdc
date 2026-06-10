@@ -1,0 +1,32 @@
+---
+description: 長時任務執行技能（雙角色循環 / 五要素 / 防熔斷）。AllTrue 現有 workflow 優先，本規則補充不足
+alwaysApply: true
+---
+
+# Long-Running Agent 執行技能（補充規則）
+
+> ⚠️ **優先級**：`.cursorrules`、`p0-gate.mdc`、`AGENTS.md` 的 SOP / 紅線 **永遠優先**。
+> 本規則只補它們沒寫到的「連續推進紀律」，衝突時以現有 workflow 為準。
+
+## 1. 雙角色循環（Executor × Reviewer）
+每輪結束自審四問，未過不收尾、不以「差不多」放行：
+- [ ] 真的達成 Outcome 定義？  [ ] 仍有品質缺陷？
+- [ ] 偏離原始需求？        [ ] 有更好方向未試？
+
+## 2. 五要素框架（動工前先確認，等同 Definition of Ready）
+Outcome（什麼叫完成）／Verification（如何客觀驗證）／Constraints（可動·不可動·G-007 等紅線）／Iteration（每輪記錄改了什麼·為何·效果·下一步）／Error Handling。
+
+## 3. 防熔斷（採用）
+**同一階段自主迭代上限 5 次**：CI/測試/同一問題修 5 次仍未達標 → 立即停、觸發 Error Handling 回報（已試清單＋卡點＋需要什麼），不無限燒 Actions minutes（FinOps）。
+
+## 4. 「不停下問」的邊界（⚠️ 現有 workflow 覆蓋此條）
+「除硬阻塞外不停下」**只適用已授權範圍內的連續推進**。以下一律仍要停下等批准：
+- Phase Gate / Decision-requiring / 高風險模組（G-007 行事曆、扣堂、繳費、auth/PII/migration）
+- AGENTS.md 的 Stop-the-line（可能寫 prod DB、繞 auth、push main、force push、Pi 跑測試、CI 狀態不明卻要回報完成）
+
+## 5. 進度同步（不新增根目錄檔）
+沿用既有機制：**TodoWrite**（session 進度）＋ **Pipeline Checkpoint**（斷點續傳）＋ `CHANGELOG.md`/`TECH_DEBT.md`/`AI_REGRESSION_LESSONS.md`（長期記憶）。
+**不建立** `AGENT_PROGRESS.md`（避免重複記憶來源、省 token、不污染 deployable diff）。
+
+## 6. Commit 規範
+Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`ci`…；`ops` 會被擋）。

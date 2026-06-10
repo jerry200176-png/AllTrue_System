@@ -146,7 +146,7 @@
                   {{ student.rfid }}
                 </span>
                 <span v-else class="rfid-unbound">
-                  <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;color:#bdbdbd;">contactless</span>
+                  <span class="material-symbols-outlined rfid-unbound-icon">contactless</span>
                   未綁定
                 </span>
                 <span v-if="student.line_bound" class="line-bound-badge">LINE</span>
@@ -524,16 +524,16 @@
     <div v-if="showInvoiceModal" class="modal-overlay" @click.self="showInvoiceModal = false">
       <div class="modal" style="max-width: 480px;">
         <h3 style="margin-bottom: 4px;">月結帳單記錄</h3>
-        <p style="font-size: 13px; color: #666; margin-bottom: 16px;">
+        <p class="invoice-modal-subtitle">
           {{ invoiceModalCourse?.student_name || '' }} — {{ getSubjectLabel(invoiceModalCourse?.subject) }}
         </p>
 
-        <div v-if="invoiceModalLoading" style="padding: 24px 0; text-align: center; color: #aaa;">
+        <div v-if="invoiceModalLoading" class="invoice-modal-loading">
           <div class="invoice-skeleton"></div>
           <div class="invoice-skeleton" style="width: 70%;"></div>
         </div>
 
-        <div v-else-if="invoiceModalList.length === 0" style="padding: 16px 0; text-align: center; color: #aaa; font-size: 14px;">
+        <div v-else-if="invoiceModalList.length === 0" class="invoice-modal-empty">
           尚無帳單記錄（舊有課程）
         </div>
 
@@ -549,7 +549,7 @@
             <tr v-for="inv in invoiceModalList" :key="inv.id">
               <td style="font-size: 13px;">
                 {{ inv.billing_period ? formatBillingPeriod(inv.billing_period) : (inv.issue_date ? inv.issue_date.slice(0, 7) : '—') }}
-                <span v-if="inv.due_date" style="font-size: 11px; color: #888; display: block;">繳費日 {{ inv.due_date }}</span>
+                <span v-if="inv.due_date" class="invoice-due-date-hint">繳費日 {{ inv.due_date }}</span>
               </td>
               <td style="text-align: right; font-weight: 600;">${{ inv.total_amount.toLocaleString() }}</td>
               <td style="text-align: center;">
@@ -570,7 +570,7 @@
     <!-- Add Sessions Modal -->
     <div v-if="showSessionsModal" class="modal-overlay" @click.self="showSessionsModal = false">
       <div class="modal">
-        <h3>💰 加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
+        <h3>加購堂數 — {{ getSubjectLabel(selectedCourse?.subject) }}</h3>
         <div class="form-group">
           <label>學生</label>
           <p style="font-weight: 600;">{{ selectedStudent?.name }}</p>
@@ -579,10 +579,10 @@
           <label>{{ selectedCourse?.PackageID ? '目前剩餘（方案池）' : '目前剩餘（此課程）' }}</label>
           <p :style="{ fontSize: '20px', fontWeight: 700, color: (selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2 ? '#e65100' : 'var(--primary)' }">
             {{ selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0) }} 堂
-            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" style="font-size: 13px; color: #e65100;">（即將用完，建議盡快加購）</span>
+            <span v-if="(selectedCourse?.PackageID ? (selectedCourse?.package_remaining_sessions ?? 0) : (selectedCourse?.remaining_sessions ?? 0)) <= 2" class="sessions-near-empty-hint">（即將用完，建議盡快加購）</span>
           </p>
         </div>
-        <p class="hint" style="color: #7a4b00; margin-bottom: 8px;">
+        <p class="hint sessions-package-hint">
           {{ selectedCourse?.PackageID
             ? '此課程屬於多科共用方案，加購會增加整個方案的共用總堂數，所有方案科目一起沿用同一個堂數池。'
             : '此加購會建立新的未繳課程批次，並在新批次詳情顯示上課日期；原課程堂數不會被改寫。'
@@ -615,7 +615,7 @@
     <!-- Duplicate Course Intercept Modal -->
     <div v-if="showDuplicateInterceptModal" class="modal-overlay" @click.self="showDuplicateInterceptModal = false">
       <div class="modal" style="width: 480px;">
-        <h3 style="color: #e65100;">⚠️ 此學生已有進行中的課程</h3>
+        <h3 class="duplicate-course-heading">此學生已有進行中的課程</h3>
         <p style="margin-bottom: 12px;">
           <strong>{{ interceptPendingStudent?.name }}</strong> 目前有以下進行中的課程，通常續報應使用「加購堂數」延續原課程，而非新增：
         </p>
@@ -648,7 +648,7 @@
     <!-- Grade Promotion Modal -->
     <div v-if="showGradePromotion" class="modal-overlay" @click.self="showGradePromotion = false">
       <div class="modal" style="width: 500px;">
-        <h3>🎓 年級升級</h3>
+        <h3>年級升級</h3>
         <p class="hint">一鍵將所有在學中的學生年級 +1（例如 J1 → J2）。H3 學生會被標記為已畢業。</p>
         <div v-if="promotionPreview.length > 0" style="max-height: 300px; overflow-y: auto; margin: 16px 0;">
           <table class="course-inner-table">
@@ -2613,11 +2613,43 @@ table th { font-size: 12.5px; }
 
 .text-secondary { color: var(--text-light); font-size: 0.9rem; }
 .computed-end-time { margin: 0; font-weight: 600; font-size: 1rem; }
-.close-btn { color: #92400e; border-color: #d97706; }
-.close-btn:hover { background: #fef3c7; }
-.paid-date-hint { display: inline-block; font-size: 12px; color: var(--success, #2e7d32); margin-left: 4px; white-space: nowrap; }
+.close-btn { color: var(--ds-warning); border-color: var(--ds-warning); }
+.close-btn:hover { background: var(--ds-warning-wash); }
+.paid-date-hint { display: inline-block; font-size: 12px; color: var(--ds-success); margin-left: 4px; white-space: nowrap; }
 
 /* ── Monthly Invoice Modal ── */
+.invoice-modal-subtitle {
+  font-size: 13px;
+  color: var(--ds-ink-mute);
+  margin-bottom: 16px;
+}
+.invoice-modal-loading {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--ds-ink-mute);
+}
+.invoice-modal-empty {
+  padding: 16px 0;
+  text-align: center;
+  color: var(--ds-ink-mute);
+  font-size: 14px;
+}
+.invoice-due-date-hint {
+  font-size: 11px;
+  color: var(--ds-ink-mute);
+  display: block;
+}
+.sessions-near-empty-hint {
+  font-size: 13px;
+  color: var(--ds-warning);
+}
+.sessions-package-hint {
+  color: var(--ds-warning);
+  margin-bottom: 8px;
+}
+.duplicate-course-heading {
+  color: var(--ds-warning);
+}
 .invoice-status-chip {
   display: inline-block;
   padding: 2px 8px;
@@ -2625,13 +2657,13 @@ table th { font-size: 12.5px; }
   font-size: 12px;
   font-weight: 600;
 }
-.invoice-status-chip.paid    { background: #e8f5e9; color: #2e7d32; }
-.invoice-status-chip.unpaid  { background: #fff3e0; color: #e65100; }
-.invoice-status-chip.partial { background: #fff8e1; color: #f57f17; }
+.invoice-status-chip.paid    { background: var(--ds-success-wash); color: var(--ds-success); }
+.invoice-status-chip.unpaid  { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.invoice-status-chip.partial { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .invoice-skeleton {
   height: 20px;
   width: 100%;
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, var(--ds-canvas-soft) 25%, var(--ds-hairline) 50%, var(--ds-canvas-soft) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.2s infinite;
   border-radius: 4px;
@@ -2654,7 +2686,7 @@ table th { font-size: 12.5px; }
 }
 .header-icon {
   font-size: 26px;
-  color: var(--primary);
+  color: var(--ds-primary);
 }
 .header-stats {
   display: flex;
@@ -2669,13 +2701,14 @@ table th { font-size: 12.5px; }
   padding: 3px 10px;
   border-radius: 6px;
   font-size: 13px;
-  background: #FFF3E0;
-  color: #E65100;
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary-deep);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .stat-badge-light {
-  background: #f5f5f5;
-  color: #78909c;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
   font-weight: 500;
 }
 .header-buttons {
@@ -2684,20 +2717,23 @@ table th { font-size: 12.5px; }
   align-items: center;
 }
 .button-outline {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ds-hairline);
   padding: 8px 14px;
   border-radius: 8px;
   cursor: pointer;
-  background: var(--card-bg);
+  background: var(--ds-canvas);
+  color: var(--ds-ink-secondary);
   font-size: 13px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 4px;
   transition: var(--transition);
 }
 .button-outline:hover {
-  background: var(--bg);
-  border-color: var(--accent);
+  background: var(--ds-canvas-soft);
+  border-color: var(--ds-hairline-input);
+  color: var(--ds-ink);
 }
 .btn-icon {
   font-size: 18px;
@@ -2711,8 +2747,8 @@ table th { font-size: 12.5px; }
   justify-content: space-between;
   padding: 10px 16px;
   margin-bottom: 12px;
-  background: #E3F2FD;
-  border: 1px solid #90CAF9;
+  background: var(--ds-primary-wash);
+  border: 1px solid var(--ds-hairline-input);
   border-radius: 8px;
   animation: slideDown 0.2s ease;
 }
@@ -2740,7 +2776,7 @@ table th { font-size: 12.5px; }
   background: var(--ds-canvas-soft);
   padding: 16px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ds-hairline);
 }
 .filter-search { position: relative; }
 .search-input-wrap { position: relative; }
@@ -2750,7 +2786,7 @@ table th { font-size: 12.5px; }
   top: 50%;
   transform: translateY(-50%);
   font-size: 20px;
-  color: #bdbdbd;
+  color: var(--ds-ink-mute);
   pointer-events: none;
 }
 .search-input-wrap input { padding-left: 36px; }
@@ -2770,27 +2806,29 @@ table th { font-size: 12.5px; }
   width: 16px;
   height: 16px;
   cursor: pointer;
-  accent-color: var(--primary);
+  accent-color: var(--ds-primary);
 }
 .student-row {
   cursor: pointer;
   transition: background 0.2s ease;
 }
 .student-row:hover td {
-  background: #FFF8E1 !important;
+  background: var(--ds-primary-wash) !important;
 }
 .student-row.expanded td {
-  background: #FFF3E0;
-  border-bottom-color: var(--accent);
+  background: var(--ds-primary-wash);
+  border-bottom-color: var(--ds-primary);
 }
 
-/* Status left border on student rows */
+/* Status left border on student rows.
+   active/paused 對應 ds-success/ds-warning；graduated 藍、transferred 紫
+   屬多態語意色（無對應 ds semantic token），維持 raw 待 token 擴充。*/
 .student-row td:first-child {
   border-left: 3px solid transparent;
 }
-.student-row.status-active td:first-child { border-left-color: #43a047; }
+.student-row.status-active td:first-child { border-left-color: var(--ds-success); }
 .student-row.status-graduated td:first-child { border-left-color: #1565c0; }
-.student-row.status-paused td:first-child { border-left-color: #e65100; }
+.student-row.status-paused td:first-child { border-left-color: var(--ds-warning); }
 .student-row.status-transferred td:first-child { border-left-color: #7b1fa2; }
 
 /* Expand icon */
@@ -2800,7 +2838,7 @@ table th { font-size: 12.5px; }
 }
 .expand-chevron {
   font-size: 20px;
-  color: #90a4ae;
+  color: var(--ds-ink-mute);
   transition: transform 0.2s ease;
   display: inline-block;
 }
@@ -2828,13 +2866,15 @@ table th { font-size: 12.5px; }
   justify-content: center;
   font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ds-on-primary);
   flex-shrink: 0;
-  background: linear-gradient(135deg, #43a047, #66bb6a);
+  background: var(--ds-success);
 }
-.student-avatar-mini.graduated { background: linear-gradient(135deg, #1565c0, #42a5f5); }
-.student-avatar-mini.paused { background: linear-gradient(135deg, #e65100, #ff9800); }
-.student-avatar-mini.transferred { background: linear-gradient(135deg, #7b1fa2, #ab47bc); }
+/* graduated/transferred 屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。
+   移除原裝飾性 linear-gradient → 改用實色，與 RULE_DESIGN_SYSTEM §7 一致。 */
+.student-avatar-mini.graduated { background: #1565c0; }
+.student-avatar-mini.paused { background: var(--ds-warning); }
+.student-avatar-mini.transferred { background: #7b1fa2; }
 
 .text-red {
   color: var(--danger) !important;
@@ -2853,8 +2893,8 @@ table th { font-size: 12.5px; }
   padding: 3px 9px;
   border-radius: 12px;
   font-size: 12.5px;
-  background: #E8F5E9;
-  color: #2E7D32;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
   white-space: nowrap;
 }
 .subject-pill strong {
@@ -2862,14 +2902,14 @@ table th { font-size: 12.5px; }
   font-variant-numeric: tabular-nums;
 }
 .subject-pill.low {
-  background: #FFEBEE;
-  color: #C62828;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
 }
 
 .note-icon {
   margin-left: 4px;
   cursor: help;
-  color: #ffab00;
+  color: var(--ds-warning);
 }
 
 .student-status-badge {
@@ -2880,8 +2920,9 @@ table th { font-size: 12.5px; }
   margin-left: 6px;
   font-weight: 600;
 }
+/* paused 對應 ds-warning；graduated 藍、transferred 紫無 ds token，維持 raw。 */
 .student-status-badge.graduated { background: #E3F2FD; color: #1565C0; }
-.student-status-badge.paused { background: #FFF3E0; color: #E65100; }
+.student-status-badge.paused { background: var(--ds-warning-wash); color: var(--ds-warning); }
 .student-status-badge.transferred { background: #F3E5F5; color: #6A1B9A; }
 
 /* RFID */
@@ -2894,17 +2935,22 @@ table th { font-size: 12.5px; }
 .rfid-tag {
   font-size: 12px;
   font-family: monospace;
-  color: var(--primary);
+  color: var(--ds-primary);
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 .rfid-unbound {
   font-size: 12px;
-  color: #bdbdbd;
+  color: var(--ds-ink-mute);
   display: inline-flex;
   align-items: center;
   gap: 3px;
+}
+.rfid-unbound-icon {
+  font-size: 14px;
+  vertical-align: middle;
+  color: var(--ds-ink-mute);
 }
 
 /* Action buttons */
@@ -2936,7 +2982,7 @@ table th { font-size: 12.5px; }
 }
 .mini-progress {
   height: 4px;
-  background: #e8e8e8;
+  background: var(--ds-hairline);
   border-radius: 2px;
   overflow: hidden;
   width: 80px;
@@ -2960,33 +3006,33 @@ table th { font-size: 12.5px; }
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 2px solid #E0E0E0;
-  background: #FAFAFA;
+  border: 2px solid var(--ds-hairline);
+  background: var(--ds-canvas-soft);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #616161;
+  color: var(--ds-ink-secondary);
   transition: all 0.2s;
   user-select: none;
 }
 .day-chip:hover {
-  border-color: #FF9800;
-  background: #FFF3E0;
+  border-color: var(--ds-primary);
+  background: var(--ds-primary-wash);
 }
 .day-chip.selected {
-  border-color: #E65100;
-  background: #FF9800;
-  color: #fff;
+  border-color: var(--ds-primary-deep);
+  background: var(--ds-primary);
+  color: var(--ds-on-primary);
 }
 
 /* ═══ Course Detail Panel ═══ */
 .course-detail-row td {
   padding: 0 !important;
-  background: #FAFAFA !important;
+  background: var(--ds-canvas-soft) !important;
 }
 .course-panel {
   padding: 20px 24px;
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--ds-primary);
   margin: 0;
 }
 .course-panel-header {
@@ -3001,13 +3047,13 @@ table th { font-size: 12.5px; }
   gap: 6px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--ds-primary);
   margin: 0;
 }
 .student-note-line {
   margin-bottom: 12px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .student-note-label {
   font-weight: 700;
@@ -3018,23 +3064,25 @@ table th { font-size: 12.5px; }
   font-size: 14px;
 }
 .course-inner-table th {
-  background: #F0F0F0;
+  background: var(--ds-canvas-soft);
   font-size: 12px;
   padding: 9px 8px;
 }
 .course-inner-table td {
   padding: 10px 8px;
-  border-bottom: 1px solid #EEEEEE;
+  border-bottom: 1px solid var(--ds-hairline);
 }
-.status-tag.one_on_one { background: #FFF3E0; color: #E65100; }
+/* one_on_one 對應 ds-primary（1對1=主打）、tutoring 對應 ds-success；
+   1對2/1對3/trial 屬多態語意色（無對應 ds token），維持 raw。 */
+.status-tag.one_on_one { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .status-tag.one_on_two { background: #FFF8E1; color: #F57F17; }
 .status-tag.one_on_three { background: #FBE9E7; color: #BF360C; }
-.status-tag.tutoring { background: #E8F5E9; color: #2E7D32; }
+.status-tag.tutoring { background: var(--ds-success-wash); color: var(--ds-success); }
 .status-tag.trial { background: #E8EAF6; color: #3949AB; }
 .course-memo-line {
   margin-top: 4px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
   line-height: 1.4;
   word-break: break-word;
 }
@@ -3055,10 +3103,10 @@ table th { font-size: 12.5px; }
 .form-section-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--ds-primary);
   margin: 16px 0 8px 0;
   padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ds-hairline);
 }
 .form-section-title:first-of-type {
   margin-top: 0;
@@ -3071,22 +3119,22 @@ table th { font-size: 12.5px; }
 .rfid-bind-row input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ds-hairline-input);
   border-radius: 6px;
 }
 .rfid-bind-row input[readonly] {
-  background: #f5f5f5;
-  color: #333;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
   cursor: default;
 }
 .required {
-  color: var(--danger);
+  color: var(--ds-danger);
 }
 
 /* ═══ Cost Preview ═══ */
 .cost-preview {
-  background: linear-gradient(135deg, #FFF8E1, #FFECB3);
-  border: 1px solid #FFE082;
+  background: var(--ds-primary-wash);
+  border: 1px solid var(--ds-hairline-input);
   border-radius: 10px;
   padding: 16px;
   text-align: center;
@@ -3094,18 +3142,20 @@ table th { font-size: 12.5px; }
 }
 .cost-preview-label {
   font-size: 12px;
-  color: #5D4037;
+  color: var(--ds-ink-secondary);
   font-weight: 600;
 }
 .cost-preview-value {
   font-size: 28px;
   font-weight: 800;
-  color: var(--primary);
+  color: var(--ds-primary);
   margin: 4px 0;
+  font-variant-numeric: tabular-nums;
 }
 .cost-preview-formula {
   font-size: 12px;
-  color: var(--text-light);
+  color: var(--ds-ink-mute);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ═══ Table Scroll ═══ */
@@ -3161,6 +3211,7 @@ table th { font-size: 12.5px; }
   }
 }
 
+/* tag-package 紫色屬包套餐多態語意色（無對應 ds token），維持 raw 待 token 擴充。 */
 .tag-package {
   background: #ede9fe;
   color: #6d28d9;
@@ -3181,9 +3232,9 @@ table th { font-size: 12.5px; }
   margin-top: 2px;
 }
 .tag-paused-sm {
-  background: #ffedd5;
-  color: #7c2d12;
-  border: 1px solid #ea580c;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
   border-radius: 6px;
   font-size: 11px;
   padding: 2px 7px;
@@ -3191,9 +3242,9 @@ table th { font-size: 12.5px; }
   margin-left: 4px;
 }
 .tag-expiring {
-  background: #fff3e0;
-  color: #e65100;
-  border: 1px solid #ff9800;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border: 1px solid var(--ds-warning);
   border-radius: 6px;
   font-size: 11px;
   padding: 2px 7px;
@@ -3206,9 +3257,9 @@ table th { font-size: 12.5px; }
   50% { opacity: 0.7; }
 }
 .btn-renew-warn {
-  background: #ff9800 !important;
-  color: #fff !important;
-  border: 1px solid #e65100 !important;
+  background: var(--ds-warning) !important;
+  color: var(--ds-on-primary) !important;
+  border: 1px solid var(--ds-warning) !important;
   font-weight: 600;
   border-radius: 6px;
   padding: 4px 10px;
@@ -3216,7 +3267,7 @@ table th { font-size: 12.5px; }
   cursor: pointer;
 }
 .btn-renew-warn:hover {
-  background: #e65100 !important;
+  filter: brightness(0.92);
 }
 
 /* ── Empty active courses ── */
@@ -3225,19 +3276,19 @@ table th { font-size: 12.5px; }
   align-items: center;
   gap: 8px;
   padding: 20px 16px;
-  color: #94a3b8;
+  color: var(--ds-ink-mute);
   font-size: 14px;
 }
 .sl-empty-active__icon {
   font-size: 24px;
-  color: #cbd5e1;
+  color: var(--ds-hairline-input);
 }
 
 /* ── History section ── */
 .sl-history-section {
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--ds-hairline);
   margin-top: 8px;
-  background: #fafbfc;
+  background: var(--ds-canvas-soft);
   border-radius: 0 0 8px 8px;
 }
 .sl-history-toggle {
@@ -3251,26 +3302,26 @@ table th { font-size: 12.5px; }
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--ds-ink-secondary);
   cursor: pointer;
   transition: background 0.15s;
 }
 .sl-history-toggle:hover {
-  background: #f1f5f9;
+  background: var(--ds-hairline);
 }
 .sl-history-toggle__icon {
   font-size: 18px;
-  color: #94a3b8;
+  color: var(--ds-ink-mute);
 }
 .sl-history-toggle__count {
   font-weight: 400;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--ds-ink-mute);
 }
 .sl-history-toggle__chevron {
   margin-left: auto;
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--ds-ink-mute);
 }
 .sl-history-body {
   padding: 4px 14px 14px;
@@ -3279,15 +3330,15 @@ table th { font-size: 12.5px; }
   gap: 8px;
 }
 .sl-history-card {
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  border-left: 3px solid #d1d5db;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-hairline);
+  border-left: 3px solid var(--ds-hairline-input);
   border-radius: 10px;
   padding: 10px 14px;
   transition: box-shadow 0.15s;
 }
 .sl-history-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--ds-shadow-1);
 }
 .sl-history-card__header {
   display: flex;
@@ -3297,9 +3348,9 @@ table th { font-size: 12.5px; }
   margin-bottom: 6px;
 }
 .sl-history-card__subject {
-  background: #f1f5f9 !important;
-  color: #475569 !important;
-  border: 1px solid #cbd5e1 !important;
+  background: var(--ds-canvas-soft) !important;
+  color: var(--ds-ink-secondary) !important;
+  border: 1px solid var(--ds-hairline-input) !important;
 }
 .sl-tag-history {
   border-radius: 6px;
@@ -3309,10 +3360,11 @@ table th { font-size: 12.5px; }
   letter-spacing: 0.02em;
 }
 .sl-tag-history--settled {
-  background: #f0fdf4;
-  color: #15803d;
-  border: 1px solid #86efac;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+  border: 1px solid var(--ds-success);
 }
+/* completed 藍屬多態語意色（無對應 ds token），維持 raw 待 token 擴充。 */
 .sl-tag-history--completed {
   background: #eff6ff;
   color: #1d4ed8;
@@ -3323,11 +3375,11 @@ table th { font-size: 12.5px; }
   flex-wrap: wrap;
   gap: 4px 14px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .sl-history-card__label {
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--ds-ink-mute);
   margin-right: 4px;
   font-size: 12px;
   text-transform: uppercase;
@@ -3351,12 +3403,13 @@ table th { font-size: 12.5px; }
   }
 }
 
-/* LINE bound badge in student list */
+/* LINE bound badge in student list.
+   #06C755 為 LINE 官方品牌色（third-party brand），不可替換為 ds token。 */
 .line-bound-badge {
   display: inline-flex;
   align-items: center;
   background: #06C755;
-  color: #fff;
+  color: var(--ds-on-primary);
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;
@@ -3370,7 +3423,7 @@ table th { font-size: 12.5px; }
   margin-bottom: 12px;
 }
 .line-bindings-empty {
-  color: #9e9e9e;
+  color: var(--ds-ink-mute);
   font-size: 13px;
   padding: 6px 0;
 }
@@ -3384,7 +3437,7 @@ table th { font-size: 12.5px; }
   align-items: center;
   gap: 10px;
   padding: 6px 10px;
-  background: #f5f5f5;
+  background: var(--ds-canvas-soft);
   border-radius: 6px;
   font-size: 13px;
 }
@@ -3395,15 +3448,15 @@ table th { font-size: 12.5px; }
   font-weight: 600;
 }
 .line-binding-time {
-  color: #757575;
+  color: var(--ds-ink-mute);
   font-size: 12px;
   flex: 1;
   text-align: right;
 }
 .line-binding-remove {
   background: none;
-  border: 1px solid #ef5350;
-  color: #ef5350;
+  border: 1px solid var(--ds-danger);
+  color: var(--ds-danger);
   font-size: 12px;
   padding: 2px 10px;
   border-radius: 4px;
@@ -3411,8 +3464,8 @@ table th { font-size: 12.5px; }
   transition: all 0.15s;
 }
 .line-binding-remove:hover {
-  background: #ef5350;
-  color: #fff;
+  background: var(--ds-danger);
+  color: var(--ds-on-primary);
 }
 
 /* Toast notification */
@@ -3421,13 +3474,13 @@ table th { font-size: 12.5px; }
   bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  background: #323232;
-  color: #fff;
+  background: var(--ds-ink);
+  color: var(--ds-on-primary);
   padding: 10px 24px;
   border-radius: 8px;
   font-size: 14px;
   z-index: 10001;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  box-shadow: var(--ds-shadow-2);
   animation: toast-in 0.25s ease;
 }
 @keyframes toast-in {
@@ -3435,50 +3488,11 @@ table th { font-size: 12.5px; }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* ── Dark mode: history section ── */
-[data-theme="dark"] .sl-history-section {
-  border-top-color: #334155;
-  background: #0f172a;
-}
-[data-theme="dark"] .sl-history-toggle {
-  color: #94a3b8;
-}
-[data-theme="dark"] .sl-history-toggle:hover {
-  background: #1e293b;
-}
-[data-theme="dark"] .sl-history-card {
-  background: #1e293b;
-  border-color: #334155;
-  border-left-color: #475569;
-}
-[data-theme="dark"] .sl-history-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-[data-theme="dark"] .sl-history-card__subject {
-  background: #334155 !important;
-  color: #e2e8f0 !important;
-  border-color: #475569 !important;
-}
-[data-theme="dark"] .sl-tag-history--settled {
-  background: #052e16;
-  color: #4ade80;
-  border-color: #166534;
-}
+/* Dark mode override：只剩無 ds token 的多態色（completed 藍 / tag-package 紫）。
+   其餘 history section / card / empty 已改用 --ds-* 自動適應 dark mode（styles.css 已定義 [data-theme="dark"] 變體），原 override 為 token 化前殘留，全部移除。 */
 [data-theme="dark"] .sl-tag-history--completed {
   background: #172554;
   color: #60a5fa;
   border-color: #1e40af;
-}
-[data-theme="dark"] .sl-history-card__details {
-  color: #94a3b8;
-}
-[data-theme="dark"] .sl-history-card__label {
-  color: #64748b;
-}
-[data-theme="dark"] .sl-empty-active {
-  color: #64748b;
-}
-[data-theme="dark"] .sl-empty-active__icon {
-  color: #475569;
 }
 </style>

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/classSessionPick.test.js",
+    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
@@ -14,13 +14,18 @@
     "test:universal-scheduler-api": "node src/lib/universalSchedulerApi.test.js",
     "test:learning-records-window": "node src/lib/learningRecordsWindow.test.js",
     "test:learning-record-target": "node src/lib/learningRecordTarget.test.js",
+    "test:learning-record-sort": "node src/lib/learningRecordSort.test.js",
     "test:scroll-lock": "node src/lib/useScrollLock.test.js",
     "test:course-pricing": "node src/lib/coursePricing.test.js",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:unit:cov": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:release-notes": "node src/lib/releaseNotes.test.js",
     "sync-release-notes": "node ../scripts/changelog-to-release-notes.mjs",
     "metrics:design-hex": "bash ../scripts/design-hex-count.sh",
-    "build": "npm run sync-release-notes && npm run test:session-consistency && npm run test:package-sessions && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:scroll-lock && npm run test:course-pricing && vite build",
+    "lint:design": "bash ../scripts/check-no-raw-hex.sh",
+    "build": "npm run sync-release-notes && npm run test:session-consistency && npm run test:package-sessions && npm run test:course-teacher-options && npm run test:universal-scheduler-api && npm run test:learning-records-window && npm run test:learning-record-target && npm run test:learning-record-sort && npm run test:scroll-lock && npm run test:course-pricing && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && node scripts/copy-to-backend.cjs",
     "deploy:pack": "npm run build && node scripts/pack-deploy.cjs",
@@ -34,9 +39,13 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@vitejs/plugin-vue": "^5.0.0",
+    "@vitest/coverage-v8": "^4.1.8",
+    "@vue/test-utils": "^2.4.11",
     "husky": "^9.1.7",
+    "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^4.1.8"
   },
   "optionalDependencies": {
     "@rollup/rollup-linux-arm64-gnu": "^4.61.1"

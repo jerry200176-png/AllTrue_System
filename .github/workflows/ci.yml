@@ -367,6 +367,15 @@ jobs:
         working-directory: frontend
         run: npm run test:engagement-progress
 
+      - name: "Component unit tests (Vitest, #729)"
+        working-directory: frontend
+        run: npm run test:unit
+
+      - name: "Design raw-hex guard (advisory, #689)"
+        working-directory: frontend
+        continue-on-error: true
+        run: npm run lint:design
+
       - name: Vite build
         working-directory: frontend
         run: npm run build

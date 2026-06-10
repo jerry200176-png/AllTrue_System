@@ -68,6 +68,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Deploy SOP | `.cursor/rules/auto-frontend-deploy.mdc` |
 | UI 設計規則 | `.cursor/rules/module-frontend.mdc` |
 | 行事曆週檢視資料合併規則 | `CLAUDE.md §G-007`（⛔ 禁止分散 if，必走 `calendarOccurrenceMerge.js`）|
+| **SmartCalendar 受控拆分（#740）** | `docs/GUIDE_SMARTCALENDAR_REFACTOR.md`（元件清單、API、CSS 解耦決策）|
 | 行事曆回歸測試 | `npm run test:calendar`（修改任何 calendar merge 邏輯前必跑）|
 | 家長入口 UX、分眾版本公告 | `docs/ROLE_PLAYBOOK.md` §4、`docs/AI_REGRESSION_LESSONS.md` §R45；`npm run test:release-notes`（改 `releaseNotes.js` / changelog 產生器時） |
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
@@ -76,7 +77,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
 | 部署 SOP（Phase 7） | `docs/OPERATIONS_RUNBOOK.md §A-B` |
-| 緊急事故 / 回滾 | `docs/DANGEROUS_OPERATIONS.md` |
+| 緊急事故 / 危險操作 | `docs/DANGEROUS_OPERATIONS.md` |
+| **回滾 SOP（何時/如何回滾 + MTTR）** | `docs/RUNBOOK_ROLLBACK.md`；就緒度檢查 `scripts/rollback-readiness.sh` |
 | Dependabot merge SOP / SLA | `docs/OPERATIONS_RUNBOOK.md §B0 / §T` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
 | 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
@@ -117,18 +119,19 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 📝 新建 docs 命名規範（Phase C 起生效）
 
-新建 `docs/` 檔案請加 prefix，讓 AI 從名稱判斷文件類型：
+新建 `docs/` 檔案請加 prefix，讓 AI 從名稱判斷文件類型（對齊 Diátaxis 文件分類）：
 
 | 前綴 | 用途 | 範例 |
 |------|------|------|
-| `RULE_` | 規範性，read-before-doing | `RULE_PAYMENT_ALERTS.md` |
-| `RUNBOOK_` | 操作手冊 | `RUNBOOK_DEPLOY.md` |
-| `REF_` | 純參考查表 | `REF_API_ROUTES.md` |
-| `MODULE_` | 模組設計 | `MODULE_CHAT_BUG.md` |
+| `RULE_` | 規範性，read-before-doing（不可擅改） | `RULE_PAYMENT_ALERTS.md` |
+| `RUNBOOK_` | 操作 SOP（step-by-step） | `RUNBOOK_DEPLOY.md` |
+| `REF_` | 純參考查表（API、schema、對照表） | `REF_API_ROUTES.md` |
+| `MODULE_` | 模組深度說明（架構 + 流程） | `MODULE_CHAT_BUG.md` |
 | `GUIDE_` | 教學 how-to | `GUIDE_WSL2_SETUP.md` |
 | `POLICY_` | 政策決策 | `POLICY_SRE.md` |
+| `ADR_` | 架構決策記錄（Architecture Decision Record） | `ADR_001_calendar_merge.md` |
 
-舊檔按現有名稱延用（不強制改名，但下次大改時順手 rename）。CI 會對不符合 prefix 且非既有清單的新檔發出 `warning`。
+舊檔按現有名稱延用（不強制改名，會破壞參照；下次大改時順手 rename）。CI（`scripts/docs-integrity-check.mjs`）會對不符合 prefix 且非既有清單的新檔發出 `warning`。
 
 ---
 
@@ -165,13 +168,14 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
-| `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 舊 CHANGELOG（archive，只搜尋不通讀） |
+| `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 CHANGELOG（滾動歸檔，只搜尋不通讀） |
+| `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）CHANGELOG（archive，只搜尋不通讀） |
 | `docs/TECH_DEBT.md` | TD-NNN 技術債清單 |
 | `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
-| `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（Stripe-inspired：淺色+navy+indigo、金額 tabular）；所有前端 UI 照此生成 |
+| `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 | `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）|
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
@@ -311,9 +315,10 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 - `node scripts/docs-integrity-check.mjs --strict`
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
-**每月（記憶保鮮）**
+**每月（記憶保鮮 + CHANGELOG 滾動歸檔）**
 - `mempalace mine` 重新索引近期對話與 docs。
 - 抽查高風險關鍵字是否可被 `mempalace search` 命中。
+- **CHANGELOG 滾動歸檔**（對齊 Keep a Changelog）：月初把上月條目從 `docs/CHANGELOG.md` 移入 `docs/archive/CHANGELOG_ARCHIVE_YYYY-MM.md`，主檔只留當月 + 頂部 archive 導航。size gate 已對 `chore/docs-*` 分支排除 CHANGELOG/archive 搬移（presubmit CHECK 2）。
 
 **變更守則**：先改權威文件，再補 INDEX 導航；不在多份文件複製完整 SOP（避免版本漂移）。
 
@@ -329,6 +334,7 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 | `使用說明_主任與超級管理員.md` | Developer Bypass FAQ（歷史）；角色全貌見 `ROLE_PLAYBOOK.md` |
 | `更新網站前端.md` | 本機手動覆蓋 `public`（歷史）；正式 deploy 依 CI |
 | `AI_REGRESSION_LESSONS_ARCHIVE.md` | 事故長文 archive；摘要在 `AI_REGRESSION_LESSONS.md` |
+| `CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 changelog（滾動歸檔）|
 | `CHANGELOG_ARCHIVE_2026-04.md` | 2026-04 以前的 changelog |
 | `PRD_PARTTIME_PAYROLL_PER_TEACHER_OVERRIDES.md` | 已完成的分攤薪資 PRD |
 | `PRD_PARTTIME_TEACHER_PAYROLL.md` | 已完成的兼職薪資 PRD |
@@ -340,19 +346,3 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 | `SCHEDULE_DISCREPANCY_REVIEW.md` | 歷史排課差異審查 |
 | `TECH_REPORT_COURSE_SCHEDULE_SYNC_ISSUES.md` | 歷史技術報告 |
 
----
-
-## 🏷️ 新文件命名 prefix 規範（Phase C）
-
-新建 `docs/` 文件時，依用途選擇 prefix：
-
-| Prefix | 用途 | 範例 |
-|--------|------|------|
-| `RULE_` | 規則、限制、條件（不可擅改） | `RULE_PAYMENT_ALERTS.md` |
-| `RUNBOOK_` | 操作 SOP（step-by-step） | `RUNBOOK_DEPLOY.md` |
-| `REF_` | 參照資料（API、schema、對照表） | `REF_DB_SCHEMA.md` |
-| `MODULE_` | 模組深度說明（架構 + 流程） | `MODULE_BILLING.md` |
-| `ADR_` | Architecture Decision Record | `ADR_001_calendar_merge.md` |
-| `(無 prefix)` | 既有文件維持現狀，不強制改名 | — |
-
-> 只對**新建文件**套用；既有文件不因命名規範而強制 rename（會破壞參照）。
