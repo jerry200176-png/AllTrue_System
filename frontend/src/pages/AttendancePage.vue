@@ -442,10 +442,7 @@
             <div class="form-group">
               <label>點名狀態 <span class="att-required">*</span></label>
               <select v-model="quickForm.status">
-                <option value="present">到班</option>
-                <option value="late">遲到</option>
-                <option value="leave">請假</option>
-                <option value="absent">缺席</option>
+                <option v-for="opt in allStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
               </select>
             </div>
           </div>
@@ -1293,7 +1290,24 @@ const statusOptions = [
   { value: 'leave', label: '請假', short: '假' },
   { value: 'absent', label: '缺席', short: '缺' },
 ];
-const statusLabelMap = { present: '到班', late: '遲到', leave: '請假', excused: '請假', absent: '缺席' };
+
+// #765 完整出缺席狀態（鏡像後端 AttendanceStatus registry）。快捷按鈕用上方 4 個主狀態；
+// 補登/詳細選單提供全部，含試聽 / 輔導 / 值班 / 補課 / 停課。
+const allStatusOptions = [
+  ...statusOptions,
+  { value: 'trial', label: '試聽有到' },
+  { value: 'trial_absent', label: '試聽未到' },
+  { value: 'tutoring', label: '輔導有到' },
+  { value: 'tutoring_absent', label: '輔導未到' },
+  { value: 'duty', label: '值班' },
+  { value: 'makeup', label: '補課' },
+  { value: 'suspended', label: '停課' },
+];
+const statusLabelMap = {
+  present: '到班', late: '遲到', leave: '請假', excused: '請假', absent: '缺席',
+  trial: '試聽有到', trial_absent: '試聽未到', tutoring: '輔導有到', tutoring_absent: '輔導未到',
+  duty: '值班', makeup: '補課', suspended: '停課',
+};
 
 const records = ref([]);
 const pendingSwipes = ref([]);
