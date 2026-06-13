@@ -1302,7 +1302,7 @@ class StudentClassController extends Controller
         if ($wantsUnpaid) {
             $activePayment = DB::table('Invoice')
                 ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
-                ->where('Invoice.StudentClassID', (int) $studentClass->ID)
+                ->where('Invoice.StudentClassID', (int) $studentClass->getKey())
                 ->where(function ($q) {
                     $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
                 })
