@@ -313,4 +313,105 @@ class SecurityHardeningTest extends TestCase
         ->assertStatus(200)
         ->assertJsonPath('data.session.token_type', 'Bearer');
     }
+
+    // ─── SEC-F1: directors/register registration token gate ──────────────────
+
+    /** @test */
+    public function directors_register_returns_403_when_token_required_but_missing(): void
+    {
+        config(['app.director_registration_token' => 'secret-invite-abc']);
+
+        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+            ->postJson('/api/v1/directors/register', [
+                'account'   => 'newdir@x.com',
+                'password'  => 'Password1!',
+                'name'      => 'NewDir',
+                'campus_id' => $this->campus->id,
+            ])
+            ->assertStatus(403)
+            ->assertJsonPath('message', '無效的邀請碼 (Invalid registration token)');
+    }
+
+    /** @test */
+    public function directors_register_returns_403_when_wrong_token_provided(): void
+    {
+        config(['app.director_registration_token' => 'secret-invite-abc']);
+
+        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+            ->postJson('/api/v1/directors/register', [
+                'account'            => 'newdir2@x.com',
+                'password'           => 'Password1!',
+                'name'               => 'NewDir2',
+                'campus_id'          => $this->campus->id,
+                'registration_token' => 'wrong-token',
+            ])
+            ->assertStatus(403);
+    }
+
+    /** @test */
+    public function directors_register_succeeds_when_correct_token_provided(): void
+    {
+        config(['app.director_registration_token' => 'secret-invite-abc']);
+
+        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+            ->postJson('/api/v1/directors/register', [
+                'account'            => 'newdir3@x.com',
+                'password'           => 'Password1!',
+                'name'               => 'NewDir3',
+                'campus_id'          => $this->campus->id,
+                'registration_token' => 'secret-invite-abc',
+            ])
+            ->assertStatus(201);
+    }
+
+    /** @test */
+    public function directors_register_open_when_no_token_configured(): void
+    {
+        // Without DIRECTOR_REGISTRATION_TOKEN, endpoint is open (backward compatible).
+        config(['app.director_registration_token' => null]);
+
+        $this->withoutMiddleware(\App\Http\Middleware\ThrottleRequestsByIp::class)
+            ->postJson('/api/v1/directors/register', [
+                'account'   => 'opendir@x.com',
+                'password'  => 'Password1!',
+                'name'      => 'OpenDir',
+                'campus_id' => $this->campus->id,
+            ])
+            ->assertStatus(201);
+    }
+
+    // ─── SEC-F3: /health public endpoint strips sensitive info ───────────────
+
+    /** @test */
+    public function health_public_endpoint_returns_only_status_and_timestamp(): void
+    {
+        $response = $this->getJson("/api/v1/health");
+
+        $response->assertStatus(200)
+            ->assertJsonStructure(["status", "timestamp"]);
+
+        $json = $response->json();
+        $this->assertArrayNotHasKey("perf_flags", $json, "perf_flags must not be exposed publicly");
+        $this->assertArrayNotHasKey("log_pipeline", $json, "log_pipeline must not be exposed publicly");
+        $this->assertArrayNotHasKey("sentry", $json, "sentry details must not be exposed publicly");
+        $this->assertArrayNotHasKey("security", $json, "security.debug_mode must not be exposed publicly");
+    }
+
+    /** @test */
+    public function health_detailed_requires_authentication(): void
+    {
+        $this->getJson('/api/v1/health/detailed')
+            ->assertStatus(401);
+    }
+
+    /** @test */
+    public function health_detailed_returns_operational_metrics_when_authenticated(): void
+    {
+        [$token] = $this->makeDirectorToken();
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/health/detailed')
+            ->assertStatus(200)
+            ->assertJsonStructure(['status', 'timestamp', 'perf_flags', 'log_pipeline', 'sentry', 'security']);
+    }
 }
