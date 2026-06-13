@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.06.13",
     "date": "2026-06-13",
     "title": "2026.06.13 版本更新",
-    "summary": "排課稽核日誌實際生效；課程總費用不再被錯誤舊差額卡死（）",
+    "summary": "行事曆載入大幅加速；排課稽核日誌實際生效",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "行事曆載入大幅加速",
           "排課稽核日誌實際生效",
           "課程總費用不再被錯誤舊差額卡死（）",
           "改「未繳費」遇收款紀錄改為明確提示（）",
@@ -26,6 +27,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "行事曆載入大幅加速",
       "排課稽核日誌實際生效",
       "課程總費用不再被錯誤舊差額卡死（）",
       "改「未繳費」遇收款紀錄改為明確提示（）",
