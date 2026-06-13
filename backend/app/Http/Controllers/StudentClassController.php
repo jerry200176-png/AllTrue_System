@@ -1291,6 +1291,37 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // Payment Gate (#799)：列表顯示的繳費狀態 = StudentClass.Paid OR 非作廢帳單付款。
+        // 帳單仍有收款入帳時，改 Paid=0 只會在重新整理後被帳單蓋回「已繳費」（靜默失敗）。
+        // 因此「改為未繳費」在有有效收款紀錄時直接 409 擋下並導引到收費頁作廢，
+        // 涵蓋兩條降級路徑：顯式 payment_status=unpaid 與編輯表單清空 paid_at。
+        $wantsUnpaid = ($rawInput['payment_status'] ?? null) === 'unpaid'
+            || (array_key_exists('paid_at', $rawInput)
+                && empty($rawInput['paid_at'])
+                && ($rawInput['payment_status'] ?? null) !== 'paid');
+        if ($wantsUnpaid) {
+            $activePayment = DB::table('Invoice')
+                ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+                ->where('Invoice.StudentClassID', (int) $studentClass->ID)
+                ->where(function ($q) {
+                    $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+                })
+                ->selectRaw('COALESCE(SUM(Payment.Amount), 0) AS total_amount, MAX(Payment.PaidAt) AS last_paid_at')
+                ->first();
+            if ($activePayment && $activePayment->last_paid_at !== null) {
+                $lastPaidDate = substr((string) $activePayment->last_paid_at, 0, 10);
+                return response()->json([
+                    'message' => "此課程在 {$lastPaidDate} 已有收款入帳紀錄，無法直接改為未繳費。"
+                        . '若該筆收款是誤登錄，請至「收費」頁將該帳單作廢，狀態會自動恢復為未繳費。',
+                    'code' => 'payment_record_locked',
+                    'warnings' => [
+                        'total_paid_amount' => (int) $activePayment->total_amount,
+                        'last_paid_at' => $lastPaidDate,
+                    ],
+                ], 409);
+            }
+        }
+
         $mapped = $this->mapFrontendPayload($request);
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
