@@ -299,7 +299,7 @@ onMounted(loadStatus);
   width: 100%;
   max-width: 380px;
   padding: 28px 26px 22px;
-  background: var(--card-bg, #fff);
+  background: var(--card-bg);
   border-radius: 18px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);
   display: grid;
@@ -309,34 +309,34 @@ onMounted(loadStatus);
 .pin-lock-head { display: grid; justify-items: center; gap: 6px; text-align: center; }
 .pin-lock-icon {
   font-size: 34px;
-  color: var(--ds-primary, #1f3a5f);
+  color: var(--ds-primary);
   background: var(--ds-primary-wash, rgba(31, 58, 95, 0.08));
   width: 56px; height: 56px;
   display: grid; place-items: center;
   border-radius: 50%;
   margin-bottom: 4px;
 }
-.pin-lock-title { margin: 0; font-size: 19px; font-weight: 700; color: var(--text, #1f2937); }
-.pin-lock-sub { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-light, #6b7280); }
+.pin-lock-title { margin: 0; font-size: 19px; font-weight: 700; color: var(--text); }
+.pin-lock-sub { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-light); }
 
 .pin-lock-form { display: grid; gap: 10px; }
-.pin-lock-label { font-size: 12.5px; font-weight: 600; color: var(--text-light, #6b7280); }
+.pin-lock-label { font-size: 12.5px; font-weight: 600; color: var(--text-light); }
 .pin-lock-input {
   width: 100%;
   padding: 12px 14px;
   font-size: 18px;
   letter-spacing: 0.3em;
   text-align: center;
-  border: 1.5px solid var(--border, #d1d5db);
+  border: 1.5px solid var(--border);
   border-radius: 12px;
-  background: var(--input-bg, #fff);
-  color: var(--text, #1f2937);
+  background: var(--input-bg);
+  color: var(--text);
   box-sizing: border-box;
 }
-.pin-lock-input:focus { outline: none; border-color: var(--ds-primary, #1f3a5f); }
+.pin-lock-input:focus { outline: none; border-color: var(--ds-primary); }
 
-.pin-lock-error { margin: 2px 0 0; font-size: 12.5px; color: var(--ds-danger, #dc2626); text-align: center; }
-.pin-lock-locked-msg { margin: 0; font-size: 14px; color: var(--text, #1f2937); text-align: center; line-height: 1.6; }
+.pin-lock-error { margin: 2px 0 0; font-size: 12.5px; color: var(--ds-danger); text-align: center; }
+.pin-lock-locked-msg { margin: 0; font-size: 14px; color: var(--text); text-align: center; line-height: 1.6; }
 
 .pin-lock-btn {
   margin-top: 4px;
@@ -347,22 +347,22 @@ onMounted(loadStatus);
   border-radius: 12px;
   cursor: pointer;
 }
-.pin-lock-btn.primary { background: var(--ds-primary, #1f3a5f); color: var(--ds-on-primary, #fff); }
+.pin-lock-btn.primary { background: var(--ds-primary); color: var(--ds-on-primary); }
 .pin-lock-btn.primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .pin-lock-link {
   background: none; border: none; cursor: pointer;
-  font-size: 12.5px; color: var(--ds-primary, #1f3a5f);
+  font-size: 12.5px; color: var(--ds-primary);
   text-decoration: underline; padding: 4px;
 }
 .pin-lock-dismiss {
   justify-self: center;
   background: none; border: none; cursor: pointer;
-  font-size: 12.5px; color: var(--text-light, #6b7280);
+  font-size: 12.5px; color: var(--text-light);
   padding: 2px 6px;
 }
 
 .pin-lock-loading { display: grid; place-items: center; padding: 18px; }
-.spin { font-size: 30px; color: var(--ds-primary, #1f3a5f); animation: pinSpin 1s linear infinite; }
+.spin { font-size: 30px; color: var(--ds-primary); animation: pinSpin 1s linear infinite; }
 @keyframes pinSpin { to { transform: rotate(360deg); } }
 </style>
