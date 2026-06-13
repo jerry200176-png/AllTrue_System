@@ -99,7 +99,7 @@ class ScheduleAuditLogTest extends TestCase
 
         $subject = Subject::firstOrCreate(
             ['Subject_Name' => 'AuditSubject'],
-            ['Subject_Name' => 'AuditSubject', 'CampusID' => $this->campus->id]
+            ['Subject_Name' => 'AuditSubject', 'CampusID' => $this->campus->id, 'School_id' => 0, 'Grade_no' => 0]
         );
 
         $sc = StudentClass::create([
