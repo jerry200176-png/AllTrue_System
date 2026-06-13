@@ -519,3 +519,17 @@
 | 建議做法 | 由 [ARCH] 擴充一組「狀態色票」token（例：`--ds-state-scheduled`/`-reschedule`/`-substitute` + wash 版），定義於 `RULE_DESIGN_SYSTEM.md` §3，再逐頁把功能色 chip 改 token；需確保色盲友善（色 + 文字標籤）。|
 | 清償成本估計 | 中（需設計決策 + 多檔替換）|
 | 不做的代價 | 狀態 chip 持續用零散原始 hex，hex baseline 降不下去；跨頁狀態色不一致風險 |
+
+### TD-065：`NotificationObserver`（LINE 推播）因 provider 註冊順序而失效
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2（需使用者決策後再清，涉及 LINE 推播行為） |
+| 發現日期 | 2026-06-13 |
+| 發現來源 | [BUG] 修 #766 audit observer 時發現同源問題 |
+| 影響模組 | `backend/app/Providers/AppServiceProvider.php`、`backend/app/Observers/NotificationObserver.php`（#80 LINE push） |
+| 描述 | `config/app.php` 把 `App\Providers\AppServiceProvider` 註冊在 `Illuminate\Database\DatabaseServiceProvider` 之前，導致 `boot()` 執行時 Eloquent event dispatcher 尚未綁定，`Notification::observe(NotificationObserver::class)` 靜默 no-op。推測自 #80 起 LINE staff 推播 observer 從未真正觸發（需以實機/生產佐證）。#766 已用 `app->booted()` 延遲註冊修好 `ClassSessionObserver`，但**刻意未動** `NotificationObserver`，以免在本次 scope 外改變 LINE 推播行為。|
+| 建議做法 | 由 [ARCH]+[SEC] 評估：(1) 確認生產 LINE 推播是否確實未經此 observer（可能另有路徑）；(2) 若確為失效，將 `Notification::observe` 一併移入 `app->booted()` 或把 `AppServiceProvider` 移回 config/app.php 慣例位置（框架 provider 之後）；(3) 啟用前先驗證不會對既有 staff 造成突發推播灌爆。|
+| 清償成本估計 | 低（程式改動小）/ 中（需驗證 LINE 行為與生產佐證） |
+| 不做的代價 | 若 LINE staff 推播確實失效，相關通知持續不送達，且 root cause 隱藏在 provider 順序中難察覺 |

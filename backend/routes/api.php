@@ -41,6 +41,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\BugReportController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\PaymentReportController;
+use App\Http\Controllers\ScheduleAuditController;
 use App\Http\Controllers\ScheduleDiscrepancyController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
@@ -446,6 +447,7 @@ Route::prefix('v1')->group(function () {
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
             ->middleware('role:director,super_admin');
+        Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
         Route::patch('class-sessions/{id}', [ClassSessionController::class, 'update']);
         Route::post('class-sessions/{id}/substitute', [ClassSessionController::class, 'substitute']);
         // PRD 9c058f19 — 代課流程 UX 優化
