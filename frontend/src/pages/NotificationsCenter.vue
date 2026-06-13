@@ -859,7 +859,7 @@ onUnmounted(() => {
 }
 
 .modal-box {
-  background: #fff;
+  background: var(--ds-canvas);
   border-radius: 14px;
   padding: 24px 28px;
   max-width: 380px;
@@ -883,7 +883,7 @@ onUnmounted(() => {
 }
 
 .modal-item-name {
-  background: #f5f5f5;
+  background: var(--ds-canvas-soft);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 14px;
@@ -921,7 +921,7 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 8px 10px;
   font: inherit;
-  background: #fff;
+  background: var(--ds-canvas);
 }
 
 .payment-method-row {
@@ -937,7 +937,7 @@ onUnmounted(() => {
   border-radius: 10px;
   padding: 10px 12px;
   cursor: pointer;
-  background: #fff;
+  background: var(--ds-canvas);
 }
 
 .payment-method-option input {
@@ -984,7 +984,7 @@ onUnmounted(() => {
   padding: 5px 14px;
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: #f5f7fa;
+  background: var(--ds-canvas-soft);
   color: var(--text-light);
   cursor: pointer;
   font-size: 13px;
@@ -995,18 +995,18 @@ onUnmounted(() => {
 }
 
 .type-tab:hover {
-  background: #e8edf5;
+  background: var(--ds-canvas-soft);
 }
 
 .type-tab.active {
   background: var(--primary);
-  color: #fff;
+  color: var(--ds-canvas);
   border-color: var(--primary);
 }
 
 .tab-badge {
-  background: #ff5252;
-  color: #fff;
+  background: var(--ds-danger);
+  color: var(--ds-canvas);
   border-radius: 999px;
   font-size: 10px;
   padding: 1px 6px;
@@ -1052,7 +1052,7 @@ onUnmounted(() => {
 
 .urgent-stat {
   margin-left: 10px;
-  color: #c62828;
+  color: var(--ds-danger);
 }
 
 .actions-row {
@@ -1073,16 +1073,16 @@ onUnmounted(() => {
 }
 
 .urgent-panel {
-  border: 1px solid #ef9a9a;
+  border: 1px solid var(--ds-danger);
   border-radius: 10px;
-  background: #fff3f3;
+  background: var(--ds-danger-wash);
   padding: 10px;
   margin-bottom: 10px;
   animation: urgentPulse 1.8s ease-in-out infinite;
 }
 
 .urgent-panel h4 {
-  color: #b71c1c;
+  color: var(--ds-danger);
   margin: 0 0 8px;
   font-size: 13px;
 }
@@ -1093,7 +1093,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-top: 1px dashed #ffcdd2;
+  border-top: 1px dashed var(--ds-danger-wash);
 }
 
 .urgent-row:first-of-type {
@@ -1102,7 +1102,7 @@ onUnmounted(() => {
 
 .urgent-title {
   font-size: 13px;
-  color: #c62828;
+  color: var(--ds-danger);
   font-weight: 600;
 }
 
@@ -1148,24 +1148,24 @@ onUnmounted(() => {
   border-radius: 10px;
   padding: 12px;
   margin-bottom: 10px;
-  background: #fff;
+  background: var(--ds-canvas);
   transition: background 0.15s;
 }
 
 .notification-item.unread {
-  border-color: #90caf9;
-  border-left-color: #1976d2;
-  background: #f3f8ff;
+  border-color: var(--ds-ink-mute);
+  border-left-color: var(--ds-ink-mute);
+  background: var(--ds-canvas-soft);
 }
 
 .notification-item.severity-high-item {
-  border-left-color: #d32f2f;
-  background: #fff8f8;
+  border-left-color: var(--ds-danger);
+  background: var(--ds-danger-wash);
 }
 
 .notification-item.resolved {
   opacity: 0.65;
-  background: #fafafa;
+  background: var(--ds-canvas);
 }
 
 .title-resolved {
@@ -1191,61 +1191,61 @@ onUnmounted(() => {
 }
 
 .type-tag {
-  background: #eceff1;
-  color: #455a64;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
 }
 
 .type-tuition {
-  background: #fff3e0;
-  color: #ef6c00;
+  background: var(--ds-warning-wash);
+  color: var(--ds-primary);
 }
 
 .type-learning_review {
-  background: #e8eaf6;
-  color: #3f51b5;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
 }
 
 .type-pending_swipe {
-  background: #ffebee;
-  color: #d32f2f;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
 }
 
 .type-low_sessions {
-  background: #f3e5f5;
-  color: #6a1b9a;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
 }
 
 .type-schedule_change,
 .type-substitute_confirm {
-  background: #e0f2f1;
-  color: #00695c;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-success);
 }
 
 .severity-high {
-  background: #ffebee;
-  color: #c62828;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
 }
 
 .severity-medium {
-  background: #fff8e1;
-  color: #ef6c00;
+  background: var(--ds-primary-wash);
+  color: var(--ds-primary);
 }
 
 .severity-low,
 .severity-info {
-  background: #e3f2fd;
-  color: #1565c0;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
 }
 
 .resolved-tag {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
 }
 
 .unread-dot {
   width: 8px;
   height: 8px;
-  background: #1976d2;
+  background: var(--ds-ink-mute);
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
@@ -1258,7 +1258,7 @@ onUnmounted(() => {
 .grouped-tag {
   margin-top: 4px;
   font-size: 11px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 
 .main-body {
