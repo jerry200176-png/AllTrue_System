@@ -4,23 +4,60 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.06.13",
+    "date": "2026-06-13",
+    "title": "2026.06.13 版本更新",
+    "summary": "老師底部「評量」紅點與評量頁未填數一致（）；主任儀表板「系統內完成率」不再超過 100%（）",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "老師底部「評量」紅點與評量頁未填數一致（）",
+          "主任儀表板「系統內完成率」不再超過 100%（）"
+        ]
+      }
+    ],
+    "items": [
+      "老師底部「評量」紅點與評量頁未填數一致（）",
+      "主任儀表板「系統內完成率」不再超過 100%（）"
+    ]
+  },
+  {
     "version": "2026.06.07",
     "date": "2026-06-07",
     "title": "2026.06.07 版本更新",
-    "summary": "導入 Vitest 元件測試基礎建設（）",
+    "summary": "composables 剝離完成（ Step 7）；平行化 student-classes ∥ schedules（ P4-a）",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
       {
+        "title": "新增內容",
+        "items": [
+          "composables 剝離完成（ Step 7）"
+        ]
+      },
+      {
         "title": "其他改善",
         "items": [
+          "平行化 student-classes ∥ schedules（ P4-a）",
+          "Modals 群拆分（ Step 6）",
+          "受控拆分暫時收尾（ Phase 4c）",
           "導入 Vitest 元件測試基礎建設（）"
         ]
       }
     ],
     "items": [
+      "composables 剝離完成（ Step 7）",
+      "平行化 student-classes ∥ schedules（ P4-a）",
+      "Modals 群拆分（ Step 6）",
+      "受控拆分暫時收尾（ Phase 4c）",
       "導入 Vitest 元件測試基礎建設（）"
     ]
   },
