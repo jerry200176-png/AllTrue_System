@@ -326,17 +326,19 @@ loadData();
   font-size: 14px;
 }
 
+/* 班型為分類標籤（非狀態）→ 依設計系統用中性 chip，不用多彩霓虹（§6/§7）。
+   文字本身已區分一對一/一對二…，毋須色彩編碼。對齊 Stripe/Xero 中性分類 chip。 */
 .type-tag {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
+  border: 1px solid var(--ds-hairline);
+  white-space: nowrap;
 }
-.type-tag.one_on_one { background: #E3F2FD; color: #1565C0; }
-.type-tag.one_on_two { background: #E8F5E9; color: #2E7D32; }
-.type-tag.one_on_three { background: #FFF3E0; color: #E65100; }
-.type-tag.tutoring { background: #F3E5F5; color: #7B1FA2; }
 
 .tr-pagination {
   display: flex;

@@ -226,11 +226,11 @@ async function submitReport() {
   align-items: center;
   justify-content: flex-start;
   padding: 24px 12px;
-  background: var(--bg, #f5f5f5);
+  background: var(--bg);
   font-family: 'Noto Sans TC', 'Inter', sans-serif;
 }
 .pr-card {
-  background: var(--card-bg, #fff);
+  background: var(--card-bg);
   border-radius: 16px;
   box-shadow: 0 2px 16px rgba(0,0,0,0.06);
   width: 100%;
@@ -245,7 +245,7 @@ async function submitReport() {
   text-align: center;
 }
 .pr-error-text {
-  color: var(--danger, #c62828);
+  color: var(--danger);
   font-size: 14px;
 }
 
@@ -254,8 +254,8 @@ async function submitReport() {
   align-items: center;
   gap: 8px;
   padding: 16px 20px;
-  background: var(--ds-brand-gradient, linear-gradient(135deg, #FFB300, #F57C00));
-  color: #fff;
+  background: var(--ds-brand-gradient);
+  color: var(--ds-on-primary);
   font-size: 18px;
   font-weight: 600;
 }
@@ -268,7 +268,7 @@ async function submitReport() {
 }
 .pr-info-item {
   padding: 8px 0;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
 }
 .pr-info-item:nth-last-child(-n+2) {
   border-bottom: none;
@@ -276,18 +276,18 @@ async function submitReport() {
 .pr-info-label {
   display: block;
   font-size: 11px;
-  color: var(--text-light, #90a4ae);
+  color: var(--text-light);
   font-weight: 500;
   margin-bottom: 2px;
 }
 .pr-info-value {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text, #263238);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .pr-amount {
-  color: var(--primary, #F57C00);
+  color: var(--primary);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -295,7 +295,7 @@ async function submitReport() {
 
 .pr-divider {
   height: 1px;
-  background: var(--border, #E0E0E0);
+  background: var(--border);
   margin: 0 20px;
 }
 
@@ -309,29 +309,29 @@ async function submitReport() {
   display: block;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text, #263238);
+  color: var(--text);
   margin-bottom: 6px;
 }
 .required {
-  color: var(--danger, #c62828);
+  color: var(--danger);
 }
 .pr-field input[type="date"],
 .pr-field input[type="text"],
 .pr-field input[type="number"] {
   width: 100%;
   padding: 10px 14px;
-  border: 1px solid var(--border, #ccc);
+  border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 15px;
   font-family: inherit;
-  background: var(--bg, #fafafa);
-  color: var(--text, #263238);
+  background: var(--bg);
+  color: var(--text);
   outline: none;
   transition: border-color 0.15s;
   box-sizing: border-box;
 }
 .pr-field input:focus {
-  border-color: var(--primary, #F57C00);
+  border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--ds-focus-ring, rgba(245,124,0,0.22));
 }
 
@@ -346,23 +346,23 @@ async function submitReport() {
   justify-content: center;
   gap: 6px;
   padding: 12px;
-  border: 2px solid var(--border, #ddd);
+  border: 2px solid var(--border);
   border-radius: 12px;
-  background: var(--bg, #fafafa);
+  background: var(--bg);
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-light, #78909c);
+  color: var(--text-light);
   cursor: pointer;
   transition: all 0.15s;
   font-family: inherit;
 }
 .pr-method-btn:hover {
-  border-color: var(--primary-light, #90caf9);
+  border-color: var(--primary-light);
 }
 .pr-method-btn.active {
-  border-color: var(--primary, #1565C0);
-  background: var(--primary-bg, #e3f2fd);
-  color: var(--primary, #1565C0);
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary);
 }
 .pr-method-btn .material-symbols-outlined {
   font-size: 20px;
@@ -372,17 +372,17 @@ async function submitReport() {
   display: flex;
   align-items: center;
   gap: 0;
-  border: 1px solid var(--border, #ccc);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg, #fafafa);
+  background: var(--bg);
   overflow: hidden;
 }
 .pr-currency {
   padding: 10px 12px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-light, #78909c);
-  background: var(--border, #eee);
+  color: var(--text-light);
+  background: var(--border);
 }
 .pr-amount-input-wrap input {
   border: none !important;
@@ -390,14 +390,15 @@ async function submitReport() {
   background: transparent !important;
   flex: 1;
   box-shadow: none !important;
+  font-variant-numeric: tabular-nums;
 }
 
 .pr-submit-error {
-  color: var(--danger, #c62828);
+  color: var(--danger);
   font-size: 13px;
   margin-bottom: 12px;
   padding: 8px 12px;
-  background: var(--danger-bg, #ffebee);
+  background: var(--danger-bg);
   border-radius: 8px;
 }
 
@@ -410,8 +411,8 @@ async function submitReport() {
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: var(--ds-brand-gradient, linear-gradient(135deg, #FFB300, #F57C00));
-  color: #fff;
+  background: var(--ds-brand-gradient);
+  color: var(--ds-on-primary);
   font-size: 16px;
   font-weight: 600;
   cursor: pointer;
