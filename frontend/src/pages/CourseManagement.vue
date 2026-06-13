@@ -292,7 +292,7 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(c) }} / 購買 {{ getPurchasedSessions(c) }} 堂<template v-if="cancelledSessionCount(c) > 0">，{{ cancelledSessionCount(c) }} 堂已取消</template>）</strong>
+                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: getCompletedSessionCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
                             <span v-if="sessionCountWarning(c)" :class="['drift-hint', { 'drift-hint-info': sessionCountWarning(c)?.type === 'under_leave' }]">⚠ {{ sessionCountWarning(c)?.message }}</span>
                             <span v-if="sessionDataLoadFailed" class="drift-hint session-load-error-hint">⚠ 堂次資料載入失敗，請重新整理頁面</span>
                             <span v-if="allSessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
@@ -357,7 +357,7 @@
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（每堂 ${{ sessionPrice(hc) }}）</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> 已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="hc.PackageID">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
@@ -383,7 +383,7 @@
                     <div class="detail-panel">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
-                          <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(hc) }} / 購買 {{ getPurchasedSessions(hc) }} 堂<template v-if="cancelledSessionCount(hc) > 0">，{{ cancelledSessionCount(hc) }} 堂已取消</template>）</strong>
+                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: getCompletedSessionCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
                         </div>
                         <div v-if="allSessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
@@ -854,7 +854,7 @@ import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
-import { computePackageNextTotal } from '../lib/packageSessions';
+import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
