@@ -32,6 +32,7 @@ class Kernel extends HttpKernel
         'api_key'        => \App\Http\Middleware\ApiKeyAuth::class,
         'require_campus' => \App\Http\Middleware\RequireCampus::class,
         'require_password_change' => \App\Http\Middleware\RequirePasswordChange::class,
+        'require_pin'    => \App\Http\Middleware\RequirePin::class,
         'throttle'       => \App\Http\Middleware\ThrottleRequestsByIp::class,
     ];
 }
