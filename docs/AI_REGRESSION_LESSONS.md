@@ -219,6 +219,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23 | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
+| **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
 | **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash（**首發，無前例**） | #657 | 含 emoji 關鍵字搜尋學生姓名不得 500（查詢前濾 4-byte 字元） |
 
 **通用防再犯規則（跨家族）：**
