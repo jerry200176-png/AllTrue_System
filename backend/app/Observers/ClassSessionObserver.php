@@ -10,6 +10,34 @@ class ClassSessionObserver
     /** @var array<int|string, array<string, mixed>> */
     private static array $oldSnapshots = [];
 
+    /**
+     * Notes that mark a session as system-generated (lazy calendar projection
+     * or backfill), not an explicit human schedule action. These are created in
+     * bulk on hot read paths, so auditing them is both noise and an N+1 source.
+     *
+     * @var string[]
+     */
+    private const SYSTEM_NOTE_MARKERS = [
+        'projected-monthly-materialized',
+        'auto-created by backfill',
+        'auto-projected by backfill',
+        'backfill-from-schedules',
+    ];
+
+    private function isSystemGenerated(ClassSession $session): bool
+    {
+        $note = (string) ($session->Note ?? '');
+        if ($note === '') {
+            return false;
+        }
+        foreach (self::SYSTEM_NOTE_MARKERS as $marker) {
+            if (str_contains($note, $marker)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** @return array<string, mixed> */
     private function sessionSnapshot(ClassSession $session): array
     {
@@ -29,7 +57,12 @@ class ClassSessionObserver
     private function branchId(ClassSession $session): ?int
     {
         try {
-            return (int) optional($session->studentClass)->BranchID ?: null;
+            // Campus/branch lives on Student.CampusID; reach it through
+            // ClassSession -> StudentClass -> Student. StudentClass itself has
+            // no branch column, so deriving from it directly always yields null
+            // and would hide every log from branch-scoped directors.
+            $student = optional($session->studentClass)->student;
+            return (int) optional($student)->CampusID ?: null;
         } catch (\Throwable) {
             return null;
         }
@@ -37,6 +70,10 @@ class ClassSessionObserver
 
     public function created(ClassSession $session): void
     {
+        if ($this->isSystemGenerated($session)) {
+            return;
+        }
+
         ScheduleAuditLog::create([
             'session_id'  => $session->id,
             'action_type' => 'create',
