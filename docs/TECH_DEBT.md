@@ -533,3 +533,17 @@
 | 建議做法 | 由 [ARCH]+[SEC] 評估：(1) 確認生產 LINE 推播是否確實未經此 observer（可能另有路徑）；(2) 若確為失效，將 `Notification::observe` 一併移入 `app->booted()` 或把 `AppServiceProvider` 移回 config/app.php 慣例位置（框架 provider 之後）；(3) 啟用前先驗證不會對既有 staff 造成突發推播灌爆。|
 | 清償成本估計 | 低（程式改動小）/ 中（需驗證 LINE 行為與生產佐證） |
 | 不做的代價 | 若 LINE staff 推播確實失效，相關通知持續不送達，且 root cause 隱藏在 provider 順序中難察覺 |
+
+### TD-066：老師頁（teachers）PII 後端 PIN 強制因端點共享而延後
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P2（安全縱深；前端 gate 已覆蓋 UX，後端邊界缺口） |
+| 發現日期 | 2026-06-13 |
+| 發現來源 | [DEV] #769 Phase C 掛 require_pin 時發現 |
+| 影響模組 | `backend/routes/api.php`（`GET /api/v1/teachers`）、`frontend`（CourseManagement／StudentsList／LearningRecordsPage 復用同端點） |
+| 描述 | #769 D2 把「老師管理」列為受保護敏感頁，但其後端資料端點 `GET teachers`（type=T profiles）被 CourseManagement／StudentsList／LearningRecordsPage 等**非敏感頁**作為老師下拉/篩選共用。若直接掛 `require_pin`，會在已設 PIN 的主任於那些頁取老師清單時被 423 誤擋。故 Phase C **刻意未對 `teachers` 掛 require_pin**；該頁 PII 目前僅由 Phase B 前端 gate 保護（前端可被繞過，非真正邊界）。薪資／財務頁因端點專屬已正常後端強制。|
+| 建議做法 | 為「老師管理」頁建立**專屬唯讀端點**（例 `GET teachers/directory` 或帶完整 PII 的 `teachers/{id}` 詳情）僅供該頁使用，於其上掛 `require_pin`；其他頁的輕量下拉改用不含敏感 PII 的精簡端點。或評估以 policy/欄位遮罩在 controller 層按 `pin_verified` 決定回傳欄位。|
+| 清償成本估計 | 中（需拆端點 + 前端改呼叫 + 測試） |
+| 不做的代價 | 老師個資（聯絡方式等）後端無 PIN 強制，僅靠前端 gate；繞過前端直打 `teachers` 仍可取得，與 #769 KPI「後端 100% 擋下」有缺口 |
