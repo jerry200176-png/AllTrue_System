@@ -6163,13 +6163,13 @@ parameters:
 			path: app/Observers/ClassSessionObserver.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
+			identifier: property.notFound
 			count: 1
-			path: app/Http/Controllers/ScheduleAuditController.php
+			path: app/Observers/ClassSessionObserver.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:query\(\)\.$#'
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/ScheduleAuditController.php
