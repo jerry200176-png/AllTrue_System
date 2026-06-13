@@ -462,13 +462,36 @@ class EnrollmentService
                 ->get();
 
             if ($existingActive->isNotEmpty()) {
+                // #805 防再犯：新課程的整體日期範圍（用於偵測「續報新期起始早於舊期結束」的重疊）。
+                // 日期可能來自 confirmed_dates / future_dates，或 session_plan[].session_date。
+                $planDates = array_map(
+                    fn ($p) => is_array($p) ? ($p['session_date'] ?? null) : null,
+                    $data['session_plan'] ?? []
+                );
+                $newDates = array_values(array_filter(array_merge(
+                    $data['confirmed_dates'] ?? [],
+                    $data['future_dates'] ?? [],
+                    $planDates
+                )));
+                sort($newDates);
+                $newStart = $newDates[0] ?? ($data['course_start_date'] ?? null);
+                $newEnd = (!empty($newDates) ? $newDates[count($newDates) - 1] : null) ?? ($data['end_date'] ?? null);
+                $newTeacherId = (int) ($data['teacher_id'] ?? 0);
+                $toDay = fn ($d) => $d ? substr((string) $d, 0, 10) : null;
+                $newStartD = $toDay($newStart);
+                $newEndD = $toDay($newEnd);
+
                 $conflicts = [];
+                $overlaps = [];
                 $newClassType = $data['class_type'] ?? '';
                 foreach ($subjectGroups as $groupKey => $rows) {
                     $sId = (int) $subjectMeta[$groupKey]['id'];
                     $subjectOnly = $subjectMeta[$groupKey]['subject'];
                     foreach ($existingActive as $sc) {
-                        if ((int) $sc->SubjectID === $sId && ($sc->ClassType ?? '') === $newClassType) {
+                        if ((int) $sc->SubjectID !== $sId) {
+                            continue;
+                        }
+                        if (($sc->ClassType ?? '') === $newClassType) {
                             $conflicts[] = [
                                 'existing_course_id' => $sc->ID,
                                 'subject' => $subjectOnly,
@@ -476,7 +499,33 @@ class EnrollmentService
                                 'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
                             ];
                         }
+
+                        // #805：同科目 + 同老師 + 日期區間重疊 → 重疊續報/重複建課。
+                        // 重疊判定：newStart <= existing.EndDate 且 newEnd >= existing.StartDate。
+                        $exStart = $toDay($sc->StartDate);
+                        $exEnd = $toDay($sc->EndDate);
+                        $sameTeacher = $newTeacherId > 0 && (int) $sc->TeacherID === $newTeacherId;
+                        $datesOverlap = $newStartD && $newEndD && $exStart && $exEnd
+                            && $newStartD <= $exEnd && $newEndD >= $exStart;
+                        if ($sameTeacher && $datesOverlap) {
+                            $overlaps[] = [
+                                'existing_course_id' => $sc->ID,
+                                'subject' => $subjectOnly,
+                                'teacher_id' => (int) $sc->TeacherID,
+                                'existing_range' => [$exStart, $exEnd],
+                                'new_range' => [$newStartD, $newEndD],
+                                'remaining_sessions' => (int) ($sc->RemainingSessions ?? 0),
+                            ];
+                        }
                     }
+                }
+
+                if (!empty($overlaps)) {
+                    return response()->json([
+                        'message' => '該學生已有「同科目、同老師、日期區間重疊」的進行中課程。若為續報，請將新課起始日改到舊課結束之後，或改用「加購堂數」延續原課程；重疊會造成同時段重複排課與點名重複。如確定要建立，請勾選強制建立。',
+                        'code' => 'overlapping_active_course',
+                        'conflicts' => $overlaps,
+                    ], 409);
                 }
 
                 if (!empty($conflicts)) {
