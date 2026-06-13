@@ -281,7 +281,7 @@ Route::prefix('v1')->group(function () {
         Route::get('finance/summary', [FinanceController::class, 'summary']);
         Route::get('finance/revenue', [FinanceController::class, 'revenue']);
         Route::get('finance/outstanding', [FinanceController::class, 'outstanding']);
-        Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll']);
+        Route::get('finance/teacher-payroll', [FinanceController::class, 'teacherPayroll'])->middleware('require_pin'); // #769 Phase C：薪資敏感
         Route::get('finance/ar-aging', [FinanceController::class, 'arAging']);
         Route::get('finance/gl-export', [FinanceController::class, 'glExport']);
         Route::get('finance/consolidated-summary', [FinanceController::class, 'consolidatedSummary']);
@@ -302,25 +302,27 @@ Route::prefix('v1')->group(function () {
 
         // finance/subject-units is intentionally registered in the role:director,teacher group below
         // so that teachers can also call this endpoint for their own hours view (FR-008).
-        Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition']);
-        Route::get('finance/branch-monthly-tuition/export', [FinanceController::class, 'branchMonthlyTuitionExport']);
+        // #769 Phase C：當月學收（tuition-report 頁）為敏感 API。
+        Route::get('finance/branch-monthly-tuition', [FinanceController::class, 'branchMonthlyTuition'])->middleware('require_pin');
+        Route::get('finance/branch-monthly-tuition/export', [FinanceController::class, 'branchMonthlyTuitionExport'])->middleware('require_pin');
         Route::get('finance/duplicate-courses', [FinanceController::class, 'duplicateCourses']);
 
-        Route::get('finance/parttime-payroll', [FinanceController::class, 'parttimePayroll']);
-        Route::get('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRules']);
-        Route::put('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRulesUpdate']);
-        Route::get('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRules']);
-        Route::put('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesUpdate']);
-        Route::delete('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesDelete']);
-        // #767: part-time teacher rate cards (class-size-based rates)
-        Route::get('part-time-rate-cards', [PartTimeRateCardController::class, 'index']);
-        Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store']);
-        Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id');
-        Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id');
-        Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport']);
-        Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId');
-        Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock']);
-        Route::post('finance/parttime-payroll/reopen', [FinanceController::class, 'parttimePayrollReopen']);
+        // #769 Phase C：兼職薪資（parttime-payroll 頁）+ 費率卡為敏感 API，掛 require_pin（soft）。
+        Route::get('finance/parttime-payroll', [FinanceController::class, 'parttimePayroll'])->middleware('require_pin');
+        Route::get('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRules'])->middleware('require_pin');
+        Route::put('finance/parttime-payroll/rules', [FinanceController::class, 'parttimePayrollRulesUpdate'])->middleware('require_pin');
+        Route::get('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRules'])->middleware('require_pin');
+        Route::put('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesUpdate'])->middleware('require_pin');
+        Route::delete('finance/parttime-payroll/teacher-rules', [FinanceController::class, 'parttimePayrollTeacherRulesDelete'])->middleware('require_pin');
+        // #767: part-time teacher rate cards (class-size-based rates) — 薪資費率，同屬敏感（#769 Phase C）。
+        Route::get('part-time-rate-cards', [PartTimeRateCardController::class, 'index'])->middleware('require_pin');
+        Route::post('part-time-rate-cards', [PartTimeRateCardController::class, 'store'])->middleware('require_pin');
+        Route::put('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'update'])->whereNumber('id')->middleware('require_pin');
+        Route::delete('part-time-rate-cards/{id}', [PartTimeRateCardController::class, 'destroy'])->whereNumber('id')->middleware('require_pin');
+        Route::get('finance/parttime-payroll/export', [FinanceController::class, 'parttimePayrollExport'])->middleware('require_pin');
+        Route::get('finance/parttime-payroll/{teacherId}/sessions', [FinanceController::class, 'parttimePayrollSessions'])->whereNumber('teacherId')->middleware('require_pin');
+        Route::post('finance/parttime-payroll/lock', [FinanceController::class, 'parttimePayrollLock'])->middleware('require_pin');
+        Route::post('finance/parttime-payroll/reopen', [FinanceController::class, 'parttimePayrollReopen'])->middleware('require_pin');
         Route::post('backfill/register-subject-units', [BackfillController::class, 'registerSubjectUnits']);
 
         Route::get('alerts/tuition', [AlertController::class, 'tuition']);
@@ -328,9 +330,10 @@ Route::prefix('v1')->group(function () {
 
         // ── Payment Reports (學收核銷) ──────────────────────────────
         Route::get('accounting/ledger', [AccountingController::class, 'ledger']);
-        Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses']);
-        Route::get('accounting/payments', [AccountingController::class, 'payments']);
-        Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport']);
+        // #769 Phase C：帳務中心（tuition-collect 頁）核銷/收款資料為敏感 API。
+        Route::get('accounting/settled-courses', [AccountingController::class, 'settledCourses'])->middleware('require_pin');
+        Route::get('accounting/payments', [AccountingController::class, 'payments'])->middleware('require_pin');
+        Route::get('accounting/payments/export', [AccountingController::class, 'paymentsExport'])->middleware('require_pin');
         Route::post('payment-reports/director-record', [PaymentReportController::class, 'directorRecord']);
         Route::get('payment-reports', [PaymentReportController::class, 'index']);
         Route::put('payment-reports/{id}/confirm', [PaymentReportController::class, 'confirm']);
