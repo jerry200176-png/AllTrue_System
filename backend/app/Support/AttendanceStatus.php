@@ -79,6 +79,19 @@ final class AttendanceStatus
         return array_keys(array_filter(self::META, fn ($m) => $m['deductible']));
     }
 
+    /** ClassSession.Status 中，需要老師填寫教學日誌（LearningRecord）的集合（#768）。 */
+    public static function requiresLogSessionStatuses(): array
+    {
+        $out = [];
+        foreach (self::META as $m) {
+            if ($m['requires_log']) {
+                $out[$m['session_status']] = true;
+            }
+        }
+        $out['completed'] = true; // 歷史 attended 同義
+        return array_keys($out);
+    }
+
     /** ClassSession.Status 中，計入老師鐘點（payroll）的集合。 */
     public static function payableSessionStatuses(): array
     {
