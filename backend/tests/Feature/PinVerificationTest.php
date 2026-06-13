@@ -189,6 +189,60 @@ class PinVerificationTest extends TestCase
         $this->assertSame(200, $passed->getStatusCode());
     }
 
+    /** @test D3 require_pin middleware：super_admin 不納管（即使已設 PIN 未驗證也放行）*/
+    public function require_pin_excludes_super_admin(): void
+    {
+        $this->user->update(['pin_hash' => password_hash('2468', PASSWORD_DEFAULT)]);
+
+        $request = Request::create('/x', 'GET');
+        $request->headers->set('Authorization', "Bearer {$this->token}");
+        $request->attributes->set('auth_user', $this->user->fresh());
+        $request->attributes->set('auth_role', 'super_admin');
+
+        $resp = (new RequirePin())->handle($request, fn ($r) => response('ok', 200));
+        $this->assertSame(200, $resp->getStatusCode(), 'super_admin 應被 require_pin 放行（D3）');
+    }
+
+    /**
+     * @test Phase C：薪資／當月學收／帳務中心專屬端點已掛 require_pin；
+     * 共享端點（teachers／student-classes 等，被非敏感頁復用）不得誤掛。
+     */
+    public function protected_routes_have_require_pin_and_shared_routes_do_not(): void
+    {
+        $middlewareFor = function (string $method, string $uri): array {
+            $router = app('router');
+            foreach ($router->getRoutes() as $route) {
+                if (in_array(strtoupper($method), $route->methods(), true)
+                    && $route->uri() === ltrim($uri, '/')) {
+                    return $route->gatherMiddleware();
+                }
+            }
+            $this->fail("找不到路由 {$method} {$uri}");
+        };
+
+        // 應掛 require_pin（D2 受保護頁專屬敏感端點）
+        $protected = [
+            ['GET', 'api/v1/finance/parttime-payroll'],
+            ['GET', 'api/v1/finance/teacher-payroll'],
+            ['GET', 'api/v1/finance/branch-monthly-tuition'],
+            ['GET', 'api/v1/accounting/payments'],
+            ['GET', 'api/v1/accounting/settled-courses'],
+        ];
+        foreach ($protected as [$m, $u]) {
+            $this->assertContains('require_pin', $middlewareFor($m, $u), "{$u} 應掛 require_pin");
+        }
+
+        // 不得誤掛（共享端點，被非敏感頁復用 → 掛上會誤傷已設 PIN 主任）
+        $shared = [
+            ['GET', 'api/v1/teachers'],
+            ['GET', 'api/v1/student-classes'],
+            ['GET', 'api/v1/alerts/tuition'],
+        ];
+        foreach ($shared as [$m, $u]) {
+            $this->assertNotContains('require_pin', $middlewareFor($m, $u), "{$u} 為共享端點，不應掛 require_pin");
+        }
+    }
+
     /** @test 未認證 → 401 */
     public function unauthenticated_status_returns_401(): void
     {

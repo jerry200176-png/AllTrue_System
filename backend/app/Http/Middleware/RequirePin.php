@@ -16,7 +16,8 @@ use Illuminate\Http\Request;
  *
  * 未通過 → 423 Locked + code=pin_required（前端據此彈出 PinLockModal）。
  *
- * 註：Phase A 僅註冊 alias、不掛任何受保護路由（零行為變更）。Phase C 才掛。
+ * D3：super_admin 不納管（避免最高權限自鎖）。
+ * Phase C 起掛於薪資／當月學收／帳務中心的專屬敏感端點（見 routes/api.php）。
  */
 class RequirePin
 {
@@ -26,6 +27,11 @@ class RequirePin
 
         // 未認證交由其他 middleware/controller 處理；此處不負責 auth。
         if (!$user) {
+            return $next($request);
+        }
+
+        // D3：super_admin 不納管 PIN 強制（避免最高權限自鎖）。
+        if ($request->attributes->get('auth_role') === 'super_admin') {
             return $next($request);
         }
 
