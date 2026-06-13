@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.06.13",
     "date": "2026-06-13",
     "title": "2026.06.13 版本更新",
-    "summary": "課程總費用不再被錯誤舊差額卡死（）；改「未繳費」遇收款紀錄改為明確提示（）",
+    "summary": "排課稽核日誌實際生效；課程總費用不再被錯誤舊差額卡死（）",
     "audience": [
       "teacher",
       "director",
@@ -17,6 +17,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "排課稽核日誌實際生效",
           "課程總費用不再被錯誤舊差額卡死（）",
           "改「未繳費」遇收款紀錄改為明確提示（）",
           "老師底部「評量」紅點與評量頁未填數一致（）",
@@ -25,6 +26,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "排課稽核日誌實際生效",
       "課程總費用不再被錯誤舊差額卡死（）",
       "改「未繳費」遇收款紀錄改為明確提示（）",
       "老師底部「評量」紅點與評量頁未填數一致（）",
@@ -35,7 +37,7 @@ export const changelogReleaseNotes = [
     "version": "2026.06.07",
     "date": "2026-06-07",
     "title": "2026.06.07 版本更新",
-    "summary": "composables 剝離完成（ Step 7）；平行化 student-classes ∥ schedules（ P4-a）",
+    "summary": "composables 剝離完成（ Step 7）；audit_logs + ClassSessionObserver",
     "audience": [
       "teacher",
       "director"
@@ -44,7 +46,8 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
-          "composables 剝離完成（ Step 7）"
+          "composables 剝離完成（ Step 7）",
+          "audit_logs + ClassSessionObserver"
         ]
       },
       {
@@ -59,6 +62,7 @@ export const changelogReleaseNotes = [
     ],
     "items": [
       "composables 剝離完成（ Step 7）",
+      "audit_logs + ClassSessionObserver",
       "平行化 student-classes ∥ schedules（ P4-a）",
       "Modals 群拆分（ Step 6）",
       "受控拆分暫時收尾（ Phase 4c）",
