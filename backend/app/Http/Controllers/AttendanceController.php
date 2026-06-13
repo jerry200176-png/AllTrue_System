@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campus;
 use App\Models\ClassSession;
+use App\Support\AttendanceStatus;
 use App\Models\PendingSwipe;
 use App\Models\Schedule;
 use App\Models\Student;
@@ -392,7 +393,7 @@ class AttendanceController extends Controller
             'SignOutDT' => 'nullable|date',
             'Hours' => 'nullable|integer',
             'Memo' => 'nullable|string|max:512',
-            'Status' => 'nullable|in:present,absent,late,excused,leave',
+            'Status' => 'nullable|in:present,absent,late,excused,leave,trial,trial_absent,tutoring,tutoring_absent,duty,makeup,suspended',
             'mark_mode' => 'nullable|in:arrival,ended',
         ]);
 
@@ -584,7 +585,7 @@ class AttendanceController extends Controller
 
             $this->applyAttendanceEffects($classSession, $status);
 
-            if (in_array($status, ['present', 'late'], true) && !$signIn->SessionDeducted) {
+            if (in_array($status, AttendanceStatus::deductibleCodes(), true) && !$signIn->SessionDeducted) {
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
             }
 
@@ -620,7 +621,7 @@ class AttendanceController extends Controller
             'items.*.ClassSessionID' => 'required|integer',
             'items.*.StudentID' => 'required|integer',
             'items.*.StudentClassID' => 'required|integer',
-            'items.*.Status' => 'required|in:present,late,excused,absent,leave',
+            'items.*.Status' => 'required|in:present,late,excused,absent,leave,trial,trial_absent,tutoring,tutoring_absent,duty,makeup,suspended',
             'items.*.TeacherID' => 'nullable|integer',
             'items.*.mark_mode' => 'nullable|in:arrival,ended',
         ]);
@@ -767,7 +768,7 @@ class AttendanceController extends Controller
 
                 // Swipe is also a valid attendance source; keep deduction
                 // behavior consistent with manual attendance.
-                if (in_array($status, ['present', 'late'], true) && !$signIn->SessionDeducted) {
+                if (in_array($status, AttendanceStatus::deductibleCodes(), true) && !$signIn->SessionDeducted) {
                     SessionDeductionService::deductOnAttendance($studentClass, $signIn);
                 }
 
@@ -1008,7 +1009,7 @@ class AttendanceController extends Controller
     public function update(Request $request, int $id)
     {
         $request->validate([
-            'status' => 'required|in:present,late,absent,leave,excused',
+            'status' => 'required|in:present,late,absent,leave,excused,trial,trial_absent,tutoring,tutoring_absent,duty,makeup,suspended',
         ]);
 
         $role      = $request->attributes->get('auth_role');
