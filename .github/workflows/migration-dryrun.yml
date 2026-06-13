@@ -95,14 +95,27 @@ jobs:
         working-directory: backend
         run: php artisan migrate --force --no-interaction
 
-      - name: Migrate rollback then re-up (validates down() where defined)
+      - name: Migrate rollback then re-up (validates down() reversibility)
         working-directory: backend
-        continue-on-error: true
+        # continue-on-error: INTENTIONALLY NOT SET — down() failure is now an error.
+        # If a migration is intentionally irreversible (chunkById backfill / DROP post-contract),
+        # the PR MUST include "irreversible" in the Migration Compatibility section.
+        # CI checks for that marker; if found, it downgrades the step to warning only.
         run: |
           set +e
           php artisan migrate:rollback --step=5 --force --no-interaction
           RC=$?
           if [ $RC -ne 0 ]; then
-            echo "::warning title=migration rollback failed::down() 沒寫或寫錯。對於 chunkById backfill / DROP COLUMN 類遷移可接受，但請在 PR 描述說明。"
+            # Check if PR body explicitly marks this as irreversible
+            PR_BODY="${{ github.event.pull_request.body }}"
+            if echo "$PR_BODY" | grep -qi "irreversible"; then
+              echo "::warning title=migration rollback skipped::PR 標記為不可逆 (irreversible)，down() 失敗視為預期。"
+            else
+              echo "::error title=migration rollback failed::down() 失敗且 PR 未標記為不可逆。"
+              echo "請在 PR Migration Compatibility 區塊填寫 Reversibility 欄位。"
+              echo "若確實不可逆，在 PR 描述中加上 'irreversible' 字樣並說明原因。"
+              exit 1
+            fi
           fi
+          # Re-apply after rollback to confirm up() still works cleanly
           php artisan migrate --force --no-interaction
