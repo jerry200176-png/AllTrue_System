@@ -6,6 +6,7 @@ use App\Models\Campus;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\TeacherScopeService;
+use App\Support\PinGate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +21,12 @@ class ProfileController extends Controller
     {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+
+        // TD-066：老師管理頁為 #769 D2 受保護頁，但其資料端點被多頁共用，無法以
+        // require_pin 整路擋（會誤傷下拉用途）。改在控制器層做欄位級遮罩：未通過
+        // PIN（且非 super_admin、已設 PIN）時，隱去老師 PII（phone/line_id/rfid）。
+        // soft：未設 PIN 者為 true → 零回歸。下拉頁本就不讀這些欄位，不受影響。
+        $pinUnlocked = PinGate::isUnlocked($request);
 
         $query = User::query()->whereIn('type', ['T', 'D', 'S']);
 
@@ -194,7 +201,7 @@ class ProfileController extends Controller
                 $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                 $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
             }
-            return response()->json($out);
+            return response()->json(self::redactTeacherPii($out, $pinUnlocked));
         }
 
         $countBeforeGet = $query->count();
@@ -240,7 +247,7 @@ class ProfileController extends Controller
         if ($perPage === 'all') {
             $users = $query->get();
             $teacherExtras = $buildTeacherExtras($users);
-            $users->transform(function ($user) use ($allCampusRows, $teacherExtras) {
+            $users->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -264,12 +271,12 @@ class ProfileController extends Controller
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                     $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
-                return $out;
+                return self::redactTeacherPii($out, $pinUnlocked);
             });
         } else {
             $users = $query->paginate(min((int) ($perPage ?? 50), 200));
             $teacherExtras = $buildTeacherExtras($users->getCollection());
-            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras) {
+            $users->getCollection()->transform(function ($user) use ($allCampusRows, $teacherExtras, $pinUnlocked) {
                 $campusRows = $allCampusRows->get($user->id, collect());
                 $out = [
                     'id'              => $user->id,
@@ -293,11 +300,36 @@ class ProfileController extends Controller
                     $out['subject_names'] = $teacherExtras[$user->id]['subject_names'] ?? [];
                     $out['subject_level_scopes'] = $teacherExtras[$user->id]['subject_level_scopes'] ?? [];
                 }
-                return $out;
+                return self::redactTeacherPii($out, $pinUnlocked);
             });
         }
 
         return response()->json($perPage === 'all' ? $users : $users);
+    }
+
+    /**
+     * TD-066：未通過 PIN 時遮罩老師敏感 PII（phone / line_id / rfid）。
+     * unlocked=true（super_admin、未設 PIN、或已驗證）→ 原樣回傳。
+     * 只動 PII 欄位，id/name/subject 等照常，下拉用途不受影響。
+     */
+    private static function redactTeacherPii(array $out, bool $unlocked): array
+    {
+        if ($unlocked) {
+            return $out;
+        }
+        if (array_key_exists('phone', $out)) {
+            $out['phone'] = '';
+        }
+        if (array_key_exists('line_id', $out)) {
+            $out['line_id'] = '';
+        }
+        if (array_key_exists('rfid', $out)) {
+            $out['rfid'] = '';
+        }
+        if (array_key_exists('rfid_by_branch', $out)) {
+            $out['rfid_by_branch'] = [];
+        }
+        return $out;
     }
 
     private function getTeacherExtra(int $userId): array
