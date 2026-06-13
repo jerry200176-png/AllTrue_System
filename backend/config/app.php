@@ -37,4 +37,8 @@ return [
     ],
 
     'deploy_secret' => env('DEPLOY_SECRET', ''),
+
+    // SEC-F1: When set, POST /api/v1/directors/register requires this token.
+    // Leave empty to allow open self-registration (default for new installs).
+    'director_registration_token' => env('DIRECTOR_REGISTRATION_TOKEN', null),
 ];
