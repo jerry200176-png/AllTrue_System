@@ -1291,6 +1291,37 @@ class StudentClassController extends Controller
             ], 422);
         }
 
+        // Payment Gate (#799)：列表顯示的繳費狀態 = StudentClass.Paid OR 非作廢帳單付款。
+        // 帳單仍有收款入帳時，改 Paid=0 只會在重新整理後被帳單蓋回「已繳費」（靜默失敗）。
+        // 因此「改為未繳費」在有有效收款紀錄時直接 409 擋下並導引到收費頁作廢，
+        // 涵蓋兩條降級路徑：顯式 payment_status=unpaid 與編輯表單清空 paid_at。
+        $wantsUnpaid = ($rawInput['payment_status'] ?? null) === 'unpaid'
+            || (array_key_exists('paid_at', $rawInput)
+                && empty($rawInput['paid_at'])
+                && ($rawInput['payment_status'] ?? null) !== 'paid');
+        if ($wantsUnpaid) {
+            $activePayment = DB::table('Invoice')
+                ->join('Payment', 'Payment.InvoiceID', '=', 'Invoice.id')
+                ->where('Invoice.StudentClassID', (int) $studentClass->getKey())
+                ->where(function ($q) {
+                    $q->whereNull('Invoice.Status')->orWhere('Invoice.Status', '!=', 'void');
+                })
+                ->selectRaw('COALESCE(SUM(Payment.Amount), 0) AS total_amount, MAX(Payment.PaidAt) AS last_paid_at')
+                ->first();
+            if ($activePayment && $activePayment->last_paid_at !== null) {
+                $lastPaidDate = substr((string) $activePayment->last_paid_at, 0, 10);
+                return response()->json([
+                    'message' => "此課程在 {$lastPaidDate} 已有收款入帳紀錄，無法直接改為未繳費。"
+                        . '若該筆收款是誤登錄，請至「收費」頁將該帳單作廢，狀態會自動恢復為未繳費。',
+                    'code' => 'payment_record_locked',
+                    'warnings' => [
+                        'total_paid_amount' => (int) $activePayment->total_amount,
+                        'last_paid_at' => $lastPaidDate,
+                    ],
+                ], 409);
+            }
+        }
+
         $mapped = $this->mapFrontendPayload($request);
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
@@ -1346,11 +1377,17 @@ class StudentClassController extends Controller
         // Rate 或 SessionCount 異動時同步 Charge（總費用快照），
         // 並保留原本由單堂時間調整累積的 delta（老 Charge − 老 Rate×老數量），
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
+        // #798：delta 只在課程實際存在單堂時間調整（session_charge）時才保留；
+        // 否則視為錯誤存量資料，直接以 費率×數量 重算，讓主任能從 UI 改回正確金額。
         if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
-            $preservedDelta = $oldChargeSnapshot - $oldBase;
+            $hasSessionChargeAdjustments = DB::table('ClassSession')
+                ->where('StudentClassID', (int) $studentClass->getKey())
+                ->whereNotNull('session_charge')
+                ->exists();
+            $preservedDelta = $hasSessionChargeAdjustments ? ($oldChargeSnapshot - $oldBase) : 0;
 
             $rateUnit = $studentClass->rate_unit ?? 'session';
             if ($rateUnit === 'hour') {

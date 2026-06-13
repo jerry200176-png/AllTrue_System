@@ -11,6 +11,39 @@
 
 ---
 
+## 2026-06-13 — fix(billing): 課程總費用不再被錯誤舊差額卡死（#798）
+
+課程總費用與「每堂費用 × 堂數」對不上、又沒有單堂時間調整紀錄時，重新儲存費率即會重算為正確金額，不會再被舊的錯誤數字永遠拉回（新店分校張同學案例，金額已同步修正）。
+
+開發備註：`StudentClassController::update()` preservedDelta 改為僅在存在 `ClassSession.session_charge` 調整時保留；PR #801；GitHub #798；in-app #159；一次性資料修正 SC#422 8000→8800（CEO 批准）。復發家族 F7。
+
+## 2026-06-13 — fix(billing): 改「未繳費」遇收款紀錄改為明確提示（#799）
+
+課程有收款入帳紀錄時，把繳費狀態改成「未繳費」不再悄悄跳回「已繳費」：系統會直接說明哪一天已有收款、請先到收費頁作廢，避免主任白改好幾次。
+
+開發備註：後端 409 `payment_record_locked`（含金額/日期 warnings，涵蓋 payment_status 與清空 paid_at 兩路徑）；CourseManagement／StudentsList 移除「API 失敗仍本地假成功」死碼；PR #802；GitHub #799；in-app #158。復發家族 F7。
+
+## 2026-06-13 — fix(learning): 老師底部「評量」紅點與評量頁未填數一致（#788）
+
+老師版底部導覽的紅點數字，現在會把本週（週一到今天）已上課但還沒填的評量一併算進去，跟評量頁顯示的「未填」數量一致，不會再出現頁面寫 2、紅點只寫 1 的情況。
+
+開發備註：`learning-pending-summary` 新增 `week_attended_sessions_without_record` 並計入 total；PR #792；GitHub #788；in-app #157。
+
+## 2026-06-13 — fix(director): 主任儀表板「系統內完成率」不再超過 100%（#786）
+
+完成率改為每堂課最多計一次：之前同一堂課若有多筆評量紀錄會被重複計算，導致比率超過 100%，現已修正並以 100% 為上限。
+
+開發備註：`AdoptionInsightsController` 分子改以最新非空 Progress 的出席 ClassSession 計數並 cap 100；PR #791；GitHub #786；in-app #156。
+
+## 2026-06-07 — feat(calendar): SmartCalendar composables 剝離完成（#740 Step 7）
+
+- `useCalendarDataLoad` / `useCalendarLeaveExtra` / `useCalendarSubstitute` / `useCalendarReschedule`
+- `SmartCalendar.vue` **5260 → 3308** 行；拖曳調課 handler 仍留父層
+- P4-b：`GET /api/v1/student-classes` 支援 `start`/`end` 視窗過濾 + 前端傳參
+- 測試：`npm run test:calendar` 全綠（含 4 組 composable vitest）
+
+開發備註：PR #773/#777/#778/#782/#787/#789；行數 <3000 留作 Step 7c（course-edit composable）後續。
+
 ## 2026-06-07 — perf(calendar): loadCourses 平行化 student-classes ∥ schedules（#740 P4-a）
 
 班級行事曆冷載時，課程清單與排程例外改為同時抓取，縮短等待時間；顯示結果與合併邏輯不變。
