@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-13 — fix(perf): 行事曆載入大幅加速 (#804)
+
+行事曆（含跨分校、整月視窗）載入原本在資料較多時要數秒到數十秒，現已調整為約 0.1 秒內完成，主任／老師開行事曆會明顯變快。
+
+開發備註：production EXPLAIN/ANALYZE 確認瓶頸為 `ClassSessionController::index()` 的 `si`（最新簽到）derived table 因 `StudentSingIn` 缺 `ClassSessionID` 索引被 access=ALL 全表掃描（r_loops≈4471 × ~4609 列 ≈ 2060 萬列，全 campus 視窗 ~33.5s）；對照 `LearningRecord` 有對應唯一索引故走 ref。補 `StudentSingIn(ClassSessionID, id)` 非唯一索引後 33.5s→~0.1s（si ALL→ref，部署後 ANALYZE 驗證）。純索引、byte-identical。候選「缺 SessionDate 索引」經 EXPLAIN 否證（日期範圍已由 `cs_scid_sessiondate_idx` 處理）。PR #810；GitHub #804；in-app #160。附 revert-proof schema guard 測試。
+
 ## 2026-06-13 — fix(audit): 排課稽核日誌實際生效 (#766 補修, #784)
 
 主任端的「排課稽核日誌」（誰在何時建立／修改／刪除課堂）先前因技術問題完全沒有寫入、且依分校查詢一律為空；現已修正，會正確記錄並可在主任端依分校／日期查詢。系統自動產生的行事曆投影堂次不列入稽核（只記真人操作）。
