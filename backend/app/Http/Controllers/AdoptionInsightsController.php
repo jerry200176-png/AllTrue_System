@@ -560,14 +560,18 @@ class AdoptionInsightsController extends Controller
             ->whereIn(DB::raw('LOWER(cs.Status)'), ['attended', 'late'])
             ->count();
 
-        $filledRecords = LearningRecord::query()
-            ->from('LearningRecord as lr')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'lr.StudentClassID')
+        // 完成率以 ClassSession 為分母（每堂最多 1），與老師進度摘要一致：latest LR 的 Progress 非空才算完成。
+        $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
+        $filledRecords = (int) DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
+            ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('st.CampusID', $branchId)
-            ->whereBetween('lr.SessionDate', [$from->toDateString(), $to->toDateString()])
-            ->whereNotNull('lr.Content')
-            ->count();
+            ->whereBetween('cs.SessionDate', [$from->toDateString(), $to->toDateString()])
+            ->whereIn(DB::raw('LOWER(cs.Status)'), ['attended', 'late'])
+            ->whereRaw('lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != ""')
+            ->distinct()
+            ->count('cs.id');
 
         $flowSubmitted = DB::table('schedules')
             ->where('branch_id', $branchId)
@@ -584,7 +588,9 @@ class AdoptionInsightsController extends Controller
 
         $teacherRate = count($teacherUserIds) > 0 ? round(($teacherOpened / count($teacherUserIds)) * 100, 1) : 0.0;
         $directorRate = count($directorUserIds) > 0 ? round(($directorOpened / count($directorUserIds)) * 100, 1) : 0.0;
-        $completionRate = $attendedSessions > 0 ? round(($filledRecords / $attendedSessions) * 100, 1) : 0.0;
+        $completionRate = $attendedSessions > 0
+            ? min(100.0, round(($filledRecords / $attendedSessions) * 100, 1))
+            : 0.0;
 
         $prevFrom = Carbon::today()->subDays(13)->startOfDay();
         $prevTo = Carbon::today()->subDays(7)->endOfDay();
