@@ -102,7 +102,10 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 ### G-008：家長入口 `releaseNotes` 必須分眾（僅 `audience` 含 `parent`）
 改 `docs/CHANGELOG.md` 後須 `npm run sync-release-notes`。詳見 §R45。
 
-完整 Gotchas G-001 ~ G-008：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
+### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
+`payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
+
+完整 Gotchas G-001 ~ G-009：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 
 ---
 

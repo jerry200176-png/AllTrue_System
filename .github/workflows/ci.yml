@@ -367,9 +367,31 @@ jobs:
         working-directory: frontend
         run: npm run test:engagement-progress
 
-      - name: "Component unit tests (Vitest, #729)"
+      - name: "Component unit tests + coverage gate (Vitest, #731)"
         working-directory: frontend
-        run: npm run test:unit
+        run: npm run test:unit:cov
+
+      - name: "Coverage report → step summary (#731)"
+        if: always()
+        working-directory: frontend
+        shell: bash
+        run: |
+          SUMMARY="coverage/unit/coverage-summary.json"
+          if [ ! -f "$SUMMARY" ]; then
+            echo "::warning::Coverage summary not found"
+            exit 0
+          fi
+          python3 ../scripts/coverage-step-summary.py "$SUMMARY"
+
+      - name: Upload coverage report (#731)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-unit-coverage
+          path: frontend/coverage/unit/
+          retention-days: 14
+          if-no-files-found: warn
+
 
       - name: "Design hex delta metric (PR annotation)"
         working-directory: frontend
