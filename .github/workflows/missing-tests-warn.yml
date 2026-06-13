@@ -39,8 +39,11 @@ jobs:
           echo "Changed files:"
           echo "$FILES"
 
+          # 排除測試檔，以及自動生成物（如 changelog → releaseNotes.generated.js）。
+          # 生成檔非手寫 production code，docs/changelog PR 重新產生它不應觸發 missing-tests 警告。
           PROD=$(echo "$FILES" | grep -E '^(backend/app/.*\.(php)|frontend/src/.*\.(vue|js|ts))$' \
-            | grep -vE '\.(test|spec)\.' || true)
+            | grep -vE '\.(test|spec)\.' \
+            | grep -vE '\.generated\.(js|ts)$' || true)
           TESTS=$(echo "$FILES" | grep -E '^(backend/tests/|frontend/.*\.(test|spec)\.)' || true)
 
           if [ -n "$PROD" ] && [ -z "$TESTS" ]; then
