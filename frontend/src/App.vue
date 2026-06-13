@@ -286,6 +286,13 @@
       <div v-if="isPasswordChangeLocked" class="card password-lock-card">
         為了帳號安全，請先到「右上角帳號選單 > 個人管理 > 安全性」完成初始密碼修改後再繼續使用系統。
       </div>
+      <PinLockModal
+        v-if="pinModalActive"
+        :token="session?.access_token ?? ''"
+        @unlocked="onPinUnlocked"
+        @skip="onPinSkip"
+        @dismiss="onPinDismiss"
+      />
       <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
@@ -295,10 +302,10 @@
       />
       <SmartCalendar v-if="!isPasswordChangeLocked && active === 'calendar'" :branch-id="currentBranch" :user-role="role" :user-id="session.user.id" :initial-teacher-id="initialTeacherIdForNav" :reset-week-token="calendarResetToken" @clear-initial-teacher="initialTeacherIdForNav = null" />
       <StudentsList v-if="!isPasswordChangeLocked && isDirector && active === 'students'" :branch-id="currentBranch" />
-      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect'" :branch-id="currentBranch" />
-      <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report'" :branch-id="currentBranch" />
-      <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll'" :branch-id="currentBranch" :user-role="role" />
-      <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers'" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
+      <TuitionCollectionPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-collect' && !pinModalActive" :branch-id="currentBranch" />
+      <TuitionReportPage v-if="!isPasswordChangeLocked && isDirector && active === 'tuition-report' && !pinModalActive" :branch-id="currentBranch" />
+      <ParttimePayrollPage v-if="!isPasswordChangeLocked && isDirector && active === 'parttime-payroll' && !pinModalActive" :branch-id="currentBranch" :user-role="role" />
+      <TeachersList v-if="!isPasswordChangeLocked && isDirector && active === 'teachers' && !pinModalActive" :branch-id="currentBranch" @navigate-to-schedule="onNavigateToSchedule" />
       <CourseManagement v-if="!isPasswordChangeLocked && isDirector && active === 'course-mgmt'" :branch-id="currentBranch" :initial-teacher-id="initialTeacherIdForNav" @clear-initial-teacher="initialTeacherIdForNav = null" @navigate="active = $event" />
       <ClassroomManagement v-if="!isPasswordChangeLocked && isDirector && active === 'classroom'" :branch-id="currentBranch" />
       <SubjectSettingsPage v-if="!isPasswordChangeLocked && isDirector && active === 'subject-settings'" :branch-id="currentBranch" :user-role="role" />
@@ -465,12 +472,19 @@ const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/Sched
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
+import PinLockModal from './components/PinLockModal.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
 import { clearAllDraftsByTeacher } from './lib/learningRecordDrafts';
 import { latestReleaseVersionForRole } from './lib/releaseNotes';
+import {
+  shouldShowPinModal,
+  shouldBlurLock,
+  PIN_UNLOCK_TTL_MS,
+  PIN_IDLE_LOCK_MS,
+} from './lib/pinGate';
 
 // Detect standalone parent portal access via URL hash, query param, or LIFF context
 const liffParentOverride = ref(false);
@@ -1071,6 +1085,84 @@ const isPasswordChangeLocked = computed(() => {
   return Boolean(fromSession || fromProfile);
 });
 
+// ── #769 敏感頁 PIN 二次驗證（Phase B 前端 gate）─────────────────────────
+// 受保護 active 頁（後端 require_pin 為真正邊界，此處為 UX gate）。
+// 純判定邏輯與常數集中於 lib/pinGate.js（有單元測試）。
+const pinUnlocked = ref(false);
+const pinSoftSkip = ref(false);             // soft：本 session 未設 PIN 者選擇略過
+let pinUnlockTimer = null;
+let pinIdleTimer = null;
+let pinHiddenAt = 0;
+
+// 進受保護頁、未解鎖、未 soft 略過 → 掛 PinLockModal 並擋住內容。
+const pinModalActive = computed(() => shouldShowPinModal({
+  page: active.value,
+  role: role.value,
+  hasSession: Boolean(session.value),
+  passwordLocked: isPasswordChangeLocked.value,
+  unlocked: pinUnlocked.value,
+  softSkip: pinSoftSkip.value,
+}));
+
+function onPinUnlocked() {
+  pinUnlocked.value = true;
+  pinSoftSkip.value = false;
+  if (pinUnlockTimer) clearTimeout(pinUnlockTimer);
+  pinUnlockTimer = window.setTimeout(() => { pinUnlocked.value = false; }, PIN_UNLOCK_TTL_MS);
+  schedulePinIdleLock();
+}
+
+function onPinSkip() {
+  pinSoftSkip.value = true;
+}
+
+function onPinDismiss() {
+  // 不可停在受保護內容上 → 退回安全頁。
+  active.value = isDirector.value ? 'director' : 'calendar';
+}
+
+async function lockPinNow() {
+  const wasUnlocked = pinUnlocked.value;
+  pinUnlocked.value = false;
+  pinSoftSkip.value = false;
+  if (pinUnlockTimer) { clearTimeout(pinUnlockTimer); pinUnlockTimer = null; }
+  if (pinIdleTimer) { clearTimeout(pinIdleTimer); pinIdleTimer = null; }
+  if (!wasUnlocked) return;
+  // 清後端 pin_verified_until（fire-and-forget）。
+  try {
+    const token = session.value?.access_token;
+    if (!token) return;
+    const baseUrl = import.meta.env.VITE_API_BASE || '/api';
+    await fetch(`${baseUrl}/v1/me/pin/lock`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      keepalive: true,
+    });
+  } catch (_) { /* ignore */ }
+}
+
+function schedulePinIdleLock() {
+  if (pinIdleTimer) { clearTimeout(pinIdleTimer); pinIdleTimer = null; }
+  if (!pinUnlocked.value) return;
+  pinIdleTimer = window.setTimeout(() => { lockPinNow(); }, PIN_IDLE_LOCK_MS);
+}
+
+function onPinActivity() {
+  if (pinUnlocked.value) schedulePinIdleLock();
+}
+
+function onPinVisibilityChange() {
+  if (typeof document === 'undefined') return;
+  if (document.visibilityState === 'hidden') {
+    pinHiddenAt = Date.now();
+  } else if (shouldBlurLock(pinUnlocked.value, pinHiddenAt, Date.now())) {
+    lockPinNow();
+    pinHiddenAt = 0;
+  } else {
+    pinHiddenAt = 0;
+  }
+}
+
 watch(
   () => ({
     uid: session.value?.user?.id,
@@ -1325,7 +1417,9 @@ onMounted(async () => {
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
     ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {
       window.addEventListener(eventName, onBrandActivity, { passive: true });
+      window.addEventListener(eventName, onPinActivity, { passive: true });
     });
+    document.addEventListener('visibilitychange', onPinVisibilityChange);
     scheduleBrandIdleOverlay();
 });
 
@@ -1539,7 +1633,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
   ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach((eventName) => {
     window.removeEventListener(eventName, onBrandActivity);
+    window.removeEventListener(eventName, onPinActivity);
   });
+  document.removeEventListener('visibilitychange', onPinVisibilityChange);
+  if (pinUnlockTimer) clearTimeout(pinUnlockTimer);
+  if (pinIdleTimer) clearTimeout(pinIdleTimer);
   clearBrandTimers();
 });
 
