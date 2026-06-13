@@ -538,7 +538,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | **Resolved（2026-06-13）** — 改採控制器層欄位級遮罩（`PinGate::isUnlocked()` + `ProfileController` 遮罩 phone/line_id/rfid），不整路掛 require_pin 故不誤傷共享下拉；soft 零回歸。計畫見 `.cursor/plans/td066_teacher_pii_pin_2026-06-13.md`。 |
 | 優先級 | P2（安全縱深；前端 gate 已覆蓋 UX，後端邊界缺口） |
 | 發現日期 | 2026-06-13 |
 | 發現來源 | [DEV] #769 Phase C 掛 require_pin 時發現 |
