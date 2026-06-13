@@ -292,7 +292,7 @@
                         </div>
                         <div class="dates-panel">
                           <div class="dates-panel-heading">
-                            <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(c) }} / 購買 {{ getPurchasedSessions(c) }} 堂<template v-if="cancelledSessionCount(c) > 0">，{{ cancelledSessionCount(c) }} 堂已取消</template>）</strong>
+                            <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(c, { completed: getCompletedSessionCount(c), cancelled: cancelledSessionCount(c) }).text }}）</strong>
                             <span v-if="sessionCountWarning(c)" :class="['drift-hint', { 'drift-hint-info': sessionCountWarning(c)?.type === 'under_leave' }]">⚠ {{ sessionCountWarning(c)?.message }}</span>
                             <span v-if="sessionDataLoadFailed" class="drift-hint session-load-error-hint">⚠ 堂次資料載入失敗，請重新整理頁面</span>
                             <span v-if="allSessionUnits(c).length === 0" class="hint">無法計算（請確認排課設定）</span>
@@ -357,7 +357,7 @@
                   <div class="history-course-card__details">
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">老師</span> {{ hc.teacher_name || '—' }}</span>
                     <span class="history-course-card__detail"><span class="history-course-card__detail-label">費用</span> ${{ totalPrice(hc) }}（每堂 ${{ sessionPrice(hc) }}）</span>
-                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> 已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</span>
+                    <span class="history-course-card__detail"><span class="history-course-card__detail-label">堂數</span> <template v-if="hc.PackageID">已上 {{ getCompletedSessionCount(hc) }} 堂｜方案共用 {{ getPackageTotalSessions(hc) }} 堂</template><template v-else>已上 {{ getCompletedSessionCount(hc) }}<template v-if="isSessionMode(hc)"> / 購買 {{ getPurchasedSessions(hc) }}</template> 堂</template></span>
                     <span class="history-course-card__detail" v-if="hc.last_paid_at"><span class="history-course-card__detail-label">繳費</span> {{ hc.last_paid_at }}</span>
                   </div>
                   <div class="history-course-card__actions">
@@ -383,7 +383,7 @@
                     <div class="detail-panel">
                       <div class="dates-panel">
                         <div class="dates-panel-heading">
-                          <strong class="dates-panel-title">上課日期（已上 {{ getCompletedSessionCount(hc) }} / 購買 {{ getPurchasedSessions(hc) }} 堂<template v-if="cancelledSessionCount(hc) > 0">，{{ cancelledSessionCount(hc) }} 堂已取消</template>）</strong>
+                          <strong class="dates-panel-title">上課日期（{{ packageMemberSessionSummary(hc, { completed: getCompletedSessionCount(hc), cancelled: cancelledSessionCount(hc) }).text }}）</strong>
                         </div>
                         <div v-if="allSessionUnits(hc).length > 0" class="dates-chip-grid">
                           <span
@@ -854,7 +854,7 @@ import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
-import { computePackageNextTotal } from '../lib/packageSessions';
+import { computePackageNextTotal, packageMemberSessionSummary } from '../lib/packageSessions';
 import { useCourseSessionsDisplay } from '../composables/course-management/useCourseSessionsDisplay';
 import { useRescheduleAndMakeup } from '../composables/course-management/useRescheduleAndMakeup';
 import { useSessionEditFlow } from '../composables/course-management/useSessionEditFlow';
@@ -2877,46 +2877,41 @@ const togglePaymentStatus = async (c) => {
   // 已繳費 → 未繳費：保留原有 confirm 流程
   if (!confirm(`確定將「${c.student_name || '此學生'}」課程改為「未繳費」嗎？`)) return;
 
-  if (c.data_source === 'laravel' || c.branch_name != null || c.room_name != null || c.settlement_day != null) {
-    try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
-      if (token) {
-        const sendUnpaid = async (extra = {}) => fetch(`/api/v1/student-classes/${c.id}`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ payment_status: 'unpaid', paid_at: null, ...extra }),
-        });
-        let res = await sendUnpaid();
-        if (res.status === 409) {
-          const errBody = await res.json().catch(() => ({}));
-          const w = errBody?.warnings || {};
-          const amount = Number(w.total_paid_amount || 0).toLocaleString();
-          const msg = [
-            '此課程已有發票收款記錄：',
-            `  • 發票 ${w.invoice_count || 0} 筆`,
-            `  • 付款 ${w.payment_count || 0} 筆，共 NT$ ${amount}`,
-            '',
-            '直接改為未繳費將與發票資料不同步（會計建議走「付款報表 → 作廢」）。',
-            '仍要強制改為未繳費嗎？',
-          ].join('\n');
-          if (!confirm(msg)) return;
-          res = await sendUnpaid({ force_clear_paid: true });
-        }
-        if (res.ok) {
-          c.payment_status = 'unpaid';
-          c.paid_at = null;
-          c.last_paid_at = null;
-          return;
-        }
-      }
-    } catch (_) {}
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      alert('登入狀態已過期，請重新登入後再試。');
+      return;
+    }
+    const res = await fetch(`/api/v1/student-classes/${c.id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
+    });
+    // #799 阻擋＋導引：有收款入帳紀錄時後端回 409，提示去收費頁作廢，不再靜默回跳
+    if (res.status === 409) {
+      const errBody = await res.json().catch(() => ({}));
+      const w = errBody?.warnings || {};
+      const amount = Number(w.total_paid_amount || 0).toLocaleString();
+      alert(errBody?.message || [
+        `此課程已有收款入帳紀錄（${w.last_paid_at || ''} 共 NT$ ${amount}），無法直接改為未繳費。`,
+        '若該筆收款是誤登錄，請至「收費」頁將該帳單作廢，狀態會自動恢復為未繳費。',
+      ].join('\n'));
+      return;
+    }
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      alert(errBody?.message || '改為未繳費失敗，請稍後再試。');
+      return;
+    }
+    c.payment_status = 'unpaid';
+    c.paid_at = null;
+    c.last_paid_at = null;
+  } catch (_) {
+    alert('網路連線異常，狀態尚未變更，請稍後再試。');
   }
-  await supabase.from('student-classes').update({ payment_status: 'unpaid' }).eq('id', c.id);
-  c.payment_status = 'unpaid';
-  c.paid_at = null;
-  c.last_paid_at = null;
 };
 
 const onPaymentEntryConfirmed = async () => {

@@ -5,7 +5,11 @@ namespace Tests\Feature;
 use App\Models\AuthToken;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
+use Database\Factories\CampusFactory;
+use Database\Factories\StudentFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class AdoptionInsightsApiTest extends TestCase
@@ -78,6 +82,100 @@ class AdoptionInsightsApiTest extends TestCase
             ],
             'meta' => ['branch_id', 'generated_at'],
         ]);
+    }
+
+    public function test_weekly_metrics_completion_rate_never_exceeds_100_percent(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-07 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            $token = $this->createDirectorToken([$campus->id], 'adoption-completion-rate@example.com');
+
+            $teacher = User::create([
+                'LoginName' => 'completion-teacher@example.com',
+                'Name' => '完成率老師',
+                'PSW' => 'secret',
+                'type' => 'T',
+                'phone' => 912345678,
+            ]);
+            UserCampus::create([
+                'CampusID' => $campus->id,
+                'UserID' => $teacher->id,
+                'Admin' => 0,
+                'Approved' => 1,
+            ]);
+
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $scId = DB::table('StudentClass')->insertGetId([
+                'StudentID' => $student->id,
+                'TeacherID' => $teacher->id,
+                'GradeID' => 1,
+                'SubjectID' => 1,
+                'ClassType' => 'one_on_one',
+                'ScheduleMode' => 'count',
+                'RemainingSessions' => 8,
+                'UsedSessions' => 0,
+                'SessionCount' => 8,
+                'SessionDuration' => 60,
+                'TotalHours' => 8,
+                'Rate' => 400,
+                'Charge' => 3200,
+                'Pay' => 3200,
+                'Paid' => 0,
+                'Stop' => 0,
+                'StartDate' => '2026-06-01',
+                'Period' => 4,
+                'by1' => $teacher->id,
+                'RoomID' => 'R1',
+                'MDate' => now(),
+            ]);
+
+            $sessionDate = '2026-06-05';
+            $attendedCsId = DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scId,
+                'SessionDate' => $sessionDate,
+                'StartTime' => '10:00',
+                'EndTime' => '12:00',
+                'Status' => 'attended',
+            ]);
+            $scheduledCsId = DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scId,
+                'SessionDate' => $sessionDate,
+                'StartTime' => '14:00',
+                'EndTime' => '16:00',
+                'Status' => 'scheduled',
+            ]);
+
+            foreach ([$attendedCsId, $scheduledCsId] as $csId) {
+                DB::table('LearningRecord')->insert([
+                    'StudentID' => $student->id,
+                    'StudentClassID' => $scId,
+                    'ClassSessionID' => $csId,
+                    'TeacherID' => $teacher->id,
+                    'Subject' => 'Math',
+                    'SessionDate' => $sessionDate,
+                    'StartTime' => '10:00',
+                    'EndTime' => '12:00',
+                    'Content' => '課堂內容',
+                    'Progress' => '授課進度',
+                    'Status' => 'pending',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $this->withHeaders([
+                'Authorization' => "Bearer {$token}",
+                'Accept' => 'application/json',
+            ])->getJson("/api/v1/adoption/weekly-metrics?branch_id={$campus->id}")
+                ->assertOk()
+                ->assertJsonPath('data.attended_sessions', 1)
+                ->assertJsonPath('data.learning_records_filled', 1)
+                ->assertJsonPath('data.system_completion_rate_pct', 100);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     public function test_cross_branch_metrics_requires_super_admin_role(): void
