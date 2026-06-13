@@ -156,7 +156,7 @@
       <!-- Unclosed reminder -->
       <div v-if="teacherUnclosed.length" class="card" style="margin-top:12px;padding:14px 16px">
         <div class="att-section-title" style="margin-bottom:8px">
-          <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;color:#e65100">warning</span>
+          <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;color:var(--ds-warning)">warning</span>
           截止時間前未簽退（{{ teacherUnclosed.length }}）
         </div>
         <div v-for="u in teacherUnclosed" :key="u.teacher_id" class="ta-unclosed-row">
@@ -694,7 +694,7 @@
                   <button
                     v-if="isDirectorOrAdmin"
                     class="ghost xs"
-                    style="color:var(--color-danger,#d32f2f);margin-left:4px"
+                    style="color:var(--ds-danger);margin-left:4px"
                     :title="'刪除此記錄'"
                     @click="openDeleteDialog(record)"
                   ><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span></button>
@@ -705,7 +705,7 @@
                   <button
                     v-if="isDirectorOrAdmin"
                     class="ghost xs"
-                    style="color:var(--color-danger,#d32f2f);margin-left:4px"
+                    style="color:var(--ds-danger);margin-left:4px"
                     :title="'刪除此記錄'"
                     @click="openDeleteDialog(record)"
                   ><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px">delete</span></button>
@@ -915,7 +915,7 @@
   <Teleport to="body">
     <div v-if="deleteDialog.visible" class="att-overlay" @click.self="closeDeleteDialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
       <div class="att-dialog">
-        <h3 id="delete-dialog-title" style="margin:0 0 12px;font-size:16px;color:var(--color-danger,#d32f2f)">確認刪除出缺勤紀錄</h3>
+        <h3 id="delete-dialog-title" style="margin:0 0 12px;font-size:16px;color:var(--ds-danger)">確認刪除出缺勤紀錄</h3>
         <div class="att-dialog-summary">
           <div><span class="att-dialog-label">學生：</span>{{ deleteDialog.record?.person_name ?? deleteDialog.record?.student_name ?? '—' }}</div>
           <div><span class="att-dialog-label">時間：</span>{{ deleteDialog.record ? formatTime(deleteDialog.record.SignInDT) : '—' }}</div>
@@ -923,7 +923,7 @@
         </div>
         <div class="att-dialog-field">
           <label for="delete-reason" style="font-size:14px;font-weight:500">
-            刪除原因 <span style="color:var(--color-danger,#d32f2f)">*</span>
+            刪除原因 <span style="color:var(--ds-danger)">*</span>
           </label>
           <textarea
             id="delete-reason"
@@ -960,9 +960,9 @@
         <div v-if="convertModal.coursesLoading" class="att-empty" style="padding:24px 0">載入課程中…</div>
         <template v-else-if="convertModal.courses.length === 0">
           <div class="att-empty" style="flex-direction:column;padding:24px 0;gap:8px">
-            <span class="material-symbols-outlined" style="font-size:48px;color:var(--text-secondary,#888)">book</span>
+            <span class="material-symbols-outlined" style="font-size:48px;color:var(--ds-ink-mute)">book</span>
             <div>此學生目前無進行中的課程合約</div>
-            <div style="font-size:13px;color:var(--text-secondary,#888)">請先在「學生課程」建立課程後再操作</div>
+            <div style="font-size:13px;color:var(--ds-ink-mute)">請先在「學生課程」建立課程後再操作</div>
           </div>
         </template>
         <template v-else>
@@ -989,7 +989,7 @@
               </div>
             </label>
           </div>
-          <div style="font-size:13px;color:var(--color-warning,#e65100);margin-top:12px">
+          <div style="font-size:13px;color:var(--ds-warning);margin-top:12px">
             <span class="material-symbols-outlined" style="font-size:14px;vertical-align:-2px">warning</span>
             轉換後將自動扣除一堂，此操作無法直接復原
           </div>
@@ -2408,14 +2408,14 @@ watch(() => props.branchId, () => {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
 }
 .att-stat-card {
-  background: var(--card-bg, #fff); border-radius: 12px; padding: 16px 20px; text-align: center;
+  background: var(--ds-canvas); border-radius: 12px; padding: 16px 20px; text-align: center;
   border: 1px solid rgba(148,163,184,0.18); box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.att-stat-num { font-size: 28px; font-weight: 800; color: var(--text, #334155); }
-.att-stat-label { font-size: 12px; font-weight: 600; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
-.stat-present .att-stat-num { color: #16a34a; }
-.stat-late .att-stat-num { color: #d97706; }
-.stat-absent .att-stat-num { color: #dc2626; }
+.att-stat-num { font-size: 28px; font-weight: 800; color: var(--ds-ink); }
+.att-stat-label { font-size: 12px; font-weight: 600; color: var(--ds-ink-mute); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-present .att-stat-num { color: var(--ds-success); }
+.stat-late .att-stat-num { color: var(--ds-warning); }
+.stat-absent .att-stat-num { color: var(--ds-danger); }
 
 /* Section */
 .att-section-title {
@@ -2428,13 +2428,13 @@ watch(() => props.branchId, () => {
 .att-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 22px; height: 22px; border-radius: 999px; padding: 0 6px;
-  font-size: 12px; font-weight: 700; color: #fff; background: var(--primary);
+  font-size: 12px; font-weight: 700; color: var(--ds-canvas); background: var(--primary);
 }
 .att-hint {
-  font-size: 0.88rem; color: var(--text-light, #666); margin-bottom: 12px;
+  font-size: 0.88rem; color: var(--ds-ink-mute); margin-bottom: 12px;
 }
 .att-empty {
-  padding: 24px; text-align: center; font-size: 14px; color: #94a3b8;
+  padding: 24px; text-align: center; font-size: 14px; color: var(--ds-ink-mute);
 }
 .att-required { color: var(--danger); }
 
@@ -2458,20 +2458,20 @@ watch(() => props.branchId, () => {
 /* Status button group (replaces dropdown) */
 .att-status-group {
   display: inline-flex; border-radius: 8px; overflow: hidden;
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--ds-hairline);
 }
 .att-status-btn {
   padding: 4px 10px; font-size: 12px; font-weight: 600;
-  border: none; background: var(--card-bg, #fff); color: var(--text-light);
+  border: none; background: var(--ds-canvas); color: var(--text-light);
   cursor: pointer; transition: all 0.15s; min-height: 30px;
-  border-right: 1px solid var(--border-color, #ddd);
+  border-right: 1px solid var(--ds-hairline);
 }
 .att-status-btn:last-child { border-right: none; }
 .att-status-btn:hover { background: rgba(0,0,0,0.04); }
-.att-status-btn.active.att-st-present { background: #16a34a; color: #fff; }
-.att-status-btn.active.att-st-late { background: #d97706; color: #fff; }
-.att-status-btn.active.att-st-excused, .att-status-btn.active.att-st-leave { background: #1565C0; color: #fff; }
-.att-status-btn.active.att-st-absent { background: #dc2626; color: #fff; }
+.att-status-btn.active.att-st-present { background: var(--ds-success); color: var(--ds-canvas); }
+.att-status-btn.active.att-st-late { background: var(--ds-warning); color: var(--ds-canvas); }
+.att-status-btn.active.att-st-excused, .att-status-btn.active.att-st-leave { background: var(--ds-primary); color: var(--ds-canvas); }
+.att-status-btn.active.att-st-absent { background: var(--ds-danger); color: var(--ds-canvas); }
 .att-status-summary {
   margin-top: 14px;
   padding: 12px;
@@ -2482,12 +2482,12 @@ watch(() => props.branchId, () => {
 .att-status-summary-title {
   font-size: 13px;
   font-weight: 800;
-  color: #92400e;
+  color: var(--ds-warning);
 }
 .att-status-summary-hint {
   margin: 4px 0 10px;
   font-size: 12px;
-  color: #a16207;
+  color: var(--ds-warning);
 }
 .att-status-summary-list {
   display: flex;
@@ -2504,13 +2504,13 @@ watch(() => props.branchId, () => {
 .att-status-readonly {
   padding: 2px 8px;
   border-radius: 999px;
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
   font-weight: 700;
   text-align: center;
 }
 .att-status-note {
-  color: #92400e;
+  color: var(--ds-warning);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2524,7 +2524,7 @@ watch(() => props.branchId, () => {
 .att-cards { display: flex; flex-direction: column; gap: 10px; }
 .att-card {
   border: 1.5px solid var(--border, rgba(148,163,184,0.2)); border-radius: 12px;
-  padding: 14px; background: var(--card-bg, #fff); transition: border-color 0.15s;
+  padding: 14px; background: var(--ds-canvas); transition: border-color 0.15s;
 }
 .att-card-selected { border-color: var(--primary); background: var(--primary-bg, rgba(232,121,36,0.04)); }
 .att-card-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -2543,7 +2543,7 @@ watch(() => props.branchId, () => {
   position: fixed; bottom: calc(56px + env(safe-area-inset-bottom, 0px)); left: 0; right: 0; z-index: 50;
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 20px;
-  background: var(--card-bg, #fff); border-top: 1px solid var(--border);
+  background: var(--ds-canvas); border-top: 1px solid var(--border);
   box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
   font-size: 14px; font-weight: 600; color: var(--text);
   will-change: transform; transform: translateZ(0);
@@ -2569,7 +2569,7 @@ watch(() => props.branchId, () => {
 .att-mobile-only { display: none; }
 
 .att-status-select {
-  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color, #ddd);
+  padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ds-hairline);
   font-size: 13px;
 }
 
@@ -2599,12 +2599,12 @@ watch(() => props.branchId, () => {
 .att-search-input { width: 150px; padding: 7px 12px; font-size: 13px; }
 .att-filter-select { width: 100px; padding: 7px 10px; font-size: 13px; }
 .att-date-input { width: 140px; padding: 7px 10px; font-size: 13px; }
-.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--color-primary, #4f46e5); background: #eef2ff; border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
-.att-mode-toggle { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color, #ddd); }
-.att-mode-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; background: var(--card-bg, #fff); color: var(--text-light); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--border-color, #ddd); }
+.att-records-date-badge { font-size: 12px; font-weight: 400; color: var(--ds-primary); background: var(--ds-canvas-soft); border-radius: 6px; padding: 2px 8px; margin-left: 8px; }
+.att-mode-toggle { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--ds-hairline); }
+.att-mode-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border: none; background: var(--ds-canvas); color: var(--text-light); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--ds-hairline); }
 .att-mode-btn:last-child { border-right: none; }
 .att-mode-btn:hover { background: rgba(0,0,0,0.04); }
-.att-mode-btn.active { background: var(--primary, #4f46e5); color: #fff; }
+.att-mode-btn.active { background: var(--ds-primary); color: var(--ds-canvas); }
 
 /* Table */
 .att-table-scroll { overflow-x: auto; }
@@ -2620,9 +2620,9 @@ watch(() => props.branchId, () => {
 .att-inline-edit .att-status-select { font-size: 12px; padding: 2px 4px; }
 
 /* Tags */
-.status-tag.excused, .status-tag.leave { background: #E3F2FD; color: #1565C0; }
+.status-tag.excused, .status-tag.leave { background: var(--ds-canvas-soft); color: var(--ds-primary); }
 .status-tag.rejected { background: var(--danger-bg); color: var(--danger); }
-.att-self-study-tag { background: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
+.att-self-study-tag { background: var(--ds-warning-wash); color: var(--ds-warning); border: 1px solid var(--ds-warning); }
 
 /* Messages */
 .att-msg {
@@ -2642,7 +2642,7 @@ watch(() => props.branchId, () => {
 }
 .att-makeup-filters .form-group { min-width: 140px; }
 .att-makeup-filters .att-submit-wrap { min-width: 112px; }
-.att-badge-warn { background: #d97706; }
+.att-badge-warn { background: var(--ds-warning); }
 .att-load-more { text-align: center; padding: 12px 0; }
 
 /* Pending card */
@@ -2721,8 +2721,8 @@ watch(() => props.branchId, () => {
   gap: 4px;
   padding: 6px 12px;
   min-height: 44px;
-  background: var(--primary, #2563eb);
-  color: #fff;
+  background: var(--ds-primary);
+  color: var(--ds-canvas);
   border: none;
   border-radius: 8px;
   font-size: 13px;
@@ -2730,8 +2730,8 @@ watch(() => props.branchId, () => {
   cursor: pointer;
   transition: background 0.15s;
 }
-.att-build-btn:hover { background: var(--primary-hover, #1d4ed8); }
-.att-build-btn.active { background: var(--primary-hover, #1d4ed8); }
+.att-build-btn:hover { background: var(--ds-primary); }
+.att-build-btn.active { background: var(--ds-primary); }
 .att-build-btn .material-symbols-outlined { font-size: 17px; }
 
 /* ── Teacher quick-attend inline form ───────────────────────── */
@@ -2744,11 +2744,11 @@ watch(() => props.branchId, () => {
   max-height: 500px;
 }
 .att-quick-attend-form {
-  border: 1px solid var(--border-soft, #cbd5e1);
+  border: 1px solid var(--ds-hairline);
   border-radius: 10px;
   padding: 16px;
   margin-top: 10px;
-  background: var(--surface-muted, #f8fafc);
+  background: var(--ds-canvas-soft);
 }
 .att-quick-grid {
   display: grid;
@@ -2763,12 +2763,12 @@ watch(() => props.branchId, () => {
 }
 .att-field-err {
   font-size: 12px;
-  color: var(--danger, #dc2626);
+  color: var(--ds-danger);
   margin: 4px 0 0;
 }
 .att-skeleton-bar {
   height: 36px;
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, var(--ds-hairline) 25%, var(--ds-canvas-soft) 50%, var(--ds-hairline) 75%);
   background-size: 200% 100%;
   animation: att-shimmer 1.2s infinite;
   border-radius: 6px;
@@ -2790,7 +2790,7 @@ watch(() => props.branchId, () => {
   gap: 0;
   margin-top: 14px;
   margin-bottom: 12px;
-  border: 1px solid var(--border-color, #ddd);
+  border: 1px solid var(--ds-hairline);
   border-radius: 8px;
   overflow: hidden;
   width: fit-content;
@@ -2798,16 +2798,16 @@ watch(() => props.branchId, () => {
 .att-dir-mode-tab {
   padding: 6px 16px;
   border: none;
-  background: #fff;
+  background: var(--ds-canvas);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--ds-ink-mute);
   transition: background 0.12s, color 0.12s;
   min-height: 36px;
 }
-.att-dir-mode-tab + .att-dir-mode-tab { border-left: 1px solid var(--border-color, #ddd); }
-.att-dir-mode-tab.active { background: var(--primary, #2563eb); color: #fff; font-weight: 600; }
+.att-dir-mode-tab + .att-dir-mode-tab { border-left: 1px solid var(--ds-hairline); }
+.att-dir-mode-tab.active { background: var(--ds-primary); color: var(--ds-canvas); font-weight: 600; }
 
 @media (max-width: 768px) {
   .att-quick-grid { grid-template-columns: 1fr; }
@@ -2827,7 +2827,7 @@ watch(() => props.branchId, () => {
   display: flex; align-items: flex-end; justify-content: center;
 }
 .att-confirm-sheet {
-  background: var(--card-bg, #fff); border-radius: 16px 16px 0 0;
+  background: var(--ds-canvas); border-radius: 16px 16px 0 0;
   padding: 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
   width: 100%; max-width: 480px;
   box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
@@ -2859,23 +2859,23 @@ watch(() => props.branchId, () => {
   gap: 4px;
   padding: 6px 10px;
   min-height: 36px;
-  border: 1px solid var(--warning-border, #fde68a);
-  background: var(--warning-soft, #fffbeb);
-  color: var(--warning-strong, #b45309);
+  border: 1px solid var(--ds-hairline);
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease;
 }
-.att-report-btn:hover { background: var(--warning-soft-hover, #fef3c7); }
+.att-report-btn:hover { background: var(--ds-warning-wash); }
 .att-report-btn .material-symbols-outlined { font-size: 16px; }
 .att-report-btn-active {
-  border-color: var(--warning, #f59e0b);
-  background: var(--warning, #f59e0b);
-  color: #fff;
+  border-color: var(--ds-warning);
+  background: var(--ds-warning);
+  color: var(--ds-canvas);
 }
-.att-report-btn-active:hover { background: #d97706; border-color: #d97706; }
+.att-report-btn-active:hover { background: var(--ds-warning); border-color: var(--ds-warning); }
 
 .att-report-btn-mobile {
   min-height: 44px;
@@ -2905,19 +2905,19 @@ watch(() => props.branchId, () => {
 .att-report-badge .material-symbols-outlined { font-size: 13px; }
 .att-report-badge-pending,
 .att-report-badge-acknowledged {
-  background: var(--warning-soft, #fffbeb);
-  color: var(--warning-strong, #b45309);
-  border-color: var(--warning-border, #fde68a);
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+  border-color: var(--ds-hairline);
 }
 .att-report-badge-acknowledged {
-  background: var(--info-soft, #eff6ff);
-  color: var(--info-strong, #1d4ed8);
-  border-color: var(--info-border, #bfdbfe);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-primary);
+  border-color: var(--ds-hairline);
 }
 .att-report-badge-resolved {
-  background: var(--success-soft, #ecfdf5);
-  color: var(--success-strong, #047857);
-  border-color: var(--success-border, #a7f3d0);
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
+  border-color: var(--ds-hairline);
 }
 .att-report-badge-mobile {
   margin-left: 0;
@@ -2931,18 +2931,18 @@ watch(() => props.branchId, () => {
   gap: 8px;
   margin-top: 12px;
   padding: 10px 14px;
-  border: 1px dashed var(--border-soft, #cbd5e1);
+  border: 1px dashed var(--ds-hairline);
   border-radius: 8px;
-  background: var(--surface-muted, #f8fafc);
-  color: var(--text-light, #64748b);
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-mute);
   font-size: 13px;
 }
-.att-missing-cta .material-symbols-outlined { font-size: 18px; color: var(--warning, #f59e0b); }
+.att-missing-cta .material-symbols-outlined { font-size: 18px; color: var(--ds-warning); }
 .att-missing-link {
   margin-left: auto;
   background: none;
   border: 0;
-  color: var(--primary, #2563eb);
+  color: var(--ds-primary);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -2950,7 +2950,7 @@ watch(() => props.branchId, () => {
   min-height: 44px;
   text-decoration: underline;
 }
-.att-missing-link:hover { color: var(--primary-hover, #1d4ed8); }
+.att-missing-link:hover { color: var(--ds-primary); }
 
 /* Toast */
 .sd-toast {
@@ -2958,8 +2958,8 @@ watch(() => props.branchId, () => {
   top: 24px;
   right: 24px;
   z-index: 10060;
-  background: var(--success-strong, #047857);
-  color: #fff;
+  background: var(--ds-success);
+  color: var(--ds-canvas);
   padding: 12px 18px;
   border-radius: 8px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.2);
@@ -2969,8 +2969,8 @@ watch(() => props.branchId, () => {
   font-size: 14px;
   max-width: calc(100vw - 48px);
 }
-.sd-toast-error { background: var(--danger, #ef4444); }
-.sd-toast-info { background: var(--info-strong, #1d4ed8); }
+.sd-toast-error { background: var(--ds-danger); }
+.sd-toast-info { background: var(--ds-primary); }
 .sd-toast .material-symbols-outlined { font-size: 20px; }
 .sd-toast-enter-active,
 .sd-toast-leave-active { transition: all 200ms ease; }
@@ -2995,15 +2995,15 @@ watch(() => props.branchId, () => {
   margin-bottom: -2px;
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-muted, #64748b);
+  color: var(--ds-ink-mute);
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   min-height: 44px;
 }
-.att-tab-btn:hover { color: var(--text-primary, #0f172a); }
+.att-tab-btn:hover { color: var(--ds-ink); }
 .att-tab-btn.active {
-  color: var(--primary, #2563eb);
-  border-bottom-color: var(--primary, #2563eb);
+  color: var(--ds-primary);
+  border-bottom-color: var(--ds-primary);
   font-weight: 700;
 }
 
@@ -3012,14 +3012,14 @@ watch(() => props.branchId, () => {
 .ta-anomaly-row {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 12px;
-  background: var(--surface-muted, #f8fafc);
+  background: var(--ds-canvas-soft);
   border-radius: 8px; gap: 8px;
 }
 .ta-row-info { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; }
 .ta-name { font-weight: 600; font-size: 14px; }
-.ta-time { font-size: 13px; color: var(--text-secondary, #475569); }
-.ta-cell-warn { color: var(--color-warning, #e65100); font-weight: 500; }
-.ta-cell-muted { color: var(--text-muted, #94a3b8); font-size: 13px; }
+.ta-time { font-size: 13px; color: var(--ds-ink-mute); }
+.ta-cell-warn { color: var(--ds-warning); font-weight: 500; }
+.ta-cell-muted { color: var(--ds-ink-mute); font-size: 13px; }
 .ta-unclosed-row {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 0;
@@ -3032,31 +3032,31 @@ watch(() => props.branchId, () => {
 }
 
 /* Teacher Status Badges */
-.ts-badge-ok    { background: #e6f4ea; color: #1b7c3d; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-.ts-badge-late  { background: #fce8e6; color: #c62828; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-.ts-badge-warn  { background: #fff3e0; color: #e65100; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-.ts-badge-error { background: #fce8e6; color: #c62828; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-.ts-badge-muted { background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-ok    { background: var(--ds-success-wash); color: var(--ds-success); padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-late  { background: var(--ds-danger-wash); color: var(--ds-danger); padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-warn  { background: var(--ds-warning-wash); color: var(--ds-warning); padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-error { background: var(--ds-danger-wash); color: var(--ds-danger); padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.ts-badge-muted { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 
 /* 行政出勤區（source_only — 到班但無排課，正常狀態） */
 .ta-onduty-section {
   margin-top: 12px;
   padding: 10px 12px;
-  background: #f0fdf4;
+  background: var(--ds-success-wash);
   border-radius: 8px;
-  border: 1px solid #bbf7d0;
+  border: 1px solid var(--ds-hairline);
 }
 .ta-onduty-title {
   font-size: 12px;
-  color: #15803d;
+  color: var(--ds-success);
   font-weight: 600;
   margin-bottom: 8px;
 }
 .ta-onduty-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .ta-onduty-chip {
   font-size: 12px;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ds-success-wash);
+  color: var(--ds-success);
   padding: 2px 10px;
   border-radius: 20px;
 }
@@ -3065,11 +3065,11 @@ watch(() => props.branchId, () => {
 .ta-sys-pending {
   margin-top: 10px;
   padding: 8px 12px;
-  background: #f8fafc;
+  background: var(--ds-canvas-soft);
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ds-hairline);
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 
 /* ── DeleteDialog / ConvertModal 共用 overlay ── */
@@ -3080,14 +3080,14 @@ watch(() => props.branchId, () => {
   padding: 16px;
 }
 .att-dialog {
-  background: var(--card-bg, #fff);
+  background: var(--ds-canvas);
   border-radius: 12px;
   padding: 24px;
   width: 100%; max-width: 420px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
 }
 .att-dialog-summary {
-  background: var(--bg-secondary, #f5f5f5);
+  background: var(--ds-canvas-soft);
   border-radius: 8px;
   padding: 10px 14px;
   font-size: 14px;
@@ -3098,18 +3098,18 @@ watch(() => props.branchId, () => {
 .att-dialog-field { display: flex; flex-direction: column; gap: 4px; }
 .att-dialog-textarea {
   width: 100%; resize: vertical; min-height: 72px;
-  border: 1px solid var(--border, #d1d5db);
+  border: 1px solid var(--ds-hairline);
   border-radius: 8px; padding: 8px 10px;
   font-size: 14px; font-family: inherit;
-  background: var(--card-bg, #fff);
-  color: var(--text-primary, #111);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
 }
-.att-dialog-textarea:focus { outline: 2px solid var(--ds-primary, #ef6c00); outline-offset: 1px; }
+.att-dialog-textarea:focus { outline: 2px solid var(--ds-primary); outline-offset: 1px; }
 .att-dialog-actions {
   display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
 }
-button.danger { background: var(--color-danger, #d32f2f) !important; color: #fff !important; }
-button.danger:hover:not(:disabled) { background: #b71c1c !important; }
+button.danger { background: var(--ds-danger) !important; color: var(--ds-canvas) !important; }
+button.danger:hover:not(:disabled) { background: var(--ds-danger) !important; }
 
 /* ── 課程選擇列表 ── */
 .att-course-list {
@@ -3120,22 +3120,22 @@ button.danger:hover:not(:disabled) { background: #b71c1c !important; }
 .att-course-item {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--border, #e0e0e0);
+  border: 1px solid var(--ds-hairline);
   border-radius: 8px; cursor: pointer;
   transition: border-color .15s, background .15s;
 }
-.att-course-item:hover:not(.disabled) { border-color: var(--ds-primary, #ef6c00); background: var(--ds-primary-wash, #fff8e1); }
+.att-course-item:hover:not(.disabled) { border-color: var(--ds-primary); background: var(--ds-primary-wash); }
 .att-course-item.disabled { opacity: 0.5; cursor: not-allowed; }
 .att-course-info { display: flex; flex-direction: column; gap: 2px; }
 .att-course-name { font-size: 14px; font-weight: 500; }
-.att-course-teacher { font-size: 12px; color: var(--text-secondary, #666); }
-.att-course-sessions { font-size: 12px; color: var(--text-secondary, #666); }
-.att-course-sessions.sessions-empty { color: var(--color-danger, #d32f2f); }
+.att-course-teacher { font-size: 12px; color: var(--ds-ink-mute); }
+.att-course-sessions { font-size: 12px; color: var(--ds-ink-mute); }
+.att-course-sessions.sessions-empty { color: var(--ds-danger); }
 
 /* ── spinner for month export loading ── */
 .att-spinner {
   border: 2px solid rgba(0,0,0,0.15);
-  border-top-color: var(--ds-primary, #ef6c00);
+  border-top-color: var(--ds-primary);
   border-radius: 50%; animation: spin .7s linear infinite;
   vertical-align: -2px;
 }
