@@ -15,6 +15,127 @@ class StudentClassPaidStatusTest extends TestCase
     use RefreshDatabase;
 
     /**
+     * #799（in-app #158 陳畇寧）：帳單仍有收款入帳時，切「未繳費」必須 409 擋下並導引，
+     * 不可寫入 Paid=0 後讓列表的帳單 OR 邏輯把顯示蓋回「已繳費」（靜默失敗）。
+     */
+    public function test_unpaid_toggle_blocked_with_409_when_invoice_payment_exists(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-06-02',
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-06-02',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+        ]);
+        \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-06-02',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['payment_status' => 'unpaid', 'paid_at' => null],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(409);
+        $res->assertJsonFragment(['code' => 'payment_record_locked']);
+        $res->assertJsonPath('warnings.total_paid_amount', 8800);
+        $res->assertJsonPath('warnings.last_paid_at', '2026-06-02');
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid, '409 擋下時 Paid 不可被改動');
+    }
+
+    /**
+     * #799：帳單已作廢（void）後，收款不再視為有效 → 切「未繳費」必須放行。
+     * 對齊 in-app #158 實際解法（帳單例外沖銷作廢後狀態恢復未繳費）。
+     */
+    public function test_unpaid_toggle_allowed_when_invoice_voided(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-06-02',
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-06-02',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 0,
+            'Status' => 'void',
+        ]);
+        \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-06-02',
+            'Method' => 'transfer',
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['payment_status' => 'unpaid', 'paid_at' => null],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertOk();
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid, '作廢帳單不可再擋未繳費切換');
+    }
+
+    /**
+     * #799：編輯表單「清空繳費日期」這條降級路徑同樣受守門保護。
+     */
+    public function test_clearing_paid_at_blocked_when_invoice_payment_exists(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent();
+        $sc = $this->createStudentClass($student->id, [
+            'Paid' => 1,
+            'PayDate' => '2026-06-02',
+        ]);
+
+        $invoice = \App\Models\Invoice::create([
+            'StudentID' => $student->id,
+            'StudentClassID' => $sc->ID,
+            'IssueDate' => '2026-06-02',
+            'TotalAmount' => 8800,
+            'PaidAmount' => 8800,
+            'Status' => 'paid',
+        ]);
+        \App\Models\Payment::create([
+            'InvoiceID' => $invoice->id,
+            'Amount' => 8800,
+            'PaidAt' => '2026-06-02',
+            'Method' => 'cash',
+        ]);
+
+        $res = $this->putJson(
+            "/api/v1/student-classes/{$sc->ID}",
+            ['Memo' => '清空日期', 'paid_at' => null],
+            ['Authorization' => "Bearer {$token}"]
+        );
+
+        $res->assertStatus(409);
+        $res->assertJsonFragment(['code' => 'payment_record_locked']);
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid);
+        $this->assertNotNull($sc->PayDate);
+    }
+
+    /**
      * Contract: editing Memo while round-tripping the existing PayDate as paid_at
      * (what the edit form does when the user did not touch the date field) must
      * keep Paid=1. The frontend initializes form.paid_at from the existing PayDate,

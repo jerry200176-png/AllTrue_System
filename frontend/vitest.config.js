@@ -16,8 +16,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/components/design-system/**/*.vue'],
-      reporter: ['text-summary'],
+      reporter: ['text-summary', 'json-summary'],
       reportsDirectory: './coverage/unit',
+      // Coverage ratchet (#731): CI fails if any metric drops below these thresholds.
+      // Bump these values when coverage improves to lock in the gain.
+      thresholds: {
+        statements: 70,
+        branches: 60,
+        functions: 70,
+        lines: 70,
+      },
     },
   },
 });
