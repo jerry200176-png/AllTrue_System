@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-13 — fix(schedule): 建課偵測「同生同科同師日期重疊」防重複排課 (#805)
+
+主任建立課程時，若該學生已有「同科目、同老師、上課期間重疊」的進行中課程（常見於續報新期起始日早於舊期結束），系統會先提醒，避免兩期在重疊週各排一堂、造成點名名單同一時段重複出現。可改用「加購堂數」延續原課程，或把新課起始日改到舊課結束之後；確定要建立仍可勾選強制建立。
+
+開發備註：`EnrollmentService::store()` 既有 `duplicate_active_course`（同科同型）外，新增 `overlapping_active_course`（同 StudentID+SubjectID+TeacherID 且 StartDate/EndDate 區間重疊，跨 class_type 亦偵測），回 409 + 重疊明細，`force=true` 可覆蓋。日期來源涵蓋 confirmed/future_dates 與 session_plan。對應 in-app #161／GitHub #805／復發家族 F1「重疊續報」變體。OverlappingCourseGuardTest 2 綠。資料修正（林立晴 SC#1684）另行處理。
+
 ## 2026-06-13 — security(pin): 老師頁 PII 後端欄位級遮罩 (TD-066)
 
 開發備註：補上 #769 老師管理頁的後端 PII 邊界。`GET /teachers`／`/profiles` 為多頁共用端點（CourseManagement／StudentsList／LearningRecords 下拉復用），無法整路掛 require_pin。改抽 `App\Support\PinGate::isUnlocked()` 單一謂詞（super_admin／未設 PIN／token 已驗證 → 通過），`RequirePin` 改委派它（行為不變、去重），`ProfileController::index` 三個輸出點在未通過時遮罩老師 `phone／line_id／rfid／rfid_by_branch`。soft：未設 PIN 者零回歸；下拉頁本就不讀 PII 故無感。TeacherPiiPinRedactionTest 3 綠 + PinVerificationTest 14 綠；PHPStan baseline 納入 PinGate 的 AuthToken::where magic（零刪除）。TD-066 結案。計畫 `.cursor/plans/td066_teacher_pii_pin_2026-06-13.md`。
