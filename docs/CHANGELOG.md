@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-13 — fix(audit): 排課稽核日誌實際生效 (#766 補修, #784)
+
+主任端的「排課稽核日誌」（誰在何時建立／修改／刪除課堂）先前因技術問題完全沒有寫入、且依分校查詢一律為空；現已修正，會正確記錄並可在主任端依分校／日期查詢。系統自動產生的行事曆投影堂次不列入稽核（只記真人操作）。
+
+開發備註：三個 root cause —（1）`AppServiceProvider` 在 `DatabaseServiceProvider` 之前註冊，`boot()` 時 Eloquent dispatcher 尚未綁定，`ClassSession::observe()` 靜默 no-op → 改用 `app->booted()` 延遲註冊；（2）`branchId()` 讀不存在的 `StudentClass->BranchID` 導致 `branch_id` 恆為 null → 改走 `StudentClass->Student->CampusID`；（3）observer 生效後對 `projected-*`／backfill 系統堂次造成行事曆熱路徑 N+1 → 依 `Note` marker 略過。PR #784；GitHub #766；本地 MySQL 全測 1184 綠 / PHPStan 綠。另記 TD-065（`NotificationObserver` LINE 推播疑同源失效，未在本次 scope 處理）。
+
 ## 2026-06-13 — fix(billing): 課程總費用不再被錯誤舊差額卡死（#798）
 
 課程總費用與「每堂費用 × 堂數」對不上、又沒有單堂時間調整紀錄時，重新儲存費率即會重算為正確金額，不會再被舊的錯誤數字永遠拉回（新店分校張同學案例，金額已同步修正）。
