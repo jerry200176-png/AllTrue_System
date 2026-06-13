@@ -1353,7 +1353,7 @@ class StudentClassController extends Controller
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
             $hasSessionChargeAdjustments = DB::table('ClassSession')
-                ->where('StudentClassID', (int) $studentClass->ID)
+                ->where('StudentClassID', (int) $studentClass->getKey())
                 ->whereNotNull('session_charge')
                 ->exists();
             $preservedDelta = $hasSessionChargeAdjustments ? ($oldChargeSnapshot - $oldBase) : 0;
