@@ -11,6 +11,10 @@
 
 ---
 
+## 2026-06-13 — security(pin): 敏感頁 PIN 二次驗證前端 gate + 路由強制 (#769 Phase B/C)
+
+開發備註：接續 Phase A，完成前端覆蓋層與後端強制（**soft，零回歸**）。**D1 soft**（未設 PIN 的主任可「暫不啟用，直接進入」）／**D2** 受保護頁＝兼職薪資、帳務中心、當月學收、老師管理／**D3** super_admin 不納管。Phase B：`PinLockModal.vue` 全螢幕覆蓋（設計系統 token、無 emoji；set／verify／locked／reset 四態、4–6 位數字、Enter 送出），`App.vue` `pinModalActive` gate 擋住 4 頁直到解鎖、10 分鐘解鎖 TTL、閒置 5 分鐘 + 切分頁 60 秒自動鎖（`POST /pin/lock`）；純判定抽到 `lib/pinGate.js`（15 個 node 測試，接進 build 鏈）。Phase C：`RequirePin` 經 `auth_role` 放行 super_admin（mirror `RequireRole`）；`require_pin` 掛於受保護頁**專屬**敏感端點（`finance/parttime-payroll*`、`finance/teacher-payroll`、`part-time-rate-cards*`、`finance/branch-monthly-tuition*`、`accounting/payments*`、`accounting/settled-courses`），**刻意不掛**共享端點（`teachers`／`student-classes`／`alerts/tuition`，避免誤傷已設 PIN 主任）；router 內省測試守住「該掛有掛、共享沒掛」。PinVerificationTest 14 綠、PHPStan clean。PR #815／#816；GitHub #769。老師頁 PII 後端邊界因端點共享延後 → TD-066。
+
 ## 2026-06-13 — security(pin): 敏感頁 PIN 二次驗證後端基建 (#769 Phase A)
 
 開發備註：為薪資／財務／教師個資敏感頁的 PIN 二次驗證鋪設後端 primitives，**零行為變更**（未掛任何受保護路由，未設 PIN 者敏感 API 照舊可用）。新增可逆 migration（`User.pin_hash／pin_failed_attempts／pin_locked_until／pin_set_at`、`auth_tokens.pin_verified_until`，皆 nullable）、`PinVerificationController`（status／set／verify／reset／lock）、`RequirePin` middleware（soft：未設 PIN 放行，已設未解鎖回 423 `pin_required`）、Kernel alias `require_pin`、`me/pin/*` 路由（含 per-IP throttle）。失敗計數／鎖定一律走 DB（避開事故 E 的 file cache owner 污染）；解鎖狀態綁 `AuthToken` session，登出即失效。弱碼黑名單 + bcrypt 雜湊，回應不含 hash／attempts，429／423 generic。PHPUnit 12 綠涵蓋 AC1–AC8。PHPStan baseline 為新 Eloquent magic props 重產（619→624 distinct，零刪除）。PR #812；GitHub #769。Phase B（`PinLockModal.vue` 前端覆蓋層 + 自動鎖）／ Phase C（受保護路由掛 `require_pin` soft）後續，需 UX 驗收與 D1–D3 拍板。
