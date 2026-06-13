@@ -52,10 +52,12 @@
 ## Screenshots（前端有 UI 改動時填）
 <!-- 貼 before / after 截圖 -->
 
-## Design System（前端有 UI 改動時填）
-<!-- 參考 docs/RULE_DESIGN_SYSTEM.md；不確定就對照禁止清單 §7 -->
-- [ ] 無新增 raw `#hex`（或已在 lint baseline 內）
-- [ ] 每個區塊 Primary CTA ≤ 1 顆
-- [ ] 金額 / 堂數 / 日期已套 `tabular-nums`
-- [ ] 空狀態含「下一步」行動說明（`docs/GUIDE_UI_COPY.md` §2）
+## Design System（前端有 UI 改動時填，#737 制度化）
+<!-- 參考 docs/RULE_DESIGN_SYSTEM.md（唯一真相）；不確定就對照禁止清單 §7 -->
+<!-- CI 自動偵測新增 raw hex：一旦超過 baseline 即 FAIL（不再 advisory） -->
+- [ ] **無新增 raw `#hex`**（CI blocking — 違反即 PR 無法 merge；需清理或更新 baseline）
+- [ ] 每個區塊 Primary CTA ≤ 1 顆（`docs/RULE_DESIGN_SYSTEM.md §5`）
+- [ ] 金額 / 堂數 / 日期已套 `tabular-nums`（`§6 tabular`）
+- [ ] 空狀態含圖示 + 一句說明 + 下一步行動（`docs/GUIDE_UI_COPY.md §2`）
+- [ ] Loading 狀態：骨架屏或 spinner，非白屏（`RULE_DESIGN_SYSTEM §4`）
 - [ ] 未改業務邏輯 / 繳費規則（只動樣式 / 文案 / 空狀態）

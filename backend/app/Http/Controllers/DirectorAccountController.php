@@ -21,6 +21,15 @@ class DirectorAccountController extends Controller
      */
     public function register(Request $request)
     {
+        // SEC-F1: If DIRECTOR_REGISTRATION_TOKEN is configured, the request must
+        // include a matching registration_token. Prevents open enumeration/account creation.
+        $requiredToken = config('app.director_registration_token', env('DIRECTOR_REGISTRATION_TOKEN', null));
+        if (!empty($requiredToken)) {
+            $provided = $request->input('registration_token', '');
+            if (!hash_equals($requiredToken, (string) $provided)) {
+                return response()->json(['message' => '無效的邀請碼 (Invalid registration token)'], 403);
+            }
+        }
         $data = $request->validate([
             'name'      => 'required|string|max:32',
             'account'   => 'nullable|string|max:64|required_without:email',
