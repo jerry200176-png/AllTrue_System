@@ -1621,6 +1621,42 @@ parameters:
 			path: app/Http/Controllers/CoursePackageController.php
 
 		-
+			message: '#^Comparison operation "\>" between 0 and 0 is always false\.$#'
+			identifier: greater.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Left side of && is always true\.$#'
+			identifier: booleanAnd.leftAlwaysTrue
+			count: 2
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 1
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Offset ''settlement_day'' on non\-empty\-array on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.offset
+			count: 2
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Result of && is always false\.$#'
+			identifier: booleanAnd.alwaysFalse
+			count: 2
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Ternary operator condition is always true\.$#'
+			identifier: ternary.alwaysTrue
+			count: 5
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
 			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 4
@@ -3349,6 +3385,24 @@ parameters:
 			path: app/Http/Controllers/ParentPortalController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/PartTimeRateCardController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:findOrFail\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Http/Controllers/PartTimeRateCardController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/PartTimeRateCardController.php
+
+		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
 			identifier: property.notFound
 			count: 1
@@ -3715,6 +3769,42 @@ parameters:
 			path: app/Http/Controllers/PendingSwipeController.php
 
 		-
+			message: '#^Access to an undefined property App\\Models\\AuthToken\:\:\$pin_verified_until\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$pin_failed_attempts\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$pin_hash\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$pin_locked_until\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\User\:\:\$pin_set_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\AuthToken\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/PinVerificationController.php
+
+		-
 			message: '#^Access to an undefined property App\\Http\\Controllers\\ProfileController\:\:\$teacherExtraCache\.$#'
 			identifier: property.notFound
 			count: 1
@@ -3785,6 +3875,12 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/RoomController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/ScheduleAuditController.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$id\.$#'
@@ -4945,6 +5041,12 @@ parameters:
 			path: app/Http/Middleware/DebugSwipeRfidRequest.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\AuthToken\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Middleware/RequirePin.php
+
+		-
 			message: '#^Cannot call method getDomain\(\) on object\|string\.$#'
 			identifier: method.nonObject
 			count: 1
@@ -5015,6 +5117,12 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Models/PackageSessionLedger.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Models/PartTimeRateCard.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\PaymentReport\:\:\$status\.$#'
@@ -5111,6 +5219,18 @@ parameters:
 			identifier: staticMethod.notFound
 			count: 1
 			path: app/Models/SystemSetting.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Observers/ClassSessionObserver.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 3
+			path: app/Observers/ClassSessionObserver.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
@@ -6119,81 +6239,3 @@ parameters:
 			identifier: property.notFound
 			count: 1
 			path: app/Support/UserEngagementPresenter.php
-
-		-
-			message: '#^Comparison operation "\>" between 0 and 0 is always false\.$#'
-			identifier: greater.alwaysFalse
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Left side of && is always true\.$#'
-			identifier: booleanAnd.leftAlwaysTrue
-			count: 2
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Offset ''settlement_day'' on non\-empty\-array on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.offset
-			count: 2
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Result of && is always false\.$#'
-			identifier: booleanAnd.alwaysFalse
-			count: 2
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Ternary operator condition is always true\.$#'
-			identifier: ternary.alwaysTrue
-			count: 5
-			path: app/Http/Controllers/CoursePackageController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\ScheduleAuditLog\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 3
-			path: app/Observers/ClassSessionObserver.php
-
-		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$studentClass\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Observers/ClassSessionObserver.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/ScheduleAuditController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\UserCampus\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/PartTimeRateCardController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/PartTimeRateCardController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:findOrFail\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Http/Controllers/PartTimeRateCardController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\PartTimeRateCard\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Models/PartTimeRateCard.php
