@@ -106,6 +106,9 @@ class ScheduleAuditLogTest extends TestCase
             'StudentID'         => $student->id,
             'TeacherID'         => $teacher->id,
             'SubjectID'         => $subject->id,
+            'GradeID'           => 0,
+            'by1'               => $teacher->id,
+            'RoomID'            => 0,
             'Charge'            => 1000,
             'SessionCount'      => 10,
             'RemainingSessions' => 10,
@@ -205,9 +208,9 @@ class ScheduleAuditLogTest extends TestCase
     }
 
     /** @test */
-    public function unauthenticated_request_returns_403(): void
+    public function unauthenticated_request_returns_401(): void
     {
-        $this->getJson('/api/v1/schedule-audit')->assertStatus(403);
+        $this->getJson('/api/v1/schedule-audit')->assertStatus(401);
     }
 
     /** @test */
