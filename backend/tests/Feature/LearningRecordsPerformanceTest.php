@@ -108,7 +108,10 @@ class LearningRecordsPerformanceTest extends TestCase
 
     public function test_health_endpoint_returns_perf_flags(): void
     {
-        $response = $this->getJson('/api/v1/health');
+        // SEC-F3: perf_flags moved to /health/detailed (auth required).
+        [$token] = $this->createTeacherWithRecords(1, 'perf_health_test');
+        $response = $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/health/detailed');
         $response->assertOk();
         $response->assertJsonStructure(['status', 'timestamp', 'perf_flags']);
         $this->assertEquals('ok', $response->json('status'));
