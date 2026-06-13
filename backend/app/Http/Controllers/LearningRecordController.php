@@ -526,52 +526,69 @@ class LearningRecordController extends Controller
         $changesRequestedLr = (int) (clone $lrQuery)->where('Status', 'changes_requested')->count();
 
         $today = Carbon::today()->toDateString();
+        $weekStart = Carbon::today()->startOfWeek(Carbon::MONDAY)->toDateString();
         $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
 
-        $missingTodayBase = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin('schedules as sub_sched', function ($join) {
-                $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id')
-                    ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
-                    ->whereRaw('sub_sched.id = (
-                        SELECT MAX(sub2.id)
-                        FROM schedules sub2
-                        WHERE sub2.student_course_id = sc.ID
-                          AND sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
-                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
-                          AND sub2.teacher_id <> sc.TeacherID
-                    )');
-            })
-            ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
-            ->whereDate('cs.SessionDate', '=', $today)
-            ->where(function ($outer) use ($teacherId) {
-                $outer->where(function ($inner) use ($teacherId) {
-                    $inner->whereNull('sub_sched.teacher_id')
-                        ->where('sc.TeacherID', $teacherId);
-                })->orWhere('sub_sched.teacher_id', $teacherId);
-            })
-            ->whereRaw('LOWER(cs.Status) IN ("scheduled","attended")')
-            ->whereNull('lr.id');
+        $missingSessionBase = function () use ($teacherId, $branchId, $lrSubSql) {
+            $query = DB::table('ClassSession as cs')
+                ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+                ->join('Student as s', 's.id', '=', 'sc.StudentID')
+                ->leftJoin('schedules as sub_sched', function ($join) {
+                    $join->on('sub_sched.student_course_id', '=', 'sc.ID')
+                        ->where('sub_sched.status', '=', 'scheduled')
+                        ->whereNotNull('sub_sched.original_schedule_id')
+                        ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
+                        ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
+                        ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
+                        ->whereRaw('sub_sched.id = (
+                            SELECT MAX(sub2.id)
+                            FROM schedules sub2
+                            WHERE sub2.student_course_id = sc.ID
+                              AND sub2.status = "scheduled"
+                              AND sub2.original_schedule_id IS NOT NULL
+                              AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
+                              AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
+                              AND sub2.teacher_id <> sc.TeacherID
+                        )');
+                })
+                ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
+                ->where(function ($outer) use ($teacherId) {
+                    $outer->where(function ($inner) use ($teacherId) {
+                        $inner->whereNull('sub_sched.teacher_id')
+                            ->where('sc.TeacherID', $teacherId);
+                    })->orWhere('sub_sched.teacher_id', $teacherId);
+                })
+                ->whereNull('lr.id');
 
-        if ($branchId > 0) {
-            $missingTodayBase->where('s.CampusID', $branchId);
+            if ($branchId > 0) {
+                $query->where('s.CampusID', $branchId);
+            }
+
+            return $query;
+        };
+
+        $missingToday = (int) $missingSessionBase()
+            ->whereDate('cs.SessionDate', '=', $today)
+            ->whereRaw('LOWER(cs.Status) IN ("scheduled","attended")')
+            ->distinct()
+            ->count(DB::raw('cs.id'));
+
+        $pastWeekMissing = 0;
+        if ($weekStart < $today) {
+            $pastWeekMissing = (int) $missingSessionBase()
+                ->whereBetween('cs.SessionDate', [$weekStart, Carbon::today()->subDay()->toDateString()])
+                ->whereRaw('LOWER(cs.Status) IN ("attended","late")')
+                ->distinct()
+                ->count(DB::raw('cs.id'));
         }
 
-        $missingToday = (int) $missingTodayBase->distinct()->count(DB::raw('cs.id'));
-
-        $total = $pendingLr + $missingToday;
+        $total = $pendingLr + $missingToday + $pastWeekMissing;
 
         return response()->json([
             'pending_learning_records'         => $pendingLr,
             'changes_requested_learning_records' => $changesRequestedLr,
             'today_sessions_without_record' => $missingToday,
+            'week_attended_sessions_without_record' => $pastWeekMissing,
             'total'                           => $total,
         ]);
     }

@@ -89,6 +89,49 @@ class TeacherLearningEngagementApisTest extends TestCase
         ], $over));
     }
 
+    public function test_teacher_learning_pending_summary_includes_past_week_attended_sessions_without_record(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-06-04 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            [$teacher, $token] = $this->teacherWithToken($campus->id);
+
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $scId = $this->insertCourse($student->id, $teacher->id, [
+                'StartDate' => '2026-06-01',
+            ]);
+
+            $today = Carbon::today()->toDateString();
+            $pastInWeek = Carbon::today()->subDay()->toDateString();
+
+            DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scId,
+                'SessionDate' => $pastInWeek,
+                'StartTime' => '10:00',
+                'EndTime' => '12:00',
+                'Status' => 'attended',
+            ]);
+
+            DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scId,
+                'SessionDate' => $today,
+                'StartTime' => '14:00',
+                'EndTime' => '16:00',
+                'Status' => 'scheduled',
+            ]);
+
+            $this->getJson("/api/v1/me/learning-pending-summary?branch_id={$campus->id}", $this->bearer($token))
+                ->assertOk()
+                ->assertJsonPath('pending_learning_records', 0)
+                ->assertJsonPath('today_sessions_without_record', 1)
+                ->assertJsonPath('week_attended_sessions_without_record', 1)
+                ->assertJsonPath('total', 2);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_teacher_learning_pending_summary_counts_pending_and_missing_today_sessions(): void
     {
         $campus = CampusFactory::new()->create();

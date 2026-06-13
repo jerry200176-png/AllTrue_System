@@ -2487,19 +2487,22 @@ const togglePaymentStatus = async (course, studentName = '') => {
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
-    if (token) {
-      const res = await fetch(`/api/v1/student-classes/${courseId}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
-      });
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => ({}));
-        console.warn('Payment status API error:', res.status, errBody);
-      }
+    if (!token) {
+      alert('登入狀態已過期，請重新登入後再試。');
+      return;
     }
-    await supabase.from('student-classes').update({ payment_status: 'unpaid' }).eq('id', courseId);
+    const res = await fetch(`/api/v1/student-classes/${courseId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ payment_status: 'unpaid', paid_at: null }),
+    });
+    // #799 阻擋＋導引：有收款入帳紀錄時後端回 409，提示去收費頁作廢，不再靜默回跳
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      alert(errBody?.message || '改為未繳費失敗，請稍後再試。');
+      return;
+    }
     course.payment_status = 'unpaid';
     course.last_paid_at = null;
     course.paid_at = null;
