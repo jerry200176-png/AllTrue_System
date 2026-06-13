@@ -1346,11 +1346,17 @@ class StudentClassController extends Controller
         // Rate 或 SessionCount 異動時同步 Charge（總費用快照），
         // 並保留原本由單堂時間調整累積的 delta（老 Charge − 老 Rate×老數量），
         // 避免老師／主任調漲調降課程費率時，把已經手動微調過的金額一併洗掉。
+        // #798：delta 只在課程實際存在單堂時間調整（session_charge）時才保留；
+        // 否則視為錯誤存量資料，直接以 費率×數量 重算，讓主任能從 UI 改回正確金額。
         if (isset($mapped['Rate']) || isset($mapped['SessionCount'])) {
             $oldBase = $oldRateUnitSnapshot === 'hour'
                 ? (int) round($oldRateSnapshot * $oldTotalHoursSnapshot)
                 : (int) round($oldRateSnapshot * $oldSessionCountSnapshot);
-            $preservedDelta = $oldChargeSnapshot - $oldBase;
+            $hasSessionChargeAdjustments = DB::table('ClassSession')
+                ->where('StudentClassID', (int) $studentClass->getKey())
+                ->whereNotNull('session_charge')
+                ->exists();
+            $preservedDelta = $hasSessionChargeAdjustments ? ($oldChargeSnapshot - $oldBase) : 0;
 
             $rateUnit = $studentClass->rate_unit ?? 'session';
             if ($rateUnit === 'hour') {
