@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ClassSession;
 use App\Models\CoursePackage;
 use App\Models\LearningRecord;
+use App\Support\AttendanceStatus;
 use App\Models\PayrollAuditLog;
 use App\Models\PayrollBranchRule;
 use App\Models\PayrollMonthStatus;
@@ -585,7 +586,8 @@ class FinanceController extends Controller
         $startDate = sprintf('%04d-%02d-01', $year, $month);
         $endDate   = date('Y-m-t', strtotime($startDate));
 
-        $attendedStatuses = ['attended', 'completed', 'late'];
+        // #765：計薪集合由 registry 提供（含值班 duty；試聽/輔導不計薪）。
+        $attendedStatuses = AttendanceStatus::payableSessionStatuses();
 
         $sessionCounts = DB::table('ClassSession')
             ->whereBetween('SessionDate', [$startDate, $endDate])
@@ -763,7 +765,8 @@ class FinanceController extends Controller
         $startDate = sprintf('%04d-%02d-01', $year, $month);
         $endDate   = date('Y-m-t', strtotime($startDate));
 
-        $attendedStatuses = ['attended', 'completed', 'late'];
+        // #765：計薪集合由 registry 提供（含值班 duty；試聽/輔導不計薪）。
+        $attendedStatuses = AttendanceStatus::payableSessionStatuses();
 
         $sessionCounts = DB::table('ClassSession')
             ->whereBetween('SessionDate', [$startDate, $endDate])
