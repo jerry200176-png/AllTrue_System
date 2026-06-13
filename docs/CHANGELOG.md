@@ -11,6 +11,10 @@
 
 ---
 
+## 2026-06-13 — security(pin): 敏感頁 PIN 二次驗證後端基建 (#769 Phase A)
+
+開發備註：為薪資／財務／教師個資敏感頁的 PIN 二次驗證鋪設後端 primitives，**零行為變更**（未掛任何受保護路由，未設 PIN 者敏感 API 照舊可用）。新增可逆 migration（`User.pin_hash／pin_failed_attempts／pin_locked_until／pin_set_at`、`auth_tokens.pin_verified_until`，皆 nullable）、`PinVerificationController`（status／set／verify／reset／lock）、`RequirePin` middleware（soft：未設 PIN 放行，已設未解鎖回 423 `pin_required`）、Kernel alias `require_pin`、`me/pin/*` 路由（含 per-IP throttle）。失敗計數／鎖定一律走 DB（避開事故 E 的 file cache owner 污染）；解鎖狀態綁 `AuthToken` session，登出即失效。弱碼黑名單 + bcrypt 雜湊，回應不含 hash／attempts，429／423 generic。PHPUnit 12 綠涵蓋 AC1–AC8。PHPStan baseline 為新 Eloquent magic props 重產（619→624 distinct，零刪除）。PR #812；GitHub #769。Phase B（`PinLockModal.vue` 前端覆蓋層 + 自動鎖）／ Phase C（受保護路由掛 `require_pin` soft）後續，需 UX 驗收與 D1–D3 拍板。
+
 ## 2026-06-13 — fix(perf): 行事曆載入大幅加速 (#804)
 
 行事曆（含跨分校、整月視窗）載入原本在資料較多時要數秒到數十秒，現已調整為約 0.1 秒內完成，主任／老師開行事曆會明顯變快。
