@@ -139,7 +139,7 @@
           <div v-if="visibleTeachers.length === 0" class="teacher-empty">
             <template v-if="hideEmptyTeacherColumns && !isWeekOverview">
               <div style="font-weight:600;margin-bottom:6px;">今日無已排課老師</div>
-              <div style="color:#6b7280;font-size:13px;margin-bottom:10px;">可關閉「只看有課老師」以顯示全部老師欄並快速排課。</div>
+              <div style="color:var(--ds-ink-mute);font-size:13px;margin-bottom:10px;">可關閉「只看有課老師」以顯示全部老師欄並快速排課。</div>
               <button type="button" class="btn-secondary" @click="hideEmptyTeacherColumns = false">顯示全部老師</button>
             </template>
             <template v-else>
@@ -2274,8 +2274,8 @@ onMounted(() => {
 .calendar-loading-bar {
   text-align: center;
   padding: 8px 16px;
-  background: var(--ds-primary-wash, #fff8e1);
-  color: var(--ds-primary-deep, #e65100);
+  background: var(--ds-primary-wash, var(--ds-primary-wash));
+  color: var(--ds-primary-deep, var(--ds-primary));
   font-size: 0.85rem;
   font-weight: 500;
   border-radius: 8px;
@@ -2313,12 +2313,12 @@ onMounted(() => {
   font-size: 1.375rem;
   font-weight: 700;
   line-height: 1.3;
-  color: var(--text-color, #1a1a1a);
+  color: var(--text-color, var(--ds-ink));
   letter-spacing: -0.02em;
 }
 .view-tabs {
   display: inline-flex;
-  background: var(--bg-muted, #f0f1f3);
+  background: var(--bg-muted, var(--ds-canvas-soft));
   border-radius: 10px;
   padding: 4px;
   gap: 2px;
@@ -2332,15 +2332,15 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   transition: background 0.2s, color 0.2s;
 }
 .view-tabs button:hover {
-  color: var(--text-color, #1a1a1a);
+  color: var(--text-color, var(--ds-ink));
 }
 .view-tabs button.active {
-  background: #fff;
-  color: var(--primary, #2563eb);
+  background: var(--ds-canvas);
+  color: var(--primary, var(--ds-ink-mute));
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .smart-cal-toolbar {
@@ -2349,8 +2349,8 @@ onMounted(() => {
   align-items: stretch;
   gap: 0;
   padding: 12px 16px;
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   min-width: 0;
@@ -2373,7 +2373,7 @@ onMounted(() => {
   gap: 10px;
   padding-top: 14px;
   margin-top: 10px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
+  border-top: 1px solid var(--border-color, var(--ds-canvas-soft));
   min-width: 0;
   max-width: 100%;
 }
@@ -2425,8 +2425,8 @@ onMounted(() => {
   border-radius: 9px;
   font-size: 13px;
 }
-/* #740 Step 4c：.week-teacher-chip* 已隨 markup 搬移至 components/calendar/WeekTeacherChips.vue */
-/* #740 Step 5：.cb-teacher-tag 已搬移至 components/calendar/CourseBlockContent.vue */
+/* var(--ds-warning) Step 4c：.week-teacher-chip* 已隨 markup 搬移至 components/calendar/WeekTeacherChips.vue */
+/* var(--ds-warning) Step 5：.cb-teacher-tag 已搬移至 components/calendar/CourseBlockContent.vue */
 .week-overview-body {
   display: flex;
   flex-direction: column;
@@ -2438,23 +2438,23 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px 12px;
   padding: 8px 12px;
-  background: var(--bg-muted, #f8fafc);
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 10px;
   font-size: 14px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 .week-overview-context-kicker {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   text-transform: uppercase;
 }
 .week-overview-context-name {
   font-size: 15px;
   font-weight: 700;
-  color: var(--text-color, #1a1a1a);
+  color: var(--text-color, var(--ds-ink));
 }
 .week-overview-empty {
   padding: 28px 20px !important;
@@ -2468,7 +2468,7 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   min-width: 2.2em;
   text-align: right;
 }
@@ -2483,9 +2483,9 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
-  background: #fff;
+  background: var(--ds-canvas);
   font-size: 1.25rem;
   line-height: 1;
   color: var(--text-color);
@@ -2493,10 +2493,10 @@ onMounted(() => {
   transition: background 0.2s, border-color 0.2s;
 }
 .icon-btn:hover {
-  background: var(--bg-muted, #f0f1f3);
-  border-color: var(--border, #cbd5e1);
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  border-color: var(--border, var(--ds-canvas-soft));
 }
-/* #740 Step 4d：.week-nav* / .week-select 已隨 markup 搬移至 components/calendar/WeekNavBar.vue */
+/* var(--ds-warning) Step 4d：.week-nav* / .week-select 已隨 markup 搬移至 components/calendar/WeekNavBar.vue */
 .month-display {
   min-width: 82px;
   text-align: center;
@@ -2512,10 +2512,10 @@ onMounted(() => {
 }
 .day-date-input {
   padding: 5px 10px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 14px;
-  background: #fff;
+  background: var(--ds-canvas);
   color: var(--text-color);
   cursor: pointer;
 }
@@ -2523,7 +2523,7 @@ onMounted(() => {
 .week-stat {
   font-size: 14px;
   line-height: 1.4;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   white-space: nowrap;
 }
 .week-stat b { color: var(--text-color); font-weight: 700; }
@@ -2543,29 +2543,29 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: var(--ds-primary-wash, #fff7ed);
-  border: 1px solid color-mix(in srgb, var(--ds-primary-deep, #e65100) 30%, #ffffff);
-  color: var(--ds-primary-deep, #e65100);
+  background: var(--ds-primary-wash, var(--ds-warning-wash));
+  border: 1px solid color-mix(in srgb, var(--ds-primary-deep, var(--ds-primary)) 30%, var(--ds-canvas));
+  color: var(--ds-primary-deep, var(--ds-primary));
   cursor: pointer;
 }
 .toolbar-teacher-leave-btn:hover {
-  background: color-mix(in srgb, var(--ds-primary-wash, #fff7ed) 70%, #ffffff);
+  background: color-mix(in srgb, var(--ds-primary-wash, var(--ds-warning-wash)) 70%, var(--ds-canvas));
 }
 .teacher-filter .filter-select {
   padding: 8px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.4;
-  background: #fff;
+  background: var(--ds-canvas);
   min-width: 120px;
 }
 .btn-primary {
   padding: 10px 20px;
   border: none;
   border-radius: 10px;
-  background: var(--primary, #2563eb);
-  color: #fff;
+  background: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-canvas);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
@@ -2576,13 +2576,13 @@ onMounted(() => {
 .btn-primary:active { transform: scale(0.98); }
 
 /* ----- Day Tabs ----- */
-/* #740 Step 4b：.day-tabs-bar / .day-tab*（base + 768px RWD）已隨 markup 搬移至
+/* var(--ds-warning) Step 4b：.day-tabs-bar / .day-tab*（base + 768px RWD）已隨 markup 搬移至
    components/calendar/DayTabsBar.vue（.active 改由 activeIdx 驅動） */
 
 /* ----- Week/Teacher Grid View ----- */
 .week-view {
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   overflow: hidden;
@@ -2599,28 +2599,28 @@ onMounted(() => {
 .teacher-grid.teacher-grid-compact .col-header-blank {
   height: 56px;
 }
-/* #740 Step 4a：teacher-col-header/-avatar/-name/-room 的 compact 變體已移至 TeacherColumnHeader.vue（改 prop 驅動） */
+/* var(--ds-warning) Step 4a：teacher-col-header/-avatar/-name/-room 的 compact 變體已移至 TeacherColumnHeader.vue（改 prop 驅動） */
 .teacher-grid.teacher-grid-compact .course-block {
   padding: 4px 3px;
   border-radius: 6px;
 }
-/* #740 Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
+/* var(--ds-warning) Step 5：compact cb-* 已改 prop 驅動（.cbc-compact），移至 CourseBlockContent.vue */
 .time-col {
   position: sticky;
   left: 0;
   z-index: 5;
-  border-right: 1px solid var(--border-color, #e2e8f0);
-  background: var(--bg-muted, #f8fafc);
+  border-right: 1px solid var(--border-color, var(--ds-canvas-soft));
+  background: var(--bg-muted, var(--ds-canvas-soft));
 }
 .col-header-blank {
   height: 64px;
   border-top: 3px solid transparent;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
   position: sticky;
   top: 0;
   left: 0;
   z-index: 12;
-  background: var(--bg-muted, #f8fafc);
+  background: var(--bg-muted, var(--ds-canvas-soft));
 }
 .time-label {
   height: 56px;
@@ -2631,24 +2631,24 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.3;
-  color: var(--text-light, #64748b);
-  border-top: 1px solid var(--border-color, #e2e8f0);
+  color: var(--text-light, var(--ds-ink-mute));
+  border-top: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 .teacher-col {
-  border-right: 1px solid var(--border-color, #e2e8f0);
+  border-right: 1px solid var(--border-color, var(--ds-canvas-soft));
   min-width: 0;
 }
 .teacher-col:last-child { border-right: none; }
-/* #740 Step 4a：.teacher-col-header / -avatar / -info / -name / -room（base + compact + RWD）
+/* var(--ds-warning) Step 4a：.teacher-col-header / -avatar / -info / -name / -room（base + compact + RWD）
    已隨 markup 搬移至 components/calendar/TeacherColumnHeader.vue */
 .slot {
   height: 56px;
-  border-top: 1px solid var(--border-color, #f1f5f9);
+  border-top: 1px solid var(--border-color, var(--ds-canvas-soft));
   position: relative;
   cursor: pointer;
   transition: background 0.15s;
 }
-.slot:hover { background: #fffbeb; }
+.slot:hover { background: var(--ds-warning-wash); }
 .slot.no-click { cursor: default; }
 .slot.no-click:hover { background: transparent; }
 
@@ -2660,7 +2660,7 @@ onMounted(() => {
   top: 3px;
   border-radius: 8px;
   padding: 5px 6px;
-  color: #fff;
+  color: var(--ds-canvas);
   font-size: 11px;
   line-height: 1.35;
   cursor: pointer;
@@ -2676,7 +2676,7 @@ onMounted(() => {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
-/* #740 Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
+/* var(--ds-warning) Step 5：.cb-student / .cb-detail / .cb-type 已搬移至 CourseBlockContent.vue */
 .rc-tag {
   position: absolute;
   top: 2px;
@@ -2688,18 +2688,18 @@ onMounted(() => {
   border-radius: 4px;
   pointer-events: none;
 }
-.rc-done  { background: rgba(34,197,94,.85); color: #fff; }
-.rc-missed { background: rgba(245,158,11,.9); color: #fff; }
-.rc-leave { background: rgba(148,163,184,.75); color: #fff; }
-.rc-cancelled { background: rgba(100,116,139,.6); color: #fff; font-size: 8px; }
-.rc-eval-missing { background: rgba(239,68,68,.85); color: #fff; }
+.rc-done  { background: rgba(34,197,94,.85); color: var(--ds-canvas); }
+.rc-missed { background: rgba(245,158,11,.9); color: var(--ds-canvas); }
+.rc-leave { background: rgba(148,163,184,.75); color: var(--ds-canvas); }
+.rc-cancelled { background: rgba(100,116,139,.6); color: var(--ds-canvas); font-size: 8px; }
+.rc-eval-missing { background: rgba(239,68,68,.85); color: var(--ds-canvas); }
 .rc-tag-second { top: auto; bottom: 2px; }
 .rc-legend {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, var(--ds-ink-mute));
   margin-left: 8px;
 }
 .rc-legend .rc-tag { position: static; display: inline-block; }
@@ -2716,11 +2716,11 @@ onMounted(() => {
 .toolbar-filters .toolbar-room-select,
 .toolbar-filters .filter-select.toolbar-room-select {
   padding: 8px 10px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.4;
-  background: #fff;
+  background: var(--ds-canvas);
   color: var(--text-color);
   flex: 0 1 148px;
   min-width: 88px;
@@ -2736,17 +2736,17 @@ onMounted(() => {
 }
 .filter-input {
   padding: 8px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.4;
-  background: #fff;
+  background: var(--ds-canvas);
   min-width: 120px;
   outline: none;
   transition: border-color 0.2s;
 }
-.filter-input:focus { border-color: var(--primary, #2563eb); }
-.filter-input::placeholder { color: var(--text-light, #94a3b8); }
+.filter-input:focus { border-color: var(--primary, var(--ds-ink-mute)); }
+.filter-input::placeholder { color: var(--text-light, var(--ds-ink-mute)); }
 
 /* PRD-G (2026-04-18 晚)：只看有課老師 toggle 排版修正。
    舊版 overflow-wrap:anywhere + flex-shrink:0 會讓 min-content=1 字元寬，
@@ -2757,12 +2757,12 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 0 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 13px;
   line-height: 1.2;
-  background: #fff;
-  color: var(--text, #334155);
+  background: var(--ds-canvas);
+  color: var(--text, var(--ds-ink));
   cursor: pointer;
   user-select: none;
   height: 38px;
@@ -2772,11 +2772,11 @@ onMounted(() => {
   transition: border-color 0.15s, background 0.15s;
 }
 .toolbar-filters .toolbar-hide-empty-toggle:hover {
-  border-color: var(--primary, #2563eb);
-  background: #f8fafc;
+  border-color: var(--primary, var(--ds-ink-mute));
+  background: var(--ds-canvas-soft);
 }
 .toolbar-filters .toolbar-hide-empty-toggle input[type="checkbox"] {
-  accent-color: var(--primary, #2563eb);
+  accent-color: var(--primary, var(--ds-ink-mute));
   margin: 0;
   flex-shrink: 0;
   width: 16px;
@@ -2801,15 +2801,15 @@ onMounted(() => {
   padding: 48px 24px;
   text-align: center;
   font-size: 15px;
-  color: var(--text-light, #64748b);
-  background: #fff;
-  border: 1px dashed var(--border-color, #e2e8f0);
+  color: var(--text-light, var(--ds-ink-mute));
+  background: var(--ds-canvas);
+  border: 1px dashed var(--border-color, var(--ds-canvas-soft));
   border-radius: 14px;
 }
 .teacher-card {
   margin-bottom: 16px;
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   overflow: hidden;
@@ -2822,7 +2822,7 @@ onMounted(() => {
   cursor: pointer;
   transition: background 0.15s;
 }
-.teacher-card-header:hover { background: var(--bg-muted, #f8fafc); }
+.teacher-card-header:hover { background: var(--bg-muted, var(--ds-canvas-soft)); }
 .teacher-info { display: flex; align-items: center; gap: 14px; }
 .teacher-avatar {
   width: 44px;
@@ -2831,7 +2831,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--ds-canvas);
   font-weight: 700;
   font-size: 18px;
   flex-shrink: 0;
@@ -2846,13 +2846,13 @@ onMounted(() => {
 .teacher-count {
   font-size: 13px;
   line-height: 1.4;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
-.expand-arrow { color: var(--text-light, #94a3b8); font-size: 12px; line-height: 1; }
+.expand-arrow { color: var(--text-light, var(--ds-ink-mute)); font-size: 12px; line-height: 1; }
 .teacher-courses {
   margin: 0;
   padding: 16px 20px 20px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
+  border-top: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 .teacher-table {
   width: 100%;
@@ -2866,32 +2866,32 @@ onMounted(() => {
   font-weight: 600;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   letter-spacing: 0.03em;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
   vertical-align: middle;
 }
 .teacher-table td {
   padding: 12px 14px;
   line-height: 1.45;
   vertical-align: middle;
-  border-bottom: 1px solid var(--border-color, #f1f5f9);
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 .teacher-table tr:last-child td { border-bottom: none; }
-.status-tag.one_on_one { background: #fff7ed; color: #c2410c; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
-.status-tag.one_on_two { background: #fefce8; color: #a16207; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
-.status-tag.one_on_three { background: #fef2f2; color: #b91c1c; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
-.status-tag.tutoring { background: #f0fdf4; color: #15803d; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
-.status-tag.trial { background: #eef2ff; color: #4338ca; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.one_on_one { background: var(--ds-warning-wash); color: var(--ds-danger); padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.one_on_two { background: var(--ds-warning-wash); color: var(--ds-warning); padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.one_on_three { background: var(--ds-danger-wash); color: var(--ds-danger); padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.tutoring { background: var(--ds-success-wash); color: var(--ds-success); padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+.status-tag.trial { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 
-/* #740 Modals：session-info / schedule-actions / eval-summary / conflict / cal-day-chip
+/* var(--ds-warning) Modals：session-info / schedule-actions / eval-summary / conflict / cal-day-chip
    已搬移至 components/calendar/modals/*.vue */
 .course-text { display: inline-flex; align-items: center; gap: 6px; }
 .subject-tag { font-weight: 600; }
 .week-tag {
   font-size: 10px;
-  background: var(--bg-muted, #f0f1f3);
-  color: var(--text-light, #64748b);
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  color: var(--text-light, var(--ds-ink-mute));
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
@@ -2899,8 +2899,8 @@ onMounted(() => {
 
 /* Drag-to-reschedule */
 .slot.drag-over {
-  background: #dbeafe !important;
-  outline: 2px dashed #3b82f6;
+  background: var(--ds-canvas-soft) !important;
+  outline: 2px dashed var(--ds-ink-mute);
   outline-offset: -2px;
 }
 .course-block[draggable="true"] { cursor: grab; }
@@ -2910,8 +2910,8 @@ onMounted(() => {
 .context-menu {
   position: fixed;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 10px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.15);
   padding: 4px 0;
@@ -2928,12 +2928,12 @@ onMounted(() => {
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-color, #1a1a1a);
+  color: var(--text-color, var(--ds-ink));
   transition: background 0.15s;
 }
-.ctx-item:hover { background: #f1f5f9; }
-.ctx-cancel { color: var(--text-light, #64748b); }
-.ctx-cancel:hover { background: #fef2f2; color: #dc2626; }
+.ctx-item:hover { background: var(--ds-canvas-soft); }
+.ctx-cancel { color: var(--text-light, var(--ds-ink-mute)); }
+.ctx-cancel:hover { background: var(--ds-danger-wash); color: var(--ds-danger); }
 
 /* ── Tablet Responsive ── */
 @media (max-width: 1100px) {
@@ -3034,10 +3034,10 @@ onMounted(() => {
 /* ----- Day/Week Sub-Toggle ----- */
 .view-sub-toggle {
   display: inline-flex;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-muted, #f0f1f3);
+  background: var(--bg-muted, var(--ds-canvas-soft));
 }
 .view-sub-toggle button {
   padding: 6px 14px;
@@ -3045,35 +3045,35 @@ onMounted(() => {
   background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
 }
-.view-sub-toggle button:hover { background: #e2e8f0; }
+.view-sub-toggle button:hover { background: var(--ds-canvas-soft); }
 .view-sub-toggle button.active {
-  background: var(--primary, #2563eb);
-  color: #fff;
+  background: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-canvas);
 }
 
 .btn-secondary {
   padding: 8px 14px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 10px;
-  background: #fff;
-  color: var(--text-color, #1a1a1a);
+  background: var(--ds-canvas);
+  color: var(--text-color, var(--ds-ink));
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
 }
-.btn-secondary:hover { background: var(--bg-muted, #f0f1f3); }
+.btn-secondary:hover { background: var(--bg-muted, var(--ds-canvas-soft)); }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
 
 /* ----- Room Manager Panel ----- */
 .room-manager-panel {
-  background: #fff;
-  border: 1px solid var(--border-color, #e2e8f0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 12px;
   margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
@@ -3083,7 +3083,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 .room-manager-header h3 {
   font-size: 15px;
@@ -3102,28 +3102,28 @@ onMounted(() => {
   padding: 6px 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-light, #64748b);
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  color: var(--text-light, var(--ds-ink-mute));
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 .room-table td {
   padding: 8px 8px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--ds-canvas-soft);
 }
 .room-action-btn {
   padding: 3px 10px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 6px;
-  background: #fff;
+  background: var(--ds-canvas);
   font-size: 12px;
   cursor: pointer;
   margin-right: 4px;
   transition: background 0.15s;
 }
-.room-action-btn:hover { background: var(--bg-muted, #f0f1f3); }
-.room-action-btn.danger { color: #dc2626; border-color: #fca5a5; }
-.room-action-btn.danger:hover { background: #fee2e2; }
+.room-action-btn:hover { background: var(--bg-muted, var(--ds-canvas-soft)); }
+.room-action-btn.danger { color: var(--ds-danger); border-color: var(--ds-danger); }
+.room-action-btn.danger:hover { background: var(--ds-danger-wash); }
 .room-empty-hint {
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   font-size: 13px;
   margin-bottom: 12px;
 }
@@ -3135,10 +3135,10 @@ onMounted(() => {
 }
 .room-input {
   padding: 6px 10px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 6px;
   font-size: 13px;
-  background: #fff;
+  background: var(--ds-canvas);
 }
 
 /* ----- Week Overview Grid ----- */
@@ -3153,7 +3153,7 @@ onMounted(() => {
   min-width: 700px;
 }
 .day-col {
-  border-right: 1px solid var(--border-color, #e2e8f0);
+  border-right: 1px solid var(--border-color, var(--ds-canvas-soft));
   min-width: 90px;
 }
 .day-col:last-child { border-right: none; }
@@ -3165,25 +3165,25 @@ onMounted(() => {
   justify-content: center;
   gap: 2px;
   padding: 8px 6px;
-  background: var(--bg-muted, #f8fafc);
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  border-bottom: 1px solid var(--border-color, var(--ds-canvas-soft));
   position: sticky;
   top: 0;
   z-index: 10;
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
 }
 .day-col-header.day-col-today {
-  background: #eff6ff;
-  box-shadow: 0 -3px 0 var(--primary, #2563eb) inset;
+  background: var(--ds-canvas-soft);
+  box-shadow: 0 -3px 0 var(--primary, var(--ds-ink-mute)) inset;
 }
 .day-col-name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-color, #1a1a1a);
+  color: var(--text-color, var(--ds-ink));
 }
 .day-col-date {
   font-size: 11px;
-  color: var(--text-light, #94a3b8);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 .day-col-badge {
   position: absolute;
@@ -3192,8 +3192,8 @@ onMounted(() => {
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
-  background: var(--primary, #2563eb);
-  color: #fff;
+  background: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-canvas);
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -3235,7 +3235,7 @@ onMounted(() => {
   line-height: 1;
   padding: 1px 3px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--ds-canvas);
   border: 1.5px solid rgba(255, 255, 255, 0.9);
   min-width: 18px;
   text-align: center;
@@ -3253,20 +3253,20 @@ onMounted(() => {
   left: 2px;
   letter-spacing: -0.3px;
 }
-/* #740 Step 5：容量徽章讓位 / compact 角標 / :has(.rc-tag) 讓位 全部改 prop 旗標驅動，
+/* var(--ds-warning) Step 5：容量徽章讓位 / compact 角標 / :has(.rc-tag) 讓位 全部改 prop 旗標驅動，
    移至 CourseBlockContent.vue（.cbc-badge-* / .cbc-compact / .cbc-has-rc）。 */
 .capacity-legend {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, var(--ds-ink-mute));
   margin-left: 8px;
   flex-wrap: wrap;
 }
 .capacity-legend-label {
   font-weight: 600;
-  color: var(--text-color, #334155);
+  color: var(--text-color, var(--ds-ink));
   margin-right: 2px;
 }
 .capacity-legend-chip {
@@ -3276,16 +3276,16 @@ onMounted(() => {
   min-width: 26px;
   padding: 2px 4px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--ds-canvas);
   font-size: 10px;
   font-weight: 700;
   border: 1.5px solid rgba(255, 255, 255, 0.85);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   margin: 0 2px 0 4px;
 }
-.capacity-legend-chip--ok { background: var(--ds-success, #10b981); }
-.capacity-legend-chip--warn { background: var(--ds-warning, #f59e0b); }
-.capacity-legend-chip--full { background: var(--ds-danger, #ef4444); }
+.capacity-legend-chip--ok { background: var(--ds-success, var(--ds-success)); }
+.capacity-legend-chip--warn { background: var(--ds-warning, var(--ds-warning)); }
+.capacity-legend-chip--full { background: var(--ds-danger, var(--ds-danger)); }
 @media (max-width: 768px) {
   .capacity-badge {
     font-size: 8px;
