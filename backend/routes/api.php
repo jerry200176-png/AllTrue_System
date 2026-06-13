@@ -168,6 +168,14 @@ Route::prefix('v1')->group(function () {
     Route::get('me/security', [AuthController::class, 'security']);
     Route::post('me/security/logout-others', [AuthController::class, 'logoutOtherSessions']);
 
+    // ── 敏感頁 PIN 二次驗證 (#769) — 任何已登入使用者，controller 自檢 auth_user ──
+    // per-account 鎖定在 controller（DB）；per-IP 節流由此處 throttle 提供（OWASP 雙桶）。
+    Route::get('me/pin/status', [\App\Http\Controllers\PinVerificationController::class, 'status']);
+    Route::post('me/pin/set', [\App\Http\Controllers\PinVerificationController::class, 'set'])->middleware('throttle:10,10');
+    Route::post('me/pin/verify', [\App\Http\Controllers\PinVerificationController::class, 'verify'])->middleware('throttle:20,10');
+    Route::post('me/pin/reset', [\App\Http\Controllers\PinVerificationController::class, 'reset'])->middleware('throttle:10,10');
+    Route::post('me/pin/lock', [\App\Http\Controllers\PinVerificationController::class, 'lock']);
+
     // ── Health Detailed (auth required) ─────────────────────────────
     // SEC-F3: Operational metrics behind auth — not exposed to unauthenticated requests.
     Route::get('health/detailed', function () {
