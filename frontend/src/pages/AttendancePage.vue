@@ -1291,7 +1291,7 @@ const statusOptions = [
   { value: 'absent', label: '缺席', short: '缺' },
 ];
 
-// #765 完整出缺席狀態（鏡像後端 AttendanceStatus registry）。快捷按鈕用上方 4 個主狀態；
+// issue 765 完整出缺席狀態（鏡像後端 AttendanceStatus registry）。快捷按鈕用上方 4 個主狀態；
 // 補登/詳細選單提供全部，含試聽 / 輔導 / 值班 / 補課 / 停課。
 const allStatusOptions = [
   ...statusOptions,
