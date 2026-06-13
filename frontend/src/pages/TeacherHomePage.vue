@@ -1560,7 +1560,7 @@ onBeforeUnmount(() => {
   border: 1.5px solid var(--border); background: var(--card-bg);
   cursor: pointer; transition: var(--transition); text-align: left;
 }
-.th-action-btn:hover { border-color: color-mix(in srgb, var(--ds-primary) 45%, #ffffff); box-shadow: 0 2px 8px rgba(239,108,0,0.12); }
+.th-action-btn:hover { border-color: color-mix(in srgb, var(--ds-primary) 45%, var(--ds-canvas)); box-shadow: 0 2px 8px rgba(239,108,0,0.12); }
 .th-action-btn:active { transform: scale(0.99); }
 
 .th-action-icon-wrap {
@@ -1568,8 +1568,8 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .th-action-attendance .th-action-icon-wrap { background: var(--primary-bg); color: var(--primary); }
-.th-action-learning .th-action-icon-wrap { background: #e3f2fd; color: #1565c0; }
-[data-theme="dark"] .th-action-learning .th-action-icon-wrap { background: #1a237e; color: #90caf9; }
+.th-action-learning .th-action-icon-wrap { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
+[data-theme="dark"] .th-action-learning .th-action-icon-wrap { background: var(--ds-ink); color: var(--ds-ink-mute); }
 .th-action-feedback .th-action-icon-wrap { background: var(--ds-primary-wash); color: var(--ds-primary-deep); }
 .th-done .th-action-icon-wrap { background: var(--success-bg); color: var(--success); }
 
@@ -1633,7 +1633,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border); background: var(--card-bg);
   transition: var(--transition);
 }
-.th-overdue-row:hover { border-color: color-mix(in srgb, var(--ds-primary) 48%, #ffffff); box-shadow: 0 1px 6px rgba(239,108,0,0.10); }
+.th-overdue-row:hover { border-color: color-mix(in srgb, var(--ds-primary) 48%, var(--ds-canvas)); box-shadow: 0 1px 6px rgba(239,108,0,0.10); }
 .th-overdue-date {
   font-size: 13px; font-weight: 600; color: var(--ds-primary);
   min-width: 72px; white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -1645,11 +1645,11 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: center; gap: 4px;
   width: 100%; margin-top: 10px; padding: 8px 0;
   border: none; border-radius: 8px;
-  background: color-mix(in srgb, var(--ds-primary) 10%, #ffffff); color: var(--ds-primary-deep);
+  background: color-mix(in srgb, var(--ds-primary) 10%, var(--ds-canvas)); color: var(--ds-primary-deep);
   font-size: 13px; font-weight: 600; cursor: pointer;
   transition: var(--transition);
 }
-.th-overdue-more:hover { background: color-mix(in srgb, var(--ds-primary) 18%, #ffffff); }
+.th-overdue-more:hover { background: color-mix(in srgb, var(--ds-primary) 18%, var(--ds-canvas)); }
 
 /* ──────── B. Weekly Schedule ──────── */
 .th-week { padding: 20px; }
@@ -1732,12 +1732,12 @@ onBeforeUnmount(() => {
 .th-form-changes_requested { background: var(--danger-bg); color: var(--danger); }
 .th-form-rejected { background: var(--danger-bg); color: var(--danger); }
 .th-form-substituted { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); }
-.th-form-leave { background: #fff7ed; color: #c2410c; }
-[data-theme="dark"] .th-form-leave { background: rgba(194,65,12,0.18); color: #fdba74; }
+.th-form-leave { background: var(--ds-warning-wash); color: var(--ds-danger); }
+[data-theme="dark"] .th-form-leave { background: rgba(194,65,12,0.18); color: var(--ds-warning); }
 
 .th-event-done { opacity: 0.7; }
 .th-event-leave {
-  border-left-color: #f97316;
+  border-left-color: var(--ds-warning);
   background: linear-gradient(90deg, rgba(249,115,22,0.10), transparent 55%);
 }
 
