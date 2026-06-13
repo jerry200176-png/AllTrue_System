@@ -11,6 +11,10 @@
 
 ---
 
+## 2026-06-13 — security(pin): 老師頁 PII 後端欄位級遮罩 (TD-066)
+
+開發備註：補上 #769 老師管理頁的後端 PII 邊界。`GET /teachers`／`/profiles` 為多頁共用端點（CourseManagement／StudentsList／LearningRecords 下拉復用），無法整路掛 require_pin。改抽 `App\Support\PinGate::isUnlocked()` 單一謂詞（super_admin／未設 PIN／token 已驗證 → 通過），`RequirePin` 改委派它（行為不變、去重），`ProfileController::index` 三個輸出點在未通過時遮罩老師 `phone／line_id／rfid／rfid_by_branch`。soft：未設 PIN 者零回歸；下拉頁本就不讀 PII 故無感。TeacherPiiPinRedactionTest 3 綠 + PinVerificationTest 14 綠；PHPStan baseline 納入 PinGate 的 AuthToken::where magic（零刪除）。TD-066 結案。計畫 `.cursor/plans/td066_teacher_pii_pin_2026-06-13.md`。
+
 ## 2026-06-13 — security(pin): 敏感頁 PIN 二次驗證前端 gate + 路由強制 (#769 Phase B/C)
 
 開發備註：接續 Phase A，完成前端覆蓋層與後端強制（**soft，零回歸**）。**D1 soft**（未設 PIN 的主任可「暫不啟用，直接進入」）／**D2** 受保護頁＝兼職薪資、帳務中心、當月學收、老師管理／**D3** super_admin 不納管。Phase B：`PinLockModal.vue` 全螢幕覆蓋（設計系統 token、無 emoji；set／verify／locked／reset 四態、4–6 位數字、Enter 送出），`App.vue` `pinModalActive` gate 擋住 4 頁直到解鎖、10 分鐘解鎖 TTL、閒置 5 分鐘 + 切分頁 60 秒自動鎖（`POST /pin/lock`）；純判定抽到 `lib/pinGate.js`（15 個 node 測試，接進 build 鏈）。Phase C：`RequirePin` 經 `auth_role` 放行 super_admin（mirror `RequireRole`）；`require_pin` 掛於受保護頁**專屬**敏感端點（`finance/parttime-payroll*`、`finance/teacher-payroll`、`part-time-rate-cards*`、`finance/branch-monthly-tuition*`、`accounting/payments*`、`accounting/settled-courses`），**刻意不掛**共享端點（`teachers`／`student-classes`／`alerts/tuition`，避免誤傷已設 PIN 主任）；router 內省測試守住「該掛有掛、共享沒掛」。PinVerificationTest 14 綠、PHPStan clean。PR #815／#816；GitHub #769。老師頁 PII 後端邊界因端點共享延後 → TD-066。
