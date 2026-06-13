@@ -458,6 +458,8 @@ Route::prefix('v1')->group(function () {
         Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
+        // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
+        Route::post('schedule-import/preview', [\App\Http\Controllers\ScheduleImportController::class, 'preview']);
         Route::post('class-sessions/ensure-projected', [ClassSessionController::class, 'ensureProjected'])
             ->middleware('role:director,super_admin');
         Route::get('schedule-audit', [ScheduleAuditController::class, 'index']);
