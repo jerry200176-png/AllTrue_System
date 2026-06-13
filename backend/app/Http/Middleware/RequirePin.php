@@ -2,8 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\AuthToken;
-use Carbon\Carbon;
+use App\Support\PinGate;
 use Closure;
 use Illuminate\Http\Request;
 
@@ -18,33 +17,13 @@ use Illuminate\Http\Request;
  *
  * D3：super_admin 不納管（避免最高權限自鎖）。
  * Phase C 起掛於薪資／當月學收／帳務中心的專屬敏感端點（見 routes/api.php）。
+ * 通過判定統一委派 {@see PinGate::isUnlocked()}（與 ProfileController PII 遮罩共用）。
  */
 class RequirePin
 {
     public function handle(Request $request, Closure $next)
     {
-        $user = $request->attributes->get('auth_user');
-
-        // 未認證交由其他 middleware/controller 處理；此處不負責 auth。
-        if (!$user) {
-            return $next($request);
-        }
-
-        // D3：super_admin 不納管 PIN 強制（避免最高權限自鎖）。
-        if ($request->attributes->get('auth_role') === 'super_admin') {
-            return $next($request);
-        }
-
-        // Soft 模式：未設定 PIN 不強制。
-        if (empty($user->pin_hash)) {
-            return $next($request);
-        }
-
-        $bearer = $request->bearerToken();
-        $authToken = $bearer ? AuthToken::where('token', $bearer)->first() : null;
-
-        $verifiedUntil = $authToken?->pin_verified_until;
-        if ($verifiedUntil && Carbon::parse($verifiedUntil)->isFuture()) {
+        if (PinGate::isUnlocked($request)) {
             return $next($request);
         }
 

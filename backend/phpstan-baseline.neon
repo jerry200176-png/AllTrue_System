@@ -5041,12 +5041,6 @@ parameters:
 			path: app/Http/Middleware/DebugSwipeRfidRequest.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\AuthToken\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Middleware/RequirePin.php
-
-		-
 			message: '#^Cannot call method getDomain\(\) on object\|string\.$#'
 			identifier: method.nonObject
 			count: 1
@@ -6233,6 +6227,12 @@ parameters:
 			identifier: return.type
 			count: 1
 			path: app/Support/EngagementRankProgression.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\AuthToken\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Support/PinGate.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\User\:\:\$id\.$#'
