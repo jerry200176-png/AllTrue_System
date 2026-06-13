@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ClassSession;
+use App\Support\AttendanceStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -24,13 +25,15 @@ class AttendanceEffectsService
      */
     public static function sessionStatusFromAttendanceStatus(string $attendanceStatus): string
     {
-        return match ($attendanceStatus) {
-            'present'          => 'attended',
-            'late'             => 'late',
-            'absent'           => 'absent',
-            'leave', 'excused' => 'leave',
-            default            => 'attended',
-        };
+        // 相容別名：excused 早期併入 leave。
+        if ($attendanceStatus === 'excused') {
+            return 'leave';
+        }
+        // #765：其餘一律由 AttendanceStatus registry 決定（單一真相）。
+        if (AttendanceStatus::exists($attendanceStatus)) {
+            return AttendanceStatus::sessionStatus($attendanceStatus);
+        }
+        return 'attended';
     }
 
     /**
