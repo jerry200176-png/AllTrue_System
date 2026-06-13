@@ -381,28 +381,7 @@ jobs:
             echo "::warning::Coverage summary not found"
             exit 0
           fi
-          python3 - "$SUMMARY" <<'PYEOF'
-import json, os, sys
-with open(sys.argv[1]) as f:
-    data = json.load(f)
-total = data.get("total", {})
-def pct(key):
-    return round(total.get(key, {}).get("pct", 0), 1)
-lines, stmts, funcs, branches = pct("lines"), pct("statements"), pct("functions"), pct("branches")
-def badge(v, warn=70, ok=80):
-    return "\U0001f7e2" if v >= ok else ("\U0001f7e1" if v >= warn else "\U0001f534")
-out = os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null")
-with open(out, "a") as s:
-    s.write("### \U0001f9ea Frontend Unit Coverage (design-system)\n\n")
-    s.write("| Metric | Coverage |\n|---|---|\n")
-    s.write(f"| {badge(lines)} Lines | {lines}% |\n")
-    s.write(f"| {badge(stmts)} Statements | {stmts}% |\n")
-    s.write(f"| {badge(funcs)} Functions | {funcs}% |\n")
-    s.write(f"| {badge(branches,60,70)} Branches | {branches}% |\n")
-    s.write("\n> Thresholds: lines/statements/functions ≥ 70 %, branches ≥ 60 %  \n")
-    s.write("> Bump thresholds in `vitest.config.js` when coverage improves.\n")
-print(f"Coverage: lines={lines}% stmts={stmts}% funcs={funcs}% branches={branches}%")
-PYEOF
+          python3 ../scripts/coverage-step-summary.py "$SUMMARY"
 
       - name: Upload coverage report (#731)
         if: always()
