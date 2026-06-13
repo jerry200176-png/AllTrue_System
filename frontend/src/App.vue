@@ -400,10 +400,10 @@
     >
       <div class="guide-tour-popover-head">
         <div class="guide-tour-head-title">
-          <span v-if="guideTour.currentStep.value?.icon" class="guide-tour-icon">{{ guideTour.currentStep.value.icon }}</span>
+          <span v-if="guideTour.currentStep.value?.icon" class="guide-tour-icon material-symbols-outlined" aria-hidden="true">{{ guideTour.currentStep.value.icon }}</span>
           <strong>{{ guideTour.currentStep.value?.title }}</strong>
         </div>
-        <button type="button" class="guide-tour-close" @click.stop="guideTour.closeTour">✕</button>
+        <button type="button" class="guide-tour-close" @click.stop="guideTour.closeTour" aria-label="關閉導覽"><span class="material-symbols-outlined">close</span></button>
       </div>
       <p class="guide-tour-popover-text">{{ guideTour.currentStep.value?.description }}</p>
       <div class="guide-tour-dots">
@@ -2561,10 +2561,10 @@ function formatBuildTime(rawIso) {
   position: fixed;
   width: min(360px, calc(100vw - 24px));
   max-width: calc(100vw - 32px);
-  background: #ffffff;
+  background: var(--ds-canvas);
   border-radius: 14px;
   box-shadow: 0 14px 38px rgba(0, 0, 0, 0.35);
-  border: 1px solid #ffe0b2;
+  border: 1px solid var(--ds-primary-wash);
   pointer-events: auto;
   overflow: hidden;
   isolation: isolate;
@@ -2577,9 +2577,9 @@ function formatBuildTime(rawIso) {
   position: absolute;
   width: 10px;
   height: 10px;
-  background: #fff;
-  border-left: 1px solid #ffe0b2;
-  border-top: 1px solid #ffe0b2;
+  background: var(--ds-canvas);
+  border-left: 1px solid var(--ds-primary-wash);
+  border-top: 1px solid var(--ds-primary-wash);
   transform: rotate(45deg);
 }
 
@@ -2616,7 +2616,7 @@ function formatBuildTime(rawIso) {
   justify-content: space-between;
   gap: 10px;
   padding: 12px 14px 8px;
-  border-bottom: 1px solid #f3f3f3;
+  border-bottom: 1px solid var(--ds-canvas-soft);
 }
 
 .guide-tour-head-title {
@@ -2634,13 +2634,13 @@ function formatBuildTime(rawIso) {
 
 .guide-tour-popover-head strong {
   font-size: 14px;
-  color: #263238;
+  color: var(--ds-ink);
 }
 
 .guide-tour-close {
   border: 0;
   background: transparent;
-  color: #607d8b;
+  color: var(--ds-ink-mute);
   cursor: pointer;
   font-size: 14px;
   flex-shrink: 0;
@@ -2651,7 +2651,7 @@ function formatBuildTime(rawIso) {
   padding: 12px 14px 8px;
   font-size: 13px;
   line-height: 1.6;
-  color: #455a64;
+  color: var(--ds-ink);
   overflow-y: auto;
 }
 
@@ -2667,12 +2667,12 @@ function formatBuildTime(rawIso) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #cfd8dc;
+  background: var(--ds-canvas-soft);
   transition: background 0.2s, transform 0.2s;
 }
 
 .guide-tour-dot.active {
-  background: #ff9800;
+  background: var(--ds-primary);
   transform: scale(1.3);
 }
 
@@ -2690,9 +2690,9 @@ function formatBuildTime(rawIso) {
 }
 
 .guide-tour-btn {
-  border: 1px solid #cfd8dc;
-  background: #fff;
-  color: #455a64;
+  border: 1px solid var(--ds-canvas-soft);
+  background: var(--ds-canvas);
+  color: var(--ds-ink);
   border-radius: 8px;
   padding: 6px 10px;
   cursor: pointer;
