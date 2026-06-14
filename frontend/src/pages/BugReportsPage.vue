@@ -298,7 +298,7 @@
       </div>
 
       <!-- Bug detail -->
-      <div v-if="activeBug" class="card detail-card">
+      <div v-if="activeBug" ref="detailCardEl" class="card detail-card">
         <div class="detail-header">
           <h3>{{ detail?.title || activeBug.title }}</h3>
           <button class="btn-close-detail" @click="closeDetail">
@@ -453,6 +453,7 @@ const props = defineProps({
 
 const bugs = ref([]);
 const activeBug = ref(null);
+const detailCardEl = ref(null);
 const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
@@ -769,6 +770,12 @@ async function selectBug(bug) {
   newStatus.value = '';
   statusNote.value = '';
   newComment.value = '';
+  // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app #166）。
+  // 窄螢幕選取後把詳情捲入視野；桌面（list/detail 並排）不干擾。
+  if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches) {
+    await nextTick();
+    detailCardEl.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
   try {
     detail.value = await fetchBugDetail(bug.id);
     // Mark as read so unread dot clears after opening
