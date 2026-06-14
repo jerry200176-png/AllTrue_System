@@ -239,10 +239,10 @@ function onAudioError() {
   gap: 6px;
   min-height: 42px;
   padding: 7px 11px;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border, var(--ds-canvas-soft));
   border-radius: 999px;
-  background: var(--topbar-bg, #fff);
-  color: var(--text, #334155);
+  background: var(--topbar-bg, var(--ds-canvas));
+  color: var(--text, var(--ds-ink));
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
   cursor: pointer;
   font-size: 13px;
@@ -252,7 +252,7 @@ function onAudioError() {
 .ambient-trigger:hover,
 .ambient-player.open .ambient-trigger {
   border-color: rgba(14, 165, 233, 0.45);
-  color: #0369a1;
+  color: var(--ds-ink);
 }
 
 .ambient-trigger .material-symbols-outlined {
@@ -263,7 +263,7 @@ function onAudioError() {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #22c55e;
+  background: var(--ds-success);
   box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
 }
 
@@ -275,7 +275,7 @@ function onAudioError() {
   padding: 14px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 18px;
-  background: var(--card-bg, #fff);
+  background: var(--card-bg, var(--ds-canvas));
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
 }
 
@@ -290,13 +290,13 @@ function onAudioError() {
 .ambient-title {
   font-size: 14px;
   font-weight: 800;
-  color: var(--text, #334155);
+  color: var(--text, var(--ds-ink));
 }
 
 .ambient-subtitle {
   margin-top: 2px;
   font-size: 12px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 
 .ambient-icon-btn {
@@ -307,8 +307,8 @@ function onAudioError() {
   height: 42px;
   border: 0;
   border-radius: 14px;
-  background: linear-gradient(135deg, #0ea5e9, #22c55e);
-  color: #fff;
+  background: linear-gradient(135deg, var(--ds-ink-mute), var(--ds-success));
+  color: var(--ds-canvas);
   cursor: pointer;
   box-shadow: 0 8px 18px rgba(14, 165, 233, 0.22);
 }
@@ -328,17 +328,17 @@ function onAudioError() {
   gap: 10px;
   width: 100%;
   padding: 9px 10px;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border, var(--ds-canvas-soft));
   border-radius: 14px;
-  background: #f8fafc;
-  color: var(--text, #334155);
+  background: var(--ds-canvas-soft);
+  color: var(--text, var(--ds-ink));
   text-align: left;
   cursor: pointer;
 }
 
 .ambient-track.active {
-  border-color: #38bdf8;
-  background: #ecfeff;
+  border-color: var(--ds-ink-mute);
+  background: var(--ds-canvas-soft);
 }
 
 .ambient-track-icon {
@@ -348,8 +348,8 @@ function onAudioError() {
   width: 34px;
   height: 34px;
   border-radius: 12px;
-  background: #e0f2fe;
-  color: #0369a1;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
   font-family: 'Material Symbols Outlined';
   font-size: 20px;
 }
@@ -366,7 +366,7 @@ function onAudioError() {
 .ambient-track small {
   margin-top: 2px;
   font-size: 12px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 
 .ambient-volume {
@@ -376,12 +376,12 @@ function onAudioError() {
   gap: 8px;
   margin-top: 12px;
   font-size: 12px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 
 .ambient-volume input {
   width: 100%;
-  accent-color: #0ea5e9;
+  accent-color: var(--ds-ink-mute);
 }
 
 .ambient-volume-value {
@@ -397,11 +397,11 @@ function onAudioError() {
 }
 
 .ambient-license-note {
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 
 .ambient-error {
-  color: #b91c1c;
+  color: var(--ds-danger);
 }
 
 @media (max-width: 640px) {

@@ -151,7 +151,7 @@ async function openRankOverview() {
   flex-wrap: wrap;
   gap: 6px 10px;
   font-size: 13px;
-  color: var(--text, #0f172a);
+  color: var(--text, var(--ds-ink));
   line-height: 1.35;
 }
 .ers-badge {
@@ -178,26 +178,26 @@ async function openRankOverview() {
 }
 .ers-remain {
   font-size: 12px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   width: 100%;
   flex-basis: 100%;
 }
 .ers-remain--max {
   font-size: 12px;
-  color: var(--success-strong, #047857);
+  color: var(--success-strong, var(--ds-success));
 }
 .ers-bar-wrap {
   width: 100%;
   flex-basis: 100%;
   height: 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-light, #64748b) 18%, transparent);
+  background: color-mix(in srgb, var(--text-light, var(--ds-ink-mute)) 18%, transparent);
   overflow: hidden;
 }
 .ers-bar-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
+  background: var(--ds-brand-gradient, linear-gradient(90deg, var(--ds-primary-soft), var(--ds-primary)));
   transition: width 0.45s ease;
 }
 .ers-bar-fill--still {
@@ -223,7 +223,7 @@ async function openRankOverview() {
   width: min(520px, 100%);
   max-height: 86vh;
   overflow: auto;
-  background: #fff;
+  background: var(--ds-canvas);
   border-radius: 12px;
   box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2);
 }
@@ -232,7 +232,7 @@ async function openRankOverview() {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--ds-canvas-soft);
 }
 .rank-modal-header h3 {
   margin: 0;
@@ -243,7 +243,7 @@ async function openRankOverview() {
   background: transparent;
   font-size: 20px;
   cursor: pointer;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .rank-modal-body {
   padding: 14px 16px 18px;
@@ -252,18 +252,18 @@ async function openRankOverview() {
 .rank-modal-hint {
   margin: 0 0 8px;
   font-size: 13px;
-  color: #334155;
+  color: var(--ds-ink);
 }
 .rank-modal-hint {
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .rank-modal-state {
   margin: 8px 0;
   font-size: 13px;
-  color: #475569;
+  color: var(--ds-ink);
 }
 .rank-modal-state--error {
-  color: #b91c1c;
+  color: var(--ds-danger);
 }
 .rank-modal-list {
   list-style: none;
@@ -279,23 +279,23 @@ async function openRankOverview() {
   align-items: center;
   padding: 8px 10px;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--ds-canvas-soft);
 }
 .rank-modal-item.is-current {
-  background: #e0f2fe;
-  border: 1px solid #7dd3fc;
+  background: var(--ds-canvas-soft);
+  border: 1px solid var(--ds-ink-mute);
 }
 .rank-modal-item-label {
   font-size: 13px;
-  color: #0f172a;
+  color: var(--ds-ink);
 }
 .rank-modal-item-xp {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ds-ink-mute);
 }
 .rank-modal-item-current {
   font-size: 12px;
   font-weight: 600;
-  color: #0369a1;
+  color: var(--ds-ink);
 }
 </style>
