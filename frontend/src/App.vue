@@ -424,6 +424,7 @@
         </div>
       </div>
     </div>
+    <AtToast />
   </div>
 </template>
 
@@ -473,6 +474,7 @@ const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/Release
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
+import AtToast from './components/AtToast.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
