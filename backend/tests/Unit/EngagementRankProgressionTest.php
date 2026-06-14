@@ -76,10 +76,11 @@ class EngagementRankProgressionTest extends TestCase
      */
     public function test_master_sergeant_xp_boundaries_teacher(): void
     {
-        $this->assertSame('master_sergeant_third',  EngagementRankProgression::rankKeyForXp(275, 'teacher'));
-        $this->assertSame('master_sergeant_second', EngagementRankProgression::rankKeyForXp(355, 'teacher'));
-        $this->assertSame('master_sergeant_first',  EngagementRankProgression::rankKeyForXp(445, 'teacher'));
-        $this->assertSame('second_lieutenant',      EngagementRankProgression::rankKeyForXp(545, 'teacher'));
+        // 長期養成曲線（2026-06-14 重設）
+        $this->assertSame('master_sergeant_third',  EngagementRankProgression::rankKeyForXp(1050, 'teacher'));
+        $this->assertSame('master_sergeant_second', EngagementRankProgression::rankKeyForXp(1500, 'teacher'));
+        $this->assertSame('master_sergeant_first',  EngagementRankProgression::rankKeyForXp(2100, 'teacher'));
+        $this->assertSame('second_lieutenant',      EngagementRankProgression::rankKeyForXp(2850, 'teacher'));
     }
 
     /**
