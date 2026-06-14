@@ -34,7 +34,7 @@
         <p style="font-weight:600;margin-bottom:4px;">{{ result.message }}</p>
         <p v-if="result.skipped && result.skipped.length">
           略過原因：
-          <span v-for="(s, i) in result.skipped" :key="i" style="display:block;font-size:12px;color:#6b7280;">
+          <span v-for="(s, i) in result.skipped" :key="i" style="display:block;font-size:12px;color:var(--ds-ink-mute);">
             課程 #{{ s.course_id }} {{ s.session_date }}：{{ s.reason }}
           </span>
         </p>
@@ -84,15 +84,15 @@ watch(
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
 .bulk-leave-result {
   margin-top: 12px; padding: 10px; border-radius: 8px;
-  background: #f0fdf4; border: 1px solid #bbf7d0;
+  background: var(--ds-success-wash); border: 1px solid var(--ds-success-wash);
 }
 .impact-preview {
   margin: 12px 0;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid #fdba74;
-  background: #fff7ed;
-  color: #9a3412;
+  border: 1px solid var(--ds-warning);
+  background: var(--ds-warning-wash);
+  color: var(--ds-danger);
 }
 .impact-preview__head {
   display: flex;
@@ -106,8 +106,8 @@ watch(
   place-items: center;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: #ea580c;
-  color: #fff;
+  background: var(--ds-warning);
+  color: var(--ds-canvas);
   font-weight: 800;
   font-size: 13px;
 }
