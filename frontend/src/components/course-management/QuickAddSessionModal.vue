@@ -76,10 +76,10 @@ const submitDisabled = computed(() =>
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 4px; line-height: 1.6; }
 .modal-hint { color: var(--text-light); font-size: 12px; margin-bottom: 16px; line-height: 1.5; opacity: 0.8; }
 .conflict-banner {
-  background: #fff3e0; border: 1px solid #ffb74d; border-radius: 8px;
+  background: var(--ds-warning-wash); border: 1px solid var(--ds-warning); border-radius: 8px;
   padding: 10px 14px; margin: 12px 0;
 }
-.conflict-msg { color: #e65100; font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
-.conflict-actions { margin: 0; padding-left: 18px; color: #bf360c; font-size: 12px; line-height: 1.6; }
+.conflict-msg { color: var(--ds-primary); font-size: 13px; font-weight: 600; margin: 0 0 6px; line-height: 1.5; }
+.conflict-actions { margin: 0; padding-left: 18px; color: var(--ds-danger); font-size: 12px; line-height: 1.6; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
