@@ -97,7 +97,7 @@ defineEmits(['close', 'submit', 'duration-change', 'start-time-change']);
 .computed-time {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-muted, #f5f5f5);
+  background: var(--bg-muted, var(--ds-canvas-soft));
   border-radius: 8px;
   font-weight: 600;
   font-size: 15px;

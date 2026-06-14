@@ -58,7 +58,7 @@
         <div v-if="session.cancelState.show" class="cancel-session-confirm">
           <p>確定取消這堂課？<br><small>此操作無法自動還原（可至課程管理手動設回「排程中」）。</small></p>
           <div class="cancel-session-confirm-btns">
-            <button class="action-btn" style="background:#e2e8f0;color:#475569;" @click="$emit('dismiss-cancel-confirm')">不取消</button>
+            <button class="action-btn" style="background:var(--ds-canvas-soft);color:var(--ds-ink);" @click="$emit('dismiss-cancel-confirm')">不取消</button>
             <button class="action-btn cancel-session" :disabled="session.cancelState.loading" @click="$emit('confirm-cancel')">
               {{ session.cancelState.loading ? '處理中...' : '確定取消本堂' }}
             </button>
@@ -230,12 +230,12 @@ defineEmits([
   line-height: 1.35;
 }
 .conflict-box {
-  background: #FFEBEE;
-  border: 1px solid #EF9A9A;
+  background: var(--ds-danger-wash);
+  border: 1px solid var(--ds-danger);
   border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 16px;
-  color: #C62828;
+  color: var(--ds-danger);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -243,22 +243,22 @@ defineEmits([
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  background: #ffcdd2;
-  border: 2px solid #e57373;
+  background: var(--ds-danger-wash);
+  border: 2px solid var(--ds-danger);
   padding: 14px 16px;
   margin-bottom: 16px;
   border-radius: 8px;
-  color: #b71c1c;
+  color: var(--ds-danger);
   font-size: 14px;
   line-height: 1.5;
 }
 .conflict-box-prominent strong { font-size: 14px; }
 .conflict-box-prominent p { margin: 4px 0 0 0; font-size: 13px; line-height: 1.45; }
 .conflict-icon { font-size: 20px; line-height: 1; flex-shrink: 0; }
-.occurrence-hint { margin: 0 0 12px 0; padding: 8px 10px; background: var(--ds-canvas-soft, #f8f9fb); color: var(--ds-ink-mute, #555); border-radius: 6px; font-size: 13px; }
+.occurrence-hint { margin: 0 0 12px 0; padding: 8px 10px; background: var(--ds-canvas-soft, var(--ds-canvas-soft)); color: var(--ds-ink-mute, var(--ds-ink-mute)); border-radius: 6px; font-size: 13px; }
 .session-info-card {
-  background: #E8F5E9;
-  border: 1px solid #A5D6A7;
+  background: var(--ds-success-wash);
+  border: 1px solid var(--ds-success);
   border-radius: 8px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -272,35 +272,35 @@ defineEmits([
 .session-info-key {
   font-size: 12px;
   font-weight: 600;
-  color: #2E7D32;
+  color: var(--ds-success);
   min-width: 60px;
   flex-shrink: 0;
 }
 .session-info-val {
   font-size: 14px;
-  color: #1B5E20;
+  color: var(--ds-success);
 }
 .session-charge-adjusted {
   margin-left: 6px;
   font-size: 12px;
-  color: #C2410C;
+  color: var(--ds-danger);
   font-weight: 600;
 }
 .session-charge-standard {
   margin-left: 6px;
   font-size: 12px;
-  color: #64748B;
+  color: var(--ds-ink-mute);
 }
 .course-ref-section {
-  background: #FAFAFA;
-  border: 1px solid #E0E0E0;
+  background: var(--ds-canvas);
+  border: 1px solid var(--ds-canvas-soft);
   border-radius: 8px;
   padding: 0 12px 12px;
   margin-top: 12px;
 }
 .course-ref-hint {
   font-size: 12px;
-  color: #9E9E9E;
+  color: var(--ds-hairline);
   margin: 0 0 8px 0;
   line-height: 1.4;
 }
@@ -340,7 +340,7 @@ defineEmits([
 .computed-time {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-muted, #f5f5f5);
+  background: var(--bg-muted, var(--ds-canvas-soft));
   border-radius: 8px;
   font-weight: 600;
   font-size: 15px;
@@ -350,14 +350,14 @@ defineEmits([
 .schedule-actions-box {
   margin-top: 16px;
   padding: 12px;
-  background: #F5F5F5;
+  background: var(--ds-canvas-soft);
   border-radius: 8px;
-  border: 1px solid #E0E0E0;
+  border: 1px solid var(--ds-canvas-soft);
 }
 .schedule-actions-title {
   font-size: 12px;
   font-weight: 700;
-  color: #616161;
+  color: var(--ds-ink-mute);
   margin-bottom: 8px;
 }
 .schedule-actions-btns {
@@ -379,38 +379,38 @@ defineEmits([
   font-family: inherit;
   line-height: 1.4;
 }
-.action-btn.leave { background: #FFF3E0; color: #E65100; border-color: #FFCC80; }
-.action-btn.leave:hover { background: #FFE0B2; }
-.action-btn.reschedule { background: #F3E5F5; color: #6A1B9A; border-color: #CE93D8; }
-.action-btn.reschedule:hover { background: #E1BEE7; }
-.action-btn.substitute { background: #ecfeff; color: #0e7490; border-color: #67e8f9; }
-.action-btn.substitute:hover { background: #cffafe; }
-.action-btn.cancel-session { background: #fff1f2; color: #be123c; border-color: #fda4af; }
-.action-btn.cancel-session:hover:not(:disabled) { background: #ffe4e6; }
+.action-btn.leave { background: var(--ds-warning-wash); color: var(--ds-primary); border-color: var(--ds-warning); }
+.action-btn.leave:hover { background: var(--ds-warning-wash); }
+.action-btn.reschedule { background: var(--ds-canvas-soft); color: var(--ds-ink-mute); border-color: var(--ds-ink-mute); }
+.action-btn.reschedule:hover { background: var(--ds-canvas-soft); }
+.action-btn.substitute { background: var(--ds-canvas-soft); color: var(--ds-ink); border-color: var(--ds-ink-mute); }
+.action-btn.substitute:hover { background: var(--ds-canvas-soft); }
+.action-btn.cancel-session { background: var(--ds-danger-wash); color: var(--ds-danger); border-color: var(--ds-danger); }
+.action-btn.cancel-session:hover:not(:disabled) { background: var(--ds-danger-wash); }
 .action-btn.cancel-session:disabled { opacity: 0.6; cursor: not-allowed; }
 .cancel-session-confirm {
   margin-top: 10px;
   padding: 12px 14px;
-  background: #fff1f2;
-  border: 1.5px solid #fda4af;
+  background: var(--ds-danger-wash);
+  border: 1.5px solid var(--ds-danger);
   border-radius: 8px;
   font-size: 13px;
-  color: #be123c;
+  color: var(--ds-danger);
 }
 .cancel-session-confirm p { margin: 0 0 10px; line-height: 1.5; }
-.cancel-session-confirm small { color: #9f1239; }
+.cancel-session-confirm small { color: var(--ds-ink); }
 .cancel-session-confirm-btns { display: flex; gap: 8px; }
 .eval-summary-box {
   margin-top: 16px;
   padding: 12px;
-  background: var(--ds-canvas-soft, #f8f9fb);
+  background: var(--ds-canvas-soft, var(--ds-canvas-soft));
   border-radius: 8px;
-  border: 1px solid var(--ds-hairline, #e5e7eb);
+  border: 1px solid var(--ds-hairline, var(--ds-canvas-soft));
 }
 .eval-summary-title {
   font-size: 12px;
   font-weight: 700;
-  color: var(--ds-ink, #1a1a1a);
+  color: var(--ds-ink, var(--ds-ink));
   margin-bottom: 8px;
 }
 .eval-summary-table {
@@ -421,25 +421,25 @@ defineEmits([
 .eval-summary-table th, .eval-summary-table td {
   padding: 4px 8px;
   text-align: left;
-  border-bottom: 1px solid var(--ds-hairline, #e5e7eb);
+  border-bottom: 1px solid var(--ds-hairline, var(--ds-canvas-soft));
 }
-.eval-summary-table th { color: #555; font-weight: 600; font-size: 11px; }
+.eval-summary-table th { color: var(--ds-ink-mute); font-weight: 600; font-size: 11px; }
 .eval-status-tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
-.eval-status-tag.approved { background: #e6f4ea; color: #2e7d32; }
-.eval-status-tag.pending { background: #fff3e0; color: #e65100; }
+.eval-status-tag.approved { background: var(--ds-success-wash); color: var(--ds-success); }
+.eval-status-tag.pending { background: var(--ds-warning-wash); color: var(--ds-primary); }
 .eval-loading, .eval-empty {
   padding: 8px;
   font-size: 13px;
-  color: #888;
+  color: var(--ds-hairline);
 }
-.eval-empty { color: #aaa; }
+.eval-empty { color: var(--ds-hairline); }
 .actions {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
+  border-top: 1px solid var(--border-color, var(--ds-canvas-soft));
 }
 @media (max-width: 768px) {
   .ref-grid { grid-template-columns: 1fr !important; }
