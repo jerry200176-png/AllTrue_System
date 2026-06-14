@@ -403,6 +403,22 @@
       </button>
     </div>
 
+    <!-- 同事軍階（老師互看）：徽章展示，無位次/XP -->
+    <div v-if="colleagueRanks.length" class="th-colleagues card">
+      <div class="th-colleagues-head">
+        <span class="material-symbols-outlined" style="font-size:16px">military_tech</span>
+        <strong>同事軍階</strong>
+        <span class="th-colleagues-count">{{ colleagueRanks.length }} 位</span>
+      </div>
+      <ul class="th-colleagues-list">
+        <li v-for="c in colleagueRanks" :key="'col-' + c.user_id" class="th-colleague" :title="`${c.name}：${c.rank_label}`">
+          <RocRankBadge :rank-key="c.rank_key" :size="22" />
+          <span class="th-colleague-name">{{ c.name }}</span>
+          <span class="th-colleague-rank">{{ c.rank_label }}</span>
+        </li>
+      </ul>
+    </div>
+
     <SystemTrustPanel
       :branch-id="branchId"
       :token="trustToken"
@@ -431,6 +447,7 @@ import { fetchClassSessions } from '../lib/classSessionsApi';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
+import RocRankBadge from '../components/RocRankBadge.vue';
 import SystemTrustPanel from '../components/SystemTrustPanel.vue';
 import { fetchMe } from '../lib/meClient';
 import {
@@ -491,6 +508,63 @@ async function loadEngagementSnapshot() {
 
 async function refreshTrustToken() {
   trustToken.value = (await getToken()) || '';
+}
+
+// 同事軍階（老師互看）：徽章＋階名展示，無數字位次/XP（對齊大廠 gamification，
+// 非競爭排名榜）。後端 ranks-for 依 rank_display_opt_out 決定可見性，隱退者不回。
+const colleagueRanks = ref([]); // [{ user_id, name, rank_key, rank_label }]
+const RANK_ORDER = [
+  'private_second', 'private_first', 'private_specialist',
+  'corporal', 'sergeant', 'staff_sergeant',
+  'master_sergeant_third', 'master_sergeant_second', 'master_sergeant_first',
+  'second_lieutenant', 'first_lieutenant', 'captain',
+  'major', 'lieutenant_colonel', 'colonel',
+  'major_general', 'lieutenant_general', 'general', 'general_first_class',
+  'general_five_star',
+];
+function rankOrderIndex(key) {
+  const i = RANK_ORDER.indexOf(key);
+  return i < 0 ? -1 : i;
+}
+
+async function fetchColleagueRanks() {
+  if (!engagementDisplayOn.value) { colleagueRanks.value = []; return; }
+  const token = await getToken();
+  if (!token || !props.branchId) return;
+  try {
+    const tRes = await fetch(
+      `/api/v1/teachers?branch_id=${encodeURIComponent(String(props.branchId))}&per_page=all`,
+      { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } },
+    );
+    if (!tRes.ok) return;
+    const tJson = await tRes.json().catch(() => ({}));
+    const list = Array.isArray(tJson) ? tJson : (tJson?.data ?? []);
+    // 排除自己（自己的軍階已在頁首 EngagementRankStrip 顯示；「同事」語意指他人）
+    const active = list.filter(
+      (t) => t && t.status === 'active' && t.id != null && String(t.id) !== String(props.userId),
+    );
+    const ids = active.map((t) => t.id);
+    if (!ids.length) { colleagueRanks.value = []; return; }
+
+    const rRes = await fetch('/api/v1/engagement/ranks-for', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_ids: ids }),
+    });
+    if (!rRes.ok) return;
+    const rJson = await rRes.json().catch(() => ({}));
+    const rankMap = {};
+    for (const r of (rJson?.ranks || [])) rankMap[r.user_id] = r;
+
+    colleagueRanks.value = active
+      .map((t) => {
+        const r = rankMap[t.id];
+        if (!r || r.hidden || !r.rank_key) return null;
+        return { user_id: t.id, name: t.username || t.name || `#${t.id}`, rank_key: r.rank_key, rank_label: r.rank_label };
+      })
+      .filter(Boolean)
+      .sort((a, b) => rankOrderIndex(b.rank_key) - rankOrderIndex(a.rank_key));
+  } catch { /* 加值資訊，失敗不影響主頁 */ }
 }
 
 function setupEngagementReducedMotion() {
@@ -1226,6 +1300,7 @@ async function refreshAll() {
     fetchClockinStatus(),
     fetchLearningProgress(),
     loadEngagementSnapshot(),
+    fetchColleagueRanks(),
   ]);
   refreshing.value = false;
 }
@@ -1332,7 +1407,7 @@ onMounted(() => {
   setupEngagementReducedMotion();
   loadEngagementSnapshot();
   trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'teacher', page: 'teacher-home' });
-  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress(), refreshTrustToken()]);
+  Promise.all([fetchPendingAttendance(), fetchOverdueLearning(), fetchPendingLearningSummary(), loadWeekSchedule(), fetchChatUnread(), fetchClockinStatus(), fetchLearningProgress(), refreshTrustToken(), fetchColleagueRanks()]);
   startPolling();
   document.addEventListener('visibilitychange', onVisibilityChange);
   window.addEventListener('alltrue-teacher-learning-progress-refresh', onLearningProgressRefreshEvent);
@@ -1348,6 +1423,7 @@ watch(() => props.branchId, () => {
   fetchOverdueLearning();
   fetchPendingLearningSummary();
   fetchLearningProgress();
+  fetchColleagueRanks();
 });
 watch(() => props.teacherBranchIds, () => loadWeekSchedule(), { deep: true });
 watch(
@@ -1555,6 +1631,49 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--ds-canvas-soft);
+}
+.th-colleagues {
+  margin-top: 12px;
+  padding: 14px;
+}
+.th-colleagues-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--ds-ink);
+}
+.th-colleagues-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+}
+.th-colleagues-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.th-colleague {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--ds-canvas-soft);
+  border-radius: 999px;
+  background: var(--ds-canvas-soft);
+}
+.th-colleague-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ds-ink);
+}
+.th-colleague-rank {
+  font-size: 11px;
+  color: var(--ds-ink-mute);
 }
 .th-feedback-metric__head {
   display: flex;
