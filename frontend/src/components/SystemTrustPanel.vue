@@ -109,26 +109,26 @@ onMounted(loadSummary);
 </script>
 
 <style scoped>
-.stp { border: 1px solid var(--border, #e2e8f0); }
+.stp { border: 1px solid var(--border, var(--ds-canvas-soft)); }
 .stp.compact { padding: 14px; }
 .stp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
-.stp-kicker { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
-.stp-head h3 { margin: 2px 0 0; font-size: 16px; color: #0f172a; }
-.stp-empty { font-size: 13px; color: #64748b; padding: 8px 0; }
-.stp-error { color: #b91c1c; }
+.stp-kicker { font-size: 11px; color: var(--ds-ink-mute); text-transform: uppercase; letter-spacing: 0.08em; }
+.stp-head h3 { margin: 2px 0 0; font-size: 16px; color: var(--ds-ink); }
+.stp-empty { font-size: 13px; color: var(--ds-ink-mute); padding: 8px 0; }
+.stp-error { color: var(--ds-danger); }
 .stp-snapshot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
-.stp-chip { border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; background: #f8fafc; }
-.stp-chip-label { display: block; font-size: 11px; color: #64748b; margin-bottom: 4px; }
-.stp-chip strong { font-size: 15px; color: #0f172a; }
-.stp-chip strong.ok { color: #047857; }
-.stp-chip strong.warn { color: #b45309; }
+.stp-chip { border: 1px solid var(--ds-canvas-soft); border-radius: 10px; padding: 8px; background: var(--ds-canvas-soft); }
+.stp-chip-label { display: block; font-size: 11px; color: var(--ds-ink-mute); margin-bottom: 4px; }
+.stp-chip strong { font-size: 15px; color: var(--ds-ink); }
+.stp-chip strong.ok { color: var(--ds-success); }
+.stp-chip strong.warn { color: var(--ds-warning); }
 .stp-block { margin-top: 8px; }
-.stp-block-title { font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+.stp-block-title { font-size: 12px; font-weight: 700; color: var(--ds-ink); margin-bottom: 6px; }
 .stp-list { margin: 0; padding-left: 18px; }
 .stp-list li { margin-bottom: 8px; }
-.stp-list strong { display: block; font-size: 13px; color: #1f2937; }
-.stp-list small { display: block; font-size: 11px; color: #64748b; margin: 2px 0; }
-.stp-list p { margin: 0; font-size: 12px; color: #475569; line-height: 1.45; }
+.stp-list strong { display: block; font-size: 13px; color: var(--ds-ink); }
+.stp-list small { display: block; font-size: 11px; color: var(--ds-ink-mute); margin: 2px 0; }
+.stp-list p { margin: 0; font-size: 12px; color: var(--ds-ink); line-height: 1.45; }
 
 @media (max-width: 720px) {
   .stp-snapshot { grid-template-columns: 1fr; }
