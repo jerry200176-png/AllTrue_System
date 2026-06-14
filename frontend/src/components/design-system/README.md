@@ -91,6 +91,19 @@
 
 ---
 
+## 表單元件（issue 702，Stripe Dashboard 取向）
+
+| 元件 | 用途 | 重點 props |
+|---|---|---|
+| `AtField` | 欄位外殼（label + hint/error caption） | `label` `hint` `error` `required` |
+| `AtInput` | text/number/tel | `v-model` `type` `error` `disabled` |
+| `AtTextarea` | 多行 | `v-model` `rows` `error` |
+| `AtSelect` | native select 薄封裝（含 chevron） | `v-model` `options` `error` |
+
+規格：白底、`--ds-hairline-input` 1px、圓角 8；focus → `--ds-primary` 邊 + 3px `--ds-primary-wash` 外環；error → `--ds-danger` 邊 + caption。遷移為增量（不要求全站一次替換）；新表單一律用本組元件。
+
+---
+
 ## 禁止（對齊 `RULE_DESIGN_SYSTEM.md` §7）
 
 - 在元件內寫死 `#hex`（一律 `var(--ds-*)`）
