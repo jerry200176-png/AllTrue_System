@@ -100,7 +100,7 @@
       <div class="th-mission-card">
         <div class="th-mission-head">
           <span class="material-symbols-outlined" style="font-size:16px">checklist</span>
-          <strong>今日任務中心</strong>
+          <strong>任務中心</strong>
           <span class="th-mission-remain">{{ missionSummary.remaining_total }} 項</span>
         </div>
         <div v-if="missionLoading" class="th-mission-empty">載入任務中…</div>
@@ -114,7 +114,10 @@
           @click="openMissionTask(task)"
         >
           <span class="th-mission-title">{{ task.title }}</span>
-          <span class="th-mission-meta">{{ missionTypeLabel(task.type) }} · {{ task.due_at || '今日' }}</span>
+          <span class="th-mission-meta">
+            {{ missionTypeLabel(task.type) }} · {{ task.due_at || '今日' }}
+            <span v-if="isMissionOverdue(task)" class="th-mission-overdue">逾期</span>
+          </span>
         </button>
       </div>
 
@@ -679,6 +682,17 @@ async function fetchFeedbackAnalytics() {
   } finally {
     feedbackAnalyticsLoading.value = false;
   }
+}
+
+// 任務中心同時容納「今日」與「逾期」待辦（後端 task-tracker 回傳 SessionDate <= today
+// 的全部 pending 評量，含過往未審項目）。due_at 早於本地今日 → 標記逾期，避免舊項目
+// 在「今日待辦」區塊看起來像不該出現的任務（in-app bug 163）。
+function isMissionOverdue(task) {
+  const due = task?.due_at;
+  if (!due) return false;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return String(due) < today;
 }
 
 function missionTypeLabel(type) {
@@ -1484,6 +1498,16 @@ onBeforeUnmount(() => {
 .th-mission-meta {
   font-size: 11px;
   color: var(--ds-ink-mute);
+}
+.th-mission-overdue {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ds-danger);
+  background: var(--ds-danger-wash);
 }
 .th-progress-board {
   margin-top: 10px;
