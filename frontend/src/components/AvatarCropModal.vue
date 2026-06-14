@@ -226,7 +226,7 @@ watch(zoom, () => clampPan());
   padding: 16px;
 }
 .crop-modal {
-  background: var(--card-bg, #fff);
+  background: var(--card-bg, var(--ds-canvas));
   border-radius: 14px;
   padding: 20px 22px;
   max-width: 420px;
@@ -240,7 +240,7 @@ watch(zoom, () => clampPan());
 .crop-hint {
   margin: 0 0 14px;
   font-size: 13px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   line-height: 1.45;
 }
 .viewport {
@@ -250,7 +250,7 @@ watch(zoom, () => clampPan());
   position: relative;
   overflow: hidden;
   border-radius: 12px;
-  background: #0f172a;
+  background: var(--ds-ink);
   cursor: grab;
   touch-action: none;
 }
@@ -268,7 +268,7 @@ watch(zoom, () => clampPan());
 }
 .zoom-row label {
   font-size: 13px;
-  color: var(--text-muted, #475569);
+  color: var(--text-muted, var(--ds-ink));
 }
 .zoom-row input[type='range'] {
   width: 100%;
@@ -282,8 +282,8 @@ watch(zoom, () => clampPan());
 .btn-cancel {
   padding: 8px 16px;
   border-radius: 8px;
-  border: 1px solid var(--border, #e2e8f0);
-  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, var(--ds-canvas-soft));
+  background: var(--card-bg, var(--ds-canvas));
   cursor: pointer;
   font-size: 14px;
 }
@@ -291,8 +291,8 @@ watch(zoom, () => clampPan());
   padding: 8px 16px;
   border-radius: 8px;
   border: none;
-  background: var(--primary, #f97316);
-  color: #fff;
+  background: var(--primary, var(--ds-warning));
+  color: var(--ds-canvas);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;

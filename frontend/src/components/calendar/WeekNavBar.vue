@@ -38,9 +38,9 @@ defineEmits(['update:modelValue', 'prev', 'next']);
   gap: 2px;
   padding: 4px 10px;
   height: 30px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 20px;
-  background: #fff;
+  background: var(--ds-canvas);
   font-size: 12px;
   font-weight: 500;
   color: var(--text-color);
@@ -49,19 +49,19 @@ defineEmits(['update:modelValue', 'prev', 'next']);
   transition: background 0.2s, border-color 0.2s;
 }
 .week-nav-btn:hover {
-  background: var(--bg-muted, #f0f1f3);
-  border-color: var(--border, #cbd5e1);
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  border-color: var(--border, var(--ds-canvas-soft));
 }
 .week-nav .week-select {
   min-width: 180px;
 }
 .week-select {
   padding: 8px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.4;
-  background: #fff;
+  background: var(--ds-canvas);
   color: var(--text-color);
   min-width: 96px;
 }

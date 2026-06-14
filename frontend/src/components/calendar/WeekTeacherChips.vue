@@ -14,7 +14,7 @@
         type="button"
         :aria-pressed="isActive(t.id)"
         :class="['week-teacher-chip', { active: isActive(t.id) }]"
-        :style="isActive(t.id) ? { background: t.color, borderColor: t.color, color: '#fff' } : {}"
+        :style="isActive(t.id) ? { background: t.color, borderColor: t.color, color: 'var(--ds-canvas)' } : {}"
         @click="$emit('toggle', t.id)"
       >{{ t.username }}</button>
     </div>
@@ -48,7 +48,7 @@ const isActive = (id) => props.selectedIds.includes(String(id));
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
 }
 .week-teacher-chips-scroll {
   display: flex;
@@ -62,36 +62,36 @@ const isActive = (id) => props.selectedIds.includes(String(id));
 }
 .week-teacher-chip {
   padding: 6px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--ds-canvas-soft));
   border-radius: 999px;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
-  color: var(--text-color, #1a1a1a);
-  background: #fff;
+  color: var(--text-color, var(--ds-ink));
+  background: var(--ds-canvas);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 .week-teacher-chip:hover {
-  background: var(--bg-muted, #f8fafc);
-  border-color: #cbd5e1;
+  background: var(--bg-muted, var(--ds-canvas-soft));
+  border-color: var(--ds-canvas-soft);
 }
 .week-teacher-chip.active {
-  color: #fff;
+  color: var(--ds-canvas);
 }
 .week-teacher-chip-clear {
   flex-shrink: 0;
   padding: 4px 10px;
-  border: 1px dashed var(--border-color, #cbd5e1);
+  border: 1px dashed var(--border-color, var(--ds-canvas-soft));
   border-radius: 999px;
   font-size: 12px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   background: transparent;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
 .week-teacher-chip-clear:hover {
-  color: #e53935;
-  border-color: #e53935;
+  color: var(--ds-danger);
+  border-color: var(--ds-danger);
 }
 </style>

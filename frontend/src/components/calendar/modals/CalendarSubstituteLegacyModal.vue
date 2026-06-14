@@ -24,7 +24,7 @@
         <p>{{ form.original_teacher_name || '—' }}</p>
       </div>
       <div class="form-group">
-        <label>代課老師 <span style="color: #ef4444;">*</span></label>
+        <label>代課老師 <span style="color: var(--ds-danger);">*</span></label>
         <select v-model="form.substitute_teacher_id">
           <option value="">請選擇</option>
           <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.username }}</option>
