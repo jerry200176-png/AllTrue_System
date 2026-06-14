@@ -54,7 +54,7 @@ const studentClass = computed(() => ({
 .cb-teacher-tag {
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ds-canvas);
   border-radius: 3px;
   padding: 1px 4px;
   margin-bottom: 1px;
@@ -107,11 +107,11 @@ const studentClass = computed(() => ({
   border-radius: 4px;
   pointer-events: none;
 }
-.rc-done  { background: rgba(34,197,94,.85); color: #fff; }
-.rc-missed { background: rgba(245,158,11,.9); color: #fff; }
-.rc-leave { background: rgba(148,163,184,.75); color: #fff; }
-.rc-cancelled { background: rgba(100,116,139,.6); color: #fff; font-size: 8px; }
-.rc-eval-missing { background: rgba(239,68,68,.85); color: #fff; }
+.rc-done  { background: rgba(34,197,94,.85); color: var(--ds-canvas); }
+.rc-missed { background: rgba(245,158,11,.9); color: var(--ds-canvas); }
+.rc-leave { background: rgba(148,163,184,.75); color: var(--ds-canvas); }
+.rc-cancelled { background: rgba(100,116,139,.6); color: var(--ds-canvas); font-size: 8px; }
+.rc-eval-missing { background: rgba(239,68,68,.85); color: var(--ds-canvas); }
 .rc-tag-second { top: auto; bottom: 2px; }
 
 /* ── 解耦：原 .teacher-grid-compact .cb-* → .cbc-compact ── */

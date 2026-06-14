@@ -19,7 +19,7 @@
         <label>原時段</label>
         <p>{{ originalSlotLabel }}</p>
       </div>
-      <hr style="border: none; border-top: 1px solid #eee; margin: 12px 0;" />
+      <hr style="border: none; border-top: 1px solid var(--ds-canvas-soft); margin: 12px 0;" />
       <div class="form-group">
         <label>新日期</label>
         <input v-model="form.new_date" type="date" />
@@ -61,7 +61,7 @@ defineEmits(['close', 'submit', 'new-start-change']);
 .computed-time {
   margin: 0;
   padding: 10px 12px;
-  background: var(--bg-muted, #f5f5f5);
+  background: var(--bg-muted, var(--ds-canvas-soft));
   border-radius: 8px;
   font-weight: 600;
   font-size: 15px;
