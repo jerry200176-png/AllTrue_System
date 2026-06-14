@@ -99,7 +99,13 @@
             {{ teacherInitial(teacher) }}
           </div>
           <div class="tpc-head-text">
-            <h3 class="tpc-name">{{ teacher.username }}</h3>
+            <h3 class="tpc-name">
+              <span class="tpc-name-text">{{ teacher.username }}</span>
+              <span v-if="rankFor(teacher.id)" class="tpc-rank" :title="`軍階：${rankFor(teacher.id).rank_label}`">
+                <RocRankBadge :rank-key="rankFor(teacher.id).rank_key" :size="20" />
+                <span class="tpc-rank-label">{{ rankFor(teacher.id).rank_label }}</span>
+              </span>
+            </h3>
             <p class="tpc-account mono">{{ teacher.account || teacher.email || '—' }}</p>
           </div>
           <span :class="['status-tag', 'tpc-status', teacher.status]">{{ teacherStatusLabel(teacher.status) }}</span>
@@ -448,6 +454,7 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { supabase } from '../supabase';
 import { branches as BRANCHES, getBranchName as _getBranchName } from '../lib/useBranches';
+import RocRankBadge from '../components/RocRankBadge.vue';
 
 const API_BASE = (import.meta.env.VITE_API_BASE || '/api') + '/v1';
 
@@ -455,6 +462,7 @@ const props = defineProps({ branchId: [String, Number] });
 const emit = defineEmits(['navigate-to-schedule']);
 
 const teachers = ref([]);
+const teacherRanks = ref({}); // user_id -> { rank_key, rank_label, hidden }
 const subjects = ref([]);
 const allBranchOptions = ref([]);
 const loading = ref(false);
@@ -996,6 +1004,7 @@ const loadTeachers = async () => {
       return;
     }
     teachers.value = list;
+    loadRanks(list.map((t) => t.id).filter((id) => id != null));
   } catch (err) {
     console.error('loadTeachers error:', err);
     alert('載入老師資料時發生錯誤');
@@ -1003,6 +1012,30 @@ const loadTeachers = async () => {
     loading.value = false;
   }
 };
+
+// 批次撈各老師軍階徽章（後端依角色/opt-out 決定可見性，不回 XP 數字）
+async function loadRanks(ids) {
+  if (!ids.length) { teacherRanks.value = {}; return; }
+  try {
+    const headers = { ...(await getAuthHeaders()), 'Content-Type': 'application/json' };
+    const res = await fetch(`${API_BASE}/engagement/ranks-for`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ user_ids: ids }),
+    });
+    if (!res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    const map = {};
+    for (const r of (data?.ranks || [])) map[r.user_id] = r;
+    teacherRanks.value = map;
+  } catch { /* 徽章為加值資訊，失敗不影響老師列表 */ }
+}
+
+function rankFor(id) {
+  const r = teacherRanks.value[id];
+  if (!r || r.hidden) return null;
+  return r;
+}
 
 async function loadSubjects() {
   try {
@@ -1717,9 +1750,27 @@ watch(showBulkModal, (opened) => {
   font-weight: 700;
   color: var(--ds-ink);
   line-height: 1.25;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tpc-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.tpc-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.tpc-rank-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ds-ink-mute);
 }
 
 .tpc-account {
