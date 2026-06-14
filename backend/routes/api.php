@@ -224,6 +224,7 @@ Route::prefix('v1')->group(function () {
     Route::get('engagement/event-types', [\App\Http\Controllers\EngagementController::class, 'eventTypes']);
     Route::get('engagement/badges', [\App\Http\Controllers\EngagementController::class, 'badges']);
     Route::post('engagement/badges/{key}/toggle-visibility', [\App\Http\Controllers\EngagementController::class, 'toggleBadgeVisibility']);
+    Route::post('engagement/ranks-for', [\App\Http\Controllers\EngagementController::class, 'ranksFor']);
 
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');

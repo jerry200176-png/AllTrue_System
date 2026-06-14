@@ -126,6 +126,67 @@ class EngagementController extends Controller
         return response()->json(['earned' => $earnedList, 'available' => $available]);
     }
 
+    /**
+     * 批次取得一組使用者的軍階（給老師管理列表 / 老師互看）。
+     *
+     * 僅回傳階級徽章與中文名，不回 XP 數字 — 刻意做成「正向徽章展示」而非數字
+     * 排名榜（對齊大廠 gamification：Duolingo 個人檔徽章 / Xbox gamerscore，
+     * 避免把同事從高到低排序造成壓力/監控感）。
+     *
+     * 可見性：管理者（director/super_admin）看全部；老師看同儕，但尊重對方的
+     * rank_display_opt_out（隱退者對同儕隱藏，對自己與管理者仍顯示）。
+     */
+    public function ranksFor(Request $request): JsonResponse
+    {
+        $request->validate([
+            'user_ids' => 'required|array|max:500',
+            'user_ids.*' => 'integer',
+        ]);
+
+        if (!Schema::hasTable('user_engagement')) {
+            return response()->json(['ranks' => []]);
+        }
+
+        $role = (string) $request->attributes->get('auth_role', 'teacher');
+        $authUser = $request->attributes->get('auth_user');
+        $selfId = (int) ($authUser->id ?? 0);
+        $isManager = in_array($role, ['director', 'super_admin'], true);
+
+        $ids = array_values(array_unique(array_map('intval', $request->input('user_ids', []))));
+        $rows = UserEngagement::query()->whereIn('user_id', $ids)->get()->keyBy('user_id');
+
+        $ranks = [];
+        foreach ($ids as $id) {
+            $row = $rows->get($id);
+            $optOut = (bool) ($row->rank_display_opt_out ?? false);
+
+            if ($optOut && !$isManager && $id !== $selfId) {
+                $ranks[] = ['user_id' => $id, 'hidden' => true];
+                continue;
+            }
+
+            $track = (string) ($row->role_track ?? 'teacher');
+            if (!in_array($track, ['teacher', 'staff'], true)) {
+                $track = 'teacher';
+            }
+            $xp = (int) ($row->xp_total ?? 0);
+            $rankKey = EngagementRankProgression::rankKeyForXp($xp, $track);
+            if (!UserEngagementPresenter::isKnownRankKey($rankKey)) {
+                $rankKey = EngagementRankProgression::DEFAULT_RANK_KEY;
+            }
+
+            $ranks[] = [
+                'user_id' => $id,
+                'hidden' => false,
+                'rank_key' => $rankKey,
+                'rank_label' => UserEngagementPresenter::rankLabel($rankKey),
+                'role_track' => $track,
+            ];
+        }
+
+        return response()->json(['ranks' => $ranks]);
+    }
+
     public function toggleBadgeVisibility(Request $request, string $key): JsonResponse
     {
         $user = $request->attributes->get('auth_user');

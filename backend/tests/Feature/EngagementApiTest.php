@@ -36,13 +36,13 @@ class EngagementApiTest extends TestCase
             'user_id' => $u['id'],
             'role_track' => 'teacher',
             'rank_key' => 'sergeant',
-            'xp_total' => 150,
+            'xp_total' => 500, // 長期養成曲線：sergeant = 450–699（2026-06-14 重設）
         ]);
 
         $r = $this->getJson('/api/v1/engagement/my-progress', $this->bearer($u['tok']));
         $r->assertOk();
         $eng = $r->json('engagement');
-        $this->assertEquals(150, $eng['xp_total']);
+        $this->assertEquals(500, $eng['xp_total']);
         $this->assertEquals('sergeant', $eng['rank_key']);
         $this->assertArrayHasKey('next_rank_xp', $eng);
         $this->assertFalse($eng['is_max']);

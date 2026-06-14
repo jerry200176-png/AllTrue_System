@@ -1,9 +1,9 @@
 <!--
   ROC Military Rank Badge — 中華民國軍階徽章
-  依照現行陸軍肩章設計（Wikimedia Commons Taiwan-army-OF 系列圖校驗）：
-    士兵  ：黃色斜槓（1–3 條）
-    士官  ：黃色 V 形 chevron（1–3 條）
-    士官長：chevron + 梅花（三等/二等/一等 = 1/2/3 chevron + 梅花）
+  依照現行國軍折槓設計（in-app bug 165 修正：原本士官長誤用梅花＝校官章，已更正）：
+    士兵  ：細人字折槓（1–3 條）+ 梅花（二等/一等/上等兵）
+    士官  ：粗人字折槓（下士=1，中士=2，上士=3）
+    士官長：2 粗折槓 + 細折槓（三等=+1 細，二等=+2 細，一等=+3 細）
     尉官  ：金橫槓（少尉=1槓，中尉=2槓，上尉=3槓）
     校官  ：金梅花（少校=1朵，中校=2朵，上校=3朵）
     將官  ：金星（少將=1星，中將=2星，上將=3星，一級上將=4星）
@@ -54,20 +54,27 @@ const bgColor = computed(() => {
 
 /* ===== SVG 片段產生器 ===== */
 
-/** 斜槓（士兵用），count = 1|2|3 */
-function chevronSlash(count) {
-  const positions = [10, 16, 22].slice(0, count);
-  return positions.map(x =>
-    `<line x1="${x - 2}" y1="22" x2="${x + 2}" y2="10" stroke="${GOLD}" stroke-width="2" stroke-linecap="round"/>`
-  ).join('');
+const THIN_W = 1.4;  // 細折槓線粗（士兵 / 士官長的細槓）
+const THICK_W = 2.8; // 粗折槓線粗（士官 / 士官長的粗槓）
+
+/** 單一人字折槓（∧，頂點朝上），apexY=頂點 Y，sw=線粗 */
+function chevron(apexY, sw) {
+  const hw = 8;
+  const legH = 4.5;
+  const xl = 16 - hw;
+  const xr = 16 + hw;
+  const yb = (apexY + legH).toFixed(1);
+  return `<polyline points="${xl},${yb} 16,${apexY.toFixed(1)} ${xr},${yb}" fill="none" stroke="${GOLD}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/>`;
 }
 
-/** V 形 chevron（士官用），count = 1|2|3 */
-function chevronV(count) {
-  const offsets = [-5, 0, 5].slice(3 - count);
-  return offsets.map(dy =>
-    `<polyline points="8,${20 + dy} 16,${26 + dy} 24,${20 + dy}" fill="none" stroke="${GOLD}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
-  ).join('');
+/** 垂直堆疊一組人字折槓（widths 由上到下；centerY 整組垂直置中點） */
+function chevronStack(widths, centerY = 16) {
+  const n = widths.length;
+  const legH = 4.5;
+  const gap = n >= 5 ? 4.4 : n >= 4 ? 5 : n >= 3 ? 5.6 : 6.4;
+  const totalH = (n - 1) * gap + legH;
+  const startApex = centerY - totalH / 2;
+  return widths.map((w, i) => chevron(startApex + i * gap, w)).join('');
 }
 
 /** 梅花花瓣，cx cy r — 一朵五瓣梅花 */
@@ -133,21 +140,21 @@ function generalStars(count) {
 const badgeSvgContent = computed(() => {
   const k = props.rankKey;
   switch (k) {
-    // 士兵
-    case 'private_second':       return chevronSlash(1);
-    case 'private_first':        return chevronSlash(2);
-    case 'private_specialist':   return chevronSlash(3);
-    // 士官
-    case 'corporal':             return chevronV(1);
-    case 'sergeant':             return chevronV(2);
-    case 'staff_sergeant':       return chevronV(3);
-    // 士官長（chevron + 梅花）
+    // 士兵：細人字折槓 + 梅花（二等=1，一等=2，上等兵=3）
+    case 'private_second':       return chevronStack([THIN_W], 20) + plumFlower(16, 8, 3);
+    case 'private_first':        return chevronStack([THIN_W, THIN_W], 21) + plumFlower(16, 8, 3);
+    case 'private_specialist':   return chevronStack([THIN_W, THIN_W, THIN_W], 22) + plumFlower(16, 7, 2.8);
+    // 士官：粗人字折槓（下士=1，中士=2，上士=3）
+    case 'corporal':             return chevronStack([THICK_W], 16);
+    case 'sergeant':             return chevronStack([THICK_W, THICK_W], 16);
+    case 'staff_sergeant':       return chevronStack([THICK_W, THICK_W, THICK_W], 16);
+    // 士官長：2 粗折槓 + 細折槓（三等=+1，二等=+2，一等=+3；細槓在上、粗槓在下）
     case 'master_sergeant_third':
-      return chevronV(1) + plumFlower(16, 9, 3);
+      return chevronStack([THIN_W, THICK_W, THICK_W], 16);
     case 'master_sergeant_second':
-      return chevronV(2) + plumFlower(16, 7, 3);
+      return chevronStack([THIN_W, THIN_W, THICK_W, THICK_W], 16);
     case 'master_sergeant_first':
-      return chevronV(3) + plumFlower(16, 5, 3);
+      return chevronStack([THIN_W, THIN_W, THIN_W, THICK_W, THICK_W], 16);
     // 尉官：橫槓（少尉=1槓，中尉=2槓，上尉=3槓）
     case 'second_lieutenant':    return lieutenantBar(1);
     case 'first_lieutenant':     return lieutenantBar(2);
