@@ -355,7 +355,7 @@
           </div>
 
           <!-- 回覆／留言：移到描述下方、截圖與歷程之上，讓回報者（多為手機）
-               點開即可讀開發者回覆，免往下長滑（in-app #166）。 -->
+               點開即可讀開發者回覆，免往下長滑（in-app 166）。 -->
           <div class="comments-section">
             <strong>留言（{{ detail.comments?.length || 0 }}）</strong>
             <div v-for="c in detail.comments" :key="c.id" class="comment-item" :class="{ internal: c.is_internal_note }">
@@ -770,7 +770,7 @@ async function selectBug(bug) {
   newStatus.value = '';
   statusNote.value = '';
   newComment.value = '';
-  // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app #166）。
+  // 手機單欄時 detail 排在長列表之後，選取後要滑過整個列表才看到詳情（in-app 166）。
   // 窄螢幕選取後把詳情捲入視野；桌面（list/detail 並排）不干擾。
   if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 720px)').matches) {
     await nextTick();
