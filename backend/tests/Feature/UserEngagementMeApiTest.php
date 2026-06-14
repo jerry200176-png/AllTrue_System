@@ -38,12 +38,13 @@ class UserEngagementMeApiTest extends TestCase
     {
         $u = $this->makeUser('T', 'teacher-engagement-row@example.com');
         UserEngagement::factory()->create([
-            'user_id' => $u['id'], 'role_track' => 'teacher', 'rank_key' => 'corporal', 'xp_total' => 120,
+            // 長期養成曲線：corporal/下士 = 260–449（2026-06-14 重設）
+            'user_id' => $u['id'], 'role_track' => 'teacher', 'rank_key' => 'corporal', 'xp_total' => 300,
         ]);
         $this->getJson('/api/v1/me', $this->bearer($u['tok']))->assertOk()
             ->assertJsonPath('engagement.rank_key', 'corporal')
             ->assertJsonPath('engagement.rank_label', '下士')
-            ->assertJsonPath('engagement.xp_total', 120);
+            ->assertJsonPath('engagement.xp_total', 300);
     }
 
     public function test_non_staff_pending_role_has_no_engagement_block(): void
