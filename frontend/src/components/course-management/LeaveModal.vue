@@ -100,20 +100,20 @@ watch(
 .modal-desc { color: var(--text-light); font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
 .retro-leave-warning {
   margin: 8px 0; padding: 10px 14px; border-radius: 8px;
-  background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 0.92em;
+  background: var(--ds-warning-wash); border: 1px solid var(--ds-warning-wash); color: var(--ds-danger); font-size: 0.92em;
 }
 .impact-preview {
   margin: 12px 0 4px;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid var(--ds-hairline, #e3e8ee);
-  background: var(--ds-canvas-soft, #f6f9fc);
-  color: var(--ds-ink, #1a1a1a);
+  border: 1px solid var(--ds-hairline, var(--ds-hairline));
+  background: var(--ds-canvas-soft, var(--ds-canvas-soft));
+  color: var(--ds-ink, var(--ds-ink));
 }
 .impact-preview--danger {
-  border-color: #fdba74;
-  background: #fff7ed;
-  color: #9a3412;
+  border-color: var(--ds-warning);
+  background: var(--ds-warning-wash);
+  color: var(--ds-danger);
 }
 .impact-preview__head {
   display: flex;
@@ -137,13 +137,13 @@ watch(
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  color: #fff;
-  background: #2563eb;
+  color: var(--ds-canvas);
+  background: var(--ds-ink-mute);
   font-weight: 800;
   font-size: 13px;
 }
 .impact-preview--danger .impact-preview__icon {
-  background: #ea580c;
+  background: var(--ds-warning);
 }
 .impact-preview__list {
   margin: 10px 0;
