@@ -674,6 +674,21 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R61. UI 去 AI 化大量 codemod／逐頁治理的踩坑合輯（2026-06-14 #687 系列）
+
+一輪治理 ~25 個前端檔 + 多功能 PR 時反覆踩到，記錄防再犯：
+
+- **design hex guard 會把註解裡的 `#NNN` issue 引用當成色票**：3–4 位十六進制的 issue 編號（如 `// #765`、`#702`、`#708`）會被 `scripts/check-no-raw-hex.sh` 計為新增 raw hex。在**已治理到 0 hex 的檔案**新增註解時，一律寫「issue 765」不要寫「#765」。
+- **codemod 必須限定區域**：自動把 hex→`var(--ds-*)` 的 codemod**只能作用於 `<style>` 區塊 + inline `style=""`/`:style` 綁定**；絕不可全檔替換，否則會改到 (a) 註解／正文的 `#NNN` issue 引用、(b) JS 功能色板（avatar/teacher/軍階識別色）、(c) chart canvas 色（canvas 不吃 CSS var）。功能性多態識別色（如 `TEACHER_AVATAR_PALETTE`、`RocRankBadge` 軍階色）刻意保留 raw hex，屬 TD-064 例外。
+- **branch 命名**：presubmit CHECK 1 只允許 `feat|fix|hotfix|chore|exp` + `td-batch<N>-` + `dependabot/`。**`docs/`、`ci/` 都會被擋** → 文件/CI 改動用 `chore/`。
+- **PR size**：presubmit CHECK 2 硬上限 **700 行**（含增刪，排除 lock/data）。3 頁合一的治理 PR 容易爆（曾 868 行被擋）→ 一頁/數個小元件一 PR。
+- **single-line JSON baseline 衝突**：`docs/design-hex-baseline.json` 是單行；多個治理 PR 各自 relock 會在合併時衝突。**逐頁/批次 PR 不要各自帶 baseline**，全部 merge 後做**一次** `bash scripts/design-hex-count.sh > docs/design-hex-baseline.json` 統一 relock。
+- **`backend/public/storage` symlink 會卡住 `git reset --hard` / `git merge`**（WSL/Windows 掛載：`Function not implemented` / `File exists`）→ 改用 `git reset --mixed` 移 HEAD（不寫工作樹）再清殘留；勿對 protected 路徑設 `assume-unchanged`（R58 + pre-commit hook 會擋）。
+- **merge-train 稅**：strict required checks + 單一 self-hosted runner，每 merge 一個 PR 其餘變 `BEHIND` 需 `update-branch` 重跑 CI；大量小 PR 會排很久。**勿用 `gh pr merge --admin` 繞過**（CI 會抓真問題，如 cebed0c flaky）。耐心 merge-train，或盡量合批。
+- **`backend/phpunit.xml` 以 `force="true"` 硬編 `DB_DATABASE=AllTrue_test`**：CI 測試 DB 名無法只靠 env 隔離；self-hosted runner 共用此 DB，多 run 並發時 `RefreshDatabase` 互相清表 → 偶發假失敗（自癒）。修法須動態 patch phpunit.xml（見 #732 註解）。
+
+---
+
 ### R60. 新增 API 路由必須確認落在 `role` + `require_campus` 認證群組內（不可裸放在群組外）
 
 - **觸發情境**：2026-05-31 開發家長回饋雙向回覆時審查發現，System B 的 `parent-feedback/{for-teacher,read,reply,replies}`（#409/#410）被加在所有 `role:`/`require_campus` 群組**之外**，只剩全域 `AttachAuthUser`（只附掛 user、不強制認證/授權）→ 等同未認證即可呼叫的端點。所幸前端 0 引用，未被利用。
