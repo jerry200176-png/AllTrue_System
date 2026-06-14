@@ -125,6 +125,7 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 
 | 需要什麼 | 去哪讀 |
 |---|---|
+| **SOP 對標大廠 / AI 接手地圖（換手前先讀「進行中狀態」）** | `docs/SOP_MATURITY.md` |
 | 完整工作流程 + 角色規格 + SOP | `.cursorrules` |
 | P0 紅線速查 + OPS checklist | `.cursor/rules/p0-gate.mdc` |
 | API 路由 / DB schema / Gotchas | `.cursorrules` 或 `alltrue-system.mdc` |
