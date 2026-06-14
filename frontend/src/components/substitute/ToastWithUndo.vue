@@ -162,7 +162,7 @@ defineExpose({ show, dismiss });
   position: relative;
   width: 360px;
   max-width: 100%;
-  background: #fff;
+  background: var(--ds-canvas);
   border: 1px solid rgba(16, 24, 40, 0.08);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(16, 24, 40, 0.14);
@@ -174,13 +174,13 @@ defineExpose({ show, dismiss });
   overflow: hidden;
 }
 .twu--success {
-  border-left: 4px solid #10b981;
+  border-left: 4px solid var(--ds-success);
 }
 .twu--error {
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid var(--ds-danger);
 }
 .twu--info {
-  border-left: 4px solid #0ea5e9;
+  border-left: 4px solid var(--ds-ink-mute);
 }
 .twu--voided {
   opacity: 0.85;
@@ -189,23 +189,23 @@ defineExpose({ show, dismiss });
   font-size: 18px;
   line-height: 20px;
 }
-.twu--success .twu__icon { color: #10b981; }
-.twu--error .twu__icon { color: #ef4444; }
-.twu--info .twu__icon { color: #0ea5e9; }
+.twu--success .twu__icon { color: var(--ds-success); }
+.twu--error .twu__icon { color: var(--ds-danger); }
+.twu--info .twu__icon { color: var(--ds-ink-mute); }
 .twu__title {
   font-weight: 600;
   font-size: 14px;
-  color: #111827;
+  color: var(--ds-ink);
 }
 .twu__desc {
   font-size: 13px;
-  color: #4b5563;
+  color: var(--ds-ink);
   margin-top: 2px;
   word-break: break-word;
 }
 .twu__undo {
   background: transparent;
-  color: var(--ds-primary-deep, #e65100);
+  color: var(--ds-primary-deep, var(--ds-primary));
   border: 1px solid rgba(245, 124, 0, 0.4);
   border-radius: 6px;
   padding: 4px 10px;
@@ -218,12 +218,12 @@ defineExpose({ show, dismiss });
 .twu__close {
   background: transparent;
   border: 0;
-  color: #9ca3af;
+  color: var(--ds-hairline);
   font-size: 14px;
   cursor: pointer;
   padding: 0 2px;
 }
-.twu__close:hover { color: #374151; }
+.twu__close:hover { color: var(--ds-ink); }
 .twu__bar {
   position: absolute;
   left: 0;
@@ -235,7 +235,7 @@ defineExpose({ show, dismiss });
 .twu__bar-inner {
   height: 100%;
   width: 100%;
-  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
+  background: var(--ds-brand-gradient, linear-gradient(90deg, var(--ds-primary-soft), var(--ds-primary)));
 }
 .twu-enter-active,
 .twu-leave-active {
