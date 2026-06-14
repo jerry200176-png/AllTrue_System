@@ -200,8 +200,8 @@ defineExpose({ reload: load });
   padding: 0 6px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #334155;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
   font-size: 11px;
   font-weight: 800;
 }
@@ -322,7 +322,7 @@ defineExpose({ reload: load });
   background:
     linear-gradient(135deg, rgba(17, 24, 39, 0.98), rgba(51, 65, 85, 0.96));
   border: 1px solid rgba(17, 24, 39, 0.82);
-  color: #fff;
+  color: var(--ds-canvas);
   font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -354,7 +354,7 @@ defineExpose({ reload: load });
   background: rgba(245, 124, 0, 0.08);
   border: 1px solid rgba(245, 124, 0, 0.18);
   border-radius: 999px;
-  color: var(--ds-primary-deep, #e65100);
+  color: var(--ds-primary-deep, var(--ds-primary));
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;
@@ -378,7 +378,7 @@ defineExpose({ reload: load });
   width: 100%;
 }
 .rsc-row__reason:hover {
-  background: #fff;
+  background: var(--ds-canvas);
   border-color: var(--porsche-border-strong);
 }
 .rsc-row__reason:focus-visible {
