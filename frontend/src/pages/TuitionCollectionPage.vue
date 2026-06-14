@@ -685,17 +685,13 @@
     </Transition>
 
     <!-- Toast -->
-    <Transition name="toast">
-      <div v-if="toastMessage" class="tc-toast" :class="toastType">
-        <span class="material-symbols-outlined" style="font-size:18px">{{ toastIcon }}</span>
-        {{ toastMessage }}
-      </div>
-    </Transition>
+    <!-- issue 708：本地 toast 已改用全站統一 AtToast（App.vue 掛載），此處移除。 -->
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useToast } from '../composables/useToast';
 import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
@@ -1260,15 +1256,11 @@ function escapeHtml(value) {
 }
 
 // ═══ Toast ═══
-const toastMessage = ref('');
-const toastType = ref('');
-const toastIcon = ref('check_circle');
+const _toast = useToast();
 
+// issue 708：改用統一 toast（useToast / AtToast）；繳費錯誤等場景全站一致。
 function showToast(msg, type = 'success') {
-  toastMessage.value = msg;
-  toastType.value = type === 'error' ? 'tc-toast--error' : type === 'warning' ? 'tc-toast--warning' : '';
-  toastIcon.value = type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'check_circle';
-  setTimeout(() => { toastMessage.value = ''; }, 3000);
+  ({ error: _toast.error, warning: _toast.warning, success: _toast.success }[type] || _toast.success)(msg);
 }
 
 // ═══ Payment Entry (核帳登記) ═══
