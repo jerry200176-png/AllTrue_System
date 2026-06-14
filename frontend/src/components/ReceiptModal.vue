@@ -353,9 +353,9 @@ async function copyToClipboard() {
 @keyframes rotate { to { transform: rotate(360deg); } }
 
 .receipt-backfill-notice {
-  background: #FFFBEB;
-  border: 1px solid #FDE68A;
-  color: #92400E;
+  background: var(--ds-warning-wash);
+  border: 1px solid var(--ds-warning);
+  color: var(--ds-warning);
   padding: 10px 14px;
   border-radius: 8px;
   font-size: 13px;
