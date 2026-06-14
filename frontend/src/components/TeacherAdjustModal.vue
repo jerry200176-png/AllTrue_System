@@ -134,7 +134,7 @@ async function submit() {
 }
 .ta-modal {
   width: 100%; max-width: 480px;
-  background: #fff; border-radius: 14px; padding: 20px;
+  background: var(--ds-canvas); border-radius: 14px; padding: 20px;
   display: flex; flex-direction: column; gap: 0;
 }
 .ta-modal-header {
@@ -146,15 +146,15 @@ async function submit() {
 .ta-modal-body  { display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; }
 .ta-field-group { display: flex; flex-direction: column; gap: 4px; }
 .ta-label       { font-size: 13px; font-weight: 600; }
-.ta-required    { color: #c62828; }
+.ta-required    { color: var(--ds-danger); }
 .ta-input {
   border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; font-size: 14px; width: 100%; box-sizing: border-box;
 }
 .ta-textarea    { resize: vertical; min-height: 72px; }
-.ta-error       { color: #c62828; font-size: 12px; }
+.ta-error       { color: var(--ds-danger); font-size: 12px; }
 .ta-field-hint  { font-size: 13px; color: var(--text-secondary); margin: 0; }
-.ta-msg.error   { background: #fce8e6; color: #c62828; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.ta-msg.error   { background: var(--ds-danger-wash); color: var(--ds-danger); padding: 8px 12px; border-radius: 8px; font-size: 13px; }
 .ta-modal-footer {
   display: flex; gap: 10px; justify-content: flex-end;
 }
