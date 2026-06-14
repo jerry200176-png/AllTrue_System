@@ -100,7 +100,7 @@ const packageNote = computed(() => {
   position: absolute;
   inset: 0 0 auto;
   height: 4px;
-  background: var(--ds-brand-gradient, linear-gradient(90deg, #ffb300, #ef6c00));
+  background: var(--ds-brand-gradient, linear-gradient(90deg, var(--ds-primary-soft), var(--ds-primary)));
 }
 .premium-modal-header { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 16px; }
 .premium-modal-icon {
@@ -110,21 +110,21 @@ const packageNote = computed(() => {
   width: 42px;
   height: 42px;
   border-radius: 16px;
-  color: var(--ds-primary-deep, #e65100);
-  background: var(--ds-primary-wash, #fff8e1);
+  color: var(--ds-primary-deep, var(--ds-primary));
+  background: var(--ds-primary-wash, var(--ds-primary-wash));
   border: 1px solid rgba(245, 124, 0, 0.3);
   box-shadow: 0 10px 26px rgba(245,124,0,0.18);
   font-weight: 900;
 }
-.premium-kicker { margin: 0 0 2px; color: var(--ds-brand-orange, #ef6c00); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-.package-op-toggle { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; background: var(--ds-canvas-soft, #f6f9fc); border: 1px solid var(--ds-hairline, #e3e8ee); border-radius: 12px; }
-.package-op-btn { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-light, #64748d); font-size: 13px; font-weight: 700; cursor: pointer; transition: var(--transition, all 0.2s ease); }
-.package-op-btn:hover:not(.active):not(:disabled) { color: var(--text, #0d253d); }
-.package-op-btn.active { background: var(--card-bg, #fff); color: var(--primary, #533afd); box-shadow: var(--ds-shadow-1, 0 1px 3px rgba(0,55,112,0.08)); }
+.premium-kicker { margin: 0 0 2px; color: var(--ds-brand-orange, var(--ds-primary)); font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.package-op-toggle { display: flex; gap: 6px; margin: 0 0 14px; padding: 4px; background: var(--ds-canvas-soft, var(--ds-canvas-soft)); border: 1px solid var(--ds-hairline, var(--ds-hairline)); border-radius: 12px; }
+.package-op-btn { flex: 1; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: var(--text-light, var(--ds-ink-mute)); font-size: 13px; font-weight: 700; cursor: pointer; transition: var(--transition, all 0.2s ease); }
+.package-op-btn:hover:not(.active):not(:disabled) { color: var(--text, var(--ds-ink)); }
+.package-op-btn.active { background: var(--card-bg, var(--ds-canvas)); color: var(--primary, var(--ds-ink-mute)); box-shadow: var(--ds-shadow-1, 0 1px 3px rgba(0,55,112,0.08)); }
 .package-op-btn:disabled { cursor: not-allowed; opacity: 0.6; }
-.field-hint { display: block; margin-top: 6px; color: var(--text-light, #64748d); font-size: 12px; }
+.field-hint { display: block; margin-top: 6px; color: var(--text-light, var(--ds-ink-mute)); font-size: 12px; }
 .modal-title { font-size: 1.2rem; font-weight: 800; color: var(--text); margin: 0 0 4px; }
 .modal-desc { color: var(--text-light); font-size: 13px; margin: 0; line-height: 1.6; }
-.modal-note { background: #fff8e1; border: 1px solid #ffe0a3; border-radius: 8px; color: #7a4b00; font-size: 13px; line-height: 1.6; margin: -8px 0 16px; padding: 10px 12px; }
-.premium-note { border-radius: 14px; border-color: #fed7aa; background: linear-gradient(135deg, #fff7ed, #fffbeb); }
+.modal-note { background: var(--ds-primary-wash); border: 1px solid var(--ds-warning); border-radius: 8px; color: var(--ds-warning); font-size: 13px; line-height: 1.6; margin: -8px 0 16px; padding: 10px 12px; }
+.premium-note { border-radius: 14px; border-color: var(--ds-warning-wash); background: linear-gradient(135deg, var(--ds-warning-wash), var(--ds-warning-wash)); }
 </style>
