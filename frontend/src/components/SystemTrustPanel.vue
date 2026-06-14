@@ -79,8 +79,16 @@ const endpoint = computed(() => {
 });
 
 async function loadSummary() {
-  if (!endpoint.value) {
+  // Staff (non-parent) mode authenticates via bearer token; the token is hydrated
+  // asynchronously by the parent page, so on first mount props.token can still be empty.
+  // Firing the protected request without it surfaced a misleading 「狀態載入失敗（401）」
+  // flash (in-app bug 164). Stay in a neutral loading state until prerequisites are ready;
+  // the watcher re-runs loadSummary once the token (or branch) arrives.
+  const needsToken = !props.parentMode;
+  if (!endpoint.value || (needsToken && !props.token)) {
     summary.value = null;
+    error.value = '';
+    loading.value = needsToken && !props.token && !!endpoint.value;
     return;
   }
   loading.value = true;
