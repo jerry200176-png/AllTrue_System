@@ -140,11 +140,11 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 .ss-input {
   width: 100%;
   padding: 10px 32px 10px 12px;
-  border: 1px solid var(--border, #E0E0E0);
+  border: 1px solid var(--border, var(--ds-canvas-soft));
   border-radius: 8px;
-  background: #FAFAFA;
+  background: var(--ds-canvas);
   font-size: 14px;
-  color: var(--text, #37474F);
+  color: var(--text, var(--ds-ink));
   font-family: inherit;
   transition: all 0.2s ease;
   cursor: pointer;
@@ -152,15 +152,15 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 
 .ss-input:focus {
   outline: none;
-  border-color: var(--accent, #FFA726);
+  border-color: var(--accent, var(--ds-warning));
   box-shadow: 0 0 0 3px rgba(255, 167, 38, 0.15);
-  background: #FFFFFF;
+  background: var(--ds-canvas);
   cursor: text;
 }
 
 .ss-input:disabled {
-  background: #F0F0F0;
-  color: #999;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-hairline);
   cursor: not-allowed;
 }
 
@@ -170,7 +170,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
-  color: var(--text-light, #78909C);
+  color: var(--text-light, var(--ds-ink-mute));
   pointer-events: none;
   transition: transform 0.2s;
 }
@@ -180,7 +180,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 }
 
 .searchable-select.disabled .ss-arrow {
-  color: #CCC;
+  color: var(--ds-hairline);
 }
 
 .ss-selected-display {
@@ -191,7 +191,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
   bottom: 0;
   padding: 10px 32px 10px 12px;
   font-size: 14px;
-  color: var(--text, #37474F);
+  color: var(--text, var(--ds-ink));
   line-height: 1.4;
   pointer-events: none;
   white-space: nowrap;
@@ -204,8 +204,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: #FFFFFF;
-  border: 1px solid var(--border, #E0E0E0);
+  background: var(--ds-canvas);
+  border: 1px solid var(--border, var(--ds-canvas-soft));
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   max-height: 220px;
@@ -222,24 +222,24 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 .ss-option {
   padding: 9px 12px;
   font-size: 13.5px;
-  color: var(--text, #37474F);
+  color: var(--text, var(--ds-ink));
   cursor: pointer;
   transition: background 0.1s;
 }
 
 .ss-option.highlighted {
-  background: var(--primary-bg, #FFF3E0);
+  background: var(--primary-bg, var(--ds-warning-wash));
 }
 
 .ss-option.selected {
-  color: var(--primary, #E65100);
+  color: var(--primary, var(--ds-primary));
   font-weight: 600;
 }
 
 .ss-no-results {
   padding: 12px;
   text-align: center;
-  color: var(--text-light, #78909C);
+  color: var(--text-light, var(--ds-ink-mute));
   font-size: 13px;
   font-style: italic;
 }
