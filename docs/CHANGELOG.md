@@ -43,6 +43,24 @@
 
 開發備註：Actions-down 高價值工作交接（#907 / #851 / #855 / #909）。新增 `docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 in-app bug 公開回覆白話 macro，含公開留言＋內部備註＋禁用詞檢查＋對應狀態機，對齊 §3.8）並補 `docs/INDEX.md` 入口；對 #851/#855/#909 補 triage（白話問題＋驗收條件＋blocked-by-deploy，唯讀未改 in-app 狀態）；補 metadata（#851/#855 priority+area+status:blocked，#867/#870 status:blocked）；`docs/SOP_MATURITY.md` 補每 milestone Top 3、狀態分類與「CI 凍結時工程師 playbook」。純 docs / GitHub metadata，無 production code 變更。
 
+## 2026-06-14 — feat(attendance): 出缺席新增試聽/輔導/值班/補課/停課狀態 (#765)
+
+點名時除了到班/遲到/請假/缺席，新增「試聽有到、試聽未到、輔導有到、輔導未到、值班、補課、停課」等狀態（補登/詳細選單可選）。各狀態自動套用正確的扣堂與計薪規則：補課會扣堂並計薪、值班計薪但不扣堂、試聽/輔導不扣堂也不計薪、停課皆不算。既有四狀態行為完全不變。
+
+開發備註：抽出 `App\Support\AttendanceStatus` 單一真相 registry（label/deductible/payable/requires_log/session_status），扣堂集（AttendanceController）與計薪集（FinanceController payroll，值班 duty 計薪不扣堂為唯一刻意差異）、session 狀態映射（AttendanceEffectsService，makeup→attended）全部路由到 registry。AttendanceStatusSemanticsTest 15 綠釘住競品表 + 241 attendance/payroll/finance 回歸全綠（零回歸）。requires_log 元資料供 #768 漏交追蹤。PR #837；GitHub #765。
+
+## 2026-06-14 — feat(schedule): 批次排課 CSV 匯入前衝突檢查 (#770)
+
+提供「排課衝突預檢」：上傳批次排課 CSV，系統在寫入前逐列標出「同時段同教室／同老師」衝突（紅）與「學生同時段已有課」警告（黃），避免撞堂撞教室。
+
+開發備註：`POST /api/v1/schedule-import/preview`（純讀取）：解析 CSV，對 DB 既有非取消堂次 + 同檔對稱檢測時間重疊衝突 + 格式驗證。ScheduleImportPreviewTest 2 綠。原子 execute（實際建課）因扁平 CSV 缺計費欄位另行設計。PR #839；GitHub #770。另：`GET /api/v1/teaching-logs/missing`（#768）回傳各老師需教學日誌但逾 24h 未填的堂次清單（requires_log + 無 LearningRecord），PR #838。
+
+## 2026-06-14 — style(ui): 全站 Toast 統一 + UI 去 AI 化逐頁/元件治理 (#687 系列)
+
+成功/錯誤/復原提示改為全站一致的統一 Toast（白底 + 左語義色條），不再各頁樣式不一。同時完成「UI 去 AI 化」逐頁與共用元件治理（金流/老師/出缺勤/儀表板/行事曆等頁 + 表單/Modal/排課器等元件），移除硬編色票改用設計系統 token，介面更統一專業。
+
+開發備註：純視覺、零行為變更（HSL codemod 僅作用 `<style>`+inline，計算 byte-identical）。新增 `useToast`/`AtToast`（#708）與 `AtInput/AtSelect/AtTextarea/AtField`（#702）設計系統元件。逐頁/元件 PR #820–#849；hex 大幅下降。GitHub #687/#693/#694/#695/#696/#699/#700/#701/#702/#703/#704/#708。
+
 ## 2026-06-13 — fix(schedule): 建課偵測「同生同科同師日期重疊」防重複排課 (#805)
 
 主任建立課程時，若該學生已有「同科目、同老師、上課期間重疊」的進行中課程（常見於續報新期起始日早於舊期結束），系統會先提醒，避免兩期在重疊週各排一堂、造成點名名單同一時段重複出現。可改用「加購堂數」延續原課程，或把新課起始日改到舊課結束之後；確定要建立仍可勾選強制建立。
