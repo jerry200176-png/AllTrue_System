@@ -44,21 +44,21 @@ defineEmits(['select']);
   padding: 10px 16px 8px;
   border: none;
   border-radius: 10px 10px 0 0;
-  background: var(--bg-muted, #f0f1f3);
+  background: var(--bg-muted, var(--ds-canvas-soft));
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-light, #64748b);
+  color: var(--text-light, var(--ds-ink-mute));
   transition: background 0.2s, color 0.2s;
   position: relative;
   min-width: 72px;
   flex-shrink: 0;
 }
-.day-tab:hover { background: #e8e9ec; color: var(--text-color, #1a1a1a); }
+.day-tab:hover { background: var(--ds-canvas-soft); color: var(--text-color, var(--ds-ink)); }
 .day-tab.active {
-  background: #fff;
-  color: var(--primary, #2563eb);
-  box-shadow: 0 -2px 0 var(--primary, #2563eb) inset;
+  background: var(--ds-canvas);
+  color: var(--primary, var(--ds-ink-mute));
+  box-shadow: 0 -2px 0 var(--primary, var(--ds-ink-mute)) inset;
 }
 .day-tab-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
 .day-tab-date { font-size: 11px; font-weight: 400; opacity: 0.8; line-height: 1.2; }
@@ -69,8 +69,8 @@ defineEmits(['select']);
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
-  background: var(--primary, #2563eb);
-  color: #fff;
+  background: var(--primary, var(--ds-ink-mute));
+  color: var(--ds-canvas);
   font-size: 10px;
   font-weight: 700;
   display: flex;
@@ -79,7 +79,7 @@ defineEmits(['select']);
   padding: 0 4px;
   line-height: 1;
 }
-.day-tab.active .day-tab-badge { background: #1d4ed8; }
+.day-tab.active .day-tab-badge { background: var(--ds-ink-mute); }
 
 @media (max-width: 768px) {
   .day-tabs-bar {

@@ -298,7 +298,7 @@ async function doSubmit() {
 .fab {
   position: fixed; z-index: 900;
   width: 52px; height: 52px; border-radius: 50%;
-  background: var(--primary); color: #fff; border: none;
+  background: var(--primary); color: var(--ds-canvas); border: none;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   cursor: grab; touch-action: none;
   display: flex; align-items: center; justify-content: center;
@@ -322,7 +322,7 @@ async function doSubmit() {
 
 label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; margin-top: 12px; }
 .required { color: var(--danger); }
-.optional { color: #94a3b8; font-size: 12px; font-weight: normal; }
+.optional { color: var(--ds-ink-mute); font-size: 12px; font-weight: normal; }
 .form-input, .form-select, .form-textarea {
   width: 100%; padding: 8px 12px; border: 1px solid var(--border);
   border-radius: 8px; font-size: 14px; font-family: inherit;
@@ -345,7 +345,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 
 .context-info {
   display: flex; align-items: center; gap: 6px; margin-top: 14px;
-  padding: 8px 12px; background: #f0f4f8; border-radius: 8px;
+  padding: 8px 12px; background: var(--ds-canvas-soft); border-radius: 8px;
   font-size: 13px; color: var(--text-light);
 }
 .context-info .material-symbols-outlined { font-size: 18px; }
@@ -357,7 +357,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; m
 }
 .btn-submit {
   padding: 8px 20px; border: none; border-radius: 8px;
-  background: var(--primary); color: #fff; font-size: 14px; cursor: pointer;
+  background: var(--primary); color: var(--ds-canvas); font-size: 14px; cursor: pointer;
 }
 .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
 
