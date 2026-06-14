@@ -539,7 +539,10 @@ async function fetchColleagueRanks() {
     if (!tRes.ok) return;
     const tJson = await tRes.json().catch(() => ({}));
     const list = Array.isArray(tJson) ? tJson : (tJson?.data ?? []);
-    const active = list.filter((t) => t && t.status === 'active' && t.id != null);
+    // 排除自己（自己的軍階已在頁首 EngagementRankStrip 顯示；「同事」語意指他人）
+    const active = list.filter(
+      (t) => t && t.status === 'active' && t.id != null && String(t.id) !== String(props.userId),
+    );
     const ids = active.map((t) => t.id);
     if (!ids.length) { colleagueRanks.value = []; return; }
 
