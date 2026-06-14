@@ -72,14 +72,14 @@ const subjectLabel = computed(() => getSubjectLabel(props.subject));
 .makeup-slots-list { max-height: 380px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
 .makeup-date-group + .makeup-date-group { border-top: 1px solid var(--border); }
 .makeup-date-header { padding: 8px 12px; font-size: 13px; font-weight: 700; background: var(--primary-bg); color: var(--text); position: sticky; top: 0; z-index: 1; }
-.makeup-slot-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-top: 1px solid #f0f0f0; font-size: 13px; }
+.makeup-slot-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-top: 1px solid var(--ds-canvas-soft); font-size: 13px; }
 .makeup-slot-row:first-child { border-top: none; }
-.makeup-slot-row:hover { background: #fafafa; }
+.makeup-slot-row:hover { background: var(--ds-canvas); }
 .slot-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .slot-time { color: var(--text); font-weight: 500; }
 .slot-capacity { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; }
-.slot-capacity.cap-free { background: #e8f5e9; color: #2e7d32; }
-.slot-capacity.cap-partial { background: #fff3e0; color: #e65100; }
+.slot-capacity.cap-free { background: var(--ds-success-wash); color: var(--ds-success); }
+.slot-capacity.cap-partial { background: var(--ds-warning-wash); color: var(--ds-primary); }
 .slot-students { font-size: 11px; color: var(--text-light); flex-basis: 100%; }
-.slot-has-students { background: #fffde7; }
+.slot-has-students { background: var(--ds-warning-wash); }
 </style>
