@@ -354,6 +354,38 @@
             <p>{{ detail.description }}</p>
           </div>
 
+          <!-- 回覆／留言：移到描述下方、截圖與歷程之上，讓回報者（多為手機）
+               點開即可讀開發者回覆，免往下長滑（in-app #166）。 -->
+          <div class="comments-section">
+            <strong>留言（{{ detail.comments?.length || 0 }}）</strong>
+            <div v-for="c in detail.comments" :key="c.id" class="comment-item" :class="{ internal: c.is_internal_note }">
+              <div class="comment-header">
+                <span class="comment-author">{{ c.author_name }}</span>
+                <span class="comment-time">{{ formatDate(c.created_at) }}</span>
+                <span v-if="c.is_internal_note" class="internal-tag">內部</span>
+                <button
+                  v-if="isSuperAdmin"
+                  class="btn-sm btn-ghost"
+                  :disabled="isUpdatingCommentVisibility(c.id)"
+                  @click="toggleCommentVisibility(c)"
+                >
+                  {{ c.is_internal_note ? '給回報者看' : '設為內部' }}
+                </button>
+              </div>
+              <div class="comment-body">{{ c.body }}</div>
+            </div>
+
+            <div class="comment-form">
+              <textarea v-model="newComment" placeholder="輸入留言..." rows="2" class="form-textarea"></textarea>
+              <div class="comment-form-actions">
+                <label v-if="isSuperAdmin" class="checkbox-label">
+                  <input type="checkbox" v-model="commentIsInternal" /> 內部備註（回報者不可見）
+                </label>
+                <button class="btn-sm btn-primary" :disabled="!newComment.trim()" @click="doAddComment">送出</button>
+              </div>
+            </div>
+          </div>
+
           <div v-if="detail.attachments?.length" class="detail-attachments">
             <strong>截圖／附件（{{ detail.attachments.length }}）</strong>
             <div class="attachment-grid">
@@ -393,36 +425,6 @@
             </div>
           </div>
 
-          <!-- Comments -->
-          <div class="comments-section">
-            <strong>留言（{{ detail.comments?.length || 0 }}）</strong>
-            <div v-for="c in detail.comments" :key="c.id" class="comment-item" :class="{ internal: c.is_internal_note }">
-              <div class="comment-header">
-                <span class="comment-author">{{ c.author_name }}</span>
-                <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                <span v-if="c.is_internal_note" class="internal-tag">內部</span>
-                <button
-                  v-if="isSuperAdmin"
-                  class="btn-sm btn-ghost"
-                  :disabled="isUpdatingCommentVisibility(c.id)"
-                  @click="toggleCommentVisibility(c)"
-                >
-                  {{ c.is_internal_note ? '給回報者看' : '設為內部' }}
-                </button>
-              </div>
-              <div class="comment-body">{{ c.body }}</div>
-            </div>
-
-            <div class="comment-form">
-              <textarea v-model="newComment" placeholder="輸入留言..." rows="2" class="form-textarea"></textarea>
-              <div class="comment-form-actions">
-                <label v-if="isSuperAdmin" class="checkbox-label">
-                  <input type="checkbox" v-model="commentIsInternal" /> 內部備註（回報者不可見）
-                </label>
-                <button class="btn-sm btn-primary" :disabled="!newComment.trim()" @click="doAddComment">送出</button>
-              </div>
-            </div>
-          </div>
         </template>
       </div>
 
