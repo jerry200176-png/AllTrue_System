@@ -46,6 +46,16 @@ jobs:
             | grep -vE '\.generated\.(js|ts)$' || true)
           TESTS=$(echo "$FILES" | grep -E '^(backend/tests/|frontend/.*\.(test|spec)\.)' || true)
 
+          # 慣例式跳過：若 PR 全部（非 merge）commit 都是 style/docs/chore/ci/test 型
+          # （= 無行為變更：CSS 治理、文件、格式、設定），則不要求附測試，避免假陽性噪音。
+          SUBJECTS=$(git log --no-merges --format='%s' "$BASE_SHA..$HEAD_SHA" || true)
+          NONTRIVIAL=$(echo "$SUBJECTS" | grep -vE '^(style|docs|chore|ci|test)(\(|:)' || true)
+          if [ -n "$SUBJECTS" ] && [ -z "$NONTRIVIAL" ]; then
+            echo "All commits are style/docs/chore/ci/test — skipping missing-tests warning."
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ -n "$PROD" ] && [ -z "$TESTS" ]; then
             echo "missing=true" >> "$GITHUB_OUTPUT"
             echo "Changed prod files (no tests):"
