@@ -105,8 +105,8 @@
 
     <!-- Webhook URL -->
     <div class="card" v-if="status">
-      <h3>📡 Webhook 網址（填入 LINE 後台）</h3>
-      <p class="hint mb">到 LINE Developers → Messaging API → Webhook settings，貼上以下網址並開啟「Use webhook」</p>
+      <h3>📡 Webhook 網址</h3>
+      <p class="hint mb">複製對應服務的 Webhook 網址，貼到 LINE 或 Telegram Bot 的後台設定。</p>
       <div class="webhook-label">LINE Webhook</div>
       <div class="url-box">
         <code>{{ status.webhook_url }}</code>
@@ -114,6 +114,7 @@
           {{ copied === 'webhook' ? '✓ 已複製' : '複製' }}
         </button>
       </div>
+      <p class="field-hint">到 LINE Developers → Messaging API → Webhook settings，貼上此網址並開啟「Use webhook」。</p>
       <div class="webhook-label mt">Telegram Webhook</div>
       <div class="url-box">
         <code>{{ telegramWebhookUrl }}</code>
