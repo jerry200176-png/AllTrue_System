@@ -107,12 +107,21 @@
     <div class="card" v-if="status">
       <h3>📡 Webhook 網址（填入 LINE 後台）</h3>
       <p class="hint mb">到 LINE Developers → Messaging API → Webhook settings，貼上以下網址並開啟「Use webhook」</p>
+      <div class="webhook-label">LINE Webhook</div>
       <div class="url-box">
         <code>{{ status.webhook_url }}</code>
         <button class="small ghost" @click="copy(status.webhook_url, 'webhook')">
           {{ copied === 'webhook' ? '✓ 已複製' : '複製' }}
         </button>
       </div>
+      <div class="webhook-label mt">Telegram Webhook</div>
+      <div class="url-box">
+        <code>{{ telegramWebhookUrl }}</code>
+        <button class="small ghost" @click="copy(telegramWebhookUrl, 'telegram-webhook')">
+          {{ copied === 'telegram-webhook' ? '✓ 已複製' : '複製' }}
+        </button>
+      </div>
+      <p class="field-hint">Telegram Bot 請用 BotFather 或 setWebhook 將上方網址設為 webhook。</p>
     </div>
 
     <!-- 步驟說明 -->
@@ -208,6 +217,19 @@ const troubleshooting = [
     desc: '確認 OA 已加為好友、Webhook Verify 成功，並先在本頁確認狀態卡顯示「LINE 官方帳號已連線」。',
   },
 ];
+
+const telegramWebhookUrl = computed(() => {
+  const campusId = status.value?.campus_id;
+  if (!campusId) return '';
+  const telegramPath = `/api/v1/telegram/webhook/${campusId}`;
+  const lineWebhookUrl = String(status.value?.webhook_url || '');
+  if (lineWebhookUrl) {
+    const replaced = lineWebhookUrl.replace(/\/api\/v1\/line\/webhook\/[^/]+$/, telegramPath);
+    if (replaced !== lineWebhookUrl) return replaced;
+  }
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}${telegramPath}`;
+});
 
 const steps = computed(() => {
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -510,6 +532,12 @@ h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; color: var(--ds-ink); 
 .save-msg.err { color: var(--ds-danger); }
 
 /* Webhook URL */
+.webhook-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ds-ink);
+}
 .url-box {
   display: flex;
   align-items: center;
