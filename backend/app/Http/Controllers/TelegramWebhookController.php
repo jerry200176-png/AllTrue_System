@@ -40,18 +40,12 @@ class TelegramWebhookController extends Controller
 
         $sendMessage = static function (string $chatIdTo, string $message) use ($botToken): void {
             try {
-                $response = Http::timeout(15)
+                Http::timeout(15)
                     ->asJson()
                     ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
                         'chat_id' => $chatIdTo,
                         'text' => $message,
                     ]);
-                if (!$response->successful()) {
-                    Log::warning('Telegram sendMessage returned non-2xx', [
-                        'status' => $response->status(),
-                        'body' => $response->body(),
-                    ]);
-                }
             } catch (\Throwable $e) {
                 Log::warning('Telegram sendMessage failed: ' . $e->getMessage());
             }
@@ -113,3 +107,4 @@ class TelegramWebhookController extends Controller
         return response('ok', 200);
     }
 }
+
