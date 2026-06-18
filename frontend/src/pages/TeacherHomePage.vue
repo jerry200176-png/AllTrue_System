@@ -423,6 +423,7 @@
       :branch-id="branchId"
       :token="trustToken"
       compact
+      teacher-mode
       @report-problem="$emit('navigate', 'bugs')"
     />
   </div>
