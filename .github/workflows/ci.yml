@@ -47,7 +47,8 @@ jobs:
     name: Golden scenarios report
     needs: changes
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted，避免 GitHub-hosted 額度卡住時 required「Golden scenarios report」無法 run。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 2
     steps:
       - name: Checkout
