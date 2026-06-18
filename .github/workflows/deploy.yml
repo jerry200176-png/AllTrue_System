@@ -17,7 +17,8 @@ permissions:
 jobs:
   detect-deployable:
     name: Detect deployable changes
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted。GitHub-hosted 受帳單/額度卡住時，部署整條鏈會卡在這裡（Detect 階段失敗、無 log）。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 3
     if: github.event.workflow_run.conclusion == 'success'
     outputs:
@@ -76,7 +77,8 @@ jobs:
   deploy:
     name: Deploy to Production
     needs: detect-deployable
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted（runner 在線且可 SSH 到 Pi:22），使部署不再依賴 GitHub-hosted 額度。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     if: github.event.workflow_run.conclusion == 'success' && needs.detect-deployable.outputs.deployable == 'true'
 
     steps:
