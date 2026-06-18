@@ -22,9 +22,9 @@ permissions:
 jobs:
   changes:
     name: Detect backend/security changes
-    # #545(A)：移至 GitHub-hosted runner，移除「self-hosted wsl-ci 單點」
-    # ——將來把本 gate 升為 required 時不會因本機 runner 離線而卡死 backend 合併。
-    runs-on: ubuntu-latest
+    # #545(A)：原移至 GitHub-hosted runner。
+    # #867：GitHub-hosted 受帳單/額度卡住時整條 required gate 失效，改回 self-hosted（runner 在線）。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 3
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -52,25 +52,15 @@ jobs:
     name: PHPStan Advisory (php)
     needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted。runner 已內建 PHP 8.2（與 PHPUnit job 同），故不需 setup-php / hosted cache。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
-        with:
-          php-version: "8.2"
-          tools: composer:v2
-          coverage: none
-
-      - name: Cache Composer packages
-        uses: actions/cache@v5
-        with:
-          path: backend/vendor
-          key: phpstan-composer-${{ hashFiles('backend/composer.lock') }}
-          restore-keys: phpstan-composer-
+      - name: Verify local PHP runtime
+        run: php -v
 
       - name: Install PHP dependencies
         working-directory: backend
