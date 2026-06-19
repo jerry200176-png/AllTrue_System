@@ -48,6 +48,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 2. `.cursor/rules/bug-fix-plan.mdc` — Bug 調查 SOP（**§B0：修 bug 前必翻歷史 + 認領復發家族，降低復發率**）
 3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53
+5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
@@ -81,7 +82,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **回滾 SOP（何時/如何回滾 + MTTR）** | `docs/RUNBOOK_ROLLBACK.md`；就緒度檢查 `scripts/rollback-readiness.sh` |
 | Dependabot merge SOP / SLA | `docs/OPERATIONS_RUNBOOK.md §B0 / §T` |
 | Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
-| 工程成熟度現況 | `docs/OPERATIONS_RUNBOOK.md §P` |
+| 工程成熟度現況 / Roadmap | `docs/SOP_MATURITY.md`（接手地圖 + M4/M5）；維運細節見 `docs/OPERATIONS_RUNBOOK.md §P` |
 | Branch protection 啟用步驟 | `docs/OPERATIONS_RUNBOOK.md §R` |
 | **Solo + AI GitHub 週期 SOP** | `docs/OPERATIONS_RUNBOOK.md §B5` |
 | SSH key 季度輪替 SOP | `docs/OPERATIONS_RUNBOOK.md §S` |
@@ -198,6 +199,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/SUBSTITUTE_UX.md` | 代課 UX 設計 |
 | `docs/MANUAL_SCHEDULE_DATE_SEMANTICS.md` | 排課日期語義 |
 | `docs/CHAT_BUG_SYSTEM.md` | 聊天／Bug 回報；**§3.6–§3.7**＝分診 + 修完回 in-app 完整 SOP |
+| `docs/GUIDE_SUPPORT_REPLY_MACROS.md` | in-app bug 公開回覆白話 macro library（#907）；對應 §3.8 禁用詞規則 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 
 ### 歷史／參考／易誤導（**勿當唯一真相；不通讀**）
