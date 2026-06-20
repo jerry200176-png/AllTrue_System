@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\UserEngagementXpAwardService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Model;
 
 class LearningRecord extends Model
@@ -54,6 +55,14 @@ class LearningRecord extends Model
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhereDoesntHave('classSession', function ($cs) {
                     $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
+                })
+                ->whereNotExists(function ($sub) use ($t) {
+                    $sub->select(DB::raw(1))
+                        ->from('schedules')
+                        ->whereColumn('schedules.student_course_id', "{$t}.StudentClassID")
+                        ->whereRaw("DATE(`schedules`.`schedule_date`) = DATE(`{$t}`.`SessionDate`)")
+                        ->whereRaw("SUBSTRING(`schedules`.`start_time`, 1, 5) = SUBSTRING(`{$t}`.`StartTime`, 1, 5)")
+                        ->whereIn('schedules.status', ['leave', 'leave_adjusted', 'excused']);
                 });
         });
     }

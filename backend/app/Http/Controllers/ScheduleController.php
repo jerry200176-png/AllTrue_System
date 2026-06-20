@@ -495,10 +495,6 @@ class ScheduleController extends Controller
                     return response()->json(['message' => '找不到堂次'], 404);
                 }
 
-                if (strtolower((string) ($session->Status ?? '')) !== 'leave') {
-                    return response()->json(['message' => '僅能撤銷請假狀態的堂次'], 422);
-                }
-
                 $courseId = (int) $session->StudentClassID;
                 $course = StudentClass::where('ID', $courseId)->lockForUpdate()->first();
                 if (!$course) {
@@ -512,11 +508,43 @@ class ScheduleController extends Controller
                 }
 
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
+                $sessionStart = substr((string) ($session->StartTime ?? ''), 0, 5);
+
+                if (strtolower((string) ($session->Status ?? '')) !== 'leave') {
+                    $sameSlotLeaveSession = ClassSession::query()
+                        ->where('StudentClassID', $courseId)
+                        ->whereDate('SessionDate', $sessionDate)
+                        ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$sessionStart])
+                        ->whereRaw('LOWER(Status) = ?', ['leave'])
+                        ->lockForUpdate()
+                        ->first();
+                    if ($sameSlotLeaveSession) {
+                        $session = $sameSlotLeaveSession;
+                    } else {
+                        $deleted = Schedule::query()
+                            ->where('student_course_id', $courseId)
+                            ->whereDate('schedule_date', $sessionDate)
+                            ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$sessionStart])
+                            ->where('status', 'leave')
+                            ->delete();
+                        if ($deleted > 0) {
+                            return response()->json([
+                                'message' => '已清理請假標記，堂次維持可上課狀態',
+                                'leave_session_date' => $sessionDate,
+                                'extended_end_date' => null,
+                                'class_sessions' => CourseLeaveCascadeService::fetchCourseSessionRows($courseId),
+                            ]);
+                        }
+
+                        return response()->json(['message' => '僅能撤銷請假狀態的堂次'], 422);
+                    }
+                }
 
                 [$rows, $extendedEndDate, $leaveSessionDate] =
                     CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
 
-                Schedule::where('student_course_id', $courseId)
+                Schedule::query()
+                    ->where('student_course_id', $courseId)
                     ->whereDate('schedule_date', $sessionDate)
                     ->where('status', 'leave')
                     ->delete();
@@ -1076,7 +1104,8 @@ class ScheduleController extends Controller
             $schedule->update(['status' => 'cancelled']);
 
             if ($schedule->student_course_id && $schedule->schedule_date && $schedule->start_time) {
-                $session = ClassSession::where('StudentClassID', $schedule->student_course_id)
+                $session = ClassSession::query()
+                    ->where('StudentClassID', $schedule->student_course_id)
                     ->whereDate('SessionDate', $schedule->schedule_date)
                     ->where('StartTime', $schedule->start_time)
                     ->whereNotIn('Status', ['attended', 'leave', 'leave_adjusted'])

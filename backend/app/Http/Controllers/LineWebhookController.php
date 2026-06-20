@@ -231,7 +231,7 @@ class LineWebhookController extends Controller
 
     private function handleBindingByName(string $lineUserId, string $name, string $phone, ?string $replyToken, object $campus): void
     {
-        $normalized = preg_replace('/[^0-9]/', '', $phone);
+        $normalized = $this->normalizePhone($phone);
         if ($normalized === '') {
             $this->replyMessage($replyToken, "請輸入正確的手機號碼。", $campus);
             return;
@@ -243,7 +243,7 @@ class LineWebhookController extends Controller
 
         $student = null;
         foreach ($candidates as $s) {
-            if (!empty($s->Phone) && preg_replace('/[^0-9]/', '', $s->Phone) === $normalized) {
+            if ($this->normalizeStudentContactPhone($s) === $normalized) {
                 $student = $s;
                 break;
             }
@@ -282,8 +282,8 @@ class LineWebhookController extends Controller
             return;
         }
 
-        $normalized       = preg_replace('/[^0-9]/', '', $phone);
-        $normalizedStored = preg_replace('/[^0-9]/', '', $student->Phone ?? '');
+        $normalized       = $this->normalizePhone($phone);
+        $normalizedStored = $this->normalizeStudentContactPhone($student);
 
         if (empty($normalizedStored) || $normalized !== $normalizedStored) {
             $this->replyMessage($replyToken, "手機號碼不符，請確認後重試。", $campus);
@@ -317,6 +317,21 @@ class LineWebhookController extends Controller
         ]);
         // Keep Student.LineID in sync for backward compatibility
         $student->update(['LineID' => $lineUserId]);
+    }
+
+    private function normalizeStudentContactPhone(Student $student): string
+    {
+        $parentPhone = trim((string) ($student->parent_phone ?? ''));
+        if ($parentPhone !== '') {
+            return $this->normalizePhone($parentPhone);
+        }
+
+        return $this->normalizePhone($student->Phone ?? '');
+    }
+
+    private function normalizePhone(?string $phone): string
+    {
+        return preg_replace('/[^0-9]/', '', (string) ($phone ?? '')) ?? '';
     }
 
     private function isAlreadyBound(int $studentId, string $lineUserId): bool

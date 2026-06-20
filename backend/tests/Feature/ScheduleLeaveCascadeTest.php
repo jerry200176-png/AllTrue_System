@@ -1008,6 +1008,70 @@ class ScheduleLeaveCascadeTest extends TestCase
         ]);
     }
 
+    public function test_undo_leave_by_session_cleans_stale_leave_schedule_when_session_was_already_restored(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-stale-leave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-stale-leave@example.com');
+        $student = $this->createStudent(1, '半套請假學生');
+
+        $firstTuesday = Carbon::now()->next(Carbon::TUESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstTuesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->max('ID');
+        $scheduled = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->first();
+        $this->assertNotNull($scheduled);
+
+        DB::table('schedules')->insert([
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => Carbon::parse($scheduled->SessionDate)->dayOfWeekIso,
+            'start_time' => substr((string) $scheduled->StartTime, 0, 5),
+            'end_time' => substr((string) $scheduled->EndTime, 0, 5),
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => $scheduled->SessionDate,
+            'student_course_id' => $courseId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => (int) $scheduled->id,
+        ])->assertOk()
+            ->assertJsonFragment(['message' => '已清理請假標記，堂次維持可上課狀態']);
+
+        $scheduled->refresh();
+        $this->assertSame('scheduled', strtolower((string) $scheduled->Status));
+        $this->assertDatabaseMissing('schedules', [
+            'student_course_id' => $courseId,
+            'status' => 'leave',
+        ]);
+    }
+
     public function test_undo_leave_by_session_rejects_non_leave_session(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
