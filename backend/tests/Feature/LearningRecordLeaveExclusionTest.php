@@ -114,6 +114,27 @@ class LearningRecordLeaveExclusionTest extends TestCase
         $this->assertNotContains((int) $record->id, $ids, '同課同日同時段已有 leave 堂次時，ClassSessionID 綁錯也須排除');
     }
 
+    public function test_pending_lr_is_excluded_when_linked_session_note_still_marks_leave(): void
+    {
+        [$token, $teacherId, $studentId] = $this->bootActors('leave-note-hidden');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+
+        $cs = $this->seedSession($courseId, 'scheduled');
+        $cs->Note = 'leave; revert-to-scheduled';
+        $cs->save();
+
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&status=pending&only_started=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $record->id, $ids, 'ClassSession 已回 scheduled 但 Note 仍含 leave 時，待審評量也須排除');
+    }
+
     public function test_pending_lr_on_leave_adjusted_session_is_excluded(): void
     {
         [$token, $teacherId, $studentId] = $this->bootActors('leave-adjusted-hidden');

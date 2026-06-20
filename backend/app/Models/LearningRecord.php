@@ -57,7 +57,10 @@ class LearningRecord extends Model
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhere(function ($slot) use ($t, $leaveStatuses) {
                     $slot->whereDoesntHave('classSession', function ($cs) use ($leaveStatuses) {
-                        $cs->whereIn('Status', $leaveStatuses);
+                        $cs->where(function ($leaveSignal) use ($leaveStatuses) {
+                            $leaveSignal->whereIn('Status', $leaveStatuses)
+                                ->orWhere('Note', 'like', '%leave%');
+                        });
                     })->whereNotExists(function ($sub) use ($t, $leaveStatuses) {
                         $sub->select(DB::raw(1))
                             ->from('ClassSession as cs_slot')
