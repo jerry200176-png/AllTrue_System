@@ -1045,6 +1045,66 @@ class ScheduleLeaveCascadeTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_undo_leave_by_session_handles_signin_only_leave_desync(): void
+    {
+        // in-app #169：請假只記在 StudentSingIn（Status=leave），ClassSession.Status 仍為 scheduled。
+        // 舊邏輯回 422「僅能撤銷請假狀態的堂次」；修正後應可撤銷（作廢請假簽到、堂次維持 scheduled）。
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-desync@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-desync@example.com');
+        $student = $this->createStudent(1, '請假desync學生');
+
+        $firstTuesday = Carbon::now()->next(Carbon::TUESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstTuesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')->where('StudentID', $student->id)->max('ID');
+        $session = ClassSession::where('StudentClassID', $courseId)->where('Status', 'scheduled')->first();
+        $this->assertNotNull($session);
+
+        // 製造 desync：未作廢的請假簽到，但 ClassSession 仍 scheduled。
+        StudentSignIn::create([
+            'StudentClassID' => $courseId,
+            'StudentID' => $student->id,
+            'TeacherID' => $teacherId,
+            'SubjectID' => 1,
+            'GradeID' => 1,
+            'Memo' => 'desync-leave',
+            'SignInDT' => $session->SessionDate . ' 16:00:00',
+            'SignOutDT' => null,
+            'MDT' => now(),
+            'ClassSessionID' => $session->id,
+            'Status' => 'leave',
+            'CampusID' => 1,
+            'PersonType' => 'student',
+            'SessionDeducted' => false,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => (int) $session->id,
+        ])->assertOk();
+
+        $this->assertSame(0, StudentSignIn::where('ClassSessionID', $session->id)
+            ->whereNull('VoidedAt')
+            ->whereIn('Status', ['leave', 'excused', 'leave_requested'])
+            ->count(), '請假簽到應全部作廢');
+        $session->refresh();
+        $this->assertSame('scheduled', strtolower((string) $session->Status));
+    }
+
     public function test_undo_leave_by_session_forbidden_for_teacher(): void
     {
         $dirToken = $this->createDirectorToken([1], 'director-undo-bysess-perm@example.com');
