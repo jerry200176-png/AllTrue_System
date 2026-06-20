@@ -766,6 +766,33 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R61. LINE 綁定家長必須與 web 登入同口徑比對 `parent_phone`（2026-06-20 #925）
+
+- **觸發情境**：家長 web 登入已走 `resolveContactPhone()`（§R10），但 LINE webhook 綁定仍只比對 `Student.Phone` → 僅填「家長手機」欄的學生 LINE 綁定失敗或綁錯人。
+- **強制規則**：`LineWebhookController` 比對電話時必須 **parent_phone 優先、空才 fallback Phone**；正規化邏輯與 `ParentPortalController` 一致。
+- **測試必補**：`LineWebhookBindingTest` 覆蓋 parent_phone-only 與 Phone-only 兩案。
+
+---
+
+### R62. 堂數制課程「當日點名名單」讀取前須物化 sparse 堂次（2026-06-20 in-app #169 延伸／周宏謙）
+
+- **觸發情境**：count 課 `RemainingSessions > 0` 但 future `ClassSession` 列稀疏或缺當日 row → `GET /class-sessions?start=end=今天` 老師點名名單缺人，課程管理也可能看不到應上課堂次。
+- **根因**：讀取端只查既有 `ClassSession` entity，未在查詢前補齊應有堂次；與 §R29 cascade 寫入路徑不同，這是**唯讀補洞**。
+- **強制規則**：`ClassSessionController::index()` 在 **start === end（同日）** 且為 active count 課時，查詢前可呼叫既有 `extendSessionsIfNeeded()` 物化；**不可**改 `RemainingSessions`、付款或手動加扣堂。
+- **測試必補**：`StudentClassExtendSessionsGapTest::test_same_day_class_sessions_read_materializes_sparse_count_course_for_teacher_roster`。
+
+---
+
+### R63. 請假半套狀態：待審評量排除與撤回請假須涵蓋 `schedules` 請假列（2026-06-20 #169/#170）
+
+- **觸發情境**：課表有 `schedules.status=leave` 但綁定評量的 `ClassSession.Status` 非 leave → 請假堂仍進主任待審評量（#170）；或 UI 顯示請假但 `undo-leave-by-session` 回「僅能撤銷請假狀態」（#169，`revert-to-scheduled` 半套）。
+- **強制規則**：
+  - `LearningRecord::scopeExcludeLeaveSessionPendingReview()` 除 `ClassSession.Status=leave` 外，必須排除同 StudentClass + SessionDate + StartTime/EndTime 的 **schedules leave row**。
+  - `ScheduleController::undoLeaveBySession()` 若傳入非 leave 堂次，須解析同日 leave 堂或**清理殘留 schedules leave 列**（冪等），不可只硬拒。
+- **測試必補**：`LearningRecordLeaveExclusionTest`（leave schedule 排除）、`ScheduleLeaveCascadeTest`（stale leave schedule 清理）。
+
+---
+
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
 
 > 改下列模組前，**先回本檔 §復發家族** 認領對應 F1～F6（狀態收尾/月結續期/排課生成/共用堂數/行事曆合併/輸入邊界），再讀以下細項。
@@ -776,11 +803,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
-| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R63（請假半套：schedules leave 須排除待審評量） |
+| 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`）、§R61（LINE 綁定 parent_phone 口徑） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback） |
-| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）|
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R63（請假撤回須清理 schedules 殘留） |
+| 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R62（堂數課同日點名讀取前物化 sparse 堂次）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
