@@ -889,12 +889,6 @@ parameters:
 			path: app/Http/Controllers/AuthController.php
 
 		-
-			message: '#^Regex pattern is invalid\: Unknown modifier ''\]'' in pattern\: \#/storage/\(\[\^\?\\s\#\]\+\)\#$#'
-			identifier: regexp.pattern
-			count: 1
-			path: app/Http/Controllers/AuthController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
 			identifier: property.notFound
 			count: 1
