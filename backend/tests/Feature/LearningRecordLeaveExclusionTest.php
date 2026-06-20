@@ -78,6 +78,42 @@ class LearningRecordLeaveExclusionTest extends TestCase
         $this->assertNotContains((int) $record->id, $ids, '請假 schedule 存在時，半同步堂次的待審評量也不應出現');
     }
 
+    public function test_pending_lr_is_excluded_when_same_slot_leave_session_exists_but_class_session_id_points_elsewhere(): void
+    {
+        [$token, $teacherId, $studentId] = $this->bootActors('leave-slot-mismatch');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+
+        $leaveCs = $this->seedSession($courseId, 'leave');
+        $otherCs = ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => $leaveCs->SessionDate,
+            'StartTime' => $leaveCs->StartTime,
+            'EndTime' => $leaveCs->EndTime,
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+
+        $record = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $otherCs->id,
+            'TeacherID' => $teacherId,
+            'Content' => '待審評量',
+            'Status' => 'pending',
+            'SessionDate' => $leaveCs->SessionDate,
+            'StartTime' => $leaveCs->StartTime,
+            'EndTime' => $leaveCs->EndTime,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&status=pending&only_started=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $record->id, $ids, '同課同日同時段已有 leave 堂次時，ClassSessionID 綁錯也須排除');
+    }
+
     public function test_pending_lr_on_leave_adjusted_session_is_excluded(): void
     {
         [$token, $teacherId, $studentId] = $this->bootActors('leave-adjusted-hidden');
