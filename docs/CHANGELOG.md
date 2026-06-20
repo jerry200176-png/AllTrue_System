@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-20 — fix(attendance): 請假待審評量漏排除與無尾堂撤回 (#169/#170 第二輪)
+
+請假狀態的課堂若評量紀錄綁錯堂次，仍可能出現在待審評量；已改為同課程、同日期、同時段有請假堂次或請假排程時一律排除。僅標記請假、尚未順延尾堂的課程，現在也可以正常撤回請假。
+
+開發備註：`LearningRecord::scopeExcludeLeaveSessionPendingReview()` 改為 `whereNot` 正邏輯並比對同 slot leave `ClassSession`；`CourseLeaveCascadeService::voidPendingLearningRecordsForLeaveSlot()` 請假時 void 同 slot pending LR；`undoLeaveCascade()` 無 `auto-extended-after-leave` 尾堂時走 `undoSimpleLeaveWithoutCascade()`。手動部署 `0f229d03`；in-app #169/#170。
+
 ## 2026-06-20 — fix(attendance): 請假撤回、待審評量與堂數課點名名單 (#169/#170)
 
 課程管理若顯示請假卻無法撤回，或請假堂仍出現在待審評量，系統已修正狀態判斷；堂數制課程若當日應上課卻不在老師點名名單，開啟當日課表時會自動補齊應有堂次（不會多扣堂數、不影響繳費）。LINE 綁定家長帳號時，也會優先比對「家長手機」欄位。

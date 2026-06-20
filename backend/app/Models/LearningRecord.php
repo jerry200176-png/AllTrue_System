@@ -52,19 +52,20 @@ class LearningRecord extends Model
         $t = $query->getModel()->getTable();
         $leaveStatuses = ['leave', 'leave_adjusted', 'excused'];
 
-        return $query->whereNot(function ($pendingLeave) use ($t, $leaveStatuses) {
-            $pendingLeave->whereIn("{$t}.Status", ['pending', 'changes_requested'])
-                ->where(function ($slot) use ($t, $leaveStatuses) {
-                    $slot->whereHas('classSession', function ($cs) use ($leaveStatuses) {
+        // Laravel 8: no whereNot() — use De Morgan: keep row unless pending AND any leave signal.
+        return $query->where(function ($outer) use ($t, $leaveStatuses) {
+            $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
+                ->orWhere(function ($slot) use ($t, $leaveStatuses) {
+                    $slot->whereDoesntHave('classSession', function ($cs) use ($leaveStatuses) {
                         $cs->whereIn('Status', $leaveStatuses);
-                    })->orWhereExists(function ($sub) use ($t, $leaveStatuses) {
+                    })->whereNotExists(function ($sub) use ($t, $leaveStatuses) {
                         $sub->select(DB::raw(1))
                             ->from('ClassSession as cs_slot')
                             ->whereColumn('cs_slot.StudentClassID', "{$t}.StudentClassID")
                             ->whereRaw("DATE(`cs_slot`.`SessionDate`) = DATE(`{$t}`.`SessionDate`)")
                             ->whereRaw("SUBSTRING(`cs_slot`.`StartTime`, 1, 5) = SUBSTRING(`{$t}`.`StartTime`, 1, 5)")
                             ->whereIn('cs_slot.Status', $leaveStatuses);
-                    })->orWhereExists(function ($sub) use ($t, $leaveStatuses) {
+                    })->whereNotExists(function ($sub) use ($t, $leaveStatuses) {
                         $sub->select(DB::raw(1))
                             ->from('schedules')
                             ->whereColumn('schedules.student_course_id', "{$t}.StudentClassID")
