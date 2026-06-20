@@ -191,7 +191,69 @@ class LearningRecordLeaveExclusionTest extends TestCase
         ]);
     }
 
+    public function test_pending_lr_excluded_when_active_leave_signin_even_if_classsession_not_leave(): void
+    {
+        // in-app #170：請假其實是用 StudentSingIn.Status='leave' 記的，部分路徑沒同步把
+        // ClassSession.Status 改成 leave（殘留非 leave）。此時 pending 評量仍不該出現在待審清單。
+        // 用 attended 堂次（平常可見）+ 一筆未作廢的 leave 簽到，隔離驗證「依簽到排除」這條新條件。
+        [$token, $teacherId, $studentId] = $this->bootActors('leave-signin-desync');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+
+        $cs = $this->seedSession($courseId, 'attended');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+        $this->seedSignIn($courseId, $studentId, $cs, 'leave');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $record->id, $ids, '有未作廢請假簽到的待審評量不應出現（即使 ClassSession 非 leave）— #170');
+    }
+
+    public function test_pending_lr_visible_when_signin_is_present_regression(): void
+    {
+        // 回歸守護：到班(present)簽到不可被新的「依簽到排除」條件誤殺。
+        [$token, $teacherId, $studentId] = $this->bootActors('present-signin-visible');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+
+        $cs = $this->seedSession($courseId, 'attended');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+        $this->seedSignIn($courseId, $studentId, $cs, 'present');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $record->id, $ids, '到班(present)簽到的待審評量必須仍可顯示（回歸守護）');
+    }
+
     // ── helpers ──
+
+    private function seedSignIn(int $courseId, int $studentId, ClassSession $cs, string $status): void
+    {
+        \App\Models\StudentSignIn::create([
+            'StudentClassID'  => $courseId,
+            'StudentID'       => $studentId,
+            'TeacherID'       => 1,
+            'SubjectID'       => 1,
+            'GradeID'         => 1,
+            'Memo'            => 'leave-desync-test',
+            'SignInDT'        => $cs->SessionDate . ' ' . $cs->StartTime,
+            'SignOutDT'       => null,
+            'MDT'             => now(),
+            'ClassSessionID'  => $cs->id,
+            'Status'          => $status,
+            'CampusID'        => 1,
+            'PersonType'      => 'student',
+            'SessionDeducted' => false,
+        ]);
+    }
 
     /**
      * @return array{0:string,1:int,2:int} [directorToken, teacherId, studentId]
