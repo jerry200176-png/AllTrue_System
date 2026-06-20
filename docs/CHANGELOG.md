@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-20 — fix(attendance): 請假撤回、待審評量與堂數課點名名單 (#169/#170)
+
+課程管理若顯示請假卻無法撤回，或請假堂仍出現在待審評量，系統已修正狀態判斷；堂數制課程若當日應上課卻不在老師點名名單，開啟當日課表時會自動補齊應有堂次（不會多扣堂數、不影響繳費）。LINE 綁定家長帳號時，也會優先比對「家長手機」欄位。
+
+開發備註：`LearningRecord::scopeExcludeLeaveSessionPendingReview()` 同時排除同課同日期同時段之 `schedules.status=leave`（半套請假）；`ScheduleController::undoLeaveBySession()` 可清理殘留請假標記或解析實際 leave 堂；`ClassSessionController::index()` 同日查詢前對 count 課呼叫 `extendSessionsIfNeeded()` 物化 sparse 堂次；`LineWebhookController` 綁定比對 `parent_phone` 優先於 `Phone`。PR #925／GitHub #923/#924／in-app #169/#170；Actions 停機時手動部署 `e216a04d`。
+
 ## 2026-06-13 — fix(schedule): 建課偵測「同生同科同師日期重疊」防重複排課 (#805)
 
 主任建立課程時，若該學生已有「同科目、同老師、上課期間重疊」的進行中課程（常見於續報新期起始日早於舊期結束），系統會先提醒，避免兩期在重疊週各排一堂、造成點名名單同一時段重複出現。可改用「加購堂數」延續原課程，或把新課起始日改到舊課結束之後；確定要建立仍可勾選強制建立。
