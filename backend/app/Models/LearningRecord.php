@@ -50,10 +50,22 @@ class LearningRecord extends Model
     {
         $t = $query->getModel()->getTable();
 
+        // 請假狀態的「單一真相」其實是 StudentSingIn.Status='leave'（請假是用簽到記錄記的）。
+        // 但部分請假路徑沒有同步把 ClassSession.Status 改成 leave（殘留 scheduled），
+        // 只看 ClassSession.Status 會讓請假堂的 pending 評量漏進待審清單（in-app #170）。
+        // 因此除了 ClassSession.Status，再排除「該堂有未作廢的請假簽到」的情況。
         return $query->where(function ($outer) use ($t) {
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
-                ->orWhereDoesntHave('classSession', function ($cs) {
-                    $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
+                ->orWhere(function ($keep) use ($t) {
+                    $keep->whereDoesntHave('classSession', function ($cs) {
+                        $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
+                    })->whereNotExists(function ($sub) use ($t) {
+                        $sub->selectRaw('1')
+                            ->from('StudentSingIn as ssi_leave')
+                            ->whereColumn('ssi_leave.ClassSessionID', "{$t}.ClassSessionID")
+                            ->whereNull('ssi_leave.VoidedAt')
+                            ->whereIn('ssi_leave.Status', ['leave', 'excused', 'leave_requested']);
+                    });
                 });
         });
     }
