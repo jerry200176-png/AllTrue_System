@@ -783,7 +783,11 @@ class AuthController extends Controller
             return substr($s, strlen('/storage/')) ?: null;
         }
         if (str_starts_with($s, 'http://') || str_starts_with($s, 'https://')) {
-            if (preg_match('#/storage/([^?\s#]+)#', $s, $m)) {
+            // Delimiter must NOT be '#': '#' also appears inside the character
+            // class [^?\s#], so PHP closes the pattern early and treats the
+            // trailing "]+)#" as modifiers → "preg_match(): Unknown modifier ']'"
+            // (500 on /auth/me + login for any user with an absolute avatar URL).
+            if (preg_match('~/storage/([^?\s#]+)~', $s, $m)) {
                 return urldecode($m[1]) ?: null;
             }
 
