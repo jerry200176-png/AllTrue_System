@@ -5559,7 +5559,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-
@@ -5571,7 +5571,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Services/CourseLeaveCascadeService.php
 
 		-

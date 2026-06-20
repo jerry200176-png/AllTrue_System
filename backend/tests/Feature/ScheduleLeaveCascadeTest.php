@@ -1109,6 +1109,53 @@ class ScheduleLeaveCascadeTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_undo_leave_by_session_reverts_leave_without_auto_extended_tail(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-01 08:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-undo-no-tail@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-undo-no-tail@example.com');
+        $student = $this->createStudent(1, '無尾堂請假');
+
+        $firstTuesday = Carbon::now()->next(Carbon::TUESDAY);
+        $futureDates = [];
+        for ($i = 0; $i < 4; $i++) {
+            $futureDates[] = $firstTuesday->copy()->addWeeks($i)->toDateString();
+        }
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [2],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->max('ID');
+        $leaveSession = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')
+            ->first();
+        $this->assertNotNull($leaveSession);
+
+        $leaveSession->Status = 'leave';
+        $leaveSession->Note = 'leave; revert-to-scheduled';
+        $leaveSession->save();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/undo-leave-by-session', [
+            'class_session_id' => (int) $leaveSession->id,
+        ])->assertOk()
+            ->assertJsonFragment(['message' => '已撤銷請假，堂次與順延排程已回復']);
+
+        $leaveSession->refresh();
+        $this->assertSame('scheduled', strtolower((string) $leaveSession->Status));
+        $this->assertSame('', trim((string) $leaveSession->Note));
+    }
+
     public function test_undo_leave_by_session_forbidden_for_teacher(): void
     {
         $dirToken = $this->createDirectorToken([1], 'director-undo-bysess-perm@example.com');

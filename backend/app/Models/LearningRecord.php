@@ -50,19 +50,28 @@ class LearningRecord extends Model
     public function scopeExcludeLeaveSessionPendingReview($query)
     {
         $t = $query->getModel()->getTable();
+        $leaveStatuses = ['leave', 'leave_adjusted', 'excused'];
 
-        return $query->where(function ($outer) use ($t) {
-            $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
-                ->orWhereDoesntHave('classSession', function ($cs) {
-                    $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
-                })
-                ->whereNotExists(function ($sub) use ($t) {
-                    $sub->select(DB::raw(1))
-                        ->from('schedules')
-                        ->whereColumn('schedules.student_course_id', "{$t}.StudentClassID")
-                        ->whereRaw("DATE(`schedules`.`schedule_date`) = DATE(`{$t}`.`SessionDate`)")
-                        ->whereRaw("SUBSTRING(`schedules`.`start_time`, 1, 5) = SUBSTRING(`{$t}`.`StartTime`, 1, 5)")
-                        ->whereIn('schedules.status', ['leave', 'leave_adjusted', 'excused']);
+        return $query->whereNot(function ($pendingLeave) use ($t, $leaveStatuses) {
+            $pendingLeave->whereIn("{$t}.Status", ['pending', 'changes_requested'])
+                ->where(function ($slot) use ($t, $leaveStatuses) {
+                    $slot->whereHas('classSession', function ($cs) use ($leaveStatuses) {
+                        $cs->whereIn('Status', $leaveStatuses);
+                    })->orWhereExists(function ($sub) use ($t, $leaveStatuses) {
+                        $sub->select(DB::raw(1))
+                            ->from('ClassSession as cs_slot')
+                            ->whereColumn('cs_slot.StudentClassID', "{$t}.StudentClassID")
+                            ->whereRaw("DATE(`cs_slot`.`SessionDate`) = DATE(`{$t}`.`SessionDate`)")
+                            ->whereRaw("SUBSTRING(`cs_slot`.`StartTime`, 1, 5) = SUBSTRING(`{$t}`.`StartTime`, 1, 5)")
+                            ->whereIn('cs_slot.Status', $leaveStatuses);
+                    })->orWhereExists(function ($sub) use ($t, $leaveStatuses) {
+                        $sub->select(DB::raw(1))
+                            ->from('schedules')
+                            ->whereColumn('schedules.student_course_id', "{$t}.StudentClassID")
+                            ->whereRaw("DATE(`schedules`.`schedule_date`) = DATE(`{$t}`.`SessionDate`)")
+                            ->whereRaw("SUBSTRING(`schedules`.`start_time`, 1, 5) = SUBSTRING(`{$t}`.`StartTime`, 1, 5)")
+                            ->whereIn('schedules.status', $leaveStatuses);
+                    });
                 });
         });
     }

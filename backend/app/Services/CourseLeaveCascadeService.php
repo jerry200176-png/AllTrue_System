@@ -104,6 +104,11 @@ class CourseLeaveCascadeService
                 'VoidedByUserID' => null,
                 'VoidReason'     => '一般請假',
             ]);
+        self::voidPendingLearningRecordsForLeaveSlot(
+            $courseId,
+            $leaveSessionDate,
+            (string) ($leaveSession->StartTime ?? '')
+        );
         StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
             ->active()
             ->update([
@@ -274,7 +279,7 @@ class CourseLeaveCascadeService
             ->sortByDesc('SessionDate')
             ->first();
         if (!$appendedSession) {
-            throw new \InvalidArgumentException('找不到可回復的順延尾堂');
+            return self::undoSimpleLeaveWithoutCascade($courseId, $leaveSession, $normalizedLeaveDate);
         }
 
         $weekdays = self::resolveCourseWeekdays(
@@ -456,6 +461,89 @@ class CourseLeaveCascadeService
             return $base;
         }
         return $base . '; ' . $suffix;
+    }
+
+    /**
+     * Void pending/changes_requested learning records for a course slot, even when
+     * ClassSessionID drifted or was never bound (half-sync leave states).
+     */
+    public static function voidPendingLearningRecordsForLeaveSlot(
+        int $courseId,
+        string $sessionDate,
+        string $startTime
+    ): void {
+        $normalizedDate = Carbon::parse($sessionDate)->toDateString();
+        $start = substr($startTime, 0, 5);
+
+        $query = LearningRecord::query()
+            ->whereNull('VoidedAt')
+            ->whereIn('Status', ['pending', 'changes_requested'])
+            ->where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $normalizedDate);
+
+        if ($start !== '') {
+            $query->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$start]);
+        }
+
+        $query->update([
+            'VoidedAt'       => now(),
+            'VoidedByUserID' => null,
+            'VoidReason'     => '一般請假',
+        ]);
+    }
+
+    /**
+     * Undo leave when cascade never appended a tail session (schedule-only or status-only leave).
+     *
+     * @return array{0:array,1:?string,2:string}
+     */
+    private static function undoSimpleLeaveWithoutCascade(
+        int $courseId,
+        ClassSession $leaveSession,
+        string $normalizedLeaveDate
+    ): array {
+        $existingNote = (string) (ClassSession::query()->where('id', (int) $leaveSession->id)->value('Note') ?? '');
+        $leaveSession->update([
+            'Status' => 'scheduled',
+            'Note' => self::cleanLeaveNotes($existingNote),
+        ]);
+        $leaveSession->refresh();
+
+        self::voidPendingLearningRecordsForLeaveSlot(
+            $courseId,
+            $normalizedLeaveDate,
+            (string) ($leaveSession->StartTime ?? '')
+        );
+
+        LearningRecord::where('ClassSessionID', (int) $leaveSession->id)
+            ->where('VoidReason', '一般請假')
+            ->update([
+                'VoidedAt' => null,
+                'VoidedByUserID' => null,
+                'VoidReason' => null,
+            ]);
+        StudentSignIn::where('ClassSessionID', (int) $leaveSession->id)
+            ->where('VoidReason', '一般請假')
+            ->update([
+                'VoidedAt' => null,
+                'VoidedByUserID' => null,
+                'VoidReason' => null,
+            ]);
+
+        $rows = self::fetchCourseSessionRows($courseId);
+
+        return [$rows, null, $normalizedLeaveDate];
+    }
+
+    public static function cleanLeaveNotes($existing): string
+    {
+        $strip = [self::NOTE_LEAVE, self::NOTE_REVERT_TO_SCHEDULED, self::NOTE_AUTO_EXTENDED];
+        $parts = array_filter(
+            array_map('trim', explode(';', (string) ($existing ?? ''))),
+            static fn (string $part): bool => $part !== '' && !in_array($part, $strip, true)
+        );
+
+        return implode('; ', $parts);
     }
 
     public static function fetchCourseSessionRows(int $courseId): array
