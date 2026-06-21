@@ -15,9 +15,12 @@
           <span class="material-symbols-outlined">family_restroom</span>
         </div>
         <h2>家長 / 學生入口</h2>
-        <p class="pp-hint" v-if="!autoLineMode">請輸入學生資料以查看學習狀況</p>
-        <p class="pp-hint" v-else>偵測到 LINE 環境，正在自動登入…</p>
-        <ul v-if="!autoLineMode" class="pp-login-benefits" aria-label="登入後可使用">
+        <p class="pp-hint pp-hint-bind" v-if="autoLineNotBound">
+          此 LINE 帳號尚未綁定學生。請用下方「學生姓名 + 手機號碼」登入；或在本官方帳號輸入「綁定 學生姓名 手機號碼」完成綁定後，再從選單開啟。
+        </p>
+        <p class="pp-hint" v-else-if="autoLineMode">已嘗試透過 LINE 自動登入；若未進入，請用下方學生資料登入。</p>
+        <p class="pp-hint" v-else>請輸入學生資料以查看學習狀況</p>
+        <ul v-if="!autoLineMode || autoLineNotBound" class="pp-login-benefits" aria-label="登入後可使用">
           <li><strong>逐堂留言給老師</strong>：在「學習評量」展開任一堂課，於底部填寫（老師與主任同步可看）</li>
           <li>課表、出缺勤、繳費提醒集中在一處，不必再逐則訊息翻找</li>
         </ul>
@@ -638,6 +641,7 @@
               <div class="pp-course-top">
                 <span class="pp-course-subject">{{ c.subject || '課程' }}</span>
                 <span v-if="isMonthlyCourse(c)" class="pp-badge pp-badge-info">月結</span>
+                <span v-if="c.is_package" class="pp-badge pp-badge-info-soft">共用方案</span>
                 <span v-if="c.paid" class="pp-badge pp-badge-success">{{ c.payment_status_label || '已繳費' }}</span>
                 <span v-else class="pp-badge pp-badge-warning">未繳費</span>
                 <span v-if="c.is_stopped" class="pp-badge pp-badge-neutral">{{ c.lifecycle_status_label || '課程已結束' }}</span>
@@ -649,14 +653,17 @@
                     <div class="pp-progress-fill" :style="{ width: progressPercent(c) + '%', background: progressColor(c) }"></div>
                   </div>
                   <div class="pp-progress-labels">
-                    <span>已上 {{ c.used_sessions ?? 0 }}</span>
-                    <span>購買 {{ c.sessions_purchased ?? 0 }}</span>
+                    <span>{{ c.is_package ? '方案已上' : '已上' }} {{ c.used_sessions ?? 0 }}</span>
+                    <span>{{ c.is_package ? '方案共' : '購買' }} {{ c.sessions_purchased ?? 0 }}</span>
                   </div>
                 </div>
                 <div class="pp-course-remaining" :style="{ color: remainingColor(c) }">
                   <span class="pp-remaining-number">{{ c.remaining_sessions ?? 0 }}</span>
                   <span class="pp-remaining-label">堂剩餘</span>
                 </div>
+                <p v-if="c.is_package" class="pp-package-hint">
+                  與其他科目共用同一方案（共 {{ c.package_total_sessions ?? 0 }} 堂），剩餘為共用堂數，扣堂一起計算。
+                </p>
               </template>
               <!-- 月結制 -->
               <template v-else>
@@ -789,6 +796,20 @@ async function resolveParentLiffIdAsync() {
   return '';
 }
 
+// 多分校共用網域時，campus_id 才能定位正確的 LINE Login channel（LIFF）。
+// 入口連結一律帶 campus_id，故優先用它解析，避免拿到別分校的 LIFF 導致 userId 對不上、自動登入失敗。
+async function resolveParentLiffIdByCampus(campusId) {
+  if (!campusId) return '';
+  try {
+    const res = await fetch('/api/v1/parent/resolve-liff?campus_id=' + encodeURIComponent(campusId));
+    if (res.ok) {
+      const json = await res.json();
+      if (json.liff_id) return json.liff_id;
+    }
+  } catch { /* ignore */ }
+  return '';
+}
+
 const props = defineProps({
   standalone: { type: Boolean, default: false },
 });
@@ -804,6 +825,9 @@ const dashboard = ref(null);
 const liffAvailable = ref(false);
 const liffLoading = ref(false);
 const autoLineMode = ref(false);
+// LINE 自動登入「已嘗試但查無綁定」狀態：用來把登入卡的文案從「正在自動登入…」
+// 切換為清楚的綁定/手動登入指引，避免家長卡在矛盾畫面（畫面同時顯示登入中＋錯誤）。
+const autoLineNotBound = ref(false);
 const lineLinked = computed(() => !!dashboard.value?.student?.line_linked);
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
@@ -1314,10 +1338,18 @@ const loginWithLine = async () => {
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
+    autoLineNotBound.value = false;
     await loadDashboard();
   } catch (e) {
     console.error('LINE auto-login error:', e);
-    loginError.value = e.message || 'LINE 登入失敗';
+    const msg = e.message || 'LINE 登入失敗';
+    // 查無綁定（後端 404）：不要顯示紅字錯誤，改走清楚的綁定/手動登入指引。
+    if (/尚未綁定|未綁定/.test(msg)) {
+      autoLineNotBound.value = true;
+      loginError.value = '';
+    } else {
+      loginError.value = msg;
+    }
   }
 };
 
@@ -1426,6 +1458,13 @@ onMounted(async () => {
   const isLineInApp = /Line/i.test(navigator.userAgent);
   let liffId = resolveParentLiffId();
 
+  // 共用網域多分校：campus_id 指定的分校 LIFF 為權威，覆蓋 build-time 預設，
+  // 確保拿到「這位家長所屬分校」的 LINE Login channel，userId 才能對上綁定。
+  if (urlCampusId) {
+    const byCampus = await resolveParentLiffIdByCampus(urlCampusId);
+    if (byCampus) liffId = byCampus;
+  }
+
   if (!liffId && isLineInApp) {
     liffId = await resolveParentLiffIdAsync();
   }
@@ -1492,6 +1531,14 @@ onMounted(async () => {
 }
 
 .pp-hint { color: var(--ds-ink-mute); font-size: 0.85em; margin: 4px 0 0; }
+.pp-hint-bind {
+  color: var(--ds-ink);
+  background: var(--ds-canvas-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 1.6;
+  text-align: left;
+}
 .pp-error { color: var(--ds-danger); font-size: 0.875em; margin: 12px 0 0; padding: 10px 14px; background: var(--ds-danger-wash); border-radius: 8px; line-height: 1.5; word-break: break-word; }
 
 /* ═══ Loading ═══ */
@@ -2169,6 +2216,7 @@ onMounted(async () => {
 .pp-course-remaining { text-align: right; }
 .pp-remaining-number { font-size: 1.6em; font-weight: 800; }
 .pp-remaining-label { font-size: 0.78em; color: var(--ds-ink-mute); margin-left: 2px; }
+.pp-package-hint { font-size: 0.76em; line-height: 1.5; color: var(--ds-ink-mute); margin: 8px 0 0; }
 
 /* PRD-H：月結課程「本月已上 + 月費預估」區塊 */
 .pp-monthly-stats {
