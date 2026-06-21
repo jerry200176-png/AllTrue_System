@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-21 — fix(parent): 家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示
+
+家長從 LINE 開啟入口時，會依「所屬分校」載入正確的 LINE 入口，自動登入更穩定；若帳號尚未綁定，畫面會清楚告訴你「請用學生姓名＋手機登入，或先在 LINE 完成綁定」，不再卡在「正在自動登入…」又同時跳紅字錯誤的矛盾畫面。另外，多科共用同一方案堂數時，每一科會標示「共用方案」並顯示同一份共用剩餘堂數（扣堂一起計），剩餘總數不再被各科重複加總。
+
+開發備註：**Bug 1（LINE 登入）**根因＝13 新莊中平與 15 大安共用 `daan.lifenet.com.tw`，但各自是不同 LINE Login channel／provider（同一學生在不同分校的 `line_user_id` 不同已於 prod 證實）。`resolveLiff()` 純 host 比對只回「第一個」分校（id 升序＝13）的 LIFF，導致 15 大安家長（19 筆綁定）拿到 13 的 LIFF → `getProfile().userId` 屬不同 provider → `loginWithLine` 查無綁定 404。修法：入口連結本就帶 `campus_id`（`LineWebhookController::getPortalUrl`），`resolveLiff` 改**優先用 `campus_id`** 定位該分校 LIFF；前端 `onMounted` 以 `campus_id` 解析 LIFF 覆蓋 build-time 預設。前端另把「自動登入失敗」從矛盾文案改為明確綁定/手動登入指引（`autoLineNotBound`）。**Bug 2（共用方案）**：家長 dashboard 對 `PackageID>0` 成員改以 `course_packages` 池子（remaining/used/total）為準，`sessionMetrics` 與顯示聚合每池只算一次，新增 `is_package`/`package_*` 欄位前端標示「共用方案」。新增 ParentPortalSharedPackageTest(2)、ParentPortalResolveLiffTest(2)；既有 Parent/Package/Session/StudentClass 315 綠、PHPStan clean。對應 in-app 家族 #158/#162。**不動收款/invoice/費率**，僅顯示與登入解析。
+
 ## 2026-06-13 — fix(schedule): 建課偵測「同生同科同師日期重疊」防重複排課 (#805)
 
 主任建立課程時，若該學生已有「同科目、同老師、上課期間重疊」的進行中課程（常見於續報新期起始日早於舊期結束），系統會先提醒，避免兩期在重疊週各排一堂、造成點名名單同一時段重複出現。可改用「加購堂數」延續原課程，或把新課起始日改到舊課結束之後；確定要建立仍可勾選強制建立。
