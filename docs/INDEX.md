@@ -7,10 +7,12 @@
 > ```
 > Docs（長期文件）←──────────────────────────────┐
 >   ↓ AI 開工讀 INDEX → 定位 → 只讀對應章節       │ 做完寫記錄
-> MemPalace（對話記憶）                            │ (CHANGELOG /
->   ↓ post-merge hook 自動 mine 每次 PR           │  AI_REGRESSION /
->   ↓ session 開始 wake-up 喚醒上下文             │  TECH_DEBT)
-> AI Session（執行）──────────────────────────────┘
+> MemPalace（召回索引，非權威）                      │
+>   ↓ scripts/mempalace-ingest.sh（唯一更新入口）   │
+>   ↓ post-merge 自動呼叫 ingest                    │
+> AI Session（執行）──────────────── write-back ──►│ (CHANGELOG /
+>                                                 │  AI_REGRESSION /
+>                                                 │  TECH_DEBT)
 > ```
 > 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。  
 > **長文不漏讀**：速讀卡與版本更新鏈已整合在本 INDEX；[`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 僅保留作索引 stub。
@@ -77,6 +79,18 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 部署 / 維運
 | 需要什麼 | 去哪裡找 |
 |----------|---------|
+| **Production deploy authority (ADR-001)** | `docs/adr/ADR-001-single-production-authority.md` |
+| **Platform Enforcement Binding（GitHub 強制）** | `docs/github-ruleset-enforcement.md` + `config/github/platform-enforcement.json` |
+| **PDP root-of-trust signing** | `config/platform/README.md` + `scripts/platform/pdp_signing_authority.py` |
+| **Production-Controlled Engineering System（總綱）** | `docs/engineering-system.md` |
+| **Execution Layer（強制執行）** | `docs/execution-layer.md` + `./scripts/release-exec.sh` |
+| **Decision Intelligence Layer（決策）** | `docs/decision-intelligence-layer.md` + `./scripts/decision-engine.sh` |
+| **Current Engineering SOP（整合速查）** | `docs/current-engineering-sop.md` |
+| **SOP Enforcement Layer（SOP 執行閘）** | `docs/sop-enforcement-layer.md` + `./scripts/sop-enforce.sh` |
+| **Self-Healing + Consistency（收斂層）** | `docs/self-healing-layer.md` + `./scripts/self-heal-engine.sh analyze` |
+| **Production 真相 / drift** | `docs/production-truth-model.md` + `./scripts/release-check.sh` |
+| **Release 流程（SAFE/DEPLOY/RISKY）** | `docs/release-flow.md` |
+| **AI Agent 權限邊界** | `docs/ai-agent-policy.md` |
 | 部署 SOP（Phase 7） | `docs/OPERATIONS_RUNBOOK.md §A-B` |
 | 緊急事故 / 危險操作 | `docs/DANGEROUS_OPERATIONS.md` |
 | **回滾 SOP（何時/如何回滾 + MTTR）** | `docs/RUNBOOK_ROLLBACK.md`；就緒度檢查 `scripts/rollback-readiness.sh` |
@@ -97,6 +111,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
+| **工程治理全面稽核（2026-06-27）** | `docs/reviews/ENGINEERING_AUDIT_2026-06-27.md`（39 新 issues #957–#995） |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
@@ -167,6 +182,11 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 技術文件
 | 檔案 | 一行說明 |
 |------|---------|
+| `docs/engineering-system.md` | 工程治理總綱：release、AI、CI/CD、branch |
+| `docs/production-truth-model.md` | production vs git 真相層級與 drift 解決 |
+| `docs/release-flow.md` | SAFE/DEPLOY/RISKY 分類與手動 deploy 閘門 |
+| `docs/ai-agent-policy.md` | AI 禁止 merge/deploy；風險分級 |
+| `scripts/release-check.sh` | main vs prod version.json 漂移檢查（唯讀）|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/SOP_MATURITY.md` | SOP 成熟度、M4–M9 roadmap、Actions freeze 接手地圖 |
@@ -260,7 +280,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `secret-scan.yml` | 每次 PR | **required**：`gitleaks scan` 機密外洩偵測 |
 | `codeql.yml` | PR / main push / weekly | **required**：後端或 workflow 改動才跑 `PHPStan Advisory (php)` level 5（baseline-gated，只擋新增）|
 | `docs-integrity.yml` | PR / 每週一 | **required**：文件連結完整性、INDEX 導航與核心文件存在性檢查 |
-| `deploy.yml` | main CI success | 有 deployable diff 才自動部署 Pi + smoke test + rollback；docs-only merge 跳過 |
+| `Deploy Production` (`deploy-production.yml`) | **唯一** production SSH 部署（ADR-001 PDP gate） | Platform Gate → staging artifact → PDP verify → Pi deploy + smoke |
+| `Deploy to Pi` (`deploy.yml`) | **DISABLED**（fail-closed） | 舊版 auto-deploy；禁止 re-enable，見 `docs/adr/ADR-001-single-production-authority.md` |
 | `release.yml` | main push（CHANGELOG 變更）/ 手動 | CalVer 自動打 tag + GitHub Release（見 `OPERATIONS_RUNBOOK.md §X`）|
 | `ui-smoke.yml` | 每週 / 手動 | Playwright UI 煙霧測試（需 `SMOKE_*` secrets，否則 skip）|
 | `dependency-review.yml` | 每次 PR | 供應鏈（選用 GHAS 升級路徑）；需 `ENABLE_DEPENDENCY_REVIEW=true`，未開僅 notice |
@@ -283,25 +304,38 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 📐 MemPalace 導航（AI 記憶層）
 
+**索引更新（唯一入口 — event-sourced DAG）：**
 ```bash
-# 搜尋任何主題（調查 bug 或回顧決策前先跑）
-~/.local/bin/mempalace search "<關鍵字>"
-~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-sessions  # 只搜對話
-~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-docs      # 只搜文件
-
-# 看全局記憶摘要（session 開始時替代全讀文件）
-~/.local/bin/mempalace wake-up
-
-# 每次 PR merge 後更新記憶（post-merge hook 自動執行）
-# 若 hook 未自動跑，手動執行：
-~/.local/bin/mempalace mine ~/.cursor/projects/home-jerry-alltrue/agent-transcripts \
-  --mode convos --wing alltrue-sessions
-~/.local/bin/mempalace mine ~/alltrue/docs --wing alltrue-docs
+bash scripts/mempalace-ingest.sh              # 完整 ingest（state = events.jsonl）
+bash scripts/mempalace-ingest.sh --replay     # 從 event log 重建 run 狀態
+bash scripts/mempalace-ingest.sh --resume     # 跳過已有 stage_completed 的節點
+bash scripts/mempalace-ingest.sh --dry-run --no-lock
+bash scripts/mempalace/run-stage.sh preflight --no-lock
 ```
 
-Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）、`alltrue-code`（程式碼知識）
+Manifest: `scripts/mempalace/engine/pipeline.manifest.json`  
+Events: `~/.mempalace/palace/.ingest-run/runs/<run_id>/events.jsonl`
 
-> MemPalace 目前 `wake-up` 回傳「No memories yet」= palace 尚未有索引，需手動 mine 後才有內容。
+**讀取（不寫索引）：**
+```bash
+~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-sessions
+~/.local/bin/mempalace search "<關鍵字>" --wing alltrue-docs
+~/.local/bin/mempalace wake-up --wing alltrue-sessions
+```
+
+**設定 SSOT：** `scripts/mempalace-config.sh`（wing 名稱、路徑）  
+**架構：** `docs/MEMPALACE_ARCHITECTURE_HEALTH.md`  
+**維運手冊（Runbook / Failure / On-call）：** `docs/MEMPALACE_OPERATIONS_HANDBOOK.md`
+
+Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-code`（程式碼，手動 `mempalace mine . --wing alltrue-code`）
+
+**Source of truth：** MemPalace 是召回索引，不是權威。與 markdown 衝突時以 git 內文件為準。
+
+**觸發時機：** PR merge 後 post-merge hook 背景呼叫 `mempalace-ingest.sh`；每月手動 `mempalace-maintain.sh`。
+
+**L0 identity（可選）：** 複製 `docs/mempalace-identity.example.txt` → `~/.mempalace/identity.txt`
+
+**已移除：** Cursor / Claude MemPalace hooks（避免多路徑 ingest）。本機若仍設定 `~/.cursor/hooks.json` 或 `.claude/settings.local.json` MemPalace hooks，請刪除。
 
 ---
 
@@ -343,8 +377,7 @@ Wings：`alltrue-sessions`（對話記憶）、`alltrue-docs`（文件知識）�
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
 **每月（記憶保鮮 + CHANGELOG 滾動歸檔）**
-- `mempalace mine` 重新索引近期對話與 docs。
-- 抽查高風險關鍵字是否可被 `mempalace search` 命中。
+- `bash scripts/mempalace-maintain.sh`（唯一 ingest 路徑：`scripts/mempalace-ingest.sh`）
 - **CHANGELOG 滾動歸檔**（對齊 Keep a Changelog）：月初把上月條目從 `docs/CHANGELOG.md` 移入 `docs/archive/CHANGELOG_ARCHIVE_YYYY-MM.md`，主檔只留當月 + 頂部 archive 導航。size gate 已對 `chore/docs-*` 分支排除 CHANGELOG/archive 搬移（presubmit CHECK 2）。
 
 **變更守則**：先改權威文件，再補 INDEX 導航；不在多份文件複製完整 SOP（避免版本漂移）。
