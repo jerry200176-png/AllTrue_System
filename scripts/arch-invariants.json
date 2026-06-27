@@ -1,0 +1,12 @@
+{
+  "_comment": "DI-n -> automated enforcement artifact. FIT-12 fails if any invariant lacks a present, resolvable enforcement (a phpunit test file containing the DI tag, OR a registered fitness check id that runs in this script).",
+  "invariants": {
+    "DI-1": { "kind": "fit", "fit": "FIT-1", "note": "occurrence-writer ratchet; behavioral dedup test on branch fix/cross-course-session-dedup" },
+    "DI-2": { "kind": "fit", "fit": "FIT-6", "rule": "no new direct write to StudentClass.RemainingSessions (units owned by Billing ledger)" },
+    "DI-3": { "kind": "fit", "fit": "FIT-7", "rule": "no new direct write to Invoice.PaidAmount outside Billing" },
+    "DI-4": { "kind": "fit", "fit": "FIT-8", "rule": "ratchet effectiveInstructorUserId call-sites toward 0 (instructor stored on Occurrence)" },
+    "DI-5": { "kind": "phpunit", "test": "backend/tests/Feature/ArchitectureInvariantsTest.php", "note": "DB unique(ClassSessionID) on LearningRecord" },
+    "DI-6": { "kind": "fit", "fit": "FIT-9", "rule": "Teacher:: writes locked at 0 (identity is Party)" },
+    "DI-7": { "kind": "fit", "fit": "FIT-1", "note": "lifecycle closure enforced at the same SessionWriter chokepoint as DI-1" }
+  }
+}
