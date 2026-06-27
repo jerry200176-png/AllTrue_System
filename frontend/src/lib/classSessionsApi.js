@@ -307,9 +307,10 @@ export function normalizeClassSessionsPayload(json) {
   });
 
   const mergedItems = mergeSessionViewModels(items, projectedItems);
-  const byClass = buildByClassFromItems(mergedItems);
+  const enrichedItems = enrichSessionRows(mergedItems);
+  const byClass = buildByClassFromItems(enrichedItems);
 
-  return { items: mergedItems, byClass };
+  return { items: enrichedItems, byClass };
 }
 
 export function normalizeSessionDatesPayload(json) {
@@ -348,7 +349,7 @@ export function normalizeSessionDatesPayload(json) {
     }
 
     if (rows.length) {
-      byClass[String(key)] = mergeSessionViewModels([], rows);
+      byClass[String(key)] = enrichSessionRows(mergeSessionViewModels([], rows));
     }
   });
 
@@ -456,4 +457,43 @@ export function materializedSessionsOnly(rows = []) {
 
 export function sessionDatesFromViewModels(rows = []) {
   return [...new Set((rows || []).map((vm) => vm.date).filter(Boolean))].sort();
+}
+
+/** Attach snake_case aliases for legacy consumers (calendar, teacher home). */
+export function sessionViewModelWithLegacyFields(vm) {
+  if (!vm) return vm;
+  return {
+    ...vm,
+    session_date: vm.date,
+    start_time: vm.startTime,
+    end_time: vm.endTime,
+    student_class_id: vm.studentClassId,
+    student_id: vm.studentId,
+    branch_id: vm.branchId,
+    teacher_id: vm.teacherId,
+    teacher_name: vm.teacherName,
+    student_name: vm.studentName,
+    learning_record_id: vm.learningRecordId,
+    learning_record_status: vm.learningRecordStatus,
+    learning_record_body_filled: vm.learningRecordBodyFilled,
+    learning_record_teacher_id: vm.learningRecordTeacherId,
+  };
+}
+
+/**
+ * @param {Record<string, SessionViewModel[]>} byClass
+ * @returns {Record<string, object[]>}
+ */
+export function mapSessionViewModelsForCalendar(byClass = {}) {
+  /** @type {Record<string, object[]>} */
+  const out = {};
+  Object.keys(byClass || {}).forEach((key) => {
+    const rows = Array.isArray(byClass[key]) ? byClass[key] : [];
+    out[key] = rows.map((vm) => sessionViewModelWithLegacyFields(vm));
+  });
+  return out;
+}
+
+function enrichSessionRows(rows = []) {
+  return (rows || []).map((vm) => sessionViewModelWithLegacyFields(vm));
 }

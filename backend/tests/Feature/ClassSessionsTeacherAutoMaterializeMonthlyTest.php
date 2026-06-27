@@ -116,10 +116,10 @@ class ClassSessionsTeacherAutoMaterializeMonthlyTest extends TestCase
             $count2 = $this->materializeQueryCountForClasses(2);
             $count8 = $this->materializeQueryCountForClasses(8);
 
-            // 只有「每堂一筆 insert」應隨課數成長；存在性檢查已批次化為固定 2 次 SELECT。
-            // 課數 +6 → query 數增量應遠小於 N+1 的 6*(2 selects + 1 insert)=18。
+            // 只有「每堂一筆 insert + upsertSlot FOR UPDATE」應隨課數成長；存在性檢查已批次化。
+            // Phase B 投影讀取為每課程固定 overhead；課數 +6 → 增量應遠小於 N+1 的 6*(2 selects + 1 insert)=18。
             $this->assertLessThanOrEqual(
-                10,
+                14,
                 $count8 - $count2,
                 "query 數隨課數線性成長（疑似 N+1）：2 課={$count2}, 8 課={$count8}"
             );

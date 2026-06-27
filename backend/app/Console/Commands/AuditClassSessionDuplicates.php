@@ -67,7 +67,7 @@ class AuditClassSessionDuplicates extends Command
             ->selectRaw('COUNT(*) as row_count')
             ->selectRaw('GROUP_CONCAT(cs.id ORDER BY cs.id) as session_ids')
             ->groupBy('cs.StudentClassID', DB::raw('DATE(cs.SessionDate)'), DB::raw('SUBSTRING(cs.StartTime, 1, 5)'))
-            ->having('row_count', '>', 1);
+            ->having('row_count', '>', '1');
 
         if ($studentClassId) {
             $query->where('cs.StudentClassID', $studentClassId);
@@ -113,7 +113,7 @@ class AuditClassSessionDuplicates extends Command
                 DB::raw('DATE(cs.SessionDate)'),
                 DB::raw('SUBSTRING(cs.StartTime, 1, 5)')
             )
-            ->having('course_count', '>', 1);
+            ->having('course_count', '>', '1');
 
         if ($branchId) {
             $query->where('st.CampusID', $branchId);

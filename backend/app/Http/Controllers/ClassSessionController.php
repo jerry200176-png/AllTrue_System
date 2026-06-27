@@ -378,7 +378,7 @@ class ClassSessionController extends Controller
             return [];
         }
 
-        $classes = StudentClass::whereIn('ID', $classIds)->get()->keyBy('ID');
+        $classes = StudentClass::query()->whereIn('ID', $classIds)->get()->keyBy('ID');
         $schedules = Schedule::query()
             ->whereIn('student_course_id', $classIds)
             ->whereDate('schedule_date', '>=', $rangeStart)
@@ -452,6 +452,7 @@ class ClassSessionController extends Controller
             }
         }
 
+        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         return $projectedByClass;
     }
 
