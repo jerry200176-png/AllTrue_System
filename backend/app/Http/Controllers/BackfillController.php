@@ -6,6 +6,7 @@ use App\Models\ClassSession;
 use App\Models\LearningRecord;
 use App\Models\StudentClass;
 use App\Models\User;
+use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -120,14 +121,14 @@ class BackfillController extends Controller
                             ->where('SessionDate', $sessionDate)
                             ->exists();
                         if (!$exists) {
-                            $session = ClassSession::create([
+                            $session = app(ClassSessionMaterializationService::class)->upsertSlot([
                                 'StudentClassID' => $studentClass->ID,
                                 'SessionDate' => $sessionDate,
                                 'StartTime' => $startTime,
                                 'EndTime' => $endTime,
                                 'Status' => 'completed',
                                 'Note' => '',
-                            ]);
+                            ])['session'];
                             $subjectName = $courseNames[$studentClass->SubjectID] ?? $subjectNames[$studentClass->SubjectID] ?? '補登';
                             LearningRecord::create([
                                 'StudentClassID' => $studentClass->ID,

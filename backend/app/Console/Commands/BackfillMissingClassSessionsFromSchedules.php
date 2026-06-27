@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ClassSession;
 use App\Models\StudentClass;
+use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +96,7 @@ class BackfillMissingClassSessionsFromSchedules extends Command
                     continue;
                 }
 
-                ClassSession::create([
+                app(ClassSessionMaterializationService::class)->upsertSlot([
                     'StudentClassID' => $courseId,
                     'SubjectID' => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
                     'SessionDate' => $sessionDate,
