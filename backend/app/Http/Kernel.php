@@ -18,7 +18,6 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
         'api' => [
-            \App\Http\Middleware\DebugSwipeRfidRequest::class,
             'throttle:200,1,global-api',
             \App\Http\Middleware\LogSlowRequests::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
