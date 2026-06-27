@@ -8,6 +8,7 @@
   "effectiveInstructorSites": 5,
   "teacherDirectWrites": 0,
   "moneyWritesOutsideBilling": 3,
+  "readPathWritesInQueryMethods": 0,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",

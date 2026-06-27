@@ -94,6 +94,28 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
 // FIT-9 DI-6 Teacher writes locked
 { let n = 0; for (const f of appPhp) n += (read(f).match(/Teacher::(create|insert|updateOrCreate)/g) || []).length; ratchet('FIT-9', 'DI-6 identity is Party', n, 'teacherDirectWrites'); }
 
+// FIT-15 read-path write guard (ADR-0007 / DI-7): a query-shaped controller method
+// (index/show/list/get*/fetch*/load*) must not mutate persistent state. This is the
+// structural source of the ensure-past read-path-mutation class (#176). Baseline 0 = locked.
+{
+  ran.add('FIT-15');
+  let n = 0; const hits = [];
+  for (const f of walk(path.join(ROOT, 'backend/app/Http/Controllers'), (p) => p.endsWith('.php'))) {
+    const t = read(f); const name = path.basename(f, '.php');
+    for (const span of t.split(/(?=function\s+[A-Za-z_]+\s*\()/)) {
+      const m = span.match(/^function\s+([A-Za-z_]+)/);
+      if (!m) continue;
+      if (/^(index|show|list|get|fetch|load)/i.test(m[1])) {
+        const w = (span.match(/(::create|::updateOrCreate|->save)\s*\(/g) || []).length;
+        if (w > 0) { n += w; hits.push(`${name}::${m[1]}`); }
+      }
+    }
+  }
+  const limit = baseline.readPathWritesInQueryMethods;
+  if (n > limit) failures.push(`FIT-15 (ADR-0007/DI-7 read-path write): ${n} write(s) inside query method(s) (${hits.join(', ')}) > baseline ${limit}. Move mutation to a command/event off the read path.`);
+  else note(`FIT-15: read-path writes in query methods = ${n} (baseline ${limit}).`);
+}
+
 // FIT-14 cross-context write guard: money models (Invoice/Payment/PaymentReport) may only be
 // CREATED by the Billing context. Any other context creating them is an unmanaged cross-context
 // write (must go through a Billing service / domain event). Ratchet toward 0.

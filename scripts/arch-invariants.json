@@ -7,6 +7,6 @@
     "DI-4": { "kind": "fit", "fit": "FIT-8", "rule": "ratchet effectiveInstructorUserId call-sites toward 0 (instructor stored on Occurrence)" },
     "DI-5": { "kind": "phpunit", "test": "backend/tests/Feature/ArchitectureInvariantsTest.php", "note": "DB unique(ClassSessionID) on LearningRecord" },
     "DI-6": { "kind": "fit", "fit": "FIT-9", "rule": "Teacher:: writes locked at 0 (identity is Party)" },
-    "DI-7": { "kind": "fit", "fit": "FIT-1", "note": "lifecycle closure enforced at the same SessionWriter chokepoint as DI-1" }
+    "DI-7": { "kind": "fit", "fit": "FIT-15", "note": "read-path mutation guard (the vector that surfaced post-closure sessions, #176); structural closure also enforced at the SessionWriter chokepoint (FIT-1)" }
   }
 }
