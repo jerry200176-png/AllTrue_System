@@ -67,16 +67,12 @@ class ParentPortalController extends Controller
             }
         } else {
             $allByName = Student::whereRaw('TRIM(name) = ?', [$rawName])->get();
-            \Illuminate\Support\Facades\Log::info('parent.login.debug', [
-                'name'       => $rawName,
-                'phoneNorm'  => $phoneNorm,
-                'matches'    => $allByName->map(fn ($s) => [
-                    'id'           => $s->id,
-                    'campus'       => $s->CampusID,
-                    'Phone'        => $s->Phone,
-                    'parent_phone' => $s->parent_phone,
-                    'resolved'     => $this->normalizePhone($this->resolveContactPhone($s)),
-                ]),
+            // SEC-AUDIT-003 (#972): this branch previously logged student names and
+            // phone numbers (Phone / parent_phone / resolved) on every name-based
+            // login attempt, ungated. Log a PII-free count only — preserves the
+            // "ambiguous name lookup" signal without leaking PII to the log.
+            \Illuminate\Support\Facades\Log::info('parent.login.name_lookup', [
+                'name_match_count' => $allByName->count(),
             ]);
             $candidates = $allByName
                 ->filter(function ($s) use ($phoneNorm) {
