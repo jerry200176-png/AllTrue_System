@@ -217,14 +217,21 @@ Route::prefix('v1')->group(function () {
     });
 
     // ── Engagement / Gamification ──
-    Route::get('engagement/rank-thresholds', [\App\Http\Controllers\EngagementController::class, 'rankThresholds']);
-    Route::get('engagement/my-progress', [\App\Http\Controllers\EngagementController::class, 'myProgress']);
-    Route::get('engagement/xp-history', [\App\Http\Controllers\EngagementController::class, 'xpHistory']);
-    Route::post('engagement/award-xp', [\App\Http\Controllers\EngagementController::class, 'awardXp']);
-    Route::get('engagement/event-types', [\App\Http\Controllers\EngagementController::class, 'eventTypes']);
-    Route::get('engagement/badges', [\App\Http\Controllers\EngagementController::class, 'badges']);
-    Route::post('engagement/badges/{key}/toggle-visibility', [\App\Http\Controllers\EngagementController::class, 'toggleBadgeVisibility']);
-    Route::post('engagement/ranks-for', [\App\Http\Controllers\EngagementController::class, 'ranksFor']);
+    // SEC-AUDIT-007/008 (#974): these routes (incl. the award-xp / toggle-visibility
+    // mutators) previously had no role gate and AttachAuthUser does not fail closed,
+    // so an unauthenticated request reached the controller (null-deref) and any caller
+    // could mutate. Engagement is a teacher-workbench feature → require an authenticated
+    // director/teacher/super_admin role. No public/parent caller uses these endpoints.
+    Route::middleware(['role:director,teacher,super_admin'])->group(function () {
+        Route::get('engagement/rank-thresholds', [\App\Http\Controllers\EngagementController::class, 'rankThresholds']);
+        Route::get('engagement/my-progress', [\App\Http\Controllers\EngagementController::class, 'myProgress']);
+        Route::get('engagement/xp-history', [\App\Http\Controllers\EngagementController::class, 'xpHistory']);
+        Route::post('engagement/award-xp', [\App\Http\Controllers\EngagementController::class, 'awardXp']);
+        Route::get('engagement/event-types', [\App\Http\Controllers\EngagementController::class, 'eventTypes']);
+        Route::get('engagement/badges', [\App\Http\Controllers\EngagementController::class, 'badges']);
+        Route::post('engagement/badges/{key}/toggle-visibility', [\App\Http\Controllers\EngagementController::class, 'toggleBadgeVisibility']);
+        Route::post('engagement/ranks-for', [\App\Http\Controllers\EngagementController::class, 'ranksFor']);
+    });
 
     Route::post('attendance/swipe', [AttendanceController::class, 'swipe'])
         ->middleware('api_key');
