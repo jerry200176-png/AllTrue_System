@@ -75,4 +75,27 @@ class CampusDomainResolverTest extends TestCase
     {
         $this->assertSame('none', CampusDomainResolver::resolve('', $this->prod())['status']);
     }
+
+    /**
+     * CRDE Phase 6 — cache-safety enforced as an invariant. The resolver must be a
+     * pure read-through function of its arguments: no memoization or cross-call
+     * state that could serve a stale mapping after the underlying data changes.
+     */
+    public function test_resolver_is_stateless_read_through(): void
+    {
+        $before = $this->prod(); // campus 15 owns daan
+        $this->assertSame(15, CampusDomainResolver::resolve('daan.lifenet.com.tw', $before)['campus_id']);
+
+        // Reassign the same host to a different campus set — a cached resolver would
+        // wrongly keep returning 15; a pure one reflects the new input immediately.
+        $after = [
+            ['id' => 99, 'url' => 'https://daan.lifenet.com.tw', 'liff_id' => 'L99'],
+        ];
+        $this->assertSame(99, CampusDomainResolver::resolve('daan.lifenet.com.tw', $after)['campus_id']);
+
+        // And repeated identical calls are stable (deterministic / replayable).
+        $a = CampusDomainResolver::resolve('daan.lifenet.com.tw', $before);
+        $b = CampusDomainResolver::resolve('daan.lifenet.com.tw', $before);
+        $this->assertSame($a, $b);
+    }
 }
