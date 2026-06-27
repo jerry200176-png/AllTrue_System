@@ -10,7 +10,6 @@ use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
-use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
@@ -464,14 +463,14 @@ class AttendanceController extends Controller
                     ->orderBy('id')
                     ->first();
                 if (!$classSession) {
-                    $classSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+                    $classSession = ClassSession::create([
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $data['SessionDate'],
                         'StartTime' => $data['StartTime'],
                         'EndTime' => $data['EndTime'],
                         'Status' => 'scheduled',
                         'Note' => '',
-                    ])['session'];
+                    ]);
                 }
             }
 
@@ -1115,13 +1114,13 @@ class AttendanceController extends Controller
                     $classSessionId = $existing->id;
                 } else {
                     $endTime = Carbon::parse($signin->SignInDT)->addHour()->format('H:i:s');
-                    $session = app(ClassSessionMaterializationService::class)->upsertSlot([
+                    $session = ClassSession::create([
                         'StudentClassID' => $studentClassId,
                         'SessionDate'    => $sessionDate,
                         'StartTime'      => $startTime,
                         'EndTime'        => $endTime,
                         'Status'         => 'attended',
-                    ])['session'];
+                    ]);
                     $classSessionId = $session->id;
                 }
 

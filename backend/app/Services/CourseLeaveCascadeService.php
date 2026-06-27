@@ -189,14 +189,14 @@ class CourseLeaveCascadeService
             $latestDate = $normalizedLeaveDate;
         }
         $appendDate = self::nextRecurringDate(Carbon::parse($latestDate)->startOfDay(), $weekdays, $occupiedDates);
-        $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+        $newSession = ClassSession::create([
             'StudentClassID' => $courseId,
             'SessionDate'    => $appendDate,
             'StartTime'      => $templateSession->StartTime,
             'EndTime'        => $templateSession->EndTime,
             'Status'         => 'scheduled',
             'Note'           => self::appendNote($templateSession->Note, self::NOTE_AUTO_EXTENDED),
-        ])['session'];
+        ]);
         $occupiedDates[$appendDate] = true;
         self::syncLearningRecordSessionDate($newSession);
 

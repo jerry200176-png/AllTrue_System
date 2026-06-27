@@ -15,11 +15,9 @@ use App\Models\StudentSignIn;
 use App\Models\UserCampus;
 use App\Models\CoursePackage;
 use App\Support\Utf8mb3SearchSanitizer;
-use App\Services\ClassSessionMaterializationService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\SessionDeductionService;
 use App\Services\ScheduleGuardService;
-use App\Services\SessionProjectionReadService;
 use App\Services\TeacherScopeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -430,8 +428,7 @@ class StudentClassController extends Controller
     /**
      * GET /api/v1/student-classes/session-dates?branch_id=1
      * POST 可帶 body: { branch_id, courses: [{ id, first_class_date, sessions_purchased, days_of_week }] }
-     * 回傳每門課的 { materialized: ClassSessionSlot[], projected: SessionProjection[] }，
-     * 不再回傳混合的 flat date list。projected 項目不含 ClassSession.id。
+     * 回傳每門課的實際上課日期（含 請假/調課），供課程管理顯示。POST 時依 courses 的 id 對應 Schedule，可顯示僅存在 Supabase 的堂數制預估日期且隨請假/調課變動。
      */
     public function sessionDates(Request $request)
     {
@@ -498,7 +495,7 @@ class StudentClassController extends Controller
                 $classSessionsBody = ClassSession::whereIn('StudentClassID', $courseIds)
                     ->where('SessionDate', '>=', $rangeStart)
                     ->where('SessionDate', '<=', $rangeEnd)
-                    ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
+                    ->select('StudentClassID', 'SessionDate', 'Status')
                     ->get();
                 $leaveByClass = [];
                 $scheduledByClass = [];
@@ -536,7 +533,6 @@ class StudentClassController extends Controller
                     }
                     $sessionDatesByClass[$id][] = $d;
                 }
-                $projectionReader = app(SessionProjectionReadService::class);
                 foreach ($bodyCourses as $c) {
                     $cid = $c['id'] ?? null;
                     $startDate = isset($c['first_class_date']) ? Carbon::parse($c['first_class_date'])->toDateString() : null;
@@ -616,30 +612,14 @@ class StudentClassController extends Controller
                             $list = array_keys($selected);
                             sort($list);
                         }
-                        $result[(string) $cid] = $this->buildSessionDatesSplit(
-                            $projectionReader,
-                            (int) $cid,
-                            $list,
-                            $classSessionsBody,
-                            $bodyClasses->firstWhere('ID', (int) $cid),
-                            $rangeStart,
-                            $rangeEnd
-                        );
+                        $result[(string) $cid] = $list;
                         continue;
                     }
 
                     if ($cid !== null && !empty($actualSessionSet)) {
                         $list = array_keys($actualSessionSet);
                         sort($list);
-                        $result[(string) $cid] = $this->buildSessionDatesSplit(
-                            $projectionReader,
-                            (int) $cid,
-                            $list,
-                            $classSessionsBody,
-                            $bodyClasses->firstWhere('ID', (int) $cid),
-                            $rangeStart,
-                            $rangeEnd
-                        );
+                        $result[(string) $cid] = array_values($list);
                     }
                 }
             }
@@ -718,10 +698,8 @@ class StudentClassController extends Controller
                 ->get();
 
             $sessions = ClassSession::whereIn('StudentClassID', $classIds)
-                ->select('id', 'StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status')
+                ->select('StudentClassID', 'SessionDate', 'Status')
                 ->get();
-
-            $projectionReader = app(SessionProjectionReadService::class);
 
             $leaveByClass = [];
             $scheduledByClass = [];
@@ -828,15 +806,7 @@ class StudentClassController extends Controller
                         $list = array_keys($selected);
                         sort($list);
                     }
-                    $result[(string) $id] = $this->buildSessionDatesSplit(
-                        $projectionReader,
-                        $id,
-                        $list,
-                        $sessions,
-                        $class,
-                        $rangeStart,
-                        $rangeEnd
-                    );
+                    $result[(string) $id] = $list;
                     continue;
                 }
 
@@ -873,15 +843,7 @@ class StudentClassController extends Controller
                     $leaveSet = $leaveByClass[$id] ?? [];
                     $scheduledSet = $scheduledByClass[$id] ?? [];
                     $list = $this->computeMonthlyEffectiveSessionDates($class, $rangeStart, $rangeEnd, $leaveSet, $scheduledSet, $set);
-                    $result[(string) $id] = $this->buildSessionDatesSplit(
-                        $projectionReader,
-                        $id,
-                        $list,
-                        $sessions,
-                        $class,
-                        $rangeStart,
-                        $rangeEnd
-                    );
+                    $result[(string) $id] = $list;
                     continue;
                 }
                 sort($list);
@@ -889,15 +851,7 @@ class StudentClassController extends Controller
                 if ($n > 0 && count($list) > $n) {
                     $list = array_slice($list, 0, $n);
                 }
-                $result[(string) $id] = $this->buildSessionDatesSplit(
-                    $projectionReader,
-                    $id,
-                    $list,
-                    $sessions,
-                    $class,
-                    $rangeStart,
-                    $rangeEnd
-                );
+                $result[(string) $id] = $list;
             }
         } catch (\Throwable $e) {
             // Laravel DB/Schedule may be empty or schema differs (e.g. branch uses Supabase only); return what we have
@@ -905,26 +859,6 @@ class StudentClassController extends Controller
         }
 
         return response()->json($result);
-    }
-
-    /**
-     * @param  list<string>  $effectiveDateList
-     * @param  iterable<object>  $sessionRows
-     * @return array{materialized: list<array<string, mixed>>, projected: list<array<string, mixed>>}
-     */
-    private function buildSessionDatesSplit(
-        SessionProjectionReadService $reader,
-        int $classId,
-        array $effectiveDateList,
-        iterable $sessionRows,
-        ?StudentClass $class,
-        string $rangeStart,
-        string $rangeEnd
-    ): array {
-        $materialized = $reader->collectMaterializedFromRows($sessionRows, $classId, $rangeStart, $rangeEnd);
-        $projected = $reader->buildProjectedFromEffectiveDates($classId, $effectiveDateList, $materialized, $class);
-
-        return $reader->wrapCourseSplit($materialized, $projected);
     }
 
     /**
@@ -936,7 +870,7 @@ class StudentClassController extends Controller
      * @param  array<string, bool>  $existingSet
      * @return array<int, string>
      */
-    public function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
+    private function computeMonthlyEffectiveSessionDates(StudentClass $class, string $rangeStart, string $rangeEnd, array $leaveSet, array $scheduledSet, array $existingSet): array
     {
         $start = $this->normalizeDateString($class->StartDate ?? null) ?: $rangeStart;
         if ($start < $rangeStart) {
@@ -1307,7 +1241,7 @@ class StudentClassController extends Controller
                 $teacherId = (int) ($data['TeacherID'] ?? 0);
                 $today = Carbon::today()->toDateString();
                 foreach ($sessions as $sess) {
-                    $classSession = app(ClassSessionMaterializationService::class)->upsertSlot($sess)['session'];
+                    $classSession = ClassSession::create($sess);
                     // 今天以後還沒上的課不需要填寫評量表，不建立 pending LearningRecord
                     if ($sess['SessionDate'] <= $today) {
                         LearningRecord::create([
@@ -1737,13 +1671,13 @@ class StudentClassController extends Controller
 
                     foreach ($dates as $sessionDate) {
                         if (isset($existingCsDates[$sessionDate])) continue;
-                        $cs = app(ClassSessionMaterializationService::class)->upsertSlot([
+                        $cs = ClassSession::create([
                             'StudentClassID' => (int) $id,
                             'SessionDate' => $sessionDate,
                             'StartTime' => $sTime,
                             'EndTime' => $eTime,
                             'Status' => $sessionDate <= $today ? 'completed' : 'scheduled',
-                        ])['session'];
+                        ]);
                         if ($sessionDate <= $today && $teacherId) {
                             $lrExists = LearningRecord::where('ClassSessionID', $cs->id)
                                 ->active()->exists();
@@ -2396,10 +2330,8 @@ class StudentClassController extends Controller
             $createdSessions = 0;
             $lastSessionDate = null;
             foreach ($builtSessions as $sess) {
-                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($sess);
-                if ($upsert['created']) {
-                    $createdSessions++;
-                }
+                ClassSession::create($sess);
+                $createdSessions++;
                 $d = $sess['SessionDate'] ?? null;
                 if ($d !== null && ($lastSessionDate === null || $d > $lastSessionDate)) {
                     $lastSessionDate = $d;
@@ -2597,14 +2529,14 @@ class StudentClassController extends Controller
                     }
                     $classSession->save();
                 } else {
-                    $classSession = app(ClassSessionMaterializationService::class)->upsertSlot([
+                    $classSession = ClassSession::create([
                         'StudentClassID' => $classId,
                         'SessionDate' => $sessionDate,
                         'StartTime' => $startTime,
                         'EndTime' => $endTime,
                         'Status' => $isEnded ? 'completed' : 'scheduled',
                         'Note' => $note !== '' ? $note : ($isEnded ? '系統補登加課' : '系統加課'),
-                    ])['session'];
+                    ]);
                 }
             }
 
@@ -3694,11 +3626,9 @@ class StudentClassController extends Controller
                 continue;
             }
 
-            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($session);
-            if ($upsert['created']) {
-                $existingKeys[$key] = true;
-                $created++;
-            }
+            ClassSession::create($session);
+            $existingKeys[$key] = true;
+            $created++;
         }
 
         return [
@@ -3948,11 +3878,8 @@ class StudentClassController extends Controller
                     $session['Note'] = '系統重建堂次（固定星期調整）';
                 }
 
-                $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($session);
-                $classSession = $upsert['session'];
-                if ($upsert['created']) {
-                    $createdSessions++;
-                }
+                $classSession = ClassSession::create($session);
+                $createdSessions++;
 
                 if ($isEnded) {
                     LearningRecord::create([
@@ -4111,11 +4038,8 @@ class StudentClassController extends Controller
                 $session['Note'] = '系統重建堂次（開課日調整）';
             }
 
-            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot($session);
-            $classSession = $upsert['session'];
-            if ($upsert['created']) {
-                $createdSessions++;
-            }
+            $classSession = ClassSession::create($session);
+            $createdSessions++;
 
             if ($isEnded) {
                 LearningRecord::create([
@@ -4454,7 +4378,7 @@ class StudentClassController extends Controller
                 $session['Note'] = '系統補建堂次（增加購買堂數）';
             }
 
-            $classSession = app(ClassSessionMaterializationService::class)->upsertSlot($session)['session'];
+            $classSession = ClassSession::create($session);
 
             if ($isEnded) {
                 LearningRecord::create([

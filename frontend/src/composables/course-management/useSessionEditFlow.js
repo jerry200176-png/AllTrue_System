@@ -1,7 +1,6 @@
 import { ref, computed } from 'vue';
 import { getPerSessionFee, getRateUnit } from '../../lib/coursePricing';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
-import { sessionViewModelFromEnsureProjected, sessionViewModelPatchFromApi } from '../../lib/classSessionsApi';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -79,7 +78,7 @@ export function useSessionEditFlow({
 
   async function openSessionEdit(course, dateYmd, sessionId, unit = null) {
     let row = getSessionDisplayRow(course, dateYmd, sessionId);
-    if (!row && unit?.isProjected) {
+    if (!row && unit?._synthetic) {
       row = await materializeProjectedSession(course, dateYmd, unit);
     }
     if (!row) {
@@ -93,29 +92,29 @@ export function useSessionEditFlow({
     }
     sessionEditForm.value = {
       session_id: row.id,
-      student_class_id: row.studentClassId || course.id,
+      student_class_id: row.student_class_id || course.id,
       session_date: dateYmd,
-      start_time: row.startTime || '',
-      end_time: row.endTime || '',
+      start_time: row.start_time || '',
+      end_time: row.end_time || '',
       current_status: String(row.status || '').toLowerCase(),
-      student_name: course.student_name || row.studentName || '—',
-      teacher_id: row.teacherId || course.teacher_id || null,
-      teacher_name: row.teacherName || course.teacher_name || '—',
+      student_name: course.student_name || row.student_name || '—',
+      teacher_id: row.teacher_id || course.teacher_id || null,
+      teacher_name: row.teacher_name || course.teacher_name || '—',
       subject: course.subject || '',
-      attendance_time: formatAttendanceTooltipTime(row.attendanceSignInAt) || '',
-      lr_status: row.learningRecordStatus || '',
+      attendance_time: formatAttendanceTooltipTime(row.attendance_sign_in_at) || '',
+      lr_status: row.learning_record_status || '',
       course,
       reason: '',
       new_date: '',
-      new_start: row.startTime || '16:00',
+      new_start: row.start_time || '16:00',
       duration_hours: course.duration_hours ?? 2,
       note: row.note || '',
-      edit_start_time: row.startTime || '',
-      edit_end_time: row.endTime || '',
-      session_charge: row.sessionCharge ?? null,
-      contract_rate: row.contractRate ?? getPerSessionFee(course),
-      contract_session_duration: row.contractSessionDuration ?? (course?.duration_hours != null ? Math.round(Number(course.duration_hours) * 60) : null),
-      contract_rate_unit: row.contractRateUnit || getRateUnit(course),
+      edit_start_time: row.start_time || '',
+      edit_end_time: row.end_time || '',
+      session_charge: row.session_charge ?? null,
+      contract_rate: row.contract_rate ?? getPerSessionFee(course),
+      contract_session_duration: row.contract_session_duration ?? (course?.duration_hours != null ? Math.round(Number(course.duration_hours) * 60) : null),
+      contract_rate_unit: row.contract_rate_unit || getRateUnit(course),
     };
     sessionEditMode.value = 'menu';
     secondaryStatusSelection.value = '';
@@ -145,7 +144,7 @@ export function useSessionEditFlow({
         body: JSON.stringify({
           student_class_id: Number(course?.id || course?.ID || 0),
           session_date: String(dateYmd || '').slice(0, 10),
-          start_time: unit?.startTime || undefined,
+          start_time: unit?.start_time || undefined,
           branch_id: bid || undefined,
         }),
       });
@@ -158,13 +157,8 @@ export function useSessionEditFlow({
         alert('建立可編輯堂次失敗：伺服器未回傳堂次資料');
         return null;
       }
-      const vm = sessionViewModelFromEnsureProjected(json.session);
-      if (!vm) {
-        alert('建立可編輯堂次失敗：伺服器未回傳堂次資料');
-        return null;
-      }
-      updateLocalSessionRow(course?.id || course?.ID, vm);
-      return vm;
+      updateLocalSessionRow(course?.id || course?.ID, json.session);
+      return json.session;
     } catch (e) {
       alert('建立可編輯堂次失敗：' + (e?.message || '請稍後再試'));
       return null;
@@ -243,8 +237,7 @@ export function useSessionEditFlow({
         return;
       }
       if (!isUndoLeave && json.session) {
-        const vm = sessionViewModelFromEnsureProjected(json.session);
-        if (vm) updateLocalSessionRow(form.student_class_id || form.course?.id, vm);
+        updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
       }
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
       const event = (form.current_status !== 'scheduled' && newStatus === 'scheduled') ? 'flow_undone' : 'flow_submitted';
@@ -285,8 +278,7 @@ export function useSessionEditFlow({
         return;
       }
       if (json.session) {
-        const vm = sessionViewModelFromEnsureProjected(json.session);
-        if (vm) updateLocalSessionRow(form.student_class_id || form.course?.id, vm);
+        updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
       }
       closeSessionEdit();
       alert(json.message || '補請假完成');
@@ -464,8 +456,7 @@ export function useSessionEditFlow({
         return;
       }
       if (json.session) {
-        const vm = sessionViewModelFromEnsureProjected(json.session);
-        if (vm) updateLocalSessionRow(form.student_class_id || form.course?.id, vm);
+        updateLocalSessionRow(form.student_class_id || form.course?.id, json.session);
       }
       closeSessionEdit();
       await loadCourses();
@@ -516,12 +507,11 @@ export function useSessionEditFlow({
       }
       // Immediately patch the local row so tooltip/list shows the new teacher before full reload
       if (json.substitute_teacher_id) {
-        const patch = sessionViewModelPatchFromApi({
+        updateLocalSessionRow(form.student_class_id || form.course?.id, {
           id: form.session_id,
           teacher_id: json.substitute_teacher_id,
           teacher_name: json.substitute_teacher_name || '',
         });
-        if (patch) updateLocalSessionRow(form.student_class_id || form.course?.id, patch);
       }
       closeSessionEdit();
       alert(json.message || '代課設定完成');

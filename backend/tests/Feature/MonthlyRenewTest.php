@@ -235,17 +235,6 @@ class MonthlyRenewTest extends TestCase
 
         $res->assertOk();
 
-        $split = $res->json((string) $course->ID);
-        $this->assertIsArray($split);
-        $this->assertArrayHasKey('materialized', $split);
-        $this->assertArrayHasKey('projected', $split);
-
-        $dates = array_values(array_unique(array_merge(
-            array_column($split['materialized'], 'session_date'),
-            array_column($split['projected'], 'session_date')
-        )));
-        sort($dates);
-
         $this->assertSame(
             [
                 '2026-04-02',
@@ -258,7 +247,7 @@ class MonthlyRenewTest extends TestCase
                 '2026-04-27',
                 '2026-04-30',
             ],
-            $dates,
+            $res->json((string) $course->ID),
             'legacy 月結課即使 EndDate 缺失且只有部分 ClassSession，詳情仍應推算本月固定時段日期'
         );
     }

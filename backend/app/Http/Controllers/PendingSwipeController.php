@@ -7,7 +7,6 @@ use App\Models\PendingSwipe;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
-use App\Services\ClassSessionMaterializationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -226,14 +225,14 @@ class PendingSwipeController extends Controller
         $start = $swipeAt->copy();
         $end = $start->copy()->addMinutes($duration);
 
-        return app(ClassSessionMaterializationService::class)->upsertSlot([
+        return ClassSession::create([
             'StudentClassID' => $studentClass->ID,
             'SessionDate' => $start->toDateString(),
             'StartTime' => $start->format('H:i:s'),
             'EndTime' => $end->format('H:i:s'),
             'Status' => 'scheduled',
             'Note' => 'manual-match',
-        ])['session'];
+        ]);
     }
 
     private function resolveSwipeStatus(ClassSession $classSession, Carbon $swipeAt): string

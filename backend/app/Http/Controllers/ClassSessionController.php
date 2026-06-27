@@ -11,11 +11,9 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
-use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
-use App\Services\SessionProjectionReadService;
 use App\Services\SubstituteService;
 use App\Support\TeacherProfileDirectory;
 use Carbon\Carbon;
@@ -337,23 +335,7 @@ class ClassSessionController extends Controller
             $this->logSessionCountMismatches($byClass, $request);
         }
 
-        $rangeStart = $request->filled('start') ? (string) $request->input('start') : null;
-        $rangeEnd = $request->filled('end') ? (string) $request->input('end') : null;
-        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd);
-
         return response()->json([
-            'materialized' => [
-                'data' => $rows->items(),
-                'by_class' => $byClass,
-                'current_page' => $rows->currentPage(),
-                'last_page' => $rows->lastPage(),
-                'per_page' => $rows->perPage(),
-                'total' => $rows->total(),
-            ],
-            'projected' => [
-                'by_class' => $projectedByClass,
-            ],
-            // Legacy top-level aliases — materialized rows only (never mixed with projected).
             'data' => $rows->items(),
             'by_class' => $byClass,
             'current_page' => $rows->currentPage(),
@@ -361,99 +343,6 @@ class ClassSessionController extends Controller
             'per_page' => $rows->perPage(),
             'total' => $rows->total(),
         ]);
-    }
-
-    /**
-     * @param  array<string, list<object>>  $materializedByClass
-     * @return array<string, list<array<string, mixed>>>
-     */
-    private function buildProjectedByClassForIndex(array $materializedByClass, ?string $rangeStart, ?string $rangeEnd): array
-    {
-        if (!$rangeStart || !$rangeEnd || empty($materializedByClass)) {
-            return [];
-        }
-
-        $classIds = array_values(array_filter(array_map('intval', array_keys($materializedByClass))));
-        if ($classIds === []) {
-            return [];
-        }
-
-        $classes = StudentClass::query()->whereIn('ID', $classIds)->get()->keyBy('ID');
-        $schedules = Schedule::query()
-            ->whereIn('student_course_id', $classIds)
-            ->whereDate('schedule_date', '>=', $rangeStart)
-            ->whereDate('schedule_date', '<=', $rangeEnd)
-            ->select('student_course_id', 'schedule_date', 'status')
-            ->get();
-
-        $leaveByClass = [];
-        $scheduledByClass = [];
-        foreach ($schedules as $row) {
-            $id = (int) $row->student_course_id;
-            $d = $row->schedule_date ? Carbon::parse($row->schedule_date)->toDateString() : null;
-            if (!$d) {
-                continue;
-            }
-            if ($row->status === 'scheduled') {
-                $scheduledByClass[$id][$d] = true;
-            } else {
-                $leaveByClass[$id][$d] = true;
-            }
-        }
-
-        $reader = app(SessionProjectionReadService::class);
-        $studentClassController = app(StudentClassController::class);
-        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
-        $projectedByClass = [];
-
-        foreach ($materializedByClass as $classKey => $rows) {
-            $classId = (int) $classKey;
-            $class = $classes->get($classId);
-            if (!$class) {
-                continue;
-            }
-
-            $materialized = [];
-            foreach ($rows as $row) {
-                $materialized[] = $reader->materializedSlot(
-                    (int) $row->id,
-                    $classId,
-                    (string) ($row->session_date ?? ''),
-                    (string) ($row->start_time ?? ''),
-                    (string) ($row->end_time ?? ''),
-                    (string) ($row->status ?? 'scheduled')
-                );
-            }
-
-            $existingSet = [];
-            foreach ($materialized as $slot) {
-                $existingSet[$slot['session_date']] = true;
-            }
-
-            $effectiveDates = [];
-            if ((string) ($class->ScheduleMode ?? '') === 'date') {
-                $effectiveDates = $studentClassController->computeMonthlyEffectiveSessionDates(
-                    $class,
-                    $rangeStart,
-                    $rangeEnd,
-                    $leaveByClass[$classId] ?? [],
-                    $scheduledByClass[$classId] ?? [],
-                    $existingSet
-                );
-            }
-
-            $projected = $reader->buildProjectedFromEffectiveDates(
-                $classId,
-                $effectiveDates,
-                $materialized,
-                $class
-            );
-            if (!empty($projected)) {
-                $projectedByClass[(string) $classId] = $projected;
-            }
-        }
-
-        return $projectedByClass;
     }
 
     /**
@@ -546,7 +435,7 @@ class ClassSessionController extends Controller
                     continue;
                 }
 
-                app(ClassSessionMaterializationService::class)->upsertSlot([
+                ClassSession::create([
                     'StudentClassID'      => (int) $studentClass->ID,
                     'SubjectID'           => $studentClass->SubjectID ?: null,
                     'SessionDate'         => $targetDate,
@@ -623,18 +512,29 @@ class ClassSessionController extends Controller
             return response()->json(['message' => '指定日期不符合此課程固定時段'], 422);
         }
 
-        $result = app(ClassSessionMaterializationService::class)->upsertSlot([
-            'StudentClassID'       => (int) $studentClass->ID,
-            'SubjectID'            => $studentClass->SubjectID ?: null,
-            'SessionDate'          => $sessionDate,
-            'StartTime'            => $slot['start_time'],
-            'EndTime'              => $slot['end_time'],
-            'Status'               => 'scheduled',
-            'Note'                 => 'projected-monthly-materialized',
-            'IsContractException'  => 0,
-        ]);
-        $created = $result['created'];
-        $session = $result['session'];
+        $created = false;
+        $session = DB::transaction(function () use ($studentClass, $sessionDate, $slot, &$created) {
+            $existing = ClassSession::where('StudentClassID', (int) $studentClass->ID)
+                ->whereDate('SessionDate', $sessionDate)
+                ->where('StartTime', $slot['start_time'])
+                ->lockForUpdate()
+                ->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            $created = true;
+            return ClassSession::create([
+                'StudentClassID'       => (int) $studentClass->ID,
+                'SubjectID'            => $studentClass->SubjectID ?: null,
+                'SessionDate'          => $sessionDate,
+                'StartTime'            => $slot['start_time'],
+                'EndTime'              => $slot['end_time'],
+                'Status'               => 'scheduled',
+                'Note'                 => 'projected-monthly-materialized',
+                'IsContractException'  => 0,
+            ]);
+        });
 
         return response()->json([
             'message' => $created ? '已建立可編輯堂次' : '已取得既有堂次',
@@ -1235,14 +1135,14 @@ class ClassSessionController extends Controller
             $occupiedDates
         );
 
-        return app(ClassSessionMaterializationService::class)->upsertSlot([
+        return ClassSession::create([
             'StudentClassID' => $studentClass->ID,
             'SessionDate'    => $appendDate,
             'StartTime'      => $leaveSession->StartTime,
             'EndTime'        => $leaveSession->EndTime,
             'Status'         => 'scheduled',
             'Note'           => '請假自動順延',
-        ])['session'];
+        ]);
     }
 
     /**

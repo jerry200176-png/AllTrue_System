@@ -749,7 +749,7 @@ class EnrollmentService
                             }
                             $skippedConfirmedDates[] = $date;
                         } else {
-                            $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
+                            $classSession = ClassSession::create([
                                 'StudentClassID' => $studentClass->ID,
                                 'SessionDate' => $date,
                                 'StartTime' => $slotStartTime,
@@ -757,10 +757,7 @@ class EnrollmentService
                                 'Status' => 'completed',
                                 'Note' => '',
                             ]);
-                            $classSession = $upsert['session'];
-                            if ($upsert['created']) {
-                                $createdConfirmedSessions++;
-                            }
+                            $createdConfirmedSessions++;
                         }
 
                         $syncResult = $this->syncApprovedLearningRecord(
@@ -794,7 +791,7 @@ class EnrollmentService
                     }
 
                     $isEndedAtCreateTime = $this->sessionEndedByEndTime($date, $slotEndTime, $decisionNow);
-                    $upsert = app(ClassSessionMaterializationService::class)->upsertSlot([
+                    $classSession = ClassSession::create([
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $date,
                         'StartTime' => $slotStartTime,
@@ -802,7 +799,6 @@ class EnrollmentService
                         'Status' => $isEndedAtCreateTime ? 'completed' : 'scheduled',
                         'Note' => $isEndedAtCreateTime ? '系統判定補登（新增時已過下課時間）' : '',
                     ]);
-                    $classSession = $upsert['session'];
                     if ($isEndedAtCreateTime) {
                         $autoApprovedFromFuture++;
                         $createdConfirmedSessions++;

@@ -1,12 +1,5 @@
 parameters:
 	ignoreErrors:
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/ClassSessionMaterializationService.php
-
 		-
 			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
@@ -36,6 +29,12 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Console/Commands/BackfillLegacyPayments.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Console/Commands/BackfillMissingClassSessionsFromSchedules.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
@@ -692,6 +691,12 @@ parameters:
 			path: app/Http/Controllers/AttendanceController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Http/Controllers/AttendanceController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 2
@@ -1250,6 +1255,12 @@ parameters:
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 3
+			path: app/Http/Controllers/ClassSessionController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:find\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 2
@@ -1258,7 +1269,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 4
+			count: 5
 			path: app/Http/Controllers/ClassSessionController.php
 
 		-
@@ -1534,6 +1545,12 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\CoursePackage\:\:\$used_sessions\.$#'
 			identifier: property.notFound
+			count: 1
+			path: app/Http/Controllers/CoursePackageController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
 			count: 1
 			path: app/Http/Controllers/CoursePackageController.php
 
@@ -2447,6 +2464,12 @@ parameters:
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$RemainingSessions\.$#'
 			identifier: property.notFound
 			count: 1
+			path: app/Http/Controllers/LearningRecordController.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 4
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -3686,6 +3709,12 @@ parameters:
 			path: app/Http/Controllers/PendingSwipeController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/PendingSwipeController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:findOrFail\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -3884,9 +3913,15 @@ parameters:
 			path: app/Http/Controllers/ScheduleController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Http/Controllers/ScheduleController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 6
+			count: 7
 			path: app/Http/Controllers/ScheduleController.php
 
 		-
@@ -4274,6 +4309,12 @@ parameters:
 			path: app/Http/Controllers/StudentClassController.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 6
+			path: app/Http/Controllers/StudentClassController.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 18
@@ -4468,6 +4509,12 @@ parameters:
 		-
 			message: '#^PHPDoc tag @param for parameter \$query contains generic type Illuminate\\Database\\Eloquent\\Builder\<App\\Models\\StudentClass\> but class Illuminate\\Database\\Eloquent\\Builder is not generic\.$#'
 			identifier: generics.notGeneric
+			count: 1
+			path: app/Http/Controllers/StudentClassController.php
+
+		-
+			message: '#^Parameter \#1 \$array \(non\-empty\-list\<non\-falsy\-string\>\) of array_values is already a list, call has no effect\.$#'
+			identifier: arrayValues.list
 			count: 1
 			path: app/Http/Controllers/StudentClassController.php
 
@@ -5498,6 +5545,12 @@ parameters:
 			path: app/Services/ChatService.php
 
 		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/CourseLeaveCascadeService.php
+
+		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 4
@@ -5573,6 +5626,12 @@ parameters:
 			message: '#^Array has 2 duplicate keys with value ''Paid'' \(''Paid'', ''Paid''\)\.$#'
 			identifier: array.duplicateKey
 			count: 1
+			path: app/Services/EnrollmentService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
 			path: app/Services/EnrollmentService.php
 
 		-

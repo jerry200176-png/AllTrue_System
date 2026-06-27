@@ -307,13 +307,13 @@
                               :class="[
                                 'date-chip',
                                 'date-chip-clickable',
-                                u.isProjected && 'date-chip-synthetic',
-                                getSessionStateClass(c, (u.date || '').slice(0,10), u.id)
+                                u._synthetic && 'date-chip-synthetic',
+                                getSessionStateClass(c, (u.session_date || '').slice(0,10), u.id)
                               ]"
-                              :title="u.isProjected ? '依排課規律推算（尚無出勤記錄）；點擊可建立堂次並開啟編輯' : getSessionTooltip(c, (u.date || '').slice(0,10), u.id)"
-                              @click="openSessionEdit(c, (u.date || '').slice(0,10), u.id, u)"
+                              :title="u._synthetic ? '依排課規律推算（尚無出勤記錄）；點擊可建立堂次並開啟編輯' : getSessionTooltip(c, (u.session_date || '').slice(0,10), u.id)"
+                              @click="openSessionEdit(c, (u.session_date || '').slice(0,10), u.id, u)"
                             >
-                              <template v-if="getSessionNumber(c, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
+                              <template v-if="getSessionNumber(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(c, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(c, (u.session_date || '').slice(0,10), u.id) }}</span></template><template v-if="showSessionNotes && isUserNote(u.note)"><span class="chip-note-text">{{ u.note }}</span></template>
                             </span>
                           </div>
                         </div>
@@ -389,10 +389,10 @@
                           <span
                             v-for="u in allSessionUnits(hc)"
                             :key="sessionRowKey(u)"
-                            :class="['date-chip', getSessionStateClass(hc, (u.date || '').slice(0,10), u.id)]"
-                            :title="getSessionTooltip(hc, (u.date || '').slice(0,10), u.id)"
+                            :class="['date-chip', getSessionStateClass(hc, (u.session_date || '').slice(0,10), u.id)]"
+                            :title="getSessionTooltip(hc, (u.session_date || '').slice(0,10), u.id)"
                           >
-                            <template v-if="getSessionNumber(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(hc, (u.date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(hc, (u.date || '').slice(0,10), u.id) }}</span></template>
+                            <template v-if="getSessionNumber(hc, (u.session_date || '').slice(0,10), u.id)"><span class="chip-seq">第{{ getSessionNumber(hc, (u.session_date || '').slice(0,10), u.id) }}堂</span></template><span class="chip-date">{{ formatSessionChipDate(u) }}</span><template v-if="getSessionStateLabel(hc, (u.session_date || '').slice(0,10), u.id)"><span class="chip-state">{{ getSessionStateLabel(hc, (u.session_date || '').slice(0,10), u.id) }}</span></template>
                           </span>
                         </div>
                         <span v-else class="hint">無排課資料</span>
@@ -849,7 +849,7 @@ import { supabase } from '../supabase';
 import { lockScroll, unlockScroll } from '../lib/useScrollLock';
 import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
-import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
+import { fetchClassSessions, normalizeClassSessionsPayload } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
@@ -975,8 +975,8 @@ function showCreationBanner(msg) {
   creationBannerTimer = setTimeout(() => { creationSuccessBanner.value = null; }, 6000);
 }
 const completedSessionDatesByCourse = ref({});
-const sessionsByCourse = ref({});
-const classSessionsByCourse = sessionsByCourse;
+const classSessionsByCourse = ref({});
+const effectiveSessionDatesByCourse = ref({});
 const sessionDataLoadFailed = ref(false);
 const expandedStudentGroups = ref(new Set());
 const focusedStudentKey = ref(null);
@@ -1011,7 +1011,7 @@ const {
   ensureCompletedSessionDatesLoaded, loadClassSessionsForCourses, loadEffectiveSessionDates,
   LEAVE_STATUSES, ATTENDED_SESSION_STATUSES,
 } = useCourseSessionsDisplay({
-  sessionsByCourse: classSessionsByCourse, completedSessionDatesByCourse,
+  classSessionsByCourse, completedSessionDatesByCourse, effectiveSessionDatesByCourse,
   fetchClassSessionsFn: fetchClassSessions, supabase,
   branchId: computed(() => props.branchId),
 });
@@ -1019,13 +1019,13 @@ const {
 /** Format a session unit into a readable chip label: "04/11（六）15:00–17:00" */
 const DAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 function formatSessionChipDate(u) {
-  const dateStr = String(u?.date || '').slice(0, 10);
+  const dateStr = String(u?.session_date || '').slice(0, 10);
   if (!dateStr) return '—';
   const [, mm, dd] = dateStr.split('-');
   const dow = DAY_LABELS[new Date(`${dateStr}T12:00:00`).getDay()] ?? '';
   const base = `${mm}/${dd}（${dow}）`;
-  const start = String(u?.startTime || '').slice(0, 5);
-  const end = String(u?.endTime || '').slice(0, 5);
+  const start = String(u?.start_time || '').slice(0, 5);
+  const end = String(u?.end_time || '').slice(0, 5);
   if (start && end) return `${base} ${start}–${end}`;
   if (start) return `${base} ${start}`;
   return base;
@@ -1974,13 +1974,12 @@ const getLeaveSessionOptionsForCourse = (course) => {
 
   const options = [];
   rows.forEach((row, idx) => {
-    if (row?.isProjected) return;
     const status = String(row?.status || '').toLowerCase();
     if (['cancelled', 'leave', 'leave_adjusted'].includes(status)) return;
-    const date = String(row?.date || '').slice(0, 10);
+    const date = String(row?.session_date || '').slice(0, 10);
     if (!date) return;
     const isRetro = RETRO_LEAVE_STATUSES.has(status);
-    const startTime = String(row?.startTime || '').slice(0, 5);
+    const startTime = String(row?.start_time || '').slice(0, 5);
     options.push({
       date,
       index: idx + 1,
@@ -2297,10 +2296,10 @@ function hasMultiStartSameCalendarDay(rows) {
   for (const r of rows) {
     const st = String(r.status || '').toLowerCase();
     if (SESSION_INFER_SKIP.has(st)) continue;
-    const d = String(r.date || '').slice(0, 10);
-    if (!d || !r.startTime) continue;
+    const d = String(r.session_date || '').slice(0, 10);
+    if (!d || !r.start_time) continue;
     if (!byDate.has(d)) byDate.set(d, new Set());
-    byDate.get(d).add(String(r.startTime).slice(0, 5));
+    byDate.get(d).add(String(r.start_time).slice(0, 5));
   }
   for (const starts of byDate.values()) {
     if (starts.size >= 2) return true;
@@ -2326,14 +2325,14 @@ function distinctDowStartSlotsFromSessions(course, rows) {
   for (const r of rows) {
     const st = String(r.status || '').toLowerCase();
     if (SESSION_INFER_SKIP.has(st)) continue;
-    const d = String(r.date || '').slice(0, 10);
-    if (!d || !r.startTime) continue;
+    const d = String(r.session_date || '').slice(0, 10);
+    if (!d || !r.start_time) continue;
     const dow = dayOfWeekFromDate(d);
-    const start = String(r.startTime).slice(0, 5);
+    const start = String(r.start_time).slice(0, 5);
     const key = `${dow}|${start}`;
     let dur = globalDur;
-    if (r.endTime) {
-      const mins = diffMinutesStartEnd(r.startTime, r.endTime);
+    if (r.end_time) {
+      const mins = diffMinutesStartEnd(r.start_time, r.end_time);
       if (mins >= 30) dur = Math.max(0.5, Math.round(mins / 30) / 2);
     }
     if (!map.has(key)) {
@@ -2531,13 +2530,15 @@ const loadCourses = async (page = 1) => {
     courses.value = [];
     pagination.value = { page: 1, lastPage: 1, total: 0, perPage: 50 };
     completedSessionDatesByCourse.value = {};
-    sessionsByCourse.value = {};
+    classSessionsByCourse.value = {};
+    effectiveSessionDatesByCourse.value = {};
     expandedStudentGroups.value = new Set();
     return;
   }
   coursesLoading.value = true;
   completedSessionDatesByCourse.value = {};
-  sessionsByCourse.value = {};
+  classSessionsByCourse.value = {};
+  effectiveSessionDatesByCourse.value = {};
   try {
     const { data: { session: sess } } = await supabase.auth.getSession();
     const token = sess?.access_token;
@@ -2631,7 +2632,8 @@ const loadCourses = async (page = 1) => {
     if (sessionsOk === false) sessionDataLoadFailed.value = true;
     await loadEffectiveSessionDates(result, token || '');
   } catch (_) {
-    sessionsByCourse.value = {};
+    classSessionsByCourse.value = {};
+    effectiveSessionDatesByCourse.value = {};
     sessionDataLoadFailed.value = true;
   }
   coursesLoading.value = false;
@@ -2812,15 +2814,17 @@ const onSubstituteV2Submit = async (submitPayload) => {
     // PRD f0cce4d5 P2：不等整頁重載，立即在本地 patch 代課老師 + （若換時）新日期/新時段
     if (json.substitute_teacher_id) {
       const teacherObj = (teachers.value || []).find((t) => Number(t.id) === Number(json.substitute_teacher_id));
-      const patch = sessionViewModelPatchFromApi({
+      const patch = {
         id: sessionId,
         teacher_id: json.substitute_teacher_id,
         teacher_name: json.substitute_teacher_name || teacherObj?.username || '',
-        session_date: isCombined ? effDate : undefined,
-        start_time: isCombined ? effStart : undefined,
-        end_time: isCombined ? effEnd : undefined,
-      });
-      if (patch) updateLocalSessionRow(courseKey, patch);
+      };
+      if (isCombined) {
+        if (effDate) patch.session_date = effDate;
+        if (effStart) patch.start_time = effStart;
+        if (effEnd) patch.end_time = effEnd;
+      }
+      updateLocalSessionRow(courseKey, patch);
     }
 
     const description = isCombined
@@ -2835,15 +2839,15 @@ const onSubstituteV2Submit = async (submitPayload) => {
       onUndo: async () => {
         await undoSubstitute(sessionId);
         // PRD f0cce4d5 P2：Undo 也先就地還原本地 row（老師 + 若含換時則還原時間），不等重載
-        const undoPatch = sessionViewModelPatchFromApi({
-          id: sessionId,
-          teacher_id: ctx.original_teacher_id,
-          teacher_name: ctx.original_teacher_name,
-          session_date: isCombined ? origDate : undefined,
-          start_time: isCombined ? origStart : undefined,
-          end_time: isCombined ? origEnd : undefined,
-        });
-        if (undoPatch) updateLocalSessionRow(courseKey, undoPatch);
+        const undoPatch = { id: sessionId };
+        if (ctx.original_teacher_id) undoPatch.teacher_id = ctx.original_teacher_id;
+        if (ctx.original_teacher_name) undoPatch.teacher_name = ctx.original_teacher_name;
+        if (isCombined) {
+          if (origDate) undoPatch.session_date = origDate;
+          if (origStart) undoPatch.start_time = origStart;
+          if (origEnd) undoPatch.end_time = origEnd;
+        }
+        updateLocalSessionRow(courseKey, undoPatch);
         await loadCourses();
       },
     });
