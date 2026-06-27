@@ -4,6 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $campus_id
+ * @property string $name
+ * @property int $capacity
+ * @property string|null $memo
+ * @property bool $is_active
+ */
 class Room extends Model
 {
     protected $table = 'rooms';
