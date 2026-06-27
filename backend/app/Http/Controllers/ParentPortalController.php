@@ -163,26 +163,43 @@ class ParentPortalController extends Controller
             }
         }
 
-        $campus = \Illuminate\Support\Facades\DB::table('Campus')
+        // Deterministic host → campus resolution (CampusDomainResolver): EXACT match
+        // only, ambiguity (shared URL) fails loud instead of silently serving the
+        // first/wrong campus's LIFF — the root cause of the 2026-06-27 mis-binding.
+        $campusRows = \Illuminate\Support\Facades\DB::table('Campus')
             ->whereNotNull('LIFFID')
             ->where('LIFFID', '!=', '')
             ->whereNotNull('URL')
             ->where('URL', '!=', '')
-            ->get()
-            ->first(function ($c) use ($host) {
-                $parsed = parse_url($c->URL ?? '', PHP_URL_HOST);
-                if (!$parsed) return false;
-                return $parsed === $host || str_ends_with($host, '.' . $parsed) || str_ends_with($parsed, '.' . $host);
-            });
+            ->get(['id', 'name', 'URL', 'LIFFID']);
 
-        if (!$campus) {
+        $resolution = \App\Services\CampusDomainResolver::resolve(
+            $host,
+            $campusRows->map(fn ($c) => [
+                'id'      => (int) $c->id,
+                'url'     => $c->URL,
+                'liff_id' => $c->LIFFID,
+            ])->all()
+        );
+
+        if ($resolution['status'] === 'ambiguous') {
+            \Illuminate\Support\Facades\Log::error('[resolveLiff] ambiguous campus domain mapping', [
+                'host'       => $host,
+                'candidates' => $resolution['candidates'],
+            ]);
+            return response()->json(['liff_id' => null, 'error' => 'ambiguous_campus_domain'], 409);
+        }
+
+        if ($resolution['status'] !== 'ok') {
             return response()->json(['liff_id' => null]);
         }
 
+        $campus = $campusRows->first(fn ($c) => (int) $c->id === $resolution['campus_id']);
+
         return response()->json([
-            'liff_id'     => $campus->LIFFID,
-            'campus_id'   => $campus->id,
-            'campus_name' => $campus->name,
+            'liff_id'     => $resolution['liff_id'],
+            'campus_id'   => $resolution['campus_id'],
+            'campus_name' => $campus->name ?? null,
         ]);
     }
 
