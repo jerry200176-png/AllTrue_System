@@ -107,6 +107,18 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 - 結果：health check 失敗 → 自動 rollback 觸發 → 服務短暫中斷（2026-04-24 事故）
 - 2026-04-30 再犯：手動部署 PR #222 時誤用 `composer install --no-dev`，Telegram health 監控與 Sentry 同時收到短暫 500；即使是手動 emergency deploy 也必須用不含 `--no-dev` 的 composer 指令
 
+### R8b. Actions minutes 用完時的緊急手動「前端」部署（2026-06-27, in-app #174）
+
+依 `OPERATIONS_RUNBOOK.md` §139：Actions minutes 用完且 deploy workflow 不可用時，**純前端**修復可走緊急手動前端部署。安全作法（本次實證 OK）：
+
+- **不要在 Pi 做 git 操作**（Pi working tree 可能停在舊 feature branch 且有 runtime storage 改動；`git reset --hard` 會清掉 runtime 上傳的 avatar/附件）。
+- 流程：本機 `npm run build`（綠＝CI 替代）→ `rsync dist_build` 到 Pi `/home/admin/frontend/dist_build` → Pi 跑既有 `node scripts/copy-to-backend.cjs`（內含 `verifyIndexHtmlReferencesAssets` 一致性 guard + OPcache flush），**只覆蓋 `backend/public` 前端 bundle**。
+- 先備份現有 `backend/public/{index.html,version.json,assets}` 到 `backups/emergency/pre*_TS`（rollback 用）。
+- 驗證：health ok、`version.json` 更新、`index.html` 引用的 `assets/*.js` 皆 200 `text/javascript`（非 `text/html`＝避免事故 D 白屏）、served chunk 含修正碼。
+- 事後補：CHANGELOG + 本檔記錄例外，Actions 恢復後補 PR 回 main（否則下次 `git reset --hard origin/main` 會把熱修還原）。
+
+**契約教訓**：後端新增錯誤碼/契約（如 #805 `overlapping_active_course` 409）時，**前端對應分支要一起加**；本案前端只認 `duplicate_active_course`，新碼落到原生 `alert()` → 使用者被叫去勾不存在的「強制建立」＝死路。GitHub #931。
+
 ### R10. 家長入口登入：必須同時讀 `parent_phone` 與 `Phone`
 
 ```
