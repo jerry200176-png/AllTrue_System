@@ -2,7 +2,7 @@
   "_comment": "Architecture fitness ratchets. Numbers may only DECREASE. Lowering = retiring debt; raising requires an ADR + Principal Architect sign-off. Each maps to a Constitution rule / domain invariant (docs/CONSTITUTION.md, OWNERSHIP_REGISTRY.md, adr/).",
   "classSessionCreateSites": 26,
   "serviceDependencyCycles": 0,
-  "statusLiteralFiles": 5,
+  "statusLiteralFiles": 1,
   "remainingSessionsDirectWrites": 8,
   "paidAmountDirectWrites": 3,
   "effectiveInstructorSites": 5,

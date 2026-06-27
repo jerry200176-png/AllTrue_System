@@ -23,6 +23,10 @@ Every architecturally-significant decision is recorded here. ADRs are **immutabl
 | [0008](0008-shared-decision-contract.md) | Shared FE/BE decision-contract package | Accepted | — | — |
 | [0009](0009-emergency-reconcile.md) | Emergency changes must reconcile to SoT | Accepted | F-16 | — |
 | [0010](0010-decompose-studentclass.md) | Decompose the StudentClass god-row | Accepted | F-04 | — |
+| [0011](0011-canonical-status-vocabulary.md) | Canonical session/leave status vocabulary | Accepted (implemented) | — | extends 0008 |
+
+## Auto-generated drafts
+`docs/adr/drafts/AUTO-*.md` are evolution proposals emitted by `scripts/arch-evolve.mjs` when a fitness ratchet has headroom (root cause + structural fix + migration + simulated impact). They are **drafts** until promoted to a numbered ADR. The self-repair workflow (`arch-self-repair.yml`) regenerates them per PR.
 
 ## Template
 ```markdown

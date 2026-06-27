@@ -2794,7 +2794,7 @@ class LearningRecordController extends Controller
      */
     public static function batchSessionNumbers($records): array
     {
-        $skipStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+        $skipStatuses = \App\Support\SessionStatus::NON_QUOTA;
 
         $classSessionIds = $records->pluck('ClassSessionID')->filter()->unique()->values();
         if ($classSessionIds->isEmpty()) {

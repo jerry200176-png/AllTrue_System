@@ -58,7 +58,7 @@ class LearningRecord extends Model
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhere(function ($keep) use ($t) {
                     $keep->whereDoesntHave('classSession', function ($cs) {
-                        $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
+                        $cs->whereIn('Status', \App\Support\SessionStatus::LEAVE);
                     })->whereNotExists(function ($sub) use ($t) {
                         $sub->selectRaw('1')
                             ->from('StudentSingIn as ssi_leave')

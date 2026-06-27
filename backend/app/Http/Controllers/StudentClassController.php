@@ -4223,7 +4223,7 @@ class StudentClassController extends Controller
     public function cancelExcessScheduledSessions(int $classId, int $newCount): void
     {
         $allActive = ClassSession::where('StudentClassID', $classId)
-            ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted', 'excused'])
+            ->whereNotIn('Status', \App\Support\SessionStatus::NON_QUOTA)
             ->orderBy('SessionDate')
             ->orderBy('StartTime')
             ->orderBy('id')
@@ -4252,7 +4252,7 @@ class StudentClassController extends Controller
     public function extendSessionsIfNeeded(StudentClass $studentClass, int $newCount): void
     {
         $classId = (int) $studentClass->ID;
-        $nonQuotaStatuses = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+        $nonQuotaStatuses = \App\Support\SessionStatus::NON_QUOTA;
 
         // 計算現有「實際堂次數」：排除 cancelled 與 leave/excused（請假不佔用購買額度）
         // 與 cancelExcessScheduledSessions 的計算口徑保持一致

@@ -393,7 +393,7 @@ class ClassSessionController extends Controller
         if (!empty($classIds)) {
             Schedule::whereIn('student_course_id', $classIds)
                 ->whereDate('schedule_date', $targetDate)
-                ->whereIn('status', ['leave', 'leave_adjusted', 'excused', 'rescheduled', 'cancelled'])
+                ->whereIn('status', \App\Support\SessionStatus::EXCLUDED_FROM_CALENDAR)
                 ->get(['student_course_id', 'start_time'])
                 ->each(function ($r) use (&$suppressedSet) {
                     $suppressedSet[(int) $r->student_course_id . '|' . substr((string) $r->start_time, 0, 5)] = true;
@@ -2633,7 +2633,7 @@ class ClassSessionController extends Controller
      */
     private function logSessionCountMismatches(array $byClass, $request): void
     {
-        static $nonQuota = ['cancelled', 'leave', 'leave_adjusted', 'excused'];
+        static $nonQuota = \App\Support\SessionStatus::NON_QUOTA;
         $branchId = (int) ($request->input('branch_id') ?? 0);
 
         // #546/TD-018：一次撈齊各課程的 SessionCount，取代每課程一次 value() 查詢（N+1）。
