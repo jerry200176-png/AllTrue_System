@@ -7,6 +7,7 @@
   "paidAmountDirectWrites": 3,
   "effectiveInstructorSites": 5,
   "teacherDirectWrites": 0,
+  "moneyWritesOutsideBilling": 3,
   "requireOwnerFrontmatter": [
     "docs/CONSTITUTION.md",
     "docs/RULE_ARCHITECTURE_GOVERNANCE.md",

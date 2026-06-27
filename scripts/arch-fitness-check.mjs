@@ -94,6 +94,25 @@ let svcGraph = { svcFiles: [], edges: new Map(), ctxRule: null };
 // FIT-9 DI-6 Teacher writes locked
 { let n = 0; for (const f of appPhp) n += (read(f).match(/Teacher::(create|insert|updateOrCreate)/g) || []).length; ratchet('FIT-9', 'DI-6 identity is Party', n, 'teacherDirectWrites'); }
 
+// FIT-14 cross-context write guard: money models (Invoice/Payment/PaymentReport) may only be
+// CREATED by the Billing context. Any other context creating them is an unmanaged cross-context
+// write (must go through a Billing service / domain event). Ratchet toward 0.
+{
+  const ctxOf = (name) => contexts.rules.find((r) => new RegExp(r.match).test(name))?.context;
+  const mod = walk(path.join(ROOT, 'backend/app/Http/Controllers'), (p) => p.endsWith('.php')).concat(svcGraph.svcFiles);
+  let n = 0; const hits = [];
+  for (const f of mod) {
+    const name = path.basename(f, '.php'); if (name === 'Controller') continue;
+    if (ctxOf(name) === 'billing') continue;
+    const m = (read(f).match(/(Invoice|Payment|PaymentReport)::create\s*\(/g) || []).length;
+    if (m > 0) { n += m; hits.push(`${name}[${ctxOf(name)}]`); }
+  }
+  ran.add('FIT-14');
+  const limit = baseline.moneyWritesOutsideBilling;
+  if (n > limit) failures.push(`FIT-14 (cross-context write): ${n} money-model create(s) outside Billing (${hits.join(', ')}) > baseline ${limit}. Route through a Billing service/event.`);
+  else note(`FIT-14: money-model writes outside Billing = ${n} (baseline ${limit})${n < limit ? ' — improved; lower baseline.' : ''}.`);
+}
+
 // FIT-10 context map completeness + forbidden edges (DEP-1)
 {
   ran.add('FIT-10');

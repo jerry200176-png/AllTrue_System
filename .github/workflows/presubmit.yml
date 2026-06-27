@@ -187,6 +187,14 @@ jobs:
           ./.github/scripts/golden-ci-report.sh
 
       # ─────────────────────────────────────────────
+      # CHECK 7：Architecture fitness — Engineering Constitution enforcement (fail-closed)
+      # Domain invariants (DI-1..7), ownership registry, dependency rules, cross-context writes.
+      # Source: docs/CONSTITUTION.md §L5. Any violation = required check fails = PR blocked.
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 7] Architecture fitness (invariants / ownership / dependency)"
+        run: node scripts/arch-fitness-check.mjs
+
+      # ─────────────────────────────────────────────
       # Summary
       # ─────────────────────────────────────────────
       - name: Summary
