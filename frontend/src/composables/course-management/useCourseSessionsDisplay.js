@@ -1,34 +1,28 @@
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
+import {
+  fetchSessionDates as defaultFetchSessionDates,
+  materializedSessionsOnly,
+  mergeSessionsByCourse,
+  mergeSessionViewModels,
+  patchSessionViewModel,
+  sessionDatesFromViewModels,
+  sessionViewModelFromClassSessionsRow,
+  sessionViewModelFromEnsureProjected,
+  sessionViewModelKey,
+  sessionViewModelPatchFromApi,
+  sortSessionViewModels,
+} from '../../lib/classSessionsApi';
 
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
-/** 剩餘堂數顯示：與「已上」一併視為已占用的狀態（缺席通常已扣堂）。 */
 const SESSION_DISPLAY_CONSUMED = new Set(['completed', 'absent']);
-
-/**
- * 狀態矩陣：哪些 ClassSession.Status 占購買堂數額度。
- * 與後端 StudentClassController::extendSessionsIfNeeded 口徑一致
- * （後端 whereNotIn: cancelled, leave, leave_adjusted）。
- *
- *  狀態            | 占購買額度 | 說明
- *  --------------- | ---------- | -------
- *  scheduled       | YES        | 未來預排堂次
- *  attended        | YES        | 已上（核准評量後）
- *  completed       | YES        | 已上（舊路徑）
- *  late            | YES        | 遲到但算已上
- *  absent          | YES        | 缺席（通常已扣堂）
- *  leave           | NO         | 請假，不占購買額度
- *  leave_adjusted  | NO         | 補請假，不占購買額度
- *  excused         | NO         | 歷史相容，語意同 leave
- *  cancelled       | NO         | 已取消
- */
 const SESSION_NOT_OCCUPYING_QUOTA = new Set(['cancelled', 'leave', 'leave_adjusted', 'excused']);
 
 export function useCourseSessionsDisplay({
-  classSessionsByCourse,
+  sessionsByCourse,
   completedSessionDatesByCourse,
-  effectiveSessionDatesByCourse,
   fetchClassSessionsFn,
+  fetchSessionDatesFn = defaultFetchSessionDates,
   supabase,
   branchId,
 }) {
@@ -50,12 +44,14 @@ export function useCourseSessionsDisplay({
         perPage: 2000,
       });
       const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
-      classSessionsByCourse.value = { ...classSessionsByCourse.value, [cid]: rows };
+      sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, { [cid]: rows });
 
-      const dates = [...new Set(rows
-        .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
-        .map((row) => String(row?.session_date || '').slice(0, 10))
-        .filter(Boolean))].sort();
+      const dates = [...new Set(
+        materializedSessionsOnly(rows)
+          .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
+          .map((row) => row.date)
+          .filter(Boolean)
+      )].sort();
       completedSessionDatesByCourse.value = { ...completedSessionDatesByCourse.value, [cid]: dates };
     } catch (_) {}
   }
@@ -65,7 +61,7 @@ export function useCourseSessionsDisplay({
     const ids = rows.map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
     const bid = branchId.value ?? branchId;
     if (!bid || ids.length === 0 || !token) {
-      classSessionsByCourse.value = {};
+      sessionsByCourse.value = {};
       return;
     }
     try {
@@ -82,10 +78,10 @@ export function useCourseSessionsDisplay({
       const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
       const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
       const { byClass } = await fetchClassSessionsFn({ token, branchId: bid, studentClassIds: ids, start, end, perPage: 2000 });
-      classSessionsByCourse.value = byClass || {};
+      sessionsByCourse.value = byClass || {};
       return true;
     } catch (_) {
-      classSessionsByCourse.value = {};
+      sessionsByCourse.value = {};
       return false;
     }
   }
@@ -93,10 +89,7 @@ export function useCourseSessionsDisplay({
   async function loadEffectiveSessionDates(courseRows = [], token = '') {
     const rows = Array.isArray(courseRows) ? courseRows : [];
     const bid = branchId.value ?? branchId;
-    if (!bid || rows.length === 0 || !token) {
-      effectiveSessionDatesByCourse.value = {};
-      return;
-    }
+    if (!bid || rows.length === 0 || !token) return;
 
     const payloadCourses = rows
       .map((c) => ({
@@ -109,10 +102,7 @@ export function useCourseSessionsDisplay({
       }))
       .filter((c) => c.id > 0);
 
-    if (payloadCourses.length === 0) {
-      effectiveSessionDatesByCourse.value = {};
-      return;
-    }
+    if (payloadCourses.length === 0) return;
 
     try {
       const now = new Date();
@@ -127,21 +117,15 @@ export function useCourseSessionsDisplay({
       });
       const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
       const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
-      const params = new URLSearchParams({ branch_id: String(bid) });
-      const res = await fetch(`/api/v1/student-classes/session-dates?${params.toString()}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ branch_id: Number(bid), range_start: start, range_end: end, courses: payloadCourses }),
+
+      const { byClass } = await fetchSessionDatesFn({
+        token,
+        branchId: bid,
+        rangeStart: start,
+        rangeEnd: end,
+        courses: payloadCourses,
       });
-      if (!res.ok) return;
-      const json = await res.json().catch(() => ({}));
-      const mapped = {};
-      Object.keys(json || {}).forEach((key) => {
-        const list = Array.isArray(json[key]) ? json[key] : [];
-        mapped[String(key)] = [...new Set(list.map((d) => String(d || '').slice(0, 10)).filter(Boolean))].sort();
-      });
-      effectiveSessionDatesByCourse.value = mapped;
+      sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, byClass || {});
     } catch (_) {}
   }
 
@@ -155,119 +139,32 @@ export function useCourseSessionsDisplay({
     expandedDates.value = s;
   };
 
-  /** Unique session key: prefer class_session id; fallback to date+start_time. */
-  const sessionRowKey = (row) => {
-    const id = Number(row?.id || 0);
-    if (id > 0) return `id:${id}`;
-    const date = String(row?.session_date || '').slice(0, 10);
-    const start = String(row?.start_time || '').slice(0, 5);
-    return `${date}|${start}`;
-  };
+  const sessionRowKey = sessionViewModelKey;
 
-  const sortSessionRows = (rows) =>
-    [...rows].sort((a, b) => {
-      const da = String(a?.session_date || '');
-      const db = String(b?.session_date || '');
-      if (da !== db) return da.localeCompare(db);
-      return String(a?.start_time || '').localeCompare(String(b?.start_time || ''));
-    });
-
-  const courseSlotForDate = (course, dateYmd) => {
-    const date = String(dateYmd || '').slice(0, 10);
-    if (!date) return null;
-    const dow = new Date(`${date}T12:00:00`).getDay();
-    const isoDow = dow === 0 ? 7 : dow;
-    const slots = Array.isArray(course?.day_time_slots) ? course.day_time_slots : [];
-    return slots.find((slot) => Number(slot?.day || 0) === isoDow) || null;
-  };
-
-  const addHoursToTime = (time, hours) => {
-    const base = String(time || '').slice(0, 5);
-    if (!/^\d{2}:\d{2}$/.test(base)) return '';
-    const [hh, mm] = base.split(':').map((v) => Number(v));
-    const total = hh * 60 + mm + Math.round((Number(hours) || 0) * 60);
-    const endH = Math.floor(total / 60) % 24;
-    const endM = total % 60;
-    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-  };
-
-  const syntheticEffectiveUnits = (course, existingRows = []) => {
-    const cid = String(course?.id ?? '');
-    const effective = effectiveSessionDatesByCourse.value[cid];
-    if (!Array.isArray(effective)) return [];
-    const existingDates = new Set(
-      (existingRows || [])
-        .map((row) => String(row?.session_date || '').slice(0, 10))
-        .filter(Boolean)
-    );
-    return [...new Set(effective.map((d) => String(d || '').slice(0, 10)).filter(Boolean))]
-      .filter((d) => !existingDates.has(d))
-      .map((d) => {
-        const slot = courseSlotForDate(course, d);
-        const start = String(slot?.start_time || course?.start_time || '').slice(0, 5);
-        const duration = Number(slot?.duration_hours ?? course?.duration_hours ?? 0) || 0;
-        return {
-          session_date: d,
-          start_time: start,
-          end_time: start && duration ? addHoursToTime(start, duration) : '',
-          status: 'scheduled',
-          _synthetic: true,
-        };
-      });
-  };
-
-  /**
-   * Return ordered, non-cancelled session "units". Each unit is either a real
-   * ClassSession row or a synthetic { session_date } from legacy date lists.
-   * Same date with different start_time yields multiple entries.
-   */
-  const sessionUnits = (c) => {
-    const cid = String(c?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
-    if (Array.isArray(rows) && rows.length > 0) {
-      const activeRows = rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled');
-      return sortSessionRows([...activeRows, ...syntheticEffectiveUnits(c, activeRows)]);
-    }
-    const effective = effectiveSessionDatesByCourse.value[cid];
-    if (Array.isArray(effective)) {
-      return sortSessionRows(syntheticEffectiveUnits(c));
-    }
-    return [];
-  };
-
-  /** All session rows including cancelled, sorted by date. */
-  const allSessionUnits = (c) => {
-    const cid = String(c?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
-    if (Array.isArray(rows) && rows.length > 0) {
-      return sortSessionRows([...rows, ...syntheticEffectiveUnits(c, rows)]);
-    }
-    return sessionUnits(c);
-  };
-
-  const cancelledSessionCount = (c) => {
-    const cid = String(c?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
-    if (!Array.isArray(rows)) return 0;
-    return rows.filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
-  };
-
-  /** Legacy compat: unique sorted date strings (for callers that iterate dates). */
-  const sessions = (c) => {
-    const units = sessionUnits(c);
-    return [...new Set(units.map((u) => String(u?.session_date || '').slice(0, 10)).filter(Boolean))].sort();
-  };
-
-  const getCourseSessionRows = (course) => {
+  const getCourseSessions = (course) => {
     const key = String(course?.id ?? '');
-    const rows = classSessionsByCourse.value[key];
+    const rows = sessionsByCourse.value[key];
     return Array.isArray(rows) ? rows : [];
   };
+
+  const getCourseSessionRows = (course) => materializedSessionsOnly(getCourseSessions(course));
+
+  const sessionUnits = (course) => {
+    const rows = getCourseSessions(course);
+    return sortSessionViewModels(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
+  };
+
+  const allSessionUnits = (course) => sortSessionViewModels(getCourseSessions(course));
+
+  const cancelledSessionCount = (course) =>
+    getCourseSessionRows(course).filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
+
+  const sessions = (course) => sessionDatesFromViewModels(sessionUnits(course));
 
   const getSessionRowsForDate = (course, dateYmd) => {
     const target = String(dateYmd || '').slice(0, 10);
     if (!target) return [];
-    return getCourseSessionRows(course).filter((row) => String(row?.session_date || '').slice(0, 10) === target);
+    return getCourseSessionRows(course).filter((row) => row.date === target);
   };
 
   const getSessionRowById = (course, sessionId) => {
@@ -276,9 +173,10 @@ export function useCourseSessionsDisplay({
     return getCourseSessionRows(course).find((r) => Number(r?.id) === id) || null;
   };
 
-  const isContractException = (row) => !!(row?.is_contract_exception ?? row?.IsContractException ?? false);
+  const isContractException = (row) => !!row?.isContractException;
 
   const rowOccupiesPurchasedQuota = (row) => {
+    if (row?.isProjected) return false;
     const status = String(row?.status || '').toLowerCase();
     return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
   };
@@ -292,11 +190,11 @@ export function useCourseSessionsDisplay({
     for (const unit of sessionUnits(course)) {
       if (!rowOccupiesPurchasedQuota(unit)) continue;
       quotaIndex += 1;
-      const sameId = Number(unit?.id || 0) > 0 && Number(unit.id) === Number(row.id || 0);
-      const sameSynthetic = !unit?.id
-        && String(unit?.session_date || '').slice(0, 10) === String(row?.session_date || '').slice(0, 10)
-        && String(unit?.start_time || '').slice(0, 5) === String(row?.start_time || '').slice(0, 5);
-      if (sameId || sameSynthetic) return quotaIndex > purchased;
+      const sameId = unit.id && unit.id === row.id;
+      const sameProjected = unit.isProjected
+        && unit.date === row.date
+        && unit.startTime === row.startTime;
+      if (sameId || sameProjected) return quotaIndex > purchased;
     }
     return false;
   };
@@ -318,7 +216,6 @@ export function useCourseSessionsDisplay({
     return text.replace('T', ' ').slice(0, 16);
   };
 
-  /** Resolve a display row. Accepts (course, dateYmd) for legacy, or (course, dateYmd, sessionId) for exact match. */
   const getSessionDisplayRow = (course, dateYmd, sessionId) => {
     if (sessionId) {
       const exact = getSessionRowById(course, sessionId);
@@ -337,20 +234,16 @@ export function useCourseSessionsDisplay({
   };
 
   const resolveRecordedByLabel = (row) => {
-    const memo = String(row?.attendance_memo || '').toLowerCase();
+    const memo = String(row?.attendanceMemo || '').toLowerCase();
     if (memo === 'swipe' || memo === 'swipe-rfid') return 'RFID 刷卡';
-    if (memo === 'manual-match') return row?.recorded_by_name || '人工配對';
-    return row?.recorded_by_name || row?.teacher_name || '';
+    if (memo === 'manual-match') return row?.recordedByName || '人工配對';
+    return row?.recordedByName || row?.teacherName || '';
   };
 
-  /** Number of completed/attended session rows (not unique dates). */
   const getCompletedSessionCount = (course) => {
     const rows = getCourseSessionRows(course);
-    if (Array.isArray(rows) && rows.length > 0) {
-      return rows.filter((row) => {
-        const sessionStatus = String(row?.status || '').toLowerCase();
-        return ATTENDED_SESSION_STATUSES.has(sessionStatus);
-      }).length;
+    if (rows.length > 0) {
+      return rows.filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase())).length;
     }
     const key = String(course?.id ?? '');
     const dates = completedSessionDatesByCourse.value[key];
@@ -358,19 +251,15 @@ export function useCourseSessionsDisplay({
   };
 
   const getCourseCompletedDates = (course) => {
-    const key = String(course?.id ?? '');
     const rows = getCourseSessionRows(course);
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (rows.length > 0) {
       const dates = rows
-        .filter((row) => {
-          const sessionStatus = String(row?.status || '').toLowerCase();
-          return ATTENDED_SESSION_STATUSES.has(sessionStatus);
-        })
-        .map((row) => String(row?.session_date || '').slice(0, 10))
+        .filter((row) => ATTENDED_SESSION_STATUSES.has(String(row?.status || '').toLowerCase()))
+        .map((row) => row.date)
         .filter(Boolean);
       return [...new Set(dates)].sort();
     }
-    const dates = completedSessionDatesByCourse.value[key];
+    const dates = completedSessionDatesByCourse.value[String(course?.id ?? '')];
     return Array.isArray(dates) ? dates : [];
   };
 
@@ -403,15 +292,11 @@ export function useCourseSessionsDisplay({
     const units = sessionUnits(course);
     let num = 0;
     for (const u of units) {
-      const uDate = String(u?.session_date || '').slice(0, 10);
-      const uId = Number(u?.id || 0);
-      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
-      const state = getSessionState(course, uDate, uId || undefined);
+      const row = u.id ? getSessionRowById(course, u.id) || u : u;
+      const state = getSessionState(course, u.date, u.id || undefined);
       const isLeave = state && LEAVE_STATUSES.has(state.className);
       const isNonQuota = isLeave || isOverQuotaSession(course, row);
-      const isMatch = sessionId
-        ? (uId > 0 && uId === Number(sessionId))
-        : (uDate === dateYmd);
+      const isMatch = sessionId ? (u.id && u.id === Number(sessionId)) : (u.date === dateYmd);
       if (isMatch) return isNonQuota ? null : num + 1;
       if (!isNonQuota) num++;
     }
@@ -419,48 +304,26 @@ export function useCourseSessionsDisplay({
   };
 
   const countNonLeaveSessions = (course) => {
-    const units = sessionUnits(course);
     let count = 0;
-    for (const u of units) {
-      const uDate = String(u?.session_date || '').slice(0, 10);
-      const uId = Number(u?.id || 0);
-      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
-      const state = getSessionState(course, uDate, uId || undefined);
+    for (const u of sessionUnits(course)) {
+      const row = u.id ? getSessionRowById(course, u.id) || u : u;
+      const state = getSessionState(course, u.date, u.id || undefined);
       if (!state || (!LEAVE_STATUSES.has(state.className) && !isOverQuotaSession(course, row))) count++;
     }
     return count;
   };
 
-  /**
-   * 有效堂次數：占購買額度的堂次。
-   * 口徑與後端 extendSessionsIfNeeded 一致：排除 cancelled/leave/leave_adjusted/excused。
-   * 用於警示判定，與 displayRemainingSessions 解耦。
-   */
   const effectiveSessionCount = (course) => {
-    const cid = String(course?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
-    if (Array.isArray(rows) && rows.length > 0) {
-      return rows.filter((row) => rowOccupiesPurchasedQuota(row)).length;
-    }
+    const rows = getCourseSessionRows(course);
+    if (rows.length > 0) return rows.filter((row) => rowOccupiesPurchasedQuota(row)).length;
     return countNonLeaveSessions(course);
   };
 
-  const leaveSessionCount = (course) => {
-    const cid = String(course?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
-    if (!Array.isArray(rows)) return 0;
-    return rows.filter((row) => LEAVE_STATUSES.has(String(row?.status || '').toLowerCase())).length;
-  };
+  const leaveSessionCount = (course) =>
+    getCourseSessionRows(course).filter((row) => LEAVE_STATUSES.has(String(row?.status || '').toLowerCase())).length;
 
-  /**
-   * 堂次警示判定。回傳 { show, type, message } 或 null。
-   * type: 'over' | 'under_leave' | 'under_other'
-   */
   const sessionCountWarning = (course) => {
     if (!isSessionMode(course)) return null;
-    // 方案課程：以方案池總購買數作為比較基準，避免 SessionCount 脫鉤誤報。
-    // 排課延伸口徑是以 SessionCount 為上限，但 SessionCount 舊資料可能停留在建立時的值，
-    // 造成「排程列數與購買堂數不一致」誤報。統一改用 package_total_sessions。
     const purchased = course?.PackageID
       ? Math.max(0, Number(course?.package_total_sessions ?? 0) || 0)
       : getPurchasedSessions(course);
@@ -478,13 +341,10 @@ export function useCourseSessionsDisplay({
   };
 
   const countUpcomingNonLeaveSessions = (course) => {
-    const units = sessionUnits(course);
     let count = 0;
-    for (const u of units) {
-      const uDate = String(u?.session_date || '').slice(0, 10);
-      const uId = Number(u?.id || 0);
-      const row = uId > 0 ? getSessionRowById(course, uId) || u : u;
-      const state = getSessionState(course, uDate, uId || undefined);
+    for (const u of sessionUnits(course)) {
+      const row = u.id ? getSessionRowById(course, u.id) || u : u;
+      const state = getSessionState(course, u.date, u.id || undefined);
       if (state && LEAVE_STATUSES.has(state.className)) continue;
       if (isContractException(row) || isOverQuotaSession(course, row)) continue;
       if (state && SESSION_DISPLAY_CONSUMED.has(state.className)) continue;
@@ -502,14 +362,14 @@ export function useCourseSessionsDisplay({
     if (!row) return `狀態：${stateLabel}`;
     const lines = [
       `狀態：${stateLabel}`,
-      `時段：${String(row?.start_time || '').slice(0, 5)}-${String(row?.end_time || '').slice(0, 5)}`,
+      `時段：${row.startTime}-${row.endTime}`,
     ];
     if (isContractException(row) && stateLabel !== '例外堂') lines.push('類型：例外堂');
-    const attendanceTime = formatAttendanceTooltipTime(row?.attendance_sign_in_at);
+    const attendanceTime = formatAttendanceTooltipTime(row?.attendanceSignInAt);
     if (attendanceTime) lines.push(`點名時間：${attendanceTime}`);
     const recordedBy = resolveRecordedByLabel(row);
     if (recordedBy) lines.push(`點名人：${recordedBy}`);
-    if (!attendanceTime && !recordedBy && row?.teacher_name) lines.push(`授課老師：${row.teacher_name}`);
+    if (!attendanceTime && !recordedBy && row?.teacherName) lines.push(`授課老師：${row.teacherName}`);
     return lines.join('\n');
   };
 
@@ -539,18 +399,14 @@ export function useCourseSessionsDisplay({
 
   const displayRemainingSessions = (course) => {
     if (!isSessionMode(course)) return null;
-    // 方案課程：剩餘數以「方案池剩餘」為準，非 per-course 拆分值。
-    // 同方案下多科課程應顯示相同的池剩餘數字。
     if (course?.PackageID) {
       return Math.max(0, Number(course?.package_remaining_sessions ?? 0) || 0);
     }
     const purchased = getPurchasedSessions(course);
-    const cid = String(course?.id ?? '');
-    const rows = classSessionsByCourse.value[cid];
+    const rows = getCourseSessionRows(course);
     const apiRem = getRawRemainingSessions(course);
     if (apiRem != null && Number.isFinite(Number(apiRem))) return Math.max(0, Number(apiRem));
-    // 後端尚未提供 RemainingSessions 時，才退回用堂次列表估算。
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (rows.length > 0) {
       const fromList = Math.max(0, countUpcomingNonLeaveSessions(course));
       return Math.min(purchased, fromList);
     }
@@ -558,42 +414,65 @@ export function useCourseSessionsDisplay({
     return Math.max(0, purchased - Math.min(purchased, fromRows));
   };
 
+  function replaceSessionsForCourse(courseId, rows = []) {
+    const key = String(courseId || '');
+    if (!key) return;
+    sessionsByCourse.value = {
+      ...sessionsByCourse.value,
+      [key]: sortSessionViewModels(Array.isArray(rows) ? rows : []),
+    };
+  }
+
   function updateLocalSessionRow(courseId, sessionData) {
     const key = String(courseId || '');
-    if (!key || !sessionData || sessionData.id == null) return;
-    const rows = Array.isArray(classSessionsByCourse.value[key])
-      ? [...classSessionsByCourse.value[key]]
-      : [];
+    if (!key || !sessionData) return;
+
+    const patchId = Number(sessionData.id || 0);
+    if (!patchId) return;
+
+    const vm = sessionData.date
+      ? sessionData
+      : (sessionViewModelFromEnsureProjected(sessionData)
+        || sessionViewModelFromClassSessionsRow(sessionData));
+
+    const rows = Array.isArray(sessionsByCourse.value[key]) ? [...sessionsByCourse.value[key]] : [];
     const leaveStatuses = new Set(['leave', 'leave_adjusted', 'cancelled']);
-    // PRD f0cce4d5 P2：只覆寫 payload 中實際提供的欄位，避免把代課 patch（只帶 teacher_id/teacher_name）
-    // 意外覆寫成 undefined 的 status / start_time / end_time。
     const overlayKeys = [
-      'status', 'session_date', 'start_time', 'end_time',
-      'teacher_id', 'teacher_name',
-      'learning_record_status', 'attendance_sign_in_at',
+      'status', 'date', 'startTime', 'endTime',
+      'teacherId', 'teacherName',
+      'learningRecordStatus', 'attendanceSignInAt',
     ];
+
+    const overlay = vm || sessionViewModelPatchFromApi(sessionData);
+    if (!overlay) return;
+
     let changed = false;
     for (let i = 0; i < rows.length; i++) {
-      if (rows[i].id !== sessionData.id) continue;
+      if (rows[i].id !== patchId) continue;
       const updated = { ...rows[i] };
       for (const k of overlayKeys) {
-        if (Object.prototype.hasOwnProperty.call(sessionData, k) && sessionData[k] !== undefined) {
-          updated[k] = sessionData[k];
+        if (Object.prototype.hasOwnProperty.call(overlay, k) && overlay[k] !== undefined) {
+          updated[k] = overlay[k];
         }
       }
-      if (sessionData.status !== undefined && leaveStatuses.has(sessionData.status)) {
-        updated.learning_record_status = null;
-        updated.attendance_sign_in_at = null;
+      if (overlay.status !== undefined && leaveStatuses.has(overlay.status)) {
+        updated.learningRecordStatus = null;
+        updated.attendanceSignInAt = null;
       }
-      rows[i] = updated;
+      rows[i] = patchSessionViewModel(updated, { isProjected: false, kind: 'materialized' });
       changed = true;
     }
-    if (!changed) {
-      rows.push({ ...sessionData });
+
+    if (!changed && vm?.date) {
+      rows.push(patchSessionViewModel(vm, { isProjected: false, kind: 'materialized' }));
       changed = true;
     }
+
     if (changed) {
-      classSessionsByCourse.value = { ...classSessionsByCourse.value, [key]: [...rows] };
+      sessionsByCourse.value = {
+        ...sessionsByCourse.value,
+        [key]: mergeSessionViewModels(rows, []),
+      };
     }
   }
 
@@ -629,6 +508,7 @@ export function useCourseSessionsDisplay({
     displayRemainingSessions,
     formatAttendanceTooltipTime,
     updateLocalSessionRow,
+    replaceSessionsForCourse,
     ensureCompletedSessionDatesLoaded,
     loadClassSessionsForCourses,
     loadEffectiveSessionDates,
