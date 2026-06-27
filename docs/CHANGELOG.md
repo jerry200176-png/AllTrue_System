@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-27 — fix(course-mgmt): 課程重疊建立改走 in-app 強制建立視窗，不再卡死路 (in-app #174)
+
+新增固定課程時，若和學生既有「同一位老師、同科目、上課日期重疊」的課程衝突，過去會跳出提示叫你「勾選強制建立」，但畫面上根本沒有那個勾選框，等於卡死路。現在改成跳出視窗，讓你選「加購堂數、延續原課程」或「我知道，仍要新增課程」。
+
+開發備註：#805 後端新增 `overlapping_active_course` 409，但前端 `universalSchedulerApi.js` 只把 `duplicate_active_course` 設成 `isDuplicateCourse`，重疊碼落到 `UniversalClassScheduler.vue` 的原生 `alert(err.message)` → 無 force 入口。抽出無相依純函式 `isDuplicateInterceptCode()`（node 測試可直接 import）讓兩碼都導向攔截 modal；回歸測試加在 `universalSchedulerApi.test.js`（build 腳本會跑）。**Ops 例外**：GitHub Actions minutes 用完期間，依 `OPERATIONS_RUNBOOK.md` §139 走緊急手動前端部署——本機 `npm run build` 綠 → `rsync dist_build` → Pi `copy-to-backend.cjs`（含 index/asset 一致性 guard + OPcache flush）→ version `acf1251`，已驗 health ok、`assets/*.js` 皆 200 `text/javascript`、served chunk 含修正後 `isDuplicateInterceptCode`。**未動 Pi git／storage**（只覆蓋 `backend/public` 前端 bundle，已先備份至 `backups/emergency/pre174_*`）。待 Actions 恢復補 PR（branch `fix/course-overlap-force-create`）回 main。GitHub #931。
+
 ## 2026-06-21 — fix(parent): 家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示
 
 家長從 LINE 開啟入口時，會依「所屬分校」載入正確的 LINE 入口，自動登入更穩定；若帳號尚未綁定，畫面會清楚告訴你「請用學生姓名＋手機登入，或先在 LINE 完成綁定」，不再卡在「正在自動登入…」又同時跳紅字錯誤的矛盾畫面。另外，多科共用同一方案堂數時，每一科會標示「共用方案」並顯示同一份共用剩餘堂數（扣堂一起計），剩餘總數不再被各科重複加總。
