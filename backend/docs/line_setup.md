@@ -1,5 +1,7 @@
 # LINE Developers Console Setup Guide
 
+> Historical backend setup note. For the current AllTrue launch checklist and environment-variable source of truth, use `docs/LINE_LIFF_CHECKLIST.md`. Some sample domains in this file are generic or old examples and should not override production runbooks.
+
 This guide covers how to configure a LINE Messaging API channel and LIFF app for the parent portal.
 
 ---

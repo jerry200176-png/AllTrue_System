@@ -13,7 +13,7 @@
 > AI Session（執行）──────────────────────────────┘
 > ```
 > 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。  
-> **長文不漏讀**：各檔「怎麼讀、讀哪段」→ [`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md)（速讀卡 + 版本更新鏈 + MemPalace 參照）。
+> **長文不漏讀**：速讀卡與版本更新鏈已整合在本 INDEX；[`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 僅保留作索引 stub。
 
 ---
 
@@ -95,6 +95,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | SLI / SLO / Error Budget / Release Freeze | `docs/SRE_POLICY.md` |
 | Post-release T+7/T+14/T+30 metrics review | `docs/PRODUCT_OPS.md` |
 | 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
+| **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
@@ -151,7 +152,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引，改前必查 |
 | `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md` | 33 條詳細事故記錄（archive，只搜尋不通讀）|
-| `docs/AI_DOC_LITERACY.md` | **AI 讀檔協議**：長文速讀卡、CHANGELOG→公告鏈、MemPalace 何時用（防漏讀） |
+| `docs/AI_DOC_LITERACY.md` | AI 讀檔協議 stub；速讀卡已整合進本 INDEX |
 | `docs/QA_GOLDEN_SCENARIOS.md` | Golden § ↔ CI（Presubmit CHECK 6 + `.github/scripts/golden-ci-report.sh`）|
 
 ### 業務規則
@@ -168,6 +169,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
+| `docs/SOP_MATURITY.md` | SOP 成熟度、M4–M9 roadmap、Actions freeze 接手地圖 |
+| `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md` | Product maturity → engineering maturity 的 7/1 後 AI 接手總圖 |
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 CHANGELOG（滾動歸檔，只搜尋不通讀） |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）CHANGELOG（archive，只搜尋不通讀） |
@@ -177,6 +180,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
+| `docs/GUIDE_UI_COPY.md` | UI 文案、空狀態、loading 規範 |
+| `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
+| `docs/GUIDE_SMARTCALENDAR_REFACTOR.md` | SmartCalendar 受控拆分與元件/ composable 對照 |
 | `docs/WSL2_DEV_SETUP.md` | WSL2 本地開發環境設定 |
 | `docs/api-swipe-rfid.md` | RFID 刷卡端點 API 參考（請求/回應、Apache DocumentRoot 排錯）|
 | `docs/SUPER_ADMIN_AND_MIGRATIONS.md` | super_admin 與 migration 操作速記 |
@@ -187,6 +193,10 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 檔案 | 一行說明 |
 |------|---------|
 | `docs/OPERATIONS_RUNBOOK.md` | 完整 SOP 手冊（§A-P，按節查）|
+| `docs/SRE_POLICY.md` | SLI / SLO / error budget / release freeze 政策 |
+| `docs/PRODUCT_OPS.md` | Post-release metrics review 與產品營運節奏 |
+| `docs/ADOPTION_QUALITY_METRICS.md` | 採用率與品質指標定義 |
+| `docs/RUNBOOK_ROLLBACK.md` | 回滾 SOP 與 rollback readiness 檢查 |
 | `docs/DAILY_CHECKLIST.md` | 每日例行檢查清單 |
 | `docs/SMOKE_TEST_RUNBOOK.md` | 部署後 smoke test SOP（`scripts/post-merge-smoke.sh`）|
 | `docs/DOCS_GOVERNANCE_SOP.md` | 文件治理節奏（已整合進本 INDEX §治理節奏；stub 供索引）|
@@ -201,6 +211,20 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/CHAT_BUG_SYSTEM.md` | 聊天／Bug 回報；**§3.6–§3.7**＝分診 + 修完回 in-app 完整 SOP |
 | `docs/GUIDE_SUPPORT_REPLY_MACROS.md` | in-app bug 公開回覆白話 macro library（#907）；對應 §3.8 禁用詞規則 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
+| `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` | 2026-06 產品缺口審查 snapshot；新月份建立新 reviews 檔後再歸檔舊版 |
+
+### 資安文件
+| 檔案 | 一行說明 |
+|------|---------|
+| `docs/security/ASVS_L1_2026.md` | OWASP ASVS L1 年度自查 |
+| `docs/security/AUDIT_LOG_POLICY.md` | 敏感 admin 行為 audit log 政策 |
+
+### Backend 局部參考（非主入口）
+| 檔案 | 用途 |
+|------|------|
+| `backend/docs/import_templates.md` | 匯入 CSV/XLSX 欄位速查；主流程仍看匯入頁與測試 |
+| `backend/docs/rfid_swipe_test_steps.md` | 舊 `POST /api/v1/attendance/swipe` api_key 手測參考；分校讀卡機以 `docs/api-swipe-rfid.md` 為準 |
+| `backend/docs/line_setup.md` | LINE Developers console 歷史設定筆記；現行上線檢查以 `docs/LINE_LIFF_CHECKLIST.md` 為準 |
 
 ### 歷史／參考／易誤導（**勿當唯一真相；不通讀**）
 
