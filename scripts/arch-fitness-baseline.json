@@ -1,0 +1,25 @@
+{
+  "_comment": "Architecture fitness ratchets, calibrated to main. Numbers may only DECREASE (ratchet); raising requires an ADR + Principal Architect sign-off. Doc-dependent checks (FIT-3/4/11/12/13) are skip-if-absent and activate when the governance docs land (docs/CONSTITUTION.md etc.).",
+  "classSessionCreateSites": 26,
+  "serviceDependencyCycles": 0,
+  "statusLiteralFiles": 5,
+  "remainingSessionsDirectWrites": 8,
+  "paidAmountDirectWrites": 3,
+  "effectiveInstructorSites": 5,
+  "teacherDirectWrites": 0,
+  "moneyWritesOutsideBilling": 3,
+  "readPathWritesInQueryMethods": 0,
+  "requireOwnerFrontmatter": [
+    "docs/CONSTITUTION.md",
+    "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
+    "docs/OWNERSHIP_REGISTRY.md"
+  ],
+  "requiredSopDocs": [
+    "docs/CONSTITUTION.md",
+    "docs/RUNBOOK_BREAK_GLASS.md",
+    "docs/RUNBOOK_ROLLBACK.md",
+    "docs/OPERATIONS_RUNBOOK.md",
+    "docs/RULE_MIGRATION_COMPAT.md",
+    "docs/SOP_INDEX.md"
+  ]
+}
