@@ -42,9 +42,26 @@ backups/emergency/code_*.tar.gz
 
 # DB dumps / backups must never be committed — contain production PII
 # (see CHANGELOG 2026-06-06; query scripts under scripts/ are allowed)
+# NOTE: *.sql alone missed gzipped dumps — backups/*.sql.gz had been committed (issue #1007).
 *.sql
 !scripts/*.sql
+*.sql.gz
+backups/*.sql.gz
+backups/**/*.sql.gz
 backend/storage/backups/
+
+# Local DB files must never be committed (issue #1006/#1007)
+*.db
+*.sqlite
+*.sqlite3
+*.phar
+
+# Local monitor env (live Telegram/LINE secrets — keep at /home/admin/.env.monitor, not in repo; issue #1007)
+.env.monitor
+
+# Legacy / stray dirs retired into the Laravel app (issue #1006)
+backend-local/
+TelegramWebHook/Log/
 
 # OS / editor
 .DS_Store
