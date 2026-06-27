@@ -1,10 +1,75 @@
-# MemPalace Ingestion System
+# AllTrue 補習班管理系統
+
+AllTrue is a full-stack **tutoring center management system** for multi-branch cram schools. It runs in production on a Raspberry Pi and serves directors, teachers, front-desk staff, and parents across four campuses (興隆、新店、大安、木柵).
+
+**Production:** Raspberry Pi 5 — Vue 3 SPA + Laravel 8 API + MySQL (`AllTrue`)  
+**GitHub:** [jerry200176-png/AllTrue_System](https://github.com/jerry200176-png/AllTrue_System)
+
+**Production incident:** [`docs/INCIDENT_RUNTIME_LOOP.md`](docs/INCIDENT_RUNTIME_LOOP.md) → [`docs/INCIDENT_POLICY_ENGINE.md`](docs/INCIDENT_POLICY_ENGINE.md) + [`docs/INCIDENT_START_HERE.md`](docs/INCIDENT_START_HERE.md)  
+**Service catalog:** [`docs/INDEX.md`](docs/INDEX.md) (registry only — no authority)  
+**Production deploy execution:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
+
+**Operational authority contract:** [`docs/OPERATIONAL_CONSTRAINTS.md`](docs/OPERATIONAL_CONSTRAINTS.md) — INDEX = registry · INCIDENT = decision · deploy.yml = execution
+
+---
+
+## Product — What the System Does
+
+AllTrue replaces scattered spreadsheets and manual admin work with one platform for daily tutoring operations: enrolling students, scheduling classes, tracking attendance, billing, and communicating with parents.
+
+### Domain entities
+
+| Entity | What it represents | Primary tables / concepts |
+|--------|-------------------|---------------------------|
+| **Students** | Learners enrolled at a campus | `Student` — profile, RFID, contact, campus |
+| **Classes** | A student's course contract with a teacher, rate, and session count | `StudentClass` — sessions remaining, schedule mode, payment state |
+| **Sessions** | Individual class meetings on a calendar date | `ClassSession` — date, time, status; linked to a `StudentClass` |
+| **Attendance / records** | Who showed up, when, and how class went | `StudentSingIn` (attendance/sign-in), `LearningRecord` (teacher evaluations, director approval) |
+
+Supporting concepts in daily use: **schedules** (fixed weekly slots), **invoices/payments** (billing), **substitute teachers**, and **branch-scoped data** (each campus is isolated).
+
+### What users do
+
+| Role | Typical actions |
+|------|-----------------|
+| **Director / admin** | Manage students and courses, review today's schedule, track tuition alerts, approve learning evaluations, oversee multi-branch operations |
+| **Teacher** | View personal schedule, take attendance, fill learning records, request makeup/substitute sessions, export monthly reports |
+| **Front desk** | Manual check-in, RFID binding, absence catch-up, parent notifications |
+| **Parent** | View child's schedule, evaluations, and payment status via Parent Portal or LINE |
+
+### Product stack (summary)
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vue 3.4 + Vite 5 — `frontend/src/pages/` |
+| Backend | Laravel 8 / PHP 8+ — REST API at `/api/v1/*` |
+| Database | MySQL |
+| Auth | Bearer token in `localStorage.alltrue_session` |
+| Integrations | RFID swipe (`POST /api/v1/swipe-rfid`), LINE Login / Webhook |
+
+### Product documentation
+
+| Need | Start here |
+|------|------------|
+| Navigation map | [`docs/INDEX.md`](docs/INDEX.md) (catalog only) |
+| **Production incident** | [`docs/INCIDENT_START_HERE.md`](docs/INCIDENT_START_HERE.md) |
+| **Deploy execution** | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
+| Deployment & ops | [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| API / schema | [`docs/SYSTEM_TECH_GUIDE.md`](docs/SYSTEM_TECH_GUIDE.md) |
+| AI / dev workflow | [`AGENTS.md`](AGENTS.md), [`.cursorrules`](.cursorrules) |
+
+---
+
+# Engineering Infrastructure — MemPalace Ingestion System
+
+> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
+> It is a local best-effort system and must not be used for production inference.
+
+**Local, single-machine, best-effort** recall index for AI engineering context (WSL2). Not production infrastructure — no Pi deploy, no paging.
 
 Local-first recall index for AllTrue engineering context. Indexes Cursor agent transcripts and git-tracked docs into searchable wings on the developer machine (WSL2).
 
 **Authority:** Git markdown in this repository is source of truth. MemPalace is a recall index only — if search results conflict with git, trust git.
-
-**AllTrue application docs:** See [`docs/INDEX.md`](docs/INDEX.md) for the tutoring management system, deployment, and CI.
 
 **Detailed operations:** See [`docs/MEMPALACE_OPERATIONS_HANDBOOK.md`](docs/MEMPALACE_OPERATIONS_HANDBOOK.md) for runbook, failure playbook, and on-call guide.
 
@@ -440,4 +505,4 @@ scripts/
 
 ---
 
-*Derived from repository implementation. Last synced: 2026-06-27.*
+*Product docs: [`docs/INDEX.md`](docs/INDEX.md) · MemPalace derived from repository implementation · Last synced: 2026-06-28.*

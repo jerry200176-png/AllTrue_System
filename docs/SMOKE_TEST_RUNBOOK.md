@@ -1,6 +1,6 @@
 # Smoke Test Runbook
 
-This runbook defines the read-only post-deploy smoke checks used by `deploy.yml`.
+Documents read-only post-deploy smoke checks **invoked by** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (execution authority). Only committed files on `origin/main` define runtime behavior; this runbook references them.
 
 ## Purpose
 

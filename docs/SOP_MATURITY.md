@@ -7,9 +7,17 @@
 
 ## 🔴 進行中狀態（交接區 — 完成後清空此節）
 
-更新時間：2026-06-27（Cursor 接手 Claude Code urgent handoff 驗收後）
+更新時間：2026-06-27（Engineering Governance Audit 完成 + PR #954 prod 收斂）
 
-**urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）驗收**
+**2026-06-27 Engineering Governance Audit**
+- ✅ 全庫 10-phase 稽核完成（無 CI；靜態分析 + code review）
+- 📄 報告：`docs/reviews/ENGINEERING_AUDIT_2026-06-27.md`
+- 🎫 新建 **39** GitHub issues **#957–#995**（security / regression / architecture / testing / perf / docs）
+- ⛔ **Stop-the-line：#970** `X-User-Id` header auth bypass — 優先於其他資安 hardening
+- 📋 Top priority epic：**#957** ClassSession materialization 統一
+- ✅ Production 已手動收斂至 `main` @ `5efaf61`（#954 calendar fix）；`deploy.yml` 仍 DISABLED
+
+**urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）— 部分 superseded**
 - ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
 - ✅ in-app `#169` / `#170`：程式 `#928` / `#927` merged；in-app 狀態皆 `resolved`；prod 待審清單已無鄭筠霏 06-20（唯讀 API 驗證）。
 - ✅ `#919` self-hosted CI/deploy 已恢復；2026-06-21 deploy 至 `fd04b07` 成功。
@@ -32,9 +40,10 @@
 | **周宏謙共用池 materialize** | 需定義「12 堂池分配到各科」規則後再實作；不可 per-course SessionCount 盲目補堂 |
 
 **下一個 Agent 第一步**
-1. `gh pr checks 937` / `938` → merge 順序：#938（前端）→ #937（後端）→ deploy → health。
-2. `gh pr merge 874`（docs）— 勿 stage `.cursor/plans/*` 或 tmp 診斷腳本。
-3. 讀本檔 + `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`；**不要**重寫 roadmap 或重開 #923/#924。
+1. 讀 `docs/reviews/ENGINEERING_AUDIT_2026-06-27.md` Top 20 + 30-day roadmap
+2. **#970** header auth bypass — stop-the-line fix branch（手動 security test；CI minutes 耗盡時勿等 Actions）
+3. 開 in-app #931–#936 triage 與 #957 materialization epic 規劃（不重複 audit 已建 issues）
+4. `gh pr checks 937` / `938` 若仍 open → merge 順序不變
 
 ---
 

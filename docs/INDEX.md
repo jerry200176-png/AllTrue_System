@@ -1,7 +1,25 @@
-# AllTrue Docs Index — AI 導航地圖
+# AllTrue Docs Index — Service Catalog
+
+> **INDEX = registry. NOT an execution system.**
+>
+> | Layer | Role | Where decisions happen |
+> |-------|------|------------------------|
+> | **Service catalog** | This file — find the right doc or workflow | Here (links only) |
+> | **Execution authority** | Production runtime behavior | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
+> | **Incident decisions** | What to do when production breaks | [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) |
+>
+> **Source of truth:** committed files on `origin/main` only. Working tree / unmerged docs are not production reality.
+>
+> **INDEX is a service catalog only.**  
+> **INDEX has NO decision authority in runtime operations.**  
+> All incident decisions MUST be made via [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md).  
+> All execution MUST be performed via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+
+> **Operational Control Plane contract:** [`docs/OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md)  
+> 1. INDEX = registry only · 2. INCIDENT = decision · 3. deploy.yml = execution · 4. INCIDENT overrides INDEX · 5. deploy executes incident decisions only
 
 > **前人種樹，後人乘涼。**
-> 做事前讀文件，快速知道怎麼做；做完事留記錄，避免錯誤再犯，快速知道怎麼修或加功能。
+> 做事前讀 INDEX 定位文件；**執行與部署決策不讀 INDEX**，讀 execution authority 或 incident doc。
 >
 > **知識流轉三層：**
 > ```
@@ -19,6 +37,49 @@
 
 ---
 
+## 🗂️ Structured service catalog (registry schema)
+
+**Schema (required fields per row):** `service name` · `role` · `execution owner` · `incident linkage` · `SLO`
+
+**Production incident?** → [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) → policy + inference
+
+| Service name | Role | Execution owner | Incident linkage | SLO |
+|--------------|------|-----------------|------------------|-----|
+| AllTrue production app | prod | Pi runtime + [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | yes |
+| Incident policy engine | prod | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 3 | yes |
+| Incident inference engine | prod | [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 2 | yes |
+| Incident runtime loop | prod | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | self | yes |
+| Incident state machine | prod | [`INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md) | classification layer only | yes |
+| Incident decision entry | prod | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | observe + runbook paths | yes |
+| Production deploy | infra | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) § CONTAIN | yes |
+| CI merge gate | infra | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) · [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) CI-* | yes |
+| Rollback procedures | infra | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) (reference) → `deploy.yml` (exec) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
+| Severity classification | prod | [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
+| Dangerous ops guard | infra | [`DANGEROUS_OPERATIONS.md`](DANGEROUS_OPERATIONS.md) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
+| Backup / restore | infra | [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) §P · [`.github/workflows/backup-restore-test.yml`](../.github/workflows/backup-restore-test.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) DB path | yes |
+| Operational constraints | tool | [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) | — | no |
+| SOP drift audit | tool | [`OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md) | — | no |
+| MemPalace ingest | local | [`MEMPALACE_OPERATIONS_HANDBOOK.md`](MEMPALACE_OPERATIONS_HANDBOOK.md) · `scripts/mempalace-ingest.sh` | none (MP-* best-effort) | **no** |
+
+**MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
+It is a local best-effort system and must not be used for production inference.
+
+**Authority contract:** [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) · INDEX references only — no runtime decisions here.
+
+---
+
+## Policy layer (execution modifier — not decision authority)
+
+| Item | Role |
+|------|------|
+| [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | Self-healing + decision compression; resolves FINAL_ACTION |
+| **Precedence** | **POLICY > STATE > SIGNAL** |
+| **Constraint** | Policy modifies execution path; inference still assigns STATE |
+| **Policies** | P0 safety-first · P1 fast recovery · P2 minimal intervention · P3 cascade suppression |
+| **Shortcuts** | SH-1 rollback short-circuit · SH-2 repeat escalate · SH-3 path compression |
+
+---
+
 ## 🏢 AllTrue AI 公司治理
 
 AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Agents 是產品、工程、QA、資安、維運、文件等職能團隊。
@@ -30,7 +91,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`。
 3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
-5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；若與本 INDEX、`.cursorrules`、`OPERATIONS_RUNBOOK.md` 衝突，以現行入口與 runbook 為準。
+5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**執行衝突時**：production 行為以 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) 為準，事故以 [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) 為準，INDEX 僅負責導航。
 
 ---
 
@@ -77,31 +138,16 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `assume-unchanged` 藏檔導致 PR 漏 diff | `AI_REGRESSION_LESSONS.md` §R58 |
 
 ### 部署 / 維運
-| 需要什麼 | 去哪裡找 |
-|----------|---------|
-| **Production deploy authority (ADR-001)** | `docs/adr/ADR-001-single-production-authority.md` |
-| **Platform Enforcement Binding（GitHub 強制）** | `docs/github-ruleset-enforcement.md` + `config/github/platform-enforcement.json` |
-| **PDP root-of-trust signing** | `config/platform/README.md` + `scripts/platform/pdp_signing_authority.py` |
-| **Production-Controlled Engineering System（總綱）** | `docs/engineering-system.md` |
-| **Execution Layer（強制執行）** | `docs/execution-layer.md` + `./scripts/release-exec.sh` |
-| **Decision Intelligence Layer（決策）** | `docs/decision-intelligence-layer.md` + `./scripts/decision-engine.sh` |
-| **Current Engineering SOP（整合速查）** | `docs/current-engineering-sop.md` |
-| **SOP Enforcement Layer（SOP 執行閘）** | `docs/sop-enforcement-layer.md` + `./scripts/sop-enforce.sh` |
-| **Self-Healing + Consistency（收斂層）** | `docs/self-healing-layer.md` + `./scripts/self-heal-engine.sh analyze` |
-| **Production 真相 / drift** | `docs/production-truth-model.md` + `./scripts/release-check.sh` |
-| **Release 流程（SAFE/DEPLOY/RISKY）** | `docs/release-flow.md` |
-| **AI Agent 權限邊界** | `docs/ai-agent-policy.md` |
-| 部署 SOP（Phase 7） | `docs/OPERATIONS_RUNBOOK.md §A-B` |
-| 緊急事故 / 危險操作 | `docs/DANGEROUS_OPERATIONS.md` |
-| **回滾 SOP（何時/如何回滾 + MTTR）** | `docs/RUNBOOK_ROLLBACK.md`；就緒度檢查 `scripts/rollback-readiness.sh` |
-| Dependabot merge SOP / SLA | `docs/OPERATIONS_RUNBOOK.md §B0 / §T` |
-| Secret 輪換 | `docs/OPERATIONS_RUNBOOK.md §O` |
-| 工程成熟度現況 / Roadmap | `docs/SOP_MATURITY.md`（接手地圖 + M4/M5）；維運細節見 `docs/OPERATIONS_RUNBOOK.md §P` |
-| Branch protection 啟用步驟 | `docs/OPERATIONS_RUNBOOK.md §R` |
-| **Solo + AI GitHub 週期 SOP** | `docs/OPERATIONS_RUNBOOK.md §B5` |
-| SSH key 季度輪替 SOP | `docs/OPERATIONS_RUNBOOK.md §S` |
-| Staging 設計 / Feature flag / Visual regression | `docs/OPERATIONS_RUNBOOK.md §U / §V / §W` |
-| AI / 大廠式 workflow gate | `AGENTS.md §Agent Orchestration SOP`、`docs/OPERATIONS_RUNBOOK.md §B3` |
+| 需要什麼 | Registry 入口 |
+|----------|---------------|
+| **Production 事故** | [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) |
+| **Deploy 執行** | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
+| **Rollback** | [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) |
+| **CI** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) · `docs/OPERATIONS_RUNBOOK.md` §B |
+| **Backup** | `docs/OPERATIONS_RUNBOOK.md` §P |
+| **完整 SOP** | `docs/OPERATIONS_RUNBOOK.md` |
+| **危險操作** | `docs/DANGEROUS_OPERATIONS.md` |
+| **SOP 漂移檢查** | `docs/OPERATIONAL_CONSISTENCY_CHECK.md` |
 
 ### SRE / Product Ops
 | 需要什麼 | 去哪裡找 |
@@ -111,7 +157,6 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
-| **工程治理全面稽核（2026-06-27）** | `docs/reviews/ENGINEERING_AUDIT_2026-06-27.md`（39 新 issues #957–#995） |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
@@ -146,7 +191,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `MODULE_` | 模組深度說明（架構 + 流程） | `MODULE_CHAT_BUG.md` |
 | `GUIDE_` | 教學 how-to | `GUIDE_WSL2_SETUP.md` |
 | `POLICY_` | 政策決策 | `POLICY_SRE.md` |
-| `ADR_` | 架構決策記錄（Architecture Decision Record） | `ADR_001_calendar_merge.md` |
+| `ADR_` | 架構決策記錄（**historical / draft until on `main`**） | `ADR_001_calendar_merge.md` |
 
 舊檔按現有名稱延用（不強制改名，會破壞參照；下次大改時順手 rename）。CI（`scripts/docs-integrity-check.mjs`）會對不符合 prefix 且非既有清單的新檔發出 `warning`。
 
@@ -182,11 +227,6 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 技術文件
 | 檔案 | 一行說明 |
 |------|---------|
-| `docs/engineering-system.md` | 工程治理總綱：release、AI、CI/CD、branch |
-| `docs/production-truth-model.md` | production vs git 真相層級與 drift 解決 |
-| `docs/release-flow.md` | SAFE/DEPLOY/RISKY 分類與手動 deploy 閘門 |
-| `docs/ai-agent-policy.md` | AI 禁止 merge/deploy；風險分級 |
-| `scripts/release-check.sh` | main vs prod version.json 漂移檢查（唯讀）|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
 | `docs/SOP_MATURITY.md` | SOP 成熟度、M4–M9 roadmap、Actions freeze 接手地圖 |
@@ -280,8 +320,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `secret-scan.yml` | 每次 PR | **required**：`gitleaks scan` 機密外洩偵測 |
 | `codeql.yml` | PR / main push / weekly | **required**：後端或 workflow 改動才跑 `PHPStan Advisory (php)` level 5（baseline-gated，只擋新增）|
 | `docs-integrity.yml` | PR / 每週一 | **required**：文件連結完整性、INDEX 導航與核心文件存在性檢查 |
-| `Deploy Production` (`deploy-production.yml`) | **唯一** production SSH 部署（ADR-001 PDP gate） | Platform Gate → staging artifact → PDP verify → Pi deploy + smoke |
-| `Deploy to Pi` (`deploy.yml`) | **DISABLED**（fail-closed） | 舊版 auto-deploy；禁止 re-enable，見 `docs/adr/ADR-001-single-production-authority.md` |
+| **`Deploy to Pi` (`deploy.yml`)** | merge `main`（deployable diff） | → [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
+| `rollback-readiness.yml` | 排程 / 手動 | 非破壞性 rollback 就緒度（#733） |
 | `release.yml` | main push（CHANGELOG 變更）/ 手動 | CalVer 自動打 tag + GitHub Release（見 `OPERATIONS_RUNBOOK.md §X`）|
 | `ui-smoke.yml` | 每週 / 手動 | Playwright UI 煙霧測試（需 `SMOKE_*` secrets，否則 skip）|
 | `dependency-review.yml` | 每次 PR | 供應鏈（選用 GHAS 升級路徑）；需 `ENABLE_DEPENDENCY_REVIEW=true`，未開僅 notice |
@@ -293,7 +333,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `htaccess-guard.yml` | 每次 PR | `public/.htaccess` 變更守門（事故 D 防再犯）|
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
 | `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR；review SOP 見 §Y）|
-| `mempalace-monthly.yml` | 每月 | MemPalace 記憶索引重建 |
+| `mempalace-monthly.yml` | 每月 | **Reminder only** — comment on issue #519；ingest 須 WSL2 手動 `mempalace-maintain.sh` |
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
 | `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |
 
@@ -302,7 +342,10 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ---
 
-## 📐 MemPalace 導航（AI 記憶層）
+## 📐 MemPalace 導航（dev tooling — NOT production）
+
+> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
+> It is a local best-effort system and must not be used for production inference.
 
 **索引更新（唯一入口 — event-sourced DAG）：**
 ```bash
@@ -374,6 +417,7 @@ Wings：`alltrue-sessions`（對話）、`alltrue-docs`（文件）、`alltrue-c
 
 **每週（文件巡檢）**
 - `node scripts/docs-integrity-check.mjs --strict`
+- [`docs/OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md)（catalog / deploy authority 漂移）
 - 修正斷鏈、遺漏導航、入口與章節不一致。
 
 **每月（記憶保鮮 + CHANGELOG 滾動歸檔）**
