@@ -8,10 +8,11 @@ last_reviewed: 2026-06-07
 
 > 目的：當一次 deploy 造成 production 異常（health/smoke 失敗、關鍵功能壞、資料風險）時，
 > 用**最短時間、最小破壞**把系統恢復到上一個已知良好版本。
+> **Decision:** [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) + state machine. **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). This runbook is execution reference only.
 > 對應自動化：`.github/workflows/rollback-readiness.yml` + `scripts/rollback-readiness.sh`（非破壞性就緒度檢查，#733）。
 >
 > 前置認知：本系統部署是 **git-commit 為基礎**（非 Docker image）。
-> Pi `/home/admin` 跟隨 `origin/main`；回滾 = 把 main 回到良好 commit，再讓 `deploy.yml` 重佈。
+> Pi `/home/admin` 跟隨 `origin/main`；回滾 = 把 main 回到良好 commit，再讓 **`deploy.yml`**（`Deploy to Pi`）重佈。
 
 ---
 
@@ -24,7 +25,7 @@ last_reviewed: 2026-06-07
 | 站全掛、等不及 CI | 走 §3b **緊急 Pi 重佈**（re-run 上一個成功 deploy） | §3b |
 | 資料被寫壞 / migration 有破壞性 | §3c **DB 回滾 + 還原備份**（先備份再動） | §3c |
 
-⛔ 紅線：**禁止**直接 SSH 進 Pi 改程式碼（事故 B/C/E）。回滾一律走 git + `deploy.yml`。
+⛔ 紅線：**禁止**直接 SSH 進 Pi 改程式碼（事故 B/C/E）。回滾一律走 git + **`deploy.yml`**。
 
 ---
 
@@ -40,9 +41,9 @@ last_reviewed: 2026-06-07
 
 ---
 
-## 2. 自動回滾（`deploy.yml` 已內建，預設防線）
+## 2. 自動回滾（`deploy.yml` 內建）
 
-每次 deploy `deploy.yml` 會：
+每次 **`Deploy to Pi`**（`.github/workflows/deploy.yml`）SSH 部署會：
 
 1. 部署前記錄 `PREV_COMMIT=$(git rev-parse HEAD)`（回滾錨點）
 2. migration 前先 `mysqldump` 到 `/home/admin/backups/emergency/`
