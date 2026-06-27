@@ -14,11 +14,17 @@ class AttachAuthUser
     public function handle(Request $request, Closure $next)
     {
         try {
-            $userId = $request->header('X-User-Id');
-            $roleHeader = $request->header('X-User-Role');
-            $teacherHeader = $request->header('X-Teacher-Id');
+            // SEC-AUDIT-001 (#970): header-based identity is a dev/test affordance only.
+            // In production, identity is derived strictly from a valid Bearer token;
+            // otherwise any client could impersonate a user — and escalate role — by
+            // sending X-User-Id / X-User-Role headers (auth bypass + privilege escalation).
+            $allowHeaderAuth = app()->environment(['local', 'testing']);
 
-            // ── Resolve user from Bearer token if no X-User-Id header ───
+            $userId = $allowHeaderAuth ? $request->header('X-User-Id') : null;
+            $roleHeader = $allowHeaderAuth ? $request->header('X-User-Role') : null;
+            $teacherHeader = $allowHeaderAuth ? $request->header('X-Teacher-Id') : null;
+
+            // ── Resolve user from Bearer token if no (dev) X-User-Id header ───
             if (!$userId) {
                 $bearer = $request->bearerToken();
                 $authToken = $bearer ? AuthToken::where('token', $bearer)->first() : null;
