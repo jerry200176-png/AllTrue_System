@@ -1,0 +1,10 @@
+{
+  "_comment": "Architecture fitness ratchet baselines. Numbers may only DECREASE (ratchet). Lowering them is the work of retiring debt; raising them requires an ADR + Principal Architect sign-off. See docs/CONSTITUTION.md §Automation and docs/RULE_ARCHITECTURE_GOVERNANCE.md (ADR-005, DI-1, DEP-3).",
+  "classSessionCreateSites": 26,
+  "serviceDependencyCycles": 0,
+  "requireOwnerFrontmatter": [
+    "docs/CONSTITUTION.md",
+    "docs/RULE_ARCHITECTURE_GOVERNANCE.md",
+    "docs/OWNERSHIP_REGISTRY.md"
+  ]
+}

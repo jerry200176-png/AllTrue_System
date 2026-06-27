@@ -42,6 +42,21 @@
 
 ---
 
+## 架構治理債（Constitution L0/L1 衍生 — 每筆都有到期策略）
+
+> 由 `docs/CONSTITUTION.md` Article V + `docs/OWNERSHIP_REGISTRY.md` 衍生。每筆＝一個「contested fact」（雙 owner），到期策略＝Expand/Contract 階段（見 `RULE_ARCHITECTURE_GOVERNANCE.md §9`）。enforcement 由 `scripts/arch-fitness-check.mjs` ratchet。
+
+| 債 | Fact | 雙 owner 現況 | ADR | 到期策略（expiration） |
+|---|---|---|---|---|
+| **TD-SCHED** | F-05/F-06 | `schedules` + `ClassSession` | [0001](adr/0001-occurrence-single-sor.md)/[0005](adr/0005-single-session-writer.md) | Phase 2：Occurrence 為 SoR；FIT-1 把 `ClassSession::create` 26→1（SessionWriter）後關閉 |
+| **TD-BILL** | F-07/F-08 | `StudentClass.Paid/Remaining*` + `Invoice/Ledger` | [0002](adr/0002-billing-ledger-sor.md) | Phase 1：ledger 為 SoR、舊欄改 projection、刪 preservedDelta |
+| **TD-SC** | F-04 | `StudentClass` god-row（4 contexts） | [0010](adr/0010-decompose-studentclass.md) | Phase 2 後：拆 row 為 Contract/Schedule/Billing 三方 |
+| **TD-READ** | F-10 | read-path 寫入（ensure-past 等） | [0007](adr/0007-read-models-off-write-path.md) | Phase 3：materialization 移到 event-driven job；GET 不寫 |
+| **TD-IDN** | F-01 | `Teacher` + `User` | [0006](adr/0006-single-party-identity.md) | Wave A→C：retire Teacher，Party 為 SoR |
+| **TD-DEPLOY** | F-16 | CI PDP + §139 secondary path | [0009](adr/0009-emergency-reconcile.md) | break-glass reconcile（`RUNBOOK_BREAK_GLASS.md`）+ 消除 gate-availability SPOF |
+
+到期判定：對應 ADR 的 Phase 完成 + FIT ratchet 觸底（如 FIT-1=1）+ Ownership Registry 該列轉 `single`。
+
 ## 技術債清單
 
 <!-- 格式：

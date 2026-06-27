@@ -140,6 +140,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 ### 核心規則（每次任務按需查）
 | 檔案 | 一行說明 |
 |------|---------|
+| `docs/CONSTITUTION.md` | **工程憲法（L0 最高法）**：決策層級、權限、ownership、break-glass、precedence；所有 ADR/SOP/規則由此衍生 |
+| `docs/OWNERSHIP_REGISTRY.md` | **business fact → 唯一 owner** 登記表（F-01..F-16）；新增 fact 必登記 |
+| `docs/adr/README.md` | **ADR 索引（L2）**：重大架構決策（0001–0010），immutable、cross-referenced |
 | `.cursorrules` | P0 事故紀錄 + 工作流程總覽（自動載入）|
 | `CLAUDE.md` | Claude Code 版總覽（同 `.cursorrules`，不重複讀）|
 | `AGENTS.md` | Agent 開工順序 + Commit SOP |
@@ -167,6 +170,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |------|---------|
 | `CONTRIBUTING.md` | GitHub 協作入口：分支、PR／Issue、CI、**SECURITY 通報** |
 | `docs/SYSTEM_TECH_GUIDE.md` | 架構深度文件（延伸閱讀，非必讀）|
+| `docs/RULE_ARCHITECTURE_GOVERNANCE.md` | **架構治理手冊（normative）**：bounded contexts、單一 fact owner、event catalog、ADR、依賴/分層/命名規則；改架構前必讀 |
 | `docs/CHANGELOG.md` | 最近上線功能記錄 |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 CHANGELOG（滾動歸檔，只搜尋不通讀） |
 | `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）CHANGELOG（archive，只搜尋不通讀） |
