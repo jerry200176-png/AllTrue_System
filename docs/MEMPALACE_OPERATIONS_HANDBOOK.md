@@ -1,8 +1,16 @@
 # MemPalace Ingestion — Operations Handbook
 
-> **Audience:** Engineers operating or on-call for AllTrue MemPalace indexing on WSL2.  
-> **Scope:** Local recall index only — not production Pi, not AllTrue app backend.  
-> **Authority:** Git-tracked markdown remains source of truth; MemPalace is a search index.
+> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
+> It is a local best-effort system and must not be used for production inference.
+>
+> | Property | MemPalace | AllTrue production (Pi) |
+> |----------|-----------|-------------------------|
+> | Scope | Local WSL2 dev tooling | Tutoring app for users |
+> | SLO / alerting | **Excluded** | UptimeRobot, SRE_POLICY |
+> | Incident detection | **No** | INCIDENT_START_HERE |
+> | Health inference | **Never** use MemPalace to judge prod health |
+>
+> **Production incident?** → [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) — not this handbook.
 
 **Related files**
 

@@ -1,5 +1,8 @@
 # MemPalace Architecture Health Report — Second Pass
 
+> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
+> It is a local best-effort system and must not be used for production inference.
+
 > **Consolidation (2026-06-27):** Single ingest pipeline — `scripts/mempalace-ingest.sh`.  
 > All Cursor/Claude MemPalace hooks removed. Config SSOT: `scripts/mempalace-config.sh`.
 
