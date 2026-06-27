@@ -103,4 +103,65 @@ class RoomControllerTest extends TestCase
         $res->assertOk();
         $this->assertDatabaseMissing('rooms', ['id' => $room->id]);
     }
+
+    // ── SEC R-10 (#979): campus authorization on mutations + listing ──────────
+
+    public function test_store_rejects_room_in_foreign_campus(): void
+    {
+        $own     = Campus::factory()->create();
+        $foreign = Campus::factory()->create();
+        $token   = $this->directorToken($own->id);
+
+        $res = $this->withToken($token)->postJson('/api/v1/rooms', [
+            'name'      => '越權教室',
+            'capacity'  => 5,
+            'campus_id' => $foreign->id,
+        ]);
+
+        $res->assertStatus(403);
+        $this->assertDatabaseMissing('rooms', ['name' => '越權教室']);
+    }
+
+    public function test_update_rejects_foreign_campus_room(): void
+    {
+        $own     = Campus::factory()->create();
+        $foreign = Campus::factory()->create();
+        $token   = $this->directorToken($own->id);
+        $room    = Room::create(['name' => '他校教室', 'campus_id' => $foreign->id, 'capacity' => 4, 'is_active' => true]);
+
+        $res = $this->withToken($token)->putJson("/api/v1/rooms/{$room->id}", ['name' => '被改名']);
+
+        $res->assertStatus(403);
+        $this->assertDatabaseHas('rooms', ['id' => $room->id, 'name' => '他校教室']);
+    }
+
+    public function test_destroy_rejects_foreign_campus_room(): void
+    {
+        $own     = Campus::factory()->create();
+        $foreign = Campus::factory()->create();
+        $token   = $this->directorToken($own->id);
+        $room    = Room::create(['name' => '他校待刪', 'campus_id' => $foreign->id, 'capacity' => 4, 'is_active' => true]);
+
+        $res = $this->withToken($token)->deleteJson("/api/v1/rooms/{$room->id}");
+
+        $res->assertStatus(403);
+        $this->assertDatabaseHas('rooms', ['id' => $room->id]);
+    }
+
+    public function test_index_without_branch_filter_does_not_leak_other_campus(): void
+    {
+        $own     = Campus::factory()->create();
+        $foreign = Campus::factory()->create();
+        Room::create(['name' => '本校教室', 'campus_id' => $own->id,     'capacity' => 4, 'is_active' => true]);
+        Room::create(['name' => '他校教室', 'campus_id' => $foreign->id, 'capacity' => 4, 'is_active' => true]);
+
+        $token = $this->directorToken($own->id);
+        // No branch_id param — previously returned ALL campuses' rooms.
+        $res = $this->withToken($token)->getJson('/api/v1/rooms');
+
+        $res->assertOk();
+        $names = collect($res->json())->pluck('name')->all();
+        $this->assertContains('本校教室', $names);
+        $this->assertNotContains('他校教室', $names);
+    }
 }
