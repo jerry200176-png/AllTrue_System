@@ -106,7 +106,11 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json((string) $courseId) ?? [];
+        $split = $res->json((string) $courseId) ?? [];
+        $dates = array_values(array_unique(array_merge(
+            array_column($split['materialized'] ?? [], 'session_date'),
+            array_column($split['projected'] ?? [], 'session_date')
+        )));
         $this->assertCount(4, $dates);
         foreach ($dates as $d) {
             $this->assertSame(3, (int) date('N', strtotime((string) $d)), "$d should be a Wednesday");
