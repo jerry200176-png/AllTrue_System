@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
@@ -1049,27 +1050,20 @@ class ScheduleController extends Controller
             $endTime .= ':00';
         }
 
-        $existing = ClassSession::where('StudentClassID', $courseId)
-            ->where('SessionDate', $sessionDate)
-            ->where('StartTime', $startTime)
-            ->first();
-
-        if ($existing) {
+        $result = app(ClassSessionMaterializationService::class)->upsertSlot([
+            'StudentClassID' => $courseId,
+            'SessionDate'    => $sessionDate,
+            'StartTime'      => $startTime,
+            'SubjectID'      => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
+            'EndTime'        => $endTime,
+            'Status'         => 'scheduled',
+            'Note'           => 'auto-materialized-from-schedule',
+        ]);
+        $existing = $result['session'];
+        if (!$result['created'] && in_array($existing->Status, ['cancelled'], true)) {
             // Re-activate a previously cancelled slot (e.g. reschedule destination that
             // was cancelled by an earlier operation). Never override 'attended' or 'leave'.
-            if (in_array($existing->Status, ['cancelled'], true)) {
-                $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
-            }
-        } else {
-            ClassSession::create([
-                'StudentClassID' => $courseId,
-                'SessionDate'    => $sessionDate,
-                'StartTime'      => $startTime,
-                'SubjectID'      => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
-                'EndTime'        => $endTime,
-                'Status'         => 'scheduled',
-                'Note'           => 'auto-materialized-from-schedule',
-            ]);
+            $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
         }
     }
 

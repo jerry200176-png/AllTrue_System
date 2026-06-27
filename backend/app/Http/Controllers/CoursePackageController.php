@@ -9,6 +9,7 @@ use App\Models\PackageSessionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\Subject;
+use App\Services\ClassSessionMaterializationService;
 use App\Services\EnrollmentService;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\PackageDeductionService;
@@ -430,13 +431,13 @@ class CoursePackageController extends Controller
                         ->addMinutes($durationMinutes)
                         ->format('H:i');
 
-                    $session = ClassSession::create([
+                    $session = app(ClassSessionMaterializationService::class)->upsertSlot([
                         'StudentClassID' => $sc->ID,
                         'SessionDate'    => $cDate,
                         'StartTime'      => $startTimeStr,
                         'EndTime'        => $endTime,
                         'Status'         => 'attended',
-                    ]);
+                    ])['session'];
 
                     PackageDeductionService::deductForSession(
                         $pkg->id,
