@@ -58,15 +58,20 @@ class LineWebhookController extends Controller
             return response()->json(['message' => 'Campus not found'], 404);
         }
 
-        // Verify LINE signature using this campus's channel secret
+        // SEC-AUDIT-004 (#973): fail CLOSED. Previously, a campus with no configured
+        // channel secret skipped verification entirely and processed events unsigned —
+        // so a forged follow/message payload could drive the student-binding flow.
+        // A webhook for an unconfigured campus is now rejected, and the HMAC compare
+        // is constant-time.
         $channelSecret = $campus->messaging_channel_secret ?? '';
-        if ($channelSecret) {
-            $signature = $request->header('X-Line-Signature');
-            $body      = $request->getContent();
-            $expected  = base64_encode(hash_hmac('sha256', $body, $channelSecret, true));
-            if ($signature !== $expected) {
-                return response()->json(['message' => 'Invalid signature'], 400);
-            }
+        if ($channelSecret === '') {
+            \Illuminate\Support\Facades\Log::warning('line.webhook.no_secret', ['campus_id' => $campusId]);
+            return response()->json(['message' => 'Webhook not configured'], 503);
+        }
+        $signature = $request->header('X-Line-Signature');
+        $expected  = base64_encode(hash_hmac('sha256', $request->getContent(), $channelSecret, true));
+        if (!is_string($signature) || !hash_equals($expected, $signature)) {
+            return response()->json(['message' => 'Invalid signature'], 400);
         }
 
         $events = $request->input('events', []);
