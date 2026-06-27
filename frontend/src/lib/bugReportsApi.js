@@ -1,6 +1,6 @@
 const API = '/api/v1';
 
-function getToken() {
+export function getToken() {
   try {
     const raw = localStorage.getItem('alltrue_session');
     if (!raw) return null;
