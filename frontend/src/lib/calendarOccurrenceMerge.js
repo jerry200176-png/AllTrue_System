@@ -284,6 +284,55 @@ export function mergeWeekCalendarOccurrences({
     }
   }
 
+  // #180 — materialized-completeness pass. ClassSession is the materialized source of truth.
+  // The template/exception loops above are *projection* paths and intentionally skip dates via
+  // grid guards (e.g. `targetDate > courseLastSessionDate`, over-session-limit, off-template
+  // day/time). A course-management adjustment can produce a real, non-cancelled ClassSession that
+  // lands outside every projection path AND has no `schedules` row — it would then silently vanish
+  // from the calendar while course management still shows it. Emit any such materialized session
+  // that was not already rendered, so materialized truth never disappears. Projected/template
+  // occurrences are untouched (they are keyed `session:<id>` when session-backed, so already-rendered
+  // sessions are skipped here and never duplicated). dedupeByStudentSlot collapses any slot overlap.
+  const dowByDate = new Map();
+  for (let dow = 1; dow <= 7; dow += 1) {
+    const ymd = defaultToYmd(weekDatesByDow[dow]);
+    if (ymd) dowByDate.set(ymd, dow);
+  }
+  for (const course of courses) {
+    const cid = String(course?.id ?? '');
+    if (!cid) continue;
+    for (const sessionRow of rowsForCourse(cid)) {
+      const sid = sessionRow?.id;
+      if (!sid || isCancelled(sessionRow)) continue;
+      if (mergedByOccurrence.has(`session:${sid}`)) continue;
+      const date = sessionDateOf(sessionRow);
+      const dow = dowByDate.get(date);
+      if (!dow) continue;
+      const start = sessionStartOf(sessionRow, normalizeTime);
+      if (!start) continue;
+      const end = sessionRow?.end_time || sessionRow?.EndTime
+        ? normalizeTime(sessionRow.end_time || sessionRow.EndTime)
+        : computeEndTime(start, course.duration_hours || 2);
+      putOccurrence({
+        ...course,
+        ...(sessionRow?.teacher_id != null
+          ? { teacher_id: sessionRow.teacher_id, teacher_name: sessionRow.teacher_name || course.teacher_name }
+          : {}),
+        id: course.id,
+        day_of_week: dow,
+        days_of_week: [dow],
+        start_time: start,
+        end_time: end,
+        duration_hours: course.duration_hours,
+        is_base: true,
+        is_exception: false,
+        class_session_id: sid,
+        student_course_id: course.id,
+        occurrence_key: `session:${sid}`,
+      });
+    }
+  }
+
   let out = dedupeByStudentSlot(Array.from(mergedByOccurrence.values()), normalizeTime);
   const effectiveFilterTeacherId = filterTeacherId || teacherScopeId || '';
   if (effectiveFilterTeacherId) {
