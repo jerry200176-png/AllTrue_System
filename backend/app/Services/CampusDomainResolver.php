@@ -82,7 +82,7 @@ final class CampusDomainResolver
             return self::result('none', null, null, []);
         }
 
-        $candidateIds = array_values(array_map(static fn ($m) => (int) $m['id'], $matches));
+        $candidateIds = array_map(static fn ($m) => (int) $m['id'], $matches);
 
         if (count($matches) > 1) {
             // Ambiguous mapping (e.g. two campuses share a URL). Fail loud — never
