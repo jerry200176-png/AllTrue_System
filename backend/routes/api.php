@@ -15,6 +15,7 @@ use App\Http\Controllers\PendingSwipeController;
 use App\Http\Controllers\ApiClientController;
 use App\Http\Controllers\CampusController;
 use App\Http\Controllers\AdminCampusController;
+use App\Http\Controllers\AdminRoutingRuleController;
 use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
@@ -231,6 +232,12 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');
         Route::delete('admin/campuses/{id}', [AdminCampusController::class, 'destroy'])->whereNumber('id');
+
+        // CRDE Phase 4 — immutable versioned routing store (create-version-only, never overwrite).
+        Route::get('admin/routing-rules', [AdminRoutingRuleController::class, 'index']);
+        Route::post('admin/routing-rules/versions', [AdminRoutingRuleController::class, 'store']);
+        Route::post('admin/routing-rules/versions/{version}/publish', [AdminRoutingRuleController::class, 'publish'])->whereNumber('version');
+        Route::get('admin/routing-rules/check', [AdminRoutingRuleController::class, 'check']);
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
