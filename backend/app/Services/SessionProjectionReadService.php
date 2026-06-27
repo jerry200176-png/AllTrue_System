@@ -157,8 +157,8 @@ class SessionProjectionReadService
     public function wrapCourseSplit(array $materialized, array $projected): array
     {
         return [
-            'materialized' => array_values($materialized),
-            'projected' => array_values($projected),
+            'materialized' => $materialized,
+            'projected' => $projected,
         ];
     }
 
@@ -173,18 +173,17 @@ class SessionProjectionReadService
         array $materializedByClass,
         callable $monthlyDatesResolver
     ): array {
+        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
         foreach ($classes as $class) {
             $classId = (int) ($class->ID ?? 0);
             if ($classId <= 0 || (string) ($class->ScheduleMode ?? '') !== 'date') {
                 continue;
             }
-            $materialized = $materializedByClass[(string) $classId] ?? [];
-            $materializedKeys = [];
-            foreach ($materialized as $row) {
-                $materializedKeys[$this->slotKey($row['session_date'], $row['start_time'])] = true;
-            }
-
+            $classKey = (string) $classId;
+            $materialized = array_key_exists($classKey, $materializedByClass)
+                ? $materializedByClass[$classKey]
+                : [];
             $existingDateSet = [];
             foreach ($materialized as $row) {
                 $existingDateSet[$row['session_date']] = true;

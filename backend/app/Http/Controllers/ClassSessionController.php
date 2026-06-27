@@ -403,6 +403,7 @@ class ClassSessionController extends Controller
 
         $reader = app(SessionProjectionReadService::class);
         $studentClassController = app(StudentClassController::class);
+        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         $projectedByClass = [];
 
         foreach ($materializedByClass as $classKey => $rows) {
@@ -452,7 +453,6 @@ class ClassSessionController extends Controller
             }
         }
 
-        /** @var array<string, list<array<string, mixed>>> $projectedByClass */
         return $projectedByClass;
     }
 

@@ -621,7 +621,7 @@ class StudentClassController extends Controller
                             (int) $cid,
                             $list,
                             $classSessionsBody,
-                            $cid !== null ? $bodyClasses->firstWhere('ID', (int) $cid) : null,
+                            $bodyClasses->firstWhere('ID', (int) $cid),
                             $rangeStart,
                             $rangeEnd
                         );
