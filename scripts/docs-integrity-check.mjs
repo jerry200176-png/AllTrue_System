@@ -193,6 +193,7 @@ const markdownFilesToCheck = [
   'README.md',
   'AGENTS.md',
   'docs/INDEX.md',
+  'docs/AI_REGRESSION_LESSONS.md',
   'docs/DOCS_GOVERNANCE_SOP.md',
   'docs/AI_DOC_LITERACY.md',
 ];

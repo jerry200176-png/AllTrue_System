@@ -9,7 +9,7 @@ last_reviewed: 2026-06-06
 本檔記錄**已發生過的產品／實作缺口**，避免下次改壞或改漏。  
 **任何 AI Agent 或新進開發者**：請與 `AGENTS.md` 的 First-read 順序一併閱讀；修改下列模組前**先對照本檔**。
 
-> 詳細事故記錄（33 條）→ [AI_REGRESSION_LESSONS_ARCHIVE.md](AI_REGRESSION_LESSONS_ARCHIVE.md)
+> 詳細事故記錄（33 條）→ [AI_REGRESSION_LESSONS_ARCHIVE.md](archive/AI_REGRESSION_LESSONS_ARCHIVE.md)
 >
 > **🔁 高復發檢討**：改排課/扣堂/月結/行事曆/停用課程前，先讀本檔 **§復發家族（Recurring Defect Families）** 認領 F1～F6，對照不變式並補回歸測試 —— 否則點修會再復發。
 
@@ -789,7 +789,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
-> 新增事故：請直接寫到 [AI_REGRESSION_LESSONS_ARCHIVE.md](AI_REGRESSION_LESSONS_ARCHIVE.md)，並更新上方黃/紅線（若升級為通用規則）。
+> 新增事故：請直接寫到 [AI_REGRESSION_LESSONS_ARCHIVE.md](archive/AI_REGRESSION_LESSONS_ARCHIVE.md)，並更新上方黃/紅線（若升級為通用規則）。
 
 ### R18. 家長入口 sibling 偵測必須驗證 LINE user ID 格式
 

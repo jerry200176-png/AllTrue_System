@@ -7,56 +7,34 @@
 
 ## 🔴 進行中狀態（交接區 — 完成後清空此節）
 
-更新時間：2026-06-14 15:30（Actions-down 高價值工作：support macro library + bug triage + project hygiene）
+更新時間：2026-06-27（Cursor 接手 Claude Code urgent handoff 驗收後）
 
-**本輪 Claude Code 交接成果（Actions minutes 用完期間，無 CI/deploy）**
-- 已驗證 production `version.json` = `6c68d8a0`（2026-06-14 10:35），**確認 #853 / #854 / #856 仍未部署**，deploy-dependent in-app bug 不可標 `resolved`。
-- **新增 `docs/GUIDE_SUPPORT_REPLY_MACROS.md`**（#907 交付草案）：10 個 in-app bug 公開回覆 macro，含公開留言＋內部備註＋禁用詞檢查＋對應狀態機；已補 `docs/INDEX.md` 兩處入口，並在 #907 留交付 comment。
-- **In-app bug triage**（read-only，未改 in-app 狀態/留言）：#851 / #855 / #909 各補「使用者白話問題 + 驗收條件 + blocked by deploy?」triage comment。#909（in-app #167）尚無修復、屬 audience mismatch（M8 macro 情境），未轉 triaged。
-- **Metadata hygiene**：#851 +`priority:p3`+`area:ui`+`status:blocked`；#855 +`priority:p3`+`status:blocked`；#867 / #870 +`status:blocked`（受 GitHub 帳單/額度卡住）。
-- ⚠️ gh token 缺 `read:project` scope，無法經 CLI 讀寫 Project v2 欄位；Project board 欄位同步需使用者 `gh auth refresh -s read:project,project` 後再做（milestone + labels 仍是規劃真相，已對齊）。
+**urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）驗收**
+- ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
+- ✅ in-app `#169` / `#170`：程式 `#928` / `#927` merged；in-app 狀態皆 `resolved`；prod 待審清單已無鄭筠霏 06-20（唯讀 API 驗證）。
+- ✅ `#919` self-hosted CI/deploy 已恢復；2026-06-21 deploy 至 `fd04b07` 成功。
+- ⏳ Bug 2 count 課稀疏堂次 materialize：**PR #937**（`fix/count-session-same-day-materialize`）；**刻意跳過 `PackageID>0` 共用池**（周宏謙 / #162 需商業規則後另 PR）。
+- ⏳ in-app `#174` 重疊課程 force-create modal：**PR #938**（`fix/course-overlap-force-create` → main）；prod 曾手動部署 `acf1251`，`version.json` 可能落後 git HEAD，merge 後應走正常 deploy。
+- 🗑️ 聚合 hotfix **PR #925** 已留言 superseded，可 close。
 
-**已部署並完成 in-app Phase C**
-- #852 任務中心去誤導 + SystemTrust 401 修復已部署到 production `version.json` hash `6c68d8a0`。
-- in-app #163 / #164 已依狀態機 `triaged → in_progress → resolved`，並已發公開驗收留言。
+**production 快照（2026-06-27）**
+- `GET /api/v1/health` → ok；`version.json` hash=`acf1251`（前端-only 手動部署痕跡；backend 實際含 `#922–#929` 多數修復，以 deploy log / Pi `git HEAD` 為準）。
+- **#926** Sentry `Unknown column 'not'`：2026-06-20 中間版 SQL 事故；**現行 prod `/learning-records` 200**，issue 可標 resolved-after-deploy 並關閉。
+- 新 in-app `#171–#176` / GitHub `#931–#936`：**不在本 handoff 範圍**，勿重複 triage。
 
-**已合併但尚未部署，禁止誤標 resolved**
-- #853 軍階系統重校（in-app #165）已 merge，但 production `version.json` 仍停在 `6c68d8a0`，尚未包含此修復。
-- #854 老師端「同事軍階」互看 strip 已 merge，但同樣尚未部署。
-- #856 bug 詳情手機自動捲入視野（in-app #166）已 merge，但尚未部署。
-- 已 rerun 最新 deploy workflow（head `5952e95`），仍在 GitHub-hosted runner 層的 `Detect deployable changes` failure，沒有 step log。部署卡點由 #867 / #870 追蹤。
+**待 merge / 待 CEO 決策**
+| 項目 | 動作 |
+|---|---|
+| **#937** Bug 2 materialize | CI 綠 → merge → deploy → 請陸逸老師驗證非共用池 count 課點名 |
+| **#938** #174 overlap modal | merge → deploy（讓 main 與 prod 收斂）|
+| **#874** + **#850** docs handoff | 本分支已更新 INDEX / SOP_MATURITY / ROADMAP / integrity-check；CI 綠後 merge（docs-only）|
+| **#920** in-app #168 | `status:needs-decision`：主任確認 3/19 是否計入本期後才開資料修復 PR |
+| **周宏謙共用池 materialize** | 需定義「12 堂池分配到各科」規則後再實作；不可 per-course SessionCount 盲目補堂 |
 
-**分支保護**
-- main required checks 已還原為 7 項：`Presubmit Checks`、`PHPUnit Feature & Unit Tests`、`Vite Frontend Build`、`gitleaks scan`、`Golden scenarios report`、`Docs Integrity Check`、`PHPStan Advisory (php)`。
-- 長期解：#867 把受帳單影響的 GitHub-hosted job 搬到 self-hosted 或替換為自架可跑的等價掃描。
-
-**GitHub roadmap 現況**
-- 舊 Phase 1/2/3 milestones（#1–#3）與 M1/M2/M3（#4–#6）皆已 0 open issue 並關閉；active roadmap 只看 M4–M9。
-- M4（#7）現包含 #867–873：staging / feature flags / CI 高可用 / merge queue / DORA / postmortem。
-- M5（#8）已建立：UI/UX 質感與可讀性；包含 epic #866、子 #857–865、in-app UX bugs #851 / #855、角色體驗 #909–912。
-- M6（#9）已建立：GitHub 治理與協作成熟度；包含 #875–880。
-- M7（#10）已建立：系統維護與 SRE 營運成熟度；包含 #881–886。
-- M8（#11）已建立：資安、隱私與合規成熟度；包含 #887–892。
-- M9（#12）已建立：工作流程與組織營運 SOP；包含 #893–898。
-
-**GitHub Projects**
-- `AllTrue Engineering Roadmap` 已建立：https://github.com/users/jerry200176-png/projects/1
-- 目前收錄 M4（#867–873）、M5（#866 + #857–865 + #909–912）、M6（#875–880）、M7（#881–886）、M8（#887–892）、M9（#893–898）與仍開著的 in-app bug 追蹤（#851 / #855）。
-- Project 欄位已補：`Status`、`Risk Tier`、`Area`、`Priority`、`Milestone`；milestone 仍是 roadmap 分組真相，Project 作為跨 milestone 執行視圖。
-
-**每個 milestone Top 3（避免 roadmap 膨脹，依 priority label + 當前可動性）**
-- M4：**#867** CI→self-hosted（解部署卡點）、**#870** CI 高可用 + 用量告警、**#868** staging 環境。← 三者都直接解今日帳單/部署 deadlock。
-- M5：**#909** 老師端 trust 面板白話化（status:ready，有真實 in-app 回饋）、**#858** 可讀性/對比 WCAG AA（p1）、**#866** UI/UX 去 AI 化 epic（總綱）。
-- M6：**#875** GitHub Environments（p1）、**#878** Release/Deploy/In-app 三者可追溯（p1）、**#877** Project automation（減少本輪這種手動 hygiene 工）。
-- M7：**#881** MySQL PITR（p1，降資料損失）、**#882** Full server DR tabletop（p1）、**#901** Data quality checks（p1，可先寫 spec）。
-- M8：**#888** IAM/access review、**#889** PII inventory/retention、**#887** host hardening（前兩者為 paper audit，Actions-down 期間即可推進）。
-- M9：**#893** Service catalog/ownership/RACI（p1）、**#905** Role-based QA matrix（p1，可先寫矩陣）、**#898** AI/human onboarding & handoff package（直接降低換手成本）。
-
-**狀態分類（M4–M9 open issues）**
-- `In Review`／待部署回寫：in-app #851（#165 部分）、#855——已合併、卡部署。
-- `Blocked`（外部依賴 / Actions capacity）：#867、#870、以及所有需 CI merge 才能落地的 production code PR。
-- `Ready`（無 CI 即可大幅推進的 paper/spec/docs 工）：#888、#889、#893、#894、#896、#898、#900、#901、#902、#903、#904、#905、#906、#907、#908。
-- `Backlog`（需設計或排期）：其餘 M5 UI 子項、M6/M7 需動到 infra 的項目。
+**下一個 Agent 第一步**
+1. `gh pr checks 937` / `938` → merge 順序：#938（前端）→ #937（後端）→ deploy → health。
+2. `gh pr merge 874`（docs）— 勿 stage `.cursor/plans/*` 或 tmp 診斷腳本。
+3. 讀本檔 + `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`；**不要**重寫 roadmap 或重開 #923/#924。
 
 ---
 

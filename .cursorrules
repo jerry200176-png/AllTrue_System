@@ -92,7 +92,7 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ### AI／開發防再犯（修改相關功能前必讀）
 - **`.cursor/.local/test-credentials.md`**：各角色測試帳號 + Browser MCP 登入 SOP（fill/type 踩坑、家長入口用 `?parent=1`）
-- **`docs/AI_REGRESSION_LESSONS.md`**：紅線/黃線速查摘要（127 行，必讀）＋模組索引；詳細事故 → `AI_REGRESSION_LESSONS_ARCHIVE.md`
+- **`docs/AI_REGRESSION_LESSONS.md`**：紅線/黃線速查摘要（127 行，必讀）＋模組索引；詳細事故 → `docs/archive/AI_REGRESSION_LESSONS_ARCHIVE.md`
 - **`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`**：繳費/續課提醒完整規則；**勿擅自改條件**
 - **`docs/OPERATIONS_RUNBOOK.md` §B1/B2**：分支治理與 Actions minutes 節流（PR 合併即刪、docs-only 不跑重 CI/不部署）
 
