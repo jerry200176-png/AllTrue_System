@@ -102,20 +102,6 @@ Route::post('/internal/opcache-reset', function (\Illuminate\Http\Request $req) 
     return response()->json(['ok' => true, 'opcache_cleared' => $cleared]);
 });
 
-// Debug: frontend sends log lines so we can read them on the server (storage/logs is writable)
-Route::post('/debug-log', function (\Illuminate\Http\Request $req) {
-    $path = storage_path('logs/debug-b5f8bc.log');
-    $payload = $req->all();
-    $payload['timestamp'] = $payload['timestamp'] ?? round(microtime(true) * 1000);
-    $line = json_encode($payload) . "\n";
-    try {
-        file_put_contents($path, $line, FILE_APPEND | LOCK_EX);
-    } catch (\Throwable $e) {
-        // ignore
-    }
-    return response()->json(['ok' => true]);
-});
-
 Route::prefix('v1')->group(function () {
     // ── Auth (public) ───────────────────────────────────────────────
     Route::post('auth/login', [AuthController::class, 'login']);
