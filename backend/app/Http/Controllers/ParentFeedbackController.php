@@ -153,6 +153,10 @@ class ParentFeedbackController extends Controller
     public function markReadByTeacher(Request $request, int $id)
     {
         $fb = ParentFeedback::findOrFail($id);
+        $auth = $this->authorizeStaffParentFeedback($request, $fb);
+        if ($auth !== true) {
+            return $auth;
+        }
         $fb->update(['is_read' => true, 'read_at' => now()]);
         return response()->json(['message' => 'ok']);
     }
@@ -166,6 +170,10 @@ class ParentFeedbackController extends Controller
         ]);
 
         $fb = ParentFeedback::findOrFail($id);
+        $auth = $this->authorizeStaffParentFeedback($request, $fb);
+        if ($auth !== true) {
+            return $auth;
+        }
         $user = $request->attributes->get('auth_user');
         $role = $request->attributes->get('auth_role', 'teacher');
 
@@ -195,6 +203,12 @@ class ParentFeedbackController extends Controller
 
     public function replies(Request $request, int $id)
     {
+        $fb = ParentFeedback::findOrFail($id);
+        $auth = $this->authorizeStaffParentFeedback($request, $fb);
+        if ($auth !== true) {
+            return $auth;
+        }
+
         if (!Schema::hasTable('parent_feedback_replies')) {
             return response()->json(['replies' => []]);
         }
@@ -215,6 +229,38 @@ class ParentFeedbackController extends Controller
     }
 
     // ─── Private ──────────────────────────────────────────────────────
+
+    /**
+     * Per-row staff auth for System B parent_feedback (mirrors System A authorizeStaffFeedback).
+     *
+     * @return true|\Illuminate\Http\JsonResponse
+     */
+    private function authorizeStaffParentFeedback(Request $request, ParentFeedback $fb)
+    {
+        $role = (string) $request->attributes->get('auth_role');
+        if ($role === 'super_admin') {
+            return true;
+        }
+        if ($role === 'teacher') {
+            $teacherId = (int) $request->attributes->get('auth_teacher_id');
+            if ($teacherId <= 0) {
+                return response()->json(['message' => 'Teacher not linked'], 403);
+            }
+            $hasStudent = StudentClass::where('TeacherID', $teacherId)
+                ->where('StudentID', (int) $fb->student_id)
+                ->where('Stop', 0)
+                ->exists();
+            if (!$hasStudent) {
+                return response()->json(['message' => 'Forbidden'], 403);
+            }
+            return true;
+        }
+        $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        if (!in_array((int) $fb->campus_id, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+        return true;
+    }
 
     private function resolveParentSession(Request $request): ?ParentSession
     {
