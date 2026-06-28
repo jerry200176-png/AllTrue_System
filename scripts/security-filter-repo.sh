@@ -37,6 +37,7 @@ echo "=== git-filter-repo: removing paths + redacting token patterns ==="
 git filter-repo --force \
   --path .env.monitor --invert-paths \
   --path-glob '.cursor/projects/**' --invert-paths \
+  --path-glob 'TelegramWebHook/**' --invert-paths \
   --path 'AllTrue (3).sql' --invert-paths \
   --path 'backups/alltrue_pre_perf_optimization_2026-04-16.sql' --invert-paths \
   --path 'backend/storage/backups/prd-e-20260418-232201.sql' --invert-paths \
