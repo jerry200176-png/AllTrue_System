@@ -1,21 +1,21 @@
 # Incident Decision System
 
-> **Production incident only.** Runtime loop entry.  
+> **Runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (supreme on conflict)  
 > **Policy:** [`docs/INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) · **Loop:** [`docs/INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
 > **Inference:** [`docs/INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) · **States:** [`docs/INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md)  
-> **Severity:** [`docs/SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) · **Runbook:** [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) · **Constraints:** [`docs/OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md)
+> **Severity lookup:** [`docs/SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) (reference only) · **Rollback helper:** [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) (reference only)
 
 ---
 
 ## Runtime decision mode
 
-| Mode | When | State assignment |
-|------|------|------------------|
-| **Inferred Mode** (default) | All production incidents | STATE from [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) — **mandatory** |
-| **Override Mode** | **ESCALATED_FAILURE** only | Human may assign STATE — must document reason + CEO LINE |
+| Mode | When | Rule |
+|------|------|------|
+| **Inferred Mode** (default) | All production incidents | STATE + FINAL_ACTION from inference + policy tables — **mandatory** |
+| **Override Mode** | **ESCALATED_FAILURE only** (Policy SH-2 or VERIFY fail) | Explicit documented override + CEO LINE — [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) |
 
-**Hard rule:** FINAL_ACTION from policy resolver (or inference fallback) — never ad-hoc.  
-**Precedence:** **POLICY > STATE > SIGNAL**
+**Hard rule:** FINAL_ACTION from policy resolver or inference fallback — never ad-hoc.  
+**Precedence:** POLICY > STATE > SIGNAL · **Contract I1–I5 supreme on conflict**
 
 ---
 
@@ -29,39 +29,15 @@
 
 ---
 
-## Operational authority contract
+## Authority (see contract — do not duplicate)
 
-1. **INDEX** = registry only (no authority)
-2. **INCIDENT system** = decision authority
-3. **`deploy.yml`** = execution authority
-4. **INCIDENT system overrides INDEX**
-5. **Deploy system executes only policy-resolved FINAL_ACTION** (or inference fallback)
+All runtime decisions and invariants: [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5.  
+Conflicts: [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md).
 
----
-
-## Control plane binding
-
-| Layer | Role | File |
-|-------|------|------|
-| **Policy layer** | FINAL_ACTION path compression + safety override | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) |
-| **Incident system** | Inference + state classification | [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) + [`INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md) |
-| **Execution system** | Deploy, rollback, health/smoke | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
-
-**Hard rules:**
-
-- **Policy MAY override** naive STATE→ACTION mapping (POLICY > STATE > SIGNAL).
-- **Policy MUST NOT assign STATE** (except SH-2 → ESCALATED_FAILURE).
-- **Deploy system MUST NOT:** decide STATE, select policy, or skip audit log.
-
-- **Deploy system executes only FINAL_ACTION** from policy resolver or inference fallback.
-
-Only committed files on `origin/main` define system truth. [`docs/INDEX.md`](INDEX.md) references them.
-
----
 
 ## Step reference (inference + policy rules)
 
-Apply in **TRIAGE** / policy resolution. No interpretation beyond these rules + policy table.
+Apply in **TRIAGE** / policy resolution. Explicit rule → deterministic outcome only.
 
 ### Rule 1 — Rollback priority (default action)
 
@@ -79,16 +55,15 @@ If exceeded → inference Rule 4 → **CONTAIN** (rollback) or **RECOVER** (if `
 
 ---
 
-## Authority boundary (policy vs inference vs execution)
+## Execution binding (contract I1 + I4)
 
-| System | Role |
-|--------|------|
-| **Policy** | Resolve FINAL_ACTION; compress path; P0 safety override |
+| Layer | Role |
+|-------|------|
+| **Policy** | Resolve FINAL_ACTION |
 | **Inference** | Infer STATE from signals |
-| **Deploy (execution)** | Run FINAL_ACTION when deploy-eligible |
+| **deploy.yml** | **Only** executor of production changes |
 
-- **Policy > STATE > SIGNAL** for execution path.
-- **Deploy system MUST NOT** decide STATE, select policy, or skip audit log.
+Policy MUST NOT replace `deploy.yml`. Runbooks describe steps; they do not execute.
 
 ---
 
@@ -273,4 +248,4 @@ bash scripts/post-merge-smoke.sh   # WSL2, after sync
 
 ---
 
-*Policy loop: INCIDENT_POLICY_ENGINE (FINAL_ACTION). Classification: inference. Execution: deploy.yml when FINAL_ACTION permits. Override: ESCALATED_FAILURE only.*
+*Contract: CONTROL_PLANE_CONTRACT. Decision: INCIDENT stack. Execution: deploy.yml only. Demoted refs: SEVERITY, ROLLBACK, SMOKE.*

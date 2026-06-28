@@ -15,8 +15,10 @@
 > All incident decisions MUST be made via [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md).  
 > All execution MUST be performed via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
 
-> **Operational Control Plane contract:** [`docs/OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md)  
-> 1. INDEX = registry only · 2. INCIDENT = decision · 3. deploy.yml = execution · 4. INCIDENT overrides INDEX · 5. deploy executes incident decisions only
+> **Runtime spec (frozen):** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) — **supreme on conflict**  
+> **Audit:** [`docs/CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · **Conflicts:** [`docs/CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)
+
+> **Operational Control Plane contract:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5)
 
 > **前人種樹，後人乘涼。**
 > 做事前讀 INDEX 定位文件；**執行與部署決策不讀 INDEX**，讀 execution authority 或 incident doc。
@@ -41,10 +43,13 @@
 
 **Schema (required fields per row):** `service name` · `role` · `execution owner` · `incident linkage` · `SLO`
 
-**Production incident?** → [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) → policy + inference
+**Production incident?** → [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) → [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)
 
 | Service name | Role | Execution owner | Incident linkage | SLO |
 |--------------|------|-----------------|------------------|-----|
+| Control plane contract | prod | [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) | supreme runtime spec | yes |
+| Contradiction registry | tool | [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) | conflict resolution | no |
+| Control plane enforcer | tool | [`CONTROL_PLANE_ENFORCER.md`](CONTROL_PLANE_ENFORCER.md) · `scripts/control-plane-lint.mjs` | CI gate | no |
 | AllTrue production app | prod | Pi runtime + [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | yes |
 | Incident policy engine | prod | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 3 | yes |
 | Incident inference engine | prod | [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 2 | yes |
@@ -53,18 +58,17 @@
 | Incident decision entry | prod | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | observe + runbook paths | yes |
 | Production deploy | infra | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) § CONTAIN | yes |
 | CI merge gate | infra | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) · [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) CI-* | yes |
-| Rollback procedures | infra | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) (reference) → `deploy.yml` (exec) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
-| Severity classification | prod | [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
+| Rollback procedures | ref | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) → `deploy.yml` | execution helper only | yes |
+| Severity lookup | ref | [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) | mapping only — no decision authority | yes |
 | Dangerous ops guard | infra | [`DANGEROUS_OPERATIONS.md`](DANGEROUS_OPERATIONS.md) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
 | Backup / restore | infra | [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) §P · [`.github/workflows/backup-restore-test.yml`](../.github/workflows/backup-restore-test.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) DB path | yes |
-| Operational constraints | tool | [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) | — | no |
+| Operational constraints | ref | [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) | checklist — does not override contract | no |
 | SOP drift audit | tool | [`OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md) | — | no |
 | MemPalace ingest | local | [`MEMPALACE_OPERATIONS_HANDBOOK.md`](MEMPALACE_OPERATIONS_HANDBOOK.md) · `scripts/mempalace-ingest.sh` | none (MP-* best-effort) | **no** |
 
-**MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
-It is a local best-effort system and must not be used for production inference.
+**MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 
-**Authority contract:** [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) · INDEX references only — no runtime decisions here.
+**Authority:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) · INDEX = registry only
 
 ---
 
@@ -344,8 +348,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ## 📐 MemPalace 導航（dev tooling — NOT production）
 
-> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
-> It is a local best-effort system and must not be used for production inference.
+> **MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 
 **索引更新（唯一入口 — event-sourced DAG）：**
 ```bash

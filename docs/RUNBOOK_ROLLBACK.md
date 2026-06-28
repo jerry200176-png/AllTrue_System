@@ -6,9 +6,8 @@ last_reviewed: 2026-06-07
 
 # RUNBOOK — Rollback（回滾標準作業程序）
 
-> 目的：當一次 deploy 造成 production 異常（health/smoke 失敗、關鍵功能壞、資料風險）時，
-> 用**最短時間、最小破壞**把系統恢復到上一個已知良好版本。
-> **Decision:** [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) + state machine. **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). This runbook is execution reference only.
+> **REFERENCE ONLY — execution helper.** Describes how to execute policy-resolved FINAL_ACTION (`rollback_deploy`, `recover_db`).  
+> **Decision:** INCIDENT stack ([`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (I1).
 > 對應自動化：`.github/workflows/rollback-readiness.yml` + `scripts/rollback-readiness.sh`（非破壞性就緒度檢查，#733）。
 >
 > 前置認知：本系統部署是 **git-commit 為基礎**（非 Docker image）。
