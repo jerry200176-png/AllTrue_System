@@ -45,7 +45,7 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json((string) $courseId) ?? [];
+        $dates = $this->extractSessionDatesFromSplit($res->json((string) $courseId) ?? []);
 
         $this->assertCount(24, $dates, 'self-week fallback must yield 24 weekly Monday dates');
         foreach ($dates as $d) {
@@ -77,7 +77,7 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json((string) $emptyId) ?? [];
+        $dates = $this->extractSessionDatesFromSplit($res->json((string) $emptyId) ?? []);
         $this->assertCount(8, $dates, 'sibling fallback (#440) must still apply when self is empty');
         foreach ($dates as $d) {
             $this->assertSame(2, (int) date('N', strtotime((string) $d)), "$d should be a Tuesday");
@@ -106,11 +106,33 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json((string) $courseId) ?? [];
+        $dates = $this->extractSessionDatesFromSplit($res->json((string) $courseId) ?? []);
         $this->assertCount(4, $dates);
         foreach ($dates as $d) {
             $this->assertSame(3, (int) date('N', strtotime((string) $d)), "$d should be a Wednesday");
         }
+    }
+
+    /**
+     * @param  array<string, mixed>|list<mixed>  $splitOrLegacy
+     * @return list<string>
+     */
+    private function extractSessionDatesFromSplit($splitOrLegacy): array
+    {
+        if (!is_array($splitOrLegacy)) {
+            return [];
+        }
+        if (array_is_list($splitOrLegacy)) {
+            return array_values(array_unique(array_map(
+                static fn ($d) => substr((string) $d, 0, 10),
+                $splitOrLegacy
+            )));
+        }
+
+        return array_values(array_unique(array_merge(
+            array_column($splitOrLegacy['materialized'] ?? [], 'session_date'),
+            array_column($splitOrLegacy['projected'] ?? [], 'session_date')
+        )));
     }
 
     private function postSessionDates(string $token, array $body)

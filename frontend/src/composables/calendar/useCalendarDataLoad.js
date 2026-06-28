@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { supabase } from '../../supabase';
-import { fetchClassSessions } from '../../lib/classSessionsApi';
+import { fetchClassSessions, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { shouldUseLegacyCalendarFallback } from '../../lib/calendarLoadPerformance';
 import {
@@ -180,7 +180,7 @@ export function useCalendarDataLoad({
             end: schedEnd,
             perPage: 2000,
           });
-          sessionDatesByCourseId.value = byClass || {};
+          sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(byClass || {});
         } catch (_) {
           sessionDatesByCourseId.value = {};
         }

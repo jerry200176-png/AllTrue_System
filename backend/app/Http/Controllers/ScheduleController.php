@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentSignIn;
+use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
@@ -495,7 +496,16 @@ class ScheduleController extends Controller
                     return response()->json(['message' => '找不到堂次'], 404);
                 }
 
-                if (strtolower((string) ($session->Status ?? '')) !== 'leave') {
+                $csStatus = strtolower((string) ($session->Status ?? ''));
+                // 請假的單一真相是 StudentSingIn.Status='leave'；部分路徑沒同步把 ClassSession.Status
+                // 設為 leave（殘留 scheduled），舊邏輯只認 ClassSession.Status 會誤判「非請假」而擋下撤銷
+                // （in-app #169：課表寫請假、點開非請假、收不回）。因此一併認列「該堂有未作廢請假簽到」。
+                $hasLeaveSignIn = StudentSignIn::where('ClassSessionID', $sessionId)
+                    ->whereNull('VoidedAt')
+                    ->whereIn('Status', ['leave', 'excused', 'leave_requested'])
+                    ->exists();
+
+                if ($csStatus !== 'leave' && !$hasLeaveSignIn) {
                     return response()->json(['message' => '僅能撤銷請假狀態的堂次'], 422);
                 }
 
@@ -513,8 +523,28 @@ class ScheduleController extends Controller
 
                 $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
 
-                [$rows, $extendedEndDate, $leaveSessionDate] =
-                    CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
+                if ($csStatus === 'leave') {
+                    // 正常請假：走 cascade 反轉（含下游已上課護欄、回復順延尾堂）。
+                    [$rows, $extendedEndDate, $leaveSessionDate] =
+                        CourseLeaveCascadeService::undoLeaveCascade($courseId, $sessionDate);
+                } else {
+                    // Desync：請假只記在簽到、ClassSession 仍非 leave、未產生順延。
+                    // 作廢請假簽到並確保堂次回到 scheduled 即完成撤銷（無 cascade 需反轉）。
+                    StudentSignIn::where('ClassSessionID', $sessionId)
+                        ->whereNull('VoidedAt')
+                        ->whereIn('Status', ['leave', 'excused', 'leave_requested'])
+                        ->update([
+                            'VoidedAt' => now(),
+                            'VoidReason' => '撤銷請假（簽到/堂次狀態不一致修正）',
+                        ]);
+                    if ($csStatus !== 'scheduled') {
+                        $session->Status = 'scheduled';
+                        $session->save();
+                    }
+                    $rows = CourseLeaveCascadeService::fetchCourseSessionRows($courseId);
+                    $extendedEndDate = null;
+                    $leaveSessionDate = $sessionDate;
+                }
 
                 Schedule::where('student_course_id', $courseId)
                     ->whereDate('schedule_date', $sessionDate)
@@ -1020,27 +1050,20 @@ class ScheduleController extends Controller
             $endTime .= ':00';
         }
 
-        $existing = ClassSession::where('StudentClassID', $courseId)
-            ->where('SessionDate', $sessionDate)
-            ->where('StartTime', $startTime)
-            ->first();
-
-        if ($existing) {
+        $result = app(ClassSessionMaterializationService::class)->upsertSlot([
+            'StudentClassID' => $courseId,
+            'SessionDate'    => $sessionDate,
+            'StartTime'      => $startTime,
+            'SubjectID'      => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
+            'EndTime'        => $endTime,
+            'Status'         => 'scheduled',
+            'Note'           => 'auto-materialized-from-schedule',
+        ]);
+        $existing = $result['session'];
+        if (!$result['created'] && in_array($existing->Status, ['cancelled'], true)) {
             // Re-activate a previously cancelled slot (e.g. reschedule destination that
             // was cancelled by an earlier operation). Never override 'attended' or 'leave'.
-            if (in_array($existing->Status, ['cancelled'], true)) {
-                $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
-            }
-        } else {
-            ClassSession::create([
-                'StudentClassID' => $courseId,
-                'SessionDate'    => $sessionDate,
-                'StartTime'      => $startTime,
-                'SubjectID'      => StudentClass::where('ID', $courseId)->value('SubjectID') ?: null,
-                'EndTime'        => $endTime,
-                'Status'         => 'scheduled',
-                'Note'           => 'auto-materialized-from-schedule',
-            ]);
+            $existing->update(['Status' => 'scheduled', 'EndTime' => $endTime]);
         }
     }
 
