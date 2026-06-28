@@ -53,6 +53,7 @@
 | A5.2 | CONTRADICTION_REGISTRY K1–K10 present |
 | A5.3 | Contract change process documented |
 | A5.4 | Precedence: CONTRACT > CONTRADICTION_REGISTRY > INCIDENT stack > demoted refs |
+| A5.5 | `node scripts/control-plane-lint.mjs` exits 0 |
 
 ---
 
