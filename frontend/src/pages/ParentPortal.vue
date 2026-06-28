@@ -758,7 +758,7 @@
           </div>
         </div>
 
-        <!-- Notification preferences (TD-063 / #1051) -->
+        <!-- Notification preferences (TD-063 / issue 1051) -->
         <div class="pp-card">
           <div class="pp-section-header">
             <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-ink-mute);">notifications</span>
