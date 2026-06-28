@@ -31,6 +31,17 @@ deploy.yml / runbook (execution only)
 
 ---
 
+## FINAL_ACTION execution constraint (contract I1 — binding)
+
+| Rule | Detail |
+|------|--------|
+| **Describe only** | FINAL_ACTION names the recovery intent (`rollback_deploy`, `recover_db`, `verify_only`, …) |
+| **Execute only via deploy.yml** | Production deploy and redeploy rollback **must** go through [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) |
+| **Runbooks are helpers** | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) documents steps — it does **not** execute or authorize alternate pipelines |
+| **Forbidden** | FINAL_ACTION must **not** define SSH paths, alternate workflows, or manual deploy as normal execution |
+
+---
+
 ## Policy types
 
 ### P0 — Safety-first policy (highest priority)

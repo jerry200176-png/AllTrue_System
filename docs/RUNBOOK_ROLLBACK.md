@@ -6,8 +6,8 @@ last_reviewed: 2026-06-07
 
 # RUNBOOK — Rollback（回滾標準作業程序）
 
-> **REFERENCE ONLY — execution helper.** Describes how to execute policy-resolved FINAL_ACTION (`rollback_deploy`, `recover_db`).  
-> **Decision:** INCIDENT stack ([`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (I1).
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Execution helper for FINAL_ACTION steps. Decision: INCIDENT stack (I3). Execution: `deploy.yml` (I1).
 > 對應自動化：`.github/workflows/rollback-readiness.yml` + `scripts/rollback-readiness.sh`（非破壞性就緒度檢查，#733）。
 >
 > 前置認知：本系統部署是 **git-commit 為基礎**（非 Docker image）。
