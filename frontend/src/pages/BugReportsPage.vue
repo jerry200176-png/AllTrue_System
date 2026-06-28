@@ -227,8 +227,12 @@
 
       <!-- Bug list（只在 Bug Tab 顯示）-->
       <div v-if="!isSuperAdmin || pageTab === 'bugs'" class="card" data-guide="bugs-list" ref="listCardRef">
+        <div v-if="listError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
+          {{ listError }}
+          <button type="button" class="btn-sm btn-ghost" style="margin-left:8px" @click="loadBugs">重試</button>
+        </div>
         <div v-if="loading" class="loading-box">載入中...</div>
-        <div v-else-if="bugs.length === 0" class="empty-box">
+        <div v-else-if="!listError && bugs.length === 0" class="empty-box">
           <span class="material-symbols-outlined empty-icon">check_circle</span>
           <p v-if="hasActiveFilters">沒有符合篩選條件的 Bug</p>
           <p v-else>目前沒有 Bug 回報</p>
@@ -307,6 +311,10 @@
         </div>
 
         <div v-if="loadingDetail" class="loading-box">載入詳情...</div>
+        <div v-else-if="detailError" class="att-msg error bugs-error-banner" style="margin-bottom:12px">
+          {{ detailError }}
+          <button type="button" class="btn-sm btn-ghost" style="margin-left:8px" @click="selectBug(activeBug)">重試</button>
+        </div>
         <template v-else-if="detail">
           <!-- Resolved: reporter sees verification prompt; others see read-only banner -->
           <div v-if="detail.status === 'resolved' && isReporter" class="verify-prompt">
@@ -458,6 +466,8 @@ const detailCardEl = ref(null);
 const detail = ref(null);
 const loading = ref(false);
 const loadingDetail = ref(false);
+const listError = ref('');
+const detailError = ref('');
 
 // Reporters default to 'all' so they see progress on their submitted bugs.
 // Super-admins default to 'pending' because they need an action queue.
@@ -734,9 +744,21 @@ function buildStatusFilter() {
   return ''; // 'all' → no filter
 }
 
+function bugLoadErrorMessage(e, fallback) {
+  const msg = e?.message || '';
+  if (msg.includes('401') || msg.toLowerCase().includes('unauthorized')) {
+    return '登入已過期，請重新整理頁面後再試';
+  }
+  if (msg.includes('403')) {
+    return '沒有權限查看此內容，請確認分校設定';
+  }
+  return fallback;
+}
+
 async function loadBugs() {
   if (!props.branchId) return;
   loading.value = true;
+  listError.value = '';
   try {
     const filters = {};
     const st = buildStatusFilter();
@@ -755,6 +777,8 @@ async function loadBugs() {
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
   } catch (e) {
     console.error('[Bugs] loadBugs:', e);
+    listError.value = bugLoadErrorMessage(e, '無法載入 Bug 列表，請稍後再試');
+    bugs.value = [];
   } finally {
     loading.value = false;
   }
@@ -763,11 +787,14 @@ async function loadBugs() {
 function closeDetail() {
   activeBug.value = null;
   detail.value = null;
+  detailError.value = '';
 }
 
 async function selectBug(bug) {
+  if (!bug) return;
   activeBug.value = bug;
   loadingDetail.value = true;
+  detailError.value = '';
   newStatus.value = '';
   statusNote.value = '';
   newComment.value = '';
@@ -783,6 +810,8 @@ async function selectBug(bug) {
     markBugRead(bug.id);
   } catch (e) {
     console.error('[Bugs] fetchDetail:', e);
+    detail.value = null;
+    detailError.value = bugLoadErrorMessage(e, '無法載入詳情，請稍後再試');
   } finally {
     loadingDetail.value = false;
     window.dispatchEvent(new CustomEvent('alltrue-refresh-badges'));
