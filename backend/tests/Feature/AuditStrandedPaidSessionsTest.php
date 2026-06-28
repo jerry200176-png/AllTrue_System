@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 /**
@@ -75,10 +76,11 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'scheduled',
         ]);
 
-        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
-            ->expectsOutputToContain('"stranded_courses": 1')
-            ->expectsOutputToContain('"stranded_sessions": 5')
-            ->assertExitCode(0);
+        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
+        $out = Artisan::output();
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('"stranded_courses":1', $out);
+        $this->assertStringContainsString('"stranded_sessions":5', $out);
     }
 
     public function test_past_only_session_still_counts_as_stranded(): void
@@ -94,9 +96,9 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'attended',
         ]);
 
-        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
-            ->expectsOutputToContain('"stranded_courses": 1')
-            ->assertExitCode(0);
+        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('"stranded_courses":1', Artisan::output());
     }
 
     public function test_cancelled_upcoming_session_does_not_rescue_course(): void
@@ -111,8 +113,8 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'cancelled',
         ]);
 
-        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
-            ->expectsOutputToContain('"stranded_courses": 1')
-            ->assertExitCode(0);
+        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
+        $this->assertSame(0, $code);
+        $this->assertStringContainsString('"stranded_courses":1', Artisan::output());
     }
 }
