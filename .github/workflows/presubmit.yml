@@ -68,6 +68,7 @@ jobs:
             -- ':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
                ':!**/composer.lock' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
+               ':!*.log' ':!**/*.log' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
                "${EXTRA_EXCLUDE[@]}" \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
