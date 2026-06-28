@@ -298,7 +298,11 @@ export function mergeWeekCalendarOccurrences({
     const ymd = defaultToYmd(weekDatesByDow[dow]);
     if (ymd) dowByDate.set(ymd, dow);
   }
-  for (const course of courses) {
+  // #1035 / in-app #182–#184: week-filtered `courses` can omit a contract while
+  // sessionDatesByCourseId still holds materialized ClassSession rows for this week
+  // (e.g. EndDate boundary, displayWeek filter). Materialized truth must scan
+  // allCourses, not the pre-filtered projection list.
+  for (const course of allCourses) {
     const cid = String(course?.id ?? '');
     if (!cid) continue;
     for (const sessionRow of rowsForCourse(cid)) {

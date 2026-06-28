@@ -370,3 +370,22 @@ assert.equal(
   1,
   '#180: the recovered session must render exactly once (no duplicate)',
 );
+
+// #1035: materialized pass must use allCourses — when `courses` is empty (week filter
+// removed the contract) but sessionDatesByCourseId has a live row, calendar still renders.
+const materializedWhenCoursesFiltered = merge({
+  courses: [],
+  allCourses: [{ ...baseCourse, id: 820, student_id: 493, student_name: '吳湘翎', days_of_week: [6] }],
+  sessionDatesByCourseId: {
+    820: [
+      { id: 7309, student_class_id: 820, session_date: '2026-06-28', start_time: '10:00', end_time: '12:00', status: 'attended', teacher_id: 70, teacher_name: 'Coco' },
+    ],
+  },
+  weekDatesByDow: { 6: '2026-06-28' },
+  courseLastSessionDate: { 820: '2026-06-28' },
+  exceptions: [],
+});
+assert.ok(
+  materializedWhenCoursesFiltered.some((o) => o.class_session_id === 7309),
+  '#1035: materialized ClassSession renders when courses list is empty but allCourses + sessions exist',
+);
