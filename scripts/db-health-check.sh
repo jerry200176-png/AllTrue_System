@@ -28,8 +28,8 @@ DB_PORT=$(get_env DB_PORT)
 DB_DATABASE=$(get_env DB_DATABASE)
 DB_USERNAME=$(get_env DB_USERNAME)
 DB_PASSWORD=$(get_env DB_PASSWORD)
-# ── 讀取 Telegram 設定（統一從 .env.monitor 取）──
-MONITOR_ENV="$REPO_ROOT/.env.monitor"
+# ── 讀取 Telegram 設定（Pi 本機 /home/admin/.env.monitor，不在 repo 內）──
+MONITOR_ENV="/home/admin/.env.monitor"
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 if [ -f "$MONITOR_ENV" ]; then
