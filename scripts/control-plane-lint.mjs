@@ -62,6 +62,29 @@ const INDEX_DEPLOY_BEHAVIOR = [
   /\bauto-rollback\b/i,
 ];
 
+const INDEX_GOVERNANCE_LOGIC = [
+  /\bdecision logic\b/i,
+  /\bpolicy engine decides\b/i,
+  /\boverride policy\b/i,
+  /\bincident resolution logic\b/i,
+  /\bsystem decides\b/i,
+  /\bmust deploy\b/i,
+];
+
+/** Tracked workflows allowed to SSH to Pi for non-deploy purposes */
+const SSH_WORKFLOW_ALLOWLIST = new Set([
+  'deploy.yml',
+  'teacher-signin-recovery.yml',
+  'teacher-signin-diagnose.yml',
+  'pi-health.yml',
+]);
+
+/** Patterns indicating production deploy (git reset origin/main on Pi) */
+const PRODUCTION_DEPLOY_MARKERS = [
+  /git reset --hard origin\/main/i,
+  /git fetch origin main/i,
+];
+
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8');
 }
@@ -220,6 +243,69 @@ function checkExecutionI1() {
       }
     }
   }
+  checkTrackedProductionDeployWorkflows();
+}
+
+function checkTrackedProductionDeployWorkflows() {
+  let tracked = [];
+  try {
+    tracked = execSync('git ls-files .github/workflows/*.yml', { cwd: root, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return;
+  }
+  for (const rel of tracked) {
+    const base = path.basename(rel);
+    if (SSH_WORKFLOW_ALLOWLIST.has(base)) continue;
+    const text = read(rel);
+    const hasProdDeploy = PRODUCTION_DEPLOY_MARKERS.every((p) => p.test(text));
+    const hasSsh = /ssh\s+-i|ENDSSH|\/home\/admin/.test(text);
+    if (hasProdDeploy && hasSsh) {
+      add(
+        'I1',
+        rel,
+        0,
+        'tracked workflow performs production deploy — only deploy.yml may execute production changes',
+      );
+    }
+    if (/deploy-production|deploy-staging|ADR-001 production deploy/i.test(text) && !/\/archive\//.test(rel)) {
+      add('I1', rel, 0, 'shadow deploy workflow must not be tracked under .github/workflows/');
+    }
+  }
+}
+
+function checkIndexGovernanceLogic() {
+  if (!exists('docs/INDEX.md')) return;
+  const index = read('docs/INDEX.md');
+  for (const hit of linesWithMatches(index, INDEX_GOVERNANCE_LOGIC)) {
+    add('I2', 'docs/INDEX.md', hit.line, `INDEX governance logic prose: ${hit.text}`);
+  }
+}
+
+function checkIncidentExecutionBinding() {
+  const policy = exists('docs/INCIDENT_POLICY_ENGINE.md') ? read('docs/INCIDENT_POLICY_ENGINE.md') : '';
+  const start = exists('docs/INCIDENT_START_HERE.md') ? read('docs/INCIDENT_START_HERE.md') : '';
+  if (policy && !/deploy\.yml only|deploy\.yml\` only|I1/i.test(policy)) {
+    add('I4', 'docs/INCIDENT_POLICY_ENGINE.md', 0, 'missing FINAL_ACTION → deploy.yml-only execution binding');
+  }
+  if (start && !start.includes('deploy.yml')) {
+    add('I3', 'docs/INCIDENT_START_HERE.md', 0, 'missing deploy.yml as execution endpoint reference');
+  }
+  const forbiddenExecPaths = [
+    /deploy-production\.yml/i,
+    /deploy-staging\.yml/i,
+    /release-exec\.sh.*production/i,
+  ];
+  for (const file of INCIDENT_STACK) {
+    if (!exists(file)) continue;
+    const text = read(file);
+    for (const p of forbiddenExecPaths) {
+      if (p.test(text) && !/must not|forbidden|archive|historical/i.test(text)) {
+        add('I1', file, 0, 'INCIDENT stack references shadow execution path');
+      }
+    }
+  }
 }
 
 function checkCodeImportBarrier() {
@@ -307,7 +393,9 @@ function main() {
     checkContradictionRegistry();
     checkDemotedBanners();
     checkIndexI2();
+    checkIndexGovernanceLogic();
     checkDecisionPathE3E5();
+    checkIncidentExecutionBinding();
     checkPolicyI4();
     checkMemPalaceE7();
     checkExecutionI1();
