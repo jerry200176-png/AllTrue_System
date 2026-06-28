@@ -334,7 +334,19 @@ class BugReportController extends Controller
         $branchId = (int) $request->input('branch_id', 0);
         if ($branchId > 0 && !empty($campusIds)) {
             if (!in_array($branchId, $campusIds, true)) {
-                abort(403, 'Forbidden');
+                // Authorization is unchanged — the user still cannot act on a campus
+                // outside their approved set. But the response is now actionable instead
+                // of an opaque "Forbidden": this is the failure teachers hit when the
+                // bug-report widget tags a branch the account is not authorized for
+                // (e.g. a 新莊 teacher whose UserCampus row for that branch is pending).
+                // See #1055.
+                abort(response()->json([
+                    'message' => '無法存取分校 #' . $branchId . '：此帳號未獲授權存取該分校。'
+                        . '請改用您所屬分校操作，或聯繫管理員開通權限。',
+                    'code' => 'campus_not_authorized',
+                    'branch_id' => $branchId,
+                    'allowed_campus_ids' => array_values($campusIds),
+                ], 403));
             }
             return [$branchId];
         }
