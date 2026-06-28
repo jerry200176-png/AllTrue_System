@@ -28,7 +28,7 @@ class TelegramWebhookSecurityTest extends TestCase
         ], $overrides));
     }
 
-    private function post(string $code, array $update, ?string $secret)
+    private function postTelegramWebhook(string $code, array $update, ?string $secret)
     {
         $headers = $secret === null ? [] : ['X-Telegram-Bot-Api-Secret-Token' => $secret];
 
@@ -42,35 +42,35 @@ class TelegramWebhookSecurityTest extends TestCase
 
     public function test_unknown_campus_returns_404(): void
     {
-        $this->post('no-such-code', $this->update('1', 'hi'), 'webhook-secret-xyz')
+        $this->postTelegramWebhook('no-such-code', $this->update('1', 'hi'), 'webhook-secret-xyz')
             ->assertStatus(404);
     }
 
     public function test_campus_without_bot_token_returns_503(): void
     {
         $campus = $this->campus(['TelegramToken' => '']);
-        $this->post($campus->code, $this->update('1', 'hi'), 'webhook-secret-xyz')
+        $this->postTelegramWebhook($campus->code, $this->update('1', 'hi'), 'webhook-secret-xyz')
             ->assertStatus(503);
     }
 
     public function test_campus_without_webhook_secret_fails_closed_503(): void
     {
         $campus = $this->campus(['TelegramWebhookSecret' => '']);
-        $this->post($campus->code, $this->update('1', 'hi'), 'anything')
+        $this->postTelegramWebhook($campus->code, $this->update('1', 'hi'), 'anything')
             ->assertStatus(503);
     }
 
     public function test_missing_secret_header_is_rejected_403(): void
     {
         $campus = $this->campus();
-        $this->post($campus->code, $this->update('1', 'hi'), null)
+        $this->postTelegramWebhook($campus->code, $this->update('1', 'hi'), null)
             ->assertStatus(403);
     }
 
     public function test_wrong_secret_header_is_rejected_403(): void
     {
         $campus = $this->campus();
-        $this->post($campus->code, $this->update('1', 'hi'), 'wrong-secret')
+        $this->postTelegramWebhook($campus->code, $this->update('1', 'hi'), 'wrong-secret')
             ->assertStatus(403);
     }
 
@@ -86,7 +86,7 @@ class TelegramWebhookSecurityTest extends TestCase
             'Notify_Token' => '',
         ]);
 
-        $this->post($campus->code, $this->update('777', '未授權綁定生'), null)
+        $this->postTelegramWebhook($campus->code, $this->update('777', '未授權綁定生'), null)
             ->assertStatus(403);
 
         $this->assertNull($student->fresh()->TelegramID);
@@ -97,7 +97,7 @@ class TelegramWebhookSecurityTest extends TestCase
         Http::fake(['https://api.telegram.org/*' => Http::response(['ok' => true], 200)]);
         $campus = $this->campus();
 
-        $this->post($campus->code, $this->update('555', '/start'), 'webhook-secret-xyz')
+        $this->postTelegramWebhook($campus->code, $this->update('555', '/start'), 'webhook-secret-xyz')
             ->assertOk();
     }
 }
