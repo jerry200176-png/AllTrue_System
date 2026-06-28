@@ -1023,7 +1023,7 @@ async function loadWeekSchedule() {
   const startStr = formatDate(weekStart.value);
   const endStr = formatDate(weekEnd.value);
 
-  // #178: fetch the teacher's whole week WITHOUT branch_id. The class-sessions
+  // in-app bug 178 (GH-941): fetch the teacher's whole week WITHOUT branch_id. The class-sessions
   // endpoint already scopes the teacher role to their own sessions (contract or
   // substitute) across every campus they can access (auth_campus_ids). Passing a
   // single branch_id collapsed that to one campus and hid cross-campus classes
