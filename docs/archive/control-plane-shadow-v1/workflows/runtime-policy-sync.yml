@@ -1,0 +1,64 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# Runtime metrics sync — does NOT create or modify ci-artifacts/pdp.json
+
+name: Runtime Policy Sync
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-policy-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Runtime Metrics Sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect runtime metrics
+        id: metrics
+        continue-on-error: true
+        run: |
+          chmod +x scripts/runtime/metrics-collector.py scripts/platform/*.py
+          mkdir -p ci-artifacts/runtime
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          MET="ci-artifacts/runtime/metrics-${TS}.json"
+          python3 scripts/runtime/metrics-collector.py | tee "$MET" || echo '{"error_rate":0,"latency_p95":0,"slo_breach":false}' > "$MET"
+          echo "timestamp=$TS" >> "$GITHUB_OUTPUT"
+          echo "metrics_path=$MET" >> "$GITHUB_OUTPUT"
+
+      - name: Write metrics-only latest.json
+        continue-on-error: true
+        env:
+          MET: ${{ steps.metrics.outputs.metrics_path }}
+        run: python3 scripts/platform/runtime-pdp-artifact.py --metrics "$MET"
+
+      - name: Sync status (no policy inference)
+        continue-on-error: true
+        env:
+          TS: ${{ steps.metrics.outputs.timestamp }}
+        run: SYNC_OUT="ci-artifacts/runtime/sync-status-${TS}.json" python3 scripts/platform/policy-runtime-sync.py
+
+      - name: Upload runtime metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-metrics-${{ steps.metrics.outputs.timestamp }}
+          path: ci-artifacts/runtime/
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,0 +1,147 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# ADR-001: Staging promotion (PDP gate) — prerequisite for production deploy
+
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA (default HEAD)'
+        required: false
+      pr_number:
+        description: 'PR number (auto-detected if empty)'
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  detect-deployable:
+    name: Detect deployable changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      deployable: ${{ steps.detect.outputs.deployable }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check deployable diff
+        id: detect
+        run: |
+          python3 - <<'PY'
+          import subprocess, os
+          head = os.environ.get("GITHUB_SHA", "HEAD")
+          try:
+              base = subprocess.check_output(["git", "rev-parse", f"{head}^"], text=True).strip()
+          except subprocess.CalledProcessError:
+              base = head
+          diff = subprocess.check_output(["git", "diff", "--name-only", base, head], text=True).splitlines()
+          prefixes = ("backend/", "frontend/", "scripts/")
+          exact = {".github/workflows/deploy-staging.yml", ".github/workflows/deploy-production.yml"}
+          deployable = any(p.startswith(prefixes) or p in exact for p in diff)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"deployable={'true' if deployable else 'false'}\n")
+          PY
+
+  staging-promotion:
+    name: Staging Promotion (PDP)
+    needs: detect-deployable
+    if: needs.detect-deployable.outputs.deployable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve commit and PR
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -n "${{ github.event.inputs.commit_sha }}" ]]; then SHA="${{ github.event.inputs.commit_sha }}"; else SHA="${{ github.sha }}"; fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          PR="${{ github.event.inputs.pr_number }}"
+          [[ -n "$PR" ]] || PR=$(gh api "/repos/${{ github.repository }}/commits/${SHA}/pulls" --jq '.[0].number // empty' 2>/dev/null || true)
+          [[ -n "$PR" ]] || { echo "::error::Cannot resolve PR"; exit 1; }
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.py scripts/platform/*.sh
+
+      - name: Assemble canonical PDP
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ steps.ctx.outputs.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: main
+          PDP_SIGNING_PRIVATE_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY }}
+          PDP_SIGNING_ALLOW_TEST_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY == '' && '1' || '' }}
+        run: |
+          mkdir -p ci-artifacts/platform-gate ci-artifacts/promotion
+          ./scripts/platform/platform-gate.sh --pr "${{ steps.ctx.outputs.pr }}" \
+            --out "ci-artifacts/platform-gate/pr-${{ steps.ctx.outputs.pr }}.json"
+
+      - name: GitHub Enforcement Attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/platform/github-enforcement-attestation.sh
+
+      - name: Verify PDP (ADR-001 prerequisite)
+        env:
+          GITHUB_SHA: ${{ steps.ctx.outputs.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          bash scripts/platform/control-plane-verify.sh ci-artifacts/pdp.json
+          python3 scripts/platform/promotion_integrity.py --pdp ci-artifacts/pdp.json --commit "${{ steps.ctx.outputs.sha }}"
+
+      - name: Execute staging promotion + re-sign PDP
+        env:
+          PDP_SIGNING_PRIVATE_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY }}
+          PDP_SIGNING_ALLOW_TEST_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY == '' && '1' || '' }}
+        run: |
+          python3 scripts/platform/promotion-enforce.py --target staging \
+            --pdp ci-artifacts/pdp.json --commit "${{ steps.ctx.outputs.sha }}"
+          bash scripts/platform/verify-pdp-signature.sh ci-artifacts/pdp.json --require-staging
+
+      - name: Upload staging + PDP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-promotion-${{ steps.ctx.outputs.sha }}
+          path: |
+            ci-artifacts/promotion/staging-*.json
+            ci-artifacts/pdp.json
+            ci-artifacts/enforcement/enforcement_state.json
+          retention-days: 7
+
+      - name: Upload canonical PDP (for production chain)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdp-canonical-${{ steps.ctx.outputs.sha }}
+          path: ci-artifacts/pdp.json
+          retention-days: 7
+
+  skip-non-deployable:
+    name: Skip (non-deployable diff)
+    needs: detect-deployable
+    if: needs.detect-deployable.outputs.deployable != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Non-deployable diff — staging promotion skipped per ADR-001."
