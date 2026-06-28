@@ -3,6 +3,15 @@
 > **Trigger:** GitHub Secret Exposure Audit found live tokens and historical leaks.  
 > **Do this BEFORE making the repo public** and **immediately** if the repo was ever shared broadly.
 
+> ⛔ **CORRECTION (2026-06-28, re-verification):** The Telegram monitor-bot revocation
+> recorded below was **NOT effective**. Independent check on 2026-06-28 shows the leaked
+> token (`@Alltrue_Daan_Bot`, id `7657792412`) still returns **HTTP 200** from
+> `api.telegram.org/getMe` with an **active webhook** — i.e. it is **still live**.
+> The "returns 401" verification and the "CONFIRMED" sign-off row for the Telegram bot are
+> therefore **inaccurate**. Revocation must be re-done via @BotFather before publication.
+> Tracking: **#1025**. Secret-scanning alert #1 must stay **open** until the old token
+> actually returns 401.
+
 ## Phase 0 — Rotate outside git (human / Pi)
 
 | # | Credential | Action | Where |
@@ -30,7 +39,7 @@ chmod 600 /home/admin/.env.monitor
 
 ## Verification
 
-- [x] Old Telegram token returns 401 from `api.telegram.org`
+- [ ] ⛔ Old Telegram token returns 401 from `api.telegram.org` — **FAILS as of 2026-06-28 (still HTTP 200, see #1025)**
 - [x] Revoked GitHub PATs cannot `gh auth status`
 - [x] `git ls-files .env.monitor` returns empty (after PR #1023 merge)
 - [x] `git ls-files '.cursor/projects/**'` returns empty (after PR #1023 merge)
@@ -41,12 +50,16 @@ chmod 600 /home/admin/.env.monitor
 
 | Item | Status | Date |
 |------|--------|------|
-| Telegram monitor bot revoked/reissued via BotFather | **CONFIRMED** | 2026-06-28 |
+| Telegram monitor bot revoked/reissued via BotFather | ⛔ **NOT EFFECTIVE — token still live, re-do required (#1025)** | 2026-06-28 |
 | GitHub PATs from agent transcripts revoked | **CONFIRMED** | 2026-06-28 |
 | Campus swipe / LINE / Telegram DB secrets reviewed | **CONFIRMED** | 2026-06-28 |
 | Pi live config at `/home/admin/.env.monitor` only | **CONFIRMED** | 2026-06-28 |
 
-Signed off by CEO for publication remediation sequence. History purge and gitleaks gate **completed 2026-06-28** — repo cleared for public toggle.
+Signed off by CEO for publication remediation sequence. History purge and gitleaks gate **completed 2026-06-28**.
+
+⛔ **NOT cleared for public toggle yet:** the Telegram monitor-bot token recorded as revoked
+above is **still live** as of 2026-06-28 re-verification (#1025). Do not make the repo public
+until the old token returns 401 and secret-scanning alert #1 is resolved as *revoked*.
 
 ## References
 
