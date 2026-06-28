@@ -84,6 +84,7 @@ class TelegramWebhookSecurityTest extends TestCase
             'enable' => 1,
             'MDT' => now(),
             'Notify_Token' => '',
+            'TelegramID' => '',
         ]);
         $originalTelegramId = $student->TelegramID;
 
