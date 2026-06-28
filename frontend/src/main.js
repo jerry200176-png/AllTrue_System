@@ -44,6 +44,10 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       'Importing a module script failed',
       // 同樣根因：瀏覽器收到 HTML 404 當 JS 執行，reload 後自動解決
       "is not a valid JavaScript MIME type",
+      // 一般 fetch() 在網路層失敗（離線 / CORS / DNS / 切頁中止）才會丟 TypeError:
+      // Failed to fetch — 4xx/5xx 會 resolve 成 res.ok=false，不會走到這裡。屬環境性、
+      // 不可操作的瞬時噪音（Sentry #915 / PHP-LARAVEL-1T）。
+      'Failed to fetch',
     ],
     beforeSend(event) {
       // 不回報本地開發的錯誤
