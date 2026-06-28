@@ -131,6 +131,8 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 
 **歷史清除決策（風險取捨，對齊 GitHub 官方指引）**：GitHub 官方說 history rewrite 屬「heavy-handed」，憑證類 rotate 後常不必重寫；資料類雖只能靠重寫移除，但需權衡成本。本 repo 為 **private + 單一 committer + 無 fork/他人 clone**，且 `git filter-repo` 需 **force-push main**——而 force-push main 是本專案 **#1 P0 事故（事故 A，曾造成 production downtime）**，`deploy.yml` 綁 main、branch protection + enforce_admins 已開。結論：**暫不重寫歷史**，接受 private repo 的殘留風險（從 HEAD 移除 + 防再犯 + 本決策留檔）。**觸發重評**：repo 轉 public、新增協作者、或對外開源前，必須先做 filter-repo 清史（規劃維護窗 + 使用者明確批准，暫時關 branch protection）。
 
+**2026-06-28 Secret Exposure Audit（再評）**：HEAD 曾含 live `.env.monitor`（Telegram token）與 769 個 `.cursor/projects/` 檔；歷史含 GitHub PAT 與 SQL dump blobs。**Verdict: NOT SAFE public** until `scripts/security-filter-repo.sh` + rotation checklist [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md) complete.
+
 ---
 
 *本文件版本：v1.0 | 參考：OWASP TG v4.2、NIST SP 800-115、CVSS v3.1*

@@ -20,7 +20,7 @@ KEEP_MONTHS=12
 mkdir -p "$MONTHLY_DIR"
 
 # ── Telegram 通知（讀取統一設定檔）──
-MONITOR_ENV="$REPO_ROOT/.env.monitor"
+MONITOR_ENV="/home/admin/.env.monitor"
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 if [ -f "$MONITOR_ENV" ]; then
