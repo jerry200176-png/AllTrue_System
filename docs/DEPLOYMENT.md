@@ -1,6 +1,7 @@
 # 部署指南
 
-> **REFERENCE ONLY — setup guide.** Execution authority: [`deploy.yml`](../.github/workflows/deploy.yml) only ([`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1).
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Setup guide only. Execution: [`deploy.yml`](../.github/workflows/deploy.yml) (contract I1).
 
 本系統有兩種部署模式：**裸機 Apache**（生產）與 **Docker Compose**（開發/展示）。
 

@@ -1,5 +1,9 @@
 # SOP 成熟度與大廠對標（AI 接手地圖）
 
+> **HISTORICAL CONTEXT ONLY — NO RUNTIME AUTHORITY**  
+> This document does **not** override [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5).  
+> **Decision:** INCIDENT stack (I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (I1).
+
 > 目的：讓任何 AI（Claude Code / Cursor）能快速了解我們的工程 SOP 對標大廠到哪、還缺什麼，並在 usage 上限或換手時無縫接續。
 > 本文件被 `CLAUDE.md` 的「On-demand 快查」引用，請在交接前先讀此檔頂部的「進行中狀態」。
 
@@ -15,7 +19,7 @@
 - 🎫 新建 **39** GitHub issues **#957–#995**（security / regression / architecture / testing / perf / docs）
 - ⛔ **Stop-the-line：#970** `X-User-Id` header auth bypass — 優先於其他資安 hardening
 - 📋 Top priority epic：**#957** ClassSession materialization 統一
-- ✅ Production 已手動收斂至 `main` @ `5efaf61`（#954 calendar fix）；`deploy.yml` 仍 DISABLED
+- ✅ Production 已手動收斂至 `main` @ `5efaf61`（#954 calendar fix）；**execution per contract I1:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
 
 **urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）— 部分 superseded**
 - ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
