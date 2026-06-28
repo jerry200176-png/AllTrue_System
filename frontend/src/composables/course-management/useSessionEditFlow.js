@@ -27,6 +27,8 @@ export function useSessionEditFlow({
   normalizeTo30Min,
   dayOfWeekFromDate,
   getSessionDisplayRow,
+  getSessionRowsForDate,
+  reloadCourseSessions,
   formatAttendanceTooltipTime,
   updateLocalSessionRow,
   ensureCompletedSessionDatesLoaded,
@@ -77,8 +79,28 @@ export function useSessionEditFlow({
     doStatusChange(next);
   }
 
+  // Among the rows already cached for a date, prefer the one whose start_time
+  // matches the clicked chip — disambiguates duplicate / overlapping sessions.
+  function resolveRowByStartTime(course, dateYmd, unit) {
+    const wanted = String(unit?.startTime || '').slice(0, 5);
+    if (!wanted || typeof getSessionRowsForDate !== 'function') return null;
+    const rows = getSessionRowsForDate(course, dateYmd) || [];
+    return rows.find((r) => String(r?.startTime || '').slice(0, 5) === wanted) || null;
+  }
+
   async function openSessionEdit(course, dateYmd, sessionId, unit = null) {
     let row = getSessionDisplayRow(course, dateYmd, sessionId);
+    // Miss: the chip points at a real session that is not in the local cache yet
+    // (duplicate/overlap sessions, or a stale load). Reload this course's sessions
+    // and retry — matching by start_time when several rows share the date — before
+    // falling back to materialize/alert. See #942 (in-app #177).
+    if (!row && typeof reloadCourseSessions === 'function') {
+      const reloaded = await reloadCourseSessions(course);
+      if (reloaded) {
+        row = getSessionDisplayRow(course, dateYmd, sessionId)
+          || resolveRowByStartTime(course, dateYmd, unit);
+      }
+    }
     if (!row && unit?.isProjected) {
       row = await materializeProjectedSession(course, dateYmd, unit);
     }
