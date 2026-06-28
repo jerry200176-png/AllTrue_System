@@ -1,0 +1,41 @@
+name: Control Plane Enforce
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+concurrency:
+  group: control-plane-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  enforce:
+    name: Control plane contract lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Run control plane lint
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title || '' }}
+          CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
+        run: node scripts/control-plane-lint.mjs
+
+      - name: Self-test (lint must catch violations)
+        run: |
+          node scripts/control-plane-lint.mjs --self-test
+          test $? -eq 1
