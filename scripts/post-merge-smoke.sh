@@ -70,7 +70,14 @@ fi
 
 if [[ "${SMOKE_ON_PI:-}" == "1" ]] || ssh -o BatchMode=yes -o ConnectTimeout=8 "$PI_SSH" true 2>/dev/null; then
   pi_commit="$(pi_sh "cd ${PI_BACKEND} && git rev-parse --short=8 HEAD" 2>/dev/null || echo '')"
-  [[ -n "$pi_commit" ]] && pass "Pi git HEAD=$pi_commit" || warn "Could not read Pi git HEAD"
+  if [[ -n "$pi_commit" ]]; then
+    pass "Pi git HEAD=$pi_commit"
+    if [[ -n "$ver_hash" && "$ver_hash" != "$pi_commit" ]]; then
+      warn "version.json hash=$ver_hash ≠ Pi git HEAD=$pi_commit (expected when backend-only deploy skipped frontend rebuild)"
+    fi
+  else
+    warn "Could not read Pi git HEAD"
+  fi
 
   for needle in cancelMakeupSchedule fetchPendingMakeups pending-makeups-panel; do
     if pi_sh "grep -q '$needle' ${PI_BACKEND}/public/assets/CourseManagement-*.js 2>/dev/null"; then
@@ -172,15 +179,33 @@ if [[ -n "$director_token" ]]; then
   [[ "$code" == "200" ]] && pass "director GET /schedules (pending makeup list) -> 200" \
     || fail "director GET /schedules -> $code"
 
-  code="$(http_auth_code POST "$API_BASE/schedules/999999999/cancel-makeup" "$director_token")"
-  if [[ "$code" == "500" ]]; then
-    sleep 2
-    code="$(http_auth_code POST "$API_BASE/schedules/999999999/cancel-makeup" "$director_token")"
+  # Post route:cache / opcache:reset warmup can yield a transient 500 on first hit (#1040).
+  # Probe a non-existent ID; 404/422 = auth OK. Retry 500s before failing deploy.
+  warmup="${SMOKE_POST_OPTIMIZE_SLEEP:-3}"
+  if [[ "${SMOKE_ON_PI:-}" == "1" && "$warmup" -gt 0 ]]; then
+    sleep "$warmup"
   fi
+  probe_url="$API_BASE/schedules/999999999/cancel-makeup"
+  code=""
+  attempt=0
+  max_attempts=4
+  while [[ "$attempt" -lt "$max_attempts" ]]; do
+    attempt=$((attempt + 1))
+    code="$(http_auth_code POST "$probe_url" "$director_token")"
+    if [[ "$code" == "404" || "$code" == "422" ]]; then
+      break
+    fi
+    if [[ "$code" == "500" && "$attempt" -lt "$max_attempts" ]]; then
+      warn "director POST /cancel-makeup probe attempt $attempt -> 500 (post-cache warmup?)"
+      sleep 2
+      continue
+    fi
+    break
+  done
   if [[ "$code" == "404" || "$code" == "422" ]]; then
-    pass "director POST /cancel-makeup (probe) -> $code (auth OK, not 401)"
+    pass "director POST /cancel-makeup (probe) -> $code after ${attempt} attempt(s) (auth OK, not 401)"
   else
-    fail "director POST /cancel-makeup probe -> $code (expected 404/422)"
+    fail "director POST /cancel-makeup probe -> $code (expected 404/422 after retries)"
   fi
 else
   warn "Skip director auth smoke (no token)"
