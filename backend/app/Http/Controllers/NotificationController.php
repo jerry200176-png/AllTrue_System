@@ -435,8 +435,16 @@ class NotificationController extends Controller
             return (int) $authUser->id;
         }
 
-        $headerId = (int) $request->header('X-User-Id', 0);
-        return $headerId > 0 ? $headerId : null;
+        // SEC-AUDIT-001 (#970): the X-User-Id fallback is a dev/test affordance only.
+        // In production, identity comes solely from the authenticated auth_user above;
+        // trusting the header here would keep the impersonation bypass alive on
+        // notification routes even after AttachAuthUser is hardened.
+        if (app()->environment(['local', 'testing'])) {
+            $headerId = (int) $request->header('X-User-Id', 0);
+            return $headerId > 0 ? $headerId : null;
+        }
+
+        return null;
     }
 
     /**
