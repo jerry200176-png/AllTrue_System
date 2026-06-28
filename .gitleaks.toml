@@ -1,0 +1,12 @@
+# Publication audit allowlist — CI placeholders and archived test keys only.
+# Live secrets must never be added here; use scripts/security-filter-repo.sh instead.
+
+title = "AllTrue publication gitleaks allowlist"
+
+[allowlist]
+description = "Known false positives after filter-repo + credential rotation"
+paths = [
+  '''\.github/workflows/ci\.yml''',
+  '''backend/\.env\.testing''',
+  '''docs/archive/control-plane-shadow-v1/''',
+]
