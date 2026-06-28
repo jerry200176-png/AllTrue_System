@@ -11,7 +11,7 @@
 
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
 2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
-2b. 任務牽涉 **長文件 / 多份 docs** 時：`docs/AI_DOC_LITERACY.md`（速讀卡、CHANGELOG→公告、MemPalace 何時 mine）
+2b. 任務牽涉 **長文件 / 多份 docs** 時：讀 `docs/INDEX.md` 的速讀卡／治理節奏；`docs/AI_DOC_LITERACY.md` 只是索引 stub
 3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`
 4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
 5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）

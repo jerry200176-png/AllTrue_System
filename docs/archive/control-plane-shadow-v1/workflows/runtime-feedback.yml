@@ -1,0 +1,28 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# Runtime feedback — uploads artifacts; non-blocking (see runtime-policy-sync.yml)
+
+name: Runtime Feedback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  feedback:
+    name: Runtime Feedback Upload
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "Runtime metrics collection moved to runtime-policy-sync.yml (non-blocking)."
+          mkdir -p ci-artifacts/runtime
+          echo '{"note":"use runtime-policy-sync workflow"}' > ci-artifacts/runtime/feedback-manual.json

@@ -324,7 +324,7 @@ gh api repos/jerry200176-png/AllTrue_System/branches/main/protection \
 | `reviews` ≠ 0 | Settings → Branch protection → 0 approval |
 | Runner offline | §B4 recovery |
 
-**每月 1 日**：`mempalace-monthly.yml` comment issue #519 → WSL2 手動 mempalace mine；`node scripts/docs-integrity-check.mjs --strict`；SSH 輪替月 → §S。
+**每月 1 日**：`mempalace-monthly.yml` → WSL2 執行 `bash scripts/mempalace-maintain.sh`；`node scripts/docs-integrity-check.mjs --strict`；SSH 輪替月 → §S。
 
 **對照大廠**：Trunk + PR + automated gates + ownership + supply chain。詳 [`docs/archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md`](archive/ENTERPRISE_WORKFLOW_ALIGNMENT.md)。
 
@@ -335,7 +335,7 @@ bash scripts/install-git-hooks.sh            # 安裝
 bash scripts/install-git-hooks.sh --uninstall # 卸載
 ```
 
-- 安裝的 hooks：`pre-push`（禁止直接 push main）、`pre-commit`（**git index 稽核 §R58** + PHP syntax + debug 語句警告）、`commit-msg`（Conventional Commits）、`post-merge`（mine MemPalace）。
+- 安裝的 hooks：`pre-push`、`pre-commit`、`commit-msg`、`post-merge`（背景呼叫 `scripts/mempalace-ingest.sh`）。
 - **git index 稽核**：commit 前自動跑 `scripts/git-index-audit.sh protected`，若保護路徑（`backend/ frontend/ scripts/ .github/ docs/`）的 tracked 檔被 `assume-unchanged`(`h`)／`skip-worktree`(`S`) 隱藏就擋下 commit（避免改動在 diff 隱形、規避 review）。
 - 這些是**本地** hooks，只影響你這台機器，**不影響 CI checkout**。
 - **bypass 政策**：緊急可 `git commit --no-verify` 跳過，CI 仍會把關；但 index 稽核屬安全護欄，勿長期 `--no-verify` 規避（見 §R58）。修復旗標：`git update-index --no-assume-unchanged --no-skip-worktree <path>`。

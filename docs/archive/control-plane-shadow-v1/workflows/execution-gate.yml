@@ -1,0 +1,118 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# Execution Gate (advisory) — reports release-exec validation on PRs.
+# Does NOT block merges. Does NOT deploy.
+
+name: Execution Gate (Advisory)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - '.github/**'
+      - '.cursor/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: execution-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  advise:
+    name: Execution layer advisory
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make scripts executable
+        run: chmod +x scripts/release-exec.sh scripts/release-check.sh scripts/lib/release-exec-lib.sh
+
+      - name: Run release-exec validate
+        id: validate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          OUT=$(./scripts/release-exec.sh validate --pr "${{ github.event.pull_request.number }}" 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUT" | tail -80
+          echo "exit_code=$CODE" >> "$GITHUB_OUTPUT"
+          {
+            echo 'json<<EOF'
+            echo "$OUT" | python3 -c '
+import sys, json, re
+text = sys.stdin.read()
+m = re.search(r"\{[\s\S]*\}\s*$", text)
+if m:
+    print(m.group(0))
+else:
+    print(json.dumps({"action":"validate","status":"unknown","parse_error":True}))
+'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request.number;
+            const exitCode = '${{ steps.validate.outputs.exit_code }}';
+            const body = `${{ steps.validate.outputs.json }}`;
+            let parsed = {};
+            try { parsed = JSON.parse(body); } catch (e) { parsed = { status: 'unknown' }; }
+            const marker = '<!-- execution-gate-advisory -->';
+            const text = [
+              marker,
+              '## Execution Layer Advisory (non-blocking)',
+              '',
+              '| Field | Value |',
+              '|-------|-------|',
+              `| action | ${parsed.action || 'validate'} |`,
+              `| status | **${parsed.status || 'unknown'}** |`,
+              `| release_class | ${parsed.release_class || '—'} |`,
+              `| risk_level | ${parsed.risk_level || '—'} |`,
+              '',
+              parsed.reasons?.length ? '**Reasons:**\n' + parsed.reasons.map(r => `- ${r}`).join('\n') : '',
+              parsed.next_steps?.length ? '\n**Next steps:**\n' + parsed.next_steps.map(s => `- ${s}`).join('\n') : '',
+              '',
+              '_Merge/deploy requires CEO via `./scripts/release-exec.sh` — see `docs/execution-layer.md`._',
+            ].filter(Boolean).join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: text,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr,
+                body: text,
+              });
+            }

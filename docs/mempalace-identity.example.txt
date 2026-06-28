@@ -1,0 +1,8 @@
+# AllTrue — MemPalace identity (copy to ~/.mempalace/identity.txt)
+
+Project: AllTrue 補習班管理系統 (Taiwan cram schools: 興隆、新店、大安、木柵)
+Stack: Laravel 8 + Vue 3 + MySQL; deploy via PR → CI → deploy.yml on Raspberry Pi
+Engineering authority: git-tracked markdown (docs/INDEX.md, AI_REGRESSION_LESSONS, CHANGELOG)
+MemPalace role: local recall index over agent transcripts and docs — NOT source of truth
+Before coding: read docs/INDEX.md; search palace with --wing alltrue-sessions for past decisions
+P0: never push main, never run tests on Pi production, never modify prod without CI green

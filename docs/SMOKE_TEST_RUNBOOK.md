@@ -1,6 +1,7 @@
 # Smoke Test Runbook
 
-This runbook defines the read-only post-deploy smoke checks used by `deploy.yml`.
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Documents smoke checks invoked by [`deploy.yml`](../.github/workflows/deploy.yml) (contract I1).
 
 ## Purpose
 

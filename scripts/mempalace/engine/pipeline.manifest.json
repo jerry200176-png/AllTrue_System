@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "pipeline": "mempalace-ingest",
+  "description": "Declarative DAG for AllTrue MemPalace ingestion. Execution order is derived from depends_on, not file order.",
+  "nodes": {
+    "preflight": {
+      "handler": "mempalace_ingest_stage_preflight",
+      "inputs": [],
+      "outputs": ["preflight.env"],
+      "depends_on": [],
+      "retry": { "max_attempts": 1, "delay_sec": 0 }
+    },
+    "lock": {
+      "handler": "mempalace_ingest_stage_lock",
+      "inputs": ["preflight.env"],
+      "outputs": ["lock.acquired"],
+      "depends_on": ["preflight"],
+      "retry": { "max_attempts": 1, "delay_sec": 0 }
+    },
+    "discovery": {
+      "handler": "mempalace_ingest_stage_discovery",
+      "inputs": ["preflight.env"],
+      "outputs": ["manifest.raw.json"],
+      "depends_on": ["lock"],
+      "retry": { "max_attempts": 2, "delay_sec": 1 }
+    },
+    "mining": {
+      "handler": "mempalace_ingest_stage_mining",
+      "inputs": ["manifest.raw.json"],
+      "outputs": ["mining.plan.env"],
+      "depends_on": ["discovery"],
+      "retry": { "max_attempts": 2, "delay_sec": 1 }
+    },
+    "normalization": {
+      "handler": "mempalace_ingest_stage_normalization",
+      "inputs": ["manifest.raw.json"],
+      "outputs": ["manifest.normalized.json"],
+      "depends_on": ["discovery"],
+      "retry": { "max_attempts": 2, "delay_sec": 1 }
+    },
+    "storage": {
+      "handler": "mempalace_ingest_stage_storage",
+      "inputs": ["manifest.normalized.json", "mining.plan.env"],
+      "outputs": ["storage.sessions.done"],
+      "depends_on": ["normalization", "mining"],
+      "retry": { "max_attempts": 2, "delay_sec": 2 }
+    },
+    "index": {
+      "handler": "mempalace_ingest_stage_index",
+      "inputs": ["manifest.normalized.json", "storage.sessions.done"],
+      "outputs": ["index.env"],
+      "depends_on": ["storage"],
+      "retry": { "max_attempts": 2, "delay_sec": 2 }
+    },
+    "verify": {
+      "handler": "mempalace_ingest_stage_verify",
+      "inputs": ["index.env"],
+      "outputs": ["verify.env", "post-verify.status.txt"],
+      "depends_on": ["index"],
+      "retry": { "max_attempts": 1, "delay_sec": 0 }
+    }
+  }
+}
