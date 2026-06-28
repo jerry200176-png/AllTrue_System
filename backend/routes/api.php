@@ -480,8 +480,11 @@ Route::prefix('v1')->group(function () {
         Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
         Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
 
-        // Dashboard Alerts
-        Route::get('alerts/tuition', [\App\Http\Controllers\AlertController::class, 'tuition']);
+        // #995: alerts/tuition is intentionally registered ONCE in the director-only
+        // group above (least privilege — tuition/financial alerts; only the director
+        // dashboard + tuition-collection page call it). The duplicate registration that
+        // used to live here (role:director,teacher) silently widened access to teachers
+        // and was the last-wins route, so it has been removed. See AlertsTuitionRouteTest.
 
         // ── Rooms ────────────────────────────────────────────────────
         Route::get('rooms', [RoomController::class, 'index']);
