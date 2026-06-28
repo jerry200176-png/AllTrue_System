@@ -11,6 +11,24 @@
 
 ---
 
+## 2026-06-27 — refactor(classsession): ClassSession 寫入統一 + 前後端 materialized/projected 分離 (Phase A–C)
+
+- **Changed**：後端 `ClassSessionMaterializationService::upsertSlot` 為唯一 production 寫入路徑；`session-dates` / `class-sessions` API 分開回傳 materialized 與 projected。
+- **Changed**：前端 `classSessionsApi.js` 統一 `SessionViewModel`；課程管理、評量頁、行事曆 adapter 消費同一模型（含 legacy 欄位別名）。
+- **Added**：`classsession:audit-duplicates` 唯讀稽核指令。
+
+## 2026-06-27 — fix(course-mgmt): 課程重疊建立改走 in-app 強制建立視窗，不再卡死路 (in-app #174)
+
+新增固定課程時，若和學生既有「同一位老師、同科目、上課日期重疊」的課程衝突，過去會跳出提示叫你「勾選強制建立」，但畫面上根本沒有那個勾選框，等於卡死路。現在改成跳出視窗，讓你選「加購堂數、延續原課程」或「我知道，仍要新增課程」。
+
+開發備註：#805 後端新增 `overlapping_active_course` 409，但前端 `universalSchedulerApi.js` 只把 `duplicate_active_course` 設成 `isDuplicateCourse`，重疊碼落到 `UniversalClassScheduler.vue` 的原生 `alert(err.message)` → 無 force 入口。抽出無相依純函式 `isDuplicateInterceptCode()`（node 測試可直接 import）讓兩碼都導向攔截 modal；回歸測試加在 `universalSchedulerApi.test.js`（build 腳本會跑）。**Ops 例外**：GitHub Actions minutes 用完期間，依 `OPERATIONS_RUNBOOK.md` §139 走緊急手動前端部署——本機 `npm run build` 綠 → `rsync dist_build` → Pi `copy-to-backend.cjs`（含 index/asset 一致性 guard + OPcache flush）→ version `acf1251`，已驗 health ok、`assets/*.js` 皆 200 `text/javascript`、served chunk 含修正後 `isDuplicateInterceptCode`。**未動 Pi git／storage**（只覆蓋 `backend/public` 前端 bundle，已先備份至 `backups/emergency/pre174_*`）。待 Actions 恢復補 PR（branch `fix/course-overlap-force-create`）回 main。GitHub #931。
+
+## 2026-06-21 — fix(parent): 家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示
+
+家長從 LINE 開啟入口時，會依「所屬分校」載入正確的 LINE 入口，自動登入更穩定；若帳號尚未綁定，畫面會清楚告訴你「請用學生姓名＋手機登入，或先在 LINE 完成綁定」，不再卡在「正在自動登入…」又同時跳紅字錯誤的矛盾畫面。另外，多科共用同一方案堂數時，每一科會標示「共用方案」並顯示同一份共用剩餘堂數（扣堂一起計），剩餘總數不再被各科重複加總。
+
+開發備註：**Bug 1（LINE 登入）**根因＝13 新莊中平與 15 大安共用 `daan.lifenet.com.tw`，但各自是不同 LINE Login channel／provider（同一學生在不同分校的 `line_user_id` 不同已於 prod 證實）。`resolveLiff()` 純 host 比對只回「第一個」分校（id 升序＝13）的 LIFF，導致 15 大安家長（19 筆綁定）拿到 13 的 LIFF → `getProfile().userId` 屬不同 provider → `loginWithLine` 查無綁定 404。修法：入口連結本就帶 `campus_id`（`LineWebhookController::getPortalUrl`），`resolveLiff` 改**優先用 `campus_id`** 定位該分校 LIFF；前端 `onMounted` 以 `campus_id` 解析 LIFF 覆蓋 build-time 預設。前端另把「自動登入失敗」從矛盾文案改為明確綁定/手動登入指引（`autoLineNotBound`）。**Bug 2（共用方案）**：家長 dashboard 對 `PackageID>0` 成員改以 `course_packages` 池子（remaining/used/total）為準，`sessionMetrics` 與顯示聚合每池只算一次，新增 `is_package`/`package_*` 欄位前端標示「共用方案」。新增 ParentPortalSharedPackageTest(2)、ParentPortalResolveLiffTest(2)；既有 Parent/Package/Session/StudentClass 315 綠、PHPStan clean。對應 in-app 家族 #158/#162。**不動收款/invoice/費率**，僅顯示與登入解析。
+
 ## 2026-06-14 — Ops: GitHub / SRE roadmap 對標大公司治理
 
 開發備註：新增並整理 AllTrue Engineering Roadmap：M4 生產安全與流程自動化（#867–873）、M5 UI/UX 質感與可讀性（#866/#857–865）、M6 GitHub 治理與協作成熟度（#875–880）、M7 系統維護與 SRE 營運成熟度（#881–886）。Project board 已建立並連到 repo；`docs/SOP_MATURITY.md` 補上 Actions minutes 用完時的工作分流、GitHub Environments/CODEOWNERS/Project automation/release traceability/security advisory/ruleset 缺口，以及 PITR、Full server DR、incident response、observability、capacity management、maintenance window/status page 等維運缺口。純治理/文件/issue 規劃，無 production code 變更。

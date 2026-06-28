@@ -22,7 +22,8 @@ permissions:
 jobs:
   changes:
     name: Detect docs changes
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted，避免 GitHub-hosted 額度卡住時 required「Docs Integrity Check」永遠不 run。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 3
     outputs:
       docs: ${{ steps.filter.outputs.docs }}
@@ -50,7 +51,8 @@ jobs:
     needs: changes
     # schedule / 手動觸發一律跑；PR 僅在有文件相關變更時跑，否則 skip（中性、不阻擋合併）。
     if: github.event_name != 'pull_request' || needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted（runner 已有 Node；setup-node 仍會備妥 22）。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 5
 
     steps:

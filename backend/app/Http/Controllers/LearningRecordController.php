@@ -14,6 +14,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ApprovalSessionSyncService;
+use App\Services\ClassSessionMaterializationService;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
@@ -984,13 +985,13 @@ class LearningRecordController extends Controller
                     return response()->json(['message' => 'Session does not match class'], 422);
                 }
             } else {
-                $classSession = ClassSession::create([
+                $classSession = app(ClassSessionMaterializationService::class)->upsertSlot([
                     'StudentClassID' => $studentClass->ID,
                     'SessionDate' => $data['SessionDate'] ?? now()->toDateString(),
                     'StartTime' => $data['StartTime'] ?? '00:00',
                     'EndTime' => $data['EndTime'] ?? '00:00',
                     'Status' => 'completed',
-                ]);
+                ])['session'];
                 $classSessionId = $classSession->id;
             }
 
@@ -1553,14 +1554,14 @@ class LearningRecordController extends Controller
                     ], 422);
                 }
                 $slot = $this->resolveBackfillSlotForDate($studentClass, $data['SessionDate']);
-                $classSession = ClassSession::create([
+                $classSession = app(ClassSessionMaterializationService::class)->upsertSlot([
                     'StudentClassID' => $studentClass->ID,
                     'SessionDate' => $data['SessionDate'],
                     'StartTime' => $slot['start'],
                     'EndTime' => $slot['end'],
                     'Status' => $data['SessionDate'] <= now()->toDateString() ? 'completed' : 'scheduled',
                     'Note' => 'auto-created by backfill',
-                ]);
+                ])['session'];
             }
 
             $existing = LearningRecord::where('ClassSessionID', $classSession->id)->active()->first();
@@ -1684,14 +1685,14 @@ class LearningRecordController extends Controller
                     }
 
                     $slot = $this->resolveBackfillSlotForDate($studentClass, $sessionDate);
-                    $classSession = ClassSession::create([
+                    $classSession = app(ClassSessionMaterializationService::class)->upsertSlot([
                         'StudentClassID' => $studentClass->ID,
                         'SessionDate' => $sessionDate,
                         'StartTime' => $slot['start'],
                         'EndTime' => $slot['end'],
                         'Status' => $sessionDate <= $today ? 'completed' : 'scheduled',
                         'Note' => 'auto-created by backfill',
-                    ]);
+                    ])['session'];
                 }
                 $effectiveDate = $this->normalizeDateValue($classSession->SessionDate) ?: $sessionDate;
                 if ($projectionAnchorDate === null || strcmp($effectiveDate, $projectionAnchorDate) > 0) {
@@ -1886,13 +1887,13 @@ class LearningRecordController extends Controller
         $fallbackStart = $startTime ?? ($studentClass->time1 ?? '00:00');
         $fallbackEnd   = $endTime ?? '00:00';
 
-        $newSession = ClassSession::create([
+        $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
             'StudentClassID' => $classId,
             'SessionDate'    => $newDate,
             'StartTime'      => $fallbackStart,
             'EndTime'        => $fallbackEnd,
             'Status'         => 'scheduled',
-        ]);
+        ])['session'];
         return response()->json(['message' => '已建立課堂紀錄', 'session_id' => $newSession->id], 201);
     }
 
@@ -2609,7 +2610,7 @@ class LearningRecordController extends Controller
             }
 
             $slot = $slots[$isoDow] ?? $fallbackSlot;
-            ClassSession::create([
+            app(ClassSessionMaterializationService::class)->upsertSlot([
                 'StudentClassID' => $studentClass->ID,
                 'SessionDate' => $date,
                 'StartTime' => $slot['start'],
