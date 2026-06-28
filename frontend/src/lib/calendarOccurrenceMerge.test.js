@@ -345,3 +345,28 @@ const historicalWithoutSessions = merge({
   sessionDatesByCourseId: {},
 });
 assert.equal(historicalWithoutSessions.length, 0, 'historical stopped course without ClassSession rows should not render recurring ghosts');
+
+// #180 regression: a course-mgmt-adjusted ClassSession lands on a date AFTER the course's last
+// contracted session date and has no `schedules` row. The template loop skips that date via the
+// `targetDate > lastDate` guard, so the materialized session would silently vanish from the
+// calendar (course management shows 已上課, calendar shows nothing). It MUST still render.
+const adjustedBeyondLastDate = merge({
+  courses: [{ ...baseCourse, id: 2146, days_of_week: [7] }],
+  allCourses: [{ ...baseCourse, id: 2146, days_of_week: [7] }],
+  sessionDatesByCourseId: {
+    2146: [
+      { id: 17346, student_class_id: 2146, session_date: '2026-05-07', start_time: '13:00', end_time: '15:00', status: 'attended', teacher_id: 17, teacher_name: '原老師' },
+    ],
+  },
+  courseLastSessionDate: { 2146: '2026-05-06' },
+  exceptions: [],
+});
+assert.ok(
+  adjustedBeyondLastDate.some((o) => o.class_session_id === 17346),
+  '#180: adjusted ClassSession (no schedules row, date > courseLastSessionDate) must still render on the calendar',
+);
+assert.equal(
+  adjustedBeyondLastDate.filter((o) => o.class_session_id === 17346).length,
+  1,
+  '#180: the recovered session must render exactly once (no duplicate)',
+);

@@ -18,15 +18,17 @@
             {{ summary.reliability_snapshot?.health_status === 'ok' ? '正常' : '注意' }}
           </strong>
         </div>
-        <div class="stp-chip">
+        <!-- #909/in-app #167：老師端不顯示「高優先缺陷 / 待審評量」這類內部營運指標，改用白話狀態。 -->
+        <div class="stp-chip" v-if="!teacherMode">
           <span class="stp-chip-label">高優先缺陷</span>
           <strong>{{ summary.reliability_snapshot?.high_priority_open_bugs ?? 0 }}</strong>
         </div>
-        <div class="stp-chip">
+        <div class="stp-chip" v-if="!teacherMode">
           <span class="stp-chip-label">待審評量</span>
           <strong>{{ summary.reliability_snapshot?.pending_learning_reviews ?? 0 }}</strong>
         </div>
       </div>
+      <p v-if="teacherMode" class="stp-teacher-note">{{ teacherHealthLine }}</p>
 
       <div class="stp-block">
         <div class="stp-block-title">最近改善（30 天）</div>
@@ -62,6 +64,8 @@ const props = defineProps({
   token: { type: String, default: '' },
   parentMode: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
+  // #909/in-app #167：老師端隱藏內部營運指標，改顯示白話、與教學相關的狀態。
+  teacherMode: { type: Boolean, default: false },
 });
 
 defineEmits(['report-problem']);
@@ -69,6 +73,12 @@ defineEmits(['report-problem']);
 const loading = ref(false);
 const error = ref('');
 const summary = ref(null);
+
+const teacherHealthLine = computed(() =>
+  summary.value?.reliability_snapshot?.health_status === 'ok'
+    ? '目前系統正常，不影響上課與填寫評量。'
+    : '系統有部分狀況正在處理中，您的上課與評量資料不受影響。',
+);
 
 const endpoint = computed(() => {
   if (props.parentMode) {
@@ -125,6 +135,7 @@ onMounted(loadSummary);
 .stp-empty { font-size: 13px; color: var(--ds-ink-mute); padding: 8px 0; }
 .stp-error { color: var(--ds-danger); }
 .stp-snapshot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.stp-teacher-note { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: var(--ds-ink-mute); }
 .stp-chip { border: 1px solid var(--ds-canvas-soft); border-radius: 10px; padding: 8px; background: var(--ds-canvas-soft); }
 .stp-chip-label { display: block; font-size: 11px; color: var(--ds-ink-mute); margin-bottom: 4px; }
 .stp-chip strong { font-size: 15px; color: var(--ds-ink); }

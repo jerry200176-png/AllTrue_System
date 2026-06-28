@@ -10,6 +10,7 @@ use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
 use App\Models\StudentSignIn;
 use App\Models\ClassSession;
+use App\Models\CoursePackage;
 use App\Models\Invoice;
 use App\Models\Announcement;
 use App\Models\Subject;
@@ -142,26 +143,63 @@ class ParentPortalController extends Controller
     {
         $host = $request->getHost();
 
-        $campus = \Illuminate\Support\Facades\DB::table('Campus')
+        // 多分校共用同一網域（例：13 新莊中平 與 15 大安 都用 daan.lifenet.com.tw）時，
+        // 純靠 host 比對只會回傳「第一個」分校的 LIFF，導致其他分校家長拿到錯的 LINE Login
+        // channel → getProfile().userId 與其綁定（屬不同 provider）對不上 → 自動登入 404。
+        // 入口連結一律帶 campus_id（LineWebhookController::getPortalUrl），故 campus_id 才是權威來源。
+        $requestedCampusId = (int) ($request->query('campus_id') ?? 0);
+        if ($requestedCampusId > 0) {
+            $byCampus = \Illuminate\Support\Facades\DB::table('Campus')
+                ->where('id', $requestedCampusId)
+                ->whereNotNull('LIFFID')
+                ->where('LIFFID', '!=', '')
+                ->first();
+            if ($byCampus) {
+                return response()->json([
+                    'liff_id'     => $byCampus->LIFFID,
+                    'campus_id'   => $byCampus->id,
+                    'campus_name' => $byCampus->name,
+                ]);
+            }
+        }
+
+        // Deterministic host → campus resolution (CampusDomainResolver): EXACT match
+        // only, ambiguity (shared URL) fails loud instead of silently serving the
+        // first/wrong campus's LIFF — the root cause of the 2026-06-27 mis-binding.
+        $campusRows = \Illuminate\Support\Facades\DB::table('Campus')
             ->whereNotNull('LIFFID')
             ->where('LIFFID', '!=', '')
             ->whereNotNull('URL')
             ->where('URL', '!=', '')
-            ->get()
-            ->first(function ($c) use ($host) {
-                $parsed = parse_url($c->URL ?? '', PHP_URL_HOST);
-                if (!$parsed) return false;
-                return $parsed === $host || str_ends_with($host, '.' . $parsed) || str_ends_with($parsed, '.' . $host);
-            });
+            ->get(['id', 'name', 'URL', 'LIFFID']);
 
-        if (!$campus) {
+        $resolution = \App\Services\CampusDomainResolver::resolve(
+            $host,
+            $campusRows->map(fn ($c) => [
+                'id'      => (int) $c->id,
+                'url'     => $c->URL,
+                'liff_id' => $c->LIFFID,
+            ])->all()
+        );
+
+        if ($resolution['status'] === 'ambiguous') {
+            \Illuminate\Support\Facades\Log::error('[resolveLiff] ambiguous campus domain mapping', [
+                'host'       => $host,
+                'candidates' => $resolution['candidates'],
+            ]);
+            return response()->json(['liff_id' => null, 'error' => 'ambiguous_campus_domain'], 409);
+        }
+
+        if ($resolution['status'] !== 'ok') {
             return response()->json(['liff_id' => null]);
         }
 
+        $campus = $campusRows->first(fn ($c) => (int) $c->id === $resolution['campus_id']);
+
         return response()->json([
-            'liff_id'     => $campus->LIFFID,
-            'campus_id'   => $campus->id,
-            'campus_name' => $campus->name,
+            'liff_id'     => $resolution['liff_id'],
+            'campus_id'   => $resolution['campus_id'],
+            'campus_name' => $campus->name ?? null,
         ]);
     }
 
@@ -262,6 +300,14 @@ class ParentPortalController extends Controller
         $observedUsedByClass = SessionDeductionService::batchObservedUsedSessions($classIds);
         $paidAtMap = AlertController::lastPaidAtByStudentClassIds($classIds);
 
+        // 共用方案（course_packages）：同一池的多科課程，每筆 StudentClass.SessionCount 都 = 池總堂數。
+        // 若用 per-member 計算，家長端會看到「每科都顯示總堂數」且總數被重複加總（in-app #158/#162 家族）。
+        // 池子（remaining/total/used）才是單一真相，這裡載入供 sessionMetrics 與顯示聚合使用。
+        $packageIds = $classes->pluck('PackageID')->filter(fn ($id) => (int) $id > 0)->unique()->values()->all();
+        $packageMap = !empty($packageIds)
+            ? CoursePackage::query()->whereIn('id', $packageIds)->get()->keyBy('id')
+            : collect();
+
         // PRD-H (2026-04-18)：月結制專用的「本月已上堂數」與預估月費，供家長端學習情況卡片顯示。
         $monthlyClassIds = $classes
             ->filter(fn ($c) => (string) ($c->ScheduleMode ?? 'count') !== 'count')
@@ -315,8 +361,20 @@ class ParentPortalController extends Controller
                 ->toArray();
         }
 
-        $sessionMetrics = static function (StudentClass $c) use ($observedUsedByClass): array {
+        $sessionMetrics = static function (StudentClass $c) use ($observedUsedByClass, $packageMap): array {
             $mode = (string) ($c->ScheduleMode ?? 'count');
+
+            // 共用方案成員（堂數制）：已用/剩餘一律以「池子」為準，避免每科各算造成
+            // 顯示與總計重複（每科 = 總堂數）。月結制共用方案不走堂數池，維持原邏輯。
+            $pkgId = (int) ($c->PackageID ?? 0);
+            if ($mode === 'count' && $pkgId > 0 && isset($packageMap[$pkgId])) {
+                $pkg = $packageMap[$pkgId];
+                return [
+                    'used' => max(0, (int) $pkg->used_sessions),
+                    'remaining' => max(0, (int) $pkg->remaining_sessions),
+                ];
+            }
+
             $purchased = max(0, (int) ($c->SessionCount ?? 0));
             if ($mode !== 'count' || $purchased <= 0) {
                 return [
@@ -480,7 +538,7 @@ class ParentPortalController extends Controller
                 // monthly mode：持續進行，不受 RemainingSessions 影響
                 return true;
             })
-            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap) {
+            ->map(function ($c) use ($sessionMetrics, $attendedThisMonth, $monthlyBillingPeriods, $monthlyDisplayLabels, $paidAtMap, $packageMap) {
                 $metrics   = $sessionMetrics($c);
                 $isMonthly = (string) ($c->ScheduleMode ?? 'count') !== 'count';
                 $monthlyTarget  = (int) ($c->monthly_sessions ?? 0);
@@ -488,6 +546,12 @@ class ParentPortalController extends Controller
                 $attended       = $isMonthly ? (int) ($attendedThisMonth[$c->ID] ?? 0) : 0;
                 $paid           = $this->isClassPaid($c, $paidAtMap);
                 $stopped        = (bool) $c->Stop;
+
+                // 共用方案成員：附帶池子資訊，讓前端把每張卡標記為「共用方案」並用同一池數字，
+                // 避免家長誤以為每科各有一份總堂數。
+                $pkgId   = (int) ($c->PackageID ?? 0);
+                $pkg     = ($pkgId > 0 && isset($packageMap[$pkgId])) ? $packageMap[$pkgId] : null;
+                $isPkg   = $pkg !== null && !$isMonthly;
 
                 return [
                     'id'                   => $c->ID,
@@ -502,6 +566,13 @@ class ParentPortalController extends Controller
                     'payment_status_label' => $paid ? '已繳費' : '未繳費',
                     'lifecycle_status'     => $stopped ? 'closed' : 'active',
                     'lifecycle_status_label' => $stopped ? '課程已結束' : '進行中',
+                    // 共用方案池（堂數制）：null 代表非共用方案，前端維持原本 per-course 顯示。
+                    'is_package'                 => $isPkg,
+                    'package_id'                 => $isPkg ? (int) $pkgId : null,
+                    'package_name'               => $isPkg ? ((string) ($pkg->name ?? '') ?: null) : null,
+                    'package_total_sessions'     => $isPkg ? max(0, (int) $pkg->total_sessions) : null,
+                    'package_remaining_sessions' => $isPkg ? max(0, (int) $pkg->remaining_sessions) : null,
+                    'package_used_sessions'      => $isPkg ? max(0, (int) $pkg->used_sessions) : null,
                     'billing_period'       => $isMonthly ? ($monthlyBillingPeriods[(int) $c->ID] ?? null) : null,
                     'display_month_label'  => $isMonthly ? ($monthlyDisplayLabels[(int) $c->ID] ?? $currentMonthLabel) : null,
                     'settlement_day'       => $isMonthly ? ((int) ($c->settlement_day ?? 0) ?: null) : null,
@@ -513,18 +584,51 @@ class ParentPortalController extends Controller
             ->values();
         $visibleClassIds = $perCourse->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
-        // 與下方「進行中的課程」卡片一致：勿把已隱藏課程（如已暫停且已繳）的剩餘加進總數，否則會比主任只看進行中時多 1 堂以上
-        $remainingTotal = $perCourse
+        // 總剩餘堂數：非共用方案逐課加總；共用方案「每池只算一次」（避免每科重複加總成數倍）。
+        $nonPackageRemaining = $perCourse
             ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
+            ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) <= 0)
             ->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0));
+        $visiblePackageIds = $perCourse
+            ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) > 0)
+            ->pluck('package_id')->unique()->values();
+        $packageRemaining = $visiblePackageIds
+            ->sum(fn ($pid) => isset($packageMap[$pid]) ? max(0, (int) $packageMap[$pid]->remaining_sessions) : 0);
+        $remainingTotal = $nonPackageRemaining + $packageRemaining;
 
-        $remainingBySubject = $perCourse
-            ->filter(fn ($row) => (string) ($row['schedule_mode'] ?? 'count') === 'count')
-            ->filter(fn ($row) => (int) ($row['remaining_sessions'] ?? 0) > 0)
-            ->groupBy('subject')
-            ->map(fn ($group) => $group->sum(fn ($row) => (int) ($row['remaining_sessions'] ?? 0)))
-            ->sortDesc()
-            ->toArray();
+        // 科目剩餘明細：非共用方案照科目分組；共用方案以「池子」為單位顯示一筆（合併科目名 + 共用標記），
+        // 不再每科都掛上池總堂數。
+        $remainingBySubject = [];
+        foreach ($perCourse as $row) {
+            if ((string) ($row['schedule_mode'] ?? 'count') !== 'count') {
+                continue;
+            }
+            if ((int) ($row['package_id'] ?? 0) > 0) {
+                continue;
+            }
+            $rem = (int) ($row['remaining_sessions'] ?? 0);
+            if ($rem <= 0) {
+                continue;
+            }
+            $subj = (string) $row['subject'];
+            $remainingBySubject[$subj] = ($remainingBySubject[$subj] ?? 0) + $rem;
+        }
+        foreach ($visiblePackageIds as $pid) {
+            $pkg = $packageMap[$pid] ?? null;
+            if (!$pkg) {
+                continue;
+            }
+            $rem = max(0, (int) $pkg->remaining_sessions);
+            if ($rem <= 0) {
+                continue;
+            }
+            $subs = $perCourse
+                ->filter(fn ($row) => (int) ($row['package_id'] ?? 0) === (int) $pid)
+                ->pluck('subject')->unique()->implode('/');
+            $label = (string) (($pkg->name ?? '') ?: $subs);
+            $remainingBySubject[$label . '（共用）'] = $rem;
+        }
+        arsort($remainingBySubject);
 
         // Payment alerts — only show courses that still require parent action
         $paymentAlerts = $classes

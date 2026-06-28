@@ -1264,7 +1264,12 @@ import { ref, onMounted, reactive, computed, watch, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import SearchableSelect from '../components/SearchableSelect.vue';
 import AtEmpty from '../components/design-system/AtEmpty.vue';
-import { fetchClassSessions } from '../lib/classSessionsApi';
+import {
+  fetchClassSessions,
+  fetchSessionDates,
+  materializedSessionsOnly,
+  sessionDatesFromViewModels,
+} from '../lib/classSessionsApi';
 import { exportStudentCards, generateStudentCardPng, downloadBlob } from '../lib/learningRecordExport';
 import { createPerfTracker } from '../lib/usePerformanceMetrics';
 import perfFlags, { loadRemoteFlags } from '../lib/perfFlags';
@@ -2588,9 +2593,10 @@ function pickBestSession(candidates) {
 function deduplicateSessionsBySlot(sessions) {
   const groups = {};
   for (const s of sessions) {
+    if (s?.isProjected) continue;
     const id = Number(s?.id || 0);
-    const date = String(s?.session_date || s?.SessionDate || '').slice(0, 10);
-    const time = normalizeTime(s?.start_time || s?.StartTime) || '';
+    const date = String(s?.date || '').slice(0, 10);
+    const time = normalizeTime(s?.startTime) || '';
     // Keep different ClassSession IDs even when they share the same slot:
     // a legitimate reschedule-to-past can produce two lessons on the same date/time.
     // Grouping only by date|time would hide one and block teacher fill flow.
@@ -2745,22 +2751,23 @@ const buildEvents = (targetDates) => {
     const allSessions = sessionDatesByClassId.value[String(classId)] || [];
     const rawSessions = deduplicateSessionsBySlot(allSessions);
     for (const rawSession of rawSessions) {
-      const dateStr = String(rawSession?.session_date || rawSession?.SessionDate || rawSession).slice(0, 10);
+      if (rawSession?.isProjected) continue;
+      const dateStr = String(rawSession?.date || '').slice(0, 10);
       if (!targetSet.has(dateStr)) continue;
-      const startTime = normalizeTime(rawSession?.start_time || rawSession?.StartTime) || resolveCourseStartTime(sc, dateStr);
-      const endTime = normalizeTime(rawSession?.end_time || rawSession?.EndTime) || computedEndTimeForClass(sc, startTime);
+      const startTime = normalizeTime(rawSession?.startTime) || resolveCourseStartTime(sc, dateStr);
+      const endTime = normalizeTime(rawSession?.endTime) || computedEndTimeForClass(sc, startTime);
       const csId = Number(rawSession?.id || 0);
       const byCs = csId > 0 ? recordLookup.value.get(`cs:${csId}`) : null;
       const byTime = startTime ? recordLookup.value.get(`${classId}|${dateStr}|${startTime}`) : null;
       const byDate = recordLookup.value.get(`${classId}|${dateStr}`);
       const record = byCs || byTime || byDate;
-      const rowStatus = String(rawSession?.learning_record_status || '');
-      const sessionStatus = String(rawSession?.status || rawSession?.Status || '').toLowerCase();
+      const rowStatus = String(rawSession?.learningRecordStatus || '');
+      const sessionStatus = String(rawSession?.status || '').toLowerCase();
       // 請假／取消堂次：一律不需填評量；與 SmartCalendar.evalBadge 的 LEAVE_STATUSES 行為對齊。
       // 後端 LR 已被 CourseLeaveCascadeService 作廢（VoidedAt），learning_record_status 回 'missing'，
       // 若未於此處攔截，評量頁會誤顯示「未填」並開放填寫 → 2026-04-17 修正。
-      const isSubstituted = Number(rawSession?.learning_record_teacher_id || 0) > 0
-        && Number(rawSession?.learning_record_teacher_id || 0) !== myId
+      const isSubstituted = Number(rawSession?.learningRecordTeacherId || 0) > 0
+        && Number(rawSession?.learningRecordTeacherId || 0) !== myId
         && myId > 0;
       const sessionStarted = isSessionStarted(dateStr, startTime);
       const sessionState = resolveLearningSessionState({
@@ -2775,7 +2782,7 @@ const buildEvents = (targetDates) => {
       const isAbsentSession = sessionState.isAbsent;
       if (isTeacher.value && isCancelledSession) continue;
       const formStatus = sessionState.formStatus;
-      const apiLrId = rawSession?.learning_record_id != null ? Number(rawSession.learning_record_id) : null;
+      const apiLrId = rawSession?.learningRecordId != null ? Number(rawSession.learningRecordId) : null;
       const safeLookupRecord = byCs || byTime;
       let recordId = (apiLrId != null && apiLrId > 0) ? apiLrId : null;
       if (!recordId && safeLookupRecord?.id) {
@@ -2936,20 +2943,21 @@ const syncFormTimesFromCourseSchedule = () => {
   const classId = Number(course.id || course.ID || 0);
   const sessions = directorSessionsByClassId.value[String(classId)] || [];
   const daySessions = sessions.filter((s) => {
-    if (String(s.session_date).slice(0, 10) !== dateStr) return false;
+    if (s?.isProjected) return false;
+    if (String(s.date || '').slice(0, 10) !== dateStr) return false;
     const st = String(s.status || '').toLowerCase();
     return st !== 'cancelled' && st !== 'leave';
   });
   let daySession = daySessions[0] || null;
   if (daySessions.length > 1 && form.StartTime) {
-    const byTime = daySessions.find((s) => normalizeTime(s.start_time) === normalizeTime(form.StartTime));
+    const byTime = daySessions.find((s) => normalizeTime(s.startTime) === normalizeTime(form.StartTime));
     if (byTime) daySession = byTime;
   }
 
   if (daySession && daySession.id) {
     form.ClassSessionID = Number(daySession.id);
-    form.StartTime = normalizeTime(daySession.start_time) || '18:00';
-    form.EndTime = normalizeTime(daySession.end_time) || addMinutesToTime(form.StartTime, 120);
+    form.StartTime = normalizeTime(daySession.startTime) || '18:00';
+    form.EndTime = normalizeTime(daySession.endTime) || addMinutesToTime(form.StartTime, 120);
     formTimesFromBinding.value = true;
     return;
   }
@@ -4098,7 +4106,7 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate, branchId }
     const isLeaveSession = LEAVE_STATUSES.has(status);
     const isCancelledSession = status === 'cancelled';
     if (isTeacher.value && isCancelledSession) return { skip: true };
-    const fillLocked = !isSessionStarted(dateStr, row?.start_time);
+    const fillLocked = !isSessionStarted(dateStr, row?.startTime);
     let fillLockReason = '';
     if (isLeaveSession) fillLockReason = '此堂為請假，無需填寫評量';
     else if (isCancelledSession) fillLockReason = '此堂已取消，無需填寫評量';
@@ -4106,18 +4114,18 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate, branchId }
     return {
       key: `target-${targetId}`,
       classSessionId: targetId,
-      classId: Number(row?.student_class_id || 0),
-      studentId: Number(row?.student_id || 0),
-      studentName: row?.student_name || '—',
-      subject: row?.subject || row?.subject_name || '?',
-      subjectName: row?.subject_name || row?.subject || '?',
+      classId: Number(row?.studentClassId || 0),
+      studentId: Number(row?.studentId || 0),
+      studentName: row?.studentName || '—',
+      subject: row?.subject || row?.subjectName || '?',
+      subjectName: row?.subjectName || row?.subject || '?',
       date: dateStr,
-      startTime: normalizeTime(row?.start_time) || String(row?.start_time || '').slice(0, 5),
-      endTime: normalizeTime(row?.end_time) || String(row?.end_time || '').slice(0, 5),
-      timeRange: `${String(row?.start_time || '').slice(0, 5)}~${String(row?.end_time || '').slice(0, 5)}`,
-      recordId: (isLeaveSession || isCancelledSession) ? null : (row?.learning_record_id || null),
-      formStatus: isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learning_record_status || 'missing')),
-      formStatusLabel: scheduleStatusLabel(isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learning_record_status || 'missing'))),
+      startTime: normalizeTime(row?.startTime) || String(row?.startTime || '').slice(0, 5),
+      endTime: normalizeTime(row?.endTime) || String(row?.endTime || '').slice(0, 5),
+      timeRange: `${String(row?.startTime || '').slice(0, 5)}~${String(row?.endTime || '').slice(0, 5)}`,
+      recordId: (isLeaveSession || isCancelledSession) ? null : (row?.learningRecordId || null),
+      formStatus: isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing')),
+      formStatusLabel: scheduleStatusLabel(isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing'))),
       fillLocked,
       fillLockReason,
       isSubstituted: false,
@@ -4350,41 +4358,50 @@ const loadBulkCourseDates = async () => {
     const course = bulkCourseOptions.value.find(c => String(c.id) === String(cid));
     if (!course) return;
     const token = await getToken();
-    const dateRes = await fetch(`/api/v1/student-classes/session-dates?branch_id=${props.branchId}`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
-    });
-    let effectiveDates = [];
-    if (dateRes.ok) {
-      const dateJson = await dateRes.json().catch(() => ({}));
-      const mapped = dateJson?.[String(course.id)];
-      if (Array.isArray(mapped)) {
-        effectiveDates = mapped.map((d) => String(d || '').slice(0, 10)).filter(Boolean);
-      }
-    }
+    const now = new Date();
+    const rangeStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const start = `${rangeStart.getFullYear()}-${String(rangeStart.getMonth() + 1).padStart(2, '0')}-01`;
+    const end = `${rangeEnd.getFullYear()}-${String(rangeEnd.getMonth() + 1).padStart(2, '0')}-${String(rangeEnd.getDate()).padStart(2, '0')}`;
 
-    const { byClass } = await fetchClassSessions({
-      token,
-      branchId: props.branchId,
-      studentClassId: course.id,
-      perPage: 2000,
-    });
-    const sessions = Array.isArray(byClass?.[String(course.id)]) ? byClass[String(course.id)] : [];
+    const coursePayload = {
+      id: Number(course.id),
+      first_class_date: course.first_class_date || null,
+      sessions_purchased: Number(course.sessions_purchased ?? 0) || 0,
+      days_of_week: Array.isArray(course.days_of_week) ? course.days_of_week : [],
+    };
+
+    const [{ byClass: datesByClass }, { byClass: sessionsByClass }] = await Promise.all([
+      fetchSessionDates({
+        token,
+        branchId: props.branchId,
+        rangeStart: start,
+        rangeEnd: end,
+        courses: [coursePayload],
+      }),
+      fetchClassSessions({
+        token,
+        branchId: props.branchId,
+        studentClassId: course.id,
+        perPage: 2000,
+      }),
+    ]);
+
+    const dateViewModels = datesByClass?.[String(course.id)] || [];
+    const effectiveDates = sessionDatesFromViewModels(dateViewModels);
+    const sessions = materializedSessionsOnly(sessionsByClass?.[String(course.id)] || []);
     const effectiveSessions = sessions.filter((s) => {
       const status = String(s?.status || '').toLowerCase();
       return status !== 'cancelled' && status !== 'leave';
     });
     const allDates = effectiveDates.length > 0
       ? [...new Set(effectiveDates)]
-      : [...new Set(
-        effectiveSessions
-          .map((s) => String(s?.session_date || '').slice(0, 10))
-          .filter(Boolean)
-      )];
+      : sessionDatesFromViewModels(effectiveSessions);
     const today = localTodayYmd();
     bulkDateList.value = allDates.filter(d => d <= today).sort();
     bulkExistingDates.value = effectiveSessions
-      .filter((s) => String(s?.learning_record_status || '') === 'approved')
-      .map((s) => String(s?.session_date || '').slice(0, 10))
+      .filter((s) => String(s?.learningRecordStatus || '') === 'approved')
+      .map((s) => String(s?.date || '').slice(0, 10))
       .filter(Boolean);
     bulkSelectedDates.value = bulkDateList.value.filter(d => !bulkExistingDates.value.includes(d));
   } catch (e) { console.error(e); }

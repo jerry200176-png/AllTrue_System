@@ -133,13 +133,25 @@ class SessionDatesRangeFilterTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json("{$courseId}") ?? [];
+        $payload = $res->json("{$courseId}") ?? [];
 
-        $this->assertIsArray($dates, 'session-dates must return an array for the course');
+        $this->assertIsArray($payload);
+        $this->assertArrayHasKey('materialized', $payload);
+        $this->assertArrayHasKey('projected', $payload);
+
+        $materializedDates = array_column($payload['materialized'] ?? [], 'session_date');
+        $projectedDates = array_column($payload['projected'] ?? [], 'session_date');
+        $dates = array_values(array_unique(array_merge($materializedDates, $projectedDates)));
+
+        $this->assertIsArray($dates, 'session-dates must return split buckets for the course');
 
         // Within-range dates MUST be present
         $this->assertContains('2026-03-07', $dates, 'In-range attended session must appear');
         $this->assertContains('2026-05-16', $dates, 'In-range scheduled session must appear');
+
+        foreach ($payload['projected'] ?? [] as $slot) {
+            $this->assertArrayNotHasKey('id', $slot);
+        }
 
         // Historical dates MUST NOT appear
         $this->assertNotContains(
@@ -189,7 +201,11 @@ class SessionDatesRangeFilterTest extends TestCase
         ]);
 
         $res->assertOk();
-        $dates = $res->json("{$courseId}") ?? [];
+        $payload = $res->json("{$courseId}") ?? [];
+        $dates = array_values(array_unique(array_merge(
+            array_column($payload['materialized'] ?? [], 'session_date'),
+            array_column($payload['projected'] ?? [], 'session_date')
+        )));
         $this->assertNotContains('2026-04-11', $dates, 'Cancelled session must not appear');
         $this->assertContains('2026-04-18', $dates, 'Attended session must appear');
     }

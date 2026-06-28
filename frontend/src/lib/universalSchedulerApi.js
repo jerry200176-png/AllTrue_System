@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { normalizeUniversalScheduleErrorMessage } from './universalSchedulerErrorMessage.js';
+import { isDuplicateInterceptCode } from './universalSchedulerDuplicateCode.js';
 
 async function getAccessToken() {
   try {
@@ -47,7 +48,7 @@ export async function createUniversalClassSchedule(payload) {
     body = {};
   }
   if (!res.ok) {
-    if (res.status === 409 && body?.code === 'duplicate_active_course') {
+    if (res.status === 409 && isDuplicateInterceptCode(body?.code)) {
       const err = new Error(body.message || '該學生已有相同科目的進行中課程');
       err.isDuplicateCourse = true;
       err.conflicts = body.conflicts || [];
