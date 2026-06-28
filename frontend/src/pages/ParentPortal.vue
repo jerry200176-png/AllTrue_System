@@ -758,6 +758,29 @@
           </div>
         </div>
 
+        <!-- Notification preferences (TD-063 / issue 1051) -->
+        <div class="pp-card">
+          <div class="pp-section-header">
+            <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-ink-mute);">notifications</span>
+            <h3>通知設定</h3>
+          </div>
+          <p v-if="notificationPrefsError" class="pp-error">{{ notificationPrefsError }}</p>
+          <div v-else-if="notificationPrefsLoading" class="pp-hint">載入通知設定…</div>
+          <label v-else class="pp-notif-toggle">
+            <input
+              type="checkbox"
+              :checked="learningFeedbackPush"
+              :disabled="notificationPrefsSaving || !lineLinked"
+              @change="onLearningFeedbackPushToggle"
+            />
+            <span class="pp-notif-toggle__text">
+              <strong>學習回饋通知</strong>
+              <small v-if="lineLinked">老師回覆您的留言時，透過 LINE 提醒您</small>
+              <small v-else>綁定 LINE 後才可開啟推播通知</small>
+            </span>
+          </label>
+        </div>
+
       </template>
       <!-- ／帳務 Tab -->
 
@@ -767,7 +790,7 @@
 
 <script setup>
 import { onMounted, ref, computed, reactive, nextTick } from 'vue';
-import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave } from '../api';
+import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
 
@@ -829,6 +852,10 @@ const autoLineMode = ref(false);
 // 切換為清楚的綁定/手動登入指引，避免家長卡在矛盾畫面（畫面同時顯示登入中＋錯誤）。
 const autoLineNotBound = ref(false);
 const lineLinked = computed(() => !!dashboard.value?.student?.line_linked);
+const learningFeedbackPush = ref(true);
+const notificationPrefsLoading = ref(false);
+const notificationPrefsSaving = ref(false);
+const notificationPrefsError = ref('');
 const expandedRecords = reactive(new Set());
 const showAllAttendance = ref(false);
 const activeTab = ref('learning');
@@ -1274,10 +1301,41 @@ const loadDashboard = async () => {
     const meta = data.learning_records_meta || {};
     lrHasMore.value = !!meta.has_more;
     lrTotal.value = meta.total || 0;
+    await loadNotificationPreferences();
   } catch (e) {
     console.error('Dashboard load failed:', e);
     token.value = '';
     localStorage.removeItem(tokenKey);
+  }
+};
+
+const loadNotificationPreferences = async () => {
+  if (!token.value) return;
+  notificationPrefsLoading.value = true;
+  notificationPrefsError.value = '';
+  try {
+    const prefs = await getParentNotificationPreferences(token.value);
+    learningFeedbackPush.value = !!prefs.learning_feedback_push;
+  } catch (e) {
+    notificationPrefsError.value = e?.message || '無法載入通知設定';
+  } finally {
+    notificationPrefsLoading.value = false;
+  }
+};
+
+const onLearningFeedbackPushToggle = async (event) => {
+  const next = !!event?.target?.checked;
+  const prev = learningFeedbackPush.value;
+  learningFeedbackPush.value = next;
+  notificationPrefsSaving.value = true;
+  notificationPrefsError.value = '';
+  try {
+    await setParentNotificationPreferences(token.value, { learningFeedbackPush: next });
+  } catch (e) {
+    learningFeedbackPush.value = prev;
+    notificationPrefsError.value = e?.message || '無法更新通知設定';
+  } finally {
+    notificationPrefsSaving.value = false;
   }
 };
 
@@ -2473,6 +2531,12 @@ onMounted(async () => {
   margin: 8px 0; font-family: monospace; font-size: 0.92em; color: var(--ds-ink);
   border: 1px solid var(--ds-canvas-soft);
 }
+.pp-notif-toggle {
+  display: flex; align-items: flex-start; gap: 12px; cursor: pointer; margin-top: 4px;
+}
+.pp-notif-toggle input { margin-top: 4px; width: 18px; height: 18px; flex-shrink: 0; }
+.pp-notif-toggle__text { display: flex; flex-direction: column; gap: 4px; }
+.pp-notif-toggle__text small { color: var(--ds-ink-mute); font-size: 12px; line-height: 1.4; }
 
 /* ═══ Empty State ═══ */
 .pp-empty {
