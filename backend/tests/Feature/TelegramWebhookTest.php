@@ -46,17 +46,24 @@ class TelegramWebhookTest extends TestCase
         ], $overrides));
     }
 
+    private function makeStudent(int $campusId, string $name, array $overrides = []): Student
+    {
+        return Student::create(array_merge([
+            'name' => $name,
+            'CampusID' => $campusId,
+            'ClassID' => 1,
+            'enable' => 1,
+            'TelegramID' => '',
+        ], $overrides));
+    }
+
     public function test_binds_telegram_chat_id_to_student_by_campus_code(): void
     {
         $campus = $this->campusWithTelegram([
             'name' => '測試新莊',
             'code' => 'tw_bind_by_code',
         ]);
-        $student = Student::factory()->create([
-            'name' => '王小明',
-            'CampusID' => $campus->id,
-            'TelegramID' => '',
-        ]);
+        $student = $this->makeStudent($campus->id, '王小明');
 
         $this->postWebhook('tw_bind_by_code', [
             'message' => [
@@ -76,9 +83,7 @@ class TelegramWebhookTest extends TestCase
     public function test_binds_to_next_available_telegram_slot_by_campus_id(): void
     {
         $campus = $this->campusWithTelegram(['code' => 'tw_bind_by_id']);
-        $student = Student::factory()->create([
-            'name' => '陳小華',
-            'CampusID' => $campus->id,
+        $student = $this->makeStudent($campus->id, '陳小華', [
             'TelegramID' => '111',
             'TelegramID1' => null,
             'TelegramID2' => null,
@@ -101,11 +106,7 @@ class TelegramWebhookTest extends TestCase
     {
         $xinzhuang = $this->campusWithTelegram(['code' => 'tw_cross_a']);
         $daan = $this->campusWithTelegram(['code' => 'tw_cross_b']);
-        $daanStudent = Student::factory()->create([
-            'name' => '李同名',
-            'CampusID' => $daan->id,
-            'TelegramID' => '',
-        ]);
+        $daanStudent = $this->makeStudent($daan->id, '李同名');
 
         $this->postWebhook('tw_cross_a', [
             'message' => [
@@ -124,9 +125,7 @@ class TelegramWebhookTest extends TestCase
     public function test_refuses_when_all_telegram_slots_are_full(): void
     {
         $campus = $this->campusWithTelegram(['code' => 'tw_full_slots']);
-        $student = Student::factory()->create([
-            'name' => '滿額學生',
-            'CampusID' => $campus->id,
+        $student = $this->makeStudent($campus->id, '滿額學生', [
             'TelegramID' => '111',
             'TelegramID1' => '222',
             'TelegramID2' => '333',
