@@ -79,6 +79,12 @@ export function resolveSessionIdForSubstitute(sessions, dateYmd, startTimeHint) 
  */
 export function dedupeSessionsByStudentSlot(sessions = []) {
   const bestByKey = new Map();
+  // Rows that cannot be resolved to a (student, date, slot) key are NEVER dropped —
+  // a display de-dupe must not silently lose sessions. Collapsing applies only to
+  // confirmed same-student/same-slot duplicates; everything else passes through.
+  // Guards the in-app #188 regression where a row missing start_time/student would
+  // vanish from the teacher week view via an early `continue`.
+  const passthrough = [];
   const scoreRow = (row) => {
     const st = String(row?.status || '').toLowerCase();
     const attended = ['attended', 'completed', 'late', 'absent'].includes(st) ? 100 : 0;
@@ -89,19 +95,21 @@ export function dedupeSessionsByStudentSlot(sessions = []) {
   };
 
   for (const row of sessions) {
-    if (!row?.session_date) continue;
-    const sid = row.student_id != null ? `sid:${row.student_id}` : '';
-    const name = String(row.student_name || '').trim().toLowerCase();
+    const sid = row?.student_id != null ? `sid:${row.student_id}` : '';
+    const name = String(row?.student_name || '').trim().toLowerCase();
     const studentKey = sid || (name ? `name:${name}` : '');
-    const date = String(row.session_date).slice(0, 10);
-    const start = normalizeTimeTo30(row.start_time || '');
+    const date = String(row?.session_date || '').slice(0, 10);
+    const start = normalizeTimeTo30(row?.start_time || '');
     const key = studentKey && date && start ? `${studentKey}|${date}|${start}` : '';
-    if (!key) continue;
+    if (!key) {
+      passthrough.push(row);
+      continue;
+    }
     const prev = bestByKey.get(key);
     if (!prev || scoreRow(row) >= scoreRow(prev)) {
       bestByKey.set(key, row);
     }
   }
 
-  return [...bestByKey.values()];
+  return [...bestByKey.values(), ...passthrough];
 }
