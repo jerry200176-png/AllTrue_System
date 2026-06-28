@@ -1008,7 +1008,7 @@ const {
   getCourseCompletedDates, getCompletedSessionCount, isCompletedDate, displaySessions,
   isSessionMode, getPurchasedSessions, getRawRemainingSessions, getUsedSessions, displayRemainingSessions,
   formatAttendanceTooltipTime, updateLocalSessionRow,
-  ensureCompletedSessionDatesLoaded, loadClassSessionsForCourses, loadEffectiveSessionDates,
+  ensureCompletedSessionDatesLoaded, reloadCourseSessions, loadClassSessionsForCourses, loadEffectiveSessionDates,
   LEAVE_STATUSES, ATTENDED_SESSION_STATUSES,
 } = useCourseSessionsDisplay({
   sessionsByCourse: classSessionsByCourse, completedSessionDatesByCourse,
@@ -2692,6 +2692,8 @@ const {
   normalizeTo30Min,
   dayOfWeekFromDate,
   getSessionDisplayRow,
+  getSessionRowsForDate,
+  reloadCourseSessions,
   formatAttendanceTooltipTime,
   updateLocalSessionRow,
   ensureCompletedSessionDatesLoaded,

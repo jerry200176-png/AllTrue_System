@@ -56,6 +56,33 @@ export function useCourseSessionsDisplay({
     } catch (_) {}
   }
 
+  // Reload a single course's ClassSessions from the server and MERGE into the
+  // local cache (preserving every other course). Unlike loadClassSessionsForCourses,
+  // which replaces the whole cache, this is safe to call mid-interaction. Used when
+  // a chip references a real session that is missing from the cache (duplicate /
+  // overlapping sessions, or a stale load) so the session-edit modal can resolve it
+  // instead of dead-ending on "資料尚未載入". See #942 (in-app #177).
+  async function reloadCourseSessions(course) {
+    const cid = String(course?.id ?? course?.ID ?? '');
+    if (!cid) return false;
+    try {
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      const token = sess?.access_token;
+      if (!token) return false;
+      const { byClass } = await fetchClassSessionsFn({
+        token,
+        branchId: branchId.value ?? branchId,
+        studentClassId: cid,
+        perPage: 2000,
+      });
+      const rows = Array.isArray(byClass?.[cid]) ? byClass[cid] : [];
+      sessionsByCourse.value = mergeSessionsByCourse(sessionsByCourse.value, { [cid]: rows });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function loadClassSessionsForCourses(courseRows = [], token = '') {
     const rows = Array.isArray(courseRows) ? courseRows : [];
     const ids = rows.map((c) => Number(c?.id || c?.ID || 0)).filter((id) => id > 0);
@@ -510,6 +537,7 @@ export function useCourseSessionsDisplay({
     updateLocalSessionRow,
     replaceSessionsForCourse,
     ensureCompletedSessionDatesLoaded,
+    reloadCourseSessions,
     loadClassSessionsForCourses,
     loadEffectiveSessionDates,
     LEAVE_STATUSES,
