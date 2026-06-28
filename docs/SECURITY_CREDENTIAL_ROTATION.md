@@ -30,11 +30,22 @@ chmod 600 /home/admin/.env.monitor
 
 ## Verification
 
-- [ ] Old Telegram token returns 401 from `api.telegram.org`
-- [ ] Revoked GitHub PATs cannot `gh auth status`
-- [ ] `git ls-files .env.monitor` returns empty
-- [ ] `git ls-files '.cursor/projects/**'` returns empty
+- [x] Old Telegram token returns 401 from `api.telegram.org`
+- [x] Revoked GitHub PATs cannot `gh auth status`
+- [ ] `git ls-files .env.monitor` returns empty (after PR #1023 merge)
+- [ ] `git ls-files '.cursor/projects/**'` returns empty (after PR #1023 merge)
 - [ ] History purge completed per `scripts/security-filter-repo.sh` (maintenance window)
+
+## CEO sign-off (2026-06-28)
+
+| Item | Status | Date |
+|------|--------|------|
+| Telegram monitor bot revoked/reissued via BotFather | **CONFIRMED** | 2026-06-28 |
+| GitHub PATs from agent transcripts revoked | **CONFIRMED** | 2026-06-28 |
+| Campus swipe / LINE / Telegram DB secrets reviewed | **CONFIRMED** | 2026-06-28 |
+| Pi live config at `/home/admin/.env.monitor` only | **CONFIRMED** | 2026-06-28 |
+
+Signed off by CEO for publication remediation sequence. History purge and gitleaks gate still required before public toggle.
 
 ## References
 

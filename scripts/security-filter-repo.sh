@@ -29,7 +29,9 @@ REPLACE_FILE="$(mktemp)"
 trap 'rm -f "$REPLACE_FILE"' EXIT
 cat > "$REPLACE_FILE" <<'EOF'
 regex:ghp_[A-Za-z0-9_]{20,}==>***REMOVED_GITHUB_PAT***
-regex:8695169468:AAG[A-Za-z0-9_-]{20,}==>***REMOVED_TELEGRAM_BOT_TOKEN***
+regex:gho_[A-Za-z0-9_]{20,}==>***REMOVED_GITHUB_OAUTH***
+regex:github_pat_[A-Za-z0-9_]{20,}==>***REMOVED_GITHUB_PAT***
+regex:[0-9]+:AA[A-Za-z0-9_-]{20,}==>***REMOVED_TELEGRAM_BOT_TOKEN***
 EOF
 
 echo "=== git-filter-repo: removing paths + redacting token patterns ==="
@@ -42,6 +44,9 @@ git filter-repo --force \
   --path 'backups/alltrue_pre_perf_optimization_2026-04-16.sql' --invert-paths \
   --path 'backend/storage/backups/prd-e-20260418-232201.sql' --invert-paths \
   --path 'docs/AllTrue_backup.sql' --invert-paths \
+  --path-glob 'docs/archive/control-plane-shadow-v1/config/platform/*.pem' --invert-paths \
+  --path-glob 'TelegramWebHook/nppBackup/**' --invert-paths \
+  --path 'backend/bootstrap/cache/config.php' --invert-paths \
   --replace-text "$REPLACE_FILE"
 
 echo "=== Done. Run scripts/security-gitleaks-audit.sh then force-push in maintenance window. ==="
