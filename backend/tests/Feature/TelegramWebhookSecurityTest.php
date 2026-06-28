@@ -85,11 +85,12 @@ class TelegramWebhookSecurityTest extends TestCase
             'MDT' => now(),
             'Notify_Token' => '',
         ]);
+        $originalTelegramId = $student->TelegramID;
 
         $this->postTelegramWebhook($campus->code, $this->update('777', '未授權綁定生'), null)
             ->assertStatus(403);
 
-        $this->assertNull($student->fresh()->TelegramID);
+        $this->assertSame($originalTelegramId, $student->fresh()->TelegramID);
     }
 
     public function test_valid_secret_opens_the_gate(): void
