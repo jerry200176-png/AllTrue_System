@@ -1022,59 +1022,25 @@ async function loadWeekSchedule() {
 
   const startStr = formatDate(weekStart.value);
   const endStr = formatDate(weekEnd.value);
-  const branchIds = props.teacherBranchIds.length > 0
-    ? props.teacherBranchIds.map(Number).filter(id => id > 0)
-    : (props.branchId ? [Number(props.branchId)] : []);
 
-  if (branchIds.length === 0) {
-    try {
-      const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 500 });
-      weekSessions.value = result.items || [];
-    } catch (e) {
-      weekLoadError.value = '無法載入課表';
-    }
-    loadingWeek.value = false;
-    return;
-  }
-
-  const results = await Promise.allSettled(
-    branchIds.map(bid =>
-      fetchClassSessions({ token, branchId: bid, start: startStr, end: endStr, perPage: 500 })
-    )
-  );
-
-  const merged = [];
-  const seenIds = new Set();
-  let anySuccess = false;
-  const failedBranches = [];
-
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') {
-      anySuccess = true;
-      for (const item of (r.value.items || [])) {
-        if (!seenIds.has(item.id)) {
-          seenIds.add(item.id);
-          merged.push(item);
-        }
-      }
-    } else {
-      failedBranches.push(getBranchName(branchIds[i]));
-    }
-  });
-
-  if (!anySuccess) {
+  // in-app bug 178 (GH-941): fetch the teacher's whole week WITHOUT branch_id. The class-sessions
+  // endpoint already scopes the teacher role to their own sessions (contract or
+  // substitute) across every campus they can access (auth_campus_ids). Passing a
+  // single branch_id collapsed that to one campus and hid cross-campus classes
+  // (e.g. a class at branch 9 while the workbench branch was 15) — even though the
+  // attendance page, which omits branch_id, showed them. This matches that path.
+  try {
+    const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 500 });
+    const items = result.items || [];
+    items.sort((a, b) => {
+      if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
+      if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
+      return (a.branch_id || 0) - (b.branch_id || 0);
+    });
+    weekSessions.value = items;
+  } catch (e) {
     weekLoadError.value = '無法載入課表，請稍後重試';
-  } else if (failedBranches.length > 0) {
-    weekLoadError.value = `${failedBranches.join('、')} 載入失敗，其餘分校已顯示`;
   }
-
-  merged.sort((a, b) => {
-    if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
-    if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
-    return (a.branch_id || 0) - (b.branch_id || 0);
-  });
-
-  weekSessions.value = merged;
   loadingWeek.value = false;
 }
 
