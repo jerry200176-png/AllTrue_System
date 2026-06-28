@@ -23,6 +23,12 @@ return [
         Illuminate\Foundation\Providers\ConsoleSupportServiceProvider::class,
         Illuminate\Foundation\Providers\FoundationServiceProvider::class,
         Illuminate\Hashing\HashServiceProvider::class,
+        // Registers the paginator's current-page / current-path resolvers.
+        // Without it, Paginator::resolveCurrentPage() falls back to a hardcoded 1,
+        // so EVERY paginated endpoint silently ignores ?page= and always returns
+        // page 1 (prod incident 2026-06-28: 課程管理 stuck on first 50 of 144,
+        // "下一頁沒反應"; same for students/bugs). See PaginationResolverTest.
+        Illuminate\Pagination\PaginationServiceProvider::class,
         Illuminate\Pipeline\PipelineServiceProvider::class,
         Illuminate\Queue\QueueServiceProvider::class,
         Illuminate\Routing\RoutingServiceProvider::class,
