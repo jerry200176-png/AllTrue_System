@@ -175,16 +175,33 @@ else
 fi
 
 if [[ -n "$director_token" ]]; then
-  code="$(http_auth_code GET "$API_BASE/schedules?type=extra&status=scheduled&per_page=5" "$director_token")"
-  [[ "$code" == "200" ]] && pass "director GET /schedules (pending makeup list) -> 200" \
-    || fail "director GET /schedules -> $code"
-
   # Post route:cache / opcache:reset warmup can yield a transient 500 on first hit (#1040).
-  # Probe a non-existent ID; 404/422 = auth OK. Retry 500s before failing deploy.
   warmup="${SMOKE_POST_OPTIMIZE_SLEEP:-3}"
   if [[ "${SMOKE_ON_PI:-}" == "1" && "$warmup" -gt 0 ]]; then
     sleep "$warmup"
   fi
+
+  schedules_url="$API_BASE/schedules?type=extra&status=scheduled&per_page=5"
+  code=""
+  attempt=0
+  max_attempts=4
+  while [[ "$attempt" -lt "$max_attempts" ]]; do
+    attempt=$((attempt + 1))
+    code="$(http_auth_code GET "$schedules_url" "$director_token")"
+    if [[ "$code" == "200" ]]; then
+      break
+    fi
+    if [[ "$code" == "500" && "$attempt" -lt "$max_attempts" ]]; then
+      warn "director GET /schedules attempt $attempt -> 500 (post-cache warmup?)"
+      sleep 2
+      continue
+    fi
+    break
+  done
+  [[ "$code" == "200" ]] && pass "director GET /schedules (pending makeup list) -> 200 after ${attempt} attempt(s)" \
+    || fail "director GET /schedules -> $code after ${attempt} attempt(s)"
+
+  # Probe a non-existent ID; 404/422 = auth OK. Retry 500s before failing deploy.
   probe_url="$API_BASE/schedules/999999999/cancel-makeup"
   code=""
   attempt=0
