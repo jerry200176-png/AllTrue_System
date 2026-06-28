@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class ParentFeedbackController extends Controller
@@ -152,7 +153,7 @@ class ParentFeedbackController extends Controller
 
     public function markReadByTeacher(Request $request, int $id)
     {
-        $fb = ParentFeedback::findOrFail($id);
+        $fb = $this->parentFeedbackById($id);
         $auth = $this->authorizeStaffParentFeedback($request, $fb);
         if ($auth !== true) {
             return $auth;
@@ -246,8 +247,9 @@ class ParentFeedbackController extends Controller
             if ($teacherId <= 0) {
                 return response()->json(['message' => 'Teacher not linked'], 403);
             }
-            $hasStudent = StudentClass::where('TeacherID', $teacherId)
-                ->where('StudentID', (int) $fb->student_id)
+            $hasStudent = DB::table('StudentClass')
+                ->where('TeacherID', $teacherId)
+                ->where('StudentID', (int) $fb->getAttribute('student_id'))
                 ->where('Stop', 0)
                 ->exists();
             if (!$hasStudent) {
@@ -256,10 +258,18 @@ class ParentFeedbackController extends Controller
             return true;
         }
         $campusIds = array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
-        if (!in_array((int) $fb->campus_id, $campusIds, true)) {
+        if (!in_array((int) $fb->getAttribute('campus_id'), $campusIds, true)) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
         return true;
+    }
+
+    private function parentFeedbackById(int $id): ParentFeedback
+    {
+        /** @var ParentFeedback $feedback */
+        $feedback = (new ParentFeedback())->newQuery()->findOrFail($id);
+
+        return $feedback;
     }
 
     private function resolveParentSession(Request $request): ?ParentSession
