@@ -1,6 +1,7 @@
 # Smoke Test Runbook
 
-Documents read-only post-deploy smoke checks **invoked by** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (execution authority). Only committed files on `origin/main` define runtime behavior; this runbook references them.
+> **REFERENCE ONLY — execution reference.** Documents smoke checks invoked by [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).  
+> No incident or deploy authority. **Contract:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1.
 
 ## Purpose
 

@@ -1,6 +1,6 @@
 # 部署指南
 
-> **Execution authority:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml). **Decision authority:** [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md). This doc is setup reference only — not incident or deploy logic.
+> **REFERENCE ONLY — setup guide.** Execution authority: [`deploy.yml`](../.github/workflows/deploy.yml) only ([`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1).
 
 本系統有兩種部署模式：**裸機 Apache**（生產）與 **Docker Compose**（開發/展示）。
 

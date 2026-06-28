@@ -73,28 +73,39 @@
 
 | Check | Pass |
 |-------|------|
-| R4.1 | INDEX, README, MEMPALACE_OPERATIONS_HANDBOOK, MEMPALACE_ARCHITECTURE_HEALTH use **identical** MemPalace exclusion statement |
+| R4.1 | MemPalace **frozen statement** identical in INDEX, README, handbook, architecture health, contract |
 | R4.2 | No production runbook routes P0 to MemPalace |
 | R4.3 | `mempalace-monthly.yml` = reminder only in INDEX |
 
 ---
 
-## Rule 5 — Rollback path is unique
+## Rule 5 — Control plane contract (frozen)
 
 | Check | Pass |
 |-------|------|
-| R5.1 | Auto-rollback = inside `deploy.yml` |
-| R5.2 | Manual rollback = revert PR → CI → `deploy.yml` OR re-run successful deploy |
-| R5.3 | `RUNBOOK_ROLLBACK.md` matches R5.1–R5.2 |
+| R5.1 | `CONTROL_PLANE_CONTRACT.md` I1–I5 present |
+| R5.2 | `CONTRADICTION_REGISTRY.md` K1–K10 present |
+| R5.3 | Demoted docs have REFERENCE ONLY banners |
+| R5.4 | `CONTROL_PLANE_AUDIT.md` checklist runnable |
 
 ---
 
-## Rule 6 — CI matches deploy trigger
+## Rule 6 — Rollback path is unique
 
 | Check | Pass |
 |-------|------|
-| R6.1 | `deploy.yml` triggers on `CI — PHPUnit Tests` success |
-| R6.2 | INDEX catalog links to `ci.yml` separately from `deploy.yml` |
+| R6.1 | Auto-rollback = inside `deploy.yml` |
+| R6.2 | Manual rollback = revert PR → CI → `deploy.yml` OR re-run successful deploy |
+| R6.3 | `RUNBOOK_ROLLBACK.md` = execution helper only; matches R6.1–R6.2 |
+
+---
+
+## Rule 7 — CI matches deploy trigger
+
+| Check | Pass |
+|-------|------|
+| R7.1 | `deploy.yml` triggers on `CI — PHPUnit Tests` success |
+| R7.2 | INDEX catalog links to `ci.yml` separately from `deploy.yml` |
 
 ```bash
 grep 'workflows:' .github/workflows/deploy.yml
@@ -109,9 +120,10 @@ grep 'workflows:' .github/workflows/deploy.yml
 [ ] R1  deploy.yml sole deploy authority
 [ ] R2  INDEX structured catalog (schema columns)
 [ ] R3  Policy engine + inference + runtime loop + C11
-[ ] R4  MemPalace identical exclusion statement (4 files)
-[ ] R5  Single rollback path
-[ ] R6  CI trigger matches deploy.yml
+[ ] R4  MemPalace frozen statement (contract text)
+[ ] R5  CONTROL_PLANE_CONTRACT + demoted refs + audit
+[ ] R6  Single rollback path
+[ ] R7  CI trigger matches deploy.yml
 ```
 
 **Pass:** all checked. **Fail:** fix docs on `main`; do not add parallel authorities.

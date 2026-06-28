@@ -119,6 +119,7 @@ Severity is **derived** from STATE + signal ID — not subjectively assigned.
 | "Operator decides state" | Run inference engine → assign STATE |
 | "Manual triage selection" | Signal match → Rule 1–5 |
 | "Interpret severity freely" | STATE + signal → SEVERITY_MATRIX lookup |
-| "Feeling-based rollback" | TRIAGE timeout Rule 4 → CONTAIN |
+| "Feeling-based rollback" | Policy P1 / Rule 4 → FINAL_ACTION = `rollback_deploy` |
+| "Operator intuition" | Explicit rule → deterministic outcome (contract) |
 
 State is **inferred or escalated** (ESCALATED_FAILURE), never arbitrarily chosen.

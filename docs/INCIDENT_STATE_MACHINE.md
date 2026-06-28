@@ -1,9 +1,6 @@
 # Incident State Machine
 
-> **STATE = logical classification** (inference). **POLICY = execution constraint layer** (may override action).  
-> **Controller:** [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) · **Policy:** [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md)  
-> **Executor:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) · **Loop:** [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
-> **Mandatory:** State is **inferred or escalated**, never arbitrarily chosen.
+> **Frozen spec:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) · **STATE = classification** · **POLICY = execution modifier (I4)**
 
 ---
 
@@ -77,7 +74,7 @@ DETECT → TRIAGE ⇄ (P1 skip) → CONTAIN → RECOVER → VERIFY → RESOLVE
 1. Inference engine assigns **STATE** — immediate transition.
 2. Policy engine resolves **FINAL_ACTION** — may differ from naive STATE→ACTION table.
 3. Execute FINAL_ACTION if deploy-eligible.
-4. Manual override forbidden except **ESCALATED_FAILURE**.
+4. Manual override forbidden except **ESCALATED_FAILURE** — see [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) explicit outcomes.
 
 ---
 
