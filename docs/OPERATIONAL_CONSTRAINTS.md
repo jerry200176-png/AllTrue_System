@@ -1,7 +1,7 @@
 # Operational Constraints (Hard Invariants)
 
-> **REFERENCE ONLY — invariant checklist.** Mirrors [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5.  
-> **Does NOT override** policy engine, incident stack, or contract. On conflict → contract wins ([`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)).
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Mirrors [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5. On conflict → contract wins.
 
 ---
 
@@ -21,23 +21,11 @@
 | **C10** | **State inferred or escalated** (ESCALATED_FAILURE only) — never arbitrary. |
 | **C11** | **Policy modifies FINAL_ACTION only** — not execution layer (contract I4). |
 
-**Authoritative invariants:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5.
+**Authoritative invariants:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5 only.
 
 ---
 
-## Authority contract (system-wide)
-
-1. **INDEX** = registry only (no authority)
-2. **INCIDENT system** = decision authority (+ state machine controller)
-3. **`deploy.yml`** = execution authority
-4. **INCIDENT system overrides INDEX**
-5. **Deploy system executes only policy-resolved FINAL_ACTION**
-
-Full binding: [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md)
-
----
-
-## Enforcement
+## Enforcement (pointers only)
 
 | Check | Where |
 |-------|-------|

@@ -7,18 +7,18 @@
 
 ## Registered contradictions
 
-| ID | Conflict | Wrong source says | Contract resolution |
-|----|----------|-------------------|---------------------|
-| **K1** | INDEX vs INCIDENT | INDEX describes deploy steps, incident routing, or "SSOT" for ops | **I2:** INDEX = registry only. Incident stack decides. |
-| **K2** | POLICY vs STATE_MACHINE | STATE guarantees a specific ACTION | **I4:** Policy may override mapping; STATE = classification only. |
-| **K3** | RUNBOOK vs deploy.yml | Runbook is deploy authority or can SSH-deploy independently | **I1:** Only `deploy.yml` executes. Runbook = helper. |
-| **K4** | OPERATIONAL_CONSTRAINTS vs POLICY | Constraints override FINAL_ACTION or policy precedence | Constraints mirror I1–I5; **cannot override** policy engine. |
-| **K5** | SEVERITY_MATRIX vs INCIDENT | Severity doc decides incident course or escalation | **Demoted:** lookup table only; escalation from policy/INCIDENT rules. |
-| **K6** | MemPalace vs production | MemPalace stale/missing → production incident or health inference | **Frozen statement:** no incident authority, no SLO, no execution impact. |
-| **K7** | ADR / untracked docs vs main | ADR-001, deploy-production.yml, execution-layer docs claim active authority | **I1 + C2:** Only committed `main` + contract. Untracked = ignore. |
-| **K8** | DEPLOYMENT.md vs deploy.yml | Manual deploy as normal path | Setup reference only; production path = `deploy.yml` only. |
-| **K9** | deploy.yml vs INCIDENT | Deploy run outcome decides STATE or skips policy | **I4:** deploy executes FINAL_ACTION only; re-infer after observe. |
-| **K10** | Override vs inference | Undefined "emergency" manual state pick | **Explicit rule:** Override **only** in ESCALATED_FAILURE + documented + CEO LINE. |
+| ID | Conflict | Wrong source says | Contract resolution | Repo resolution (2026-06-27) |
+|----|----------|-------------------|---------------------|------------------------------|
+| **K1** | INDEX vs INCIDENT | INDEX describes deploy steps, incident routing, or "SSOT" for ops | **I2:** INDEX = registry only. Incident stack decides. | **Resolved:** `docs/INDEX.md` demoted to pointer registry; no dual-authority table. |
+| **K2** | POLICY vs STATE_MACHINE | STATE guarantees a specific ACTION | **I4:** Policy may override mapping; STATE = classification only. | **Resolved:** contract I4 + incident stack aligned. |
+| **K3** | RUNBOOK vs deploy.yml | Runbook is deploy authority or can SSH-deploy independently | **I1:** Only `deploy.yml` executes. Runbook = helper. | **Resolved:** `RUNBOOK_ROLLBACK.md` banner REFERENCE ONLY. |
+| **K4** | OPERATIONAL_CONSTRAINTS vs POLICY | Constraints override FINAL_ACTION or policy precedence | Constraints mirror I1–I5; **cannot override** policy engine. | **Resolved:** duplicate authority block removed; REFERENCE ONLY banner. |
+| **K5** | SEVERITY_MATRIX vs INCIDENT | Severity doc decides incident course or escalation | **Demoted:** lookup table only; escalation from policy/INCIDENT rules. | **Resolved:** REFERENCE ONLY banner. |
+| **K6** | MemPalace vs production | MemPalace stale/missing → production incident or health inference | **Frozen statement:** no incident authority, no SLO, no execution impact. | **Resolved:** frozen statement in INDEX + contract. |
+| **K7** | ADR / untracked docs vs main | ADR-001, deploy-production.yml, execution-layer docs claim active authority | **I1 + C2:** Only committed `main` + contract. Untracked = ignore. | **Resolved:** HISTORICAL banners on ADR + execution-layer docs; `deploy-production.yml` marked NON-RUNTIME draft. |
+| **K8** | DEPLOYMENT.md vs deploy.yml | Manual deploy as normal path | Setup reference only; production path = `deploy.yml` only. | **Resolved:** REFERENCE ONLY banner. |
+| **K9** | deploy.yml vs INCIDENT | Deploy run outcome decides STATE or skips policy | **I4:** deploy executes FINAL_ACTION only; re-infer after observe. | **Resolved:** committed `deploy.yml` restored; no ADR fail-closed WIP in tree. |
+| **K10** | Override vs inference | Undefined "emergency" manual state pick | **Explicit rule:** Override **only** in ESCALATED_FAILURE + documented + CEO LINE. | **Resolved:** contract I3 + INCIDENT stack explicit override gate. |
 
 ---
 

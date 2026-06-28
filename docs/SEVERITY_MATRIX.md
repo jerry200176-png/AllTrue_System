@@ -1,8 +1,7 @@
 # Severity Lookup Table
 
-> **REFERENCE ONLY — mapping table.** No decision authority.  
-> Severity labels = lookup from inferred STATE + signal ID. Escalation rules: [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) + [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md).  
-> **Contract:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I3.
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Lookup table: STATE + signal → severity label. Escalation: INCIDENT stack (contract I3).
 
 ---
 

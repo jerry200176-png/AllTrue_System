@@ -33,6 +33,9 @@ violations: N
 | E6 | — | `CONTRADICTION_REGISTRY.md` contains K1–K10 |
 | E7 | — | MemPalace frozen statement in 4 canonical files |
 | E8 | — | Contract modification in CI requires `CONTRACT_CHANGE=1` or PR title `[contract-change]` |
+| E9 | I1 | No tracked workflow other than `deploy.yml` performs production deploy (SSH + git reset origin/main) |
+| E10 | I2 | INDEX must not contain governance logic phrases (`decision logic`, `must deploy`, …) |
+| E11 | I3/I4 | INCIDENT stack binds FINAL_ACTION execution to `deploy.yml` only |
 
 ---
 
