@@ -21,7 +21,7 @@ jobs:
   # Contract I1–I5 gate — must pass before any test/build job (deploy triggers on this workflow).
   control_plane:
     name: Control Plane Contract Lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 5
     steps:
       - name: Checkout

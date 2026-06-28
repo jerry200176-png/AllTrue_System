@@ -141,6 +141,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Deploy 執行** | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
 | **Rollback** | [`docs/RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) |
 | **CI** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) · `docs/OPERATIONS_RUNBOOK.md` §B |
+| **CI minutes 耗盡時 offline merge** | [`docs/OFFLINE_MERGE_SOP.md`](OFFLINE_MERGE_SOP.md) |
+| **Branch protection 升級** | [`docs/BRANCH_PROTECTION_UPGRADE.md`](BRANCH_PROTECTION_UPGRADE.md) |
 | **Backup** | `docs/OPERATIONS_RUNBOOK.md` §P |
 | **完整 SOP** | `docs/OPERATIONS_RUNBOOK.md` |
 | **危險操作** | `docs/DANGEROUS_OPERATIONS.md` |
