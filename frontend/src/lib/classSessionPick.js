@@ -70,3 +70,38 @@ export function resolveSessionIdForSubstitute(sessions, dateYmd, startTimeHint) 
   const hit = pickBestSessionRow(sameDateRows);
   return hit?.id != null ? Number(hit.id) : null;
 }
+
+/**
+ * Collapse duplicate ClassSession rows for the same student on the same date/time slot.
+ * Overlapping renewal courses can materialize two sessions at one slot; teacher week
+ * view and overdue lists must show one row (in-app #185 / #173 family).
+ * @param {Array<{id?:number, student_id?:number, student_name?:string, session_date?:string, start_time?:string, status?:string, learning_record_status?:string}>} sessions
+ */
+export function dedupeSessionsByStudentSlot(sessions = []) {
+  const bestByKey = new Map();
+  const scoreRow = (row) => {
+    const st = String(row?.status || '').toLowerCase();
+    const attended = ['attended', 'completed', 'late', 'absent'].includes(st) ? 100 : 0;
+    const lr = String(row?.learning_record_status || '').toLowerCase();
+    const lrScore = lr === 'approved' ? 10 : lr === 'pending' ? 5 : 0;
+    const materialized = row?.isProjected ? 0 : 2;
+    return attended + lrScore + materialized + (Number(row?.id) || 0) / 1e6;
+  };
+
+  for (const row of sessions) {
+    if (!row?.session_date) continue;
+    const sid = row.student_id != null ? `sid:${row.student_id}` : '';
+    const name = String(row.student_name || '').trim().toLowerCase();
+    const studentKey = sid || (name ? `name:${name}` : '');
+    const date = String(row.session_date).slice(0, 10);
+    const start = normalizeTimeTo30(row.start_time || '');
+    const key = studentKey && date && start ? `${studentKey}|${date}|${start}` : '';
+    if (!key) continue;
+    const prev = bestByKey.get(key);
+    if (!prev || scoreRow(row) >= scoreRow(prev)) {
+      bestByKey.set(key, row);
+    }
+  }
+
+  return [...bestByKey.values()];
+}
