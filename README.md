@@ -5,11 +5,7 @@ AllTrue is a full-stack **tutoring center management system** for multi-branch c
 **Production:** Raspberry Pi 5 — Vue 3 SPA + Laravel 8 API + MySQL (`AllTrue`)  
 **GitHub:** [jerry200176-png/AllTrue_System](https://github.com/jerry200176-png/AllTrue_System)
 
-**Production incident:** [`docs/INCIDENT_RUNTIME_LOOP.md`](docs/INCIDENT_RUNTIME_LOOP.md) → [`docs/INCIDENT_POLICY_ENGINE.md`](docs/INCIDENT_POLICY_ENGINE.md) + [`docs/INCIDENT_START_HERE.md`](docs/INCIDENT_START_HERE.md)  
-**Service catalog:** [`docs/INDEX.md`](docs/INDEX.md) (registry only — no authority)  
-**Production deploy execution:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
-
-**Operational authority contract:** [`docs/OPERATIONAL_CONSTRAINTS.md`](docs/OPERATIONAL_CONSTRAINTS.md) — INDEX = registry · INCIDENT = decision · deploy.yml = execution
+**Runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](docs/CONTROL_PLANE_CONTRACT.md) · **Catalog:** [`docs/INDEX.md`](docs/INDEX.md) · **Execution:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
 
 ---
 
@@ -62,8 +58,7 @@ Supporting concepts in daily use: **schedules** (fixed weekly slots), **invoices
 
 # Engineering Infrastructure — MemPalace Ingestion System
 
-> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
-> It is a local best-effort system and must not be used for production inference.
+> **MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 
 **Local, single-machine, best-effort** recall index for AI engineering context (WSL2). Not production infrastructure — no Pi deploy, no paging.
 

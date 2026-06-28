@@ -1,9 +1,7 @@
 # Incident Policy Engine
 
-> **Purpose:** Policy-driven self-healing — compress decision steps, optimize recovery path, override naive state→action mapping.  
-> **Precedence:** **POLICY > STATE > SIGNAL** (policy modifies execution; does not replace inference authority)  
-> **Resolver input:** STATE + CONTEXT → POLICY → FINAL_ACTION  
-> **Loop:** [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) · **Baseline actions:** [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md)
+> **Contract I4:** Policy overrides state→action mapping only — **not** the execution layer (`deploy.yml`).  
+> **Supreme on conflict:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md)
 
 ---
 

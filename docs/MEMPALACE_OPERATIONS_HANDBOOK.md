@@ -1,7 +1,6 @@
 # MemPalace Ingestion — Operations Handbook
 
-> **MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
-> It is a local best-effort system and must not be used for production inference.
+> **MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 >
 > | Property | MemPalace | AllTrue production (Pi) |
 > |----------|-----------|-------------------------|

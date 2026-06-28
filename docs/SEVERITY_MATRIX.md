@@ -1,14 +1,14 @@
-# Severity Decision System
+# Severity Lookup Table
 
-> **Severity is derived** from inferred STATE + signal ID — [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md). No free interpretation.  
-> **Runtime:** [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) · **Production SLIs:** [`SRE_POLICY.md`](SRE_POLICY.md) — MemPalace excluded
+> **REFERENCE ONLY — mapping table.** No decision authority.  
+> Severity labels = lookup from inferred STATE + signal ID. Escalation rules: [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) + [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md).  
+> **Contract:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I3.
 
 ---
 
 ## MemPalace scope (read first)
 
-**MemPalace is explicitly excluded from production SLO, alerting, and incident detection.**  
-It is a local best-effort system and must not be used for production inference.
+**MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 
 | | MemPalace | AllTrue production |
 |---|-----------|-------------------|

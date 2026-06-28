@@ -1,7 +1,6 @@
 # Incident Runtime Loop
 
-> **Policy-driven self-healing loop (docs-driven).** Adaptive 4–5 steps when policy matches; 5–6 otherwise.  
-> **Policy:** [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) · **Inference:** [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) · **Entry:** [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md)
+> **Contract:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) · **Policy:** [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md)
 
 ---
 
