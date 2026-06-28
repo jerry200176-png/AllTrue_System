@@ -1220,7 +1220,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
           { page: 'notifications', label: '通知中心', icon: 'notifications' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
-          // #943 (in-app #179): moved out of the collapsed「系統設定」group so
+          // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
           // 主任 can find Bug 回報 without expanding settings.
           { page: 'bugs', label: 'Bug 回報', icon: 'bug_report', badgeTypes: ['bugs'] },
         ],
