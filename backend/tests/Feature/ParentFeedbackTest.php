@@ -173,6 +173,50 @@ class ParentFeedbackTest extends TestCase
             ->assertJsonPath('count', 2);
     }
 
+    public function test_teacher_cannot_mark_read_other_teachers_student_feedback(): void
+    {
+        $campus = CampusFactory::new()->create();
+        $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+        $ownerTeacher = $this->teacherStaff($campus->id, 'owner-teacher@test.com');
+        $otherTeacher = $this->teacherStaff($campus->id, 'other-teacher@test.com');
+        $this->createStudentClass($student->id, $ownerTeacher['user']->id);
+
+        $pToken = $this->parentToken($student->id);
+        $this->postJson('/api/v1/parent/feedback', [
+            'category' => 'teaching',
+            'content'  => '這是老師專屬學生的家長回饋，其他老師不應能讀取',
+        ], $this->bearer($pToken))->assertCreated();
+
+        $feedbackId = (int) DB::table('parent_feedback')->latest('id')->value('id');
+
+        $this->postJson(
+            "/api/v1/parent-feedback/{$feedbackId}/read",
+            [],
+            array_merge($this->bearer($otherTeacher['token']), ['X-Branch-Id' => (string) $campus->id])
+        )->assertStatus(403);
+    }
+
+    public function test_director_cannot_access_other_campus_feedback_replies(): void
+    {
+        $campusA = CampusFactory::new()->create();
+        $campusB = CampusFactory::new()->create();
+        $studentB = StudentFactory::new()->create(['CampusID' => $campusB->id]);
+        $pToken = $this->parentToken($studentB->id);
+
+        $this->postJson('/api/v1/parent/feedback', [
+            'category' => 'system',
+            'content'  => 'B分校家長回饋，A分校主任不應能查看回覆串',
+        ], $this->bearer($pToken))->assertCreated();
+
+        $feedbackId = (int) DB::table('parent_feedback')->latest('id')->value('id');
+        $directorA = $this->directorStaff($campusA->id);
+
+        $this->getJson(
+            "/api/v1/parent-feedback/{$feedbackId}/replies",
+            array_merge($this->bearer($directorA['token']), ['X-Branch-Id' => (string) $campusA->id])
+        )->assertStatus(403);
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────
 
     private function parentToken(int $studentId): string
@@ -200,6 +244,63 @@ class ParentFeedbackTest extends TestCase
         $token = bin2hex(random_bytes(16));
         AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
         return ['user' => $user, 'token' => $token];
+    }
+
+    private function teacherStaff(int $campusId, string $email): array
+    {
+        $user = User::create([
+            'LoginName' => $email,
+            'Name' => 'Teacher',
+            'PSW' => 'secret',
+            'type' => 'T',
+            'phone' => (string) random_int(900000000, 999999999),
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 0, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return ['user' => $user, 'token' => $token];
+    }
+
+    private function directorStaff(int $campusId): array
+    {
+        $user = User::create([
+            'LoginName' => Str::random(6) . '@dir.com',
+            'Name' => 'Director',
+            'PSW' => 'secret',
+            'type' => 'A',
+            'phone' => (string) random_int(900000000, 999999999),
+            'MustChangePassword' => false,
+        ]);
+        UserCampus::create(['CampusID' => $campusId, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
+        $token = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $user->id, 'token' => $token, 'expires_at' => now()->addDay()]);
+        return ['user' => $user, 'token' => $token];
+    }
+
+    private function createStudentClass(int $studentId, int $teacherId): int
+    {
+        return (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId,
+            'GradeID' => 1,
+            'SubjectID' => 1,
+            'TeacherID' => $teacherId,
+            'by1' => 1,
+            'Period' => 4,
+            'TotalHours' => 0,
+            'Charge' => 0,
+            'Pay' => 0,
+            'Paid' => 0,
+            'Rate' => 500,
+            'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'RoomID' => '',
+            'SessionCount' => 8,
+            'SessionDuration' => 120,
+            'RemainingSessions' => 3,
+            'UsedSessions' => 5,
+            'Stop' => 0,
+        ]);
     }
 
     private function bearer(string $token): array
