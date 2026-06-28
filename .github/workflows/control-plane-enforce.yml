@@ -3,6 +3,18 @@ name: Control Plane Enforce
 on:
   pull_request:
     branches: ["main"]
+    paths:
+      - 'docs/CONTROL_PLANE_CONTRACT.md'
+      - 'docs/CONTRADICTION_REGISTRY.md'
+      - 'docs/INCIDENT_*.md'
+      - 'docs/INDEX.md'
+      - 'docs/SEVERITY_MATRIX.md'
+      - 'docs/RUNBOOK_ROLLBACK.md'
+      - 'docs/OPERATIONAL_CONSTRAINTS.md'
+      - 'scripts/control-plane-lint.mjs'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/control-plane-enforce.yml'
   push:
     branches: ["main"]
 
