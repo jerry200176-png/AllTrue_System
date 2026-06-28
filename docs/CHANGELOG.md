@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-06-28 — fix: 班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機
+
+Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的堂次仍會顯示，與課程管理詳情一致。LINE 官方帳號「綁定 姓名 手機」改與家長入口相同，優先比對「家長手機」欄位。
+
+開發備註：`calendarOccurrenceMerge.js` materialized pass 改掃 `allCourses`（#1035 / in-app #182–184）；新增 `StudentContactPhone` + `LineWebhookBindingTest`（§R10 LINE bind 對齊）。PR #1036、#1037。
+
 ## 2026-06-28 — security: secret exposure remediation (HEAD cleanup + webhook hardening)
 
 - **Security:** Remove tracked `.env.monitor` and `.cursor/projects/**` from git; add `.env.monitor.example` and [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md).
