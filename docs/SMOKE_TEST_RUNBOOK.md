@@ -1,7 +1,7 @@
 # Smoke Test Runbook
 
-> **REFERENCE ONLY — execution reference.** Documents smoke checks invoked by [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).  
-> No incident or deploy authority. **Contract:** [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1.
+> **REFERENCE ONLY — NO DECISION OR EXECUTION AUTHORITY.**  
+> Documents smoke checks invoked by [`deploy.yml`](../.github/workflows/deploy.yml) (contract I1).
 
 ## Purpose
 
