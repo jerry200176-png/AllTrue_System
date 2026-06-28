@@ -46,6 +46,7 @@ git filter-repo --force \
   --path 'docs/AllTrue_backup.sql' --invert-paths \
   --path-glob 'docs/archive/control-plane-shadow-v1/config/platform/*.pem' --invert-paths \
   --path-glob 'TelegramWebHook/nppBackup/**' --invert-paths \
+  --path-glob 'scripts/raspberry-pi/nppBackup/**' --invert-paths \
   --path 'backend/bootstrap/cache/config.php' --invert-paths \
   --replace-text "$REPLACE_FILE"
 

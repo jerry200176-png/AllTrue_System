@@ -133,6 +133,29 @@ sudo systemctl daemon-reload && sudo systemctl restart ollama
 
 **2026-06-28 Secret Exposure Audit（再評）**：HEAD 曾含 live `.env.monitor`（Telegram token）與 769 個 `.cursor/projects/` 檔；歷史含 GitHub PAT 與 SQL dump blobs。**Verdict: NOT SAFE public** until `scripts/security-filter-repo.sh` + rotation checklist [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md) complete.
 
+**2026-06-28 Publication Safety Finalization（完成）**：
+
+| Step | Status | Evidence |
+|------|--------|----------|
+| PR #1023 merged (HEAD clean) | DONE | `cc0a24b` — no `.env.monitor`, no `.cursor/projects/` |
+| Credential rotation CEO sign-off | DONE | [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md) §CEO sign-off |
+| `git filter-repo` + force-push all branches/tags | DONE | Maintenance window 2026-06-28; branch protection restored |
+| Second pass: `scripts/raspberry-pi/nppBackup/**` removed | DONE | Campus token backup purged from history |
+| `scripts/security-gitleaks-audit.sh` (allowlisted CI/test/archive only) | PASS | 0 non-allowlisted findings on full history |
+| GitHub secret scanning + push protection | See below | Enabled before public toggle |
+
+**Verdict after completion: SAFE TO PUBLISH** (assuming rotation effective and no new leaks post-purge).
+
+**Maintenance window SOP (executed 2026-06-28):**
+
+1. Saved branch protection → `/tmp/bp-restore-purge.json`
+2. `git clone --mirror` → `scripts/security-filter-repo.sh` (+ nppBackup second pass)
+3. `git push --force --all && git push --force --tags`
+4. Restored branch protection (8 required checks, `enforce_admins: true`)
+5. Fresh clone attack simulation + gitleaks gate before visibility toggle
+
+**Do not re-run filter-repo casually** — force-push main is P0 incident class (see `.cursorrules` 事故 A).
+
 ---
 
 *本文件版本：v1.0 | 參考：OWASP TG v4.2、NIST SP 800-115、CVSS v3.1*
