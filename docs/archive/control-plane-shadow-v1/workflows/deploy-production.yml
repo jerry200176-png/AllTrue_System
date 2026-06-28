@@ -1,0 +1,339 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# ADR-001: Single production deployment authority (PDP-gated SSH deploy)
+
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["Deploy Staging"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA on main to deploy'
+        required: true
+      pr_number:
+        description: 'PR number (auto-detected if empty)'
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  detect-deployable:
+    name: Detect deployable changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      deployable: ${{ steps.detect.outputs.deployable }}
+      sha: ${{ steps.ctx.outputs.sha }}
+      pr: ${{ steps.ctx.outputs.pr }}
+    steps:
+      - name: Resolve commit context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SHA="${{ github.event.inputs.commit_sha }}"
+            PR="${{ github.event.inputs.pr_number }}"
+          else
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            PR=""
+          fi
+          [[ -n "$PR" ]] || PR=$(gh api "/repos/${{ github.repository }}/commits/${SHA}/pulls" --jq '.[0].number // empty' 2>/dev/null || true)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "pr=$PR" >> "$GITHUB_OUTPUT"
+
+      - name: Check deployable diff
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.ctx.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          repo = os.environ["GITHUB_REPOSITORY"]
+          head = os.environ["SHA"]
+          commit = json.loads(subprocess.check_output(["gh", "api", f"/repos/{repo}/commits/{head}"], text=True))
+          parents = commit.get("parents", [])
+          if not parents:
+              deployable = True
+          else:
+              base = parents[0]["sha"]
+              comparison = json.loads(subprocess.check_output(["gh", "api", f"/repos/{repo}/compare/{base}...{head}"], text=True))
+              files = [item.get("filename", "") for item in comparison.get("files", [])]
+              prefixes = ("backend/", "frontend/", "scripts/")
+              exact = {"composer.json", "composer.lock", ".github/workflows/deploy-production.yml"}
+              deployable = any(p.startswith(prefixes) or p in exact for p in files)
+          print(f"deployable={'true' if deployable else 'false'}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"deployable={'true' if deployable else 'false'}\n")
+          PY
+
+  production-deploy-auto:
+    name: Production Deploy (PDP + Pi)
+    needs: detect-deployable
+    if: >-
+      needs.detect-deployable.outputs.deployable == 'true' &&
+      github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-pdp
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-deployable.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Download staging workflow artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: staging-promotion-*
+          merge-multiple: true
+          path: ci-artifacts/promotion
+
+      - name: Download PDP artifact from staging run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pdp-canonical-*
+          path: ci-artifacts
+
+      - name: Require staging artifacts (ADR-001)
+        run: |
+          test -f ci-artifacts/pdp.json || { echo "::error::missing pdp.json from Deploy Staging run"; exit 1; }
+          test -n "$(find ci-artifacts/promotion -name 'staging-*.json' -print -quit)" || {
+            echo "::error::missing staging promotion artifact from Deploy Staging run"; exit 1; }
+
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.py scripts/platform/*.sh scripts/platform/platform-gate.sh
+
+      - name: ADR-001 PDP production gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ needs.detect-deployable.outputs.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PDP_SIGNING_PRIVATE_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY }}
+        run: |
+          bash scripts/platform/require-pdp-production-deploy.sh \
+            ci-artifacts/pdp.json "${{ needs.detect-deployable.outputs.sha }}"
+
+      - name: Deploy to Pi (sole production SSH authority)
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+
+          PREV_COMMIT=$(git rev-parse HEAD)
+          MIGRATION_RAN=0
+
+          echo "=== [ADR-001] PDP-gated production deploy ==="
+          echo "=== [1/7] git fetch + reset ==="
+          git fetch origin main
+          git reset --hard origin/main
+
+          echo "=== [2/7] Composer dependencies ==="
+          cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
+
+          echo "=== [2b/7] Storage symlink + permissions ==="
+          cd /home/admin/backend
+          php artisan storage:link --force 2>/dev/null || true
+          chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+
+          echo "=== [3/7] Migration backup + apply ==="
+          PENDING=$(cd /home/admin/backend && php artisan migrate:status 2>/dev/null | grep -cE "\| No|Pending" || true)
+          if [ "$PENDING" -gt 0 ]; then
+            TS=$(date '+%Y-%m-%d_%H%M%S')
+            BACKUP_FILE="/home/admin/backups/emergency/db_pre_migration_${TS}.sql.gz"
+            mkdir -p /home/admin/backups/emergency
+            mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+              --single-transaction AllTrue | gzip > "$BACKUP_FILE"
+            cd /home/admin/backend && php artisan migrate --force
+            MIGRATION_RAN=1
+          fi
+
+          echo "=== [3b/7] Sentry DSN ==="
+          if ! grep -q "^SENTRY_LARAVEL_DSN=" /home/admin/backend/.env; then
+            echo "SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}" >> /home/admin/backend/.env
+          else
+            sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
+          fi
+          echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local
+
+          echo "=== [4/7] Frontend build ==="
+          cd /home/admin
+          FRONTEND_CHANGED=$(git diff --name-only "$PREV_COMMIT" HEAD -- frontend/ | wc -l)
+          ASSETS_MISSING=0
+          [ ! -f /home/admin/backend/public/index.html ] && ASSETS_MISSING=1
+          if [ "$FRONTEND_CHANGED" -gt 0 ] || [ "$ASSETS_MISSING" -eq 1 ]; then
+            cd /home/admin/frontend && npm install --prefer-offline && npm run deploy
+            rm -f /home/admin/frontend/.env.production.local
+          else
+            rm -f /home/admin/frontend/.env.production.local
+          fi
+
+          echo "=== [5/7] Laravel optimize + OPcache ==="
+          cd /home/admin/backend
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php
+          php artisan optimize
+          php artisan opcache:reset 2>/dev/null || true
+
+          echo "=== [6/7] Health + smoke ==="
+          HEALTH=$(curl -sk https://daan.lifenet.com.tw/api/v1/health \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" \
+            2>/dev/null || echo "error")
+          if [ "$HEALTH" != "ok" ]; then
+            echo "❌ Health check failed: $HEALTH"
+          else
+            export SMOKE_BASE_URL="https://daan.lifenet.com.tw"
+            export SMOKE_ON_PI=1
+            export SMOKE_TEACHER_LOGIN="${{ secrets.SMOKE_TEACHER_LOGIN }}"
+            export SMOKE_TEACHER_PASSWORD="${{ secrets.SMOKE_TEACHER_PASSWORD }}"
+            export SMOKE_BRANCH_ID="${{ secrets.SMOKE_BRANCH_ID }}"
+            if [ "$FRONTEND_CHANGED" -gt 0 ]; then export SMOKE_STRICT_VERSION=1; fi
+            if bash /home/admin/scripts/post-merge-smoke.sh; then
+              echo "🚀 ADR-001 production deploy complete"
+              exit 0
+            fi
+          fi
+
+          echo "=== [7/7] Rollback ==="
+          cd /home/admin && git reset --hard "$PREV_COMMIT" || true
+          if [ "$FRONTEND_CHANGED" -gt 0 ]; then
+            cd /home/admin/frontend && npm run deploy || true
+          fi
+          cd /home/admin/backend && php artisan optimize || true
+          if [ "$MIGRATION_RAN" -eq 1 ]; then
+            php artisan migrate:rollback --step=1 --force || true
+          fi
+          exit 1
+          ENDSSH
+
+      - name: Upload production deploy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-promotion-${{ needs.detect-deployable.outputs.sha }}
+          path: |
+            ci-artifacts/promotion/production-*.json
+            ci-artifacts/pdp.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  production-deploy-break-glass:
+    name: Production Deploy (break-glass)
+    needs: detect-deployable
+    if: >-
+      needs.detect-deployable.outputs.deployable == 'true' &&
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-break-glass
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.detect-deployable.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Resolve Deploy Staging run for commit
+        id: staging_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.detect-deployable.outputs.sha }}
+        run: |
+          RUN_ID=$(gh run list --workflow=deploy-staging.yml --branch=main \
+            --json databaseId,headSha,conclusion \
+            --jq '.[] | select(.headSha=="'"$SHA"'" and .conclusion=="success") | .databaseId' | head -1)
+          [[ -n "$RUN_ID" ]] || { echo "::error::No successful Deploy Staging run for commit $SHA"; exit 1; }
+          echo "id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download staging artifacts (break-glass)
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.staging_run.outputs.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: staging-promotion-*
+          merge-multiple: true
+          path: ci-artifacts/promotion
+
+      - name: Download PDP artifact (break-glass)
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.staging_run.outputs.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: pdp-canonical-*
+          path: ci-artifacts
+
+      - name: Require staging artifacts (ADR-001 break-glass)
+        run: |
+          test -f ci-artifacts/pdp.json || { echo "::error::missing pdp.json"; exit 1; }
+          test -n "$(find ci-artifacts/promotion -name 'staging-*.json' -print -quit)" || {
+            echo "::error::missing staging promotion artifact"; exit 1; }
+
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.py scripts/platform/*.sh
+
+      - name: ADR-001 PDP production gate (break-glass)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ needs.detect-deployable.outputs.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          PDP_SIGNING_PRIVATE_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY }}
+        run: |
+          bash scripts/platform/require-pdp-production-deploy.sh \
+            ci-artifacts/pdp.json "${{ needs.detect-deployable.outputs.sha }}"
+
+      - name: Deploy to Pi (break-glass — CEO approved)
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          echo "::warning::Break-glass production deploy — postmortem required per ADR-001"
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key \
+            "${{ secrets.PI_SSH_USER }}@${{ secrets.PI_SSH_HOST }}" << 'ENDSSH'
+          set -uo pipefail
+          cd /home/admin
+          git fetch origin main
+          git reset --hard origin/main
+          cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader
+          cd /home/admin/backend && php artisan optimize
+          echo "Break-glass deploy complete — run full smoke manually"
+          ENDSSH
+
+  skip-non-deployable:
+    name: Skip (non-deployable diff)
+    needs: detect-deployable
+    if: needs.detect-deployable.outputs.deployable != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Non-deployable diff — ADR-001 production deploy skipped (docs-only or no runtime change)."
