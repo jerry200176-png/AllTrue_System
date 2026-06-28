@@ -6,25 +6,20 @@
 
 ---
 
-## 🧠 MemPalace — AI 記憶系統（2026-04-25 啟用）
+## 🧠 MemPalace — AI 記憶系統
 
-過去對話、文件、程式碼已索引進 palace（~2200 drawers）。
-
-**手動搜尋**（調查 bug 或回顧過去決策前先跑）：
+**更新索引（唯一入口）：**
 ```bash
-~/.local/bin/mempalace search "關鍵字"
-~/.local/bin/mempalace search "關鍵字" --wing alltrue-sessions  # 只搜對話
-~/.local/bin/mempalace search "關鍵字" --wing alltrue-docs      # 只搜文件
+bash scripts/mempalace-ingest.sh
 ```
 
-**更新 palace**（完成重要任務後）：
+**搜尋（調查 bug 或回顧決策前）：**
 ```bash
-~/.local/bin/mempalace mine ~/.cursor/projects/home-jerry-alltrue/agent-transcripts \
-  --mode convos --wing alltrue-sessions
-~/.local/bin/mempalace mine ~/alltrue/docs --wing alltrue-docs
+~/.local/bin/mempalace search "關鍵字" --wing alltrue-sessions
+~/.local/bin/mempalace search "關鍵字" --wing alltrue-docs
 ```
 
-Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
+Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdown；MemPalace 僅供召回。
 
 ---
 
@@ -125,6 +120,7 @@ Palace 位置：`~/.mempalace/palace`（local-first，不上雲）
 
 | 需要什麼 | 去哪讀 |
 |---|---|
+| **SOP 對標大廠 / AI 接手地圖（換手前先讀「進行中狀態」）** | `docs/SOP_MATURITY.md` |
 | 完整工作流程 + 角色規格 + SOP | `.cursorrules` |
 | P0 紅線速查 + OPS checklist | `.cursor/rules/p0-gate.mdc` |
 | API 路由 / DB schema / Gotchas | `.cursorrules` 或 `alltrue-system.mdc` |

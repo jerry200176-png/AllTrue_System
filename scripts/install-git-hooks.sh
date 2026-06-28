@@ -44,6 +44,22 @@ cat > "$HOOKS_DIR/pre-commit" << 'EOF'
 set -euo pipefail
 ERRORS=0
 
+# 0a. SOP enforcement (before execution-layer checks)
+if [ -x scripts/sop-enforce.sh ]; then
+  if ! scripts/sop-enforce.sh --commit >/dev/null 2>&1; then
+    echo "❌ SOP ENFORCE: Commit blocked — run: scripts/sop-enforce.sh --commit"
+    scripts/sop-enforce.sh --commit 2>&1 || true
+    exit 1
+  fi
+fi
+
+# 0b. Execution layer guard (release-exec policy at commit time)
+if [ -x scripts/pre-commit-exec-guard.sh ]; then
+  if ! scripts/pre-commit-exec-guard.sh; then
+    exit 1
+  fi
+fi
+
 # 0. git index 稽核（§R58）：保護路徑（backend/ frontend/ scripts/ .github/ docs/）的
 #    tracked 檔案不得被 assume-unchanged / skip-worktree 旗標隱藏，否則改動會在 status/diff
 #    中隱形、規避 PR review。偵測到就擋下 commit。
@@ -109,24 +125,24 @@ fi
 exit 0
 EOF
 
-# 4. post-merge：PR merge 後自動 mine MemPalace
-cat > "$HOOKS_DIR/post-merge" << 'EOF'
+# 4. post-merge：呼叫唯一 ingest 入口（背景執行）
+cat > "$HOOKS_DIR/post-merge" << 'POSTMERGE_EOF'
 #!/bin/bash
-MEMPALACE=~/.local/bin/mempalace
-TRANSCRIPT_DIR=~/.cursor/projects/home-jerry-alltrue/agent-transcripts
-if command -v "$MEMPALACE" >/dev/null 2>&1 && [ -d "$TRANSCRIPT_DIR" ]; then
-  echo "🧠 MemPalace: mining latest session..."
-  "$MEMPALACE" mine "$TRANSCRIPT_DIR" --mode convos --wing alltrue-sessions >/dev/null 2>&1 &
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+INGEST="$REPO_ROOT/scripts/mempalace-ingest.sh"
+if [ -x "$INGEST" ]; then
+  echo "🧠 MemPalace: post-merge ingest..."
+  bash "$INGEST" >/dev/null 2>&1 &
 fi
 exit 0
-EOF
+POSTMERGE_EOF
 
 chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/commit-msg" "$HOOKS_DIR/post-merge"
 
 echo "✅ pre-push hook   → 禁止直接 push main"
-echo "✅ pre-commit hook → git index 稽核(§R58) + PHP syntax check + debug 語句警告"
+echo "✅ pre-commit hook → SOP enforce + execution guard + git index 稽核(§R58) + PHP syntax check + debug 語句警告"
 echo "✅ commit-msg hook → Conventional Commits 格式驗證"
-echo "✅ post-merge hook → 自動 mine MemPalace"
+echo "✅ post-merge hook → MemPalace ingest (scripts/mempalace-ingest.sh)"
 echo ""
 echo "完成！hooks 已安裝到 .git/hooks/"
 echo "卸載：bash scripts/install-git-hooks.sh --uninstall"

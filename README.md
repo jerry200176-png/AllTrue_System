@@ -1,623 +1,503 @@
 # AllTrue 補習班管理系統
 
-AllTrue 是一套給補習班使用的**全端管理系統**，把「學生、課程、排課、點名、繳費、薪資、學習評量、家長通知」整合在同一個平台，大幅降低人工行政成本。
+AllTrue is a full-stack **tutoring center management system** for multi-branch cram schools. It runs in production on a Raspberry Pi and serves directors, teachers, front-desk staff, and parents across four campuses (興隆、新店、大安、木柵).
 
-> **生產環境**：Raspberry Pi 5（/home/admin/）+ Apache / PHP-FPM，24 小時不停機  
-> **GitHub**：[jerry200176-png/AllTrue_System](https://github.com/jerry200176-png/AllTrue_System)
+**Production:** Raspberry Pi 5 — Vue 3 SPA + Laravel 8 API + MySQL (`AllTrue`)  
+**GitHub:** [jerry200176-png/AllTrue_System](https://github.com/jerry200176-png/AllTrue_System)
 
----
-
-## 目錄
-
-- [系統現況一覽](#系統現況一覽)
-- [功能模組](#功能模組)
-- [角色與使用情境](#角色與使用情境)
-- [技術架構](#技術架構)
-- [Architecture Diagram](#architecture-diagram)
-- [ERD - Entity Relationship Diagram](#erd---entity-relationship-diagram)
-- [Engineering Maturity](#engineering-maturity)
-- [前端頁面清單](#前端頁面清單)
-- [目錄結構](#目錄結構)
-- [本地開發快速開始](#本地開發快速開始)
-- [部署方式](#部署方式)
-- [GitHub 同步工作流程](#github-同步工作流程)
-- [AI 開發工作流程（Engineering Workflow）](#ai-開發工作流程engineering-workflow)
-- [重要文件索引](#重要文件索引)
-- [AI 讀檔與長期記憶（防漏讀）](#ai-讀檔與長期記憶防漏讀)
-- [⚠️ 安全警示（必讀）](#️-安全警示必讀)
+**Runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](docs/CONTROL_PLANE_CONTRACT.md) · **Catalog:** [`docs/INDEX.md`](docs/INDEX.md) · **Execution:** [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)
 
 ---
 
-## 系統現況一覽
+## Product — What the System Does
 
-| 指標 | 現況 |
-|---|---|
-| **前端頁面** | 33 個 Vue 頁面（管理後台 + 家長入口） |
-| **API 端點** | 300+ RESTful routes（`/api/v1/*`） |
-| **資料庫** | MySQL，核心表 15+，含核心關聯欄位與效能索引 |
-| **部署平台** | Raspberry Pi 5，含自動備份 + Telegram 告警 |
-| **RFID 整合** | 刷卡自動點名，60s debounce 防重複，重複卡 422 保護 |
-| **LINE 整合** | 家長出缺勤通知、評量推播 |
-| **安全加固** | Route throttle、HTTP 安全標頭（HSTS/CSP/nosniff）、密碼最低 8 碼 |
-| **自動備份** | 每日 nightly + 每 6 小時快照 → Google Drive 異地同步 + sha256 manifest |
-| **工程治理** | GitHub Pro Branch Protection、PR CI、CODEOWNERS、Sentry、UptimeRobot、DORA metrics |
+AllTrue replaces scattered spreadsheets and manual admin work with one platform for daily tutoring operations: enrolling students, scheduling classes, tracking attendance, billing, and communicating with parents.
 
----
+### Domain entities
 
-## 近期重點更新（2026-06）
+| Entity | What it represents | Primary tables / concepts |
+|--------|-------------------|---------------------------|
+| **Students** | Learners enrolled at a campus | `Student` — profile, RFID, contact, campus |
+| **Classes** | A student's course contract with a teacher, rate, and session count | `StudentClass` — sessions remaining, schedule mode, payment state |
+| **Sessions** | Individual class meetings on a calendar date | `ClassSession` — date, time, status; linked to a `StudentClass` |
+| **Attendance / records** | Who showed up, when, and how class went | `StudentSingIn` (attendance/sign-in), `LearningRecord` (teacher evaluations, director approval) |
 
-- **介面一致化（Epic #687 Phase 2 進行中）**：建立設計系統共用元件（`AtButton` / `AtCard` / `AtEmpty` / `AtMetric`），逐頁以 design token 取代頁面級硬編碼色票。已完成 CourseManagement + 課程 modal、StudentsList、App 外殼（側欄 / Topbar / FAB）；老師工作台、智慧行事曆等持續進行。設計規範見 `docs/RULE_DESIGN_SYSTEM.md`。
-- **身分模型簡化**：runtime 移除對 `Teacher` 資料表的依賴，老師權威來源統一為 `User` + `UserCampus`（`StudentClass.TeacherID` 等欄位仍存 `User.id`，向下相容）。
-- **文件治理**：CHANGELOG 採月度滾動歸檔（主檔只留當月）、INDEX 去重、核心規則檔加上 `last_reviewed` 文件保鮮 metadata；多 agent 並行改用 `git worktree` 隔離。
-- **學習評量**：老師/主任在評量表可直接看「上一堂摘要」（含代課老師），省去翻歷史記錄的步驟。
-- 建立課程時排課摘要即時顯示計費單位（每堂/每小時）與預估總額，降低金額填錯風險。
-- 主任總覽「核心檢視 / 完整檢視」雙模式，預設只顯示今日必處理事項；家長入口「進度中心」精簡為本週學習、下次課程、繳費狀態（手機優先）。
+Supporting concepts in daily use: **schedules** (fixed weekly slots), **invoices/payments** (billing), **substitute teachers**, and **branch-scoped data** (each campus is isolated).
 
----
+### What users do
 
-## 功能模組
+| Role | Typical actions |
+|------|-----------------|
+| **Director / admin** | Manage students and courses, review today's schedule, track tuition alerts, approve learning evaluations, oversee multi-branch operations |
+| **Teacher** | View personal schedule, take attendance, fill learning records, request makeup/substitute sessions, export monthly reports |
+| **Front desk** | Manual check-in, RFID binding, absence catch-up, parent notifications |
+| **Parent** | View child's schedule, evaluations, and payment status via Parent Portal or LINE |
 
-| 模組 | 說明 |
-|---|---|
-| **學生管理** | 建立學生資料、一般課程主約、加購堂數、歷程管理、學生建立精靈（多步驟） |
-| **智慧排課** | 固定週期排課、調課、補課、請假、教室與老師時段協調、排課例外保護 |
-| **出缺勤** | 櫃台點名、RFID 刷卡自動登記、缺勤補登、自修記錄管理（含轉換為到班）、孤兒記錄自動清理 |
-| **財務管理** | 課程收費、剩餘堂數追蹤、帳單與繳費狀態、月結報表、繳費狀態管理 |
-| **方案管理（舊資料維護）** | 多科共用方案（Course Packages）保留歷史查詢與既有方案維護；新課程建立優先使用一般課程 |
-| **學習評量** | 老師填寫評量、主任審核（approve/reject）、學習進度留存 |
-| **家長入口** | 家長可查課程排程、評量內容、繳費狀態，LINE 推播通知 |
-| **教師工作台** | 老師個人課表、打卡狀態卡片、補課申請、月報 XLSX 匯出 |
-| **兼職薪資** | 兼職教師薪資計算（含個別覆寫規則）、薪資報表 |
-| **課表回報管理** | 老師回報課表異常、主任審核，30s 輪詢即時通知 |
-| **採用率與任務追蹤** | 主任/老師待辦卡、流程追蹤、近期操作履歷、每週開啟率與完成率 KPI |
-| **通知中心** | 站內通知 + LINE 訊息整合管理 |
-| **校區 / 教師管理** | 多分校隔離、教室管理、代課容量三態標籤（有空 ✓ / 尚有容量 ⚠ / 已滿 ✗） |
-| **系統管理** | 主任帳號、科目設定、LINE 整合、超級管理員 DB Migration |
+### Product stack (summary)
 
----
+| Layer | Technology |
+|-------|------------|
+| Frontend | Vue 3.4 + Vite 5 — `frontend/src/pages/` |
+| Backend | Laravel 8 / PHP 8+ — REST API at `/api/v1/*` |
+| Database | MySQL |
+| Auth | Bearer token in `localStorage.alltrue_session` |
+| Integrations | RFID swipe (`POST /api/v1/swipe-rfid`), LINE Login / Webhook |
 
-## 課程加購語意
+### Product documentation
 
-- 堂數制「加購堂數」會建立一筆新的未繳 `StudentClass` 批次，並替新批次建立 `ClassSession` 上課日期。
-- 原課程的 `SessionCount` / `RemainingSessions` 不會被直接追加；主任應在新批次課程詳情查看加購後的上課日期。
-- 月結制不走加購批次；請使用「續約月結」延長月數或指定到期日，系統會補齊月結固定時段的未來預排堂次。
-
-## 課程建立語意
-
-- 日常新建課程以「一般課程」為主；同一課程可設定多個固定時段，且每個時段可覆寫科目與老師。
-- 多科共用方案屬於舊資料維護能力，保留既有 `CoursePackage` 歷史與財務查詢，不作為主任日常新建入口。
+| Need | Start here |
+|------|------------|
+| Navigation map | [`docs/INDEX.md`](docs/INDEX.md) (catalog only) |
+| **Production incident** | [`docs/INCIDENT_START_HERE.md`](docs/INCIDENT_START_HERE.md) |
+| **Deploy execution** | [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) |
+| Deployment & ops | [`docs/OPERATIONS_RUNBOOK.md`](docs/OPERATIONS_RUNBOOK.md), [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
+| API / schema | [`docs/SYSTEM_TECH_GUIDE.md`](docs/SYSTEM_TECH_GUIDE.md) |
+| AI / dev workflow | [`AGENTS.md`](AGENTS.md), [`.cursorrules`](.cursorrules) |
 
 ---
 
-## 角色與使用情境
+# Engineering Infrastructure — MemPalace Ingestion System
 
-| 角色 | 主要裝置 | 主要操作 |
-|---|---|---|
-| **主任 / 行政** | 電腦（桌面優先） | 建立學生與課程、統整排課、追蹤繳費、審核評量、查看營運總覽 |
-| **老師** | 平板 / 手機 | 查看個人課表、填寫學習評量、打卡、補課申請、月報匯出 |
-| **櫃台** | 電腦 / 平板 | 到班點名、RFID 綁定、缺勤補登、家長通知 |
-| **家長** | 手機 | 查詢孩子課程進度、評量內容、繳費狀態（含 LINE 推播） |
+> **MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
+
+**Local, single-machine, best-effort** recall index for AI engineering context (WSL2). Not production infrastructure — no Pi deploy, no paging.
+
+Local-first recall index for AllTrue engineering context. Indexes Cursor agent transcripts and git-tracked docs into searchable wings on the developer machine (WSL2).
+
+**Authority:** Git markdown in this repository is source of truth. MemPalace is a recall index only — if search results conflict with git, trust git.
+
+**Detailed operations:** See [`docs/MEMPALACE_OPERATIONS_HANDBOOK.md`](docs/MEMPALACE_OPERATIONS_HANDBOOK.md) for runbook, failure playbook, and on-call guide.
 
 ---
 
-## 技術架構
+## 1. Overview
+
+MemPalace ingestion is an **event-sourced, DAG-based pipeline** that mines two source trees into a ChromaDB index:
+
+| Source | Wing | Path |
+|--------|------|------|
+| Cursor agent transcripts | `alltrue-sessions` | `$TRANSCRIPT_DIR` (auto-detected) |
+| Repository docs | `alltrue-docs` | `$MEMPALACE_REPO_ROOT/docs` |
+
+There is **one ingestion entry point**: `scripts/mempalace-ingest.sh`. All other scripts delegate to it or wrap it.
+
+The pipeline has **8 stages** defined in a declarative manifest. Execution order is derived from `depends_on` edges, not file order. Run state lives in an append-only **`events.jsonl`** per run — not filesystem `.done` markers.
+
+**Environment:** WSL2 only (`~/alltrue`). Ingest does not run on the production Raspberry Pi or in GitHub Actions CI.
+
+---
+
+## 2. System Architecture
+
+### DAG pipeline
+
+The pipeline is defined in `scripts/mempalace/engine/pipeline.manifest.json`. The DAG engine (`dag.sh`) validates the graph and produces a topological execution order.
 
 ```
-前端（Vue 3 + Vite 5）
-  ├── 頁面：frontend/src/pages/*.vue（33 頁）
-  ├── API Client：frontend/src/supabase.js（自製 client，實際打 Laravel API）
-  └── build → backend/public（SPA 靜態資產）
-
-後端（Laravel 8 / PHP 8+）
-  ├── API Routes：backend/routes/api.php（/api/v1/*）
-  ├── Controllers：backend/app/Http/Controllers/
-  ├── Services：AttendanceEffectsService / SessionDeductionService…
-  ├── Models：backend/app/Models/（PascalCase 資料表命名）
-  └── Auth：Laravel Sanctum + localStorage Bearer token（alltrue_session）
-
-資料庫：MySQL（生產主用）
-  ├── 核心表：Student, StudentClass, ClassSession, StudentSingIn
-  ├── 財務表：Invoice, InvoiceItem, Payment
-  ├── 評量表：LearningRecord
-  ├── 方案表：course_packages, package_session_ledger
-  └── 其他：User, UserCampus, Campus, rooms, schedules, Notification…
-       （老師權威來源＝User + UserCampus；舊 Teacher 表 runtime 已不依賴）
-
-排程任務（Laravel Scheduler）
-  ├── 每日 02:30 — CloseOrphanStudentSignIns（清孤兒出缺勤）
-  └── 每月 1 日 02:00 — monthly-restore-drill（備份還原演練）
-
-部署
-  ├── 伺服器：Raspberry Pi 5（/home/admin/）
-  ├── Web Server：Apache / Nginx + PHP-FPM
-  ├── 前端 build → backend/public（npm run deploy + OPcache 自動重置）
-  └── CI：GitHub Actions（.github/workflows/）
+preflight → lock → discovery → mining ──┐
+                          ↘ normalization ──→ storage → index → verify
 ```
 
----
+`mining` and `normalization` both depend on `discovery`. They run serially (stable sort: `mining` before `normalization`).
 
-## Architecture Diagram
+### Event-sourced model
 
-```mermaid
-flowchart LR
-    subgraph Users["使用者"]
-        Director["主任 / 行政"]
-        Teacher["老師"]
-        Parent["家長"]
-        RFID["RFID 讀卡機"]
-    end
+Each run writes an append-only event log:
 
-    subgraph Frontend["Vue 3 + Vite SPA"]
-        WebApp["管理後台 / 老師工作台"]
-        ParentPortal["家長入口"]
-        ApiClient["frontend/src/supabase.js<br/>自製 API client"]
-    end
+```
+~/.mempalace/palace/.ingest-run/runs/<run_id>/events.jsonl
+```
 
-    subgraph Backend["Laravel 8 API (/api/v1)"]
-        Auth["Auth / Bearer token"]
-        Controllers["Controllers"]
-        Services["Services<br/>Attendance / Deduction / Sync"]
-        Scheduler["Laravel Scheduler"]
-    end
+Resume, replay, and stage-skip decisions read this file. The verify stage emits `run_completed` on success.
 
-    subgraph Data["Data Layer"]
-        MySQL[("MySQL AllTrue")]
-        Files["storage/app/public"]
-        Cache["Laravel cache / OPcache"]
-    end
+### Execution flow
 
-    subgraph Integrations["External Integrations"]
-        LINE["LINE Login / LIFF / Webhook"]
-        Sentry["Sentry error tracking"]
-        Telegram["Telegram ops alerts"]
-    end
-
-    subgraph Platform["Production / DevOps"]
-        Pi["Raspberry Pi 5<br/>Apache + PHP-FPM"]
-        GitHub["GitHub Pro<br/>Branch Protection + PR CI"]
-        Actions["GitHub Actions<br/>CI / Deploy / Health / DORA"]
-        Drive["Google Drive<br/>nightly + sixhour + manifest"]
-    end
-
-    Director --> WebApp
-    Teacher --> WebApp
-    Parent --> ParentPortal
-    RFID --> Controllers
-    WebApp --> ApiClient
-    ParentPortal --> ApiClient
-    ApiClient --> Auth
-    Auth --> Controllers
-    Controllers --> Services
-    Services --> MySQL
-    Controllers --> Files
-    Backend --> Cache
-    Scheduler --> MySQL
-    Controllers --> LINE
-    Backend --> Sentry
-    Scheduler --> Telegram
-    GitHub --> Actions
-    Actions --> Pi
-    Pi --> Backend
-    Pi --> Frontend
-    Pi --> MySQL
-    MySQL --> Drive
+```
+Operator / post-merge hook
+        │
+        ▼
+scripts/mempalace-ingest.sh          ← single entry point
+        │
+        ▼
+scripts/mempalace/engine/run.sh      ← CLI parsing, replay mode, orchestration
+        │
+        ├── dag.sh                     ← validate manifest, derive plan
+        ├── runner.sh                  ← execute nodes, retries, emit events
+        ├── events.sh                  ← append to events.jsonl
+        ├── state.sh                   ← run lifecycle, resume checks
+        ├── log.sh                     ← human ingest.log
+        └── stages/*.sh                ← stage handlers (8 nodes)
+        │
+        ▼
+~/.mempalace/palace/                   ← ChromaDB index
+~/.mempalace/palace/.ingest-run/       ← run artifacts + event logs
 ```
 
 ---
 
-## ERD - Entity Relationship Diagram
+## 3. Components
 
-> 精簡展示版，聚焦核心營運資料流。完整欄位以 `backend/database/migrations/` 為準；歷史表名 `StudentSingIn` 是 production schema 的實際拼字。`StudentClass.TeacherID` / `StudentSingIn.TeacherID` 存的是 `User.id`（老師＝User，runtime 已不再 join 舊 `Teacher` 表，見 G-001）。
+### Ingestion entry point
 
-```mermaid
-erDiagram
-    Campus ||--o{ Student : owns
-    Campus ||--o{ UserCampus : grants_access
-    Campus ||--o{ rooms : has
-    Campus ||--o{ course_packages : owns
+| File | Role |
+|------|------|
+| `scripts/mempalace-ingest.sh` | Thin wrapper; `exec` into engine |
+| `scripts/mempalace/engine/run.sh` | Engine: flags, replay, plan display, main loop |
 
-    User ||--o{ UserCampus : belongs_to
-    Student ||--o{ StudentClass : enrolls
-    Student ||--o{ schedules : has
-    Student ||--o{ Invoice : billed
-    Student ||--o{ course_packages : owns
+### DAG engine
 
-    User ||--o{ StudentClass : teaches
-    User ||--o{ StudentSingIn : records
-    User ||--o{ LearningRecord : writes
-    User ||--o{ schedules : teaches
+| File | Role |
+|------|------|
+| `scripts/mempalace/engine/pipeline.manifest.json` | Declarative nodes: handler, inputs, outputs, depends_on, retry |
+| `scripts/mempalace/engine/dag.sh` | Topological sort, cycle detection, `--from-stage` downstream resolution |
 
-    StudentClass ||--o{ ClassSession : schedules
-    StudentClass ||--o{ StudentSingIn : attendance
-    StudentClass ||--o{ LearningRecord : evaluates
-    StudentClass ||--o{ Invoice : bills
-    StudentClass }o--o| course_packages : package_member
+### Runner
 
-    ClassSession ||--o| StudentSingIn : attendance_record
-    ClassSession ||--o| LearningRecord : evaluation_record
-    ClassSession ||--o{ package_session_ledger : package_deduction
+| File | Role |
+|------|------|
+| `scripts/mempalace/engine/runner.sh` | Input artifact checks, retry policy, handler dispatch, event emission |
 
-    Invoice ||--o{ Payment : paid_by
-    course_packages ||--o{ package_session_ledger : ledger
-    schedules ||--o| schedules : makeup_from
+For each node the runner: checks inputs → emits `stage_started` → calls handler → emits `stage_completed` or `stage_failed`. Lock abort returns exit code 2 (surfaced as skip, not failure).
 
-    Campus {
-        int id PK
-        string name
-        string LIFFID
-        string LineNotifyID
-    }
+### Event system
 
-    User {
-        int id PK
-        string LoginName
-        string Name
-        string type
-        string status
-    }
+| File | Role |
+|------|------|
+| `scripts/mempalace/engine/events.sh` | Append-only JSONL writes, completed-stage queries, replay reconstruction |
+| `scripts/mempalace/engine/state.sh` | Run ID allocation, resume reuse, success/failure markers |
 
-    UserCampus {
-        int CampusID FK
-        int UserID FK
-        int Admin
-        bool Approved
-        string RFID
-    }
+### Stage handlers
 
-    Student {
-        int id PK
-        int CampusID FK
-        string name
-        string RFID
-        string LineID
-        int enable
-    }
+| Stage | Handler | Script |
+|-------|---------|--------|
+| preflight | `mempalace_ingest_stage_preflight` | `stages/preflight.sh` |
+| lock | `mempalace_ingest_stage_lock` | `stages/lock.sh` |
+| discovery | `mempalace_ingest_stage_discovery` | `stages/discovery.sh` |
+| mining | `mempalace_ingest_stage_mining` | `stages/mining.sh` |
+| normalization | `mempalace_ingest_stage_normalization` | `stages/normalization.sh` |
+| storage | `mempalace_ingest_stage_storage` | `stages/storage.sh` |
+| index | `mempalace_ingest_stage_index` | `stages/index.sh` |
+| verify | `mempalace_ingest_stage_verify` | `stages/verify.sh` |
 
-    StudentClass {
-        bigint ID PK
-        int StudentID FK
-        int TeacherID FK
-        bigint PackageID FK
-        string ScheduleMode
-        int SessionCount
-        int RemainingSessions
-        bool Stop
-    }
+Shared utilities: `stages/_helpers.sh`.
 
-    ClassSession {
-        bigint id PK
-        bigint StudentClassID FK
-        date SessionDate
-        time StartTime
-        time EndTime
-        string Status
-    }
+### Config SSOT
 
-    StudentSingIn {
-        bigint id PK
-        int StudentID FK
-        bigint StudentClassID FK
-        bigint ClassSessionID FK
-        int TeacherID FK
-        datetime SignInDT
-        datetime SignOutDT
-        string Status
-        string Memo
-    }
+| File | Role |
+|------|------|
+| `scripts/mempalace-config.sh` | Paths, wing names, CLI location, transcript dir resolution |
 
-    LearningRecord {
-        bigint id PK
-        bigint StudentClassID FK
-        bigint ClassSessionID FK
-        int TeacherID FK
-        string Status
-        int ApprovedBy
-    }
+Key defaults:
 
-    Invoice {
-        bigint id PK
-        int StudentID FK
-        bigint StudentClassID FK
-        int TotalAmount
-        int PaidAmount
-        string Status
-    }
+| Variable | Default |
+|----------|---------|
+| `MEMPALACE` | `~/.local/bin/mempalace` |
+| `MEMPALACE_PALACE_DIR` | `~/.mempalace/palace` |
+| `MEMPALACE_WING_SESSIONS` | `alltrue-sessions` |
+| `MEMPALACE_WING_DOCS` | `alltrue-docs` |
+| `MEMPALACE_DOCS_DIR` | `$REPO_ROOT/docs` |
 
-    Payment {
-        bigint id PK
-        bigint InvoiceID FK
-        int Amount
-        datetime PaidAt
-        string Method
-    }
+### Operational tooling
 
-    course_packages {
-        bigint id PK
-        bigint student_id FK
-        bigint campus_id FK
-        int total_sessions
-        int remaining_sessions
-        bool paid
-        bool stop
-    }
-
-    package_session_ledger {
-        bigint id PK
-        bigint package_id FK
-        bigint student_class_id FK
-        bigint class_session_id FK
-        int delta
-        string reason
-    }
-
-    schedules {
-        bigint id PK
-        int student_id FK
-        int teacher_id FK
-        int branch_id FK
-        int student_course_id FK
-        date schedule_date
-        string status
-        string type
-    }
-
-    rooms {
-        bigint id PK
-        int campus_id FK
-        string name
-        int capacity
-    }
-```
+| File | Role |
+|------|------|
+| `scripts/mempalace-maintain.sh` | `--status`, `--repair`, default: status → ingest → status |
+| `scripts/mempalace/run-stage.sh` | Run one stage: `--stage <name>` wrapper |
+| `scripts/install-git-hooks.sh` | Installs post-merge hook that backgrounds ingest |
 
 ---
 
-## Engineering Maturity
+## 4. Execution Model
 
-| 面向 | 已完成能力 | 對標意義 |
-|---|---|---|
-| Code governance | GitHub Pro `main` Branch Protection、required checks、conversation resolution、禁止 force push/delete | 防止直接覆蓋 production 主線 |
-| Review ownership | PR template、CODEOWNERS、高風險模組審查規則 | 堂數、繳費、RFID、CI/CD 變更有明確 owner |
-| CI quality gate | PHPUnit、Vite build、PHPStan、migration dry-run、npm/composer audit、coverage gate | merge 前阻擋大多數 regression |
-| Deployment | `deploy.yml` 自動部署 Pi、health check、smoke test、rollback path、docs-only skip deploy | 上線流程可重複、可觀測、可回滾 |
-| Observability | Sentry、UptimeRobot、Pi health、slow query report、structured logging 預留 | 錯誤、可用性、效能有監控入口 |
-| Backup / DR | nightly + sixhour DB backup、Google Drive offsite、sha256 manifest、monthly restore drill | 備份不只存在，還能驗證可還原 |
-| Delivery metrics | DORA metrics、branch hygiene、Dependabot | 追蹤交付健康度與依賴風險 |
-| AI governance | `.cursorrules`、`AGENTS.md`、`AI_REGRESSION_LESSONS.md`、MemPalace | 將事故教訓轉成可執行規則，降低 AI 重犯 |
-
-### Known Gaps / Roadmap
-
-| 缺口 | 狀態 | 目前策略 |
-|---|---|---|
-| MySQL PITR / binlog | `TD-015` Open | 先保留 RPO <= 6 小時；另走 DBA/OPS 流程評估 binlog retention、磁碟壓力與 replay drill |
-| 第二 maintainer approval | Planned | 單人 repo 暫不強制 1 approval，避免 PR 審核死鎖；有第二位 maintainer 後啟用 |
-| Full server DR tabletop | Planned | 每半年演練「全新 Pi + GitHub + Drive + secrets」重建流程 |
-| Laravel major upgrade | `TD-014` Open | Laravel 8 安全修補需另開升級專案，不混入日常 bugfix |
-
----
-
-## 前端頁面清單
-
-| 頁面 | 功能 |
-|---|---|
-| `DirectorDashboard.vue` | 主任總覽（繳費提醒、今日排課、待審評量） |
-| `SmartCalendar.vue` | 智慧排課日曆（調課、補課、請假） |
-| `StudentsList.vue` | 學生與課程列表管理 |
-| `StudentWizard.vue` | 新學生建立精靈（多步驟） |
-| `CourseManagement.vue` | 課程與主約管理 |
-| `CoursePackagesPage.vue` | 多科共用方案舊資料維護（不在日常主導覽） |
-| `ClassesList.vue` | 班級列表 |
-| `AttendancePage.vue` | 出缺勤管理（含自修記錄與轉換） |
-| `LearningRecordsPage.vue` | 學習評量（老師填寫 / 主任審核） |
-| `BillingList.vue` | 帳單列表 |
-| `TuitionCollectionPage.vue` | 收費管理 |
-| `TuitionReportPage.vue` | 月結繳費報表 |
-| `TeacherHomePage.vue` | 教學工作台（打卡卡片 + 個人課表） |
-| `TeachersList.vue` | 教師列表與帳號管理 |
-| `TeacherProfilePage.vue` | 老師個人資料與設定 |
-| `ParttimePayrollPage.vue` | 兼職薪資計算與報表 |
-| `PayReportPage.vue` | 薪資報表總覽 |
-| `ScheduleDiscrepancyPage.vue` | 課表回報管理（30s 輪詢） |
-| `NotificationsCenter.vue` | 通知中心 |
-| `ChatPage.vue` | 即時訊息 |
-| `BugReportsPage.vue` | 系統問題回報 |
-| `ParentPortal.vue` | 家長入口 |
-| `ClassroomManagement.vue` | 教室管理 |
-| `SubjectSettingsPage.vue` | 科目設定 |
-| `SubjectUnitsPage.vue` | 科目單元管理 |
-| `DirectorAccountsPage.vue` | 主任帳號管理 |
-| `LineIntegration.vue` | LINE 整合設定 |
-| `ProfileCenterPage.vue` | 個人設定中心 |
-| `ReleaseNotesPage.vue` | 版本公告（老師/主任可見更新摘要）|
-| `BranchManagementPage.vue` | 分校管理（super_admin 限定）|
-| `Login.vue` / `Register.vue` / `DirectorRegister.vue` | 登入 / 註冊流程 |
-
----
-
-## 目錄結構
-
-```
-/home/admin/
-├── frontend/          # Vue 3 + Vite 5 前端
-├── backend/           # Laravel 8 後端（含 public/ 存放前端 build）
-├── docs/              # 所有技術文件與操作手冊
-├── scripts/           # 維運腳本（備份、部署、git sync）
-├── docker/            # Docker 設定（開發用）
-├── docker-compose.yml # 容器化開發環境
-├── .cursorrules       # AI 開發規則（技術棧摘要 + Engineering Workflow）
-└── README.md          # 本文件
-```
-
----
-
-## 本地開發快速開始
-
-### 前端
+### Full run
 
 ```bash
-cd frontend
-npm install
-npm run dev       # 開發伺服器 http://localhost:5173
+cd ~/alltrue
+bash scripts/mempalace-ingest.sh
 ```
 
-### 後端
+Success: exit **0**, console prints `✅ Ingest complete. run_id=<id>`, final event is `run_completed`.
+
+### Partial run (`--from-stage`)
+
+Runs the named node and all **downstream** dependents only. Does not re-run upstream ancestors.
 
 ```bash
-cd backend
-cp .env.example .env
-# 填入 DB_DATABASE, DB_USERNAME, DB_PASSWORD …
-composer install
-php artisan key:generate
-php artisan migrate
-php artisan serve  # http://localhost:8000
+bash scripts/mempalace-ingest.sh --from-stage storage
+# Plan: storage → index → verify
 ```
 
-### Docker（一鍵啟動）
+Requires upstream artifacts in the current run directory, or use `--force` (skips input validation — use with care).
+
+### Resume
+
+Reuses `current/run_id`. Skips stages that already have `stage_completed` in the event log.
 
 ```bash
-docker-compose up -d
+bash scripts/mempalace-ingest.sh --resume
 ```
 
----
+### Replay
 
-## 部署方式
-
-### 前端部署（同步到 backend/public）
-
-正常上線不手動執行 `npm run deploy`。前端變更合併到 `main` 後，由 `deploy.yml` 在 Pi 上自動 build、複製到 `backend/public`，並執行 health / smoke test。
-
-手動 `npm run deploy` 只允許在 CI/deploy 掛掉的緊急修復流程中使用，且必須先確認不在 feature branch 上線。
-
-### 生產環境（Raspberry Pi 遠端部署）
+Reconstructs run state from events. **Does not execute** any stages.
 
 ```bash
-# 透過 feature branch → PR → CI → 自動部署
-git checkout -b feat/my-feature
-./scripts/git-sync.sh "feat: 你的 commit 訊息"
-# → 自動 commit + push + 建立 PR；CI 通過 merge 後自動部署到 Pi
+bash scripts/mempalace-ingest.sh --replay              # current run
+bash scripts/mempalace-ingest.sh --replay <run_id>     # specific run
 ```
 
-詳細步驟見 `docs/DEPLOYMENT.md` 與 `docs/OPERATIONS_RUNBOOK.md`。
+### Dry-run
 
----
-
-## GitHub 同步工作流程
-
-- **生產主分支**：`origin/main`（受 Branch Protection 保護，禁止直接 push）
-- **開發流程**：feature branch → PR → CI 通過 → merge → 自動部署
-
-### 一般日常更新（最常用）
+Plans and writes sentinel artifacts; no `mempalace mine` writes.
 
 ```bash
-git checkout -b feat/my-feature    # 建立 feature branch
-./scripts/git-sync.sh "feat: 這次改動內容"  # commit + push + 自動建 PR
-# → CI 通過後在 GitHub merge PR
+bash scripts/mempalace-ingest.sh --dry-run --no-lock
 ```
 
-### 手動 git 流程
+### Other flags
+
+| Flag | Effect |
+|------|--------|
+| `--stage NAME` | Run one node only |
+| `--no-lock` | Skip flock (testing) |
+| `--force` | Ignore missing input artifacts |
+| `--list-stages` | Print topo-sorted node names |
+| `--show-plan` | Print derived execution plan and exit |
+
+---
+
+## 5. Events System
+
+### Location
+
+```
+~/.mempalace/palace/.ingest-run/
+├── current/
+│   ├── run_id
+│   ├── failed_stage          (present if last run failed)
+│   └── last_success_run_id
+└── runs/<run_id>/
+    ├── events.jsonl          ← source of truth for run state
+    ├── ingest.log            ← human-readable log
+    ├── execution.plan        ← derived DAG order snapshot
+    └── <stage artifacts>     ← preflight.env, manifest.*.json, etc.
+```
+
+Lock file (separate from events): `~/.mempalace/palace/.ingest.lock`
+
+### Record structure
+
+Each line in `events.jsonl` is one JSON object:
+
+```json
+{
+  "seq": 1,
+  "ts": "2026-06-27T22:52:09Z",
+  "run_id": "20260627T225209Z-1124755",
+  "event": "stage_completed",
+  "stage": "preflight",
+  "detail": "cli=3.3.3 sources=2"
+}
+```
+
+Fields: `seq`, `ts`, `run_id`, `event`, optional `stage`, optional `detail`.
+
+### Event types
+
+| Event | When |
+|-------|------|
+| `run_started` | Pipeline begins; detail includes execution plan |
+| `stage_started` | Node execution begins |
+| `stage_completed` | Node succeeded |
+| `stage_failed` | Node failed |
+| `stage_skipped` | Skipped (resume or missing source) |
+| `stage_retry` | Retry attempt (from runner retry policy) |
+| `run_completed` | Full success (emitted by verify stage) |
+| `run_failed` | Pipeline failed |
+| `run_aborted` | Lock held; no work done |
+
+### Replay behavior
+
+Replay reads all events sequentially and prints:
+
+- Event count
+- Final status: `completed`, `failed`, `aborted`, or `in_progress`
+- Full timeline (seq, timestamp, event, stage, detail)
+- Per-stage state summary
+
+A `stage_failed` event sets run status to `failed`. A later `run_completed` overrides to `completed`.
+
+---
+
+## 6. Operations
+
+### How to run
+
+| Scenario | Command |
+|----------|---------|
+| Normal ingest | `bash scripts/mempalace-ingest.sh` |
+| Monthly health check | `bash scripts/mempalace-maintain.sh` |
+| Status only | `bash scripts/mempalace-maintain.sh --status` |
+| Chroma index repair | `bash scripts/mempalace-maintain.sh --repair` |
+| Single stage test | `bash scripts/mempalace/run-stage.sh preflight --no-lock` |
+| Install post-merge hook | `bash scripts/install-git-hooks.sh` |
+
+**Automated triggers:**
+
+- **Post-merge hook** (local): backgrounds ingest after `git merge` if hooks installed
+- **Monthly reminder** (GitHub): `.github/workflows/mempalace-monthly.yml` comments on issue #519 — operator must run `mempalace-maintain.sh` on WSL2 manually
+
+**Prerequisite:** `mempalace` CLI at `~/.local/bin/mempalace` (`uv tool install mempalace` or `pipx install mempalace`).
+
+### How to debug failures
+
+1. Note `run_id` from console or `cat ~/.mempalace/palace/.ingest-run/current/run_id`
+2. Replay: `bash scripts/mempalace-ingest.sh --replay`
+3. Find last `stage_failed` in timeline
+4. Read human log: `runs/<run_id>/ingest.log`
+5. Check stage artifacts in `runs/<run_id>/`
+6. Fix root cause, then `--resume`
+
+Exit codes:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success, or lock held (skipped) |
+| 1 | Failure (`❌ Ingest failed.`) |
+
+### How to inspect logs
 
 ```bash
-git checkout -b feat/my-feature
-git add .
-git commit -m "feat: 說明"
-git push -u origin feat/my-feature
-gh pr create --fill
+RUN=$(cat ~/.mempalace/palace/.ingest-run/current/run_id)
+RUN_DIR=~/.mempalace/palace/.ingest-run/runs/$RUN
+
+cat "$RUN_DIR/events.jsonl"
+cat "$RUN_DIR/ingest.log"
+cat "$RUN_DIR/execution.plan"
+bash scripts/mempalace-ingest.sh --replay "$RUN"
+~/.local/bin/mempalace status
+```
+
+### How to recover from failures
+
+| Situation | Action |
+|-----------|--------|
+| Stage failed mid-pipeline | Fix cause → `bash scripts/mempalace-ingest.sh --resume` |
+| Event log corrupt | Start fresh: `bash scripts/mempalace-ingest.sh` (new run_id) |
+| Chroma index corrupt | `bash scripts/mempalace-maintain.sh --repair` → full ingest |
+| Lock stuck with no process | Investigate stale lock → retry ingest |
+| Partial success (some stages done) | `--resume` (do not start parallel full ingest) |
+
+Search (read-only, does not write index):
+
+```bash
+~/.local/bin/mempalace search "<keyword>" --wing alltrue-sessions
+~/.local/bin/mempalace search "<keyword>" --wing alltrue-docs
 ```
 
 ---
 
-## AI 開發工作流程（Engineering Workflow）
+## 7. Failure Handling
 
-本專案採用**角色分工的多 Phase 開發流程**，任何新功能或修改都必須走以下流程：
+### Lock behavior
+
+The `lock` stage acquires `flock` on `~/.mempalace/palace/.ingest.lock`.
+
+| Outcome | Signal | Exit |
+|---------|--------|------|
+| Lock acquired | Normal execution continues | — |
+| Lock held | `⏳ Ingest skipped (lock held).` + `run_aborted` event | **0** |
+
+If lock skip persists with no running ingest, check for stale lock holder before removing the lock file.
+
+### Stage failure
+
+Handler returns non-zero after retries exhausted → `stage_failed` → `run_failed` → exit **1**.
+
+Recovery: fix root cause, then `--resume`. Resume skips nodes with `stage_completed` in the event log.
+
+Common causes: missing `mempalace` CLI, palace not writable, mine command failure, missing source directories, missing upstream artifacts when using `--from-stage`.
+
+### Replay mismatch
+
+Symptom: replay shows `completed` but search is stale, or vice versa.
+
+Usually means wrong `run_id` was inspected, or ingest ran outside the pipeline (direct `mempalace mine` bypasses events). Recovery: run full ingest via `mempalace-ingest.sh`, confirm with `--replay` and `mempalace status`.
+
+### Config drift
+
+Symptom: transcripts not indexed, wrong paths in `preflight.env`.
+
+Root cause: environment overrides (`TRANSCRIPT_DIR`, `MEMPALACE_DOCS_DIR`) diverging from `mempalace-config.sh` defaults.
+
+Recovery: `unset TRANSCRIPT_DIR MEMPALACE_DOCS_DIR` and re-run. Inspect `preflight.env` in the run directory to confirm resolved paths.
+
+---
+
+## 8. Constraints
+
+### Ponytail rule layer
+
+Ponytail (`.cursor/rules/ponytail-mempalace.mdc`) applies **implementation-only** constraints to stage handlers and helpers. It does not govern architecture.
+
+**Allowed to change (with Ponytail rules):**
+
+- `scripts/mempalace/engine/stages/*.sh`
+- `scripts/mempalace/engine/stages/_helpers.sh`
+- `scripts/mempalace/engine/log.sh` (formatting only)
+
+**Forbidden to change via Ponytail or casual edits:**
+
+- `pipeline.manifest.json` — DAG structure
+- `dag.sh`, `events.sh`, `runner.sh`, `run.sh`, `state.sh` — engine contract
+- Stage count, stage names, or `depends_on` edges
+- `scripts/mempalace-ingest.sh` as sole entry point
+- `scripts/mempalace-config.sh` behavior changes without review
+
+Handler rules: preserve event emission, no duplicate `stage_started` logging, no parallel stage execution, no new ingestion paths.
+
+### Architecture is frozen
+
+The following are fixed by design and must not be changed in documentation or code without explicit architecture review:
+
+- DAG-based pipeline with manifest-driven execution order
+- Event-sourced state (`events.jsonl` as SSOT; no `.done` files)
+- Single entry point (`scripts/mempalace-ingest.sh`)
+- 8 stages with current names and dependency graph
+- Local WSL2 execution only (no CI ingest, no Pi deployment)
+
+---
+
+## File map
 
 ```
-[PLAN] Product Manager → 14 節 PRD
-    ↓ 批准
-[ARCH] Tech Lead → 技術設計文件（API 合約、DB schema、模組依賴）
-    ↓ 批准（依情況進入 [UX] 和/或 [DBA]）
-[DEV] 全端工程師 → 後端 API + 前端 Vue 實作
-    ↓ 批准
-[TEST] QA 工程師 → PHPUnit 測試（Feature / Unit / Regression，只在 GitHub Actions 執行）
-    ↓ 批准
-[SEC] Security Engineer → OWASP / STRIDE 資安審查
-    ↓ 批准
-[REVIEW] Staff Engineer → Code Review
-    ↓ LGTM
-[DOCS] Technical Writer → CHANGELOG + 操作手冊
-    ↓ 完成
-[OPS] DevOps Engineer → 部署 + Health Check + Smoke Test
+scripts/
+├── mempalace-ingest.sh              # Entry point
+├── mempalace-maintain.sh            # Status / repair / wrapped ingest
+├── mempalace-config.sh              # Config SSOT
+├── install-git-hooks.sh             # Post-merge hook installer
+└── mempalace/
+    ├── run-stage.sh                 # Single-stage wrapper
+    └── engine/
+        ├── run.sh                   # Engine orchestrator
+        ├── dag.sh                   # DAG resolution
+        ├── runner.sh                # Node execution
+        ├── events.sh                # Event log + replay
+        ├── state.sh                 # Run lifecycle
+        ├── log.sh                   # Human log
+        ├── pipeline.manifest.json   # DAG definition
+        └── stages/
+            ├── _helpers.sh
+            ├── preflight.sh
+            ├── lock.sh
+            ├── discovery.sh
+            ├── mining.sh
+            ├── normalization.sh
+            ├── storage.sh
+            ├── index.sh
+            └── verify.sh
 ```
 
-**獨立角色（隨時可呼叫，不走主線）：**
-
-| 角色 | 呼叫時機 |
-|---|---|
-| `[BUG]` Bug Investigator → Fixer | 有 bug 需要調查與修復（B1 偵查 → B2 修復） |
-| `[IT]` IT Administrator | Raspberry Pi 異常、SSL、備份、磁碟空間 |
-| `[SRE]` Site Reliability Engineer | 系統變慢、刷卡失敗率上升、效能分析 |
-| `[LEGAL]` Compliance Officer | 個資法合規、隱私政策 |
-| `[DATA]` BI / Analytics Engineer | 統計報表、Dashboard 指標設計 |
-
-> 完整 Phase 規格與每個角色的禁止事項詳見 `.cursorrules`。
-
 ---
 
-## AI 讀檔與長期記憶（防漏讀）
-
-工程文件多且長，**預設不要通讀**；請依下列順序，與大廠「單一權威 + 可追溯」做法一致：
-
-1. **導航 + 讀法 + 治理**：[`docs/INDEX.md`](docs/INDEX.md) — 任務對應到哪個檔、哪一節，含速讀卡（各檔「目的 / 太長時怎麼讀」）、治理節奏與 MemPalace 保鮮。（`AI_DOC_LITERACY` / `DOCS_GOVERNANCE_SOP` 已整併入 INDEX，僅保留 stub 供索引。）
-2. **資料鏈**：CHANGELOG → `npm run sync-release-notes` → 家長分眾版本公告（見 INDEX §速讀卡、`AI_REGRESSION_LESSONS.md §R45`）。
-3. **開工順序**：見 [`AGENTS.md`](AGENTS.md)；**多 agent 並行務必用 `git worktree` 隔離**，勿在主 working tree 共改（`AI_REGRESSION_LESSONS.md §Y6`）。
-
----
-
-## 重要文件索引
-
-| 文件 | 說明 |
-|---|---|
-| `docs/CHANGELOG.md` | 功能異動歷程（當月；採月度滾動歸檔） |
-| `docs/archive/CHANGELOG_ARCHIVE_2026-05.md` | 2026-05 變更紀錄（archive，只搜尋） |
-| `docs/archive/CHANGELOG_ARCHIVE_2026-04.md` | 2026-04（含更早）變更紀錄（archive，只搜尋） |
-| `docs/SYSTEM_TECH_GUIDE.md` | 後端技術實作索引（Identity/Swipe/ClassSession/Service 職責） |
-| `docs/AI_REGRESSION_LESSONS.md` | AI 已踩過的坑（**改動前必讀**） |
-| `docs/INDEX.md` | 文件導航入口（開工先讀，避免 SOP 走偏） |
-| `docs/AI_DOC_LITERACY.md` | （已整併入 `docs/INDEX.md` §速讀卡；stub 供 MemPalace 索引） |
-| `docs/DOCS_GOVERNANCE_SOP.md` | （已整併入 `docs/INDEX.md` §治理節奏；stub 供 MemPalace 索引） |
-| `docs/DANGEROUS_OPERATIONS.md` | 高風險操作清單與 SOP |
-| `docs/DIRECTOR_PAYMENT_ALERT_RULES.md` | 繳費提醒規則（勿擅自修改） |
-| `AGENTS.md` | AI / 協作者開工順序與 commit SOP |
-| `CONTRIBUTING.md` | GitHub 協作：分支、PR／Issue、CI、安全通報入口 |
-| `SECURITY.md`（根目錄） | 漏洞通報方式（GitHub Security）；延伸閱讀 `docs/SECURITY.md` |
-| `docs/DEPLOYMENT.md` | 部署步驟 |
-| `docs/OPERATIONS_RUNBOOK.md` | 日常維運手冊 |
-| `docs/SECURITY.md` | 安全設計說明 |
-| `docs/TECH_DEBT.md` | 技術債清單 |
-| `docs/FAQ.md` | 常見問題 |
-| `docs/archive/使用說明_主任與超級管理員.md` | 使用者操作手冊（中文，已封存）|
-| `docs/archive/PRD_PARTTIME_TEACHER_PAYROLL.md` | 兼職薪資功能 PRD（已封存）|
-| `docs/archive/SCHEDULE_DISCREPANCY_REVIEW.md` | 課表回報審核流程（已封存）|
-| `docs/ROLE_PLAYBOOK.md` | 各角色操作手冊 |
-
----
-
-## ⚠️ 安全警示（必讀）
-
-本專案曾因以下操作發生生產事故，**任何人（含 AI）在執行前必須先閱讀 `docs/DANGEROUS_OPERATIONS.md`**：
-
-| 禁止事項 | 原因 |
-|---|---|
-| `git push --force origin main` | 會觸發 CI deploy，覆蓋生產 `.env` / routes |
-| 直接 push `main` 或繞過 PR | 會跳過 branch protection / review / CI gate，可能直接觸發 deploy |
-| 在 `/home/admin/backend/` 執行 `php artisan test` | `RefreshDatabase` 會清空生產資料庫 |
-| 在生產後端執行 `config:clear` / `route:clear` 用於 debug | 造成 session / auth 配置錯亂 |
-| 直接修改 `backend/.env` | 影響生產認證與資料庫連線 |
-| 把 Pi local backup branch 當 code 備份來源 | code 備份以 GitHub protected `main` + PR history 為準，Pi working tree 只視為 deploy target |
-| 有備份但沒驗證 restore | 備份不可只看檔案存在；需有 Google Drive offsite、sha256 manifest、monthly restore drill |
-
-> **要跑測試**：`cp -r /home/admin/backend /tmp/backend-test` → 改 `.env` → 在 `/tmp` 跑  
-> **CI 問題**：改 `.github/workflows/ci.yml` 後 push，看 GitHub Actions log
-> **資料備份**：正式 DB 寫入前先備份；例行備份需能從 Drive 還原到 drill DB，不能直接測 production `AllTrue`
-
----
-
-*最後更新：2026-06-06*
+*Product docs: [`docs/INDEX.md`](docs/INDEX.md) · MemPalace derived from repository implementation · Last synced: 2026-06-28.*
