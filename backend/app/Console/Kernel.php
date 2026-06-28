@@ -17,6 +17,10 @@ class Kernel extends ConsoleKernel
         // TD-008: 補上跨日孤兒 StudentSignIn.SignOutDT（在 nightly reconcile 之後）
         $schedule->command('student-signin:close-orphans')->dailyAt('02:30');
         $schedule->command('teacher-signin:close-orphans')->dailyAt('00:05');
+        // #1062 revenue-integrity guard: surface prepaid courses with remaining
+        // sessions but no upcoming class so stranded paid sessions never go
+        // unnoticed (read-only; logs to the scheduler output).
+        $schedule->command('sessions:audit-stranded')->dailyAt('03:40');
     }
 
     protected function commands(): void
