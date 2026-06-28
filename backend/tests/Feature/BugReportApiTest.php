@@ -42,6 +42,40 @@ class BugReportApiTest extends TestCase
         ]);
     }
 
+    /**
+     * #1055: a teacher submitting for a branch outside their authorized campus set
+     * must still be denied (authz unchanged), but with an ACTIONABLE response —
+     * not an opaque "Forbidden". This is the Xinzhuang teacher failure mode.
+     */
+    public function test_submit_bug_report_for_unauthorized_campus_returns_actionable_403(): void
+    {
+        [$token] = $this->createUserToken([1], 'bugAuthz@test.com', 'T');
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/bugs', [
+            'title' => '跨分校回報',
+            'description' => '老師在未授權分校送出回報。',
+            'severity' => 'medium',
+            'branch_id' => 2,
+        ]);
+
+        // Authorization is preserved: still 403 for an unauthorized campus.
+        $res->assertStatus(403);
+        // ...but the payload is now actionable, not a bare "Forbidden".
+        $res->assertJson([
+            'code' => 'campus_not_authorized',
+            'branch_id' => 2,
+            'allowed_campus_ids' => [1],
+        ]);
+        $this->assertNotSame('Forbidden', $res->json('message'));
+
+        $this->assertDatabaseMissing('bug_reports', [
+            'title' => '跨分校回報',
+        ]);
+    }
+
     public function test_submit_bug_report_with_screenshot(): void
     {
         Storage::fake('public');
