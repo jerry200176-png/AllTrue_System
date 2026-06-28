@@ -64,6 +64,30 @@ export async function parentRequestLeave(token, sessionId, { reason = '' } = {})
   return data;
 }
 
+export async function getParentNotificationPreferences(token) {
+  const res = await fetch(`${API_BASE}/parent/notification-preferences`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法讀取通知設定');
+  return data;
+}
+
+export async function setParentNotificationPreferences(token, { learningFeedbackPush }) {
+  const res = await fetch(`${API_BASE}/parent/notification-preferences`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ learning_feedback_push: !!learningFeedbackPush }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法更新通知設定');
+  return data;
+}
+
 export async function listExceptionWorkflows(token, { branchId } = {}) {
   const params = new URLSearchParams();
   if (branchId) params.set('branch_id', String(branchId));
