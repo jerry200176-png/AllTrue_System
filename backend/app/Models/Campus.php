@@ -27,6 +27,7 @@ class Campus extends Model
         'Token',
         'TelegramToken',
         'TelegramChatID',
+        'TelegramWebhookSecret',
         'TelegramURL',
         'TeachLIFFID',
         'TeachLIFF_URL',
