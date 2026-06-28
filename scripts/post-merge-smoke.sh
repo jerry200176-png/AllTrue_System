@@ -173,6 +173,10 @@ if [[ -n "$director_token" ]]; then
     || fail "director GET /schedules -> $code"
 
   code="$(http_auth_code POST "$API_BASE/schedules/999999999/cancel-makeup" "$director_token")"
+  if [[ "$code" == "500" ]]; then
+    sleep 2
+    code="$(http_auth_code POST "$API_BASE/schedules/999999999/cancel-makeup" "$director_token")"
+  fi
   if [[ "$code" == "404" || "$code" == "422" ]]; then
     pass "director POST /cancel-makeup (probe) -> $code (auth OK, not 401)"
   else

@@ -445,6 +445,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { supabase } from '../supabase';
 import { branches, getBranchName } from '../lib/useBranches';
 import { fetchClassSessions } from '../lib/classSessionsApi';
+import { dedupeSessionsByStudentSlot } from '../lib/classSessionPick';
 import { fetchChatUnreadCount } from '../lib/chatApi';
 import ReportDiscrepancyModal from '../components/ReportDiscrepancyModal.vue';
 import EngagementRankStrip from '../components/EngagementRankStrip.vue';
@@ -935,6 +936,8 @@ async function fetchOverdueLearning() {
       });
     }
 
+    allItems = dedupeSessionsByStudentSlot(allItems);
+
     const missing = allItems.filter(s => {
       const st = String(s.status || '').toLowerCase();
       const lr = String(s.learning_record_status || 'missing').toLowerCase();
@@ -1031,7 +1034,7 @@ async function loadWeekSchedule() {
   // attendance page, which omits branch_id, showed them. This matches that path.
   try {
     const result = await fetchClassSessions({ token, start: startStr, end: endStr, perPage: 500 });
-    const items = result.items || [];
+    const items = dedupeSessionsByStudentSlot(result.items || []);
     items.sort((a, b) => {
       if (a.session_date !== b.session_date) return a.session_date.localeCompare(b.session_date);
       if (a.start_time !== b.start_time) return a.start_time.localeCompare(b.start_time);
