@@ -443,6 +443,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import {
   fetchBugReports, fetchBugDetail, addBugComment,
   updateBugStatus, updateBugCommentVisibility, reporterVerifyBug,
+  getToken,
 } from '../lib/bugReportsApi';
 import { getParentFeedbackList, getParentFeedbackUnreadCount, markParentFeedbackRead } from '../api';
 
@@ -564,7 +565,7 @@ const pfCategoryLabel = (cat) => {
 async function loadFeedback(page = 1) {
   pfLoading.value = true;
   try {
-    const token = localStorage.getItem('alltrue_session') || '';
+    const token = getToken() || '';
     const res = await getParentFeedbackList(token, {
       campusId: props.branchId,
       category: pfCategoryFilter.value,
@@ -583,7 +584,7 @@ async function loadFeedback(page = 1) {
 
 async function loadPfUnreadCount() {
   if (!isSuperAdmin.value) return;
-  const token = localStorage.getItem('alltrue_session') || '';
+  const token = getToken() || '';
   pfUnreadCount.value = await getParentFeedbackUnreadCount(token, props.branchId);
 }
 
@@ -595,7 +596,7 @@ async function switchToFeedbackTab() {
 
 async function markRead(fb) {
   try {
-    const token = localStorage.getItem('alltrue_session') || '';
+    const token = getToken() || '';
     await markParentFeedbackRead(token, fb.id);
     fb.is_read = true;
   } catch (e) {
