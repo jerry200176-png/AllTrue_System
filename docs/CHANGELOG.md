@@ -11,7 +11,14 @@
 
 ---
 
-## 2026-06-27 — refactor(classsession): ClassSession 寫入統一 + 前後端 materialized/projected 分離 (Phase A–C)
+## 2026-06-28 — security: secret exposure remediation (HEAD cleanup + webhook hardening)
+
+- **Security:** Remove tracked `.env.monitor` and `.cursor/projects/**` from git; add `.env.monitor.example` and [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md).
+- **Security:** Mask campus swipe/Telegram secrets in `AdminCampusController` API (#975).
+- **Security:** Telegram webhook `X-Telegram-Bot-Api-Secret-Token` validation (#1021) + `TelegramWebhookSecret` column.
+- **Ops:** Add `scripts/security-filter-repo.sh` and `scripts/security-gitleaks-audit.sh` for pre-public history purge.
+
+---
 
 - **Changed**：後端 `ClassSessionMaterializationService::upsertSlot` 為唯一 production 寫入路徑；`session-dates` / `class-sessions` API 分開回傳 materialized 與 projected。
 - **Changed**：前端 `classSessionsApi.js` 統一 `SessionViewModel`；課程管理、評量頁、行事曆 adapter 消費同一模型（含 legacy 欄位別名）。
