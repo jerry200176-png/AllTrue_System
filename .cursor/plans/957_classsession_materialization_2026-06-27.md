@@ -3,13 +3,15 @@
 > **Tier:** T3 (scheduling / attendance / billing)  
 > **Owner:** `[ARCH]` → `[DEV]` backend  
 > **Canonical issue:** GitHub #957  
-> **Status:** Planned — ready for Phase A branch
+> **Status:** **In progress** — Phases A–C landed on `main`; Phase D + unique index remain
+
+**Last revised:** 2026-06-28 (offline audit)
 
 ---
 
 ## Problem
 
-25+ production `ClassSession::create` call sites across 10 files use check-then-insert with **no unique slot index**. Parallel requests and overlapping enrollments produce duplicate or orphaned sessions; calendar, attendance, LR, and billing bind to wrong rows.
+Duplicate/wrong `ClassSession` rows corrupt attendance, LR binding, calendar, and billing alerts. Root cause was fragmented `ClassSession::create` call sites without a unique slot index.
 
 **Absorbed issues (closed):** #932, #933, #958, #960, #961, #962, #963, #969, #965
 
@@ -20,87 +22,77 @@
 ```
 StudentClass / schedules (intent)
         ↓
-ClassSessionMaterializationService::ensureSlot()
+ClassSessionMaterializationService::upsertSlot()
         ↓ lockForUpdate + idempotent upsert
 ClassSession (materialized truth)
         ↓
-Attendance / LR / Deduction / Calendar (read only via session ID)
+Attendance / LR / Deduction / Calendar (read by session ID)
 ```
 
-**Slot key:** `(StudentClassID, SessionDate, StartTime)` — migration adds unique index after cleanup.
+**Slot key:** `(StudentClassID, SessionDate, StartTime)` — DB unique index still pending.
 
 ---
 
-## Production write sites (migrate in Phase C)
+## Progress on `main` (DONE)
 
-| File | Creates | Priority |
-|------|---------|----------|
-| `StudentClassController.php` | 8 | P0 |
-| `LearningRecordController.php` | 5 | P0 |
-| `ClassSessionController.php` | 3 | P0 |
-| `EnrollmentService.php` | 2 | P1 |
-| `AttendanceController.php` | 2 | P1 |
-| `ScheduleController.php` | 1 | P1 |
-| `PendingSwipeController.php` | 1 | P1 |
-| `CourseLeaveCascadeService.php` | 1 | P2 |
-| `CoursePackageController.php` | 1 | P2 |
-| `BackfillMissingClassSessionsFromSchedules.php` | 1 | P2 (command) |
+| Item | Status | Evidence |
+|------|--------|----------|
+| Single write authority | **DONE** | `ClassSessionMaterializationService::upsertSlot` — only `ClassSession::create` in `app/` |
+| Controller migration | **DONE** | All 10 production write paths route through service |
+| Duplicate audit command | **DONE** | `AuditClassSessionDuplicates` (`classsession:audit-duplicates`) |
+| Materialized/projected API split | **DONE** | `ClassSessionController::index` returns both + legacy aliases |
+| Count-mode same-day gap | **IN PR** | Rebuilt branch `fix/count-mode-on-materialization-service` (supersedes stale #937) |
 
 ---
 
-## Phased delivery
+## Remaining work (Phase D + hardening)
 
-### Phase A — Audit + cleanup command (PR 1)
+### D1 — Unique slot index (P1, DBA gate)
 
-- [ ] Artisan command `classsession:audit-duplicates` — report duplicate slot keys
-- [ ] Artisan command `classsession:merge-duplicates --dry-run` — merge strategy doc in command help
-- [ ] Feature test: audit finds injected duplicates
-- [ ] **No production behavior change**
+- [ ] Run `classsession:audit-duplicates` on production backup; merge/cleanup dupes
+- [ ] Migration: unique index on `(StudentClassID, SessionDate, StartTime)` with rollback plan
+- [ ] Concurrency feature test: parallel `upsertSlot` → one row
 
-### Phase B — Service + unique index (PR 2)
+**Tracks:** #957 sub-task (open issue or checklist on epic)
 
-- [ ] `App\Services\ClassSessionMaterializationService`
-  - `ensureSlot(StudentClass $sc, Carbon $date, string $start, ?string $end): ClassSession`
-  - Uses `DB::transaction` + `lockForUpdate` on StudentClass row
-  - Idempotent: return existing if slot exists
-- [ ] Migration: unique index on `(StudentClassID, SessionDate, StartTime)` — **after** cleanup verified on staging/Pi backup
-- [ ] Unit + feature tests for concurrency (2 parallel ensureSlot → 1 row)
+### D2 — ApprovalSessionSync resolver (P1)
 
-### Phase C — Controller migration (PR 3–5, bounded)
+- [ ] Fix `ApprovalSessionSyncService::resolveClassSession` — no `orderBy id desc` fallback across ambiguous duplicates
+- [ ] Deterministic slot match on `(StudentClassID, SessionDate, StartTime)`
 
-- **PR 3:** `ClassSessionController` + `AttendanceController` → service only
-- **PR 4:** `StudentClassController` + `EnrollmentService` → service only
-- **PR 5:** `LearningRecordController` + remaining sites
+### D3 — Payment truth alignment (P1)
 
-Each PR: grep gate test `ClassSessionMaterializationTest::test_no_direct_create_outside_service` (allowlist service + tests + backfill command).
+- [ ] Align `AlertController::tuition` with G-009 OR-invoice logic
+- [ ] **Canonical issue:** #959
 
-### Phase D — Downstream fixes (PR 6)
+### D4 — Calendar dedupe (P2)
 
-- [ ] `ApprovalSessionSyncService` — bind LR to deterministic slot lookup
-- [ ] `SessionDeductionService` — idempotency via unique ledger constraint
-- [ ] `calendarOccurrenceMerge.js` — dedupe key includes `student_course_id` (#961 fix)
-- [ ] `ScheduleController.destroy` — cascade or soft-delete materialized sessions (#963)
+- [ ] `calendarOccurrenceMerge.js` dedupe key includes `student_course_id` (#961 behavior)
+
+### D5 — Schedule destroy orphans (P2)
+
+- [ ] `ScheduleController.destroy` cascade or soft-delete materialized sessions (#963)
 
 ---
 
-## Acceptance criteria
+## Acceptance criteria (revised)
 
-1. Zero `ClassSession::create` in `app/` outside `ClassSessionMaterializationService` (except backfill command until deprecated)
-2. Unique index enforced; duplicate audit returns 0 rows on production post-cleanup
-3. Regression tests pass: overlap enrollment, count-mode materialize (#937 pattern), LR approval bind, calendar week view (G-007)
-4. `docs/CHANGELOG.md` + `AI_REGRESSION_LESSONS.md` updated
+1. ~~Zero `ClassSession::create` outside service~~ **MET on main**
+2. Unique index enforced; duplicate audit returns 0 rows post-cleanup — **OPEN**
+3. Count-mode same-day materialize (#937) via `extendSessionsIfNeeded` — **PR pending**
+4. LR approval binds to correct session when duplicates existed — **OPEN (D2)**
+5. Director tuition alerts match course list paid status — **OPEN (#959)**
 
 ---
 
-## Staffing / RACI
+## Branch naming (remaining)
 
-| Role | Responsibility |
-|------|----------------|
-| `[ARCH]` | Slot key definition, migration rollback plan, campus isolation review |
-| `[DEV]` | Service + controller migration PRs |
-| `[TEST]` | Concurrency tests, golden scenarios § attendance/calendar |
-| `[DBA]` | Duplicate cleanup on production backup first; chunkById migration |
-| `[REVIEW]` | No new create sites; multi-campus query audit |
+```
+feat/957-unique-slot-index
+fix/957-approval-session-sync-resolver
+fix/959-alert-tuition-payment-truth
+fix/count-mode-on-materialization-service  ← active (replaces stale #937)
+```
 
 ---
 
@@ -108,16 +100,6 @@ Each PR: grep gate test `ClassSessionMaterializationTest::test_no_direct_create_
 
 | Risk | Mitigation |
 |------|------------|
-| Unique index fails on existing dupes | Phase A cleanup mandatory before Phase B migration |
-| Package/shared-pool courses (#162) | Explicit out-of-scope per SOP_MATURITY; separate business rule PR |
-| Large StudentClassController diff | Split PR 4 by method clusters |
-
----
-
-## Branch naming
-
-```
-feat/957-materialization-phase-a-audit
-feat/957-materialization-phase-b-service
-feat/957-materialization-phase-c-controllers
-```
+| Unique index fails on existing dupes | Audit + cleanup before migration (D1) |
+| Package/shared-pool courses (#162) | Count auto-materialize skips `PackageID>0` |
+| Stale PR #937 merge | **Do not merge** — use rebuilt branch only |
