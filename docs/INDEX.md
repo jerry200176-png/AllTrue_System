@@ -1,27 +1,15 @@
 # AllTrue Docs Index — Service Catalog
 
-> **INDEX = registry. NOT an execution system.**
+> **INDEX = registry only. NOT a decision or execution system.**
 >
-> | Layer | Role | Where decisions happen |
-> |-------|------|------------------------|
-> | **Service catalog** | This file — find the right doc or workflow | Here (links only) |
-> | **Execution authority** | Production runtime behavior | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) |
-> | **Incident decisions** | What to do when production breaks | [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) |
->
-> **Source of truth:** committed files on `origin/main` only. Working tree / unmerged docs are not production reality.
->
-> **INDEX is a service catalog only.**  
-> **INDEX has NO decision authority in runtime operations.**  
-> All incident decisions MUST be made via [`docs/INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md).  
-> All execution MUST be performed via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml).
+> **Single runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5) — supreme on conflict  
+> **Decision (I3):** INCIDENT stack via [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
+> **Execution (I1):** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only  
+> **Audit / conflicts:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)
 
-> **Runtime spec (frozen):** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) — **supreme on conflict**  
-> **Audit:** [`docs/CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md) · **Conflicts:** [`docs/CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md)
+> **Source of truth:** committed files on `origin/main` only.
 
-> **Operational Control Plane contract:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5)
-
-> **前人種樹，後人乘涼。**
-> 做事前讀 INDEX 定位文件；**執行與部署決策不讀 INDEX**，讀 execution authority 或 incident doc。
+> **前人種樹，後人乘涼。** 本檔只做指標定位；runtime 不讀 INDEX。
 >
 > **知識流轉三層：**
 > ```
@@ -51,7 +39,7 @@
 | Contradiction registry | tool | [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) | conflict resolution | no |
 | Control plane enforcer | tool | [`CONTROL_PLANE_ENFORCER.md`](CONTROL_PLANE_ENFORCER.md) · `scripts/control-plane-lint.mjs` | CI gate | no |
 | AllTrue production app | prod | Pi runtime + [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | yes |
-| Incident policy engine | prod | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 3 | yes |
+| Incident policy (I3/I4 sub-layer) | incident | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | FINAL_ACTION per contract I4 | yes |
 | Incident inference engine | prod | [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) step 2 | yes |
 | Incident runtime loop | prod | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | self | yes |
 | Incident state machine | prod | [`INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md) | classification layer only | yes |
@@ -65,6 +53,7 @@
 | Operational constraints | ref | [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) | checklist — does not override contract | no |
 | SOP drift audit | tool | [`OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md) | — | no |
 | MemPalace ingest | local | [`MEMPALACE_OPERATIONS_HANDBOOK.md`](MEMPALACE_OPERATIONS_HANDBOOK.md) · `scripts/mempalace-ingest.sh` | none (MP-* best-effort) | **no** |
+| Shadow control plane (archived) | archive | [`archive/control-plane-shadow-v1/README.md`](archive/control-plane-shadow-v1/README.md) | non-runtime — do not execute | **no** |
 
 **MemPalace is a non-production, best-effort local system. It has no incident authority, no SLO, and no execution impact on production.**
 
@@ -72,15 +61,19 @@
 
 ---
 
-## Policy layer (execution modifier — not decision authority)
+## INCIDENT stack pointer (not a second authority — contract I3)
 
-| Item | Role |
-|------|------|
-| [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | Self-healing + decision compression; resolves FINAL_ACTION |
-| **Precedence** | **POLICY > STATE > SIGNAL** |
-| **Constraint** | Policy modifies execution path; inference still assigns STATE |
-| **Policies** | P0 safety-first · P1 fast recovery · P2 minimal intervention · P3 cascade suppression |
-| **Shortcuts** | SH-1 rollback short-circuit · SH-2 repeat escalate · SH-3 path compression |
+Part of the INCIDENT decision system defined in [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md):
+
+| File | Role in stack |
+|------|----------------|
+| [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | Loop orchestration |
+| [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) | SIGNAL → STATE |
+| [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | STATE → FINAL_ACTION (I4) |
+| [`INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md) | State transitions |
+| [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | Observe + runbook command paths |
+
+Precedence within stack: POLICY > STATE > SIGNAL (contract I4).
 
 ---
 
@@ -95,7 +88,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`。
 3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
-5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**執行衝突時**：production 行為以 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) 為準，事故以 [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) 為準，INDEX 僅負責導航。
+5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
 
 ---
 

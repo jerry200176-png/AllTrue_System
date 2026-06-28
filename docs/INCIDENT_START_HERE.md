@@ -1,5 +1,8 @@
 # Incident Decision System
 
+> **Execution protocol reference** — not a parallel runtime system.  
+> **Single entry point:** this file. **Single execution endpoint:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (contract I1).
+
 > **Runtime spec:** [`docs/CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (supreme on conflict)  
 > **Policy:** [`docs/INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) · **Loop:** [`docs/INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md)  
 > **Inference:** [`docs/INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md) · **States:** [`docs/INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md)  
@@ -24,7 +27,7 @@
 1. Observe signals + CONTEXT (Step 1).
 2. Infer STATE — [`INCIDENT_INFERENCE_ENGINE.md`](INCIDENT_INFERENCE_ENGINE.md).
 3. Apply policy — [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) → FINAL_ACTION.
-4. Execute FINAL_ACTION if deploy-eligible (Step 3 runbook paths).
+4. Execute FINAL_ACTION if deploy-eligible — **only** via [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) or documented runbook helper steps (contract I1).
 5. Verify → RESOLVE, SH-1 short-circuit, re-loop, or ESCALATED_FAILURE (SH-2).
 
 ---
