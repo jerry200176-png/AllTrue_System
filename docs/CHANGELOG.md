@@ -29,6 +29,20 @@
 
 開發備註：**Bug 1（LINE 登入）**根因＝13 新莊中平與 15 大安共用 `daan.lifenet.com.tw`，但各自是不同 LINE Login channel／provider（同一學生在不同分校的 `line_user_id` 不同已於 prod 證實）。`resolveLiff()` 純 host 比對只回「第一個」分校（id 升序＝13）的 LIFF，導致 15 大安家長（19 筆綁定）拿到 13 的 LIFF → `getProfile().userId` 屬不同 provider → `loginWithLine` 查無綁定 404。修法：入口連結本就帶 `campus_id`（`LineWebhookController::getPortalUrl`），`resolveLiff` 改**優先用 `campus_id`** 定位該分校 LIFF；前端 `onMounted` 以 `campus_id` 解析 LIFF 覆蓋 build-time 預設。前端另把「自動登入失敗」從矛盾文案改為明確綁定/手動登入指引（`autoLineNotBound`）。**Bug 2（共用方案）**：家長 dashboard 對 `PackageID>0` 成員改以 `course_packages` 池子（remaining/used/total）為準，`sessionMetrics` 與顯示聚合每池只算一次，新增 `is_package`/`package_*` 欄位前端標示「共用方案」。新增 ParentPortalSharedPackageTest(2)、ParentPortalResolveLiffTest(2)；既有 Parent/Package/Session/StudentClass 315 綠、PHPStan clean。對應 in-app 家族 #158/#162。**不動收款/invoice/費率**，僅顯示與登入解析。
 
+## 2026-06-14 — Ops: GitHub / SRE roadmap 對標大公司治理
+
+開發備註：新增並整理 AllTrue Engineering Roadmap：M4 生產安全與流程自動化（#867–873）、M5 UI/UX 質感與可讀性（#866/#857–865）、M6 GitHub 治理與協作成熟度（#875–880）、M7 系統維護與 SRE 營運成熟度（#881–886）。Project board 已建立並連到 repo；`docs/SOP_MATURITY.md` 補上 Actions minutes 用完時的工作分流、GitHub Environments/CODEOWNERS/Project automation/release traceability/security advisory/ruleset 缺口，以及 PITR、Full server DR、incident response、observability、capacity management、maintenance window/status page 等維運缺口。純治理/文件/issue 規劃，無 production code 變更。
+
+開發備註：補充 M8 資安/隱私/合規成熟度（#887–892：host hardening、IAM access review、PII inventory/retention、sensitive audit coverage、Threat modeling/ASVS、vendor risk register）與 M9 工作流程/組織營運 SOP（#893–898：service catalog/RACI、SOP review cadence、support SLA metrics、ADR/RFC、release train、AI/human onboarding）。已加入 Roadmap Project 並更新 `docs/SOP_MATURITY.md`。純治理/文件/issue 規劃，無 production code 變更。
+
+開發備註：補上「軟體公司跨部門 operating model」規劃，依 IT / SRE / Security / Engineering / QA / Product / Support / Data / Legal / Docs 視角新增 #899–908（RFID/device inventory、weekly ops review、data quality checks、security exception register、privacy request SOP、technical health scorecard、role-based QA matrix、product health review、public reply macro library、quarterly roadmap review）。已加入 Roadmap Project 並更新 `docs/SOP_MATURITY.md`。純治理/文件/issue 規劃，無 production code 變更。
+
+開發備註：依老師/主任/家長三種正式使用者視角做唯讀體驗審查，新增 #909–912：老師端 System Trust 分眾文案 bug（in-app #167，attachment #112）、老師首頁下一步說明、主任 cockpit drill-down/explanation layer、家長狀態時間線與主動通知。已加入 Roadmap Project 並更新 `docs/SOP_MATURITY.md`。未改 in-app 狀態或留言、未動 production 資料。
+
+開發備註：完成 GitHub milestone hygiene：關閉舊 Phase 1/2/3 milestones（#1–#3，皆 0 open），M1/M2/M3（#4–#6）維持已關閉；active roadmap 收斂為 M4–M9。將未歸檔的 in-app UX bugs #851/#855 併入 M5，避免「no milestone」漏追。同步更新 `docs/SOP_MATURITY.md`。純 GitHub metadata / docs 整理，不耗 Actions minutes。
+
+開發備註：Actions-down 高價值工作交接（#907 / #851 / #855 / #909）。新增 `docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 in-app bug 公開回覆白話 macro，含公開留言＋內部備註＋禁用詞檢查＋對應狀態機，對齊 §3.8）並補 `docs/INDEX.md` 入口；對 #851/#855/#909 補 triage（白話問題＋驗收條件＋blocked-by-deploy，唯讀未改 in-app 狀態）；補 metadata（#851/#855 priority+area+status:blocked，#867/#870 status:blocked）；`docs/SOP_MATURITY.md` 補每 milestone Top 3、狀態分類與「CI 凍結時工程師 playbook」。純 docs / GitHub metadata，無 production code 變更。
+
 ## 2026-06-13 — fix(schedule): 建課偵測「同生同科同師日期重疊」防重複排課 (#805)
 
 主任建立課程時，若該學生已有「同科目、同老師、上課期間重疊」的進行中課程（常見於續報新期起始日早於舊期結束），系統會先提醒，避免兩期在重疊週各排一堂、造成點名名單同一時段重複出現。可改用「加購堂數」延續原課程，或把新課起始日改到舊課結束之後；確定要建立仍可勾選強制建立。

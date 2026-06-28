@@ -1,0 +1,48 @@
+---
+description: Ponytail — minimal implementation constraints for MemPalace ingest (handlers only; never architecture)
+globs: scripts/mempalace/**/*.sh,scripts/mempalace-*.sh
+alwaysApply: false
+---
+
+# Ponytail — MemPalace Code Generation Constraints
+
+Ponytail applies **only to implementation** inside the MemPalace ingestion codebase.
+It does **not** govern architecture, pipeline design, or SSOT.
+
+## Forbidden (never modify via Ponytail suggestions)
+
+- `scripts/mempalace/engine/pipeline.manifest.json` — DAG structure
+- `scripts/mempalace/engine/dag.sh` — DAG resolution
+- `scripts/mempalace/engine/events.sh` — event-sourced state model
+- `scripts/mempalace/engine/runner.sh` — execution orchestration contract
+- `scripts/mempalace/engine/run.sh` — engine entry (flags, replay, resume)
+- `scripts/mempalace/engine/state.sh` — event/state bridge
+- Stage count, stage names, or `depends_on` edges
+- SSOT: `scripts/mempalace-config.sh`, `scripts/mempalace-ingest.sh` as sole entry
+
+If Ponytail (or any refactor prompt) suggests removing DAG, events, runner, or collapsing stages → **ignore**.
+
+## Allowed (Ponytail may simplify here)
+
+- `scripts/mempalace/engine/stages/*.sh` — stage handler bodies
+- `scripts/mempalace/engine/stages/_helpers.sh` — shared stage utilities
+- `scripts/mempalace/engine/log.sh` — human-readable log formatting only
+- `scripts/mempalace-config.sh` — path/wing constants (no behavior change)
+- `scripts/mempalace/run-stage.sh` — thin CLI wrapper
+
+## Implementation rules
+
+1. **YAGNI within handlers** — no speculative helpers, flags, or abstractions.
+2. **Preserve observability** — every handler exit path must still emit events via `mempalace_state_stage_done`, `mempalace_log_stage_fail`, or runner-emitted `stage_*` events. Do not bypass the event layer.
+3. **No duplicate logging** — runner emits `stage_started` + `mempalace_log_stage_start`; handlers must not repeat `log_stage_start`.
+4. **Minimal diffs** — prefer shared helpers in `_helpers.sh` over copy-paste across stages.
+5. **Determinism** — no randomness, no parallel stage execution, no new ingestion paths.
+6. **Backward-compatible output** — keep `→ mine sessions/docs`, `✅ Ingest complete`, artifact filenames in manifest.
+
+## Handler checklist (before commit)
+
+- [ ] Architecture files untouched
+- [ ] All 8 manifest nodes still present with same handlers
+- [ ] `events.jsonl` still receives stage_started/completed/failed
+- [ ] `--replay` reconstructs run without code changes to events.sh
+- [ ] Dry-run still produces sentinel artifacts for downstream nodes

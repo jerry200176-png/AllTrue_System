@@ -1,0 +1,157 @@
+# STATUS: ARCHIVED SHADOW CONTROL PLANE (NON-RUNTIME)
+# REASON: Superseded by CONTROL_PLANE_CONTRACT I1-I5
+# jobs: {} — non-runnable archive copy
+
+# HISTORICAL / NON-RUNTIME DRAFT — does NOT override CONTROL_PLANE_CONTRACT I1.
+# Execution authority: .github/workflows/deploy.yml only. Do not enable without [contract-change].
+
+# Platform Gate — single-authority control plane (verify + execute only)
+
+name: Platform Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - '.github/**'
+      - '.cursor/**'
+      - 'services/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: platform-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Platform Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.py scripts/platform/*.sh scripts/platform/platform-gate.sh
+
+      - name: Assemble canonical PDP
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+          PDP_SIGNING_PRIVATE_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY }}
+          PDP_SIGNING_ALLOW_TEST_KEY: ${{ secrets.PDP_SIGNING_PRIVATE_KEY == '' && '1' || '' }}
+        run: |
+          mkdir -p ci-artifacts/platform-gate
+          ./scripts/platform/platform-gate.sh --pr "${{ github.event.pull_request.number }}" \
+            --out "ci-artifacts/platform-gate/pr-${{ github.event.pull_request.number }}.json"
+
+      - name: PDP replay guard (same-job)
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: python3 scripts/platform/pdp-replay-guard.py --pdp ci-artifacts/pdp.json --strict-run --register
+
+      - name: Upload canonical PDP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-gate-pr-${{ github.event.pull_request.number }}
+          path: ci-artifacts/pdp.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  control-plane-verify:
+    name: Control Plane Verify
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download canonical PDP
+        uses: actions/download-artifact@v4
+        with:
+          name: platform-gate-pr-${{ github.event.pull_request.number }}
+          path: ci-artifacts
+
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.sh scripts/platform/*.py
+
+      - name: Verify + enforce block_merge
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+      - name: Verify + enforce block_merge
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: ${{ github.head_ref || github.ref_name }}
+        run: bash scripts/platform/pdp-exec-gate.sh ci-artifacts/pdp.json
+
+      - name: PR summary
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let doc = {};
+            try { doc = JSON.parse(fs.readFileSync('ci-artifacts/pdp.json', 'utf8')); } catch (e) {}
+            const v3 = doc.pdp_v3 || {};
+            const marker = '<!-- platform-gate -->';
+            const text = [
+              marker,
+              '## Platform Gate (control plane runtime)',
+              '',
+              `| block_merge | ${v3.block_merge} |`,
+              `| allow_staging | ${v3.allow_staging} |`,
+              `| allow_production | ${v3.allow_production} |`,
+              `| authority | \`ci-artifacts/pdp.json\` |`,
+            ].join('\n');
+            const pr = context.payload.pull_request.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body: text,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body: text,
+              });
+            }
+
+  github-enforcement-attestation:
+    name: GitHub Enforcement Attestation
+    needs: control-plane-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make scripts executable
+        run: chmod +x scripts/platform/*.sh scripts/platform/*.py
+      - name: Attest live GitHub enforcement state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/platform/github-enforcement-attestation.sh
+      - name: Upload enforcement attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: enforcement-attestation-pr-${{ github.event.pull_request.number }}
+          path: ci-artifacts/enforcement/enforcement_state.json
+          retention-days: 30
