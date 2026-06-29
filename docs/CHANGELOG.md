@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-06-29 — fix: calendar ClassSession branch projection aligns with course room campus
+
+- **Fixed**：行事曆週檢視改以 `branch_id + 日期區間` 載入全部 `ClassSession`（不再綁定已篩選課程 ID）；分校篩選與課程管理一致（有教室用 `rooms.campus_id`，無教室用學生 `CampusID`），修復新莊等分校「出缺勤有課、行事曆缺課」。
+- 開發備註：`ClassSessionBranchCampusFilterTest`；`useCalendarDataLoad` 補 session-only 課程 stub 供 `mergeWeekCalendarOccurrences` materialized pass。
+
 ## 2026-06-29 — security: untrack legacy PII dumps + backend-local stub
 
 - **Security**：`git rm --cached` 19 個 `backups/**/*.sql.gz`（production PII，runtime 備份在 Pi `/home/admin/backups/`）與整個 `backend-local/`（Windows mock，`.gitignore` 早已排除但仍被追蹤）— 清除 Dependabot `path-to-regexp`/`qs` alerts
