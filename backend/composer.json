@@ -2,7 +2,7 @@
   "name": "laravel/laravel",
   "type": "project",
   "require": {
-    "guzzlehttp/guzzle": "^7.10",
+    "guzzlehttp/guzzle": "^7.12.1",
     "laravel/framework": "^8.75",
     "laravel/sanctum": "^2.11",
     "laravel/tinker": "^2.5",
