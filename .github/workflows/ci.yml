@@ -151,16 +151,8 @@ jobs:
               sys.exit(0)
           advisories = data.get("advisories", {})
           has_high = False
-          def iter_pkg_advisories(adv_list):
-              if isinstance(adv_list, list):
-                  return adv_list
-              if isinstance(adv_list, dict):
-                  if "severity" in adv_list:
-                      return [adv_list]
-                  return [v for v in adv_list.values() if isinstance(v, dict) and "severity" in v]
-              return [adv_list]
           for pkg, adv_list in advisories.items():
-              for adv in iter_pkg_advisories(adv_list):
+              for adv in (adv_list if isinstance(adv_list, list) else [adv_list]):
                   sev = str(adv.get("severity", "")).lower()
                   title = adv.get("title", "?")
                   if sev in ("high", "critical"):
