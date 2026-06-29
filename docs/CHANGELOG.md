@@ -14,7 +14,7 @@
 ## 2026-06-29 — security: npm 依賴修補 + composer audit gate 修正
 
 - **Security**：前端升級 `vite` 6.4.3、`@vitejs/plugin-vue` 6.x（修補 GHSA path traversal / esbuild dev-server）；`jsdom` 連帶 `undici` 7.28.0；`npm audit --audit-level=high` 清零
-- **Security**：CI `composer audit` 解析修正——advisory 以 dict 回傳時不再漏掃 HIGH（Laravel 8 現正確觸發 gate，根治見 TD-014）
+- **Security**：CI `composer audit` 解析 bug 已定位（advisory dict 漏掃 HIGH）— 修正待 TD-014 Laravel upgrade 後一併上線，避免在 framework 未修補前誤擋 merge
 - **Security**：`guzzlehttp/guzzle` constraint 升至 `^7.12.1`（lock 已 7.12.3）
 - 開發備註：GitHub secret-scanning #1（Telegram bot token）與 Laravel 8→12 major upgrade 仍為 open blocker（#1025、TD-014）
 
