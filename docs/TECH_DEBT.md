@@ -281,7 +281,7 @@
 | 發現日期 | 2026-04-27 |
 | 發現來源 | [ARCH] 技術債月度評估 |
 | 影響模組 | backend composer dependencies / Laravel framework |
-| 描述 | Composer audit 顯示 `laravel/framework` 8.x-dev 存在 file validation bypass（MEDIUM）；修補版本在 Laravel 10.48.29+ / 11.44.1+ / 12.1.1+，Laravel 8 無低風險 patch path |
+| 描述 | Composer audit 顯示 `laravel/framework` 8.x-dev 存在多筆無 8.x patch 的 advisory（2026-06 新增 **HIGH** CRLF email rule GHSA-5vg9-5847-vvmq、MEDIUM signed URL GHSA-crmm-hgp2-wgrp、MEDIUM file validation CVE-2025-27515）；修補版本需 Laravel **10.48.29+**（file validation）或 **12.60.0+**（CRLF）／**12.61.1+**（signed URL），Laravel 8 無低風險 patch path。CI `composer audit` gate 曾誤判（advisory dict 非 list 時漏掃 HIGH，見 #security-quality-remediation 2026-06-29） |
 | 建議做法 | 另開 Laravel major upgrade 專案，先盤點 PHP 版本、Sanctum、Pest/PHPUnit、middleware、filesystem validation 與部署相容性，再分階段升級 |
 | 清償成本估計 | 高（> 1天）|
 | 不做的代價 | CI 會持續出現 Composer audit warning，且涉及檔案上傳驗證的安全風險無法在 Laravel 8 內完全修補 |
