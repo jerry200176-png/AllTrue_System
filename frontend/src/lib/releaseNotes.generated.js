@@ -4,6 +4,71 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.06.28",
+    "date": "2026-06-28",
+    "title": "2026.06.28 版本更新",
+    "summary": "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機"
+        ]
+      }
+    ],
+    "items": [
+      "班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機"
+    ]
+  },
+  {
+    "version": "2026.06.27",
+    "date": "2026-06-27",
+    "title": "2026.06.27 版本更新",
+    "summary": "課程重疊建立改走 in-app 強制建立視窗，不再卡死路",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "課程重疊建立改走 in-app 強制建立視窗，不再卡死路"
+        ]
+      }
+    ],
+    "items": [
+      "課程重疊建立改走 in-app 強制建立視窗，不再卡死路"
+    ]
+  },
+  {
+    "version": "2026.06.21",
+    "date": "2026-06-21",
+    "title": "2026.06.21 版本更新",
+    "summary": "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
+        ]
+      }
+    ],
+    "items": [
+      "家長 LINE 自動登入（共用網域分校）＋ 共用方案堂數顯示"
+    ]
+  },
+  {
     "version": "2026.06.14",
     "date": "2026-06-14",
     "title": "2026.06.14 版本更新",
