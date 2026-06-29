@@ -21,6 +21,10 @@ class Kernel extends ConsoleKernel
         // sessions but no upcoming class so stranded paid sessions never go
         // unnoticed (read-only; logs to the scheduler output).
         $schedule->command('sessions:audit-stranded')->dailyAt('03:40');
+        // #1080 bug-termination gate: re-run every recurring bug's reproduction query so a
+        // FIXED bug that regresses is caught automatically (non-zero exit) and open
+        // divergences (#1062/#957/#964) are measured nightly — "production state vs bug state".
+        $schedule->command('bugs:verify-reproductions')->dailyAt('04:00');
     }
 
     protected function commands(): void
