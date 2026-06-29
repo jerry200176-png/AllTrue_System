@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-06-29 — fix: ClassSession projection API — calendar completeness-safe (no pagination)
+
+- **Fixed**：新增 `GET /api/v1/class-sessions/projection`（`api_kind: projection`, `completeness: full`），行事曆改走此端點，杜絕 list API `per_page=2000` 靜默截斷導致新莊等分校缺課。
+- 開發備註：`ClassSessionProjectionTest`；SOP 見 `docs/GUIDE_PROJECTION_INTEGRITY.md`。
+
 ## 2026-06-29 — fix: calendar ClassSession branch projection aligns with course room campus
 
 - **Fixed**：行事曆週檢視改以 `branch_id + 日期區間` 載入全部 `ClassSession`（不再綁定已篩選課程 ID）；分校篩選與課程管理一致（有教室用 `rooms.campus_id`，無教室用學生 `CampusID`），修復新莊等分校「出缺勤有課、行事曆缺課」。
