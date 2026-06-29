@@ -30,6 +30,18 @@ class TelegramWebhookController extends Controller
             return response('Telegram bot not configured for this campus', 503);
         }
 
+        // SEC-AUDIT (#1021): fail CLOSED — Telegram setWebhook secret_token must match
+        // header X-Telegram-Bot-Api-Secret-Token (constant-time compare).
+        $webhookSecret = trim((string) ($campus->TelegramWebhookSecret ?? ''));
+        if ($webhookSecret === '') {
+            Log::warning('telegram.webhook.no_secret', ['campus_id' => $campus->id, 'code' => $code]);
+            return response('Webhook not configured', 503);
+        }
+        $headerSecret = $request->header('X-Telegram-Bot-Api-Secret-Token');
+        if (!is_string($headerSecret) || !hash_equals($webhookSecret, $headerSecret)) {
+            return response('Invalid secret token', 403);
+        }
+
         $update = $request->json()->all();
         if (!is_array($update) || !isset($update['message']['chat']['id'])) {
             return response('ok', 200);
@@ -40,12 +52,18 @@ class TelegramWebhookController extends Controller
 
         $sendMessage = static function (string $chatIdTo, string $message) use ($botToken): void {
             try {
-                Http::timeout(15)
+                $response = Http::timeout(15)
                     ->asJson()
                     ->post("https://api.telegram.org/bot{$botToken}/sendMessage", [
                         'chat_id' => $chatIdTo,
                         'text' => $message,
                     ]);
+                if (!$response->successful()) {
+                    Log::warning('Telegram sendMessage returned non-2xx', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                }
             } catch (\Throwable $e) {
                 Log::warning('Telegram sendMessage failed: ' . $e->getMessage());
             }
@@ -107,4 +125,3 @@ class TelegramWebhookController extends Controller
         return response('ok', 200);
     }
 }
-

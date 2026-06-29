@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\LearningRecord;
 use App\Models\LearningRecordFeedback;
 use App\Models\ParentSession;
+use App\Support\StudentContactPhone;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
@@ -1398,11 +1399,7 @@ class ParentPortalController extends Controller
      */
     private function resolveContactPhone(Student $student): string
     {
-        $parentPhone = trim($student->parent_phone ?? '');
-        if ($parentPhone !== '') {
-            return $parentPhone;
-        }
-        return trim($student->Phone ?? '');
+        return StudentContactPhone::forStudent($student);
     }
 
     private function studentCampusId(int $studentId): int

@@ -11,7 +11,20 @@
 
 ---
 
-## 2026-06-27 — refactor(classsession): ClassSession 寫入統一 + 前後端 materialized/projected 分離 (Phase A–C)
+## 2026-06-28 — fix: 班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機
+
+Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的堂次仍會顯示，與課程管理詳情一致。LINE 官方帳號「綁定 姓名 手機」改與家長入口相同，優先比對「家長手機」欄位。
+
+開發備註：`calendarOccurrenceMerge.js` materialized pass 改掃 `allCourses`（#1035 / in-app #182–184）；新增 `StudentContactPhone` + `LineWebhookBindingTest`（§R10 LINE bind 對齊）。PR #1036、#1037。
+
+## 2026-06-28 — security: secret exposure remediation (HEAD cleanup + webhook hardening)
+
+- **Security:** Remove tracked `.env.monitor` and `.cursor/projects/**` from git; add `.env.monitor.example` and [`SECURITY_CREDENTIAL_ROTATION.md`](SECURITY_CREDENTIAL_ROTATION.md).
+- **Security:** Mask campus swipe/Telegram secrets in `AdminCampusController` API (#975).
+- **Security:** Telegram webhook `X-Telegram-Bot-Api-Secret-Token` validation (#1021) + `TelegramWebhookSecret` column.
+- **Ops:** Add `scripts/security-filter-repo.sh` and `scripts/security-gitleaks-audit.sh` for pre-public history purge.
+
+---
 
 - **Changed**：後端 `ClassSessionMaterializationService::upsertSlot` 為唯一 production 寫入路徑；`session-dates` / `class-sessions` API 分開回傳 materialized 與 projected。
 - **Changed**：前端 `classSessionsApi.js` 統一 `SessionViewModel`；課程管理、評量頁、行事曆 adapter 消費同一模型（含 legacy 欄位別名）。

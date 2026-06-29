@@ -94,6 +94,7 @@ class ClassSessionController extends Controller
         if ($role === 'teacher') {
             $this->autoMaterializeTeacherMonthlySessionsForRange($request, $teacherId, $campusIds);
         }
+        $this->autoMaterializeCountSessionsForRange($request, (string) $role, $teacherId, $campusIds);
 
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -454,6 +455,67 @@ class ClassSessionController extends Controller
         }
 
         return $projectedByClass;
+    }
+
+    /**
+     * Same-day class-sessions reads for count-mode contracts may have sparse
+     * ClassSession rows (contract sequence ahead of materialized slots).
+     * extendSessionsIfNeeded routes writes through ClassSessionMaterializationService.
+     *
+     * Shared-package members (PackageID > 0) are skipped: pool allocation across
+     * subjects is a separate business rule (see #162 / 周宏謙 case).
+     *
+     * @param  array<int>  $campusIds
+     */
+    private function autoMaterializeCountSessionsForRange(Request $request, string $role, int $teacherId, array $campusIds): void
+    {
+        if (!$request->filled('start') || !$request->filled('end')) {
+            return;
+        }
+
+        try {
+            $start = Carbon::parse((string) $request->input('start'))->toDateString();
+            $end = Carbon::parse((string) $request->input('end'))->toDateString();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        if ($start !== $end) {
+            return;
+        }
+
+        $targetDate = $start;
+        $isoWeekday = (int) Carbon::parse($targetDate)->dayOfWeekIso;
+
+        $classes = StudentClass::query()
+            ->join('Student as st', 'st.id', '=', 'StudentClass.StudentID')
+            ->where('StudentClass.ScheduleMode', 'count')
+            ->where('StudentClass.SessionCount', '>', 0)
+            ->where(function ($q) {
+                $q->whereNull('StudentClass.PackageID')
+                    ->orWhere('StudentClass.PackageID', '<=', 0);
+            })
+            ->where(function ($q) {
+                $q->where('StudentClass.Stop', 0)->orWhereNull('StudentClass.Stop');
+            })
+            ->where(function ($q) use ($isoWeekday) {
+                foreach (['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
+                    $q->orWhere("StudentClass.{$field}", $isoWeekday);
+                }
+            })
+            ->where(function ($q) use ($targetDate) {
+                $q->whereNull('StudentClass.StartDate')
+                    ->orWhereDate('StudentClass.StartDate', '<=', $targetDate);
+            })
+            ->when($role === 'teacher', fn ($q) => $q->where('StudentClass.TeacherID', $teacherId))
+            ->when(!empty($campusIds), fn ($q) => $q->whereIn('st.CampusID', $campusIds))
+            ->select('StudentClass.*')
+            ->get();
+
+        $studentClassController = app(StudentClassController::class);
+        foreach ($classes as $studentClass) {
+            $studentClassController->extendSessionsIfNeeded($studentClass, (int) $studentClass->SessionCount);
+        }
     }
 
     /**

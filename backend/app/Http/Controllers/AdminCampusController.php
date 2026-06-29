@@ -32,8 +32,9 @@ class AdminCampusController extends Controller
             'SwipeWindowMinutes' => 'nullable|integer|min:1|max:120',
             'Token'              => 'nullable|string|max:128',
             'LineNotifyID'       => 'nullable|string|max:255',
-            'TelegramToken'      => 'nullable|string|max:255',
-            'TelegramChatID'     => 'nullable|string|max:64',
+            'TelegramToken'          => 'nullable|string|max:255',
+            'TelegramChatID'         => 'nullable|string|max:64',
+            'TelegramWebhookSecret'  => 'nullable|string|max:256',
         ]);
 
         $campus = Campus::create([
@@ -49,9 +50,10 @@ class AdminCampusController extends Controller
             'LIFFID'             => '',
             'LIFF_URL'           => '',
             'URL'                => '',
-            'TelegramToken'      => $data['TelegramToken'] ?? null,
-            'TelegramChatID'     => $data['TelegramChatID'] ?? null,
-            'TelegramURL'        => '',
+            'TelegramToken'          => $data['TelegramToken'] ?? null,
+            'TelegramChatID'         => $data['TelegramChatID'] ?? null,
+            'TelegramWebhookSecret'  => $data['TelegramWebhookSecret'] ?? null,
+            'TelegramURL'            => '',
             'TeachLIFFID'        => '',
             'TeachLIFF_URL'      => '',
         ]);
@@ -70,8 +72,9 @@ class AdminCampusController extends Controller
             'SwipeWindowMinutes' => 'nullable|integer|min:1|max:120',
             'Token'              => 'nullable|string|max:128',
             'LineNotifyID'       => 'nullable|string|max:255',
-            'TelegramToken'      => 'nullable|string|max:255',
-            'TelegramChatID'     => 'nullable|string|max:64',
+            'TelegramToken'          => 'nullable|string|max:255',
+            'TelegramChatID'         => 'nullable|string|max:64',
+            'TelegramWebhookSecret'  => 'nullable|string|max:256',
         ]);
 
         $campus->fill($data);
@@ -95,18 +98,22 @@ class AdminCampusController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * SEC-AUDIT (#975): never echo swipe/Telegram secrets in JSON — only presence flags.
+     */
     private function format(Campus $c): array
     {
         return [
-            'id'                 => $c->id,
-            'name'               => $c->name,
-            'code'               => $c->code ?? '',
-            'active'             => (bool) ($c->active ?? true),
-            'Token'              => $c->Token ?? '',
-            'SwipeWindowMinutes' => (int) ($c->SwipeWindowMinutes ?? 30),
-            'LineNotifyID'       => $c->LineNotifyID ?? '',
-            'TelegramToken'      => $c->TelegramToken ?? '',
-            'TelegramChatID'     => $c->TelegramChatID ?? '',
+            'id'                   => $c->id,
+            'name'                 => $c->name,
+            'code'                 => $c->code ?? '',
+            'active'               => (bool) ($c->active ?? true),
+            'has_swipe_token'        => !empty($c->Token),
+            'SwipeWindowMinutes'   => (int) ($c->SwipeWindowMinutes ?? 30),
+            'LineNotifyID'         => $c->LineNotifyID ?? '',
+            'has_telegram_token'     => !empty($c->TelegramToken),
+            'has_telegram_webhook_secret' => !empty($c->TelegramWebhookSecret),
+            'TelegramChatID'       => $c->TelegramChatID ?? '',
         ];
     }
 }

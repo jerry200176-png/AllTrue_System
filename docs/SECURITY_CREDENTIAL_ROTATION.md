@@ -1,0 +1,69 @@
+# Credential Rotation Checklist — Secret Exposure Audit (2026-06-28)
+
+> **Trigger:** GitHub Secret Exposure Audit found live tokens and historical leaks.  
+> **Do this BEFORE making the repo public** and **immediately** if the repo was ever shared broadly.
+
+> ⛔ **CORRECTION (2026-06-28, re-verification):** The Telegram monitor-bot revocation
+> recorded below was **NOT effective**. Independent check on 2026-06-28 shows the leaked
+> token (`@Alltrue_Daan_Bot`, id `7657792412`) still returns **HTTP 200** from
+> `api.telegram.org/getMe` with an **active webhook** — i.e. it is **still live**.
+> The "returns 401" verification and the "CONFIRMED" sign-off row for the Telegram bot are
+> therefore **inaccurate**. Revocation must be re-done via @BotFather before publication.
+> Tracking: **#1025**. Secret-scanning alert #1 must stay **open** until the old token
+> actually returns 401.
+
+## Phase 0 — Rotate outside git (human / Pi)
+
+| # | Credential | Action | Where |
+|---|------------|--------|-------|
+| 1 | **Telegram monitor bot** | Revoke via [@BotFather](https://t.me/BotFather) → `/revoke`, issue new token | Pi: `/home/admin/.env.monitor` (never commit) |
+| 2 | **GitHub PATs** pasted in agent transcripts | GitHub → Settings → Developer settings → Personal access tokens → **Revoke all unknown** | Assume `ghp_*` in history are compromised |
+| 3 | **Campus swipe `Token`** (RFID API bearer) | Regenerate per campus if AdminCampus API was exposed | DB `Campus.Token` or super-admin UI |
+| 4 | **Campus `TelegramToken`** | Regenerate via @BotFather per campus bot | DB `Campus.TelegramToken` |
+| 5 | **LINE `messaging_channel_secret`** | LINE Developers Console → reissue channel secret per campus | DB `Campus.messaging_channel_secret` |
+| 6 | **Telegram webhook `secret_token`** | After deploy: `setWebhook` with new `secret_token`; store in `Campus.TelegramWebhookSecret` | See `backend/docs/telegram_setup.md` |
+
+## Pi monitor env (post-rotation)
+
+```bash
+# On Pi only — NOT in git
+cat > /home/admin/.env.monitor <<'EOF'
+TELEGRAM_BOT_TOKEN=<new-token-from-botfather>
+TELEGRAM_CHAT_ID=<your-chat-id>
+HEALTH_URL=https://daan.lifenet.com.tw/api/v1/health
+DISK_ALERT_PCT=85
+TEMP_ALERT_C=70
+EOF
+chmod 600 /home/admin/.env.monitor
+```
+
+## Verification
+
+- [ ] ⛔ Old Telegram token returns 401 from `api.telegram.org` — **FAILS as of 2026-06-28 (still HTTP 200, see #1025)**
+- [x] Revoked GitHub PATs cannot `gh auth status`
+- [x] `git ls-files .env.monitor` returns empty (after PR #1023 merge)
+- [x] `git ls-files '.cursor/projects/**'` returns empty (after PR #1023 merge)
+- [x] History purge completed per `scripts/security-filter-repo.sh` (maintenance window 2026-06-28)
+- [x] Gitleaks publication gate PASS (`scripts/security-gitleaks-audit.sh`, 0 non-allowlisted findings)
+
+## CEO sign-off (2026-06-28)
+
+| Item | Status | Date |
+|------|--------|------|
+| Telegram monitor bot revoked/reissued via BotFather | ⛔ **NOT EFFECTIVE — token still live, re-do required (#1025)** | 2026-06-28 |
+| GitHub PATs from agent transcripts revoked | **CONFIRMED** | 2026-06-28 |
+| Campus swipe / LINE / Telegram DB secrets reviewed | **CONFIRMED** | 2026-06-28 |
+| Pi live config at `/home/admin/.env.monitor` only | **CONFIRMED** | 2026-06-28 |
+
+Signed off by CEO for publication remediation sequence. History purge and gitleaks gate **completed 2026-06-28**.
+
+⛔ **NOT cleared for public toggle yet:** the Telegram monitor-bot token recorded as revoked
+above is **still live** as of 2026-06-28 re-verification (#1025). Do not make the repo public
+until the old token returns 401 and secret-scanning alert #1 is resolved as *revoked*.
+
+## References
+
+- [`docs/SECURITY.md`](SECURITY.md) §6 — history rewrite gate before public
+- [`scripts/security-filter-repo.sh`](../scripts/security-filter-repo.sh)
+- [`scripts/security-gitleaks-audit.sh`](../scripts/security-gitleaks-audit.sh)
+- GitHub issues: #975 (campus secret echo), #1021 (Telegram webhook)

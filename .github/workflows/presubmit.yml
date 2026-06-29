@@ -68,6 +68,7 @@ jobs:
             -- ':!*.lock' ':!**/package-lock.json' ':!package-lock.json' \
                ':!**/composer.lock' ':!composer.lock' \
                ':!*.sql' ':!*.sql.gz' ':!*.min.js' ':!*.min.css' \
+               ':!*.log' ':!**/*.log' \
                ':!*phpstan-baseline.neon' ':!**/*.generated.js' \
                "${EXTRA_EXCLUDE[@]}" \
             | awk 'NF==3 {add+=$1; del+=$2} END {print add+del+0}')
@@ -185,6 +186,16 @@ jobs:
         run: |
           chmod +x .github/scripts/golden-ci-report.sh
           ./.github/scripts/golden-ci-report.sh
+
+      # ─────────────────────────────────────────────
+      # CHECK 7：Architecture fitness — fail-closed enforcement of architecture rules
+      # 15 checks: occurrence-writer ratchet (DI-1), service-graph acyclic (DEP-3),
+      # status-literal/unit/paid/instructor ratchets (DI-2/3/4/6), context-map + cross-context
+      # write guards (DEP-1/FIT-14), read-path-write guard (DI-7/ADR-0007), ownership/invariant/
+      # SOP doc checks (activate as governance docs land). Any violation = this required check fails.
+      # ─────────────────────────────────────────────
+      - name: "[CHECK 7] Architecture fitness (invariants / ownership / dependency)"
+        run: node scripts/arch-fitness-check.mjs
 
       # ─────────────────────────────────────────────
       # Summary

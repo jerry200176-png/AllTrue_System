@@ -128,7 +128,8 @@ UI「家長手機」欄 → 儲存到 Student.parent_phone
 
 - **禁止**：只用 `$s->Phone` 驗證家長身份
 - **正確**：`resolveContactPhone()` 優先 `parent_phone`，空才 fallback `Phone`
-- 修復：PR #38，2026-04-24
+- **LINE OA 綁定**（2026-06-28）：`LineWebhookController` 的「綁定 姓名 手機」也必須走同一邏輯（`StudentContactPhone`），不可只查 `Phone`
+- 修復：PR #38，2026-04-24；LINE bind 對齊 PR #1037
 
 ### R9. deploy.yml `git pull` 改為 `git fetch + reset --hard`
 

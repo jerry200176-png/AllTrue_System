@@ -1,8 +1,0 @@
-[2026-04-22 01:09:39] [restore-drill] === Monthly restore drill start ===
-[2026-04-22 01:09:39] [restore-drill] Using backup: alltrue_nightly_2026-04-22_0100.sql.gz
-[2026-04-22 01:09:39] [restore-drill] Created drill DB: AllTrue_drill
-[2026-04-22 01:09:39] [restore-drill] Restoring...
-[2026-04-22 01:09:40] [restore-drill] Restore complete.
-[2026-04-22 01:09:40] [restore-drill] Tables: 59, Students: 395
-[2026-04-22 01:09:40] [restore-drill] Drill DB dropped.
-[2026-04-22 01:09:40] [restore-drill] === Restore drill PASSED: 59 tables, 395 students ===

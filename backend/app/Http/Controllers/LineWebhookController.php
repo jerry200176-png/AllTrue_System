@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Student;
 use App\Models\StudentLineBinding;
 use App\Models\SystemSetting;
+use App\Support\StudentContactPhone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -248,7 +249,7 @@ class LineWebhookController extends Controller
 
         $student = null;
         foreach ($candidates as $s) {
-            if (!empty($s->Phone) && preg_replace('/[^0-9]/', '', $s->Phone) === $normalized) {
+            if (StudentContactPhone::matchesNormalizedInput($s, $normalized)) {
                 $student = $s;
                 break;
             }
@@ -288,9 +289,7 @@ class LineWebhookController extends Controller
         }
 
         $normalized       = preg_replace('/[^0-9]/', '', $phone);
-        $normalizedStored = preg_replace('/[^0-9]/', '', $student->Phone ?? '');
-
-        if (empty($normalizedStored) || $normalized !== $normalizedStored) {
+        if (!StudentContactPhone::matchesNormalizedInput($student, $normalized)) {
             $this->replyMessage($replyToken, "手機號碼不符，請確認後重試。", $campus);
             return;
         }
