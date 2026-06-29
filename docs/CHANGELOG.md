@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-06-29 — security: untrack legacy PII dumps + backend-local stub
+
+- **Security**：`git rm --cached` 19 個 `backups/**/*.sql.gz`（production PII，runtime 備份在 Pi `/home/admin/backups/`）與整個 `backend-local/`（Windows mock，`.gitignore` 早已排除但仍被追蹤）— 清除 Dependabot `path-to-regexp`/`qs` alerts
+- 開發備註：secret-scanning #1（`AllTrue (3).sql` 歷史 blob）仍需 filter-repo + BotFather revoke（#1025）
+
 ## 2026-06-29 — security: npm 依賴修補 + composer audit gate 修正
 
 - **Security**：前端升級 `vite` 6.4.3、`@vitejs/plugin-vue` 6.x（修補 GHSA path traversal / esbuild dev-server）；`jsdom` 連帶 `undici` 7.28.0；`npm audit --audit-level=high` 清零
