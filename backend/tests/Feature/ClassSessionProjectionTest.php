@@ -148,9 +148,9 @@ class ClassSessionProjectionTest extends TestCase
 
     public function test_projection_requires_start_and_end(): void
     {
-        [, $token, ] = $this->seedBranchCourse();
+        [$campus, $token] = array_slice($this->seedBranchCourse(), 0, 2);
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
-            ->getJson('/api/v1/class-sessions/projection?branch_id=1')
+            ->getJson('/api/v1/class-sessions/projection?branch_id=' . $campus->id)
             ->assertStatus(422);
     }
 
