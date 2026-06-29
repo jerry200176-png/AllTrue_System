@@ -201,7 +201,7 @@ class ClassSessionController extends Controller
         }
 
         if (!empty($campusIds)) {
-            $query->whereIn('s.CampusID', $campusIds);
+            $this->applyClassSessionCampusBranchFilter($query, $campusIds);
         }
 
         if ($request->filled('teacher_id')) {
@@ -1429,6 +1429,28 @@ class ClassSessionController extends Controller
         if ($base === '') return $suffix;
         if (str_contains($base, $suffix)) return $base;
         return $base . '; ' . $suffix;
+    }
+
+    /**
+     * Align branch filter with StudentClassController::index — room campus when set,
+     * otherwise student CampusID. ClassSession is the calendar projection; eligibility
+     * follows contract room attribution, not attendance snapshots.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $query
+     * @param  array<int>  $campusIds
+     */
+    private function applyClassSessionCampusBranchFilter($query, array $campusIds): void
+    {
+        $query->leftJoin('rooms as cs_branch_room', 'cs_branch_room.id', '=', 'sc.room_id');
+        $query->where(function ($q) use ($campusIds) {
+            $q->where(function ($inner) use ($campusIds) {
+                $inner->whereNotNull('sc.room_id')
+                    ->whereIn('cs_branch_room.campus_id', $campusIds);
+            })->orWhere(function ($inner) use ($campusIds) {
+                $inner->whereNull('sc.room_id')
+                    ->whereIn('s.CampusID', $campusIds);
+            });
+        });
     }
 
     /**
