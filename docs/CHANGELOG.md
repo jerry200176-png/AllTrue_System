@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-09 — docs: #190 對帳 + #189/#191 dry-run + #957 D1 設計
+
+- **Changed**：`190-reconciliation-report`（6 筆 SC 逐筆對帳、Invoice #690/#691 建議 amend）；`189-191-dryrun-report`（72 組 before/after）；`957-d1-sprint-design`（unique index migration）。
+- 開發備註：production 唯讀稽核 2026-07-09；零寫入；洪子勛 Payment void 2998/0 已查證。
+
 ## 2026-07-08 — docs: Reliability Engineering — bug closure gate + #190 historical audit
 
 - **Changed**：新增 `docs/GUIDE_BUG_CLOSURE_GATE.md`（六項關閉閘門）；`docs/incidents/190-historical-billing-repair-plan.md`（週日 0 元歷史帳務唯讀 audit，6 筆合約）；`189-191` 計畫補 §7 dry-run audit 結果。
