@@ -31,7 +31,7 @@ return new class extends Migration
         $duplicateGroups = DB::table('ClassSession')
             ->selectRaw('StudentClassID, DATE(SessionDate) as session_date, SUBSTRING(StartTime, 1, 5) as start_time, COUNT(*) as row_count')
             ->groupBy('StudentClassID', DB::raw('DATE(SessionDate)'), DB::raw('SUBSTRING(StartTime, 1, 5)'))
-            ->having('row_count', '>', 1)
+            ->having('row_count', '>', '1')
             ->get();
 
         if ($duplicateGroups->isNotEmpty()) {
