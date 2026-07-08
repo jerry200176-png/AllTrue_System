@@ -11,6 +11,28 @@
 
 ---
 
+## 2026-06-29 — fix: ClassSession projection API — calendar completeness-safe (no pagination)
+
+- **Fixed**：新增 `GET /api/v1/class-sessions/projection`（`api_kind: projection`, `completeness: full`），行事曆改走此端點，杜絕 list API `per_page=2000` 靜默截斷導致新莊等分校缺課。
+- 開發備註：`ClassSessionProjectionTest`；SOP 見 `docs/GUIDE_PROJECTION_INTEGRITY.md`。
+
+## 2026-06-29 — fix: calendar ClassSession branch projection aligns with course room campus
+
+- **Fixed**：行事曆週檢視改以 `branch_id + 日期區間` 載入全部 `ClassSession`（不再綁定已篩選課程 ID）；分校篩選與課程管理一致（有教室用 `rooms.campus_id`，無教室用學生 `CampusID`），修復新莊等分校「出缺勤有課、行事曆缺課」。
+- 開發備註：`ClassSessionBranchCampusFilterTest`；`useCalendarDataLoad` 補 session-only 課程 stub 供 `mergeWeekCalendarOccurrences` materialized pass。
+
+## 2026-06-29 — security: untrack legacy PII dumps + backend-local stub
+
+- **Security**：`git rm --cached` 19 個 `backups/**/*.sql.gz`（production PII，runtime 備份在 Pi `/home/admin/backups/`）與整個 `backend-local/`（Windows mock，`.gitignore` 早已排除但仍被追蹤）— 清除 Dependabot `path-to-regexp`/`qs` alerts
+- 開發備註：secret-scanning #1（`AllTrue (3).sql` 歷史 blob）仍需 filter-repo + BotFather revoke（#1025）
+
+## 2026-06-29 — security: npm 依賴修補 + composer audit gate 修正
+
+- **Security**：前端升級 `vite` 6.4.3、`@vitejs/plugin-vue` 6.x（修補 GHSA path traversal / esbuild dev-server）；`jsdom` 連帶 `undici` 7.28.0；`npm audit --audit-level=high` 清零
+- **Security**：CI `composer audit` 解析 bug 已定位（advisory dict 漏掃 HIGH）— 修正待 TD-014 Laravel upgrade 後一併上線，避免在 framework 未修補前誤擋 merge
+- **Security**：`guzzlehttp/guzzle` constraint 升至 `^7.12.1`（lock 已 7.12.3）
+- 開發備註：GitHub secret-scanning #1（Telegram bot token）與 Laravel 8→12 major upgrade 仍為 open blocker（#1025、TD-014）
+
 ## 2026-06-28 — fix: 班級行事曆漏顯已調課堂次 + LINE 綁定讀家長手機
 
 Fixed：班級行事曆若週次篩選暫時隱藏某課程，已實際存在的堂次仍會顯示，與課程管理詳情一致。LINE 官方帳號「綁定 姓名 手機」改與家長入口相同，優先比對「家長手機」欄位。

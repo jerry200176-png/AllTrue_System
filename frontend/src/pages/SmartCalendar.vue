@@ -801,6 +801,7 @@ const getVisibleWeekRangeYmd = () => {
 
 const {
   courses,
+  allCoursesUnfiltered,
   exceptions,
   calendarLoading,
   calendarLoadProgress,
@@ -1514,7 +1515,7 @@ const filteredCourses = computed(() => {
 
     return mergeWeekCalendarOccurrences({
       courses: list,
-      allCourses: courses.value,
+      allCourses: allCoursesUnfiltered.value,
       exceptions: exceptions.value,
       sessionDatesByCourseId: sessionDatesByCourseId.value,
       weekDatesByDow,
