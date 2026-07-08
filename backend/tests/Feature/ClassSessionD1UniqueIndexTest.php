@@ -23,7 +23,7 @@ class ClassSessionD1UniqueIndexTest extends TestCase
             DB::statement('ALTER TABLE ClassSession DROP INDEX uq_class_session_slot');
         }
 
-        $courseId = $this->createCourse(1, 1);
+        $courseId = $this->createCourse(88001, 88002);
 
         $keeperId = DB::table('ClassSession')->insertGetId([
             'StudentClassID' => $courseId,
