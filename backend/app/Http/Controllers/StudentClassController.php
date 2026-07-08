@@ -1148,7 +1148,7 @@ class StudentClassController extends Controller
             'SessionDuration' => 'nullable|integer|min:30',
 
             'ScheduleSlots' => 'nullable|array',
-            'ScheduleSlots.*.weekday' => 'required_with:ScheduleSlots|integer|min:0|max:6',
+            'ScheduleSlots.*.weekday' => 'required_with:ScheduleSlots|integer|min:0|max:7',
             'ScheduleSlots.*.time' => 'required_with:ScheduleSlots|date_format:H:i',
             'skip_auto_sessions' => 'nullable|boolean',
         ]);
@@ -1198,7 +1198,12 @@ class StudentClassController extends Controller
             }
         }
 
-        $scheduleSlots = $data['ScheduleSlots'] ?? [];
+        // Store ISO weekdays (1-7) in week columns — DB convention is 7=Sunday, never 0.
+        $scheduleSlots = array_map(function ($slot) {
+            $slot['weekday'] = self::isoWeekday($slot['weekday'] ?? 0);
+
+            return $slot;
+        }, $data['ScheduleSlots'] ?? []);
         $skipAutoSessions = (bool) ($data['skip_auto_sessions'] ?? false);
 
         if (!isset($data['Period'])) {
@@ -4883,6 +4888,17 @@ class StudentClassController extends Controller
         }
     }
 
+    /**
+     * Normalize a weekday value to ISO-8601 (1=Mon … 7=Sun).
+     * Accepts both ISO 1-7 and legacy JS 0-6 (0=Sunday → 7).
+     */
+    public static function isoWeekday($weekday): int
+    {
+        $weekday = (int) $weekday;
+
+        return $weekday === 0 ? 7 : $weekday;
+    }
+
     private function calculateCourseChargeFromRate(
         float $rate,
         string $rateUnit,
@@ -5042,7 +5058,11 @@ class StudentClassController extends Controller
 
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
             foreach ($slots as $slot) {
-                if ((int) $date->dayOfWeek === (int) $slot['weekday']) {
+                // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
+                // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
+                // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
+                // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
+                if ((int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday'])) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
                     $endTime = $startTime->copy()->addMinutes($slotDur);
