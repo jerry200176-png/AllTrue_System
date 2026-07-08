@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-08 — docs: Reliability Engineering — bug closure gate + #190 historical audit
+
+- **Changed**：新增 `docs/GUIDE_BUG_CLOSURE_GATE.md`（六項關閉閘門）；`docs/incidents/190-historical-billing-repair-plan.md`（週日 0 元歷史帳務唯讀 audit，6 筆合約）；`189-191` 計畫補 §7 dry-run audit 結果。
+- 開發備註：T0 docs-only；production 唯讀查詢已執行，**零寫入**；#190/#194/#196 code fix 不重開。
+
 ## 2026-07-08 — docs: in-app #189/#191 跨約重複堂次資料修復草案
 
 - **Changed**：新增 `docs/incidents/189-191-data-repair-plan.md`（影響分析、唯讀偵測 SQL、修復策略比較、draft migration 規格）。
