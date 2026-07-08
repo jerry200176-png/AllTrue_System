@@ -49,6 +49,8 @@
 
 可參考 [`msitarzewski/agency-agents`](https://github.com/msitarzewski/agency-agents) 的角色設計、deliverable 格式與多工具整合概念，但它不是 AllTrue 產品功能，也不可整包安裝覆蓋本 repo 規則。
 
+工程技能工作流可參考 [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — **完整評估與安裝 SOP 見 [`docs/GUIDE_AGENT_SKILLS.md`](docs/GUIDE_AGENT_SKILLS.md)**（繁中）；AllTrue 本地化技能見 [`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) 與 `.cursor/skills/alltrue-*`（只挑技能本地化，禁止整包覆蓋 P0 / PRD 流程）。
+
 引用時遵守：
 - 只挑選角色/交付物模板，改寫成 AllTrue bounded context 的 artifact handoff。
 - 所有外部 agent 規則都必須服從 `.cursorrules`、P0 gate、分校隔離、CI/deploy SOP。
