@@ -89,11 +89,7 @@ class CleanupClassSessionIntraDuplicates extends Command
         $this->writeSnapshot($snapshotPath, $groups, $actions);
 
         foreach ($actions as $action) {
-            if ($action['after_status'] === 'deleted') {
-                DB::table('ClassSession')->where('id', $action['session_id'])->delete();
-
-                continue;
-            }
+            DB::table('ClassSession')->where('id', $action['session_id'])->delete();
         }
 
         $keeperNotes = [];
@@ -145,7 +141,7 @@ class CleanupClassSessionIntraDuplicates extends Command
             ->selectRaw('GROUP_CONCAT(cs.id ORDER BY cs.id) as session_ids')
             ->selectRaw('COUNT(*) as row_count')
             ->groupBy('cs.StudentClassID', DB::raw('DATE(cs.SessionDate)'), DB::raw('SUBSTRING(cs.StartTime, 1, 5)'))
-            ->having('row_count', '>', 1);
+            ->having('row_count', '>', '1');
 
         if ($studentClassId) {
             $query->where('cs.StudentClassID', $studentClassId);

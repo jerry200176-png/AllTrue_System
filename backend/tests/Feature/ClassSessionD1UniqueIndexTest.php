@@ -76,6 +76,10 @@ class ClassSessionD1UniqueIndexTest extends TestCase
         } catch (\Illuminate\Database\QueryException $e) {
             $this->assertStringContainsString('uq_class_session_slot', $e->getMessage());
         }
+
+        if ($this->uniqueIndexExists()) {
+            DB::statement('ALTER TABLE ClassSession DROP INDEX uq_class_session_slot');
+        }
     }
 
     private function uniqueIndexExists(): bool
