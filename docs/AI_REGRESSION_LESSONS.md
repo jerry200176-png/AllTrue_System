@@ -640,6 +640,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R66. session-dates projected 不可因排除 leave materialized 而在同日合成幽靈時段
+
+- **觸發情境**：週日 10-12 堂次制課程登記請假後，課程詳情「上課日期」除正確的 10-12 請假 chip 外，又多出半透明 16-18 請假（in-app #196／GitHub #1101，劉芯岑 SC2653）；DB 查無 16-18 ClassSession。
+- **根因**：`SessionProjectionReadService::collectMaterializedFromRows` 把 `leave` 排除 → 請假日無 materialized → `buildProjectedFromEffectiveDates` 仍從契約日期合成 projected；POST `session-dates` 的 `bodyClasses` select 缺 `time`/`SessionDuration` → `resolveSlotTimesForCourseDate` fallback 全域預設 16:00。
+- **強制規則**：
+  1. `leave`/`leave_requested`/`leave_adjusted`/`excused` 等有實體 ClassSession 的狀態必須進 **materialized** bucket（只排除 `cancelled`）。
+  2. 任何 `StudentClass::select()` 用於 slot time 解析時，必須含 `time`/`time1-6` + `SessionDuration`/`duration1-6`。
+  3. 修改 projected 邏輯時，測試必含「請假日只有真實 leave 列、projected 為空、無 16:00 fallback」。
+- **測試必補**：`SessionProjectionLeaveGhostTest::test_leave_session_materialized_and_no_phantom_projected_slot`。
+
+---
+
 ### R63. 未合併分支的 migration 絕不可先在 production 執行（schema drift = 全域隱形地雷）
 
 - **觸發情境**：2026-06-30 某 session 在未合併分支 `815ad275`（借用舊分支名 `fix/branch-list-trust-api` push）直接於 production 執行 `drop_student_class_room_id_legacy` 等 2 個 migration（batch 107/108），`StudentClass.RoomID` 欄位被移除；分支其後從未 merge。2026-07-08 才發現 main 程式碼仍在讀寫 RoomID：課程匯出（明確 SELECT）必 500、多個寫入路徑靠 fillable 靜默丟棄或 `createStudentClassResilient` 的 retry 掩蓋。CI 測試 DB 與 production schema 不一致長達 8 天。
