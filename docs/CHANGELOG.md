@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-08 — ops: 部署管線硬校驗 — 杜絕「回報成功但上的是舊版」
+
+Ops：部署流程加上目標版本硬校驗：抓取失敗立即中止並亮紅，部署完成的版本必須等於 CI 驗證過的那一版。
+
+開發備註：Pi repo config 被誤寫 `http.sslbackend=schannel`（Linux git 不支援）→ `git fetch` fatal；deploy step 無 `-e` 吞錯、`reset --hard origin/main` 落在 stale tracking ref，smoke 照樣綠。修正 = deploy.yml [1/7] self-heal unset + fetch fail-fast + `reset --hard $workflow_run.head_sha` + HEAD 校驗（§R62）。
+
 ## 2026-07-08 — fix: 同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）
 
 Fixed：一對二／一對三同一時段的不同學生，畫面上會被合併成一筆導致其中一位漏顯（例如班級行事曆只看得到其中一位），已修正。
