@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-08 — docs: AllTrue Agent Engineering System v1 + #189/#191 資料修復草案
+
+- **Changed**：新增 `docs/ALLTRUE_AGENT_SYSTEM_V1.md`、`.cursor/skills/alltrue-*`（除錯／測試／發布／安全／code review）與 `docs/AGENT_SKILLS.md` 上游評估；`docs/incidents/189-191-data-repair-plan.md` 跨約重複堂次修復草案（**禁止未核准前寫 production**）。
+- 開發備註：T0 docs-only；不整包安裝 addyosmani/agent-skills；INDEX + AGENTS.md 導航更新。
+
 ## 2026-07-08 — fix: 請假後課程詳情不再多畫出不存在的 16-18 堂次
 
 Fixed：登記請假後，課程詳情的「上課日期」若出現半透明的錯誤時段（例如週日 10-12 的課卻多出一個 16-18 請假），已修正；現在只會顯示真實堂次。
