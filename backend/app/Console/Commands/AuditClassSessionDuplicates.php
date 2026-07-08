@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\ClassSessionIntraDuplicateFinder;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -18,10 +19,14 @@ class AuditClassSessionDuplicates extends Command
 
     protected $description = 'Read-only audit: intra-course dupes, cross-course slot overlaps, projection gaps';
 
-    public function handle(): int
+    public function handle(ClassSessionIntraDuplicateFinder $finder): int
     {
         $branchId = $this->option('branch_id') !== null ? (int) $this->option('branch_id') : null;
         $studentClassId = $this->option('student_class_id') !== null ? (int) $this->option('student_class_id') : null;
+
+        $intra = $finder->findActiveDuplicateGroups($studentClassId);
+        $placeholders = $finder->findCancelledPlaceholderCollisions($studentClassId);
+        $indexBlocking = $finder->findUniqueIndexBlockingSlots($studentClassId);
 
         $report = [
             'generated_at' => now()->toIso8601String(),
@@ -30,18 +35,27 @@ class AuditClassSessionDuplicates extends Command
                 'student_class_id' => $studentClassId,
             ]),
             'summary' => [],
-            'intra_course_duplicates' => $this->findIntraCourseDuplicates($studentClassId),
+            'intra_course_duplicates' => $intra,
+            'cancelled_placeholder_collisions' => $placeholders,
+            'unique_index_blocking_slots' => $indexBlocking,
             'cross_course_overlaps' => $this->findCrossCourseOverlaps($branchId, $studentClassId),
             'projection_materialized_gaps' => $this->findProjectionGaps($studentClassId),
         ];
 
         $report['summary'] = [
-            'intra_course_duplicate_groups' => count($report['intra_course_duplicates']),
+            'intra_course_duplicate_groups' => count($intra),
+            'cancelled_placeholder_collision_groups' => count($placeholders),
+            'unique_index_blocking_slot_groups' => count($indexBlocking),
             'cross_course_overlap_groups' => count($report['cross_course_overlaps']),
             'projection_gap_courses' => count($report['projection_materialized_gaps']),
         ];
 
         $json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            $this->error('JSON encode failed: ' . json_last_error_msg());
+
+            return self::FAILURE;
+        }
         $outputPath = $this->option('output');
         if ($outputPath) {
             file_put_contents($outputPath, $json . PHP_EOL);
@@ -51,37 +65,6 @@ class AuditClassSessionDuplicates extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function findIntraCourseDuplicates(?int $studentClassId): array
-    {
-        $query = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('cs.Status', '<>', 'cancelled')
-            ->selectRaw('cs.StudentClassID as student_class_id')
-            ->selectRaw('DATE(cs.SessionDate) as session_date')
-            ->selectRaw('SUBSTRING(cs.StartTime, 1, 5) as start_hm')
-            ->selectRaw('COUNT(*) as row_count')
-            ->selectRaw('GROUP_CONCAT(cs.id ORDER BY cs.id) as session_ids')
-            ->groupBy('cs.StudentClassID', DB::raw('DATE(cs.SessionDate)'), DB::raw('SUBSTRING(cs.StartTime, 1, 5)'))
-            ->having('row_count', '>', '1');
-
-        if ($studentClassId) {
-            $query->where('cs.StudentClassID', $studentClassId);
-        }
-
-        return $query->get()->map(function ($row) {
-            return [
-                'student_class_id' => (int) $row->student_class_id,
-                'session_date' => (string) $row->session_date,
-                'start_time' => (string) $row->start_hm,
-                'row_count' => (int) $row->row_count,
-                'session_ids' => array_map('intval', explode(',', (string) $row->session_ids)),
-            ];
-        })->values()->all();
     }
 
     /**
