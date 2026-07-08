@@ -34,7 +34,6 @@ class LearningRecordLatestApprovedSummaryTest extends TestCase
             'by1' => 1,
             'Period' => 4,
             'StartDate' => '2026-05-01',
-            'RoomID' => '',
             'TotalHours' => 0,
             'Charge' => 0,
             'Pay' => 0,

@@ -55,7 +55,6 @@ class ParentPortalSharedPackageTest extends TestCase
             'Charge'            => 0,
             'Paid'              => 1,
             'Rate'              => 0,
-            'RoomID'            => 'R1',
             'MDate'             => now()->toDateString(),
             'Stop'              => 0,
             'ScheduleMode'      => 'count',
@@ -128,7 +127,7 @@ class ParentPortalSharedPackageTest extends TestCase
         StudentClass::create([
             'StudentID' => $s->id, 'GradeID' => 1, 'SubjectID' => 2, 'TeacherID' => 1,
             'by1' => 1, 'Period' => 4, 'StartDate' => now()->toDateString(), 'TotalHours' => 8,
-            'Charge' => 0, 'Paid' => 1, 'Rate' => 0, 'RoomID' => 'R1', 'MDate' => now()->toDateString(),
+            'Charge' => 0, 'Paid' => 1, 'Rate' => 0, 'MDate' => now()->toDateString(),
             'Stop' => 0, 'ScheduleMode' => 'count', 'SessionCount' => 8, 'RemainingSessions' => 8,
             'UsedSessions' => 0, 'SessionDuration' => 120, 'ClassType' => 'one_on_one', 'CampusID' => 1,
         ]);

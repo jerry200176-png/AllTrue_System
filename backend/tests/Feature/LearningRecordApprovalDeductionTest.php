@@ -1482,7 +1482,6 @@ class LearningRecordApprovalDeductionTest extends TestCase
             'Disconunt' => null,
             'Rate' => (float) $o['rate_per_30min'],
             'LearnTimeID' => null,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => $o['schedule_mode'] ?? 'count',

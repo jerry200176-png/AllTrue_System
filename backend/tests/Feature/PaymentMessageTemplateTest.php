@@ -219,7 +219,6 @@ class PaymentMessageTemplateTest extends TestCase
             'Disconunt' => null,
             'Rate' => 0,
             'LearnTimeID' => null,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

@@ -564,7 +564,6 @@ class NotificationApiTest extends TestCase
             'Disconunt' => null,
             'Rate' => null,
             'LearnTimeID' => null,
-            'RoomID' => "R{$campusId}",
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

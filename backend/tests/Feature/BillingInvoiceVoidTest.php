@@ -381,7 +381,6 @@ class BillingInvoiceVoidTest extends TestCase
             'Charge' => 8800,
             'Paid' => 0,
             'Rate' => null,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'date',

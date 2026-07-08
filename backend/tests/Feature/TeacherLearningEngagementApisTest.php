@@ -84,7 +84,6 @@ class TeacherLearningEngagementApisTest extends TestCase
             'StartDate' => '2026-05-01',
             'Period' => 4,
             'by1' => $teacherId,
-            'RoomID' => 'R1',
             'MDate' => now(),
         ], $over));
     }
@@ -238,7 +237,6 @@ class TeacherLearningEngagementApisTest extends TestCase
             'TotalHours' => 5,
             'Charge' => 1600,
             'Pay' => 1600,
-            'RoomID' => 'R2',
             'by1' => $tB->id,
         ]);
         DB::table('ClassSession')->insertGetId([

@@ -184,7 +184,6 @@ class ClassSessionProjectionTest extends TestCase
             'Paid' => 0,
             'Rate' => 500,
             'LearnTimeID' => null,
-            'RoomID' => 'R1',
             'room_id' => $room->id,
             'MDate' => now(),
             'Stop' => 0,

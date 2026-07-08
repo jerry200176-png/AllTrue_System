@@ -46,8 +46,7 @@ class PackageReconciliationTest extends TestCase
         $sc = StudentClass::create([
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1,
             'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
-            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0, 'RoomID' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => $total,
+            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0,             'ScheduleMode' => 'count', 'SessionCount' => $total,
             'RemainingSessions' => $total, 'UsedSessions' => 0, 'SessionDuration' => 120,
             'ClassType' => 'one_on_one', 'Rate' => 500, 'rate_unit' => 'session',
             'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Stop' => 0,
@@ -149,8 +148,7 @@ class PackageReconciliationTest extends TestCase
         $sc1 = StudentClass::create([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
             'TeacherID' => $teacher1->id, 'by1' => 1, 'Period' => 4,
-            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0, 'RoomID' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => 20,
+            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0,             'ScheduleMode' => 'count', 'SessionCount' => 20,
             'RemainingSessions' => 20, 'UsedSessions' => 0, 'SessionDuration' => 120,
             'ClassType' => 'one_on_one', 'Rate' => 500, 'rate_unit' => 'session',
             'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Stop' => 0,
@@ -160,8 +158,7 @@ class PackageReconciliationTest extends TestCase
         $sc2 = StudentClass::create([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 2,
             'TeacherID' => $teacher2->id, 'by1' => 1, 'Period' => 4,
-            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0, 'RoomID' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => 20,
+            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0,             'ScheduleMode' => 'count', 'SessionCount' => 20,
             'RemainingSessions' => 20, 'UsedSessions' => 0, 'SessionDuration' => 120,
             'ClassType' => 'one_on_one', 'Rate' => 500, 'rate_unit' => 'session',
             'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Stop' => 0,

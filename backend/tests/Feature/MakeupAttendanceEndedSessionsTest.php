@@ -482,7 +482,6 @@ class MakeupAttendanceEndedSessionsTest extends TestCase
             'Paid' => 0,
             'Stop' => 0,
             'by1' => 0,
-            'RoomID' => '',
             'ScheduleMode' => 'date',
             'StartDate' => Carbon::now()->subMonth()->toDateString(),
             'EndDate' => Carbon::now()->addMonths(3)->toDateString(),

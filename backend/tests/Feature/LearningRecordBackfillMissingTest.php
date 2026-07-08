@@ -75,8 +75,7 @@ class LearningRecordBackfillMissingTest extends TestCase
     {
         return [
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 66, 'TeacherID' => 1,
-            'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8, 'RoomID' => 'R1',
-            'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8,             'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'count',
         ];
     }
 }

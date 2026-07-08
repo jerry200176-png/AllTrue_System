@@ -171,7 +171,6 @@ class OrphanScheduledSessionsTest extends TestCase
             'StartDate'         => now()->toDateString(),
             'Period'            => 4,
             'by1'               => $teacherId,
-            'RoomID'            => 'R1',
             'MDate'             => now(),
         ], $overrides));
     }
