@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Services\ClassSessionIntraDuplicateFinder;
 
 /**
  * #957 D1: DB-level guard against duplicate (StudentClassID, SessionDate, StartTime).
@@ -28,16 +29,23 @@ return new class extends Migration
             return;
         }
 
-        $duplicateGroups = DB::table('ClassSession')
-            ->selectRaw('StudentClassID, DATE(SessionDate) as session_date, SUBSTRING(StartTime, 1, 5) as start_time, COUNT(*) as row_count')
-            ->groupBy('StudentClassID', DB::raw('DATE(SessionDate)'), DB::raw('SUBSTRING(StartTime, 1, 5)'))
-            ->having('row_count', '>', '1')
-            ->get();
+        $finder = app(ClassSessionIntraDuplicateFinder::class);
 
-        if ($duplicateGroups->isNotEmpty()) {
+        $activeGroups = $finder->findActiveDuplicateGroups();
+        if (!empty($activeGroups)) {
             throw new RuntimeException(
-                'Cannot add unique index: ' . $duplicateGroups->count() . ' intra-course duplicate slot group(s) remain. '
+                'Cannot add unique index: ' . count($activeGroups) . ' Type-A active duplicate group(s) remain. '
                 . 'Run: php artisan classsession:cleanup-intra-duplicates --execute --force'
+            );
+        }
+
+        $blockingSlots = $finder->findUniqueIndexBlockingSlots();
+        if (!empty($blockingSlots)) {
+            $placeholderGroups = $finder->findCancelledPlaceholderCollisions();
+            throw new RuntimeException(
+                'Cannot add unique index: ' . count($blockingSlots) . ' slot(s) still have multiple rows '
+                . '(' . count($placeholderGroups) . ' cancelled-placeholder collisions). '
+                . 'Type-A cleanup complete; placeholder PCR required before migration.'
             );
         }
 
