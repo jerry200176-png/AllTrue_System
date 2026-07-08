@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-08 — ops: 部署管線硬校驗 — 杜絕「回報成功但上的是舊版」
+
+Ops：部署流程加上目標版本硬校驗：抓取失敗立即中止並亮紅，部署完成的版本必須等於 CI 驗證過的那一版。
+
+開發備註：Pi repo config 被誤寫 `http.sslbackend=schannel`（Linux git 不支援）→ `git fetch` fatal；deploy step 無 `-e` 吞錯、`reset --hard origin/main` 落在 stale tracking ref，smoke 照樣綠。修正 = deploy.yml [1/7] self-heal unset + fetch fail-fast + `reset --hard $workflow_run.head_sha` + HEAD 校驗（§R62）。
+
 ## 2026-06-29 — fix: ClassSession projection API — calendar completeness-safe (no pagination)
 
 - **Fixed**：新增 `GET /api/v1/class-sessions/projection`（`api_kind: projection`, `completeness: full`），行事曆改走此端點，杜絕 list API `per_page=2000` 靜默截斷導致新莊等分校缺課。
