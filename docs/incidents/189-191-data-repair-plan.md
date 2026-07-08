@@ -189,8 +189,107 @@ php artisan repair:duplicate-sessions --case=189 --force
 
 ---
 
+## 7. Dry-run 準備與 audit 執行結果（2026-07-08）
+
+> **狀態**：`repair:duplicate-sessions` 指令**尚未實作**；以下為 production **唯讀 audit**，等同 dry-run 的「偵測階段」。  
+> ⛔ **未執行任何寫入**。
+
+### 7.1 指令規格（實作後）
+
+```bash
+# 預設 dry-run（不寫 DB）
+php artisan repair:duplicate-sessions --dry-run --case=189
+php artisan repair:duplicate-sessions --dry-run --case=191
+php artisan repair:duplicate-sessions --dry-run --case=all
+
+# 輸出 JSON 報告
+php artisan repair:duplicate-sessions --dry-run --case=189 --report=/tmp/189-dryrun.json
+```
+
+### 7.2 預期 dry-run 輸出格式
+
+```
+=== DRY RUN repair:duplicate-sessions case=189 ===
+WOULD cancel ClassSession id=18569 (SC2264 2026-06-13 17:00 attended) → cancelled
+  reason: duplicate of SC1946 attended slot; keep SC1946 id=15636
+WOULD cancel ClassSession id=18602 (SC2264 2026-06-20 17:00 attended) → cancelled
+  reason: duplicate of SC1946; keep SC1946 id=15633
+WOULD stop StudentClass id=2264 (ghost shell SessionCount=0)
+SNAPSHOT: storage/app/repair-snapshots/189-191-20260708.json
+ROWS_AFFECTED: 2 sessions, 0 invoices, 1 student_class (stop flag)
+```
+
+### 7.3 Production audit 執行（唯讀，2026-07-08）
+
+**§2.1 跨課程同日同時段雙 attended**：至少 **20 組**（全系統）；本案 #189 命中：
+
+| 學生 | 日期 | 時間 | class_ids | session_ids | statuses |
+|------|------|------|-----------|-------------|----------|
+| 陳品承 | 2026-06-13 | 17:00 | 1946, 2264 | 15636, 18569 | attended, attended |
+| 陳品承 | 2026-06-20 | 17:00 | 1946, 2264 | 15633, 18602 | attended, attended |
+
+**§2.2 consumed > SessionCount**：全系統 **15+** 筆；#191 案例 SC395 需個別驗證（見下）。
+
+**§2.3 SessionCount=0 幽靈課程有堂次**：全系統多筆；SC2264 符合幽靈殼特徵。
+
+**§2.4 本案快查 — #189 before（修復前狀態）**
+
+| id | SC | 日期 | 時段 | Status | Note |
+|----|-----|------|------|--------|------|
+| 15636 | 1946 | 6/13 | 17-19 | attended | 加課 |
+| 18569 | 2264 | 6/13 | 17-18 | attended | — |
+| 15633 | 1946 | 6/20 | 15-17 | attended | — |
+| 18602 | 2264 | 6/20 | 17-18 | attended | 系統加課 |
+
+**§2.4 本案快查 — #191 before**
+
+| id | SC | 日期 | 時段 | Status |
+|----|-----|------|------|--------|
+| 3215 | 395 | 5/14 | 16-18 | attended（舊約） |
+| 13302 | 1655 | 5/14 | 18-20 | completed（新約） |
+
+→ 同日雙記，但時段不同（16-18 vs 18-20）；修復策略須主任確認 5/14 以哪一約為準。
+
+### 7.4 Before / After 對照（核准後預期）
+
+| Case | Before | After（策略 A） |
+|------|--------|-----------------|
+| #189 | SC2264 兩堂 attended 與 SC1946 重疊；評量「第 4 堂」卡住 | SC2264 的 18569、18602 → `cancelled` + Note；SC1946 保留；SC2264 `Stop=1` |
+| #191 | SC395 消耗 10/9；5/14 舊約 attended 與新約 completed 共存 | SC395 的 5/14 attended → `cancelled`；SC395 消耗回到 9；收據重開走人工帳務 |
+
+### 7.5 安全檢查（執行前必過）
+
+| # | 檢查 | 2026-07-08 audit |
+|---|------|------------------|
+| 1 | Dry-run / audit 已跑 | ✅ 本節 |
+| 2 | 備份路徑已記錄 | ⏳ 待執行前 |
+| 3 | 主任確認保留哪個 SC | ⏳ #189 保留 1946；#191 保留 1655 |
+| 4 | 無進行中 LearningRecord 審核卡在同一 session | 需執行前再查 |
+| 5 | `ALLOW_PROD_REPAIR=1` 未設定 | ✅ 未啟用 |
+
+### 7.6 回滾驗證（草稿）
+
+1. 執行前腳本寫入 `repair-snapshots/*.json`（含 ClassSession 列完整欄位）
+2. 回滾：`php artisan repair:duplicate-sessions --rollback --snapshot=<file>`
+3. 驗證：`SELECT id, Status, Note FROM ClassSession WHERE id IN (...)` 與 snapshot 一致
+4. 抽樣：陳品承 SC1946 評量待填數恢復修復前水準
+
+### 7.7 暫時替代：Pi 唯讀 audit 一鍵腳本（直到 artisan 實作）
+
+```bash
+ssh admin@pi.lifenet.com.tw 'cd /home/admin/backend && php artisan tinker --execute="
+echo \"#189\n\";
+foreach (DB::select(\"SELECT id, StudentClassID, SessionDate, StartTime, EndTime, Status, Note FROM ClassSession WHERE StudentClassID IN (1946,2264) AND SessionDate IN (\\\"2026-06-13\\\",\\\"2026-06-20\\\") ORDER BY SessionDate, StartTime, id\") as \$r) echo json_encode(\$r, JSON_UNESCAPED_UNICODE).PHP_EOL;
+echo \"#191\n\";
+foreach (DB::select(\"SELECT id, StudentClassID, SessionDate, StartTime, Status FROM ClassSession WHERE StudentClassID IN (395,1655) AND SessionDate BETWEEN \\\"2026-05-01\\\" AND \\\"2026-05-31\\\" ORDER BY SessionDate\") as \$r) echo json_encode(\$r, JSON_UNESCAPED_UNICODE).PHP_EOL;
+"'
+```
+
+---
+
 ## 變更紀錄
 
 | 日期 | 說明 |
 |------|------|
 | 2026-07-08 | 初版草稿（唯讀 production 查證附於 GitHub #1095/#1097） |
+| 2026-07-08 | §7 dry-run 規格 + production audit 結果 |
