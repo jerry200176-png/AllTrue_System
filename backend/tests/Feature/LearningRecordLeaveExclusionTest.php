@@ -80,6 +80,27 @@ class LearningRecordLeaveExclusionTest extends TestCase
         $this->assertNotContains((int) $record->id, $ids, 'excused 堂次的待審評量不應出現在列表（FR-005 回歸守護）');
     }
 
+    public function test_pending_lr_on_leave_requested_session_is_excluded(): void
+    {
+        // in-app #194 / GitHub #1099：家長請假待審核時 ClassSession.Status='leave_requested'
+        // 且「沒有」StudentSingIn 簽到列。出缺勤管理把它當請假不顯示，但待填/待審清單
+        // 仍列出 → 兩畫面認定不一致。統一規則：待審請假的 pending 評量不出現在清單。
+        [$token, $teacherId, $studentId] = $this->bootActors('leave-requested-hidden');
+        $courseId = $this->seedCourse($studentId, $teacherId);
+
+        $cs = $this->seedSession($courseId, 'leave_requested');
+        $record = $this->seedPendingLr($courseId, $teacherId, $cs);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->getJson('/api/v1/learning-records?branch_id=1&per_page=50');
+
+        $res->assertOk();
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertNotContains((int) $record->id, $ids, '請假待審核堂次的待審評量不應出現在清單（in-app #194）');
+    }
+
     public function test_approved_lr_on_leave_session_is_still_visible(): void
     {
         [$token, $teacherId, $studentId] = $this->bootActors('leave-approved-visible');

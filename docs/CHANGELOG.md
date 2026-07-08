@@ -17,11 +17,19 @@ Fixed：登記請假後，課程詳情的「上課日期」若出現半透明的
 
 開發備註：session-dates API 的 `collectMaterializedFromRows` 把 `leave` 堂次排除在 materialized 之外，同日又從契約推算 projected slot；POST body 的 StudentClass select 缺 `time` 欄位 → `resolveSlotTimesForCourseDate` fallback 16:00 → 前端半透明 chip 顯示幽靈 16-18 請假（in-app #196／GitHub #1101，劉芯岑案例）。修正 = leave 納入 materialized + POST select 補齊 time/duration 欄位。回歸 `SessionProjectionLeaveGhostTest`。
 
+## 2026-07-08 — fix: 家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾
+
+Fixed：家長送出請假但主任尚未審核時，這堂課在「出缺勤管理」會消失、卻在「課表與評量」被列成待填評量。已統一：兩邊都會顯示「請假(待審)」，不需點名也不需填評量；若審核退回，堂次會自動恢復待點名/待填。
+
+開發備註：ParentPortal 請假流程只把 `ClassSession.Status` 設為 `leave_requested`（不建 StudentSingIn 列）；出缺勤管理把該狀態整列過濾掉、`sessionConsistency` 與 `LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 `leave`/`excused` → 兩畫面認定分歧（in-app #194／GitHub #1099，陳品承 7/4 案例）。修正 = `leave_requested` 進 NON_FILLABLE + 統一 label「請假(待審)」+ attendance statusRows 顯示 + 後端 scope 補 session-status 分支。回歸測試 `sessionConsistency.test.js` + `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
+
+
 ## 2026-07-08 — fix: 週日課程的月結金額不再算成 0 元
 
 Fixed：排在「週日」的月結課程，續約時系統算不出堂數，繳費金額會顯示 0 元（新店 6/30 回報的繳費通知問題）；現已修正，週日堂次會正確計入金額與課表。
 
 開發備註：`buildSessionsFromWeeklySchedule` 用 Carbon `dayOfWeek`（0=日）比對 ISO 星期（7=日）的 slot，週一～六兩套慣例值相同、唯獨週日永不匹配 → 週日 date-mode 課程生成 0 堂 → renew-monthly 算出 SessionCount=0/Charge=0 → NT$0 Invoice（in-app #190／GitHub #1096，洪子勛案例）。修正 = slot weekday 正規化 0→7 後以 `dayOfWeekIso` 比對（兩套慣例都吃）；Import 與 shadow ScheduleResolver mirror 同步；`ScheduleSlots` 入庫一律存 ISO。回歸測試 `WeeklyScheduleSundayBuilderTest` + `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`。
+
 
 ## 2026-07-08 — fix: 課程資料欄位對齊，避免課程匯出／新增課程隨機失敗
 

@@ -4104,11 +4104,13 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate, branchId }
     if (!row) return null;
     const status = String(row?.status || '').toLowerCase();
     const isLeaveSession = LEAVE_STATUSES.has(status);
+    const isLeaveRequestedSession = status === 'leave_requested';
     const isCancelledSession = status === 'cancelled';
     if (isTeacher.value && isCancelledSession) return { skip: true };
-    const fillLocked = !isSessionStarted(dateStr, row?.startTime);
+    const fillLocked = isLeaveRequestedSession || !isSessionStarted(dateStr, row?.startTime);
     let fillLockReason = '';
     if (isLeaveSession) fillLockReason = '此堂為請假，無需填寫評量';
+    else if (isLeaveRequestedSession) fillLockReason = '請假申請審核中，暫不需填寫評量';
     else if (isCancelledSession) fillLockReason = '此堂已取消，無需填寫評量';
     else if (fillLocked) fillLockReason = '上課開始後開放填寫';
     return {
@@ -4123,9 +4125,9 @@ const fetchTargetSessionEvent = async ({ classSessionId, sessionDate, branchId }
       startTime: normalizeTime(row?.startTime) || String(row?.startTime || '').slice(0, 5),
       endTime: normalizeTime(row?.endTime) || String(row?.endTime || '').slice(0, 5),
       timeRange: `${String(row?.startTime || '').slice(0, 5)}~${String(row?.endTime || '').slice(0, 5)}`,
-      recordId: (isLeaveSession || isCancelledSession) ? null : (row?.learningRecordId || null),
-      formStatus: isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing')),
-      formStatusLabel: scheduleStatusLabel(isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing'))),
+      recordId: (isLeaveSession || isLeaveRequestedSession || isCancelledSession) ? null : (row?.learningRecordId || null),
+      formStatus: isLeaveSession ? 'leave' : (isLeaveRequestedSession ? 'leave_requested' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing'))),
+      formStatusLabel: isLeaveRequestedSession ? '請假(待審)' : scheduleStatusLabel(isLeaveSession ? 'leave' : (isCancelledSession ? 'cancelled' : (row?.learningRecordStatus || 'missing'))),
       fillLocked,
       fillLockReason,
       isSubstituted: false,
@@ -5146,6 +5148,11 @@ watch([reviewTab, resolvedDefaultWindowStart], ([rt, win], [prt, pwin]) => {
 
 .ts-status-chip.status-leave {
   background: var(--ds-canvas-soft);
+  color: var(--ds-ink);
+}
+
+.ts-status-chip.status-leave_requested {
+  background: var(--ds-warning-wash);
   color: var(--ds-ink);
 }
 

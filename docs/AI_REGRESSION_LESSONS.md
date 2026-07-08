@@ -628,6 +628,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
+
+- **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，陳品承 7/4 週六 15-17 案例）。
+- **根因**：請假審核流（#690）新增 `leave_requested` 狀態時，只改了寫入端與審核端；讀取端各自維護狀態白名單——`AttendancePage` 的 skip 集合有它、`sessionConsistency.NON_FILLABLE_LEARNING_STATUSES` 沒有它、`LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 sign-in 列的 `leave/excused`（此流程根本不建 sign-in 列）→ 各消費端對同一狀態的語意解讀不一致。
+- **強制規則**：
+  1. 任何人新增/擴充 `ClassSession.Status` 或 `StudentSingIn.Status` 枚舉值時，必須 grep 全部狀態白名單消費端並逐一決策：`sessionConsistency.js`（NON_FILLABLE + 兩個 label fn + classifyAttendanceSessionRows）、`LearningRecord` scopes、`AttendancePage`、`TeacherHomePage`、`LearningRecordsPage`、`ClassSessionController` 各 index filter。
+  2. 「請假家族」語意集合 = `leave` / `leave_requested` / `leave_adjusted` / `excused`；判斷「這堂要不要點名/填評量」一律用集合，禁止散落硬寫單值。
+  3. 只有 approve 後才寫 `StudentSingIn`；任何以「有無 sign-in 列」推斷請假狀態的邏輯，必須同時檢查 `ClassSession.Status`。
+- **測試必補**：`sessionConsistency.test.js`（leave_requested 鎖填寫 + attendance 可見不待點名）＋ `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
+
+---
+
 ### R64. 星期欄位有兩套慣例並存，比對前必先正規化（ISO 7=週日 vs JS 0=週日）
 
 - **觸發情境**：新店月結課（週日 10-12／13-15）續約後繳費通知金額顯示 0 元（in-app #190／GitHub #1096）。`StudentClass` 鏈 1695/1696→2026/2027 連續兩期 `SessionCount=0、Charge=0`，Invoice `TotalAmount=0`；主任被迫手動核帳又登進 0 元。
@@ -637,6 +649,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   2. 任何 weekday 比對前先過 `StudentClassController::isoWeekday()`（0→7），再與 `dayOfWeekIso` 比；禁止裸用 `->dayOfWeek` 對 slot。
   3. 新增/修改排課生成邏輯時，測試必含**週日 slot** 案例（兩套慣例只在週日分歧，平日測試永遠測不出）。
 - **測試必補**：`WeeklyScheduleSundayBuilderTest`（ISO 7、legacy 0、平日不變、混合）＋ `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`（invoice 金額不為 0）。
+
 
 ---
 
@@ -841,7 +854,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback） |
