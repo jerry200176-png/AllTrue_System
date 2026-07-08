@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\UserCampus;
 use App\Services\ApprovalSessionSyncService;
 use App\Services\ClassSessionMaterializationService;
+use App\Services\LearningRecordBackfillService;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
@@ -2184,26 +2185,12 @@ class LearningRecordController extends Controller
                     continue;
                 }
 
-                $subjectName = $subjectNameMap[(int) $sc->SubjectID] ?? '未知';
-
-                $tid = SubstituteScheduleService::effectiveInstructorUserId(
-                    (int) $sc->ID,
-                    $cs->SessionDate,
-                    (int) ($sc->TeacherID ?? 0),
-                    $cs->StartTime
-                );
-                LearningRecord::create([
-                    'StudentClassID' => $sc->ID,
-                    'ClassSessionID' => $cs->id,
-                    'TeacherID' => $tid > 0 ? $tid : (int) ($sc->TeacherID ?? 0),
-                    'Content' => '',
-                    'Subject' => $subjectName,
-                    'SessionDate' => $cs->SessionDate,
-                    'StartTime' => $cs->StartTime,
-                    'EndTime' => $cs->EndTime,
-                    'Status' => 'pending',
-                ]);
-                $created++;
+                // Single source for LR creation lives in LearningRecordBackfillService so the
+                // interactive (ensure-past) and scheduled (learning-records:backfill-missing)
+                // paths can never drift apart (#1078).
+                if (app(LearningRecordBackfillService::class)->createPendingForSession($sc, $cs, $subjectNameMap)) {
+                    $created++;
+                }
             }
         }
 
