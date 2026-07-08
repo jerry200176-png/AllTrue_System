@@ -17,6 +17,14 @@ Fixed：修正一個內部資料欄位不一致問題，該問題可能讓「課
 
 開發備註：schema drift 對齊 — `StudentClass.RoomID` 已於 2026-06-30 在 production 被手動 migration 移除（batch 107/108，出自未合併的 `815ad275`），但 main 程式碼仍讀寫該欄位（Export 明確 SELECT、StudentClassController/CoursePackageController/Import 寫入、Model fillable）。本次把兩個 migration 檔＋後端 RoomID 移除 port 回 main（不含 `815ad275` 的行事曆前端與 #1087/#1079 回退部分），Export 改 SELECT `room_id` 保持 CSV 欄位對齊；121 個測試檔的 RoomID payload 一併清除；新增 `StudentClassRoomIdSchemaDriftTest` 鎖定 CI schema == production schema。
 
+## 2026-07-08 — ops: 部署管線硬校驗 — 杜絕「回報成功但上的是舊版」
+
+Ops：部署流程加上目標版本硬校驗：抓取失敗立即中止並亮紅，部署完成的版本必須等於 CI 驗證過的那一版。
+
+開發備註：Pi repo config 被誤寫 `http.sslbackend=schannel`（Linux git 不支援）→ `git fetch` fatal；deploy step 無 `-e` 吞錯、`reset --hard origin/main` 落在 stale tracking ref，smoke 照樣綠。修正 = deploy.yml [1/7] self-heal unset + fetch fail-fast + `reset --hard $workflow_run.head_sha` + HEAD 校驗（§R62）。
+
+## 2026-07-08 — fix: 同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）
+
 Fixed：一對二／一對三同一時段的不同學生，畫面上會被合併成一筆導致其中一位漏顯（例如班級行事曆只看得到其中一位），已修正。
 
 開發備註：`classSessionsApi.mergeSessionViewModels` slot key 原本只有 `(date,startTime)`，整包 payload 先合併再分課程 → 跨學生互吞（Phase C1 refactor `5bfaf4bd` 引入；R49/#187/#188 共享時段家族；in-app #182「仍存在」真兇）。key 補課程身分 + unkeyable 不合併；新增 `classSessionsApi.test.js` 掛入 `test:calendar`。

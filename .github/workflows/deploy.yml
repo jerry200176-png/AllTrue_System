@@ -101,10 +101,22 @@ jobs:
 
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
+          TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
 
           echo "=== [1/7] git fetch + reset ==="
-          git fetch origin main
-          git reset --hard origin/main
+          # R62 自癒：Windows 專用 SSL backend 誤入 repo config 會讓 fetch fatal，
+          # 過去因無 -e 被吞掉 → reset 落在 stale tracking ref → 靜默部署舊版
+          git config --local --unset-all http.sslbackend 2>/dev/null || true
+          if ! git fetch origin main; then
+            echo "❌ git fetch 失敗 — 中止部署（不得以舊 code 假裝成功）"
+            exit 1
+          fi
+          git reset --hard "$TARGET_SHA"
+          if [ "$(git rev-parse HEAD)" != "$TARGET_SHA" ]; then
+            echo "❌ 部署目標不符：HEAD=$(git rev-parse HEAD) ≠ CI head=$TARGET_SHA — 中止"
+            exit 1
+          fi
+          echo "✅ production HEAD == CI 驗證版本（$TARGET_SHA）"
 
           echo "=== [2/7] Composer dependencies ==="
           cd /home/admin/backend && composer install --no-interaction --prefer-dist --optimize-autoloader

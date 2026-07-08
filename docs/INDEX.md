@@ -337,7 +337,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
 | `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |
 
-> `ci.yml` / `presubmit.yml` / `codeql.yml` 使用 WSL2 self-hosted runner `wsl2-jerry-alltrue`（labels: `self-hosted`, `Linux`, `X64`, `wsl-ci`, `alltrue-ci`）節省 GitHub-hosted minutes；`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上部署 production。
+> `ci.yml` / `presubmit.yml` / `codeql.yml` / `deploy.yml`（#867 起）皆使用 WSL2 self-hosted runner `wsl2-jerry-alltrue`（labels: `self-hosted`, `Linux`, `X64`, `wsl-ci`, `alltrue-ci`）。deploy 移到 self-hosted 是避免 GitHub-hosted 額度凍結卡死部署鏈；單一 runner 序列化，deploy 排在長 CI 之後有分鐘級延遲屬正常。部署以 `workflow_run.head_sha` 為準並校驗 HEAD（§R62，杜絕靜默舊版）。
 > `main` branch protection 已啟用：required checks + admin enforcement + 禁止 force push/delete。備份同步會產生 Google Drive manifest（檔名 / 大小 / sha256），詳見 `OPERATIONS_RUNBOOK.md §P`。
 
 ---
