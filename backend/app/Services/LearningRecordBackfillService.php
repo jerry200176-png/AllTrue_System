@@ -35,20 +35,21 @@ class LearningRecordBackfillService
      */
     public function createPendingForSession(StudentClass $sc, ClassSession $cs, array $subjectNameMap): bool
     {
-        if (LearningRecord::where('ClassSessionID', $cs->id)->exists()) {
+        if (LearningRecord::query()->where('ClassSessionID', $cs->id)->exists()) {
             return false;
         }
 
-        $subjectName = $subjectNameMap[(int) $sc->SubjectID] ?? '未知';
+        $scId = (int) $sc->getAttribute('ID');
+        $subjectName = $subjectNameMap[(int) $sc->getAttribute('SubjectID')] ?? '未知';
         $tid = SubstituteScheduleService::effectiveInstructorUserId(
-            (int) $sc->ID,
+            $scId,
             $cs->SessionDate,
             (int) ($sc->TeacherID ?? 0),
             $cs->StartTime
         );
 
-        LearningRecord::create([
-            'StudentClassID' => $sc->ID,
+        LearningRecord::query()->create([
+            'StudentClassID' => $scId,
             'ClassSessionID' => $cs->id,
             'TeacherID' => $tid > 0 ? $tid : (int) ($sc->TeacherID ?? 0),
             'Content' => '',
@@ -69,7 +70,7 @@ class LearningRecordBackfillService
      */
     public function backfillBranch(int $branchId): int
     {
-        $studentIds = Student::where('CampusID', $branchId)->pluck('id');
+        $studentIds = Student::query()->where('CampusID', $branchId)->pluck('id');
         if ($studentIds->isEmpty()) {
             return 0;
         }
@@ -78,12 +79,12 @@ class LearningRecordBackfillService
         $subjectNameMap = DB::table('Subject')->pluck('Subject_Name', 'id')->all();
         $created = 0;
 
-        StudentClass::whereIn('StudentID', $studentIds)
+        StudentClass::query()->whereIn('StudentID', $studentIds)
             ->chunkById(200, function ($classes) use ($now, $subjectNameMap, &$created) {
                 foreach ($classes as $sc) {
                     $courseStopped = (int) ($sc->Stop ?? 0) === 1;
 
-                    ClassSession::where('StudentClassID', $sc->ID)
+                    ClassSession::query()->where('StudentClassID', $sc->ID)
                         ->whereNotIn('Status', ['cancelled', 'leave', 'leave_adjusted'])
                         ->whereRaw("CONCAT(SessionDate, ' ', COALESCE(StartTime, '00:00:00')) <= ?", [$now])
                         ->when($courseStopped, function ($query) {

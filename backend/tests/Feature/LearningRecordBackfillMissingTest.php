@@ -22,7 +22,10 @@ class LearningRecordBackfillMissingTest extends TestCase
     public function test_backfill_creates_pending_lr_only_for_past_attended_sessions(): void
     {
         $campus = Campus::factory()->create();
-        $student = Student::factory()->create(['CampusID' => $campus->id]);
+        $student = Student::create([
+            'name' => '回補測試生', 'CampusID' => $campus->id, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
         $scId = DB::table('StudentClass')->insertGetId($this->scRow((int) $student->id));
 
         $attended = DB::table('ClassSession')->insertGetId([
