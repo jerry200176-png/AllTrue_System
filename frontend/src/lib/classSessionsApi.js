@@ -227,10 +227,17 @@ export function sortSessionViewModels(rows) {
 /** @param {SessionViewModel[]} existing @param {SessionViewModel[]} incoming */
 export function mergeSessionViewModels(existing = [], incoming = []) {
   const bySlot = new Map();
+  let anonSeq = 0;
 
   for (const vm of [...existing, ...incoming]) {
     if (!vm?.date) continue;
-    const key = slotKey(vm.date, vm.startTime);
+    // R49/#187/#188 共享時段家族：合併鍵必須帶課程身分。只用 (date,startTime) 會把
+    // 1v2/1v3 同時段「不同學生」的堂次跨課程合併成一筆（in-app #182 漏顯的真兇）。
+    // studentClassId 缺失時退回 id，再缺給唯一序號 —— 寧可不合併也不可吞堂次。
+    const identity = vm.studentClassId > 0
+      ? `sc:${vm.studentClassId}`
+      : (vm.id > 0 ? `id:${vm.id}` : `anon:${anonSeq++}`);
+    const key = `${identity}|${slotKey(vm.date, vm.startTime)}`;
     const prev = bySlot.get(key);
     if (!prev) {
       bySlot.set(key, vm);
