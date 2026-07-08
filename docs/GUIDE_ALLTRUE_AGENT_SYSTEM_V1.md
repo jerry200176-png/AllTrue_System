@@ -1,7 +1,7 @@
 # AllTrue Agent Engineering System v1
 
 > **狀態**：設計提案（2026-07-08）  
-> **上游參考**：[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) — 見 [`AGENT_SKILLS.md`](AGENT_SKILLS.md)  
+> **上游參考**：[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) — 見 [`GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md)  
 > **權威 SOP**：`.cursorrules`、`AGENTS.md`、`docs/INDEX.md` — **衝突時永遠以 AllTrue 為準**
 
 ---

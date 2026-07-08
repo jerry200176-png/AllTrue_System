@@ -109,8 +109,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 3. `docs/AI_REGRESSION_LESSONS.md` — 對應模組的已知坑（**§復發家族 F1–F6＝known-issues registry，改前先認領**）
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53
 5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
-6. **外部工程技能包（選用）**：[`docs/AGENT_SKILLS.md`](AGENT_SKILLS.md) — addyosmani/agent-skills 整合評估；[`docs/ALLTRUE_AGENT_SYSTEM_V1.md`](ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
-7. **資料修復草案（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md) — in-app #189/#191 跨約重複堂次
+6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills 整合評估；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |

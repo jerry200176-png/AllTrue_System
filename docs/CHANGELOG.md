@@ -11,9 +11,9 @@
 
 ---
 
-## 2026-07-08 — docs: AllTrue Agent Engineering System v1 + #189/#191 資料修復草案
+## 2026-07-08 — docs: AllTrue Agent Engineering System v1
 
-- **Changed**：新增 `docs/ALLTRUE_AGENT_SYSTEM_V1.md`、`.cursor/skills/alltrue-*`（除錯／測試／發布／安全／code review）與 `docs/AGENT_SKILLS.md` 上游評估；`docs/incidents/189-191-data-repair-plan.md` 跨約重複堂次修復草案（**禁止未核准前寫 production**）。
+- **Changed**：新增 `docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`、`.cursor/skills/alltrue-*`（除錯／測試／發布／安全／code review）與 `docs/GUIDE_AGENT_SKILLS.md` 上游評估。
 - 開發備註：T0 docs-only；不整包安裝 addyosmani/agent-skills；INDEX + AGENTS.md 導航更新。
 
 ## 2026-07-08 — fix: 請假後課程詳情不再多畫出不存在的 16-18 堂次
