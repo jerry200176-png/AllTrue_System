@@ -80,7 +80,7 @@ class SessionProjectionReadService
                 continue;
             }
             $status = strtolower((string) ($row->Status ?? ''));
-            if (in_array($status, ['cancelled', 'leave'], true)) {
+            if ($status === 'cancelled') {
                 continue;
             }
             $date = $row->SessionDate ? Carbon::parse($row->SessionDate)->toDateString() : null;
