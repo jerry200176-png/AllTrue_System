@@ -25,7 +25,10 @@ class VerifyBugReproductionsTest extends TestCase
     public function test_fails_when_a_fixed_bug_regresses(): void
     {
         $campus = Campus::factory()->create();
-        $student = Student::factory()->create(['CampusID' => $campus->id]);
+        $student = Student::create([
+            'name' => '重現閘測試生', 'CampusID' => $campus->id, 'ClassID' => 1,
+            'enable' => 1, 'MDT' => now(), 'Notify_Token' => '',
+        ]);
         $scId = DB::table('StudentClass')->insertGetId([
             'StudentID' => (int) $student->id, 'GradeID' => 1, 'SubjectID' => 66, 'TeacherID' => 1,
             'by1' => 1, 'Period' => 4, 'StartDate' => now(), 'TotalHours' => 8, 'RoomID' => 'R1',
