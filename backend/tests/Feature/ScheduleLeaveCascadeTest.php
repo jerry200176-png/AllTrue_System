@@ -493,7 +493,6 @@ class ScheduleLeaveCascadeTest extends TestCase
             'UsedSessions' => 2,
             'SessionDuration' => 120,
             'ClassType' => 'one_on_one',
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Rate' => 500,
         ]);

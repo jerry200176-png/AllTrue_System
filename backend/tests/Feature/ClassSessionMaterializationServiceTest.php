@@ -108,7 +108,6 @@ class ClassSessionMaterializationServiceTest extends TestCase
             'Rate' => 0,
             'ClassType' => 'one_on_two',
             'StartDate' => now()->subDays(30)->toDateTimeString(),
-            'RoomID' => '',
             'SessionCount' => 8,
             'SessionDuration' => 120,
             'RemainingSessions' => 3,

@@ -203,8 +203,7 @@ class ParentLearningRecordFeedbackTest extends TestCase
         $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
         $sc = DB::table('StudentClass')->insertGetId([
             'StudentID' => $student->id, 'TeacherID' => $teacher->id, 'GradeID' => 1, 'SubjectID' => 1,
-            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(30)->toDateString(), 'RoomID' => '',
-            'TotalHours' => 20, 'Charge' => 1000, 'Pay' => 500, 'Paid' => 0, 'Rate' => 1000,
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(30)->toDateString(),             'TotalHours' => 20, 'Charge' => 1000, 'Pay' => 500, 'Paid' => 0, 'Rate' => 1000,
             'Stop' => 0, 'RemainingSessions' => 10, 'UsedSessions' => 0, 'SessionCount' => 10,
             'SessionDuration' => 60, 'ClassType' => 'one_on_one',
         ]);

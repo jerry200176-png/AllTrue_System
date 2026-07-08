@@ -11,7 +11,11 @@
 
 ---
 
-## 2026-07-08 — fix: 同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）
+## 2026-07-08 — fix: 課程資料欄位對齊，避免課程匯出／新增課程隨機失敗
+
+Fixed：修正一個內部資料欄位不一致問題，該問題可能讓「課程匯出」或部分「新增課程」流程出現錯誤，現已對齊。
+
+開發備註：schema drift 對齊 — `StudentClass.RoomID` 已於 2026-06-30 在 production 被手動 migration 移除（batch 107/108，出自未合併的 `815ad275`），但 main 程式碼仍讀寫該欄位（Export 明確 SELECT、StudentClassController/CoursePackageController/Import 寫入、Model fillable）。本次把兩個 migration 檔＋後端 RoomID 移除 port 回 main（不含 `815ad275` 的行事曆前端與 #1087/#1079 回退部分），Export 改 SELECT `room_id` 保持 CSV 欄位對齊；121 個測試檔的 RoomID payload 一併清除；新增 `StudentClassRoomIdSchemaDriftTest` 鎖定 CI schema == production schema。
 
 Fixed：一對二／一對三同一時段的不同學生，畫面上會被合併成一筆導致其中一位漏顯（例如班級行事曆只看得到其中一位），已修正。
 

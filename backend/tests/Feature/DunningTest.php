@@ -40,7 +40,7 @@ class DunningTest extends TestCase
             'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
             'RemainingSessions' => 5, 'UsedSessions' => 0,
             'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $r = $this->postJson('/api/v1/dunning/trigger', ['campus_id' => $campus->id], $this->bearer($token));
@@ -61,7 +61,7 @@ class DunningTest extends TestCase
             'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
             'RemainingSessions' => 5, 'UsedSessions' => 0,
             'Charge' => 5000, 'Pay' => 0, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         DunningEvent::create([

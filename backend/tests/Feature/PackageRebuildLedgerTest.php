@@ -68,8 +68,7 @@ class PackageRebuildLedgerTest extends TestCase
         return StudentClass::create([
             'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
             'TeacherID' => $teacherId, 'by1' => 1, 'Period' => 4,
-            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0, 'RoomID' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => $total,
+            'StartDate' => Carbon::today()->toDateString(), 'TotalHours' => 0,             'ScheduleMode' => 'count', 'SessionCount' => $total,
             'RemainingSessions' => $total, 'UsedSessions' => 0, 'SessionDuration' => 120,
             'ClassType' => $pkg->class_type, 'Rate' => 500, 'rate_unit' => 'session',
             'Charge' => 0, 'Pay' => 0, 'Paid' => 0, 'Stop' => 0,

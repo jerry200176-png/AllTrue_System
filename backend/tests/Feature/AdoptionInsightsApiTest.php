@@ -127,7 +127,6 @@ class AdoptionInsightsApiTest extends TestCase
                 'StartDate' => '2026-06-01',
                 'Period' => 4,
                 'by1' => $teacher->id,
-                'RoomID' => 'R1',
                 'MDate' => now(),
             ]);
 

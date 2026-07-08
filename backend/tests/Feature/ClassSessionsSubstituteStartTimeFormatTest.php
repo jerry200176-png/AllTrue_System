@@ -112,7 +112,7 @@ class ClassSessionsSubstituteStartTimeFormatTest extends TestCase
             'SessionCount' => 10, 'SessionDuration' => 120,
             'RemainingSessions' => 10, 'UsedSessions' => 0,
             'Charge' => 1600, 'Pay' => 16000, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
         $cs = ClassSession::create([
             'StudentClassID' => $sc->ID, 'SessionDate' => '2026-05-01',
@@ -187,7 +187,7 @@ class ClassSessionsSubstituteStartTimeFormatTest extends TestCase
             'SessionCount' => 10, 'SessionDuration' => 120,
             'RemainingSessions' => 10, 'UsedSessions' => 0,
             'Charge' => 1600, 'Pay' => 16000, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $cs = ClassSession::create([

@@ -85,7 +85,6 @@ class FindMatchingClassWindowTest extends TestCase
             'TeacherID'    => 1,
             'by1'          => 0,
             'TotalHours'   => 2,
-            'RoomID'       => '',
             'StartDate'    => now()->subYear(),
             'Stop'         => 0,
             'SessionCount' => 10,

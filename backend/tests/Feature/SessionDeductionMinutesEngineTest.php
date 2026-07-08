@@ -41,7 +41,6 @@ class SessionDeductionMinutesEngineTest extends TestCase
             'SessionDuration'   => $durationMinutes,
             'ClassType'         => 'one_on_one',
             'Rate'              => 500,
-            'RoomID'            => 'R1',
             'MDate'             => now(),
         ]);
     }

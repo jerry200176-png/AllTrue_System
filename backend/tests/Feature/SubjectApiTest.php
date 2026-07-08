@@ -153,8 +153,7 @@ class SubjectApiTest extends TestCase
         ]);
         DB::table('StudentClass')->insert([
             'StudentID' => 1, 'SubjectID' => $subId, 'GradeID' => 1, 'TeacherID' => 1,
-            'by1' => 1, 'StartDate' => now(), 'TotalHours' => 0, 'RoomID' => '',
-        ]);
+            'by1' => 1, 'StartDate' => now(), 'TotalHours' => 0,         ]);
 
         $res = $this->withHeaders($this->auth($tok))
             ->deleteJson("/api/v1/subjects/{$subId}");

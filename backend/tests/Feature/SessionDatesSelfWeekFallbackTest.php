@@ -186,7 +186,6 @@ class SessionDatesSelfWeekFallbackTest extends TestCase
             'Rate'            => 0,
             'ClassType'       => 'one_on_one',
             'StartDate'       => '2026-05-18',
-            'RoomID'          => '',
             'SessionCount'    => 24,
             'SessionDuration' => 120,
             'RemainingSessions' => 24,
