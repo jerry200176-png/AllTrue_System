@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { supabase } from '../../supabase';
-import { fetchClassSessions, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
+import { fetchClassSessionsProjection, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { shouldUseLegacyCalendarFallback } from '../../lib/calendarLoadPerformance';
 import {
@@ -20,6 +20,7 @@ export function useCalendarDataLoad({
   getCalendarDataFetchBoundsYmd,
 }) {
   const courses = ref([]);
+  const allCoursesUnfiltered = ref([]);
   const exceptions = ref([]);
   const calendarLoading = ref(false);
   const calendarLoadProgress = ref('');
@@ -50,6 +51,7 @@ export function useCalendarDataLoad({
 
     if (!bid && !teacherMode) {
       courses.value = [];
+      allCoursesUnfiltered.value = [];
       exceptions.value = [];
       sessionDatesByCourseId.value = {};
       calendarLoading.value = false;
@@ -139,7 +141,9 @@ export function useCalendarDataLoad({
       courseList = supabaseList;
     }
 
+    const preFilterCourseList = courseList;
     courseList = courseList.filter(isCourseActiveForCalendar);
+    allCoursesUnfiltered.value = preFilterCourseList;
 
     if (shouldUseLegacyCalendarFallback({ apiSucceeded: exceptionsApiSucceeded })) {
       let excQuery = supabase.from('schedules').select('*');
@@ -168,22 +172,46 @@ export function useCalendarDataLoad({
     exceptions.value = excData;
 
     sessionDatesByCourseId.value = {};
-    if (token && (bid || teacherMode) && courseList.length > 0) {
-      const ids = courseList.map((c) => Number(c?.id || 0)).filter((id) => id > 0);
-      if (ids.length > 0) {
-        try {
-          const { byClass } = await fetchClassSessions({
-            token,
-            branchId: teacherMode ? 0 : bid,
-            studentClassIds: ids,
-            start: schedStart,
-            end: schedEnd,
-            perPage: 2000,
-          });
-          sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(byClass || {});
-        } catch (_) {
-          sessionDatesByCourseId.value = {};
+    if (token && (bid || teacherMode)) {
+      const uid = typeof userId === 'function' ? userId() : (userId?.value ?? userId);
+      try {
+        const fetchOpts = {
+          token,
+          start: schedStart,
+          end: schedEnd,
+        };
+        if (teacherMode && uid) {
+          fetchOpts.teacherId = uid;
+        } else if (bid) {
+          fetchOpts.branchId = bid;
         }
+        const { byClass } = await fetchClassSessionsProjection(fetchOpts);
+        sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(byClass || {});
+        const knownCourseIds = new Set(
+          preFilterCourseList.map((c) => Number(c?.id)).filter((id) => id > 0),
+        );
+        const sessionOnlyCourses = [];
+        Object.entries(byClass || {}).forEach(([scId, rows]) => {
+          const cid = Number(scId);
+          if (!cid || knownCourseIds.has(cid)) return;
+          const row = Array.isArray(rows) ? rows[0] : null;
+          if (!row) return;
+          sessionOnlyCourses.push({
+            id: cid,
+            student_id: row.student_id ?? row.studentId,
+            student_name: row.student_name ?? row.studentName ?? '—',
+            teacher_id: row.teacher_id ?? row.teacherId,
+            teacher_name: row.teacher_name ?? row.teacherName ?? '未指派',
+            duration_hours: 2,
+            status: 'inactive',
+            stop: 1,
+          });
+        });
+        if (sessionOnlyCourses.length > 0) {
+          allCoursesUnfiltered.value = [...preFilterCourseList, ...sessionOnlyCourses];
+        }
+      } catch (_) {
+        sessionDatesByCourseId.value = {};
       }
     }
 
@@ -272,6 +300,7 @@ export function useCalendarDataLoad({
 
   return {
     courses,
+    allCoursesUnfiltered,
     exceptions,
     calendarLoading,
     calendarLoadProgress,
