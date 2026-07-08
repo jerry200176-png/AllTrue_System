@@ -100,7 +100,11 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 ### G-009：課程「繳費狀態」是雙真相 OR 邏輯，`StudentClass.Paid` 壓不過帳單付款
 `payment_status = Paid=1 或 Invoice 有效付款`（`StudentClassController.php` summary 段）。只要帳單有未作廢的 Payment，課程管理切「未繳費」會被靜默蓋回「已繳費」；要先到帳務作廢誤登款項。另：`update()` 的 preservedDelta 會把 `Charge − Rate×數量` 的差額當手動微調永久保留——若差額來自錯誤舊資料，UI 怎麼改都改不回（GitHub #798/#799，in-app #158/#159）。
 
-完整 Gotchas G-001 ~ G-009：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
+### G-010：行事曆來源真相 = 已物化的 `ClassSession`；「某天課很少」未必是 bug
+行事曆/點名/評量的來源真相是**已物化的 `ClassSession`**（非 `schedules` 模板），經 `class-sessions` API（`branch_id`+`start`/`end`）→ 前端 `mergeWeekCalendarOccurrences()`。**判定「課表漏顯/數量不對」前，先查 DB**：`ClassSession JOIN StudentClass JOIN Student.CampusID` by `SessionDate`，DB 數量 = API 數量 = 真相。週日/低量日只有少數堂是**正常**（補習班週日課少），主任週檢視是依時段聚合成「堂」（例：2026-06-28 新莊分校 = 3 時段 / 12 筆 student-session，皆正確，非資料遺失）。
+**但 count 模式（預付包堂）課程目前無「向前產生 session」的排程 job**——`Kernel.php` 只跑 reconcile/close-orphans，`schedules:backfill-class-sessions` 只能從既有 `schedules` 物化、無法向前生成。導致已付堂數未物化、行事曆向前看不到 = 系統性 P0（**#1062**，全分校約 2,000 堂預付堂卡住）。每日 03:40 已排 `sessions:audit-stranded` 稽核；根因修復（向前生成 + 永不遺失已付餘額）屬 owner-gated 紅區。
+
+完整 Gotchas G-001 ~ G-010：見 `.cursorrules` §核心資料表 gotcha 或 `alltrue-system.mdc`。
 
 ---
 
