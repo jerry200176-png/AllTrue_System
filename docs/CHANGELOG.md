@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-08 — fix: 週日課程的月結金額不再算成 0 元
+
+Fixed：排在「週日」的月結課程，續約時系統算不出堂數，繳費金額會顯示 0 元（新店 6/30 回報的繳費通知問題）；現已修正，週日堂次會正確計入金額與課表。
+
+開發備註：`buildSessionsFromWeeklySchedule` 用 Carbon `dayOfWeek`（0=日）比對 ISO 星期（7=日）的 slot，週一～六兩套慣例值相同、唯獨週日永不匹配 → 週日 date-mode 課程生成 0 堂 → renew-monthly 算出 SessionCount=0/Charge=0 → NT$0 Invoice（in-app #190／GitHub #1096，洪子勛案例）。修正 = slot weekday 正規化 0→7 後以 `dayOfWeekIso` 比對（兩套慣例都吃）；Import 與 shadow ScheduleResolver mirror 同步；`ScheduleSlots` 入庫一律存 ISO。回歸測試 `WeeklyScheduleSundayBuilderTest` + `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`。
+
 ## 2026-07-08 — fix: 課程資料欄位對齊，避免課程匯出／新增課程隨機失敗
 
 Fixed：修正一個內部資料欄位不一致問題，該問題可能讓「課程匯出」或部分「新增課程」流程出現錯誤，現已對齊。
