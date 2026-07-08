@@ -1,6 +1,6 @@
 # Epic #957 — Sprint 設計：D1 Unique Slot Index
 
-> **狀態**：設計提案 — **未核准實作**  
+> **狀態**：實作中（PR `feat/957-d1-unique-slot-index`）— **production migration 待最終核准**  
 > **Epic**：[GitHub #957](https://github.com/jerry200176-png/AllTrue_System/issues/957)  
 > **Sprint 目標**：在 production 資料清理後，加上 `(StudentClassID, SessionDate, StartTime)` unique index，杜絕新增重複物化  
 > **前置**：歷史資料修復（#189/#191 P0/P1）或至少 audit 清單核准
@@ -14,7 +14,7 @@
 | 項目 | 交付物 |
 |------|--------|
 | D1a | Production audit 報告歸檔（`classsession:audit-duplicates` + 手動清單） |
-| D1b | 資料清理腳本（dry-run 預設）— 課程內 duplicate 21 組 |
+| D1b | 資料清理腳本（dry-run 預設）— 課程內 duplicate 21 組；**刪除**非 keeper 列（unique index 不允許同 slot 雙列含 cancelled） |
 | D1c | Migration：`unique_class_session_slot` on `ClassSession` |
 | D1d | 回歸測試：並行 `upsertSlot`、migration 後 audit=0 |
 | D1e | Deploy runbook + rollback 演練文件 |

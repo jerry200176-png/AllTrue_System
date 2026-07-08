@@ -112,7 +112,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills 整合評估；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
 7. **資料修復草案（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)
 8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
-9. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md) — unique slot index 設計
+9. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)（deploy runbook → PR #1116）
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |
