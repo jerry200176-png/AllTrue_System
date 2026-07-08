@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-08 — docs: in-app #189/#191 跨約重複堂次資料修復草案
+
+- **Changed**：新增 `docs/incidents/189-191-data-repair-plan.md`（影響分析、唯讀偵測 SQL、修復策略比較、draft migration 規格）。
+- 開發備註：**禁止未經 CEO 核准前於 production 執行任何寫入**；長期修復仍依 Epic #957。
+
 ## 2026-07-08 — docs: AllTrue Agent Engineering System v1
 
 - **Changed**：新增 `docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`、`.cursor/skills/alltrue-*`（除錯／測試／發布／安全／code review）與 `docs/GUIDE_AGENT_SKILLS.md` 上游評估。
