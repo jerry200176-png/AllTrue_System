@@ -223,7 +223,6 @@ class AttendanceBatchMarkTest extends TestCase
             'UsedSessions' => 0,
             'SessionDuration' => 120,
             'ClassType' => 'one_on_one',
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Rate' => 500,
         ]);

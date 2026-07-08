@@ -67,7 +67,6 @@ class StudentClassIndexChargeFallbackTest extends TestCase
             'UsedSessions' => 0,
             'Stop' => 0,
             'MDate' => now(),
-            'RoomID' => 'R1',
             'week' => 1,
             'time' => '18:00:00',
         ]);

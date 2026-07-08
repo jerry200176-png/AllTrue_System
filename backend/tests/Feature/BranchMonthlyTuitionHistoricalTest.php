@@ -95,7 +95,6 @@ class BranchMonthlyTuitionHistoricalTest extends TestCase
             'Disconunt'         => null,
             'Rate'              => 600,
             'LearnTimeID'       => null,
-            'RoomID'            => 'R1',
             'MDate'             => now(),
             'Stop'              => 0,
             'ScheduleMode'      => 'count',

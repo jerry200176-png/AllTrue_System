@@ -402,7 +402,6 @@ class AddSessionConflictTest extends TestCase
             'Charge' => 0,
             'Paid' => 0,
             'Rate' => 0,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

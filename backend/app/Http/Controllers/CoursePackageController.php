@@ -399,7 +399,7 @@ class CoursePackageController extends Controller
                     'Period'            => 4,
                     'StartDate'         => $startDate,
                     'TotalHours'        => 0,
-                    'RoomID'            => 0,
+                    'room_id'           => null,
                     'ScheduleMode'      => $isMonthly ? 'date' : 'count',
                     'SessionCount'      => $totalSessions,
                     'RemainingSessions' => $totalSessions,

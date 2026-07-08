@@ -17,7 +17,7 @@ class StudentClass extends Model
         'week', 'time', 'week1', 'time1', 'week2', 'time2',
         'week3', 'time3', 'week4', 'time4', 'week5', 'time5', 'week6', 'time6',
         'TotalHours', 'Memo', 'Charge', 'Pay', 'PayDate', 'Paid', 'Disconunt',
-        'Rate', 'LearnTimeID', 'RoomID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop', 'closed_reason',
+        'Rate', 'LearnTimeID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop', 'closed_reason',
         'ScheduleMode', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
         'PurchasedMinutes', 'RemainingMinutes',

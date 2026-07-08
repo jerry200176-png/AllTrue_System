@@ -1139,7 +1139,6 @@ class StudentClassController extends Controller
             'Disconunt' => 'nullable|integer',
             'Rate' => 'nullable|numeric',
             'LearnTimeID' => 'nullable|integer',
-            'RoomID' => 'nullable|string|max:32',
             'room_id' => 'nullable|integer|exists:rooms,id',
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:0',
@@ -1392,7 +1391,7 @@ class StudentClassController extends Controller
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
-        unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['RoomID'], $mapped['by1']);
+        unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['by1']);
 
         if ($studentClass->isPartOfPackage()) {
             unset($mapped['RemainingSessions']);
@@ -1659,7 +1658,6 @@ class StudentClassController extends Controller
                 } else {
                     $row['ID'] = (int) $id;
                     $row['GradeID'] = 1;
-                    $row['RoomID'] = '1';
                     $row['Period'] = 4;
                     $row['TotalHours'] = 0;
                     $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4, 'trial' => 1];
@@ -2039,7 +2037,6 @@ class StudentClassController extends Controller
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
-                'RoomID' => $studentClass->RoomID,
                 'room_id' => $studentClass->room_id,
                 'settlement_day' => $studentClass->settlement_day,
                 'monthly_sessions' => $studentClass->monthly_sessions,
@@ -2363,7 +2360,6 @@ class StudentClassController extends Controller
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
-                'RoomID' => $studentClass->RoomID,
                 'room_id' => $studentClass->room_id,
                 'settlement_day' => $studentClass->settlement_day,
                 'monthly_sessions' => $studentClass->monthly_sessions,
@@ -3392,7 +3388,6 @@ class StudentClassController extends Controller
             $mappedData['by1'] = $by1Map[$classType] ?? 1;
 
             $mappedData['StartDate'] = $input['first_class_date'] ?? now()->toDateString();
-            $mappedData['RoomID'] = isset($input['room_id']) && $input['room_id'] ? (string) $input['room_id'] : '1';
             $mappedData['GradeID'] = 1;
             if (isset($mappedData['StudentID'])) {
                 try {

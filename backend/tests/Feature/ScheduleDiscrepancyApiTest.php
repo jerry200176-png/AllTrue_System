@@ -532,7 +532,6 @@ class ScheduleDiscrepancyApiTest extends TestCase
             'by1' => 0,
             'StartDate' => now(),
             'TotalHours' => 0,
-            'RoomID' => '',
             'SessionCount' => 1,
             'Charge' => 0,
         ]);

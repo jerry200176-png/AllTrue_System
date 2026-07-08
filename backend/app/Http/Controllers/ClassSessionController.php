@@ -1870,10 +1870,6 @@ class ClassSessionController extends Controller
         $dayOfWeek = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
         $roomId = (int) ($studentClass->room_id ?? 0);
         if ($roomId <= 0) {
-            $legacyRoom = $studentClass->RoomID ?? null;
-            $roomId = is_numeric($legacyRoom) ? (int) $legacyRoom : 0;
-        }
-        if ($roomId <= 0) {
             $roomId = null;
         }
 

@@ -19,7 +19,7 @@ use Tests\TestCase;
  * POST /api/v1/attendance/{id}/convert-to-attended
  *
  * 防再犯紀錄 §TEST-001 ─ StudentClass NOT NULL 欄位：
- *   StudentID, GradeID, SubjectID, TeacherID, by1, TotalHours, StartDate, RoomID
+ *   StudentID, GradeID, SubjectID, TeacherID, by1, TotalHours, StartDate
  */
 class AttendanceConvertSelfStudyTest extends TestCase
 {
@@ -197,7 +197,6 @@ class AttendanceConvertSelfStudyTest extends TestCase
             'by1'               => 1,
             'TotalHours'        => 10,
             'StartDate'         => now(),
-            'RoomID'            => '1',
             'RemainingSessions' => 5,
             'SessionCount'      => 5,
         ]);

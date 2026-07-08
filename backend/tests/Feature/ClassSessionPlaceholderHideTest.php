@@ -91,7 +91,6 @@ class ClassSessionPlaceholderHideTest extends TestCase
             'Memo' => '#496 測試',
             'Paid' => 0,
             'Rate' => 500,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

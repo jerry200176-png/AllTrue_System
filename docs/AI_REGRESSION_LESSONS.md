@@ -628,6 +628,19 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R63. 未合併分支的 migration 絕不可先在 production 執行（schema drift = 全域隱形地雷）
+
+- **觸發情境**：2026-06-30 某 session 在未合併分支 `815ad275`（借用舊分支名 `fix/branch-list-trust-api` push）直接於 production 執行 `drop_student_class_room_id_legacy` 等 2 個 migration（batch 107/108），`StudentClass.RoomID` 欄位被移除；分支其後從未 merge。2026-07-08 才發現 main 程式碼仍在讀寫 RoomID：課程匯出（明確 SELECT）必 500、多個寫入路徑靠 fillable 靜默丟棄或 `createStudentClassResilient` 的 retry 掩蓋。CI 測試 DB 與 production schema 不一致長達 8 天。
+- **根因**：Actions minutes 凍結時期的手動部署便宜行事：migration 跟著工作分支上了 production，但 code 沒有跟著走完 PR→merge，違反 R5（migrate 只能在 PR merge 後由 deploy.yml 執行）。復原時只 `git reset --hard origin/main` 還原 code，卻無法還原「migration 已執行」的事實。
+- **強制規則**：
+  1. migration 檔案在 production 執行的唯一合法前提＝**該檔案已在 `origin/main`**。
+  2. 發現 schema drift 時，修復方向優先「把 migration + 配套 code port 回 main」，不是回滾 production schema（資料已依新 schema 寫入）。
+  3. 手動緊急部署（minutes 凍結）也必須：merge 進 main 之後才跑 migrate —— 見 `.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md` §0 的授權流程。
+  4. 接手任何 session 前先 `git log origin/main..<分支>` 檢查有無「已在 prod 生效但未合併」的 migration。
+- **測試必補**：`StudentClassRoomIdSchemaDriftTest` 鎖 `Schema::hasColumn('StudentClass','RoomID') === false`＋Export SELECT/headings 對齊；未來刪欄位一律加同型 drift 測試。
+
+---
+
 ### R50. 智慧行事曆載入不可 REST 成功後再跑 legacy fallback
 
 - **觸發情境**：SmartCalendar 初次載入或切週體感偏慢，多個分校老師反映等待時間過長。
@@ -814,6 +827,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
+| Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
 | 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset） |
 
 ---

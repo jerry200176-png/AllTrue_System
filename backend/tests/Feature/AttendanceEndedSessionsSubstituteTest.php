@@ -149,7 +149,7 @@ class AttendanceEndedSessionsSubstituteTest extends TestCase
             'SessionCount' => 10, 'SessionDuration' => 120,
             'RemainingSessions' => 10, 'UsedSessions' => 0,
             'Charge' => 1600, 'Pay' => 16000, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         // 被代課的已結束堂（pastDate 14:00–16:00, status=scheduled, 無 SignIn）
