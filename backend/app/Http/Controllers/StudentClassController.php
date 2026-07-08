@@ -467,7 +467,32 @@ class StudentClassController extends Controller
             }
             if (!empty($courseIds)) {
                 $bodyClasses = StudentClass::whereIn('ID', $courseIds)
-                    ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                    ->select(
+                        'ID',
+                        'StudentID',
+                        'PackageID',
+                        'week',
+                        'time',
+                        'week1',
+                        'time1',
+                        'week2',
+                        'time2',
+                        'week3',
+                        'time3',
+                        'week4',
+                        'time4',
+                        'week5',
+                        'time5',
+                        'week6',
+                        'time6',
+                        'SessionDuration',
+                        'duration1',
+                        'duration2',
+                        'duration3',
+                        'duration4',
+                        'duration5',
+                        'duration6'
+                    )
                     ->get()
                     ->keyBy('ID');
                 $packageIds = $bodyClasses->pluck('PackageID')
@@ -483,7 +508,32 @@ class StudentClassController extends Controller
                 if ($packageIds->isNotEmpty() && $studentIds->isNotEmpty()) {
                     $packageSiblings = StudentClass::whereIn('PackageID', $packageIds->all())
                         ->whereIn('StudentID', $studentIds->all())
-                        ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                        ->select(
+                            'ID',
+                            'StudentID',
+                            'PackageID',
+                            'week',
+                            'time',
+                            'week1',
+                            'time1',
+                            'week2',
+                            'time2',
+                            'week3',
+                            'time3',
+                            'week4',
+                            'time4',
+                            'week5',
+                            'time5',
+                            'week6',
+                            'time6',
+                            'SessionDuration',
+                            'duration1',
+                            'duration2',
+                            'duration3',
+                            'duration4',
+                            'duration5',
+                            'duration6'
+                        )
                         ->get()
                         ->keyBy('ID');
                     $bodyClasses = $bodyClasses->merge($packageSiblings);
