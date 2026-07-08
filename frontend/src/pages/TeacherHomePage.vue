@@ -1060,7 +1060,7 @@ const weekDays = computed(() => {
       .map(s => {
         const status = String(s.status || '').toLowerCase();
         const isLeave = status === 'leave' || status === 'leave_adjusted' || status === 'excused';
-        // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app #194）
+        // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app bug 194）
         const isLeaveRequested = status === 'leave_requested';
         return {
           key: `${s.id}-${s.branch_id}`,
