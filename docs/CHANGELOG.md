@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-09 — fix: #957 D1 cleanup scope aligned with audit (PCR-R2)
+
+- **Fixed**：`classsession:cleanup-intra-duplicates` 僅刪 Type-A active conflicts（與 audit 同語意）；cancelled placeholder 改為分析 only。
+- **Added**：`ClassSessionIntraDuplicateFinder`、regression test `ClassSessionAuditCleanupScopeAlignmentTest`；PCR-R2 runbook。
+- 開發備註：2026-07-09 preflight STOP（806 vs 21 組）；production freeze 維持至 CEO GO `PCR-2026-07-09-957-D1-R2`。
+
 ## 2026-07-09 — docs: #190 對帳 + #189/#191 dry-run + #957 D1 設計
 
 - **Changed**：`190-reconciliation-report`（6 筆 SC 逐筆對帳、Invoice #690/#691 建議 amend）；`189-191-dryrun-report`（72 組 before/after）；`957-d1-sprint-design`（unique index migration）。
