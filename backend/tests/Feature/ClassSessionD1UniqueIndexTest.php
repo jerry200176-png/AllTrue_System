@@ -80,6 +80,10 @@ class ClassSessionD1UniqueIndexTest extends TestCase
         if ($this->uniqueIndexExists()) {
             DB::statement('ALTER TABLE ClassSession DROP INDEX uq_class_session_slot');
         }
+
+        DB::table('ClassSession')->where('StudentClassID', $courseId)->delete();
+        DB::table('StudentClass')->where('ID', $courseId)->delete();
+        DB::table('Student')->whereIn('id', [88001, 88002])->delete();
     }
 
     private function uniqueIndexExists(): bool
