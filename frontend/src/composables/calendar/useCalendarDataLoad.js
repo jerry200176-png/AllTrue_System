@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { supabase } from '../../supabase';
-import { fetchClassSessions, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
+import { fetchClassSessionsProjection, mapSessionViewModelsForCalendar } from '../../lib/classSessionsApi';
 import { fetchAllPages } from '../../lib/pagedFetchAll';
 import { shouldUseLegacyCalendarFallback } from '../../lib/calendarLoadPerformance';
 import {
@@ -179,14 +179,13 @@ export function useCalendarDataLoad({
           token,
           start: schedStart,
           end: schedEnd,
-          perPage: 2000,
         };
         if (teacherMode && uid) {
           fetchOpts.teacherId = uid;
         } else if (bid) {
           fetchOpts.branchId = bid;
         }
-        const { byClass } = await fetchClassSessions(fetchOpts);
+        const { byClass } = await fetchClassSessionsProjection(fetchOpts);
         sessionDatesByCourseId.value = mapSessionViewModelsForCalendar(byClass || {});
         const knownCourseIds = new Set(
           preFilterCourseList.map((c) => Number(c?.id)).filter((id) => id > 0),

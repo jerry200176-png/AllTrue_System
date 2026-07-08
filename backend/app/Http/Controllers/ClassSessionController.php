@@ -27,6 +27,15 @@ use Illuminate\Support\Facades\Schema;
 
 class ClassSessionController extends Controller
 {
+    /** LIST API (`index`) — pagination allowed; not for calendar projection. */
+    private const LIST_MAX_PER_PAGE = 2000;
+
+    /** PROJECTION API max inclusive date span (calendar prefetch window + buffer). */
+    private const PROJECTION_MAX_RANGE_DAYS = 120;
+
+    /** PROJECTION API hard row cap — reject with 413 instead of silent truncation. */
+    private const PROJECTION_MAX_ROWS = 15000;
+
     public function batchStore(Request $request)
     {
         $data = $request->validate([
@@ -75,6 +84,54 @@ class ClassSessionController extends Controller
 
     public function index(Request $request)
     {
+        if ($response = $this->authorizeAndMaterializeClassSessionIndex($request)) {
+            return $response;
+        }
+
+        $query = $this->buildClassSessionIndexQuery($request);
+        $perPage = min(max((int) $request->input('per_page', 1000), 1), self::LIST_MAX_PER_PAGE);
+        $rows = $query
+            ->orderBy('cs.SessionDate', 'asc')
+            ->orderBy('cs.StartTime', 'asc')
+            ->orderBy('cs.id', 'asc')
+            ->paginate($perPage);
+
+        $rows->getCollection()->transform(fn ($row) => $this->transformClassSessionIndexRow($row));
+
+        $byClass = $this->buildByClassMapFromItems($rows->items());
+
+        if (config('perfflags.log_session_count_mismatch')) {
+            $this->logSessionCountMismatches($byClass, $request);
+        }
+
+        $rangeStart = $request->filled('start') ? (string) $request->input('start') : null;
+        $rangeEnd = $request->filled('end') ? (string) $request->input('end') : null;
+        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd);
+
+        return response()->json([
+            'materialized' => [
+                'data' => $rows->items(),
+                'by_class' => $byClass,
+                'current_page' => $rows->currentPage(),
+                'last_page' => $rows->lastPage(),
+                'per_page' => $rows->perPage(),
+                'total' => $rows->total(),
+            ],
+            'projected' => [
+                'by_class' => $projectedByClass,
+            ],
+            // Legacy top-level aliases — materialized rows only (never mixed with projected).
+            'data' => $rows->items(),
+            'by_class' => $byClass,
+            'current_page' => $rows->currentPage(),
+            'last_page' => $rows->lastPage(),
+            'per_page' => $rows->perPage(),
+            'total' => $rows->total(),
+        ]);
+    }
+
+    private function authorizeAndMaterializeClassSessionIndex(Request $request): ?\Illuminate\Http\JsonResponse
+    {
         $role = $request->attributes->get('auth_role');
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
@@ -96,25 +153,23 @@ class ClassSessionController extends Controller
         }
         $this->autoMaterializeCountSessionsForRange($request, (string) $role, $teacherId, $campusIds);
 
+        return null;
+    }
+
+    private function buildClassSessionIndexQuery(Request $request)
+    {
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $teacherId = (int) ($request->attributes->get('auth_teacher_id') ?? 0);
+
+        $requestedCampus = (int) ($request->input('branch_id') ?? $request->input('campus_id') ?? 0);
+        if ($requestedCampus > 0) {
+            $campusIds = [$requestedCampus];
+        }
+
         $query = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            // Substitute teacher: pick latest scheduled row whose teacher differs
-            // from the course teacher. Stale scheduled rows pointing back to the
-            // regular teacher must not override the real substitute.
-            // Substitute teacher: pick latest scheduled exception row whose teacher differs
-            // from the course teacher, per (course, date, HH:MM) slot.
-            // TD-058：原本以 per-row correlated subquery `sub_sched.id = (SELECT MAX(sub2.id) …)`
-            // 解析，且 `DATE()`/`SUBSTRING()` 包裹欄位使索引失效 → 主查詢 1–3.5s 主因。
-            // 改為預先彙總的 derived-table join（鏡像下方 lr/si 的 MAX(id) 衍生表寫法）：
-            //   inner aggregate 取每 (student_course_id, schedule_date, HH:MM) 的 MAX(id)，
-            //   且 `teacher_id <> StudentClass.TeacherID`、`status='scheduled'`、
-            //   `original_schedule_id IS NOT NULL` 都在彙總內過濾——與原 subquery 等價。
-            // `schedule_date` 為 DATE 欄位、`start_time` 為字串，故 GROUP BY 該兩鍵
-            // 等同原本的 DATE()/SUBSTRING() 正規化，不會多出列（characterization：
-            // SubstituteTeacherTest / ClassSessionsSubstituteStartTimeFormatTest）。
-            // Bug fix C1 (2026-04-21)：兩側 SUBSTRING(...,1,5) 容錯 HH:MM:SS 歷史資料
-            // （schedules.id=611 遺留狀況）保留於 ON 條件。
             ->leftJoin(DB::raw('(
                 SELECT ss.*
                 FROM `schedules` ss
@@ -139,7 +194,6 @@ class ClassSessionController extends Controller
             ->leftJoin(DB::raw('(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id) AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->leftJoin(DB::raw('(SELECT si_inner.* FROM `StudentSingIn` si_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `StudentSingIn` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) si_latest ON si_inner.id = si_latest.max_id) AS si'), 'si.ClassSessionID', '=', 'cs.id')
             ->leftJoin('User as u', 'u.id', '=', 'sc.TeacherID')
-            // lr_teacher: 評量紀錄上記錄的老師（儲存授課當下的老師，不隨契約換師而變動）
             ->leftJoin('User as lru', 'lru.id', '=', 'lr.TeacherID')
             ->leftJoin('User as siu', 'siu.id', '=', 'si.TeacherID')
             ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
@@ -152,12 +206,6 @@ class ClassSessionController extends Controller
                 'cs.EndTime',
                 'cs.Status',
                 'cs.IsContractException',
-                // PRD-A (2026-04-18): Reconcile displayed status against the latest
-                // active StudentSignIn. When an attendance record exists but
-                // ClassSession.Status is still `scheduled` or `absent` (a known
-                // inconsistency from prior write paths), surface the sign-in's
-                // effective attendance state so the today-schedule UI never shows
-                // "缺席" while a present/late sign-in exists.
                 DB::raw("CASE
                     WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'present' THEN 'attended'
                     WHEN si.id IS NOT NULL AND LOWER(cs.Status) IN ('scheduled','absent') AND LOWER(si.Status) = 'late' THEN 'late'
@@ -174,8 +222,6 @@ class ClassSessionController extends Controller
                 'sub_sched.teacher_id as substitute_teacher_id',
                 's.CampusID',
                 's.name as student_name',
-                // 行事曆/點名顯示應與 teacher_id 一致：代課老師 > 現任課程老師。
-                // 評量老師是歷史歸屬，保留在 learning_record_teacher_id，不覆蓋堂次顯示名稱。
                 DB::raw('COALESCE(subu.Name, u.Name, lru.Name, "") as teacher_name'),
                 DB::raw('COALESCE(sub.Subject_Name, "") as subject_name'),
                 'lr.id as learning_record_id',
@@ -188,10 +234,6 @@ class ClassSessionController extends Controller
             ]);
 
         if ($role === 'teacher') {
-            // Bug fix (2026-04-21)：代課後原老師仍看到待點名課程
-            // 正確語意：若該堂有代課記錄 (sub_sched.teacher_id IS NOT NULL)，僅代課老師看得到；
-            // 若無代課記錄，才由契約老師 (sc.TeacherID) 看到。
-            // 舊版以 `sc.TeacherID = ? OR sub_sched.teacher_id = ?` 合併，導致代課後原老師仍命中第一分支。
             $query->where(function ($q) use ($teacherId) {
                 $q->where(function ($inner) use ($teacherId) {
                     $inner->whereNull('sub_sched.teacher_id')
@@ -243,9 +285,6 @@ class ClassSessionController extends Controller
             }
         }
 
-        // TD-062 Phase 2：`cs.SessionDate` 為 DATE 欄位，故裸欄位比較與 whereDate() 結果
-        // byte-identical，但不再以 DATE() 包裹欄位 → 可命中 (StudentClassID, SessionDate)
-        // 複合索引的 range 段（characterization：ClassSessionDateWindowFilterTest）。
         if ($request->filled('start')) {
             $query->where('cs.SessionDate', '>=', $request->input('start'));
         }
@@ -254,10 +293,6 @@ class ClassSessionController extends Controller
             $query->where('cs.SessionDate', '<=', $request->input('end'));
         }
 
-        // Bug #496 / in-app #124：cancelAutoMaterializedDuplicateSession() 會把調課同槽
-        // 的 auto-materialized placeholder 標 cancelled + Note .= 'cancelled-duplicate-
-        // reschedule-placeholder'。這些列屬內部 bookkeeping，預設不外露給課程管理／
-        // 日曆／出缺勤等任何 UI 消費端。提供 include_internal_placeholder=1 給 audit/QA。
         if (!$request->boolean('include_internal_placeholder')) {
             $query->where(function ($q) {
                 $q->where('cs.Status', '<>', 'cancelled')
@@ -268,65 +303,29 @@ class ClassSessionController extends Controller
             });
         }
 
-        $perPage = min(max((int) $request->input('per_page', 1000), 1), 2000);
-        $rows = $query
+        return $query;
+    }
+
+    private function fetchAllClassSessionIndexRows($query): array
+    {
+        $items = [];
+        (clone $query)
             ->orderBy('cs.SessionDate', 'asc')
             ->orderBy('cs.StartTime', 'asc')
             ->orderBy('cs.id', 'asc')
-            ->paginate($perPage);
+            ->chunk(1000, function ($chunk) use (&$items) {
+                foreach ($chunk as $row) {
+                    $items[] = $this->transformClassSessionIndexRow($row);
+                }
+            });
 
-        $rows->getCollection()->transform(function ($row) {
-            $row->id = (int) $row->id;
-            $row->student_class_id = (int) $row->StudentClassID;
-            $row->student_id = (int) $row->StudentID;
-            $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
-                ? (int) $row->substitute_teacher_id : 0;
-            $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
-            $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
-            $row->branch_id = (int) ($row->CampusID ?? 0);
-            $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
-            $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
-            $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
-            $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
-            $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
-            $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
-            $row->learning_record_status = $row->learning_record_status ?? 'missing';
-            $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
-            $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
-            unset($row->learning_record_progress);
-            $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
-            $row->attendance_memo = $row->attendance_memo ?: '';
-            $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');
-            $row->note = $row->Note !== null ? (string) $row->Note : null;
-            $row->session_charge = isset($row->session_charge) && $row->session_charge !== null
-                ? (int) $row->session_charge : null;
-            $row->contract_rate = isset($row->sc_rate) && $row->sc_rate !== null
-                ? (float) $row->sc_rate : null;
-            $row->contract_session_duration = isset($row->sc_session_duration) && $row->sc_session_duration !== null
-                ? (int) $row->sc_session_duration : null;
-            $row->contract_rate_unit = isset($row->sc_rate_unit) && $row->sc_rate_unit !== null
-                ? (string) $row->sc_rate_unit : null;
-            unset(
-                $row->StudentClassID,
-                $row->StudentID,
-                $row->TeacherID,
-                $row->CampusID,
-                $row->SessionDate,
-                $row->StartTime,
-                $row->EndTime,
-                $row->Status,
-                $row->IsContractException,
-                $row->effective_status,
-                $row->Note,
-                $row->sc_rate,
-                $row->sc_session_duration,
-                $row->sc_rate_unit
-            );
-            return $row;
-        });
+        return $items;
+    }
 
+    private function buildByClassMapFromItems(iterable $items): array
+    {
         $byClass = [];
-        foreach ($rows->items() as $item) {
+        foreach ($items as $item) {
             $key = (string) $item->student_class_id;
             if (!isset($byClass[$key])) {
                 $byClass[$key] = [];
@@ -334,33 +333,109 @@ class ClassSessionController extends Controller
             $byClass[$key][] = $item;
         }
 
-        if (config('perfflags.log_session_count_mismatch')) {
-            $this->logSessionCountMismatches($byClass, $request);
+        return $byClass;
+    }
+
+    private function transformClassSessionIndexRow($row)
+    {
+        $row->id = (int) $row->id;
+        $row->student_class_id = (int) $row->StudentClassID;
+        $row->student_id = (int) $row->StudentID;
+        $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
+            ? (int) $row->substitute_teacher_id : 0;
+        $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
+        $row->teacher_id = $subTid > 0 ? $subTid : (int) ($row->TeacherID ?? 0);
+        $row->branch_id = (int) ($row->CampusID ?? 0);
+        $row->session_date = $row->SessionDate ? substr((string) $row->SessionDate, 0, 10) : null;
+        $row->start_time = $row->StartTime ? substr((string) $row->StartTime, 0, 5) : null;
+        $row->end_time = $row->EndTime ? substr((string) $row->EndTime, 0, 5) : null;
+        $row->status = (string) ($row->effective_status ?? $row->Status ?? '');
+        $row->is_contract_exception = (bool) ($row->IsContractException ?? false);
+        $row->learning_record_id = $row->learning_record_id !== null ? (int) $row->learning_record_id : null;
+        $row->learning_record_status = $row->learning_record_status ?? 'missing';
+        $row->learning_record_body_filled = $row->learning_record_id !== null && trim((string) ($row->learning_record_progress ?? '')) !== '';
+        $row->learning_record_teacher_id = $row->learning_record_teacher_id !== null ? (int) $row->learning_record_teacher_id : null;
+        unset($row->learning_record_progress);
+        $row->attendance_sign_in_at = $row->attendance_sign_in_at ?: null;
+        $row->attendance_memo = $row->attendance_memo ?: '';
+        $row->recorded_by_name = (string) ($row->recorded_by_name ?? '');
+        $row->note = $row->Note !== null ? (string) $row->Note : null;
+        $row->session_charge = isset($row->session_charge) && $row->session_charge !== null
+            ? (int) $row->session_charge : null;
+        $row->contract_rate = isset($row->sc_rate) && $row->sc_rate !== null
+            ? (float) $row->sc_rate : null;
+        $row->contract_session_duration = isset($row->sc_session_duration) && $row->sc_session_duration !== null
+            ? (int) $row->sc_session_duration : null;
+        $row->contract_rate_unit = isset($row->sc_rate_unit) && $row->sc_rate_unit !== null
+            ? (string) $row->sc_rate_unit : null;
+        unset(
+            $row->StudentClassID,
+            $row->StudentID,
+            $row->TeacherID,
+            $row->CampusID,
+            $row->SessionDate,
+            $row->StartTime,
+            $row->EndTime,
+            $row->Status,
+            $row->IsContractException,
+            $row->effective_status,
+            $row->Note,
+            $row->sc_rate,
+            $row->sc_session_duration,
+            $row->sc_rate_unit
+        );
+
+        return $row;
+    }
+
+    /**
+     * PROJECTION API — completeness-safe ClassSession read for calendar / analytics.
+     * See docs/GUIDE_PROJECTION_INTEGRITY.md.
+     */
+    public function projection(Request $request)
+    {
+        if ($response = $this->authorizeAndMaterializeClassSessionIndex($request)) {
+            return $response;
         }
 
-        $rangeStart = $request->filled('start') ? (string) $request->input('start') : null;
-        $rangeEnd = $request->filled('end') ? (string) $request->input('end') : null;
-        $projectedByClass = $this->buildProjectedByClassForIndex($byClass, $rangeStart, $rangeEnd);
+        $request->validate([
+            'start' => 'required|date',
+            'end' => 'required|date|after_or_equal:start',
+        ]);
+
+        $start = Carbon::parse($request->input('start'))->toDateString();
+        $end = Carbon::parse($request->input('end'))->toDateString();
+        $rangeDays = Carbon::parse($start)->diffInDays(Carbon::parse($end));
+        if ($rangeDays > self::PROJECTION_MAX_RANGE_DAYS) {
+            return response()->json([
+                'message' => 'Projection date range exceeds ' . self::PROJECTION_MAX_RANGE_DAYS . ' days',
+            ], 422);
+        }
+
+        $role = (string) $request->attributes->get('auth_role');
+        if ($role !== 'teacher' && (int) ($request->input('branch_id') ?? $request->input('campus_id') ?? 0) <= 0) {
+            return response()->json(['message' => 'branch_id is required for calendar projection'], 422);
+        }
+
+        $query = $this->buildClassSessionIndexQuery($request);
+        $items = $this->fetchAllClassSessionIndexRows($query);
+
+        if (count($items) > self::PROJECTION_MAX_ROWS) {
+            return response()->json([
+                'message' => 'Projection row count exceeds safe limit; narrow the date range',
+                'total' => count($items),
+                'limit' => self::PROJECTION_MAX_ROWS,
+            ], 413);
+        }
+
+        $byClass = $this->buildByClassMapFromItems($items);
 
         return response()->json([
-            'materialized' => [
-                'data' => $rows->items(),
-                'by_class' => $byClass,
-                'current_page' => $rows->currentPage(),
-                'last_page' => $rows->lastPage(),
-                'per_page' => $rows->perPage(),
-                'total' => $rows->total(),
-            ],
-            'projected' => [
-                'by_class' => $projectedByClass,
-            ],
-            // Legacy top-level aliases — materialized rows only (never mixed with projected).
-            'data' => $rows->items(),
+            'api_kind' => 'projection',
+            'completeness' => 'full',
+            'total' => count($items),
+            'data' => array_values($items),
             'by_class' => $byClass,
-            'current_page' => $rows->currentPage(),
-            'last_page' => $rows->lastPage(),
-            'per_page' => $rows->perPage(),
-            'total' => $rows->total(),
         ]);
     }
 

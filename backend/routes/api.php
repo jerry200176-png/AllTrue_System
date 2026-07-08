@@ -450,6 +450,7 @@ Route::prefix('v1')->group(function () {
         // 家長回饋雙向回覆（員工端，沿用本群組 role:teacher,director + require_campus）
         Route::get('learning-record-feedbacks/{feedback}/replies', [LearningRecordFeedbackController::class, 'replies']);
         Route::post('learning-record-feedbacks/{feedback}/reply', [LearningRecordFeedbackController::class, 'staffReply']);
+        Route::get('class-sessions/projection', [ClassSessionController::class, 'projection']);
         Route::get('class-sessions', [ClassSessionController::class, 'index']);
         Route::post('class-sessions/batch', [ClassSessionController::class, 'batchStore']);
         // #770 批次排課 CSV 匯入 — 衝突檢查 preview（純讀取）。
