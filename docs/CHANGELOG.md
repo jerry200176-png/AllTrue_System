@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-08 — fix: 請假後課程詳情不再多畫出不存在的 16-18 堂次
+
+Fixed：登記請假後，課程詳情的「上課日期」若出現半透明的錯誤時段（例如週日 10-12 的課卻多出一個 16-18 請假），已修正；現在只會顯示真實堂次。
+
+開發備註：session-dates API 的 `collectMaterializedFromRows` 把 `leave` 堂次排除在 materialized 之外，同日又從契約推算 projected slot；POST body 的 StudentClass select 缺 `time` 欄位 → `resolveSlotTimesForCourseDate` fallback 16:00 → 前端半透明 chip 顯示幽靈 16-18 請假（in-app #196／GitHub #1101，劉芯岑案例）。修正 = leave 納入 materialized + POST select 補齊 time/duration 欄位。回歸 `SessionProjectionLeaveGhostTest`。
+
 ## 2026-07-08 — fix: 週日課程的月結金額不再算成 0 元
 
 Fixed：排在「週日」的月結課程，續約時系統算不出堂數，繳費金額會顯示 0 元（新店 6/30 回報的繳費通知問題）；現已修正，週日堂次會正確計入金額與課表。
