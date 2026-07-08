@@ -21,6 +21,10 @@ class Kernel extends ConsoleKernel
         // sessions but no upcoming class so stranded paid sessions never go
         // unnoticed (read-only; logs to the scheduler output).
         $schedule->command('sessions:audit-stranded')->dailyAt('03:40');
+        // #1078 evaluation-integrity guard: create missing pending LearningRecords for
+        // past attended sessions so teachers can always submit 評量 (idempotent; previously
+        // only created lazily via ensure-past, leaving 1,274 sessions without a record).
+        $schedule->command('learning-records:backfill-missing')->dailyAt('03:50');
     }
 
     protected function commands(): void
