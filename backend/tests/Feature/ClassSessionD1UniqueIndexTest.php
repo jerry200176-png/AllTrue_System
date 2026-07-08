@@ -56,6 +56,8 @@ class ClassSessionD1UniqueIndexTest extends TestCase
         DB::table('migrations')
             ->where('migration', '2026_07_09_100000_add_unique_class_session_slot_index')
             ->delete();
+        putenv('APPLY_CLASS_SESSION_UNIQUE_INDEX=1');
+        $_ENV['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
         Artisan::call('migrate', ['--path' => self::MIGRATION]);
         $this->assertTrue($this->uniqueIndexExists());
 

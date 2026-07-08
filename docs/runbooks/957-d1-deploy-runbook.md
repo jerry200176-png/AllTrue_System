@@ -160,7 +160,7 @@ php artisan classsession:audit-duplicates --student_class_id=2264  # 煙測指�
 
 | 主題 | 結論 | 緩解 |
 |------|------|------|
-| **Merge 後 auto-migrate** | `deploy.yml` 會在 pending migration 時跑 `migrate --force`；**21 組 duplicate 存在時 migration 會拋錯失敗** | 符合 production freeze：index 不會意外建立；merge 僅部署程式。執行 cleanup 前勿期待 migration 成功 |
+| **Merge 後 auto-migrate** | `deploy.yml` 在 `APP_ENV=production` 跑 `migrate --force`；**21 組 duplicate 存在時 migration 會拋錯**；CI 測試庫跳過 index 建立 | merge 部署程式；index 僅在 production + cleanup 後生效 |
 | **Rollback** | `migrate:rollback --path=...` 可移除 index；cleanup snapshot 含刪除前列 | §3 已覆蓋 |
 | **Concurrency** | `upsertSlot` 有 `lockForUpdate`；index 後 DB 層阻擋競態 insert | `CoursePackageController::ClassSession::insert` 仍為 bulk 路徑 — 僅在無既有列時安全 |
 | **Duplicate 偵測** | audit 用 `SUBSTRING(StartTime,1,5)`；index 用完整 `TIME` | cleanup 與 migration 預檢皆用 HH:MM 分組；`normalizeTimeForStorage` 統一為 `:00` 秒 |
