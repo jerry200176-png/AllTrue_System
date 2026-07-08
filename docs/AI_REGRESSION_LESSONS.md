@@ -229,7 +229,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 |------|--------------------------|------|------------------|
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
-| **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23 | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end |
+| **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
@@ -625,6 +625,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **根因**：`calendarOccurrenceMerge.dedupeByStudentSlot()` 舊 key 優先使用 `student_course_id`，不同 `StudentClass` 的同學生同日同開始時間不會互相去重。
 - **強制規則**：週檢視 occurrence 去重的學生時段 key 必須用學生識別 + 日期/星期 + 開始時間；`class_session_id` backed occurrence 優先於 exception/base/synthetic contract。
 - **測試必補**：`calendarOccurrenceMerge.test.js` 覆蓋 legacy active contract + current `ClassSession` 同學生同時段只留實體堂次。
+
+---
+
+### R64. 星期欄位有兩套慣例並存，比對前必先正規化（ISO 7=週日 vs JS 0=週日）
+
+- **觸發情境**：新店月結課（週日 10-12／13-15）續約後繳費通知金額顯示 0 元（in-app #190／GitHub #1096）。`StudentClass` 鏈 1695/1696→2026/2027 連續兩期 `SessionCount=0、Charge=0`，Invoice `TotalAmount=0`；主任被迫手動核帳又登進 0 元。
+- **根因**：`buildSessionsFromWeeklySchedule` 以 Carbon `dayOfWeek`（0=日…6=六）比對 slot weekday，但所有活躍呼叫端（`resolveScheduleSlotsForRebuild` 讀 `week` 欄、`day_time_slots`、EnrollmentService `days_of_week`）都傳 ISO（1=一…7=日）。週一～六兩套慣例數值恰好相同 → 平日全部正常、**只有週日**永不匹配，錯誤潛伏到有人排週日月結課才爆。
+- **強制規則**：
+  1. DB `week/week1-6` 欄位與 `day_time_slots.day` 一律存 **ISO 1-7（7=週日），不可存 0**（production 無 `week=0` 資料）。
+  2. 任何 weekday 比對前先過 `StudentClassController::isoWeekday()`（0→7），再與 `dayOfWeekIso` 比；禁止裸用 `->dayOfWeek` 對 slot。
+  3. 新增/修改排課生成邏輯時，測試必含**週日 slot** 案例（兩套慣例只在週日分歧，平日測試永遠測不出）。
+- **測試必補**：`WeeklyScheduleSundayBuilderTest`（ISO 7、legacy 0、平日不變、混合）＋ `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`（invoice 金額不為 0）。
 
 ---
 
