@@ -137,6 +137,17 @@ mempalace.yaml
 entities.json
 
 frontend/android/
+
+# Python bytecode (never track)
+__pycache__/
+*.pyc
+
+# Local session artifacts
+/ci-artifacts/
+
+# Production repair snapshots may contain student data — never commit
+backend/storage/app/repair-snapshots/
+backend/storage/app/audit-scope-test*.json
 frontend/ios/
 
 # ── Shadow control plane quarantine (canonical copy: docs/archive/control-plane-shadow-v1/) ──
