@@ -101,6 +101,7 @@ jobs:
 
           PREV_COMMIT=$(git rev-parse HEAD)
           MIGRATION_RAN=0
+          MIGRATION_FAILED=0
           TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
 
           echo "=== [1/7] git fetch + reset ==="
@@ -139,9 +140,16 @@ jobs:
             mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
               --single-transaction AllTrue | gzip > "$BACKUP_FILE"
             echo "✅ 備份完成：$BACKUP_FILE"
-            cd /home/admin/backend && php artisan migrate --force
-            MIGRATION_RAN=1
-            echo "✅ Migration 完成"
+            # R67：migration 失敗絕不可被吞（無 -e 的 SSH script 會照走並印成功）
+            # 失敗時繼續部署已驗證 code（migration 皆須 expand/contract 前向相容），
+            # 但 run 於結尾標紅，禁止綠燈掩蓋 pending migration。
+            if (cd /home/admin/backend && php artisan migrate --force); then
+              MIGRATION_RAN=1
+              echo "✅ Migration 完成"
+            else
+              MIGRATION_FAILED=1
+              echo "❌ Migration 失敗（exit != 0）— code 部署繼續，run 將於結尾標紅"
+            fi
           else
             echo "✅ 無 pending migration，略過"
           fi
@@ -210,6 +218,11 @@ jobs:
             fi
             if bash /home/admin/scripts/post-merge-smoke.sh; then
               echo ""
+              if [ "$MIGRATION_FAILED" -eq 1 ]; then
+                echo "❌ Code 部署成功（Health + Smoke 通過），但 migration 失敗 — 不得綠燈掩蓋（R67）"
+                echo "   處理：查 Sentry / 對應 GitHub issue；資料閘門滿足後 migration 於下次 deploy 自動重試"
+                exit 1
+              fi
               echo "🚀 部署完成 — Health + Smoke test 全通過"
               exit 0
             else
