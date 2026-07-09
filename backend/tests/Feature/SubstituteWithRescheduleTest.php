@@ -127,7 +127,7 @@ class SubstituteWithRescheduleTest extends TestCase
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 16,
             'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 6, 'UsedSessions' => 2,
             'Charge' => 1600, 'Pay' => 12800, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
         ClassSession::create([
             'StudentClassID' => $otherSc->ID, 'SessionDate' => '2026-04-20',
@@ -539,7 +539,7 @@ class SubstituteWithRescheduleTest extends TestCase
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 16,
             'SessionCount' => 8, 'SessionDuration' => 120, 'RemainingSessions' => 6, 'UsedSessions' => 2,
             'Charge' => 1600, 'Pay' => 12800, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
         $session = ClassSession::create([
             'StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-19',

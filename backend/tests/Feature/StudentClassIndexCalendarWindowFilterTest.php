@@ -78,7 +78,6 @@ class StudentClassIndexCalendarWindowFilterTest extends TestCase
             'UsedSessions' => 0,
             'Stop' => 0,
             'MDate' => now(),
-            'RoomID' => '',
             'week' => 1,
             'time' => '18:00:00',
         ], $extra));

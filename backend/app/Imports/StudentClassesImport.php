@@ -38,7 +38,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
                 'Disconunt' => (int) ($row['discount'] ?? 0),
                 'Rate' => $row['rate'] ?? null,
                 'LearnTimeID' => (int) ($row['learn_time_id'] ?? 0),
-                'RoomID' => $row['room_id'] ?? '',
+                'room_id' => !empty($row['room_id']) ? (int) $row['room_id'] : null,
                 'ScheduleMode' => $row['schedule_mode'] ?? 'date',
                 'SessionCount' => isset($row['session_count']) ? (int) $row['session_count'] : null,
                 'RemainingSessions' => isset($row['remaining_sessions']) ? (int) $row['remaining_sessions'] : null,
@@ -92,7 +92,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
                 continue;
             }
             $slots[] = [
-                'weekday' => (int) $weekday,
+                'weekday' => \App\Http\Controllers\StudentClassController::isoWeekday($weekday),
                 'time' => $time,
             ];
         }
@@ -126,7 +126,8 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
 
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
             foreach ($slots as $slot) {
-                if ((int) $date->dayOfWeek === (int) $slot['weekday']) {
+                // ISO compare (7=Sunday); raw dayOfWeek (0=Sunday) dropped Sunday slots (GitHub #1096)
+                if ((int) $date->dayOfWeekIso === \App\Http\Controllers\StudentClassController::isoWeekday($slot['weekday'])) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $endTime = $startTime->copy()->addMinutes($durationMinutes);
                     $sessions[] = [
@@ -159,7 +160,7 @@ class StudentClassesImport implements ToCollection, WithHeadingRow
 
         while (count($sessions) < $sessionCount) {
             $slot = $slots[$slotIndex % count($slots)];
-            if ((int) $date->dayOfWeek === (int) $slot['weekday']) {
+            if ((int) $date->dayOfWeekIso === \App\Http\Controllers\StudentClassController::isoWeekday($slot['weekday'])) {
                 $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                 $endTime = $startTime->copy()->addMinutes($durationMinutes);
                 $sessions[] = [

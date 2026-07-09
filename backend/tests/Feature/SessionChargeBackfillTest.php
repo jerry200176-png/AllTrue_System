@@ -157,7 +157,6 @@ class SessionChargeBackfillTest extends TestCase
             'Period' => 4,
             'StartDate' => now(),
             'TotalHours' => 8,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

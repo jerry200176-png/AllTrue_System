@@ -43,7 +43,7 @@ class StudentClassesExport implements FromCollection, WithHeadings
             'Disconunt',
             'Rate',
             'LearnTimeID',
-            'RoomID',
+            'room_id',
             'ScheduleMode',
             'SessionCount',
             'RemainingSessions',

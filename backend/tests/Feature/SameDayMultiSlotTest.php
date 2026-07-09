@@ -399,7 +399,6 @@ class SameDayMultiSlotTest extends TestCase
             'Pay' => null,
             'Paid' => 0,
             'Rate' => 2500,
-            'RoomID' => '1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

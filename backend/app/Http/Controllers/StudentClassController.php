@@ -467,7 +467,32 @@ class StudentClassController extends Controller
             }
             if (!empty($courseIds)) {
                 $bodyClasses = StudentClass::whereIn('ID', $courseIds)
-                    ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                    ->select(
+                        'ID',
+                        'StudentID',
+                        'PackageID',
+                        'week',
+                        'time',
+                        'week1',
+                        'time1',
+                        'week2',
+                        'time2',
+                        'week3',
+                        'time3',
+                        'week4',
+                        'time4',
+                        'week5',
+                        'time5',
+                        'week6',
+                        'time6',
+                        'SessionDuration',
+                        'duration1',
+                        'duration2',
+                        'duration3',
+                        'duration4',
+                        'duration5',
+                        'duration6'
+                    )
                     ->get()
                     ->keyBy('ID');
                 $packageIds = $bodyClasses->pluck('PackageID')
@@ -483,7 +508,32 @@ class StudentClassController extends Controller
                 if ($packageIds->isNotEmpty() && $studentIds->isNotEmpty()) {
                     $packageSiblings = StudentClass::whereIn('PackageID', $packageIds->all())
                         ->whereIn('StudentID', $studentIds->all())
-                        ->select('ID', 'StudentID', 'PackageID', 'week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6')
+                        ->select(
+                            'ID',
+                            'StudentID',
+                            'PackageID',
+                            'week',
+                            'time',
+                            'week1',
+                            'time1',
+                            'week2',
+                            'time2',
+                            'week3',
+                            'time3',
+                            'week4',
+                            'time4',
+                            'week5',
+                            'time5',
+                            'week6',
+                            'time6',
+                            'SessionDuration',
+                            'duration1',
+                            'duration2',
+                            'duration3',
+                            'duration4',
+                            'duration5',
+                            'duration6'
+                        )
                         ->get()
                         ->keyBy('ID');
                     $bodyClasses = $bodyClasses->merge($packageSiblings);
@@ -1139,7 +1189,6 @@ class StudentClassController extends Controller
             'Disconunt' => 'nullable|integer',
             'Rate' => 'nullable|numeric',
             'LearnTimeID' => 'nullable|integer',
-            'RoomID' => 'nullable|string|max:32',
             'room_id' => 'nullable|integer|exists:rooms,id',
             'settlement_day' => 'nullable|integer|min:1|max:31',
             'monthly_sessions' => 'nullable|integer|min:0',
@@ -1149,7 +1198,7 @@ class StudentClassController extends Controller
             'SessionDuration' => 'nullable|integer|min:30',
 
             'ScheduleSlots' => 'nullable|array',
-            'ScheduleSlots.*.weekday' => 'required_with:ScheduleSlots|integer|min:0|max:6',
+            'ScheduleSlots.*.weekday' => 'required_with:ScheduleSlots|integer|min:0|max:7',
             'ScheduleSlots.*.time' => 'required_with:ScheduleSlots|date_format:H:i',
             'skip_auto_sessions' => 'nullable|boolean',
         ]);
@@ -1199,7 +1248,12 @@ class StudentClassController extends Controller
             }
         }
 
-        $scheduleSlots = $data['ScheduleSlots'] ?? [];
+        // Store ISO weekdays (1-7) in week columns — DB convention is 7=Sunday, never 0.
+        $scheduleSlots = array_map(function ($slot) {
+            $slot['weekday'] = self::isoWeekday($slot['weekday'] ?? 0);
+
+            return $slot;
+        }, $data['ScheduleSlots'] ?? []);
         $skipAutoSessions = (bool) ($data['skip_auto_sessions'] ?? false);
 
         if (!isset($data['Period'])) {
@@ -1392,7 +1446,7 @@ class StudentClassController extends Controller
         $scheduleSlotsForRebuild = is_array($mapped['ScheduleSlots'] ?? null) ? $mapped['ScheduleSlots'] : [];
 
         // Remove ScheduleSlots and ID references to prevent overwriting critical relationships
-        unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['RoomID'], $mapped['by1']);
+        unset($mapped['ScheduleSlots'], $mapped['StudentID'], $mapped['GradeID'], $mapped['by1']);
 
         if ($studentClass->isPartOfPackage()) {
             unset($mapped['RemainingSessions']);
@@ -1659,7 +1713,6 @@ class StudentClassController extends Controller
                 } else {
                     $row['ID'] = (int) $id;
                     $row['GradeID'] = 1;
-                    $row['RoomID'] = '1';
                     $row['Period'] = 4;
                     $row['TotalHours'] = 0;
                     $by1Map = ['one_on_one' => 1, 'one_on_two' => 2, 'one_on_three' => 3, 'tutoring' => 4, 'trial' => 1];
@@ -2039,7 +2092,6 @@ class StudentClassController extends Controller
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
-                'RoomID' => $studentClass->RoomID,
                 'room_id' => $studentClass->room_id,
                 'settlement_day' => $studentClass->settlement_day,
                 'monthly_sessions' => $studentClass->monthly_sessions,
@@ -2363,7 +2415,6 @@ class StudentClassController extends Controller
                 'Rate' => $rate,
                 'rate_unit' => $rateUnit,
                 'LearnTimeID' => $studentClass->LearnTimeID,
-                'RoomID' => $studentClass->RoomID,
                 'room_id' => $studentClass->room_id,
                 'settlement_day' => $studentClass->settlement_day,
                 'monthly_sessions' => $studentClass->monthly_sessions,
@@ -3392,7 +3443,6 @@ class StudentClassController extends Controller
             $mappedData['by1'] = $by1Map[$classType] ?? 1;
 
             $mappedData['StartDate'] = $input['first_class_date'] ?? now()->toDateString();
-            $mappedData['RoomID'] = isset($input['room_id']) && $input['room_id'] ? (string) $input['room_id'] : '1';
             $mappedData['GradeID'] = 1;
             if (isset($mappedData['StudentID'])) {
                 try {
@@ -4888,6 +4938,17 @@ class StudentClassController extends Controller
         }
     }
 
+    /**
+     * Normalize a weekday value to ISO-8601 (1=Mon … 7=Sun).
+     * Accepts both ISO 1-7 and legacy JS 0-6 (0=Sunday → 7).
+     */
+    public static function isoWeekday($weekday): int
+    {
+        $weekday = (int) $weekday;
+
+        return $weekday === 0 ? 7 : $weekday;
+    }
+
     private function calculateCourseChargeFromRate(
         float $rate,
         string $rateUnit,
@@ -5047,7 +5108,11 @@ class StudentClassController extends Controller
 
         for ($date = $start->copy(); $date->lte($end); $date->addDay()) {
             foreach ($slots as $slot) {
-                if ((int) $date->dayOfWeek === (int) $slot['weekday']) {
+                // Slots arrive in two conventions: ISO 1-7 (DB week columns, day_time_slots)
+                // and legacy JS 0-6 (ScheduleSlots param). Both agree on Mon-Sat (1-6);
+                // Sunday is 7 (ISO) or 0 (JS). Comparing raw dayOfWeek (0-6) silently
+                // dropped every ISO-Sunday slot (GitHub #1096: 0-amount monthly invoices).
+                if ((int) $date->dayOfWeekIso === self::isoWeekday($slot['weekday'])) {
                     $startTime = Carbon::parse($date->toDateString() . ' ' . $slot['time']);
                     $slotDur = !empty($slot['duration_minutes']) ? (int) $slot['duration_minutes'] : $durationMinutes;
                     $endTime = $startTime->copy()->addMinutes($slotDur);

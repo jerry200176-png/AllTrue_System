@@ -1060,6 +1060,8 @@ const weekDays = computed(() => {
       .map(s => {
         const status = String(s.status || '').toLowerCase();
         const isLeave = status === 'leave' || status === 'leave_adjusted' || status === 'excused';
+        // 請假待審核：與出缺勤管理／課表與評量同一認定，不列入今日待填（in-app bug 194）
+        const isLeaveRequested = status === 'leave_requested';
         return {
           key: `${s.id}-${s.branch_id}`,
           id: s.id,
@@ -1071,7 +1073,7 @@ const weekDays = computed(() => {
           endTime: s.end_time || '',
           branchId: s.branch_id || 0,
           status: s.status,
-          formStatus: isLeave ? 'leave' : (s.learning_record_status || 'missing'),
+          formStatus: isLeave ? 'leave' : (isLeaveRequested ? 'leave_requested' : (s.learning_record_status || 'missing')),
           recordId: s.learning_record_id || null,
         };
       });
@@ -1117,7 +1119,7 @@ function branchShortName(branchId) {
 }
 
 function formStatusLabel(status) {
-  const map = { pending: '待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假' };
+  const map = { pending: '待審', approved: '已核准', rejected: '退回', changes_requested: '需修改', missing: '', substituted: '代課', leave: '請假', leave_requested: '請假(待審)' };
   return map[status] || status;
 }
 

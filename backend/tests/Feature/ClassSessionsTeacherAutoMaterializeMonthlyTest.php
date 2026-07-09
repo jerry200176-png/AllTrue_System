@@ -66,7 +66,6 @@ class ClassSessionsTeacherAutoMaterializeMonthlyTest extends TestCase
                 'Charge' => 0,
                 'Paid' => 1,
                 'Rate' => 500,
-                'RoomID' => '1',
                 'MDate' => now(),
                 'Stop' => 0,
                 'ScheduleMode' => 'date',
@@ -155,8 +154,7 @@ class ClassSessionsTeacherAutoMaterializeMonthlyTest extends TestCase
             StudentClass::create([
                 'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacher->id,
                 'by1' => 1, 'Period' => 4, 'StartDate' => '2026-05-01', 'EndDate' => '2026-05-31',
-                'TotalHours' => 20, 'Charge' => 0, 'Paid' => 1, 'Rate' => 500, 'RoomID' => '1',
-                'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionDuration' => 120,
+                'TotalHours' => 20, 'Charge' => 0, 'Paid' => 1, 'Rate' => 500,                 'MDate' => now(), 'Stop' => 0, 'ScheduleMode' => 'date', 'SessionDuration' => 120,
                 'week' => 5, 'time' => '15:00:00',
             ]);
         }

@@ -153,7 +153,6 @@ class LearningRecordTeacherCommentTest extends TestCase
             'by1' => 1,
             'Period' => 4,
             'StartDate' => now()->subDays(30)->toDateString(),
-            'RoomID' => '',
             'TotalHours' => 20,
             'Charge' => 1000,
             'Pay' => 500,

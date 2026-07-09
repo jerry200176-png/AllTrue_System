@@ -124,7 +124,6 @@ class RateUnitChargeCalculationTest extends TestCase
             'TotalHours'      => 16,
             'MDate'           => now(),
             'ScheduleMode'    => 'count',
-            'RoomID'          => '1',
         ], $overrides));
     }
 }

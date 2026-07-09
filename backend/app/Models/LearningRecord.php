@@ -39,12 +39,15 @@ class LearningRecord extends Model
     }
 
     /**
-     * 堂次已請假 (ClassSession.Status in leave / leave_adjusted / excused) 時，
+     * 堂次已請假 (ClassSession.Status in leave / leave_requested / leave_adjusted / excused) 時，
      * pending / changes_requested 評量不應出現在待填／待審清單。
      * 已核准等狀態仍保留可查詢。
      *
      * FR-005 (2026-04-22): 新增 'excused' — 與 AttendanceController::LEAVE_STATUSES 及
      * 前端 SmartCalendar LEAVE_STATUSES 對齊。
+     * in-app #194 / GitHub #1099 (2026-07-08): 新增 'leave_requested' — 家長請假待審核時
+     * ClassSession.Status='leave_requested'（無 StudentSingIn），評量暫不需填；
+     * 審核退回後堂次回 scheduled，評量自動恢復待填。
      */
     public function scopeExcludeLeaveSessionPendingReview($query)
     {
@@ -58,7 +61,7 @@ class LearningRecord extends Model
             $outer->whereNotIn("{$t}.Status", ['pending', 'changes_requested'])
                 ->orWhere(function ($keep) use ($t) {
                     $keep->whereDoesntHave('classSession', function ($cs) {
-                        $cs->whereIn('Status', ['leave', 'leave_adjusted', 'excused']);
+                        $cs->whereIn('Status', ['leave', 'leave_requested', 'leave_adjusted', 'excused']);
                     })->whereNotExists(function ($sub) use ($t) {
                         $sub->selectRaw('1')
                             ->from('StudentSingIn as ssi_leave')

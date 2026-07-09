@@ -54,7 +54,7 @@ class CancelSessionPausedCourseTest extends TestCase
                 'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
                 'TeacherID' => 1, 'by1' => 1, 'Period' => 4,
                 'StartDate' => '2026-01-03', 'TotalHours' => 0, 'Charge' => 0,
-                'Paid' => 0, 'Rate' => 0, 'RoomID' => '', 'MDate' => now(),
+                'Paid' => 0, 'Rate' => 0, 'MDate' => now(),
                 'Stop' => 1,
                 'ScheduleMode' => 'count',
                 'SessionCount' => 10,

@@ -33,7 +33,7 @@ class FinanceArAgingTest extends TestCase
             'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
             'RemainingSessions' => 5, 'UsedSessions' => 0,
             'Charge' => 5000, 'Pay' => 2000, 'Paid' => 0, 'Rate' => 100, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
@@ -62,7 +62,7 @@ class FinanceArAgingTest extends TestCase
             'TotalHours' => 10, 'SessionCount' => 5, 'SessionDuration' => 120,
             'RemainingSessions' => 0, 'UsedSessions' => 5,
             'Charge' => 5000, 'Pay' => 5000, 'Paid' => 1, 'Rate' => 100, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         $r = $this->getJson('/api/v1/finance/ar-aging?branch_id=' . $campus->id, $this->bearer($token));
