@@ -41,7 +41,7 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run dependency review
         if: steps.gate.outputs.enabled == 'true'

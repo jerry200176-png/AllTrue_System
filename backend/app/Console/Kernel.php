@@ -25,6 +25,10 @@ class Kernel extends ConsoleKernel
         // past attended sessions so teachers can always submit 評量 (idempotent; previously
         // only created lazily via ensure-past, leaving 1,274 sessions without a record).
         $schedule->command('learning-records:backfill-missing')->dailyAt('03:50');
+        // #1080 bug-termination gate: re-run every recurring bug's reproduction query so a
+        // FIXED bug that regresses is caught automatically (non-zero exit) and open
+        // divergences (#1062/#957/#964) are measured nightly — "production state vs bug state".
+        $schedule->command('bugs:verify-reproductions')->dailyAt('04:00');
     }
 
     protected function commands(): void

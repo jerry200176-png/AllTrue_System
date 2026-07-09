@@ -82,31 +82,21 @@ class ClassSessionIntraDuplicateFinder
     }
 
     /**
-     * Slots blocking unique index (any status): total row count > 1.
+     * Slots that would block the active-only unique index: 2+ non-cancelled rows
+     * on the same (StudentClassID, date, start HM). Cancelled rows carry a NULL
+     * ActiveSlotFlag and are exempt from the index, so they never block.
      *
      * @return list<array{student_class_id: int, session_date: string, start_time: string, row_count: int}>
      */
     public function findUniqueIndexBlockingSlots(?int $studentClassId = null): array
     {
-        $query = DB::table('ClassSession as cs')
-            ->selectRaw('cs.StudentClassID as student_class_id')
-            ->selectRaw('DATE(cs.SessionDate) as session_date')
-            ->selectRaw('SUBSTRING(cs.StartTime, 1, 5) as start_time')
-            ->selectRaw('COUNT(*) as row_count')
-            ->groupBy('cs.StudentClassID', DB::raw('DATE(cs.SessionDate)'), DB::raw('SUBSTRING(cs.StartTime, 1, 5)'))
-            ->having('row_count', '>', '1');
-
-        if ($studentClassId) {
-            $query->where('cs.StudentClassID', $studentClassId);
-        }
-
-        return $query->get()->map(function ($row) {
+        return array_map(static function (array $group): array {
             return [
-                'student_class_id' => (int) $row->student_class_id,
-                'session_date' => (string) $row->session_date,
-                'start_time' => (string) $row->start_time,
-                'row_count' => (int) $row->row_count,
+                'student_class_id' => $group['student_class_id'],
+                'session_date' => $group['session_date'],
+                'start_time' => $group['start_time'],
+                'row_count' => $group['row_count'],
             ];
-        })->values()->all();
+        }, $this->findActiveDuplicateGroups($studentClassId));
     }
 }
