@@ -10,7 +10,7 @@
     { "context": "payroll",        "match": "Payroll|RateCard|TeacherMonthly|PartTime" },
     { "context": "engagement",     "match": "Engagement|Xp|Badge|Rank|Adoption" },
     { "context": "communication",  "match": "Chat|Notification|Announcement|NotificationSync|FeedbackPush|Telegram|Alert" },
-    { "context": "parent-portal",  "match": "Parent|Line|Liff" },
+    { "context": "parent-portal",  "match": "Parent|Line|Liff|Routing" },
     { "context": "support",        "match": "BugReport" },
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
     { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student" },
