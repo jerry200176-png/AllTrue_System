@@ -101,7 +101,7 @@ class RoutingRuleStore
     /**
      * Validate a proposed ruleset. Returns the normalized rules or throws.
      *
-     * @param array<int,array{domain:string,campus_id:int|string,match_type?:string,priority?:int,enabled?:bool,liff_id?:?string}> $rules
+     * @param array<int,array{domain?:string,campus_id?:int|string,match_type?:string,priority?:int,enabled?:bool,liff_id?:?string}> $rules
      * @return array<int,array<string,mixed>>
      */
     public function validate(array $rules): array

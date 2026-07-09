@@ -72,7 +72,9 @@ class CampusRoutingStoreTest extends TestCase
             ['domain' => 'daan.lifenet.com.tw', 'campus_id' => 15, 'liff_id' => 'LIFF-15'],
         ], 'live', true);
 
-        $res = $this->getJson('/api/v1/parent/resolve-liff', ['Host' => 'daan.lifenet.com.tw']);
+        // Full URL: Symfony Request::create overrides any Host header with the
+        // URI host, so a ['Host' => ...] header never reaches $request->getHost().
+        $res = $this->getJson('https://daan.lifenet.com.tw/api/v1/parent/resolve-liff');
         $res->assertOk()->assertJson(['liff_id' => 'LIFF-15', 'campus_id' => 15]);
     }
 }

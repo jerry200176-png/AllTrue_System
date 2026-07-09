@@ -78,6 +78,7 @@ class AdminRoutingRuleController extends Controller
     /** Publish a previously-created draft version (supersedes the active one). */
     public function publish(int $version)
     {
+        /** @var CampusRoutingVersion $row */
         $row = CampusRoutingVersion::where('version', $version)->firstOrFail();
         $published = $this->store->publish($row->id);
 
