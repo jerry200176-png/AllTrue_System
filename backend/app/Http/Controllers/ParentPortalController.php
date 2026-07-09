@@ -160,6 +160,32 @@ class ParentPortalController extends Controller
             }
         }
 
+        // CRDE Phase 4 — immutable versioned routing store is authoritative once a
+        // version is published. Resolution is deterministic (exact-then-wildcard);
+        // ambiguity fails loud; absence returns null. Falls through to the Campus-
+        // derived resolver only during the pre-migration transition (no version yet).
+        $store = app(\App\Services\RoutingRuleStore::class);
+        if ($store->activeVersion()) {
+            $r = $store->resolve($host);
+            if ($r['status'] === 'ambiguous') {
+                \Illuminate\Support\Facades\Log::error('[resolveLiff] ambiguous campus domain mapping (routing store)', [
+                    'host'       => $host,
+                    'candidates' => $r['candidates'],
+                    'version'    => $r['version'],
+                ]);
+                return response()->json(['liff_id' => null, 'error' => 'ambiguous_campus_domain'], 409);
+            }
+            if ($r['status'] !== 'ok') {
+                return response()->json(['liff_id' => null]);
+            }
+            $campus = \Illuminate\Support\Facades\DB::table('Campus')->where('id', $r['campus_id'])->first(['id', 'name']);
+            return response()->json([
+                'liff_id'     => $r['liff_id'],
+                'campus_id'   => $r['campus_id'],
+                'campus_name' => $campus->name ?? null,
+            ]);
+        }
+
         // Deterministic host → campus resolution (CampusDomainResolver): EXACT match
         // only, ambiguity (shared URL) fails loud instead of silently serving the
         // first/wrong campus's LIFF — the root cause of the 2026-06-27 mis-binding.
