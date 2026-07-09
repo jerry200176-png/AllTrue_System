@@ -11,6 +11,13 @@
 
 ---
 
+## 2026-07-09 — fix: 重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）
+
+- **Fixed**：課表與評量中「同一堂課出現兩筆」的重複堂次已全部清理（21 組），評量「未填」誤提醒與收據日期錯位一併修正（陳品承 6/13、6/20；吳夏妍 5/14）。
+- 開發備註：PCR-2026-07-09-957-D1-R2 A1+B 獲 CEO GO 後執行；audit intra=0；snapshot + 表級備份齊備；執行紀錄見 `docs/runbooks/957-d1-r2-execution-record.md`。
+- 開發備註：unique slot index 重設計為 active-only（`ActiveSlotFlag` generated column，PR #1121）；placeholder PCR 取消。deploy migration 失敗不再被吞（PR #1120，R67）。
+- 開發備註：治理批次——issues 94→81（含證據關閉）；remote branches 35→22（tag-then-delete 可逆）；in-app #171/#172/#175/#189/#191/#195 收尾。
+
 ## 2026-07-09 — fix: #957 D1 cleanup scope aligned with audit (PCR-R2)
 
 - **Fixed**：`classsession:cleanup-intra-duplicates` 僅刪 Type-A active conflicts（與 audit 同語意）；cancelled placeholder 改為分析 only。
