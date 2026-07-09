@@ -5,12 +5,15 @@ namespace Tests\Feature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * Migration fail-fast when cancelled placeholders block unique index (Type B).
+ * #957 D1: the unique slot index is active-only. Cancelled placeholder collisions
+ * (Type B) must not block the migration, cancelled rows may keep sharing a slot
+ * with the live row, and only a second non-cancelled row is rejected.
  */
-class ClassSessionD1PlaceholderBlockingTest extends TestCase
+class ClassSessionD1ActiveOnlyIndexTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -19,7 +22,7 @@ class ClassSessionD1PlaceholderBlockingTest extends TestCase
 
     private const MIGRATION = 'database/migrations/2026_07_09_100000_add_unique_class_session_slot_index.php';
 
-    public function test_migration_blocks_when_only_placeholder_collisions_remain(): void
+    public function test_migration_succeeds_with_placeholder_collisions_and_enforces_active_uniqueness(): void
     {
         if ($this->uniqueIndexExists()) {
             DB::statement('ALTER TABLE ClassSession DROP INDEX uq_class_session_slot');
@@ -54,14 +57,47 @@ class ClassSessionD1PlaceholderBlockingTest extends TestCase
         putenv('APPLY_CLASS_SESSION_UNIQUE_INDEX=1');
         $_ENV['APPLY_CLASS_SESSION_UNIQUE_INDEX'] = '1';
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('placeholder');
+        $this->assertSame(0, Artisan::call('migrate', ['--path' => self::MIGRATION]));
+        $this->assertTrue($this->uniqueIndexExists());
+        $this->assertTrue(Schema::hasColumn('ClassSession', 'ActiveSlotFlag'));
 
-        Artisan::call('migrate', ['--path' => self::MIGRATION]);
+        // A further cancelled row in the same slot stays legal (NULL flag is exempt).
+        DB::table('ClassSession')->insert([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-06-12',
+            'StartTime' => '14:00:00',
+            'EndTime' => '16:00:00',
+            'Status' => 'cancelled',
+            'Note' => 'second placeholder',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->assertSame(3, DB::table('ClassSession')->where('StudentClassID', $courseId)->count());
+
+        // A second non-cancelled row in the same slot is rejected by the index.
+        try {
+            DB::table('ClassSession')->insert([
+                'StudentClassID' => $courseId,
+                'SessionDate' => '2026-06-12',
+                'StartTime' => '14:00:00',
+                'EndTime' => '16:00:00',
+                'Status' => 'scheduled',
+                'Note' => 'should-fail',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $this->fail('Expected duplicate active slot insert to fail');
+        } catch (\Illuminate\Database\QueryException $e) {
+            $this->assertStringContainsString('uq_class_session_slot', $e->getMessage());
+        }
     }
 
     protected function tearDown(): void
     {
+        if ($this->uniqueIndexExists()) {
+            DB::statement('ALTER TABLE ClassSession DROP INDEX uq_class_session_slot');
+        }
+
         DB::table('ClassSession')->where('StudentClassID', DB::table('StudentClass')->where('StudentID', 77003)->value('ID') ?? 0)->delete();
         DB::table('StudentClass')->where('StudentID', 77003)->delete();
         DB::table('Student')->where('id', 77003)->delete();
@@ -71,6 +107,9 @@ class ClassSessionD1PlaceholderBlockingTest extends TestCase
 
     private function uniqueIndexExists(): bool
     {
+        if (!Schema::hasTable('ClassSession')) {
+            return false;
+        }
         $indexes = DB::select("SHOW INDEX FROM ClassSession WHERE Key_name = 'uq_class_session_slot'");
 
         return count($indexes) > 0;
@@ -80,7 +119,7 @@ class ClassSessionD1PlaceholderBlockingTest extends TestCase
     {
         DB::table('Student')->insert([
             'id' => $studentId,
-            'name' => 'Placeholder Block Test ' . $studentId,
+            'name' => 'Active Only Index Test ' . $studentId,
             'CampusID' => 1,
             'ClassID' => 1,
             'enable' => 1,
