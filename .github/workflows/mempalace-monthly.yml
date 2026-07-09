@@ -11,7 +11,7 @@ jobs:
     name: Monthly MemPalace mine reminder
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run docs integrity check
         run: node scripts/docs-integrity-check.mjs --strict
