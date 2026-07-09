@@ -148,7 +148,6 @@ class SessionProjectionSplitTest extends TestCase
             'Rate' => 0,
             'ClassType' => 'one_on_one',
             'StartDate' => now()->subMonths(6)->toDateTimeString(),
-            'RoomID' => '',
             'SessionCount' => 20,
             'SessionDuration' => 60,
             'RemainingSessions' => 14,

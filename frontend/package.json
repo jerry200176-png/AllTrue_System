@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
+    "test:calendar": "node src/lib/calendarExceptionMerge.test.js && node src/lib/calendarOccurrenceMerge.test.js && node src/lib/calendarLoadPerformance.test.js && node src/lib/calendarCourseLoad.test.js && node src/lib/classSessionPick.test.js && node src/lib/classSessionsApi.test.js && node src/lib/calendarDateUtils.test.js && node src/lib/calendarFormat.test.js && node src/lib/teacherColor.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarLeaveExtra.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarSubstitute.test.js && npx vitest run src/composables/calendar/__tests__/useCalendarReschedule.test.js",
     "test:teacher-streak": "node src/lib/teacherLoginStreak.test.js",
     "test:engagement-progress": "node src/lib/engagementRankProgress.test.js",
     "test:session-consistency": "node src/lib/sessionConsistency.test.js",
@@ -40,13 +40,13 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "@vitejs/plugin-vue": "^5.0.0",
+    "@vitejs/plugin-vue": "^6.0.7",
     "@vitest/coverage-v8": "^4.1.8",
     "@vue/test-utils": "^2.4.11",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^16.4.0",
-    "vite": "^5.0.0",
+    "vite": "^6.4.3",
     "vitest": "^4.1.8"
   },
   "optionalDependencies": {

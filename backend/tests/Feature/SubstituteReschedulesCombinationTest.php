@@ -312,7 +312,7 @@ class SubstituteReschedulesCombinationTest extends TestCase
             'by1' => 1, 'Period' => 4, 'StartDate' => '2026-04-01', 'TotalHours' => 20,
             'SessionCount' => 10, 'SessionDuration' => 120, 'RemainingSessions' => 8, 'UsedSessions' => 2,
             'Charge' => 1600, 'Pay' => 16000, 'Paid' => 0, 'Rate' => 800, 'Stop' => 0,
-            'RoomID' => '1', 'MDate' => now(), 'ScheduleMode' => 'count',
+            'MDate' => now(), 'ScheduleMode' => 'count',
         ]);
 
         ClassSession::create(['StudentClassID' => $sc->ID, 'SessionDate' => '2026-04-07', 'StartTime' => '14:00', 'EndTime' => '16:00', 'Status' => 'attended']);

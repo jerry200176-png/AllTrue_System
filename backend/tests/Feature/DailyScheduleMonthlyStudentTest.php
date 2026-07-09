@@ -255,7 +255,6 @@ class DailyScheduleMonthlyStudentTest extends TestCase
             'TotalHours'     => 20,
             'Charge'         => 5000,
             'Paid'           => 0,
-            'RoomID'         => 'R1',
             'MDate'          => now(),
             'Stop'           => 0,
             'ScheduleMode'   => $scheduleMode,

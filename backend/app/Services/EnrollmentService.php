@@ -700,7 +700,6 @@ class EnrollmentService
                     'PayDate' => !empty($data['paid_at']) ? $data['paid_at'] : null,
                     'Paid' => !empty($data['paid_at']) ? 1 : 0,
                     'room_id' => !empty($data['room_id']) ? (int) $data['room_id'] : null,
-                    'RoomID' => !empty($data['room_id']) ? (string) ((int) $data['room_id']) : '1',
                     'GradeID' => $this->resolveStudentGradeId((int) $student->id),
                     'Stop' => 0,
                     'MDate' => now(),

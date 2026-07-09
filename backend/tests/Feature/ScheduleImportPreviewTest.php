@@ -35,7 +35,7 @@ class ScheduleImportPreviewTest extends TestCase
         $sc = StudentClass::create([
             'StudentID' => $s->id, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => $teacherId,
             'by1' => 1, 'Period' => 4, 'StartDate' => now()->subMonth(), 'TotalHours' => 20,
-            'Charge' => 0, 'Paid' => 0, 'Rate' => 0, 'RoomID' => 'R1', 'MDate' => now(), 'Stop' => 0,
+            'Charge' => 0, 'Paid' => 0, 'Rate' => 0, 'MDate' => now(), 'Stop' => 0,
             'ScheduleMode' => 'count', 'SessionCount' => 8, 'SessionDuration' => 60, 'RemainingSessions' => 8,
             'ClassType' => 'one_on_one', 'UsedSessions' => 0,
         ]);

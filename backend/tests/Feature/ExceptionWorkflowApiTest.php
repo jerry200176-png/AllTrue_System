@@ -407,7 +407,6 @@ class ExceptionWorkflowApiTest extends TestCase
             'Charge' => 8800,
             'Paid' => 1,
             'Rate' => 1100,
-            'RoomID' => 'R1',
             'MDate' => now(),
             'Stop' => 0,
             'ScheduleMode' => 'count',

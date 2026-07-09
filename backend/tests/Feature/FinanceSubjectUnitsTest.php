@@ -48,7 +48,6 @@ class FinanceSubjectUnitsTest extends TestCase
             'EndDate' => now()->addWeek()->toDateString(),
             'week' => 2,
             'time' => '16:00:00',
-            'RoomID' => 'R1',
             'Stop' => 0,
             'MDate' => now(),
         ]);
@@ -164,7 +163,6 @@ class FinanceSubjectUnitsTest extends TestCase
             'EndDate' => now()->addWeek()->toDateString(),
             'week' => 2,
             'time' => '16:00:00',
-            'RoomID' => 'R1',
             'Stop' => 0,
             'MDate' => now(),
         ]);
@@ -190,7 +188,6 @@ class FinanceSubjectUnitsTest extends TestCase
             'EndDate' => now()->addWeek()->toDateString(),
             'week' => 2,
             'time' => '16:00:00',
-            'RoomID' => 'R1',
             'Stop' => 0,
             'MDate' => now(),
         ]);
@@ -299,7 +296,6 @@ class FinanceSubjectUnitsTest extends TestCase
             'EndDate' => now()->addWeek()->toDateString(),
             'week' => 2,
             'time' => '16:00:00',
-            'RoomID' => 'R1',
             'Stop' => 0,
             'MDate' => now(),
         ]);

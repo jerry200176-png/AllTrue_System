@@ -227,10 +227,17 @@ export function sortSessionViewModels(rows) {
 /** @param {SessionViewModel[]} existing @param {SessionViewModel[]} incoming */
 export function mergeSessionViewModels(existing = [], incoming = []) {
   const bySlot = new Map();
+  let anonSeq = 0;
 
   for (const vm of [...existing, ...incoming]) {
     if (!vm?.date) continue;
-    const key = slotKey(vm.date, vm.startTime);
+    // R49/#187/#188 共享時段家族：合併鍵必須帶課程身分。只用 (date,startTime) 會把
+    // 1v2/1v3 同時段「不同學生」的堂次跨課程合併成一筆（in-app #182 漏顯的真兇）。
+    // studentClassId 缺失時退回 id，再缺給唯一序號 —— 寧可不合併也不可吞堂次。
+    const identity = vm.studentClassId > 0
+      ? `sc:${vm.studentClassId}`
+      : (vm.id > 0 ? `id:${vm.id}` : `anon:${anonSeq++}`);
+    const key = `${identity}|${slotKey(vm.date, vm.startTime)}`;
     const prev = bySlot.get(key);
     if (!prev) {
       bySlot.set(key, vm);
@@ -412,6 +419,44 @@ export async function fetchClassSessions(opts = {}) {
   }
 
   return merged;
+}
+
+/**
+ * PROJECTION API — completeness-safe ClassSession load for calendar (no pagination).
+ * See docs/GUIDE_PROJECTION_INTEGRITY.md.
+ */
+export async function fetchClassSessionsProjection({
+  token, branchId, teacherId, start, end,
+} = {}) {
+  const params = new URLSearchParams();
+  if (branchId) params.set('branch_id', String(branchId));
+  if (teacherId) params.set('teacher_id', String(teacherId));
+  if (start) params.set('start', String(start));
+  if (end) params.set('end', String(end));
+
+  const res = await fetch(`/api/v1/class-sessions/projection?${params.toString()}`, {
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`class-sessions projection failed (${res.status})`);
+  }
+
+  const json = await res.json().catch(() => ({}));
+  if (json?.api_kind !== 'projection' || json?.completeness !== 'full') {
+    throw new Error('class-sessions projection response missing completeness guarantee');
+  }
+  if (json?.last_page != null || json?.current_page != null) {
+    throw new Error('class-sessions projection must not be paginated');
+  }
+
+  return normalizeClassSessionsPayload({
+    data: json.data,
+    by_class: json.by_class,
+  });
 }
 
 export async function fetchSessionDates({

@@ -389,3 +389,30 @@ assert.ok(
   materializedWhenCoursesFiltered.some((o) => o.class_session_id === 7309),
   '#1035: materialized ClassSession renders when courses list is empty but allCourses + sessions exist',
 );
+
+// #187/#188 + 2026-06-28 新莊 (Xinzhuang) Sunday audit: multiple DISTINCT students materialized
+// in the SAME date+time slot must ALL render. dedupeByStudentSlot keys on the student, so a shared
+// slot (e.g. a Sunday 10:00 block holding several 1-on-1 contracts — verified live: 6 students at
+// 10:00) must never collapse to a single occurrence. This guards the "director calendar only shows
+// 3-4 students" symptom where a low-volume day's sessions appeared to vanish.
+const sharedSlotMultiStudent = merge({
+  courses: [],
+  allCourses: [
+    { ...baseCourse, id: 901, student_id: 5001, student_name: '甲生', days_of_week: [7] },
+    { ...baseCourse, id: 902, student_id: 5002, student_name: '乙生', days_of_week: [7] },
+    { ...baseCourse, id: 903, student_id: 5003, student_name: '丙生', days_of_week: [7] },
+  ],
+  sessionDatesByCourseId: {
+    901: [{ id: 8101, student_class_id: 901, student_id: 5001, session_date: '2026-06-28', start_time: '10:00', end_time: '12:00', status: 'attended', teacher_id: 70 }],
+    902: [{ id: 8102, student_class_id: 902, student_id: 5002, session_date: '2026-06-28', start_time: '10:00', end_time: '12:00', status: 'attended', teacher_id: 70 }],
+    903: [{ id: 8103, student_class_id: 903, student_id: 5003, session_date: '2026-06-28', start_time: '10:00', end_time: '12:00', status: 'attended', teacher_id: 70 }],
+  },
+  weekDatesByDow: { 7: '2026-06-28' },
+  courseLastSessionDate: { 901: '2026-06-28', 902: '2026-06-28', 903: '2026-06-28' },
+  exceptions: [],
+});
+assert.equal(
+  sharedSlotMultiStudent.filter((o) => [8101, 8102, 8103].includes(o.class_session_id)).length,
+  3,
+  '#187/#188: distinct students sharing one date+time slot must all render (no collapse to slot count)',
+);

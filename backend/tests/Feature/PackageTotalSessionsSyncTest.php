@@ -122,7 +122,6 @@ class PackageTotalSessionsSyncTest extends TestCase
                 'Period'               => 4,
                 'StartDate'            => Carbon::today()->subWeeks($total + 2)->toDateString(),
                 'TotalHours'           => 0,
-                'RoomID'               => 0,
                 'ScheduleMode'         => 'count',
                 'SessionCount'         => $total,
                 'RemainingSessions'    => max(0, $total - $used),

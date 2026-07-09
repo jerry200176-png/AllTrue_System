@@ -566,6 +566,56 @@ class MonthlyRenewTest extends TestCase
         $this->assertSame(6600, (int) $newCourse->Charge);
     }
 
+    /**
+     * GitHub #1096 (in-app #190) regression: Sunday-slot (week=7, ISO) monthly courses
+     * generated ZERO period sessions because the weekly builder compared Carbon
+     * dayOfWeek (0=Sunday) against the ISO weekday. renew-monthly then computed
+     * SessionCount=0 / Charge=0 and issued an NT$0 invoice (洪子勛 6/1 case).
+     */
+    public function test_renew_monthly_sunday_course_computes_sessions_and_charge(): void
+    {
+        $token = $this->createDirectorToken([1], 'director-monthly-sunday@example.com');
+        $student = $this->createStudent();
+
+        $course = $this->createStudentClass($student->id, [
+            'ScheduleMode'      => 'date',
+            'SessionCount'      => 0,
+            'RemainingSessions' => 0,
+            'settlement_day'    => 31,
+            'monthly_sessions'  => null,
+            'StartDate'         => '2026-04-01',
+            'EndDate'           => '2026-04-30',
+            'week'              => 7, // ISO Sunday — the convention stored in DB
+            'time'              => '10:00:00',
+            'SessionDuration'   => 120,
+            'Paid'              => 1,
+            'Charge'            => 0, // prior period already zero-charged (production shape)
+            'Rate'              => 1000,
+            'rate_unit'         => 'session',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept'        => 'application/json',
+        ])->postJson("/api/v1/student-classes/{$course->ID}/renew-monthly", [
+            'end_date' => '2026-05-31',
+        ]);
+
+        // May 2026 Sundays: 5/3, 5/10, 5/17, 5/24, 5/31 → 5 sessions × NT$1000
+        $res->assertCreated()
+            ->assertJsonPath('invoice.total_amount', 5000);
+
+        $newCourse = StudentClass::findOrFail((int) $res->json('new_course.id'));
+        $this->assertSame(5, (int) $newCourse->SessionCount, 'Sunday slots must be counted in the new period');
+        $this->assertSame(5000, (int) $newCourse->Charge, 'Charge must not collapse to 0 for Sunday courses');
+
+        $this->assertSame(
+            ['2026-05-03', '2026-05-10', '2026-05-17', '2026-05-24', '2026-05-31'],
+            $this->scheduledSessionDates($newCourse),
+            'New period must materialize its Sunday sessions'
+        );
+    }
+
     public function test_legacy_monthly_course_without_charge_creates_zero_invoice(): void
     {
         $token = $this->createDirectorToken([1], 'director-invoice-legacy@example.com');
@@ -1038,7 +1088,6 @@ class MonthlyRenewTest extends TestCase
             'Charge'           => 0,
             'Paid'             => 0,
             'Rate'             => 0,
-            'RoomID'           => 'R1',
             'MDate'            => now(),
             'Stop'             => 0,
             'ScheduleMode'     => 'count',

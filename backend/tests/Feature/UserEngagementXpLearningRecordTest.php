@@ -153,7 +153,7 @@ class UserEngagementXpLearningRecordTest extends TestCase
             'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => $sid, 'TeacherID' => $teacherId,
             'by1' => 1, 'Period' => 4, 'StartDate' => $o['first_class_date'], 'EndDate' => null, 'TotalHours' => 40,
             'Memo' => $o['Memo'], 'Charge' => null, 'Pay' => null, 'PayDate' => null, 'Paid' => 0, 'Disconunt' => null,
-            'Rate' => (float) $o['rate_per_30min'], 'LearnTimeID' => null, 'RoomID' => 'R1', 'MDate' => now(),
+            'Rate' => (float) $o['rate_per_30min'], 'LearnTimeID' => null, 'MDate' => now(),
             'Stop' => 0, 'ScheduleMode' => $o['schedule_mode'] ?? 'count',
             'SessionCount' => (int) $o['sessions_purchased'], 'RemainingSessions' => (int) $o['remaining_sessions'],
             'UsedSessions' => (int) $o['sessions_used'],

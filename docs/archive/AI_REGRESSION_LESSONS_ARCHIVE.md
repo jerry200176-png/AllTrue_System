@@ -2319,3 +2319,19 @@ CI 在全天任意時間跑都不會觸發 `isEndedAtCreateTime`。
 > 3. 在腦中確認 14 節清單全部列出，缺任何一節不得送出
 > 4. **規模大小不影響格式要求**：小改版也要完整格式，細節可以簡短，但節次不能省
 
+
+### R62. deploy 必須部署「CI 驗證過的那個 SHA」並校驗，fetch 失敗即中止
+
+**觸發情境**：2026-07-08 run 28936180885 — Deploy to Pi 回報成功，實際部署的是上一版 main（1a68c00a，非 CI 驗證的 fa906f9c）。
+
+**根因（三層疊加）**：
+- Pi `/home/admin/.git/config` 被寫入 `http.sslbackend=schannel`（Windows 專用 backend），Linux git 只支援 gnutls → 每次 `git fetch` fatal（FETCH_HEAD 自 6/29 起不存在）
+- deploy SSH script 只有 `set -uo pipefail` 沒有 `-e` → fetch fatal 被吞、繼續往下跑
+- `git reset --hard origin/main` 重置到 **stale tracking ref**（6/29 最後一次成功 fetch 的位置）→ 舊 code 上線、health/smoke 全綠、run 簽收成功
+
+**強制規則**：
+- deploy 一律 `git reset --hard "$TARGET_SHA"`（`workflow_run.head_sha`），reset 後必須驗證 `HEAD == TARGET_SHA`，不符 exit 1
+- `git fetch` 失敗必須讓 run 亮紅，禁止 fallback 繼續
+- Pi repo config 出現 `http.sslbackend` = 已被 Windows 工具污染，先 `git config --local --unset-all http.sslbackend`
+- 「部署成功」的定義 = production HEAD 等於 CI 驗證的 commit；health 200 不能單獨當簽收條件
+事故 issue：https://github.com/jerry200176-png/AllTrue_System/issues/1102

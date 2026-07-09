@@ -248,7 +248,7 @@ class LargeBranchDataHandlingTest extends TestCase
             'TotalHours' => 20, 'Memo' => null,
             'Charge' => null, 'Pay' => null, 'PayDate' => null,
             'Paid' => 0, 'Disconunt' => null, 'Rate' => null,
-            'LearnTimeID' => null, 'RoomID' => 'R1', 'MDate' => now(),
+            'LearnTimeID' => null, 'MDate' => now(),
             'Stop' => 0, 'ScheduleMode' => 'count',
             'SessionCount' => 10, 'SessionDuration' => 120,
             'RemainingSessions' => 5, 'ClassType' => 'one_on_one',

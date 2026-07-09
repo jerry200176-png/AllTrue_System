@@ -229,7 +229,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 |------|--------------------------|------|------------------|
 | **F1 狀態收尾缺口** | 主檔狀態變更（`Stop=1` / 老師 `suspended` / 月結結算）後，**未對齊未來 `ClassSession.scheduled` / `schedules` / 老師名額**，殘留堂次續顯示 | #151、#427、#99、行290、§R32、§R59 | 停用/結算課程或老師後，未來 scheduled 堂次不得再出現在行事曆/名額；已上堂次須保留 |
 | **F2 月結續期語意** | 續期未依**當期實際堂數**重算金額/堂次；收據未綁 `billing_period` | #149、§R22、§R26、#554、#594 | 續期＝新一期+結算舊期；收據金額=當期堂數×費率、含結算月 |
-| **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23 | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end |
+| **F3 排課堂次生成** | 建課後未依 `week/time` 契約**推算/補齊完整未來堂次**（只生成片段） | #148、#497、#539、#424、§R22、§R23、§R64（週日 slot 全滅→0 元月結） | 建課後即依契約生成完整未來 ClassSession；預排日不得反白/dead-end；weekday 比對先 `isoWeekday()` 正規化 |
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
@@ -628,6 +628,56 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
+
+- **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，陳品承 7/4 週六 15-17 案例）。
+- **根因**：請假審核流（#690）新增 `leave_requested` 狀態時，只改了寫入端與審核端；讀取端各自維護狀態白名單——`AttendancePage` 的 skip 集合有它、`sessionConsistency.NON_FILLABLE_LEARNING_STATUSES` 沒有它、`LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 sign-in 列的 `leave/excused`（此流程根本不建 sign-in 列）→ 各消費端對同一狀態的語意解讀不一致。
+- **強制規則**：
+  1. 任何人新增/擴充 `ClassSession.Status` 或 `StudentSingIn.Status` 枚舉值時，必須 grep 全部狀態白名單消費端並逐一決策：`sessionConsistency.js`（NON_FILLABLE + 兩個 label fn + classifyAttendanceSessionRows）、`LearningRecord` scopes、`AttendancePage`、`TeacherHomePage`、`LearningRecordsPage`、`ClassSessionController` 各 index filter。
+  2. 「請假家族」語意集合 = `leave` / `leave_requested` / `leave_adjusted` / `excused`；判斷「這堂要不要點名/填評量」一律用集合，禁止散落硬寫單值。
+  3. 只有 approve 後才寫 `StudentSingIn`；任何以「有無 sign-in 列」推斷請假狀態的邏輯，必須同時檢查 `ClassSession.Status`。
+- **測試必補**：`sessionConsistency.test.js`（leave_requested 鎖填寫 + attendance 可見不待點名）＋ `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
+
+---
+
+### R64. 星期欄位有兩套慣例並存，比對前必先正規化（ISO 7=週日 vs JS 0=週日）
+
+- **觸發情境**：新店月結課（週日 10-12／13-15）續約後繳費通知金額顯示 0 元（in-app #190／GitHub #1096）。`StudentClass` 鏈 1695/1696→2026/2027 連續兩期 `SessionCount=0、Charge=0`，Invoice `TotalAmount=0`；主任被迫手動核帳又登進 0 元。
+- **根因**：`buildSessionsFromWeeklySchedule` 以 Carbon `dayOfWeek`（0=日…6=六）比對 slot weekday，但所有活躍呼叫端（`resolveScheduleSlotsForRebuild` 讀 `week` 欄、`day_time_slots`、EnrollmentService `days_of_week`）都傳 ISO（1=一…7=日）。週一～六兩套慣例數值恰好相同 → 平日全部正常、**只有週日**永不匹配，錯誤潛伏到有人排週日月結課才爆。
+- **強制規則**：
+  1. DB `week/week1-6` 欄位與 `day_time_slots.day` 一律存 **ISO 1-7（7=週日），不可存 0**（production 無 `week=0` 資料）。
+  2. 任何 weekday 比對前先過 `StudentClassController::isoWeekday()`（0→7），再與 `dayOfWeekIso` 比；禁止裸用 `->dayOfWeek` 對 slot。
+  3. 新增/修改排課生成邏輯時，測試必含**週日 slot** 案例（兩套慣例只在週日分歧，平日測試永遠測不出）。
+- **測試必補**：`WeeklyScheduleSundayBuilderTest`（ISO 7、legacy 0、平日不變、混合）＋ `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`（invoice 金額不為 0）。
+
+
+---
+
+### R66. session-dates projected 不可因排除 leave materialized 而在同日合成幽靈時段
+
+- **觸發情境**：週日 10-12 堂次制課程登記請假後，課程詳情「上課日期」除正確的 10-12 請假 chip 外，又多出半透明 16-18 請假（in-app #196／GitHub #1101，劉芯岑 SC2653）；DB 查無 16-18 ClassSession。
+- **根因**：`SessionProjectionReadService::collectMaterializedFromRows` 把 `leave` 排除 → 請假日無 materialized → `buildProjectedFromEffectiveDates` 仍從契約日期合成 projected；POST `session-dates` 的 `bodyClasses` select 缺 `time`/`SessionDuration` → `resolveSlotTimesForCourseDate` fallback 全域預設 16:00。
+- **強制規則**：
+  1. `leave`/`leave_requested`/`leave_adjusted`/`excused` 等有實體 ClassSession 的狀態必須進 **materialized** bucket（只排除 `cancelled`）。
+  2. 任何 `StudentClass::select()` 用於 slot time 解析時，必須含 `time`/`time1-6` + `SessionDuration`/`duration1-6`。
+  3. 修改 projected 邏輯時，測試必含「請假日只有真實 leave 列、projected 為空、無 16:00 fallback」。
+- **測試必補**：`SessionProjectionLeaveGhostTest::test_leave_session_materialized_and_no_phantom_projected_slot`。
+
+---
+
+### R63. 未合併分支的 migration 絕不可先在 production 執行（schema drift = 全域隱形地雷）
+
+- **觸發情境**：2026-06-30 某 session 在未合併分支 `815ad275`（借用舊分支名 `fix/branch-list-trust-api` push）直接於 production 執行 `drop_student_class_room_id_legacy` 等 2 個 migration（batch 107/108），`StudentClass.RoomID` 欄位被移除；分支其後從未 merge。2026-07-08 才發現 main 程式碼仍在讀寫 RoomID：課程匯出（明確 SELECT）必 500、多個寫入路徑靠 fillable 靜默丟棄或 `createStudentClassResilient` 的 retry 掩蓋。CI 測試 DB 與 production schema 不一致長達 8 天。
+- **根因**：Actions minutes 凍結時期的手動部署便宜行事：migration 跟著工作分支上了 production，但 code 沒有跟著走完 PR→merge，違反 R5（migrate 只能在 PR merge 後由 deploy.yml 執行）。復原時只 `git reset --hard origin/main` 還原 code，卻無法還原「migration 已執行」的事實。
+- **強制規則**：
+  1. migration 檔案在 production 執行的唯一合法前提＝**該檔案已在 `origin/main`**。
+  2. 發現 schema drift 時，修復方向優先「把 migration + 配套 code port 回 main」，不是回滾 production schema（資料已依新 schema 寫入）。
+  3. 手動緊急部署（minutes 凍結）也必須：merge 進 main 之後才跑 migrate —— 見 `.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md` §0 的授權流程。
+  4. 接手任何 session 前先 `git log origin/main..<分支>` 檢查有無「已在 prod 生效但未合併」的 migration。
+- **測試必補**：`StudentClassRoomIdSchemaDriftTest` 鎖 `Schema::hasColumn('StudentClass','RoomID') === false`＋Export SELECT/headings 對齊；未來刪欄位一律加同型 drift 測試。
+
+---
+
 ### R50. 智慧行事曆載入不可 REST 成功後再跑 legacy fallback
 
 - **觸發情境**：SmartCalendar 初次載入或切週體感偏慢，多個分校老師反映等待時間過長。
@@ -804,7 +854,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback） |
@@ -814,6 +864,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 備份 / nightly | §nightly 覆蓋修正、§備份還原演練、§R34（備份新鮮度不可只看 mtime） |
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
+| Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset） |
 
 ---
 
