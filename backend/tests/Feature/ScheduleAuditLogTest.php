@@ -108,7 +108,6 @@ class ScheduleAuditLogTest extends TestCase
             'SubjectID'         => $subject->id,
             'GradeID'           => 0,
             'by1'               => $teacher->id,
-            'RoomID'            => 0,
             'TotalHours'        => 10,
             'Charge'            => 1000,
             'SessionCount'      => 10,

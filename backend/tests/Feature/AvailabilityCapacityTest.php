@@ -195,7 +195,6 @@ class AvailabilityCapacityTest extends TestCase
             'Paid'             => 0,
             'Rate'             => 800,
             'Stop'             => 0,
-            'RoomID'           => '1',
             'MDate'            => now(),
             'ScheduleMode'     => 'count',
         ]);

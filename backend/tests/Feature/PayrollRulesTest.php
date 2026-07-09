@@ -301,7 +301,7 @@ class PayrollRulesTest extends TestCase
             'UsedSessions' => 1, 'Rate' => 500, 'Charge' => 5000, 'Pay' => 0, 'Paid' => 0,
             'Period' => 4, 'SessionDuration' => 120, 'TotalHours' => 20,
             'StartDate' => '2026-04-01', 'EndDate' => '2026-06-30',
-            'week' => 2, 'time' => '16:00:00', 'RoomID' => 'R1', 'Stop' => 0, 'MDate' => now(),
+            'week' => 2, 'time' => '16:00:00', 'Stop' => 0, 'MDate' => now(),
         ]);
     }
 

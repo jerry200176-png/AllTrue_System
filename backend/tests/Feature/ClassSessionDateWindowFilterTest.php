@@ -93,7 +93,7 @@ class ClassSessionDateWindowFilterTest extends TestCase
             'SessionCount' => 8, 'SessionDuration' => 120,
             'RemainingSessions' => 8, 'UsedSessions' => 0,
             'Rate' => 500, 'TotalHours' => 20, 'Charge' => 5000, 'Pay' => 5000, 'Paid' => 0,
-            'Stop' => 0, 'by1' => 0, 'RoomID' => 'R1', 'MDate' => now(),
+            'Stop' => 0, 'by1' => 0, 'MDate' => now(),
             'StartDate' => '2026-03-01', 'EndDate' => '2026-06-30',
         ]);
 

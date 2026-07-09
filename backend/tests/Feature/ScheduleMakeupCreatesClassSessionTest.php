@@ -250,7 +250,6 @@ class ScheduleMakeupCreatesClassSessionTest extends TestCase
             'Paid'              => 0,
             'Rate'              => 800,
             'Stop'              => 0,
-            'RoomID'            => '1',
             'MDT'               => now(),
         ]);
     }

@@ -120,7 +120,7 @@ class PartialMakeupDeductionTest extends TestCase
             'SessionCount' => $sessions, 'SessionDuration' => $durationMinutes,
             'RemainingSessions' => $sessions, 'UsedSessions' => 0,
             'Rate' => 500, 'TotalHours' => 20, 'Charge' => 5000, 'Pay' => 5000, 'Paid' => 0,
-            'Stop' => 0, 'by1' => 0, 'RoomID' => 'R1', 'MDate' => now(),
+            'Stop' => 0, 'by1' => 0, 'MDate' => now(),
             'StartDate' => Carbon::now()->subMonth()->toDateString(),
             'EndDate' => Carbon::now()->addMonths(3)->toDateString(),
         ]);

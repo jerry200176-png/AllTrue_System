@@ -102,7 +102,6 @@ class SwipeClassSessionSyncTest extends TestCase
             'TeacherID'    => $this->teacherId,
             'by1'          => 0,
             'TotalHours'   => 2,
-            'RoomID'       => '',
             'StartDate'    => now()->subYear(),
             'Stop'         => 0,
             'SessionCount' => 10,

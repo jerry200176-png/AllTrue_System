@@ -55,7 +55,6 @@ class ParentPortalSubjectNameTest extends TestCase
             'Charge'          => 0,
             'Paid'            => 0,
             'Rate'            => 0,
-            'RoomID'          => 'R1',
             'MDate'           => now()->toDateString(),
             'Stop'            => 0,
             'ScheduleMode'    => 'count',

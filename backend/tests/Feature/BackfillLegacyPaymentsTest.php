@@ -197,7 +197,6 @@ class BackfillLegacyPaymentsTest extends TestCase
             'Disconunt'        => null,
             'Rate'             => null,
             'LearnTimeID'      => null,
-            'RoomID'           => 'R1',
             'MDate'            => now(),
             'Stop'             => 0,
             'ScheduleMode'     => 'count',

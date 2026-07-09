@@ -298,7 +298,7 @@ class AttendanceStatusReconcileTest extends TestCase
             'Paid' => 0, 'Stop' => 0, 'ScheduleMode' => 'count',
             'SessionCount' => $count, 'RemainingSessions' => $count, 'UsedSessions' => 0,
             'SessionDuration' => 120, 'ClassType' => 'one_on_one',
-            'RoomID' => 'R1', 'MDate' => now(), 'Rate' => 500,
+            'MDate' => now(), 'Rate' => 500,
         ]);
         return (int) $course->ID;
     }

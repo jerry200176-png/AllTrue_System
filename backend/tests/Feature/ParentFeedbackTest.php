@@ -294,7 +294,6 @@ class ParentFeedbackTest extends TestCase
             'Rate' => 500,
             'ClassType' => 'one_on_one',
             'StartDate' => now()->subDays(30)->toDateTimeString(),
-            'RoomID' => '',
             'SessionCount' => 8,
             'SessionDuration' => 120,
             'RemainingSessions' => 3,

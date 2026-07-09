@@ -125,7 +125,6 @@ class RescheduleClassSessionSyncTest extends TestCase
             'SessionDuration' => 120,
             'MDate'           => now(),
             'ScheduleMode'    => 'count',
-            'RoomID'          => '1',
         ]);
 
         return [$raw, (int) $sc->ID];

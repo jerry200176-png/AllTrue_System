@@ -11,6 +11,70 @@
 
 ---
 
+## 2026-07-09 — fix: #957 D1 cleanup scope aligned with audit (PCR-R2)
+
+- **Fixed**：`classsession:cleanup-intra-duplicates` 僅刪 Type-A active conflicts（與 audit 同語意）；cancelled placeholder 改為分析 only。
+- **Added**：`ClassSessionIntraDuplicateFinder`、regression test `ClassSessionAuditCleanupScopeAlignmentTest`；PCR-R2 runbook。
+- 開發備註：2026-07-09 preflight STOP（806 vs 21 組）；production freeze 維持至 CEO GO `PCR-2026-07-09-957-D1-R2`。
+
+## 2026-07-09 — docs: #190 對帳 + #189/#191 dry-run + #957 D1 設計
+
+- **Changed**：`190-reconciliation-report`（6 筆 SC 逐筆對帳、Invoice #690/#691 建議 amend）；`189-191-dryrun-report`（72 組 before/after）；`957-d1-sprint-design`（unique index migration）。
+- 開發備註：production 唯讀稽核 2026-07-09；零寫入；洪子勛 Payment void 2998/0 已查證。
+
+## 2026-07-08 — docs: Reliability Engineering — bug closure gate + #190 historical audit
+
+- **Changed**：新增 `docs/GUIDE_BUG_CLOSURE_GATE.md`（六項關閉閘門）；`docs/incidents/190-historical-billing-repair-plan.md`（週日 0 元歷史帳務唯讀 audit，6 筆合約）；`189-191` 計畫補 §7 dry-run audit 結果。
+- 開發備註：T0 docs-only；production 唯讀查詢已執行，**零寫入**；#190/#194/#196 code fix 不重開。
+
+## 2026-07-08 — docs: in-app #189/#191 跨約重複堂次資料修復草案
+
+- **Changed**：新增 `docs/incidents/189-191-data-repair-plan.md`（影響分析、唯讀偵測 SQL、修復策略比較、draft migration 規格）。
+- 開發備註：**禁止未經 CEO 核准前於 production 執行任何寫入**；長期修復仍依 Epic #957。
+
+## 2026-07-08 — docs: AllTrue Agent Engineering System v1
+
+- **Changed**：新增 `docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`、`.cursor/skills/alltrue-*`（除錯／測試／發布／安全／code review）與 `docs/GUIDE_AGENT_SKILLS.md` 上游評估。
+- 開發備註：T0 docs-only；不整包安裝 addyosmani/agent-skills；INDEX + AGENTS.md 導航更新。
+
+## 2026-07-08 — fix: 請假後課程詳情不再多畫出不存在的 16-18 堂次
+
+Fixed：登記請假後，課程詳情的「上課日期」若出現半透明的錯誤時段（例如週日 10-12 的課卻多出一個 16-18 請假），已修正；現在只會顯示真實堂次。
+
+開發備註：session-dates API 的 `collectMaterializedFromRows` 把 `leave` 堂次排除在 materialized 之外，同日又從契約推算 projected slot；POST body 的 StudentClass select 缺 `time` 欄位 → `resolveSlotTimesForCourseDate` fallback 16:00 → 前端半透明 chip 顯示幽靈 16-18 請假（in-app #196／GitHub #1101，劉芯岑案例）。修正 = leave 納入 materialized + POST select 補齊 time/duration 欄位。回歸 `SessionProjectionLeaveGhostTest`。
+
+## 2026-07-08 — fix: 家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾
+
+Fixed：家長送出請假但主任尚未審核時，這堂課在「出缺勤管理」會消失、卻在「課表與評量」被列成待填評量。已統一：兩邊都會顯示「請假(待審)」，不需點名也不需填評量；若審核退回，堂次會自動恢復待點名/待填。
+
+開發備註：ParentPortal 請假流程只把 `ClassSession.Status` 設為 `leave_requested`（不建 StudentSingIn 列）；出缺勤管理把該狀態整列過濾掉、`sessionConsistency` 與 `LearningRecord::scopeExcludeLeaveSessionPendingReview` 只認 `leave`/`excused` → 兩畫面認定分歧（in-app #194／GitHub #1099，陳品承 7/4 案例）。修正 = `leave_requested` 進 NON_FILLABLE + 統一 label「請假(待審)」+ attendance statusRows 顯示 + 後端 scope 補 session-status 分支。回歸測試 `sessionConsistency.test.js` + `LearningRecordLeaveExclusionTest::test_pending_lr_on_leave_requested_session_is_excluded`。
+
+
+## 2026-07-08 — fix: 週日課程的月結金額不再算成 0 元
+
+Fixed：排在「週日」的月結課程，續約時系統算不出堂數，繳費金額會顯示 0 元（新店 6/30 回報的繳費通知問題）；現已修正，週日堂次會正確計入金額與課表。
+
+開發備註：`buildSessionsFromWeeklySchedule` 用 Carbon `dayOfWeek`（0=日）比對 ISO 星期（7=日）的 slot，週一～六兩套慣例值相同、唯獨週日永不匹配 → 週日 date-mode 課程生成 0 堂 → renew-monthly 算出 SessionCount=0/Charge=0 → NT$0 Invoice（in-app #190／GitHub #1096，洪子勛案例）。修正 = slot weekday 正規化 0→7 後以 `dayOfWeekIso` 比對（兩套慣例都吃）；Import 與 shadow ScheduleResolver mirror 同步；`ScheduleSlots` 入庫一律存 ISO。回歸測試 `WeeklyScheduleSundayBuilderTest` + `MonthlyRenewTest::test_renew_monthly_sunday_course_computes_sessions_and_charge`。
+
+
+## 2026-07-08 — fix: 課程資料欄位對齊，避免課程匯出／新增課程隨機失敗
+
+Fixed：修正一個內部資料欄位不一致問題，該問題可能讓「課程匯出」或部分「新增課程」流程出現錯誤，現已對齊。
+
+開發備註：schema drift 對齊 — `StudentClass.RoomID` 已於 2026-06-30 在 production 被手動 migration 移除（batch 107/108，出自未合併的 `815ad275`），但 main 程式碼仍讀寫該欄位（Export 明確 SELECT、StudentClassController/CoursePackageController/Import 寫入、Model fillable）。本次把兩個 migration 檔＋後端 RoomID 移除 port 回 main（不含 `815ad275` 的行事曆前端與 #1087/#1079 回退部分），Export 改 SELECT `room_id` 保持 CSV 欄位對齊；121 個測試檔的 RoomID payload 一併清除；新增 `StudentClassRoomIdSchemaDriftTest` 鎖定 CI schema == production schema。
+
+## 2026-07-08 — ops: 部署管線硬校驗 — 杜絕「回報成功但上的是舊版」
+
+Ops：部署流程加上目標版本硬校驗：抓取失敗立即中止並亮紅，部署完成的版本必須等於 CI 驗證過的那一版。
+
+開發備註：Pi repo config 被誤寫 `http.sslbackend=schannel`（Linux git 不支援）→ `git fetch` fatal；deploy step 無 `-e` 吞錯、`reset --hard origin/main` 落在 stale tracking ref，smoke 照樣綠。修正 = deploy.yml [1/7] self-heal unset + fetch fail-fast + `reset --hard $workflow_run.head_sha` + HEAD 校驗（§R62）。
+
+## 2026-07-08 — fix: 同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）
+
+Fixed：一對二／一對三同一時段的不同學生，畫面上會被合併成一筆導致其中一位漏顯（例如班級行事曆只看得到其中一位），已修正。
+
+開發備註：`classSessionsApi.mergeSessionViewModels` slot key 原本只有 `(date,startTime)`，整包 payload 先合併再分課程 → 跨學生互吞（Phase C1 refactor `5bfaf4bd` 引入；R49/#187/#188 共享時段家族；in-app #182「仍存在」真兇）。key 補課程身分 + unkeyable 不合併；新增 `classSessionsApi.test.js` 掛入 `test:calendar`。
+
 ## 2026-06-29 — fix: ClassSession projection API — calendar completeness-safe (no pagination)
 
 - **Fixed**：新增 `GET /api/v1/class-sessions/projection`（`api_kind: projection`, `completeness: full`），行事曆改走此端點，杜絕 list API `per_page=2000` 靜默截斷導致新莊等分校缺課。

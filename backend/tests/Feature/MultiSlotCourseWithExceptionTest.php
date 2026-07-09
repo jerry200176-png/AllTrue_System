@@ -66,7 +66,6 @@ class MultiSlotCourseWithExceptionTest extends TestCase
             'week1'          => 7,
             'time1'          => '15:00:00',
             'duration1'      => 120,
-            'RoomID'         => '1',
             'Stop'           => 0,
             'MDate'          => now(),
         ]);

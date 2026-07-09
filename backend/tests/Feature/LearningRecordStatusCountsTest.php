@@ -98,7 +98,6 @@ class LearningRecordStatusCountsTest extends TestCase
             'by1' => 1,
             'Period' => 4,
             'StartDate' => '2026-01-01',
-            'RoomID' => '',
             'TotalHours' => 20,
             'Charge' => 1000,
             'Pay' => 500,
