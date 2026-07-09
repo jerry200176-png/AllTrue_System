@@ -628,6 +628,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R67. deploy SSH script 內關鍵步驟失敗必須讓 run 標紅（migration 失敗曾被吞成綠燈）
+
+- **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
+- **根因**：heredoc SSH script 預設不因中途指令失敗而中止；成功訊息寫在指令後面而非以 exit code 分支。
+- **強制規則**：deploy SSH script 內任何關鍵步驟（fetch/reset、composer、migrate、build）必須以 exit code 分支處理；失敗要嘛立即 `exit 1`，要嘛記 flag 並於結尾標紅。禁止在指令之後無條件印「✅ 完成」。migration 失敗時 code 部署可繼續（migration 一律 expand/contract 前向相容），但 run 必須紅。
+- **測試必補**：`scripts/control-plane-lint.mjs` 或 deploy contract 檢查 migrate 呼叫必須在 `if` 分支內。
+
+---
+
 ### R65. 新增 session 狀態值必須同步全部消費端（`leave_requested` 兩畫面認定分歧）
 
 - **觸發情境**：家長入口送出請假、主任未審核期間（`ClassSession.Status='leave_requested'`，**無** `StudentSingIn` 列）：出缺勤管理把整列過濾掉（看起來已請假），課表與評量／今日待填卻列為待填評量（in-app #194／GitHub #1099，陳品承 7/4 週六 15-17 案例）。
@@ -865,7 +874,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset） |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈） |
 
 ---
 
