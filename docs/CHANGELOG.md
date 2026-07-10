@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-10 — feat: 每日商業智能摘要（AI-native ops phase 0）
+
+- **Added**：`ops:business-digest`（每日 04:10 唯讀）——營收風險（未排程的預付堂 × 費率）、留存風險（近 14 天無課的在籍生）、資料品質異常、未來 7 天課量,每早自動量化營運健康度。
+- 開發備註：純唯讀,計算抽到 `BusinessDigestService`（ADR-003）;`docs/POLICY_AI_NATIVE_ROADMAP.md` 定義 Phase 0-5（BI dashboard → 異常偵測 → 留存/營收智能 → AI 輔助行政 → 自動化工程維運）。此為 AI-native 演進的 metric 底座。
+
 ## 2026-07-10 — fix: 評量「無法填寫」缺口回填 + 夜間自動任務正式啟用
 
 - **Fixed**：部分已上課堂次因系統缺漏無法填寫評量的問題已修復（回填 268 筆待填評量；老師端即可正常填寫）。
