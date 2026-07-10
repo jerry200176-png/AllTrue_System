@@ -45,6 +45,11 @@ class DatabasePerfTest extends TestCase
             'Payment InvoiceID' => ['Payment', 'idx_pay_invoice_id'],
             'UserCampus UserID' => ['UserCampus', 'idx_uc_user_id'],
             'UserCampus Campus+Approved' => ['UserCampus', 'idx_uc_campus_approved'],
+            // NOTE: uq_class_session_slot is intentionally NOT asserted here — its
+            // migration is skipped outside production (CI fixtures keep duplicates).
+            // #990 / PERF-16 — schedules S.D.B. hot key + LINE binding lookup.
+            'schedules S.D.B.' => ['schedules', 'idx_sched_sdb'],
+            'StudentLineBinding line_user_id' => ['student_line_bindings', 'slb_line_user_id_idx'],
         ];
     }
 
