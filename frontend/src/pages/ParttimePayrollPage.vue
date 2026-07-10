@@ -425,6 +425,7 @@
               <div class="input-with-unit">
                 <input id="tr-effective-from" type="date" v-model="trEffectiveFrom" />
               </div>
+              <p class="tr-effective-hint">此費率自「生效日」起適用（不追溯更早月份）。要修正某月薪資，請將生效日設為該月第一天，例：修正 6 月＝2026-06-01。</p>
             </div>
             <div class="rules-grid">
               <div class="rules-field" v-for="item in rateFields" :key="'tr-' + item.key">
@@ -734,7 +735,10 @@ const trHasOverride = ref(false);
 const trTeacherName = ref('');
 const trTeacherId = ref(null);
 const trForm = ref({ base_rates: { high: 400, junior: 350, elementary: 300, tutoring: 200 }, headcount_bonus: 50 });
-const trEffectiveFrom = ref(new Date().toISOString().slice(0, 10));
+// in-app bug 198: default a teacher rate's effective date to the FIRST DAY OF THE
+// VIEWED payroll month, not today — effective-dated rules are not retroactive, so
+// defaulting to today silently failed to correct the month the admin was reviewing.
+const trEffectiveFrom = ref(`${selectedMonth.value}-01`);
 const trHistory = ref([]);
 
 async function openTeacherRuleModal(teacherId) {
@@ -750,7 +754,9 @@ async function openTeacherRuleModal(teacherId) {
       base_rates: { ...data.base_rates },
       headcount_bonus: data.headcount_bonus,
     };
-    trEffectiveFrom.value = data.effective_from || new Date().toISOString().slice(0, 10);
+    // in-app bug 198: default to the viewed month's first day so a correction applies to
+    // the month under review (not the last card's date / today, which silently no-ops on past months).
+    trEffectiveFrom.value = `${selectedMonth.value}-01`;
     trHistory.value = Array.isArray(data.history) ? data.history : [];
   } catch (e) {
     alert('載入失敗：' + (e.message || ''));
