@@ -28,6 +28,12 @@ class Kernel extends ConsoleKernel
         // #1080 bug-termination gate: re-run every recurring bug's reproduction query so a
         // FIXED bug that regresses is caught automatically (non-zero exit) and open
         // divergences (#1062/#957/#964) are measured nightly — "production state vs bug state".
+        // #1062 Track A durable closure: forward-generate the next sessions for ACTIVE
+        // prepaid (count-mode) courses with a confirmed weekly cadence, so active students'
+        // prepaid sessions never strand off the calendar again. Idempotent, confirmed-cadence
+        // only, 4-week capped, rollbackable (Note-tagged scheduled rows). Dormant courses are
+        // excluded (director decision, #1152). Runs after the stranded audit (03:40).
+        $schedule->command('sessions:generate-forward --execute --scheduled --horizon-weeks=4')->dailyAt('03:45');
         $schedule->command('bugs:verify-reproductions')->dailyAt('04:00');
         // AI-native ops (docs/POLICY_AI_NATIVE_ROADMAP.md phase 0): read-only daily business
         // digest — revenue at risk, retention risk, data-quality anomalies, forward

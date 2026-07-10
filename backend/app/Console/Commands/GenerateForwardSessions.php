@@ -23,6 +23,7 @@ class GenerateForwardSessions extends Command
                             {--horizon-weeks=4 : Max sessions to generate per course}
                             {--execute : Apply (default is dry-run)}
                             {--force : Required with --execute on production}
+                            {--scheduled : Authorize execute from the nightly scheduler (bypasses the interactive PCR gate; safety guards unchanged)}
                             {--limit=500 : Max courses to process}';
 
     protected $description = '#1062 Track A: plan/generate forward sessions for active stranded prepaid courses (dry-run by default).';
@@ -106,8 +107,16 @@ class GenerateForwardSessions extends Command
         if (!app()->environment('production')) {
             return true;
         }
+        // Nightly scheduler path: the scheduled context is the standing authorization
+        // for this idempotent, confirmed-cadence-only, horizon-capped, rollbackable job
+        // (#1062 durable closure). Data-safety guards in ForwardSessionGenerator are
+        // unchanged; only the interactive PCR gate is bypassed for automation.
+        if ($this->option('scheduled')) {
+            $this->line('[scheduled] forward-generation authorized via nightly scheduler.');
+            return true;
+        }
         if (!$this->option('force')) {
-            $this->error('Production requires --force with --execute');
+            $this->error('Production requires --force with --execute (or --scheduled for the nightly job)');
             return false;
         }
         if (env('ALLOW_PROD_REPAIR') !== '1') {

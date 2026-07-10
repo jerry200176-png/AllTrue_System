@@ -100,6 +100,23 @@ class ForwardSessionGenerationTest extends TestCase
         $this->assertSame($before, DB::table('ClassSession')->count(), 'dry-run must not write');
     }
 
+    public function test_scheduled_execute_generates_sessions(): void
+    {
+        // #1062 durable closure: the nightly `--execute --scheduled` path writes.
+        $sc = $this->course(remaining: 4);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($sc, $d, '16:00:00', '18:00:00', 'attended');
+        }
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-07-13'));
+        try {
+            $this->assertSame(0, Artisan::call('sessions:generate-forward', ['--execute' => true, '--scheduled' => true]));
+            $this->assertGreaterThan(0, DB::table('ClassSession')
+                ->where('StudentClassID', $sc)->where('Note', '系統向前生成 #1062')->count());
+        } finally {
+            \Carbon\Carbon::setTestNow();
+        }
+    }
+
     private function course(int $remaining): int
     {
         $studentId = 96000 + random_int(1, 8999);
