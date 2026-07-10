@@ -161,6 +161,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | Post-release T+7/T+14/T+30 metrics review | `docs/PRODUCT_OPS.md` |
 | 採用率 / 品質指標定義 | `docs/ADOPTION_QUALITY_METRICS.md` |
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
+| **AI-native 演進路線圖（BI/異常/留存/AI 行政）** | `docs/ROADMAP_AI_NATIVE.md`；metric 底座＝`ops:business-digest` / `BusinessDigestService` |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
