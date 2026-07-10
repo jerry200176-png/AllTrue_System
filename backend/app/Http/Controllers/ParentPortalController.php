@@ -444,10 +444,14 @@ class ParentPortalController extends Controller
             $replyAuthorNames = $replyAuthorIds->isNotEmpty()
                 ? \Illuminate\Support\Facades\DB::table('User')->whereIn('id', $replyAuthorIds)->pluck('Name', 'id')->toArray()
                 : [];
+            // #986: batch-load record teachers (may differ from course teacher on substitutes).
+            $recordTeacherIds = $recordsRaw->pluck('TeacherID')->filter()->unique()->values();
+            $recordTeacherNames = $recordTeacherIds->isNotEmpty()
+                ? User::query()->whereIn('id', $recordTeacherIds)->pluck('Name', 'id')
+                : collect();
 
-            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames) {
-                    $teacher = User::find($rec->TeacherID);
-                    $rec->teacher_name = $teacher ? $teacher->Name : null;
+            $records = $recordsRaw->map(function ($rec) use ($classes, $sessionNumbers, $feedbacks, $repliesByFeedback, $replyAuthorNames, $recordTeacherNames) {
+                    $rec->teacher_name = $rec->TeacherID ? ($recordTeacherNames[$rec->TeacherID] ?? null) : null;
                     $sc = $classes->firstWhere('ID', $rec->StudentClassID);
                     $fromCourse = $sc ? $this->resolveSubjectName($sc) : null;
                     $rawSubject = trim((string) ($rec->Subject ?? ''));
@@ -498,7 +502,12 @@ class ParentPortalController extends Controller
         $sessionsById = !empty($sessionIds)
             ? ClassSession::whereIn('id', $sessionIds)->get()->keyBy('id')
             : collect();
-        $attendance = $signIns->map(function ($row) use ($classes, $sessionsById) {
+        // #986: batch-load course teacher names once (was User::find per sign-in row, ≤100/req).
+        $courseTeacherIds = $classes->pluck('TeacherID')->filter()->unique()->values();
+        $courseTeacherNames = $courseTeacherIds->isNotEmpty()
+            ? User::query()->whereIn('id', $courseTeacherIds)->pluck('Name', 'id')
+            : collect();
+        $attendance = $signIns->map(function ($row) use ($classes, $sessionsById, $courseTeacherNames) {
             $status = (string) ($row->Status ?? '');
             $row->status_label = match ($status) {
                 'present' => '到班',
@@ -531,12 +540,9 @@ class ParentPortalController extends Controller
             $row->time = $time;
             $row->subject = $studentClass ? $this->resolveSubjectName($studentClass) : null;
 
-            $teacherName = null;
-            if ($studentClass && !empty($studentClass->TeacherID)) {
-                $teacher = User::find($studentClass->TeacherID);
-                $teacherName = $teacher ? $teacher->Name : null;
-            }
-            $row->teacher_name = $teacherName;
+            $row->teacher_name = ($studentClass && !empty($studentClass->TeacherID))
+                ? ($courseTeacherNames[$studentClass->TeacherID] ?? null)
+                : null;
 
             return $row;
         });
