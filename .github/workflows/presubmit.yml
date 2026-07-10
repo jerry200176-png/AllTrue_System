@@ -26,27 +26,25 @@ jobs:
 
       # ─────────────────────────────────────────────
       # CHECK 1：Branch 命名規範
-      # 合法格式：feat/* fix/* td-batchN-* hotfix/* chore/* exp/*
+      # 合法格式：Conventional-Commits 前綴 + td-batchN-* + dependabot/*
+      # feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci
       # ─────────────────────────────────────────────
       - name: "[CHECK 1] Branch naming convention"
         run: |
           BRANCH="${GITHUB_HEAD_REF}"
           echo "Branch: $BRANCH"
 
-          if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp)/.' \
+          if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
             || echo "$BRANCH" | grep -qE '^dependabot/' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
             echo ""
-            echo "Allowed formats:"
-            echo "  feat/<slug>           新功能"
-            echo "  fix/<slug>            Bug 修復"
-            echo "  td-batch<N>-<slug>    技術債清償"
+            echo "Allowed formats (Conventional-Commits prefixes):"
+            echo "  feat/ fix/ perf/ refactor/ test/ docs/ build/ ci/ chore/ exp/ <slug>"
             echo "  hotfix/<date>-<slug>  緊急修復"
-            echo "  chore/<slug>          文件/維護"
-            echo "  exp/<slug>            實驗性"
+            echo "  td-batch<N>-<slug>    技術債清償"
             exit 1
           fi
 
