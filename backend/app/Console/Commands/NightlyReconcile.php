@@ -25,10 +25,11 @@ class NightlyReconcile extends Command
             return self::SUCCESS;
         }
 
-        // Compute actual attended session counts per StudentClass
+        // Compute actual attended session counts per StudentClass.
+        // ClassSession has no VoidedAt column; cancellation/voiding is expressed
+        // via Status, so the attended/completed/late filter already excludes them.
         $actualCounts = DB::table('ClassSession')
             ->whereIn('Status', ['attended', 'completed', 'late'])
-            ->whereNull('VoidedAt')
             ->select('StudentClassID', DB::raw('COUNT(*) as actual_count'))
             ->groupBy('StudentClassID')
             ->pluck('actual_count', 'StudentClassID');
