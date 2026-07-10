@@ -9,8 +9,11 @@ use App\Models\Payment;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\StudentLineBinding;
+use App\Models\StudentSignIn;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -514,6 +517,73 @@ class ParentPortalLoginIsolationTest extends TestCase
         $ids = array_column($students, 'id');
         $this->assertContains($studentA->id, $ids);
         $this->assertContains($studentB->id, $ids);
+    }
+
+    /**
+     * #986: teacher names on dashboard learning records & attendance history must
+     * come from batched lookups and stay correct — incl. a substitute teacher on
+     * the record differing from the course teacher.
+     */
+    public function test_dashboard_teacher_names_resolve_batched_for_records_and_attendance(): void
+    {
+        $courseTeacherId = (int) User::create([
+            'LoginName' => 't986-course-' . uniqid(), 'Name' => '課程老師甲', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0900000986', 'MustChangePassword' => false,
+        ])->id;
+        $subTeacherId = (int) User::create([
+            'LoginName' => 't986-sub-' . uniqid(), 'Name' => '代課老師乙', 'PSW' => 'secret',
+            'type' => 'T', 'phone' => '0900000987', 'MustChangePassword' => false,
+        ])->id;
+
+        $student = $this->createStudent(1, '批次老師生', '0912009860');
+        $course = $this->createStudentClass($student->id, ['TeacherID' => $courseTeacherId]);
+
+        $cs = ClassSession::create([
+            'StudentClassID' => $course->ID,
+            'SessionDate' => '2026-04-02',
+            'StartTime' => '10:00',
+            'EndTime' => '12:00',
+            'Status' => 'attended',
+        ]);
+        DB::table('LearningRecord')->insert([
+            'StudentClassID' => $course->ID,
+            'ClassSessionID' => $cs->id,
+            'TeacherID' => $subTeacherId,
+            'Content' => '批次載入測試',
+            'Subject' => '數學',
+            'SessionDate' => '2026-04-02',
+            'StartTime' => '10:00',
+            'EndTime' => '12:00',
+            'Status' => 'approved',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        StudentSignIn::create([
+            'StudentID' => $student->id,
+            'ClassSessionID' => $cs->id,
+            'SignInDT' => '2026-04-02 09:55:00',
+            'SignOutDT' => '2026-04-02 12:00:00',
+            'MDT' => '2026-04-02 12:00:00',
+            'Memo' => 'swipe-rfid',
+            'Status' => 'present',
+            'CampusID' => 1,
+            'PersonType' => 'student',
+            'SessionDeducted' => false,
+        ]);
+
+        $token = $this->parentLogin('批次老師生', '0912009860');
+        $res = $this->getJson('/api/v1/parent/dashboard', [
+            'Authorization' => 'Bearer ' . $token,
+        ]);
+        $res->assertOk();
+
+        $records = collect($res->json('learning_records'));
+        $this->assertTrue($records->isNotEmpty(), 'expected the approved learning record');
+        $this->assertSame('代課老師乙', $records->first()['teacher_name'] ?? null);
+
+        $attendance = collect($res->json('attendance_history'));
+        $this->assertTrue($attendance->isNotEmpty(), 'expected the sign-in row');
+        $this->assertSame('課程老師甲', $attendance->first()['teacher_name'] ?? null);
     }
 
     private function createStudent(int $campusId, string $name, ?string $phone = null): Student
