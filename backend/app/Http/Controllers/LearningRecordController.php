@@ -1846,7 +1846,8 @@ class LearningRecordController extends Controller
             // instead of surfacing a 500 to the director.
             $targetStartHm = substr((string) $this->normalizeProjectionTime($startTime ?: (string) $session->StartTime), 0, 5);
             if ($targetStartHm !== '') {
-                $slotTaken = ClassSession::where('StudentClassID', $classId)
+                $slotTaken = ClassSession::query()
+                    ->where('StudentClassID', $classId)
                     ->whereDate('SessionDate', $newDate)
                     ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$targetStartHm])
                     ->where('id', '!=', $session->id)
