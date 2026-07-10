@@ -173,15 +173,21 @@ class CourseLeaveCascadeService
             Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
         );
 
+        // Shift latest-first. Each session moves onto the slot the next-later
+        // session just vacated, so the target is always free by the time we
+        // save. Ascending order moves an earlier session onto a slot still held
+        // by a not-yet-shifted session, which the active-only unique index
+        // (uq_class_session_slot) now rejects with a raw 1062 (previously a
+        // silent duplicate). The final layout is identical either way; only the
+        // save order changes. See leave-cascade 1062 incident 2026-07-10.
         $templateSession = $sessionsToShift->last() ?: $leaveSession;
-        foreach ($sessionsToShift as $s) {
+        foreach ($sessionsToShift->reverse() as $s) {
             $currentDate = Carbon::parse($s->SessionDate)->startOfDay();
             $newDate = self::nextRecurringDate($currentDate, $weekdays, $occupiedDates);
             $s->SessionDate = $newDate;
             $s->save();
             self::syncLearningRecordSessionDate($s);
             $occupiedDates[$newDate] = true;
-            $templateSession = $s;
         }
 
         $latestDate = self::maxDateKey($occupiedDates);
