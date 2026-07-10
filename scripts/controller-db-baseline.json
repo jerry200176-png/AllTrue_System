@@ -1,0 +1,9 @@
+{
+  "_comment": "ADR-003 DB:: ratchet baseline. New DB:: usage in these controllers must not exceed these counts; decomposition (#966) lowers them. Regenerate with: node scripts/controller-db-ratchet.mjs --write.",
+  "backend/app/Http/Controllers/StudentClassController.php": 44,
+  "backend/app/Http/Controllers/AttendanceController.php": 38,
+  "backend/app/Http/Controllers/ClassSessionController.php": 31,
+  "backend/app/Http/Controllers/FinanceController.php": 16,
+  "backend/app/Http/Controllers/AlertController.php": 9,
+  "backend/app/Http/Controllers/SwipeRfidController.php": 3
+}

@@ -178,6 +178,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 |----------|---------|
 | Open 技術債清單 | `docs/TECH_DEBT.md` |
 | 清償流程 | `.cursor/rules/tech-debt.mdc` |
+| **分層規則 + controller `DB::` ratchet** | `docs/ADR_003_layering_and_controller_db_ban.md`（新 DB:: 不得超基線；`node scripts/controller-db-ratchet.mjs`）|
 
 ### 測試帳號 / 登入
 - `.cursor/.local/test-credentials.md` — 各角色帳密 + Browser MCP 踩坑 SOP
