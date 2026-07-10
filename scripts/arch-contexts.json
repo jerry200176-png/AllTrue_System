@@ -13,6 +13,7 @@
     { "context": "parent-portal",  "match": "Parent|Line|Liff|Routing" },
     { "context": "support",        "match": "BugReport" },
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
+    { "context": "analytics",      "match": "BusinessDigest|Analytics|Metric|Insight|Digest|Anomaly" },
     { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student" },
     { "context": "platform",       "match": "Export|Import|ResetData|System|Webhook" }
   ],

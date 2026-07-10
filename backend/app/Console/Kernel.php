@@ -29,6 +29,10 @@ class Kernel extends ConsoleKernel
         // FIXED bug that regresses is caught automatically (non-zero exit) and open
         // divergences (#1062/#957/#964) are measured nightly — "production state vs bug state".
         $schedule->command('bugs:verify-reproductions')->dailyAt('04:00');
+        // AI-native ops (docs/POLICY_AI_NATIVE_ROADMAP.md phase 0): read-only daily business
+        // digest — revenue at risk, retention risk, data-quality anomalies, forward
+        // coverage — logged each morning so business health is quantified, not discovered.
+        $schedule->command('ops:business-digest')->dailyAt('04:10');
     }
 
     protected function commands(): void
