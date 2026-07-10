@@ -1838,6 +1838,28 @@ class LearningRecordController extends Controller
                 $startTime ?: (string) $session->StartTime,
                 (int) $session->id
             );
+
+            // #957/#1118: the active-only unique slot index rejects a move onto an
+            // already-occupied live slot with a raw 1062 (PHP-LARAVEL-1Z). Benign
+            // auto-materialized placeholders were just cancelled above; if a GENUINE
+            // non-cancelled session still holds the target slot, return a clear 422
+            // instead of surfacing a 500 to the director.
+            $targetStartHm = substr((string) $this->normalizeProjectionTime($startTime ?: (string) $session->StartTime), 0, 5);
+            if ($targetStartHm !== '') {
+                $slotTaken = ClassSession::where('StudentClassID', $classId)
+                    ->whereDate('SessionDate', $newDate)
+                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$targetStartHm])
+                    ->where('id', '!=', $session->id)
+                    ->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")
+                    ->exists();
+                if ($slotTaken) {
+                    return response()->json([
+                        'message' => '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
+                        'code' => 'slot_occupied',
+                    ], 422);
+                }
+            }
+
             $session->SessionDate = $newDate;
             if ($startTime) $session->StartTime = $startTime;
             if ($endTime)   $session->EndTime   = $endTime;
