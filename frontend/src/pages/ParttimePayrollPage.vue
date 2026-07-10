@@ -735,8 +735,8 @@ const trHasOverride = ref(false);
 const trTeacherName = ref('');
 const trTeacherId = ref(null);
 const trForm = ref({ base_rates: { high: 400, junior: 350, elementary: 300, tutoring: 200 }, headcount_bonus: 50 });
-// #198: default a teacher rate's effective date to the FIRST DAY OF THE VIEWED
-// payroll month, not today — effective-dated rules are not retroactive, so
+// in-app bug 198: default a teacher rate's effective date to the FIRST DAY OF THE
+// VIEWED payroll month, not today — effective-dated rules are not retroactive, so
 // defaulting to today silently failed to correct the month the admin was reviewing.
 const trEffectiveFrom = ref(`${selectedMonth.value}-01`);
 const trHistory = ref([]);
@@ -754,8 +754,8 @@ async function openTeacherRuleModal(teacherId) {
       base_rates: { ...data.base_rates },
       headcount_bonus: data.headcount_bonus,
     };
-    // #198: default to the viewed month's first day so a correction applies to the
-    // month under review (not the last card's date / today, which silently no-ops on past months).
+    // in-app bug 198: default to the viewed month's first day so a correction applies to
+    // the month under review (not the last card's date / today, which silently no-ops on past months).
     trEffectiveFrom.value = `${selectedMonth.value}-01`;
     trHistory.value = Array.isArray(data.history) ? data.history : [];
   } catch (e) {
