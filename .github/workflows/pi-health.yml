@@ -118,6 +118,20 @@ jobs:
             CRITICALS="${CRITICALS}🔴 備份目錄 ${BACKUP_DIR} 不存在\n"
           fi
 
+          # ── 3b. Laravel scheduler 心跳（R68：schedule:list 顯示 Next Due ≠ 有在跑）──
+          # schedule:run 由 cron 每分鐘執行並 append schedule.log；超過 10 分鐘未更新
+          # = driver 死亡（2026-07-10 事故：Kernel 8 個夜間任務從未執行過，靜默數週）。
+          SCHED_LOG="/home/admin/logs/schedule.log"
+          if [ -f "$SCHED_LOG" ]; then
+            SCHED_AGE_MIN=$(( ( $(date +%s) - $(stat -c %Y "$SCHED_LOG") ) / 60 ))
+            echo "scheduler 心跳：${SCHED_AGE_MIN} 分鐘前"
+            if [ "$SCHED_AGE_MIN" -gt 10 ]; then
+              CRITICALS="${CRITICALS}🔴 Laravel scheduler 心跳停止 ${SCHED_AGE_MIN} 分鐘（schedule:run cron 死亡？）\n"
+            fi
+          else
+            CRITICALS="${CRITICALS}🔴 ${SCHED_LOG} 不存在 — Laravel scheduler 無 driver（見 #1127）\n"
+          fi
+
           # ── 4. 輸出結果 ──────────────────────────────────────────────
           if [ -n "$WARNINGS" ]; then
             echo "=== ⚠️ WARNINGS（不使 workflow 失敗）==="

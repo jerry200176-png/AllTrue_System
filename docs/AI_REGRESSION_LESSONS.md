@@ -628,6 +628,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R68. 排程任務上線必須驗證主機 driver 存在（`schedule:list` 顯示 Next Due ≠ 有在執行）
+
+- **觸發情境**：2026-07-10 稽核發現 production Pi **從未有** `php artisan schedule:run` cron／systemd timer／daemon——`Kernel.php` 8 個夜間任務（reconcile、close-orphans、stranded 稽核、LR 回填、復現閘門…）全部從未執行。`schedule:list` 印出 Next Due 讓所有文件（含 G-010）誤信「已排程」。後果：LR 缺口重新累積 43 筆、stranded 352→387 無人反制，靜默數週。
+- **根因**：Laravel scheduler 是兩層架構——Kernel 定義「何時跑什麼」，主機 cron 每分鐘 `schedule:run` 是唯一驅動器。只驗證了前者。
+- **強制規則**：
+  1. 新增/修改任何 `Kernel.php` 排程任務時，必須同時驗證 Pi 上 `crontab -l | grep schedule:run` 存在，並於次日檢查 `/home/admin/logs/schedule.log` 有該任務的執行痕跡。
+  2. 「已排程」的證據 = 執行 log，不是 `schedule:list` 輸出、不是程式碼。
+  3. `pi-health.yml` §3b 心跳檢查（schedule.log 10 分鐘內必須有更新）為此的自動防線，不得移除。
+- **測試必補**：pi-health scheduler 心跳 critical（本條隨 #1127 併入）。
+
+---
+
 ### R67. deploy SSH script 內關鍵步驟失敗必須讓 run 標紅（migration 失敗曾被吞成綠燈）
 
 - **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
@@ -874,7 +886,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | Bug 回報 / 附件存檔 | §R11 storage symlink（Archive）、§R51（分診前必查 attachments + reporter 歷史 + 跨分校）、§R53（上線後必回 in-app）、`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7 |
 | Git / PR 工作流 | §R58（禁止 assume-unchanged 藏檔）、`scripts/git-index-audit.sh`、Epic #535 Phase 0 |
 | Migration / schema drift | §R63（未合併分支的 migration 禁上 production；drift 修復＝port 回 main＋drift 測試） |
-| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈） |
+| 部署 pipeline | §R62（deploy 必須 fetch fail-fast + reset 到 CI `head_sha` 並校驗 HEAD；禁止 `reset --hard origin/main` 靠 stale tracking ref 靜默出貨舊版；Pi repo config 出現 `http.sslbackend=schannel` = 已被 Windows 工具污染，先 unset）、§R67（SSH script 關鍵步驟失敗必須標紅；migration 失敗不得吞成綠燈）、§R68（排程任務上線必須驗證 schedule:run driver 存在；證據=執行 log 而非 schedule:list） |
 
 ---
 
