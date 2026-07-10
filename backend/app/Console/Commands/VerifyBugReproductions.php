@@ -74,6 +74,17 @@ class VerifyBugReproductions extends Command
                             HAVING COUNT(*) > 1) d",
             ],
             [
+                'key' => 'cross_sc_duplicate_attended_slot',
+                'label' => 'Same student attended/completed twice in one slot across two contracts (cross-SC)',
+                'issue' => '#1130/#173', 'enforced' => false,
+                'sql' => "SELECT COUNT(*) AS c FROM (
+                            SELECT 1 FROM ClassSession cs
+                            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+                            WHERE LOWER(cs.Status) IN ('attended','completed')
+                            GROUP BY sc.StudentID, cs.SessionDate, SUBSTRING(cs.StartTime, 1, 5)
+                            HAVING COUNT(*) > 1 AND COUNT(DISTINCT cs.StudentClassID) > 1) d",
+            ],
+            [
                 'key' => 'remaining_sessions_diverges_from_derived',
                 'label' => 'Stored RemainingSessions <> SessionCount - UsedSessions (count truth)',
                 'issue' => '#964/#172', 'enforced' => false,
