@@ -16,7 +16,7 @@ use Illuminate\Console\Command;
  *
  * 100% read-only. Thin presentation layer over {@see BusinessDigestService}
  * (ADR-003). First step of the AI-native ops direction
- * (docs/ROADMAP_AI_NATIVE.md): a stable, testable metric surface a dashboard or
+ * (docs/POLICY_AI_NATIVE_ROADMAP.md): a stable, testable metric surface a dashboard or
  * anomaly model can later read.
  */
 class OpsBusinessDigest extends Command
