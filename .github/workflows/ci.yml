@@ -94,6 +94,12 @@ jobs:
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.ci_config == 'true'
     runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 15
+    # Self-hosted runs share one MySQL server, so the database must not be shared.
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_DATABASE: AllTrue_test_${{ github.run_id }}_${{ github.run_attempt }}
+      DB_USERNAME: admin
 
     steps:
       - name: Checkout
@@ -176,33 +182,62 @@ jobs:
           # Override DB settings for CI (phpunit.xml already sets these, but ensure APP_KEY)
           php artisan key:generate --force
 
-      - name: Wait for MySQL
+      - name: Prepare isolated test database
         run: |
           for i in {1..30}; do
             mysqladmin ping -h 127.0.0.1 -u admin -p"$DB_PASSWORD" --silent && break
             echo "Waiting for MySQL... ($i)"
             sleep 2
           done
+
+          if [[ ! "$DB_DATABASE" =~ ^AllTrue_test_[0-9]+_[0-9]+$ ]]; then
+            echo "::error::Unsafe CI database name: $DB_DATABASE"
+            exit 1
+          fi
+
           mysql -h 127.0.0.1 -u admin -p"$DB_PASSWORD" \
-            -e "CREATE DATABASE IF NOT EXISTS AllTrue_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            -e "CREATE DATABASE \`$DB_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+          php -r '
+            $path = "backend/phpunit.xml";
+            $xml = simplexml_load_file($path);
+            if ($xml === false) {
+              fwrite(STDERR, "Unable to parse backend/phpunit.xml" . PHP_EOL);
+              exit(1);
+            }
+            $found = false;
+            foreach ($xml->php->env as $env) {
+              if ((string) $env["name"] === "DB_DATABASE") {
+                $env["value"] = getenv("DB_DATABASE");
+                $found = true;
+              }
+            }
+            if (!$found || !$xml->asXML($path)) {
+              fwrite(STDERR, "Unable to set the isolated PHPUnit database" . PHP_EOL);
+              exit(1);
+            }
+          '
+
+          php -r '
+            $xml = simplexml_load_file("backend/phpunit.xml");
+            foreach ($xml->php->env as $env) {
+              if ((string) $env["name"] === "DB_DATABASE"
+                  && (string) $env["value"] === getenv("DB_DATABASE")) {
+                echo "Isolated test database ready: " . getenv("DB_DATABASE") . PHP_EOL;
+                exit(0);
+              }
+            }
+            fwrite(STDERR, "PHPUnit database isolation verification failed" . PHP_EOL);
+            exit(1);
+          '
 
       - name: Migration dry-run (pretend)
         working-directory: backend
         run: php artisan migrate --pretend --database=mysql 2>&1 | tee /tmp/migrate-pretend.txt; echo "✅ migrate --pretend 通過"
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
 
       - name: Run migrations on test DB
         working-directory: backend
         run: php artisan migrate --force --database=mysql
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
 
       - name: Run PHPUnit (with JUnit XML report)
         working-directory: backend
@@ -213,10 +248,6 @@ jobs:
             --coverage-clover=storage/test-results/coverage.xml \
             --log-junit=storage/test-results/junit.xml
         env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
           APP_ENV: testing
 
       - name: Skipped test report
@@ -298,11 +329,6 @@ jobs:
       - name: Generate API route documentation
         if: always()
         working-directory: backend
-        env:
-          DB_HOST: 127.0.0.1
-          DB_PORT: 3306
-          DB_DATABASE: AllTrue_test
-          DB_USERNAME: admin
         run: |
           # Laravel 8 用 text 格式（--json 是 L9+），存成 txt 再用 Python 轉 Markdown
           php artisan route:list 2>/dev/null > /tmp/routes.txt || true
@@ -348,6 +374,18 @@ jobs:
             backend/storage/test-results/coverage.xml
             backend/storage/test-results/api-routes.md
           if-no-files-found: warn
+
+      - name: Drop isolated test database
+        if: always()
+        run: |
+          # Fail closed: cleanup may only target the run-scoped test namespace.
+          if [[ ! "$DB_DATABASE" =~ ^AllTrue_test_[0-9]+_[0-9]+$ ]]; then
+            echo "::error::Refusing to drop unsafe database name: $DB_DATABASE"
+            exit 1
+          fi
+
+          mysql -h 127.0.0.1 -u admin -p"$DB_PASSWORD" \
+            -e "DROP DATABASE IF EXISTS \`$DB_DATABASE\`;"
 
   vite-build:
     name: Vite Frontend Build
