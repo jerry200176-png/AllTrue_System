@@ -362,6 +362,17 @@ class PaymentReportController extends Controller
             return response()->json(['message' => '課程資料不存在'], 404);
         }
 
+        // #1096 (in-app #190): a date-mode (月結) course billed at NT$0 is nonsensical —
+        // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
+        // record for date-mode and point staff to set the fee first. Count-mode is untouched,
+        // so legitimately-free (0-fee) tutoring courses still settle at 0.
+        if ($sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
+            return response()->json([
+                'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
+                'code' => 'monthly_fee_unset',
+            ], 422);
+        }
+
         $userId = $request->attributes->get('auth_user_id');
 
         return DB::transaction(function () use ($data, $sc, $userId) {
