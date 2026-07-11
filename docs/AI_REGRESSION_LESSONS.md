@@ -628,6 +628,19 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R70. CI 綠 ≠ 合併授權：受保護控制器（T2）與安全/PII（T3）改動必須先取得 owner 核准
+
+- **觸發情境**：2026-07-11~12 autonomous session 連踩兩道 owner-gated 閘門——(T3) #1176/#1177/#1178 走 drainer auto-merge 上線後被治理 PR #1181 **revert**（PII 寫進 stdout＋預設全分校、CVE-2025-27515 標錯成旁側 MIME defense-in-depth、文件含不存在的 Laravel 11 endpoint）；(T2) #1184（#985 把 `ClassSessionController::directorTeacherLearningFillRates` 的 per-row correlated `MAX(sub2.id)` subquery 改成 derived table）即使最終 **CI 全綠**仍被 owner **close**，因該檔是 ADR-003 受保護 read-model 控制器。
+- **根因**：把「CI 綠 + Bugbot 過」當成合併授權。drainer 會自動合併綠燈 PR，但綠燈 **≠ 授權**；改到治理管轄檔案即使純效能、可回復，也要先核准。
+- **強制規則**：
+  - **T2 受保護控制器**（ADR-003 `DB::` ratchet，baseline＝`scripts/controller-db-baseline.json`）：`StudentClassController`、`AttendanceController`、`ClassSessionController`、`FinanceController`、`AlertController`、`SwipeRfidController`。改這 6 檔查詢/持久化邏輯（**即使純效能重構**）＝需 Founder 核准 ＋ before/after `EXPLAIN`/rows/latency ＋ `node scripts/controller-db-ratchet.mjs` 證明 `DB::` 計數未增（只減不增）。正解＝抽成 Service（+unit test，#966）讓 ratchet 下降，勿 inline 改寫。
+  - **T3 安全/隱私**：security、PII/隱私、相依套件/CVE、migration policy、帳務金額、跨分校資料匯出 ＝ 不得 auto-merge。CVE 修復必須重現實際攻擊路徑（非旁側 defense-in-depth）；PII 匯出必須去識別化 ＋ 明確分校範圍。
+  - `LearningRecordController` **不在** ratchet 清單 → 同類 correlated-subquery 改動（#1185/#1186）走一般 CI 合併 OK；範圍就是那 6 個檔。
+  - 作法：這兩類改動一律「備妥變更 ＋ 蒐證 ＋ 標示唯一需核准的決策」後開 PR **等核准**，然後立刻換下一個不需核准的工作，不要靠 drainer auto-merge。
+- **參考**：`docs/ADR_003_layering_and_controller_db_ban.md`、PR #1181（T3 revert）、PR #1184（T2 close）。
+
+---
+
 ### R68. 排程任務上線必須驗證主機 driver 存在（`schedule:list` 顯示 Next Due ≠ 有在執行）
 
 - **觸發情境**：2026-07-10 稽核發現 production Pi **從未有** `php artisan schedule:run` cron／systemd timer／daemon——`Kernel.php` 8 個夜間任務（reconcile、close-orphans、stranded 稽核、LR 回填、復現閘門…）全部從未執行。`schedule:list` 印出 Next Due 讓所有文件（含 G-010）誤信「已排程」。後果：LR 缺口重新累積 43 筆、stranded 352→387 無人反制，靜默數週。
