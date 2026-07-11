@@ -366,7 +366,7 @@ class PaymentReportController extends Controller
         // the reported "金額顯示0應該顯示3000" came from an unset monthly fee. Block a NT$0
         // record for date-mode and point staff to set the fee first. Count-mode is untouched,
         // so legitimately-free (0-fee) tutoring courses still settle at 0.
-        if ($sc->ScheduleMode === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
+        if ($sc->getAttribute('ScheduleMode') === 'date' && (float) ($data['amount'] ?? 0) <= 0) {
             return response()->json([
                 'message' => '月結課程的繳費金額不可為 0；若月費顯示為 0，請先於課程管理設定正確月費金額後再登記。',
                 'code' => 'monthly_fee_unset',
