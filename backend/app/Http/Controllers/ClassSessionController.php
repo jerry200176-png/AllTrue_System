@@ -1070,7 +1070,18 @@ class ClassSessionController extends Controller
         $oldEndHm   = substr((string) $session->EndTime, 0, 5);
 
         if (!empty($data['start_time'])) {
-            $session->StartTime = substr($data['start_time'], 0, 5);
+            $newStartHm = substr($data['start_time'], 0, 5);
+            // #1161: block editing this session onto a slot already held by another
+            // non-cancelled session on the same date (would 1062 under the unique index).
+            if ($newStartHm !== $oldStartHm) {
+                app(ClassSessionMaterializationService::class)->assertSlotAvailable(
+                    (int) $session->StudentClassID,
+                    $session->SessionDate,
+                    $data['start_time'],
+                    (int) $session->id
+                );
+            }
+            $session->StartTime = $newStartHm;
         }
         if (!empty($data['end_time'])) {
             $session->EndTime = substr($data['end_time'], 0, 5);
@@ -2100,6 +2111,16 @@ class ClassSessionController extends Controller
                 $origStartTime,
                 $origEndTime
             );
+        } catch (\App\Exceptions\SlotOccupiedException $e) {
+            // #1161: moving the session onto an occupied slot is an expected domain
+            // outcome (the active-only unique index would 1062). Surface an
+            // actionable 422 rather than the generic 500 below.
+            $this->logSubstituteDiag('slot_occupied', [
+                'class_session_id' => $id,
+                'conflict_session_id' => $e->conflictSessionId,
+            ]);
+
+            return response()->json($e->toResponseArray(), 422);
         } catch (\Throwable $e) {
             $this->logSubstituteDiag('failed', [
                 'class_session_id' => $id,
@@ -2170,6 +2191,15 @@ class ClassSessionController extends Controller
             // - 將原日期的 rescheduled / scheduled schedule 列遷移至新日期與新時段
             // 後續既有代課邏輯便可以新日期為 canonical 寫入，不需額外調整。
             if ($hasReschedule) {
+                // #1161: reject a substitute+time move onto a slot already held by
+                // another non-cancelled session (would 1062 under uq_class_session_slot).
+                app(ClassSessionMaterializationService::class)->assertSlotAvailable(
+                    $courseId,
+                    $sessionDate,
+                    $startTime,
+                    (int) $session->id
+                );
+
                 $session->SessionDate = $sessionDate;
                 $session->StartTime = $startTime;
                 $session->EndTime = $endTime;

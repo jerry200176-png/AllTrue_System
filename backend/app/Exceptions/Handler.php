@@ -9,7 +9,10 @@ class Handler extends ExceptionHandler
 {
     protected $levels = [];
 
-    protected $dontReport = [];
+    protected $dontReport = [
+        // Expected domain outcome (slot already taken) — a clean 422, not an error.
+        SlotOccupiedException::class,
+    ];
 
     protected $dontFlash = [
         'current_password',
@@ -23,6 +26,14 @@ class Handler extends ExceptionHandler
             if (app()->bound('sentry')) {
                 app('sentry')->captureException($e);
             }
+        });
+
+        // Single source of truth for the slot-occupied response shape.
+        $this->renderable(function (SlotOccupiedException $e, $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json($e->toResponseArray(), 422);
+            }
+            return null;
         });
     }
 }

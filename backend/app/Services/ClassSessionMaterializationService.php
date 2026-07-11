@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -14,6 +15,67 @@ use InvalidArgumentException;
  */
 class ClassSessionMaterializationService
 {
+    /**
+     * Only 'cancelled' frees a slot: the active-only unique index's generated
+     * column is `CASE WHEN Status = 'cancelled' THEN NULL ELSE 1 END` (#957 D1),
+     * so the guard must mirror it exactly — anything else still occupies the slot.
+     */
+    private const SLOT_FREEING_STATUS = 'cancelled';
+
+    /**
+     * Return the non-cancelled ClassSession that already holds the target slot
+     * for this course, or null if the slot is free. This is the single source of
+     * truth for slot-occupancy checks (`uq_class_session_slot` is on
+     * StudentClassID + SessionDate + StartTime for non-cancelled rows).
+     *
+     * Matches on StartTime HH:MM, consistent with upsertSlot's idempotency key.
+     */
+    public function findActiveSlotConflict(
+        int $courseId,
+        mixed $sessionDate,
+        mixed $startTime,
+        ?int $excludeSessionId = null
+    ): ?ClassSession {
+        $date = $this->normalizeDate($sessionDate);
+        $startHm = substr($this->normalizeTimeForStorage($startTime), 0, 5);
+
+        if ($courseId <= 0 || $date === '' || $startHm === '') {
+            return null;
+        }
+
+        return ClassSession::query()
+            ->where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $date)
+            ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startHm])
+            ->when($excludeSessionId !== null, fn ($q) => $q->where('id', '!=', $excludeSessionId))
+            ->whereRaw('LOWER(Status) <> ?', [self::SLOT_FREEING_STATUS])
+            ->orderBy('id')
+            ->first();
+    }
+
+    /**
+     * Guard a single-row move/create: throw SlotOccupiedException (rendered as
+     * HTTP 422) when a genuine non-cancelled session already holds the target
+     * slot. Callers use this immediately before their `save()`/create so the
+     * director gets an actionable message instead of a raw 1062 → 500.
+     */
+    public function assertSlotAvailable(
+        int $courseId,
+        mixed $sessionDate,
+        mixed $startTime,
+        ?int $excludeSessionId = null
+    ): void {
+        $conflict = $this->findActiveSlotConflict($courseId, $sessionDate, $startTime, $excludeSessionId);
+        if ($conflict !== null) {
+            throw SlotOccupiedException::fromConflict(
+                $courseId,
+                $this->normalizeDate($sessionDate),
+                $this->normalizeTimeForStorage($startTime),
+                $conflict
+            );
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $slot
      * @return array{session: ClassSession, created: bool}
