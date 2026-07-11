@@ -246,6 +246,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/DEPLOYMENT.md` | 部署架構說明 |
 | `docs/DB_PERF.md` | DB 效能優化記錄 |
 | `docs/SECURITY.md` | 安全設計決策 |
+| `docs/POLICY_LARAVEL8_EOL_MIGRATION.md` | Laravel 8 EOL 遷移就緒評估與分階段計畫（#977；含實際漏洞曝險分析）|
 | `docs/RULE_DESIGN_SYSTEM.md` | **設計系統唯一真相來源**（淺色底 + navy 墨字 + 品牌橘黃主色、金額 tabular、不用 gradient mesh）；所有前端 UI 照此生成 |
 | `docs/GUIDE_UI_COPY.md` | UI 文案、空狀態、loading 規範 |
 | `docs/GUIDE_DESIGN_QA_SMOKE.md` | 前端設計 QA / smoke 驗收清單 |
