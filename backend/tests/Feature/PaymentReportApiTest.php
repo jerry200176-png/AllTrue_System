@@ -302,7 +302,7 @@ class PaymentReportApiTest extends TestCase
             'amount' => 0,
         ]);
 
-        $res->assertStatus(422)->assertJsonValidationErrors(['amount']);
+        $res->assertStatus(422)->assertJsonPath('code', 'monthly_fee_unset');
         // Nothing was recorded.
         $this->assertSame(0, \App\Models\PaymentReport::where('StudentClassID', $sc->ID)->count());
         $sc->refresh();
