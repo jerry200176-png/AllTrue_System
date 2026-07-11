@@ -488,7 +488,9 @@ class AuthController extends Controller
         // max is kilobytes (8192 ≈ 8MB). Many phone photos exceed legacy 2048 (2MB) and caused 422.
         $data = $request->validate(
             [
-                'avatar' => 'required|image|mimes:jpeg,jpg,png,webp|max:8192',
+                // RealImageContent re-checks the actual file content (finfo), defeating a
+                // disguised-script-as-image bypass on this public-served avatar (#977 / CVE-2025-27515).
+                'avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:8192', new \App\Rules\RealImageContent(['image/jpeg', 'image/png', 'image/webp'])],
             ],
             [
                 'avatar.required' => '請選擇圖片檔。',

@@ -19,7 +19,8 @@ class BugReportController extends Controller
             'client_info' => 'nullable|string|max:2000',
             'branch_id' => 'required|integer',
             'attachments' => "nullable|array|max:{$maxAtt}",
-            'attachments.*' => 'file|mimes:jpeg,jpg,png,gif,webp|max:5120',
+            // Content re-check (finfo) defeats a disguised-script-as-image bypass (#977 / CVE-2025-27515).
+            'attachments.*' => ['file', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120', new \App\Rules\RealImageContent()],
         ]);
 
         $userId = $this->resolveUserId($request);
