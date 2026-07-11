@@ -275,6 +275,66 @@ class PaymentReportApiTest extends TestCase
         $this->assertSame(8800, (int) $may->PaidAmount);
     }
 
+    /**
+     * #1096 (in-app #190): a date-mode course with an unset monthly fee (Charge 0) must not
+     * let a director record a NT$0 payment — the reported "金額顯示0應該顯示3000". A recorded
+     * payment must be positive; the guard forces staff to set the fee first.
+     */
+    public function test_director_record_rejects_zero_amount(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 0,
+            'Paid' => 0,
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 0,
+        ]);
+
+        $res->assertStatus(422)->assertJsonPath('code', 'monthly_fee_unset');
+        // Nothing was recorded.
+        $this->assertSame(0, \App\Models\PaymentReport::where('StudentClassID', $sc->ID)->count());
+        $sc->refresh();
+        $this->assertSame(0, (int) $sc->Paid);
+    }
+
+    public function test_director_record_accepts_positive_amount_for_date_mode(): void
+    {
+        $token = $this->createDirectorToken([1]);
+        $student = $this->createStudent(1);
+        $sc = $this->createCountModeClass($student->id, [
+            'ScheduleMode' => 'date',
+            'SessionCount' => 0,
+            'RemainingSessions' => 0,
+            'Charge' => 3000,
+            'Paid' => 0,
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/payment-reports/director-record', [
+            'student_class_id' => $sc->ID,
+            'payment_date' => '2026-04-28',
+            'payment_method' => 'cash',
+            'amount' => 3000,
+        ])->assertOk();
+
+        $sc->refresh();
+        $this->assertSame(1, (int) $sc->Paid);
+    }
+
     public function test_director_record_marks_count_package_and_all_members_paid(): void
     {
         Carbon::setTestNow('2026-05-16 12:00:00');
