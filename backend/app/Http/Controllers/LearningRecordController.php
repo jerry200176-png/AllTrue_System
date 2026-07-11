@@ -1839,26 +1839,21 @@ class LearningRecordController extends Controller
                 (int) $session->id
             );
 
-            // #957/#1118: the active-only unique slot index rejects a move onto an
-            // already-occupied live slot with a raw 1062 (PHP-LARAVEL-1Z). Benign
-            // auto-materialized placeholders were just cancelled above; if a GENUINE
-            // non-cancelled session still holds the target slot, return a clear 422
-            // instead of surfacing a 500 to the director.
-            $targetStartHm = substr((string) $this->normalizeProjectionTime($startTime ?: (string) $session->StartTime), 0, 5);
-            if ($targetStartHm !== '') {
-                $slotTaken = ClassSession::query()
-                    ->where('StudentClassID', $classId)
-                    ->whereDate('SessionDate', $newDate)
-                    ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$targetStartHm])
-                    ->where('id', '!=', $session->id)
-                    ->whereRaw("LOWER(Status) NOT IN ('cancelled', 'voided')")
-                    ->exists();
-                if ($slotTaken) {
-                    return response()->json([
-                        'message' => '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
-                        'code' => 'slot_occupied',
-                    ], 422);
-                }
+            // #957/#1118 (unified in #1161): reject a move onto a slot already held
+            // by a genuine non-cancelled session with a clear 422 instead of a raw
+            // 1062 → 500. Benign auto-materialized placeholders were just cancelled
+            // above. Occupancy detection is centralised in the materialization service.
+            $slotConflict = app(ClassSessionMaterializationService::class)->findActiveSlotConflict(
+                $classId,
+                $newDate,
+                $startTime ?: (string) $session->StartTime,
+                (int) $session->id
+            );
+            if ($slotConflict) {
+                return response()->json([
+                    'message' => '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
+                    'code' => 'slot_occupied',
+                ], 422);
             }
 
             $session->SessionDate = $newDate;
