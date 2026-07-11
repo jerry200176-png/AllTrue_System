@@ -120,6 +120,33 @@
           </div>
         </section>
 
+        <section v-if="directorPriorityRisks.length" class="priority-risks" aria-labelledby="priority-risks-title">
+          <header class="priority-risks__head">
+            <div>
+              <h3 id="priority-risks-title">今日優先處理</h3>
+              <p>依逾期、收款與今日課務排序，先處理最可能影響營運的三項。</p>
+            </div>
+            <span class="priority-risks__count">優先 {{ directorPriorityRisks.length }} 項</span>
+          </header>
+          <div class="priority-risks__grid">
+            <article
+              v-for="risk in directorPriorityRisks"
+              :key="risk.key"
+              class="priority-risk"
+              :class="`priority-risk--${risk.tone}`"
+            >
+              <span class="material-symbols-outlined priority-risk__icon">{{ risk.icon }}</span>
+              <div class="priority-risk__body">
+                <strong>{{ risk.title }}</strong>
+                <p>{{ risk.reason }}</p>
+                <button type="button" class="priority-risk__action" @click="handleDirectorPriorityRisk(risk)">
+                  {{ risk.actionLabel }}
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
         <!-- ===== Import Result Banner ===== -->
         <div v-if="importState === 'done' || importState === 'error'"
              class="import-banner" :class="{ 'import-banner--err': importState === 'error' }">
@@ -593,6 +620,7 @@ import {
   isUserEngagementRankDisplayEnabled,
   USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
 } from '../lib/userEngagementDisplay';
+import { buildDirectorPriorityRisks } from '../lib/directorPriorityRisks';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -878,6 +906,50 @@ const workflowDailySummary = computed(() => ({
   done_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.done_total || 0),
   breached_total: Number(adoptionWeeklyMetrics.value?.workflow_daily?.breached_total || 0),
 }));
+
+const unpaidPaymentCount = computed(() =>
+  lowBalanceStudents.value.filter((row) => row.alert_type === 'unpaid').length
+);
+
+const renewalAttentionCount = computed(() =>
+  lowBalanceStudents.value.filter((row) => row.alert_type !== 'unpaid').length
+);
+
+const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
+  breachedTasks: workflowDailySummary.value.breached_total,
+  unpaidPayments: unpaidPaymentCount.value,
+  pendingAttendance: pendingAttendanceCount.value,
+  exceptionWorkflows: exceptionWorkflowCount.value,
+  pendingEvaluations: pendingEvaluations.value.length,
+  unreadFeedback: props.unreadFeedbackCount,
+  renewalAttention: renewalAttentionCount.value,
+}));
+
+function handleDirectorPriorityRisk(risk) {
+  if (risk.target === 'director-tasks') {
+    scrollTo('director-task-tracker');
+    return;
+  }
+  if (risk.target === 'tuition') {
+    goToTuitionCollect();
+    return;
+  }
+  if (risk.target === 'attendance') {
+    goToAttendance();
+    return;
+  }
+  if (risk.target === 'exceptions') {
+    scrollTo('exception-workflows');
+    return;
+  }
+  if (risk.target === 'evaluations') {
+    scrollTo('evals');
+    return;
+  }
+  if (risk.target === 'feedback') {
+    emit('navigate', { target: 'learning', focus: 'feedback' });
+  }
+}
 
 const openRateDeltaLabel = (role) => {
   const delta = role === 'teacher'
@@ -1790,6 +1862,98 @@ onBeforeUnmount(() => {
 .ac--import .ac__cta:hover { background: var(--ds-success-wash); }
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* ===== Priority risks ===== */
+.priority-risks {
+  padding: 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 16px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+}
+.priority-risks__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.priority-risks__head h3 {
+  margin: 0 0 4px;
+  color: var(--ds-ink);
+  font-size: 16px;
+}
+.priority-risks__head p {
+  margin: 0;
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+}
+.priority-risks__count {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ds-canvas-soft);
+  color: var(--ds-ink-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.priority-risks__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.priority-risk {
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ds-hairline);
+  border-left: 3px solid var(--ds-ink-mute);
+  border-radius: 12px;
+  background: var(--ds-canvas-soft);
+}
+.priority-risk--danger { border-left-color: var(--ds-danger); }
+.priority-risk--warning { border-left-color: var(--ds-warning); }
+.priority-risk--info { border-left-color: var(--ds-info); }
+.priority-risk__icon {
+  flex: 0 0 auto;
+  color: var(--ds-ink-mute);
+  font-size: 22px;
+}
+.priority-risk--danger .priority-risk__icon { color: var(--ds-danger); }
+.priority-risk--warning .priority-risk__icon { color: var(--ds-warning); }
+.priority-risk--info .priority-risk__icon { color: var(--ds-info); }
+.priority-risk__body {
+  min-width: 0;
+}
+.priority-risk__body strong {
+  display: block;
+  color: var(--ds-ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.priority-risk__body p {
+  margin: 4px 0 10px;
+  color: var(--ds-ink-mute);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.priority-risk__action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ds-primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.priority-risk__action:hover { text-decoration: underline; }
+.priority-risk__action:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--ds-primary);
+  outline-offset: 3px;
+}
+
 /* ===== Import Banner ===== */
 .import-banner {
   background: var(--ds-success-wash);
@@ -2519,6 +2683,7 @@ onBeforeUnmount(() => {
     width: 100%;
   }
   .work-grid { grid-template-columns: 1fr; }
+  .priority-risks__grid { grid-template-columns: 1fr; }
   .progress-board { grid-template-columns: repeat(2, 1fr); }
   .work-toolbar {
     flex-direction: column;
