@@ -2886,7 +2886,7 @@ class ClassSessionController extends Controller
         // column. Grouping directly on COALESCE(sub_sched.teacher_id, sc.TeacherID) with a
         // derived-table column trips MySQL ONLY_FULL_GROUP_BY (error 1055); this two-step
         // structure yields identical per-teacher totals without disabling the mode.
-        $rows = DB::query()->fromSub($perSession, 't')
+        $rows = DB::table($perSession, 't')
             ->select([
                 DB::raw('t.teacher_id AS teacher_id'),
                 DB::raw('COUNT(*) AS session_total'),
