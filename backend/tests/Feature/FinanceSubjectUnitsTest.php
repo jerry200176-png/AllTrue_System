@@ -9,6 +9,7 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
 use App\Models\UserCampus;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -16,6 +17,89 @@ use Tests\TestCase;
 class FinanceSubjectUnitsTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_subject_units_defaults_missing_range_to_current_taipei_month(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00', 'Asia/Taipei'));
+        try {
+            $director = $this->createDirector('director-subject-units-range@example.com', [1]);
+            $teacherId = $this->createTeacher(1, 'teacher-subject-units-range@example.com', '月份邊界老師');
+            $student = $this->createStudent(1, '月份邊界學生');
+            $regular = $this->createSubjectUnitCourse($student, $teacherId, 'one_on_one');
+            $tutoring = $this->createSubjectUnitCourse($student, $teacherId, 'tutoring');
+
+            foreach (['2026-06-10', '2026-07-10'] as $date) {
+                $regularSession = ClassSession::create([
+                    'StudentClassID' => $regular->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '16:00:00',
+                    'EndTime' => '18:00:00',
+                    'Status' => 'completed',
+                    'Note' => '',
+                ]);
+                LearningRecord::create([
+                    'StudentClassID' => $regular->ID,
+                    'ClassSessionID' => $regularSession->id,
+                    'TeacherID' => $teacherId,
+                    'Content' => '月份範圍評量',
+                    'Subject' => 'Math',
+                    'Status' => 'approved',
+                    'ApprovedBy' => $director['user_id'],
+                    'ApprovedAt' => now(),
+                    'SessionDate' => $date,
+                    'StartTime' => '16:00:00',
+                    'EndTime' => '18:00:00',
+                    'SessionDeducted' => true,
+                ]);
+                ClassSession::create([
+                    'StudentClassID' => $tutoring->ID,
+                    'SessionDate' => $date,
+                    'StartTime' => '18:00:00',
+                    'EndTime' => '20:00:00',
+                    'Status' => 'attended',
+                    'Note' => '',
+                ]);
+            }
+
+            $teachers = $this->withHeaders([
+                'Authorization' => "Bearer {$director['token']}",
+                'Accept' => 'application/json',
+            ])->getJson('/api/v1/finance/subject-units?branch_id=1')
+                ->assertOk()
+                ->json('teachers');
+
+            $row = collect($teachers)->firstWhere('teacher_id', $teacherId);
+            $this->assertNotNull($row);
+            $this->assertSame(2.0, (float) $row['one_on_one_hours']);
+            $this->assertSame(2.0, (float) $row['tutoring_hours']);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function test_subject_units_rejects_partial_or_reversed_explicit_range(): void
+    {
+        $director = $this->createDirector('director-subject-units-invalid-range@example.com', [1]);
+        $headers = [
+            'Authorization' => "Bearer {$director['token']}",
+            'Accept' => 'application/json',
+        ];
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/finance/subject-units?branch_id=1&start=2026-07-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('end');
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/finance/subject-units?branch_id=1&end=2026-07-31')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('start');
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/finance/subject-units?branch_id=1&start=2026-07-31&end=2026-07-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('end');
+    }
 
     public function test_subject_units_follow_learning_record_teacher_after_teacher_change(): void
     {
@@ -444,6 +528,35 @@ class FinanceSubjectUnitsTest extends TestCase
             'enable' => 1,
             'MDT' => now(),
             'Notify_Token' => '',
+        ]);
+    }
+
+    private function createSubjectUnitCourse(Student $student, int $teacherId, string $classType): StudentClass
+    {
+        return StudentClass::create([
+            'StudentID' => $student->id,
+            'TeacherID' => $teacherId,
+            'GradeID' => 7,
+            'SubjectID' => 1,
+            'ClassType' => $classType,
+            'by1' => 1,
+            'ScheduleMode' => 'count',
+            'SessionCount' => 8,
+            'RemainingSessions' => 6,
+            'UsedSessions' => 2,
+            'Rate' => 500,
+            'Charge' => 4000,
+            'Pay' => 0,
+            'Paid' => 0,
+            'Period' => 4,
+            'SessionDuration' => 120,
+            'TotalHours' => 16,
+            'StartDate' => now()->subMonth()->toDateString(),
+            'EndDate' => now()->addMonth()->toDateString(),
+            'week' => 2,
+            'time' => '16:00:00',
+            'Stop' => 0,
+            'MDate' => now(),
         ]);
     }
 }
