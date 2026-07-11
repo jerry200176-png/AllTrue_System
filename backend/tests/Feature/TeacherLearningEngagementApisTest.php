@@ -369,4 +369,126 @@ class TeacherLearningEngagementApisTest extends TestCase
 
         Carbon::setTestNow();
     }
+
+    private function insertSubstituteSchedule(int $scId, int $studentId, int $subTeacherId, int $branchId, string $date, string $startHm): void
+    {
+        DB::table('schedules')->insert([
+            'student_id'           => $studentId,
+            'teacher_id'           => $subTeacherId,
+            'subject'              => 'Math',
+            'day_of_week'          => Carbon::parse($date)->dayOfWeekIso,
+            'start_time'           => $startHm . ':00',
+            'end_time'             => '23:59:00',
+            'class_type'           => 'one_on_one',
+            'status'               => 'scheduled',
+            'type'                 => 'substitute',
+            'deduction'            => 1,
+            'branch_id'            => $branchId,
+            'schedule_date'        => $date,
+            'student_course_id'    => $scId,
+            'original_schedule_id' => 0,
+        ]);
+    }
+
+    /**
+     * #1185 golden test: the substitute-teacher attribution in $missingSessionBase must be
+     * preserved when the correlated MAX(sub2.id) subquery becomes a derived-table join.
+     */
+    public function test_pending_summary_attributes_missing_session_to_substitute_teacher(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-10 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            [$tA] = $this->teacherWithToken($campus->id);
+            [$tB, $tokenB] = $this->teacherWithToken($campus->id);
+            $tokenA = $this->issueToken($tA);
+
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $scA = $this->insertCourse($student->id, $tA->id);
+
+            $today = Carbon::today()->toDateString();
+            DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scA,
+                'SessionDate'    => $today,
+                'StartTime'      => '09:00',
+                'EndTime'        => '10:00',
+                'Status'         => 'scheduled',
+            ]);
+            $this->insertSubstituteSchedule($scA, $student->id, $tB->id, $campus->id, $today, '09:00');
+
+            // Substitute (tB) owns the missing session.
+            $this->getJson("/api/v1/me/learning-pending-summary?branch_id={$campus->id}", $this->bearer($tokenB))
+                ->assertOk()
+                ->assertJsonPath('today_sessions_without_record', 1);
+
+            // Course owner (tA) does not — it was substituted away.
+            $this->getJson("/api/v1/me/learning-pending-summary?branch_id={$campus->id}", $this->bearer($tokenA))
+                ->assertOk()
+                ->assertJsonPath('today_sessions_without_record', 0);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * #1185 golden test: substitute attribution in buildTeacherSessionProgressRowsQuery.
+     */
+    public function test_progress_summary_attributes_session_to_substitute_teacher(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-10 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            [$tA] = $this->teacherWithToken($campus->id);
+            [$tB, $tokenB] = $this->teacherWithToken($campus->id);
+            $tokenA = $this->issueToken($tA);
+
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $scA = $this->insertCourse($student->id, $tA->id);
+
+            $dAttend = '2026-05-09';
+            $cs = DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scA,
+                'SessionDate'    => $dAttend,
+                'StartTime'      => '10:00',
+                'EndTime'        => '11:00',
+                'Status'         => 'attended',
+            ]);
+            $this->insertSubstituteSchedule($scA, $student->id, $tB->id, $campus->id, $dAttend, '10:00');
+            DB::table('LearningRecord')->insert([
+                'StudentID'      => $student->id,
+                'StudentClassID' => $scA,
+                'ClassSessionID' => $cs,
+                'TeacherID'      => $tB->id,
+                'Subject'        => 'Math',
+                'SessionDate'    => $dAttend,
+                'StartTime'      => '10:00',
+                'EndTime'        => '11:00',
+                'Content'        => '代課',
+                'Status'         => 'pending',
+                'Progress'       => '已填',
+                'created_at'     => now(),
+                'updated_at'     => now(),
+            ]);
+
+            $this->getJson("/api/v1/me/learning-progress-summary?branch_id={$campus->id}&days=7", $this->bearer($tokenB))
+                ->assertOk()
+                ->assertJsonPath('summary.expected_sessions', 1)
+                ->assertJsonPath('summary.completed_sessions', 1);
+
+            $this->getJson("/api/v1/me/learning-progress-summary?branch_id={$campus->id}&days=7", $this->bearer($tokenA))
+                ->assertOk()
+                ->assertJsonPath('summary.expected_sessions', 0);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    private function issueToken(User $u): string
+    {
+        $tok = bin2hex(random_bytes(16));
+        AuthToken::create(['user_id' => $u->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
+        return $tok;
+    }
 }
