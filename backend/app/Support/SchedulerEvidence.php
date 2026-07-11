@@ -157,8 +157,43 @@ final class SchedulerEvidence
     /** @return array<string,mixed>|null */
     private static function summarizeOutput(string $job, string $output): ?array
     {
-        if (in_array($job, ['sessions-generate-forward', 'ops-business-digest'], true)) {
-            return ['sha256' => hash('sha256', $output), 'bytes' => strlen($output)];
+        if ($job === 'sessions-generate-forward' && preg_match(
+            '/courses_planned=(\d+) courses_skipped=(\d+) slots_planned=(\d+) sessions_created=(\d+)/',
+            $output,
+            $matches
+        )) {
+            return [
+                'courses_planned' => (int) $matches[1],
+                'courses_skipped' => (int) $matches[2],
+                'slots_planned' => (int) $matches[3],
+                'sessions_created' => (int) $matches[4],
+                'sha256' => hash('sha256', $output),
+                'bytes' => strlen($output),
+            ];
+        }
+
+        if ($job === 'ops-business-digest') {
+            $metrics = [];
+            foreach ([
+                'revenue_at_risk_sessions',
+                'revenue_at_risk_amount',
+                'unpaid_active_courses',
+                'retention_risk_students',
+                'dq_attended_no_LR',
+                'dq_cross_sc_dup',
+                'dq_remaining_divergent',
+                'coverage_next_7d',
+            ] as $metric) {
+                if (!preg_match('/^\|\s*' . preg_quote($metric, '/') . '\s*\|\s*(-?\d+(?:\.\d+)?)\s*\|/m', $output, $matches)) {
+                    return null;
+                }
+                $metrics[$metric] = str_contains($matches[1], '.') ? (float) $matches[1] : (int) $matches[1];
+            }
+
+            return $metrics + [
+                'sha256' => hash('sha256', $output),
+                'bytes' => strlen($output),
+            ];
         }
 
         if ($job === 'reconcile-nightly' && preg_match('/Checked:\s*(\d+) courses \| Mismatches:\s*(\d+)/', $output, $matches)) {
