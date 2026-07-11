@@ -196,6 +196,16 @@ class FinanceController extends Controller
      */
     public function subjectUnits(Request $request)
     {
+        $range = $request->validate([
+            'start' => 'nullable|required_with:end|date_format:Y-m-d',
+            'end' => 'nullable|required_with:start|date_format:Y-m-d|after_or_equal:start',
+        ]);
+        if (!isset($range['start'], $range['end'])) {
+            $taipeiNow = \Carbon\Carbon::now('Asia/Taipei');
+            $range['start'] = $taipeiNow->copy()->startOfMonth()->toDateString();
+            $range['end'] = $taipeiNow->copy()->endOfMonth()->toDateString();
+        }
+
         $campusIds  = $this->getCampusIds($request);
         $branchFiltered = !empty($campusIds); // whether a branch scope is active
 
@@ -236,12 +246,7 @@ class FinanceController extends Controller
         if (!empty($classIds)) {
             $query->whereIn('StudentClassID', $classIds);
         }
-        if ($request->filled('start')) {
-            $query->where('SessionDate', '>=', $request->input('start'));
-        }
-        if ($request->filled('end')) {
-            $query->where('SessionDate', '<=', $request->input('end'));
-        }
+        $query->whereBetween('SessionDate', [$range['start'], $range['end']]);
         $records = $query->get();
 
         $teacherNames = TeacherProfileDirectory::names();
@@ -296,12 +301,7 @@ class FinanceController extends Controller
         if ($tutoringClasses->isNotEmpty()) {
             $tutoringSessionQuery = ClassSession::whereIn('StudentClassID', $tutoringClasses->keys())
                 ->whereIn('Status', ['attended', 'completed']);
-            if ($request->filled('start')) {
-                $tutoringSessionQuery->where('SessionDate', '>=', $request->input('start'));
-            }
-            if ($request->filled('end')) {
-                $tutoringSessionQuery->where('SessionDate', '<=', $request->input('end'));
-            }
+            $tutoringSessionQuery->whereBetween('SessionDate', [$range['start'], $range['end']]);
 
             foreach ($tutoringSessionQuery->get() as $cs) {
                 $sc  = $tutoringClasses->get($cs->StudentClassID);
