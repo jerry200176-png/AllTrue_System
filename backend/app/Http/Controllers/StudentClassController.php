@@ -4280,7 +4280,13 @@ class StudentClassController extends Controller
         $snapped = $this->snapDateToContractWeekday($anchor, $slotsByWeekday);
         $proposed = $this->buildSessionsForCount(0, $snapped, $k, $slots, $durationMinutes);
 
-        $updated = 0;
+        // Collect only the rows whose slot actually changes.
+        $reflowIds = [];
+        foreach ($unlockedSorted as $s) {
+            $reflowIds[(int) $s->id] = true;
+        }
+
+        $moves = [];
         foreach ($unlockedSorted as $i => $session) {
             if (!isset($proposed[$i])) {
                 break;
@@ -4294,48 +4300,116 @@ class StudentClassController extends Controller
             }
             $oldDate = $this->normalizeDateString($session->SessionDate ?? null);
             if (
-                $oldDate !== $newDate
-                || (string) $session->StartTime !== $newStart
-                || (string) $session->EndTime !== $newEnd
+                $oldDate === $newDate
+                && (string) $session->StartTime === $newStart
+                && (string) $session->EndTime === $newEnd
             ) {
-                $courseId = (int) $session->StudentClassID;
-                $oldStartShort = $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null;
+                continue; // already on the contract slot
+            }
+            $moves[] = [
+                'session'       => $session,
+                'oldDate'       => $oldDate,
+                'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+                'newDate'       => $newDate,
+                'newStart'      => $newStart,
+                'newEnd'        => $newEnd,
+            ];
+        }
 
-                $session->SessionDate = $newDate;
-                $session->StartTime = $newStart;
-                $session->EndTime = $newEnd;
-                $session->save();
-                LearningRecord::where('ClassSessionID', (int) $session->id)
+        if (empty($moves)) {
+            return 0;
+        }
+
+        $courseId = (int) $unlockedSorted->first()->StudentClassID;
+        $slotService = app(ClassSessionMaterializationService::class);
+
+        // #1163: a bulk reflow remaps unlocked[i] -> proposed[i]; a mixed/swap
+        // permutation cannot move in place (moving one row onto a not-yet-moved
+        // sibling's slot 1062s under uq_class_session_slot). Guard external
+        // occupants up front, then move in two phases (park to sentinel slots,
+        // then place) inside a transaction so nothing is stranded on failure.
+        //
+        // External-occupant pre-check (before any write): a target held by a
+        // non-reflow live session (e.g. a locked/attended row) cannot be reflowed
+        // onto — surface a clean 422 instead of a raw 1062.
+        foreach ($moves as $m) {
+            $conflict = $slotService->findActiveSlotConflict(
+                $courseId,
+                $m['newDate'],
+                $m['newStart'],
+                (int) $m['session']->id
+            );
+            if ($conflict !== null && !isset($reflowIds[(int) $conflict->getKey()])) {
+                throw \App\Exceptions\SlotOccupiedException::fromConflict(
+                    $courseId,
+                    $m['newDate'],
+                    $m['newStart'],
+                    $conflict
+                );
+            }
+        }
+
+        return DB::transaction(function () use ($moves) {
+            // Sentinel dates beyond every real/target date so parked rows collide
+            // with nothing (distinct date per row keeps them unique among each other).
+            $sentinelBase = Carbon::parse('2100-01-01');
+            foreach ($moves as $m) {
+                foreach ([$m['oldDate'], $m['newDate']] as $d) {
+                    if ($d) {
+                        $c = Carbon::parse($d);
+                        if ($c->greaterThan($sentinelBase)) {
+                            $sentinelBase = $c->copy();
+                        }
+                    }
+                }
+            }
+            $sentinelBase = $sentinelBase->addYear();
+
+            // Phase 1 — park: vacate every original slot.
+            foreach ($moves as $idx => $m) {
+                $s = $m['session'];
+                $s->SessionDate = $sentinelBase->copy()->addDays($idx)->toDateString();
+                $s->save();
+            }
+
+            // Phase 2 — place: move onto the real contract slot and sync side-effects.
+            $updated = 0;
+            foreach ($moves as $m) {
+                $s = $m['session'];
+                $s->SessionDate = $m['newDate'];
+                $s->StartTime = $m['newStart'];
+                $s->EndTime = $m['newEnd'];
+                $s->save();
+
+                LearningRecord::where('ClassSessionID', (int) $s->id)
                     ->whereNull('VoidedAt')
                     ->update([
-                        'SessionDate' => $newDate,
-                        'StartTime' => $newStart,
-                        'EndTime' => $newEnd,
+                        'SessionDate' => $m['newDate'],
+                        'StartTime' => $m['newStart'],
+                        'EndTime' => $m['newEnd'],
                     ]);
 
-                // Keep schedules (substitute/reschedule records) in sync with the new date/time
-                // so the class-sessions index join still matches correctly.
-                if ($oldDate !== null && $oldDate !== $newDate) {
-                    $schedQuery = Schedule::where('student_course_id', $courseId)
-                        ->whereDate('schedule_date', $oldDate);
-                    if ($oldStartShort) {
-                        $schedQuery->where('start_time', $oldStartShort);
+                // Keep schedules (substitute/reschedule records) in sync with the new
+                // date/time so the class-sessions index join still matches correctly.
+                if ($m['oldDate'] !== null && $m['oldDate'] !== $m['newDate']) {
+                    $schedQuery = Schedule::where('student_course_id', (int) $s->StudentClassID)
+                        ->whereDate('schedule_date', $m['oldDate']);
+                    if ($m['oldStartShort']) {
+                        $schedQuery->where('start_time', $m['oldStartShort']);
                     }
-                    $newStartShort = substr($newStart, 0, 5);
-                    $newEndShort = substr($newEnd, 0, 5);
                     $schedQuery->update([
-                        'schedule_date' => $newDate,
-                        'start_time' => $newStartShort,
-                        'end_time' => $newEndShort,
-                        'day_of_week' => (int) Carbon::parse($newDate)->dayOfWeekIso,
+                        'schedule_date' => $m['newDate'],
+                        'start_time' => substr($m['newStart'], 0, 5),
+                        'end_time' => substr($m['newEnd'], 0, 5),
+                        'day_of_week' => (int) Carbon::parse($m['newDate'])->dayOfWeekIso,
                     ]);
                 }
 
                 $updated++;
             }
-        }
 
-        return $updated;
+            return $updated;
+        });
     }
 
     /**
