@@ -1,11 +1,10 @@
 <?php
 
-namespace Tests\Feature;
+namespace Tests\Unit;
 
-use App\Models\ClassSession;
 use App\Services\AttendanceEffectsService;
 use App\Support\AttendanceStatus;
-use Tests\TestCase;
+use PHPUnit\Framework\TestCase;
 
 /**
  * #765 出缺席狀態語意化 — 驗證 registry 與競品表一致，且扣堂/計薪集合正確。
@@ -79,13 +78,11 @@ class AttendanceStatusSemanticsTest extends TestCase
         $this->assertSame('leave', AttendanceEffectsService::sessionStatusFromAttendanceStatus('excused'));
     }
 
-    /** @test applySessionStatus 寫回正確 ClassSession.Status（值班→duty，不在扣堂集） */
-    public function apply_duty_sets_session_status_duty(): void
+    /** @test 值班映射為 duty，且只能計薪、不可扣堂。 */
+    public function duty_is_payable_without_being_deductible(): void
     {
-        $session = new ClassSession();
-        $session->Status = 'scheduled';
-        // 無 DB：以反射驗證映射結果（applySessionStatus 會 save，故只驗映射函式）。
         $this->assertSame('duty', AttendanceEffectsService::sessionStatusFromAttendanceStatus('duty'));
-        $this->assertNotContains('duty', AttendanceStatus::deductibleCodes());
+        $this->assertTrue(AttendanceStatus::isPayable('duty'));
+        $this->assertFalse(AttendanceStatus::isDeductible('duty'));
     }
 }
