@@ -254,6 +254,15 @@ class SubstituteController extends Controller
 
                 // PRD f0cce4d5 FR-008：還原 ClassSession 時間欄位
                 if ($shouldRestoreTime) {
+                    // #1161: the original slot may have been reused since the substitute
+                    // moved this session away; don't revert onto an occupied active slot
+                    // (would 1062 under uq_class_session_slot). Surface a clear 422.
+                    app(\App\Services\ClassSessionMaterializationService::class)->assertSlotAvailable(
+                        (int) $session->StudentClassID,
+                        $origDate,
+                        $origStart,
+                        (int) $session->id
+                    );
                     $session->SessionDate = $origDate;
                     $session->StartTime = $origStart;
                     $session->EndTime = $origEnd;
@@ -280,6 +289,9 @@ class SubstituteController extends Controller
                     'voided_notification_id' => (int) $lastNotification->id,
                 ];
             });
+        } catch (\App\Exceptions\SlotOccupiedException $e) {
+            // #1161: reverting onto an occupied slot is an expected domain outcome.
+            return response()->json($e->toResponseArray(), 422);
         } catch (\Throwable $e) {
             Log::error('[substitute_undo] failed', [
                 'class_session_id' => $classSessionId,
