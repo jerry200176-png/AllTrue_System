@@ -9,20 +9,18 @@
 # 不計入的情況：
 #   - styles.css 中的 token 定義（:root { --ds-* }）
 #   - var(--ds-*)、transparent、inherit
-#   - 緊跟在 // 或 /* 後面的色票（純註解）
+#   - Vue HTML、JS 單行／區塊、CSS 區塊註解中的色票或 issue reference
 
 set -euo pipefail
 
-FRONTEND_DIR="$(cd "$(dirname "$0")/.." && pwd)/frontend/src"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FRONTEND_DIR="$ROOT/frontend/src"
 GENERATED_AT="$(date '+%Y-%m-%d')"
 
 # 統計單一檔案的 raw hex 數
 count_file() {
   local file="$1"
-  # 只計 #hex（3, 6, 8 位），排除長度 1-2 的 CSS id 選擇器
-  local raw
-  raw=$(grep -oiE '#[0-9a-fA-F]{3,8}\b' "$file" 2>/dev/null || true)
-  echo "$raw" | grep -cE '^#[0-9a-fA-F]{3,8}$' || true
+  node "$ROOT/scripts/design-hex-counter.mjs" "$file"
 }
 
 pages_total=0

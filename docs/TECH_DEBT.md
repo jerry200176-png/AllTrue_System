@@ -393,15 +393,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Done（2026-06-29，PR #1056） |
 | 優先級 | P2 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [SEC] 家長回饋雙向回覆（System A）開發中順手審查 |
 | 影響模組 | `ParentFeedbackController::{forTeacher,markReadByTeacher,reply,replies}`、`routes/api.php` |
-| 描述 | System B 的 `parent-feedback/{for-teacher,read,reply,replies}` 原本在任何 `role`/`require_campus` 群組外（等同未強制認證），本次已收斂進 `role:teacher,director,super_admin`+`require_campus`，移除未認證暴露。但 `{id}/read`、`{id}/reply`、`{id}/replies` 仍只做群組層級 role+campus 檢查，未驗證該筆 feedback 是否屬於呼叫者的分校／老師（per-row ownership）。目前這四個端點前端 0 引用，實際風險低。|
-| 建議做法 | 在 controller 內鏡像 System A `authorizeStaffFeedback` 的 per-row 檢查（teacher 限自己 teacher_id、director 限 feedback 的 campus_id ∈ auth_campus_ids）；或評估 System A/B 合併後直接下架 System B 未用路由。|
+| 描述 | System B 的 `parent-feedback/{for-teacher,read,reply,replies}` 已收斂進 `role:teacher,director,super_admin`+`require_campus`；PR #1056 再為 `{id}/read`、`{id}/reply`、`{id}/replies` 補上 feedback row 級 ownership。|
+| 建議做法 | 已採 controller `authorizeStaffParentFeedback`：teacher 必須有該學生的 active `StudentClass`，director 的 `auth_campus_ids` 必須包含 feedback `campus_id`，super admin 保留全域權限。System A/B 是否合併仍由 TD-057 追蹤。|
 | 清償成本估計 | 低（< 2hr，含測試）|
 | 不做的代價 | 若日後接上 System B 前端，跨校員工可能讀／回他校意見箱；與 System A 隔離標準不一致 |
+| 清償紀錄 | PR #1056 / commit `a28e439`；`ParentFeedbackTest` 覆蓋非授課老師 read 403 與跨校主任 replies 403，required checks 全綠。|
 
 ---
 

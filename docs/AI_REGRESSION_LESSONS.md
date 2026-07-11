@@ -751,7 +751,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 一輪治理 ~25 個前端檔 + 多功能 PR 時反覆踩到，記錄防再犯：
 
-- **design hex guard 會把註解裡的 `#NNN` issue 引用當成色票**：3–4 位十六進制的 issue 編號（如 `// #765`、`#702`、`#708`）會被 `scripts/check-no-raw-hex.sh` 計為新增 raw hex。在**已治理到 0 hex 的檔案**新增註解時，一律寫「issue 765」不要寫「#765」。
+- **design hex guard 必須只計可執行內容，不計註解**：舊 detector 曾把註解裡 3–4 位十六進制 issue 編號（如 `// #765`）當成色票，造成無關 CI failure（#1155）。`scripts/design-hex-counter.mjs` 現在先以 comment-aware scanner 排除 Vue HTML、JS/CSS 註解，再計 CSS 合法的 3/4/6/8 位 hex；測試必須同時保證註解 `#NNN` 不計數、真實 `#ff0000` 與全數字色票 `#123456` 仍被攔截。
 - **codemod 必須限定區域**：自動把 hex→`var(--ds-*)` 的 codemod**只能作用於 `<style>` 區塊 + inline `style=""`/`:style` 綁定**；絕不可全檔替換，否則會改到 (a) 註解／正文的 `#NNN` issue 引用、(b) JS 功能色板（avatar/teacher/軍階識別色）、(c) chart canvas 色（canvas 不吃 CSS var）。功能性多態識別色（如 `TEACHER_AVATAR_PALETTE`、`RocRankBadge` 軍階色）刻意保留 raw hex，屬 TD-064 例外。
 - **branch 命名**：presubmit CHECK 1 只允許 `feat|fix|hotfix|chore|exp` + `td-batch<N>-` + `dependabot/`。**`docs/`、`ci/` 都會被擋** → 文件/CI 改動用 `chore/`。
 - **PR size**：presubmit CHECK 2 硬上限 **700 行**（含增刪，排除 lock/data）。3 頁合一的治理 PR 容易爆（曾 868 行被擋）→ 一頁/數個小元件一 PR。
@@ -770,7 +770,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - 新增任何需登入的端點後，**必看它前後的 `});` 與縮排**，確認確實在預期的 `role`/`require_campus` 群組內；員工端最少 `role:...` + `require_campus`，家長端 parent token + ownership + `throttle`。
   - 寫權限/越權測試（403 跨師、403 跨校）才算完成；不要只測 happy path。
   - Code review 對 `routes/api.php` 的 diff 必須逐條確認所屬群組，不可只看路由字串對不對。
-- **本次處置**：四個 System B 端點收斂進 `role:teacher,director,super_admin`+`require_campus`+`require_password_change`；per-row campus ownership 仍待補 → `TECH_DEBT` TD-056。新做的 System A 回覆端點一律放在既有 `role:teacher,director,super_admin`+`require_campus` 群組並做 per-row ownership（`authorizeStaffFeedback`）。
+- **本次處置**：四個 System B 端點收斂進 `role:teacher,director,super_admin`+`require_campus`+`require_password_change`；PR #1056 再以 `authorizeStaffParentFeedback` 補齊 teacher/student 與 director/campus 的 per-row ownership（TD-056 Done）。System A 回覆端點同樣位於既有 staff middleware 群組並以 `authorizeStaffFeedback` 做 row-level ownership。
 - **大廠對齊**：OWASP API Top 10 之 API1 BOLA / API5 Broken Function Level Authorization — 端點預設拒絕、明確授權；路由表應以「群組預設帶 auth」而非「逐條補 auth」設計，降低漏網。
 
 ---
