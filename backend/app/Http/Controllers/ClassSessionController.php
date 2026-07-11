@@ -2882,22 +2882,23 @@ class ClassSessionController extends Controller
                 DB::raw('CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END AS is_filled'),
             ]);
 
-        // Aggregate per resolved teacher in an outer query so the GROUP BY key is a plain
-        // column. Grouping directly on COALESCE(sub_sched.teacher_id, sc.TeacherID) with a
-        // derived-table column trips MySQL ONLY_FULL_GROUP_BY (error 1055); this two-step
-        // structure yields identical per-teacher totals without disabling the mode.
-        $rows = DB::table($perSession, 't')
-            ->select([
-                DB::raw('t.teacher_id AS teacher_id'),
-                DB::raw('COUNT(*) AS session_total'),
-                DB::raw('SUM(t.is_filled) AS filled'),
-            ])
-            ->groupBy('t.teacher_id')
-            ->orderByDesc('session_total')
-            ->get()
-            ->filter(static function ($row) {
-                return (int) ($row->teacher_id ?? 0) > 0;
+        // Aggregate per resolved teacher in PHP. Grouping in SQL directly on
+        // COALESCE(sub_sched.teacher_id, sc.TeacherID) — now that sub_sched is a derived
+        // table — trips MySQL ONLY_FULL_GROUP_BY (error 1055), and wrapping in a fromSub
+        // outer query is not expressible without PHPStan facade-stub friction. The per-row
+        // set here is bounded (attended/late sessions in a <=31-day window for one branch),
+        // so a Collection group-by yields identical per-teacher totals cheaply.
+        $rows = $perSession->get()
+            ->groupBy(static fn ($row) => (int) ($row->teacher_id ?? 0))
+            ->map(static function ($group, $teacherId) {
+                return (object) [
+                    'teacher_id'    => (int) $teacherId,
+                    'session_total' => $group->count(),
+                    'filled'        => (int) $group->sum('is_filled'),
+                ];
             })
+            ->filter(static fn ($row) => $row->teacher_id > 0)
+            ->sortByDesc('session_total')
             ->values();
 
         $ids = $rows->pluck('teacher_id')->map(fn ($v) => (int) $v)->filter(fn ($id) => $id > 0)->unique()->values();
