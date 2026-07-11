@@ -770,7 +770,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - 新增任何需登入的端點後，**必看它前後的 `});` 與縮排**，確認確實在預期的 `role`/`require_campus` 群組內；員工端最少 `role:...` + `require_campus`，家長端 parent token + ownership + `throttle`。
   - 寫權限/越權測試（403 跨師、403 跨校）才算完成；不要只測 happy path。
   - Code review 對 `routes/api.php` 的 diff 必須逐條確認所屬群組，不可只看路由字串對不對。
-- **本次處置**：四個 System B 端點收斂進 `role:teacher,director,super_admin`+`require_campus`+`require_password_change`；per-row campus ownership 仍待補 → `TECH_DEBT` TD-056。新做的 System A 回覆端點一律放在既有 `role:teacher,director,super_admin`+`require_campus` 群組並做 per-row ownership（`authorizeStaffFeedback`）。
+- **本次處置**：四個 System B 端點收斂進 `role:teacher,director,super_admin`+`require_campus`+`require_password_change`；PR #1056 再以 `authorizeStaffParentFeedback` 補齊 teacher/student 與 director/campus 的 per-row ownership（TD-056 Done）。System A 回覆端點同樣位於既有 staff middleware 群組並以 `authorizeStaffFeedback` 做 row-level ownership。
 - **大廠對齊**：OWASP API Top 10 之 API1 BOLA / API5 Broken Function Level Authorization — 端點預設拒絕、明確授權；路由表應以「群組預設帶 auth」而非「逐條補 auth」設計，降低漏網。
 
 ---
