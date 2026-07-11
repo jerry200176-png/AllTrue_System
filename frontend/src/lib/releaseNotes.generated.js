@@ -4,6 +4,140 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.11",
+    "date": "2026-07-11",
+    "title": "2026.07.11 版本更新",
+    "summary": "主任總覽新增今日優先處理；課程改排時，代課／例外時段不再被連續搬移",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "主任總覽新增今日優先處理"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "課程改排時，代課／例外時段不再被連續搬移"
+        ]
+      }
+    ],
+    "items": [
+      "主任總覽新增今日優先處理",
+      "課程改排時，代課／例外時段不再被連續搬移"
+    ]
+  },
+  {
+    "version": "2026.07.10",
+    "date": "2026-07-10",
+    "title": "2026.07.10 版本更新",
+    "summary": "每日商業智能摘要（AI-native ops phase 0）；評量「無法填寫」缺口回填 + 夜間自動任務正式啟用",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "每日商業智能摘要（AI-native ops phase 0）"
+        ]
+      },
+      {
+        "title": "修正內容",
+        "items": [
+          "評量「無法填寫」缺口回填 + 夜間自動任務正式啟用"
+        ]
+      }
+    ],
+    "items": [
+      "每日商業智能摘要（AI-native ops phase 0）",
+      "評量「無法填寫」缺口回填 + 夜間自動任務正式啟用"
+    ]
+  },
+  {
+    "version": "2026.07.09",
+    "date": "2026-07-09",
+    "title": "2026.07.09 版本更新",
+    "summary": "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）；1 cleanup scope aligned with audit (PCR-R2)",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）",
+          "1 cleanup scope aligned with audit (PCR-R2)"
+        ]
+      }
+    ],
+    "items": [
+      "重複堂次清理完成 + 加課/跨約重複資料修正（PCR-R2 執行）",
+      "1 cleanup scope aligned with audit (PCR-R2)"
+    ]
+  },
+  {
+    "version": "2026.07.08",
+    "date": "2026-07-08",
+    "title": "2026.07.08 版本更新",
+    "summary": "請假後課程詳情不再多畫出不存在的 16-18 堂次；家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "請假後課程詳情不再多畫出不存在的 16-18 堂次",
+          "家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾",
+          "週日課程的月結金額不再算成 0 元",
+          "課程資料欄位對齊，避免課程匯出／新增課程隨機失敗",
+          "同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）"
+        ]
+      }
+    ],
+    "items": [
+      "請假後課程詳情不再多畫出不存在的 16-18 堂次",
+      "家長請假「審核中」的堂次，出缺勤與課表顯示不再互相矛盾",
+      "週日課程的月結金額不再算成 0 元",
+      "課程資料欄位對齊，避免課程匯出／新增課程隨機失敗",
+      "同時段不同學生的堂次不再被合併吃掉（課程管理／班級行事曆）"
+    ]
+  },
+  {
+    "version": "2026.06.29",
+    "date": "2026-06-29",
+    "title": "2026.06.29 版本更新",
+    "summary": "ojection — calendar completeness-safe (no pagination)；智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "ojection — calendar completeness-safe (no pagination)",
+          "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
+        ]
+      }
+    ],
+    "items": [
+      "ojection — calendar completeness-safe (no pagination)",
+      "智慧行事曆「週」檢視：換週後會載入正確區間的堂次，較不會漏格、課表空白或出現幽靈課。"
+    ]
+  },
+  {
     "version": "2026.06.28",
     "date": "2026-06-28",
     "title": "2026.06.28 版本更新",
