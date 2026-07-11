@@ -7,16 +7,18 @@
 ## 整體工作流程
 
 ```
-WSL2（你的電腦）          GitHub                   Raspberry Pi（生產）
-────────────────         ──────                   ───────────────────
-寫程式                    
-git push feature/xxx →   開 PR
-                         ci.yml 自動跑測試
-你 merge PR         →    CI 通過
-                         deploy.yml 自動觸發  →   SSH 拉程式碼 + 部署
+WSL2（你的電腦）            GitHub                              Raspberry Pi（生產）
+────────────────           ──────                              ───────────────────
+寫程式並 push feature branch
+                    →      開 PR、required checks 全綠
+                           protected main 合併
+                    →      main 的 ci.yml 成功
+                           deploy.yml 以該次 CI exact SHA 觸發
+                    →                                          部署 exact SHA
+                                                               health + authenticated smoke
 ```
 
-**你只需要 push，剩下的全自動。**
+**Push 不會部署。** 只有 PR 通過 required checks 並合併到 protected `main`，且 main CI 成功後，才會由 [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) 自動部署。`deploy.yml` 是唯一 production execution authority；完整不變式見 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) I1–I5。
 
 ---
 
@@ -153,19 +155,17 @@ git push origin feat/功能名稱
 
 到 GitHub 開 Pull Request，目標是 `main`。
 
-GitHub Actions 會自動：
-1. 跑 PHPUnit 測試
-2. 跑 Vite build 驗證
+GitHub Actions 會依 changed path 執行 required checks，包括 PHPUnit、前端 build、架構、文件與安全 gate；實際清單以 PR 頁面與 [`.github/workflows/`](../.github/workflows/) 為準。
 
 ### 等 CI 綠燈
 
 PR 頁面會顯示 CI 狀態。確認 **全部通過** 後再 merge。
 
-### Merge → 自動部署
+### Merge → main CI → 自動部署
 
-Merge 後 `deploy.yml` 自動執行，約 2-3 分鐘後生產環境更新完畢。
+Merge 後先等待 main 的 `ci.yml` 成功；成功的 workflow run 才會觸發 `deploy.yml`。部署會鎖定該次 CI 驗證的 exact SHA，並在 production 驗證 git HEAD、health 與 smoke。CI、deploy 或 smoke 任一失敗都不可宣稱已上線。
 
-可以到 GitHub Actions tab 查看部署進度。
+可以到 GitHub Actions tab 查看 main CI 與其後的 `Deploy to Pi` run。
 
 ---
 
