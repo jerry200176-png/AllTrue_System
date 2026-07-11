@@ -169,9 +169,9 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 
 ## 11. Design Hex Guard（CI 防回歸，#689）
 
-為避免「越治理越亂」，CI 以 **advisory lint** 擋住**新增**的 raw hex 色票（首期 `continue-on-error`，只 warn 不擋 merge）。
+為避免「越治理越亂」，CI 以 **blocking lint** 擋住**新增**的 raw hex 色票。
 
-**機制**：`docs/design-hex-baseline.json`（由 `scripts/design-hex-count.sh` 產生的每檔 hex 快照）為基準；`scripts/check-no-raw-hex.sh` 重算當前每檔數量，任何 `.vue` 檔**高於 baseline** 即報違規。
+**機制**：`docs/design-hex-baseline.json`（由 `scripts/design-hex-count.sh` 產生的每檔 hex 快照）為基準；`scripts/check-no-raw-hex.sh` 重算當前每檔數量，任何 `.vue` 檔**高於 baseline** 即報違規。計數器會排除 Vue HTML、JS/CSS 註解，但字串與 style 內容中的合法 3/4/6/8 位 hex 仍計入。
 
 **本機檢查**：
 
