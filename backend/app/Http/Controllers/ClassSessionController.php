@@ -2844,26 +2844,34 @@ class ClassSessionController extends Controller
 
         $lrSubSql = '(SELECT lr_inner.* FROM `LearningRecord` lr_inner INNER JOIN (SELECT ClassSessionID, MAX(id) AS max_id FROM `LearningRecord` WHERE VoidedAt IS NULL GROUP BY ClassSessionID) lr_latest ON lr_inner.id = lr_latest.max_id)';
 
-        $rows = DB::table('ClassSession as cs')
+        // #985: per-attended-session projection. sub_sched uses the TD-058 derived-table
+        // pattern (mirrors index()) to resolve the latest substitute schedule per
+        // (student_course_id, schedule_date, start-time) once — replacing the previous
+        // per-row correlated MAX(sub2.id) subquery — while preserving substitute-teacher
+        // attribution (代課堂次計入取代課老師名下). Each row is one attended session with its
+        // resolved teacher and whether its latest learning record is filled.
+        $perSession = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
-            ->leftJoin('schedules as sub_sched', function ($join) {
+            ->leftJoin(DB::raw('(
+                SELECT ss.*
+                FROM `schedules` ss
+                INNER JOIN (
+                    SELECT sub2.student_course_id,
+                           sub2.schedule_date,
+                           SUBSTRING(sub2.start_time, 1, 5) AS st_hm,
+                           MAX(sub2.id) AS max_id
+                    FROM `schedules` sub2
+                    INNER JOIN `StudentClass` sc2 ON sc2.ID = sub2.student_course_id
+                    WHERE sub2.status = "scheduled"
+                      AND sub2.original_schedule_id IS NOT NULL
+                      AND sub2.teacher_id <> sc2.TeacherID
+                    GROUP BY sub2.student_course_id, sub2.schedule_date, SUBSTRING(sub2.start_time, 1, 5)
+                ) sub_latest ON ss.id = sub_latest.max_id
+            ) as sub_sched'), function ($join) {
                 $join->on('sub_sched.student_course_id', '=', 'sc.ID')
-                    ->where('sub_sched.status', '=', 'scheduled')
-                    ->whereNotNull('sub_sched.original_schedule_id')
                     ->whereRaw('DATE(sub_sched.schedule_date) = DATE(cs.SessionDate)')
-                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)')
-                    ->whereColumn('sub_sched.teacher_id', '!=', 'sc.TeacherID')
-                    ->whereRaw('sub_sched.id = (
-                        SELECT MAX(sub2.id)
-                        FROM schedules sub2
-                        WHERE sub2.student_course_id = sc.ID
-                          AND sub2.status = "scheduled"
-                          AND sub2.original_schedule_id IS NOT NULL
-                          AND DATE(sub2.schedule_date) = DATE(cs.SessionDate)
-                          AND SUBSTRING(sub2.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)
-                          AND sub2.teacher_id <> sc.TeacherID
-                    )');
+                    ->whereRaw('SUBSTRING(sub_sched.start_time, 1, 5) = SUBSTRING(cs.StartTime, 1, 5)');
             })
             ->leftJoin(DB::raw($lrSubSql . ' AS lr'), 'lr.ClassSessionID', '=', 'cs.id')
             ->where('s.CampusID', $branchId)
@@ -2871,10 +2879,20 @@ class ClassSessionController extends Controller
             ->whereRaw('LOWER(cs.Status) IN ("attended", "late")')
             ->select([
                 DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID) AS teacher_id'),
+                DB::raw('CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END AS is_filled'),
+            ]);
+
+        // Aggregate per resolved teacher in an outer query so the GROUP BY key is a plain
+        // column. Grouping directly on COALESCE(sub_sched.teacher_id, sc.TeacherID) with a
+        // derived-table column trips MySQL ONLY_FULL_GROUP_BY (error 1055); this two-step
+        // structure yields identical per-teacher totals without disabling the mode.
+        $rows = DB::query()->fromSub($perSession, 't')
+            ->select([
+                DB::raw('t.teacher_id AS teacher_id'),
                 DB::raw('COUNT(*) AS session_total'),
-                DB::raw('SUM(CASE WHEN lr.id IS NOT NULL AND TRIM(IFNULL(lr.Progress, "")) != "" THEN 1 ELSE 0 END) AS filled'),
+                DB::raw('SUM(t.is_filled) AS filled'),
             ])
-            ->groupBy(DB::raw('COALESCE(sub_sched.teacher_id, sc.TeacherID)'))
+            ->groupBy('t.teacher_id')
             ->orderByDesc('session_total')
             ->get()
             ->filter(static function ($row) {

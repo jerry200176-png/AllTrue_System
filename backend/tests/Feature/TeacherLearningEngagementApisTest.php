@@ -269,6 +269,93 @@ class TeacherLearningEngagementApisTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_director_fill_rates_attributes_substitute_teacher_session(): void
+    {
+        // Golden-output guard for #985: the substitute-teacher attribution (代課堂次計入
+        // 取代課老師名下) must be preserved when the per-row correlated MAX(sub2.id)
+        // subquery is replaced by the TD-058 derived-table join.
+        Carbon::setTestNow(Carbon::parse('2026-05-10 12:00:00'));
+
+        try {
+            $campus = CampusFactory::new()->create();
+            [, $dirToken] = $this->directorWithToken($campus->id);
+
+            [$tA] = $this->teacherWithToken($campus->id);
+            $tA->forceFill(['Name' => '原任老師'])->save();
+            [$tB] = $this->teacherWithToken($campus->id);
+            $tB->forceFill(['Name' => '代課老師'])->save();
+
+            $student = StudentFactory::new()->create(['CampusID' => $campus->id]);
+            $scA = $this->insertCourse($student->id, $tA->id);
+
+            $dAttend = '2026-05-09';
+            $cs = DB::table('ClassSession')->insertGetId([
+                'StudentClassID' => $scA,
+                'SessionDate'    => $dAttend,
+                'StartTime'      => '10:00',
+                'EndTime'        => '11:00',
+                'Status'         => 'attended',
+            ]);
+
+            // Substitute schedule row occupying the same slot as $cs, taught by tB (the
+            // substitute) rather than the course owner tA. The report must attribute the
+            // attended session to tB.
+            DB::table('schedules')->insert([
+                'student_id'           => $student->id,
+                'teacher_id'           => $tB->id,
+                'subject'              => 'Math',
+                'day_of_week'          => Carbon::parse($dAttend)->dayOfWeekIso,
+                'start_time'           => '10:00:00',
+                'end_time'             => '11:00:00',
+                'class_type'           => 'one_on_one',
+                'status'               => 'scheduled',
+                'type'                 => 'substitute',
+                'deduction'            => 1,
+                'branch_id'            => $campus->id,
+                'schedule_date'        => $dAttend,
+                'student_course_id'    => $scA,
+                'original_schedule_id' => 0,
+            ]);
+
+            DB::table('LearningRecord')->insert([
+                'StudentID'       => $student->id,
+                'StudentClassID'  => $scA,
+                'ClassSessionID'  => $cs,
+                'TeacherID'       => $tB->id,
+                'Subject'         => 'Math',
+                'SessionDate'     => $dAttend,
+                'StartTime'       => '10:00',
+                'EndTime'         => '11:00',
+                'Content'         => '代課紀錄',
+                'Status'          => 'pending',
+                'Progress'        => '已填寫進度',
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+
+            $res = $this->getJson(
+                "/api/v1/reports/teacher-learning-fill-rates?branch_id={$campus->id}&days=14",
+                $this->bearer($dirToken)
+            )->assertOk();
+
+            $teachers = collect($res->json('teachers'));
+
+            $rowB = $teachers->firstWhere('teacher_id', $tB->id);
+            $this->assertNotNull($rowB, 'substitute teacher must be attributed the session');
+            $this->assertSame(1, (int) $rowB['sessions_attended']);
+            $this->assertSame(1, (int) $rowB['learning_records_filled']);
+            $this->assertSame(100, (int) $rowB['fill_rate_pct']);
+
+            // The course owner (tA) taught no attended session (it was substituted) -> absent.
+            $this->assertNull(
+                $teachers->firstWhere('teacher_id', $tA->id),
+                'owner teacher should not be attributed a substituted session'
+            );
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_teacher_cannot_hit_director_fill_rates(): void
     {
         $campus = CampusFactory::new()->create();
