@@ -562,7 +562,8 @@ Route::prefix('v1')->group(function () {
     // ── Teacher/Director: 家長回饋 inbox + 回覆 (#409, #410) ─────────────────
     // 安全收斂：原本這四個端點在任何 role/require_campus 群組之外，僅有全域 AttachAuthUser，
     // 等同未強制認證/授權。改納入 role:teacher,director,super_admin + require_campus，
-    // 移除未認證即可呼叫的暴露。（per-row campus ownership 仍待補，記 TECH_DEBT）
+    // 移除未認證即可呼叫的暴露；controller 另以 feedback row 的 student/campus
+    // 驗證 teacher ownership 與 director campus scope（TD-056 / PR #1056）。
     Route::middleware(['role:teacher,director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('parent-feedback/for-teacher', [ParentFeedbackController::class, 'forTeacher']);
         Route::post('parent-feedback/{id}/read', [ParentFeedbackController::class, 'markReadByTeacher']);
