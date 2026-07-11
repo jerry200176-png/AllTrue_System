@@ -30,12 +30,16 @@ class SlotOccupiedException extends RuntimeException
 
     public static function fromConflict(int $courseId, string $sessionDate, string $startTime, ClassSession $conflict): self
     {
+        // getAttribute (not ->Status) keeps PHPStan happy: Status is a dynamic
+        // Eloquent column, not a declared property.
+        $status = $conflict->getAttribute('Status');
+
         return new self(
             courseId: $courseId,
             sessionDate: $sessionDate,
             startTime: $startTime,
-            conflictSessionId: (int) $conflict->id,
-            conflictStatus: $conflict->Status !== null ? (string) $conflict->Status : null,
+            conflictSessionId: (int) $conflict->getKey(),
+            conflictStatus: $status !== null ? (string) $status : null,
         );
     }
 
