@@ -2,12 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\AuthToken;
+use App\Http\Controllers\StudentClassController;
 use App\Models\ClassSession;
-use App\Models\Student;
-use App\Models\StudentClass;
-use App\Models\User;
-use App\Models\UserCampus;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -16,15 +12,17 @@ use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
- * #1163: the contract-realign reflow (remapFutureScheduledSessionsToContract)
+ * #1163: the contract-realign reflow (StudentClassController::remapFutureScheduledSessionsToContract)
  * remaps future scheduled sessions onto a new fixed-weekday cadence. When the
  * change compresses sessions forward, an earlier row's target is a later row's
  * not-yet-vacated slot — which 1062s under uq_class_session_slot if moved in
  * place. The two-phase fix (park to sentinel slots, then place, in a transaction)
- * must complete without a 500 and land the correct distinct final layout.
+ * must complete without a 1062 and land the correct distinct final layout.
  *
- * Runs against the REAL unique index: without it the old in-place code's transient
- * duplicate resolves and the bug is invisible.
+ * The method is exercised DIRECTLY (reflection) to isolate the reflow from the
+ * course-update endpoint's rebuild/reconcile flow, and runs against the REAL
+ * unique index — without it the old in-place code's transient duplicate resolves
+ * and the bug is invisible.
  */
 class RealignReflowTwoPhaseTest extends TestCase
 {
@@ -43,24 +41,11 @@ class RealignReflowTwoPhaseTest extends TestCase
         $this->enableUniqueIndex();
     }
 
-    public function test_weekday_removal_reflow_compresses_forward_without_1062(): void
+    public function test_forward_compression_reflow_does_not_1062_and_lands_distinct_slots(): void
     {
-        $token = $this->createDirectorToken();
+        $courseId = $this->seedCourse();
 
-        DB::table('Student')->insert([
-            'id' => self::STUDENT_ID, 'name' => 'Realign Two-Phase Test',
-            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
-        ]);
-        $courseId = (int) DB::table('StudentClass')->insertGetId([
-            'StudentID' => self::STUDENT_ID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99,
-            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-03-01', 'TotalHours' => 20,
-            'Charge' => 0, 'Paid' => 0, 'Rate' => 500, 'MDate' => now(), 'Stop' => 0,
-            'ScheduleMode' => 'count', 'SessionCount' => 4, 'SessionDuration' => 120,
-            'RemainingSessions' => 4, 'UsedSessions' => 0, 'ClassType' => 'one_on_one',
-            'week' => 6, 'time' => '13:00:00', 'week1' => 7, 'time1' => '13:00:00',
-        ]);
-
-        // Sat, Sun, Sat, Sun — four future scheduled sessions on the two-weekday contract.
+        // Sat, Sun, Sat, Sun — four future scheduled sessions on a two-weekday contract.
         foreach (['2026-04-18', '2026-04-19', '2026-04-25', '2026-04-26'] as $date) {
             ClassSession::create([
                 'StudentClassID' => $courseId, 'SessionDate' => $date,
@@ -68,41 +53,90 @@ class RealignReflowTwoPhaseTest extends TestCase
             ]);
         }
 
-        // Drop Sunday -> Saturday-only. The reflow must compress the four rows onto
-        // consecutive Saturdays; the second row's target (04-25) is the third row's
-        // current slot, which is the collision the old in-place code hit.
-        $res = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->putJson("/api/v1/student-classes/{$courseId}", [
-            'subject' => 'Math',
-            'class_type' => 'one_on_one',
-            'duration_hours' => 2,
-            'days_of_week' => [6],
-            'start_time' => '13:00',
-            'day_time_slots' => [['day' => 6, 'start_time' => '13:00']],
-            'payment_type' => 'session',
-        ]);
+        // Reflow onto Saturday-only. buildSessionsForCount yields 04-18, 04-25, 05-02, 05-09,
+        // so the Sunday rows compress forward onto slots still held by later Saturday rows —
+        // the exact in-place collision. Two-phase must handle it.
+        $unlocked = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')->orderBy('StartTime')->orderBy('id')
+            ->get();
+        $slots = [['weekday' => 6, 'time' => '13:00', 'duration_minutes' => 120]];
 
-        $res->assertOk();
+        $moved = $this->invokeReflow($unlocked, $slots, 120);
 
-        $future = ClassSession::where('StudentClassID', $courseId)
+        // Three rows moved (the first Saturday already sits on its contract slot).
+        $this->assertSame(3, $moved);
+
+        $final = ClassSession::where('StudentClassID', $courseId)
             ->where('Status', 'scheduled')
             ->orderBy('SessionDate')
             ->get();
 
-        // Count preserved, all Saturdays, on consecutive weekly Saturdays, distinct slots.
-        $this->assertCount(4, $future);
-        $dates = $future->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->all();
-        $this->assertSame(['2026-04-18', '2026-04-25', '2026-05-02', '2026-05-09'], $dates);
-        foreach ($future as $s) {
+        $this->assertCount(4, $final);
+        $this->assertSame(
+            ['2026-04-18', '2026-04-25', '2026-05-02', '2026-05-09'],
+            $final->map(fn ($s) => substr((string) $s->SessionDate, 0, 10))->all()
+        );
+        foreach ($final as $s) {
             $this->assertSame(6, (int) Carbon::parse($s->SessionDate)->dayOfWeekIso, 'all on Saturday');
         }
-        $slots = $future->map(fn ($s) => substr((string) $s->SessionDate, 0, 10) . ' ' . substr((string) $s->StartTime, 0, 5));
-        $this->assertSame($slots->count(), $slots->unique()->count(), 'no duplicate active slots');
+        $slotsSeen = $final->map(fn ($s) => substr((string) $s->SessionDate, 0, 10) . ' ' . substr((string) $s->StartTime, 0, 5));
+        $this->assertSame($slotsSeen->count(), $slotsSeen->unique()->count(), 'no duplicate active slots');
+    }
+
+    public function test_reflow_onto_external_locked_occupant_throws_slot_occupied(): void
+    {
+        $courseId = $this->seedCourse();
+
+        // Two future scheduled Sunday rows to reflow onto Saturdays 04-18, 04-25.
+        foreach (['2026-04-19', '2026-04-26'] as $date) {
+            ClassSession::create([
+                'StudentClassID' => $courseId, 'SessionDate' => $date,
+                'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'scheduled',
+            ]);
+        }
+        // A LOCKED (attended) session already occupies a reflow target slot (Sat 04-25 13:00),
+        // and is NOT part of the unlocked reflow set -> must surface a clean SlotOccupiedException.
+        ClassSession::create([
+            'StudentClassID' => $courseId, 'SessionDate' => '2026-04-25',
+            'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'attended',
+        ]);
+
+        $unlocked = ClassSession::where('StudentClassID', $courseId)
+            ->where('Status', 'scheduled')
+            ->orderBy('SessionDate')->orderBy('id')
+            ->get();
+        $slots = [['weekday' => 6, 'time' => '13:00', 'duration_minutes' => 120]];
+
+        $this->expectException(\App\Exceptions\SlotOccupiedException::class);
+        $this->invokeReflow($unlocked, $slots, 120);
     }
 
     // ── helpers ──
+
+    private function invokeReflow($unlockedSorted, array $slots, int $durationMinutes): int
+    {
+        $controller = app(StudentClassController::class);
+        $method = new \ReflectionMethod(StudentClassController::class, 'remapFutureScheduledSessionsToContract');
+        $method->setAccessible(true);
+        return (int) $method->invoke($controller, $unlockedSorted, $slots, $durationMinutes);
+    }
+
+    private function seedCourse(): int
+    {
+        DB::table('Student')->insert([
+            'id' => self::STUDENT_ID, 'name' => 'Realign Two-Phase Test',
+            'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        return (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => self::STUDENT_ID, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 99,
+            'by1' => 1, 'Period' => 4, 'StartDate' => '2026-03-01', 'TotalHours' => 20,
+            'Charge' => 0, 'Paid' => 0, 'Rate' => 500, 'MDate' => now(), 'Stop' => 0,
+            'ScheduleMode' => 'count', 'SessionCount' => 4, 'SessionDuration' => 120,
+            'RemainingSessions' => 4, 'UsedSessions' => 0, 'ClassType' => 'one_on_one',
+            'week' => 6, 'time' => '13:00:00', 'week1' => 7, 'time1' => '13:00:00',
+        ]);
+    }
 
     private function enableUniqueIndex(): void
     {
@@ -118,19 +152,6 @@ class RealignReflowTwoPhaseTest extends TestCase
         $this->assertTrue($this->uniqueIndexExists());
     }
 
-    private function createDirectorToken(): string
-    {
-        $user = User::create([
-            'LoginName' => 'dir-realign-' . bin2hex(random_bytes(4)) . '@test.com',
-            'Name' => '主任', 'PSW' => 'secret', 'type' => 'A', 'phone' => '0912345678',
-            'MustChangePassword' => false,
-        ]);
-        UserCampus::create(['CampusID' => 1, 'UserID' => $user->id, 'Admin' => 1, 'Approved' => 1]);
-        $tok = bin2hex(random_bytes(16));
-        AuthToken::create(['user_id' => $user->id, 'token' => $tok, 'expires_at' => now()->addDay()]);
-        return $tok;
-    }
-
     protected function tearDown(): void
     {
         Carbon::setTestNow();
@@ -144,8 +165,6 @@ class RealignReflowTwoPhaseTest extends TestCase
         }
         DB::table('StudentClass')->where('StudentID', self::STUDENT_ID)->delete();
         DB::table('Student')->where('id', self::STUDENT_ID)->delete();
-        // Director User/UserCampus/AuthToken rows are unique per run and harmless
-        // (RefreshDatabase re-migrates per class); intentionally not deleted here.
         parent::tearDown();
     }
 
