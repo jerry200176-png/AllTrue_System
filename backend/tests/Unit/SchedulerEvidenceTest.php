@@ -38,6 +38,9 @@ class SchedulerEvidenceTest extends TestCase
         $this->assertSame('verified', $summary['jobs']['reconcile-nightly']['status']);
         $this->assertSame(0, $summary['jobs']['bugs-verify-reproductions']['observed_result']['regressed']);
         $this->assertSame(0, $summary['jobs']['learning-records-backfill-missing']['observed_result']['affected_rows']);
+        $this->assertSame(3, $summary['jobs']['sessions-generate-forward']['observed_result']['sessions_created']);
+        $this->assertSame(12, $summary['jobs']['ops-business-digest']['observed_result']['revenue_at_risk_sessions']);
+        $this->assertSame(44, $summary['jobs']['ops-business-digest']['observed_result']['coverage_next_7d']);
     }
 
     public function test_summary_rejects_duplicate_or_failed_execution_evidence(): void
@@ -77,10 +80,24 @@ class SchedulerEvidenceTest extends TestCase
             'rfid-prune-pending' => "Deleted 0 pending swipes.\n",
             'learning-records-drift-check' => "Drift counts: {\"null_class_session_id\":0}\n",
             'sessions-audit-stranded' => "{\"as_of\":\"2037-01-02\",\"stranded_courses\":0,\"stranded_sessions\":0}\n",
-            'sessions-generate-forward' => "generated=0\n",
+            'sessions-generate-forward' => "=== EXECUTE sessions:generate-forward (horizon=4w, courses=2) ===\n---\ncourses_planned=1 courses_skipped=1 slots_planned=3 sessions_created=3\n",
             'learning-records-backfill-missing' => "learning-records:backfill-missing — total created: 0.\n",
             'bugs-verify-reproductions' => "{\"regressed\":0,\"conditions\":[{\"key\":\"fixed-condition\",\"count\":0,\"state\":\"FIXED-OK\"}]}\n",
-            'ops-business-digest' => "digest complete\n",
+            'ops-business-digest' => <<<'OUTPUT'
+                === AllTrue Business Digest — 2037-01-02 04:10:00 ===
+                +----------------------------+-------+-----------------------------------------+
+                | Signal                     | Value | Meaning                                 |
+                +----------------------------+-------+-----------------------------------------+
+                | revenue_at_risk_sessions   | 12    | prepaid sessions owed                   |
+                | revenue_at_risk_amount     | 24000 | estimated NT$ owed                      |
+                | unpaid_active_courses      | 2     | active courses flagged unpaid           |
+                | retention_risk_students    | 5     | active students with no upcoming class  |
+                | dq_attended_no_LR          | 0     | attended sessions with no record        |
+                | dq_cross_sc_dup            | 1     | cross-contract duplicates               |
+                | dq_remaining_divergent     | 7     | remaining session divergence            |
+                | coverage_next_7d           | 44    | materialized sessions                   |
+                +----------------------------+-------+-----------------------------------------+
+                OUTPUT,
         ];
 
         return $outputs[$job];
