@@ -24,6 +24,7 @@ if [ ! -f "$BASELINE" ]; then
   exit 1
 fi
 
+node --test "$ROOT/scripts/design-hex-counter.test.mjs"
 CURRENT="$(bash "$ROOT/scripts/design-hex-count.sh")"
 
 node -e '
