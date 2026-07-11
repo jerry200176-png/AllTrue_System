@@ -132,6 +132,17 @@ jobs:
             CRITICALS="${CRITICALS}🔴 ${SCHED_LOG} 不存在 — Laravel scheduler 無 driver（見 #1127）\n"
           fi
 
+          # ── 3c. 夜間任務輸出證據（#1127）────────────────────────────
+          # 僅輸出固定 job key、時間、exit status、聚合計數；不把原始
+          # scheduler / Laravel log（可能含學生、老師或 RFID 資料）送到 Actions。
+          EVIDENCE_DATE=$(TZ=Asia/Taipei date +%F)
+          if EVIDENCE_OUTPUT=$(cd /home/admin/backend && /usr/bin/php8.2 artisan scheduler:evidence-summary --date="$EVIDENCE_DATE" 2>&1); then
+            echo "scheduler job evidence: ${EVIDENCE_OUTPUT}"
+          else
+            echo "scheduler job evidence: ${EVIDENCE_OUTPUT}"
+            CRITICALS="${CRITICALS}🔴 夜間 scheduler 任務輸出證據不完整或有失敗（見 #1127）\n"
+          fi
+
           # ── 4. 輸出結果 ──────────────────────────────────────────────
           if [ -n "$WARNINGS" ]; then
             echo "=== ⚠️ WARNINGS（不使 workflow 失敗）==="

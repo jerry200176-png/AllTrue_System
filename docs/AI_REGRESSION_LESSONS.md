@@ -636,6 +636,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   1. 新增/修改任何 `Kernel.php` 排程任務時，必須同時驗證 Pi 上 `crontab -l | grep schedule:run` 存在，並於次日檢查 `/home/admin/logs/schedule.log` 有該任務的執行痕跡。
   2. 「已排程」的證據 = 執行 log，不是 `schedule:list` 輸出、不是程式碼。
   3. `pi-health.yml` §3b 心跳檢查（schedule.log 10 分鐘內必須有更新）為此的自動防線，不得移除。
+  4. 心跳只證明 driver 活著，不能證明每個任務完成；每個排程任務必須保留私有 output 與 PII-free completion ledger，並由 `scheduler:evidence-summary` 在次日 health check 驗證「每任務恰好一次、成功、輸出可解析」及對應 aggregate postcondition。
 - **測試必補**：pi-health scheduler 心跳 critical（本條隨 #1127 併入）。
 
 ---

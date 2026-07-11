@@ -7,7 +7,6 @@ use App\Models\Student;
 use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 /**
@@ -75,11 +74,14 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'scheduled',
         ]);
 
-        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
-        $out = Artisan::output();
-        $this->assertSame(0, $code);
-        $this->assertStringContainsString('"stranded_courses":1', $out);
-        $this->assertStringContainsString('"stranded_sessions":5', $out);
+        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
+            ->expectsOutput(json_encode([
+                'branch_id' => 1,
+                'as_of' => Carbon::today()->toDateString(),
+                'stranded_courses' => 1,
+                'stranded_sessions' => 5,
+            ], JSON_UNESCAPED_UNICODE))
+            ->assertExitCode(0);
     }
 
     public function test_past_only_session_still_counts_as_stranded(): void
@@ -95,9 +97,14 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'attended',
         ]);
 
-        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
-        $this->assertSame(0, $code);
-        $this->assertStringContainsString('"stranded_courses":1', Artisan::output());
+        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
+            ->expectsOutput(json_encode([
+                'branch_id' => 1,
+                'as_of' => Carbon::today()->toDateString(),
+                'stranded_courses' => 1,
+                'stranded_sessions' => 3,
+            ], JSON_UNESCAPED_UNICODE))
+            ->assertExitCode(0);
     }
 
     public function test_cancelled_upcoming_session_does_not_rescue_course(): void
@@ -112,8 +119,13 @@ class AuditStrandedPaidSessionsTest extends TestCase
             'Status' => 'cancelled',
         ]);
 
-        $code = Artisan::call('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true]);
-        $this->assertSame(0, $code);
-        $this->assertStringContainsString('"stranded_courses":1', Artisan::output());
+        $this->artisan('sessions:audit-stranded', ['--branch_id' => 1, '--json' => true])
+            ->expectsOutput(json_encode([
+                'branch_id' => 1,
+                'as_of' => Carbon::today()->toDateString(),
+                'stranded_courses' => 1,
+                'stranded_sessions' => 2,
+            ], JSON_UNESCAPED_UNICODE))
+            ->assertExitCode(0);
     }
 }
