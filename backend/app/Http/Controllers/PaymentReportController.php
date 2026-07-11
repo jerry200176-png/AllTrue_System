@@ -352,9 +352,14 @@ class PaymentReportController extends Controller
             'invoice_id'       => 'nullable|integer',
             'payment_date'     => 'required|date|before_or_equal:today',
             'payment_method'   => 'required|in:transfer,cash',
-            'amount'           => 'required|numeric|min:0|max:999999',
+            // #1096 (in-app #190): a recorded payment must be positive. min:0 previously
+            // allowed a NT$0 record when the form pre-filled a 0 fee (date-mode course with
+            // unset Charge), producing the reported "金額顯示0". A NT$0 payment is meaningless.
+            'amount'           => 'required|numeric|min:1|max:999999',
             'account_last5'    => 'nullable|string|max:5|regex:/^[0-9]*$/',
             'note'             => 'nullable|string|max:500',
+        ], [
+            'amount.min' => '繳費金額必須大於 0；若月費顯示為 0，請先於課程管理設定正確金額。',
         ]);
 
         $sc = StudentClass::with('student')->findOrFail($data['student_class_id']);
