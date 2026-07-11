@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Controllers\StudentClassController;
 use App\Models\ClassSession;
+use App\Models\LearningRecord;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -46,12 +47,39 @@ class RealignReflowTwoPhaseTest extends TestCase
         $courseId = $this->seedCourse();
 
         // Sat, Sun, Sat, Sun — four future scheduled sessions on a two-weekday contract.
+        $sessionsByDate = [];
         foreach (['2026-04-18', '2026-04-19', '2026-04-25', '2026-04-26'] as $date) {
-            ClassSession::create([
+            $sessionsByDate[$date] = ClassSession::create([
                 'StudentClassID' => $courseId, 'SessionDate' => $date,
                 'StartTime' => '13:00:00', 'EndTime' => '15:00:00', 'Status' => 'scheduled',
             ]);
         }
+
+        $learningRecord = LearningRecord::create([
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $sessionsByDate['2026-04-19']->id,
+            'TeacherID' => 99,
+            'Subject' => 'Math',
+            'Content' => 'reflow side-effect contract',
+            'SessionDate' => '2026-04-19',
+            'StartTime' => '13:00:00',
+            'EndTime' => '15:00:00',
+            'Status' => 'pending',
+        ]);
+        $scheduleId = (int) DB::table('schedules')->insertGetId([
+            'student_id' => self::STUDENT_ID,
+            'student_course_id' => $courseId,
+            'teacher_id' => 99,
+            'day_of_week' => 7,
+            'schedule_date' => '2026-04-19',
+            'start_time' => '13:00',
+            'end_time' => '15:00',
+            'status' => 'scheduled',
+            'type' => 'course',
+            'branch_id' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         // Reflow onto Saturday-only. buildSessionsForCount yields 04-18, 04-25, 05-02, 05-09,
         // so the Sunday rows compress forward onto slots still held by later Saturday rows —
@@ -82,6 +110,13 @@ class RealignReflowTwoPhaseTest extends TestCase
         }
         $slotsSeen = $final->map(fn ($s) => substr((string) $s->SessionDate, 0, 10) . ' ' . substr((string) $s->StartTime, 0, 5));
         $this->assertSame($slotsSeen->count(), $slotsSeen->unique()->count(), 'no duplicate active slots');
+
+        $learningRecord->refresh();
+        $this->assertSame('2026-04-25', substr((string) $learningRecord->SessionDate, 0, 10));
+        $this->assertSame('13:00', substr((string) $learningRecord->StartTime, 0, 5));
+        $schedule = DB::table('schedules')->where('id', $scheduleId)->first();
+        $this->assertSame('2026-04-25', substr((string) $schedule->schedule_date, 0, 10));
+        $this->assertSame(6, (int) $schedule->day_of_week);
     }
 
     public function test_reflow_onto_external_locked_occupant_throws_slot_occupied(): void
@@ -160,6 +195,7 @@ class RealignReflowTwoPhaseTest extends TestCase
         }
         $cid = DB::table('StudentClass')->where('StudentID', self::STUDENT_ID)->value('ID');
         if ($cid) {
+            DB::table('LearningRecord')->where('StudentClassID', $cid)->delete();
             DB::table('ClassSession')->where('StudentClassID', $cid)->delete();
             DB::table('schedules')->where('student_course_id', $cid)->delete();
         }

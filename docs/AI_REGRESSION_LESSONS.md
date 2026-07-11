@@ -641,6 +641,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R69. 多堂 reflow 不可用會被前一步改寫的 natural key 逐筆同步 `schedules`
+
+- **觸發情境**：契約由週六＋週日壓縮成只剩週六時，`ClassSession` 依序 4/19→4/25、4/25→5/2。舊同步邏輯先把 4/19 的 schedule 改成 4/25，下一輪又以 `schedule_date=4/25` 查詢，導致同一 schedule 被二次搬到 5/2；堂次與評量日期正確，但例外／代課 anchor 靜默錯位。
+- **根因**：bulk permutation 在同一交易中以「舊日期＋時間」作 mutable natural key；前一個 update 產生的值恰好是下一個 move 的查詢條件。
+- **強制規則**：reflow 寫入前先 snapshot 每個 move 對應的 `schedules.id`，後續只按 immutable ID 更新；`ClassSession` park/place、active `LearningRecord` 與 schedule anchor 必須在同一 domain service／transaction 完成。禁止在逐筆 move 中重新用已可能改寫的日期查 schedule。
+- **測試必補**：`RealignReflowTwoPhaseTest` 同時斷言 ClassSession 最終 slot 唯一、LearningRecord 跟隨其 ClassSession、4/19 schedule **只**移到 4/25（不可連鎖到 5/2）。
+
+---
+
 ### R67. deploy SSH script 內關鍵步驟失敗必須讓 run 標紅（migration 失敗曾被吞成綠燈）
 
 - **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
@@ -879,7 +888,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback） |
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新） |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |
