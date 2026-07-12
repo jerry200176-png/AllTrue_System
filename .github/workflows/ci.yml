@@ -149,10 +149,21 @@ jobs:
           except Exception:
               print("::warning::composer audit JSON parse failed — skipping")
               sys.exit(0)
+          def normalize_advisories(group):
+              if isinstance(group, list):
+                  return group
+              if isinstance(group, dict) and "severity" in group:
+                  return [group]
+              if isinstance(group, dict):
+                  return list(group.values())
+              return []
+
           advisories = data.get("advisories", {})
           has_high = False
           for pkg, adv_list in advisories.items():
-              for adv in (adv_list if isinstance(adv_list, list) else [adv_list]):
+              for adv in normalize_advisories(adv_list):
+                  if not isinstance(adv, dict):
+                      continue
                   sev = str(adv.get("severity", "")).lower()
                   title = adv.get("title", "?")
                   if sev in ("high", "critical"):
@@ -160,6 +171,14 @@ jobs:
                       has_high = True
                   else:
                       print(f"::warning::{pkg}: [{sev}] {title}")
+          for pkg, adv_list in data.get("ignored-advisories", {}).items():
+              for adv in normalize_advisories(adv_list):
+                  if not isinstance(adv, dict):
+                      continue
+                  sev = str(adv.get("severity", "unknown")).upper()
+                  title = adv.get("title", "?")
+                  reason = adv.get("ignoreReason", "No reason recorded")
+                  print(f"::notice::{pkg}: [{sev}] accepted risk: {title} — {reason}")
           if has_high:
               print("::error::Composer audit: HIGH/CRITICAL 漏洞必須修復才能 merge")
               sys.exit(1)
