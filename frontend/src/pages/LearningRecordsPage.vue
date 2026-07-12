@@ -64,6 +64,14 @@
         <input type="checkbox" v-model="onlyUnfilled"> 只看未填
       </label>
 
+      <label
+        v-if="reviewTab === 'pending' || reviewTab === 'changes_requested' || reviewTab === 'approved' || reviewTab === 'all'"
+        class="lr-unfilled-toggle"
+        title="只顯示評量正文已填寫的紀錄（供檢視已完成的評量內容）"
+      >
+        <input type="checkbox" v-model="onlyFilled"> 只看已填
+      </label>
+
       <!-- Batch action bar -->
       <div v-if="selectedRecordIds.size > 0" class="lr-batch-bar">
         <span class="lr-batch-count">已選 {{ selectedRecordIds.size }} 筆</span>
@@ -1469,6 +1477,10 @@ const teacherFilterTab = ref('all');
 const teacherPriorityFilter = ref('all');
 const feedbackFilter = ref('all');
 const onlyUnfilled = ref(false);
+// #199: symmetric "only filled" lens so directors/super-admins can review completed
+// assessments — every other filter here is unfilled/to-do oriented. Client-side display
+// only (no API/data/permission change); mutually exclusive with onlyUnfilled below.
+const onlyFilled = ref(false);
 const showMoreFilters = ref(false);
 const activeSecondaryFilterCount = computed(() => {
   let n = 0;
@@ -1492,6 +1504,9 @@ watch(reviewTab, (t) => {
   if (!isDirectorRole.value) return;
   if (t === 'rejected' && onlyUnfilled.value) onlyUnfilled.value = false;
 });
+// #199: the two "only" lenses are mutually exclusive.
+watch(onlyUnfilled, (v) => { if (v) onlyFilled.value = false; });
+watch(onlyFilled, (v) => { if (v) onlyUnfilled.value = false; });
 const selectedRecordIds = ref(new Set());
 const batchOperating = ref(false);
 const draftAutoSaveKey = ref('');
@@ -1608,6 +1623,10 @@ const filteredRecords = computed(() => {
       }
       return false;
     });
+  }
+  // #199: "only filled" — records whose assessment body is written, for review.
+  if (onlyFilled.value) {
+    list = list.filter((r) => hasLearningRecordBody(r));
   }
   if (feedbackFilter.value === 'has') {
     list = list.filter(r => !!r.parent_feedback);
