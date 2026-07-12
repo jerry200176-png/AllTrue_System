@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\ClassSession;
+use App\Models\SessionDeductionLedger;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -13,11 +15,12 @@ use Tests\TestCase;
 /**
  * Regression guard for reconcile:nightly (App\Console\Commands\NightlyReconcile).
  *
- * The command counts attended ClassSession rows per StudentClass and compares
- * against StudentClass.UsedSessions. It previously filtered on a non-existent
- * ClassSession.VoidedAt column, which threw SQLSTATE[42S22] the moment the
- * scheduler actually invoked it in production (2026-07-11). These tests ensure
- * the aggregate query executes and the mismatch detection stays correct.
+ * The command compares StudentClass.UsedSessions with the same attendance,
+ * completed-session, orphan-LearningRecord, ledger, and fractional-minute
+ * semantics used by SessionDeductionService::recomputeCounters(). It previously
+ * used ClassSession status alone and therefore reported valid legacy/partial
+ * deductions as drift. Before that, it also filtered on a non-existent
+ * ClassSession.VoidedAt column and crashed when the scheduler invoked it.
  *
  * Assertions read the JSON report the command always writes, because Laravel 8
  * lacks expectsOutputToContain and the first Artisan call under RefreshDatabase
@@ -61,6 +64,43 @@ class NightlyReconcileTest extends TestCase
         $courseId = $this->bootstrapCourse(2, 2);
         $this->attendedSession($courseId, Carbon::now()->subDays(2)->toDateString());
         $this->attendedSession($courseId, Carbon::now()->subDays(3)->toDateString());
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $this->assertSame(0, $this->readReport()['mismatch_count']);
+    }
+
+    public function test_reconcile_accepts_deducted_attendance_without_completed_session_status(): void
+    {
+        $courseId = $this->bootstrapCourse(4, 1);
+        $course = StudentClass::findOrFail($courseId);
+
+        StudentSignIn::create([
+            'StudentClassID' => $courseId,
+            'StudentID' => $course->StudentID,
+            'SignInDT' => now()->subDay(),
+            'MDT' => now(),
+            'Status' => 'present',
+            'SessionDeducted' => true,
+        ]);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $this->assertSame(0, $this->readReport()['mismatch_count']);
+    }
+
+    public function test_reconcile_uses_fractional_ledger_rounding_for_partial_makeup(): void
+    {
+        $courseId = $this->bootstrapCourse(6, 1);
+
+        SessionDeductionLedger::create([
+            'student_class_id' => $courseId,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => 90,
+        ]);
 
         $this->artisan('reconcile:nightly', ['--dry-run' => true])
             ->assertExitCode(0);
