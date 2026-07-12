@@ -23,7 +23,10 @@ class BusinessDigestService
                 'stranded_amount' => round($this->strandedAmount(), 0),
                 'unpaid_active_courses' => $this->unpaidActiveCourses(),
             ],
-            'retention' => ['no_upcoming_students' => $this->retentionRiskStudents()],
+            'retention' => array_merge(
+                ['no_upcoming_students' => $this->retentionRiskStudents()],
+                $this->retentionDecomposition()
+            ),
             'data_quality' => [
                 'attended_without_lr' => $this->attendedWithoutLr(),
                 'cross_sc_duplicate' => $this->crossScDuplicate(),
@@ -50,6 +53,12 @@ class BusinessDigestService
         }
         if ($m['coverage']['sessions_next_7d'] === 0) {
             $out[] = 'ZERO sessions materialized in the next 7 days — forward generation may be stalled.';
+        }
+        if (($m['retention']['dormant_prepaid_students'] ?? 0) > 0) {
+            $out[] = "dormant prepaid: {$m['retention']['dormant_prepaid_students']} students hold ~NT\${$m['retention']['dormant_prepaid_recoverable_ntd']} of paid-but-unscheduled balance — retain/refund/write-off decision (#1152).";
+        }
+        if (($m['retention']['reenroll_candidates'] ?? 0) > 0) {
+            $out[] = "re-enrollment: {$m['retention']['reenroll_candidates']} active students have exhausted balance and no upcoming class — outreach opportunity (#1149).";
         }
         return $out;
     }
@@ -102,6 +111,50 @@ class BusinessDigestService
                     ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
             })
             ->count();
+    }
+
+    /**
+     * Split the raw retention-risk population (active course, no session in 14d) into the
+     * two actionable segments so the digest is directable, not just a scary total:
+     *   - dormant_prepaid: has a count-mode course with paid balance left → #1152 liability /
+     *     recoverable revenue (Rate x remaining) — a Founder retain/refund/write-off decision.
+     *   - reenroll_candidates: balance exhausted, no active month course → re-enrollment
+     *     outreach opportunity (#1149), not a liability.
+     * Aggregate only (no PII).
+     *
+     * @return array{dormant_prepaid_students:int,dormant_prepaid_recoverable_ntd:int,reenroll_candidates:int}
+     */
+    private function retentionDecomposition(): array
+    {
+        $rows = DB::table('Student as s')
+            ->join('StudentClass as sc', function ($j) {
+                $j->on('sc.StudentID', '=', 's.id')->where('sc.Stop', 0);
+            })
+            ->where('s.enable', 1)
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))->from('StudentClass as sc2')
+                    ->join('ClassSession as cs', 'cs.StudentClassID', '=', 'sc2.ID')
+                    ->whereColumn('sc2.StudentID', 's.id')
+                    ->whereRaw('cs.SessionDate BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY)')
+                    ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
+            })
+            ->groupBy('s.id')
+            ->select([
+                's.id',
+                DB::raw("MAX(CASE WHEN sc.ScheduleMode='count' AND sc.RemainingSessions>0 THEN 1 ELSE 0 END) AS has_prepaid"),
+                DB::raw("MAX(CASE WHEN sc.ScheduleMode='date' THEN 1 ELSE 0 END) AS has_month"),
+                DB::raw("SUM(CASE WHEN sc.ScheduleMode='count' AND sc.RemainingSessions>0 THEN sc.RemainingSessions * COALESCE(sc.Rate,0) ELSE 0 END) AS recoverable"),
+            ])
+            ->get();
+
+        $dormant = $rows->where('has_prepaid', 1);
+        $reenroll = $rows->filter(fn ($r) => (int) $r->has_prepaid === 0 && (int) $r->has_month === 0);
+
+        return [
+            'dormant_prepaid_students' => $dormant->count(),
+            'dormant_prepaid_recoverable_ntd' => (int) round($dormant->sum(fn ($r) => (float) $r->recoverable)),
+            'reenroll_candidates' => $reenroll->count(),
+        ];
     }
 
     private function attendedWithoutLr(): int
