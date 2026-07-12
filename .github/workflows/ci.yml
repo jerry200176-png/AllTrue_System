@@ -120,17 +120,19 @@ jobs:
 
       - name: Load PHPUnit database password
         run: |
-          php -r '
+          DB_PASSWORD="$(php -r '
             $xml = simplexml_load_file("backend/phpunit.xml");
             foreach ($xml->php->env as $env) {
               if ((string) $env["name"] === "DB_PASSWORD") {
-                echo "DB_PASSWORD=" . (string) $env["value"] . PHP_EOL;
+                echo (string) $env["value"];
                 exit(0);
               }
             }
             fwrite(STDERR, "DB_PASSWORD not found in backend/phpunit.xml" . PHP_EOL);
             exit(1);
-          ' >> "$GITHUB_ENV"
+          ')"
+          echo "::add-mask::$DB_PASSWORD"
+          echo "DB_PASSWORD=$DB_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Cache Composer packages
         uses: actions/cache@v6
@@ -197,6 +199,7 @@ jobs:
 
           mysql -h 127.0.0.1 -u admin -p"$DB_PASSWORD" \
             -e "CREATE DATABASE \`$DB_DATABASE\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          echo "TEST_DB_CREATED=true" >> "$GITHUB_ENV"
 
           php -r '
             $path = "backend/phpunit.xml";
@@ -376,7 +379,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Drop isolated test database
-        if: always()
+        if: always() && env.TEST_DB_CREATED == 'true'
         run: |
           # Fail closed: cleanup may only target the run-scoped test namespace.
           if [[ ! "$DB_DATABASE" =~ ^AllTrue_test_[0-9]+_[0-9]+$ ]]; then
