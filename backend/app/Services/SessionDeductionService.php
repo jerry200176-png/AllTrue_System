@@ -69,6 +69,88 @@ class SessionDeductionService
         return $out;
     }
 
+    /**
+     * Read-only expected UsedSessions values using the same sources, caps, and
+     * fractional-minute rounding as recomputeCounters().
+     *
+     * @param  array<int|string>  $studentClassIds
+     * @return array<int,int> student_class_id => expected persisted UsedSessions
+     */
+    public static function batchExpectedUsedSessions(array $studentClassIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+
+        $courses = StudentClass::query()
+            ->whereIn('ID', $ids)
+            ->get(['ID', 'ScheduleMode', 'SessionCount', 'SessionDuration'])
+            ->keyBy('ID');
+        $observed = self::batchObservedUsedSessions($ids);
+
+        $perSessionSql = 'CASE WHEN sc.SessionDuration >= 1 THEN sc.SessionDuration ELSE '
+            . StudentClass::DEFAULT_SESSION_MINUTES . ' END';
+        $ledger = SessionDeductionLedger::query()
+            ->from('session_deduction_ledger as ledger')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'ledger.student_class_id')
+            ->whereIn('ledger.student_class_id', $ids)
+            ->whereIn('ledger.source', ['attendance', 'retro_leave', 'status_adjust'])
+            ->groupBy('ledger.student_class_id')
+            ->selectRaw('ledger.student_class_id')
+            ->selectRaw(
+                "SUM(CASE WHEN ledger.event_type = 'deduct' THEN 1 ELSE 0 END) "
+                . "- SUM(CASE WHEN ledger.event_type = 'reverse' THEN 1 ELSE 0 END) as net_events"
+            )
+            ->selectRaw(
+                "MAX(CASE WHEN ledger.minutes IS NOT NULL AND ledger.minutes != {$perSessionSql} "
+                . 'THEN 1 ELSE 0 END) as has_partial'
+            )
+            ->selectRaw(
+                "SUM(CASE WHEN ledger.event_type = 'deduct' "
+                . "THEN COALESCE(ledger.minutes, {$perSessionSql}) "
+                . "ELSE -COALESCE(ledger.minutes, {$perSessionSql}) END) as net_minutes"
+            )
+            ->get()
+            ->keyBy('student_class_id');
+
+        $out = [];
+        foreach ($ids as $id) {
+            $course = $courses->get($id);
+            if (!$course) {
+                continue;
+            }
+
+            $ledgerRow = $ledger->get($id);
+            $ledgerUsed = max(0, (int) ($ledgerRow->net_events ?? 0));
+            $usedByAttendance = max(0, (int) ($observed[$id] ?? 0), $ledgerUsed);
+            $sessionCount = max(0, (int) ($course->SessionCount ?? 0));
+            $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
+
+            if (!$isSessionMode || $sessionCount === 0) {
+                $out[$id] = $usedByAttendance;
+                continue;
+            }
+
+            if ((int) ($ledgerRow->has_partial ?? 0) === 1) {
+                $perSession = max(1, $course->perSessionMinutes());
+                $purchasedMinutes = $sessionCount * $perSession;
+                $usedMinutes = max(0, min($purchasedMinutes, (int) ($ledgerRow->net_minutes ?? 0)));
+                $remainingMinutes = $purchasedMinutes - $usedMinutes;
+                $remainingSessions = max(
+                    0,
+                    min($sessionCount, self::roundHalfUp($remainingMinutes, $perSession))
+                );
+                $out[$id] = $sessionCount - $remainingSessions;
+                continue;
+            }
+
+            $out[$id] = min($sessionCount, $usedByAttendance);
+        }
+
+        return $out;
+    }
+
     // ─── ledger-native entry points ───────────────────────────────
 
     /**
