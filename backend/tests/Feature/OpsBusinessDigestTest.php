@@ -40,8 +40,35 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertSame(0, $m['coverage']['sessions_next_7d']);
         $this->assertArrayHasKey('attended_without_lr', $m['data_quality']);
 
+        // #1149/#1152 decomposition: the seeded course is a dormant-prepaid case
+        // (count-mode, balance 3, no upcoming) → 3 x NT$500 recoverable, 0 re-enroll.
+        $this->assertSame(1, $m['retention']['dormant_prepaid_students']);
+        $this->assertSame(1500, $m['retention']['dormant_prepaid_recoverable_ntd']);
+        $this->assertSame(0, $m['retention']['reenroll_candidates']);
+
         $anom = app(BusinessDigestService::class)->anomalies($m);
         $this->assertNotEmpty($anom); // stranded>0 and coverage=0 both flag
+    }
+
+    public function test_retention_decomposition_splits_dormant_and_reenroll(): void
+    {
+        // Re-enrollment candidate: active count-mode course, balance EXHAUSTED (0),
+        // no month course, no upcoming session → counts as re-enroll, NOT dormant-prepaid.
+        $reId = 95010;
+        DB::table('Student')->insert(['id' => $reId, 'name' => 'Reenroll', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1]);
+        DB::table('StudentClass')->insert([
+            'StudentID' => $reId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1, 'by1' => 1, 'Period' => 4,
+            'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0, 'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(60)->toDateTimeString(), 'SessionCount' => 8, 'SessionDuration' => 60,
+            'RemainingSessions' => 0, 'UsedSessions' => 8, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+
+        $m = app(BusinessDigestService::class)->metrics();
+
+        $this->assertSame(1, $m['retention']['reenroll_candidates']);
+        $this->assertSame(0, $m['retention']['dormant_prepaid_students']);
+        $this->assertSame(0, $m['retention']['dormant_prepaid_recoverable_ntd']);
+        $this->assertGreaterThanOrEqual(1, $m['retention']['no_upcoming_students']);
     }
 
     public function test_command_runs_read_only(): void
