@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -13,7 +14,7 @@ class NightlyReconcile extends Command
                             {--dry-run : Preview only, no DB writes or alerts}
                             {--threshold=0 : Minimum discrepancy count to trigger alert}';
 
-    protected $description = 'Nightly reconcile: compare StudentClass.UsedSessions vs actual ClassSession attended count. Alert on mismatch.';
+    protected $description = 'Nightly reconcile: compare StudentClass.UsedSessions with canonical deduction semantics. Alert on mismatch.';
 
     public function handle(): int
     {
@@ -39,12 +40,14 @@ class NightlyReconcile extends Command
             ->where('Stop', 0)
             ->select('ID', 'StudentID', 'SubjectID', 'UsedSessions', 'SessionCount')
             ->get();
+        $expectedCounts = SessionDeductionService::batchExpectedUsedSessions($courses->pluck('ID')->all());
 
         $mismatches = [];
         foreach ($courses as $c) {
             $actual   = (int) ($actualCounts[$c->ID] ?? 0);
+            $expected = (int) ($expectedCounts[$c->ID] ?? 0);
             $recorded = (int) ($c->UsedSessions ?? 0);
-            $diff     = abs($actual - $recorded);
+            $diff     = abs($expected - $recorded);
             if ($diff > $threshold) {
                 $mismatches[] = [
                     'student_class_id' => $c->ID,
@@ -52,6 +55,7 @@ class NightlyReconcile extends Command
                     'subject_id'       => $c->SubjectID,
                     'session_count'    => $c->SessionCount,
                     'recorded_used'    => $recorded,
+                    'expected_used'    => $expected,
                     'actual_attended'  => $actual,
                     'diff'             => $diff,
                 ];
@@ -103,11 +107,11 @@ class NightlyReconcile extends Command
         if ($superAdminIds->isEmpty()) return;
 
         $sample = collect($mismatches)->take(3)->map(function ($m) {
-            return "Course #{$m['student_class_id']}: recorded={$m['recorded_used']}, actual={$m['actual_attended']} (diff={$m['diff']})";
+            return "Course #{$m['student_class_id']}: recorded={$m['recorded_used']}, expected={$m['expected_used']} (diff={$m['diff']})";
         })->implode(' | ');
 
         $title = "⚠ 夜間對帳：{$count} 筆堂次異常";
-        $body  = "UsedSessions 與實際出勤堂次不一致，請查閱報告。\n範例：{$sample}\n報告路徑：{$reportPath}";
+        $body  = "UsedSessions 與權威扣堂口徑不一致，請查閱報告。\n範例：{$sample}\n報告路徑：{$reportPath}";
 
         foreach ($superAdminIds as $adminId) {
             try {
