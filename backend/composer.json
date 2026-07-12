@@ -35,6 +35,11 @@
     },
     "allow-plugins": {
       "pestphp/pest-plugin": true
+    },
+    "audit": {
+      "ignore": {
+        "GHSA-5vg9-5847-vvmq": "Reachability reviewed 2026-07-12: no Laravel email validation rule or outbound mail to user-supplied addresses; Laravel 8 uses SwiftMailer. Framework EOL migration remains tracked in #977."
+      }
     }
   },
   "minimum-stability": "dev",
