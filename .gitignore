@@ -150,6 +150,11 @@ backend/storage/app/repair-snapshots/
 backend/storage/app/audit-scope-test*.json
 frontend/ios/
 
+# User uploads — must never be committed (issue #1124)
+backend/storage/app/public/
+public/uploads/
+storage/app/public/
+
 # ── Shadow control plane quarantine (canonical copy: docs/archive/control-plane-shadow-v1/) ──
 /scripts/platform/
 /config/platform/
