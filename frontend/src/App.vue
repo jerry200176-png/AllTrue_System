@@ -339,6 +339,7 @@
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
+      <DuplicateSessionReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'duplicate-review'" :branch-id="currentBranch" :user-role="role" />
       <ReleaseNotesPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'release-notes'" :user-role="role" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
@@ -471,6 +472,7 @@ const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugRepo
 const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
 const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
+const DuplicateSessionReviewPage = defineAsyncComponent(() => import('./pages/DuplicateSessionReviewPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
@@ -1235,6 +1237,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
           { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
+          { page: 'duplicate-review', label: '重疊課程審核', icon: 'compare_arrows' },
         ],
       },
       {
