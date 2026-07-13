@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\PaymentReport;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Services\PaymentStatusService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,12 @@ use Illuminate\Support\Facades\Log;
 
 class AlertController extends Controller
 {
+    private PaymentStatusService $paymentStatus;
+
+    public function __construct(PaymentStatusService $paymentStatus)
+    {
+        $this->paymentStatus = $paymentStatus;
+    }
     /**
      * GET /api/v1/alerts/tuition
      * 主任儀表板「繳費提醒」資料源。規則見 docs/DIRECTOR_PAYMENT_ALERT_RULES.md
@@ -171,7 +178,7 @@ class AlertController extends Controller
                     'paid_at'          => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'last_paid_at'     => $pkg->paid_at ? substr($pkg->paid_at, 0, 10) : null,
                     'paid_amount'      => (bool) $pkg->paid ? (int) round($charge) : 0,
-                    'payment_status'   => (bool) $pkg->paid ? 'monthly_due_soon' : 'unpaid',
+                    'payment_status'   => (bool) $pkg->paid ? PaymentStatusService::STATUS_MONTHLY_DUE_SOON : PaymentStatusService::STATUS_UNPAID,
                     'latest_payment_report_id' => null,
                     'has_newer_course'         => false,
                     'newer_course_id'          => null,
@@ -219,7 +226,7 @@ class AlertController extends Controller
                 'charge'             => $charge,
                 'paid_amount'        => $paidAmount,
                 'outstanding'        => $isPaid ? 0 : max(0, $charge - $paidAmount),
-                'payment_status'     => $this->computePackageCountPaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
+                'payment_status'              => $this->paymentStatus->computePackagePaymentStatus($pkg, $paidAmount, $charge, $pendingReportId !== null),
                 'latest_payment_report_id' => $pendingReportId,
                 'has_newer_course'         => false,
                 'newer_course_id'          => null,
@@ -253,7 +260,7 @@ class AlertController extends Controller
 
                 $pendingReportId = $pendingReportMap[$classId] ?? null;
 
-                $paymentStatus = $this->computePaymentStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
+                $paymentStatus = $this->paymentStatus->computePaymentStatus($sc, $paidAmount, $charge, $pendingReportId !== null);
 
                 $newerInfo = $newerCourseMap[$classId] ?? null;
 
@@ -315,21 +322,6 @@ class AlertController extends Controller
         $sessions = max(0, (int) ($pkg->total_sessions ?? 0));
         $rate = (float) ($pkg->rate ?? 0);
         return (int) round($sessions * $rate);
-    }
-
-    private function computePackageCountPaymentStatus(CoursePackage $pkg, int $paidAmount, int $charge, bool $hasPendingReport): string
-    {
-        if ($hasPendingReport) {
-            return 'pending_report';
-        }
-        $isPaid = (bool) $pkg->paid || ($charge > 0 && $paidAmount >= $charge);
-        if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
-            return 'partial';
-        }
-        if (!$isPaid) {
-            return 'unpaid';
-        }
-        return (int) ($pkg->remaining_sessions ?? 0) <= 2 ? 'renew_needed' : 'paid';
     }
 
     private function mapMonthlyAlert(StudentClass $c, Carbon $today, ?array $openInvoice = null): ?array
@@ -582,111 +574,30 @@ class AlertController extends Controller
         return $c->displaySubjectName();
     }
 
-    /**
-     * Compute the six-value payment_status for a StudentClass row in alerts/tuition.
-     * Priority order (first match wins):
-     *   1. pending_report — has an unconfirmed PaymentReport
-     *   2. partial — has partial Invoice payment
-     *   3. unpaid — Paid=0 and no partial/pending
-     *   4. renew_needed — Paid=1, count-mode, RemainingSessions <= 2
-     *   5. monthly_due_soon — date-mode and Paid=1
-     *   6. paid — Paid=1 and none of the above
-     */
-    private function computePaymentStatus(?StudentClass $sc, int $paidAmount, int $charge, bool $hasPendingReport): string
-    {
-        if (!$sc) {
-            return 'unpaid';
-        }
-
-        if ($hasPendingReport) {
-            return 'pending_report';
-        }
-
-        $isPaid = (int) ($sc->Paid ?? 0) === 1;
-
-        if (!$isPaid && $paidAmount > 0 && $charge > 0 && $paidAmount < $charge) {
-            return 'partial';
-        }
-
-        if (!$isPaid) {
-            return 'unpaid';
-        }
-
-        $mode = $sc->ScheduleMode ?? 'count';
-        $remaining = (int) ($sc->RemainingSessions ?? 0);
-
-        if ($mode === 'count' && $remaining <= 2) {
-            return 'renew_needed';
-        }
-
-        if ($mode === 'date') {
-            return 'monthly_due_soon';
-        }
-
-        return 'paid';
-    }
+    // payment_status computation delegated to PaymentStatusService (canonical source of truth)
 
     /**
      * Batch-fetch Invoice paid aggregates per StudentClass ID.
+     * Delegates to PaymentStatusService (canonical source).
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, array{paid_amount: int, total_amount: int, status: string}>
+     * @return array<int, array{paid_amount: int, total_amount: int}>
      */
     public static function invoiceAggregateByStudentClassIds(array $studentClassIds): array
     {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('Invoice')
-            ->whereIn('StudentClassID', $studentClassIds)
-            ->where(function ($q) {
-                $q->whereNull('Status')->orWhere('Status', '!=', 'void');
-            })
-            ->select(
-                'StudentClassID',
-                DB::raw('COALESCE(SUM(PaidAmount), 0) as paid_amount'),
-                DB::raw('COALESCE(SUM(TotalAmount), 0) as total_amount')
-            )
-            ->groupBy('StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[(int) $row->StudentClassID] = [
-                'paid_amount'  => (int) $row->paid_amount,
-                'total_amount' => (int) $row->total_amount,
-            ];
-        }
-
-        return $map;
+        return PaymentStatusService::invoiceAggregateByStudentClassIds($studentClassIds);
     }
 
     /**
      * Batch-fetch the latest pending PaymentReport ID per StudentClass ID.
+     * Delegates to PaymentStatusService (canonical source).
      *
      * @param  int[]  $studentClassIds
-     * @return array<int, int>  keyed by StudentClassID => latest pending report id
+     * @return array<int, int>
      */
     public static function latestPendingReportByStudentClassIds(array $studentClassIds): array
     {
-        if (empty($studentClassIds)) {
-            return [];
-        }
-
-        $rows = DB::table('payment_reports')
-            ->whereIn('StudentClassID', $studentClassIds)
-            ->where('status', 'pending')
-            ->select('StudentClassID', DB::raw('MAX(id) as latest_id'))
-            ->groupBy('StudentClassID')
-            ->get();
-
-        $map = [];
-        foreach ($rows as $row) {
-            $map[(int) $row->StudentClassID] = (int) $row->latest_id;
-        }
-
-        return $map;
+        return PaymentStatusService::latestPendingReportByStudentClassIds($studentClassIds);
     }
 
     /**

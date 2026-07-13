@@ -18,6 +18,7 @@ use App\Http\Controllers\AdminCampusController;
 use App\Http\Controllers\AdminRoutingRuleController;
 use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
+use App\Http\Controllers\BillingHealthController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
 use App\Http\Controllers\StudentController;
@@ -231,6 +232,8 @@ Route::prefix('v1')->group(function () {
 
     // ── Super Admin: 分校管理 CRUD ───────────────────────────────────────────────
     Route::middleware(['role:super_admin'])->group(function () {
+        Route::get('admin/billing/health', [BillingHealthController::class, 'health']);
+        Route::post('admin/billing/recompute-student', [BillingHealthController::class, 'recomputeStudent']);
         Route::get('admin/campuses', [AdminCampusController::class, 'index']);
         Route::post('admin/campuses', [AdminCampusController::class, 'store']);
         Route::put('admin/campuses/{id}', [AdminCampusController::class, 'update'])->whereNumber('id');

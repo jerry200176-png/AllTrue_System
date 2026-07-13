@@ -4,10 +4,17 @@ namespace App\Services;
 
 use App\Models\DunningEvent;
 use App\Models\StudentClass;
+use App\Services\PaymentStatusService;
 use Illuminate\Support\Facades\Schema;
 
 class DunningService
 {
+    private PaymentStatusService $paymentStatus;
+
+    public function __construct(PaymentStatusService $paymentStatus)
+    {
+        $this->paymentStatus = $paymentStatus;
+    }
     /**
      * Rules aligned with DIRECTOR_PAYMENT_ALERT_RULES.md.
      * DO NOT change conditions without user approval.
@@ -62,7 +69,9 @@ class DunningService
 
         $events = [];
         foreach ($query->cursor() as $course) {
-            if ((int) ($course->Paid ?? 0) !== 1) {
+            // Use PaymentStatusService for canonical "is paid" check
+            $effectivelyPaid = $this->paymentStatus->isEffectivelyPaid($course, 0, 0, false);
+            if (!$effectivelyPaid) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,
@@ -117,10 +126,10 @@ class DunningService
                 $dueDate = $today->copy()->subMonth()->setDay(min($settlementDay, $today->copy()->subMonth()->endOfMonth()->day))->startOfDay();
             }
 
-            $isPaid = (int) ($course->Paid ?? 0) === 1;
+            $effectivelyPaid = $this->paymentStatus->isEffectivelyPaid($course, 0, 0, false);
             $daysFromDue = $today->diffInDays($dueDate, false);
 
-            if (!$isPaid && $daysFromDue > 0) {
+            if (!$effectivelyPaid && $daysFromDue > 0) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,
