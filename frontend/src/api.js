@@ -518,3 +518,32 @@ export async function revokeApiClient(id) {
 export async function getCampuses() {
   return [];
 }
+
+// --- Nightly Reconcile (super_admin only) ---
+export async function getReconcileLatest(token) {
+  const res = await fetch('/api/v1/admin/reconcile/latest', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  if (res.status === 404) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '無法取得對帳報告');
+  return data;
+}
+
+export async function recomputeReconcile(token, studentClassIds = []) {
+  const res = await fetch('/api/v1/admin/reconcile/recompute', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ student_class_ids: studentClassIds }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.message || '重新計算失敗');
+  return data;
+}
