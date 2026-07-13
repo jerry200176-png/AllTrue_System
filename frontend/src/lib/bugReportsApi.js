@@ -27,6 +27,27 @@ async function json(res) {
 const MAX_BUG_ATTACHMENTS = 5;
 
 /**
+ * @typedef {object} BugReport
+ * @property {number} id
+ * @property {string} title
+ * @property {string} description
+ * @property {string} status - new|triaged|in_progress|resolved|closed
+ * @property {string} severity - low|medium|high|critical
+ * @property {string} reporter_name
+ * @property {string} created_at
+ * @property {string} [updated_at]
+ * @property {string} [page_key]
+ * @property {number} [attachments_count]
+ * @property {number} [comments_count]
+ * @property {number|null} [github_issue_number] - GitHub Issue 編號（後端 #71 擴充）
+ * @property {string|null} [github_issue_url] - GitHub Issue 完整 URL（後端 #71 擴充）
+ * @property {number} [reporter_user_id]
+ * @property {object[]} [attachments]
+ * @property {object[]} [comments]
+ * @property {object[]} [status_logs]
+ */
+
+/**
  * @param {object} data — branch_id, title, description, severity?, page_key?, url?, client_info?
  * @param {File[]} [data.files] — 截圖（jpeg/png/gif/webp），最多 5 張、每張 ≤5MB
  */

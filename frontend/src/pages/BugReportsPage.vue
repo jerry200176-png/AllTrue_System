@@ -272,6 +272,19 @@
                     <span class="material-symbols-outlined">update</span>
                     {{ formatDate(bug.updated_at) }}
                   </span>
+                  <a
+                    v-if="bug.github_issue_number != null"
+                    :href="bug.github_issue_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="github-issue-badge"
+                    :aria-label="`在 GitHub 查看 Issue #${bug.github_issue_number}`"
+                    :title="`在 GitHub 查看 Issue #${bug.github_issue_number}`"
+                    @click.stop
+                  >
+                    <span class="material-symbols-outlined">code</span>
+                    #{{ bug.github_issue_number }}
+                  </a>
                 </div>
               </div>
             </div>
@@ -355,6 +368,20 @@
             <div><strong>回報者：</strong>{{ detail.reporter_name }}</div>
             <div v-if="detail.page_key"><strong>頁面：</strong>{{ detail.page_key }}</div>
             <div><strong>時間：</strong>{{ formatDate(detail.created_at) }}</div>
+          </div>
+
+          <!-- GitHub Issue link -->
+          <div v-if="detail.github_issue_number != null" class="github-issue-section">
+            <span :class="['github-status-indicator', githubIssueOpenClass(detail.status)]" :title="githubIssueStatusLabel(detail.status)"></span>
+            <a
+              :href="detail.github_issue_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="github-issue-link"
+              :aria-label="`在 GitHub 查看 Issue #${detail.github_issue_number}`"
+            >
+              在 GitHub 查看 Issue #{{ detail.github_issue_number }}
+            </a>
           </div>
 
           <div class="detail-description">
@@ -881,6 +908,19 @@ function formatDate(iso) {
   return d.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) +
     ' ' + d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
 }
+
+// ── GitHub Issue helpers ─────────────────────────────────────────────────
+// status ∈ { new, triaged, in_progress } → open（綠色）
+// status ∈ { resolved, closed } → closed（紫色）
+const GITHUB_OPEN_STATUSES = new Set(['new', 'triaged', 'in_progress']);
+function githubIssueOpenClass(status) {
+  if (!status) return '';
+  return GITHUB_OPEN_STATUSES.has(status) ? 'is-open' : 'is-closed';
+}
+function githubIssueStatusLabel(status) {
+  if (!status) return '';
+  return GITHUB_OPEN_STATUSES.has(status) ? 'Issue 開啟中' : 'Issue 已關閉';
+}
 </script>
 
 <style scoped>
@@ -1343,4 +1383,50 @@ function formatDate(iso) {
 }
 .comment-form-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 .checkbox-label { font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+
+/* ── GitHub Issue Badge（列表） ───────────────────────────────────── */
+.github-issue-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 8px; border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary); font-size: 11px; font-weight: 700;
+  text-decoration: none; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.github-issue-badge:hover {
+  background: var(--primary);
+  color: var(--ds-canvas);
+}
+.github-issue-badge .material-symbols-outlined { font-size: 14px; }
+
+/* ── GitHub Issue Section（詳情） ────────────────────────────────── */
+.github-issue-section {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; margin: 14px 0 4px;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--ds-canvas);
+}
+.github-status-indicator {
+  width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+  background: var(--ds-ink-mute);
+}
+.github-status-indicator.is-open {
+  background: var(--success, var(--ds-success));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, var(--ds-success)) 25%, transparent);
+}
+.github-status-indicator.is-closed {
+  background: var(--ds-purple, #8b5cf6);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ds-purple, #8b5cf6) 25%, transparent);
+}
+.github-issue-link {
+  font-size: 14px; font-weight: 600; color: var(--primary); text-decoration: none;
+  transition: opacity 0.15s;
+}
+.github-issue-link:hover { opacity: 0.8; text-decoration: underline; }
+
+/* ── RWD: Mobile GitHub badge / link 不爆版 ───────────────────────── */
+@media (max-width: 720px) {
+  .github-issue-badge { font-size: 10px; padding: 1px 6px; }
+  .github-issue-link { font-size: 13px; word-break: break-all; }
+}
 </style>
