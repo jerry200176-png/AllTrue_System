@@ -339,6 +339,7 @@
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
+      <P2ReviewPage v-if="!isPasswordChangeLocked && isDirector && active === 'p2-review'" :branch-id="currentBranch" />
       <ReleaseNotesPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'release-notes'" :user-role="role" />
 
       <!-- 身分無法辨識時顯示說明，避免登入後一片空白 -->
@@ -471,6 +472,7 @@ const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugRepo
 const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
 const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
+const P2ReviewPage          = defineAsyncComponent(() => import('./pages/P2ReviewPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
@@ -1234,6 +1236,7 @@ const sidebarNavGroups = computed(() => {
           { page: 'course-mgmt', label: '課程管理', icon: 'menu_book', badgeTypes: ['tuition'] },
           { page: 'attendance', label: '出缺勤管理', icon: 'fact_check', badgeTypes: ['pending_swipe', 'attendance'] },
           { page: 'schedule-discrepancy', label: '課表回報管理', icon: 'flag', badgeTypes: ['schedule_discrepancy'] },
+          { page: 'p2-review', label: '重複排課審核', icon: 'compare_arrows' },
           { page: 'learning', label: '學習評量表', icon: 'assignment', badgeTypes: ['learning_review', 'parent_feedback'] },
         ],
       },
