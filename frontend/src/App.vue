@@ -336,6 +336,7 @@
       <LineIntegration v-if="!isPasswordChangeLocked && isDirector && active === 'line-integration'" :branch-id="currentBranch" />
       <DirectorAccountsPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'director-accounts'" :token="session?.access_token ?? ''" />
       <BranchManagementPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'branch-management'" :token="session?.access_token ?? ''" />
+      <BillingHealthPage v-if="!isPasswordChangeLocked && role === 'super_admin' && active === 'billing-health'" />
       <ChatPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'chat'" :branch-id="currentBranch" :user-id="session?.user?.id" :avatar-url="avatarUrl" :super-admin="role === 'super_admin'" :user-role="role" />
       <BugReportsPage v-if="!isPasswordChangeLocked && (isDirector || isTeacher) && active === 'bugs'" :branch-id="currentBranch" :user-role="role" />
       <ScheduleDiscrepancyPage v-if="!isPasswordChangeLocked && isDirector && active === 'schedule-discrepancy'" :branch-id="currentBranch" />
@@ -471,6 +472,7 @@ const BugReportsPage        = defineAsyncComponent(() => import('./pages/BugRepo
 const TeacherHomePage       = defineAsyncComponent(() => import('./pages/TeacherHomePage.vue'));
 const ScheduleDiscrepancyPage = defineAsyncComponent(() => import('./pages/ScheduleDiscrepancyPage.vue'));
 const ReleaseNotesPage      = defineAsyncComponent(() => import('./pages/ReleaseNotesPage.vue'));
+const BillingHealthPage     = defineAsyncComponent(() => import('./pages/BillingHealthPage.vue'));
 import AmbientMusicPlayer from './components/AmbientMusicPlayer.vue';
 import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
@@ -1209,6 +1211,11 @@ const sidebarNavGroups = computed(() => {
         page: 'branch-management',
         label: '分校管理',
         icon: 'store',
+      });
+      systemItems.push({
+        page: 'billing-health',
+        label: '帳務健康檢查',
+        icon: 'health_and_safety',
       });
     }
     return [
