@@ -134,6 +134,14 @@
               更新中…
             </div>
             <button
+              class="tc-btn tc-btn--batch"
+              @click="batchModalOpen = true"
+              title="批次開立繳費單"
+            >
+              <span class="material-symbols-outlined" style="font-size:16px">receipt_long</span>
+              批次開單
+            </button>
+            <button
               class="tc-btn tc-btn--csv"
               @click="exportCSV"
               :disabled="!filteredRows.length || csvExporting"
@@ -292,6 +300,14 @@
 
       </div>
     </template>
+    </section>
+
+    <section v-else-if="activeAccountingTab === 'overdue'" class="acct-section">
+      <OverdueBucketsPanel
+        :branch-id="branchId"
+        :refresh-trigger="overdueRefreshTrigger"
+        @openLedger="openLedgerForOverdue"
+      />
     </section>
 
     <section v-else class="acct-panel">
@@ -553,6 +569,13 @@
       @changed="onLedgerChanged"
     />
 
+    <BatchInvoiceModal
+      :show="batchModalOpen"
+      :branch-id="branchId"
+      @close="batchModalOpen = false"
+      @batchCompleted="onBatchCompleted"
+    />
+
     <!-- Void Confirmation Dialog -->
     <Transition name="fade">
       <div v-if="voidDialogOpen" class="tc-overlay" @click.self="voidDialogOpen = false">
@@ -696,6 +719,8 @@ import PaymentSlipModal from '../components/PaymentSlipModal.vue';
 import PaymentEntryModal from '../components/PaymentEntryModal.vue';
 import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
+import BatchInvoiceModal from '../components/BatchInvoiceModal.vue';
+import OverdueBucketsPanel from '../components/OverdueBucketsPanel.vue';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -709,6 +734,7 @@ const actionLoading = ref(null);
 
 const ACCOUNTING_TABS = [
   { key: 'receivables', label: '待處理', icon: 'payments' },
+  { key: 'overdue', label: '逾期分級', icon: 'report' },
   { key: 'settled', label: '已結清課程彙總', icon: 'task_alt' },
   { key: 'payments', label: '收據流水紀錄', icon: 'receipt_long' },
 ];
@@ -808,6 +834,8 @@ function openReceiptByReport(reportId) {
 function refreshActiveTab() {
   if (activeAccountingTab.value === 'receivables') {
     loadAlerts();
+  } else if (activeAccountingTab.value === 'overdue') {
+    overdueRefreshTrigger.value++;
   } else if (activeAccountingTab.value === 'settled') {
     loadSettledCourses();
   } else {
@@ -825,6 +853,12 @@ const ledgerOpen = ref(false);
 const ledgerStudentClassId = ref(null);
 const ledgerReportId = ref(null);
 
+// ═══ Batch Invoice ═══
+const batchModalOpen = ref(false);
+
+// ═══ Overdue ═══
+const overdueRefreshTrigger = ref(0);
+
 function openLedgerForClass(row) {
   ledgerStudentClassId.value = row?.id || row?.student_class_id || null;
   ledgerReportId.value = null;
@@ -835,6 +869,17 @@ function openLedgerForReport(row) {
   ledgerStudentClassId.value = row?.student_class_id || null;
   ledgerReportId.value = row?.report_id || null;
   ledgerOpen.value = true;
+}
+
+function openLedgerForOverdue(row) {
+  ledgerStudentClassId.value = row?.student_class_id || row?.id || null;
+  ledgerReportId.value = null;
+  ledgerOpen.value = true;
+}
+
+function onBatchCompleted() {
+  overdueRefreshTrigger.value++;
+  loadAlerts();
 }
 
 // ═══ Tab Filter ═══
@@ -1527,6 +1572,8 @@ watch(() => props.branchId, () => {
 watch(activeAccountingTab, (tab) => {
   if (tab === 'receivables') {
     if (!rows.value.length) loadAlerts();
+  } else if (tab === 'overdue') {
+    overdueRefreshTrigger.value++;
   } else if (tab === 'settled') {
     loadSettledCourses();
   } else {
@@ -1973,6 +2020,12 @@ loadAlerts();
 }
 .tc-btn--csv:hover:not(:disabled) { background: var(--bg); border-color: var(--primary-light); color: var(--primary); }
 .tc-btn--csv:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tc-btn--batch {
+  color: var(--primary);
+  font-weight: 600;
+}
+.tc-btn--batch:hover { background: var(--primary-light, rgba(37,99,235,0.08)); border-color: var(--primary); }
 
 .tc-cell-name { font-weight: 500; }
 
