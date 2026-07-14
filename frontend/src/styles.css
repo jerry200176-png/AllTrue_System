@@ -167,6 +167,24 @@ body {
   color: var(--text);
   background: var(--bg);
   line-height: 1.6;
+  /* 所有數字等寬 — 金額/計數不因數字不同而晃動 (P0) */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Skip-to-content：鍵盤使用者可跳過側欄導航直達主要內容 (P0) */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 99999;
+  padding: 0.5rem 1rem;
+  background: var(--ds-ink);
+  color: #fff;
+  font-size: 0.875rem;
+  text-decoration: none;
+  border-radius: 0 0 0.5rem 0;
+}
+.skip-link:focus {
+  left: 0;
 }
 
 .material-symbols-outlined {

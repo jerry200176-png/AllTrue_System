@@ -35,6 +35,7 @@
   <Login v-else-if="!session" @login-success="handleLoginSuccess" />
 
   <div v-else class="app-layout" :class="{ 'sidebar-is-collapsed': sidebarCollapsed }">
+    <a href="#main-content" class="skip-link">跳到主要內容</a>
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-brand">
@@ -197,7 +198,7 @@
     </div>
 
     <!-- Main Content -->
-    <div class="main-content">
+    <div id="main-content" class="main-content">
       <div class="main-topbar">
         <span
           class="build-stamp-bar"

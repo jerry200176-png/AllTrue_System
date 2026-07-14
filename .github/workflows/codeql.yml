@@ -22,8 +22,9 @@ permissions:
 jobs:
   changes:
     name: Detect backend/security changes
-    # INC-2026-001：永久移至 GitHub-hosted runner（SPOF 修復）
-    runs-on: ubuntu-latest
+    # #545(A)：原移至 GitHub-hosted runner。
+    # #867：GitHub-hosted 受帳單/額度卡住時整條 required gate 失效，改回 self-hosted（runner 在線）。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 3
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -51,18 +52,12 @@ jobs:
     name: PHPStan Advisory (php)
     needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
-    # INC-2026-001：永久移回 GitHub-hosted runner（SPOF 修復）；使用 setup-php 安裝 PHP 8.2。
-    runs-on: ubuntu-latest
+    # #867：移至 self-hosted。runner 已內建 PHP 8.2（與 PHPUnit job 同），故不需 setup-php / hosted cache。
+    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
     timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
-
-      - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
 
       - name: Verify local PHP runtime
         run: php -v
