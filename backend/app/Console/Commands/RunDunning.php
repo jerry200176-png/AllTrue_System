@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\DunningService;
+use App\Services\PaymentStatusService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -20,7 +21,7 @@ class RunDunning extends Command
             $this->warn('DRY RUN — no events will be created.');
         }
 
-        $service = new DunningService();
+        $service = new DunningService(new PaymentStatusService());
         $events = $service->evaluateAll($campusId);
 
         $count = count($events);

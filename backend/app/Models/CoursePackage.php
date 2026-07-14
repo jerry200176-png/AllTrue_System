@@ -4,6 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property bool   $paid
+ * @property string $paid_at
+ * @property int    $remaining_sessions
+ * @property int    $total_sessions
+ * @property int    $settlement_day
+ * @property int    $campus_id
+ * @property int    $student_id
+ * @property string $name
+ * @property float  $rate
+ */
 class CoursePackage extends Model
 {
     protected $table = 'course_packages';

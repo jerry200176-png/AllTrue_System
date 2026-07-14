@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DunningEvent;
 use App\Services\DunningService;
+use App\Services\PaymentStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -73,7 +74,7 @@ class DunningController extends Controller
         ]);
 
         $campusId = $request->filled('campus_id') ? (int) $request->input('campus_id') : null;
-        $service = new DunningService();
+        $service = new DunningService(new PaymentStatusService());
         $events = $service->evaluateAll($campusId);
 
         return response()->json([
