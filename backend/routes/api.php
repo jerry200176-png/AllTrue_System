@@ -47,6 +47,9 @@ use App\Http\Controllers\ScheduleDiscrepancyController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
 use App\Http\Controllers\SystemTrustController;
+use App\Http\Controllers\AdminReconcileController;
+use App\Http\Controllers\AdminDuplicateSessionController;
+use App\Http\Controllers\GitHubIssueController;
 
 
 if (app()->environment('local')) {
@@ -238,6 +241,18 @@ Route::prefix('v1')->group(function () {
         Route::post('admin/routing-rules/versions', [AdminRoutingRuleController::class, 'store']);
         Route::post('admin/routing-rules/versions/{version}/publish', [AdminRoutingRuleController::class, 'publish'])->whereNumber('version');
         Route::get('admin/routing-rules/check', [AdminRoutingRuleController::class, 'check']);
+
+        // ── Nightly Reconcile ──
+        Route::get('admin/reconcile/latest', [AdminReconcileController::class, 'latest']);
+        Route::get('admin/reconcile', [AdminReconcileController::class, 'index']);
+
+        // ── Bug Reports (admin) ──
+        Route::get('admin/bug-reports', [BugReportController::class, 'index']);
+    });
+
+    // ── GitHub Issues (director + super_admin) ──
+    Route::middleware(['role:director,super_admin', 'require_password_change'])->group(function () {
+        Route::get('github/issues', [GitHubIssueController::class, 'index']);
     });
 
     Route::middleware(['role:director', 'require_campus', 'require_password_change'])->group(function () {
@@ -630,5 +645,12 @@ Route::prefix('v1')->group(function () {
         Route::post('bugs/{id}/status', [BugReportController::class, 'updateStatus']);
         Route::patch('bugs/{id}/comments/{commentId}/visibility', [BugReportController::class, 'updateCommentVisibility']);
         Route::post('bugs/mark-inbox-seen', [BugReportController::class, 'markInboxSeen']);
+    });
+
+    // ── Duplicate Sessions P2 Review (director + super_admin) ──
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('admin/duplicate-sessions/p2-review', [AdminDuplicateSessionController::class, 'p2Review']);
+        Route::post('admin/duplicate-sessions/decide', [AdminDuplicateSessionController::class, 'decide']);
+        Route::post('admin/duplicate-sessions/execute', [AdminDuplicateSessionController::class, 'execute']);
     });
 });
