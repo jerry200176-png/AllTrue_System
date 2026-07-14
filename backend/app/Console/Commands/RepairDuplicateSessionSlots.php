@@ -58,9 +58,11 @@ class RepairDuplicateSessionSlots extends Command
         $snapshotPath = $this->option('snapshot') ?: storage_path('app/repair-snapshots/189-191-' . $case . '-' . now()->format('YmdHis') . '.json');
         $this->writeSnapshot($snapshotPath, $case, $plan);
 
-        foreach ($plan as $action) {
-            $this->applyAction($action);
-        }
+        DB::transaction(function () use ($plan): void {
+            foreach ($plan as $action) {
+                $this->applyAction($action);
+            }
+        });
 
         $this->info("Snapshot: {$snapshotPath}");
 
