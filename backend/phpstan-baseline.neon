@@ -4,67 +4,67 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Services/PaymentStatusService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:pluck\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:cursor\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:get\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Http/Controllers/BillingHealthController.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Console/Commands/BillingAuditStudent.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.\$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Console/Commands/BillingVerifyChargeConsistency.php
 
 		-
@@ -5518,37 +5518,37 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$StudentID\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$SubjectID\.$#'
 			identifier: property.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Query\\Builder\:\:whereHas\(\)\.$#'
 			identifier: method.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\DunningEvent\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 1
+			count: 5
 			path: app/Services/DunningService.php
 
 		-
