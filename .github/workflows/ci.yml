@@ -95,9 +95,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: AllTrue_test
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: fLcLUu3Imi7RuFhT1jfwIH1
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype, pcov
+          coverage: pcov
 
       - name: Verify local PHP runtime
         run: |
@@ -194,6 +217,9 @@ jobs:
           cp .env.example .env 2>/dev/null || touch .env
           # Override DB settings for CI (phpunit.xml already sets these, but ensure APP_KEY)
           php artisan key:generate --force
+
+      - name: Install MySQL client
+        run: sudo apt-get update -y && sudo apt-get install -y mysql-client
 
       - name: Wait for MySQL
         run: |
