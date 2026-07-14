@@ -14,7 +14,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property int    $student_id
  * @property string $name
  * @property float  $rate
- * @mixin \Illuminate\Database\Eloquent\Builder
  */
 class CoursePackage extends Model
 {

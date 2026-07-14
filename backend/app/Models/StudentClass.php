@@ -5,9 +5,6 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
-/**
- * @mixin \Illuminate\Database\Eloquent\Builder
- */
 class StudentClass extends Model
 {
     protected $table = 'StudentClass';
