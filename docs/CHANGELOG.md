@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-14 — feat: 註冊遺漏管理後台 API 路由（reconcile, duplicate-sessions, github-issues）
+
+- **Added**：註冊 7 條缺失的管理後台 API 路由，解除測試工程師因端點缺失而無法驗證夜間對帳、P2 重複排課審核及 GitHub Issues 功能的阻塞。含 3 個新 Controller：`AdminReconcileController`（對帳報告唯讀 API）、`AdminDuplicateSessionController`（P2 重複排課審核檢視/決策/執行）、`GitHubIssueController`（GitHub Issues 代理 API）。權限分層：`reconcile/*`→`super_admin`、`duplicate-sessions/*`→`director+super_admin`（附 `require_campus`）、`github/issues`→`director+super_admin`（無 `require_campus`）。
+- 開發備註：PR #1209（cubelv-cli-api-routes），+359 行／4 檔案。資安審查 🟢 PASS（0C/0H/0M/0L）、程式碼審查 🟢 PASS（#1 🔴 High 需先修：execute() 缺 keep_sc_id 存在性檢查；#2 🟡 Medium 缺 DB Transaction）。相關 PR：#1198（夜間對帳）、#1204/#1130（P2 審核）、#1201（GitHub Issues）。
+
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。
