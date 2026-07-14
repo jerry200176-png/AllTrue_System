@@ -191,3 +191,6 @@ storage/app/public/
 /docs/self-healing-layer.md
 /docs/sop-enforcement-layer.md
 /docs/reviews/ENGINEERING_AUDIT_2026-06-27.md
+
+# Security: logs and artifacts - not to be tracked
+backend/storage/logs/
