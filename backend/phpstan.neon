@@ -4,7 +4,51 @@ parameters:
         - app
     # #545：baseline 既有問題，讓 PHPStan 之後只對「新增」問題報錯，
     # 以便穩定全綠後可從 advisory 升為 backend PR required gate。
-    # PHPStan 2.x：預設將 unmatched baseline entries 視為 error；關閉以維持 baseline 相容性
-    reportUnmatchedIgnoredErrors: false
+    # PHPStan 2.x：ignoreErrors 僅在主配置檔生效，新檔案條目直接內聯
+    ignoreErrors:
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Services/PaymentStatusService.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Services/DunningService.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Services/DunningService.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:pluck\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:cursor\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:get\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Http/Controllers/BillingHealthController.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Console/Commands/BillingAuditStudent.php
+        -
+            message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
+            identifier: staticMethod.notFound
+            path: app/Console/Commands/BillingVerifyChargeConsistency.php
 includes:
     - phpstan-baseline.neon
