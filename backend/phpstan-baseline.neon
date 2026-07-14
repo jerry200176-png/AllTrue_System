@@ -1,58 +1,10 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/PaymentStatusService.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
-			path: app/Services/DunningService.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/DunningService.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereIn\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:whereHas\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:pluck\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:cursor\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:get\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/BillingHealthController.php
+			path: app/Console/Commands/BillingAuditStudent.php
 
 		-
 			message: '#^Call to an undefined static method App\\Models\\Invoice\:\:create\(\)\.$#'
