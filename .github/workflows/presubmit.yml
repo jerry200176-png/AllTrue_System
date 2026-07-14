@@ -36,7 +36,8 @@ jobs:
 
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
-            || echo "$BRANCH" | grep -qE '^dependabot/' ; then
+            || echo "$BRANCH" | grep -qE '^dependabot/' \
+            || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
@@ -45,6 +46,8 @@ jobs:
             echo "  feat/ fix/ perf/ refactor/ test/ docs/ build/ ci/ chore/ exp/ <slug>"
             echo "  hotfix/<date>-<slug>  緊急修復"
             echo "  td-batch<N>-<slug>    技術債清償"
+            echo "  cubelv-cli-<slug>    CubeLV AI 自動生成"
+            echo "  dependabot/*         Dependabot 自動 PR"
             exit 1
           fi
 
