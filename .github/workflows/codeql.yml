@@ -59,6 +59,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Setup PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo, pdo_mysql, bcmath, json, tokenizer, xml, ctype
+
       - name: Verify local PHP runtime
         run: php -v
 
