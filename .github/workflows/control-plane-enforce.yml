@@ -28,7 +28,8 @@ permissions:
 jobs:
   enforce:
     name: Control plane contract lint
-    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
+    # INC-2026-001：永久移回 GitHub-hosted runner（SPOF 修復）
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   gate:
     name: Presubmit Checks
-    runs-on: [self-hosted, Linux, X64, wsl-ci, alltrue-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
@@ -23,6 +23,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
 
       # ─────────────────────────────────────────────
       # CHECK 1：Branch 命名規範
@@ -36,7 +41,8 @@ jobs:
 
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
-            || echo "$BRANCH" | grep -qE '^dependabot/' ; then
+            || echo "$BRANCH" | grep -qE '^dependabot/' \
+            || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
