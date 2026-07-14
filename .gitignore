@@ -154,7 +154,6 @@ frontend/ios/
 backend/storage/app/public/
 public/uploads/
 storage/app/public/
-
 # ── Shadow control plane quarantine (canonical copy: docs/archive/control-plane-shadow-v1/) ──
 /scripts/platform/
 /config/platform/
