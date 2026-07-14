@@ -261,6 +261,10 @@ function closeDialog() {
   dialog.selectedSc = null;
 }
 
+function onKeyDown(e) {
+  if (e.key === 'Escape' && dialog.open) closeDialog();
+}
+
 async function submitDecision() {
   const reason = (dialog.reason || '').trim();
   if (reason.length < 5) return;
@@ -315,9 +319,13 @@ async function load() {
 function refresh() { load(); }
 
 watch(() => props.branchId, () => { load(); });
-onMounted(() => { load(); });
+onMounted(() => {
+  load();
+  document.addEventListener('keydown', onKeyDown);
+});
 onBeforeUnmount(() => {
   if (toastTimer) clearTimeout(toastTimer);
+  document.removeEventListener('keydown', onKeyDown);
 });
 
 const ContractCell = defineComponent({
@@ -351,9 +359,12 @@ const ContractCell = defineComponent({
         ]),
         h('div', { class: 'p2r-cc-row' }, [
           h('span', { class: 'p2r-cc-label' }, '剩餘'),
-          h('span', { class: ['p2r-cc-value', 'p2r-cc-num', {
-            'p2r-cc-low': (sc.remaining_sessions ?? 999) <= 3,
-          }] }, sc.remaining_sessions ?? '—'),
+          (sc.remaining_sessions ?? 999) <= 3
+            ? h('span', { class: 'p2r-cc-value p2r-cc-num p2r-cc-low' }, [
+                h('span', { class: 'material-symbols-outlined p2r-cc-warn-icon', 'aria-hidden': 'true' }, 'warning'),
+                ' ' + (sc.remaining_sessions ?? '—'),
+              ])
+            : h('span', { class: 'p2r-cc-value p2r-cc-num' }, sc.remaining_sessions ?? '—'),
         ]),
         h('div', { class: 'p2r-cc-row' }, [
           h('span', { class: 'p2r-cc-label' }, '開課日'),
@@ -383,8 +394,8 @@ const ContractCell = defineComponent({
   margin-bottom: 12px;
   border: 1px solid var(--border);
   background: var(--canvas-soft, #f6f9fc);
-  border-radius: 10px;
-  padding: 12px 14px;
+  border-radius: 8px;
+  padding: 12px 16px;
 }
 .p2r-sop-card h3 {
   margin: 0 0 8px;
@@ -402,7 +413,7 @@ const ContractCell = defineComponent({
 .p2r-list-wrap {
   background: var(--card-bg, #fff);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px;
 }
 
@@ -433,7 +444,7 @@ const ContractCell = defineComponent({
 
 .p2r-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .p2r-table th, .p2r-table td {
-  padding: 10px 8px;
+  padding: 8px 8px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
@@ -469,8 +480,9 @@ const ContractCell = defineComponent({
 .p2r-cc-label { color: var(--text-light); min-width: 40px; flex-shrink: 0; }
 .p2r-cc-value { color: var(--text); }
 .p2r-cc-num { font-variant-numeric: tabular-nums; font-weight: 600; }
-.p2r-cc-low { color: var(--danger); }
-.p2r-cc-badge { font-size: 11px; font-weight: 700; color: var(--success); margin-top: 2px; }
+.p2r-cc-low { color: var(--danger); display: inline-flex; align-items: center; gap: 2px; }
+.p2r-cc-warn-icon { font-size: 14px; color: var(--danger); }
+.p2r-cc-badge { font-size: 12px; font-weight: 700; color: var(--success); margin-top: 2px; }
 
 .p2r-dup-dates { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; color: var(--text); }
 .p2r-dup-slots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -499,14 +511,14 @@ const ContractCell = defineComponent({
   position: fixed;
   inset: 0;
   z-index: 10050;
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--ds-overlay, rgba(15, 23, 42, 0.45));
   display: grid;
   place-items: center;
   padding: 16px;
 }
 .p2r-modal-card {
   width: min(520px, 100%);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--modal-bg, var(--card-bg, #fff));
   border: 1px solid var(--border);
   box-shadow: 0 22px 48px rgba(15, 23, 42, 0.28);
@@ -519,7 +531,7 @@ const ContractCell = defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 18px 20px 0;
+  padding: 16px 20px 0;
 }
 .p2r-modal-head h3 { margin: 0; font-size: 18px; color: var(--text); }
 .p2r-modal-close {
@@ -528,14 +540,14 @@ const ContractCell = defineComponent({
   cursor: pointer;
   color: var(--text-light);
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 8px;
   min-height: 36px;
   min-width: 36px;
   display: grid;
   place-items: center;
 }
 .p2r-modal-close:hover { background: var(--canvas-soft, #f6f9fc); }
-.p2r-modal-body { padding: 12px 20px; display: flex; flex-direction: column; gap: 12px; }
+.p2r-modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
 .p2r-modal-desc { margin: 0; font-size: 14px; color: var(--text); }
 .p2r-modal-contract { margin: 4px 0; }
 .p2r-modal-warn {
@@ -580,8 +592,12 @@ const ContractCell = defineComponent({
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 12px 20px 18px;
+  padding: 16px 20px;
 }
+
+/* 按鈕 hover/active 態 */
+.p2r-page button:not(:disabled):not(.p2r-modal-close):hover { opacity: 0.85; }
+.p2r-page button:not(:disabled):not(.p2r-modal-close):active { scale: 0.97; }
 
 .p2r-modal-enter-active, .p2r-modal-leave-active { transition: opacity 0.2s ease; }
 .p2r-modal-enter-active .p2r-modal-card,
