@@ -652,5 +652,6 @@ Route::prefix('v1')->group(function () {
         Route::get('admin/duplicate-sessions/p2-review', [AdminDuplicateSessionController::class, 'p2Review']);
         Route::post('admin/duplicate-sessions/decide', [AdminDuplicateSessionController::class, 'decide']);
         Route::post('admin/duplicate-sessions/execute', [AdminDuplicateSessionController::class, 'execute']);
+        Route::patch('admin/duplicate-sessions/p2-review/{groupId}', [AdminDuplicateSessionController::class, 'patchP2Review']);
     });
 });
