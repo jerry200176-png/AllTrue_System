@@ -12,3 +12,4 @@ This folder contains the Laravel API for the AllTrue admin/academic system.
 
 ## API Base
 - `/api/v1/*`
+# CI test
