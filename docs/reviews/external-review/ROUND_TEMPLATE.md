@@ -1,52 +1,41 @@
-# External Review Session — YYYY-MM-DD（〈短標題〉）
+# External Intelligence Session — YYYY-MM-DD（〈短標題〉）
 
-> 僅在**事件觸發**後使用。無議題 → 不要為了填這份而開 session。  
-> 檔名建議：`YYYY-MM-DD-session-<slug>.md`（Evidence phase 的 `round-N` 僅歷史存檔）
+> 僅在 Trigger 成立時使用。不為 Session／KPI 產內容。  
+> 檔名：`YYYY-MM-DD-session-<slug>.md`（`round-N` 僅 Phase 1 歷史）
 
 | 欄位 | 內容 |
 |------|------|
-| 觸發 | 高價值未知／缺證據／重大架構／使用者要求 |
-| 技能 | `alltrue-external-review` |
-| 系統掃描 | |
+| Trigger | High-value Discussion Opportunity / Unknown / 成熟產品差異 / … |
+| 剛完成的工作 | Feature／Arch／UX／Workflow／研究（若有） |
+| 技能 | `alltrue-external-review`（EI 行為） |
 
-## 為何值得開這次 session（一句）
+## 為何值得開（一句）
 
-（寫不出高價值理由 → 刪檔、不觸發）
+（學習／挑戰假設／世界級差距 — 寫不出來就不要開）
 
-## 候選 → Registry
+## Candidate → Registry
 
-| 候選 | QR | Reject／Draft |
-|------|-----|---------------|
+| 候選 | QR | topic / Reject / Draft |
+|------|-----|------------------------|
 | | | |
 
-## Question Funnel
+## Learning Funnel（本 session）
 
-| Candidate | Research | Reject | Draft | Publish | Adopt | Impact |
-|-----------|----------|--------|-------|---------|-------|--------|
-| | | | | | | |
-
-零 Draft 原因碼（若適用）：Z1–Z5  
+| Candidate | Research | Reject | Draft | Publish | Community Response | Accepted Insight | Implemented | Impact |
+|-----------|----------|--------|-------|---------|-------------------|------------------|-------------|--------|
+| | | | | | | | | |
 
 ## Draft（0–3）
 
-無則寫「無」——合法。
+無則寫「無」（合法）。Agent 已有推薦仍可 Draft。
 
-## Blind Spot Review
+## Blind Spot / 認知風險
 
-| 類型 | 內容 | 為何危險 | 緩解 |
-|------|------|----------|------|
-| 最沒有把握 | | | |
-| 最缺乏證據 | | | |
-| 最可能判斷錯誤 | | | |
-
-## 機制效益／產品影響
-
-| 類型 | 說明 |
+| 類型 | 內容 |
 |------|------|
-| 避免的錯決策 | |
-| 產品／工程成果 | （有則記；無則「觀測中」） |
+| 最可能只是在驗證自己 | |
+| 最缺的外部觀點 | |
 
-## SCORECARD／STATUS 更新
+## Scorecard / STATUS
 
-- Funnel／ERS：  
-- [`STATUS.md`](STATUS.md) 觸發紀錄：已寫／否  
+已更新：是／否  

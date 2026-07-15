@@ -1,27 +1,25 @@
-# Question Registry（候選問題登記）
+# Question Registry（Topic／候選登記）
 
-> 記錄每個候選問題：**為何不發問／為何發問**，以及**何時重新評估**。  
-> 結案候選必登記；Draft 也登記（狀態不同）。  
-> 權威流程：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)
+> 記錄：為何 Reject、為何值得交流（Topic）、何時重評。  
+> Phase 1 QR-001～005 **保留**。  
+> 權威：[`docs/GUIDE_EXTERNAL_INTELLIGENCE.md`](../../GUIDE_EXTERNAL_INTELLIGENCE.md)
 
 ## 狀態
 
 | 狀態 | 意義 |
 |------|------|
-| `closed_researched` | 研究後有充分答案 → 不發外問 |
-| `closed_internal` | 屬內部決策／CEO／產品規則，非社群題 |
-| `closed_implemented` | 答案已落地（ADR／code），無需再問 |
-| `draft` | 已有 Discussion Draft，待發或已發 |
-| `reopen_candidate` | 觸發條件已出現，下輪必重評 |
+| `closed_researched` | Quality Gate 後低質／無需外交流 |
+| `closed_internal` | 純內部／CEO 決策 |
+| `closed_implemented` | 已落地 |
+| `topic` | **值得交流**（可尚無 Draft；Agent 可已有答案） |
+| `draft` | 已有 Discussion Draft |
+| `insight_accepted` | 社群洞見已採納（或明確不採納＋理由已寫） |
+| `reopen_candidate` | 須重跑 Quality Gate |
 
-## 重新評估觸發（通用）
+## 重新評估觸發
 
-任一成立 → 將列目標為 `reopen_candidate`，下一輪 External Review 必重跑研究閘門：
-
-- 相關復發家族再度出現（6 個月內同根因）
-- 依賴的「充分答案」來源被證偽或產品重大改版
-- AllTrue 產品不變式變更（例如扣堂 chokepoint 從出席改為排課）
-- 實作後度量顯示原結論不成立（見 SCORECARD）
+- 復發家族再現、來源被證偽、不變式變更、Impact 度量打臉原結論  
+- 重要 Feature／Arch 完成後，舊 `closed_researched` 變得**值得拿去挑戰假設** → 可改 `topic`  
 
 ---
 
@@ -85,7 +83,8 @@
 
 ## 登記規則（Agent）
 
-1. 每輪每個候選（含結案）→ 新增或更新一列 QR-NNN  
-2. Round log 只摘要；**詳情以本 Registry 為準**  
+1. 每個 Candidate（含結案／Topic）→ 新增或更新一列 QR-NNN  
+2. Session log 只摘要；**詳情以本 Registry 為準**  
 3. 禁止刪除歷史列；狀態可變更，並在列內加一行「狀態變更：日期 + 原因」  
-4. Decision Journal／Knowledge Base：**不引入**（Round 5 Retrospective 2026-07-15：缺口在 Draft→Publish，非缺模組）  
+4. Reject **與** `topic` 皆要記（學習漏斗可見）  
+5. Decision Journal／Knowledge Base：**不引入**（Phase 1＋EI Migration：無證據支持新模組）  

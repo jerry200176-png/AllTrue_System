@@ -1,16 +1,17 @@
-# External Review artifacts
+# External Intelligence artifacts
 
-權威 → [`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)  
-日常狀態 → [`STATUS.md`](STATUS.md)
+> 目錄名 `external-review/` **刻意保留**（Migration：不建第二套）。  
+> 權威 → [`docs/GUIDE_EXTERNAL_INTELLIGENCE.md`](../../GUIDE_EXTERNAL_INTELLIGENCE.md) §0 Migration Plan  
+> 狀態 → [`STATUS.md`](STATUS.md)
 
 | 檔案 | 用途 |
 |------|------|
-| [`STATUS.md`](STATUS.md) | 模式／開放 Draft／觸發紀錄 |
-| [`QUESTION_REGISTRY.md`](QUESTION_REGISTRY.md) | Reject／重評 |
-| [`SCORECARD.md`](SCORECARD.md) | Funnel + ERS（看成果，不看輪次） |
-| 範本 | DRAFT／ROUND(session)／META／RETROSPECTIVE |
-| [`rounds/`](rounds/) | Evidence phase 歷史 + 日後 session |
-| [`drafts/`](drafts/) | 開放 Draft |
-| [`COUNTER.md`](COUNTER.md) | 已廢止觸發（舊連結） |
+| [`STATUS.md`](STATUS.md) | Mission／Trigger／開放 Draft |
+| [`QUESTION_REGISTRY.md`](QUESTION_REGISTRY.md) | Reject **與** `topic` |
+| [`SCORECARD.md`](SCORECARD.md) | Learning Funnel KPI |
+| [`DRAFT_TEMPLATE.md`](DRAFT_TEMPLATE.md) | 九欄學習型 Draft |
+| [`ROUND_TEMPLATE.md`](ROUND_TEMPLATE.md) | Session log（非 Round 治理） |
+| [`rounds/`](rounds/) | Phase 1 R1–5 歷史（保留） |
+| [`drafts/`](drafts/) | Drafts |
 
-有高價值未知才跑。沒有就不跑。成功＝更好的決策與產品成果。
+Phase 1＝Discussion Quality Gate（已證）。現在＝External Intelligence。成功≠發文數。

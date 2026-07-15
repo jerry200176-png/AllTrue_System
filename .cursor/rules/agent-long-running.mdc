@@ -31,11 +31,10 @@ Outcome（什麼叫完成）／Verification（如何客觀驗證）／Constraint
 ## 6. Commit 規範
 Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`ci`…；`ops` 會被擋）。
 
-## 7. External Review（日常事件驅動）
-權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`；狀態：[`STATUS.md`](../../docs/reviews/external-review/STATUS.md)。
+## 7. External Intelligence（持續學習）
+權威：[`docs/GUIDE_EXTERNAL_INTELLIGENCE.md`](../../docs/GUIDE_EXTERNAL_INTELLIGENCE.md)；技能：`alltrue-external-review`；狀態：[`STATUS.md`](../../docs/reviews/external-review/STATUS.md)。
 
-- **觸發**：高價值未知／缺乏證據／重大架構決策／使用者要求。無則不觸發。  
-- **廢止**：valuable≥5 強制暫停、以輪次為目標、為流程而流程。  
-- **成功指標**：決策品質與產品成果（Adopt／Impact、避免錯決策）— 非 session／Draft 數。  
-- 有 Candidate → Registry + Funnel；Draft 須品質欄位；不改 production 代替未知。  
-- Journal／KB 不預設引入。
+- **觸發**：High-value Discussion Opportunity（重要 Feature／Arch／UX／Workflow 完成後）、成熟產品差異、值得交流的設計；Unknown 仍適用。無則不觸發。  
+- **Quality Gate**：避免低質 Discussion；有交流價值即可 Draft（可已有推薦）。  
+- **成功**：社群新觀點 → Accepted Insight → Implemented → Impact；Agent 認知修正 — 非 Reject／Draft／發文數。  
+- Phase 1 Evidence **保留**；Round 治理結束；不建第二套流程；Journal／KB 不導入。

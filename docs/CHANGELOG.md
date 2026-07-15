@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review → External Intelligence
+
+- **Changed**：Mission 演進為持續學習；Trigger 含 High-value Discussion Opportunity；Research＝Quality Gate；Learning Funnel KPI；Phase 1 Evidence 全部保留；不引入 Journal／KB。
+- 開發備註：Migration Plan 見 `docs/GUIDE_EXTERNAL_INTELLIGENCE.md` §0；舊 GUIDE 變 stub；目錄名不拆第二套。
+
 ## 2026-07-15 — ci: FIT-10 補上 admin／GitHub controller 對應
 
 - **Changed**：`arch-contexts.json` 將 AdminDuplicateSession／AdminReconcile → scheduling、GitHubIssue → support，消解 Presubmit FIT-10 紅燈。

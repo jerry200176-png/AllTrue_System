@@ -43,7 +43,7 @@ docs/（權威業務規則）
 | 上線發布 | [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) | P0 |
 | 安全審查 | [`.cursor/skills/alltrue-security/SKILL.md`](../.cursor/skills/alltrue-security/SKILL.md) | T3 |
 | Code Review | [`.cursor/skills/alltrue-code-review/SKILL.md`](../.cursor/skills/alltrue-code-review/SKILL.md) | 每 PR |
-| 外部審查 | [`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md) | 事件驅動：高價值未知／缺證據／重大架構（見 [`GUIDE_EXTERNAL_REVIEW_LOOP.md`](GUIDE_EXTERNAL_REVIEW_LOOP.md)） |
+| 外部智能／持續學習 | [`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md) | External Intelligence（見 [`GUIDE_EXTERNAL_INTELLIGENCE.md`](GUIDE_EXTERNAL_INTELLIGENCE.md)） |
 
 ### 與既有 Cursor skills 的關係
 
@@ -65,7 +65,7 @@ docs/（權威業務規則）
 | PR merge / 上線 | `alltrue-release` | `auto-frontend-deploy.mdc` |
 | auth / PII / RFID | `alltrue-security` | `module-security.mdc` |
 | PR 準備 merge | `alltrue-code-review` | FR 對照 + 多校區隔離 |
-| 高價值未知／缺證據／重大架構決策 | `alltrue-external-review` | `GUIDE_EXTERNAL_REVIEW_LOOP` + STATUS |
+| 高價值討論機會／成熟產品差異／未知 | `alltrue-external-review` | `GUIDE_EXTERNAL_INTELLIGENCE` + STATUS |
 
 ---
 
@@ -100,3 +100,4 @@ docs/（權威業務規則）
 | 2026-07-15 | 新增 `alltrue-external-review` + `GUIDE_EXTERNAL_REVIEW_LOOP` |
 | 2026-07-15 | External Review 品質閘門：Registry／Evidence／Blind Spot／Scorecard |
 | 2026-07-15 | External Review 正式日常化：事件驅動，廢止輪次目標 |
+| 2026-07-15 | Migration → External Intelligence（Quality Gate＋Learning Funnel） |

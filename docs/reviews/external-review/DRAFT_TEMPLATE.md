@@ -1,90 +1,89 @@
-# Discussion Draft：〈標題 — 一句話問題〉
+# Discussion Draft：〈標題 — 一句話〉
 
 | 欄位 | 內容 |
 |------|------|
-| 狀態 | Draft / Ready to post / Posted / Closed（已有答案） |
-| 優先級 | P1 / P2 / P3（本輪內相對排序；檔名 NN 對應） |
-| Round | YYYY-MM-DD Round N |
-| Registry | QR-NNN |
+| 狀態 | Draft / Ready to post / Posted / Insight accepted / Closed |
+| 優先級 | P1 / P2 / P3 |
+| Trigger | High-value Discussion Opportunity / Unknown / 成熟產品差異 / … |
+| Registry | QR-NNN（`topic` 或 `draft`） |
 | Scorecard | ERS-NNN |
-| Confidence Score | 0–5（見下） |
-
-### Confidence Score 定義
-
-| 分 | 意義 |
-|----|------|
-| 5 | 事實清楚，只差社群戰經確認邊界 |
-| 4 | 主要事實有來源；推論少數 |
-| 3 | 事實／推論參半；假設影響結論 |
-| 2 | 多數為推論；證據薄 |
-| 1 | 幾乎是假設；本不應發（應先補研） |
-| 0 |  evidenceless — **禁止** Ready to post |
-
-**發佈門檻**：Confidence ≥ 3，且「為什麼仍然沒有答案」寫得出具體缺口。
+| Confidence | 0–5（Quality Gate；Ready to post ≥ 3） |
 
 ---
 
-## Business / User / Engineering Impact
+## 1. Context
 
-| 面向 | 現況痛點 | 若問對並採納，預期改善 |
-|------|----------|------------------------|
-| Business | | （營運成本、收款、續費、客訴、工時） |
-| User | | （主任／老師／家長可感知行為） |
-| Engineering | | （復發率、雙真相、測試／維護成本） |
+（背景、剛完成的 Feature／Arch／UX／Workflow、為何現在談）
 
-**為什麼值得花社群時間**：（2～4 句；說不清就刪 Draft）
+## 2. Current Design
 
----
+（AllTrue 現況；不變式／限制；禁 PII／憑證／內部密語上公開貼）
 
-## 背景
+## 3. Why this topic is worth discussing
 
-（系統痛點、復發訊號、為何現在問）
+（學習／取捨／世界級差距 — **不是**「做不出來」；說不清就刪 Draft）
 
-## 現有設計
+## 4. Existing research summary
 
-（AllTrue 今天怎麼做；關鍵不變式／限制；不可洩漏 PII／憑證）
+| 來源 | 連結或名稱 | 學到什麼 |
+|------|------------|----------|
+| 官方文件 | | |
+| Issues／Discussions | | |
+| 成熟產品／開源 | | |
+| 技術文章 | | |
 
-## Evidence Summary（Fact / Inference / Hypothesis）
+### Evidence（Fact / Inference / Hypothesis）
 
-> 每條必須標籤。Fact＝有可指來源；Inference＝從 Fact 推出；Hypothesis＝尚未驗證。
-
-| ID | 類型 | 陳述 | 來源／依據 |
-|----|------|------|------------|
+| ID | 類型 | 陳述 | 來源 |
+|----|------|------|------|
 | E1 | Fact | | |
 | E2 | Inference | | |
 | E3 | Hypothesis | | |
 
-## 已研究內容
+## 5. Alternatives considered
 
-| 來源類型 | 連結或名稱 | 學到什麼 |
-|----------|------------|----------|
-| 官方文件 | | |
-| GitHub Issues / Discussions | | |
-| 成熟產品／開源 | | |
-| 技術文章 | | |
+| 方案 | 優／劣 | 為何未選（或仍開放） |
+|------|--------|----------------------|
+| | | |
 
-## Rejected Alternatives
+## 6. Current recommendation
 
-| 方案 | 為何拒絕（本階段） | 依據類型 |
-|------|-------------------|----------|
-| | | Fact / Inference / Hypothesis |
+（Agent 目前推薦 — **可以已有答案**；討論是為挑戰／驗證／擴視野）
 
-## 為什麼仍然沒有答案
+## 7. Questions for the community
 
-（研究後仍缺的具體取捨／證據缺口 — 若寫不出來，刪除此 Draft，改登記 Registry）
+可問取捨與經驗，不必只問「怎麼做」：
 
-## 希望社群提供什麼經驗
+- 大家會怎麼取捨？  
+- 有沒有踩過坑？  
+- 有沒有更好的設計？  
+- 為什麼大型產品採用不同方案？  
 
-（可操作的經驗問題，避免「請問最好怎麼做」空問）
+1. …  
+2. …  
 
-## 建議發佈平台
+## 8. Expected learning
+
+（希望帶走什麼：可推翻的假設、可改善的指標、Agent 認知修正）
+
+## 9. Recommended platform
 
 | 平台 | 理由 |
 |------|------|
-| | |
+| Threads／Reddit／GitHub Discussions／Discord／… | |
+
+---
+
+## Business / User / Engineering Impact（建議）
+
+| 面向 | 潛在影響 |
+|------|----------|
+| Business | |
+| User | |
+| Engineering | |
 
 ## 發表後回寫
 
-- 更新 SCORECARD 生命週期與 D1–D5  
+- SCORECARD：Publish → Community Response → Accepted Insight → Implemented → Impact  
 - 社群連結：  
-- 採納結論 → 寫入：`TECH_DEBT` / `ADR` / `AI_REGRESSION` / 無  
+- 認知修正／ADR／AI_REGRESSION／TECH_DEBT（若有）  

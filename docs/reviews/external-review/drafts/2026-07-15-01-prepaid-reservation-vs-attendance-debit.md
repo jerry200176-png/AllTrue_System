@@ -1,13 +1,17 @@
 # Discussion Draft：預付包堂要在「排進行事曆」時預留，還是只在「出席」時扣？
 
+> Phase 1 產出；**EI 下仍有效**（High-value Discussion Opportunity）。正文不重寫。待人 Publish 或標記 abandoned。
+
 | 欄位 | 內容 |
 |------|------|
 | 狀態 | Draft |
 | 優先級 | P1（本輪唯一 Draft） |
-| Round | 2026-07-15 Round 1 |
-| Registry | [QR-005](../QUESTION_REGISTRY.md#qr-005預付包堂--物化預留-vs-出席扣) |
+| Trigger | High-value Discussion Opportunity（架構／產品取捨；非「做不出來」） |
+| Round（historical） | 2026-07-15 Round 1 |
+| Registry | [QR-005](../QUESTION_REGISTRY.md#qr-005預付包堂--物化預留-vs-出席扣)（`draft`） |
 | Scorecard | [ERS-001](../SCORECARD.md) |
 | Confidence Score | **4** / 5（两端產品行為為 Fact；hold 生命周期需求為 Inference；「社群必有可複製狀態機」為 Hypothesis） |
+| Recommended platform | 見文末「建議發表平台」 |
 
 ---
 

@@ -1,46 +1,50 @@
 ---
 name: alltrue-external-review
 description: >-
-  AllTrue External Review（日常流程）。遇高價值未知／缺證據／重大架構決策時觸發；
-  無則不觸發。禁止為流程或輪次硬凑。成功＝決策品質與產品成果。
+  AllTrue External Intelligence（持續學習）。檔名保留。遇高價值討論機會／
+  未知／成熟產品差異時觸發；Quality Gate 避免低質 Discussion；
+  即使已有答案亦可 Draft。成功＝社群洞見與產品／認知改善。
 ---
 
-# AllTrue External Review
+# AllTrue External Intelligence
 
 ## 1. Purpose
 
-提升決策品質與產品成果。  
-**沒有符合條件的議題 → 不觸發。**
+驗證設計、挑戰假設、學習業界、縮短與世界級產品差距。  
+**不是**修 bug 求救；**不是**為 Session 產內容。
 
-權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)  
-狀態：[`STATUS.md`](../../../docs/reviews/external-review/STATUS.md)
+權威：[`docs/GUIDE_EXTERNAL_INTELLIGENCE.md`](../../../docs/GUIDE_EXTERNAL_INTELLIGENCE.md)  
+狀態：[`STATUS.md`](../../../docs/reviews/external-review/STATUS.md)  
+Migration：GUIDE §0（重用 Registry／Scorecard／Draft／目錄）
 
-## 2. When to activate（僅這些）
+## 2. When to activate
 
-- 高價值未知（影響營運／金錢／安全／多校區正確性）  
-- 缺乏證據（研究不足或 F/I/H 混濁）  
-- 重大架構決策（Decision-requiring 且外部可能有戰經）  
-- 使用者明確要求  
+- High-value Discussion Opportunity（重要 Feature／Arch／UX／Product／Workflow 完成後）  
+- 成熟產品明顯差異（Stripe／Linear／GitHub／Vercel／Supabase…）  
+- 值得分享／交流的設計（非做不出來）  
+- 高價值未知／缺證據（Phase 1 保留）  
+- 使用者要求  
 
-**不要**因「很久沒跑」、計數、或輪次目標而觸發。
+無機會 → **不觸發**。
 
 ## 3. Workflow
 
-1. 確認觸發條件成立；否則退出  
-2. Registry reopen 掃描  
-3. Research → Reject 或 Draft（≤3；完整 Funnel）  
-4. Blind Spot + 機制效益  
-5. 更新 SCORECARD／STATUS；有需要才寫 session log  
-6. 繼續開發（Draft ≠ 改 production）  
+1. 確認 Trigger；否則退出  
+2. Candidate → Quality Gate 研究  
+3. 低質 → Reject；仍有交流價值 → Draft（**可已有推薦**）  
+4. Registry（含 `topic`）+ Learning Funnel Scorecard  
+5. 有需要才寫 session log  
+6. 繼續開發  
 
 ## 4. Forbidden
 
-- ⛔ 為了流程／輪次／KPI 觸發或產 Draft  
-- ⛔ 恢復 valuable≥5 強制暫停  
-- ⛔ 新增 Journal／KB 等治理模組（除非新的 Evidence 證明明確缺口且使用者批准）  
+- ⛔ 為 KPI／Session／Round 硬凑 Draft  
+- ⛔ 第二套 external-intelligence 目錄或平行 SOP  
+- ⛔ 自動導入 Journal／KB  
+- ⛔ 回滾或重做 Phase 1 R1–5  
 
 ## 5. Exit
 
-- [ ] 觸發條件已記錄（或明確「未觸發」）  
-- [ ] 若有 Candidate：Funnel／Registry 已更新  
-- [ ] 成功相關則更新 ERS（Publish／Adopt／Impact）  
+- [ ] Trigger 與 Funnel 已記（或明確未觸發）  
+- [ ] Draft 含 GUIDE §4 九欄（若有）  
+- [ ] 成功相關：Community Response → Insight → Impact 有更新路徑  

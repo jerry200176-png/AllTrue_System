@@ -83,9 +83,9 @@
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
 
-### External Review Loop（持續）
+### External Intelligence（持續學習）
 
-**日常流程（事件驅動）**：遇高價值未知／缺證據／重大架構決策時觸發 External Review；無則不觸發。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；狀態：[`docs/reviews/external-review/STATUS.md`](docs/reviews/external-review/STATUS.md)。成功＝決策品質與產品成果，不以輪次為目標；禁止為流程硬凑。
+重要 Feature／Arch／UX／Workflow／Product Decision 完成後，或高價值討論機會／成熟產品差異時觸發；無則不觸發。權威：[`docs/GUIDE_EXTERNAL_INTELLIGENCE.md`](docs/GUIDE_EXTERNAL_INTELLIGENCE.md)；狀態：[`docs/reviews/external-review/STATUS.md`](docs/reviews/external-review/STATUS.md)。Phase 1 External Review = Discussion Quality Gate（已證、保留）。Quality Gate 避低質（非最大化 Reject）；可已有答案仍 Draft。成功＝社群洞見與產品／認知改善。不引入 Journal／KB。
 
 ## Commit SOP
 
