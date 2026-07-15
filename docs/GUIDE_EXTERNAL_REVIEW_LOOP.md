@@ -1,161 +1,97 @@
-# GUIDE：External Review Loop（外部審查循環）
+# GUIDE：External Review（日常開發流程）
 
-> **目的**：每完成約五項有價值的工作後，暫停一次、檢視**整個系統**（非僅本 PR），把「真的值得向外請教」的問題寫成 Discussion Draft。  
-> **反目標**：不为了產生 Discussion 而產生 Discussion；有充分答案就继续开发。  
-> **執行技能**：[`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md)  
-> **產物目錄**：[`docs/reviews/external-review/`](reviews/external-review/)
+> **定位**：自 2026-07-15 起，External Review **不是獨立實驗**，而是日常開發的一部分。  
+> **目的**：在高價值未知出現時，用研究閘門提升決策品質與產品成果。  
+> **反目標**：為了流程而流程、以輪次為目標、沒有議題也硬觸發、為 KPI 產 Draft。  
+> **技能**：[`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md)  
+> **產物**：[`docs/reviews/external-review/`](reviews/external-review/)
 
-**成熟度約定**：Rounds 1–5＝**證據收集階段**。重點是收集漏斗證據，**不是**加功能／新模組。  
-**沒有值得問就不要問** — 禁止為輪次或 KPI 產生 Draft。
+**真正的成功指標**：是否持續提升**決策品質**與**產品成果**（Adopt／Impact、避免錯決策）— 不是 session 次數、不是 Draft 數量。
 
-Round 5 目標＝完成 **Evidence-based Retrospective**（[`RETROSPECTIVE_TEMPLATE.md`](reviews/external-review/RETROSPECTIVE_TEMPLATE.md)）：依五輪資料判斷實際價值、限制與下一步，**然後才**決定是否引入 Decision Journal／Knowledge Base。證據不足就明確不引入。
+Evidence phase（Rounds 1–5）已結束 → [`rounds/2026-07-15-round-5-retrospective.md`](reviews/external-review/rounds/2026-07-15-round-5-retrospective.md)。Journal／KB **不引入**。
 
-### 證據階段必觀察
-
-1. **完整 Question Funnel**：Candidate → Research → **Reject** → Draft → Publish → Adopt → Impact（Reject 必記）  
-2. **值得討論的數量**；零 Draft 記原因碼 Z1–Z5；**連續兩輪零 Draft** → Meta Review（成熟？Gate 過保守？Blind Spot？）  
-3. **實際效益**：避免錯決策／品質提升（機制效益日誌）
-
-禁止空轉湊輪；禁止為 Meta Review／KPI 硬凑 Draft。
 ---
 
-## 1. 觸發條件
+## 1. 何時觸發（事件驅動）
 
-| 條件 | 動作 |
+**有下列之一 → 觸發一次 External Review session；否則不觸發、繼續開發。**
+
+| 觸發 | 說明 |
 |------|------|
-| 有價值工作計數 ≥ 5（自上一輪以來） | 暫停開發流程，跑本 Loop 一輪 |
-| 使用者明確要求「外部審查 / External Review」 | 立即跑一輪（不重置門檻意義；仍寫 round log） |
-| 本輪安裝／首次落地 | 允許 bootstrap 一輪（本檔就緒後的 Round 1） |
+| 高價值未知 | 方案取捨會顯著影響營運／金錢／安全／多校區正確性，且內部無凍結不變式 |
+| 缺乏證據 | ARCH／BUG／高風險改動前，研究不足、或 Fact／Inference／Hypothesis 分不清 |
+| 重大架構決策 | Decision-requiring：扣堂、繳費、物化、auth、雙真相收斂等，外部可能有可驗證戰經 |
+| 使用者明確要求 | 仍可手動觸發 |
 
-**計為「有價值工作」**（+1）：
+**不觸發**（即使很久沒開 session）：
 
-- 可合併的功能／bugfix PR（含測試）
-- 關閉一個有程式變更的 in-app bug（含回歸）
-- 架構決策落地（ADR merge、或 Decision-requiring 實作完成）
-- 技術債清償（Open → Done 且有 code/test）
-- Production 事故修復（含 PCR／incident 結案）
+- 常規 bugfix／小 UI／已知 F 族點修且不變式已有  
+- 僅想「湊流程」或「很久沒跑了」  
+- Registry 無 `reopen_candidate`，且當前工作無新未知  
 
-**不計數**：錯字、純連結、docs typo、單獨 CHANGELOG 潤飾、未合併的探索草稿。
-
-計數權威來源：[`COUNTER.md`](reviews/external-review/COUNTER.md)。
+~~每 N 項有價值工作強制暫停~~ → **已廢止**（不以計數／輪次為目標）。
 
 ---
 
-## 2. 一輪檢查清單（系統級，非功能級）
+## 2. Session 檢查清單
 
-1. 是否一直重複修同一類問題？（對照 `AI_REGRESSION_LESSONS` 復發家族 F1–F7）
-2. 是否有架構／Workflow／Prompt／測試／需求層面的 Root Cause，而不只是程式錯誤？
-3. 是否有自己沒把握、缺乏證據或研究不足的地方？
-4. 大型專案、官方文件或成熟產品是否已有更好做法？
-5. 是否存在值得向工程社群請教的**高價值**議題？
-6. 掃 [`QUESTION_REGISTRY.md`](reviews/external-review/QUESTION_REGISTRY.md) 是否有 `reopen_candidate`
+1. 這個未知是否真的高價值？不足以影響決策 → **結束，不開 session 產物**  
+2. 掃 [`QUESTION_REGISTRY.md`](reviews/external-review/QUESTION_REGISTRY.md) reopen  
+3. Candidate → Research（官方／Issues／成熟產品／文章）→ **Reject 或 Draft**  
+4. Blind Spot（最沒把握／最缺證據／最可能判錯）  
+5. 記 Funnel＋機制效益（避免錯決策／產品影響）→ [`SCORECARD.md`](reviews/external-review/SCORECARD.md)  
+
+沒有符合條件的議題 → **記一句 Reject／不觸發理由即可，或完全不建檔**。
 
 ---
 
-## 3. 強制研究閘門（Draft 前必做）
-
-對每個候選議題，依序查完再決定：
-
-1. 官方文件  
-2. GitHub Issues / Discussions  
-3. 成熟開源專案或成熟產品（Teachworks、Tutorbase、calendar system design 等）  
-4. 相關技術文章  
+## 3. 研究閘門與 Draft
 
 | 結果 | 動作 |
 |------|------|
-| 已有充分答案／內部決策 | **Reject**（記漏斗）+ Registry `closed_*`；**不**建 Draft |
-| 仍缺答案／取捨沒共識 | Draft（≤3）+ Registry `draft` + SCORECARD ERS |
+| 充分答案／內部決策 | **Reject** + Registry；不建 Draft |
+| 仍無答案 | Draft（≤3）+ 品質欄位 + ERS；**不改 production 代替未知** |
 
-零 Draft 合法且常見。連續兩輪零 Draft → [`META_REVIEW_TEMPLATE.md`](reviews/external-review/META_REVIEW_TEMPLATE.md)。
----
+Draft 範本：[`DRAFT_TEMPLATE.md`](reviews/external-review/DRAFT_TEMPLATE.md)（Impact／Confidence／Evidence F·I·H／Rejected Alternatives）。
 
-## 4. Question Registry
-
-權威檔：[`QUESTION_REGISTRY.md`](reviews/external-review/QUESTION_REGISTRY.md)
-
-每筆候選必含：為何不發問（或為何仍要問）、結論文、**未來重新評估條件**。  
-Round log 只摘要 QR 編號；細節不複製兩份。
+連續多次觸發皆零 Draft → 可做 Meta Review（成熟？Gate 過保守？Blind Spot？）— **不是**產 Draft 的藉口。
 
 ---
 
-## 5. Discussion Draft 必填欄位
+## 4. 產物（輕量）
 
-範本：[`DRAFT_TEMPLATE.md`](reviews/external-review/DRAFT_TEMPLATE.md)
-
-| # | 欄位 |
-|---|------|
-| 1 | 背景 |
-| 2 | 現有設計 |
-| 3 | 已研究內容 |
-| 4 | 為什麼仍然沒有答案 |
-| 5 | 希望社群提供什麼經驗 |
-| 6 | 建議發佈平台 |
-| 7 | **Business / User / Engineering Impact** + 預期改善 +「為何值得花社群時間」 |
-| 8 | **Confidence Score**（0–5；Ready to post 須 ≥3） |
-| 9 | **Evidence Summary**（每條標 Fact／Inference／Hypothesis） |
-| 10 | **Rejected Alternatives** |
-| 11 | Registry + Scorecard 連結 |
-
-檔名：`drafts/YYYY-MM-DD-NN-<slug>.md`（NN = 01 最高優先）。
-
----
-
-## 6. Round Log + Blind Spot Review
-
-範本：[`ROUND_TEMPLATE.md`](reviews/external-review/ROUND_TEMPLATE.md)  
-目錄：[`rounds/`](reviews/external-review/rounds/)  
-檔名：`YYYY-MM-DD-round-N.md`
-
-除候選／Draft／計數外，**每輪結尾必寫 Blind Spot Review**：
-
-| 類型 | 要求 |
+| 產物 | 何時 |
 |------|------|
-| 最沒有把握 | 即使有 Draft／結案，指出最大不確定 |
-| 最缺乏證據 | 指出缺度量或缺來源之處 |
-| 最可能判斷錯誤 | 指出本輪最可能翻盤的結論 |
+| Registry | 每個正式 Candidate（含 Reject） |
+| Session log | 有觸發時；範本 [`ROUND_TEMPLATE.md`](reviews/external-review/ROUND_TEMPLATE.md)（檔名可用 `YYYY-MM-DD-session-<slug>.md`） |
+| SCORECARD Funnel／ERS | 有 Candidate 或 Draft 狀態推進時 |
+| Meta／Retrospective | 僅異常模式或節奏性回顧需要時 — **非每 N 次義務** |
 
-零 Draft 輪次仍要寫 Blind Spot——盲點審查不是 Discussion 的附錄。
-
----
-
-## 7. External Review Score + Funnel
-
-權威檔：[`SCORECARD.md`](reviews/external-review/SCORECARD.md)
-
-- 完整 Funnel（含 **Reject**）每輪更新  
-- ERS／D1–D5 只服務 Draft 之後的生命週期  
-- 連續兩輪零 Draft → Meta Review  
-- **Round 5** → Evidence-based Retrospective（非「加模組開關」）
+狀態總覽：[`STATUS.md`](reviews/external-review/STATUS.md)（取代以輪次為目標的計數器）。
 
 ---
 
-## 8. 一輪輸出檢查表（Agent Exit）
+## 5. 成功指標（日常）
 
-- [ ] Registry 更新；Funnel 含 Candidate／Research／Reject／Draft／Publish／Adopt／Impact  
-- [ ] Draft 0–3 或零 Draft+原因碼；未為 KPI 硬凑  
-- [ ] 若連續兩輪零 Draft：Meta Review 已寫  
-- [ ] Round log：Blind Spot + 機制效益  
-- [ ] SCORECARD 已同步  
-- [ ] Round 5：Retrospective 已寫  
-- [ ] 未提前加 Journal／KB；未空轉湊輪  
+| 看什麼 | 不看什麼 |
+|--------|----------|
+| Publish→Adopt→Impact 是否發生 | session／輪次次數 |
+| 錯決策是否被挡住（機制效益） | Draft 產量 |
+| ERS D3–D5 是否上升 | 「有沒有定期跑」 |
 
 ---
 
-## 9. 與既有流程的關係
+## 6. 與既有流程
 
-- **不取代** PLAN／ARCH／BUG B1／SEC gates；Draft 不是授權改碼。  
-- 高風險模組若 Draft 暗示設計變更 → Decision-requiring + 使用者批准後才 DEV。  
-- 內部已有答案 → Registry `closed_*` + 必要時 `TECH_DEBT`／ADR／`AI_REGRESSION`，**不要**發外問。  
-- Long-running 觸發：`.cursor/rules/agent-long-running.mdc` §7。
+- 不取代 PLAN／ARCH／BUG／SEC；Draft ≠ 授權改碼  
+- 高風險暗示設計變更 → 仍 Decision-requiring + 使用者批准  
+- Long-running：`.cursor/rules/agent-long-running.mdc` §7  
 
 ---
 
-## 10. 變更紀錄
+## 7. 變更紀錄
 
 | 日期 | 說明 |
 |------|------|
-| 2026-07-15 | 初版：觸發、研究閘門、Draft／Round 產物規範 |
-| 2026-07-15 | 品質強化：Question Registry、Draft Impact／Confidence／Evidence、Blind Spot、SCORECARD；約定先跑 3～5 輪 |
-| 2026-07-15 | 證據階段：漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 5 前不加進階模組 |
-| 2026-07-15 | Funnel 含 Reject；連續兩輪零 Draft→Meta Review；Round 5＝Evidence-based Retrospective |
-| 2026-07-15 | Evidence phase 完成（R1–5）；Retrospective：**不引入** Journal／KB；缺口＝Publish |
+| 2026-07-15 | 初版～Evidence phase R1–5（見 archive round logs） |
+| 2026-07-15 | **正式納入日常**：事件驅動觸發；廢止輪次目標與 valuable≥5 強制暫停 |

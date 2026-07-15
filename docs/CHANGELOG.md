@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review 正式納入日常開發
+
+- **Changed**：External Review 改為事件驅動（高價值未知／缺證據／重大架構才觸發）；廢止輪次目標與 valuable≥5 強制暫停；成功指標＝決策品質與產品成果。
+- 開發備註：`STATUS.md` 取代計數觸發；Evidence phase 歷史保留；不新增 Journal／KB。
+
 ## 2026-07-15 — chore: External Review Evidence phase 收斂（Round 3–5）
 
 - **Changed**：完成 Round 3–5、Meta Review、Evidence-based Retrospective；結論維持 Loop、**不引入** Decision Journal／Knowledge Base。

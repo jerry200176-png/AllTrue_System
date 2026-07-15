@@ -85,7 +85,7 @@
 
 ### External Review Loop（持續）
 
-每約五項有價值工作後暫停、做**全系統**外部審查。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；產物：[`docs/reviews/external-review/`](docs/reviews/external-review/)。完整 Funnel（含 Reject）；連續兩輪零 Draft→Meta Review；Round 5＝Evidence-based Retrospective 後再談 Journal／KB；禁止為 KPI 硬凑 Draft。
+**日常流程（事件驅動）**：遇高價值未知／缺證據／重大架構決策時觸發 External Review；無則不觸發。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；狀態：[`docs/reviews/external-review/STATUS.md`](docs/reviews/external-review/STATUS.md)。成功＝決策品質與產品成果，不以輪次為目標；禁止為流程硬凑。
 
 ## Commit SOP
 

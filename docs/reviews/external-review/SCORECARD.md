@@ -1,7 +1,8 @@
 # External Review Score（成效追蹤）
 
 > 完整 Question Funnel + ERS。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)  
-> Evidence phase **Rounds 1–5 已完成** → 見 [`rounds/2026-07-15-round-5-retrospective.md`](rounds/2026-07-15-round-5-retrospective.md)
+> **日常成功指標**：決策品質與產品成果（Adopt／Impact、避免錯決策）— **不是** session／輪次次數。  
+> Evidence phase 存檔：[`rounds/2026-07-15-round-5-retrospective.md`](rounds/2026-07-15-round-5-retrospective.md) · 狀態：[`STATUS.md`](STATUS.md)
 
 ## Question Funnel
 

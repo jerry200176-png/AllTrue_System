@@ -31,12 +31,11 @@ Outcome（什麼叫完成）／Verification（如何客觀驗證）／Constraint
 ## 6. Commit 規範
 Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`ci`…；`ops` 會被擋）。
 
-## 7. External Review Loop（每約 5 項有價值工作）
-權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`。
+## 7. External Review（日常事件驅動）
+權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`；狀態：[`STATUS.md`](../../docs/reviews/external-review/STATUS.md)。
 
-- 完成一項「有價值工作」→ [`COUNTER.md`](../../docs/reviews/external-review/COUNTER.md) +1；≥5 → 暫停並跑全系統審查。
-- 每候選進 [`QUESTION_REGISTRY.md`](../../docs/reviews/external-review/QUESTION_REGISTRY.md)；Draft 須 Impact／Confidence／Evidence（F/I/H）／Rejected Alternatives。
-- Round log **必含 Blind Spot Review**；成效追 [`SCORECARD.md`](../../docs/reviews/external-review/SCORECARD.md)。
-- 零 Draft 合法；≤3 Draft；禁硬凑；不改 production 代替未知。
-- Evidence phase＝Rounds 1–5：完整 Funnel（含 Reject）；連續兩輪零 Draft→Meta Review；**禁止為 KPI／輪次硬凑 Draft**。
-- Round 5＝Evidence-based Retrospective（價值／限制／下一步）後，才決定是否引入 Journal／KB。
+- **觸發**：高價值未知／缺乏證據／重大架構決策／使用者要求。無則不觸發。  
+- **廢止**：valuable≥5 強制暫停、以輪次為目標、為流程而流程。  
+- **成功指標**：決策品質與產品成果（Adopt／Impact、避免錯決策）— 非 session／Draft 數。  
+- 有 Candidate → Registry + Funnel；Draft 須品質欄位；不改 production 代替未知。  
+- Journal／KB 不預設引入。

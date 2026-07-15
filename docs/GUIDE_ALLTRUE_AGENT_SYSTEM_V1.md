@@ -43,7 +43,7 @@ docs/（權威業務規則）
 | 上線發布 | [`.cursor/skills/alltrue-release/SKILL.md`](../.cursor/skills/alltrue-release/SKILL.md) | P0 |
 | 安全審查 | [`.cursor/skills/alltrue-security/SKILL.md`](../.cursor/skills/alltrue-security/SKILL.md) | T3 |
 | Code Review | [`.cursor/skills/alltrue-code-review/SKILL.md`](../.cursor/skills/alltrue-code-review/SKILL.md) | 每 PR |
-| 外部審查循環 | [`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md) | 每約 5 項有價值工作（見 [`GUIDE_EXTERNAL_REVIEW_LOOP.md`](GUIDE_EXTERNAL_REVIEW_LOOP.md)） |
+| 外部審查 | [`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md) | 事件驅動：高價值未知／缺證據／重大架構（見 [`GUIDE_EXTERNAL_REVIEW_LOOP.md`](GUIDE_EXTERNAL_REVIEW_LOOP.md)） |
 
 ### 與既有 Cursor skills 的關係
 
