@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — ci: Repo Governance 自動驗證落地
+
+- **Changed**：新增 `scripts/repo-governance-check.mjs`（污染 PR／token 天花板 ratchet／handoff TTL／contradiction／governance frontmatter），接入 Presubmit CHECK 8 + `repo-governance.yml`。
+- 開發備註：絕對 Exit 目標（startup≤15k）先以 WARN；硬失敗只在「變差」與汚染／過期 handoff，避免擋產品開發速度。
+
 ## 2026-07-15 — docs: Self-Governing Repository 機制
 
 - **Changed**：新增治理「自我維護」政策（角色、自動驗證、失效/退休、衝突、Exit Criteria），明確不新增 agent 行為規則；目標是 Founder 無需持續介入。

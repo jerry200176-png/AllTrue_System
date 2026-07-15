@@ -292,6 +292,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/reviews/REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md` | Round‑2 Design Review（外部證據 + token 實測；覆寫 Round‑1 部分結論）|
 | `docs/RULE_AI_GOVERNANCE_PRINCIPLES.md` | AI／人類治理憲章（單頁原則；優先於臨時整理 GitHub）|
 | `docs/POLICY_SELF_GOVERNING_REPOSITORY.md` | 治理自我維護：owner／自動驗證／TTL／退休／衝突／Exit Criteria（非新行為規則）|
+| `scripts/repo-governance-check.mjs` | **CI 落地**：token ratchet、汚染 PR、handoff TTL、K-row、governance frontmatter（Presubmit CHECK 8）|
 
 ### 資安文件
 | 檔案 | 一行說明 |

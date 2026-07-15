@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "version": "1.0.0",
+    "owner": "steward:repo-governance",
+    "ttl_days": 90,
+    "retirement": "ratchet-only-tighten; remove key when tracked path deleted",
+    "last_reviewed": "2026-07-15",
+    "notes": "Baselines are ceilings. CI fails on regression (increase). Use --write only when intentionally lowering after real cleanup."
+  },
+  "tokens": {
+    "always_on_strict": 6618,
+    "always_on_cloud_session": 9809,
+    "index": 7285,
+    "obedient_bundle": 47347
+  },
+  "limits": {
+    "pr_changed_files_hard": 300,
+    "index_lines_hard": 520,
+    "sop_handoff_max_age_days": 14
+  },
+  "kpi": {
+    "max_remote_branches_over_14d": 12,
+    "max_unresolved_contradiction_rows": 0
+  },
+  "required_governance_frontmatter": [
+    "docs/POLICY_SELF_GOVERNING_REPOSITORY.md",
+    "docs/RULE_AI_GOVERNANCE_PRINCIPLES.md"
+  ]
+}

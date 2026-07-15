@@ -44,7 +44,11 @@ jobs:
               - '.cursorrules'
               - '.cursor/rules/**'
               - 'scripts/docs-integrity-check.mjs'
+              - 'scripts/repo-governance-check.mjs'
+              - 'scripts/repo-governance-baseline.json'
               - '.github/workflows/docs-integrity.yml'
+              - '.github/workflows/repo-governance.yml'
+              - '.github/workflows/presubmit.yml'
 
   integrity:
     name: Docs Integrity Check

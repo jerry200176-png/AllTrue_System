@@ -1,3 +1,13 @@
+---
+owner: arbiter:founder
+governance_version: "1.0.0"
+ttl_days: 365
+retirement: supersede-via-ADR-or-Arbiter-PR
+last_reviewed: 2026-07-15
+review_cycle: as-needed
+verifier: scripts/repo-governance-check.mjs
+---
+
 # RULE: AI Governance Principles
 
 > **Status:** Accepted (Founder-facing operating constitution)  

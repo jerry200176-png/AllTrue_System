@@ -1,10 +1,20 @@
+---
+owner: steward:repo-governance
+governance_version: "1.0.0"
+ttl_days: 180
+retirement: supersede-via-PR-then-archive
+last_reviewed: 2026-07-15
+review_cycle: quarterly
+verifier: scripts/repo-governance-check.mjs
+---
+
 # POLICY: Self-Governing Repository
 
 > **What this is:** Meta-mechanism for *maintaining* existing governance — ownership, automatic verification, expiry, retirement, conflict handling, and exit criteria.  
 > **What this is not:** A new behavioral rulebook for agents. **Do not** derive new “must-read” encyclopedias from this file.  
 > **Goal:** 3–5 years, ~10 engineers + ~30 AI agents, **low cognitive load without continuous Founder attention**.  
 > **Depends on:** `RULE_AI_GOVERNANCE_PRINCIPLES.md`, `CONTROL_PLANE_CONTRACT.md`, `CONTRADICTION_REGISTRY.md`, `docs-integrity` + `control-plane-lint`, Design Review Round‑2.  
-> **Status:** Design Accepted for discussion → becomes Binding when Founder marks Exit Criteria Phase‑0 complete.
+> **Status:** Binding for machine checks via `scripts/repo-governance-check.mjs` (Exit Criteria Phase A partial).
 
 ---
 

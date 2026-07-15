@@ -1,0 +1,45 @@
+name: Repo Governance
+
+# Machine enforcement for self-governing repository KPIs.
+# PR path is also covered by Presubmit CHECK 8; this workflow adds schedule reporting.
+on:
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "30 1 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  governance:
+    name: Repo Governance Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Run repo governance check
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            node scripts/repo-governance-check.mjs
+          else
+            # Schedule: no PR diff; still enforce ratchets / handoff / contradictions / branch KPI
+            node scripts/repo-governance-check.mjs --skip-pr-diff
+          fi
