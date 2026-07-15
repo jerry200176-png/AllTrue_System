@@ -48,6 +48,10 @@ class OpsBusinessDigestTest extends TestCase
 
         $anom = app(BusinessDigestService::class)->anomalies($m);
         $this->assertNotEmpty($anom); // stranded>0 and coverage=0 both flag
+        $this->assertArrayHasKey('trust', $m);
+        $this->assertSame('red', $m['trust']['paid_class_visibility']['status']);
+        $this->assertSame('forward_only_no_historical_amend', $m['trust']['invoice_trust']['policy']);
+        $this->assertFalse($m['trust']['dormant_hold']['auto_generate']);
     }
 
     public function test_retention_decomposition_splits_dormant_and_reenroll(): void

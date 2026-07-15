@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — feat: 主任總覽「營運信任」燈號（已付堂／休眠／帳本）
+
+- **Added**：主任總覽首屏新增「營運信任」——一眼看出本分校：已付堂是否已排進未來課表、未來 7 天堂次、堂數帳本是否一致、帳單採「只修未來不改歷史」、以及需聯繫的已付休眠學生（不自動排課）。
+- 開發備註：Epic `E-OPS-TRUST`；`GET /api/v1/director/operations-trust?branch_id=`（campus-scoped `BusinessDigestService` + Trust KPI）；優先處理卡納入 stranded／dormant；Founder F1–F5 已鎖定。詳見 `.cursor/plans/director_ops_center_trust_mvp_2026-07-15.md`。
+
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。
