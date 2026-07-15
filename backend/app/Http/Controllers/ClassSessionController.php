@@ -2647,17 +2647,20 @@ class ClassSessionController extends Controller
 
             $rescheduledDeleted = 0;
             if (!empty($anchorIds)) {
-                $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
-                    ->whereDate('schedule_date', $sessionDate)
-                    ->where('status', 'rescheduled')
-                    ->whereIn('id', $anchorIds)
-                    ->whereNotExists(function ($sub) {
-                        $sub->select(DB::raw(1))
-                            ->from('schedules as sibling')
-                            ->whereColumn('sibling.original_schedule_id', 'schedules.id')
-                            ->where('sibling.status', 'scheduled');
-                    })
-                    ->delete();
+                // MySQL/MariaDB reject DELETE with subquery on same table (error 1093).
+                $stillLinked = Schedule::where('status', 'scheduled')
+                    ->whereIn('original_schedule_id', $anchorIds)
+                    ->pluck('original_schedule_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->all();
+                $safeAnchorIds = array_values(array_diff($anchorIds, $stillLinked));
+                if (!empty($safeAnchorIds)) {
+                    $rescheduledDeleted = Schedule::where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $sessionDate)
+                        ->where('status', 'rescheduled')
+                        ->whereIn('id', $safeAnchorIds)
+                        ->delete();
+                }
             } elseif ($rescheduled) {
                 $rescheduledDeleted = Schedule::where('id', (int) $rescheduled->id)->delete();
             }

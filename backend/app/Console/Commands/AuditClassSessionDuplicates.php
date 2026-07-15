@@ -58,6 +58,10 @@ class AuditClassSessionDuplicates extends Command
         }
         $outputPath = $this->option('output');
         if ($outputPath) {
+            $dir = dirname($outputPath);
+            if ($dir !== '' && $dir !== '.' && !is_dir($dir)) {
+                mkdir($dir, 0775, true);
+            }
             file_put_contents($outputPath, $json . PHP_EOL);
             $this->line("Report written to {$outputPath}");
         } else {

@@ -37,6 +37,7 @@ jobs:
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
             || echo "$BRANCH" | grep -qE '^dependabot/' \
+            || echo "$BRANCH" | grep -qE '^cursor/.' \
             || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
