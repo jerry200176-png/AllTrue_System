@@ -13,7 +13,7 @@ class DirectorOperationsTrustController extends Controller
 {
     public function show(Request $request, BusinessDigestService $digest)
     {
-        $branchId = (int) $request->query('branch_id', 0);
+        $branchId = (int) $request->input('branch_id', 0);
         if ($branchId <= 0) {
             return response()->json(['message' => 'branch_id is required'], 422);
         }
@@ -28,6 +28,7 @@ class DirectorOperationsTrustController extends Controller
             'data' => [
                 'branch_id' => $branchId,
                 'generated_at' => $metrics['generated_at'],
+                'decision_center' => $metrics['decision_center'],
                 'trust' => $metrics['trust'],
                 'revenue' => $metrics['revenue'],
                 'retention' => $metrics['retention'],

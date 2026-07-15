@@ -52,6 +52,9 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertSame('red', $m['trust']['paid_class_visibility']['status']);
         $this->assertSame('forward_only_no_historical_amend', $m['trust']['invoice_trust']['policy']);
         $this->assertFalse($m['trust']['dormant_hold']['auto_generate']);
+        $this->assertArrayHasKey('decision_center', $m);
+        $this->assertLessThan(100, (int) $m['decision_center']['score']);
+        $this->assertNotEmpty($m['decision_center']['decisions']);
     }
 
     public function test_retention_decomposition_splits_dormant_and_reenroll(): void

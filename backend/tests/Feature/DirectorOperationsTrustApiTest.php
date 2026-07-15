@@ -75,6 +75,22 @@ class DirectorOperationsTrustApiTest extends TestCase
         $this->assertSame(1, (int) $json['retention']['dormant_prepaid_students']);
         $this->assertArrayHasKey('calendar_trust', $json['trust']);
         $this->assertArrayHasKey('ledger_trust', $json['trust']);
+
+        $dc = $json['decision_center'];
+        $this->assertLessThan(100, (int) $dc['score']);
+        $this->assertSame('red', $dc['status']);
+        $keys = collect($dc['decisions'])->pluck('key')->all();
+        $this->assertContains('stranded_paid', $keys);
+        $this->assertContains('dormant_hold', $keys);
+        foreach ($dc['decisions'] as $d) {
+            $this->assertNotEmpty($d['why']);
+            $this->assertNotEmpty($d['next_step']);
+            $this->assertNotEmpty($d['action_label']);
+            $this->assertNotEmpty($d['target']);
+            $this->assertSame('director', $d['owner']);
+        }
+        // Invoice policy must not appear as a clickable homepage decision.
+        $this->assertNotContains('invoice', $keys);
     }
 
     public function test_service_campus_filter_excludes_other_branch_stranded(): void

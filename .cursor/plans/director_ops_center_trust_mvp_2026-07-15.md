@@ -1,70 +1,28 @@
-# Execution Brief — E-OPS-TRUST（主任作戰中心｜Trust MVP）
+# Execution Brief — E-OPS-TRUST（Decision Center｜v2 after Product Validation）
 
-**Date:** 2026-07-15 · **Branch:** `cursor/director-ops-trust-mvp-badf`  
-**Founder lock:** F1=A · F2=B · F3=C · F4=B · F5=B
+**Branch:** `feat/director-ops-trust-mvp-badf` · Founder F1–F5 locked
 
-## 主任一天（產品決策依據｜非工程報告）
+## Product problem (one sentence)
+主任每天進門不知道「今天會不會因為課表／剩課講錯，被家長打爆」，且找不到單一入口決定先做哪一件。
 
-| 時段 | 工作 | 系統應主動給什麼 |
-|------|------|------------------|
-| 08:30 進門 | 「今天會不會出事？」 | 信任紅燈：付錢沒課、堂數對不起來、本週沒課 |
-| 午前 | 催到班／處理請假結果 | 待點名、待審請假／補課（已有） |
-| 午後 | 家長來電：有沒有課、剩幾堂、要不要繳 | 剩課／已付可見性、休眠提醒（F2） |
-| 傍晚 | 審評量、收尾 | 待審評量（已有） |
-| 不該做 | 自己挖 API／問工程師看 stranded | digest 數字上總覽 |
+## Why this is Decision Center (not digest wallpaper)
+- **30 秒決策**：看 Trust Score → 若有決策卡，依順序點 CTA 去課程管理／行事曆。
+- 每張卡有：為什麼、下一步、Owner=主任、一鍵跳轉（MVP 不提供一鍵自動修——避免錯排課；修完紅燈自然消失即 Measure）。
+- Invoice／催繳政策＝折疊，不佔首屏決策位。
+- 選擇 **B：單一 Score + Drill（決策卡）**，不是五燈監控牆。
 
-**一個頁面 80%：** 強化既有 `DirectorDashboard`（已是 Campus Operations Command）→ 加 **Trust 四燈 + 休眠提醒**。不新建導航迷宮。
+## Today First
+| 永遠 | 異常才显示 | 永不當首屏主角 |
+|------|------------|----------------|
+| Trust Score + 今日決策卡 | 點名／催繳／補課／評量待辦 | 五燈綠牆、Invoice 政策、軍階彩蛋、匯入 CSV（仍在下方待辦，非 Trust） |
 
-**可自動化：** forward-gen／LR 回填／digest 計算（已有）→ 結果必須上畫面。  
-**不該存在於主任日：** 無信任語意的軍階/彩蛋、自己算「剩課有沒有排上去」。  
-**可簡化／後置：** CourseManagement 深潛、void 自助（F5）、催繳自動推（F4 禁）。
+## Product KPI (Measure)
+- Trust Score 中位是否週週上升
+- `director_trust_decision_click` 後 24h stranded 是否下降
+- 主任為「剩課／沒課」切頁次數是否下降（質性訪談 + telemetry）
+- 失敗：點 CTA 後仍問工程師 / Score 沒人看 / 紅燈永久存在
 
-## 為什麼現在做（選這條而非重構脊骨）
-
-- F1 北極星＝「課表／剩課是對的」→ 主任每天要用**看得見的 Trust KPI**，不是再修一個 god-controller。
-- `BusinessDigestService` 已算 stranded／dormant／ledger 乖離——**缺的是分校授權 API + 首屏**。
-- ROI：一週內可上；無 migration；無歷史改帳（F3）；無自動催繳（F4）。
-
-## 使用者得到什麼
-
-主任打開總覽立刻看到四顆 Trust 燈與兩個行動項：
-1. **已付堂可見性**（stranded 堂數／約當 NT$）  
-2. **休眠保留**（F2：人數／可回收 NT$；「要聯繫／不排課」）  
-3. 行事曆覆蓋（未來 7 天堂次數）  
-4. 堂數帳本一致性（Remaining 乖離筆數）  
-Invoice Trust：標示「只修正未來、不改歷史帳單」（F3 政策可見）
-
-## 成功指標（Measure）
-
-| KPI | MVP 定義 | 綠燈 |
-|-----|----------|------|
-| Paid Class Visibility | campus `stranded_sessions` | → 0 為綠；>0 紅 |
-| Calendar Trust | `sessions_next_7d` & 跨約重複 | 7d>0 且 duplicate=0 綠 |
-| Ledger Trust | `remaining_divergent` | =0 綠 |
-| Invoice Trust | 政策 badge + unpaid 僅資訊 | 不假装歷史已修 |
-| 採用 | 主任當週是否打開總覽即見 trust 區塊 | 質性：不用再問工程師 stranded |
-
-## 風險
-
-- 全校 digest 加 `campus_id` 過濾漏 join → **測試鎖分校隔離**  
-- 數字吓人但無 drill-down → MVP 導向行事曆／課程管理，Phase 2 再列名單  
-- 與舊 `system/trust-summary`（改版公告向）混淆 → 新路徑 `director/operations-trust`
-
-## MVP（本 PR）
-
-1. `BusinessDigestService` 支援 `campusId` + `trust{}` 四 KPI  
-2. `GET /api/v1/director/operations-trust?branch_id=`（director+campus）  
-3. `DirectorDashboard` Trust 條 + 優先風險納入 stranded／dormant  
-4. PHPUnit 隔離／結構；前端 `directorPriorityRisks` 單測  
-
-**Out of MVP：** 歷史 Invoice 改寫、void 申請流（F5）、評量/請假推播（F4→P2）、後端 occurrence 重設計、dormant 寫入標記欄位（先用既有查詢語意提醒）。
-
-## Phase 2 / 3
-
-- **P2：** Trust drill-down 名單；F4 評量+請假結果推播（opt-out）；digest Telegram 早報  
-- **P3：** F5 作廢申請→Founder 核准；dormant 狀態欄位＋定期提醒排程  
-
-## Decide
-
-**單一 Epic：`E-OPS-TRUST`**＝主任作戰中心的 Trust 首屏。  
-證據足夠 → **立即 DEV**（本分支）。
+## MVP / P2
+- MVP：Score + 決策卡 + 跳轉（本 PR）
+- P2：stranded／dormant 點名到實際名單；一鍵標記休眠；推播（F4）
+- P3：作廢申請流（F5）

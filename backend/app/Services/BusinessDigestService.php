@@ -36,6 +36,7 @@ class BusinessDigestService
             'coverage' => ['sessions_next_7d' => $this->sessionsNext7d($campusId)],
         ];
         $m['trust'] = $this->trustFromMetrics($m);
+        $m['decision_center'] = $this->decisionCenter($m);
 
         return $m;
     }
@@ -100,6 +101,122 @@ class BusinessDigestService
                     ? '沒有已付休眠合約待聯繫'
                     : "{$dormant} 位學生保留資格、勿自動排課，請定期聯繫",
                 'auto_generate' => false,
+            ],
+        ];
+    }
+
+    /**
+     * Decision Center: one Trust Score + only today's actionable decisions.
+     *
+     * @param array<string,mixed> $m
+     * @return array{score:int,max:int,status:string,headline:string,decisions:list<array<string,mixed>>,policy_notes:list<string>}
+     */
+    public function decisionCenter(array $m): array
+    {
+        $score = 100;
+        $decisions = [];
+
+        $stranded = (int) ($m['revenue']['stranded_sessions'] ?? 0);
+        $strandedAmt = (float) ($m['revenue']['stranded_amount'] ?? 0);
+        $next7 = (int) ($m['coverage']['sessions_next_7d'] ?? 0);
+        $dup = (int) ($m['data_quality']['cross_sc_duplicate'] ?? 0);
+        $divergent = (int) ($m['data_quality']['remaining_divergent'] ?? 0);
+        $dormant = (int) ($m['retention']['dormant_prepaid_students'] ?? 0);
+        $dormantNtd = (int) ($m['retention']['dormant_prepaid_recoverable_ntd'] ?? 0);
+
+        if ($stranded > 0) {
+            $score -= min(40, 15 + (int) floor($stranded / 2));
+            $decisions[] = [
+                'key' => 'stranded_paid',
+                'severity' => 'critical',
+                'title' => "{$stranded} 堂已付還沒排進未來課表",
+                'why' => '家長已經付錢，但行事曆上看不到課——今天最容易被客訴。',
+                'next_step' => '打開課程管理，幫仍在上課的合約補固定時段；若暫時不上課，改做休眠聯繫（不要自動排課）。',
+                'action_label' => '去處理排課',
+                'target' => 'course-mgmt',
+                'owner' => 'director',
+                'one_click_resolve' => false,
+                'detail' => $strandedAmt > 0 ? ('約 NT$' . number_format((int) round($strandedAmt))) : null,
+            ];
+        }
+
+        if ($next7 === 0) {
+            $score -= 25;
+            $decisions[] = [
+                'key' => 'calendar_empty_week',
+                'severity' => 'critical',
+                'title' => '未來 7 天完全沒有課表',
+                'why' => '老師與家長會以為這週沒課；也可能是向前產生停擺。',
+                'next_step' => '先打開行事曆確認本分校，再回課程管理檢查活躍合約是否缺固定上課日。',
+                'action_label' => '去看行事曆',
+                'target' => 'calendar',
+                'owner' => 'director',
+                'one_click_resolve' => false,
+                'detail' => null,
+            ];
+        } elseif ($dup > 0) {
+            $score -= min(15, 5 + $dup);
+            $decisions[] = [
+                'key' => 'calendar_duplicate',
+                'severity' => 'warning',
+                'title' => "偵測到 {$dup} 組跨約重複堂",
+                'why' => '同一學生同時段可能出現兩張卡，點名與評量會亂。',
+                'next_step' => '打開行事曆對照本週；停用舊約殘留堂或整理重複。',
+                'action_label' => '去看行事曆',
+                'target' => 'calendar',
+                'owner' => 'director',
+                'one_click_resolve' => false,
+                'detail' => null,
+            ];
+        }
+
+        if ($divergent > 0) {
+            $score -= min(20, 8 + $divergent);
+            $decisions[] = [
+                'key' => 'ledger_divergent',
+                'severity' => 'warning',
+                'title' => "{$divergent} 筆課程剩餘堂數對不起來",
+                'why' => '家長問「還剩幾堂」時系統可能講錯。',
+                'next_step' => '到課程管理核對購買／已用／剩餘；涉及改帳請走核准流程（不作廢自助）。',
+                'action_label' => '去核對堂數',
+                'target' => 'course-mgmt',
+                'owner' => 'director',
+                'one_click_resolve' => false,
+                'detail' => null,
+            ];
+        }
+
+        if ($dormant > 0) {
+            $score -= min(15, 5 + $dormant);
+            $decisions[] = [
+                'key' => 'dormant_hold',
+                'severity' => 'warning',
+                'title' => "{$dormant} 位已付休眠要聯繫",
+                'why' => '保留上課資格、不要自動排課；長期不聯繫會變客訴或呆帳。',
+                'next_step' => '在課程管理找出長期沒排課仍有餘額的學生，今天連絡是否恢復或結案方向。',
+                'action_label' => '去聯繫名單',
+                'target' => 'course-mgmt',
+                'owner' => 'director',
+                'one_click_resolve' => false,
+                'detail' => $dormantNtd > 0 ? ('約可回收 NT$' . number_format($dormantNtd)) : null,
+            ];
+        }
+
+        $score = max(0, min(100, $score));
+        $status = $score >= 90 ? 'green' : ($score >= 70 ? 'yellow' : 'red');
+        $headline = count($decisions) === 0
+            ? '今天課表與剩課看起來可信，先處理下方每日待辦即可。'
+            : ('今天有 ' . count($decisions) . ' 件信任事項要先處理（分數越低越急）。');
+
+        return [
+            'score' => $score,
+            'max' => 100,
+            'status' => $status,
+            'headline' => $headline,
+            'decisions' => $decisions,
+            'policy_notes' => [
+                '歷史帳單數字不改；只保證往後續期正確（完整稽核保留）。',
+                '催繳仍由主任人工處理，系統不自動傳訊息給家長。',
             ],
         ];
     }

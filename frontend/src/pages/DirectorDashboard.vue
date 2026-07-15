@@ -24,7 +24,7 @@
           </div>
         </div>
 
-        <!-- E-OPS-TRUST: Trust KPI strip (F1) -->
+        <!-- E-OPS-TRUST: Decision Center (single score + today's decisions only) -->
         <section
           v-if="operationsTrust"
           class="ops-trust"
@@ -32,26 +32,49 @@
           data-guide="director-operations-trust"
         >
           <header class="ops-trust__head">
-            <div>
-              <h3 id="ops-trust-title">營運信任</h3>
-              <p>課表／剩課／帳單是否可信——紅燈請今日先處理。</p>
+            <div class="ops-trust__score-wrap">
+              <p class="ops-trust__kicker">今天課表與剩課信不信得過</p>
+              <h3 id="ops-trust-title" class="ops-trust__score" :class="`ops-trust__score--${decisionCenter.status}`">
+                <span class="ops-trust__score-num">{{ decisionCenter.score }}</span>
+                <span class="ops-trust__score-max">/ {{ decisionCenter.max }}</span>
+              </h3>
+              <p class="ops-trust__headline">{{ decisionCenter.headline }}</p>
             </div>
             <span v-if="operationsTrust.generated_at" class="ops-trust__stamp">
               更新 {{ formatTrustStamp(operationsTrust.generated_at) }}
             </span>
           </header>
-          <div class="ops-trust__grid">
+
+          <div v-if="trustDecisions.length" class="ops-trust__decisions">
             <article
-              v-for="card in trustCards"
-              :key="card.key"
-              class="ops-trust-card"
-              :class="`ops-trust-card--${card.status}`"
+              v-for="item in trustDecisions"
+              :key="item.key"
+              class="ops-decision"
+              :class="`ops-decision--${item.severity}`"
             >
-              <span class="ops-trust-card__label">{{ card.label }}</span>
-              <strong class="ops-trust-card__summary">{{ card.summary }}</strong>
-              <span v-if="card.detail" class="ops-trust-card__detail">{{ card.detail }}</span>
+              <div class="ops-decision__body">
+                <strong>{{ item.title }}</strong>
+                <p class="ops-decision__why">{{ item.why }}</p>
+                <p class="ops-decision__next">下一步：{{ item.next_step }}</p>
+                <span v-if="item.detail" class="ops-decision__detail">{{ item.detail }}</span>
+                <span class="ops-decision__owner">負責：主任</span>
+              </div>
+              <button
+                type="button"
+                class="ops-decision__cta"
+                @click="handleTrustDecision(item)"
+              >
+                {{ item.action_label }}
+              </button>
             </article>
           </div>
+
+          <details v-if="decisionCenter.policy_notes?.length" class="ops-trust__policy">
+            <summary>政策說明（非今日待辦）</summary>
+            <ul>
+              <li v-for="(note, idx) in decisionCenter.policy_notes" :key="idx">{{ note }}</li>
+            </ul>
+          </details>
         </section>
 
         <!-- ===== Layer 1: Action Lane ===== -->
@@ -948,8 +971,7 @@ const renewalAttentionCount = computed(() =>
 
 const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   breachedTasks: workflowDailySummary.value.breached_total,
-  strandedSessions: Number(operationsTrust.value?.revenue?.stranded_sessions || 0),
-  dormantStudents: Number(operationsTrust.value?.retention?.dormant_prepaid_students || 0),
+  // Trust decisions (stranded/dormant) live in Decision Center above — avoid duplicate prompts.
   unpaidPayments: unpaidPaymentCount.value,
   pendingAttendance: pendingAttendanceCount.value,
   exceptionWorkflows: exceptionWorkflowCount.value,
@@ -958,52 +980,22 @@ const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   renewalAttention: renewalAttentionCount.value,
 }));
 
-const trustCards = computed(() => {
-  const t = operationsTrust.value?.trust;
-  if (!t) return [];
-  const money = (n) => {
-    const v = Number(n);
-    if (!Number.isFinite(v) || v <= 0) return '';
-    return `約 NT$${Math.round(v).toLocaleString('zh-TW')}`;
+const decisionCenter = computed(() => {
+  const dc = operationsTrust.value?.decision_center;
+  if (dc && typeof dc.score === 'number') return dc;
+  return {
+    score: 100,
+    max: 100,
+    status: 'green',
+    headline: '正在載入信任狀態…',
+    decisions: [],
+    policy_notes: [],
   };
-  return [
-    {
-      key: 'paid',
-      status: t.paid_class_visibility?.status || 'yellow',
-      label: t.paid_class_visibility?.label || '已付堂可見性',
-      summary: t.paid_class_visibility?.summary || '',
-      detail: money(t.paid_class_visibility?.stranded_amount),
-    },
-    {
-      key: 'calendar',
-      status: t.calendar_trust?.status || 'yellow',
-      label: t.calendar_trust?.label || '行事曆可信度',
-      summary: t.calendar_trust?.summary || '',
-      detail: '',
-    },
-    {
-      key: 'ledger',
-      status: t.ledger_trust?.status || 'yellow',
-      label: t.ledger_trust?.label || '堂數帳本一致',
-      summary: t.ledger_trust?.summary || '',
-      detail: '',
-    },
-    {
-      key: 'invoice',
-      status: t.invoice_trust?.status === 'policy' ? 'info' : (t.invoice_trust?.status || 'info'),
-      label: t.invoice_trust?.label || '帳單可信度',
-      summary: t.invoice_trust?.summary || '',
-      detail: '',
-    },
-    {
-      key: 'dormant',
-      status: t.dormant_hold?.status || 'green',
-      label: t.dormant_hold?.label || '休眠保留',
-      summary: t.dormant_hold?.summary || '',
-      detail: money(t.dormant_hold?.recoverable_ntd),
-    },
-  ];
 });
+
+const trustDecisions = computed(() =>
+  Array.isArray(decisionCenter.value.decisions) ? decisionCenter.value.decisions : []
+);
 
 function formatTrustStamp(iso) {
   try {
@@ -1012,6 +1004,26 @@ function formatTrustStamp(iso) {
     return d.toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
+  }
+}
+
+function handleTrustDecision(item) {
+  try {
+    trackAdoptionEvent('director_trust_decision_click', Number(props.branchId) || 0, {
+      key: item?.key || '',
+      target: item?.target || '',
+    });
+  } catch (_) { /* non-blocking */ }
+  if (item?.target === 'calendar') {
+    emit('navigate', { target: 'calendar' });
+    return;
+  }
+  if (item?.target === 'course-mgmt') {
+    emit('navigate', { target: 'course-mgmt' });
+    return;
+  }
+  if (item?.target === 'tuition') {
+    goToTuitionCollect();
   }
 }
 
@@ -1992,53 +2004,106 @@ onBeforeUnmount(() => {
   align-items: flex-start;
   margin-bottom: 12px;
 }
-.ops-trust__head h3 {
+.ops-trust__kicker {
   margin: 0 0 4px;
-  font-size: 16px;
-}
-.ops-trust__head p {
-  margin: 0;
+  font-size: 12px;
   color: var(--ds-ink-mute);
-  font-size: 13px;
+  font-weight: 600;
+}
+.ops-trust__score {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  line-height: 1;
+}
+.ops-trust__score-num {
+  font-size: 40px;
+  font-weight: 800;
+}
+.ops-trust__score-max {
+  font-size: 16px;
+  color: var(--ds-ink-mute);
+  font-weight: 600;
+}
+.ops-trust__score--green .ops-trust__score-num { color: var(--ds-success); }
+.ops-trust__score--yellow .ops-trust__score-num { color: var(--ds-warning); }
+.ops-trust__score--red .ops-trust__score-num { color: var(--ds-danger); }
+.ops-trust__headline {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--ds-ink);
+  max-width: 36rem;
 }
 .ops-trust__stamp {
   font-size: 12px;
   color: var(--ds-ink-mute);
   white-space: nowrap;
 }
-.ops-trust__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+.ops-trust__decisions {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
-.ops-trust-card {
+.ops-decision {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
   border-radius: 12px;
   border: 1px solid var(--ds-hairline);
   border-left-width: 4px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: var(--ds-surface, #fff);
 }
-.ops-trust-card--green { border-left-color: var(--ds-success); }
-.ops-trust-card--yellow { border-left-color: var(--ds-warning); }
-.ops-trust-card--red { border-left-color: var(--ds-danger); }
-.ops-trust-card--info { border-left-color: var(--ds-info, var(--ds-primary)); }
-.ops-trust-card__label {
+.ops-decision--critical { border-left-color: var(--ds-danger); }
+.ops-decision--warning { border-left-color: var(--ds-warning); }
+.ops-decision__body {
+  flex: 1;
+  min-width: 0;
+}
+.ops-decision__body strong {
   display: block;
-  font-size: 12px;
-  color: var(--ds-ink-mute);
+  font-size: 14px;
   margin-bottom: 4px;
 }
-.ops-trust-card__summary {
-  display: block;
+.ops-decision__why,
+.ops-decision__next {
+  margin: 0 0 4px;
   font-size: 13px;
-  font-weight: 700;
-  line-height: 1.35;
+  color: var(--ds-ink-mute);
+  line-height: 1.4;
 }
-.ops-trust-card__detail {
-  display: block;
-  margin-top: 6px;
+.ops-decision__detail,
+.ops-decision__owner {
+  display: inline-block;
+  margin-right: 10px;
   font-size: 12px;
   color: var(--ds-ink-mute);
+}
+.ops-decision__cta {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--ds-warning-wash);
+  color: var(--ds-warning);
+}
+.ops-decision--critical .ops-decision__cta {
+  background: var(--ds-danger-wash);
+  color: var(--ds-danger);
+}
+.ops-trust__policy {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+}
+.ops-trust__policy ul {
+  margin: 6px 0 0;
+  padding-left: 1.2rem;
 }
 
 .priority-risks {
