@@ -2648,7 +2648,8 @@ class ClassSessionController extends Controller
             $rescheduledDeleted = 0;
             if (!empty($anchorIds)) {
                 // MySQL/MariaDB reject DELETE with subquery on same table (error 1093).
-                $stillLinked = Schedule::where('status', 'scheduled')
+                $stillLinked = DB::table('schedules')
+                    ->where('status', 'scheduled')
                     ->whereIn('original_schedule_id', $anchorIds)
                     ->pluck('original_schedule_id')
                     ->map(fn ($id) => (int) $id)

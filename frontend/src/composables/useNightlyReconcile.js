@@ -112,8 +112,9 @@ export function useNightlyReconcile(tokenRef) {
     error.value = '';
     try {
       const res = await recomputeReconcile(token, [studentClassId]);
-      recomputeResults.value = res.results || [];
+      const results = res.results || [];
       await loadReport();
+      recomputeResults.value = results;
     } catch (e) {
       error.value = e.message || '重新計算失敗';
     } finally {
@@ -130,8 +131,9 @@ export function useNightlyReconcile(tokenRef) {
     error.value = '';
     try {
       const res = await recomputeReconcile(token, ids);
-      recomputeResults.value = res.results || [];
+      const results = res.results || [];
       await loadReport();
+      recomputeResults.value = results;
     } catch (e) {
       error.value = e.message || '重新計算失敗';
     } finally {

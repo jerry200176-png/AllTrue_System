@@ -15,7 +15,7 @@ return new class extends Migration
 
         Schema::table('payroll_teacher_branch_rules', function (Blueprint $table) {
             if (!Schema::hasColumn('payroll_teacher_branch_rules', 'effective_from')) {
-                $table->date('effective_from')->nullable()->default(DB::raw('CURRENT_DATE'))->after('headcount_bonus');
+                $table->date('effective_from')->nullable()->after('headcount_bonus');
             }
             if (!Schema::hasColumn('payroll_teacher_branch_rules', 'use_branch_default')) {
                 $table->boolean('use_branch_default')->default(false)->after('effective_from');

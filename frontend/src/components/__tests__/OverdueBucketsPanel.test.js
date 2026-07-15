@@ -109,12 +109,28 @@ describe('OverdueBucketsPanel.vue', () => {
   });
 
   it('shows overdue days coloring in drill-down table', async () => {
+    global.fetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          buckets: [{ key: 'mild', label: '逾期1-7天', count: 2, total_outstanding: 10000 }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          data: [
+            { id: 1, student_name: 'A', subject: 'S', class_name: 'C', due_date: '2026-07-10', overdue_days: 3, total_amount: 5000, paid_amount: 0, status: 'unpaid', student_class_id: 1 },
+            { id: 2, student_name: 'B', subject: 'S', class_name: 'C', due_date: '2026-06-10', overdue_days: 33, total_amount: 5000, paid_amount: 0, status: 'unpaid', student_class_id: 2 },
+          ],
+        }),
+      });
+
     const wrapper = mount(OverdueBucketsPanel);
-    wrapper.vm.activeBucket = 'mild';
-    wrapper.vm.drillRows = [
-      { id: 1, student_name: 'A', subject: 'S', class_name: 'C', due_date: '2026-07-10', overdue_days: 3, total_amount: 5000, paid_amount: 0, status: 'unpaid', student_class_id: 1 },
-      { id: 2, student_name: 'B', subject: 'S', class_name: 'C', due_date: '2026-06-10', overdue_days: 33, total_amount: 5000, paid_amount: 0, status: 'unpaid', student_class_id: 2 },
-    ];
+    await new Promise(r => setTimeout(r, 50));
+    await nextTick();
+    await wrapper.find('.obp-mild').trigger('click');
+    await new Promise(r => setTimeout(r, 50));
     await nextTick();
 
     const rows = wrapper.findAll('.obp-table tbody tr');
