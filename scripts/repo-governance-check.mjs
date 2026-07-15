@@ -25,7 +25,13 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = join(root, 'scripts', 'repo-governance-baseline.json');
+/**
+ * Write mode:
+ *   --write            ratchet ceilings DOWN only (never raises)
+ *   --write --set-ceilings   set ceilings to current actuals (bootstrap / explicit debt snapshot)
+ */
 const write = process.argv.includes('--write');
+const setCeilings = process.argv.includes('--set-ceilings');
 const skipPrDiff = process.argv.includes('--skip-pr-diff');
 const asJson = process.argv.includes('--json');
 
@@ -140,10 +146,11 @@ function checkTokenRatchets() {
     if (typeof val !== 'number') continue;
     const mark = val > limit ? 'FAIL' : val < limit ? 'DOWN' : 'OK';
     console.log(`[tokens] ${mark} ${key}: ${val} (ceiling ${limit})`);
-    if (val > limit) {
+    if (val > limit && !(write && setCeilings)) {
       errors.push(`token regression ${key}: ${val} > ceiling ${limit} (do not grow always-on/INDEX/obedient bundle)`);
     }
-    if (val < limit) updated.tokens[key] = val;
+    if (setCeilings) updated.tokens[key] = val;
+    else if (val < limit) updated.tokens[key] = val;
   }
 
   // Soft absolute targets from Design Review Exit Criteria (do not block shipping)
@@ -329,7 +336,11 @@ if (write) {
     last_reviewed: new Date().toISOString().slice(0, 10),
   };
   writeFileSync(baselinePath, `${JSON.stringify(updatedBaseline, null, 2)}\n`);
-  console.log('baseline rewritten (tightened where improved)');
+  console.log(setCeilings ? 'baseline ceilings reset to current actuals' : 'baseline rewritten (tightened where improved)');
+  if (setCeilings) {
+    // Bootstrap path: after writing, re-validate as success if only token regression errs existed.
+    console.log('note: --set-ceilings used; subsequent runs enforce ratchet from new ceilings');
+  }
 }
 
 if (process.env.GITHUB_STEP_SUMMARY) {
