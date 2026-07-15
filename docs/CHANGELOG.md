@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs: Product Discovery 收斂（Founder≤5 + Blind Spot）
+
+- **Changed**：新增 `docs/reviews/PRODUCT_DISCOVERY_FOUNDER_CULL_BLINDSPOT_2026-07-15.md` — 將原 20 問重分為 A 自查／B 推導／C 決策／D 刪除，只留 5 題；Blind Spot Review；投資人判決 **Watch**。不進 DEV、不改產品程式。
+- 開發備註：承接同日 CTO Product Review；Founder 只回 F1–F5。
+
 ## 2026-07-15 — docs: CTO Product Review（治理結束 → 產品優先）
 
 - **Changed**：新增 `docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md` — 跨 GitHub／Docs／程式交叉分析；90 天 ROI Top 10、核心瓶頸證據、過時文件／Issue 方向、四角色 UX、Founder 20 問。不改產品程式。

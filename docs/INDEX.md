@@ -163,7 +163,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | **AI-native 演進路線圖（BI/異常/留存/AI 行政）** | `docs/POLICY_AI_NATIVE_ROADMAP.md`；metric 底座＝`ops:business-digest` / `BusinessDigestService` |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
-| **CTO Product Review（2026-07-15）** | [`docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md`](reviews/CTO_PRODUCT_REVIEW_2026-07-15.md) — 90 天 ROI Top 10／瓶頸證據／Founder 決策問答；**非 runtime** |
+| **CTO Product Review（2026-07-15）** | [`docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md`](reviews/CTO_PRODUCT_REVIEW_2026-07-15.md) — 90 天 ROI Top 10／瓶頸證據；**非 runtime** |
+| **Product Discovery 收斂（Founder≤5 + Blind Spot）** | [`docs/reviews/PRODUCT_DISCOVERY_FOUNDER_CULL_BLINDSPOT_2026-07-15.md`](reviews/PRODUCT_DISCOVERY_FOUNDER_CULL_BLINDSPOT_2026-07-15.md) — Q1–Q20 分類 A–D、Blind Spot、Invest/Watch/Pass；**進 DEV 前必讀** |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
