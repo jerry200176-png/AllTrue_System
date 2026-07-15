@@ -69,54 +69,28 @@ describe('BatchInvoiceModal.vue', () => {
   });
 
   it('navigates to step 2 on successful preview', async () => {
-    global.fetch.mockResolvedValueOnce({
+    const preview = {
+      rows: [
+        { student_class_id: 501, student_name: '王小明', class_name: '英文一對一', suggested_amount: 12000, warning: null },
+        { student_class_id: 502, student_name: '李小華', class_name: '數學一對一', suggested_amount: 8000, warning: '缺費率設定' },
+      ],
+      total: 2,
+      warnings_count: 1,
+    };
+    global.fetch.mockImplementation((url) => Promise.resolve({
       ok: true,
-      json: () => Promise.resolve([]), // campuses
-    });
+      json: async () => (String(url).includes('batch-preview')
+        ? preview
+        : { data: [{ id: 1, name: '大安分校' }] }),
+    }));
 
     const wrapper = mount(BatchInvoiceModal, { props: { show: true, branchId: 1 } });
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise(r => setTimeout(r, 30));
     await nextTick();
-
-    // Set form values manually via vm
     wrapper.vm.form.class_ids = [501, 502];
     wrapper.vm.form.due_date = '2026-07-20';
     await nextTick();
-
-    // Mock preview API
-    global.fetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({
-        rows: [
-          {
-            student_class_id: 501,
-            student_id: 77,
-            student_name: '王小明',
-            class_name: '英文一對一',
-            schedule_mode: 'count',
-            suggested_amount: 12000,
-            amount_source: 'rate*sessions',
-            warning: null,
-          },
-          {
-            student_class_id: 502,
-            student_id: 88,
-            student_name: '李小華',
-            class_name: '數學一對一',
-            schedule_mode: 'date',
-            suggested_amount: 8000,
-            amount_source: 'monthly',
-            warning: '缺費率設定',
-          },
-        ],
-        total: 2,
-        warnings_count: 1,
-      }),
-    });
-
-    await wrapper.findAll('.batch-step-actions .primary').find(
-      b => b.text().includes('預覽')
-    ).trigger('click');
+    await wrapper.findAll('.batch-step-actions .primary').find(b => b.text().includes('預覽')).trigger('click');
     await new Promise(r => setTimeout(r, 50));
     await nextTick();
 

@@ -128,9 +128,11 @@ describe('useNightlyReconcile', () => {
     const { filteredMismatches, loadReport, toggleSort } = setup();
     await loadReport();
     toggleSort('student_name'); // default desc on new key
-    // desc by name → 王 > 李 > 張
     const names = filteredMismatches.value.map(r => r.student_name);
-    expect(names).toEqual(['王小明', '李小華', '張大偉']);
+    // Locale collation differs by ICU; assert order matches product comparator + same members.
+    const expected = ['王小明', '李小華', '張大偉'].sort((a, b) => b.localeCompare(a, 'zh-TW'));
+    expect(names).toEqual(expected);
+    expect(new Set(names)).toEqual(new Set(['王小明', '李小華', '張大偉']));
   });
 
   // ---- filteredMismatches (filtering) ----
@@ -176,14 +178,14 @@ describe('useNightlyReconcile', () => {
     api.getReconcileLatest.mockResolvedValue(makeReport());
     const { campusOptions, loadReport } = setup();
     await loadReport();
-    expect(campusOptions.value).toEqual(['板橋', '東湖']);
+    expect(campusOptions.value).toEqual(['板橋', '東湖'].sort((a, b) => a.localeCompare(b, 'zh-TW')));
   });
 
   it('subjectOptions returns unique sorted subjects', async () => {
     api.getReconcileLatest.mockResolvedValue(makeReport());
     const { subjectOptions, loadReport } = setup();
     await loadReport();
-    expect(subjectOptions.value).toEqual(['數學', '英文']);
+    expect(subjectOptions.value).toEqual(['數學', '英文'].sort((a, b) => a.localeCompare(b, 'zh-TW')));
   });
 
   it('categoryOptions returns unique sorted categories', async () => {

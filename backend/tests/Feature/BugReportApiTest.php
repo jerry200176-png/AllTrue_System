@@ -1088,10 +1088,12 @@ class BugReportApiTest extends TestCase
         \App\Models\BugReportComment::create([
             'bug_report_id' => $bug1->id, 'author_user_id' => $admin->id,
             'body' => 'reply on b1', 'is_internal_note' => false,
+            'created_at' => now(),
         ]);
         \App\Models\BugReportComment::create([
             'bug_report_id' => $bug2->id, 'author_user_id' => $admin->id,
             'body' => 'reply on b2', 'is_internal_note' => false,
+            'created_at' => now(),
         ]);
 
         $res = $this->withHeaders([

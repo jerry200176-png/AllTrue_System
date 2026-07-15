@@ -101,14 +101,15 @@ jobs:
         # If a migration is intentionally irreversible (chunkById backfill / DROP post-contract),
         # the PR MUST include "irreversible" in the Migration Compatibility section.
         # CI checks for that marker; if found, it downgrades the step to warning only.
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set +e
           php artisan migrate:rollback --step=5 --force --no-interaction
           RC=$?
           if [ $RC -ne 0 ]; then
-            # Check if PR body explicitly marks this as irreversible
-            PR_BODY="${{ github.event.pull_request.body }}"
-            if echo "$PR_BODY" | grep -qi "irreversible"; then
+            # PR body via env avoids bash quote breakage from HTML footers
+            if printf '%s' "$PR_BODY" | grep -qi "irreversible"; then
               echo "::warning title=migration rollback skipped::PR 標記為不可逆 (irreversible)，down() 失敗視為預期。"
             else
               echo "::error title=migration rollback failed::down() 失敗且 PR 未標記為不可逆。"
@@ -117,5 +118,4 @@ jobs:
               exit 1
             fi
           fi
-          # Re-apply after rollback to confirm up() still works cleanly
           php artisan migrate --force --no-interaction
