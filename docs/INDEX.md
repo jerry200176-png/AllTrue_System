@@ -98,7 +98,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 2. **用本 INDEX 的任務表定位** — 只開一個目標文件／章節；禁止通讀 archive / `.cursor/plans/**`。  
 3. **高風險模組** — 先開 `AI_REGRESSION_LESSONS.md` **模組索引** → 只讀相關 §§。  
 4. **Deploy 執行** — 只有 [`deploy.yml`](../.github/workflows/deploy.yml)；runner／SOP 細節以 yml + `OPERATIONS_RUNBOOK` 為準（INDEX 不敘述步驟）。  
-5. **最新治理審查** — [`reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`](reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md)。  
+5. **最新治理審查** — Round‑2 Design Review：[`reviews/REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md`](reviews/REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md)（**覆寫** Round‑1 對 INDEX／分支命名結論）；AI 治理原則：[`RULE_AI_GOVERNANCE_PRINCIPLES.md`](RULE_AI_GOVERNANCE_PRINCIPLES.md)。Round‑1 報告僅歷史：[`reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`](reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md)。  
 6. **做完寫回** — CHANGELOG / AI_REGRESSION / TECH_DEBT（適用時）。
 
 ## 🚨 開工前必讀（每次都要）
@@ -288,7 +288,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_SUPPORT_REPLY_MACROS.md` | in-app bug 公開回覆白話 macro library（#907）；對應 §3.8 禁用詞規則 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` | 2026-06 產品缺口審查 snapshot；新月份建立新 reviews 檔後再歸檔舊版 |
-| `docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md` | 2026-07 Repository Governance Review（AI cognitive load / branch / PR / docs）；Founder 決策清單附錄 |
+| `docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md` | Round‑1 inventory（歷史）；結論以 Design Review 為準 |
+| `docs/reviews/REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md` | Round‑2 Design Review（外部證據 + token 實測；覆寫 Round‑1 部分結論）|
+| `docs/RULE_AI_GOVERNANCE_PRINCIPLES.md` | AI／人類治理憲章（單頁原則；優先於臨時整理 GitHub）|
 
 ### 資安文件
 | 檔案 | 一行說明 |

@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs: Governance Design Review + AI Principles
+
+- **Changed**：以外部官方證據 + token 實測推翻／修正 Round‑1 部分結論（mega INDEX 不可長期、分支定為 TBD short-lived PR）；新增 `RULE_AI_GOVERNANCE_PRINCIPLES` 與 SoT Matrix。
+- 開發備註：`docs/reviews/REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md`；Round‑1 報告降為歷史。無 runtime 變更。
+
 ## 2026-07-15 — docs: Repository Governance Review（降 AI 認知負擔）
 
 - **Changed**：完成全庫治理審查並修正權威事實漂移：INDEX runner 改對齊 `ubuntu-latest`（K11）、清空過期 `SOP_MATURITY` handoff、修正 AI_REGRESSION「127 行」誤述、PR template 補齊 size／docs sync 矩陣。

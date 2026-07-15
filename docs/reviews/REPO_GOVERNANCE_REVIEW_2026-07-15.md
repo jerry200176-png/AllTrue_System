@@ -1,3 +1,7 @@
+> Round‑1 inventory. **On disagreements, Round‑2 Design Review wins:**  
+> [`REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md`](REPO_GOVERNANCE_DESIGN_REVIEW_2026-07-15.md) ·  
+> Principles: [`../RULE_AI_GOVERNANCE_PRINCIPLES.md`](../RULE_AI_GOVERNANCE_PRINCIPLES.md).
+
 # Repository Governance Review — 2026-07-15
 
 > **Purpose:** Reduce AI cognitive load, raise engineering throughput, keep knowledge consistent.  
