@@ -35,66 +35,10 @@ class BusinessDigestService
             ],
             'coverage' => ['sessions_next_7d' => $this->sessionsNext7d($campusId)],
         ];
-        $m['trust'] = $this->trustFromMetrics($m);
         $m['decision_center'] = $this->decisionCenter($m);
 
         return $m;
     }
-
-    /**
-     * Measurable Trust KPIs for director Operations Center (F1).
-     * Invoice Trust is forward-only by Founder F3 — never claims historical invoices are fixed.
-     *
-     * @param array<string,mixed> $m
-     * @return array<string,mixed>
-     */
-    public function trustFromMetrics(array $m): array
-    {
-        $stranded = (int) ($m['revenue']['stranded_sessions'] ?? 0);
-        $dup = (int) ($m['data_quality']['cross_sc_duplicate'] ?? 0);
-        $next7 = (int) ($m['coverage']['sessions_next_7d'] ?? 0);
-        $divergent = (int) ($m['data_quality']['remaining_divergent'] ?? 0);
-        $dormant = (int) ($m['retention']['dormant_prepaid_students'] ?? 0);
-
-        return [
-            'paid_class_visibility' => [
-                'status' => $stranded === 0 ? 'green' : 'red',
-                'stranded_sessions' => $stranded,
-                'stranded_amount' => (float) ($m['revenue']['stranded_amount'] ?? 0),
-                'label' => '已付堂可見性',
-                'summary' => $stranded === 0 ? '已付堂均有未來排程' : "{$stranded} 堂已付未排程",
-            ],
-            'calendar_trust' => [
-                'status' => ($next7 > 0 && $dup === 0) ? 'green' : ($next7 === 0 ? 'red' : 'yellow'),
-                'sessions_next_7d' => $next7,
-                'cross_sc_duplicate' => $dup,
-                'label' => '行事曆可信度',
-                'summary' => $next7 === 0 ? '未來 7 天無課表' : ($dup > 0 ? "跨約重複 {$dup} 組" : "未來 7 天 {$next7} 堂"),
-            ],
-            'ledger_trust' => [
-                'status' => $divergent === 0 ? 'green' : 'red',
-                'remaining_divergent' => $divergent,
-                'label' => '堂數帳本一致',
-                'summary' => $divergent === 0 ? '剩餘堂數一致' : "{$divergent} 筆剩餘堂數異常",
-            ],
-            'invoice_trust' => [
-                'status' => 'policy',
-                'policy' => 'forward_only_no_historical_amend',
-                'unpaid_active_courses' => (int) ($m['revenue']['unpaid_active_courses'] ?? 0),
-                'label' => '帳單可信度',
-                'summary' => '歷史帳單不改；只保證往後續期正確',
-            ],
-            'dormant_hold' => [
-                'status' => $dormant === 0 ? 'green' : 'yellow',
-                'students' => $dormant,
-                'recoverable_ntd' => (int) ($m['retention']['dormant_prepaid_recoverable_ntd'] ?? 0),
-                'label' => '休眠保留',
-                'summary' => $dormant === 0 ? '無休眠待聯繫' : "{$dormant} 位已付休眠待聯繫",
-                'auto_generate' => false,
-            ],
-        ];
-    }
-
 
     /**
      * Decision Center: one Trust Score + only today's actionable decisions.
@@ -121,8 +65,8 @@ class BusinessDigestService
                 'key' => 'stranded_paid',
                 'severity' => 'critical',
                 'title' => "{$stranded} 堂已付還沒排進未來課表",
-                'why' => '家長已經付錢，但行事曆上看不到課——今天最容易被客訴。',
-                'next_step' => '打開課程管理，幫仍在上課的合約補固定時段；若暫時不上課，改做休眠聯繫（不要自動排課）。',
+                'why' => '家長已付但行事曆看不到課，客訴風險最高。',
+                'next_step' => '到課程管理補時段；暫時不上課就聯繫休眠（勿自動排課）。',
                 'action_label' => '去處理排課',
                 'target' => 'course-mgmt',
                 'owner' => 'director',
@@ -137,8 +81,8 @@ class BusinessDigestService
                 'key' => 'calendar_empty_week',
                 'severity' => 'critical',
                 'title' => '未來 7 天完全沒有課表',
-                'why' => '老師與家長會以為這週沒課；也可能是向前產生停擺。',
-                'next_step' => '先打開行事曆確認本分校，再回課程管理檢查活躍合約是否缺固定上課日。',
+                'why' => '師長會以為本週沒課，也可能是向前產生停擺。',
+                'next_step' => '看行事曆確認後，回課程管理檢查缺固定上課日的合約。',
                 'action_label' => '去看行事曆',
                 'target' => 'calendar',
                 'owner' => 'director',
@@ -151,8 +95,8 @@ class BusinessDigestService
                 'key' => 'calendar_duplicate',
                 'severity' => 'warning',
                 'title' => "偵測到 {$dup} 組跨約重複堂",
-                'why' => '同一學生同時段可能出現兩張卡，點名與評量會亂。',
-                'next_step' => '打開行事曆對照本週；停用舊約殘留堂或整理重複。',
+                'why' => '同學生同時段可能兩張卡，點名/評量會亂。',
+                'next_step' => '打開行事曆對照本週，整理舊約殘留或重複堂。',
                 'action_label' => '去看行事曆',
                 'target' => 'calendar',
                 'owner' => 'director',
@@ -167,8 +111,8 @@ class BusinessDigestService
                 'key' => 'ledger_divergent',
                 'severity' => 'warning',
                 'title' => "{$divergent} 筆課程剩餘堂數對不起來",
-                'why' => '家長問「還剩幾堂」時系統可能講錯。',
-                'next_step' => '到課程管理核對購買／已用／剩餘；涉及改帳請走核准流程（不作廢自助）。',
+                'why' => '家長問剩幾堂時系統可能講錯。',
+                'next_step' => '到課程管理核對堂數；改帳走核准（不作廢自助）。',
                 'action_label' => '去核對堂數',
                 'target' => 'course-mgmt',
                 'owner' => 'director',
@@ -183,8 +127,8 @@ class BusinessDigestService
                 'key' => 'dormant_hold',
                 'severity' => 'warning',
                 'title' => "{$dormant} 位已付休眠要聯繫",
-                'why' => '保留上課資格、不要自動排課；長期不聯繫會變客訴或呆帳。',
-                'next_step' => '在課程管理找出長期沒排課仍有餘額的學生，今天連絡是否恢復或結案方向。',
+                'why' => '保留資格不自動排課；久不聯繫會成客訴/呆帳。',
+                'next_step' => '在課程管理找長沒排課但仍有餘額者，今天連絡方向。',
                 'action_label' => '去聯繫名單',
                 'target' => 'course-mgmt',
                 'owner' => 'director',

@@ -29,7 +29,6 @@ class DirectorOperationsTrustController extends Controller
                 'branch_id' => $branchId,
                 'generated_at' => $metrics['generated_at'],
                 'decision_center' => $metrics['decision_center'],
-                'trust' => $metrics['trust'],
                 'revenue' => $metrics['revenue'],
                 'retention' => $metrics['retention'],
                 'coverage' => $metrics['coverage'],

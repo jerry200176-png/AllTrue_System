@@ -11,11 +11,6 @@
 
 ---
 
-## 2026-07-15 — feat: 主任總覽 Trust Score 決策中心（已付堂／休眠）
-
-- **Added**：主任總覽首屏改為單一 **Trust Score（0–100）**＋「今天要處理」決策卡（為什麼／下一步／一鍵前往）；不再用五顆紅綠燈當監控牆。歷史帳單政策與催繳人工說明收進折疊區。
-- 開發備註：Epic `E-OPS-TRUST` Product Design Validation 後改版；`decision_center` on `GET /api/v1/director/operations-trust`；Founder F1–F5。Brief：`.cursor/plans/director_ops_center_trust_mvp_2026-07-15.md`。
-
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。

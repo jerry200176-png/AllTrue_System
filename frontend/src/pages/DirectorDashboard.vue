@@ -29,11 +29,10 @@
           v-if="operationsTrust"
           class="ops-trust"
           aria-labelledby="ops-trust-title"
-          data-guide="director-operations-trust"
         >
           <header class="ops-trust__head">
             <div class="ops-trust__score-wrap">
-              <p class="ops-trust__kicker">今天課表與剩課信不信得過</p>
+              <p class="ops-trust__kicker">今天課表／剩課可信嗎</p>
               <h3 id="ops-trust-title" class="ops-trust__score" :class="`ops-trust__score--${decisionCenter.status}`">
                 <span class="ops-trust__score-num">{{ decisionCenter.score }}</span>
                 <span class="ops-trust__score-max">/ {{ decisionCenter.max }}</span>
@@ -70,7 +69,7 @@
           </div>
 
           <details v-if="decisionCenter.policy_notes?.length" class="ops-trust__policy">
-            <summary>政策說明（非今日待辦）</summary>
+            <summary>政策備註</summary>
             <ul>
               <li v-for="(note, idx) in decisionCenter.policy_notes" :key="idx">{{ note }}</li>
             </ul>
@@ -1988,30 +1987,24 @@ onBeforeUnmount(() => {
 .ac--import .ac__cta:hover { background: var(--ds-success-wash); }
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ===== Priority risks ===== */
+/* Decision Center */
 .ops-trust{margin:0 0 16px;padding:14px;border:1px solid var(--ds-hairline);border-radius:16px;background:var(--ds-canvas);box-shadow:var(--ds-shadow-1)}
 .ops-trust__head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
 .ops-trust__kicker{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute);font-weight:600}
 .ops-trust__score{margin:0;display:flex;align-items:baseline;gap:4px;line-height:1}
 .ops-trust__score-num{font-size:40px;font-weight:800}
 .ops-trust__score-max{font-size:16px;color:var(--ds-ink-mute);font-weight:600}
-.ops-trust__score--green .ops-trust__score-num{color:var(--ds-success)}
-.ops-trust__score--yellow .ops-trust__score-num{color:var(--ds-warning)}
-.ops-trust__score--red .ops-trust__score-num{color:var(--ds-danger)}
-.ops-trust__headline{margin:8px 0 0;font-size:14px;max-width:36rem}
-.ops-trust__stamp{font-size:12px;color:var(--ds-ink-mute);white-space:nowrap}
+.ops-trust__score--green .ops-trust__score-num{color:var(--ds-success)}.ops-trust__score--yellow .ops-trust__score-num{color:var(--ds-warning)}.ops-trust__score--red .ops-trust__score-num{color:var(--ds-danger)}
+.ops-trust__headline{margin:8px 0 0;font-size:14px;max-width:36rem}.ops-trust__stamp{font-size:12px;color:var(--ds-ink-mute);white-space:nowrap}
 .ops-trust__decisions{display:flex;flex-direction:column;gap:10px}
 .ops-decision{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;border-radius:12px;border:1px solid var(--ds-hairline);border-left-width:4px;padding:12px 14px;background:var(--ds-surface,#fff)}
-.ops-decision--critical{border-left-color:var(--ds-danger)}
-.ops-decision--warning{border-left-color:var(--ds-warning)}
-.ops-decision__body{flex:1;min-width:0}
-.ops-decision__body strong{display:block;font-size:14px;margin-bottom:4px}
+.ops-decision--critical{border-left-color:var(--ds-danger)}.ops-decision--warning{border-left-color:var(--ds-warning)}
+.ops-decision__body{flex:1;min-width:0}.ops-decision__body strong{display:block;font-size:14px;margin-bottom:4px}
 .ops-decision__why,.ops-decision__next{margin:0 0 4px;font-size:13px;color:var(--ds-ink-mute);line-height:1.4}
 .ops-decision__detail,.ops-decision__owner{display:inline-block;margin-right:10px;font-size:12px;color:var(--ds-ink-mute)}
 .ops-decision__cta{flex-shrink:0;padding:8px 12px;border:none;border-radius:999px;font-size:12px;font-weight:800;cursor:pointer;background:var(--ds-warning-wash);color:var(--ds-warning)}
 .ops-decision--critical .ops-decision__cta{background:var(--ds-danger-wash);color:var(--ds-danger)}
-.ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}
-.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
+.ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
 
 .priority-risks {
   padding: 16px;
