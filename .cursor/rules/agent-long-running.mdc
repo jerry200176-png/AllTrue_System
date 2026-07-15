@@ -30,3 +30,12 @@ Outcome（什麼叫完成）／Verification（如何客觀驗證）／Constraint
 
 ## 6. Commit 規範
 Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`fix`/`refactor`/`test`/`docs`/`chore`/`ci`…；`ops` 會被擋）。
+
+## 7. External Review Loop（每約 5 項有價值工作）
+權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`。
+
+- 完成一項「有價值工作」（可合併 PR／有碼 bug 結案／ADR 落地／TD 清償／prod 事故修復）→ 更新 [`docs/reviews/external-review/COUNTER.md`](../../docs/reviews/external-review/COUNTER.md) +1。
+- `valuable_since_last_round ≥ 5` → **暫停當前開發推進**，啟動 External Review（全系統檢視，非只看本功能）。
+- 強制先做研究閘門；零 Draft 合法。一輪 ≤ 3 Draft，禁硬凑。
+- Draft 只寫 `docs/reviews/external-review/drafts/`，**不**用改 production 程式代替未解的外部未知。
+- 跑完寫 round log、COUNTER 歸零，再繼續開發。

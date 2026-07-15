@@ -83,6 +83,10 @@
 - CI/deploy 狀態不明但要回報「完成」。
 - 備份/restore 目標不確定，或無法確認 restore drill 不會碰 production `AllTrue`。
 
+### External Review Loop（持續）
+
+每約五項有價值工作後暫停、做**全系統**外部審查候選（非只看本 PR）。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`.cursor/skills/alltrue-external-review`；計數：[`docs/reviews/external-review/COUNTER.md`](docs/reviews/external-review/COUNTER.md)。研究後仍無答案才寫 Discussion Draft（≤3）；有充分答案就繼續開發。
+
 ## Commit SOP
 
 每個獨立可驗收的子任務完成後立即 commit：

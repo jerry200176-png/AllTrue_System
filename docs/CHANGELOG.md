@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review Loop（持續外部審查）
+
+- **Added**：每約五項有價值工作後暫停做全系統外部審查候選；先研究、有把握就不發問；最多三份 Discussion Draft。
+- 開發備註：`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md` + skill `alltrue-external-review`；Round 1 bootstrap 產出 1 份 Draft（預付物化 reservation vs 出席扣），其餘候選研究後結案。
+
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。
