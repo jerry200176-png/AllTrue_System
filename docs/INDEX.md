@@ -163,6 +163,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Product → Engineering maturity roadmap** | `docs/MODULE_PRODUCT_ENGINEERING_MATURITY_ROADMAP.md`（7/1 後 AI 接手總圖） |
 | **AI-native 演進路線圖（BI/異常/留存/AI 行政）** | `docs/POLICY_AI_NATIVE_ROADMAP.md`；metric 底座＝`ops:business-digest` / `BusinessDigestService` |
 | 產品缺口審查（月度快照） | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` |
+| **CTO Product Review（2026-07-15）** | [`docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md`](reviews/CTO_PRODUCT_REVIEW_2026-07-15.md) — 90 天 ROI Top 10／瓶頸證據／Founder 決策問答；**非 runtime** |
 | Perception pulse survey 設計 | `docs/archive/PROFESSIONAL_PERCEPTION_SURVEY.md` |
 
 ### 資安審查
@@ -279,6 +280,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_SUPPORT_REPLY_MACROS.md` | in-app bug 公開回覆白話 macro library（#907）；對應 §3.8 禁用詞規則 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` | 2026-06 產品缺口審查 snapshot；新月份建立新 reviews 檔後再歸檔舊版 |
+| `docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md` | 2026-07 CTO／產品方向審查（90 天 ROI、瓶頸證據、Founder 問答）；非 runtime |
 
 ### 資安文件
 | 檔案 | 一行說明 |

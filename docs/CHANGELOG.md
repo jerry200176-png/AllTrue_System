@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs: CTO Product Review（治理結束 → 產品優先）
+
+- **Changed**：新增 `docs/reviews/CTO_PRODUCT_REVIEW_2026-07-15.md` — 跨 GitHub／Docs／程式交叉分析；90 天 ROI Top 10、核心瓶頸證據、過時文件／Issue 方向、四角色 UX、Founder 20 問。不改產品程式。
+- 開發備註：Indexes 加一列導航；Repository Governance 節奏此處收斂，後續投入以產品交付為準。
+
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。
