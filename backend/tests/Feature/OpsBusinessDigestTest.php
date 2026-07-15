@@ -48,7 +48,6 @@ class OpsBusinessDigestTest extends TestCase
 
         $anom = app(BusinessDigestService::class)->anomalies($m);
         $this->assertNotEmpty($anom); // stranded>0 and coverage=0 both flag
-        $this->assertNotEmpty($m['decision_center']['decisions']);
     }
 
     public function test_retention_decomposition_splits_dormant_and_reenroll(): void

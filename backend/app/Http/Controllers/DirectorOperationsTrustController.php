@@ -5,10 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\BusinessDigestService;
 use Illuminate\Http\Request;
 
-/**
- * Director Operations Trust — campus-scoped Trust KPIs for the director home (E-OPS-TRUST).
- * Read-only. Distinct from SystemTrustController (changelog/reliability narrative).
- */
+/** E-OPS-TRUST: campus-scoped Decision Center for director home (read-only). */
 class DirectorOperationsTrustController extends Controller
 {
     public function show(Request $request, BusinessDigestService $digest)
