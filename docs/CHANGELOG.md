@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs: Repository Governance Review（降 AI 認知負擔）
+
+- **Changed**：完成全庫治理審查並修正權威事實漂移：INDEX runner 改對齊 `ubuntu-latest`（K11）、清空過期 `SOP_MATURITY` handoff、修正 AI_REGRESSION「127 行」誤述、PR template 補齊 size／docs sync 矩陣。
+- 開發備註：報告見 `docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`；無 runtime／deployable 程式變更。
+
 ## 2026-07-12 — feat: 評量頁新增「只看已填」篩選
 
 - **Added**：評量／學習紀錄頁新增「只看已填」篩選（就在「只看未填」旁邊，兩者互斥）——主任／管理者可一鍵只檢視已填寫評量正文的紀錄，方便回顧已完成的評量內容（in-app #199）。

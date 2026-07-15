@@ -106,8 +106,8 @@ gh auth refresh -h github.com -s workflow
   ```
 - 2026-06-06 首次清理：archive + prune 11 個 stale 分支（`fix/lr-409-bug-kpi-bar-phrases`、`td-batch3-orphan-sessions`、`feat/enterprise-dashboard-parent-hub-v2`、`feat/superadmin-branch-management` 等，皆 4/28–5/23 無動靜），對應 `archive/*` tag 已保留。
 
-**Automation（每週一至五 08:00 自動 dry-run）**  
-GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫入 Actions Job Summary。
+**Automation（每週日 00:00 UTC ≈ 週一 08:00 台灣；workflow_dispatch 可手動）**  
+GitHub Action `.github/workflows/branch-hygiene.yml` **週更** dry-run 報告，結果寫入 Actions Job Summary（**不會**自動刪分支）。
 
 手動執行：
 ```bash

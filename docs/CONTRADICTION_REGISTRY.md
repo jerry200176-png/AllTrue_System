@@ -19,12 +19,13 @@
 | **K8** | DEPLOYMENT.md vs deploy.yml | Manual deploy as normal path | Setup reference only; production path = `deploy.yml` only. | **Resolved:** REFERENCE ONLY banner. |
 | **K9** | deploy.yml vs INCIDENT | Deploy run outcome decides STATE or skips policy | **I4:** deploy executes FINAL_ACTION only; re-infer after observe. | **Resolved:** committed `deploy.yml` restored; no ADR fail-closed WIP in tree. |
 | **K10** | Override vs inference | Undefined "emergency" manual state pick | **Explicit rule:** Override **only** in ESCALATED_FAILURE + documented + CEO LINE. | **Resolved:** contract I3 + INCIDENT stack explicit override gate. |
+| **K11** | INDEX runner prose vs deploy.yml | INDEX claims WSL2 self-hosted for `ci/presubmit/codeql/deploy` | **I1 + I2:** INDEX = registry; runner fact must match committed workflows | **Resolved 2026-07-15:** INDEX aligned to `ubuntu-latest`; see governance review |
 
 ---
 
 ## Resolution procedure
 
-1. Identify conflict ID (K1–K10) or add new row
+1. Identify conflict ID (K1–K11) or add new row
 2. Apply contract invariant (I1–I5)
 3. Demote losing doc to reference-only (add banner if missing)
 4. Log in CHANGELOG `ops:` if production ops doc changed

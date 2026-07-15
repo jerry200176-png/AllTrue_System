@@ -5,49 +5,21 @@
 > **Decision:** INCIDENT stack (I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) (I1).
 
 > 目的：讓任何 AI（Claude Code / Cursor）能快速了解我們的工程 SOP 對標大廠到哪、還缺什麼，並在 usage 上限或換手時無縫接續。
-> 本文件被 `CLAUDE.md` 的「On-demand 快查」引用，請在交接前先讀此檔頂部的「進行中狀態」。
+> 本文件被 `CLAUDE.md` 的「On-demand 快查」引用。  
+> **交接現況以 `docs/INDEX.md` + 最新 `docs/reviews/*` 為準**；本檔下方「進行中狀態」應保持空白或只放仍有效、未過期的 handoff。
 
 ---
 
 ## 🔴 進行中狀態（交接區 — 完成後清空此節）
 
-更新時間：2026-06-27（Engineering Governance Audit 完成 + PR #954 prod 收斂）
+更新時間：2026-07-15（Repository Governance Review — 清空 2026-06-27 過期 handoff）
 
-**2026-06-27 Engineering Governance Audit**
-- ✅ 全庫 10-phase 稽核完成（無 CI；靜態分析 + code review）
-- 📄 報告：`docs/reviews/ENGINEERING_AUDIT_2026-06-27.md`
-- 🎫 新建 **39** GitHub issues **#957–#995**（security / regression / architecture / testing / perf / docs）
-- ⛔ **Stop-the-line：#970** `X-User-Id` header auth bypass — 優先於其他資安 hardening
-- 📋 Top priority epic：**#957** ClassSession materialization 統一
-- ✅ Production 已手動收斂至 `main` @ `5efaf61`（#954 calendar fix）；**execution per contract I1:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
+> **清空說明：** 2026-06-27 Engineering Audit / urgent login-attendance handoff 已過期（含失效路徑與已超期「下一步」）。  
+> 歷史報告：[`docs/archive/control-plane-shadow-v1/reviews/ENGINEERING_AUDIT_2026-06-27.md`](archive/control-plane-shadow-v1/reviews/ENGINEERING_AUDIT_2026-06-27.md)（**勿**再指向 `docs/reviews/ENGINEERING_AUDIT_…`，該路徑不存在）。  
+> 現行治理審查：[`docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`](reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md)。  
+> 仍開放的產品/工程缺口請查 GitHub issues 與下方 M4–M9 表；**不要**把本節當 runtime 待辦清單。
 
-**urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）— 部分 superseded**
-- ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
-- ✅ in-app `#169` / `#170`：程式 `#928` / `#927` merged；in-app 狀態皆 `resolved`；prod 待審清單已無鄭筠霏 06-20（唯讀 API 驗證）。
-- ✅ `#919` self-hosted CI/deploy 已恢復；2026-06-21 deploy 至 `fd04b07` 成功。
-- ⏳ Bug 2 count 課稀疏堂次 materialize：**PR #937**（`fix/count-session-same-day-materialize`）；**刻意跳過 `PackageID>0` 共用池**（周宏謙 / #162 需商業規則後另 PR）。
-- ⏳ in-app `#174` 重疊課程 force-create modal：**PR #938**（`fix/course-overlap-force-create` → main）；prod 曾手動部署 `acf1251`，`version.json` 可能落後 git HEAD，merge 後應走正常 deploy。
-- 🗑️ 聚合 hotfix **PR #925** 已留言 superseded，可 close。
-
-**production 快照（2026-06-27）**
-- `GET /api/v1/health` → ok；`version.json` hash=`acf1251`（前端-only 手動部署痕跡；backend 實際含 `#922–#929` 多數修復，以 deploy log / Pi `git HEAD` 為準）。
-- **#926** Sentry `Unknown column 'not'`：2026-06-20 中間版 SQL 事故；**現行 prod `/learning-records` 200**，issue 可標 resolved-after-deploy 並關閉。
-- 新 in-app `#171–#176` / GitHub `#931–#936`：**不在本 handoff 範圍**，勿重複 triage。
-
-**待 merge / 待 CEO 決策**
-| 項目 | 動作 |
-|---|---|
-| **#937** Bug 2 materialize | CI 綠 → merge → deploy → 請陸逸老師驗證非共用池 count 課點名 |
-| **#938** #174 overlap modal | merge → deploy（讓 main 與 prod 收斂）|
-| **#874** + **#850** docs handoff | 本分支已更新 INDEX / SOP_MATURITY / ROADMAP / integrity-check；CI 綠後 merge（docs-only）|
-| **#920** in-app #168 | `status:needs-decision`：主任確認 3/19 是否計入本期後才開資料修復 PR |
-| **周宏謙共用池 materialize** | 需定義「12 堂池分配到各科」規則後再實作；不可 per-course SessionCount 盲目補堂 |
-
-**下一個 Agent 第一步**
-1. 讀 `docs/reviews/ENGINEERING_AUDIT_2026-06-27.md` Top 20 + 30-day roadmap
-2. **#970** header auth bypass — stop-the-line fix branch（手動 security test；CI minutes 耗盡時勿等 Actions）
-3. 開 in-app #931–#936 triage 與 #957 materialization epic 規劃（不重複 audit 已建 issues）
-4. `gh pr checks 937` / `938` 若仍 open → merge 順序不變
+（目前無有效 session handoff — 新任務請從 `docs/INDEX.md` 任務導航進入。）
 
 ---
 

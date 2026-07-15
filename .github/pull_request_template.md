@@ -8,14 +8,27 @@
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
 - **Refs**：`Refs #123`（本 PR 只完成其中一部分、後續還有 Phase 2 / follow-up）
 - **Closes**：`Closes #123`（本 PR 完成該 issue 全部驗收範圍時才可填；**一整張 issue 含多 Phase 時，請等最後一個 PR 再寫 Closes**）
+- **N/A**：無對應 issue 時寫原因（例：docs-only governance / dependabot）
 
 > 不確定就一律 **Refs**，merge 後在 issue 手動勾進度。
 
 ## Type
 - [ ] feat — 新功能
 - [ ] fix — Bug 修復
-- [ ] chore — 文件 / 設定 / 維護
+- [ ] refactor — 重構（行為不變）
+- [ ] test — 測試
+- [ ] docs — 文件
+- [ ] ci — CI / workflows
+- [ ] chore — 設定 / 維護
 - [ ] td — 技術債清償
+
+## PR Size（認知負擔護欄）
+<!-- 對齊 OPERATIONS_RUNBOOK：目標 ≤400 行；硬上限約 700；docs-only 可到 ~1300 -->
+- **Class**：S（≤100 行 / ≤5 files） / M / L / XL
+- **Changed files / +/- lines**：（填大約數字）
+- **Why not split?**：（L/XL 必填；否則寫 N/A）
+
+> **汚染 PR 直接關閉重建**：若 diff 含家目錄垃圾（`.vnc` / `.face` / `.xsession-errors`）、不明 `public/assets` 大量 hash 檔、或 GitHub 回報 diff >300 files，**不要 merge**——從 `main` 重建最小 PR。見 `docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`。
 
 ## Test Plan
 <!-- 列出驗收步驟；PHPUnit / 前端測試由 CI 跑，有手動場景再寫 -->
@@ -33,7 +46,12 @@
 
 ## Checklist
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
-- [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
+- [ ] **Docs sync 矩陣**（適用者勾；其餘寫 N/A 於 PR 說明）：
+  - [ ] `docs/CHANGELOG.md`（使用者可感知的 `backend/app` / `routes` / `frontend/src` 變更）
+  - [ ] `docs/AI_REGRESSION_LESSONS.md`（新紅線／高風險行為）
+  - [ ] `docs/TECH_DEBT.md`（本次不修的 Minor）
+  - [ ] `docs/INDEX.md`（新文件／導航入口）
+  - [ ] docs-only / 純 workflow → 可略 CHANGELOG 使用者卡，但仍更新治理文件若改了權威事實
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test
 - [ ] 有前端 deployable diff → merge 後確認 `deploy.yml` 成功，必要時驗 `version.json` / health
 - [ ] 未擅自改 `AlertController::tuition` / `SessionDeductionService` 等高風險邏輯（若有改必須有測試 + 審核）

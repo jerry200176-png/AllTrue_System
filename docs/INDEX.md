@@ -92,12 +92,21 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 
 ---
 
+## ⏱️ AI Entry Card（30 秒）
+
+1. **P0 已自動載入** — 勿重讀整份 `.cursorrules`；衝突以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。  
+2. **用本 INDEX 的任務表定位** — 只開一個目標文件／章節；禁止通讀 archive / `.cursor/plans/**`。  
+3. **高風險模組** — 先開 `AI_REGRESSION_LESSONS.md` **模組索引** → 只讀相關 §§。  
+4. **Deploy 執行** — 只有 [`deploy.yml`](../.github/workflows/deploy.yml)；runner／SOP 細節以 yml + `OPERATIONS_RUNBOOK` 為準（INDEX 不敘述步驟）。  
+5. **最新治理審查** — [`reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md`](reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md)。  
+6. **做完寫回** — CHANGELOG / AI_REGRESSION / TECH_DEBT（適用時）。
+
 ## 🚨 開工前必讀（每次都要）
 
 | 檔案 | 內容 | Token 成本 |
 |------|------|-----------|
 | `.cursorrules` §P0 | 5 條紅線 + 3 條黃線 + 6 次事故摘要 | 已自動載入 |
-| `docs/AI_REGRESSION_LESSONS.md` | 最新防再犯規則摘要與模組索引 | 按需讀 |
+| `docs/AI_REGRESSION_LESSONS.md` | 防再犯：**摘要 + 模組索引 → 相關 §§**（勿整檔） | 按需讀 |
 
 ---
 
@@ -279,6 +288,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `docs/GUIDE_SUPPORT_REPLY_MACROS.md` | in-app bug 公開回覆白話 macro library（#907）；對應 §3.8 禁用詞規則 |
 | `docs/LINE_LIFF_CHECKLIST.md` | LINE LIFF 上線檢查清單 |
 | `docs/reviews/PRODUCT_GAP_REVIEW_2026-06.md` | 2026-06 產品缺口審查 snapshot；新月份建立新 reviews 檔後再歸檔舊版 |
+| `docs/reviews/REPO_GOVERNANCE_REVIEW_2026-07-15.md` | 2026-07 Repository Governance Review（AI cognitive load / branch / PR / docs）；Founder 決策清單附錄 |
 
 ### 資安文件
 | 檔案 | 一行說明 |
@@ -341,10 +351,10 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `backup-restore-test.yml` | 每月 1 日 | 備份還原完整性驗證 |
 | `dora-metrics.yml` | 每週一 | DORA 指標計算（部署頻率/lead time/CFR；review SOP 見 §Y）|
 | `mempalace-monthly.yml` | 每月 | **Reminder only** — comment on issue #519；ingest 須 WSL2 手動 `mempalace-maintain.sh` |
-| `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
+| `branch-hygiene.yml` | 每週日 00:00 UTC（約週一 08:00 台灣）/ 手動 | 已合併分支 dry-run 報告（無自動刪除）|
 | `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |
 
-> `ci.yml` / `presubmit.yml` / `codeql.yml` / `deploy.yml`（#867 起）皆使用 WSL2 self-hosted runner `wsl2-jerry-alltrue`（labels: `self-hosted`, `Linux`, `X64`, `wsl-ci`, `alltrue-ci`）。deploy 移到 self-hosted 是避免 GitHub-hosted 額度凍結卡死部署鏈；單一 runner 序列化，deploy 排在長 CI 之後有分鐘級延遲屬正常。部署以 `workflow_run.head_sha` 為準並校驗 HEAD（§R62，杜絕靜默舊版）。
+> **Runner 真相（2026-07-15 對照 yml；Contradiction K11）：** `ci.yml` / `presubmit.yml` / `codeql.yml` / `docs-integrity.yml` / `deploy.yml` 目前皆為 **`runs-on: ubuntu-latest`（GitHub-hosted）**（#1220 起遷回）。勿再依照舊文假設 WSL2 self-hosted 跑這些 workflow。FinOps／runner 政策細節 → `OPERATIONS_RUNBOOK.md`；**執行權仍只有** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)（contract I1）。部署以 `workflow_run.head_sha` 為準並校驗 HEAD（§R62）。
 > `main` branch protection 已啟用：required checks + admin enforcement + 禁止 force push/delete。備份同步會產生 Google Drive manifest（檔名 / 大小 / sha256），詳見 `OPERATIONS_RUNBOOK.md §P`。
 
 ---
