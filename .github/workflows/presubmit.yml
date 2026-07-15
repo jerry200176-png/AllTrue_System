@@ -37,8 +37,7 @@ jobs:
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
             || echo "$BRANCH" | grep -qE '^dependabot/' \
-            || echo "$BRANCH" | grep -qE '^cubelv-cli-' \
-            || echo "$BRANCH" | grep -qE '^cursor/' ; then
+            || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
@@ -48,7 +47,6 @@ jobs:
             echo "  hotfix/<date>-<slug>  緊急修復"
             echo "  td-batch<N>-<slug>    技術債清償"
             echo "  cubelv-cli-<slug>    CubeLV AI 自動生成"
-            echo "  cursor/<slug>        Cursor Cloud Agent"
             echo "  dependabot/*         Dependabot 自動 PR"
             exit 1
           fi
@@ -79,14 +77,17 @@ jobs:
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
-          # 無 production path 的 PR（docs/rules/CI 等）允許較大 diff；混入 production 仍限 700
+          # docs 整併 epic（chore/docs-*）允許較大 diff；仍禁止混 production code
           HARD_LIMIT=700
-          PROD=$(git diff --name-only origin/main...HEAD \
-            | sed 's/^"//;s/"$//' \
-            | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
-          if [ "$PROD" -eq 0 ]; then
-            HARD_LIMIT=1300
-            echo "Non-production PR (no backend/app|routes|database|frontend/src): hard limit raised to $HARD_LIMIT"
+          BRANCH="${GITHUB_HEAD_REF}"
+          if echo "$BRANCH" | grep -qE '^chore/docs-'; then
+            PROD=$(git diff --name-only origin/main...HEAD \
+              | sed 's/^"//;s/"$//' \
+              | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
+            if [ "$PROD" -eq 0 ]; then
+              HARD_LIMIT=1300
+              echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
+            fi
           fi
 
           if [ "$TOTAL" -gt "$HARD_LIMIT" ]; then

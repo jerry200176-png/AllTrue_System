@@ -11,9 +11,9 @@
 
 ---
 
-## 2026-07-15 — ci: Presubmit 放行 Cloud Agent 分支與 docs-only 體積
+## 2026-07-15 — ci: FIT-10 補上 admin／GitHub controller 對應
 
-- **Changed**：Presubmit 允許 `cursor/*` 分支名；無 production path 的 PR hard size limit 700→1300（對齊既有 docs 整併例外）。
+- **Changed**：`arch-contexts.json` 將 AdminDuplicateSession／AdminReconcile → scheduling、GitHubIssue → support，消解 Presubmit FIT-10 紅燈。
 
 ## 2026-07-15 — chore: External Review 正式納入日常開發
 
