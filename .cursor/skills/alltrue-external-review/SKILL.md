@@ -22,24 +22,23 @@ description: >-
 
 ## 3. Required workflow
 
-1. 讀 INDEX → GUIDE  
-2. 掃系統訊號 + Registry 的 `reopen_candidate`  
-3. 列候選（≤7）→ 研究閘門  
-4. 每個候選更新 [`QUESTION_REGISTRY.md`](../../../docs/reviews/external-review/QUESTION_REGISTRY.md)  
-5. 仍無答案 → Draft（≤3）：Impact、Confidence、Evidence（F/I/H）、Rejected Alternatives；並建／更新 SCORECARD ERS  
-6. Round log（用 ROUND_TEMPLATE）**必含 Blind Spot Review**  
-7. COUNTER 歸零 → 繼續開發  
+1. 讀 INDEX → GUIDE（確認 evidence phase Round N／5）  
+2. 掃系統訊號 + Registry `reopen_candidate`  
+3. 列候選（≤7）→ 研究閘門 → 更新 Registry  
+4. 仍無答案 → Draft（≤3，含品質欄位）+ SCORECARD ERS；否則零 Draft + 原因碼  
+5. Round log：**漏斗計數 + Blind Spot + 機制效益**；同步 SCORECARD 漏斗總表  
+6. COUNTER 歸零 → 繼續開發  
 
 ## 4. Forbidden actions
 
-- ⛔ 硬凑 Discussion／一輪 > 3 Draft  
+- ⛔ 硬凑 Discussion／無新訊號連跑空轉 Round  
 - ⛔ 未研究閘門或 Confidence < 3 就 Ready to post  
-- ⛔ Evidence 不標 Fact／Inference／Hypothesis  
-- ⛔ 省略 Blind Spot（含零 Draft 輪）  
+- ⛔ 省略漏斗／Blind Spot／機制效益  
 - ⛔ 用改 production 代替未解外部未知  
-- ⛔ 在未跑滿 3～5 輪前加 Decision Journal／Knowledge Base 等新模組  
+- ⛔ Round 5 回顧前加 Decision Journal／Knowledge Base  
 
 ## 5. Exit criteria
 
 - [ ] GUIDE §8 檢查表全勾  
-- [ ] Registry／SCORECARD／Round log／Draft 互相連結（QR ↔ Draft ↔ ERS）  
+- [ ] SCORECARD 漏斗轉換率已更新  
+- [ ] QR ↔ Draft ↔ ERS 連結一致  

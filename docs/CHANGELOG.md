@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review 證據階段（Round 2）
+
+- **Changed**：SCORECARD 增加漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 2 零新 Draft（Z3+Z4），瓶頸＝Draft→Published。
+- 開發備註：不擴架構、不連跑空轉輪；Round 5 前不加 Decision Journal／KB。下一優先是發佈或 abandoned Draft 01。
+
 ## 2026-07-15 — chore: External Review Loop 品質閘門
 
 - **Changed**：External Review 補齊 Question Registry、Draft Impact／Confidence／Evidence、Blind Spot Review、Scorecard 成效追蹤；約定先跑 3～5 輪再加進階模組。

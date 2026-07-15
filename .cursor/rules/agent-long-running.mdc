@@ -38,4 +38,5 @@ Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`f
 - 每候選進 [`QUESTION_REGISTRY.md`](../../docs/reviews/external-review/QUESTION_REGISTRY.md)；Draft 須 Impact／Confidence／Evidence（F/I/H）／Rejected Alternatives。
 - Round log **必含 Blind Spot Review**；成效追 [`SCORECARD.md`](../../docs/reviews/external-review/SCORECARD.md)。
 - 零 Draft 合法；≤3 Draft；禁硬凑；不改 production 代替未知。
-- **先跑滿 3～5 輪**再加 Decision Journal／Knowledge Base 等進階模組。
+- Evidence phase＝Rounds 1–5：每輪更新漏斗轉換率／零 Draft 原因／機制效益；**禁止空轉湊輪**。
+- Round 5 回顧前**不加** Decision Journal／Knowledge Base。

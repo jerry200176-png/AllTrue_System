@@ -13,4 +13,4 @@
 | [`rounds/`](rounds/) | 各輪紀錄 |
 | [`drafts/`](drafts/) | Discussion Drafts |
 
-**先跑 3～5 輪**看 SCORECARD，再決定是否加 Decision Journal／Knowledge Base。
+**Evidence phase（Rounds 1–5）**：收集轉換率／零 Draft 原因／機制效益；Round 5 後才決定是否加 Decision Journal／KB。禁止空轉湊輪。

@@ -5,7 +5,16 @@
 > **執行技能**：[`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md)  
 > **產物目錄**：[`docs/reviews/external-review/`](reviews/external-review/)
 
-**成熟度約定（2026-07-15）**：先把本流程跑滿 **3～5 輪**並看 [`SCORECARD.md`](reviews/external-review/SCORECARD.md) 成效，再決定是否加 Decision Journal／Knowledge Base。暫時不新增平行模組。
+**成熟度約定**：Rounds 1–5＝**證據收集階段**。重點是驗證機制是否有效，**不是**加功能／新模組。  
+Round 5 結束後才依 [`SCORECARD.md`](reviews/external-review/SCORECARD.md) 決定是否需要 Decision Journal、Knowledge Base 等；**不要因為可以做就先做**。
+
+### 證據階段必觀察（每輪寫入 Round log + SCORECARD 漏斗）
+
+1. **轉換率**：Candidate → Research → Draft → Published → Adopted → Product Impact  
+2. **值得討論的問題數量**；零 Draft 時記錄原因碼（Z1–Z5，見 SCORECARD）  
+3. **實際效益**：避免了哪些錯決策／提升了哪些產品品質（機制效益日誌）
+
+禁止為湊滿 5 輪而連續空轉（無新系統訊號時不連開 Round）。
 
 ---
 
@@ -114,19 +123,21 @@ Round log 只摘要 QR 編號；細節不複製兩份。
 權威檔：[`SCORECARD.md`](reviews/external-review/SCORECARD.md)
 
 追蹤每篇 Discussion：`draft → posted → replied → adopted → implemented → measured`。  
-分項 D1–D5（發問品質／社群信號／採納／實作／實測成效），合計 0–10。  
-每 5 輪做一次機制健康回顧；平均分過低 → **收緊發問**，不加新模組。
+分項 D1–D5；合計 0–10。  
+**漏斗總表 + 轉換率 + 機制效益日誌**於證據階段每輪更新。  
+**首次機制回顧＝Round 5**；平均分過低 → 收緊發問，不加新模組。
 
 ---
 
 ## 8. 一輪輸出檢查表（Agent Exit）
 
 - [ ] 候選全部寫入／更新 Question Registry  
-- [ ] Draft 0–3，且通過 §5 欄位（含 Impact／Confidence／Evidence／Rejected）  
-- [ ] Round log 含 Blind Spot Review  
-- [ ] SCORECARD 新建或推進 ERS 列  
-- [ ] COUNTER 歸零  
+- [ ] Draft 0–3（含品質欄位）；零 Draft 寫原因碼  
+- [ ] Round log 含漏斗計數、Blind Spot、機制效益  
+- [ ] SCORECARD 漏斗／ERS 已更新  
+- [ ] COUNTER 歸零（若適用）  
 - [ ] 未擅自新增 Decision Journal／Knowledge Base  
+- [ ] 未在無新訊號時連跑空轉 Round  
 
 ---
 
@@ -145,3 +156,4 @@ Round log 只摘要 QR 編號；細節不複製兩份。
 |------|------|
 | 2026-07-15 | 初版：觸發、研究閘門、Draft／Round 產物規範 |
 | 2026-07-15 | 品質強化：Question Registry、Draft Impact／Confidence／Evidence、Blind Spot、SCORECARD；約定先跑 3～5 輪 |
+| 2026-07-15 | 證據階段：漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 5 前不加進階模組 |

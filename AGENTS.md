@@ -85,7 +85,7 @@
 
 ### External Review Loop（持續）
 
-每約五項有價值工作後暫停、做**全系統**外部審查。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`；計數／Registry／Scorecard：[`docs/reviews/external-review/`](docs/reviews/external-review/)。研究後仍無答案才寫 Draft（≤3，含 Impact／Confidence／Evidence）；每輪必做 Blind Spot；先跑 3～5 輪再加進階模組。
+每約五項有價值工作後暫停、做**全系統**外部審查。權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；產物：[`docs/reviews/external-review/`](docs/reviews/external-review/)。證據階段（Rounds 1–5）追蹤漏斗轉換率／零 Draft 原因／機制效益；Round 5 前不加 Decision Journal／KB；禁止空轉湊輪。
 
 ## Commit SOP
 
