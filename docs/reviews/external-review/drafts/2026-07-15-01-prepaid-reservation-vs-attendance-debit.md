@@ -4,7 +4,7 @@
 
 | 欄位 | 內容 |
 |------|------|
-| 狀態 | Draft |
+| 狀態 | Ready to post（定稿見 [`publish/`](../publish/)） |
 | 優先級 | P1（本輪唯一 Draft） |
 | Trigger | High-value Discussion Opportunity（架構／產品取捨；非「做不出來」） |
 | Round（historical） | 2026-07-15 Round 1 |
@@ -95,17 +95,13 @@
 
 ## 建議發佈平台
 
-| 平台 | 理由 |
+| 平台 | 定稿 |
 |------|------|
-| Reddit `r/softwarearchitecture` 或 `r/ExperiencedDevs` | 状态机／双阶段账本经验 |
-| Reddit `r/SaaS`（谨慎） | 可能碰到预约产品创始人，噪音高 |
-| Threads／華文工程圈 | 补習班／月結＋包堂语境 |
-| 勿发无对应上游的 GitHub Discussion | 不是单一开源库 API 问题 |
-
-公开贴文请改写成无内部代号、无客户 PII 的通用题；本 Draft 仅供内部定稿。
+| Reddit `r/ExperiencedDevs` | [`publish/2026-07-15-01-reddit-experienceddevs.md`](../publish/2026-07-15-01-reddit-experienceddevs.md) |
+| Threads（繁中） | [`publish/2026-07-15-01-threads-zh-tw.md`](../publish/2026-07-15-01-threads-zh-tw.md) |
 
 ## 發表後回寫
 
 - 更新 [SCORECARD ERS-001](../SCORECARD.md) 生命週期與 D2–D5  
-- 社群連結：  
-- 採納結論 → ADR（物化 cap／hold 狀態機）＋必要時 `AI_REGRESSION`；**經核准前不改扣堂 production 路徑**  
+- 社群連結：（Reddit URL） （Threads URL）  
+- 採納結論 → ADR（物化 cap／hold 狀態機）＋必要時 `AI_REGRESSION`；**經核准前不改扣堂 production 路徑**

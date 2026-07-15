@@ -72,9 +72,9 @@ Candidate → Research → Reject → Draft → Publish
 |------|------|
 | QR | QR-005 |
 | Draft | [`drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md`](drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md) |
-| Funnel | Draft（待 Publish） |
-| 生命週期 | `draft` |
-| 備註 | Phase 1 Unknown 型 Draft；EI 下仍可 Publish 以打通後段漏斗 |
+| Funnel | Ready to post（定稿 [`publish/2026-07-15-01-reddit-experienceddevs.md`](publish/2026-07-15-01-reddit-experienceddevs.md)、[`publish/2026-07-15-01-threads-zh-tw.md`](publish/2026-07-15-01-threads-zh-tw.md)） |
+| 生命週期 | `ready` |
+| 備註 | Phase 1 Unknown 型 Draft；雙平台待 CEO 貼文後填 URL → `posted` |
 
 ---
 

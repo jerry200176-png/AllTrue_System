@@ -25,8 +25,8 @@
 | Candidate | 5 | QR-001…005（Phase 1 unique set） |
 | Research | 5 | All researched |
 | Reject | 4 | QR-001…004 |
-| Draft | 1 | QR-005 / ERS-001 |
-| Publish | 0 | **Human bottleneck** |
+| Draft | 1 | QR-005 / ERS-001 — **Ready to post**（Reddit + Threads 定稿） |
+| Publish | 0 | 待貼文後填 URL |
 | Community Response | 0 | — |
 | Accepted Insight | 0 | — |
 | Implemented | 0 | — |
@@ -42,8 +42,9 @@
 |---|---|
 | Draft | [`drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md`](drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md) |
 | Topic class | High-value Discussion Opportunity（architecture / product gap; not “stuck”) |
-| Status | Research complete · Draft ready · **not Published** |
-| Human decision needed | **Publish** to chosen platform **or** mark **abandoned** |
+| Status | Research complete · **Ready to post** · URLs pending |
+| Copy | [`publish/2026-07-15-01-reddit-experienceddevs.md`](publish/2026-07-15-01-reddit-experienceddevs.md) · [`publish/2026-07-15-01-threads-zh-tw.md`](publish/2026-07-15-01-threads-zh-tw.md) |
+| Human action | 複製貼上 Reddit + Threads → 回寫兩則 URL |
 
 ---
 

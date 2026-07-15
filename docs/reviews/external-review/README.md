@@ -13,5 +13,6 @@
 | [`ROUND_TEMPLATE.md`](ROUND_TEMPLATE.md) | Session log（非 Round 治理） |
 | [`rounds/`](rounds/) | Phase 1 R1–5 歷史（保留） |
 | [`drafts/`](drafts/) | Drafts |
+| [`publish/`](publish/) | Ready-to-post copy（Reddit / Threads） |
 
 Phase 1＝Discussion Quality Gate（已證）。現在＝External Intelligence。成功≠發文數。

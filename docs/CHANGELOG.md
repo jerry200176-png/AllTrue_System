@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs(ei): ERS-001 publish-ready（Reddit + Threads）
+
+- **Changed**：預付 hold vs 出席扣 — 雙平台定稿；領域講明（多校區補習班）；含物化單一路徑收斂脈絡；不含內部事故敘事。
+- 開發備註：`docs/reviews/external-review/publish/`；貼文後回寫 URL 至 SCORECARD ERS-001。
+
 ## 2026-07-15 — chore: External Review → External Intelligence
 
 - **Changed**：Mission 演進為持續學習；Trigger 含 High-value Discussion Opportunity；Research＝Quality Gate；Learning Funnel KPI；Phase 1 Evidence 全部保留；不引入 Journal／KB。
