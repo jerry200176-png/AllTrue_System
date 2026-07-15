@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review Loop 品質閘門
+
+- **Changed**：External Review 補齊 Question Registry、Draft Impact／Confidence／Evidence、Blind Spot Review、Scorecard 成效追蹤；約定先跑 3～5 輪再加進階模組。
+- 開發備註：皆在 `docs/reviews/external-review/` 內強化既有流程，無新獨立模組；Round 1 已回填 QR-001～005 與 ERS-001。
+
 ## 2026-07-15 — chore: External Review Loop（持續外部審查）
 
 - **Added**：每約五項有價值工作後暫停做全系統外部審查候選；先研究、有把握就不發問；最多三份 Discussion Draft。

@@ -34,8 +34,8 @@ Conventional Commits，型別以 repo commit hook 允許清單為準（`feat`/`f
 ## 7. External Review Loop（每約 5 項有價值工作）
 權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../docs/GUIDE_EXTERNAL_REVIEW_LOOP.md)；技能：`alltrue-external-review`。
 
-- 完成一項「有價值工作」（可合併 PR／有碼 bug 結案／ADR 落地／TD 清償／prod 事故修復）→ 更新 [`docs/reviews/external-review/COUNTER.md`](../../docs/reviews/external-review/COUNTER.md) +1。
-- `valuable_since_last_round ≥ 5` → **暫停當前開發推進**，啟動 External Review（全系統檢視，非只看本功能）。
-- 強制先做研究閘門；零 Draft 合法。一輪 ≤ 3 Draft，禁硬凑。
-- Draft 只寫 `docs/reviews/external-review/drafts/`，**不**用改 production 程式代替未解的外部未知。
-- 跑完寫 round log、COUNTER 歸零，再繼續開發。
+- 完成一項「有價值工作」→ [`COUNTER.md`](../../docs/reviews/external-review/COUNTER.md) +1；≥5 → 暫停並跑全系統審查。
+- 每候選進 [`QUESTION_REGISTRY.md`](../../docs/reviews/external-review/QUESTION_REGISTRY.md)；Draft 須 Impact／Confidence／Evidence（F/I/H）／Rejected Alternatives。
+- Round log **必含 Blind Spot Review**；成效追 [`SCORECARD.md`](../../docs/reviews/external-review/SCORECARD.md)。
+- 零 Draft 合法；≤3 Draft；禁硬凑；不改 production 代替未知。
+- **先跑滿 3～5 輪**再加 Decision Journal／Knowledge Base 等進階模組。

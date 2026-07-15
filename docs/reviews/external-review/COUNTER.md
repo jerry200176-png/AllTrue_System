@@ -20,4 +20,6 @@
 
 | Round | 日期 | Draft 數 | 結論 |
 |-------|------|----------|------|
-| 1 | 2026-07-15 | 1 | 多數候選研究後結案；僅預付堂 reservation 模型外問 |
+| 1 | 2026-07-15 | 1 | 多數候選→Registry 結案；Draft 01＋Blind Spot＋ERS-001；品質閘門已補齊 |
+
+**進度約定**：目標先累積 **3～5 輪**實跑後，才評估進階能力（Decision Journal／Knowledge Base）。目前 Round 1／5。

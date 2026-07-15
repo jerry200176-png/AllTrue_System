@@ -98,3 +98,4 @@ docs/（權威業務規則）
 |------|------|
 | 2026-07-08 | v1 初版：5 技能 + 架構 |
 | 2026-07-15 | 新增 `alltrue-external-review` + `GUIDE_EXTERNAL_REVIEW_LOOP` |
+| 2026-07-15 | External Review 品質閘門：Registry／Evidence／Blind Spot／Scorecard |
