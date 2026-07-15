@@ -2,7 +2,7 @@
   "_comment": "DEP-1 / 'no undocumented context' enforcement. Every backend Controller and Service must match exactly one context rule (by filename regex). FIT-10 fails on any unmapped file. Contexts mirror OWNERSHIP_REGISTRY.md.",
   "_ruleOrder": "first match wins; order specific -> general. The abstract base Controller.php is excluded by FIT-10.",
   "rules": [
-    { "context": "scheduling",     "match": "Schedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession" },
+    { "context": "scheduling",     "match": "Schedule|ClassSession|Substitute|ScheduleGuard|CourseLeaveCascade|ExceptionWorkflow|Calendar|Backfill|SessionProjection|ForwardSession|DuplicateSession|AdminReconcile" },
     { "context": "enrollment",     "match": "Enrollment|StudentClass|CoursePackage|PackageDeduction|FrontendSubjectIdResolver" },
     { "context": "billing",        "match": "Finance|Payment|Invoice|Tuition|Accounting|Bank|Dunning|SessionDeduction|SessionCharge|PaymentReport|Billing" },
     { "context": "attendance",     "match": "Attendance|Swipe|SignIn|PendingSwipe|Rfid|AttendanceEffects" },
@@ -11,7 +11,7 @@
     { "context": "engagement",     "match": "Engagement|Xp|Badge|Rank|Adoption" },
     { "context": "communication",  "match": "Chat|Notification|Announcement|NotificationSync|FeedbackPush|Telegram|Alert" },
     { "context": "parent-portal",  "match": "Parent|Line|Liff|Routing" },
-    { "context": "support",        "match": "BugReport" },
+    { "context": "support",        "match": "BugReport|GitHubIssue" },
     { "context": "curriculum",     "match": "Subject|Room|Grade|BaseData" },
     { "context": "analytics",      "match": "BusinessDigest|Analytics|Metric|Insight|Digest|Anomaly" },
     { "context": "identity",       "match": "Auth|Profile|User|Teacher|Campus|ApiKey|ApiClient|Pin|Password|Account|TeacherScope|TeacherUserMerge|SystemSetting|SystemTrust|Student" },
