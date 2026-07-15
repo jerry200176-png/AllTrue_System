@@ -158,3 +158,4 @@ Round log 只摘要 QR 編號；細節不複製兩份。
 | 2026-07-15 | 品質強化：Question Registry、Draft Impact／Confidence／Evidence、Blind Spot、SCORECARD；約定先跑 3～5 輪 |
 | 2026-07-15 | 證據階段：漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 5 前不加進階模組 |
 | 2026-07-15 | Funnel 含 Reject；連續兩輪零 Draft→Meta Review；Round 5＝Evidence-based Retrospective |
+| 2026-07-15 | Evidence phase 完成（R1–5）；Retrospective：**不引入** Journal／KB；缺口＝Publish |

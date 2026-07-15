@@ -88,4 +88,4 @@
 1. 每輪每個候選（含結案）→ 新增或更新一列 QR-NNN  
 2. Round log 只摘要；**詳情以本 Registry 為準**  
 3. 禁止刪除歷史列；狀態可變更，並在列內加一行「狀態變更：日期 + 原因」  
-4. 暫不另建 Decision Journal／Knowledge Base — 等跑完 3～5 輪再依 SCORECARD 成效決定  
+4. Decision Journal／Knowledge Base：**不引入**（Round 5 Retrospective 2026-07-15：缺口在 Draft→Publish，非缺模組）  

@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review Evidence phase 收斂（Round 3–5）
+
+- **Changed**：完成 Round 3–5、Meta Review、Evidence-based Retrospective；結論維持 Loop、**不引入** Decision Journal／Knowledge Base。
+- 開發備註：Funnel 證明高品質 Reject；社群→Impact 因 Draft→Publish=0 未驗證；Draft 01 待人發佈或 abandoned。
+
 ## 2026-07-15 — chore: External Review Funnel／Meta／Retrospective 觀察重點
 
 - **Changed**：Scorecard 改記完整 Question Funnel（含 Reject）；連續兩輪零 Draft 觸發 Meta Review；Round 5 目標改為 Evidence-based Retrospective。
