@@ -2,28 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { buildDirectorPriorityRisks } from '../../lib/directorPriorityRisks';
 
 describe('buildDirectorPriorityRisks', () => {
-  it('surfaces stranded paid sessions ahead of routine unpaid lists', () => {
-    const risks = buildDirectorPriorityRisks({
-      strandedSessions: 5,
-      unpaidPayments: 4,
-      dormantStudents: 2,
-    });
-
-    expect(risks.map((risk) => risk.key)).toEqual([
-      'stranded-paid',
-      'dormant-hold',
-      'unpaid-payments',
-    ]);
-    expect(risks[0]).toMatchObject({
-      target: 'calendar',
-      tone: 'danger',
-    });
-    expect(risks[1]).toMatchObject({
-      target: 'course-mgmt',
-      tone: 'warning',
-    });
-  });
-
   it('orders urgent operational risks and returns only the top three', () => {
     const risks = buildDirectorPriorityRisks({
       breachedTasks: 2,

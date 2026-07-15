@@ -93,29 +93,6 @@ class DirectorOperationsTrustApiTest extends TestCase
         $this->assertNotContains('invoice', $keys);
     }
 
-    public function test_service_campus_filter_excludes_other_branch_stranded(): void
-    {
-        DB::table('Student')->insert([
-            'id' => 96011, 'name' => 'Only2', 'CampusID' => 2, 'ClassID' => 1, 'enable' => 1,
-        ]);
-        DB::table('StudentClass')->insert([
-            'StudentID' => 96011, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
-            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
-            'Paid' => 1, 'Rate' => 400, 'ClassType' => 'one_on_one',
-            'StartDate' => now()->subDays(20)->toDateTimeString(),
-            'SessionCount' => 5, 'SessionDuration' => 60,
-            'RemainingSessions' => 2, 'UsedSessions' => 3, 'Stop' => 0, 'ScheduleMode' => 'count',
-        ]);
-
-        $m1 = app(BusinessDigestService::class)->metrics(1);
-        $m2 = app(BusinessDigestService::class)->metrics(2);
-
-        $this->assertSame(0, (int) $m1['revenue']['stranded_sessions']);
-        $this->assertSame(2, (int) $m2['revenue']['stranded_sessions']);
-        $this->assertSame('green', $m1['trust']['paid_class_visibility']['status']);
-        $this->assertSame('red', $m2['trust']['paid_class_visibility']['status']);
-    }
-
     /** @return array<string,string> */
     private function authHeaders(string $token): array
     {

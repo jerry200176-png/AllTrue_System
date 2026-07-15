@@ -62,48 +62,39 @@ class BusinessDigestService
                 'stranded_sessions' => $stranded,
                 'stranded_amount' => (float) ($m['revenue']['stranded_amount'] ?? 0),
                 'label' => '已付堂可見性',
-                'summary' => $stranded === 0
-                    ? '已付預付堂均有未來排程'
-                    : "有 {$stranded} 堂已付餘額尚未排上未來課表",
+                'summary' => $stranded === 0 ? '已付堂均有未來排程' : "{$stranded} 堂已付未排程",
             ],
             'calendar_trust' => [
                 'status' => ($next7 > 0 && $dup === 0) ? 'green' : ($next7 === 0 ? 'red' : 'yellow'),
                 'sessions_next_7d' => $next7,
                 'cross_sc_duplicate' => $dup,
                 'label' => '行事曆可信度',
-                'summary' => $next7 === 0
-                    ? '未來 7 天沒有任何已物化課表'
-                    : ($dup > 0 ? "未來 7 天有課，但偵測到 {$dup} 組跨約重複堂" : "未來 7 天有 {$next7} 堂"),
+                'summary' => $next7 === 0 ? '未來 7 天無課表' : ($dup > 0 ? "跨約重複 {$dup} 組" : "未來 7 天 {$next7} 堂"),
             ],
             'ledger_trust' => [
                 'status' => $divergent === 0 ? 'green' : 'red',
                 'remaining_divergent' => $divergent,
                 'label' => '堂數帳本一致',
-                'summary' => $divergent === 0
-                    ? '剩餘堂數與購買／已用一致'
-                    : "有 {$divergent} 筆課程剩餘堂數對不上",
+                'summary' => $divergent === 0 ? '剩餘堂數一致' : "{$divergent} 筆剩餘堂數異常",
             ],
             'invoice_trust' => [
-                // F3: historical invoices are not rewritten; surface policy + soft unpaid signal only.
                 'status' => 'policy',
                 'policy' => 'forward_only_no_historical_amend',
                 'unpaid_active_courses' => (int) ($m['revenue']['unpaid_active_courses'] ?? 0),
                 'label' => '帳單可信度',
-                'summary' => '歷史帳單不改數字；僅保證往後續期正確（完整稽核保留）',
+                'summary' => '歷史帳單不改；只保證往後續期正確',
             ],
             'dormant_hold' => [
-                // F2: keep eligibility, mark as dormant reminder, never auto-generate.
                 'status' => $dormant === 0 ? 'green' : 'yellow',
                 'students' => $dormant,
                 'recoverable_ntd' => (int) ($m['retention']['dormant_prepaid_recoverable_ntd'] ?? 0),
-                'label' => '休眠保留（需提醒）',
-                'summary' => $dormant === 0
-                    ? '沒有已付休眠合約待聯繫'
-                    : "{$dormant} 位學生保留資格、勿自動排課，請定期聯繫",
+                'label' => '休眠保留',
+                'summary' => $dormant === 0 ? '無休眠待聯繫' : "{$dormant} 位已付休眠待聯繫",
                 'auto_generate' => false,
             ],
         ];
     }
+
 
     /**
      * Decision Center: one Trust Score + only today's actionable decisions.
