@@ -24,6 +24,58 @@
           </div>
         </div>
 
+        <!-- E-OPS-TRUST Decision Center -->
+        <section
+          v-if="operationsTrust"
+          class="ops-trust"
+          aria-labelledby="ops-trust-title"
+        >
+          <header class="ops-trust__head">
+            <div class="ops-trust__score-wrap">
+              <p class="ops-trust__kicker">今天課表／剩課可信嗎</p>
+              <h3 id="ops-trust-title" class="ops-trust__score" :class="`ops-trust__score--${decisionCenter.status}`">
+                <span class="ops-trust__score-num">{{ decisionCenter.score }}</span>
+                <span class="ops-trust__score-max">/ {{ decisionCenter.max }}</span>
+              </h3>
+              <p class="ops-trust__headline">{{ decisionCenter.headline }}</p>
+            </div>
+            <span v-if="operationsTrust.generated_at" class="ops-trust__stamp">
+              更新 {{ formatTrustStamp(operationsTrust.generated_at) }}
+            </span>
+          </header>
+
+          <div v-if="trustDecisions.length" class="ops-trust__decisions">
+            <article
+              v-for="item in trustDecisions"
+              :key="item.key"
+              class="ops-decision"
+              :class="`ops-decision--${item.severity}`"
+            >
+              <div class="ops-decision__body">
+                <strong>{{ item.title }}</strong>
+                <p class="ops-decision__why">{{ item.why }}</p>
+                <p class="ops-decision__next">下一步：{{ item.next_step }}</p>
+                <span v-if="item.detail" class="ops-decision__detail">{{ item.detail }}</span>
+                <span class="ops-decision__owner">負責：主任</span>
+              </div>
+              <button
+                type="button"
+                class="ops-decision__cta"
+                @click="handleTrustDecision(item)"
+              >
+                {{ item.action_label }}
+              </button>
+            </article>
+          </div>
+
+          <details v-if="decisionCenter.policy_notes?.length" class="ops-trust__policy">
+            <summary>政策備註</summary>
+            <ul>
+              <li v-for="(note, idx) in decisionCenter.policy_notes" :key="idx">{{ note }}</li>
+            </ul>
+          </details>
+        </section>
+
         <!-- ===== Layer 1: Action Lane ===== -->
         <div class="section-label-row">
           <span class="section-label">每日待辦</span>
@@ -675,6 +727,7 @@ function onDirectorVisibilityForEngagement() {
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
+const operationsTrust = ref(null);
 const teacherStats = ref([]);
 const subjectTotals = ref({ subjectCountWith: 0, subjectCountWithout: 0 });
 const levelBreakdownTotals = ref([]);
@@ -917,6 +970,7 @@ const renewalAttentionCount = computed(() =>
 
 const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   breachedTasks: workflowDailySummary.value.breached_total,
+  // Trust decisions (stranded/dormant) live in Decision Center above — avoid duplicate prompts.
   unpaidPayments: unpaidPaymentCount.value,
   pendingAttendance: pendingAttendanceCount.value,
   exceptionWorkflows: exceptionWorkflowCount.value,
@@ -925,9 +979,64 @@ const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   renewalAttention: renewalAttentionCount.value,
 }));
 
+const decisionCenter = computed(() => {
+  const dc = operationsTrust.value?.decision_center;
+  if (dc && typeof dc.score === 'number') return dc;
+  return {
+    score: 100,
+    max: 100,
+    status: 'green',
+    headline: '正在載入信任狀態…',
+    decisions: [],
+    policy_notes: [],
+  };
+});
+
+const trustDecisions = computed(() =>
+  Array.isArray(decisionCenter.value.decisions) ? decisionCenter.value.decisions : []
+);
+
+function formatTrustStamp(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
+function handleTrustDecision(item) {
+  try {
+    trackAdoptionEvent('director_trust_decision_click', Number(props.branchId) || 0, {
+      key: item?.key || '',
+      target: item?.target || '',
+    });
+  } catch (_) { /* non-blocking */ }
+  if (item?.target === 'calendar') {
+    emit('navigate', { target: 'calendar' });
+    return;
+  }
+  if (item?.target === 'course-mgmt') {
+    emit('navigate', { target: 'course-mgmt' });
+    return;
+  }
+  if (item?.target === 'tuition') {
+    goToTuitionCollect();
+  }
+}
+
 function handleDirectorPriorityRisk(risk) {
   if (risk.target === 'director-tasks') {
     scrollTo('director-task-tracker');
+    return;
+  }
+  if (risk.target === 'calendar') {
+    emit('navigate', { target: 'calendar' });
+    return;
+  }
+  if (risk.target === 'course-mgmt') {
+    emit('navigate', { target: 'course-mgmt' });
     return;
   }
   if (risk.target === 'tuition') {
@@ -1164,6 +1273,22 @@ const loadData = async () => {
     }
   } catch (err) {
     console.error('Failed to load alerts:', err);
+  }
+
+  try {
+    const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
+    const trustResp = await fetch(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (trustResp.ok) {
+      const trustJson = await trustResp.json();
+      operationsTrust.value = trustJson?.data || null;
+    } else {
+      operationsTrust.value = null;
+    }
+  } catch (err) {
+    console.error('Failed to load operations trust:', err);
+    operationsTrust.value = null;
   }
 
   await loadNotificationSummary(token, baseUrl);
@@ -1862,7 +1987,25 @@ onBeforeUnmount(() => {
 .ac--import .ac__cta:hover { background: var(--ds-success-wash); }
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ===== Priority risks ===== */
+/* Decision Center */
+.ops-trust{margin:0 0 16px;padding:14px;border:1px solid var(--ds-hairline);border-radius:16px;background:var(--ds-canvas);box-shadow:var(--ds-shadow-1)}
+.ops-trust__head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
+.ops-trust__kicker{margin:0 0 4px;font-size:12px;color:var(--ds-ink-mute);font-weight:600}
+.ops-trust__score{margin:0;display:flex;align-items:baseline;gap:4px;line-height:1}
+.ops-trust__score-num{font-size:40px;font-weight:800}
+.ops-trust__score-max{font-size:16px;color:var(--ds-ink-mute);font-weight:600}
+.ops-trust__score--green .ops-trust__score-num{color:var(--ds-success)}.ops-trust__score--yellow .ops-trust__score-num{color:var(--ds-warning)}.ops-trust__score--red .ops-trust__score-num{color:var(--ds-danger)}
+.ops-trust__headline{margin:8px 0 0;font-size:14px;max-width:36rem}.ops-trust__stamp{font-size:12px;color:var(--ds-ink-mute);white-space:nowrap}
+.ops-trust__decisions{display:flex;flex-direction:column;gap:10px}
+.ops-decision{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;border-radius:12px;border:1px solid var(--ds-hairline);border-left-width:4px;padding:12px 14px;background:var(--ds-surface)}
+.ops-decision--critical{border-left-color:var(--ds-danger)}.ops-decision--warning{border-left-color:var(--ds-warning)}
+.ops-decision__body{flex:1;min-width:0}.ops-decision__body strong{display:block;font-size:14px;margin-bottom:4px}
+.ops-decision__why,.ops-decision__next{margin:0 0 4px;font-size:13px;color:var(--ds-ink-mute);line-height:1.4}
+.ops-decision__detail,.ops-decision__owner{display:inline-block;margin-right:10px;font-size:12px;color:var(--ds-ink-mute)}
+.ops-decision__cta{flex-shrink:0;padding:8px 12px;border:none;border-radius:999px;font-size:12px;font-weight:800;cursor:pointer;background:var(--ds-warning-wash);color:var(--ds-warning)}
+.ops-decision--critical .ops-decision__cta{background:var(--ds-danger-wash);color:var(--ds-danger)}
+.ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
+
 .priority-risks {
   padding: 16px;
   border: 1px solid var(--ds-hairline);
