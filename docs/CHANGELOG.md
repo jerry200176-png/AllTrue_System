@@ -11,6 +11,10 @@
 
 ---
 
+## 2026-07-15 — ci: Presubmit 允許 cursor/ 分支前綴
+
+- **Changed**：Presubmit branch naming 放行 `cursor/*`（Cursor Cloud Agent），與 `cubelv-cli-`／`dependabot/` 同級例外。
+
 ## 2026-07-15 — chore: External Review 正式納入日常開發
 
 - **Changed**：External Review 改為事件驅動（高價值未知／缺證據／重大架構才觸發）；廢止輪次目標與 valuable≥5 強制暫停；成功指標＝決策品質與產品成果。

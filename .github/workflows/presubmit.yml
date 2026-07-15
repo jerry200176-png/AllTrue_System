@@ -37,7 +37,8 @@ jobs:
           if echo "$BRANCH" | grep -qE '^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.' \
             || echo "$BRANCH" | grep -qE '^td-batch[0-9]+-.' \
             || echo "$BRANCH" | grep -qE '^dependabot/' \
-            || echo "$BRANCH" | grep -qE '^cubelv-cli-' ; then
+            || echo "$BRANCH" | grep -qE '^cubelv-cli-' \
+            || echo "$BRANCH" | grep -qE '^cursor/' ; then
             echo "✅ Branch name OK: $BRANCH"
           else
             echo "❌ Invalid branch name: $BRANCH"
@@ -47,6 +48,7 @@ jobs:
             echo "  hotfix/<date>-<slug>  緊急修復"
             echo "  td-batch<N>-<slug>    技術債清償"
             echo "  cubelv-cli-<slug>    CubeLV AI 自動生成"
+            echo "  cursor/<slug>        Cursor Cloud Agent"
             echo "  dependabot/*         Dependabot 自動 PR"
             exit 1
           fi
