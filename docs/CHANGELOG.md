@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — docs: Self-Governing Repository 機制
+
+- **Changed**：新增治理「自我維護」政策（角色、自動驗證、失效/退休、衝突、Exit Criteria），明確不新增 agent 行為規則；目標是 Founder 無需持續介入。
+- 開發備註：`docs/POLICY_SELF_GOVERNING_REPOSITORY.md`；實作以既有 CI lint 為主，planned jobs 僅列於政策內。
+
 ## 2026-07-15 — docs: Governance Design Review + AI Principles
 
 - **Changed**：以外部官方證據 + token 實測推翻／修正 Round‑1 部分結論（mega INDEX 不可長期、分支定為 TBD short-lived PR）；新增 `RULE_AI_GOVERNANCE_PRINCIPLES` 與 SoT Matrix。
