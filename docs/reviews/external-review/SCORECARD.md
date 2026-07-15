@@ -1,100 +1,132 @@
 # External Review Score（成效追蹤）
 
-> 驗證「發外問 → 採納 → 實作 → 實際成效」是否真的提升產品／工程品質。  
-> 每一篇進入 Draft（含之後 Posted）建一列 **ERS-NNN**。  
-> 權威流程：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)
+> 驗證 External Review 是否真的提升產品／工程品質。  
+> Scorecard 記錄**完整 Question Funnel**，不只 Draft。  
+> 權威：[`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)
 
-## 生命週期狀態
+## Question Funnel（完整階段）
+
+```
+Candidate → Research → Reject ─┐
+                └──────────→ Draft → Publish → Adopt → Impact
+```
+
+| 階段 | 定義 |
+|------|------|
+| Candidate | 本輪提出、值得納入研究的候選（含 reopen 重驗） |
+| Research | 完成研究閘門（官方／Issues／成熟產品／文章） |
+| Reject | 研究後**不**建 Draft（含 `closed_*`／內部決策／無 reopen）— **必記**，不算失敗 |
+| Draft | 新建 Discussion Draft（≤3；禁止為 KPI 硬凑） |
+| Publish | 對外發佈（社群貼文上線） |
+| Adopt | 結論寫入 ADR／不變式／明確不採納理由 |
+| Impact | 產品／工程有可指認成效（KPI、復發下降、避免錯決策已驗證） |
+
+ERS 列僅給進入 Draft（含之後）的問題；**Reject 的量與理由**在漏斗總表與 Registry。
+
+## ERS 生命週期（Draft 之後）
 
 `draft` → `ready` → `posted` → `replied` → `adopted` → `implemented` → `measured` → `retired`  
-（可 `abandoned`：不發／發了無價值／決定不作）
+（可 `abandoned`）
 
-## 分項分數（各 0–2，合計 0–10）
+## 分項分數 D1–D5（各 0–2，合計 0–10）
 
 | 維度 | 0 | 1 | 2 |
 |------|---|---|---|
-| D1 發問品質 | 問題空泛或重複已知答案 | 有研究但仍偏寬 | 精確未知 + 可操作問題 |
-| D2 社群信號 | 無回覆／純噪音 | 有相關經驗但難用 | ≥1 可驗證戰經或設計模式 |
-| D3 採納清晰度 | 未採納或結論含糊 | 部分採納 | 寫入 ADR／不變式／明確不採納理由 |
-| D4 實作落地 | 無 code／無流程變更 | 文件或局部實作 | Production 變更 + 回歸測試 |
-| D5 實測成效 | 無度量或惡化 | 指標持平／早期正向 | 預設 KPI 達標（見各列） |
-
-**機制健康**：Round 5 結束做首次回顧（已 `measured`／`retired` 平均）。平均 **< 4** → 收緊發問，**不加**新模組。  
-**進階治理（Decision Journal／KB）**：僅 Round 5 回顧後依本表證據決定；禁止提前加。
+| D1 發問品質 | 空泛或重複已知 | 有研究但仍偏寬 | 精確未知 + 可操作 |
+| D2 社群信號 | 無／噪音 | 相關但難用 | ≥1 可驗證戰經 |
+| D3 採納清晰度 | 未採納／含糊 | 部分採納 | ADR／不變式／明確不採納 |
+| D4 實作落地 | 無變更 | 文件或局部 | Production + 回歸 |
+| D5 實測成效 | 無／惡化 | 持平／早期正向 | KPI 達標 |
 
 ---
 
-## Evidence Phase — 漏斗總表（Rounds 1–5）
+## Evidence Phase — Question Funnel 總表（Rounds 1–5）
 
-> 每輪結束更新。轉換率分母為上一階段累計數。  
-> **本階段重點是收集證據，不是擴架構。**
+> 每輪結束更新。**沒有值得問就不要問** — Reject 高、Draft 低可以是健康訊號。  
+> 禁止為輪次或 KPI 產生 Draft。
 
-| Round | Candidates | Researched | New Drafts | Published | Adopted | Product Impact 有記錄 |
-|-------|------------|------------|------------|-----------|---------|----------------------|
-| 1 | 5 | 5 | 1 | 0 | 0 | 0 |
-| 2 | 5（重驗；無新主題） | 5 | 0 | 0 | 0 | 0 |
-| 3 | — | — | — | — | — | — |
-| 4 | — | — | — | — | — | — |
-| 5 | — | — | — | — | — | — |
-| **累計** | **5 獨特候選** | **5** | **1** | **0** | **0** | **0** |
+| Round | Candidate | Research | Reject | Draft | Publish | Adopt | Impact | 零 Draft 碼 |
+|-------|-----------|----------|--------|-------|---------|-------|--------|-------------|
+| 1 | 5 | 5 | 4 | 1 | 0 | 0 | 0 | — |
+| 2 | 5（重驗） | 5 | 5 | 0 | 0 | 0 | 0 | Z3+Z4 |
+| 3 | — | — | — | — | — | — | — | — |
+| 4 | — | — | — | — | — | — | — | — |
+| 5 | — | — | — | — | — | — | — | — |
+| **累計（獨特候補）** | **5** | **5** | **4 結案 + 重驗 Reject** | **1** | **0** | **0** | **0** | — |
 
-### 累計轉換率（更新於每輪）
+### 累計轉換率
 
 | 階段 | 比率 | 解讀 |
 |------|------|------|
-| Candidate → Researched | 5/5 = 100% | 研究閘門有執行 |
-| Researched → Draft | 1/5 = 20% | 多數被結案，符合「不硬凑」 |
-| Draft → Published | 0/1 = 0% | **當前瓶頸**：Draft 待人發佈／核准 |
-| Published → Adopted | n/a | 尚無 Published |
-| Adopted → Product Impact | n/a | 尚無 Adopted |
+| Candidate → Research | 5/5 = 100% | 閘門有跑 |
+| Research → Reject | 4/5 = 80%（R1）；R2 全 Reject 新 Draft | 多數已知答案／內部題 — 可能健康 |
+| Research → Draft | 1/5 = 20% | 符合不硬凑 |
+| Draft → Publish | 0/1 = 0% | **當前瓶頸**（人發佈） |
+| Publish → Adopt | n/a | |
+| Adopt → Impact | n/a | |
 
-### 零 Draft 原因碼（Round 使用）
+### 零 Draft 原因碼
 
 | 碼 | 意義 |
 |----|------|
-| `Z1_researched_closed` | 候選皆有充分答案／Registry closed |
-| `Z2_internal_only` | 僅剩內部決策題，非社群題 |
-| `Z3_reopen_none` | 重驗既有 QR，觸發條件未成立 |
-| `Z4_pipeline_wait` | 已有未發表 Draft，新增發問無價值 |
-| `Z5_no_signal` | 本輪無新系統訊號（無復發／無新 epic 邊界） |
+| `Z1_researched_closed` | 充分答案／Registry closed |
+| `Z2_internal_only` | 僅內部決策 |
+| `Z3_reopen_none` | 重驗無 reopen |
+| `Z4_pipeline_wait` | 已有未發表 Draft |
+| `Z5_no_signal` | 無新系統訊號 |
 
-### 機制效益日誌（避免錯決策／品質提升）
+### 連續零 Draft → Meta Review
+
+| 欄位 | 值 |
+|------|-----|
+| 觸發 | **連續兩輪** New Draft = 0 |
+| 目前連續 | **1**（僅 Round 2；Round 1 有 Draft） |
+| 下次若 Round 3 亦 0 | 必做 [`META_REVIEW_TEMPLATE.md`](META_REVIEW_TEMPLATE.md) |
+| 檢查三問 | (A) 系統真成熟？ (B) Research Gate 過保守？ (C) Blind Spot 漏題？ |
+
+Meta Review **不是**產 Draft 的藉口；結論可以是「維持拒寫」或「放寬某一類研究範圍」。
+
+### 機制效益日誌
 
 | Round | 類型 | 說明 |
 |-------|------|------|
-| 1 | 避免錯決策 | 未把 hybrid 物化／ledger 遷移當外問（已有答案）→ 避免假性社群依賴 |
-| 1 | 避免錯決策 | 共用池標為 `closed_internal`，避免用工程討論代替 CEO 商業規則 |
-| 1 | 品質提升 | 凍結「物化是否占用 entitlement」為唯一高價值未知（QR-005），降低 #957 範圍蔓延 |
-| 2 | 避免錯決策 | 零新 Draft（Z3+Z4）：不因「要跑滿輪次」重問 QR-001～004 |
-| 2 | 品質提升 | 漏斗顯示瓶頸在 Draft→Published，證明下一優先是**發佈 Draft 01** 而非加模組 |
+| 1 | 避免錯決策 | 未外問 hybrid／ledger（已有答案） |
+| 1 | 避免錯決策 | 共用池 → `closed_internal` |
+| 1 | 品質提升 | 唯一 Draft＝entitlement 占用時機（QR-005） |
+| 2 | 避免錯決策 | 零 Draft（Z3+Z4）；不為湊輪重問 |
+| 2 | 品質提升 | 漏斗含 Reject；瓶頸＝Draft→Publish |
 
 ---
 
-## ERS-001：預付 reservation vs 出席扣
+## ERS 列（僅 Draft 後）
+
+### ERS-001：預付 reservation vs 出席扣
 
 | 欄位 | 內容 |
 |------|------|
 | QR | [QR-005](QUESTION_REGISTRY.md#qr-005預付包堂--物化預留-vs-出席扣) |
 | Draft | [`drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md`](drafts/2026-07-15-01-prepaid-reservation-vs-attendance-debit.md) |
-| 生命週期 | `draft`（Round 2 仍未 Published） |
-| 發文日期／連結 | — |
-| 社群回覆摘要 | — |
-| 採納結論 | — |
-| 實作（PR／ADR） | — |
-| 預期 KPI | stranded prepaid 堂數下降；行事曆超額格子＝0；扣堂雙扣事故＝0 |
-| 實測（日期／數字） | — |
+| Funnel 位置 | Draft（未 Publish） |
+| 生命週期 | `draft` |
+| 發文／連結 | — |
+| 採納／實作／KPI | — |
 | D1–D5 | D1=2；D2–D5=0 |
-| 合計 | 2 / 10（未發文，不計入機制健康平均） |
+| 合計 | 2 / 10（未發文，不計健康平均） |
 
 ---
 
-## Round 5 決策閘門（預先寫死，避免提前加模組）
+## Round 5：Evidence-based Retrospective（目標重定）
 
-Round 5 結束後才回答：
+Round 5 **不是**「決定要不要加治理模組」的開關。
 
-1. Draft→Published／Published→Adopted 轉換是否成立？  
-2. 零 Draft 輪是否佔多數且原因健康（Z1–Z3），還是閘門過嚴／過鬆？  
-3. 機制效益日誌是否出現可指認的「避免錯決策」或「產品指標改善」？  
+Round 5 必產出：[`RETROSPECTIVE_TEMPLATE.md`](RETROSPECTIVE_TEMPLATE.md) 實例  
+`rounds/YYYY-MM-DD-round-5-retrospective.md`
 
-任一為否或數據不足 → **維持現狀、收緊或維持發問**，不加 Decision Journal／Knowledge Base。  
-僅在有正向證據時才提案下一治理機制。
+依五輪資料回答：
+
+1. External Review 的**實際價值**（漏斗何處有效、機制效益是否可指認）  
+2. **限制**（例如卡在 Publish、或 Gate 過嚴／過鬆、Blind Spot 模式）  
+3. **下一步**（維持／收緊／放寬發問；流程微調）  
+4. **然後才**決定是否引入 Decision Journal、Knowledge Base 或其他治理 — 證據不足則明確「不引入」
+
+禁止在 Round 5 前預建 Journal／KB。

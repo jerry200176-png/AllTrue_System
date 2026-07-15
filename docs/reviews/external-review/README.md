@@ -1,16 +1,16 @@
 # External Review artifacts
 
-權威 SOP → [`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)  
-技能 → `.cursor/skills/alltrue-external-review`
+權威 SOP → [`docs/GUIDE_EXTERNAL_REVIEW_LOOP.md`](../../GUIDE_EXTERNAL_REVIEW_LOOP.md)
 
 | 檔案 | 用途 |
 |------|------|
-| [`COUNTER.md`](COUNTER.md) | 有價值工作計數（每 5 觸發一輪） |
-| [`QUESTION_REGISTRY.md`](QUESTION_REGISTRY.md) | 候選為何不發問／何時重評 |
-| [`SCORECARD.md`](SCORECARD.md) | Discussion 成效分數（發文→實測） |
-| [`DRAFT_TEMPLATE.md`](DRAFT_TEMPLATE.md) | Draft 必填（含 Impact／Confidence／Evidence） |
-| [`ROUND_TEMPLATE.md`](ROUND_TEMPLATE.md) | Round log（含 Blind Spot） |
-| [`rounds/`](rounds/) | 各輪紀錄 |
-| [`drafts/`](drafts/) | Discussion Drafts |
+| [`COUNTER.md`](COUNTER.md) | 計數；連續零 Draft；Round 5 目標 |
+| [`QUESTION_REGISTRY.md`](QUESTION_REGISTRY.md) | 為何 Reject／何時重評 |
+| [`SCORECARD.md`](SCORECARD.md) | **完整 Funnel**（含 Reject）+ ERS + 效益 |
+| [`DRAFT_TEMPLATE.md`](DRAFT_TEMPLATE.md) | Draft 品質欄位 |
+| [`ROUND_TEMPLATE.md`](ROUND_TEMPLATE.md) | 每輪 log |
+| [`META_REVIEW_TEMPLATE.md`](META_REVIEW_TEMPLATE.md) | 連續兩輪零 Draft |
+| [`RETROSPECTIVE_TEMPLATE.md`](RETROSPECTIVE_TEMPLATE.md) | Round 5 Evidence-based Retrospective |
+| [`rounds/`](rounds/) · [`drafts/`](drafts/) | 實例 |
 
-**Evidence phase（Rounds 1–5）**：收集轉換率／零 Draft 原因／機制效益；Round 5 後才決定是否加 Decision Journal／KB。禁止空轉湊輪。
+**沒有值得問就不要問。** Round 5＝Retrospective，不是加模組開關。

@@ -5,17 +5,18 @@
 > **執行技能**：[`.cursor/skills/alltrue-external-review/SKILL.md`](../.cursor/skills/alltrue-external-review/SKILL.md)  
 > **產物目錄**：[`docs/reviews/external-review/`](reviews/external-review/)
 
-**成熟度約定**：Rounds 1–5＝**證據收集階段**。重點是驗證機制是否有效，**不是**加功能／新模組。  
-Round 5 結束後才依 [`SCORECARD.md`](reviews/external-review/SCORECARD.md) 決定是否需要 Decision Journal、Knowledge Base 等；**不要因為可以做就先做**。
+**成熟度約定**：Rounds 1–5＝**證據收集階段**。重點是收集漏斗證據，**不是**加功能／新模組。  
+**沒有值得問就不要問** — 禁止為輪次或 KPI 產生 Draft。
 
-### 證據階段必觀察（每輪寫入 Round log + SCORECARD 漏斗）
+Round 5 目標＝完成 **Evidence-based Retrospective**（[`RETROSPECTIVE_TEMPLATE.md`](reviews/external-review/RETROSPECTIVE_TEMPLATE.md)）：依五輪資料判斷實際價值、限制與下一步，**然後才**決定是否引入 Decision Journal／Knowledge Base。證據不足就明確不引入。
 
-1. **轉換率**：Candidate → Research → Draft → Published → Adopted → Product Impact  
-2. **值得討論的問題數量**；零 Draft 時記錄原因碼（Z1–Z5，見 SCORECARD）  
-3. **實際效益**：避免了哪些錯決策／提升了哪些產品品質（機制效益日誌）
+### 證據階段必觀察
 
-禁止為湊滿 5 輪而連續空轉（無新系統訊號時不連開 Round）。
+1. **完整 Question Funnel**：Candidate → Research → **Reject** → Draft → Publish → Adopt → Impact（Reject 必記）  
+2. **值得討論的數量**；零 Draft 記原因碼 Z1–Z5；**連續兩輪零 Draft** → Meta Review（成熟？Gate 過保守？Blind Spot？）  
+3. **實際效益**：避免錯決策／品質提升（機制效益日誌）
 
+禁止空轉湊輪；禁止為 Meta Review／KPI 硬凑 Draft。
 ---
 
 ## 1. 觸發條件
@@ -62,11 +63,10 @@ Round 5 結束後才依 [`SCORECARD.md`](reviews/external-review/SCORECARD.md) �
 
 | 結果 | 動作 |
 |------|------|
-| 已有充分答案 | **不**建 Draft；登記 Question Registry（`closed_*`）+ round log 摘要 |
-| 仍缺答案／取捨沒共識 | 建 Discussion Draft（**不直接改 production 程式**）+ Registry `draft` + SCORECARD 新列 |
+| 已有充分答案／內部決策 | **Reject**（記漏斗）+ Registry `closed_*`；**不**建 Draft |
+| 仍缺答案／取捨沒共識 | Draft（≤3）+ Registry `draft` + SCORECARD ERS |
 
-一輪最多 **3** 份 Draft，依影響排序。零 Draft 合法。
-
+零 Draft 合法且常見。連續兩輪零 Draft → [`META_REVIEW_TEMPLATE.md`](reviews/external-review/META_REVIEW_TEMPLATE.md)。
 ---
 
 ## 4. Question Registry
@@ -118,26 +118,26 @@ Round log 只摘要 QR 編號；細節不複製兩份。
 
 ---
 
-## 7. External Review Score
+## 7. External Review Score + Funnel
 
 權威檔：[`SCORECARD.md`](reviews/external-review/SCORECARD.md)
 
-追蹤每篇 Discussion：`draft → posted → replied → adopted → implemented → measured`。  
-分項 D1–D5；合計 0–10。  
-**漏斗總表 + 轉換率 + 機制效益日誌**於證據階段每輪更新。  
-**首次機制回顧＝Round 5**；平均分過低 → 收緊發問，不加新模組。
+- 完整 Funnel（含 **Reject**）每輪更新  
+- ERS／D1–D5 只服務 Draft 之後的生命週期  
+- 連續兩輪零 Draft → Meta Review  
+- **Round 5** → Evidence-based Retrospective（非「加模組開關」）
 
 ---
 
 ## 8. 一輪輸出檢查表（Agent Exit）
 
-- [ ] 候選全部寫入／更新 Question Registry  
-- [ ] Draft 0–3（含品質欄位）；零 Draft 寫原因碼  
-- [ ] Round log 含漏斗計數、Blind Spot、機制效益  
-- [ ] SCORECARD 漏斗／ERS 已更新  
-- [ ] COUNTER 歸零（若適用）  
-- [ ] 未擅自新增 Decision Journal／Knowledge Base  
-- [ ] 未在無新訊號時連跑空轉 Round  
+- [ ] Registry 更新；Funnel 含 Candidate／Research／Reject／Draft／Publish／Adopt／Impact  
+- [ ] Draft 0–3 或零 Draft+原因碼；未為 KPI 硬凑  
+- [ ] 若連續兩輪零 Draft：Meta Review 已寫  
+- [ ] Round log：Blind Spot + 機制效益  
+- [ ] SCORECARD 已同步  
+- [ ] Round 5：Retrospective 已寫  
+- [ ] 未提前加 Journal／KB；未空轉湊輪  
 
 ---
 
@@ -157,3 +157,4 @@ Round log 只摘要 QR 編號；細節不複製兩份。
 | 2026-07-15 | 初版：觸發、研究閘門、Draft／Round 產物規範 |
 | 2026-07-15 | 品質強化：Question Registry、Draft Impact／Confidence／Evidence、Blind Spot、SCORECARD；約定先跑 3～5 輪 |
 | 2026-07-15 | 證據階段：漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 5 前不加進階模組 |
+| 2026-07-15 | Funnel 含 Reject；連續兩輪零 Draft→Meta Review；Round 5＝Evidence-based Retrospective |

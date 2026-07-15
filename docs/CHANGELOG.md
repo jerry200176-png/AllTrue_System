@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-15 — chore: External Review Funnel／Meta／Retrospective 觀察重點
+
+- **Changed**：Scorecard 改記完整 Question Funnel（含 Reject）；連續兩輪零 Draft 觸發 Meta Review；Round 5 目標改為 Evidence-based Retrospective。
+- 開發備註：仍禁止為輪次／KPI 產 Draft；Round 2 連續零 Draft 計數=1（尚未 Meta）。
+
 ## 2026-07-15 — chore: External Review 證據階段（Round 2）
 
 - **Changed**：SCORECARD 增加漏斗轉換率／零 Draft 原因碼／機制效益日誌；Round 2 零新 Draft（Z3+Z4），瓶頸＝Draft→Published。

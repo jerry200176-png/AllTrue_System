@@ -10,29 +10,29 @@
 ## 系統級觀察
 
 1. 重複修同一類？  
-2. Root Cause 層級（架構／Workflow／Prompt／測試／需求）？  
+2. Root Cause 層級？  
 3. 信心不足處？  
 
 ## 候選 → Registry
 
 | 候選 | QR | 動作 |
 |------|-----|------|
-| | QR-NNN | draft / closed_* / reopen |
+| | QR-NNN | draft / reject(closed_*) / reopen |
 
-（詳情只寫 Registry；此表摘要）
+## Question Funnel 本輪計數（必填 → 同步 SCORECARD）
 
-## 本輪漏斗計數（必填 → 同步 SCORECARD）
+| Candidate | Research | Reject | Draft | Publish | Adopt | Impact |
+|-----------|----------|--------|-------|---------|-------|--------|
+| | | | | | | |
 
-| Candidates | Researched | New Drafts | Published 推進 | Adopted 推進 | Impact 推進 |
-|------------|------------|------------|----------------|--------------|-------------|
-| | | | | | |
+零 Draft 時必填原因碼：`Z1`–`Z5`（見 SCORECARD）  
+原因說明：  
 
-零 Draft 時必填原因碼（可多選）：`Z1_researched_closed` / `Z2_internal_only` / `Z3_reopen_none` / `Z4_pipeline_wait` / `Z5_no_signal`  
-原因說明：
+連續零 Draft 計數：本輪後連續 ___ 輪。若 **≥ 2** → 另寫 Meta Review（[`META_REVIEW_TEMPLATE.md`](META_REVIEW_TEMPLATE.md)）。
 
 ## Draft 產出（0–3）
 
-1. …（無則寫「無」）
+1. …（無則寫「無」；**禁止為輪次／KPI 硬凑**）
 
 ## Blind Spot Review（必填）
 
@@ -46,20 +46,21 @@
 
 | 類型 | 說明 |
 |------|------|
-| 避免的錯決策 | （無可寫「無／不適用」） |
-| 產品／工程品質提升 | （無可寫「無／觀測中」） |
+| 避免的錯決策 | |
+| 產品／工程品質提升 | |
 
 ## Scorecard 更新
 
-- 漏斗總表列已更新：是／否  
-- 新 ERS／狀態推進：…  
+- Funnel 總表已更新：是／否  
+- Meta Review：無／已寫連結  
+- ERS 推進：…  
 
 ## 計數
 
-- Round 前：N  
-- Round 後：0（見 COUNTER.md）
+- Round 前：N → 後：0  
 
 ## 下一步
 
-繼續開發／需 CEO 決策／待發佈 Draft：…  
-（Round < 5：**不加** Decision Journal／KB）  
+繼續開發／待 Publish Draft／Round 5 將寫 Evidence-based Retrospective。  
+Round < 5：不加 Journal／KB。  
+（若本輪 = 5：完成 [`RETROSPECTIVE_TEMPLATE.md`](RETROSPECTIVE_TEMPLATE.md)）  
