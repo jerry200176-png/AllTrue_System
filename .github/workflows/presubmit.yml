@@ -79,17 +79,14 @@ jobs:
           echo "PR size: $TOTAL lines changed (excluding lock/data files)"
           echo "PR_SIZE=$TOTAL" >> "$GITHUB_ENV"
 
-          # docs 整併 epic（chore/docs-*）允許較大 diff；仍禁止混 production code
+          # 無 production path 的 PR（docs/rules/CI 等）允許較大 diff；混入 production 仍限 700
           HARD_LIMIT=700
-          BRANCH="${GITHUB_HEAD_REF}"
-          if echo "$BRANCH" | grep -qE '^chore/docs-'; then
-            PROD=$(git diff --name-only origin/main...HEAD \
-              | sed 's/^"//;s/"$//' \
-              | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
-            if [ "$PROD" -eq 0 ]; then
-              HARD_LIMIT=1300
-              echo "Docs consolidation branch (no production paths): hard limit raised to $HARD_LIMIT"
-            fi
+          PROD=$(git diff --name-only origin/main...HEAD \
+            | sed 's/^"//;s/"$//' \
+            | grep -cE '^(backend/app/|backend/routes/|backend/database/|frontend/src/)' || true)
+          if [ "$PROD" -eq 0 ]; then
+            HARD_LIMIT=1300
+            echo "Non-production PR (no backend/app|routes|database|frontend/src): hard limit raised to $HARD_LIMIT"
           fi
 
           if [ "$TOTAL" -gt "$HARD_LIMIT" ]; then

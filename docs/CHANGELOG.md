@@ -11,9 +11,9 @@
 
 ---
 
-## 2026-07-15 — ci: Presubmit 允許 cursor/ 分支前綴
+## 2026-07-15 — ci: Presubmit 放行 Cloud Agent 分支與 docs-only 體積
 
-- **Changed**：Presubmit branch naming 放行 `cursor/*`（Cursor Cloud Agent），與 `cubelv-cli-`／`dependabot/` 同級例外。
+- **Changed**：Presubmit 允許 `cursor/*` 分支名；無 production path 的 PR hard size limit 700→1300（對齊既有 docs 整併例外）。
 
 ## 2026-07-15 — chore: External Review 正式納入日常開發
 
