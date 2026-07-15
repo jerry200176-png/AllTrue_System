@@ -108,4 +108,4 @@ Candidate → Research → Reject ─┐
 | Decision Journal／KB？ | **不引入** |
 | 下一步？ | 維持 Loop；人處理 Draft 01；valuable≥5 再觸發 |
 
-Evidence phase **關閉**。後續輪次重置為常規触发（非連續湊輪）。
+Evidence phase **關閉**。自今日起改 **事件驅動日常模式**（見 GUIDE／STATUS）；有未知才觸發，不以輪次為目標。

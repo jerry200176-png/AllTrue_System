@@ -65,7 +65,7 @@ docs/（權威業務規則）
 | PR merge / 上線 | `alltrue-release` | `auto-frontend-deploy.mdc` |
 | auth / PII / RFID | `alltrue-security` | `module-security.mdc` |
 | PR 準備 merge | `alltrue-code-review` | FR 對照 + 多校區隔離 |
-| 每約 5 項有價值工作／外部審查 | `alltrue-external-review` | `GUIDE_EXTERNAL_REVIEW_LOOP` + COUNTER |
+| 高價值未知／缺證據／重大架構決策 | `alltrue-external-review` | `GUIDE_EXTERNAL_REVIEW_LOOP` + STATUS |
 
 ---
 
@@ -99,3 +99,4 @@ docs/（權威業務規則）
 | 2026-07-08 | v1 初版：5 技能 + 架構 |
 | 2026-07-15 | 新增 `alltrue-external-review` + `GUIDE_EXTERNAL_REVIEW_LOOP` |
 | 2026-07-15 | External Review 品質閘門：Registry／Evidence／Blind Spot／Scorecard |
+| 2026-07-15 | External Review 正式日常化：事件驅動，廢止輪次目標 |
