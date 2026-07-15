@@ -24,6 +24,36 @@
           </div>
         </div>
 
+        <!-- E-OPS-TRUST: Trust KPI strip (F1) -->
+        <section
+          v-if="operationsTrust"
+          class="ops-trust"
+          aria-labelledby="ops-trust-title"
+          data-guide="director-operations-trust"
+        >
+          <header class="ops-trust__head">
+            <div>
+              <h3 id="ops-trust-title">營運信任</h3>
+              <p>課表／剩課／帳單是否可信——紅燈請今日先處理。</p>
+            </div>
+            <span v-if="operationsTrust.generated_at" class="ops-trust__stamp">
+              更新 {{ formatTrustStamp(operationsTrust.generated_at) }}
+            </span>
+          </header>
+          <div class="ops-trust__grid">
+            <article
+              v-for="card in trustCards"
+              :key="card.key"
+              class="ops-trust-card"
+              :class="`ops-trust-card--${card.status}`"
+            >
+              <span class="ops-trust-card__label">{{ card.label }}</span>
+              <strong class="ops-trust-card__summary">{{ card.summary }}</strong>
+              <span v-if="card.detail" class="ops-trust-card__detail">{{ card.detail }}</span>
+            </article>
+          </div>
+        </section>
+
         <!-- ===== Layer 1: Action Lane ===== -->
         <div class="section-label-row">
           <span class="section-label">每日待辦</span>
@@ -675,6 +705,7 @@ function onDirectorVisibilityForEngagement() {
 
 const todaySchedules = ref([]);
 const pendingEvaluations = ref([]);
+const operationsTrust = ref(null);
 const teacherStats = ref([]);
 const subjectTotals = ref({ subjectCountWith: 0, subjectCountWithout: 0 });
 const levelBreakdownTotals = ref([]);
@@ -917,6 +948,8 @@ const renewalAttentionCount = computed(() =>
 
 const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   breachedTasks: workflowDailySummary.value.breached_total,
+  strandedSessions: Number(operationsTrust.value?.revenue?.stranded_sessions || 0),
+  dormantStudents: Number(operationsTrust.value?.retention?.dormant_prepaid_students || 0),
   unpaidPayments: unpaidPaymentCount.value,
   pendingAttendance: pendingAttendanceCount.value,
   exceptionWorkflows: exceptionWorkflowCount.value,
@@ -925,9 +958,74 @@ const directorPriorityRisks = computed(() => buildDirectorPriorityRisks({
   renewalAttention: renewalAttentionCount.value,
 }));
 
+const trustCards = computed(() => {
+  const t = operationsTrust.value?.trust;
+  if (!t) return [];
+  const money = (n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v) || v <= 0) return '';
+    return `約 NT$${Math.round(v).toLocaleString('zh-TW')}`;
+  };
+  return [
+    {
+      key: 'paid',
+      status: t.paid_class_visibility?.status || 'yellow',
+      label: t.paid_class_visibility?.label || '已付堂可見性',
+      summary: t.paid_class_visibility?.summary || '',
+      detail: money(t.paid_class_visibility?.stranded_amount),
+    },
+    {
+      key: 'calendar',
+      status: t.calendar_trust?.status || 'yellow',
+      label: t.calendar_trust?.label || '行事曆可信度',
+      summary: t.calendar_trust?.summary || '',
+      detail: '',
+    },
+    {
+      key: 'ledger',
+      status: t.ledger_trust?.status || 'yellow',
+      label: t.ledger_trust?.label || '堂數帳本一致',
+      summary: t.ledger_trust?.summary || '',
+      detail: '',
+    },
+    {
+      key: 'invoice',
+      status: t.invoice_trust?.status === 'policy' ? 'info' : (t.invoice_trust?.status || 'info'),
+      label: t.invoice_trust?.label || '帳單可信度',
+      summary: t.invoice_trust?.summary || '',
+      detail: '',
+    },
+    {
+      key: 'dormant',
+      status: t.dormant_hold?.status || 'green',
+      label: t.dormant_hold?.label || '休眠保留',
+      summary: t.dormant_hold?.summary || '',
+      detail: money(t.dormant_hold?.recoverable_ntd),
+    },
+  ];
+});
+
+function formatTrustStamp(iso) {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 function handleDirectorPriorityRisk(risk) {
   if (risk.target === 'director-tasks') {
     scrollTo('director-task-tracker');
+    return;
+  }
+  if (risk.target === 'calendar') {
+    emit('navigate', { target: 'calendar' });
+    return;
+  }
+  if (risk.target === 'course-mgmt') {
+    emit('navigate', { target: 'course-mgmt' });
     return;
   }
   if (risk.target === 'tuition') {
@@ -1164,6 +1262,22 @@ const loadData = async () => {
     }
   } catch (err) {
     console.error('Failed to load alerts:', err);
+  }
+
+  try {
+    const trustParams = new URLSearchParams({ branch_id: String(props.branchId) });
+    const trustResp = await fetch(`${baseUrl}/v1/director/operations-trust?${trustParams}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+    });
+    if (trustResp.ok) {
+      const trustJson = await trustResp.json();
+      operationsTrust.value = trustJson?.data || null;
+    } else {
+      operationsTrust.value = null;
+    }
+  } catch (err) {
+    console.error('Failed to load operations trust:', err);
+    operationsTrust.value = null;
   }
 
   await loadNotificationSummary(token, baseUrl);
@@ -1863,6 +1977,70 @@ onBeforeUnmount(() => {
 .ac__cta:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ===== Priority risks ===== */
+.ops-trust {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid var(--ds-hairline);
+  border-radius: 16px;
+  background: var(--ds-canvas);
+  box-shadow: var(--ds-shadow-1);
+}
+.ops-trust__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.ops-trust__head h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.ops-trust__head p {
+  margin: 0;
+  color: var(--ds-ink-mute);
+  font-size: 13px;
+}
+.ops-trust__stamp {
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+  white-space: nowrap;
+}
+.ops-trust__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.ops-trust-card {
+  border-radius: 12px;
+  border: 1px solid var(--ds-hairline);
+  border-left-width: 4px;
+  padding: 10px 12px;
+  background: var(--ds-surface, #fff);
+}
+.ops-trust-card--green { border-left-color: var(--ds-success); }
+.ops-trust-card--yellow { border-left-color: var(--ds-warning); }
+.ops-trust-card--red { border-left-color: var(--ds-danger); }
+.ops-trust-card--info { border-left-color: var(--ds-info, var(--ds-primary)); }
+.ops-trust-card__label {
+  display: block;
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+  margin-bottom: 4px;
+}
+.ops-trust-card__summary {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.ops-trust-card__detail {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ds-ink-mute);
+}
+
 .priority-risks {
   padding: 16px;
   border: 1px solid var(--ds-hairline);

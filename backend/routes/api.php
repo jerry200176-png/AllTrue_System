@@ -47,6 +47,7 @@ use App\Http\Controllers\ScheduleDiscrepancyController;
 use App\Http\Controllers\AccountingController;
 use App\Http\Controllers\AdoptionInsightsController;
 use App\Http\Controllers\SystemTrustController;
+use App\Http\Controllers\DirectorOperationsTrustController;
 use App\Http\Controllers\AdminReconcileController;
 use App\Http\Controllers\AdminDuplicateSessionController;
 use App\Http\Controllers\GitHubIssueController;
@@ -522,6 +523,10 @@ Route::prefix('v1')->group(function () {
         Route::get('adoption/weekly-metrics', [AdoptionInsightsController::class, 'weeklyMetrics']);
         Route::post('adoption/events', [AdoptionInsightsController::class, 'recordEvent']);
         Route::get('system/trust-summary', [SystemTrustController::class, 'summary']);
+    });
+
+    Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
+        Route::get('director/operations-trust', [DirectorOperationsTrustController::class, 'show']);
     });
 
     Route::middleware(['super_admin', 'require_password_change'])->group(function () {
