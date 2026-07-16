@@ -16,6 +16,8 @@ import {
   formatLedgerInvoiceLabel,
   formatLedgerReceiptBillLine,
   formatLedgerAnomalyDetail,
+  humanizeBulkLeaveSkipReason,
+  formatBulkLeaveSkippedLine,
   primaryLeaksInternalId,
 } from './studentClassDisplay.js';
 
@@ -145,5 +147,33 @@ assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), 'INV-1');
 assert.equal(formatLedgerInvoiceLabel({ id: 9 }), '帳單');
 assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已套用帳單 · 本課程');
 assert.ok(!formatLedgerAnomalyDetail({ payment_id: 3, invoice_id: 1, report_id: 2 }).includes('Payment'));
+
+// --- User Task: 請假 — 批次略過清單不得用「課程 #id」 ---
+assert.equal(humanizeBulkLeaveSkipReason('該堂已有核准評量'), '該堂已有核准評量');
+assert.equal(
+  humanizeBulkLeaveSkipReason('SQLSTATE[23000]: Integrity constraint violation'),
+  '系統暫時無法處理此堂，請改用單堂請假',
+);
+
+const skipLine = formatBulkLeaveSkippedLine(
+  { course_id: 382, session_date: '2026-07-16', reason: '該堂已有核准評量' },
+  { id: 382, student_name: '連假學生A', subject_name: '英文', teacher_name: '王老師' },
+);
+assert.ok(skipLine.includes('連假學生A'));
+assert.ok(skipLine.includes('英文'));
+assert.ok(skipLine.includes('2026-07-16'));
+assert.ok(skipLine.includes('該堂已有核准評量'));
+assert.equal(primaryLeaksInternalId(skipLine), false);
+assert.ok(!skipLine.includes('課程 #'), 'bulk leave skip must not show 課程 #id');
+assert.ok(!skipLine.includes('382'), 'bulk leave skip must not echo course_id when human fields exist');
+
+const skipBare = formatBulkLeaveSkippedLine(
+  { course_id: 99, session_date: '2026-07-20', reason: '該堂已有核准評量' },
+  null,
+);
+assert.ok(skipBare.includes('名單上的一門課'));
+assert.ok(skipBare.includes('2026-07-20'));
+assert.equal(primaryLeaksInternalId(skipBare), false);
+assert.ok(!skipBare.includes('課程 #'));
 
 console.log('studentClassDisplay.test.js: all assertions passed');

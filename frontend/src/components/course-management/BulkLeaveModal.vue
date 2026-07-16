@@ -33,9 +33,9 @@
       <div v-if="result" class="bulk-leave-result">
         <p style="font-weight:600;margin-bottom:4px;">{{ result.message }}</p>
         <p v-if="result.skipped && result.skipped.length">
-          略過原因：
+          略過（請必要時改用單堂請假）：
           <span v-for="(s, i) in result.skipped" :key="i" style="display:block;font-size:12px;color:var(--ds-ink-mute);">
-            課程 #{{ s.course_id }} {{ s.session_date }}：{{ s.reason }}
+            {{ skippedLine(s) }}
           </span>
         </p>
       </div>
@@ -53,6 +53,8 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { getSubjectLabel } from '../../lib/constants';
+import { formatBulkLeaveSkippedLine } from '../../lib/studentClassDisplay';
 
 const props = defineProps({
   show: Boolean,
@@ -60,6 +62,8 @@ const props = defineProps({
   result: Object,
   submitting: Boolean,
   impactPreview: Object,
+  /** Already-loaded CourseManagement rows — used only to humanize skipped lines. */
+  courses: { type: Array, default: () => [] },
 });
 defineEmits(['close', 'submit']);
 
@@ -71,6 +75,22 @@ const previewItems = computed(() => {
   if (Array.isArray(items) && items.length) return items;
   return ['會影響區間內多位學生與多堂課', '已有核准評量或不可處理的堂次會被略過', '完成後請查看略過清單並個別處理'];
 });
+
+function courseForSkip(skip) {
+  const id = Number(skip?.course_id || 0);
+  if (!id) return null;
+  const row = (props.courses || []).find((c) => Number(c?.id) === id);
+  if (!row) return null;
+  const rawSubject = row.subject_name || row.subject || '';
+  return {
+    ...row,
+    subject_name: getSubjectLabel(rawSubject) || rawSubject,
+  };
+}
+
+function skippedLine(skip) {
+  return formatBulkLeaveSkippedLine(skip, courseForSkip(skip));
+}
 
 watch(
   () => [props.show, props.form?.start_date, props.form?.end_date],
