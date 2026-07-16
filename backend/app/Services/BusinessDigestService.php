@@ -146,15 +146,15 @@ class BusinessDigestService
         }
 
         if ($dormant > 0) {
-            // Soft only — dormant is legitimate hold, not a system crash signal.
-            $softPenalty += min(10, 3 + (int) floor($dormant / 3));
+            // Soft informational card only — legitimate retention_hold must NOT permanently block green.
+            // Overdue-untreated dormant penalty is deferred until disposition tracking exists (Hypothesis).
             $people = $this->dormantPeople($campusId, 20);
             $decisions[] = [
                 'key' => 'dormant_hold',
                 'severity' => 'warning',
                 'risk_kind' => 'retention_hold',
                 'title' => "{$dormant} 位已付休眠要聯繫",
-                'why' => '這是保留資格（合法），不是系統故障；但久不聯繫會成客訴／呆帳。',
+                'why' => '這是保留資格（合法），不是系統故障；追蹤 owner／聯繫／下一步即可，不要求清零。',
                 'next_step' => '從下方名單逐一連絡：恢復上課、繼續暫停、或討論結案方向（勿自動排課）。',
                 'action_label' => '打開聯繫名單',
                 'target' => 'course-mgmt',
@@ -175,19 +175,20 @@ class BusinessDigestService
         $hasCritical = count($hardCaps) > 0;
         if ($hasCritical) {
             $status = 'red';
-        } elseif (count($decisions) > 0) {
-            // Actionable warnings (incl. dormant hold) must not read as all-clear green.
-            $status = $score >= 70 ? 'yellow' : 'red';
         } else {
-            $status = 'green';
+            // Score-based: legitimate dormant alone must be allowed to stay green.
+            $status = $score >= 90 ? 'green' : ($score >= 70 ? 'yellow' : 'red');
         }
         $criticalCount = count(array_filter($decisions, fn ($d) => $d['severity'] === 'critical'));
         $warningCount = count($decisions) - $criticalCount;
+        $onlyDormant = count($decisions) === 1 && ($decisions[0]['key'] === 'dormant_hold');
         $headline = count($decisions) === 0
             ? '今天課表與剩課看起來可信，先處理下方每日待辦即可。'
             : ($hasCritical
                 ? ('今天有 ' . $criticalCount . ' 件 Critical 必須先處理（分數已被硬門檻封頂）。')
-                : ('今天有 ' . count($decisions) . ' 件信任事項要先處理。'));
+                : ($onlyDormant
+                    ? '無 Critical。休眠保留是合法狀態：請指定聯繫與下一步（不要求清零，也不因此無法變綠）。'
+                    : ('今天有 ' . count($decisions) . ' 件信任事項要注意。')));
 
         return [
             'score' => $score,
@@ -204,11 +205,14 @@ class BusinessDigestService
                 'hard_caps' => $hardCaps,
                 'soft_penalty' => $softPenalty,
                 'dormant_is_retention_hold' => true,
+                'dormant_does_not_block_green' => true,
+                'dormant_count_not_success_metric' => true,
+                'overdue_untreated_dormant_penalty' => 'deferred_hypothesis',
             ],
             'policy_notes' => [
                 '歷史帳單數字不改；只保證往後續期正確（完整稽核保留）。',
                 '催繳仍由主任人工處理，系統不自動傳訊息給家長。',
-                '休眠保留是合法狀態，不會單獨把分數刷成系統崩潰；但仍需人工聯繫。',
+                '休眠保留是合法狀態：Score 不因合法 dormant 永久無法變綠；逾期未處置才應扣分（處置追蹤尚未上線前暫不自動扣）。',
                 '本分校分數不可與其他分校直接比較（規模不同）。',
             ],
         ];

@@ -343,7 +343,8 @@ class AdoptionInsightsController extends Controller
         $out = [];
         foreach ($meta as $k => $v) {
             $key = strtolower((string) $k);
-            if (preg_match('/(phone|email|password|token|name|body|note|address)/', $key)) {
+            // Strip PII + linkable identifiers (student_id etc.) — ops/debug only.
+            if (preg_match('/(phone|email|password|token|name|body|note|address|line_id|lineid|student_id|student_class_id|class_id|invoice|receipt|amount|charge|pay)/', $key)) {
                 continue;
             }
             if (is_string($v) || is_int($v) || is_float($v) || is_bool($v) || $v === null) {
