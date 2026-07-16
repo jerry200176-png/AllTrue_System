@@ -135,9 +135,9 @@
                           @change="setDecision(g, side.student_class_id)"
                           class="dsr-radio"
                         />
-                        <span class="dsr-side-sc">SC #{{ side.student_class_id }}</span>
+                        <span class="dsr-side-primary">{{ sidePrimary(g, side) }}</span>
                       </label>
-                      <span v-else class="dsr-side-sc">SC #{{ side.student_class_id }}</span>
+                      <span v-else class="dsr-side-primary">{{ sidePrimary(g, side) }}</span>
                       <span
                         v-if="side.has_live_lr"
                         class="dsr-lr-badge"
@@ -145,6 +145,7 @@
                         aria-label="此側掛有評量記錄"
                       >📝</span>
                     </div>
+                    <div v-if="sideTechId(side)" class="dsr-side-tech" aria-hidden="true">{{ sideTechId(side) }}</div>
                     <div class="dsr-side-body">
                       <div class="dsr-side-row">
                         <span class="dsr-side-label">老師</span>
@@ -234,10 +235,11 @@
                       class="dsr-detail-section"
                     >
                       <div class="dsr-detail-section-title">
-                        SC #{{ side.student_class_id }}
+                        {{ sidePrimary(g, side) }}
                         <span v-if="g._localKeeper === side.student_class_id" class="dsr-detail-keeper-tag">保留</span>
                         <span v-else-if="g._localKeeper" class="dsr-detail-cancel-tag">取消</span>
                       </div>
+                      <div v-if="sideTechId(side)" class="dsr-side-tech" aria-hidden="true">{{ sideTechId(side) }}</div>
                       <div class="dsr-detail-grid">
                         <div>
                           <div class="dsr-detail-label">老師</div>
@@ -334,15 +336,16 @@
                     @change="setDecision(g, side.student_class_id)"
                     class="dsr-radio"
                   />
-                  SC #{{ side.student_class_id }}
+                  <span class="dsr-side-primary">{{ sidePrimary(g, side) }}</span>
                 </label>
-                <span v-else>SC #{{ side.student_class_id }}</span>
+                <span v-else class="dsr-side-primary">{{ sidePrimary(g, side) }}</span>
                 <span
                   v-if="side.has_live_lr"
                   class="dsr-lr-badge"
                   title="此側掛有評量記錄"
                 >📝</span>
               </div>
+              <div v-if="sideTechId(side)" class="dsr-side-tech" aria-hidden="true">{{ sideTechId(side) }}</div>
               <div class="dsr-mcard-side-body">
                 <span>{{ side.teacher_name || '—' }}</span>
                 <span>· {{ side.subject_name || '—' }}</span>
@@ -391,10 +394,11 @@
               class="dsr-mcard-detail-section"
             >
               <div class="dsr-detail-section-title">
-                SC #{{ side.student_class_id }}
+                {{ sidePrimary(g, side) }}
                 <span v-if="g._localKeeper === side.student_class_id" class="dsr-detail-keeper-tag">保留</span>
                 <span v-else-if="g._localKeeper" class="dsr-detail-cancel-tag">取消</span>
               </div>
+              <div v-if="sideTechId(side)" class="dsr-side-tech" aria-hidden="true">{{ sideTechId(side) }}</div>
               <div class="dsr-mcard-detail-grid">
                 <div><span class="dsr-mcard-label">老師</span> {{ side.teacher_name || '—' }}</div>
                 <div><span class="dsr-mcard-label">科目</span> {{ side.subject_name || '—' }}</div>
@@ -448,6 +452,10 @@ import { branches } from '../lib/useBranches';
 import { useDuplicateReview, groupKey } from '../composables/useDuplicateReview';
 import { STATUS_LABELS, SESSION_STATUS_LABELS } from '../lib/duplicateReviewApi';
 import { parseTrustFocus, filterGroupsByTrustFocus } from '../lib/trustDecisionDisplay.js';
+import {
+  formatStudentClassDisplay,
+  formatStudentClassSideDisplays,
+} from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -557,6 +565,29 @@ function formatDate(s) {
     const d = new Date(s);
     return `${d.getMonth() + 1}/${d.getDate()}`;
   } catch { return s; }
+}
+
+/** Human-first labels for sides in a group (disambiguates without SC). */
+function sideDisplayMap(g) {
+  const sides = Array.isArray(g?.sides) ? g.sides : [];
+  const displays = formatStudentClassSideDisplays(sides);
+  const map = {};
+  sides.forEach((side, i) => {
+    const id = Number(side?.student_class_id) || 0;
+    if (id > 0) map[id] = displays[i];
+  });
+  return map;
+}
+
+function sidePrimary(g, side) {
+  const id = Number(side?.student_class_id) || 0;
+  const fromMap = sideDisplayMap(g)[id];
+  if (fromMap?.primary) return fromMap.primary;
+  return formatStudentClassDisplay(side).primary;
+}
+
+function sideTechId(side) {
+  return formatStudentClassDisplay(side).techId;
 }
 
 function tabCount(tabValue) {
@@ -865,7 +896,17 @@ onMounted(() => {
   height: 16px;
   cursor: pointer;
 }
-.dsr-side-sc { font-weight: 600; color: var(--text); }
+.dsr-side-primary {
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+.dsr-side-tech {
+  font-size: 11px;
+  color: var(--text-light);
+  margin: 2px 0 4px;
+  font-weight: 400;
+}
 .dsr-lr-badge {
   font-size: 14px;
   cursor: help;
