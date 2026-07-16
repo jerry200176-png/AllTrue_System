@@ -42,13 +42,15 @@ const labeledMessage = normalizeUniversalScheduleErrorMessage(
 
 assert.equal(
   labeledMessage,
-  '本月預排堂數：月結課程的 monthly_sessions 為必填，且須大於 0。',
-  'known validation fields should use user-facing labels'
+  '請填寫本月預排堂數，且須大於 0。',
+  'known validation fields should use user-facing labels without snake_case'
 );
 
 const fallbackMessage = normalizeUniversalScheduleErrorMessage({}, 'internal server error', 500);
 assert.equal(
   fallbackMessage,
-  '排課請求失敗 (HTTP 500) - internal server error',
-  'raw text should be used as fallback when structured payload is absent'
+  '排課沒有完成，請檢查學生、老師、日期與上課星期後再試一次。',
+  'engineer English / HTTP crumbs must not reach directors'
 );
+assert.ok(!fallbackMessage.includes('HTTP'));
+assert.ok(!labeledMessage.includes('monthly_sessions'));

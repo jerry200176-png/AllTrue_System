@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 排課失敗改人話（不再露出欄位名／HTTP）
+
+Fixed：新增／排課失敗時不再顯示 `monthly_sessions`、`HTTP 500` 等工程用語；改為「請填寫本月預排堂數」或「請檢查學生、老師、日期與上課星期」。主任可直接知道要改哪一項，不會把系統錯誤當成自己操作失敗而亂重試。
+
+開發備註：新增共用 `scheduleDisplay.js`（`formatScheduleErrorMessage`）；`universalSchedulerErrorMessage` 改為薄轉發。另加 `directorFacingIdLeak` 掃描，禁止 Vue 模板再寫 `課程 #{{`／`SC #{{`。
+
 ## 2026-07-16 — fix: 連假批次請假略過清單改學生＋科目（主任請假路徑）
 
 Fixed：連假批次請假完成後，略過清單不再寫「課程 #數字」；改顯示學生姓名與科目（加上日期與原因）。主任可直接知道哪一堂要改用單堂請假，不必對照內部編號。
