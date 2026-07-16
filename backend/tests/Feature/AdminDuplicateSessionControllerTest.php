@@ -133,7 +133,7 @@ class AdminDuplicateSessionControllerTest extends TestCase
                 'LoginName' => 'dup-teacher@test.com',
                 'Name' => '王老師',
                 'PSW' => 'secret',
-                'type' => 'teacher',
+                'type' => 'T',
                 'phone' => '0912000222',
             ]);
         }
