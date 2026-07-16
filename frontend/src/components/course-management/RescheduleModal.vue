@@ -2,7 +2,7 @@
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal course-modal" style="max-width: 420px;">
       <h3 class="modal-title">調課</h3>
-      <p class="modal-desc">將原本的課程改到新的日期時間</p>
+      <p class="modal-desc">{{ rescheduleDesc }}</p>
       <div v-if="sessionOptions.length === 0" class="form-group">
         <p class="hint">此課程無可調課堂次（請確認開課日與排課設定）。</p>
       </div>
@@ -32,7 +32,7 @@
           <hr style="border: none; border-top: 1px solid var(--border); margin: 12px 0;" />
           <div style="margin-bottom: 12px;">
             <button class="small ghost btn-makeup-query" @click="$emit('query-makeup')" :disabled="makeupLoading">
-              {{ makeupLoading ? '查詢中…' : '查詢可補課時段' }}
+              {{ makeupLoading ? '查詢中…' : makeupQueryLabel }}
             </button>
           </div>
           <div class="form-group">
@@ -62,6 +62,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
+import { MAKEUP_SLOT_QUERY_LABEL, RESCHEDULE_ACTION_DESC } from '../../lib/scheduleDisplay';
 
 const props = defineProps({
   show: Boolean,
@@ -74,6 +75,8 @@ const props = defineProps({
   computeEndTime: Function,
 });
 defineEmits(['close', 'submit', 'query-makeup']);
+const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;
+const rescheduleDesc = RESCHEDULE_ACTION_DESC;
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const computedEndTime = computed(() => props.computeEndTime?.(props.form?.new_start, props.form?.duration_hours) || '');
 </script>

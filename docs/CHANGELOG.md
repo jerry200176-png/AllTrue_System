@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 調課確認／成功改人話（跨行事曆與課程管理）
+
+Fixed：調課送出前不再寫「原堂改期／新堂排入／課程編修追溯」；改為「原本→改為」人話確認。成功提示改為「學生＋科目＋原時段→新時段」。撞課名單不再出現「#學生編號」。課程管理與行事曆共用同一套說明與「查詢老師可補課時段」用語。
+
+開發備註：擴充 `scheduleDisplay`（`formatRescheduleConfirmDialog`／`Success`／`ConflictStudents`／`humanizeRescheduleFailure`）；同步 CourseManagement／SmartCalendar／SessionEdit 三條調課路徑。未動 API。
+
 ## 2026-07-16 — fix: 排課失敗改人話（不再露出欄位名／HTTP）
 
 Fixed：新增／排課失敗時不再顯示 `monthly_sessions`、`HTTP 500` 等工程用語；改為「請填寫本月預排堂數」或「請檢查學生、老師、日期與上課星期」。主任可直接知道要改哪一項，不會把系統錯誤當成自己操作失敗而亂重試。

@@ -2,6 +2,12 @@ import { ref, computed } from 'vue';
 import { getPerSessionFee, getRateUnit } from '../../lib/coursePricing';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
 import { sessionViewModelFromEnsureProjected, sessionViewModelPatchFromApi } from '../../lib/classSessionsApi';
+import {
+  formatRescheduleSuccessMessage,
+  formatRescheduleConflictStudents,
+  humanizeRescheduleFailure,
+} from '../../lib/scheduleDisplay';
+import { getSubjectLabel } from '../../lib/constants';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -402,7 +408,7 @@ export function useSessionEditFlow({
         });
         if (!r1.ok) {
           const err = await r1.json().catch(() => ({}));
-          alert('調課失敗：' + (err.message || '無法寫入原堂次紀錄'));
+          alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入原堂次紀錄'));
           return;
         }
         const created = await r1.json();
@@ -415,7 +421,7 @@ export function useSessionEditFlow({
       });
       if (!r2.ok) {
         const err = await r2.json().catch(() => ({}));
-        alert('調課失敗：' + (err.message || '無法寫入新堂次'));
+        alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入新堂次'));
         return;
       }
       // FR-002/003: pass old_start_time so the backend can uniquely locate the
@@ -436,21 +442,30 @@ export function useSessionEditFlow({
           });
           if (!rescheduleRes.ok) {
             const err = await rescheduleRes.json().catch(() => ({}));
-            alert('調課失敗：' + (err.message || '找不到指定堂次，請確認日期與時間是否正確'));
+            alert('調課失敗：' + humanizeRescheduleFailure(err.message || '找不到指定堂次，請確認日期與時間是否正確'));
             return;
           }
         } catch (e) {
-          alert('調課失敗：' + (e?.message || '網路錯誤，請稍後再試'));
+          alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '網路錯誤，請稍後再試'));
           return;
         }
       }
 
       closeSessionEdit();
-      alert('調課完成');
+      alert(formatRescheduleSuccessMessage({
+        studentName: course.student_name || form.student_name,
+        subject: getSubjectLabel(form.subject) || form.subject,
+        originalDate: form.session_date,
+        originalStart: form.start_time,
+        originalEnd: form.end_time,
+        newDate: form.new_date,
+        newStart: normalizeTo30Min(form.new_start),
+        newEnd,
+      }));
       trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'session-edit' });
       await loadCourses();
     } catch (e) {
-      alert('調課失敗：' + (e?.message || '請稍後再試'));
+      alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '請稍後再試'));
     } finally {
       sessionEditSubmitting.value = false;
     }
@@ -528,10 +543,8 @@ export function useSessionEditFlow({
         let errMsg = json.message || res.statusText;
         if (res.status === 409 && Array.isArray(json.conflicts) && json.conflicts.length > 0) {
           const details = json.conflicts[0]?.overlap_details;
-          if (Array.isArray(details) && details.length > 0) {
-            const names = details.map((d) => d.student_name || `#${d.student_id}`).join('、');
-            errMsg += `\n衝突學生：${names}`;
-          }
+          const conflictLine = formatRescheduleConflictStudents(details);
+          if (conflictLine) errMsg = `${errMsg}\n${conflictLine}`;
         }
         alert('代課設定失敗：' + errMsg);
         return;
