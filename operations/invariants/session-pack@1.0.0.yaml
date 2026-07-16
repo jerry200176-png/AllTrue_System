@@ -1,0 +1,25 @@
+# Session invariant pack — Phase 1 registry
+pack_id: session
+version: 1.0.0
+lifecycle: active
+owner: platform-data
+depends_on: []
+
+invariants:
+  - id: invoice_unchanged
+    severity: critical
+    description: Invoice PaidAmount/Status unchanged for scoped invoices
+  - id: remaining_sessions_unchanged
+    severity: critical
+    description: StudentClass UsedSessions/RemainingSessions unchanged when catalog declares
+  - id: attendance_not_increased
+    severity: critical
+    description: No new attended/completed slots beyond desired state
+  - id: duplicate_slot_not_increased
+    severity: critical
+    description: No additional cross-SC duplicate attended/completed for same slot
+
+strategies:
+  - supersede-renewal
+  - duplicate-session
+  - forward-generation

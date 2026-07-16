@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — docs: POP Phase 1 foundation + contract I1 v2
+
+- Added：POP Architecture Freeze — ADR-POP-001～014、`operations/catalog.yaml`、policy/invariant v0、Engine 介面骨架、`scripts/pop-fitness-check.mjs`（FIT-001～003）
+- Changed：`CONTROL_PLANE_CONTRACT.md` contract-version 2 — I1 納入 POP Executor + deploy；K11 登記
+- 開發備註：Phase 1 read-only；無 production execute。Phase 2 = Approval API + DB migration。
+
 ## 2026-07-16 — docs: Measure 唯一下一步與 #173／Issues 分流
 
 - **Changed**：正式回報唯一下一步改為「自 2026-07-17 凍結 Trust 實驗面、收集有效 telemetry、至少一次真實主任無教練驗收」；#173 資料修正與 Issues 權限為分流。
