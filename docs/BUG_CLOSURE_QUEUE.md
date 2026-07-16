@@ -1,7 +1,9 @@
 # Bug Closure Queue
 
-> **權威狀態**：Production `GET /api/v1/bugs`（非本文件）。本文件為盤點快照 + 分類規則。
+> **權威狀態**：Production `GET /api/v1/bugs`（非本文件）。本文件為盤點快照 + 分類規則 + Closure Policy。
 > **最後盤點**：2026-07-16（Production API）
+>
+> **優先級**：有 `in_progress` / Reopened 的使用者問題時，**停止**行政結案與大量 Close。先處理現役 bug。
 
 ---
 
@@ -23,6 +25,24 @@ Resolved  ≠  Completed  ≠  Closed
 
 ---
 
+## Closure Policy（行政結案規則）
+
+**禁止**：一次關閉全部 Waiting Close（D 類）／一次大批 Close。
+
+| 規則 | 內容 |
+|------|------|
+| P1 | 有 Open / In Progress / 今日 Reopened → **暫停** Closure 批次 |
+| P2 | 僅處理 **D — Waiting Close**；A 類必須先完成 Reporter Verify（或回報者明確書面確認） |
+| P3 | 每批最多 **10** 筆；批次之間需重新拉 Production 狀態 |
+| P4 | 每筆 Close 必須有公開結案備註（白話：已上線多久、為何行政結案、若復發請重開） |
+| P5 | 優先順序：resolved 天數 ≥90 → ≥60 → ≥30；同天數先 super_admin 自報 |
+| P6 | 帳務／扣堂／跨約重疊家族若仍有關聯 `in_progress` → **跳過**該筆 |
+| P7 | Close 後更新本文件「今日真正 Closed」計數；不得只改 GitHub |
+
+**批次範本**：選 Top N（≤10）→ 逐筆核對 status 仍為 resolved → 公開留言 → `resolved → closed` → 記錄 ID 清單。
+
+---
+
 ## Dashboard 分桶（固定回報格式）
 
 | 桶 | 定義 | 對應 DB status / 子集 |
@@ -33,6 +53,14 @@ Resolved  ≠  Completed  ≠  Closed
 | **Waiting Verification** | resolved + 最後公開回覆要求回報者驗收（A 類） | resolved 子集 |
 | **Waiting Close** | resolved + 可行政結案（D 類：已 deploy 且 stale / 回報者已口頭確認） | resolved 子集 |
 | **Closed** | 真正結案 | `closed` |
+
+每輪另報 KPI：
+
+| KPI | 定義 |
+|-----|------|
+| **今日新增** | `created_at` 為今日 |
+| **今日重新開啟（Reopened）** | 今日出現 `resolved → in_progress`（或 closed → in_progress） |
+| **今日真正 Closed** | 今日出現 `→ closed` |
 
 **Resolved 不可視為完成。** Waiting Verification / Waiting Close 是 Resolved 的子分類，用於清理積壓。
 
