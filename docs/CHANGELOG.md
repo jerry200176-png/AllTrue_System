@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-16 — docs: 信任決策中心量測分母與樣本有效性（v3）
+
+- **Changed**：明確各 Outcome 分母（有效任務、到期應處理 Critical、actionable_at、bypass session）；樣本不足不得 Keep／Kill，滿 14 日仍不足則偏向關閉或縮小入口。
+- 開發備註：僅更新 `.cursor/plans/ops_trust_measure_iterate_2026-07-15.md` 與 Compare 模板；無產品功能新增。
+
 ## 2026-07-16 — fix: 信任決策中心量測口徑修正（Day0=7/17）
 
 - **Changed**：正式觀察改從 7/17 完整營業日起算；決策卡曝光改為真正進畫面才計算、同日同人去重；合法休眠保留不再把分數卡死無法變綠；遙測不再帶可連結學生編號。
