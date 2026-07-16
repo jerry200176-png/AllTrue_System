@@ -7,6 +7,29 @@ use Illuminate\Support\Facades\Log;
 
 class DuplicateSessionService
 {
+    private function isCampusAllowed(array $campusIds): bool
+    {
+        return !empty($campusIds);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int,object>
+     */
+    private function duplicateRowsForGroup(int $studentId, string $date, string $time, array $campusIds = [])
+    {
+        $query = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where('sc.StudentID', $studentId)
+            ->where('cs.SessionDate', $date)
+            ->whereRaw('SUBSTRING(cs.StartTime,1,5) = ?', [$time])
+            ->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+            ->select('cs.id', 'cs.StudentClassID', 'cs.Status', 'cs.Note')
+            ->when($this->isCampusAllowed($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds));
+
+        return $query->get();
+    }
+
     /**
      * Encode a group composite key (student_id:date:time) into an id string.
      * Uses base64url-safe encoding.
@@ -36,7 +59,7 @@ class DuplicateSessionService
      *
      * @return list<array{student_id:int, date:string, hm:string, rows:list<object>}>
      */
-    public function crossScDuplicateGroups(): array
+    public function crossScDuplicateGroups(array $campusIds = []): array
     {
         $rows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
@@ -44,6 +67,7 @@ class DuplicateSessionService
             ->leftJoin('User as u', 'u.ID', '=', 'sc.TeacherID')
             ->leftJoin('Subject as sub', 'sub.id', '=', 'sc.SubjectID')
             ->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
+            ->when($this->isCampusAllowed($campusIds), fn ($q) => $q->whereIn('s.CampusID', $campusIds))
             ->selectRaw('
                 cs.id, cs.StudentClassID, cs.SessionDate,
                 SUBSTRING(cs.StartTime,1,5) as hm,
@@ -104,9 +128,9 @@ class DuplicateSessionService
      *
      * @return array{groups: list<array>, total: int}
      */
-    public function p2ReviewGroups(): array
+    public function p2ReviewGroups(array $campusIds = []): array
     {
-        $groups = $this->crossScDuplicateGroups();
+        $groups = $this->crossScDuplicateGroups($campusIds);
         $p2Groups = [];
 
         foreach ($groups as $g) {
@@ -213,36 +237,37 @@ class DuplicateSessionService
         string $date,
         string $time,
         int $keepStudentClassId,
-        ?int $executedBy
+        ?int $executedBy,
+        array $campusIds = []
     ): array {
-        $rows = DB::table('ClassSession as cs')
-            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
-            ->where('sc.StudentID', $studentId)
-            ->where('cs.SessionDate', $date)
-            ->whereRaw('SUBSTRING(cs.StartTime,1,5) = ?', [$time])
-            ->whereRaw("LOWER(cs.Status) IN ('attended','completed')")
-            ->select('cs.id', 'cs.StudentClassID', 'cs.Status')
-            ->get();
+        $rows = $this->duplicateRowsForGroup($studentId, $date, $time, $campusIds);
 
         if ($rows->isEmpty()) {
             throw new \RuntimeException('找不到對應的重複群組');
         }
 
+        $keepExists = $rows->contains(fn ($row) => (int) $row->StudentClassID === $keepStudentClassId);
+        if (!$keepExists) {
+            throw new \InvalidArgumentException('keep_student_class_id 不在此重複群組內');
+        }
+
         $cancelledCount = 0;
         $keptSessionIds = [];
 
-        foreach ($rows as $row) {
-            if ((int) $row->StudentClassID === $keepStudentClassId) {
-                $keptSessionIds[] = (int) $row->id;
-                continue;
+        DB::transaction(function () use ($rows, $keepStudentClassId, &$cancelledCount, &$keptSessionIds) {
+            foreach ($rows as $row) {
+                if ((int) $row->StudentClassID === $keepStudentClassId) {
+                    $keptSessionIds[] = (int) $row->id;
+                    continue;
+                }
+                DB::table('ClassSession')->where('id', $row->id)->update([
+                    'Status' => 'cancelled',
+                    'Note' => trim(((string) ($row->Note ?? '')) . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepStudentClassId),
+                    'updated_at' => now(),
+                ]);
+                $cancelledCount++;
             }
-            DB::table('ClassSession')->where('id', $row->id)->update([
-                'Status' => 'cancelled',
-                'Note' => trim(($row->Note ?? '') . ' 資料修復 #1130 — 主任審核決策保留 SC' . $keepStudentClassId),
-                'updated_at' => now(),
-            ]);
-            $cancelledCount++;
-        }
+        });
 
         Log::info('duplicate_session_executed', [
             'student_id' => $studentId,
@@ -270,16 +295,14 @@ class DuplicateSessionService
         string $time,
         int $keepStudentClassId,
         ?string $reason,
-        ?int $userId
+        ?int $userId,
+        array $campusIds = []
     ): array {
-        // 1. Record decision
+        $result = $this->executeRepair(
+            $studentId, $date, $time, $keepStudentClassId, $userId, $campusIds
+        );
         $decision = $this->recordDecision(
             $studentId, $date, $time, $keepStudentClassId, $reason, $userId
-        );
-
-        // 2. Execute repair
-        $result = $this->executeRepair(
-            $studentId, $date, $time, $keepStudentClassId, $userId
         );
 
         return [
