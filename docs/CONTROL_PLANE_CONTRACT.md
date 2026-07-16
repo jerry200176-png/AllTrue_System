@@ -1,9 +1,10 @@
 # Control Plane Contract
 
-> **contract-version:** 1  
+> **contract-version:** 2  
 > **Single runtime spec for AllTrue production operations.**  
 > **Supersedes:** all other docs on conflict. See [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md).  
-> **Audit:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md)
+> **Audit:** [`CONTROL_PLANE_AUDIT.md`](CONTROL_PLANE_AUDIT.md)  
+> **POP (Production Operations Platform):** [`docs/pop/adr/README.md`](pop/adr/README.md) — Architecture Freeze 2026-07-16. Amends I1 per [ADR-POP-010](pop/adr/ADR-POP-010-contract-i1.md).
 
 ---
 
@@ -12,7 +13,7 @@
 ```
 SIGNAL → INFERENCE → STATE → POLICY → FINAL_ACTION → EXECUTION
   │         │          │        │            │              │
-observe   classify   label   optimize    decide what    deploy.yml
+observe   classify   label   optimize    decide what    POP Executor + deploy.yml
 ```
 
 | Stage | Authority file | Role |
@@ -22,7 +23,7 @@ observe   classify   label   optimize    decide what    deploy.yml
 | State | [`INCIDENT_STATE_MACHINE.md`](INCIDENT_STATE_MACHINE.md) | Transition rules |
 | Policy | [`INCIDENT_POLICY_ENGINE.md`](INCIDENT_POLICY_ENGINE.md) | STATE + CONTEXT → FINAL_ACTION |
 | Loop | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | Orchestration |
-| Execution | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | **Only** production change executor |
+| Execution | POP Executor + [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | **Approved** production operations (see I1) |
 
 **Registry (no runtime logic):** [`INDEX.md`](INDEX.md)
 
@@ -32,10 +33,10 @@ observe   classify   label   optimize    decide what    deploy.yml
 
 | ID | Invariant |
 |----|-----------|
-| **I1** | **Only `deploy.yml` may execute production changes** (SSH deploy, rollback redeploy). Runbooks describe steps; they do not execute. |
+| **I1** | **Only POP Executor and `deploy.yml` may execute production changes.** POP Executor runs **approved** catalog operations (repairs, backfills, reconciles, etc.) via self-hosted runner or claimed token. `deploy.yml` runs **`application-deploy`** (code, migration, frontend). One-off SSH repair workflows are **deprecated** (K11). Runbooks describe steps; they do not execute. |
 | **I2** | **INDEX is registry only** — no decision logic, no deploy behavior description, no authority. |
 | **I3** | **INCIDENT docs define ALL runtime decisions** — inference, state, policy, FINAL_ACTION. No other doc may decide incident course. |
-| **I4** | **Policy engine may override state→action mapping but NOT the execution layer** — policy selects FINAL_ACTION; only `deploy.yml` runs it. |
+| **I4** | **INCIDENT policy selects FINAL_ACTION; POP policy gates operation approval** — incident policy does not bypass POP approval for data operations. Execution layer runs only approved POP operations or `deploy.yml` deploy. |
 | **I5** | **No document may introduce a new authority layer** — no ADR, runbook, audit, or constraint doc becomes decision authority. |
 
 ---
@@ -54,13 +55,16 @@ These files **together** are the decision system (I3):
 
 ---
 
-## Execution authority (exactly one file)
+## Execution authority (POP + deploy)
 
-| File | Role |
-|------|------|
-| [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | **Sole** production execution authority (I1) |
+| Authority | Role |
+|-----------|------|
+| **POP Executor** | Approved production operations per [`operations/catalog.yaml`](../operations/catalog.yaml) — repairs, backfills, reconciles, mitigations |
+| [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | **`application-deploy`** — code deploy, migration, frontend build |
 
-No runbook, policy, incident doc, or INDEX entry may override, bypass, or replace `deploy.yml` as execution path.
+No runbook, incident doc, or INDEX entry may override, bypass, or replace these paths. Legacy case-specific repair workflows (e.g. `173-supersede-repair.yml`) are **deprecated** — see K11.
+
+**POP governance:** [`docs/pop/adr/README.md`](pop/adr/README.md). Approval SoT is database (ADR-POP-002), not Git history.
 
 ---
 

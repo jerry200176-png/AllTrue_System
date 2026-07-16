@@ -1,0 +1,39 @@
+# POP default policies — Phase 1 (config only, not evaluated in production yet)
+version: 1
+lifecycle: active
+
+rules:
+  - id: critical-dual-approval
+    match:
+      risk: critical
+    require_approvals: [director, super_admin]
+    maintenance_window: "Sat 22:00-02:00"
+    auto_rollback_on_failed_verify: true
+    retries: 0
+    concurrency:
+      key: global
+      max_parallel: 1
+
+  - id: session-repair-standard
+    match:
+      domain: session
+      risk: high
+    require_approvals: [director]
+    retries: 1
+    backoff: "exponential:2,max=10m"
+    concurrency:
+      key: "student:{target.student_id}"
+      max_parallel: 1
+
+  - id: night-deny
+    match:
+      time_outside_maintenance: true
+      risk: [high, critical]
+    deny_schedule: true
+    reason: "Outside maintenance window"
+
+  - id: deploy-auto
+    match:
+      strategy: application-deploy
+    require_approvals: []
+    approval_required: false

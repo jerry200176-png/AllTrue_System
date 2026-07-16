@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "POP Execution Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "operation_id",
+    "execution_id",
+    "strategy",
+    "result"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "operation_id": { "type": "string", "format": "uuid" },
+    "execution_id": { "type": "string", "format": "uuid" },
+    "strategy": { "type": "string" },
+    "target": { "type": "object" },
+    "actor": { "type": "string" },
+    "approver": { "type": "string" },
+    "approval_reference": { "type": "string" },
+    "commit_sha": { "type": "string" },
+    "snapshot_id": { "type": "string" },
+    "backup_reference": { "type": "string" },
+    "phases": { "type": "object" },
+    "invariants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "passed"],
+        "properties": {
+          "id": { "type": "string" },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "verification": { "type": "object" },
+    "rollback_reference": { "type": ["string", "null"] },
+    "duration_ms": { "type": "integer" },
+    "result": {
+      "enum": ["succeeded", "failed", "verification_failed", "rolled_back", "cancelled"]
+    },
+    "audit_reference": { "type": "string" },
+    "failure_reason": { "type": ["string", "null"] },
+    "correlation_id": { "type": "string" },
+    "version_pins": {
+      "type": "object",
+      "properties": {
+        "strategy": { "type": "string" },
+        "policy": { "type": "string" },
+        "catalog": { "type": "string" },
+        "engine": { "type": "string" },
+        "invariant_packs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
