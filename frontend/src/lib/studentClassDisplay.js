@@ -122,7 +122,53 @@ export function formatStudentClassSideDisplays(sides) {
   });
 }
 
-/** True if primary label depends on understanding SC — forbidden for director decision UI. */
+/** True if primary label depends on understanding internal IDs — forbidden for director decision UI. */
 export function primaryLeaksInternalId(primary) {
-  return /\bSC\s*#?\d+/i.test(String(primary || ''));
+  const s = String(primary || '');
+  return (
+    /\bSC\s*#?\d+/i.test(s)
+    || /課程\s*#\s*\d+/i.test(s)
+    || /COURSE-\d+/i.test(s)
+    || /新課程\s*#\s*\d+/i.test(s)
+  );
+}
+
+/**
+ * Tuition settle dialog — secondary line under student/subject.
+ * Display-only; does not invent API fields.
+ */
+export function formatTuitionSettleSummary(row) {
+  const remaining = row?.remaining_sessions;
+  const hasRemaining = remaining != null && remaining !== '';
+  const openDate = formatStudentClassOpenDate(row?.start_date || row?.StartDate);
+  const parts = [];
+  if (openDate) parts.push(`開課 ${openDate}`);
+  if (hasRemaining) parts.push(`剩餘 ${Number(remaining)} 堂`);
+  const primary = parts.length ? parts.join(' · ') : '即將結案的舊課程';
+  const scId = Number(row?.id || row?.student_class_id || 0) || 0;
+  return {
+    primary,
+    techId: scId > 0 ? `SC #${scId}` : '',
+  };
+}
+
+/**
+ * "Has newer course" badge title / settle dialog hint.
+ * Uses open date + remaining; never leads with course id.
+ */
+export function formatTuitionNewerCourseHint(row) {
+  const openDate = formatStudentClassOpenDate(row?.newer_course_start_date);
+  const rem = row?.newer_course_remaining;
+  const hasRem = rem != null && rem !== '';
+  const parts = [];
+  if (openDate) parts.push(`開課 ${openDate}`);
+  if (hasRem) parts.push(`剩 ${Number(rem)} 堂`);
+  const detail = parts.length ? `（${parts.join('，')}）` : '';
+  const primary = `已有後續同科目課程${detail}`;
+  const newerId = Number(row?.newer_course_id || 0) || 0;
+  return {
+    primary,
+    shortBadge: '已有新課程',
+    techId: newerId > 0 ? `SC #${newerId}` : '',
+  };
 }

@@ -23,7 +23,7 @@
 | 優先 | 識別符 | 檔案 | 使用者可見文案 | 角色 | ROI 建議 |
 |------|--------|------|----------------|------|----------|
 | **P0** | `SC #` / StudentClassID | DuplicateSessionReviewPage | ~~主標籤 SC #~~ → **本輪已修** | 主任 | Done |
-| P1 | `課程 #id` | TuitionCollectionPage.vue（結清確認） | `課程 #{{ settleTarget.id }}`、`新課程 #{{ newer_course_id }}` | 主任 | 改為科目·學生·開課日 |
+| **P1 Done** | `課程 #id` | TuitionCollectionPage.vue（結清確認） | ~~課程 # / 新課程 #~~ → 開課日·剩餘堂數／後續同科目（UXID-002） | 主任 | Done |
 | P1 | `課程 #id` | CourseManagement.vue / StudentsList.vue | toast／alert「新批次課程 #…」 | 主任 | 改為科目 + 學生名 |
 | P1 | `COURSE-000xxx` | CourseManagement.vue、AccountingLedgerModal.vue | 帳單副標 fallback `COURSE-${student_class_id}` | 主任 | 有 `course_ref` 時優先；fallback 改科目 |
 | P1 | `帳單 #invoice_id` / `Payment #` | AccountingLedgerModal.vue | 明細 small / detail | 主任 | 改收據號碼／日期／金額 |
