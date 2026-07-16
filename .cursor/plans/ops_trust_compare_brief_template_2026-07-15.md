@@ -1,7 +1,8 @@
 # E-OPS-TRUST Compare Brief（Day 7–14）v3
 
 > 填寫日：________　分校：________　參與主任：________  
-> 正式觀察起點：**2026-07-17**（7/16 僅 partial-day，不當 Day0）  
+> 正式觀察起點：**2026-07-17**（7/16 全日 partial-day／sanity-only，**排除**；勿寫成「作廢 7/17 再重設」）  
+> CEO／Compare 回報禁止學生姓名；個案只寫 in-app #。  
 > CTR 僅診斷。Dormant count 下降不是成功條件。  
 > 禁止用「CI／部署／Score 漂亮／滿意度分數」當成功證據。
 
