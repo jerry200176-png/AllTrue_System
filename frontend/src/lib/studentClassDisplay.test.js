@@ -9,6 +9,13 @@ import {
   formatStudentClassSideDisplays,
   formatTuitionSettleSummary,
   formatTuitionNewerCourseHint,
+  formatDirectorPersonName,
+  formatRenewSuccessMessage,
+  formatDuplicatePurchaseHint,
+  formatLedgerCourseLabel,
+  formatLedgerInvoiceLabel,
+  formatLedgerReceiptBillLine,
+  formatLedgerAnomalyDetail,
   primaryLeaksInternalId,
 } from './studentClassDisplay.js';
 
@@ -105,5 +112,38 @@ assert.equal(newer.techId, 'SC #999');
 // Director settle decision without course id:
 // 「有後續同科目、開課較新」→ 可安心結案舊課
 assert.ok(newer.primary.includes('開課 7/4') && !newer.primary.includes('#'));
+
+// --- User Task: 續報完成確認 ---
+const renewMsg = formatRenewSuccessMessage({
+  kind: 'monthly',
+  studentName: '王小明',
+  subject: '英文',
+});
+assert.equal(renewMsg, '王小明的英文已建立新一期。舊期已結算，請到新一期帳單核帳。');
+assert.equal(primaryLeaksInternalId(renewMsg), false);
+
+const purchaseMsg = formatRenewSuccessMessage({
+  kind: 'purchase',
+  studentName: '王小明',
+  subject: '數學',
+  sessions: 8,
+  firstDate: '2026-08-01',
+  lastDate: '2026-09-20',
+});
+assert.ok(purchaseMsg.includes('加購 8 堂'));
+assert.ok(purchaseMsg.includes('2026-08-01'));
+assert.equal(primaryLeaksInternalId(purchaseMsg), false);
+
+assert.ok(!formatDuplicatePurchaseHint({ subject: '理化' }).includes('#'));
+assert.equal(formatDirectorPersonName({}), '名單上的學生');
+assert.equal(formatDirectorPersonName({ student_name: '高瑞璞' }), '高瑞璞');
+
+// --- User Task: 收費／看帳本 ---
+assert.equal(formatLedgerCourseLabel({ course_ref: 'COURSE-000382' }), '本課程');
+assert.equal(formatLedgerCourseLabel({ course_ref: '高中英文｜王老師' }), '高中英文｜王老師');
+assert.equal(formatLedgerInvoiceLabel({ invoice_no: 'INV-1' }), 'INV-1');
+assert.equal(formatLedgerInvoiceLabel({ id: 9 }), '帳單');
+assert.equal(formatLedgerReceiptBillLine({ invoice_id: 1, course_ref: 'COURSE-1' }), '已套用帳單 · 本課程');
+assert.ok(!formatLedgerAnomalyDetail({ payment_id: 3, invoice_id: 1, report_id: 2 }).includes('Payment'));
 
 console.log('studentClassDisplay.test.js: all assertions passed');

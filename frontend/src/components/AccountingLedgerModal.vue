@@ -84,8 +84,8 @@
                 <tbody>
                   <tr v-for="inv in payload.invoices" :key="inv.id">
                     <td>
-                      <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
-                      <small>{{ inv.course_ref || `COURSE-${inv.student_class_id}` }} · {{ formatPeriod(inv.billing_period) }}</small>
+                      <strong>{{ formatLedgerInvoiceLabel(inv) }}</strong>
+                      <small>{{ formatLedgerCourseLabel(inv) }} · {{ formatPeriod(inv.billing_period) }}</small>
                     </td>
                     <td>{{ inv.due_date || '—' }}</td>
                     <td>{{ formatCurrency(inv.total_amount) }}</td>
@@ -140,7 +140,7 @@
                 <span>{{ paymentMethodLabel(r.payment_method) }}</span>
                 <span>{{ formatCurrency(r.amount) }}</span>
                 <span :class="['ledger-chip', `status-${r.status}`]">{{ reportStatusLabel(r.status) }}</span>
-                <small>帳單 #{{ r.invoice_id || '未套用' }} · {{ r.course_ref || `COURSE-${String(r.student_class_id || '—').padStart(6, '0')}` }}</small>
+                <small>{{ formatLedgerReceiptBillLine(r) }}</small>
               </div>
             </div>
           </section>
@@ -152,6 +152,12 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import {
+  formatLedgerCourseLabel,
+  formatLedgerInvoiceLabel,
+  formatLedgerReceiptBillLine,
+  formatLedgerAnomalyDetail,
+} from '../lib/studentClassDisplay.js';
 
 const props = defineProps({ show: Boolean, studentClassId: [Number, String], reportId: [Number, String], branchId: [Number, String] });
 
@@ -210,7 +216,7 @@ const ledgerExceptions = computed(() => {
       key: `a-${idx}-${a.code}-${a.report_id || 'na'}-${a.payment_id || 'na'}`,
       title: anomalyLabel(a.code),
       message: a.message,
-      detail: [a.invoice_id ? `帳單 #${a.invoice_id}` : '', a.report_id ? `收據 #${a.report_id}` : '', a.payment_id ? `Payment #${a.payment_id}` : ''].filter(Boolean).join(' · '),
+      detail: formatLedgerAnomalyDetail(a),
       report_id: a.report_id || null,
       can_void: a.action?.type === 'void_report',
     });
@@ -222,7 +228,7 @@ const ledgerExceptions = computed(() => {
         key: `p-${p.id}`,
         title: '溢收/疑似重複收款',
         message: `${p.receipt_no || p.payment_no || '未編號收款'} 有 ${formatCurrency(p.unapplied_amount)} 未套用到帳單`,
-        detail: `${inv.invoice_no || `Invoice #${inv.id}`} · ${p.paid_at || '未記錄日期'}`,
+        detail: `${formatLedgerInvoiceLabel(inv)} · ${p.paid_at || '未記錄日期'}`,
         report_id: p.report_id || null,
         can_void: !!p.report_id && !p.is_void,
       });

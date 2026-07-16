@@ -689,6 +689,7 @@ import { supabase } from '../supabase';
 import { GRADES, SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { getPerSessionFee } from '../lib/coursePricing';
+import { formatRenewSuccessMessage } from '../lib/studentClassDisplay.js';
 import { fetchAllPages } from '../lib/pagedFetchAll';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
@@ -2385,10 +2386,15 @@ const submitAddSessions = async () => {
       await loadStudentCourses(selectedStudent.value.id);
     }
     const newCourse = json?.new_course || {};
-    const sessionRange = newCourse.first_session_date && newCourse.last_session_date
-      ? `\n上課日期：${newCourse.first_session_date} 至 ${newCourse.last_session_date}`
-      : '';
-    alert(`已建立加購批次課程 #${newCourse.id || '—'}，共 ${Number(newCourse.created_sessions || 0)} 堂。${sessionRange}\n請在此學生的新批次課程詳情查看上課日期，原課程不會追加堂次。`);
+    const studentName = selectedStudent.value?.name || '';
+    alert(formatRenewSuccessMessage({
+      kind: 'purchase',
+      studentName,
+      subject: selectedCourse.value?.subject_name || selectedCourse.value?.subject || '',
+      sessions: newCourse.created_sessions,
+      firstDate: newCourse.first_session_date || '',
+      lastDate: newCourse.last_session_date || '',
+    }));
   } catch (e) {
     alert('操作失敗：' + (e?.message || '請稍後再試'));
   }
@@ -2452,7 +2458,11 @@ const submitRenewMonthly = async (endDate) => {
       return;
     }
     showRenewMonthlyModal.value = false;
-    alert(`已建立月結新一期課程 #${json?.new_course?.id || '—'}，舊期已結算。`);
+    alert(formatRenewSuccessMessage({
+      kind: 'monthly',
+      studentName: selectedStudent.value?.name || students.value.find((s) => s.id === course.student_id)?.name || '',
+      subject: course?.subject_name || course?.subject || '',
+    }));
     await loadAllStudentCourses();
   } catch (e) {
     alert('續約失敗：' + (e?.message || '請稍後再試'));

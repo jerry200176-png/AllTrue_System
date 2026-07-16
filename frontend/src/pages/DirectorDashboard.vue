@@ -64,7 +64,7 @@
                 <ul v-if="item.has_drilldown && trustPeople(item).length" class="ops-decision__people">
                   <li v-for="p in trustPeople(item)" :key="`${item.key}-${p.student_class_id}`">
                     <button type="button" class="ops-person" @click="handleTrustPerson(item, p)">
-                      <span class="ops-person__who">{{ p.student_name || ('學生 #' + p.student_id) }}</span>
+                      <span class="ops-person__who">{{ formatDirectorPersonName(p) }}</span>
                       <span class="ops-person__meta">
                         剩 {{ p.remaining_sessions }} 堂
                         <template v-if="p.approx_amount"> · 約 NT${{ formatTrustAmount(p.approx_amount) }}</template>
@@ -708,6 +708,7 @@ import {
   trustPeopleSummary,
   trustDecisionTitle,
 } from '../lib/trustDecisionDisplay.js';
+import { formatDirectorPersonName } from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
   branchId: [String, Number],
