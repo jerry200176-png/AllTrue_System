@@ -43,13 +43,20 @@ class BusinessDigestService
     /**
      * Decision Center: one Trust Score + only today's actionable decisions.
      *
+     * Scoring rules (Measure Phase):
+     * - Campus-scoped only — not cross-campus comparable.
+     * - Critical risks use HARD CAPS (cannot be diluted by other greens).
+     * - Dormant is a retention_hold (valid business state), soft penalty only.
+     *
      * @param array<string,mixed> $m
-     * @return array{score:int,max:int,status:string,headline:string,decisions:list<array<string,mixed>>,policy_notes:list<string>}
+     * @return array<string,mixed>
      */
     public function decisionCenter(array $m): array
     {
-        $score = 100;
+        $campusId = isset($m['campus_id']) ? (int) $m['campus_id'] : null;
         $decisions = [];
+        $hardCaps = [];
+        $softPenalty = 0;
 
         $stranded = (int) ($m['revenue']['stranded_sessions'] ?? 0);
         $strandedAmt = (float) ($m['revenue']['stranded_amount'] ?? 0);
@@ -60,26 +67,32 @@ class BusinessDigestService
         $dormantNtd = (int) ($m['retention']['dormant_prepaid_recoverable_ntd'] ?? 0);
 
         if ($stranded > 0) {
-            $score -= min(40, 15 + (int) floor($stranded / 2));
+            $people = $this->strandedPeople($campusId, 20);
+            $hardCaps[] = ['key' => 'stranded_paid', 'max_score' => 45, 'reason' => 'critical_not_dilutable'];
             $decisions[] = [
                 'key' => 'stranded_paid',
                 'severity' => 'critical',
+                'risk_kind' => 'system_fault',
                 'title' => "{$stranded} 堂已付還沒排進未來課表",
                 'why' => '家長已付但行事曆看不到課，客訴風險最高。',
-                'next_step' => '到課程管理補時段；暫時不上課就聯繫休眠（勿自動排課）。',
-                'action_label' => '去處理排課',
+                'next_step' => '從下方名單選人：補固定時段；暫時不上課就聯繫休眠（勿自動排課）。',
+                'action_label' => '打開名單處理',
                 'target' => 'course-mgmt',
                 'owner' => 'director',
                 'one_click_resolve' => false,
+                'has_drilldown' => true,
                 'detail' => $strandedAmt > 0 ? ('約 NT$' . number_format((int) round($strandedAmt))) : null,
+                'people' => $people,
+                'people_total' => count($people),
             ];
         }
 
         if ($next7 === 0) {
-            $score -= 25;
+            $hardCaps[] = ['key' => 'calendar_empty_week', 'max_score' => 40, 'reason' => 'critical_not_dilutable'];
             $decisions[] = [
                 'key' => 'calendar_empty_week',
                 'severity' => 'critical',
+                'risk_kind' => 'system_fault',
                 'title' => '未來 7 天完全沒有課表',
                 'why' => '師長會以為本週沒課，也可能是向前產生停擺。',
                 'next_step' => '看行事曆確認後，回課程管理檢查缺固定上課日的合約。',
@@ -87,13 +100,17 @@ class BusinessDigestService
                 'target' => 'calendar',
                 'owner' => 'director',
                 'one_click_resolve' => false,
+                'has_drilldown' => false,
                 'detail' => null,
+                'people' => [],
+                'people_total' => 0,
             ];
         } elseif ($dup > 0) {
-            $score -= min(15, 5 + $dup);
+            $softPenalty += min(15, 5 + $dup);
             $decisions[] = [
                 'key' => 'calendar_duplicate',
                 'severity' => 'warning',
+                'risk_kind' => 'data_quality',
                 'title' => "偵測到 {$dup} 組跨約重複堂",
                 'why' => '同學生同時段可能兩張卡，點名/評量會亂。',
                 'next_step' => '打開行事曆對照本週，整理舊約殘留或重複堂。',
@@ -101,15 +118,19 @@ class BusinessDigestService
                 'target' => 'calendar',
                 'owner' => 'director',
                 'one_click_resolve' => false,
+                'has_drilldown' => false,
                 'detail' => null,
+                'people' => [],
+                'people_total' => 0,
             ];
         }
 
         if ($divergent > 0) {
-            $score -= min(20, 8 + $divergent);
+            $softPenalty += min(20, 8 + $divergent);
             $decisions[] = [
                 'key' => 'ledger_divergent',
                 'severity' => 'warning',
+                'risk_kind' => 'data_quality',
                 'title' => "{$divergent} 筆課程剩餘堂數對不起來",
                 'why' => '家長問剩幾堂時系統可能講錯。',
                 'next_step' => '到課程管理核對堂數；改帳走核准（不作廢自助）。',
@@ -117,43 +138,180 @@ class BusinessDigestService
                 'target' => 'course-mgmt',
                 'owner' => 'director',
                 'one_click_resolve' => false,
+                'has_drilldown' => false,
                 'detail' => null,
+                'people' => [],
+                'people_total' => 0,
             ];
         }
 
         if ($dormant > 0) {
-            $score -= min(15, 5 + $dormant);
+            // Soft only — dormant is legitimate hold, not a system crash signal.
+            $softPenalty += min(10, 3 + (int) floor($dormant / 3));
+            $people = $this->dormantPeople($campusId, 20);
             $decisions[] = [
                 'key' => 'dormant_hold',
                 'severity' => 'warning',
+                'risk_kind' => 'retention_hold',
                 'title' => "{$dormant} 位已付休眠要聯繫",
-                'why' => '保留資格不自動排課；久不聯繫會成客訴/呆帳。',
-                'next_step' => '在課程管理找長沒排課但仍有餘額者，今天連絡方向。',
-                'action_label' => '去聯繫名單',
+                'why' => '這是保留資格（合法），不是系統故障；但久不聯繫會成客訴／呆帳。',
+                'next_step' => '從下方名單逐一連絡：恢復上課、繼續暫停、或討論結案方向（勿自動排課）。',
+                'action_label' => '打開聯繫名單',
                 'target' => 'course-mgmt',
                 'owner' => 'director',
                 'one_click_resolve' => false,
+                'has_drilldown' => true,
                 'detail' => $dormantNtd > 0 ? ('約可回收 NT$' . number_format($dormantNtd)) : null,
+                'people' => $people,
+                'people_total' => count($people),
             ];
         }
 
+        $score = 100 - $softPenalty;
+        foreach ($hardCaps as $cap) {
+            $score = min($score, (int) $cap['max_score']);
+        }
         $score = max(0, min(100, $score));
-        $status = $score >= 90 ? 'green' : ($score >= 70 ? 'yellow' : 'red');
+        $hasCritical = count($hardCaps) > 0;
+        if ($hasCritical) {
+            $status = 'red';
+        } elseif (count($decisions) > 0) {
+            // Actionable warnings (incl. dormant hold) must not read as all-clear green.
+            $status = $score >= 70 ? 'yellow' : 'red';
+        } else {
+            $status = 'green';
+        }
+        $criticalCount = count(array_filter($decisions, fn ($d) => $d['severity'] === 'critical'));
+        $warningCount = count($decisions) - $criticalCount;
         $headline = count($decisions) === 0
             ? '今天課表與剩課看起來可信，先處理下方每日待辦即可。'
-            : ('今天有 ' . count($decisions) . ' 件信任事項要先處理（分數越低越急）。');
+            : ($hasCritical
+                ? ('今天有 ' . $criticalCount . ' 件 Critical 必須先處理（分數已被硬門檻封頂）。')
+                : ('今天有 ' . count($decisions) . ' 件信任事項要先處理。'));
 
         return [
             'score' => $score,
             'max' => 100,
             'status' => $status,
             'headline' => $headline,
+            'critical_count' => $criticalCount,
+            'warning_count' => $warningCount,
             'decisions' => $decisions,
+            'score_rules' => [
+                'campus_scoped' => true,
+                'cross_campus_comparable' => false,
+                'critical_uses_hard_cap' => true,
+                'hard_caps' => $hardCaps,
+                'soft_penalty' => $softPenalty,
+                'dormant_is_retention_hold' => true,
+            ],
             'policy_notes' => [
                 '歷史帳單數字不改；只保證往後續期正確（完整稽核保留）。',
                 '催繳仍由主任人工處理，系統不自動傳訊息給家長。',
+                '休眠保留是合法狀態，不會單獨把分數刷成系統崩潰；但仍需人工聯繫。',
+                '本分校分數不可與其他分校直接比較（規模不同）。',
             ],
         ];
+    }
+
+    /**
+     * Stranded prepaid courses for drill-down (no phone / email).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function strandedPeople(?int $campusId, int $limit = 20): array
+    {
+        $q = DB::table('StudentClass as sc')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->where('sc.ScheduleMode', 'count')
+            ->where('sc.RemainingSessions', '>', 0)
+            ->whereNotExists(function ($e) {
+                $e->select(DB::raw(1))->from('ClassSession as cs')
+                    ->whereColumn('cs.StudentClassID', 'sc.ID')
+                    ->whereRaw('cs.SessionDate >= CURDATE()')
+                    ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
+            })
+            ->orderByDesc('sc.RemainingSessions')
+            ->limit(max(1, min(50, $limit)))
+            ->select([
+                'sc.ID as student_class_id',
+                'sc.StudentID as student_id',
+                's.name as student_name',
+                'sc.SubjectID as subject_id',
+                'sc.RemainingSessions as remaining_sessions',
+                'sc.Rate as rate',
+            ]);
+        if ($campusId !== null && $campusId > 0) {
+            $q->where('s.CampusID', $campusId);
+        }
+
+        return $q->get()->map(function ($r) {
+            $remaining = (int) $r->remaining_sessions;
+            $rate = (float) ($r->rate ?? 0);
+
+            return [
+                'student_class_id' => (int) $r->student_class_id,
+                'student_id' => (int) $r->student_id,
+                'student_name' => (string) $r->student_name,
+                'subject_id' => (int) $r->subject_id,
+                'remaining_sessions' => $remaining,
+                'approx_amount' => (int) round($remaining * $rate),
+                'why' => '已付餘額卻沒有未來課表',
+                'next_step' => '補固定上課時段，或改做休眠聯繫',
+            ];
+        })->all();
+    }
+
+    /**
+     * Dormant prepaid students for drill-down (no phone / email).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function dormantPeople(?int $campusId, int $limit = 20): array
+    {
+        $q = DB::table('StudentClass as sc')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where('s.enable', 1)
+            ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
+            ->where('sc.ScheduleMode', 'count')
+            ->where('sc.RemainingSessions', '>', 0)
+            ->whereNotExists(function ($e) {
+                $e->select(DB::raw(1))->from('StudentClass as sc2')
+                    ->join('ClassSession as cs', 'cs.StudentClassID', '=', 'sc2.ID')
+                    ->whereColumn('sc2.StudentID', 's.id')
+                    ->whereRaw('cs.SessionDate BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 14 DAY)')
+                    ->whereRaw("LOWER(cs.Status) NOT IN ('cancelled','voided')");
+            })
+            ->orderByDesc('sc.RemainingSessions')
+            ->limit(max(1, min(50, $limit)))
+            ->select([
+                'sc.ID as student_class_id',
+                's.id as student_id',
+                's.name as student_name',
+                'sc.SubjectID as subject_id',
+                'sc.RemainingSessions as remaining_sessions',
+                'sc.Rate as rate',
+            ]);
+        if ($campusId !== null && $campusId > 0) {
+            $q->where('s.CampusID', $campusId);
+        }
+
+        return $q->get()->map(function ($r) {
+            $remaining = (int) $r->remaining_sessions;
+            $rate = (float) ($r->rate ?? 0);
+
+            return [
+                'student_class_id' => (int) $r->student_class_id,
+                'student_id' => (int) $r->student_id,
+                'student_name' => (string) $r->student_name,
+                'subject_id' => (int) $r->subject_id,
+                'remaining_sessions' => $remaining,
+                'approx_amount' => (int) round($remaining * $rate),
+                'why' => '已付但近 14 天沒排課（休眠保留，非系統故障）',
+                'next_step' => '連絡家長：恢復／續暫停／結案方向',
+            ];
+        })->all();
     }
 
     /**

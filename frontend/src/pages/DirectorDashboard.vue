@@ -50,6 +50,7 @@
               :key="item.key"
               class="ops-decision"
               :class="`ops-decision--${item.severity}`"
+              :data-trust-key="item.key"
             >
               <div class="ops-decision__body">
                 <strong>{{ item.title }}</strong>
@@ -57,6 +58,25 @@
                 <p class="ops-decision__next">下一步：{{ item.next_step }}</p>
                 <span v-if="item.detail" class="ops-decision__detail">{{ item.detail }}</span>
                 <span class="ops-decision__owner">負責：主任</span>
+                <ul v-if="item.has_drilldown && trustPeople(item).length" class="ops-decision__people">
+                  <li v-for="p in trustPeople(item)" :key="`${item.key}-${p.student_class_id}`">
+                    <button type="button" class="ops-person" @click="handleTrustPerson(item, p)">
+                      <span class="ops-person__who">{{ p.student_name || ('學生 #' + p.student_id) }}</span>
+                      <span class="ops-person__meta">
+                        剩 {{ p.remaining_sessions }} 堂
+                        <template v-if="p.approx_amount"> · 約 NT${{ formatTrustAmount(p.approx_amount) }}</template>
+                      </span>
+                      <span class="ops-person__why">{{ p.why }}</span>
+                      <span class="ops-person__next">→ {{ p.next_step }}</span>
+                    </button>
+                  </li>
+                </ul>
+                <p
+                  v-else-if="item.has_drilldown && Number(item.people_total || 0) === 0"
+                  class="ops-decision__empty-people"
+                >
+                  名單暫無可點選項目；請用右側按鈕到處理頁再篩選。
+                </p>
               </div>
               <button
                 type="button"
@@ -996,6 +1016,17 @@ const trustDecisions = computed(() =>
   Array.isArray(decisionCenter.value.decisions) ? decisionCenter.value.decisions : []
 );
 
+const trustTelemetrySent = ref(false);
+
+function trustPeople(item) {
+  const list = Array.isArray(item?.people) ? item.people : [];
+  return list.slice(0, 8);
+}
+
+function formatTrustAmount(n) {
+  return Number(n || 0).toLocaleString('zh-TW');
+}
+
 function formatTrustStamp(iso) {
   try {
     const d = new Date(iso);
@@ -1006,24 +1037,71 @@ function formatTrustStamp(iso) {
   }
 }
 
-function handleTrustDecision(item) {
+function emitTrustTelemetry(event, meta = {}) {
   try {
-    trackAdoptionEvent('director_trust_decision_click', Number(props.branchId) || 0, {
-      key: item?.key || '',
-      target: item?.target || '',
-    });
+    trackAdoptionEvent(event, Number(props.branchId) || 0, meta);
   } catch (_) { /* non-blocking */ }
-  if (item?.target === 'calendar') {
+}
+
+function setOpsTrustFocus({ studentName = '', studentId = 0, decisionKey = '' } = {}) {
+  try {
+    sessionStorage.setItem('alltrue_ops_trust_focus', JSON.stringify({
+      student_name: String(studentName || '').slice(0, 40),
+      student_id: Number(studentId) || 0,
+      decision_key: String(decisionKey || ''),
+      at: Date.now(),
+    }));
+  } catch (_) { /* ignore */ }
+}
+
+function navigateTrustTarget(target) {
+  if (target === 'calendar') {
     emit('navigate', { target: 'calendar' });
     return;
   }
-  if (item?.target === 'course-mgmt') {
+  if (target === 'course-mgmt') {
     emit('navigate', { target: 'course-mgmt' });
     return;
   }
-  if (item?.target === 'tuition') {
+  if (target === 'tuition') {
     goToTuitionCollect();
   }
+}
+
+function handleTrustDecision(item) {
+  emitTrustTelemetry('director_trust_decision_click', {
+    key: item?.key || '',
+    target: item?.target || '',
+    severity: item?.severity || '',
+    has_drilldown: Boolean(item?.has_drilldown),
+    people_shown: trustPeople(item).length,
+    from: 'decision_cta',
+  });
+  navigateTrustTarget(item?.target);
+}
+
+function handleTrustPerson(item, person) {
+  emitTrustTelemetry('director_trust_person_click', {
+    key: item?.key || '',
+    target: item?.target || 'course-mgmt',
+    severity: item?.severity || '',
+    student_id: Number(person?.student_id) || 0,
+    student_class_id: Number(person?.student_class_id) || 0,
+    from: 'person_row',
+  });
+  setOpsTrustFocus({
+    studentName: person?.student_name || '',
+    studentId: person?.student_id,
+    decisionKey: item?.key || '',
+  });
+  navigateTrustTarget(item?.target || 'course-mgmt');
+}
+
+function trackBypassCourseMgmtSeek() {
+  emitTrustTelemetry('director_trust_bypass_seek', {
+    target: 'course-mgmt',
+    from: 'priority_risk_or_nav',
+  });
 }
 
 function handleDirectorPriorityRisk(risk) {
@@ -1036,6 +1114,7 @@ function handleDirectorPriorityRisk(risk) {
     return;
   }
   if (risk.target === 'course-mgmt') {
+    trackBypassCourseMgmtSeek();
     emit('navigate', { target: 'course-mgmt' });
     return;
   }
@@ -1283,6 +1362,29 @@ const loadData = async () => {
     if (trustResp.ok) {
       const trustJson = await trustResp.json();
       operationsTrust.value = trustJson?.data || null;
+      const dc = operationsTrust.value?.decision_center;
+      if (dc && !trustTelemetrySent.value) {
+        trustTelemetrySent.value = true;
+        const keys = Array.isArray(dc.decisions) ? dc.decisions.map((d) => d.key).filter(Boolean) : [];
+        emitTrustTelemetry('director_trust_score_shown', {
+          score: Number(dc.score) || 0,
+          status: String(dc.status || ''),
+          critical_count: Number(dc.critical_count) || 0,
+          warning_count: Number(dc.warning_count) || 0,
+          decision_count: keys.length,
+          decision_keys: keys,
+        });
+        keys.forEach((key) => {
+          const d = (dc.decisions || []).find((x) => x.key === key);
+          emitTrustTelemetry('director_trust_decision_impression', {
+            key,
+            severity: d?.severity || '',
+            target: d?.target || '',
+            has_drilldown: Boolean(d?.has_drilldown),
+            people_total: Number(d?.people_total) || 0,
+          });
+        });
+      }
     } else {
       operationsTrust.value = null;
     }
@@ -1626,6 +1728,7 @@ const scrollTo = (section) => {
 };
 
 watch(() => props.branchId, () => {
+  trustTelemetrySent.value = false;
   loadData();
   loadScheduleDiscrepancySummary();
 });
@@ -2004,6 +2107,13 @@ onBeforeUnmount(() => {
 .ops-decision__detail,.ops-decision__owner{display:inline-block;margin-right:10px;font-size:12px;color:var(--ds-ink-mute)}
 .ops-decision__cta{flex-shrink:0;padding:8px 12px;border:none;border-radius:999px;font-size:12px;font-weight:800;cursor:pointer;background:var(--ds-warning-wash);color:var(--ds-warning)}
 .ops-decision--critical .ops-decision__cta{background:var(--ds-danger-wash);color:var(--ds-danger)}
+.ops-decision__people{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ops-person{width:100%;text-align:left;border:1px solid var(--ds-hairline);border-radius:10px;padding:8px 10px;background:var(--ds-canvas);cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.ops-person:hover{border-color:var(--ds-warning)}
+.ops-person__who{font-size:13px;font-weight:700;color:var(--ds-ink)}
+.ops-person__meta,.ops-person__why,.ops-person__next{font-size:12px;color:var(--ds-ink-mute);line-height:1.35}
+.ops-person__next{color:var(--ds-ink)}
+.ops-decision__empty-people{margin:8px 0 0;font-size:12px;color:var(--ds-ink-mute)}
 .ops-trust__policy{margin-top:12px;font-size:12px;color:var(--ds-ink-mute)}.ops-trust__policy ul{margin:6px 0 0;padding-left:1.2rem}
 
 .priority-risks {
