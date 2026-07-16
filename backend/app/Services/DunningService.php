@@ -120,7 +120,13 @@ class DunningService
             $isPaid = (int) ($course->Paid ?? 0) === 1;
             $daysFromDue = $today->diffInDays($dueDate, false);
 
-            if (!$isPaid && $daysFromDue > 0) {
+            // Paid date-mode courses may still show monthly_due_soon in director alerts,
+            // but dunning events are customer-facing reminders and must not fire once paid.
+            if ($isPaid) {
+                continue;
+            }
+
+            if ($daysFromDue > 0) {
                 $event = $this->tryCreateEvent(
                     (int) $course->StudentID,
                     (int) $course->ID,

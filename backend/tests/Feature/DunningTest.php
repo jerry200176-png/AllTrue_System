@@ -92,6 +92,32 @@ class DunningTest extends TestCase
         $this->assertCount(1, $r->json('events'));
     }
 
+    public function test_trigger_does_not_create_monthly_events_for_paid_date_mode_course(): void
+    {
+        [$token, $campus] = $this->seedDirector();
+        $student = Student::create([
+            'name' => 'Paid Monthly Student', 'CampusID' => $campus->id, 'ClassID' => 0, 'SchoolName' => 'T',
+        ]);
+        $sc = StudentClass::create([
+            'StudentID' => $student->id, 'GradeID' => 1, 'SubjectID' => 1,
+            'TeacherID' => 1, 'ClassType' => 'one_on_one',
+            'by1' => 1, 'Period' => 4, 'StartDate' => now()->subDays(40)->toDateString(),
+            'TotalHours' => 10, 'SessionCount' => 4, 'SessionDuration' => 120,
+            'RemainingSessions' => 4, 'UsedSessions' => 0,
+            'Charge' => 5000, 'Pay' => 0, 'Paid' => 1, 'Rate' => 100, 'Stop' => 0,
+            'MDate' => now(), 'ScheduleMode' => 'date', 'settlement_day' => now()->day,
+        ]);
+
+        $r = $this->postJson('/api/v1/dunning/trigger', ['campus_id' => $campus->id], $this->bearer($token));
+        $r->assertOk();
+
+        $monthlyEvents = array_filter($r->json('events'), fn ($e) =>
+            in_array($e['rule_key'], ['monthly_due_soon', 'monthly_overdue'], true)
+            && $e['student_class_id'] === (int) $sc->ID
+        );
+        $this->assertEmpty($monthlyEvents, '已繳費月結課程不應再建立催繳/到期提醒');
+    }
+
     private function seedDirector(): array
     {
         $campus = CampusFactory::new()->create();
