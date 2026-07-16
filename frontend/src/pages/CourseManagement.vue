@@ -3661,6 +3661,17 @@ watch(
   { immediate: true },
 );
 onMounted(() => {
+  try {
+    const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
+    if (raw) {
+      const focus = JSON.parse(raw);
+      const ageMs = Date.now() - Number(focus?.at || 0);
+      if (ageMs >= 0 && ageMs < 5 * 60 * 1000 && focus?.student_name) {
+        filters.value.name = String(focus.student_name).slice(0, 40);
+      }
+      sessionStorage.removeItem('alltrue_ops_trust_focus');
+    }
+  } catch (_) { /* ignore */ }
   loadCourses(); loadStudents(); loadTeachers(); loadSubjects();
   document.addEventListener('click', closeActionMenu);
 });

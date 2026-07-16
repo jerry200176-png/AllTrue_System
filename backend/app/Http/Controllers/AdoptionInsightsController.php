@@ -330,10 +330,39 @@ class AdoptionInsightsController extends Controller
             'branch_id' => $branchId > 0 ? $branchId : null,
             'user_id' => (int) ($request->attributes->get('auth_user_id') ?? 0),
             'role' => (string) ($request->attributes->get('auth_role') ?? ''),
-            'meta' => $payload['meta'] ?? [],
+            'meta' => $this->sanitizeAdoptionMeta($payload['meta'] ?? []),
+            'recorded_at' => now()->toIso8601String(),
         ]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** @param array<string,mixed> $meta */
+    private function sanitizeAdoptionMeta(array $meta): array
+    {
+        $out = [];
+        foreach ($meta as $k => $v) {
+            $key = strtolower((string) $k);
+            if (preg_match('/(phone|email|password|token|name|body|note|address)/', $key)) {
+                continue;
+            }
+            if (is_string($v) || is_int($v) || is_float($v) || is_bool($v) || $v === null) {
+                $out[$k] = $v;
+            } elseif (is_array($v) && count($v) <= 40 && array_is_list($v)) {
+                $ok = true;
+                foreach ($v as $item) {
+                    if (!is_string($item) && !is_int($item) && !is_float($item) && !is_bool($item)) {
+                        $ok = false;
+                        break;
+                    }
+                }
+                if ($ok) {
+                    $out[$k] = $v;
+                }
+            }
+        }
+
+        return $out;
     }
 
     private function resolveBranchId(Request $request): int
