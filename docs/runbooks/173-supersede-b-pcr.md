@@ -35,3 +35,14 @@ unset ALLOW_PROD_REPAIR
 | S7 | nightly reconcile 不因本案新增 SC#2076 mismatch |
 
 Post-prod：in-app #173 公開留言（白話）→ `resolved` → 請主任確認。
+
+## Preferred execution (GitHub Actions)
+
+Workflow: `.github/workflows/173-supersede-repair.yml`（Actions → **In-app #173 Supersede Repair**）
+
+1. `mode=dry-run` → 存 log  
+2. `mode=execute` + confirm `I_APPROVE_173_SUPERSEDE_B` → 表級備份 + apply + 驗證 JSON  
+3. 失敗可 `mode=rollback` + 同 confirm  
+
+（Cloud agent App 目前無法 `workflow_dispatch`／SSH Pi；需 Owner 在 GitHub UI 或 Pi 上執行。）
+
