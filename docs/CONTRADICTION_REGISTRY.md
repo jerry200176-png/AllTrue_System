@@ -19,6 +19,7 @@
 | **K8** | DEPLOYMENT.md vs deploy.yml | Manual deploy as normal path | Setup reference only; production path = `deploy.yml` only. | **Resolved:** REFERENCE ONLY banner. |
 | **K9** | deploy.yml vs INCIDENT | Deploy run outcome decides STATE or skips policy | **I4:** deploy executes FINAL_ACTION only; re-infer after observe. | **Resolved:** committed `deploy.yml` restored; no ADR fail-closed WIP in tree. |
 | **K10** | Override vs inference | Undefined "emergency" manual state pick | **Explicit rule:** Override **only** in ESCALATED_FAILURE + documented + CEO LINE. | **Resolved:** contract I3 + INCIDENT stack explicit override gate. |
+| **K11** | POP vs deploy.yml vs legacy repair workflows | Multiple execution paths (SSH repair workflows, Pi manual artisan) | **I1 v2:** POP Executor + `deploy.yml` only. Legacy workflows deprecated, not parallel authority. | **Resolved (2026-07-16):** ADR-POP-010; contract-version 2. |
 
 ---
 

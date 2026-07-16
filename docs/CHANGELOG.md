@@ -11,11 +11,17 @@
 
 ---
 
-## 2026-07-16 — docs: POP Phase 1 foundation + contract I1 v2
+## 2026-07-16 — fix: 可信度決策卡顯示學生姓名（in-app #200）
 
-- Added：POP Architecture Freeze — ADR-POP-001～014、`operations/catalog.yaml`、policy/invariant v0、Engine 介面骨架、`scripts/pop-fitness-check.mjs`（FIT-001～003）
-- Changed：`CONTROL_PLANE_CONTRACT.md` contract-version 2 — I1 納入 POP Executor + deploy；K11 登記
-- 開發備註：Phase 1 read-only；無 production execute。Phase 2 = Approval API + DB migration。
+Fixed：主任儀表板「可信度」決策卡現在會直接標出涉及學生姓名；點「去審核重疊課」等按鈕會帶入該學生篩選，不用自己再找。
+
+開發備註：`DirectorDashboard.vue` 新增 `trustPeopleSummary`／`trustDecisionTitle`；`DuplicateSessionReviewPage.vue` 讀 `alltrue_ops_trust_focus` 顯示篩選橫幅。
+
+## 2026-07-16 — feat: POP Phase 1 catalog / policy / invariant / interfaces
+
+- Added：`operations/catalog.yaml`、`operations/policies/default.yaml`、`operations/invariants/session-pack@1.0.0.yaml`、`backend/app/Operations/Contracts/*`、`scripts/pop-fitness-check.mjs`
+- Changed：`docs/INDEX.md` 新增 POP 服務目錄入口（catalog/ADR 分拆治理）
+- 開發備註：Phase 1 為 read-only foundation；不含 production execute。
 
 ## 2026-07-16 — docs: Measure 唯一下一步與 #173／Issues 分流
 
