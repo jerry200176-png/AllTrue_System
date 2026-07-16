@@ -903,7 +903,7 @@ onMounted(() => {
 }
 .dsr-side-tech {
   font-size: 11px;
-  color: var(--muted, #888);
+  color: var(--text-light);
   margin: 2px 0 4px;
   font-weight: 400;
 }

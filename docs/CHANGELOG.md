@@ -15,7 +15,7 @@
 
 Fixed：重疊課程審核不再用「SC #」當主標籤；改顯示科目、老師、開課日與堂數，主任不需理解內部編號即可選擇保留哪一側。SC 僅保留為小字技術識別。
 
-開發備註：新增共用 `studentClassDisplay.js` formatter + unit／決策路徑測試；`DuplicateSessionReviewPage.vue` 改用 formatter。盤點文件 `docs/UX_INTERNAL_IDENTIFIER_AUDIT.md`（只盤點未全改）。不改 API／Trust Flow／telemetry。
+開發備註：新增共用 `studentClassDisplay.js` formatter + unit／決策路徑測試；`DuplicateSessionReviewPage.vue` 改用 formatter。盤點文件 `docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`（只盤點未全改）。不改 API／Trust Flow／telemetry。
 
 ## 2026-07-16 — fix: 可信度決策卡顯示學生姓名（in-app #200）
 
