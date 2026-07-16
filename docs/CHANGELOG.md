@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 可信度決策卡顯示學生姓名（in-app #200）
+
+Fixed：主任儀表板「可信度」決策卡現在會直接標出涉及學生姓名；點「去審核重疊課」等按鈕會帶入該學生篩選，不用自己再找。
+
+開發備註：`DirectorDashboard.vue` 新增 `trustPeopleSummary`／`trustDecisionTitle`；`DuplicateSessionReviewPage.vue` 讀 `alltrue_ops_trust_focus` 顯示篩選橫幅。
+
 ## 2026-07-16 — docs: Measure 唯一下一步與 #173／Issues 分流
 
 - **Changed**：正式回報唯一下一步改為「自 2026-07-17 凍結 Trust 實驗面、收集有效 telemetry、至少一次真實主任無教練驗收」；#173 資料修正與 Issues 權限為分流。

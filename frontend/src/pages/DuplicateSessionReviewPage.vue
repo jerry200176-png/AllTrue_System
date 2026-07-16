@@ -9,6 +9,13 @@
       <button class="primary" type="button" @click="refresh">重新整理</button>
     </header>
 
+    <!-- Trust focus banner (from Decision Center deep-link, in-app #200) -->
+    <div v-if="trustFocusLabel" class="dsr-focus-banner" role="status">
+      <span class="material-symbols-outlined" aria-hidden="true">person_search</span>
+      <span>已為您篩選：<strong>{{ trustFocusLabel }}</strong>（從可信度決策卡帶入）</span>
+      <button type="button" class="ghost xs" @click="clearTrustFocus">顯示全部</button>
+    </div>
+
     <!-- FilterBar -->
     <div class="dsr-filter-bar">
       <!-- Campus selector (super_admin only) -->
@@ -440,6 +447,7 @@ import { ref, computed, watch, onMounted, reactive } from 'vue';
 import { branches } from '../lib/useBranches';
 import { useDuplicateReview, groupKey } from '../composables/useDuplicateReview';
 import { STATUS_LABELS, SESSION_STATUS_LABELS } from '../lib/duplicateReviewApi';
+import { parseTrustFocus, filterGroupsByTrustFocus } from '../lib/trustDecisionDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -457,6 +465,36 @@ const branchName = computed(() => {
 });
 
 const filterCampusId = ref('');
+const trustFocusName = ref('');
+const trustFocusStudentId = ref(0);
+
+const trustFocusLabel = computed(() => {
+  const name = String(trustFocusName.value || '').trim();
+  if (name) return name;
+  const sid = Number(trustFocusStudentId.value) || 0;
+  return sid > 0 ? `學生 #${sid}` : '';
+});
+
+function applyTrustFocusFromStorage() {
+  try {
+    const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
+    if (!raw) return;
+    const focus = parseTrustFocus(raw);
+    if (!focus) {
+      sessionStorage.removeItem('alltrue_ops_trust_focus');
+      return;
+    }
+    trustFocusName.value = focus.studentName;
+    trustFocusStudentId.value = focus.studentId;
+    sessionStorage.removeItem('alltrue_ops_trust_focus');
+    activeTab.value = 'pending';
+  } catch (_) { /* ignore */ }
+}
+
+function clearTrustFocus() {
+  trustFocusName.value = '';
+  trustFocusStudentId.value = 0;
+}
 
 const {
   groups,
@@ -503,11 +541,14 @@ function groupStatus(g) {
   return g._submitted ? 'executed' : 'pending';
 }
 
-/** Only show groups matching active tab */
+/** Only show groups matching active tab + optional trust focus */
 const filteredGroups = computed(() => {
-  if (activeTab.value === 'all') return groupsWithLocalDecisions.value;
-  if (activeTab.value === 'pending') return groupsWithLocalDecisions.value.filter((g) => !g._submitted);
-  return groupsWithLocalDecisions.value;
+  let list = groupsWithLocalDecisions.value;
+  if (activeTab.value === 'pending') list = list.filter((g) => !g._submitted);
+  const focus = trustFocusName.value || trustFocusStudentId.value
+    ? { studentName: trustFocusName.value, studentId: trustFocusStudentId.value }
+    : null;
+  return filterGroupsByTrustFocus(list, focus);
 });
 
 function formatDate(s) {
@@ -579,12 +620,28 @@ watch(() => props.branchId, () => {
 });
 
 onMounted(() => {
+  applyTrustFocusFromStorage();
   doLoad();
 });
 </script>
 
 <style scoped>
 .dsr-page { max-width: 1200px; margin: 0 auto; }
+
+.dsr-focus-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--ds-info);
+  background: var(--ds-info-wash);
+  font-size: 13px;
+  color: var(--ds-ink);
+}
+.dsr-focus-banner .material-symbols-outlined { font-size: 20px; color: var(--ds-info); }
 
 .dsr-header {
   display: flex;
