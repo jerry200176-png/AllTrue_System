@@ -1,0 +1,125 @@
+name: In-app #173 Supersede Repair (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) or execute or rollback"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - execute
+          - rollback
+      confirm:
+        description: "For execute/rollback only: type I_APPROVE_173_SUPERSEDE_B"
+        required: false
+        type: string
+      actor:
+        description: "Audit actor label"
+        required: false
+        default: "gha:173-supersede"
+        type: string
+
+concurrency:
+  group: repair-173-supersede
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Run allowlisted #173 supersede repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            dry-run|execute|rollback) ;;
+            *) echo "::error::invalid mode"; exit 1 ;;
+          esac
+          if [ "$MODE" != "dry-run" ]; then
+            [ "$CONFIRM" = "I_APPROVE_173_SUPERSEDE_B" ] || {
+              echo "::error::execute/rollback requires exact confirmation string"
+              exit 1
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run repair on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" ACTOR="$ACTOR" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          echo "=== mode=${MODE} ==="
+          php artisan repair:supersede-renewal-session --case=173
+
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run complete; no production data was changed."
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP_FILE="/home/admin/backups/emergency/db_pre_173_supersede_${TS}.sql.gz"
+          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+            --single-transaction AllTrue \
+            ClassSession StudentClass LearningRecord Invoice Payment session_corrections \
+            | gzip > "$BACKUP_FILE"
+          echo "Backup: $BACKUP_FILE"
+
+          export ALLOW_PROD_REPAIR=1
+          if [ "${MODE}" = "execute" ]; then
+            SNAP="storage/app/repair-snapshots/173-supersede-${TS}.json"
+            php artisan repair:supersede-renewal-session --case=173 --execute --force \
+              --actor="${ACTOR}" --snapshot="$SNAP"
+            echo "SNAPSHOT=$SNAP"
+          else
+            php artisan repair:supersede-renewal-session --case=173 --rollback --execute --force
+          fi
+          unset ALLOW_PROD_REPAIR
+
+          php -r '
+            require "vendor/autoload.php";
+            $app = require "bootstrap/app.php";
+            $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $out = [
+              "s11292" => DB::table("ClassSession")->where("id", 11292)->first(["id","Status","StudentClassID"]),
+              "s16951" => DB::table("ClassSession")->where("id", 16951)->first(["id","Status","StudentClassID"]),
+              "sc114" => DB::table("StudentClass")->where("ID", 114)->first(["ID","UsedSessions","RemainingSessions"]),
+              "sc2076" => DB::table("StudentClass")->where("ID", 2076)->first(["ID","UsedSessions","RemainingSessions"]),
+              "correction" => DB::table("session_corrections")->where("session_id", 11292)->orderByDesc("id")->first(),
+              "lr8883" => DB::table("LearningRecord")->where("id", 8883)->first(["id","ClassSessionID","VoidedAt"]),
+              "lr9959" => DB::table("LearningRecord")->where("id", 9959)->first(["id","ClassSessionID","VoidedAt"]),
+              "inv137" => DB::table("Invoice")->where("id", 137)->first(["id","PaidAmount","Status"]),
+              "inv936" => DB::table("Invoice")->where("id", 936)->first(["id","PaidAmount","Status"]),
+            ];
+            echo json_encode($out, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT), PHP_EOL;
+          '
+          ENDSSH
