@@ -53,7 +53,10 @@
               :data-trust-key="item.key"
             >
               <div class="ops-decision__body">
-                <strong>{{ item.title }}</strong>
+                <strong>{{ trustDecisionTitle(item) }}</strong>
+                <p v-if="trustPeopleSummary(item)" class="ops-decision__involved">
+                  涉及學生：{{ trustPeopleSummary(item) }}
+                </p>
                 <p class="ops-decision__why">{{ item.why }}</p>
                 <p class="ops-decision__next">下一步：{{ item.next_step }}</p>
                 <span v-if="item.detail" class="ops-decision__detail">{{ item.detail }}</span>
@@ -1031,6 +1034,34 @@ function trustPeople(item) {
   return list.slice(0, 8);
 }
 
+/** Unique student names for card headline (in-app #200). */
+function trustPeopleSummary(item) {
+  const names = trustPeople(item)
+    .map((p) => String(p?.student_name || '').trim())
+    .filter(Boolean);
+  return [...new Set(names)].slice(0, 5).join('、');
+}
+
+/** When one student dominates, put name in title so mobile directors see it without scrolling. */
+function trustDecisionTitle(item) {
+  const summary = trustPeopleSummary(item);
+  const people = trustPeople(item);
+  if (!summary || !people.length) return item?.title || '';
+  const uniqueNames = summary.split('、').filter(Boolean);
+  if (uniqueNames.length !== 1) return item?.title || '';
+  const name = uniqueNames[0];
+  const title = String(item?.title || '');
+  if (title.includes(name)) return title;
+  if (item?.key === 'calendar_duplicate') {
+    const n = Number(item?.people_total || people.length) || people.length;
+    return `${name}：${n} 組跨約重複堂`;
+  }
+  if (item?.key === 'dormant_hold') return `${name}：已付休眠要聯繫`;
+  if (item?.key === 'ledger_divergent') return `${name}：剩餘堂數對不起來`;
+  if (item?.key === 'stranded_paid') return `${name}：已付還沒排進課表`;
+  return title;
+}
+
 function formatTrustAmount(n) {
   return Number(n || 0).toLocaleString('zh-TW');
 }
@@ -1126,15 +1157,15 @@ function handleTrustDecision(item) {
   }, key);
   markTrustProvidedPathUsed(branch, key);
 
-  // Shortest loop: if roster exists and target is course-mgmt, land on the first person.
-  if ((item?.target === 'course-mgmt' || !item?.target) && people.length > 0) {
+  // Shortest loop: pass first person into the target page (course-mgmt or duplicate-review).
+  if (people.length > 0 && (item?.target === 'course-mgmt' || item?.target === 'duplicate-review' || !item?.target)) {
     const p = people[0];
     setOpsTrustFocus({
       studentName: p?.student_name || '',
       studentId: p?.student_id,
       decisionKey: key,
     });
-    navigateTrustTarget('course-mgmt');
+    navigateTrustTarget(item?.target || 'course-mgmt');
     return;
   }
   navigateTrustTarget(item?.target);
@@ -1152,6 +1183,11 @@ function handleTrustPerson(item, person) {
   }, key);
   markTrustProvidedPathUsed(branch, key);
   if ((item?.target || '') === 'duplicate-review') {
+    setOpsTrustFocus({
+      studentName: person?.student_name || '',
+      studentId: person?.student_id,
+      decisionKey: key,
+    });
     navigateTrustTarget('duplicate-review');
     return;
   }
@@ -2168,6 +2204,7 @@ onBeforeUnmount(() => {
 .ops-decision{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;border-radius:12px;border:1px solid var(--ds-hairline);border-left-width:4px;padding:12px 14px;background:var(--ds-surface)}
 .ops-decision--critical{border-left-color:var(--ds-danger)}.ops-decision--warning{border-left-color:var(--ds-warning)}
 .ops-decision__body{flex:1;min-width:0}.ops-decision__body strong{display:block;font-size:14px;margin-bottom:4px}
+.ops-decision__involved{margin:0 0 6px;font-size:13px;font-weight:700;color:var(--ds-ink);line-height:1.4}
 .ops-decision__why,.ops-decision__next{margin:0 0 4px;font-size:13px;color:var(--ds-ink-mute);line-height:1.4}
 .ops-decision__detail,.ops-decision__owner{display:inline-block;margin-right:10px;font-size:12px;color:var(--ds-ink-mute)}
 .ops-decision__cta{flex-shrink:0;padding:8px 12px;border:none;border-radius:999px;font-size:12px;font-weight:800;cursor:pointer;background:var(--ds-warning-wash);color:var(--ds-warning)}
