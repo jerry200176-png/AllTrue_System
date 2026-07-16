@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * Auditable supersede / correction row for ClassSession.
+ * Auditable ClassSession correction (supersede / repair).
  *
  * @property int $id
  * @property int $session_id
@@ -27,19 +27,9 @@ class SessionCorrection extends Model
     protected $table = 'session_corrections';
 
     protected $fillable = [
-        'session_id',
-        'replaced_by_session_id',
-        'correction_reason',
-        'decision_reference',
-        'decided_at',
-        'decided_by_user_id',
-        'decided_by_actor',
-        'previous_status',
-        'new_status',
-        'preserved_learning_record_id',
-        'keeper_learning_record_id',
-        'snapshot_before',
-        'rolled_back_at',
+        'session_id', 'replaced_by_session_id', 'correction_reason', 'decision_reference',
+        'decided_at', 'decided_by_user_id', 'decided_by_actor', 'previous_status', 'new_status',
+        'preserved_learning_record_id', 'keeper_learning_record_id', 'snapshot_before', 'rolled_back_at',
     ];
 
     protected $casts = [
@@ -47,14 +37,4 @@ class SessionCorrection extends Model
         'rolled_back_at' => 'datetime',
         'snapshot_before' => 'array',
     ];
-
-    public function session()
-    {
-        return $this->belongsTo(ClassSession::class, 'session_id', 'id');
-    }
-
-    public function replacedBySession()
-    {
-        return $this->belongsTo(ClassSession::class, 'replaced_by_session_id', 'id');
-    }
 }
