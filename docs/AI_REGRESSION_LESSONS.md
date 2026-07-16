@@ -870,8 +870,9 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - 任何讀取端**不可**用 count-based observed 值覆寫已有「部分時數」（fractional `RemainingMinutes`）課程的 `RemainingSessions`（`StudentClassController::index` 已加 `hasFractionalBalance` 守門）；要顯示精確值用 `remaining_minutes`。
 - `reverseForSession` 必須沖回對應 deduct 的 `minutes`（否則淨值漂移）。
 - ⚠️ 共用課程包池鏡像（`PackageDeductionService`）尚未分鐘感知（TD-059）；`recalculateSessionCounters` 為死碼勿誤用（TD-060）。
+- **續報後跨約重疊堂（in-app #173）**：用 `session_corrections` + `Status=cancelled` 表達「被取代」；**禁止** DELETE、禁止只靠 Note 自由文字、禁止作廢／搬移評量、禁止為修重疊而跑 `reverseForSession`／改 Remaining（剩餘堂數必須不變）。指令：`repair:supersede-renewal-session`。
 
-**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含列表端點不被覆寫）。
+**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含列表端點不被覆寫）、`RepairSupersedeRenewalSession173Test`。
 
 ---
 
