@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-16 — fix: 續報後重疊堂改為可稽核「被取代」（in-app #173 B）
+
+- **Fixed**：續報新課後同一時段兩筆正式堂，舊課那筆改標為被新課取代、不再重複計費；原評量保留不動，帳務與剩餘堂數不變。
+- 開發備註：`session_corrections` + `repair:supersede-renewal-session --case=173`；PCR `docs/runbooks/173-supersede-b-pcr.md`。不改 Trust／Day0。
+
 ## 2026-07-16 — docs: #173 決策包 + Day0 表述澄清 + Issues 403 診斷
 
 - **Changed**：釐清正式 Day0 仍為 2026-07-17（7/16 全日排除）；in-app #173 產出唯讀 A/B 決策包（不改歷史資料）；記錄 GitHub Issues API 403 最小權限修復方式。

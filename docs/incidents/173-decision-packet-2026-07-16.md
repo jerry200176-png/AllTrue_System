@@ -1,8 +1,8 @@
-# in-app #173 — 決策包（唯讀 · 2026-07-16）
+# in-app #173 — 決策包（2026-07-16）
 
-> **狀態**：等待主任二選一；**尚未**改任何歷史堂次／評量／收費。  
+> **狀態**：CEO／主任已選 **B**（2026-07-16）。執行 PCR：[`docs/runbooks/173-supersede-b-pcr.md`](../runbooks/173-supersede-b-pcr.md)。  
 > **識別**：in-app #173（campus_id=9）。Compare／CEO 回報勿寫學生姓名。  
-> **對照**：既有 dry-run 列 #12（`docs/incidents/189-191-dryrun-report.md`）曾建議保留 SC#114、cancel session#16951 — 本包依**現行**合約與後續排課重核建議。
+> **分流**：與 E-OPS-TRUST Measure **分開**；不重設 Day0、不改 Trust 實驗面。
 
 ## 1. 兩門課程（舊 vs 續報新）
 
@@ -77,9 +77,9 @@
 5. **回滾**：用備份列還原 Status／VoidedAt／Used／Remaining；Invoice／Payment **不動**故財務回滾面小。  
 6. **驗證**：該日 19:00 僅一筆有效 attended／completed；老師／行政／家長口徑一致；新課 Remaining 符合預期。
 
-## 8. 主任二選一（請回覆 A 或 B）
+## 8. 主任二選一 — **已選 B**
 
 - **A.** 保留舊課紀錄（session #11292），將新課重疊堂（#16951）標記為重複／不計費  
 - **B.** 保留續報新課紀錄（session #16951），將舊課重疊堂（#11292）標記為被取代／不計費  
 
-選定前：**零寫入**。選定後：依 §7 做可稽核、可回滾修正。
+已選 B。執行：`repair:supersede-renewal-session --case=173`（見 PCR）。
