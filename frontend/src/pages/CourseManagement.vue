@@ -554,6 +554,7 @@
       :result="bulkLeaveResult"
       :submitting="bulkLeaveSubmitting"
       :impact-preview="bulkLeaveImpactPreview"
+      :courses="courses"
       @close="showBulkLeaveModal = false; bulkLeaveResult = null"
       @submit="submitBulkLeave"
     />

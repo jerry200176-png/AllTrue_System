@@ -240,3 +240,41 @@ export function formatLedgerAnomalyDetail(a) {
   if (a?.invoice_id) parts.push('已對應帳單');
   return parts.join(' · ');
 }
+
+/**
+ * User Task: 請假 — 批次請假略過原因（後端偶發英文／SQL 訊息時改人話）。
+ */
+export function humanizeBulkLeaveSkipReason(reason) {
+  const r = trimStr(reason);
+  if (!r) return '無法批次請假，請改用單堂請假';
+  if (/SQLSTATE|Exception|Error|Stack|Integrity constraint|QueryException/i.test(r)) {
+    return '系統暫時無法處理此堂，請改用單堂請假';
+  }
+  // Keep short Chinese product reasons (e.g. 該堂已有核准評量).
+  if (/[\u4e00-\u9fff]/.test(r) && r.length <= 80) return r;
+  return '系統暫時無法處理此堂，請改用單堂請假';
+}
+
+/**
+ * User Task: 請假 — 批次請假略過列。
+ * Prefer student + subject from already-loaded course list; never lead with 課程 #id.
+ *
+ * @param {{ course_id?: number|string, session_date?: string, reason?: string }} skip
+ * @param {object|null} course course row from CourseManagement list (optional)
+ */
+export function formatBulkLeaveSkippedLine(skip, course = null) {
+  const date = trimStr(skip?.session_date);
+  const reason = humanizeBulkLeaveSkipReason(skip?.reason);
+  const student = trimStr(course?.student_name || course?.StudentName);
+  const subject = trimStr(course?.subject_name || course?.subject || course?.Subject);
+  const teacher = trimStr(course?.teacher_name || course?.teacher || course?.TeacherName);
+
+  const whoParts = [];
+  if (student) whoParts.push(student);
+  if (subject) whoParts.push(subject);
+  else if (teacher) whoParts.push(teacher);
+
+  const who = whoParts.length ? whoParts.join(' · ') : '名單上的一門課';
+  const when = date ? `${date}：` : '';
+  return `${who} ${when}${reason}`.replace(/\s+/g, ' ').trim();
+}

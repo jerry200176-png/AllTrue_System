@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 連假批次請假略過清單改學生＋科目（主任請假路徑）
+
+Fixed：連假批次請假完成後，略過清單不再寫「課程 #數字」；改顯示學生姓名與科目（加上日期與原因）。主任可直接知道哪一堂要改用單堂請假，不必對照內部編號。
+
+開發備註：Display only — `formatBulkLeaveSkippedLine`／`humanizeBulkLeaveSkipReason`；`BulkLeaveModal` 用已載入的 `courses` 對照，未動 bulk-leave API。
+
 ## 2026-07-16 — fix: 續報／帳本改使用者語言（主任任務路徑）
 
 Fixed：續報／加購成功提示改為「學生＋科目＋堂數／日期」；帳本不再顯示 COURSE-／Payment #；可信度名單不再出現「學生 #」。主任完成續報與對帳時不必理解內部編號。
