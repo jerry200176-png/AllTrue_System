@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — docs: User-facing Display 原則 + 內部 ID Backlog + Bug Dashboard KPI
+
+- Added：`RULE_USER_FACING_DISPLAY.md`（內部 ID 不得當主要決策資訊）
+- Changed：`GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md` 改為 ROI Backlog（UXID-002…）
+- Added：`GUIDE_BUG_DASHBOARD.md`（含 Reopened Rate；#200 基準 Reopened×2）
+
 ## 2026-07-16 — fix: 重疊審核改顯示科目／老師／開課日（in-app #200）
 
 Fixed：重疊課程審核不再用「SC #」當主標籤；改顯示科目、老師、開課日與堂數，主任不需理解內部編號即可選擇保留哪一側。SC 僅保留為小字技術識別。
