@@ -181,7 +181,7 @@ class BusinessDigestService
         }
         $criticalCount = count(array_filter($decisions, fn ($d) => $d['severity'] === 'critical'));
         $warningCount = count($decisions) - $criticalCount;
-        $onlyDormant = count($decisions) === 1 && (($decisions[0]['key'] ?? '') === 'dormant_hold');
+        $onlyDormant = count($decisions) === 1 && ($decisions[0]['key'] === 'dormant_hold');
         $headline = count($decisions) === 0
             ? '今天課表與剩課看起來可信，先處理下方每日待辦即可。'
             : ($hasCritical
