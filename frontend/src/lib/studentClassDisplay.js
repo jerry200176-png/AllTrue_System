@@ -172,3 +172,71 @@ export function formatTuitionNewerCourseHint(row) {
     techId: newerId > 0 ? `SC #${newerId}` : '',
   };
 }
+
+/** Trust / roster person label — never「學生 #id」. */
+export function formatDirectorPersonName(person) {
+  const name = trimStr(person?.student_name || person?.name);
+  return name || '名單上的學生';
+}
+
+/**
+ * User Task: 續報／加購完成後的成功說明（主任第一眼確認）。
+ * kind: 'purchase' | 'monthly'
+ */
+export function formatRenewSuccessMessage({
+  kind = 'purchase',
+  studentName = '',
+  subject = '',
+  sessions = null,
+  firstDate = '',
+  lastDate = '',
+} = {}) {
+  const who = trimStr(studentName);
+  const subj = trimStr(subject) || '課程';
+  const head = who ? `${who}的${subj}` : subj;
+  if (kind === 'monthly') {
+    return `${head}已建立新一期。舊期已結算，請到新一期帳單核帳。`;
+  }
+  const n = sessions != null && sessions !== '' ? Number(sessions) : null;
+  const range = firstDate && lastDate ? `，上課 ${firstDate} 至 ${lastDate}` : '';
+  const countPart = Number.isFinite(n) ? ` ${n} 堂` : '';
+  return `${head}已新增加購${countPart}${range}。請到新批次查看日期；原課程不會追加堂次。`;
+}
+
+/** Duplicate purchase error hint — no course id. */
+export function formatDuplicatePurchaseHint({ subject = '' } = {}) {
+  const subj = trimStr(subject);
+  return subj
+    ? `\n\n已有相同「${subj}」加購批次，請先確認是否已經續報過。`
+    : '\n\n已有相同加購批次，請先確認是否已經續報過。';
+}
+
+/** Ledger / invoice course line — never COURSE-000123. */
+export function formatLedgerCourseLabel(row) {
+  const ref = trimStr(row?.course_ref);
+  if (ref && !/^COURSE-\d+$/i.test(ref)) return ref;
+  const subject = trimStr(row?.subject_name || row?.subject || row?.Subject);
+  if (subject) return subject;
+  return '本課程';
+}
+
+/** Ledger invoice title — prefer invoice_no, never Invoice #id alone. */
+export function formatLedgerInvoiceLabel(inv) {
+  const no = trimStr(inv?.invoice_no);
+  if (no) return no;
+  return '帳單';
+}
+
+/** Receipt row secondary line. */
+export function formatLedgerReceiptBillLine(r) {
+  const bill = r?.invoice_id ? '已套用帳單' : '尚未套用帳單';
+  return `${bill} · ${formatLedgerCourseLabel(r)}`;
+}
+
+/** Anomaly detail — no Payment # / bare invoice id. */
+export function formatLedgerAnomalyDetail(a) {
+  const parts = [];
+  if (a?.report_id) parts.push('相關收據可沖銷');
+  if (a?.invoice_id) parts.push('已對應帳單');
+  return parts.join(' · ');
+}

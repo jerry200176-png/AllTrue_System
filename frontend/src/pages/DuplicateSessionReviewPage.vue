@@ -106,7 +106,7 @@
             <!-- Main row -->
             <tr :class="{ 'dsr-row-expanded': expandedKey === g._key }">
               <td>
-                <span class="dsr-student-name">{{ g.student_name || `學生 #${g.student_id}` }}</span>
+                <span class="dsr-student-name">{{ formatDirectorPersonName(g) }}</span>
               </td>
               <td>
                 <div class="dsr-date">{{ formatDate(g.session_date) }}</div>
@@ -304,7 +304,7 @@
         >
           <header class="dsr-mcard-head">
             <div class="dsr-mcard-head-left">
-              <span class="dsr-student-name">{{ g.student_name || `學生 #${g.student_id}` }}</span>
+              <span class="dsr-student-name">{{ formatDirectorPersonName(g) }}</span>
             </div>
             <span :class="['dsr-status', `dsr-status-${groupStatus(g)}`]">
               {{ statusLabel(groupStatus(g)) }}
@@ -455,6 +455,7 @@ import { parseTrustFocus, filterGroupsByTrustFocus } from '../lib/trustDecisionD
 import {
   formatStudentClassDisplay,
   formatStudentClassSideDisplays,
+  formatDirectorPersonName,
 } from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
@@ -480,7 +481,7 @@ const trustFocusLabel = computed(() => {
   const name = String(trustFocusName.value || '').trim();
   if (name) return name;
   const sid = Number(trustFocusStudentId.value) || 0;
-  return sid > 0 ? `學生 #${sid}` : '';
+  return sid > 0 ? '名單上的學生' : '';
 });
 
 function applyTrustFocusFromStorage() {

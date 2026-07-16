@@ -687,7 +687,7 @@
               <tr v-for="inv in invoiceModalList" :key="inv.id">
                 <td>
                   <strong>{{ inv.invoice_no || `INV-${inv.id}` }}</strong>
-                  <div class="hint">{{ inv.course_ref || `COURSE-${String(invoiceModalCourse?.ID || '').padStart(6, '0')}` }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
+                  <div class="hint">{{ formatLedgerCourseLabel({ course_ref: inv.course_ref, subject: invoiceModalCourse?.subject_name || invoiceModalCourse?.subject }) }} · {{ formatBillingPeriod(inv.billing_period) }}</div>
                 </td>
                 <td>{{ inv.due_date || '—' }}</td>
                 <td>{{ invoicePaidDateLabel(inv) }}</td>
@@ -775,7 +775,7 @@
           class="invoice-void-reason"
           rows="4"
           maxlength="255"
-          placeholder="例：歷史錯帳，不應產生 2026年5月 COURSE-000382 應收"
+          placeholder="例：歷史錯帳，不應產生 2026年5月這筆應收"
           :disabled="invoiceVoidSubmitting"
         ></textarea>
         <p class="modal-desc">原因會寫入帳單稽核紀錄，之後可追查。</p>
@@ -851,6 +851,11 @@ import { SUBJECTS, getSubjectLabel as getSubjectText } from '../lib/constants';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import { fetchClassSessions, normalizeClassSessionsPayload, sessionViewModelPatchFromApi } from '../lib/classSessionsApi';
 import { getPerSessionFee, getCourseTotalFee } from '../lib/coursePricing';
+import {
+  formatRenewSuccessMessage,
+  formatDuplicatePurchaseHint,
+  formatLedgerCourseLabel,
+} from '../lib/studentClassDisplay.js';
 import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { updatePackage } from '../lib/coursePackagesApi';
 import { buildEditTeacherOptions, shouldClearTeacherSelection } from '../lib/courseTeacherOptions';
@@ -1634,7 +1639,7 @@ function duplicateCourseForTeacher(course) {
     days_of_week: [],
     start_time: course.start_time || '16:00',
     room_id: course.room_id || null,
-    memo: `雙師課程（同學生另一位老師，原課程#${course.id}）`,
+    memo: `雙師課程（同學生另一位老師，接續「${course.subject_name || course.subject || '原科目'}」）`,
   };
   const sid = Number(course.student_id ?? course.StudentID) || '';
   schedulerInitialStudentId.value = sid;
@@ -1758,7 +1763,7 @@ async function submitPurchaseSessions() {
     if (!res.ok) {
       const details = json?.errors ? Object.values(json.errors || {}).flat().join(' ') : '';
       const duplicateHint = json?.duplicate_course?.id
-        ? `\n\n已存在相同批次：課程 #${json.duplicate_course.id}，請先查看是否已續報過。`
+        ? formatDuplicatePurchaseHint({ subject: course?.subject_name || course?.subject || '' })
         : '';
       alert((details || json?.message || '加購失敗') + duplicateHint);
       return;
@@ -1771,12 +1776,16 @@ async function submitPurchaseSessions() {
       expandedStudentGroups.value = new Set([...expandedStudentGroups.value, groupKey]);
       focusedStudentKey.value = groupKey;
     }
-    const sessionRange = newCourse.first_session_date && newCourse.last_session_date
-      ? `，上課日期 ${newCourse.first_session_date} 至 ${newCourse.last_session_date}`
-      : '';
     toastRef.value?.show?.({
       title: '已建立加購批次',
-      description: `新批次課程 #${newCourse.id || '—'} 已建立 ${Number(newCourse.created_sessions || 0)} 堂${sessionRange}。請查看此新批次詳情，原課程不會追加堂次。`,
+      description: formatRenewSuccessMessage({
+        kind: 'purchase',
+        studentName: course?.student_name || '',
+        subject: course?.subject_name || course?.subject || '',
+        sessions: newCourse.created_sessions,
+        firstDate: newCourse.first_session_date || '',
+        lastDate: newCourse.last_session_date || '',
+      }),
       variant: 'success',
       durationMs: 7000,
     });
@@ -1820,7 +1829,11 @@ async function submitRenewMonthly(endDate) {
     const newCourse = json?.new_course || {};
     toastRef.value?.show?.({
       title: '已建立月結新一期',
-      description: `新一期課程 #${newCourse.id || '—'} 已建立，舊期已結算。請在新期帳單核帳，不會再混在原課程底下。`,
+      description: formatRenewSuccessMessage({
+        kind: 'monthly',
+        studentName: course?.student_name || '',
+        subject: course?.subject_name || course?.subject || '',
+      }),
       variant: 'success',
       durationMs: 7000,
     });

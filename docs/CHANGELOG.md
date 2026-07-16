@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 續報／帳本改使用者語言（主任任務路徑）
+
+Fixed：續報／加購成功提示改為「學生＋科目＋堂數／日期」；帳本不再顯示 COURSE-／Payment #；可信度名單不再出現「學生 #」。主任完成續報與對帳時不必理解內部編號。
+
+開發備註：Display only — `studentClassDisplay` 新增續報／帳本 formatter；改 CourseManagement／StudentsList／AccountingLedgerModal／DirectorDashboard／DuplicateSessionReviewPage。未動 API。
+
 ## 2026-07-16 — fix: 帳務結清畫面改顯示開課日／剩餘堂數（UXID-002）
 
 Fixed：催繳／結案確認不再寫「課程 #數字」；改顯示開課日與剩餘堂數，「已有後續同科目課程」亦用人話。主任結案時不必理解內部編號。
