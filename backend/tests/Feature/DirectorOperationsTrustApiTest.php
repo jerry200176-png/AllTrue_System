@@ -138,6 +138,7 @@ class DirectorOperationsTrustApiTest extends TestCase
         $this->assertSame([], $caps);
         $this->assertTrue((bool) ($dc['score_rules']['dormant_is_retention_hold'] ?? false));
         $this->assertNotSame('green', $dc['status']);
+        $this->assertSame('yellow', $dc['status'], 'dormant-only should be yellow hold, not green all-clear');
         $this->assertGreaterThan(45, (int) $dc['score'], 'dormant soft penalty must not hard-cap like Critical');
     }
 

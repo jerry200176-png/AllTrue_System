@@ -175,10 +175,13 @@ class BusinessDigestService
         $hasCritical = count($hardCaps) > 0;
         if ($hasCritical) {
             $status = 'red';
+        } elseif (count($decisions) > 0) {
+            // Actionable warnings (incl. dormant hold) must not read as all-clear green.
+            $status = $score >= 70 ? 'yellow' : 'red';
         } else {
-            $status = $score >= 90 ? 'green' : ($score >= 70 ? 'yellow' : 'red');
+            $status = 'green';
         }
-        $criticalCount = count(array_filter($decisions, fn ($d) => ($d['severity'] ?? '') === 'critical'));
+        $criticalCount = count(array_filter($decisions, fn ($d) => $d['severity'] === 'critical'));
         $warningCount = count($decisions) - $criticalCount;
         $headline = count($decisions) === 0
             ? '今天課表與剩課看起來可信，先處理下方每日待辦即可。'
