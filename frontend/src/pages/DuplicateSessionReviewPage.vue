@@ -447,6 +447,7 @@ import { ref, computed, watch, onMounted, reactive } from 'vue';
 import { branches } from '../lib/useBranches';
 import { useDuplicateReview, groupKey } from '../composables/useDuplicateReview';
 import { STATUS_LABELS, SESSION_STATUS_LABELS } from '../lib/duplicateReviewApi';
+import { parseTrustFocus, filterGroupsByTrustFocus } from '../lib/trustDecisionDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -478,18 +479,13 @@ function applyTrustFocusFromStorage() {
   try {
     const raw = sessionStorage.getItem('alltrue_ops_trust_focus');
     if (!raw) return;
-    const focus = JSON.parse(raw);
-    const ageMs = Date.now() - Number(focus?.at || 0);
-    if (ageMs < 0 || ageMs >= 5 * 60 * 1000) {
+    const focus = parseTrustFocus(raw);
+    if (!focus) {
       sessionStorage.removeItem('alltrue_ops_trust_focus');
       return;
     }
-    if (focus?.decision_key && focus.decision_key !== 'calendar_duplicate') return;
-    const name = String(focus?.student_name || '').trim();
-    const sid = Number(focus?.student_id) || 0;
-    if (!name && sid <= 0) return;
-    trustFocusName.value = name;
-    trustFocusStudentId.value = sid;
+    trustFocusName.value = focus.studentName;
+    trustFocusStudentId.value = focus.studentId;
     sessionStorage.removeItem('alltrue_ops_trust_focus');
     activeTab.value = 'pending';
   } catch (_) { /* ignore */ }
@@ -549,14 +545,10 @@ function groupStatus(g) {
 const filteredGroups = computed(() => {
   let list = groupsWithLocalDecisions.value;
   if (activeTab.value === 'pending') list = list.filter((g) => !g._submitted);
-  const name = String(trustFocusName.value || '').trim();
-  const sid = Number(trustFocusStudentId.value) || 0;
-  if (!name && sid <= 0) return list;
-  return list.filter((g) => {
-    if (sid > 0 && Number(g.student_id) === sid) return true;
-    if (name && String(g.student_name || '').includes(name)) return true;
-    return false;
-  });
+  const focus = trustFocusName.value || trustFocusStudentId.value
+    ? { studentName: trustFocusName.value, studentId: trustFocusStudentId.value }
+    : null;
+  return filterGroupsByTrustFocus(list, focus);
 });
 
 function formatDate(s) {

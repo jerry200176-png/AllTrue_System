@@ -703,6 +703,11 @@ import {
   USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT,
 } from '../lib/userEngagementDisplay';
 import { buildDirectorPriorityRisks } from '../lib/directorPriorityRisks';
+import {
+  trustPeopleSlice as trustPeople,
+  trustPeopleSummary,
+  trustDecisionTitle,
+} from '../lib/trustDecisionDisplay.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -1028,39 +1033,6 @@ const trustDecisions = computed(() =>
 
 const trustDecisionsEl = ref(null);
 let trustImpressionObserver = null;
-
-function trustPeople(item) {
-  const list = Array.isArray(item?.people) ? item.people : [];
-  return list.slice(0, 8);
-}
-
-/** Unique student names for card headline (in-app #200). */
-function trustPeopleSummary(item) {
-  const names = trustPeople(item)
-    .map((p) => String(p?.student_name || '').trim())
-    .filter(Boolean);
-  return [...new Set(names)].slice(0, 5).join('、');
-}
-
-/** When one student dominates, put name in title so mobile directors see it without scrolling. */
-function trustDecisionTitle(item) {
-  const summary = trustPeopleSummary(item);
-  const people = trustPeople(item);
-  if (!summary || !people.length) return item?.title || '';
-  const uniqueNames = summary.split('、').filter(Boolean);
-  if (uniqueNames.length !== 1) return item?.title || '';
-  const name = uniqueNames[0];
-  const title = String(item?.title || '');
-  if (title.includes(name)) return title;
-  if (item?.key === 'calendar_duplicate') {
-    const n = Number(item?.people_total || people.length) || people.length;
-    return `${name}：${n} 組跨約重複堂`;
-  }
-  if (item?.key === 'dormant_hold') return `${name}：已付休眠要聯繫`;
-  if (item?.key === 'ledger_divergent') return `${name}：剩餘堂數對不起來`;
-  if (item?.key === 'stranded_paid') return `${name}：已付還沒排進課表`;
-  return title;
-}
 
 function formatTrustAmount(n) {
   return Number(n || 0).toLocaleString('zh-TW');
