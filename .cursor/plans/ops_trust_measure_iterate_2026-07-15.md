@@ -1,14 +1,16 @@
 # E-OPS-TRUST Measure 定義（v3 · 分母與樣本有效性）
 
-> 權威口徑。部署成功 ≠ 產品成功。**正式觀察：2026-07-17 起第一個完整營業日。**  
-> 2026-07-16 = partial-day telemetry sanity only（不得當 Day 0）。
+> 權威口徑。部署成功 ≠ 產品成功。  
+> **Day 0 重設（2026-07-16）**：in-app #200 修復會改 decision CTA／名單／入口路徑，污染原觀察窗。  
+> 原訂 2026-07-17 Day0 **作廢**。新 Day0＝本修復 **production 部署後下一個完整營業日**（預計 2026-07-17 若當日已部署完成則仍 7/17；若部署跨日則順延）。  
+> 2026-07-16 全日仍僅 partial-day／修復部署 sanity，不得當完整 Day0。
 
 ## 觀察窗
 
 | 區段 | 日期 | 用途 |
 |---|---|---|
-| Partial | 2026-07-16（deploy 08:22 之後） | 遙測 sanity only |
-| Day 0 起 | **2026-07-17** 完整營業日 | 正式 baseline / calibration 起點 |
+| Partial | 2026-07-16（含 #200 閉環修復部署） | sanity only；原 Day0 計畫作廢並重設 |
+| Day 0 起 | **修復上線後下一個完整營業日**（預設 2026-07-17） | 正式 baseline / calibration |
 | Compare | Day0 + 7～14 完整營業日後 | Keep / Fix / Kill；樣本不足見下 |
 
 Baseline 誠實性（二擇一，標清）：

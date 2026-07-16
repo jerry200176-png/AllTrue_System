@@ -11,6 +11,11 @@
 
 ---
 
+## 2026-07-16 — fix: 信任決策卡可導到具體錯誤對象（in-app #200）
+
+- **Fixed**：主任點決策卡不再只進空白行事曆／課程管理——重疊堂改走「重疊課程審核」，堂數對不起來／休眠會帶出可點名單並預填搜尋。
+- 開發備註：會改 CTA／入口，Measure Day0 誠實重設（見 `.cursor/plans/ops_trust_measure_iterate_2026-07-15.md`）。
+
 ## 2026-07-16 — docs: 信任決策中心量測分母與樣本有效性（v3）
 
 - **Changed**：明確各 Outcome 分母（有效任務、到期應處理 Critical、actionable_at、bypass session）；樣本不足不得 Keep／Kill，滿 14 日仍不足則偏向關閉或縮小入口。
