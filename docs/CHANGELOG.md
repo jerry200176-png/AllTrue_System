@@ -17,6 +17,12 @@ Fixed：主任儀表板「可信度」決策卡現在會直接標出涉及學生
 
 開發備註：`DirectorDashboard.vue` 新增 `trustPeopleSummary`／`trustDecisionTitle`；`DuplicateSessionReviewPage.vue` 讀 `alltrue_ops_trust_focus` 顯示篩選橫幅。
 
+## 2026-07-16 — feat: POP Phase 1 catalog / policy / invariant / interfaces
+
+- Added：`operations/catalog.yaml`、`operations/policies/default.yaml`、`operations/invariants/session-pack@1.0.0.yaml`、`backend/app/Operations/Contracts/*`、`scripts/pop-fitness-check.mjs`
+- Changed：`docs/INDEX.md` 新增 POP 服務目錄入口（catalog/ADR 分拆治理）
+- 開發備註：Phase 1 為 read-only foundation；不含 production execute。
+
 ## 2026-07-16 — docs: Measure 唯一下一步與 #173／Issues 分流
 
 - **Changed**：正式回報唯一下一步改為「自 2026-07-17 凍結 Trust 實驗面、收集有效 telemetry、至少一次真實主任無教練驗收」；#173 資料修正與 Issues 權限為分流。

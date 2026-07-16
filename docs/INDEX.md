@@ -35,8 +35,8 @@
 
 | Service name | Role | Execution owner | Incident linkage | SLO |
 |--------------|------|-----------------|------------------|-----|
+| POP (Production Operations Platform) | prod | [`docs/pop/adr/README.md`](pop/adr/README.md) · [`operations/catalog.yaml`](../operations/catalog.yaml) | Architecture Freeze 2026-07-16; Phase 1 ADR + catalog | yes |
 | Control plane contract | prod | [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) | supreme runtime spec | yes |
-| POP (Production Operations Platform) | prod | [`docs/pop/adr/README.md`](pop/adr/README.md) | Architecture Freeze 2026-07-16; Phase 1 ADRs | yes |
 | Contradiction registry | tool | [`CONTRADICTION_REGISTRY.md`](CONTRADICTION_REGISTRY.md) | conflict resolution | no |
 | Control plane enforcer | tool | [`CONTROL_PLANE_ENFORCER.md`](CONTROL_PLANE_ENFORCER.md) · `scripts/control-plane-lint.mjs` | CI gate | no |
 | AllTrue production app | prod | Pi runtime + [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | [`INCIDENT_RUNTIME_LOOP.md`](INCIDENT_RUNTIME_LOOP.md) | yes |

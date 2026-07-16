@@ -1,0 +1,105 @@
+# AllTrue Production Operations Catalog
+# Authority: ADR-POP-005 | Phase 1: read-only registry (no POP execute yet)
+version: 1
+
+operations:
+  supersede-renewal:
+    lifecycle: active
+    domain: session
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-data
+    approver_roles: [director, super_admin]
+    runbook: docs/runbooks/173-supersede-b-pcr.md
+    alert_group: LINE:ops-data
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, verify, rollback, snapshot]
+    risk: high
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    blast_radius: single_student_slot
+    estimated_duration: 2m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\SupersedeRenewalStrategy
+    legacy_command: repair:supersede-renewal-session
+    tags: [repair, session, renewal]
+
+  duplicate-session:
+    lifecycle: active
+    domain: session
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-data
+    approver_roles: [director, super_admin]
+    runbook: docs/runbooks/1130-p1-ghost-pcr.md
+    alert_group: LINE:ops-data
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, verify, rollback, snapshot]
+    risk: high
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    blast_radius: multi_row
+    estimated_duration: 5m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\DuplicateSessionStrategy
+    legacy_command: repair:duplicate-sessions
+    tags: [repair, session, duplicate]
+
+  forward-generation:
+    lifecycle: active
+    domain: session
+    business_owner: director-scheduling
+    technical_owner: platform-scheduling
+    owner: platform-scheduling
+    approver_roles: [director, super_admin]
+    runbook: docs/runbooks/1062-track-a-pcr.md
+    alert_group: LINE:ops-scheduling
+    escalation_policy: scheduling-critical-escalation
+    capabilities: [repair, plan, verify, snapshot]
+    risk: critical
+    reversible: partial
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: false
+    verification_required: true
+    approval_required: true
+    blast_radius: branch_wide
+    estimated_duration: 30m
+    invariant_packs: [session-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\ForwardGenerationStrategy
+    legacy_command: sessions:generate-forward
+    tags: [repair, session, scheduling]
+
+  application-deploy:
+    lifecycle: active
+    domain: deploy
+    business_owner: director-ops
+    technical_owner: platform-ops
+    owner: platform-ops
+    approver_roles: []
+    runbook: docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md
+    alert_group: LINE:ops-deploy
+    escalation_policy: deploy-escalation
+    capabilities: [deploy, verify]
+    risk: high
+    reversible: true
+    snapshot_required: false
+    transaction_required: false
+    rollback_supported: true
+    verification_required: true
+    approval_required: false
+    blast_radius: global
+    estimated_duration: 15m
+    invariant_packs: [deployment-pack@1.0.0]
+    strategy_class: App\Operations\Strategies\ApplicationDeployStrategy
+    legacy_command: null
+    tags: [deploy]
+    notes: Executed via deploy.yml today; converges to POP strategy in Phase 5.
