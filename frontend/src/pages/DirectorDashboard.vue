@@ -44,7 +44,7 @@
             </span>
           </header>
 
-          <div v-if="trustDecisions.length" class="ops-trust__decisions">
+          <div v-if="trustDecisions.length" ref="trustDecisionsEl" class="ops-trust__decisions">
             <article
               v-for="item in trustDecisions"
               :key="item.key"
@@ -670,7 +670,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue';
 import { supabase } from '../supabase';
 import { getBranchName } from '../lib/useBranches';
 import { getSubjectLabel as getSubjectText } from '../lib/constants';
@@ -678,7 +678,14 @@ import { fetchDiscrepancySummary } from '../lib/scheduleDiscrepanciesApi';
 import RecentSubstitutesCard from '../components/substitute/RecentSubstitutesCard.vue';
 import { recentSubstitutes as fetchRecentSubstitutes } from '../lib/substituteApi.js';
 import { sortTodoCards, markTodoAcknowledged, isTodoAcknowledged } from '../lib/adoptionTodo';
-import { trackAdoptionEvent } from '../lib/adoptionTelemetry';
+import {
+  trackAdoptionEvent,
+  trackTrustEventOnce,
+  markTrustSeen,
+  markTrustProvidedPathUsed,
+  hasSeenAnyTrustDecision,
+  usedTrustProvidedPath,
+} from '../lib/adoptionTelemetry';
 import {
   listExceptionWorkflows,
   getExceptionWorkflow,
@@ -1016,7 +1023,8 @@ const trustDecisions = computed(() =>
   Array.isArray(decisionCenter.value.decisions) ? decisionCenter.value.decisions : []
 );
 
-const trustTelemetrySent = ref(false);
+const trustDecisionsEl = ref(null);
+let trustImpressionObserver = null;
 
 function trustPeople(item) {
   const list = Array.isArray(item?.people) ? item.people : [];
@@ -1037,10 +1045,41 @@ function formatTrustStamp(iso) {
   }
 }
 
-function emitTrustTelemetry(event, meta = {}) {
-  try {
-    trackAdoptionEvent(event, Number(props.branchId) || 0, meta);
-  } catch (_) { /* non-blocking */ }
+function teardownTrustImpressions() {
+  if (trustImpressionObserver) {
+    trustImpressionObserver.disconnect();
+    trustImpressionObserver = null;
+  }
+}
+
+function setupTrustImpressions() {
+  teardownTrustImpressions();
+  if (typeof IntersectionObserver === 'undefined') return;
+  const root = trustDecisionsEl.value;
+  if (!root) return;
+  const branch = Number(props.branchId) || 0;
+  trustImpressionObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting || entry.intersectionRatio < 0.4) return;
+      const key = entry.target?.getAttribute?.('data-trust-key') || '';
+      if (!key) return;
+      const item = trustDecisions.value.find((d) => d.key === key);
+      trackTrustEventOnce('director_trust_decision_impression', branch, {
+        key,
+        severity: item?.severity || '',
+        target: item?.target || '',
+        has_drilldown: Boolean(item?.has_drilldown),
+        people_total: Number(item?.people_total) || 0,
+        viewport: 1,
+      }, key).then((sent) => {
+        if (sent) markTrustSeen(branch, key);
+      });
+      trustImpressionObserver?.unobserve(entry.target);
+    });
+  }, { threshold: [0.4] });
+  root.querySelectorAll('[data-trust-key]').forEach((el) => {
+    trustImpressionObserver.observe(el);
+  });
 }
 
 function setOpsTrustFocus({ studentName = '', studentId = 0, decisionKey = '' } = {}) {
@@ -1068,40 +1107,49 @@ function navigateTrustTarget(target) {
   }
 }
 
+/** First valid action on this decision instance (CTA or person row) = click. */
 function handleTrustDecision(item) {
-  emitTrustTelemetry('director_trust_decision_click', {
-    key: item?.key || '',
+  const branch = Number(props.branchId) || 0;
+  const key = item?.key || '';
+  trackTrustEventOnce('director_trust_decision_click', branch, {
+    key,
     target: item?.target || '',
     severity: item?.severity || '',
     has_drilldown: Boolean(item?.has_drilldown),
     people_shown: trustPeople(item).length,
     from: 'decision_cta',
-  });
+  }, key);
+  markTrustProvidedPathUsed(branch, key);
   navigateTrustTarget(item?.target);
 }
 
 function handleTrustPerson(item, person) {
-  emitTrustTelemetry('director_trust_person_click', {
-    key: item?.key || '',
+  const branch = Number(props.branchId) || 0;
+  const key = item?.key || '';
+  // No student_id / student_class_id in telemetry (linkable). Click once per decision instance.
+  trackTrustEventOnce('director_trust_decision_click', branch, {
+    key,
     target: item?.target || 'course-mgmt',
     severity: item?.severity || '',
-    student_id: Number(person?.student_id) || 0,
-    student_class_id: Number(person?.student_class_id) || 0,
     from: 'person_row',
-  });
+  }, key);
+  markTrustProvidedPathUsed(branch, key);
   setOpsTrustFocus({
     studentName: person?.student_name || '',
     studentId: person?.student_id,
-    decisionKey: item?.key || '',
+    decisionKey: key,
   });
   navigateTrustTarget(item?.target || 'course-mgmt');
 }
 
 function trackBypassCourseMgmtSeek() {
-  emitTrustTelemetry('director_trust_bypass_seek', {
+  const branch = Number(props.branchId) || 0;
+  // Only count bypass after cards were seen AND director did not use provided CTA/path.
+  if (!hasSeenAnyTrustDecision(branch) || usedTrustProvidedPath(branch)) return;
+  trackTrustEventOnce('director_trust_bypass_seek', branch, {
     target: 'course-mgmt',
     from: 'priority_risk_or_nav',
-  });
+  }, 'bypass');
 }
 
 function handleDirectorPriorityRisk(risk) {
@@ -1363,27 +1411,19 @@ const loadData = async () => {
       const trustJson = await trustResp.json();
       operationsTrust.value = trustJson?.data || null;
       const dc = operationsTrust.value?.decision_center;
-      if (dc && !trustTelemetrySent.value) {
-        trustTelemetrySent.value = true;
+      if (dc) {
+        const branch = Number(props.branchId) || 0;
         const keys = Array.isArray(dc.decisions) ? dc.decisions.map((d) => d.key).filter(Boolean) : [];
-        emitTrustTelemetry('director_trust_score_shown', {
+        await trackTrustEventOnce('director_trust_score_shown', branch, {
           score: Number(dc.score) || 0,
           status: String(dc.status || ''),
           critical_count: Number(dc.critical_count) || 0,
           warning_count: Number(dc.warning_count) || 0,
           decision_count: keys.length,
           decision_keys: keys,
-        });
-        keys.forEach((key) => {
-          const d = (dc.decisions || []).find((x) => x.key === key);
-          emitTrustTelemetry('director_trust_decision_impression', {
-            key,
-            severity: d?.severity || '',
-            target: d?.target || '',
-            has_drilldown: Boolean(d?.has_drilldown),
-            people_total: Number(d?.people_total) || 0,
-          });
-        });
+        }, 'score');
+        await nextTick();
+        setupTrustImpressions();
       }
     } else {
       operationsTrust.value = null;
@@ -1728,12 +1768,15 @@ const scrollTo = (section) => {
 };
 
 watch(() => props.branchId, () => {
-  trustTelemetrySent.value = false;
+  teardownTrustImpressions();
   loadData();
   loadScheduleDiscrepancySummary();
 });
 onMounted(() => {
-  trackAdoptionEvent('dashboard_opened', props.branchId, { role: 'director', page: 'director-dashboard' });
+  trackTrustEventOnce('dashboard_opened', Number(props.branchId) || 0, {
+    role: 'director',
+    page: 'director-dashboard',
+  }, 'open');
   refreshEngagementUi();
   setupEngagementReducedMotion();
   loadEngagementSnapshot();
@@ -1744,6 +1787,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  teardownTrustImpressions();
   document.removeEventListener('visibilitychange', onDirectorVisibilityForEngagement);
   window.removeEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
 });
