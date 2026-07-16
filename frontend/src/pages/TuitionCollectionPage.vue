@@ -282,7 +282,11 @@
                         撤銷
                       </button>
                       <template v-if="r.payment_status === 'renew_needed'">
-                        <span v-if="r.has_newer_course" class="tc-newer-badge" :title="'已有新課程 #' + r.newer_course_id + '（剩餘 ' + (r.newer_course_remaining ?? 0) + ' 堂）'">已有新課程</span>
+                        <span
+                          v-if="r.has_newer_course"
+                          class="tc-newer-badge"
+                          :title="newerCourseBadgeTitle(r)"
+                        >{{ newerCourseBadgeLabel(r) }}</span>
                         <span v-else class="tc-renew-hint">需續課</span>
                         <button class="tc-btn tc-btn--settle" @click="openSettleDialog(r)" :disabled="settleLoading === r.id" title="確認舊課程已被新課程取代，點此關閉">
                           <span v-if="settleLoading === r.id" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
@@ -616,11 +620,12 @@
           <p class="tc-dialog-desc">結案後此課程將從催繳名單移除，不再追蹤。</p>
           <div class="tc-dialog-info" v-if="settleTarget">
             <div style="margin-bottom:4px"><strong>{{ settleTarget.student_name }}</strong> — {{ settleTarget.subject }}</div>
-            <div style="font-size:12px;color:var(--text-light)">課程 #{{ settleTarget.id }}，剩餘 {{ settleTarget.remaining_sessions }} 堂</div>
+            <div style="font-size:12px;color:var(--text-light)">{{ settleSummary.primary }}</div>
+            <div v-if="settleSummary.techId" class="tc-tech-id" aria-hidden="true">{{ settleSummary.techId }}</div>
           </div>
           <div v-if="settleTarget?.has_newer_course" class="tc-settle-newer-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-success)">check_circle</span>
-            <span>已偵測到新課程 #{{ settleTarget.newer_course_id }}（開課日 {{ settleTarget.newer_course_start_date || '—' }}，剩餘 {{ settleTarget.newer_course_remaining ?? 0 }} 堂）</span>
+            <span>{{ settleNewerHint.primary }}</span>
           </div>
           <div v-else class="tc-settle-warn-info">
             <span class="material-symbols-outlined" style="font-size:16px;color:var(--ds-warning)">info</span>
@@ -721,6 +726,10 @@ import ReceiptModal from '../components/ReceiptModal.vue';
 import AccountingLedgerModal from '../components/AccountingLedgerModal.vue';
 import BatchInvoiceModal from '../components/BatchInvoiceModal.vue';
 import OverdueBucketsPanel from '../components/OverdueBucketsPanel.vue';
+import {
+  formatTuitionSettleSummary,
+  formatTuitionNewerCourseHint,
+} from '../lib/studentClassDisplay.js';
 
 const props = defineProps({
   branchId: { type: [Number, String], default: null },
@@ -1476,10 +1485,20 @@ async function viewReceiptForClass(row) {
 const settleDialogOpen = ref(false);
 const settleTarget = ref(null);
 const settleLoading = ref(null);
+const settleSummary = computed(() => formatTuitionSettleSummary(settleTarget.value || {}));
+const settleNewerHint = computed(() => formatTuitionNewerCourseHint(settleTarget.value || {}));
 
 function openSettleDialog(row) {
   settleTarget.value = row;
   settleDialogOpen.value = true;
+}
+
+function newerCourseBadgeTitle(row) {
+  return formatTuitionNewerCourseHint(row).primary;
+}
+
+function newerCourseBadgeLabel(row) {
+  return formatTuitionNewerCourseHint(row).shortBadge;
 }
 
 async function confirmSettle() {
@@ -2251,6 +2270,12 @@ loadAlerts();
 .tc-dialog-info small {
   display: block;
   margin-top: 4px;
+  color: var(--text-light);
+  font-weight: 400;
+}
+.tc-tech-id {
+  margin-top: 2px;
+  font-size: 11px;
   color: var(--text-light);
   font-weight: 400;
 }

@@ -11,6 +11,12 @@
 
 ---
 
+## 2026-07-16 — fix: 帳務結清畫面改顯示開課日／剩餘堂數（UXID-002）
+
+Fixed：催繳／結案確認不再寫「課程 #數字」；改顯示開課日與剩餘堂數，「已有後續同科目課程」亦用人話。主任結案時不必理解內部編號。
+
+開發備註：擴充 `studentClassDisplay.js`（`formatTuitionSettleSummary`／`formatTuitionNewerCourseHint`）；僅改 `TuitionCollectionPage.vue` 顯示層，未動 API／帳務邏輯。
+
 ## 2026-07-16 — fix: 重疊審核改顯示科目／老師／開課日（in-app #200）
 
 Fixed：重疊課程審核不再用「SC #」當主標籤；改顯示科目、老師、開課日與堂數，主任不需理解內部編號即可選擇保留哪一側。SC 僅保留為小字技術識別。

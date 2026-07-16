@@ -7,6 +7,8 @@ import {
   formatStudentClassOpenDate,
   formatStudentClassDisplay,
   formatStudentClassSideDisplays,
+  formatTuitionSettleSummary,
+  formatTuitionNewerCourseHint,
   primaryLeaksInternalId,
 } from './studentClassDisplay.js';
 
@@ -71,5 +73,37 @@ const twin = formatStudentClassSideDisplays([
 assert.notEqual(twin[0].primary, twin[1].primary);
 assert.equal(primaryLeaksInternalId(twin[0].primary), false);
 assert.equal(primaryLeaksInternalId(twin[1].primary), false);
+
+// --- UXID-002: tuition settle / newer-course hints (display only) ---
+assert.equal(primaryLeaksInternalId('課程 #382，剩餘 2 堂'), true);
+assert.equal(primaryLeaksInternalId('已偵測到新課程 #999（開課日 7/4）'), true);
+
+const settle = formatTuitionSettleSummary({
+  id: 382,
+  subject: '英文',
+  student_name: '王小明',
+  remaining_sessions: 2,
+  start_date: '2026-03-01',
+});
+assert.ok(settle.primary.includes('剩餘 2 堂'));
+assert.ok(settle.primary.includes('開課 3/1'));
+assert.equal(primaryLeaksInternalId(settle.primary), false);
+assert.equal(settle.techId, 'SC #382');
+
+const newer = formatTuitionNewerCourseHint({
+  newer_course_id: 999,
+  newer_course_start_date: '2026-07-04',
+  newer_course_remaining: 8,
+});
+assert.ok(newer.primary.includes('後續同科目'));
+assert.ok(newer.primary.includes('開課 7/4'));
+assert.ok(newer.primary.includes('剩 8 堂'));
+assert.equal(primaryLeaksInternalId(newer.primary), false);
+assert.equal(newer.shortBadge, '已有新課程');
+assert.equal(newer.techId, 'SC #999');
+
+// Director settle decision without course id:
+// 「有後續同科目、開課較新」→ 可安心結案舊課
+assert.ok(newer.primary.includes('開課 7/4') && !newer.primary.includes('#'));
 
 console.log('studentClassDisplay.test.js: all assertions passed');
