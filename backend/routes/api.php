@@ -655,7 +655,6 @@ Route::prefix('v1')->group(function () {
     // ── Duplicate Sessions P2 Review (director + super_admin) ──
     Route::middleware(['role:director,super_admin', 'require_campus', 'require_password_change'])->group(function () {
         Route::get('admin/duplicate-sessions/p2-review', [AdminDuplicateSessionController::class, 'p2Review']);
-        Route::post('admin/duplicate-sessions/decide', [AdminDuplicateSessionController::class, 'decide']);
-        Route::post('admin/duplicate-sessions/execute', [AdminDuplicateSessionController::class, 'execute']);
+        Route::patch('admin/duplicate-sessions/p2-review/{groupId}', [AdminDuplicateSessionController::class, 'patchP2Review']);
     });
 });
