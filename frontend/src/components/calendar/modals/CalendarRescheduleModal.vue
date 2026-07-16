@@ -6,7 +6,7 @@
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal" style="width: 420px;">
       <h3>🔄 調課</h3>
-      <p class="hint">將原本的課程改到新的日期時間</p>
+      <p class="hint">{{ rescheduleDesc }}</p>
       <div class="form-group">
         <label>學生</label>
         <p style="font-weight: 600;">{{ studentName }}</p>
@@ -44,6 +44,7 @@
 
 <script setup>
 import './calendarModalRwd.css';
+import { RESCHEDULE_ACTION_DESC } from '../../../lib/scheduleDisplay';
 
 defineProps({
   show: { type: Boolean, default: false },
@@ -55,6 +56,7 @@ defineProps({
   timeOptions: { type: Array, default: () => [] },
 });
 defineEmits(['close', 'submit', 'new-start-change']);
+const rescheduleDesc = RESCHEDULE_ACTION_DESC;
 </script>
 
 <style scoped>

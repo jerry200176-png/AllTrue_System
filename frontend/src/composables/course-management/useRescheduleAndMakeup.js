@@ -1,6 +1,12 @@
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
+import {
+  formatRescheduleConfirmDialog,
+  formatRescheduleSuccessMessage,
+  formatRescheduleConflictStudents,
+  humanizeRescheduleFailure,
+} from '../../lib/scheduleDisplay';
 
 export function useRescheduleAndMakeup({
   supabase,
@@ -107,12 +113,17 @@ export function useRescheduleAndMakeup({
       schedule_date: form.new_date, original_schedule_id: originalId, student_course_id: form.course_id,
     });
 
-    const impactLines = [
-      `原堂次：${form.original_date} ${form.original_start}~${form.original_end}`,
-      `新堂次：${form.new_date} ${normalizeTo30Min(form.new_start)}~${newEnd}`,
-      '系統將建立「原堂改期」與「新堂排入」兩筆記錄，可於課程編修追溯',
-    ].join('\n');
-    if (!confirm(`調課影響預覽\n\n${impactLines}\n\n確認送出？`)) return;
+    const confirmText = formatRescheduleConfirmDialog({
+      studentName: form.student_name,
+      subject: getSubjectLabel(form.subject) || form.subject,
+      originalDate: form.original_date,
+      originalStart: form.original_start,
+      originalEnd: form.original_end,
+      newDate: form.new_date,
+      newStart: normalizeTo30Min(form.new_start),
+      newEnd,
+    });
+    if (!confirm(confirmText)) return;
 
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
@@ -135,7 +146,11 @@ export function useRescheduleAndMakeup({
             headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify(payload1),
           });
-          if (!r1.ok) { const err = await r1.json().catch(() => ({})); alert('調課失敗：' + (err.message || '無法寫入原堂次紀錄')); return; }
+          if (!r1.ok) {
+            const err = await r1.json().catch(() => ({}));
+            alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入原堂次紀錄'));
+            return;
+          }
           const created = await r1.json();
           originalId = created?.id ?? null;
           createdNewRescheduled = true;
@@ -147,13 +162,11 @@ export function useRescheduleAndMakeup({
         });
         if (!r2.ok) {
           const err = await r2.json().catch(() => ({}));
-          let errMsg = err.message || '無法寫入新堂次';
+          let errMsg = humanizeRescheduleFailure(err.message || '無法寫入新堂次');
           if (r2.status === 409 && Array.isArray(err.conflicts) && err.conflicts.length > 0) {
             const details = err.conflicts[0]?.overlap_details;
-            if (Array.isArray(details) && details.length > 0) {
-              const names = details.map((d) => d.student_name || `#${d.student_id}`).join('、');
-              errMsg += `\n衝突學生：${names}`;
-            }
+            const conflictLine = formatRescheduleConflictStudents(details);
+            if (conflictLine) errMsg = `${errMsg}\n${conflictLine}`;
           }
           // FR-004: 補償刪除本次剛建立的 rescheduled 列，防止孤兒資料
           if (createdNewRescheduled && originalId) {
@@ -177,7 +190,16 @@ export function useRescheduleAndMakeup({
         }
         showRescheduleModal.value = false;
         rescheduleCourse.value = null;
-        alert('調課完成');
+        alert(formatRescheduleSuccessMessage({
+          studentName: form.student_name,
+          subject: getSubjectLabel(form.subject) || form.subject,
+          originalDate: form.original_date,
+          originalStart: form.original_start,
+          originalEnd: form.original_end,
+          newDate: form.new_date,
+          newStart: normalizeTo30Min(form.new_start),
+          newEnd,
+        }));
         trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal' });
         loadCourses();
         return;
@@ -194,11 +216,17 @@ export function useRescheduleAndMakeup({
       originalId = existing.id;
     } else {
       const { data: ins, error: e1 } = await supabase.from('schedules').insert([payload1]).select('id').single();
-      if (e1) { alert('調課失敗：' + (e1.message || '無法寫入原堂次紀錄')); return; }
+      if (e1) {
+        alert('調課失敗：' + humanizeRescheduleFailure(e1.message || '無法寫入原堂次紀錄'));
+        return;
+      }
       originalId = ins?.id ?? null;
     }
     const { error: e2 } = await supabase.from('schedules').insert([payload2(originalId)]);
-    if (e2) { alert('調課失敗：' + (e2.message || '無法寫入新堂次')); return; }
+    if (e2) {
+      alert('調課失敗：' + humanizeRescheduleFailure(e2.message || '無法寫入新堂次'));
+      return;
+    }
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
@@ -215,7 +243,16 @@ export function useRescheduleAndMakeup({
     } catch (_) {}
     showRescheduleModal.value = false;
     rescheduleCourse.value = null;
-    alert('調課完成');
+    alert(formatRescheduleSuccessMessage({
+      studentName: form.student_name,
+      subject: getSubjectLabel(form.subject) || form.subject,
+      originalDate: form.original_date,
+      originalStart: form.original_start,
+      originalEnd: form.original_end,
+      newDate: form.new_date,
+      newStart: normalizeTo30Min(form.new_start),
+      newEnd,
+    }));
     trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal-fallback' });
     loadCourses();
   }

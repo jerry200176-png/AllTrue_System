@@ -5,6 +5,10 @@ import {
   normalizeTimeTo30,
   computeEndTime,
 } from '../../lib/calendarFormat.js';
+import {
+  formatRescheduleSuccessMessage,
+  humanizeRescheduleFailure,
+} from '../../lib/scheduleDisplay.js';
 
 /** #740 Step 7b2b：調課 modal + submit（拖曳 handler 留 SmartCalendar） */
 export function useCalendarReschedule({
@@ -127,7 +131,7 @@ export function useCalendarReschedule({
     if (!alreadyRescheduled) {
       const res1 = await supabase.from('schedules').insert([payload1]);
       if (res1.error) {
-        alert('調課失敗：' + (res1.error?.message || '無法寫入原堂次紀錄'));
+        alert('調課失敗：' + humanizeRescheduleFailure(res1.error?.message || '無法寫入原堂次紀錄'));
         return;
       }
       const origList = Array.isArray(res1.data) ? res1.data : (res1.data ? [res1.data] : []);
@@ -179,10 +183,13 @@ export function useCalendarReschedule({
         if (originalId) {
           await supabase.from('schedules').delete().eq('id', originalId);
         }
-        const errMsg = res2.error?.message || '無法寫入新堂次';
-        const isConflict = res2.error?.conflicts?.length > 0 || String(errMsg).includes('已有') || String(errMsg).includes('上限');
+        const rawErr = res2.error?.message || '無法寫入新堂次';
+        const errMsg = humanizeRescheduleFailure(rawErr);
+        const isConflict = res2.error?.conflicts?.length > 0
+          || String(rawErr).includes('已有')
+          || String(rawErr).includes('上限');
         if (isConflict) {
-          alert('調課失敗：目標時段已有其他學生（撞課），請換一個時段再試。\n\n詳細：' + errMsg);
+          alert('調課失敗：目標時段已有其他學生，請換一個時段再試。');
         } else {
           alert('調課失敗：' + errMsg);
         }
@@ -202,23 +209,32 @@ export function useCalendarReschedule({
             old_start_time: rescheduleForm.value.original_start || undefined,
             new_date: rescheduleForm.value.new_date,
             start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
-            end_time: computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours),
+            end_time: newEnd,
           }),
         });
         if (!resched.ok) {
           const err = await resched.json().catch(() => ({}));
-          alert('調課失敗：' + (err.message || '找不到指定堂次，請確認日期與時間是否正確'));
+          alert('調課失敗：' + humanizeRescheduleFailure(err.message || '找不到指定堂次，請確認日期與時間是否正確'));
           return;
         }
       } catch (e) {
-        alert('調課失敗：' + (e?.message || '網路錯誤，請稍後再試'));
+        alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '網路錯誤，請稍後再試'));
         return;
       }
     }
 
     showRescheduleModal.value = false;
     await loadCourses();
-    alert('調課完成');
+    alert(formatRescheduleSuccessMessage({
+      studentName: getStudentName(rescheduleForm.value.student_id),
+      subject: getSubjectLabel(rescheduleForm.value.subject),
+      originalDate: rescheduleForm.value.original_date,
+      originalStart: rescheduleForm.value.original_start,
+      originalEnd: rescheduleForm.value.original_end,
+      newDate: rescheduleForm.value.new_date,
+      newStart: normalizeTimeTo30(rescheduleForm.value.new_start),
+      newEnd,
+    }));
   };
 
   const rescheduleDisplay = computed(() => ({

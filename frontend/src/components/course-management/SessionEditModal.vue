@@ -89,7 +89,7 @@
         </div>
         <div style="margin: 8px 0;">
           <button class="small ghost btn-makeup-query" @click="$emit('fetch-makeup')" :disabled="makeupLoading">
-            {{ makeupLoading ? '查詢中…' : '查詢老師可補課時段' }}
+            {{ makeupLoading ? '查詢中…' : makeupQueryLabel }}
           </button>
         </div>
         <div class="actions">
@@ -158,6 +158,7 @@
 <script setup>
 import { computed } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
+import { MAKEUP_SLOT_QUERY_LABEL } from '../../lib/scheduleDisplay';
 
 const SESSION_STATUS_LABELS = {
   scheduled: '排課中', attended: '已上', completed: '已上', late: '遲到', absent: '缺席',
@@ -194,6 +195,7 @@ const emit = defineEmits([
   'start-edit-note-time', 'do-edit-note-time',
 ]);
 
+const makeupQueryLabel = MAKEUP_SLOT_QUERY_LABEL;
 const subjectLabel = computed(() => getSubjectLabel(props.form?.subject));
 const statusLabel = (s) => SESSION_STATUS_LABELS[s] || s || '—';
 const canTransition = (target) => {
