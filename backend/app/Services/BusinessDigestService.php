@@ -107,41 +107,43 @@ class BusinessDigestService
             ];
         } elseif ($dup > 0) {
             $softPenalty += min(15, 5 + $dup);
+            $people = $this->duplicatePeople($campusId, 20);
             $decisions[] = [
                 'key' => 'calendar_duplicate',
                 'severity' => 'warning',
                 'risk_kind' => 'data_quality',
                 'title' => "偵測到 {$dup} 組跨約重複堂",
                 'why' => '同學生同時段可能兩張卡，點名/評量會亂。',
-                'next_step' => '打開行事曆對照本週，整理舊約殘留或重複堂。',
-                'action_label' => '去看行事曆',
-                'target' => 'calendar',
+                'next_step' => '打開「重疊課程審核」逐組確認要保留哪一側。',
+                'action_label' => '去審核重疊課',
+                'target' => 'duplicate-review',
                 'owner' => 'director',
                 'one_click_resolve' => false,
-                'has_drilldown' => false,
+                'has_drilldown' => true,
                 'detail' => null,
-                'people' => [],
-                'people_total' => 0,
+                'people' => $people,
+                'people_total' => count($people),
             ];
         }
 
         if ($divergent > 0) {
             $softPenalty += min(20, 8 + $divergent);
+            $people = $this->divergentPeople($campusId, 20);
             $decisions[] = [
                 'key' => 'ledger_divergent',
                 'severity' => 'warning',
                 'risk_kind' => 'data_quality',
                 'title' => "{$divergent} 筆課程剩餘堂數對不起來",
                 'why' => '家長問剩幾堂時系統可能講錯。',
-                'next_step' => '到課程管理核對堂數；改帳走核准（不作廢自助）。',
-                'action_label' => '去核對堂數',
+                'next_step' => '從下方名單點學生進課程管理核對；改帳走核准（不作廢自助）。',
+                'action_label' => '打開堂數名單',
                 'target' => 'course-mgmt',
                 'owner' => 'director',
                 'one_click_resolve' => false,
-                'has_drilldown' => false,
+                'has_drilldown' => true,
                 'detail' => null,
-                'people' => [],
-                'people_total' => 0,
+                'people' => $people,
+                'people_total' => count($people),
             ];
         }
 
@@ -462,6 +464,104 @@ class BusinessDigestService
         }
 
         return (int) $q->count('cs.id');
+    }
+
+    /**
+     * Remaining-session ledger mismatches for drill-down (no phone / email).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function divergentPeople(?int $campusId, int $limit = 20): array
+    {
+        $q = DB::table('StudentClass as sc')
+            ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where('sc.ScheduleMode', 'count')
+            ->whereNotNull('sc.SessionCount')->whereNotNull('sc.RemainingSessions')->whereNotNull('sc.UsedSessions')
+            ->whereRaw('sc.RemainingSessions <> (sc.SessionCount - sc.UsedSessions)')
+            ->orderByDesc('sc.RemainingSessions')
+            ->limit(max(1, min(50, $limit)))
+            ->select([
+                'sc.ID as student_class_id',
+                's.id as student_id',
+                's.name as student_name',
+                'sc.SubjectID as subject_id',
+                'sc.RemainingSessions as remaining_sessions',
+                'sc.SessionCount as session_count',
+                'sc.UsedSessions as used_sessions',
+                'sc.Rate as rate',
+            ]);
+        if ($campusId !== null && $campusId > 0) {
+            $q->where('s.CampusID', $campusId);
+        }
+
+        return $q->get()->map(function ($r) {
+            $remaining = (int) $r->remaining_sessions;
+            $expected = (int) $r->session_count - (int) $r->used_sessions;
+            $rate = (float) ($r->rate ?? 0);
+
+            return [
+                'student_class_id' => (int) $r->student_class_id,
+                'student_id' => (int) $r->student_id,
+                'student_name' => (string) $r->student_name,
+                'subject_id' => (int) $r->subject_id,
+                'remaining_sessions' => $remaining,
+                'approx_amount' => (int) round(abs($remaining - $expected) * $rate),
+                'why' => "剩餘堂數 {$remaining}，與購買−已用（{$expected}）不一致",
+                'next_step' => '到課程管理核對堂數；改帳需核准',
+            ];
+        })->all();
+    }
+
+    /**
+     * Cross-contract duplicate session groups for drill-down (no phone / email).
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function duplicatePeople(?int $campusId, int $limit = 20): array
+    {
+        $campusFilter = ($campusId !== null && $campusId > 0)
+            ? ' AND s.CampusID = ' . (int) $campusId
+            : '';
+
+        $rows = DB::select("
+            SELECT
+                s.id AS student_id,
+                s.name AS student_name,
+                cs.SessionDate AS session_date,
+                SUBSTRING(cs.StartTime,1,5) AS start_hm,
+                COUNT(*) AS slot_count,
+                COUNT(DISTINCT cs.StudentClassID) AS course_count,
+                MIN(sc.ID) AS student_class_id,
+                MAX(sc.RemainingSessions) AS remaining_sessions
+            FROM ClassSession cs
+            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+            JOIN Student s ON s.id = sc.StudentID
+            WHERE LOWER(cs.Status) IN ('attended','completed')
+            {$campusFilter}
+            GROUP BY s.id, s.name, cs.SessionDate, SUBSTRING(cs.StartTime,1,5)
+            HAVING COUNT(*) > 1 AND COUNT(DISTINCT cs.StudentClassID) > 1
+            ORDER BY cs.SessionDate DESC
+            LIMIT " . (int) max(1, min(50, $limit)) . '
+        ');
+
+        return collect($rows)->map(function ($r) {
+            return [
+                'student_class_id' => (int) $r->student_class_id,
+                'student_id' => (int) $r->student_id,
+                'student_name' => (string) $r->student_name,
+                'subject_id' => 0,
+                'remaining_sessions' => (int) ($r->remaining_sessions ?? 0),
+                'approx_amount' => 0,
+                'why' => sprintf(
+                    '%s %s 有 %d 堂跨 %d 門課重疊',
+                    (string) $r->session_date,
+                    (string) $r->start_hm,
+                    (int) $r->slot_count,
+                    (int) $r->course_count
+                ),
+                'next_step' => '到重疊課程審核確認保留哪一側',
+            ];
+        })->all();
     }
 
     private function crossScDuplicate(?int $campusId): int

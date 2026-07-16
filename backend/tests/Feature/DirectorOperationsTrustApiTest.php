@@ -143,6 +143,66 @@ class DirectorOperationsTrustApiTest extends TestCase
         $this->assertGreaterThan(45, (int) $dc['score'], 'dormant must not hard-cap like Critical');
     }
 
+    public function test_divergent_and_duplicate_cards_expose_people_and_action_targets(): void
+    {
+        DB::table('Student')->insert([
+            'id' => 96031, 'name' => 'Divergent Student', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        DB::table('StudentClass')->insert([
+            'StudentID' => 96031, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(20)->toDateTimeString(),
+            'SessionCount' => 10, 'SessionDuration' => 60,
+            'RemainingSessions' => 7, 'UsedSessions' => 2, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+
+        // Coverage + cross-contract duplicate pair (attended same slot, two StudentClass).
+        DB::table('Student')->insert([
+            'id' => 96032, 'name' => 'Dup Student', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+        $scA = DB::table('StudentClass')->insertGetId([
+            'StudentID' => 96032, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 400, 'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionCount' => 8, 'SessionDuration' => 60,
+            'RemainingSessions' => 0, 'UsedSessions' => 8, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        $scB = DB::table('StudentClass')->insertGetId([
+            'StudentID' => 96032, 'GradeID' => 1, 'SubjectID' => 2, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 400, 'ClassType' => 'one_on_one',
+            'StartDate' => now()->subDays(10)->toDateTimeString(),
+            'SessionCount' => 8, 'SessionDuration' => 60,
+            'RemainingSessions' => 3, 'UsedSessions' => 5, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        $day = now()->subDays(2)->toDateString();
+        DB::table('ClassSession')->insert([
+            ['StudentClassID' => $scA, 'SessionDate' => $day, 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended', 'Note' => ''],
+            ['StudentClassID' => $scB, 'SessionDate' => $day, 'StartTime' => '16:00:00', 'EndTime' => '17:00:00', 'Status' => 'attended', 'Note' => ''],
+            // keep next-7d coverage so empty-week hard-cap does not fire
+            ['StudentClassID' => $scB, 'SessionDate' => now()->addDay()->toDateString(), 'StartTime' => '23:00:00', 'EndTime' => '23:50:00', 'Status' => 'scheduled', 'Note' => ''],
+        ]);
+
+        $dc = $this->withHeaders($this->authHeaders($this->directorToken([1], 'ops-trust-people@example.com')))
+            ->getJson('/api/v1/director/operations-trust?branch_id=1')
+            ->assertOk()
+            ->json('data.decision_center');
+
+        $byKey = collect($dc['decisions'])->keyBy('key');
+        $this->assertTrue($byKey->has('ledger_divergent'));
+        $this->assertTrue((bool) $byKey['ledger_divergent']['has_drilldown']);
+        $this->assertNotEmpty($byKey['ledger_divergent']['people']);
+        $this->assertSame('course-mgmt', $byKey['ledger_divergent']['target']);
+
+        $this->assertTrue($byKey->has('calendar_duplicate'));
+        $this->assertSame('duplicate-review', $byKey['calendar_duplicate']['target']);
+        $this->assertTrue((bool) $byKey['calendar_duplicate']['has_drilldown']);
+        $this->assertNotEmpty($byKey['calendar_duplicate']['people']);
+        $this->assertArrayNotHasKey('phone', $byKey['calendar_duplicate']['people'][0]);
+    }
+
     /** @return array<string,string> */
     private function authHeaders(string $token): array
     {

@@ -1098,6 +1098,10 @@ function navigateTrustTarget(target) {
     emit('navigate', { target: 'calendar' });
     return;
   }
+  if (target === 'duplicate-review') {
+    emit('navigate', { target: 'duplicate-review' });
+    return;
+  }
   if (target === 'course-mgmt') {
     emit('navigate', { target: 'course-mgmt' });
     return;
@@ -1111,15 +1115,28 @@ function navigateTrustTarget(target) {
 function handleTrustDecision(item) {
   const branch = Number(props.branchId) || 0;
   const key = item?.key || '';
+  const people = trustPeople(item);
   trackTrustEventOnce('director_trust_decision_click', branch, {
     key,
     target: item?.target || '',
     severity: item?.severity || '',
     has_drilldown: Boolean(item?.has_drilldown),
-    people_shown: trustPeople(item).length,
+    people_shown: people.length,
     from: 'decision_cta',
   }, key);
   markTrustProvidedPathUsed(branch, key);
+
+  // Shortest loop: if roster exists and target is course-mgmt, land on the first person.
+  if ((item?.target === 'course-mgmt' || !item?.target) && people.length > 0) {
+    const p = people[0];
+    setOpsTrustFocus({
+      studentName: p?.student_name || '',
+      studentId: p?.student_id,
+      decisionKey: key,
+    });
+    navigateTrustTarget('course-mgmt');
+    return;
+  }
   navigateTrustTarget(item?.target);
 }
 
@@ -1134,6 +1151,10 @@ function handleTrustPerson(item, person) {
     from: 'person_row',
   }, key);
   markTrustProvidedPathUsed(branch, key);
+  if ((item?.target || '') === 'duplicate-review') {
+    navigateTrustTarget('duplicate-review');
+    return;
+  }
   setOpsTrustFocus({
     studentName: person?.student_name || '',
     studentId: person?.student_id,
