@@ -205,6 +205,9 @@ jobs:
       - name: "[CHECK 9] Production smoke auth contract"
         run: bash scripts/smoke-auth-lib.test.sh
 
+      - name: "[CHECK 10] Local PHPUnit isolation contract"
+        run: bash scripts/phpunit-isolated.sh --self-test
+
       # ─────────────────────────────────────────────
       # Summary
       # ─────────────────────────────────────────────
@@ -223,3 +226,4 @@ jobs:
           echo "| Golden § report | CHECK 6 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Runner topology | CHECK 8 |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Smoke auth contract | CHECK 9 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Local PHPUnit isolation | CHECK 10 |" >> "$GITHUB_STEP_SUMMARY"
