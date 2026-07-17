@@ -4,6 +4,10 @@
 # See docs/SMOKE_TEST_RUNBOOK.md
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/smoke-auth-lib.sh
+source "$SCRIPT_DIR/smoke-auth-lib.sh"
+
 BASE_URL="${SMOKE_BASE_URL:-https://daan.lifenet.com.tw}"
 API_BASE="${BASE_URL%/}/api/v1"
 PI_SSH="${SMOKE_PI_SSH:-admin@pi.lifenet.com.tw}"
@@ -96,34 +100,7 @@ else
   warn "Skip Pi artifact checks (SSH unavailable)"
 fi
 
-# ── Layer 3: authenticated API (no writes except idempotent 404 probes) ──
-login_and_token() {
-  local account="$1" password="$2" role="$3"
-  local resp
-  resp="$(curl -sk -X POST "$API_BASE/auth/login" \
-    -H 'Content-Type: application/json' \
-    -d "$(python3 - <<PY
-import json
-print(json.dumps({"account": "$account", "password": "$password", "role": "$role"}))
-PY
-)")"
-  python3 - <<'PY' "$resp"
-import json, sys
-try:
-    d = json.loads(sys.argv[1])
-except Exception:
-    sys.exit(0)
-for path in (
-    d.get("data", {}).get("session", {}).get("access_token"),
-    d.get("session", {}).get("access_token"),
-    d.get("token"),
-    d.get("access_token"),
-):
-    if isinstance(path, str) and path.strip():
-        print(path.strip())
-        raise SystemExit(0)
-PY
-}
+# ── Layer 3: authenticated API (no writes except login tokens and idempotent 404 probes) ──
 
 fetch_pi_token() {
   local user_type="$1"
@@ -147,14 +124,14 @@ teacher_token=""
 director_token=""
 
 if [[ -n "${SMOKE_TEACHER_LOGIN:-}" && -n "${SMOKE_TEACHER_PASSWORD:-}" ]]; then
-  teacher_token="$(login_and_token "$SMOKE_TEACHER_LOGIN" "$SMOKE_TEACHER_PASSWORD" teacher || true)"
+  teacher_token="$(smoke_login_and_token "$API_BASE" "$SMOKE_TEACHER_LOGIN" "$SMOKE_TEACHER_PASSWORD" teacher teacher || true)"
 elif [[ -f "${SMOKE_ENV_FILE:-$HOME/alltrue/.cursor/.local/smoke.env}" ]]; then
   # shellcheck disable=SC1090
   source "${SMOKE_ENV_FILE:-$HOME/alltrue/.cursor/.local/smoke.env}"
   [[ -n "${SMOKE_TEACHER_LOGIN:-}" && -n "${SMOKE_TEACHER_PASSWORD:-}" ]] && \
-    teacher_token="$(login_and_token "$SMOKE_TEACHER_LOGIN" "$SMOKE_TEACHER_PASSWORD" teacher || true)"
+    teacher_token="$(smoke_login_and_token "$API_BASE" "$SMOKE_TEACHER_LOGIN" "$SMOKE_TEACHER_PASSWORD" teacher teacher || true)"
   [[ -n "${SMOKE_DIRECTOR_LOGIN:-}" && -n "${SMOKE_DIRECTOR_PASSWORD:-}" ]] && \
-    director_token="$(login_and_token "$SMOKE_DIRECTOR_LOGIN" "$SMOKE_DIRECTOR_PASSWORD" director || true)"
+    director_token="$(smoke_login_and_token "$API_BASE" "$SMOKE_DIRECTOR_LOGIN" "$SMOKE_DIRECTOR_PASSWORD" director director || true)"
 fi
 
 [[ -z "$teacher_token" ]] && teacher_token="$(fetch_pi_token T || true)"

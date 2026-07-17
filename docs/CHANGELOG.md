@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-17 — ops: make deployment auth smoke resilient and diagnostic (#1270)
+
+Ops：部署後的帳密登入 smoke 現在只對網路錯誤、HTTP 408／425／429 與 5xx 做最多三次的短暫重試；401 等帳密錯誤與 2xx 無 token 會立即、精準地阻擋部署，不再把所有情況誤報成「登入成功但沒有 token」。兩層 smoke 共用同一個不洩漏回應內容或憑證的 token 解析與登入 helper。
+
+開發備註：Presubmit 新增 deterministic smoke-auth contract，覆蓋既有四種 token response shape、503／transport recovery、401 不重試、2xx 無 token 不重試，以及診斷內容不得洩漏密碼或 response body。
+
 ## 2026-07-17 — ops: lock CI runner topology to isolated hosted jobs
 
 Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-latest`；唯一 delegated OSV job 固定 immutable commit。Presubmit 新增 topology contract，會阻擋未經 security/operations review 的 runner 或 reusable workflow 漂移。

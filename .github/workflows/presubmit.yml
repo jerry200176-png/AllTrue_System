@@ -202,6 +202,9 @@ jobs:
       - name: "[CHECK 8] CI runner topology contract"
         run: node scripts/runner-topology-check.mjs
 
+      - name: "[CHECK 9] Production smoke auth contract"
+        run: bash scripts/smoke-auth-lib.test.sh
+
       # ─────────────────────────────────────────────
       # Summary
       # ─────────────────────────────────────────────
@@ -218,3 +221,5 @@ jobs:
           echo "| CHANGELOG | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| No deploy in CI | See step log |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Golden § report | CHECK 6 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Runner topology | CHECK 8 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Smoke auth contract | CHECK 9 |" >> "$GITHUB_STEP_SUMMARY"
