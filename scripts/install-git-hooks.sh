@@ -9,11 +9,11 @@
 
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOKS_DIR="$REPO_ROOT/.git/hooks"
+HOOKS_DIR="$(git -C "$REPO_ROOT" rev-parse --git-path hooks)"
 
 if [ "${1:-}" = "--uninstall" ]; then
   echo "=== 卸載 git hooks ==="
-  for h in pre-push pre-commit commit-msg post-merge; do
+  for h in pre-push pre-push-security-guard pre-commit commit-msg post-merge; do
     if [ -f "$HOOKS_DIR/$h" ]; then
       rm -f "$HOOKS_DIR/$h"
       echo "🗑️  移除 $h"
@@ -25,9 +25,16 @@ fi
 
 echo "=== 安裝 git hooks ==="
 
-# 1. pre-push：禁止直接 push main
+cp "$REPO_ROOT/scripts/pre-push-security-guard.sh" "$HOOKS_DIR/pre-push-security-guard"
+
+# 1. pre-push：阻擋敏感歷史 + 禁止直接 push main
 cat > "$HOOKS_DIR/pre-push" << 'EOF'
 #!/bin/bash
+set -euo pipefail
+HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+"$HOOKS_DIR/pre-push-security-guard" "$@"
+
 branch=$(git branch --show-current)
 if [ "$branch" = "main" ]; then
   echo "❌ 禁止直接 push main！"
@@ -137,9 +144,9 @@ fi
 exit 0
 POSTMERGE_EOF
 
-chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/commit-msg" "$HOOKS_DIR/post-merge"
+chmod +x "$HOOKS_DIR/pre-push" "$HOOKS_DIR/pre-push-security-guard" "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/commit-msg" "$HOOKS_DIR/post-merge"
 
-echo "✅ pre-push hook   → 禁止直接 push main"
+echo "✅ pre-push hook   → 阻擋敏感歷史 + 禁止直接 push main"
 echo "✅ pre-commit hook → SOP enforce + execution guard + git index 稽核(§R58) + PHP syntax check + debug 語句警告"
 echo "✅ commit-msg hook → Conventional Commits 格式驗證"
 echo "✅ post-merge hook → MemPalace ingest (scripts/mempalace-ingest.sh)"
