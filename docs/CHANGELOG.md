@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: 主任堂數異常只呈現可核對的帳務候選
+
+Fixed：主任營運決策中心不再把「購買堂數從未初始化」的舊資料混入一般堂數差異；可核對的正數合約基準會獨立顯示課程數、相差堂數與估算金額，舊資料仍保留為獨立監測訊號。
+
+開發備註：`BusinessDigestService` 保留既有差異總數相容欄位，新增 actionable／legacy baseline 拆分；全程唯讀，不修改任何課程、堂數或付款資料。
+
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
 開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 啟動只綁 loopback 的非特權 ephemeral MariaDB，使用唯一 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時 drop／shutdown／清除 data directory。Wrapper 不需 sudo、Docker 或 production credential，且 fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config。

@@ -45,7 +45,11 @@ class OpsBusinessDigest extends Command
             ['  └ reenroll_candidates', $m['retention']['reenroll_candidates'], 'of those: balance exhausted → re-enrollment (#1149)'],
             ['dq_attended_no_LR', $m['data_quality']['attended_without_lr'], 'attended sessions with no learning record (target 0)'],
             ['dq_cross_sc_dup', $m['data_quality']['cross_sc_duplicate'], 'same-student cross-contract duplicate slots (#1130)'],
-            ['dq_remaining_divergent', $m['data_quality']['remaining_divergent'], 'RemainingSessions <> SessionCount-Used (#964)'],
+            ['dq_remaining_divergent', $m['data_quality']['remaining_divergent'], 'all RemainingSessions counter mismatches (#964)'],
+            ['  ├ actionable_courses', $m['data_quality']['remaining_divergent_actionable'], 'positive SessionCount baseline; billing review needed'],
+            ['  ├ actionable_sessions', $m['data_quality']['remaining_divergent_actionable_sessions'], 'absolute session gap across actionable courses'],
+            ['  ├ actionable_ntd', $m['data_quality']['remaining_divergent_actionable_ntd'], 'estimated NT$ exposure (gap x Rate)'],
+            ['  └ legacy_baseline', $m['data_quality']['remaining_divergent_legacy_baseline'], 'SessionCount <= 0; classify legacy contract first'],
             ['coverage_next_7d', $m['coverage']['sessions_next_7d'], 'materialized sessions in next 7 days'],
         ]);
 

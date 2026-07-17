@@ -71,6 +71,47 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $m['retention']['no_upcoming_students']);
     }
 
+    public function test_counter_divergence_separates_actionable_exposure_from_legacy_baselines(): void
+    {
+        $studentId = 95020;
+        DB::table('Student')->insert([
+            'id' => $studentId, 'name' => 'Counter Drift', 'CampusID' => 1, 'ClassID' => 1, 'enable' => 1,
+        ]);
+
+        $base = [
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'ClassType' => 'one_on_one', 'StartDate' => now()->subDays(30)->toDateTimeString(),
+            'SessionDuration' => 60, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ];
+
+        // Expected remaining is 8; stored 5 creates a three-session, NT$1,800
+        // actionable discrepancy because the purchased-session baseline is known.
+        DB::table('StudentClass')->insert($base + [
+            'SessionCount' => 10, 'UsedSessions' => 2, 'RemainingSessions' => 5, 'Rate' => 600,
+        ]);
+
+        // A zero SessionCount cannot establish purchased-session truth. It must
+        // remain visible, but not inflate the actionable billing exposure.
+        DB::table('StudentClass')->insert($base + [
+            'SessionCount' => 0, 'UsedSessions' => 4, 'RemainingSessions' => 0, 'Rate' => 700,
+        ]);
+
+        $metrics = app(BusinessDigestService::class)->metrics();
+        $quality = $metrics['data_quality'];
+
+        $this->assertSame(2, $quality['remaining_divergent']);
+        $this->assertSame(1, $quality['remaining_divergent_actionable']);
+        $this->assertSame(3, $quality['remaining_divergent_actionable_sessions']);
+        $this->assertSame(1800, $quality['remaining_divergent_actionable_ntd']);
+        $this->assertSame(1, $quality['remaining_divergent_legacy_baseline']);
+
+        $ledgerDecision = collect($metrics['decision_center']['decisions'])->firstWhere('key', 'ledger_divergent');
+        $this->assertNotNull($ledgerDecision);
+        $this->assertSame(1, $ledgerDecision['people_total']);
+        $this->assertStringContainsString('1 筆', $ledgerDecision['title']);
+    }
+
     public function test_command_runs_read_only(): void
     {
         $before = DB::table('ClassSession')->count();
