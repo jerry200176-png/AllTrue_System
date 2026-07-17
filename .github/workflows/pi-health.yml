@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Check Pi secrets
         id: secrets
         env:
@@ -43,6 +46,23 @@ jobs:
           printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Check Pi thermal telemetry
+        id: thermal
+        if: steps.secrets.outputs.configured == 'true'
+        continue-on-error: true
+        env:
+          PI_HOST: ${{ secrets.PI_HOST }}
+          PI_USER: ${{ secrets.PI_USER }}
+        run: |
+          ssh -i ~/.ssh/pi_key \
+            -o ConnectTimeout=15 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o PasswordAuthentication=no \
+            -o PubkeyAuthentication=yes \
+            ${PI_USER}@${PI_HOST} 'bash -s' < scripts/pi-thermal-check.sh
+
       - name: Run health checks on Pi
         if: steps.secrets.outputs.configured == 'true'
         env:
@@ -68,27 +88,6 @@ jobs:
             CRITICALS="${CRITICALS}🔴 磁碟使用率 ${DISK_PCT}% > 95% — 緊急！\n"
           elif [ "$DISK_PCT" -gt 85 ]; then
             WARNINGS="${WARNINGS}⚠️ 磁碟使用率 ${DISK_PCT}% > 85%\n"
-          fi
-
-          # ── 2. CPU 溫度（Pi）────────────────────────────────────────
-          if command -v vcgencmd &>/dev/null; then
-            TEMP=$(vcgencmd measure_temp | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
-            echo "CPU 溫度：${TEMP}°C"
-            TEMP_INT=$(echo "$TEMP" | cut -d. -f1)
-            THROTTLED=""
-            if vcgencmd get_throttled &>/dev/null; then
-              THROTTLED=$(vcgencmd get_throttled)
-              echo "CPU throttling：${THROTTLED}"
-            fi
-            if [ "$TEMP_INT" -gt 85 ]; then
-              if echo "$THROTTLED" | grep -Eq '0x[1-9a-fA-F]'; then
-                CRITICALS="${CRITICALS}🔴 CPU 溫度 ${TEMP}°C > 85°C 且偵測到 throttling/undervoltage（${THROTTLED}）\n"
-              else
-                WARNINGS="${WARNINGS}⚠️ CPU 溫度 ${TEMP}°C > 85°C，但未偵測到 throttling；視為 sensor/瞬間尖峰，請人工觀察散熱\n"
-              fi
-            elif [ "$TEMP_INT" -gt 75 ]; then
-              WARNINGS="${WARNINGS}⚠️ CPU 溫度 ${TEMP}°C > 75°C\n"
-            fi
           fi
 
           # ── 3. 備份年齡驗證 ──────────────────────────────────────────
@@ -199,8 +198,14 @@ jobs:
               sys.exit(1)
           PYEOF
 
+      - name: Enforce thermal safety result
+        if: always() && steps.secrets.outputs.configured == 'true' && steps.thermal.outcome == 'failure'
+        run: |
+          echo "::error::Pi thermal telemetry is unsafe or unavailable; see the thermal check output."
+          exit 1
+
       - name: Report to GitHub Step Summary
         if: always()
         run: |
           echo "### 🖥️ Pi Health Check — $(date '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: 磁碟空間 / CPU 溫度 / 備份年齡 / UptimeRobot" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: 磁碟空間 / CPU 雙感測器與 throttling / 備份年齡 / scheduler / UptimeRobot" >> "$GITHUB_STEP_SUMMARY"
