@@ -27,6 +27,7 @@ class AttendanceController extends Controller
             ->leftJoin('StudentClass as sc', 'sc.ID', '=', 'si.StudentClassID')
             ->leftJoin('Student as st', 'st.id', '=', 'si.StudentID')
             ->leftJoin('User as u', 'u.id', '=', 'si.TeacherID')
+            ->leftJoin('User as rbu', 'rbu.id', '=', 'si.RecordedByUserID')
             ->leftJoin('Campus as c', 'c.id', '=', 'si.CampusID')
             // Subject: prefer StudentClass (contract), fall back to snapshot on StudentSingIn
             // (many legacy rows have SubjectID on the sign-in only).
@@ -41,6 +42,7 @@ class AttendanceController extends Controller
                 'c.name as campus_name',
                 DB::raw('COALESCE(sub_sc.Subject_Name, sub_si.Subject_Name) as subject_name'),
                 DB::raw("COALESCE(scu.Name, '') as course_teacher_name"),
+                'rbu.Name as recorded_by_name',
                 'sc.ClassType as class_type',
             ]);
         $role = $request->attributes->get('auth_role');
@@ -218,6 +220,9 @@ class AttendanceController extends Controller
             }
             $row->subject_name = $row->subject_name ?? '';
             $row->course_teacher_name = $row->course_teacher_name ?? '';
+            $row->recorded_by_name = $row->recorded_by_name ?? '';
+            $row->recorded_at = $row->MDT ?? null;
+            $row->record_source = !empty($row->RecordedByUserID) ? 'manual' : 'automated';
             $row->class_type = $row->class_type ?? '';
             return $row;
         });

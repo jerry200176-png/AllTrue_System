@@ -4,10 +4,10 @@
  */
 export const changelogReleaseNotes = [
   {
-    "version": "2026.07.17",
-    "date": "2026-07-17",
-    "title": "2026.07.17 版本更新",
-    "summary": "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數",
+    "version": "2026.07.18",
+    "date": "2026-07-18",
+    "title": "2026.07.18 版本更新",
+    "summary": "調課改為單一交易，並顯示點名建立來源",
     "audience": [
       "teacher",
       "director"
@@ -16,12 +16,44 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
-          "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
+          "調課改為單一交易，並顯示點名建立來源"
         ]
       }
     ],
     "items": [
-      "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
+      "調課改為單一交易，並顯示點名建立來源"
+    ]
+  },
+  {
+    "version": "2026.07.17",
+    "date": "2026-07-17",
+    "title": "2026.07.17 版本更新",
+    "summary": "learning-review notification sync no longer returns 500；surviving student sign-in orphans",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "learning-review notification sync no longer returns 500",
+          "surviving student sign-in orphans",
+          "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "local PHPUnit schemas per ocess"
+        ]
+      }
+    ],
+    "items": [
+      "learning-review notification sync no longer returns 500",
+      "surviving student sign-in orphans",
+      "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數",
+      "local PHPUnit schemas per ocess"
     ]
   },
   {

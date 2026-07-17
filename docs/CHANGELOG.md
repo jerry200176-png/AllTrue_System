@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: 調課改為單一交易，並顯示點名建立來源
+
+Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、目標堂、實際課堂與評量全部同步成功後才會顯示完成；任何衝堂、找不到原堂或網路錯誤都不會留下半套資料，也不會再假成功。出缺勤歷史新增「建立來源」，可直接看是誰人工登記，或由系統／刷卡建立。
+
+開發備註：新增 `RescheduleSessionService` 原子交易、精準 occurrence 定位、分校授權與冪等重試；三個前端入口共用 `commitReschedule()`。架構決策見 `ADR_004_atomic_reschedule_boundary.md`。
+
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
 開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 啟動只綁 loopback 的非特權 ephemeral MariaDB，使用唯一 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時 drop／shutdown／清除 data directory。Wrapper 不需 sudo、Docker 或 production credential，且 fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config。
