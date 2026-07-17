@@ -60,6 +60,16 @@ class LeaveAttendanceService
 
         if ($session) {
             [, $endsAt] = $this->sessionInterval($session);
+            $startsAt = CarbonImmutable::parse((string) $signIn->getAttribute('SignInDT'));
+            if ($endsAt->lessThanOrEqualTo($startsAt)) {
+                $hours = max(1, (int) ($signIn->getAttribute('Hours') ?? 0));
+                $endsAt = $startsAt->addHours($hours);
+
+                Log::warning('leave_attendance_interval_fallback', [
+                    'reason' => 'session_end_not_after_sign_in',
+                    'duration_hours' => $hours,
+                ]);
+            }
             $signIn->setAttribute('SignOutDT', $endsAt->toDateTimeString());
             return;
         }

@@ -403,7 +403,7 @@ class AttendanceController extends Controller
             'mark_mode' => 'nullable|in:arrival,ended',
         ]);
 
-        return DB::transaction(function () use ($data) {
+        $transaction = function () use ($data) {
             $studentClass = StudentClass::where('ID', (int) $data['StudentClassID'])
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -551,7 +551,7 @@ class AttendanceController extends Controller
                         'class_sessions'     => $rows,
                     ], 201);
                 } catch (\InvalidArgumentException $e) {
-                    return response()->json(['message' => $e->getMessage()], 422);
+                    throw $e;
                 }
             }
 
@@ -567,7 +567,7 @@ class AttendanceController extends Controller
                         (int) ($student->CampusID ?? 0)
                     );
                 } catch (\InvalidArgumentException $e) {
-                    return response()->json(['message' => $e->getMessage()], 422);
+                    throw $e;
                 }
             } else {
                 [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
@@ -618,7 +618,15 @@ class AttendanceController extends Controller
             }
             $payload['recorded_by_name'] = $recordedByUserId > 0 ? ($authUser->Name ?? '') : '';
             return response()->json($payload, 201);
-        });
+        };
+
+        // The facade's generic PHPDoc does not expose exceptions propagated
+        // from its callback, but this boundary must map them after rollback.
+        try {
+            return DB::transaction($transaction);
+        } catch (\InvalidArgumentException $e) { // @phpstan-ignore catch.neverThrown
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
     /**

@@ -6,11 +6,14 @@ use App\Models\AuthToken;
 use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
+use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\LeaveAttendanceService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 class AttendanceLeaveStatusContractTest extends TestCase
@@ -65,6 +68,67 @@ class AttendanceLeaveStatusContractTest extends TestCase
 
         $total = ClassSession::where('StudentClassID', $courseId)->count();
         $this->assertSame(5, $total, 'Leave cascade should extend by 1 session');
+    }
+
+    public function test_leave_validation_failure_rolls_back_the_entire_cascade(): void
+    {
+        $teacherId = $this->createTeacher(1, 'teacher-leave-rollback@test.com');
+        $teacherToken = $this->createTeacherToken($teacherId);
+        $directorToken = $this->createDirectorToken([1], 'dir-leave-rollback@test.com');
+        $student = $this->createStudent(1, '請假回滾');
+        $dates = $this->futureDates(4, Carbon::WEDNESDAY);
+
+        $this->createCourseViaBatchApi($directorToken, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'future_dates' => $dates,
+            'days_of_week' => [3],
+            'start_time' => '16:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->where('TeacherID', $teacherId)
+            ->max('ID');
+        $session = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate')
+            ->firstOrFail();
+        $sessionCountBefore = ClassSession::where('StudentClassID', $courseId)->count();
+        $leaveScheduleCountBefore = DB::table('schedules')
+            ->where('student_course_id', $courseId)
+            ->where('status', 'leave')
+            ->count();
+
+        $this->app->instance(LeaveAttendanceService::class, new class extends LeaveAttendanceService {
+            public function createClosedForSession(
+                ClassSession $session,
+                StudentClass $course,
+                ?int $recordedByUserId = null,
+                ?int $teacherId = null,
+                ?int $campusId = null
+            ): StudentSignIn {
+                throw new InvalidArgumentException('請假堂次缺少完整起訖時間，未建立出缺勤記錄。');
+            }
+        });
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$teacherToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $courseId,
+            'ClassSessionID' => $session->id,
+            'Status' => 'leave',
+            'mark_mode' => 'arrival',
+        ])->assertStatus(422);
+
+        $session->refresh();
+        $this->assertSame('scheduled', strtolower((string) $session->Status));
+        $this->assertSame($sessionCountBefore, ClassSession::where('StudentClassID', $courseId)->count());
+        $this->assertSame(
+            $leaveScheduleCountBefore,
+            DB::table('schedules')->where('student_course_id', $courseId)->where('status', 'leave')->count()
+        );
+        $this->assertSame(0, StudentSignIn::where('ClassSessionID', $session->id)->count());
     }
 
     /**

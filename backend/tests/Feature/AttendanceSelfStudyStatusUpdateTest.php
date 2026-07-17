@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentSignIn;
 use App\Models\User;
@@ -187,6 +188,35 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
         $signin->refresh();
         $this->assertSame('present', $signin->Status);
         $this->assertNull($signin->SignOutDT);
+    }
+
+    public function test_leave_update_never_closes_before_a_late_sign_in(): void
+    {
+        [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
+        $sessionDate = now()->subDay()->toDateString();
+        $session = ClassSession::create([
+            'StudentClassID' => 999,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+        $signin->ClassSessionID = $session->id;
+        $signin->SignInDT = "{$sessionDate} 19:30:00";
+        $signin->Hours = 1;
+        $signin->save();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/attendance/{$signin->id}", ['status' => 'leave'])
+            ->assertOk();
+
+        $signin->refresh();
+        $this->assertSame('leave', $signin->Status);
+        $this->assertSame("{$sessionDate} 20:30:00", Carbon::parse((string) $signin->SignOutDT)->format('Y-m-d H:i:s'));
+        $this->assertTrue(Carbon::parse((string) $signin->SignOutDT)->gt(Carbon::parse((string) $signin->SignInDT)));
     }
 
     // ── Scaffolding ───────────────────────────────────────────────────────────
