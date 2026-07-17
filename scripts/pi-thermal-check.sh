@@ -85,13 +85,12 @@ run_check() {
     vc_raw="$(vcgencmd measure_temp 2>&1 || true)"
     vc_temp="$(grep -oE -- '-?[0-9]+([.][0-9]+)?' <<<"$vc_raw" | head -1)"
 
-    set +e
-    throttle_raw="$(vcgencmd get_throttled 2>&1)"
-    throttle_rc=$?
-    set -e
-    if ((throttle_rc == 0)); then
+    if throttle_raw="$(vcgencmd get_throttled 2>&1)"; then
+      throttle_rc=0
       throttle_hex="$(grep -oE '0x[0-9a-fA-F]+' <<<"$throttle_raw" | head -1)"
       [[ -n "$throttle_hex" ]] && throttle_state="available"
+    else
+      throttle_rc=$?
     fi
   fi
 
