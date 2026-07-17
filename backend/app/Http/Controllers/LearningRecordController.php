@@ -13,11 +13,13 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Exceptions\RescheduleSessionException;
 use App\Services\ApprovalSessionSyncService;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\LearningRecordBackfillService;
 use App\Services\UserEngagementXpAwardService;
 use App\Services\SessionDeductionService;
+use App\Services\RescheduleSessionService;
 use App\Services\SubstituteScheduleService;
 use App\Support\TeacherProfileDirectory;
 use Illuminate\Database\Eloquent\Builder;
@@ -1797,314 +1799,50 @@ class LearningRecordController extends Controller
      *   start_time        (nullable, H:i)
      *   end_time          (nullable, H:i)
      */
-    public function rescheduleSession(Request $request)
+    public function rescheduleSession(Request $request, RescheduleSessionService $rescheduleService)
     {
         $data = $request->validate([
             'student_class_id' => 'required|integer',
-            'old_date'         => 'nullable|date',
-            'new_date'         => 'required|date',
-            'start_time'       => 'nullable|string|max:8',
-            'end_time'         => 'nullable|string|max:8',
-            'old_start_time'   => 'nullable|string|max:8',
+            'old_date' => 'nullable|date',
+            'new_date' => 'required|date',
+            'start_time' => 'nullable|string|max:8',
+            'end_time' => 'nullable|string|max:8',
+            'old_start_time' => 'nullable|string|max:8',
+            'teacher_id' => 'nullable|integer',
+            'subject' => 'nullable|string|max:32',
+            'ensure_schedule_exception' => 'nullable|boolean',
         ]);
-        $classId   = (int) $data['student_class_id'];
-        $oldDate   = $data['old_date'] ?? null;
-        $newDate   = $data['new_date'];
-        $startTime = $data['start_time'] ?? null;
-        $endTime   = $data['end_time'] ?? null;
-        $oldStartTime = $data['old_start_time'] ?? null;
-        $authUser = $request->attributes->get('auth_user');
-        $authUserId = (int) ($authUser->id ?? 0);
 
-        $studentClass = StudentClass::find($classId);
+        $studentClass = StudentClass::find((int) $data['student_class_id']);
         if (!$studentClass) {
             return response()->json(['message' => '找不到課程'], 404);
         }
 
-        // Try to find an existing ClassSession on the old date to move
-        $session = null;
-        if ($oldDate) {
-            $query = ClassSession::where('StudentClassID', $classId)
-                ->where('SessionDate', $oldDate);
-            if ($oldStartTime) {
-                $normalized = $this->normalizeProjectionTime($oldStartTime);
-                if ($normalized) {
-                    $session = (clone $query)->where('StartTime', $normalized)->first();
-                }
-                // old_start_time was explicitly provided but no session matched → strict 422
-                if (!$session) {
-                    return response()->json(['message' => '找不到指定堂次'], 422);
-                }
-            } else {
-                $session = $query->first();
-            }
+        $role = (string) $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin'
+            ? []
+            : array_map('intval', (array) $request->attributes->get('auth_campus_ids', []));
+        $courseCampusId = (int) (Student::where('id', (int) $studentClass->StudentID)->value('CampusID') ?? 0);
+        if ($role !== 'super_admin' && ($courseCampusId <= 0 || !in_array($courseCampusId, $campusIds, true))) {
+            return response()->json(['message' => 'Forbidden'], 403);
         }
 
-        if ($session) {
-            $oldStatus = strtolower(trim((string) ($session->Status ?? 'scheduled')));
-            $this->cancelAutoMaterializedDuplicateSession(
-                $classId,
-                $newDate,
-                $startTime ?: (string) $session->StartTime,
-                (int) $session->id
-            );
-
-            // #957/#1118 (unified in #1161): reject a move onto a slot already held
-            // by a genuine non-cancelled session with a clear 422 instead of a raw
-            // 1062 → 500. Benign auto-materialized placeholders were just cancelled
-            // above. Occupancy detection is centralised in the materialization service.
-            $slotConflict = app(ClassSessionMaterializationService::class)->findActiveSlotConflict(
-                $classId,
-                $newDate,
-                $startTime ?: (string) $session->StartTime,
-                (int) $session->id
-            );
-            if ($slotConflict) {
-                return response()->json([
-                    'message' => '該時段已有課程，無法調課至此時段（請先取消原時段的課或改選其他時段）',
-                    'code' => 'slot_occupied',
-                ], 422);
-            }
-
-            $session->SessionDate = $newDate;
-            if ($startTime) $session->StartTime = $startTime;
-            if ($endTime)   $session->EndTime   = $endTime;
-            $session->save();
-
-            $resetApplied = false;
-            if ($this->shouldResetToScheduledByReschedule($session)) {
-                $resetApplied = $this->resetRescheduledFutureSession($session, $studentClass, $authUserId, $oldStatus);
-            }
-
-            LearningRecord::where('ClassSessionID', $session->id)->update([
-                'SessionDate' => $session->SessionDate,
-                'StartTime' => $session->StartTime,
-                'EndTime' => $session->EndTime,
-            ]);
-
-            $this->syncSchedulesAfterReschedule(
-                $classId,
-                $oldDate,
-                $newDate,
-                $session->StartTime,
-                $session->EndTime
-            );
-
-            return response()->json([
-                'message' => $resetApplied ? '已調課至未來並重置為未上' : '已同步更新評量表日期',
-                'session_id' => $session->id,
-                'reset_to_scheduled' => $resetApplied,
-            ], 200);
-        }
-
-        // No existing session to move: ensure one exists on new_date for RFID matching
-        $existing = ClassSession::where('StudentClassID', $classId)
-            ->where('SessionDate', $newDate)
-            ->first();
-        if ($existing) {
-            if ($startTime) { $existing->StartTime = $startTime; }
-            if ($endTime) { $existing->EndTime = $endTime; }
-            $existing->save();
-            LearningRecord::where('ClassSessionID', $existing->id)->update([
-                'SessionDate' => $existing->SessionDate,
-                'StartTime' => $existing->StartTime,
-                'EndTime' => $existing->EndTime,
-            ]);
-            return response()->json(['message' => '該日期已有課堂紀錄', 'session_id' => $existing->id], 200);
-        }
-
-        $fallbackStart = $startTime ?? ($studentClass->time1 ?? '00:00');
-        $fallbackEnd   = $endTime ?? '00:00';
-
-        $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
-            'StudentClassID' => $classId,
-            'SessionDate'    => $newDate,
-            'StartTime'      => $fallbackStart,
-            'EndTime'        => $fallbackEnd,
-            'Status'         => 'scheduled',
-        ])['session'];
-        return response()->json(['message' => '已建立課堂紀錄', 'session_id' => $newSession->id], 201);
-    }
-
-    private function shouldResetToScheduledByReschedule(ClassSession $session): bool
-    {
-        $date = $this->normalizeDateValue($session->SessionDate);
-        if (!$date) {
-            return false;
-        }
-        $endTime = $this->normalizeProjectionTime($session->EndTime) ?? '23:59:59';
+        $authUser = $request->attributes->get('auth_user');
         try {
-            $timezone = config('app.timezone', 'Asia/Taipei');
-            $sessionEndAt = Carbon::createFromFormat('Y-m-d H:i:s', "{$date} {$endTime}", $timezone);
-            return $sessionEndAt->gt(now($timezone));
-        } catch (\Throwable $e) {
-            return false;
-        }
-    }
-
-    private function resetRescheduledFutureSession(
-        ClassSession $session,
-        StudentClass $studentClass,
-        int $authUserId,
-        string $oldStatus = 'scheduled'
-    ): bool {
-        $attendedLike = ['attended', 'completed', 'late', 'absent'];
-        $reason = '調課到未來，自動改回未上';
-        $sessionId = (int) $session->id;
-        $classId = (int) $studentClass->ID;
-
-        $activeSignIns = StudentSignIn::where('ClassSessionID', $sessionId)
-            ->active()
-            ->get();
-        $hadDeductedSignIn = $activeSignIns->contains(fn ($si) => (bool) ($si->SessionDeducted ?? false));
-        foreach ($activeSignIns as $signIn) {
-            $signIn->VoidedAt = now();
-            $signIn->VoidedByUserID = $authUserId > 0 ? $authUserId : null;
-            $signIn->VoidReason = $reason;
-            $signIn->save();
-        }
-
-        $approvedRecords = LearningRecord::where('ClassSessionID', $sessionId)
-            ->active()
-            ->where('Status', 'approved')
-            ->get();
-        $approvedCountByTeacher = [];
-        $hasLrSessionDeducted = $this->hasLearningRecordSessionDeductedColumn();
-        foreach ($approvedRecords as $record) {
-            $teacherId = (int) ($record->TeacherID ?? 0);
-            if ($teacherId > 0) {
-                $approvedCountByTeacher[$teacherId] = ($approvedCountByTeacher[$teacherId] ?? 0) + 1;
+            return response()->json(
+                $rescheduleService->execute($data, (int) ($authUser->id ?? 0)),
+                200
+            );
+        } catch (RescheduleSessionException $e) {
+            $payload = ['message' => $e->getMessage()];
+            if ($e->errorCode()) {
+                $payload['code'] = $e->errorCode();
             }
-            $record->Status = 'pending';
-            $record->ApprovedBy = null;
-            $record->ApprovedAt = null;
-            if ($hasLrSessionDeducted) {
-                $record->SessionDeducted = false;
-            }
-            $record->save();
-        }
-
-        foreach ($approvedCountByTeacher as $teacherId => $count) {
-            $safeCount = max(0, (int) $count);
-            if ($teacherId <= 0 || $safeCount <= 0) {
-                continue;
-            }
-            DB::table('User')
-                ->where('id', (int) $teacherId)
-                ->update([
-                    'TeachingSessionCount' => DB::raw("CASE WHEN TeachingSessionCount >= {$safeCount} THEN TeachingSessionCount - {$safeCount} ELSE 0 END"),
-                ]);
-        }
-
-        $wasAttendedLike = in_array($oldStatus, $attendedLike, true);
-        if ($wasAttendedLike || $hadDeductedSignIn || $approvedRecords->count() > 0) {
-            SessionDeductionService::reverseForSession(
-                $classId,
-                $sessionId,
-                'status_adjust',
-                $authUserId > 0 ? $authUserId : null,
-                $reason
+            return response()->json(
+                array_merge($payload, $e->context()),
+                $e->httpStatus()
             );
         }
-
-        $wasAlreadyScheduled = strtolower(trim((string) ($session->Status ?? ''))) === 'scheduled';
-        if (!$wasAlreadyScheduled) {
-            $session->Status = 'scheduled';
-            $session->save();
-        }
-
-        SessionDeductionService::recomputeCounters($classId);
-        return !$wasAlreadyScheduled || $hadDeductedSignIn || $approvedRecords->count() > 0;
-    }
-
-    /**
-     * FR-001/FR-002: 調課後同步 schedules 表的代課相關列至新日期，
-     * 並清除 race condition 植入的重複 scheduled 列。
-     */
-    private function syncSchedulesAfterReschedule(
-        int $courseId,
-        ?string $oldDate,
-        string $newDate,
-        ?string $startTime,
-        ?string $endTime
-    ): void {
-        if (!$oldDate) {
-            return;
-        }
-
-        // The `rescheduled` anchor row stays on the OLD date as a historical marker.
-        // Only the linked `scheduled` (substitute) row follows the session to its new slot.
-        $rescheduledRow = Schedule::where('student_course_id', $courseId)
-            ->whereDate('schedule_date', $oldDate)
-            ->where('status', 'rescheduled')
-            ->lockForUpdate()
-            ->first();
-
-        if (!$rescheduledRow) {
-            return;
-        }
-
-        $scheduledRow = Schedule::where('student_course_id', $courseId)
-            ->where('original_schedule_id', $rescheduledRow->id)
-            ->where('status', 'scheduled')
-            ->lockForUpdate()
-            ->first();
-
-        if ($scheduledRow) {
-            $updates = [
-                'start_time' => $startTime ?: $scheduledRow->start_time,
-                'end_time'   => $endTime   ?: $scheduledRow->end_time,
-            ];
-
-            // Moving to a different date updates date/day; same-day time changes
-            // still go through the duplicate purge below for the same anchor.
-            $updates['schedule_date'] = $newDate;
-            $updates['day_of_week']   = (int) Carbon::parse($newDate)->dayOfWeekIso;
-
-            $scheduledRow->update($updates);
-
-            // Purge duplicate scheduled rows for this reschedule anchor, including
-            // same-day time changes where stale rows can otherwise render twice.
-            Schedule::where('student_course_id', $courseId)
-                ->whereDate('schedule_date', $newDate)
-                ->where('status', 'scheduled')
-                ->where('original_schedule_id', $rescheduledRow->id)
-                ->where('id', '!=', $scheduledRow->id)
-                ->delete();
-        }
-    }
-
-    private function cancelAutoMaterializedDuplicateSession(
-        int $courseId,
-        string $newDate,
-        ?string $startTime,
-        int $movingSessionId
-    ): void {
-        $startHm = substr((string) ($startTime ?? ''), 0, 5);
-        if ($courseId <= 0 || $startHm === '' || $movingSessionId <= 0) {
-            return;
-        }
-
-        $duplicate = ClassSession::where('StudentClassID', $courseId)
-            ->whereDate('SessionDate', $newDate)
-            ->whereRaw('SUBSTRING(StartTime, 1, 5) = ?', [$startHm])
-            ->where('id', '!=', $movingSessionId)
-            ->where('Status', 'scheduled')
-            ->where(function ($q) {
-                $q->whereNull('Note')
-                    ->orWhere('Note', '')
-                    ->orWhere('Note', 'auto-materialized-from-schedule');
-            })
-            ->lockForUpdate()
-            ->first();
-
-        if (!$duplicate) {
-            return;
-        }
-
-        $duplicate->Status = 'cancelled';
-        $duplicate->Note = trim((string) ($duplicate->Note ?? '') . '; cancelled-duplicate-reschedule-placeholder', '; ');
-        $duplicate->save();
     }
 
     public function requestChanges(Request $request, LearningRecord $learningRecord)

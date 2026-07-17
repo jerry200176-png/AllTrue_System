@@ -2179,12 +2179,6 @@ parameters:
 			path: app/Http/Controllers/ImportController.php
 
 		-
-			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
-			identifier: property.notFound
-			count: 1
-			path: app/Http/Controllers/LearningRecordController.php
-
-		-
 			message: '#^Access to an undefined property App\\Models\\LearningRecord\:\:\$ApprovedAt\.$#'
 			identifier: property.notFound
 			count: 5
@@ -2385,7 +2379,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
 			identifier: property.notFound
-			count: 9
+			count: 8
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2403,7 +2397,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 4
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2427,7 +2421,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 7
+			count: 4
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2461,12 +2455,6 @@ parameters:
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 3
-			path: app/Http/Controllers/LearningRecordController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:whereNotNull\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
@@ -2481,7 +2469,7 @@ parameters:
 		-
 			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
-			count: 2
+			count: 3
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
@@ -2509,12 +2497,6 @@ parameters:
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Http/Controllers/LearningRecordController.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\User\:\:where\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 5
@@ -2527,14 +2509,14 @@ parameters:
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
-			message: '#^Comparison operation "\<\=" between int\<1, max\> and 0 is always false\.$#'
-			identifier: smallerOrEqual.alwaysFalse
-			count: 2
+			message: '#^Expression on left side of \?\? is not nullable\.$#'
+			identifier: nullCoalesce.expr
+			count: 1
 			path: app/Http/Controllers/LearningRecordController.php
 
 		-
-			message: '#^Expression on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.expr
+			message: '#^Method App\\Http\\Controllers\\LearningRecordController\:\:hasLearningRecordSessionDeductedColumn\(\) is unused\.$#'
+			identifier: method.unused
 			count: 1
 			path: app/Http/Controllers/LearningRecordController.php
 
@@ -2559,12 +2541,6 @@ parameters:
 		-
 			message: '#^Offset ''expected_sessions'' on array\{date\: string, expected_sessions\: int, completed_sessions\: int, completion_rate_pct\: int\} on left side of \?\? always exists and is not nullable\.$#'
 			identifier: nullCoalesce.offset
-			count: 1
-			path: app/Http/Controllers/LearningRecordController.php
-
-		-
-			message: '#^Result of \|\| is always false\.$#'
-			identifier: booleanOr.alwaysFalse
 			count: 1
 			path: app/Http/Controllers/LearningRecordController.php
 
@@ -5921,6 +5897,96 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: app/Services/PackageDeductionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\ClassSession\:\:\$Status\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Schedule\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$CampusID\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Student\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ClassType\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$ID\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\StudentClass\:\:\$room_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\ClassSession\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 5
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\LearningRecord\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:create\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 6
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Schedule\:\:whereIn\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 2
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\Student\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
+
+		-
+			message: '#^Call to an undefined static method App\\Models\\StudentSignIn\:\:where\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: app/Services/RescheduleSessionService.php
 
 		-
 			message: '#^Access to an undefined property App\\Models\\ScheduleDiscrepancy\:\:\$branch_id\.$#'

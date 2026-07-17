@@ -8,6 +8,7 @@ import {
   humanizeRescheduleFailure,
 } from '../../lib/scheduleDisplay';
 import { getSubjectLabel } from '../../lib/constants';
+import { commitReschedule } from '../../lib/rescheduleApi';
 
 const SESSION_STATUS_TRANSITIONS = {
   scheduled:      ['attended', 'late', 'absent', 'leave', 'cancelled'],
@@ -358,7 +359,7 @@ export function useSessionEditFlow({
     const reschedulePreview = [
       `原堂次：${form.session_date} ${form.start_time}~${form.end_time}`,
       `新堂次：${form.new_date} ${form.new_start}`,
-      '系統會建立追蹤記錄，並同步評量堂次。',
+      '系統會一次同步課表、點名與評量資料。',
     ].join('\n');
     if (!confirm(`調課影響預覽\n\n${reschedulePreview}\n\n確認送出？`)) return;
 
@@ -371,85 +372,20 @@ export function useSessionEditFlow({
       const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
       const course = form.course;
       const newEnd = computeEndTime(form.new_start, form.duration_hours);
-      const newDayOfWeek = dayOfWeekFromDate(form.new_date);
 
-      const payload1 = {
-        student_id: course.student_id, teacher_id: course.teacher_id || null, subject: form.subject,
-        day_of_week: dayOfWeekFromDate(form.session_date),
-        start_time: form.start_time, end_time: form.end_time,
-        duration_hours: form.duration_hours, class_type: course.class_type || 'one_on_one',
-        status: 'rescheduled', type: 'normal', deduction: 0, branch_id: bid,
-        student_course_id: form.student_class_id || course.id, schedule_date: form.session_date,
-      };
-      const payload2 = (originalId) => ({
-        student_id: course.student_id, teacher_id: course.teacher_id || null, subject: form.subject,
-        day_of_week: newDayOfWeek, start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-        duration_hours: form.duration_hours, class_type: course.class_type || 'one_on_one',
-        status: 'scheduled', type: 'normal', deduction: 1, branch_id: bid,
-        schedule_date: form.new_date, original_schedule_id: originalId,
-        student_course_id: form.student_class_id || course.id,
+      await commitReschedule({
+        token,
+        payload: {
+          student_class_id: form.student_class_id || course.id,
+          old_date: form.session_date,
+          old_start_time: form.start_time,
+          new_date: form.new_date,
+          start_time: normalizeTo30Min(form.new_start),
+          end_time: newEnd,
+          teacher_id: course.teacher_id || null,
+          subject: form.subject || null,
+        },
       });
-
-      let originalId = null;
-      const existingRes = await fetch(
-        `/api/v1/schedules?branch_id=${bid}&student_course_id=${form.student_class_id || course.id}&schedule_date=${form.session_date}&status=rescheduled&__limit=1`,
-        { credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }
-      );
-      if (existingRes.ok) {
-        const existingList = await existingRes.json();
-        const arr = Array.isArray(existingList) ? existingList : existingList?.data ?? [];
-        if (arr.length > 0 && arr[0].id) originalId = arr[0].id;
-      }
-      if (originalId == null) {
-        const r1 = await fetch('/api/v1/schedules', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload1),
-        });
-        if (!r1.ok) {
-          const err = await r1.json().catch(() => ({}));
-          alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入原堂次紀錄'));
-          return;
-        }
-        const created = await r1.json();
-        originalId = created?.id ?? null;
-      }
-      const r2 = await fetch('/api/v1/schedules', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(payload2(originalId)),
-      });
-      if (!r2.ok) {
-        const err = await r2.json().catch(() => ({}));
-        alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入新堂次'));
-        return;
-      }
-      // FR-002/003: pass old_start_time so the backend can uniquely locate the
-      // correct ClassSession when a student has multiple time slots on the same day,
-      // and surface API errors instead of silently swallowing them.
-      if (form.student_class_id || course.id) {
-        try {
-          const rescheduleRes = await fetch('/api/v1/learning-records/reschedule-session', {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              student_class_id: form.student_class_id || course.id,
-              old_date: form.session_date,
-              old_start_time: form.start_time || undefined,
-              new_date: form.new_date,
-              start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-            }),
-          });
-          if (!rescheduleRes.ok) {
-            const err = await rescheduleRes.json().catch(() => ({}));
-            alert('調課失敗：' + humanizeRescheduleFailure(err.message || '找不到指定堂次，請確認日期與時間是否正確'));
-            return;
-          }
-        } catch (e) {
-          alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '網路錯誤，請稍後再試'));
-          return;
-        }
-      }
 
       closeSessionEdit();
       alert(formatRescheduleSuccessMessage({
@@ -462,10 +398,13 @@ export function useSessionEditFlow({
         newStart: normalizeTo30Min(form.new_start),
         newEnd,
       }));
-      trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'session-edit' });
+      trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'session-edit-atomic' });
       await loadCourses();
-    } catch (e) {
-      alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '請稍後再試'));
+    } catch (error) {
+      let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
+      const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
+      if (conflictLine) message = `${message}\n${conflictLine}`;
+      alert('調課失敗：' + message);
     } finally {
       sessionEditSubmitting.value = false;
     }
