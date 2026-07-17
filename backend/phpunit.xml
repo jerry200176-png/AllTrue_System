@@ -22,11 +22,12 @@
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
         <env name="CACHE_DRIVER" value="array" force="true"/>
         <env name="DB_CONNECTION" value="mysql" force="true"/>
-        <env name="DB_HOST" value="127.0.0.1" force="true"/>
-        <env name="DB_PORT" value="3306" force="true"/>
-        <env name="DB_DATABASE" value="AllTrue_test" force="true"/>
-        <env name="DB_USERNAME" value="admin" force="true"/>
-        <env name="DB_PASSWORD" value="fLcLUu3Imi7RuFhT1jfwIH1" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="3306"/>
+        <!-- Local parallel runs may override this with AllTrue_test_<safe suffix>. -->
+        <env name="DB_DATABASE" value="AllTrue_test"/>
+        <env name="DB_USERNAME" value="admin"/>
+        <env name="DB_PASSWORD" value="fLcLUu3Imi7RuFhT1jfwIH1"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>

@@ -136,6 +136,9 @@ jobs:
             }
           '
 
+      - name: Verify isolated test runner safety guards
+        run: bash scripts/test-backend-isolated.sh --self-test
+
       - name: Load PHPUnit database password
         run: |
           php -r '
