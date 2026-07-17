@@ -127,7 +127,6 @@ export function useRescheduleAndMakeup({
           new_date: form.new_date,
           start_time: normalizeTo30Min(form.new_start),
           end_time: newEnd,
-          teacher_id: form.teacher_id || null,
           subject: form.subject || null,
         },
       });

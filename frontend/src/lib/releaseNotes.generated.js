@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.18",
     "date": "2026-07-18",
     "title": "2026.07.18 版本更新",
-    "summary": "跨老師拖曳會完整轉移代課與時段；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "summary": "跨老師拖曳會完整轉移代課與時段；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂；調課改為單一交易，並顯示點名建立來源。",
     "audience": [
       "teacher",
       "director",

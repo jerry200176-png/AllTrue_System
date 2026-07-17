@@ -382,7 +382,6 @@ export function useSessionEditFlow({
           new_date: form.new_date,
           start_time: normalizeTo30Min(form.new_start),
           end_time: newEnd,
-          teacher_id: course.teacher_id || null,
           subject: form.subject || null,
         },
       });
