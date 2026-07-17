@@ -165,6 +165,90 @@ class RescheduleSessionPrecisionTest extends TestCase
         $this->assertSame(0, Schedule::where('student_course_id', $courseId)->count());
     }
 
+    public function test_atomic_mode_commits_schedule_chain_and_session_together(): void
+    {
+        [$token, $courseId, $session] = $this->seedPlainSession();
+
+        $response = $this->postReschedule($token, [
+            'student_class_id' => $courseId,
+            'old_date' => '2026-08-01',
+            'old_start_time' => '10:00',
+            'new_date' => '2026-08-02',
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'ensure_schedule_exception' => true,
+        ])->assertOk()->assertJson(['committed' => true]);
+
+        $session->refresh();
+        $this->assertSame('2026-08-02', substr((string) $session->SessionDate, 0, 10));
+        $anchorId = (int) $response->json('rescheduled_schedule_id');
+        $this->assertDatabaseHas('schedules', [
+            'id' => $anchorId,
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-08-01',
+            'status' => 'rescheduled',
+        ]);
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $courseId,
+            'schedule_date' => '2026-08-02',
+            'status' => 'scheduled',
+            'original_schedule_id' => $anchorId,
+        ]);
+    }
+
+    public function test_atomic_mode_is_idempotent_for_an_identical_retry(): void
+    {
+        [$token, $courseId] = $this->seedPlainSession();
+        $payload = [
+            'student_class_id' => $courseId,
+            'old_date' => '2026-08-01',
+            'old_start_time' => '10:00',
+            'new_date' => '2026-08-02',
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'ensure_schedule_exception' => true,
+        ];
+
+        $first = $this->postReschedule($token, $payload)->assertOk();
+        $second = $this->postReschedule($token, $payload)
+            ->assertOk()
+            ->assertJson(['committed' => true, 'idempotent_replay' => true]);
+
+        $this->assertSame($first->json('session_id'), $second->json('session_id'));
+        $this->assertSame(2, Schedule::where('student_course_id', $courseId)->count());
+        $this->assertSame(1, ClassSession::where('StudentClassID', $courseId)->count());
+    }
+
+    public function test_director_cannot_reschedule_a_course_from_another_campus(): void
+    {
+        [$otherCampusToken, ] = $this->createDirector(2);
+        $teacherId = $this->createTeacher(1, 'scoped');
+        [, $courseId] = $this->createCourse($teacherId, 1);
+        ClassSession::create([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-08-01',
+            'StartTime' => '10:00',
+            'EndTime' => '12:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->postReschedule($otherCampusToken, [
+            'student_class_id' => $courseId,
+            'old_date' => '2026-08-01',
+            'old_start_time' => '10:00',
+            'new_date' => '2026-08-02',
+            'start_time' => '17:00',
+            'end_time' => '19:00',
+            'ensure_schedule_exception' => true,
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('schedules', 0);
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-08-01',
+        ]);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private function postReschedule(string $token, array $payload)
