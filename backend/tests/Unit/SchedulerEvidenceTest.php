@@ -36,6 +36,10 @@ class SchedulerEvidenceTest extends TestCase
 
         $this->assertTrue($summary['healthy']);
         $this->assertSame('verified', $summary['jobs']['reconcile-nightly']['status']);
+        $this->assertSame(
+            ['attendance_ahead' => 2, 'ledger_ahead' => 1],
+            $summary['jobs']['reconcile-nightly']['observed_result']['cause_counts']
+        );
         $this->assertSame(0, $summary['jobs']['bugs-verify-reproductions']['observed_result']['regressed']);
         $this->assertSame(0, $summary['jobs']['learning-records-backfill-missing']['observed_result']['affected_rows']);
         $this->assertSame(3, $summary['jobs']['sessions-generate-forward']['observed_result']['sessions_created']);
@@ -75,7 +79,7 @@ class SchedulerEvidenceTest extends TestCase
     {
         $outputs = [
             'teacher-signin-close-orphans' => "Closed 0 orphan TeacherSingIn record(s).\n",
-            'reconcile-nightly' => "Checked: 1 courses | Mismatches: 0 | Report: /private/path\n",
+            'reconcile-nightly' => "Checked: 3 courses | Mismatches: 3 | Report: /private/path\nCauses: {\"attendance_ahead\":2,\"ledger_ahead\":1}\n",
             'student-signin-close-orphans' => "Closed 0 orphan StudentSignIn record(s).\n",
             'rfid-prune-pending' => "Deleted 0 pending swipes.\n",
             'learning-records-drift-check' => "Drift counts: {\"null_class_session_id\":0}\n",
