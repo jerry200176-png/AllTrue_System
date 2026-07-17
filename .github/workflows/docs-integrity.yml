@@ -7,6 +7,7 @@ name: Docs Integrity
 on:
   pull_request:
     branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   schedule:
     - cron: "20 1 * * 1"
   workflow_dispatch:
@@ -22,6 +23,7 @@ permissions:
 jobs:
   changes:
     name: Detect docs changes
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3

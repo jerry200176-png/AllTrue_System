@@ -7,7 +7,7 @@ name: .htaccess Guard
 on:
   pull_request:
     branches: ["main"]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -20,6 +20,7 @@ concurrency:
 jobs:
   guard:
     name: Require htaccess-reviewed label
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
