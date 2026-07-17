@@ -404,9 +404,13 @@ class ScheduleController extends Controller
         if ($status === 'scheduled' && $courseId > 0 && !empty($data['schedule_date']) && $origId) {
             $existing = Schedule::where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $data['schedule_date'])
-                ->where('start_time', $data['start_time'] ?? '')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [substr((string) ($data['start_time'] ?? ''), 0, 5)])
                 ->where('status', 'scheduled')
-                ->where('original_schedule_id', $origId)
+                ->where(function ($query) use ($origId): void {
+                    $query->where('original_schedule_id', $origId)
+                        ->orWhereNull('original_schedule_id');
+                })
+                ->orderByRaw('CASE WHEN original_schedule_id = ? THEN 0 ELSE 1 END', [(int) $origId])
                 ->first();
             if ($existing) {
                 $existing->update(array_filter($data, fn ($v) => $v !== null));

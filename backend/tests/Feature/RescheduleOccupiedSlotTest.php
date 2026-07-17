@@ -43,6 +43,7 @@ class RescheduleOccupiedSlotTest extends TestCase
             'new_date' => '2026-09-05',
             'start_time' => '13:00',
             'end_time' => '15:00',
+            'ensure_schedule_exception' => true,
         ]);
 
         $res->assertStatus(422);
@@ -55,6 +56,7 @@ class RescheduleOccupiedSlotTest extends TestCase
         $this->assertSame('attended', $occupant->Status);
         $this->assertSame(2, ClassSession::where('StudentClassID', $courseId)
             ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->count());
+        $this->assertDatabaseCount('schedules', 0);
     }
 
     public function test_reschedule_onto_free_slot_still_succeeds(): void
