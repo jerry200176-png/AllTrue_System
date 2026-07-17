@@ -416,11 +416,15 @@ class RescheduleSessionService
             return;
         }
 
+        $contractTeacherId = (int) (DB::table('StudentClass')
+            ->where('ID', $classId)
+            ->value('TeacherID') ?? 0);
         $rows = Schedule::where('student_course_id', $classId)
             ->where('original_schedule_id', (int) $anchor->id)
             ->where('status', 'scheduled')
             ->lockForUpdate()
-            ->orderByDesc('id')
+            ->orderByRaw('CASE WHEN teacher_id <> ? THEN 0 ELSE 1 END', [$contractTeacherId])
+            ->orderBy('id')
             ->get();
         $target = $rows->first();
         if (!$target) {
