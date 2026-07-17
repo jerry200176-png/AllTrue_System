@@ -16,6 +16,8 @@ class BusinessDigestService
     /** @return array<string,mixed> */
     public function metrics(?int $campusId = null): array
     {
+        $remainingDivergence = $this->remainingDivergence($campusId);
+
         $m = [
             'generated_at' => now()->toIso8601String(),
             'campus_id' => $campusId,
@@ -33,7 +35,13 @@ class BusinessDigestService
                 'cross_sc_duplicate' => $this->crossScDuplicate($campusId),
                 'scheduled_cross_sc' => $this->scheduledCrossSc($campusId),
                 'orphan_stop_scheduled' => $this->orphanStopScheduled($campusId),
-                'remaining_divergent' => $this->remainingDivergent($campusId),
+                // Preserve the total for existing consumers, but distinguish
+                // reviewable billing drift from legacy rows with no baseline.
+                'remaining_divergent' => $remainingDivergence['total'],
+                'remaining_divergent_actionable' => $remainingDivergence['actionable'],
+                'remaining_divergent_actionable_sessions' => $remainingDivergence['actionable_sessions'],
+                'remaining_divergent_actionable_ntd' => $remainingDivergence['actionable_ntd'],
+                'remaining_divergent_legacy_baseline' => $remainingDivergence['legacy_baseline'],
             ],
             'coverage' => ['sessions_next_7d' => $this->sessionsNext7d($campusId)],
         ];
@@ -64,7 +72,9 @@ class BusinessDigestService
         $strandedAmt = (float) ($m['revenue']['stranded_amount'] ?? 0);
         $next7 = (int) ($m['coverage']['sessions_next_7d'] ?? 0);
         $dup = (int) ($m['data_quality']['cross_sc_duplicate'] ?? 0);
-        $divergent = (int) ($m['data_quality']['remaining_divergent'] ?? 0);
+        $divergent = (int) ($m['data_quality']['remaining_divergent_actionable']
+            ?? $m['data_quality']['remaining_divergent']
+            ?? 0);
         $dormant = (int) ($m['retention']['dormant_prepaid_students'] ?? 0);
         $dormantNtd = (int) ($m['retention']['dormant_prepaid_recoverable_ntd'] ?? 0);
 
@@ -484,6 +494,7 @@ class BusinessDigestService
         $q = DB::table('StudentClass as sc')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
             ->where('sc.ScheduleMode', 'count')
+            ->where('sc.SessionCount', '>', 0)
             ->whereNotNull('sc.SessionCount')->whereNotNull('sc.RemainingSessions')->whereNotNull('sc.UsedSessions')
             ->whereRaw('sc.RemainingSessions <> (sc.SessionCount - sc.UsedSessions)')
             ->orderByDesc('sc.RemainingSessions')
@@ -623,7 +634,10 @@ class BusinessDigestService
         return (int) $q->count('cs.id');
     }
 
-    private function remainingDivergent(?int $campusId): int
+    /**
+     * @return array{total:int, actionable:int, actionable_sessions:int, actionable_ntd:int, legacy_baseline:int}
+     */
+    private function remainingDivergence(?int $campusId): array
     {
         $q = DB::table('StudentClass as sc')
             ->where('sc.ScheduleMode', 'count')
@@ -633,7 +647,21 @@ class BusinessDigestService
             $q->join('Student as s', 's.id', '=', 'sc.StudentID')->where('s.CampusID', $campusId);
         }
 
-        return (int) $q->count('sc.ID');
+        $row = $q
+            ->selectRaw('COUNT(sc.ID) AS total')
+            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN 1 ELSE 0 END), 0) AS actionable')
+            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN ABS((sc.SessionCount - sc.UsedSessions) - sc.RemainingSessions) ELSE 0 END), 0) AS actionable_sessions')
+            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN ABS((sc.SessionCount - sc.UsedSessions) - sc.RemainingSessions) * COALESCE(sc.Rate, 0) ELSE 0 END), 0) AS actionable_ntd')
+            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount <= 0 THEN 1 ELSE 0 END), 0) AS legacy_baseline')
+            ->first();
+
+        return [
+            'total' => (int) ($row->total ?? 0),
+            'actionable' => (int) ($row->actionable ?? 0),
+            'actionable_sessions' => (int) round((float) ($row->actionable_sessions ?? 0)),
+            'actionable_ntd' => (int) round((float) ($row->actionable_ntd ?? 0)),
+            'legacy_baseline' => (int) ($row->legacy_baseline ?? 0),
+        ];
     }
 
     private function sessionsNext7d(?int $campusId): int
