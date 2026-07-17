@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: unify reschedule commit and expose attendance source
+
+Fixed the three UI reschedule entry points so they submit one atomic backend command and only report success after `committed=true`. Attendance history now shows whether a row came from a class session, RFID swipe, or manual entry, together with the creator and timestamp.
+
 ## 2026-07-18 — fix: 調課改為單一交易，並顯示點名建立來源
 
 Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、目標堂、實際課堂與評量全部同步成功後才會顯示完成；任何衝堂、找不到原堂或網路錯誤都不會留下半套資料，也不會再假成功。出缺勤歷史新增「建立來源」，可直接看是誰人工登記，或由系統／刷卡建立。

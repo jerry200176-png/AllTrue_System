@@ -31,6 +31,7 @@ class AttendanceRangeTest extends TestCase
 
     private string $token;
     private int    $studentId;
+    private int    $directorId;
 
     protected function setUp(): void
     {
@@ -131,6 +132,28 @@ class AttendanceRangeTest extends TestCase
         $this->assertFalse($hasOther, 'Single date= query must not return records from other days');
     }
 
+    /** @test */
+    public function test_records_expose_whether_attendance_was_manual_or_automated(): void
+    {
+        $manual = $this->makeSignIn(Carbon::now()->subDay()->toDateTimeString());
+        $manual->RecordedByUserID = $this->directorId;
+        $manual->save();
+        $this->makeSignIn(Carbon::now()->subDays(2)->toDateTimeString());
+
+        $res = $this->getJson('/api/v1/attendance?per_page=50', [
+            'Authorization' => "Bearer {$this->token}",
+        ])->assertOk();
+
+        $manualRow = collect($res->json('data'))->firstWhere('id', $manual->id);
+        $this->assertSame('manual', $manualRow['record_source'] ?? null);
+        $this->assertSame('主任區間測試', $manualRow['recorded_by_name'] ?? null);
+        $this->assertNotEmpty($manualRow['recorded_at'] ?? null);
+
+        $automatedRow = collect($res->json('data'))
+            ->first(fn ($row) => (int) ($row['id'] ?? 0) !== (int) $manual->id);
+        $this->assertSame('automated', $automatedRow['record_source'] ?? null);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private function makeSignIn(string $signInDT): StudentSignIn
@@ -154,6 +177,7 @@ class AttendanceRangeTest extends TestCase
             'phone'              => '0933111222',
             'MustChangePassword' => false,
         ]);
+        $this->directorId = (int) $user->id;
 
         UserCampus::create([
             'CampusID' => self::CAMPUS_ID,
