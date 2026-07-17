@@ -110,7 +110,7 @@ class OpsBusinessDigestTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $m['retention']['no_upcoming_students']);
     }
 
-    public function test_counter_divergence_separates_actionable_exposure_from_legacy_baselines(): void
+    public function test_counter_divergence_separates_director_review_from_legacy_and_inactive_rows(): void
     {
         $studentId = 95020;
         DB::table('Student')->insert([
@@ -124,8 +124,8 @@ class OpsBusinessDigestTest extends TestCase
             'SessionDuration' => 60, 'Stop' => 0, 'ScheduleMode' => 'count',
         ];
 
-        // Expected remaining is 8; stored 5 creates a three-session, NT$1,800
-        // actionable discrepancy because the purchased-session baseline is known.
+        // Expected remaining is 8; stored 5 creates a three-session reviewable
+        // discrepancy because the active course has a purchased-session baseline.
         DB::table('StudentClass')->insert($base + [
             'SessionCount' => 10, 'UsedSessions' => 2, 'RemainingSessions' => 5, 'Rate' => 600,
         ]);
@@ -136,14 +136,20 @@ class OpsBusinessDigestTest extends TestCase
             'SessionCount' => 0, 'UsedSessions' => 4, 'RemainingSessions' => 0, 'Rate' => 700,
         ]);
 
+        // Historical rows remain measurable for engineering, but must not ask a
+        // director to change a closed course.
+        DB::table('StudentClass')->insert(array_merge($base, [
+            'SessionCount' => 6, 'UsedSessions' => 6, 'RemainingSessions' => 2, 'Rate' => 800, 'Stop' => 1,
+        ]));
+
         $metrics = app(BusinessDigestService::class)->metrics();
         $quality = $metrics['data_quality'];
 
-        $this->assertSame(2, $quality['remaining_divergent']);
-        $this->assertSame(1, $quality['remaining_divergent_actionable']);
-        $this->assertSame(3, $quality['remaining_divergent_actionable_sessions']);
-        $this->assertSame(1800, $quality['remaining_divergent_actionable_ntd']);
-        $this->assertSame(1, $quality['remaining_divergent_legacy_baseline']);
+        $this->assertSame(3, $quality['remaining_divergent']);
+        $this->assertSame(1, $quality['remaining_divergent_reviewable']);
+        $this->assertSame(3, $quality['remaining_divergent_reviewable_sessions']);
+        $this->assertSame(1, $quality['remaining_divergent_active_legacy_baseline']);
+        $this->assertSame(1, $quality['remaining_divergent_inactive_history']);
 
         $ledgerDecision = collect($metrics['decision_center']['decisions'])->firstWhere('key', 'ledger_divergent');
         $this->assertNotNull($ledgerDecision);

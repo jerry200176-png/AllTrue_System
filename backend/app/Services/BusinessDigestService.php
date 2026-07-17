@@ -38,10 +38,10 @@ class BusinessDigestService
                 // Preserve the total for existing consumers, but distinguish
                 // reviewable billing drift from legacy rows with no baseline.
                 'remaining_divergent' => $remainingDivergence['total'],
-                'remaining_divergent_actionable' => $remainingDivergence['actionable'],
-                'remaining_divergent_actionable_sessions' => $remainingDivergence['actionable_sessions'],
-                'remaining_divergent_actionable_ntd' => $remainingDivergence['actionable_ntd'],
-                'remaining_divergent_legacy_baseline' => $remainingDivergence['legacy_baseline'],
+                'remaining_divergent_reviewable' => $remainingDivergence['reviewable'],
+                'remaining_divergent_reviewable_sessions' => $remainingDivergence['reviewable_sessions'],
+                'remaining_divergent_active_legacy_baseline' => $remainingDivergence['active_legacy_baseline'],
+                'remaining_divergent_inactive_history' => $remainingDivergence['inactive_history'],
             ],
             'coverage' => ['sessions_next_7d' => $this->sessionsNext7d($campusId)],
         ];
@@ -72,7 +72,7 @@ class BusinessDigestService
         $strandedAmt = (float) ($m['revenue']['stranded_amount'] ?? 0);
         $next7 = (int) ($m['coverage']['sessions_next_7d'] ?? 0);
         $dup = (int) ($m['data_quality']['cross_sc_duplicate'] ?? 0);
-        $divergent = (int) ($m['data_quality']['remaining_divergent_actionable']
+        $divergent = (int) ($m['data_quality']['remaining_divergent_reviewable']
             ?? $m['data_quality']['remaining_divergent']
             ?? 0);
         $dormant = (int) ($m['retention']['dormant_prepaid_students'] ?? 0);
@@ -493,6 +493,7 @@ class BusinessDigestService
     {
         $q = DB::table('StudentClass as sc')
             ->join('Student as s', 's.id', '=', 'sc.StudentID')
+            ->where(fn ($w) => $w->where('sc.Stop', 0)->orWhereNull('sc.Stop'))
             ->where('sc.ScheduleMode', 'count')
             ->where('sc.SessionCount', '>', 0)
             ->whereNotNull('sc.SessionCount')->whereNotNull('sc.RemainingSessions')->whereNotNull('sc.UsedSessions')
@@ -635,7 +636,7 @@ class BusinessDigestService
     }
 
     /**
-     * @return array{total:int, actionable:int, actionable_sessions:int, actionable_ntd:int, legacy_baseline:int}
+     * @return array{total:int, reviewable:int, reviewable_sessions:int, active_legacy_baseline:int, inactive_history:int}
      */
     private function remainingDivergence(?int $campusId): array
     {
@@ -649,18 +650,18 @@ class BusinessDigestService
 
         $row = $q
             ->selectRaw('COUNT(sc.ID) AS total')
-            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN 1 ELSE 0 END), 0) AS actionable')
-            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN ABS((sc.SessionCount - sc.UsedSessions) - sc.RemainingSessions) ELSE 0 END), 0) AS actionable_sessions')
-            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount > 0 THEN ABS((sc.SessionCount - sc.UsedSessions) - sc.RemainingSessions) * COALESCE(sc.Rate, 0) ELSE 0 END), 0) AS actionable_ntd')
-            ->selectRaw('COALESCE(SUM(CASE WHEN sc.SessionCount <= 0 THEN 1 ELSE 0 END), 0) AS legacy_baseline')
+            ->selectRaw('COALESCE(SUM(CASE WHEN (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.SessionCount > 0 THEN 1 ELSE 0 END), 0) AS reviewable')
+            ->selectRaw('COALESCE(SUM(CASE WHEN (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.SessionCount > 0 THEN ABS((sc.SessionCount - sc.UsedSessions) - sc.RemainingSessions) ELSE 0 END), 0) AS reviewable_sessions')
+            ->selectRaw('COALESCE(SUM(CASE WHEN (sc.Stop = 0 OR sc.Stop IS NULL) AND sc.SessionCount <= 0 THEN 1 ELSE 0 END), 0) AS active_legacy_baseline')
+            ->selectRaw('COALESCE(SUM(CASE WHEN sc.Stop <> 0 THEN 1 ELSE 0 END), 0) AS inactive_history')
             ->first();
 
         return [
             'total' => (int) ($row->total ?? 0),
-            'actionable' => (int) ($row->actionable ?? 0),
-            'actionable_sessions' => (int) round((float) ($row->actionable_sessions ?? 0)),
-            'actionable_ntd' => (int) round((float) ($row->actionable_ntd ?? 0)),
-            'legacy_baseline' => (int) ($row->legacy_baseline ?? 0),
+            'reviewable' => (int) ($row->reviewable ?? 0),
+            'reviewable_sessions' => (int) round((float) ($row->reviewable_sessions ?? 0)),
+            'active_legacy_baseline' => (int) ($row->active_legacy_baseline ?? 0),
+            'inactive_history' => (int) ($row->inactive_history ?? 0),
         ];
     }
 
