@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/smoke-auth-lib.sh
+source "$SCRIPT_DIR/smoke-auth-lib.sh"
+
 BASE_URL="${SMOKE_BASE_URL:-https://daan.lifenet.com.tw}"
 API_BASE="${BASE_URL%/}/api/v1"
 
@@ -68,35 +72,7 @@ check_non_5xx "POST /auth/login (route alive)" "$code"
 
 token=""
 if [[ -n "$TEACHER_LOGIN" && -n "$TEACHER_PASSWORD" ]]; then
-  payload="$(python3 - <<PY
-import json
-print(json.dumps({"account": "$TEACHER_LOGIN", "password": "$TEACHER_PASSWORD", "role": "teacher"}))
-PY
-)"
-  login_json="$(curl -skL -X POST "$API_BASE/auth/login" -H "Content-Type: application/json" --data "$payload")"
-  token="$(python3 - <<'PYEOF' "$login_json"
-import json, sys
-try:
-    data = json.loads(sys.argv[1])
-except Exception:
-    print("")
-    raise SystemExit(0)
-candidates = [
-    data.get("data", {}).get("session", {}).get("access_token"),
-    data.get("session", {}).get("access_token"),
-    data.get("token"),
-    data.get("access_token"),
-]
-for v in candidates:
-    if isinstance(v, str) and v.strip():
-        print(v.strip())
-        raise SystemExit(0)
-print("")
-PYEOF
-)"
-
-  if [[ -z "$token" ]]; then
-    echo "❌ Teacher login succeeded without extractable token"
+  if ! token="$(smoke_login_and_token "$API_BASE" "$TEACHER_LOGIN" "$TEACHER_PASSWORD" teacher teacher)"; then
     failures=$((failures + 1))
   else
     code="$(http_code GET "$API_BASE/me" "" "$token")"
