@@ -7,7 +7,7 @@
 
 ## When to use
 
-- GitHub Actions minutes exhausted or self-hosted runner down
+- GitHub Actions minutes exhausted, hosted runner capacity constrained, or Actions outage
 - PR is merge-ready by code review but required checks cannot run
 - CEO/admin approves offline validation as temporary merge authority
 
@@ -68,11 +68,11 @@
 
 ---
 
-## FinOps / CI resilience (#867)
+## FinOps / CI resilience
 
-- Migrate remaining `ubuntu-latest` jobs to self-hosted runner labels (`wsl-ci`, `alltrue-ci`)
-- Add runner health alert (pi-health workflow)
-- Target: zero GitHub-hosted minute consumption on PR path
+- 所有直接執行的 jobs 使用 GitHub-hosted `ubuntu-latest`；唯一 delegated OSV job 固定 immutable commit。canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
+- 以 path-aware jobs、concurrency cancellation 與排程降頻控制用量，不以 production Pi 或未受管個人主機繞過 CI gate。
+- PHPUnit 每個 job 使用獨立 MySQL service container，避免並行 run 共用測試資料庫。
 
 ---
 

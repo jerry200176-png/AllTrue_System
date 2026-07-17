@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-17 — ops: lock CI runner topology to isolated hosted jobs
+
+Ops：所有直接執行的 workflow jobs 明確固定為 GitHub-hosted `ubuntu-latest`；唯一 delegated OSV job 固定 immutable commit。Presubmit 新增 topology contract，會阻擋未經 security/operations review 的 runner 或 reusable workflow 漂移。
+
+開發備註：同步修正 Runbook、INDEX、offline merge SOP 與 regression lessons 的過時 WSL2 敘述；PHPUnit 每個 job 的 MySQL service container 隔離是目前並行安全邊界。
+
 ## 2026-07-17 — fix: classify surviving student sign-in orphans (#1262)
 
 - Added PII-free scheduler health counts that distinguish student sign-in orphans whose `MDT` is at/before the verified nightly close from rows written afterward, plus an unclassified count when the execution evidence or timestamp is unavailable.
