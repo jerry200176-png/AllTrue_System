@@ -10,6 +10,7 @@ use App\Models\StudentClass;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class NotificationSyncService
 {
@@ -34,6 +35,7 @@ class NotificationSyncService
         $created = 0;
         $updated = 0;
         $resolved = 0;
+        $sourceKeyRacesRecovered = 0;
 
         DB::transaction(function () use (
             $managedTypes,
@@ -41,7 +43,8 @@ class NotificationSyncService
             $activeByKey,
             &$created,
             &$updated,
-            &$resolved
+            &$resolved,
+            &$sourceKeyRacesRecovered
         ) {
             $activeKeys = array_keys($activeByKey);
 
@@ -76,13 +79,24 @@ class NotificationSyncService
                     Notification::create($payload);
                     $created++;
                 } catch (QueryException $e) {
-                    // Concurrent sync calls can race on unique SourceKey; fall back to update.
-                    if ((string) $e->getCode() !== '23000') {
+                    if (!self::isSourceKeyDuplicate($e)) {
                         throw $e;
                     }
 
-                    $existing = Notification::where('SourceKey', $sourceKey)->first();
+                    // A normal SELECT can keep the transaction's pre-race snapshot under
+                    // MySQL REPEATABLE READ. A locking read is a current read, so it sees
+                    // the row committed by the concurrent winner after our snapshot began.
+                    $existing = Notification::where('SourceKey', $sourceKey)
+                        ->lockForUpdate()
+                        ->first();
                     if ($existing) {
+                        $sourceKeyRacesRecovered++;
+                        Log::notice('notification_source_key_race_recovered', [
+                            'campus_id' => (int) ($payload['CampusID'] ?? 0),
+                            'notification_type' => (string) ($payload['Type'] ?? ''),
+                            'source_type' => (string) ($payload['SourceType'] ?? ''),
+                            'source_key_sha256' => hash('sha256', $sourceKey),
+                        ]);
                         $existing->fill($payload);
                         $existing->ResolvedAt = null;
                         if ($existing->isDirty()) {
@@ -112,7 +126,16 @@ class NotificationSyncService
             'updated' => $updated,
             'resolved' => $resolved,
             'active_count' => count($activeByKey),
+            'source_key_races_recovered' => $sourceKeyRacesRecovered,
         ];
+    }
+
+    private static function isSourceKeyDuplicate(QueryException $exception): bool
+    {
+        $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+
+        return $driverCode === 1062
+            && stripos($exception->getMessage(), 'notifications_sourcekey_unique') !== false;
     }
 
     /**

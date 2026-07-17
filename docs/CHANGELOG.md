@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-17 — fix: repeated learning-review notification sync no longer returns 500 (#1264)
+
+Fixed：主任或家長頁面同時刷新通知時，重複的待審評量提醒會安全合併為同一則，不再因唯一鍵競爭讓請求失敗。
+
+開發備註：MySQL `REPEATABLE READ` 下，原 fallback 的 snapshot read 看不到另一請求剛提交的 `SourceKey`；改用鎖定 current read，且只處理 `notifications_sourcekey_unique` 的 1062。新增雙連線競爭測試與 PII-free recovery telemetry。
+
 ## 2026-07-17 — ops: make deployment auth smoke resilient and diagnostic (#1270)
 
 Ops：部署後的帳密登入 smoke 現在只對網路錯誤、HTTP 408／425／429 與 5xx 做最多三次的短暫重試；401 等帳密錯誤與 2xx 無 token 會立即、精準地阻擋部署，不再把所有情況誤報成「登入成功但沒有 token」。兩層 smoke 共用同一個不洩漏回應內容或憑證的 token 解析與登入 helper。
