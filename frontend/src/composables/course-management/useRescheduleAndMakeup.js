@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { getSubjectLabel } from '../../lib/constants';
 import { trackAdoptionEvent } from '../../lib/adoptionTelemetry';
+import { commitReschedule } from '../../lib/rescheduleApi';
 import {
   formatRescheduleConfirmDialog,
   formatRescheduleSuccessMessage,
@@ -96,22 +97,6 @@ export function useRescheduleAndMakeup({
     const bid = Number(typeof branchId === 'object' ? branchId.value : branchId) || 0;
     if (!bid) { alert('請先選擇分校'); return; }
     const newEnd = computeEndTime(form.new_start, form.duration_hours);
-    const newDayOfWeek = dayOfWeekFromDate(form.new_date);
-
-    const payload1 = {
-      student_id: form.student_id, teacher_id: form.teacher_id || null, subject: form.subject,
-      day_of_week: form.original_day, start_time: form.original_start, end_time: form.original_end,
-      duration_hours: form.duration_hours, class_type: form.class_type,
-      status: 'rescheduled', type: 'normal', deduction: 0, branch_id: bid,
-      student_course_id: form.course_id, schedule_date: form.original_date,
-    };
-    const payload2 = (originalId) => ({
-      student_id: form.student_id, teacher_id: form.teacher_id || null, subject: form.subject,
-      day_of_week: newDayOfWeek, start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-      duration_hours: form.duration_hours, class_type: form.class_type,
-      status: 'scheduled', type: 'normal', deduction: 1, branch_id: bid,
-      schedule_date: form.new_date, original_schedule_id: originalId, student_course_id: form.course_id,
-    });
 
     const confirmText = formatRescheduleConfirmDialog({
       studentName: form.student_name,
@@ -128,133 +113,45 @@ export function useRescheduleAndMakeup({
     try {
       const { data: { session: sess } } = await supabase.auth.getSession();
       const token = sess?.access_token;
-      if (token) {
-        let originalId = null;
-        let createdNewRescheduled = false;
-        const existingRes = await fetch(
-          `/api/v1/schedules?branch_id=${bid}&student_course_id=${form.course_id}&schedule_date=${form.original_date}&status=rescheduled&__limit=1`,
-          { credentials: 'include', headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } }
-        );
-        if (existingRes.ok) {
-          const existingList = await existingRes.json();
-          const arr = Array.isArray(existingList) ? existingList : existingList?.data ?? [];
-          if (arr.length > 0 && arr[0].id) originalId = arr[0].id;
-        }
-        if (originalId == null) {
-          const r1 = await fetch('/api/v1/schedules', {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify(payload1),
-          });
-          if (!r1.ok) {
-            const err = await r1.json().catch(() => ({}));
-            alert('調課失敗：' + humanizeRescheduleFailure(err.message || '無法寫入原堂次紀錄'));
-            return;
-          }
-          const created = await r1.json();
-          originalId = created?.id ?? null;
-          createdNewRescheduled = true;
-        }
-        const r2 = await fetch('/api/v1/schedules', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload2(originalId)),
-        });
-        if (!r2.ok) {
-          const err = await r2.json().catch(() => ({}));
-          let errMsg = humanizeRescheduleFailure(err.message || '無法寫入新堂次');
-          if (r2.status === 409 && Array.isArray(err.conflicts) && err.conflicts.length > 0) {
-            const details = err.conflicts[0]?.overlap_details;
-            const conflictLine = formatRescheduleConflictStudents(details);
-            if (conflictLine) errMsg = `${errMsg}\n${conflictLine}`;
-          }
-          // FR-004: 補償刪除本次剛建立的 rescheduled 列，防止孤兒資料
-          if (createdNewRescheduled && originalId) {
-            fetch(`/api/v1/schedules/${originalId}`, {
-              method: 'DELETE', credentials: 'include',
-              headers: { Authorization: `Bearer ${token}` },
-            }).catch(() => {});
-          }
-          alert('調課失敗：' + errMsg);
-          return;
-        }
-        if (form.course_id) {
-          await fetch('/api/v1/learning-records/reschedule-session', {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-              student_class_id: form.course_id, old_date: form.original_date || null,
-              new_date: form.new_date, start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-            }),
-          }).catch(() => {});
-        }
-        showRescheduleModal.value = false;
-        rescheduleCourse.value = null;
-        alert(formatRescheduleSuccessMessage({
-          studentName: form.student_name,
-          subject: getSubjectLabel(form.subject) || form.subject,
-          originalDate: form.original_date,
-          originalStart: form.original_start,
-          originalEnd: form.original_end,
-          newDate: form.new_date,
-          newStart: normalizeTo30Min(form.new_start),
-          newEnd,
-        }));
-        trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal' });
-        loadCourses();
+      if (!token) {
+        alert('調課失敗：請重新登入');
         return;
       }
-    } catch (_) {}
 
-    let originalId = null;
-    const { data: existing } = await supabase
-      .from('schedules').select('id')
-      .eq('student_course_id', form.course_id)
-      .eq('schedule_date', form.original_date)
-      .eq('status', 'rescheduled').maybeSingle();
-    if (existing?.id) {
-      originalId = existing.id;
-    } else {
-      const { data: ins, error: e1 } = await supabase.from('schedules').insert([payload1]).select('id').single();
-      if (e1) {
-        alert('調課失敗：' + humanizeRescheduleFailure(e1.message || '無法寫入原堂次紀錄'));
-        return;
-      }
-      originalId = ins?.id ?? null;
+      await commitReschedule({
+        token,
+        payload: {
+          student_class_id: form.course_id,
+          old_date: form.original_date,
+          old_start_time: form.original_start,
+          new_date: form.new_date,
+          start_time: normalizeTo30Min(form.new_start),
+          end_time: newEnd,
+          teacher_id: form.teacher_id || null,
+          subject: form.subject || null,
+        },
+      });
+
+      showRescheduleModal.value = false;
+      rescheduleCourse.value = null;
+      alert(formatRescheduleSuccessMessage({
+        studentName: form.student_name,
+        subject: getSubjectLabel(form.subject) || form.subject,
+        originalDate: form.original_date,
+        originalStart: form.original_start,
+        originalEnd: form.original_end,
+        newDate: form.new_date,
+        newStart: normalizeTo30Min(form.new_start),
+        newEnd,
+      }));
+      trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal-atomic' });
+      await loadCourses();
+    } catch (error) {
+      let message = humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更');
+      const conflictLine = formatRescheduleConflictStudents(error?.conflicts?.[0]?.overlap_details);
+      if (conflictLine) message = `${message}\n${conflictLine}`;
+      alert('調課失敗：' + message);
     }
-    const { error: e2 } = await supabase.from('schedules').insert([payload2(originalId)]);
-    if (e2) {
-      alert('調課失敗：' + humanizeRescheduleFailure(e2.message || '無法寫入新堂次'));
-      return;
-    }
-    try {
-      const { data: { session: sess } } = await supabase.auth.getSession();
-      const token = sess?.access_token;
-      if (token && form.course_id) {
-        await fetch('/api/v1/learning-records/reschedule-session', {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            student_class_id: form.course_id, old_date: form.original_date || null,
-            new_date: form.new_date, start_time: normalizeTo30Min(form.new_start), end_time: newEnd,
-          }),
-        }).catch(() => {});
-      }
-    } catch (_) {}
-    showRescheduleModal.value = false;
-    rescheduleCourse.value = null;
-    alert(formatRescheduleSuccessMessage({
-      studentName: form.student_name,
-      subject: getSubjectLabel(form.subject) || form.subject,
-      originalDate: form.original_date,
-      originalStart: form.original_start,
-      originalEnd: form.original_end,
-      newDate: form.new_date,
-      newStart: normalizeTo30Min(form.new_start),
-      newEnd,
-    }));
-    trackAdoptionEvent('flow_submitted', bid, { flow: 'reschedule', source: 'course-modal-fallback' });
-    loadCourses();
   }
 
   // Makeup slots
