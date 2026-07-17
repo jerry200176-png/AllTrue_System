@@ -22,8 +22,7 @@ permissions:
 jobs:
   changes:
     name: Detect backend/security changes
-    # #545(A)：原移至 GitHub-hosted runner。
-    # #867：GitHub-hosted 受帳單/額度卡住時整條 required gate 失效，改回 self-hosted（runner 在線）。
+    # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:
@@ -52,7 +51,7 @@ jobs:
     name: PHPStan Advisory (php)
     needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.security_config == 'true'
-    # #867：移至 self-hosted。runner 已內建 PHP 8.2（與 PHPUnit job 同），故不需 setup-php / hosted cache。
+    # CodeQL builds with the toolchain available on the GitHub-hosted image.
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

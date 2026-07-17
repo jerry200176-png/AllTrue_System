@@ -73,7 +73,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 # 1. 確認 PR 只改依賴版本，不碰 production 邏輯
 gh pr view <PR_NUMBER> --json files -q '.files[].path'
 
-# 2. Merge（PHPUnit fail 若只因 Dependabot 沒有 DB secret 屬正常）
+# 2. Merge（required checks 必須通過；失敗先依 log 診斷）
 gh pr merge <PR_NUMBER> --squash --delete-branch
 
 # 3. 有 conflict → 讓 Dependabot 自動 rebase
@@ -84,7 +84,7 @@ gh pr comment <PR_NUMBER> --body "@dependabot rebase"
 gh auth refresh -h github.com -s workflow
 ```
 
-**⚠️ Dependabot PR 合併前仍須看 required checks**：目前 PR checks 主要由 WSL2 self-hosted runner 執行，不再以「Dependabot 無法讀 GitHub Secrets」作為 PHPUnit fail 的預設理由。若依賴更新失敗，先看 log；只有確認改動純依賴且失敗原因與專案無關時，才可依 Dependabot SOP 處理。
+**⚠️ Dependabot PR 合併前仍須看 required checks**：目前 PR checks 由 GitHub-hosted runner 執行；不要把 PHPUnit fail 預設歸因為 Dependabot 無法讀 GitHub Secrets。若依賴更新失敗，先看 log；只有確認改動純依賴且失敗原因與專案無關時，才可依 Dependabot SOP 處理。
 
 ### B1. Branch Hygiene
 
@@ -121,7 +121,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 
 ### B2. GitHub Actions Minutes Conservation SOP
 
-**目的**：降低 GitHub-hosted runner minutes 消耗，同時維持「PR 綠燈才 merge、merge 後自動部署、部署後 health check」的安全底線。
+**目的**：有效使用 GitHub-hosted runner minutes，同時維持「PR 綠燈才 merge、merge 後自動部署、部署後 health check」的安全底線。
 
 **核心規則**
 0. **Required checks 必須永遠有 context**：`ci.yml` 必須在所有 PR 都觸發，由 `Detect changed areas` + job-level `if` 決定是否執行重檢查；禁止只靠 workflow-level `paths` 直接跳過整個 workflow，否則 docs-only PR 會缺少 required status checks。
@@ -137,7 +137,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
 11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
-13. **WSL2 self-hosted runner 只跑 CI**：`wsl2-jerry-alltrue` labels = `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，只可用於 `ci.yml` / `presubmit.yml` / `codeql.yml`。`deploy.yml` 必須保留 GitHub-hosted runner，不可在個人電腦 runner 上持有 production deploy secrets 或執行部署。
+13. **runner topology 是安全邊界**：所有 active jobs 必須使用 GitHub-hosted `ubuntu-latest`；不得把 production deploy secrets 下放到個人電腦或 production Pi。變更 runner 前須同步更新 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 並通過 security/operations review。
 14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
 15. **E2E 只在前端 PR 跑（#730）**：`ui-smoke.yml` 在 PR 一律啟動（穩定 check 名稱、可當 required），但內部 `Detect frontend diff` 判斷是否動到 `frontend/src/**` 或 `frontend/e2e/**`；沒動就秒過、不下載 Chromium、不跑 Playwright；有動才跑。**刻意不用 workflow 層 `paths:`**（path-filtered 的 required check 在不符路徑時會永遠 pending、卡 merge）。週排程 + 手動觸發仍完整跑。
 
@@ -157,7 +157,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 - 將 coverage 報告改為 nightly，PR 只跑 PHPUnit 無 coverage
 - 將低頻維運排程降頻或移到外部監控
 - 拆分 fast tests / full regression tests
-- 已啟用獨立、非 production 的 WSL2 self-hosted runner；若月用量仍過高，再評估 fast/full test 分流或第二台 runner（不可與 Pi production 共用）。
+- 若月用量仍過高，先評估 fast/full test 分流與排程降頻；self-hosted runner 只能在完成 credential exposure、DB isolation、ownership、patching 與 rollback 設計後再評估（不可與 Pi production 共用）。
 
 **GitHub Actions 分鐘耗盡時 fallback（critical signals）**
 - Pi 本機 `monitor-alert.sh check`（每 30 分鐘）持續監控磁碟、溫度、RAM、`/api/v1/health` 並發 Telegram/LINE。
@@ -215,48 +215,27 @@ Billing／minutes 恢復後用上述補跑即可；結果以 **workflow log** �
 4. 將「本次不修但會影響未來」寫入 `docs/TECH_DEBT.md`。
 5. 只保存 distilled causality，不複製完整對話推理，避免記憶污染。
 
-### B4. WSL2 Self-hosted Runner Hardening SOP
+### B4. GitHub-hosted Runner Topology
 
-**Scope boundary**
-- `wsl2-jerry-alltrue` runner 只允許 CI (`ci.yml` / `presubmit.yml` / `codeql.yml`)。
-- `deploy.yml` 必須持續使用 GitHub-hosted runner；禁止把 production deploy secrets 下放到 WSL2 runner。
+[`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 是 runner topology 的 canonical reference。
 
-**Daily/PR-time health check（read-only）**
+**Current boundary**
+- 所有 active workflow jobs 使用 `ubuntu-latest` GitHub-hosted runner。
+- 每個 PHPUnit job 取得獨立 runner 與 MySQL service container；即使 schema 同名為 `AllTrue_test`，並行 run 也不共用儲存空間。
+- production Pi 永遠不得註冊為 test runner 或執行 PHPUnit。
+- production deploy secrets 只交給 ephemeral GitHub-hosted deploy job，不下放個人 WSL2 環境。
+
+**PR-time verification（read-only）**
 ```bash
-# Runner 是否在線
-gh api repos/jerry200176-png/AllTrue_System/actions/runners --jq '.runners[] | {name, status, busy, labels: [.labels[].name]}'
+# 靜態 contract；Presubmit 也會執行
+node scripts/runner-topology-check.mjs
 
-# 本機磁碟空間
-df -h
-
-# CI 前置 runtime
-php -v
-php -m | rg 'pcov|pdo_mysql|mbstring'
-mysql --version
-node -v
+# 確認實際 job runner label
+gh run view <run-id> --json jobs --jq '.jobs[] | {name, labels, status, conclusion}'
 ```
 
-**Offline / queued jobs recovery**
-1. 確認 Windows 主機未 sleep，WSL2 有正常啟動。
-2. 在 runner 所在目錄重啟 service（依實際安裝方式）：
-   - `./svc.sh status`
-   - `./svc.sh stop`
-   - `./svc.sh start`
-3. 若 runner 卡 `busy=true` 超過 15 分鐘且無對應 job log，先重啟 runner service，再 re-run 失敗 workflow。
-
-**Compromise / leak suspicion（Stop-the-line）**
-1. 立即在 GitHub 停用 runner：
-   ```bash
-   gh api repos/jerry200176-png/AllTrue_System/actions/runners --jq '.runners[] | [.id,.name] | @tsv'
-   gh api -X DELETE repos/jerry200176-png/AllTrue_System/actions/runners/<runner_id>
-   ```
-2. 旋轉 repository Actions runner registration token，重新註冊新 runner。
-3. 驗證 `deploy.yml` secrets 未曾被配置到 self-hosted workflows。
-4. 事件紀錄寫入 `docs/AI_REGRESSION_LESSONS.md` 與 `docs/CHANGELOG.md`。
-
-**Monthly hygiene**
-- 每月一次更新 runner runtime（WSL2 packages, PHP, Node, Composer）並抽跑 `presubmit.yml` + `ci.yml`。
-- 每月一次檢查 labels 仍為 `self-hosted, Linux, X64, wsl-ci, alltrue-ci`，避免誤接 production workflow。
+**Topology change gate**
+任何 runner 類型變更都必須在同一 PR 記錄 credential exposure、database isolation、runner ownership、capacity、patching 與 rollback，並同步更新 canonical reference。未完成 security/operations review 前，不得擴充 script allow-list。
 
 ### B5. Solo + AI GitHub 週期 SOP（一人團隊 × 大廠 baseline）
 
@@ -492,7 +471,7 @@ WSL2 feature branch → git push → PR → CI pass → merge main → deploy.ym
 | `PI_SSH_HOST` | Pi 主機名稱 | **只填 `pi.lifenet.com.tw`，禁止含 `user@`** |
 | `PI_USER` | pi-health.yml 用帳號 | 同 PI_SSH_USER，只填 `admin` |
 | `PI_HOST` | pi-health.yml 用主機名 | 同 PI_SSH_HOST，只填 `pi.lifenet.com.tw` |
-| `CI_DB_PASSWORD` | 舊 GitHub-hosted MySQL service 測試密碼；目前 WSL2 self-hosted CI 改讀 `backend/phpunit.xml` 測試 DB 設定 | 若重新啟用 GitHub-hosted MySQL service 才需要 |
+| `CI_DB_PASSWORD` | 已退役；active workflows 不引用此 secret。GitHub-hosted MySQL service 與 PHPUnit 都使用 `backend/phpunit.xml` 的測試 DB 設定 | 可從 repository secrets 移除；若未來重新設計 DB credential contract 再新增 |
 
 > ⛔ 格式錯誤後果：`PI_USER=admin@pi.lifenet.com.tw` → sshd 收到 username=`admin@admin` → Invalid user（2026-04-26 事故，見 R18）
 
@@ -1355,4 +1334,3 @@ gh run view <run_id>                                  # 讀 Step Summary 四指�
 ### Z2. 缺 secrets 行為
 
 未設 `PI_HOST`/`PI_USER`/`PI_SSH_KEY`/`PI_HOST_KEY` 時，workflow 以 `::notice::` 略過（不 failure），不阻塞。設定後自動生效。
-

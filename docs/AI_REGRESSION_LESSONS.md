@@ -778,8 +778,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **PR size**：presubmit CHECK 2 硬上限 **700 行**（含增刪，排除 lock/data）。3 頁合一的治理 PR 容易爆（曾 868 行被擋）→ 一頁/數個小元件一 PR。
 - **single-line JSON baseline 衝突**：`docs/design-hex-baseline.json` 是單行；多個治理 PR 各自 relock 會在合併時衝突。**逐頁/批次 PR 不要各自帶 baseline**，全部 merge 後做**一次** `bash scripts/design-hex-count.sh > docs/design-hex-baseline.json` 統一 relock。
 - **`backend/public/storage` symlink 會卡住 `git reset --hard` / `git merge`**（WSL/Windows 掛載：`Function not implemented` / `File exists`）→ 改用 `git reset --mixed` 移 HEAD（不寫工作樹）再清殘留；勿對 protected 路徑設 `assume-unchanged`（R58 + pre-commit hook 會擋）。
-- **merge-train 稅**：strict required checks + 單一 self-hosted runner，每 merge 一個 PR 其餘變 `BEHIND` 需 `update-branch` 重跑 CI；大量小 PR 會排很久。**勿用 `gh pr merge --admin` 繞過**（CI 會抓真問題，如 cebed0c flaky）。耐心 merge-train，或盡量合批。
-- **`backend/phpunit.xml` 以 `force="true"` 硬編 `DB_DATABASE=AllTrue_test`**：CI 測試 DB 名無法只靠 env 隔離；self-hosted runner 共用此 DB，多 run 並發時 `RefreshDatabase` 互相清表 → 偶發假失敗（自癒）。修法須動態 patch phpunit.xml（見 #732 註解）。
+- **merge-train 稅（拓撲部分已 superseded）**：strict required checks 仍會讓其他 PR 在 main 前進後變 `BEHIND` 並重跑 CI；不可用 `gh pr merge --admin` 繞過。2026-07-14 起所有 jobs 已改用 GitHub-hosted runner，可平行執行，不再受單一 WSL2 runner 序列化；現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
+- **同名測試 DB 的隔離取決於 runner 儲存邊界（#732 已 superseded）**：`backend/phpunit.xml` 仍以 `force="true"` 設定 `DB_DATABASE=AllTrue_test`，但每個 GitHub-hosted PHPUnit job 都有獨立 MySQL service container，因此同名 schema 不會跨 run 互相清表。若未來改回共享 self-hosted MySQL，必須先提供 run-scoped schema 或等價隔離，不能只改 runner label。
 
 ---
 

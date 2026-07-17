@@ -199,6 +199,9 @@ jobs:
       - name: "[CHECK 7] Architecture fitness (invariants / ownership / dependency)"
         run: node scripts/arch-fitness-check.mjs
 
+      - name: "[CHECK 8] CI runner topology contract"
+        run: node scripts/runner-topology-check.mjs
+
       # ─────────────────────────────────────────────
       # Summary
       # ─────────────────────────────────────────────

@@ -24,7 +24,7 @@
 **urgent handoff（`.cursor/plans/urgent_login_attendance_leave_handoff_2026-06-20.md`）— 部分 superseded**
 - ✅ Bug 1 家長登入 regex：`#922` merged；prod API `/auth/login` + `/learning-records` 200。
 - ✅ in-app `#169` / `#170`：程式 `#928` / `#927` merged；in-app 狀態皆 `resolved`；prod 待審清單已無鄭筠霏 06-20（唯讀 API 驗證）。
-- ✅ `#919` self-hosted CI/deploy 已恢復；2026-06-21 deploy 至 `fd04b07` 成功。
+- 🕰️ `#919` 曾於 2026-06-21 恢復 self-hosted CI/deploy 並部署 `fd04b07`；此拓撲已被 2026-07-14 的 GitHub-hosted runner 遷移取代，現況見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - ⏳ Bug 2 count 課稀疏堂次 materialize：**PR #937**（`fix/count-session-same-day-materialize`）；**刻意跳過 `PackageID>0` 共用池**（周宏謙 / #162 需商業規則後另 PR）。
 - ⏳ in-app `#174` 重疊課程 force-create modal：**PR #938**（`fix/course-overlap-force-create` → main）；prod 曾手動部署 `acf1251`，`version.json` 可能落後 git HEAD，merge 後應走正常 deploy。
 - 🗑️ 聚合 hotfix **PR #925** 已留言 superseded，可 close。
@@ -69,7 +69,7 @@
 |---|---|---|
 | #868 | **staging/pre-prod 環境**（目前合併後直上 prod Pi） | GitHub Flow、Heroku pipelines、dev/prod parity |
 | #869 | **Feature flags**（解耦 deploy 與 release、kill-switch） | Unleash、LaunchDarkly、dark launch |
-| #870 | **CI 高可用**（消除單一 self-hosted runner SPOF + 用量告警；今日帳單事件暴露） | runner scale sets、ARC |
+| #870 | **CI 高可用**（降低 hosted capacity / billing 單點風險並補用量告警） | path-aware jobs、用量告警、備援設計 |
 | #871 | **Merge Queue**（消除 up-to-date 競態、免手動 update-branch） | GitHub Merge Queue、Bors/Mergify |
 | #872 | **DORA 四指標儀表板** | Google DORA / Four Keys |
 | #873 | **Blameless postmortem 範本 + 行動項追蹤**（正式化事故 A–F） | Google SRE Postmortem Culture |
@@ -160,7 +160,7 @@ AllTrue 目前已用 M4–M9 把工程成熟度拆成多條 track。從「軟體
 - 暫停：merge/deploy、需要 required checks 的 production code PR、in-app `resolved` 回寫。
 - 繼續：issue/milestone/project 整理、Bug triage、PRD/ARCH/spec、docs、code review、風險盤點、設計/UX 規劃。
 - 追蹤：把 CI capacity 事件寫回 #867 / #870，待 billing/spending limit 恢復後 rerun deploy。
-- 禁止：為了趕上線改用 self-hosted runner 跑 production deploy、手動 SSH 覆蓋 production、或未 deploy 就把 in-app bug 標 `resolved`。
+- 禁止：為了趕上線繞過 required checks、把 production secrets 下放非受管 runner、手動 SSH 覆蓋 production、或未 deploy 就把 in-app bug 標 `resolved`。
 
 ### 大廠工程師在「CI/deploy 凍結」時實際會做的事（playbook）
 
@@ -174,7 +174,7 @@ AllTrue 目前已用 M4–M9 把工程成熟度拆成多條 track。從「軟體
 | **設計 / ADR** | 寫架構決策紀錄、feature flag/staging 設計、UX 分眾文案規格 | #896 ADR、#869 flags、#868 staging、#909–912 角色體驗 |
 | **唯讀稽核** | 讀 production health/version.json、唯讀 SQL sanity check、依賴/權限盤點（不寫入） | #888、#889、#890、#892、#900 weekly ops |
 | **code review / 讀碼** | review 既有 open PR、讀熱點模組、整理 known-issues registry（不 merge） | #876 review ownership、AI_REGRESSION_LESSONS |
-| **把卡點變成可預防** | 把本次 capacity 事件寫成 postmortem 行動項、設用量告警與 self-hosted 遷移計畫 | #867、#870、#872 DORA、#873 postmortem |
+| **把卡點變成可預防** | 把本次 capacity 事件寫成 postmortem 行動項、設用量告警與受控備援方案 | #867、#870、#872 DORA、#873 postmortem |
 | **降低換手成本** | 更新本檔「進行中狀態」、handoff package、onboarding runbook | #898 onboarding/handoff |
 
 判斷一件事「現在能不能做」的單一準則：**它需不需要走 required checks 改動 production？** 需要 → 凍結等 CI；不需要（docs/issue/spec/audit/review）→ 現在就做，並把成果掛回對應 issue，讓 CI 一恢復就能無縫接上 PR。
@@ -192,5 +192,5 @@ AllTrue 目前已用 M4–M9 把工程成熟度拆成多條 track。從「軟體
 
 ## AI 接手原則
 1. 先讀本檔「進行中狀態」+ `CLAUDE.md` 5 紅線 + `MEMORY.md`。
-2. 任何 CI 卡住先分清：**self-hosted（Vite/Presubmit/PHPUnit，不吃 GitHub 額度）** vs **GitHub-hosted（gitleaks/Golden/Dependency Review，受帳單影響）**。
+2. 任何 CI 卡住先看 workflow/job log 與 runner label；目前所有 active jobs 都是 GitHub-hosted `ubuntu-latest`，canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 3. `.vue` 註解禁寫 `#NNN`（會被 hex guard 當色碼）；hex guard 用 WSL/Linux 跑（Windows grep 會漏報）。
