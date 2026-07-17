@@ -11,6 +11,16 @@ import {
 } from '../../lib/scheduleDisplay.js';
 import { commitReschedule } from '../../lib/rescheduleApi.js';
 
+export function findExactRescheduleAnchor(exceptions, courseId, date, startTime) {
+  const startHm = String(startTime || '').slice(0, 5);
+  return (exceptions || []).find((ex) =>
+    ex.status === 'rescheduled'
+    && String(ex.student_course_id) === String(courseId)
+    && ex.schedule_date === date
+    && String(ex.start_time || '').slice(0, 5) === startHm,
+  ) || null;
+}
+
 /** #740 Step 7b2b：調課 modal + submit（拖曳 handler 留 SmartCalendar） */
 export function useCalendarReschedule({
   branchId,

@@ -186,6 +186,57 @@ class ScheduleStoreOrphanPreventionTest extends TestCase
         ]);
     }
 
+    public function test_cross_date_schedule_defers_destination_materialization_to_atomic_move(): void
+    {
+        $anchorSchedule = Schedule::create([
+            'student_id' => $this->studentId,
+            'teacher_id' => $this->teacherId,
+            'day_of_week' => 3,
+            'start_time' => '10:00',
+            'end_time' => '12:00',
+            'branch_id' => $this->campusId,
+            'schedule_date' => '2026-05-01',
+            'status' => 'rescheduled',
+            'class_type' => 'one_on_one',
+            'student_course_id' => $this->courseId,
+        ]);
+        ClassSession::create([
+            'StudentClassID' => $this->courseId,
+            'SessionDate' => '2026-05-01',
+            'StartTime' => '10:00',
+            'EndTime' => '12:00',
+            'Status' => 'scheduled',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$this->dirToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $this->studentId,
+            'teacher_id' => $this->teacherId,
+            'day_of_week' => 4,
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'branch_id' => $this->campusId,
+            'schedule_date' => '2026-05-02',
+            'status' => 'scheduled',
+            'class_type' => 'one_on_one',
+            'student_course_id' => $this->courseId,
+            'original_schedule_id' => $anchorSchedule->id,
+        ])->assertCreated();
+
+        $this->assertDatabaseMissing('ClassSession', [
+            'StudentClassID' => $this->courseId,
+            'SessionDate' => '2026-05-02',
+            'StartTime' => '14:00',
+        ]);
+        $this->assertDatabaseHas('ClassSession', [
+            'StudentClassID' => $this->courseId,
+            'SessionDate' => '2026-05-01',
+            'StartTime' => '10:00',
+        ]);
+    }
+
     /**
      * Case 3: status=leave は FR-001 の検証対象外（FR-003）
      * 既存の leave フローが通過することを確認。

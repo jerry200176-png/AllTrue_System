@@ -117,13 +117,17 @@ class QueryBuilder {
         this._method = 'GET';
         this._body = null;
         this._single = false;
+        this._maybeSingle = false;
+        this._returning = false;
         this._order = '';
         this._updateId = null;
         this._deleteId = null;
     }
 
     select(_columns) {
-        this._method = 'GET';
+        // Supabase allows insert(...).select().single(). Keep the mutation
+        // method in that chain; resetting it to GET silently skipped writes.
+        if (this._method !== 'GET') this._returning = true;
         return this;
     }
 
@@ -198,6 +202,12 @@ class QueryBuilder {
 
     single() {
         this._single = true;
+        return this;
+    }
+
+    maybeSingle() {
+        this._single = true;
+        this._maybeSingle = true;
         return this;
     }
 
@@ -321,6 +331,32 @@ class QueryBuilder {
 
         if ((resp.status === 401 || resp.status === 419) && token) {
             return forceSignOut(json?.error?.message || '登入已過期，請重新登入');
+        }
+
+        if (this._method === 'GET' && this._single) {
+            if (json?.error) return { data: null, error: json.error };
+            const rows = Array.isArray(json)
+                ? json
+                : (Array.isArray(json?.data)
+                    ? json.data
+                    : (json?.data && typeof json.data === 'object' ? [json.data] : []));
+            if (rows.length === 0) {
+                return {
+                    data: null,
+                    error: this._maybeSingle ? null : { message: 'No rows returned' },
+                };
+            }
+            return { data: rows[0], error: null };
+        }
+
+        if (this._method !== 'GET' && this._returning) {
+            if (json?.error) return { data: null, error: json.error };
+            const payload = json?.data ?? json?.schedule ?? json;
+            const rows = Array.isArray(payload) ? payload : [payload];
+            return {
+                data: this._single ? (rows[0] ?? null) : rows,
+                error: null,
+            };
         }
 
         return json;

@@ -54,6 +54,12 @@ class ScheduleController extends Controller
             $query->where('student_course_id', $request->input('student_course_id'));
         }
 
+        if ($request->filled('start_time')) {
+            $query->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [
+                substr((string) $request->input('start_time'), 0, 5),
+            ]);
+        }
+
         if ($request->filled('status')) {
             $statusInput = $request->input('status');
             if (str_contains($statusInput, ',')) {
@@ -326,7 +332,11 @@ class ScheduleController extends Controller
                     'start_time' => $data['start_time'] ?? null,
                     'end_time' => $data['end_time'] ?? null,
                     'class_type' => $effectiveClassType,
-                    'conflicts' => $guardConflicts,
+                    'conflict_count' => count($guardConflicts),
+                    'conflict_types' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => $conflict['type'] ?? null,
+                        $guardConflicts
+                    )))),
                 ]);
                 return response()->json([
                     'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
@@ -390,14 +400,63 @@ class ScheduleController extends Controller
             }
         }
 
-        // When marking a date as rescheduled, clean up any existing scheduled exception
-        // for the same student/course/date to prevent ghost records from multi-hop reschedules.
+        // Reschedule markers are idempotent per concrete course/date/start slot.
+        // The frontend may retry with a stale calendar snapshot; serializing on
+        // the parent course prevents concurrent retries from creating another
+        // marker. Exact-slot duplicate history is collapsed while distinct
+        // same-day lessons remain untouched.
         if ($status === 'rescheduled' && $courseId > 0 && !empty($data['schedule_date'])) {
-            DB::table('schedules')
-                ->where('student_course_id', $courseId)
-                ->where('schedule_date', $data['schedule_date'])
-                ->where('status', 'scheduled')
-                ->delete();
+            return DB::transaction(function () use ($courseId, $data) {
+                $lockedCourse = DB::table('StudentClass')
+                    ->where('ID', $courseId)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$lockedCourse) {
+                    return response()->json(['message' => '找不到對應課程，無法調課'], 422);
+                }
+                $startHm = substr((string) ($data['start_time'] ?? ''), 0, 5);
+
+                Schedule::query()->where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $data['schedule_date'])
+                    ->where('status', 'scheduled')
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startHm])
+                    ->delete();
+
+                $existing = Schedule::query()->where('student_course_id', $courseId)
+                    ->whereDate('schedule_date', $data['schedule_date'])
+                    ->where('status', 'rescheduled')
+                    ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startHm])
+                    ->orderByDesc('id')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing) {
+                    $existing->update(array_filter($data, fn ($v) => $v !== null));
+                    $duplicateIds = Schedule::query()->where('student_course_id', $courseId)
+                        ->whereDate('schedule_date', $data['schedule_date'])
+                        ->where('status', 'rescheduled')
+                        ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startHm])
+                        ->where('id', '!=', $existing->id)
+                        ->pluck('id');
+                    if ($duplicateIds->isNotEmpty()) {
+                        Schedule::query()->whereIn('original_schedule_id', $duplicateIds)
+                            ->update(['original_schedule_id' => $existing->id]);
+                        Schedule::query()->whereIn('id', $duplicateIds)->delete();
+                    }
+                    $this->ensureClassSessionForScheduleData($existing->toArray());
+
+                    return response()->json(array_merge($existing->toArray(), [
+                        'write_disposition' => 'reused',
+                    ]), 201);
+                }
+
+                $schedule = Schedule::query()->create($data);
+                $this->ensureClassSessionForScheduleData($schedule->toArray());
+
+                return response()->json(array_merge($schedule->toArray(), [
+                    'write_disposition' => 'created',
+                ]), 201);
+            });
         }
 
         // Prevent duplicate scheduled rows for reschedule/substitute on same course+date+time.
@@ -417,7 +476,9 @@ class ScheduleController extends Controller
             if ($existing) {
                 $existing->update(array_filter($data, fn ($v) => $v !== null));
                 $this->ensureClassSessionForScheduleData($existing->toArray());
-                return response()->json($existing, 201);
+                return response()->json(array_merge($existing->toArray(), [
+                    'write_disposition' => 'reused',
+                ]), 201);
             }
         }
 
@@ -425,7 +486,9 @@ class ScheduleController extends Controller
 
         $this->ensureClassSessionForScheduleData($schedule->toArray());
 
-        return response()->json($schedule, 201);
+        return response()->json(array_merge($schedule->toArray(), [
+            'write_disposition' => 'created',
+        ]), 201);
     }
 
     public function undoLeave(Request $request, Schedule $schedule)
@@ -1005,7 +1068,11 @@ class ScheduleController extends Controller
                     'start_time' => $merged['start_time'] ?? null,
                     'end_time' => $merged['end_time'] ?? null,
                     'class_type' => $effectiveClassType,
-                    'conflicts' => $guardConflicts,
+                    'conflict_count' => count($guardConflicts),
+                    'conflict_types' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => $conflict['type'] ?? null,
+                        $guardConflicts
+                    )))),
                 ]);
                 return response()->json([
                     'message' => $guardConflicts[0]['message'] ?? 'Teacher scheduling conflict detected',
@@ -1045,6 +1112,19 @@ class ScheduleController extends Controller
         }
 
         $sessionDate = Carbon::parse($sessionDateRaw)->toDateString();
+        $anchorId = (int) ($schedule['original_schedule_id'] ?? 0);
+        if ($status === 'scheduled' && $anchorId > 0) {
+            $anchorDateRaw = Schedule::query()->where('id', $anchorId)->value('schedule_date');
+            $anchorDate = $anchorDateRaw ? Carbon::parse($anchorDateRaw)->toDateString() : null;
+            if ($anchorDate && $anchorDate !== $sessionDate) {
+                // Cross-date reschedule is a two-step legacy client flow. The
+                // reschedule-session endpoint moves the existing ClassSession;
+                // materializing the destination here creates a competing ghost
+                // before that move and leaves it behind when the second step 422s.
+                return;
+            }
+        }
+
         $startTime = substr((string) ($schedule['start_time'] ?? '00:00:00'), 0, 8);
         $endTime = substr((string) ($schedule['end_time'] ?? '00:00:00'), 0, 8);
         if (strlen($startTime) === 5) {

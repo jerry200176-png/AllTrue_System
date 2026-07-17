@@ -25,6 +25,8 @@ class RescheduleSessionPrecisionTest extends TestCase
     public function test_same_day_two_slots_precise_match_moves_only_the_targeted_session(): void
     {
         [$token, $courseId, $morning, $afternoon] = $this->seedTwoSameDaySessions();
+        [, $morningDestination] = $this->seedSchedulePair($courseId, '2026-06-01', '09:00', '11:00');
+        [, $afternoonDestination] = $this->seedSchedulePair($courseId, '2026-06-01', '14:00', '16:00');
 
         $this->postReschedule($token, [
             'student_class_id' => $courseId,
@@ -45,6 +47,15 @@ class RescheduleSessionPrecisionTest extends TestCase
         $this->assertSame('2026-06-02', substr((string) $afternoon->SessionDate, 0, 10),
             'Afternoon session should be moved to new date');
         $this->assertSame('17:00', substr((string) $afternoon->StartTime, 0, 5));
+
+        $morningDestination->refresh();
+        $afternoonDestination->refresh();
+        $this->assertSame('2026-06-01', substr((string) $morningDestination->schedule_date, 0, 10),
+            'Morning substitute schedule should NOT be moved');
+        $this->assertSame('09:00', substr((string) $morningDestination->start_time, 0, 5));
+        $this->assertSame('2026-06-02', substr((string) $afternoonDestination->schedule_date, 0, 10),
+            'Only the exact afternoon substitute schedule should follow the session');
+        $this->assertSame('17:00', substr((string) $afternoonDestination->start_time, 0, 5));
     }
 
     public function test_old_start_time_mismatch_returns_422(): void
@@ -314,6 +325,36 @@ class RescheduleSessionPrecisionTest extends TestCase
         ]);
 
         return [$token, $courseId, $morning, $afternoon];
+    }
+
+    private function seedSchedulePair(int $courseId, string $date, string $start, string $end): array
+    {
+        $course = StudentClass::findOrFail($courseId);
+        $base = [
+            'student_id' => (int) $course->StudentID,
+            'teacher_id' => (int) $course->TeacherID,
+            'subject' => 'Math',
+            'day_of_week' => 1,
+            'start_time' => $start,
+            'end_time' => $end,
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'type' => 'normal',
+            'branch_id' => 1,
+            'schedule_date' => $date,
+            'student_course_id' => $courseId,
+        ];
+        $anchor = Schedule::create(array_merge($base, [
+            'status' => 'rescheduled',
+            'deduction' => 0,
+        ]));
+        $destination = Schedule::create(array_merge($base, [
+            'status' => 'scheduled',
+            'deduction' => 1,
+            'original_schedule_id' => $anchor->id,
+        ]));
+
+        return [$anchor, $destination];
     }
 
     private function seedPlainSession(): array
