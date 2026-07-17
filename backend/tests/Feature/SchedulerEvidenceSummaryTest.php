@@ -12,7 +12,7 @@ class SchedulerEvidenceSummaryTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const DATE = '2037-01-02';
+    private const DATE = '2037-02-03';
 
     protected function tearDown(): void
     {
@@ -42,6 +42,7 @@ class SchedulerEvidenceSummaryTest extends TestCase
         $this->assertSame(0, $checks['student_orphans_mdt_at_or_before_nightly']);
         $this->assertSame(1, $checks['student_orphans_mdt_after_nightly']);
         $this->assertSame(0, $checks['student_orphans_unclassified']);
+        $this->assertBucketsConserveTotal($checks);
     }
 
     public function test_summary_classifies_orphan_present_before_nightly_close(): void
@@ -61,6 +62,7 @@ class SchedulerEvidenceSummaryTest extends TestCase
         $this->assertSame(1, $checks['student_orphans_mdt_at_or_before_nightly']);
         $this->assertSame(0, $checks['student_orphans_mdt_after_nightly']);
         $this->assertSame(0, $checks['student_orphans_unclassified']);
+        $this->assertBucketsConserveTotal($checks);
     }
 
     private function runSummary(CarbonImmutable $nightlyExecution): array
@@ -93,5 +95,16 @@ class SchedulerEvidenceSummaryTest extends TestCase
             'MDT' => $mdt,
             'Status' => 'present',
         ]);
+    }
+
+    /** @param array<string,int> $checks */
+    private function assertBucketsConserveTotal(array $checks): void
+    {
+        $this->assertSame(
+            $checks['student_orphans_remaining'],
+            $checks['student_orphans_mdt_at_or_before_nightly']
+                + $checks['student_orphans_mdt_after_nightly']
+                + $checks['student_orphans_unclassified']
+        );
     }
 }
