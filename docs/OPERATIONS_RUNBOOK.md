@@ -234,6 +234,20 @@ node scripts/runner-topology-check.mjs
 gh run view <run-id> --json jobs --jq '.jobs[] | {name, labels, status, conclusion}'
 ```
 
+**Local parallel PHPUnit（每個 worktree／process 隔離）**
+```bash
+# 從 repo root 執行；其後參數原樣交給 PHPUnit
+bash scripts/phpunit-isolated.sh --filter SchedulerEvidenceSummaryTest
+
+# 首次若本機 admin 尚無 namespaced schema grant，執行一次（只授權 AllTrue_test_*）
+bash scripts/phpunit-isolated.sh --provision
+
+# 可選：在 schema 名稱加入可辨識但會自動清理的 suffix
+ALLTRUE_TEST_DB_SUFFIX=orphan-investigation bash scripts/phpunit-isolated.sh
+```
+
+Wrapper 只允許本機 MySQL，從 tracked `backend/phpunit.xml` 讀取測試連線，並建立 `AllTrue_test_<suffix>_<nonce>`；結束或中斷時會 drop。`--provision` 只對登入中的本機測試帳號授予 escaped `AllTrue\_test\_%` namespace，不授權 `AllTrue`。Wrapper 拒絕 `-c`／`--configuration`、遠端 host 以及任何非隔離 namespace。多個 worktree 或 agent 並行測試時不得直接執行共用 `AllTrue_test`；使用此命令避免 `RefreshDatabase` 互相 drop table 造成假紅燈。
+
 **Topology change gate**
 任何 runner 類型變更都必須在同一 PR 記錄 credential exposure、database isolation、runner ownership、capacity、patching 與 rollback，並同步更新 canonical reference。未完成 security/operations review 前，不得擴充 script allow-list。
 

@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
+
+開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 使用唯一的本機 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時自動清理。Wrapper fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config，避免並行 `RefreshDatabase` 互相刪表造成假紅燈或誤觸正式資料庫。
+
 ## 2026-07-17 — fix: repeated learning-review notification sync no longer returns 500 (#1264)
 
 Fixed：主任或家長頁面同時刷新通知時，重複的待審評量提醒會安全合併為同一則，不再因唯一鍵競爭讓請求失敗。
