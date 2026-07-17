@@ -905,6 +905,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **寫入側後續**：永久解法仍需 cancel 路徑 cascade 關閉 schedules 例外；讀側過濾不可省略，否則歷史殘留會再炸。
 - **測試必補**：stale 例外 → availability 不 busy 且 substitute 成功；active ClassSession 例外仍 busy；無 ClassSession 的 makeup schedule 仍 busy。
 
+### R73. 跨老師拖曳的 domain intent 優先於日期／時間，寫入必須 atomic 或可證明補償（in-app #201/#202）
+
+- **觸發情境**：主任把歷史單堂從原老師 17:30 拖到代課老師 18:00，畫面曾走一般調課而非代課；重試後留下多筆 `rescheduled` marker、NULL anchor 與取消目的堂，但實際授課老師仍未完整轉移。
+- **根因**：跨老師判斷錯綁「同日＋同整點」UI 條件；compatibility QueryBuilder 的 `.select()` 把 mutation 重設成 GET；前端又把 Laravel direct-object response 當 `{ data }` 讀取而丟失 anchor。Legacy 調課先後寫兩筆 `schedules` 再移動 `ClassSession`，卻未檢查最後 response，造成部分成功與 stale retry 放大。
+- **強制規則**：
+  - calendar drop 只要 `target_teacher_id != effective_teacher_id`，一律由 atomic substitute workflow 擁有；日期／時間是否改變只是同一 operation 的選填參數，不可降級成 plain reschedule。
+  - mutation 後需要回傳 row 時，adapter 必須保留原 HTTP method，並把 Laravel direct object 正規化成一致的 `data`；`.insert().select().single()`／`.maybeSingle()` 必須有 contract test。
+  - `rescheduled` marker 的 idempotency key 至少為 `student_course_id + schedule_date + start_time`，以 parent course row lock 序列化；清除舊重複 anchor 前必須先把 descendant `original_schedule_id` 重掛到保留列。
+  - 優先使用單一 DB transaction。若仍有 legacy 兩階段 flow，第一階段不可先物化 cross-date destination `ClassSession`；第二階段 422 只補償本次 `write_disposition=created` 的 row，network/5xx 結果不確定時不得猜測刪除；缺 token 必須零寫入 fail-closed。
+  - 同一課程同日多堂時，查找與移動必須帶 `old_start_time`，不可 date-only 猜堂次。
+- **測試必補**：跨老師＋改時間 routing、歷史同日 correction、mutation-return adapter、重試 idempotency＋descendant re-anchor、cross-date 不預建 ghost ClassSession、最後 move 422 精準補償，以及 production build。
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
@@ -916,11 +928,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test） |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
-| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師） |
+| 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
-| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新） |
+| 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償） |
 | 出缺勤 / 分校隔離 | §SEC-001、§分校隔離後端強制、§R12（查詢日期寫死今天）、§R14（submitQuickAttend 缺 StudentID）、§R15（出勤頁預設只顯示今天，歷史到班紀錄不可見）、§R16（`script setup` const TDZ 初始化順序 → 整頁空白）、§R33（老師每分校 RFID 優先）、§R36（個別資料有課但老師今日名單缺漏）、§R40（點名扣堂不可只用 ClassSessionID 防重）、§R41（補請假不可只用課程+日期找堂次）、§R42（行事曆堂次顯示老師不可被舊評量老師覆蓋）、§R48（代課點名權限必須以時段級 effective teacher 為準）|
 | 月結制 / 加購 / 多科固定時段 | §b3 inactive 歷史、§b4 加購分流、§R21（堂數制加購是新批次）、§R22（月結詳情不可只依賴 ClassSession）、§R23（推算日期不可成為 dead-end chip）、§R24（多科固定時段優先走一般課程）、§R26（月結續報與堂數額度不可混在同一語意）、§R38（家長端繳費提醒不可套主任續課提醒） |
 | routes/api.php | §AI 靜默回退路由（改前必讀完整檔案 + route:list） |

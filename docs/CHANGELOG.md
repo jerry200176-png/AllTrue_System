@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: 跨老師拖曳會完整轉移代課與時段 (#1282)
+
+Fixed：主任把單堂課拖到另一位老師欄位時，即使同時更改日期或時間，系統也會用同一個確認流程一次完成代課與改時段；不再只移動畫面上的課、卻把點名與評量留給原老師。歷史堂次可在原日期內更正老師與時間，登入失效或操作失敗時不會假裝成功。
+
+開發備註：跨老師手勢統一走 atomic substitute endpoint；修正 Supabase compatibility mutation-return contract、reschedule anchor idempotency/重掛、legacy 兩階段 422 補償與 cross-date ClassSession 延後物化。未自動修改任何 production 歷史資料。
+
 ## 2026-07-18 — fix: 已取消堂次不再佔用代課老師時段
 
 Fixed：代課挑選與容量檢查不再把「ClassSession 已全部取消／請假，但 schedules 仍標 scheduled」的殘留例外當成真實衝堂或已滿；主任可正常指定代課。沒有對應堂次紀錄的補課排程仍會正確佔用時段。

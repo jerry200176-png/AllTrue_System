@@ -33,10 +33,14 @@ export function useCalendarSubstitute({
     student_id: '', subject: '', session_date: '', start_time: '', end_time: '',
     original_teacher_name: '', substitute_teacher_id: '', reason: '',
     session_id: null, course_id: null,
+    new_date: null, new_start_time: null, new_end_time: null,
   });
 
-  const openSubstituteFromDrag = (course, dateStr, dropTeacherId) => {
+  const openSubstituteFromDrag = (course, dateStr, dropTeacherId, targetSlot = null) => {
     const baseId = course.is_exception ? course.student_course_id : course.id;
+    const targetDate = targetSlot?.date || null;
+    const targetStart = targetSlot?.startTime || null;
+    const targetEnd = targetSlot?.endTime || null;
     substituteForm.value = {
       student_id: course.student_id,
       subject: course.subject,
@@ -48,12 +52,39 @@ export function useCalendarSubstitute({
       reason: '行事曆拖曳至代課老師',
       session_id: null,
       course_id: baseId,
+      new_date: targetDate,
+      new_start_time: targetStart,
+      new_end_time: targetEnd,
     };
     if (baseId && sessionDatesByCourseId.value) {
       const sessions = sessionDatesByCourseId.value[String(baseId)] || [];
       const sid = resolveSessionIdForSubstitute(sessions, dateStr, course.start_time);
       if (sid) substituteForm.value.session_id = sid;
     }
+
+    if (FEATURE_SUBSTITUTE_V2 && substituteForm.value.session_id) {
+      substituteV2SessionId.value = substituteForm.value.session_id;
+      substituteV2Context.value = {
+        student_name: getStudentName(course.student_id),
+        subject_id: course.subject_id || null,
+        subject_label: getSubjectLabel(course.subject),
+        session_date: dateStr,
+        start_time: (course.start_time || '').toString().slice(0, 5),
+        end_time: (course.end_time || '').toString().slice(0, 5),
+        original_teacher_id: course.teacher_id || null,
+        original_teacher_name: teacherDisplayName(course.teacher_id),
+        current_teacher_id: course.teacher_id || null,
+        session_campus_id: Number(branchId.value ?? branchId ?? 0) || null,
+        prefill_substitute_teacher_id: dropTeacherId || null,
+        prefill_new_date: targetDate,
+        prefill_new_start_time: targetStart,
+        prefill_new_end_time: targetEnd,
+        allow_past_same_date: targetDate === dateStr,
+      };
+      showSubstituteV2Modal.value = true;
+      return;
+    }
+
     showSubstituteModal.value = true;
   };
 
@@ -102,6 +133,11 @@ export function useCalendarSubstitute({
         body: JSON.stringify({
           substitute_teacher_id: Number(substituteForm.value.substitute_teacher_id),
           reason: substituteForm.value.reason || null,
+          ...(substituteForm.value.new_date && substituteForm.value.new_start_time && substituteForm.value.new_end_time ? {
+            new_date: substituteForm.value.new_date,
+            new_start_time: substituteForm.value.new_start_time,
+            new_end_time: substituteForm.value.new_end_time,
+          } : {}),
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -119,11 +155,17 @@ export function useCalendarSubstitute({
     }
   };
 
-  const substituteDisplay = computed(() => ({
-    studentName: getStudentName(substituteForm.value.student_id),
-    subjectLabel: getSubjectLabel(substituteForm.value.subject),
-    sessionSlot: `${substituteForm.value.session_date} ${substituteForm.value.start_time}~${substituteForm.value.end_time}`,
-  }));
+  const substituteDisplay = computed(() => {
+    const originalSlot = `${substituteForm.value.session_date} ${substituteForm.value.start_time}~${substituteForm.value.end_time}`;
+    const targetSlot = substituteForm.value.new_date
+      ? `${substituteForm.value.new_date} ${substituteForm.value.new_start_time}~${substituteForm.value.new_end_time}`
+      : '';
+    return {
+      studentName: getStudentName(substituteForm.value.student_id),
+      subjectLabel: getSubjectLabel(substituteForm.value.subject),
+      sessionSlot: targetSlot ? `${originalSlot} → ${targetSlot}` : originalSlot,
+    };
+  });
 
   const featureSubstituteV2 = FEATURE_SUBSTITUTE_V2;
   const showSubstituteV2Modal = ref(false);
