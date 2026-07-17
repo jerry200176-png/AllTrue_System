@@ -7,6 +7,7 @@ BACKEND_DIR="$REPO_ROOT/backend"
 BASE_CONFIG="$BACKEND_DIR/phpunit.xml"
 TEMP_CONFIG=""
 TEMP_DIR=""
+TEMP_PARENT=""
 SCHEMA_NAME=""
 DB_HOST='127.0.0.1'
 DB_PORT=""
@@ -146,6 +147,18 @@ find_free_port() {
   '
 }
 
+temp_dir_is_safe() {
+  local directory="${1%/}"
+  local parent="${2%/}"
+  local name
+
+  [[ "$directory" == /* && "$parent" == /* && "$directory" != "$parent" ]] \
+    || return 1
+  [[ "${directory%/*}" == "$parent" ]] || return 1
+  name="${directory##*/}"
+  [[ "$name" =~ ^alltrue-phpunit-mariadb\.[A-Za-z0-9]+$ ]]
+}
+
 self_test() {
   validate_schema_name 'AllTrue_test_worktree_0123456789ab' \
     || die 'schema validator rejected a valid isolated name'
@@ -163,6 +176,16 @@ self_test() {
     || die 'short configuration override guard failed'
   if configuration_arg_is_unsafe '--filter'; then
     die 'normal PHPUnit argument was rejected'
+  fi
+  temp_dir_is_safe '/tmp/alltrue-phpunit-mariadb.A1b2c3' '/tmp' \
+    || die 'Linux temporary directory guard rejected a valid path'
+  temp_dir_is_safe '/private/tmp/alltrue-phpunit-mariadb.A1b2c3' '/private/tmp' \
+    || die 'macOS temporary directory guard rejected a valid path'
+  if temp_dir_is_safe '/tmp/alltrue-phpunit-mariadb.A1b2c3' '/private/tmp'; then
+    die 'temporary directory guard accepted a mismatched parent'
+  fi
+  if temp_dir_is_safe '/tmp/alltrue-phpunit-mariadb-unsafe' '/tmp'; then
+    die 'temporary directory guard accepted an invalid namespace'
   fi
 
   local first second test_config
@@ -185,7 +208,6 @@ self_test() {
 
 cleanup() {
   local status=$?
-  local resolved=""
   trap - EXIT HUP INT TERM
 
   if [[ -n "$TEMP_CONFIG" ]]; then
@@ -206,19 +228,15 @@ cleanup() {
   fi
 
   if [[ -n "$TEMP_DIR" ]]; then
-    resolved="$(realpath -m "$TEMP_DIR")"
-    case "$resolved" in
-      /tmp/alltrue-phpunit-mariadb.*)
-        if ! rm -rf -- "$resolved"; then
-          echo "❌ Could not remove ephemeral MariaDB directory: $resolved" >&2
-          [[ "$status" -eq 0 ]] && status=70
-        fi
-        ;;
-      *)
-        echo "❌ Refusing cleanup outside the isolated temp namespace: $resolved" >&2
+    if temp_dir_is_safe "$TEMP_DIR" "$TEMP_PARENT" && [[ ! -L "$TEMP_DIR" ]]; then
+      if ! rm -rf -- "$TEMP_DIR"; then
+        echo "❌ Could not remove ephemeral MariaDB directory: $TEMP_DIR" >&2
         [[ "$status" -eq 0 ]] && status=70
-        ;;
-    esac
+      fi
+    else
+      echo "❌ Refusing cleanup outside the isolated temp namespace: $TEMP_DIR" >&2
+      [[ "$status" -eq 0 ]] && status=70
+    fi
   fi
 
   exit "$status"
@@ -247,7 +265,13 @@ worktree_suffix="${ALLTRUE_TEST_DB_SUFFIX:-$(basename "$REPO_ROOT")}"
 SCHEMA_NAME="$(make_schema_name "$worktree_suffix")"
 validate_schema_name "$SCHEMA_NAME" || die 'generated schema failed the safety boundary'
 
-TEMP_DIR="$(mktemp -d /tmp/alltrue-phpunit-mariadb.XXXXXX)"
+TEMP_PARENT="${TMPDIR:-/tmp}"
+TEMP_PARENT="${TEMP_PARENT%/}"
+[[ "$TEMP_PARENT" == /* && "$TEMP_PARENT" != '/' ]] \
+  || die 'TMPDIR must be an absolute non-root directory'
+TEMP_DIR="$(mktemp -d "$TEMP_PARENT/alltrue-phpunit-mariadb.XXXXXX")"
+temp_dir_is_safe "$TEMP_DIR" "$TEMP_PARENT" \
+  || die 'mktemp returned an unsafe ephemeral MariaDB directory'
 TEMP_CONFIG="$BACKEND_DIR/.phpunit-isolated.$$.xml"
 trap cleanup EXIT
 trap 'exit 129' HUP
