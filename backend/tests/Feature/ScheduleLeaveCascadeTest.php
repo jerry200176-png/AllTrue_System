@@ -125,6 +125,83 @@ class ScheduleLeaveCascadeTest extends TestCase
         $this->assertSame($expectedExtendedDate, (string) ($res->json('extended_end_date') ?? ''));
         // 9 sessions returned (leave session included)
         $this->assertCount(9, $res->json('class_sessions') ?? []);
+
+        $leaveAttendance = StudentSignIn::where('ClassSessionID', $targetLeave->id)
+            ->whereNull('VoidedAt')
+            ->firstOrFail();
+        $this->assertSame('leave', strtolower((string) $leaveAttendance->Status));
+        $this->assertSame(
+            $targetLeaveDate . ' ' . substr((string) $targetLeave->EndTime, 0, 8),
+            Carbon::parse((string) $leaveAttendance->SignOutDT)->format('Y-m-d H:i:s')
+        );
+        $this->assertNotNull($leaveAttendance->RecordedByUserID);
+    }
+
+    public function test_backdated_leave_created_after_nightly_is_closed_at_write_time(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2037-02-03 05:00:00', 'Asia/Taipei'));
+
+        $token = $this->createDirectorToken([1], 'director-late-leave@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-late-leave@example.com');
+        $student = $this->createStudent(1, '夜間後補請假');
+        $historicalDate = now()->subDay()->toDateString();
+        $weekday = now()->subDay()->dayOfWeekIso;
+        $futureDates = [
+            now()->subDay()->addWeek()->toDateString(),
+            now()->subDay()->addWeeks(2)->toDateString(),
+            now()->subDay()->addWeeks(3)->toDateString(),
+        ];
+
+        $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 4,
+            'confirmed_dates' => [$historicalDate],
+            'future_dates' => $futureDates,
+            'days_of_week' => [$weekday],
+            'start_time' => '19:00',
+        ])->assertCreated();
+
+        $courseId = (int) DB::table('StudentClass')
+            ->where('StudentID', $student->id)
+            ->max('ID');
+        $session = ClassSession::where('StudentClassID', $courseId)
+            ->whereDate('SessionDate', $historicalDate)
+            ->firstOrFail();
+        // Reproduce the production state: a historical session still marked
+        // scheduled can receive a normal calendar leave after the nightly job.
+        $session->Status = 'scheduled';
+        $session->save();
+        LearningRecord::where('ClassSessionID', $session->id)->delete();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules', [
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'day_of_week' => $weekday,
+            'start_time' => '19:00',
+            'end_time' => '21:00',
+            'duration_hours' => 2,
+            'class_type' => 'one_on_one',
+            'status' => 'leave',
+            'type' => 'normal',
+            'deduction' => 0,
+            'branch_id' => 1,
+            'schedule_date' => $historicalDate,
+            'student_course_id' => $courseId,
+        ])->assertCreated();
+
+        $leaveAttendance = StudentSignIn::where('ClassSessionID', $session->id)
+            ->whereNull('VoidedAt')
+            ->firstOrFail();
+        $this->assertSame("{$historicalDate} 19:00:00", Carbon::parse((string) $leaveAttendance->SignInDT)->format('Y-m-d H:i:s'));
+        $this->assertSame("{$historicalDate} 21:00:00", Carbon::parse((string) $leaveAttendance->SignOutDT)->format('Y-m-d H:i:s'));
+        $this->assertNotNull($leaveAttendance->RecordedByUserID);
+        $this->assertSame(0, StudentSignIn::whereNull('SignOutDT')
+            ->whereNull('VoidedAt')
+            ->where('SignInDT', '<', now()->startOfDay())
+            ->count());
     }
 
     public function test_bulk_holiday_leave_marks_all_eligible_sessions_in_date_range(): void
@@ -1080,7 +1157,7 @@ class ScheduleLeaveCascadeTest extends TestCase
             'GradeID' => 1,
             'Memo' => 'desync-leave',
             'SignInDT' => $session->SessionDate . ' 16:00:00',
-            'SignOutDT' => null,
+            'SignOutDT' => $session->SessionDate . ' 18:00:00',
             'MDT' => now(),
             'ClassSessionID' => $session->id,
             'Status' => 'leave',

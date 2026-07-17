@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 
 class StudentSignIn extends Model
 {
@@ -36,6 +37,18 @@ class StudentSignIn extends Model
         'SessionDeducted' => 'boolean',
         'VoidedAt'        => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (StudentSignIn $signIn): void {
+            $isActiveLeave = strtolower(trim((string) $signIn->getAttribute('Status'))) === 'leave'
+                && $signIn->getAttribute('VoidedAt') === null;
+
+            if ($isActiveLeave && $signIn->getAttribute('SignOutDT') === null) {
+                throw new LogicException('Active leave attendance rows require SignOutDT.');
+            }
+        });
+    }
 
     public function scopeActive($query)
     {

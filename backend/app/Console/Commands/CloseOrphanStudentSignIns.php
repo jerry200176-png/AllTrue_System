@@ -37,6 +37,7 @@ class CloseOrphanStudentSignIns extends Command
             ->get();
 
         $closed = 0;
+        $sourceCounts = [];
 
         foreach ($orphans as $orphan) {
             $signInDate = Carbon::parse($orphan->SignInDT)->toDateString();
@@ -70,16 +71,15 @@ class CloseOrphanStudentSignIns extends Command
             $orphan->MDT       = now();
             $orphan->save();
 
-            Log::info('orphan_signin_autoclosed', [
-                'student_signin_id' => $orphan->id,
-                'student_id'        => $orphan->StudentID,
-                'sign_in_dt'        => $orphan->SignInDT,
-                'sign_out_dt'       => $signOutDT->toDateTimeString(),
-                'source'            => $source,
-            ]);
-
+            $sourceCounts[$source] = ($sourceCounts[$source] ?? 0) + 1;
             $closed++;
         }
+
+        ksort($sourceCounts);
+        Log::info('orphan_signin_autoclose_summary', [
+            'closed_count' => $closed,
+            'source_counts' => $sourceCounts,
+        ]);
 
         $this->info("Closed {$closed} orphan StudentSignIn record(s).");
 

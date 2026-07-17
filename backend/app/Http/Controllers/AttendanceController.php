@@ -12,6 +12,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
+use App\Services\LeaveAttendanceService;
 use App\Services\SessionDeductionService;
 use App\Services\SubstituteScheduleService;
 use Carbon\Carbon;
@@ -21,6 +22,10 @@ use Illuminate\Support\Facades\Log;
 
 class AttendanceController extends Controller
 {
+    public function __construct(private LeaveAttendanceService $leaveAttendanceService)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = DB::table('StudentSingIn as si')
@@ -528,24 +533,13 @@ class AttendanceController extends Controller
                     [$rows, $extendedEndDate, $leaveSessionDate] =
                         CourseLeaveCascadeService::applyLeaveCascade((int) $studentClass->ID, $leaveDate);
 
-                    [$signInDT, $signOutDT] = [$classSession->StartTime
-                        ? Carbon::parse($leaveDate . ' ' . $classSession->StartTime)
-                        : now(), null];
-                    StudentSignIn::create([
-                        'StudentClassID'    => $studentClass->ID,
-                        'StudentID'         => (int) $data['StudentID'],
-                        'TeacherID'         => $effectiveTeacherId > 0 ? $effectiveTeacherId : null,
-                        'RecordedByUserID'  => $recordedByUserId > 0 ? $recordedByUserId : null,
-                        'GradeID'           => $studentClass->GradeID,
-                        'SubjectID'         => $studentClass->SubjectID,
-                        'CampusID'          => (int) ($student->CampusID ?? 0),
-                        'SignInDT'          => $signInDT,
-                        'SignOutDT'         => $signOutDT,
-                        'MDT'               => now(),
-                        'ClassSessionID'    => $classSession->id,
-                        'Status'            => 'leave',
-                        'SessionDeducted'   => 0,
-                    ]);
+                    $this->leaveAttendanceService->createClosedForSession(
+                        $classSession,
+                        $studentClass,
+                        $recordedByUserId,
+                        $effectiveTeacherId,
+                        (int) ($student->CampusID ?? 0)
+                    );
 
                     return response()->json([
                         'message'            => '已請假並順延後續課程',
@@ -561,32 +555,49 @@ class AttendanceController extends Controller
                 }
             }
 
-            // ── 一般出缺勤（到班/遲到/缺席，或 leave 但無既有堂次）
-            [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
+            // ── 一般出缺勤；無輸入 ClassSessionID 的 leave 仍須走同一個
+            // closed-interval producer，但不觸發上方的課程順延流程。
+            if ($status === 'leave') {
+                try {
+                    $signIn = $this->leaveAttendanceService->createClosedForSession(
+                        $classSession,
+                        $studentClass,
+                        $recordedByUserId,
+                        $effectiveTeacherId,
+                        (int) ($student->CampusID ?? 0)
+                    );
+                } catch (\InvalidArgumentException $e) {
+                    return response()->json(['message' => $e->getMessage()], 422);
+                }
+            } else {
+                [$signInDT, $signOutDT, $hours] = $this->resolveTimes($data, $classSession);
 
-            $signIn = StudentSignIn::create([
-                'StudentClassID' => $studentClass->ID,
-                'StudentID' => $data['StudentID'],
-                'TeacherID' => $effectiveTeacherId,
-                'RecordedByUserID' => $recordedByUserId > 0 ? $recordedByUserId : null,
-                'GradeID' => $studentClass->GradeID,
-                'SubjectID' => $studentClass->SubjectID,
-                'Get1byID' => $studentClass->by1,
-                'Hours' => $data['Hours'] ?? $hours,
-                'Memo' => $data['Memo'] ?? '',
-                'SignInDT' => $signInDT,
-                'SignOutDT' => $signOutDT,
-                'MDT' => now(),
-                'ClassSessionID' => $classSession->id,
-                'Status' => $status,
-                'CampusID' => $student->CampusID ?? null,
-                'PersonType' => 'student',
-                'SessionDeducted' => false,
-            ]);
+                /** @var StudentSignIn $signIn */
+                $signIn = StudentSignIn::query()->create([
+                    'StudentClassID' => $studentClass->ID,
+                    'StudentID' => $data['StudentID'],
+                    'TeacherID' => $effectiveTeacherId,
+                    'RecordedByUserID' => $recordedByUserId > 0 ? $recordedByUserId : null,
+                    'GradeID' => $studentClass->GradeID,
+                    'SubjectID' => $studentClass->SubjectID,
+                    'Get1byID' => $studentClass->by1,
+                    'Hours' => $data['Hours'] ?? $hours,
+                    'Memo' => $data['Memo'] ?? '',
+                    'SignInDT' => $signInDT,
+                    'SignOutDT' => $signOutDT,
+                    'MDT' => now(),
+                    'ClassSessionID' => $classSession->id,
+                    'Status' => $status,
+                    'CampusID' => $student->CampusID ?? null,
+                    'PersonType' => 'student',
+                    'SessionDeducted' => false,
+                ]);
+            }
 
             $this->applyAttendanceEffects($classSession, $status);
 
-            if (in_array($status, AttendanceStatus::deductibleCodes(), true) && !$signIn->SessionDeducted) {
+            if (in_array($status, AttendanceStatus::deductibleCodes(), true)
+                && !(bool) $signIn->getAttribute('SessionDeducted')) {
                 SessionDeductionService::deductOnAttendance($studentClass, $signIn);
             }
 
@@ -1033,7 +1044,15 @@ class AttendanceController extends Controller
             $newStatus = 'leave';
         }
 
+        if ($newStatus === 'leave') {
+            try {
+                $this->leaveAttendanceService->closeExistingForLeave($signin);
+            } catch (\InvalidArgumentException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+        }
         $signin->Status = $newStatus;
+        $signin->MDT = now();
         $signin->save();
 
         $statusLabelMap = [

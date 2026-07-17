@@ -10,6 +10,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Services\ClassSessionMaterializationService;
 use App\Services\CourseLeaveCascadeService;
+use App\Services\LeaveAttendanceService;
 use App\Services\ScheduleGuardService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
@@ -21,8 +22,10 @@ class ScheduleController extends Controller
 {
     private const LEAVE_UNDO_WINDOW_SECONDS = 30;
 
-    public function __construct(private ScheduleGuardService $scheduleGuardService)
-    {
+    public function __construct(
+        private ScheduleGuardService $scheduleGuardService,
+        private LeaveAttendanceService $leaveAttendanceService
+    ) {
     }
 
     public function index(Request $request)
@@ -137,6 +140,10 @@ class ScheduleController extends Controller
         ]);
 
         $role = $request->attributes->get('auth_role');
+        $authUser = $request->attributes->get('auth_user');
+        $recordedByUserId = $authUser instanceof \App\Models\User
+            ? (int) $authUser->getAttribute('id')
+            : 0;
         $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
         $branchId = (int) ($data['branch_id'] ?? 0);
         if ($role !== 'super_admin' && !empty($campusIds) && !in_array($branchId, $campusIds, true)) {
@@ -342,7 +349,7 @@ class ScheduleController extends Controller
             }
 
             try {
-                return DB::transaction(function () use ($data, $courseId) {
+                return DB::transaction(function () use ($data, $courseId, $recordedByUserId) {
                     $schedule = Schedule::create($data);
                     [$rows, $extendedEndDate, $leaveSessionDate] = CourseLeaveCascadeService::applyLeaveCascade((int) $courseId, (string) $data['schedule_date']);
 
@@ -353,22 +360,13 @@ class ScheduleController extends Controller
                         $course = StudentClass::where('ID', $courseId)->first();
                         if ($course && !StudentSignIn::where('ClassSessionID', $leaveSession->id)->whereNull('VoidedAt')->exists()) {
                             $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
-                            StudentSignIn::create([
-                                'StudentClassID'  => $courseId,
-                                'StudentID'       => (int) $course->StudentID,
-                                'TeacherID'       => (int) ($course->TeacherID ?? 0) ?: null,
-                                'GradeID'         => $course->GradeID,
-                                'SubjectID'       => $course->SubjectID,
-                                'CampusID'        => $campusId,
-                                'SignInDT'        => $leaveSession->StartTime
-                                    ? Carbon::parse($leaveSessionDate . ' ' . $leaveSession->StartTime)
-                                    : Carbon::parse($leaveSessionDate),
-                                'SignOutDT'       => null,
-                                'MDT'             => now(),
-                                'ClassSessionID'  => (int) $leaveSession->id,
-                                'Status'          => 'leave',
-                                'SessionDeducted' => 0,
-                            ]);
+                            $this->leaveAttendanceService->createClosedForSession(
+                                $leaveSession,
+                                $course,
+                                $recordedByUserId,
+                                null,
+                                $campusId
+                            );
                         }
                     }
 
@@ -682,23 +680,13 @@ class ScheduleController extends Controller
                 // ClassSessionID while keeping the voided audit trail intact.
                 if ($allSignIns->isEmpty()) {
                     $campusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
-                    StudentSignIn::create([
-                        'StudentClassID'   => $courseId,
-                        'StudentID'        => (int) $course->StudentID,
-                        'TeacherID'        => (int) ($course->TeacherID ?? 0) ?: null,
-                        'ClassSessionID'   => (int) $session->id,
-                        'RecordedByUserID' => $authUserId ?: null,
-                        'GradeID'          => $course->GradeID,
-                        'SubjectID'        => $course->SubjectID,
-                        'CampusID'         => $campusId,
-                        'SignInDT'         => $session->StartTime
-                            ? Carbon::parse($sessionDate . ' ' . $session->StartTime)
-                            : Carbon::parse($sessionDate),
-                        'SignOutDT'        => null,
-                        'MDT'              => now(),
-                        'Status'           => 'leave',
-                        'SessionDeducted'  => 0,
-                    ]);
+                    $this->leaveAttendanceService->createClosedForSession(
+                        $session,
+                        $course,
+                        $authUserId,
+                        null,
+                        $campusId
+                    );
                 }
 
                 return response()->json([
@@ -757,23 +745,13 @@ class ScheduleController extends Controller
                     ->exists();
                 if (!$hasSignIn) {
                     $authUser = $request->attributes->get('auth_user');
-                    StudentSignIn::create([
-                        'StudentClassID'   => $courseId,
-                        'StudentID'        => (int) $course->StudentID,
-                        'TeacherID'        => (int) ($course->TeacherID ?? 0) ?: null,
-                        'RecordedByUserID' => (int) ($authUser->id ?? 0) ?: null,
-                        'GradeID'          => $course->GradeID,
-                        'SubjectID'        => $course->SubjectID,
-                        'CampusID'         => $studentCampusId,
-                        'SignInDT'         => $session->StartTime
-                            ? Carbon::parse($sessionDate . ' ' . $session->StartTime)
-                            : now(),
-                        'SignOutDT'        => null,
-                        'MDT'              => now(),
-                        'ClassSessionID'   => (int) $session->id,
-                        'Status'           => 'leave',
-                        'SessionDeducted'  => 0,
-                    ]);
+                    $this->leaveAttendanceService->createClosedForSession(
+                        $session,
+                        $course,
+                        (int) ($authUser->id ?? 0),
+                        null,
+                        $studentCampusId
+                    );
                 }
 
                 // Record schedules leave entry (created after cascade so the "already cascaded"

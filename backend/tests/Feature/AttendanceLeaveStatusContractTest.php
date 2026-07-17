@@ -111,6 +111,40 @@ class AttendanceLeaveStatusContractTest extends TestCase
         $this->assertSame('leave', strtolower((string) $session->Status));
     }
 
+    public function test_leave_without_class_session_id_uses_closed_materialized_interval(): void
+    {
+        $directorToken = $this->createDirectorToken([1], 'dir-leave-slot@test.com');
+        $teacherId = $this->createTeacher(1, 'teacher-leave-slot@test.com');
+        $student = $this->createStudent(1, '時段請假');
+        $courseId = $this->bootstrapCourse($student->id, $teacherId, 4);
+        $session = $this->pastClassSession($courseId);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$directorToken}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/attendance', [
+            'StudentID' => $student->id,
+            'StudentClassID' => $courseId,
+            'SessionDate' => Carbon::parse((string) $session->SessionDate)->toDateString(),
+            'StartTime' => substr((string) $session->StartTime, 0, 5),
+            'EndTime' => substr((string) $session->EndTime, 0, 5),
+            'SignInDT' => $session->SessionDate . ' ' . $session->StartTime,
+            'Status' => 'leave',
+        ])->assertCreated();
+
+        $attendance = DB::table('StudentSingIn')
+            ->where('ClassSessionID', $session->id)
+            ->whereNull('VoidedAt')
+            ->first();
+
+        $this->assertNotNull($attendance);
+        $this->assertSame('leave', strtolower((string) $attendance->Status));
+        $this->assertSame(
+            Carbon::parse($session->SessionDate . ' ' . $session->EndTime)->format('Y-m-d H:i:s'),
+            Carbon::parse((string) $attendance->SignOutDT)->format('Y-m-d H:i:s')
+        );
+    }
+
     /**
      * Invalid status values still rejected with 422.
      */
