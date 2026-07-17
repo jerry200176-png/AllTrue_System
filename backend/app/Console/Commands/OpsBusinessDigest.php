@@ -46,10 +46,10 @@ class OpsBusinessDigest extends Command
             ['dq_attended_no_LR', $m['data_quality']['attended_without_lr'], 'attended sessions with no learning record (target 0)'],
             ['dq_cross_sc_dup', $m['data_quality']['cross_sc_duplicate'], 'same-student cross-contract duplicate slots (#1130)'],
             ['dq_remaining_divergent', $m['data_quality']['remaining_divergent'], 'all RemainingSessions counter mismatches (#964)'],
-            ['  ├ actionable_courses', $m['data_quality']['remaining_divergent_actionable'], 'positive SessionCount baseline; billing review needed'],
-            ['  ├ actionable_sessions', $m['data_quality']['remaining_divergent_actionable_sessions'], 'absolute session gap across actionable courses'],
-            ['  ├ actionable_ntd', $m['data_quality']['remaining_divergent_actionable_ntd'], 'estimated NT$ exposure (gap x Rate)'],
-            ['  └ legacy_baseline', $m['data_quality']['remaining_divergent_legacy_baseline'], 'SessionCount <= 0; classify legacy contract first'],
+            ['  ├ reviewable_courses', $m['data_quality']['remaining_divergent_reviewable'], 'active + positive SessionCount; director review candidate'],
+            ['  ├ reviewable_sessions', $m['data_quality']['remaining_divergent_reviewable_sessions'], 'absolute session gap across reviewable courses'],
+            ['  ├ active_legacy', $m['data_quality']['remaining_divergent_active_legacy_baseline'], 'active but SessionCount <= 0; engineering classification'],
+            ['  └ inactive_history', $m['data_quality']['remaining_divergent_inactive_history'], 'closed historical records; do not enter director queue'],
             ['coverage_next_7d', $m['coverage']['sessions_next_7d'], 'materialized sessions in next 7 days'],
         ]);
 

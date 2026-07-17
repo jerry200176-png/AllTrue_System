@@ -2,9 +2,9 @@
 
 ## 2026-07-18 — fix: 主任堂數異常只呈現可核對的帳務候選
 
-Fixed：主任營運決策中心不再把「購買堂數從未初始化」的舊資料混入一般堂數差異；可核對的正數合約基準會獨立顯示課程數、相差堂數與估算金額，舊資料仍保留為獨立監測訊號。
+Fixed：主任營運決策中心不再把已停用的歷史課程或「購買堂數從未初始化」的舊資料混入一般堂數差異；只有仍啟用且有正數合約基準的課程會進主任核對名單，其餘仍保留為獨立工程監測訊號。
 
-開發備註：`BusinessDigestService` 保留既有差異總數相容欄位，新增 actionable／legacy baseline 拆分；全程唯讀，不修改任何課程、堂數或付款資料。
+開發備註：`BusinessDigestService` 保留既有差異總數相容欄位，新增 reviewable／active legacy／inactive history 拆分；全程唯讀，不修改任何課程、堂數或付款資料。
 
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
