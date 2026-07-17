@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Notification;
 use App\Services\SessionDeductionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 
 class NightlyReconcile extends Command
 {
@@ -40,15 +40,19 @@ class NightlyReconcile extends Command
             ->where('Stop', 0)
             ->select('ID', 'StudentID', 'SubjectID', 'UsedSessions', 'SessionCount')
             ->get();
-        $expectedCounts = SessionDeductionService::batchExpectedUsedSessions($courses->pluck('ID')->all());
+        $diagnostics = SessionDeductionService::batchExpectedUsedSessionDiagnostics($courses->pluck('ID')->all());
 
         $mismatches = [];
+        $causeCounts = [];
         foreach ($courses as $c) {
+            $diagnostic = $diagnostics[$c->ID] ?? [];
             $actual   = (int) ($actualCounts[$c->ID] ?? 0);
-            $expected = (int) ($expectedCounts[$c->ID] ?? 0);
+            $expected = (int) ($diagnostic['expected_used'] ?? 0);
             $recorded = (int) ($c->UsedSessions ?? 0);
             $diff     = abs($expected - $recorded);
             if ($diff > $threshold) {
+                $category = $this->classifyMismatch($recorded, $diagnostic);
+                $causeCounts[$category] = ($causeCounts[$category] ?? 0) + 1;
                 $mismatches[] = [
                     'student_class_id' => $c->ID,
                     'student_id'       => $c->StudentID,
@@ -58,9 +62,11 @@ class NightlyReconcile extends Command
                     'expected_used'    => $expected,
                     'actual_attended'  => $actual,
                     'diff'             => $diff,
+                    'category'         => $category,
                 ];
             }
         }
+        ksort($causeCounts);
 
         $total      = count($mismatches);
         $checkedAt  = now()->toDateTimeString();
@@ -71,6 +77,7 @@ class NightlyReconcile extends Command
             'threshold'   => $threshold,
             'total_checked' => $courses->count(),
             'mismatch_count' => $total,
+            'cause_counts' => $causeCounts,
             'mismatches'  => array_slice($mismatches, 0, 200),
         ];
 
@@ -81,10 +88,12 @@ class NightlyReconcile extends Command
             'checked_at'     => $checkedAt,
             'total_checked'  => $courses->count(),
             'mismatch_count' => $total,
+            'cause_counts'   => $causeCounts,
             'report_path'    => $reportPath,
         ]);
 
         $this->line("Checked: {$courses->count()} courses | Mismatches: {$total} | Report: {$reportPath}");
+        $this->line('Causes: ' . json_encode($causeCounts, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         if ($total === 0) {
             $this->info('All UsedSessions match actual attended counts.');
@@ -94,38 +103,84 @@ class NightlyReconcile extends Command
         $this->warn("{$total} mismatch(es) found.");
 
         if (!$dryRun && $total > 0) {
-            $this->alertSuperAdmin($total, $mismatches, $reportPath);
+            $this->alertSuperAdmin($total, $causeCounts);
         }
 
         return self::SUCCESS;
     }
 
-    private function alertSuperAdmin(int $count, array $mismatches, string $reportPath): void
+    /** @param array<string,mixed> $diagnostic */
+    private function classifyMismatch(int $recorded, array $diagnostic): string
     {
-        // Write a system notification for super_admin users
-        $superAdminIds = DB::table('User')->where('type', 'A')->pluck('id');
-        if ($superAdminIds->isEmpty()) return;
+        $expected = (int) ($diagnostic['expected_used'] ?? 0);
+        $sessionCount = (int) ($diagnostic['session_count'] ?? 0);
 
-        $sample = collect($mismatches)->take(3)->map(function ($m) {
-            return "Course #{$m['student_class_id']}: recorded={$m['recorded_used']}, expected={$m['expected_used']} (diff={$m['diff']})";
-        })->implode(' | ');
+        if ((bool) ($diagnostic['has_partial'] ?? false)) {
+            return 'partial_minutes';
+        }
+
+        if (
+            (bool) ($diagnostic['is_session_mode'] ?? false)
+            && $sessionCount > 0
+            && (int) ($diagnostic['uncapped_used'] ?? 0) > $sessionCount
+        ) {
+            return 'contract_cap';
+        }
+
+        if ($recorded > $expected) {
+            return 'counter_overstated';
+        }
+
+        if ((int) ($diagnostic['ledger_used'] ?? 0) > (int) ($diagnostic['observed_used'] ?? 0)) {
+            return 'ledger_ahead';
+        }
+
+        return 'attendance_ahead';
+    }
+
+    private function causeLabel(string $category): string
+    {
+        return [
+            'partial_minutes' => '部分時數換算',
+            'contract_cap' => '出勤超出合約堂數',
+            'counter_overstated' => '已用堂數高於現有證據',
+            'ledger_ahead' => '扣堂帳本領先計數器',
+            'attendance_ahead' => '出勤或評量證據領先計數器',
+        ][$category] ?? '待分類';
+    }
+
+    /** @param array<string,int> $causeCounts */
+    private function alertSuperAdmin(int $count, array $causeCounts): void
+    {
+        if (!DB::table('User')->where('type', 'S')->exists()) {
+            return;
+        }
+
+        $causeSummary = collect($causeCounts)->map(function (int $causeCount, string $category): string {
+            return $this->causeLabel($category) . " {$causeCount} 筆";
+        })->implode('、');
 
         $title = "⚠ 夜間對帳：{$count} 筆堂次異常";
-        $body  = "UsedSessions 與權威扣堂口徑不一致，請查閱報告。\n範例：{$sample}\n報告路徑：{$reportPath}";
+        $body  = "已用堂數與權威扣堂口徑不一致。分類：{$causeSummary}。請開啟「夜間對帳異常」面板檢視；資料修復需另走核准與回滾流程。";
 
-        foreach ($superAdminIds as $adminId) {
-            try {
-                DB::table('Notification')->insert([
-                    'UserID'    => $adminId,
-                    'CampusID'  => null,
-                    'Type'      => 'system_alert',
-                    'Title'     => $title,
-                    'Body'      => $body,
-                    'CreatedAt' => now(),
-                ]);
-            } catch (\Exception $e) {
-                Log::error('nightly_reconcile_notify_failed: ' . $e->getMessage());
-            }
+        try {
+            Notification::query()->updateOrCreate(
+                ['SourceKey' => 'nightly_reconcile:' . now()->toDateString()],
+                [
+                    'CampusID' => null,
+                    'Type' => 'system_alert',
+                    'Severity' => 'high',
+                    'Title' => $title,
+                    'Body' => $body,
+                    'SourceType' => 'nightly_reconcile',
+                    'SourceID' => now()->toDateString(),
+                    'Payload' => ['cause_counts' => $causeCounts],
+                    'OccurredAt' => now(),
+                    'ResolvedAt' => null,
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error('nightly_reconcile_notify_failed: ' . $e->getMessage());
         }
     }
 }

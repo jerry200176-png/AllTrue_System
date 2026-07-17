@@ -197,7 +197,25 @@ final class SchedulerEvidence
         }
 
         if ($job === 'reconcile-nightly' && preg_match('/Checked:\s*(\d+) courses \| Mismatches:\s*(\d+)/', $output, $matches)) {
-            return ['checked_courses' => (int) $matches[1], 'mismatch_count' => (int) $matches[2]];
+            $causeCounts = [];
+            if (preg_match('/^Causes:\s*(\{.*\}|\[\])\s*$/m', $output, $causeMatches)) {
+                $decoded = json_decode($causeMatches[1], true);
+                if (!is_array($decoded)) {
+                    return null;
+                }
+                foreach ($decoded as $category => $count) {
+                    if (!is_string($category) || !is_numeric($count)) {
+                        return null;
+                    }
+                    $causeCounts[$category] = (int) $count;
+                }
+            }
+
+            return [
+                'checked_courses' => (int) $matches[1],
+                'mismatch_count' => (int) $matches[2],
+                'cause_counts' => $causeCounts,
+            ];
         }
 
         $countPatterns = [

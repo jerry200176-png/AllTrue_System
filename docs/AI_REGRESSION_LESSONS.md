@@ -650,6 +650,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R70. 維運診斷面板預設唯讀；禁止由 mock 發明不存在的修復 API
+
+- **觸發情境**：#1188 夜間對帳面板前端把後端 `{data: report}` 外層誤當 report，畫面因此沒有摘要／明細；同時提供「逐筆／全部重算」，但 `POST /admin/reconcile/recompute` 從未存在。前端 mock 全綠，真實 API 契約與資料修復安全閘門都未被驗證。
+- **根因**：frontend-only PR 只 mock composable 下游，沒有 producer/consumer contract test；UI 把「診斷」和「修改 production 計數器」混成同一流程，違反 #1188 的 read-only first 與備份／核准／回滾要求。
+- **強制規則**：
+  1. 維運／資料品質面板預設唯讀；任何 production 資料修復必須另有 dry-run、備份、明確核准、audit 與 rollback package，禁止先放按鈕再等後端補路由。
+  2. API client 必須測試真實 envelope（如 `{data: ...}`）與 404/500；composable mock 測試不能取代 producer/consumer contract test。
+  3. 排程／GitHub evidence 只能輸出固定 key 的 PII-free aggregate；姓名、分校等顯示資料僅在已授權 API request-time enrich，不寫入 scheduler evidence。
+- **測試必補**：`AdminReconcileControllerTest`（super_admin enrich 且磁碟報告無姓名）、`api.reconcile.test.js`（unwrap/404/error）、`NightlyReconcileTest`（原因分類與正確 super_admin `User.type='S'` 通知）。
+
+---
+
 ### R67. deploy SSH script 內關鍵步驟失敗必須讓 run 標紅（migration 失敗曾被吞成綠燈）
 
 - **觸發情境**：#957 D1 unique index migration 在 production 依設計 fail-closed 拋錯（#1118），但 `deploy.yml` SSH 區塊無 `set -e`，`php artisan migrate --force` 失敗後照印「✅ Migration 完成」、deploy run 綠燈——與 R62「綠燈 ≠ 已出貨」同族。
@@ -881,7 +893,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
-| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）** |
+| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test） |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor） |

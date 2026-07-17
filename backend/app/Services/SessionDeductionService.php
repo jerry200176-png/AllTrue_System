@@ -78,6 +78,33 @@ class SessionDeductionService
      */
     public static function batchExpectedUsedSessions(array $studentClassIds): array
     {
+        return array_map(
+            static fn (array $diagnostic): int => $diagnostic['expected_used'],
+            self::batchExpectedUsedSessionDiagnostics($studentClassIds)
+        );
+    }
+
+    /**
+     * Read-only explanation of the canonical UsedSessions calculation.
+     *
+     * This keeps reconciliation diagnostics on the same query path as
+     * batchExpectedUsedSessions() instead of duplicating counter semantics in
+     * the nightly command.
+     *
+     * @param  array<int|string>  $studentClassIds
+     * @return array<int,array{
+     *   expected_used:int,
+     *   observed_used:int,
+     *   ledger_used:int,
+     *   ledger_net_minutes:int,
+     *   has_partial:bool,
+     *   session_count:int,
+     *   is_session_mode:bool,
+     *   uncapped_used:int
+     * }>
+     */
+    public static function batchExpectedUsedSessionDiagnostics(array $studentClassIds): array
+    {
         $ids = array_values(array_unique(array_filter(array_map('intval', $studentClassIds), fn ($id) => $id > 0)));
         if ($ids === []) {
             return [];
@@ -123,29 +150,38 @@ class SessionDeductionService
 
             $ledgerRow = $ledger->get($id);
             $ledgerUsed = max(0, (int) ($ledgerRow->net_events ?? 0));
-            $usedByAttendance = max(0, (int) ($observed[$id] ?? 0), $ledgerUsed);
+            $observedUsed = max(0, (int) ($observed[$id] ?? 0));
+            $usedByAttendance = max($observedUsed, $ledgerUsed);
             $sessionCount = max(0, (int) ($course->SessionCount ?? 0));
             $isSessionMode = (string) ($course->ScheduleMode ?? 'count') === 'count';
+            $hasPartial = (int) ($ledgerRow->has_partial ?? 0) === 1;
+            $netMinutes = (int) ($ledgerRow->net_minutes ?? 0);
+            $expectedUsed = $usedByAttendance;
 
-            if (!$isSessionMode || $sessionCount === 0) {
-                $out[$id] = $usedByAttendance;
-                continue;
-            }
-
-            if ((int) ($ledgerRow->has_partial ?? 0) === 1) {
+            if ($isSessionMode && $sessionCount > 0 && $hasPartial) {
                 $perSession = max(1, $course->perSessionMinutes());
                 $purchasedMinutes = $sessionCount * $perSession;
-                $usedMinutes = max(0, min($purchasedMinutes, (int) ($ledgerRow->net_minutes ?? 0)));
+                $usedMinutes = max(0, min($purchasedMinutes, $netMinutes));
                 $remainingMinutes = $purchasedMinutes - $usedMinutes;
                 $remainingSessions = max(
                     0,
                     min($sessionCount, self::roundHalfUp($remainingMinutes, $perSession))
                 );
-                $out[$id] = $sessionCount - $remainingSessions;
-                continue;
+                $expectedUsed = $sessionCount - $remainingSessions;
+            } elseif ($isSessionMode && $sessionCount > 0) {
+                $expectedUsed = min($sessionCount, $usedByAttendance);
             }
 
-            $out[$id] = min($sessionCount, $usedByAttendance);
+            $out[$id] = [
+                'expected_used' => $expectedUsed,
+                'observed_used' => $observedUsed,
+                'ledger_used' => $ledgerUsed,
+                'ledger_net_minutes' => $netMinutes,
+                'has_partial' => $hasPartial,
+                'session_count' => $sessionCount,
+                'is_session_mode' => $isSessionMode,
+                'uncapped_used' => $usedByAttendance,
+            ];
         }
 
         return $out;

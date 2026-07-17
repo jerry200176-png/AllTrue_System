@@ -10,6 +10,7 @@ use App\Models\StudentSignIn;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -57,6 +58,8 @@ class NightlyReconcileTest extends TestCase
         $this->assertSame($courseId, $report['mismatches'][0]['student_class_id']);
         $this->assertSame(2, $report['mismatches'][0]['recorded_used']);
         $this->assertSame(1, $report['mismatches'][0]['actual_attended']);
+        $this->assertSame('counter_overstated', $report['mismatches'][0]['category']);
+        $this->assertSame(['counter_overstated' => 1], $report['cause_counts']);
     }
 
     public function test_reconcile_reports_no_mismatch_when_counts_align(): void
@@ -106,6 +109,80 @@ class NightlyReconcileTest extends TestCase
             ->assertExitCode(0);
 
         $this->assertSame(0, $this->readReport()['mismatch_count']);
+    }
+
+    public function test_reconcile_classifies_ledger_evidence_ahead_of_counter(): void
+    {
+        $courseId = $this->bootstrapCourse(6, 0);
+
+        SessionDeductionLedger::create([
+            'student_class_id' => $courseId,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => null,
+        ]);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame('ledger_ahead', $report['mismatches'][0]['category']);
+        $this->assertSame(['ledger_ahead' => 1], $report['cause_counts']);
+    }
+
+    public function test_reconcile_classifies_fractional_minute_drift(): void
+    {
+        $courseId = $this->bootstrapCourse(6, 0);
+
+        SessionDeductionLedger::create([
+            'student_class_id' => $courseId,
+            'event_type' => 'deduct',
+            'source' => 'attendance',
+            'minutes' => 90,
+        ]);
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame(1, $report['mismatches'][0]['expected_used']);
+        $this->assertSame('partial_minutes', $report['mismatches'][0]['category']);
+    }
+
+    public function test_reconcile_classifies_attendance_beyond_contract_cap(): void
+    {
+        $courseId = $this->bootstrapCourse(2, 1);
+        $this->attendedSession($courseId, Carbon::now()->subDays(2)->toDateString());
+        $this->attendedSession($courseId, Carbon::now()->subDays(3)->toDateString());
+        $this->attendedSession($courseId, Carbon::now()->subDays(4)->toDateString());
+
+        $this->artisan('reconcile:nightly', ['--dry-run' => true])
+            ->assertExitCode(0);
+
+        $report = $this->readReport();
+        $this->assertSame(2, $report['mismatches'][0]['expected_used']);
+        $this->assertSame(3, $report['mismatches'][0]['actual_attended']);
+        $this->assertSame('contract_cap', $report['mismatches'][0]['category']);
+    }
+
+    public function test_live_reconcile_notifies_actual_super_admin_role_without_internal_ids(): void
+    {
+        User::create([
+            'LoginName' => 'nr-super-' . uniqid(), 'Name' => '系統管理員', 'PSW' => 'secret',
+            'type' => 'S', 'phone' => '0922000001', 'MustChangePassword' => false,
+        ]);
+        $courseId = $this->bootstrapCourse(4, 2);
+        $this->attendedSession($courseId, Carbon::now()->subDays(2)->toDateString());
+
+        $this->artisan('reconcile:nightly')
+            ->assertExitCode(0);
+
+        $notification = DB::table('Notifications')
+            ->where('SourceKey', 'nightly_reconcile:' . now()->toDateString())
+            ->first();
+        $this->assertNotNull($notification);
+        $this->assertStringContainsString('已用堂數高於現有證據 1 筆', $notification->Body);
+        $this->assertStringNotContainsString('Course #', $notification->Body);
     }
 
     // ── Helpers ──
