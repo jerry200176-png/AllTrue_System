@@ -4,11 +4,11 @@
     <div class="nr-header">
       <div>
         <h1 class="nr-title">夜間對帳異常</h1>
-        <p class="nr-subtitle">監控每日自動對帳結果，依原因檢視需要處理的課程</p>
+        <p class="nr-subtitle">監控每日自動對帳結果，檢視異常明細並一鍵重新計算</p>
       </div>
       <button
         class="nr-refresh-btn"
-        :disabled="loading"
+        :disabled="loading || recomputing"
         @click="loadReport"
         :aria-label="'重新載入對帳報告'"
       >
@@ -56,12 +56,6 @@
         </div>
       </div>
 
-      <div v-if="causeCounts.length" class="nr-cause-summary" aria-label="異常原因摘要">
-        <span v-for="item in causeCounts" :key="item.category" class="nr-cause-chip">
-          {{ categoryLabel(item.category) }}：{{ item.count }} 筆
-        </span>
-      </div>
-
       <!-- 零異常狀態 -->
       <div v-if="summary.mismatch_count === 0" class="nr-all-clear" role="status">
         <span class="material-symbols-outlined" aria-hidden="true" style="font-size:48px;color:var(--success)">check_circle</span>
@@ -70,11 +64,6 @@
 
       <!-- 異常列表區 -->
       <template v-else>
-        <div class="nr-readonly-note" role="note">
-          <span class="material-symbols-outlined" aria-hidden="true">policy</span>
-          <span>此頁只提供診斷，不會直接改寫堂數。確認原因後，資料修復會另走備份、核准與回滾流程。</span>
-        </div>
-
         <!-- 篩選列 -->
         <div class="nr-filters" role="toolbar" aria-label="篩選與排序工具列">
           <label class="nr-filter">
@@ -113,6 +102,22 @@
               <option v-for="opt in categoryOptions" :key="opt" :value="opt">{{ categoryLabel(opt) }}</option>
             </select>
           </label>
+          <div class="nr-filter-spacer"></div>
+          <button
+            class="nr-recompute-all-btn"
+            :disabled="recomputing || filteredMismatches.length === 0"
+            @click="recomputeAll"
+            :aria-label="'重新計算全部 ' + filteredMismatches.length + ' 筆異常'"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true" style="font-size:16px">play_arrow</span>
+            全部重新計算（{{ filteredMismatches.length }} 筆）
+          </button>
+        </div>
+
+        <!-- 重新計算結果提示 -->
+        <div v-if="recomputeResults.length" class="nr-recompute-toast" role="status" aria-live="polite">
+          <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+          已重新計算 {{ recomputeResults.length }} 筆課程計數器
         </div>
 
         <!-- 異常表格 -->
@@ -178,6 +183,7 @@
                     <span class="nr-sort-icon" aria-hidden="true">{{ sortKey === 'diff' ? (sortDir === 'asc' ? '▲' : '▼') : '' }}</span>
                   </th>
                   <th scope="col">類別</th>
+                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,6 +206,17 @@
                   </td>
                   <td>
                     <span class="nr-category-tag">{{ categoryLabel(row.category) }}</span>
+                  </td>
+                  <td>
+                    <button
+                      class="nr-recompute-btn"
+                      :disabled="recomputing"
+                      @click="recomputeOne(row.student_class_id)"
+                      :aria-label="'重新計算 ' + row.student_name + ' 的計數器'"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true" style="font-size:14px">refresh</span>
+                      重算
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -244,8 +261,11 @@ const {
   subjectOptions,
   categoryOptions,
   summary,
-  causeCounts,
   loadReport,
+  recomputeOne,
+  recomputeAll,
+  recomputing,
+  recomputeResults,
   setFilter,
   toggleSort,
   sortKey,
@@ -476,42 +496,12 @@ onMounted(() => {
   color: var(--text-light);
 }
 
-.nr-cause-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: -8px 0 18px;
-}
-
-.nr-cause-chip {
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--bg-light, rgba(148, 163, 184, 0.12));
-  color: var(--text-light);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 /* === All Clear === */
 .nr-all-clear {
   text-align: center;
   padding: 56px 20px;
   color: var(--text-light);
   font-size: 15px;
-}
-
-.nr-readonly-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card-bg);
-  color: var(--text-light);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 /* === Filters === */
@@ -547,6 +537,43 @@ onMounted(() => {
   color: var(--text);
   font-size: 13px;
   min-width: 120px;
+}
+
+.nr-filter-spacer {
+  flex: 1;
+}
+
+.nr-recompute-all-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nr-recompute-all-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* === Recompute Toast === */
+.nr-recompute-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+  font-size: 13px;
 }
 
 /* === Table === */
@@ -653,6 +680,24 @@ onMounted(() => {
   color: var(--text-light);
 }
 
+.nr-recompute-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nr-recompute-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* === Row color-code by diff severity === */
 .reconcile-diff--ok td { }
 .reconcile-diff--warn td { background: rgba(250, 204, 21, 0.06); }
@@ -696,5 +741,8 @@ onMounted(() => {
     width: 100%;
   }
 
+  .nr-recompute-all-btn {
+    justify-content: center;
+  }
 }
 </style>

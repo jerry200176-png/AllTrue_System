@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ref } from 'vue';
+import { ref, nextTick } from 'vue';
 import { useNightlyReconcile } from '../useNightlyReconcile';
 
 // Mock api module
 vi.mock('../../api', () => ({
   getReconcileLatest: vi.fn(),
+  recomputeReconcile: vi.fn(),
 }));
 
 import * as api from '../../api';
@@ -17,25 +18,24 @@ function makeReport(overrides = {}) {
     threshold: 0,
     total_checked: 1428,
     mismatch_count: 3,
-    cause_counts: { attendance_ahead: 1, ledger_ahead: 1, counter_overstated: 1 },
     mismatches: [
       {
         student_class_id: 101, student_id: 1, student_name: '王小明',
         subject_id: 7, subject_name: '數學', campus_id: 2, campus_name: '東湖',
         session_count: 24, recorded_used: 10, expected_used: 12,
-        actual_attended: 12, diff: 2, category: 'attendance_ahead',
+        actual_attended: 12, diff: 2, category: 'counter_drift',
       },
       {
         student_class_id: 102, student_id: 2, student_name: '李小華',
         subject_id: 3, subject_name: '英文', campus_id: 1, campus_name: '板橋',
         session_count: 20, recorded_used: 5, expected_used: 8,
-        actual_attended: 8, diff: 3, category: 'ledger_ahead',
+        actual_attended: 8, diff: 3, category: 'ledger_mismatch',
       },
       {
         student_class_id: 103, student_id: 3, student_name: '張大偉',
         subject_id: 7, subject_name: '數學', campus_id: 2, campus_name: '東湖',
         session_count: 16, recorded_used: 7, expected_used: 0,
-        actual_attended: 0, diff: 7, category: 'counter_overstated',
+        actual_attended: 0, diff: 7, category: 'contract',
       },
     ],
     ...overrides,
@@ -102,21 +102,7 @@ describe('useNightlyReconcile', () => {
       checked_at: '2026-07-11 03:00:00',
       total_checked: 100,
       mismatch_count: 5,
-      cause_counts: { attendance_ahead: 1, ledger_ahead: 1, counter_overstated: 1 },
     });
-  });
-
-  it('causeCounts sorts the PII-free aggregate by count', async () => {
-    api.getReconcileLatest.mockResolvedValue(makeReport({
-      cause_counts: { ledger_ahead: 2, attendance_ahead: 7, counter_overstated: 1 },
-    }));
-    const { causeCounts, loadReport } = setup();
-    await loadReport();
-    expect(causeCounts.value).toEqual([
-      { category: 'attendance_ahead', count: 7 },
-      { category: 'ledger_ahead', count: 2 },
-      { category: 'counter_overstated', count: 1 },
-    ]);
   });
 
   // ---- filteredMismatches (sorting) ----
@@ -172,9 +158,9 @@ describe('useNightlyReconcile', () => {
     api.getReconcileLatest.mockResolvedValue(makeReport());
     const { filteredMismatches, setFilter, loadReport } = setup();
     await loadReport();
-    setFilter('category', 'attendance_ahead');
+    setFilter('category', 'counter_drift');
     expect(filteredMismatches.value).toHaveLength(1);
-    expect(filteredMismatches.value[0].category).toBe('attendance_ahead');
+    expect(filteredMismatches.value[0].category).toBe('counter_drift');
   });
 
   it('filteredMismatches combines filters', async () => {
@@ -182,7 +168,7 @@ describe('useNightlyReconcile', () => {
     const { filteredMismatches, setFilter, loadReport } = setup();
     await loadReport();
     setFilter('campus', '東湖');
-    setFilter('category', 'attendance_ahead');
+    setFilter('category', 'counter_drift');
     expect(filteredMismatches.value).toHaveLength(1);
     expect(filteredMismatches.value[0].student_name).toBe('王小明');
   });
@@ -206,7 +192,45 @@ describe('useNightlyReconcile', () => {
     api.getReconcileLatest.mockResolvedValue(makeReport());
     const { categoryOptions, loadReport } = setup();
     await loadReport();
-    expect(categoryOptions.value).toEqual(['attendance_ahead', 'counter_overstated', 'ledger_ahead']);
+    expect(categoryOptions.value).toEqual(['contract', 'counter_drift', 'ledger_mismatch']);
+  });
+
+  // ---- recompute ----
+  it('recomputeOne calls API and reloads', async () => {
+    const rep = makeReport();
+    api.getReconcileLatest.mockResolvedValue(rep);
+    api.recomputeReconcile.mockResolvedValue({ recomputed: 1, results: [{ student_class_id: 101, before: 10, after: 12 }] });
+    const { recomputeOne, recomputeResults, loadReport } = setup();
+    await loadReport();
+    await recomputeOne(101);
+    expect(api.recomputeReconcile).toHaveBeenCalledWith('test-token', [101]);
+    expect(recomputeResults.value).toHaveLength(1);
+    expect(recomputeResults.value[0]).toEqual({ student_class_id: 101, before: 10, after: 12 });
+  });
+
+  it('recomputeOne sets error on failure', async () => {
+    api.getReconcileLatest.mockResolvedValue(makeReport());
+    api.recomputeReconcile.mockRejectedValue(new Error('Server error'));
+    const { recomputeOne, error, loadReport } = setup();
+    await loadReport();
+    await recomputeOne(101);
+    expect(error.value).toContain('Server error');
+  });
+
+  it('recomputeAll calls API with all IDs', async () => {
+    const rep = makeReport();
+    api.getReconcileLatest.mockResolvedValue(rep);
+    api.recomputeReconcile.mockResolvedValue({ recomputed: 3, results: [] });
+    const { recomputeAll, loadReport } = setup();
+    await loadReport();
+    await recomputeAll();
+    expect(api.recomputeReconcile).toHaveBeenCalledWith('test-token', [101, 102, 103]);
+  });
+
+  it('recomputeAll does nothing when no mismatches', async () => {
+    const { recomputeAll } = setup();
+    await recomputeAll();
+    expect(api.recomputeReconcile).not.toHaveBeenCalled();
   });
 
   // ---- diffColorClass ----
@@ -224,12 +248,11 @@ describe('useNightlyReconcile', () => {
   // ---- categoryLabel ----
   it('categoryLabel returns Chinese labels', () => {
     const { categoryLabel } = setup();
-    expect(categoryLabel('attendance_ahead')).toBe('出勤／評量證據領先');
-    expect(categoryLabel('ledger_ahead')).toBe('扣堂帳本領先');
-    expect(categoryLabel('counter_overstated')).toBe('已用堂數偏高');
-    expect(categoryLabel('partial_minutes')).toBe('部分時數換算');
-    expect(categoryLabel('contract_cap')).toBe('出勤超出合約堂數');
-    expect(categoryLabel('unknown')).toBe('待分類');
+    expect(categoryLabel('counter_drift')).toBe('計數器漂移');
+    expect(categoryLabel('ledger_mismatch')).toBe('帳本不一致');
+    expect(categoryLabel('partial_minutes')).toBe('部分時數');
+    expect(categoryLabel('contract')).toBe('合約');
+    expect(categoryLabel('unknown')).toBe('未知');
     expect(categoryLabel('')).toBe('');
   });
 
