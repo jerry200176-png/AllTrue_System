@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { getReconcileLatest, recomputeReconcile } from '../api';
+import { getReconcileLatest } from '../api';
 
 /**
  * 夜間對帳異常面板的狀態與邏輯。
@@ -12,14 +12,12 @@ export function useNightlyReconcile(tokenRef) {
   const report = ref(null);            // GET /latest 回傳的整包 data（null = 無報告）
   const loading = ref(false);
   const error = ref('');
-  const recomputing = ref(false);
-  const recomputeResults = ref([]);   // { student_class_id, before, after }[]
 
   // ---- 篩選與排序 ----
   const filters = ref({
     campus: '',       // campus_name（空字串 = 全部）
     subject: '',      // subject_name
-    category: '',     // counter_drift | ledger_mismatch | partial_minutes | contract | unknown
+    category: '',     // attendance_ahead | ledger_ahead | counter_overstated | partial_minutes | contract_cap
   });
   const sortKey = ref('diff');        // 預設依 diff 降冪
   const sortDir = ref('desc');        // 'asc' | 'desc'
@@ -83,7 +81,16 @@ export function useNightlyReconcile(tokenRef) {
       checked_at: report.value.checked_at,
       total_checked: report.value.total_checked,
       mismatch_count: report.value.mismatch_count,
+      cause_counts: report.value.cause_counts || {},
     };
+  });
+
+  const causeCounts = computed(() => {
+    const counts = summary.value?.cause_counts || {};
+    return Object.entries(counts)
+      .map(([category, count]) => ({ category, count: Number(count) || 0 }))
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
   });
 
   // ---- 載入 ----
@@ -92,7 +99,6 @@ export function useNightlyReconcile(tokenRef) {
     if (!token) return;
     loading.value = true;
     error.value = '';
-    recomputeResults.value = [];
     try {
       const data = await getReconcileLatest(token);
       report.value = data;  // null if 404
@@ -101,43 +107,6 @@ export function useNightlyReconcile(tokenRef) {
       report.value = null;
     } finally {
       loading.value = false;
-    }
-  }
-
-  // ---- 重新計算 ----
-  async function recomputeOne(studentClassId) {
-    const token = tokenRef?.value;
-    if (!token) return;
-    recomputing.value = true;
-    error.value = '';
-    try {
-      const res = await recomputeReconcile(token, [studentClassId]);
-      const results = res.results || [];
-      await loadReport();
-      recomputeResults.value = results;
-    } catch (e) {
-      error.value = e.message || '重新計算失敗';
-    } finally {
-      recomputing.value = false;
-    }
-  }
-
-  async function recomputeAll() {
-    const token = tokenRef?.value;
-    if (!token) return;
-    const ids = mismatches.value.map((r) => r.student_class_id).filter(Boolean);
-    if (ids.length === 0) return;
-    recomputing.value = true;
-    error.value = '';
-    try {
-      const res = await recomputeReconcile(token, ids);
-      const results = res.results || [];
-      await loadReport();
-      recomputeResults.value = results;
-    } catch (e) {
-      error.value = e.message || '重新計算失敗';
-    } finally {
-      recomputing.value = false;
     }
   }
 
@@ -173,11 +142,12 @@ export function useNightlyReconcile(tokenRef) {
 
   function categoryLabel(cat) {
     const map = {
-      counter_drift: '計數器漂移',
-      ledger_mismatch: '帳本不一致',
-      partial_minutes: '部分時數',
-      contract: '合約',
-      unknown: '未知',
+      attendance_ahead: '出勤／評量證據領先',
+      ledger_ahead: '扣堂帳本領先',
+      counter_overstated: '已用堂數偏高',
+      partial_minutes: '部分時數換算',
+      contract_cap: '出勤超出合約堂數',
+      unknown: '待分類',
     };
     return map[cat] || cat;
   }
@@ -192,11 +162,8 @@ export function useNightlyReconcile(tokenRef) {
     subjectOptions,
     categoryOptions,
     summary,
+    causeCounts,
     loadReport,
-    recomputeOne,
-    recomputeAll,
-    recomputing,
-    recomputeResults,
     setFilter,
     toggleSort,
     sortKey,
