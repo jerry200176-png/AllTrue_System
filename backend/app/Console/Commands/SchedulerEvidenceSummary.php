@@ -35,7 +35,7 @@ class SchedulerEvidenceSummary extends Command
             return self::FAILURE;
         }
 
-        $summary['database_checks'] = $this->databaseChecks();
+        $summary['database_checks'] = $this->databaseChecks($date, $summary);
         $summary['healthy'] = $summary['healthy'] && array_sum($summary['database_checks']) === 0;
 
         $this->line(json_encode($summary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
@@ -43,17 +43,59 @@ class SchedulerEvidenceSummary extends Command
         return $summary['healthy'] ? self::SUCCESS : self::FAILURE;
     }
 
-    /** @return array<string,int> */
-    private function databaseChecks(): array
+    /**
+     * @param  array<string,mixed>  $schedulerSummary
+     * @return array<string,int>
+     */
+    private function databaseChecks(string $date, array $schedulerSummary): array
     {
-        $today = CarbonImmutable::now(SchedulerEvidence::TIMEZONE)->startOfDay();
+        $today = CarbonImmutable::parse($date, SchedulerEvidence::TIMEZONE)->startOfDay();
+
+        $studentOrphans = StudentSignIn::query()
+            ->whereNull('SignOutDT')
+            ->whereNull('VoidedAt')
+            ->where('SignInDT', '<', $today->toDateTimeString());
+
+        $studentOrphansRemaining = (clone $studentOrphans)->count();
+        $studentOrphansBeforeNightly = 0;
+        $studentOrphansAfterNightly = 0;
+        $studentOrphansUnclassified = $studentOrphansRemaining;
+
+        $studentCloseJob = $schedulerSummary['jobs']['student-signin-close-orphans'] ?? [];
+        $nightlyExecution = null;
+        if (($studentCloseJob['status'] ?? null) === 'verified'
+            && is_string($studentCloseJob['latest_execution'] ?? null)) {
+            try {
+                $nightlyExecution = CarbonImmutable::parse(
+                    $studentCloseJob['latest_execution'],
+                    SchedulerEvidence::TIMEZONE
+                )->setTimezone(SchedulerEvidence::TIMEZONE);
+            } catch (\Throwable) {
+                $nightlyExecution = null;
+            }
+        }
+
+        if ($nightlyExecution !== null) {
+            $nightlyExecutionAt = $nightlyExecution->toDateTimeString();
+            $studentOrphansBeforeNightly = (clone $studentOrphans)
+                ->whereNotNull('MDT')
+                ->where('MDT', '<=', $nightlyExecutionAt)
+                ->count();
+            $studentOrphansAfterNightly = (clone $studentOrphans)
+                ->whereNotNull('MDT')
+                ->where('MDT', '>', $nightlyExecutionAt)
+                ->count();
+            $studentOrphansUnclassified = (clone $studentOrphans)
+                ->whereNull('MDT')
+                ->count();
+        }
 
         return [
-            'student_orphans_remaining' => StudentSignIn::query()
-                ->whereNull('SignOutDT')
-                ->whereNull('VoidedAt')
-                ->where('SignInDT', '<', $today->toDateTimeString())
-                ->count(),
+            'student_orphans_remaining' => $studentOrphansRemaining,
+            // PII-free classification of rows that survived the verified 02:30 close.
+            'student_orphans_mdt_at_or_before_nightly' => $studentOrphansBeforeNightly,
+            'student_orphans_mdt_after_nightly' => $studentOrphansAfterNightly,
+            'student_orphans_unclassified' => $studentOrphansUnclassified,
             'teacher_orphans_remaining' => TeacherSignIn::query()
                 ->whereNull('SignOutDT')
                 ->where('SignInDT', '<', $today->toDateTimeString())
