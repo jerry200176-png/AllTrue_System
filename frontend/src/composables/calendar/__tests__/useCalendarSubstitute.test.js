@@ -50,4 +50,37 @@ describe('useCalendarSubstitute', () => {
     expect(substituteForm.value.student_id).toBe(10);
     expect(substituteForm.value.session_date).toBe('2026-06-11');
   });
+
+  it('cross-teacher drag with a time change opens atomic substitute+reschedule', () => {
+    const sessionDatesByCourseId = ref({
+      99: [{ id: 701, session_date: '2026-06-11', start_time: '17:30', status: 'scheduled' }],
+    });
+    const {
+      openSubstituteFromDrag,
+      showSubstituteV2Modal,
+      showSubstituteModal,
+      substituteV2SessionId,
+      substituteV2Context,
+    } = useCalendarSubstitute(makeDeps({ sessionDatesByCourseId }));
+
+    openSubstituteFromDrag({
+      id: 99,
+      student_id: 10,
+      subject: 'Math',
+      teacher_id: 5,
+      start_time: '17:30',
+      end_time: '19:30',
+    }, '2026-06-11', 8, {
+      date: '2026-06-11',
+      startTime: '18:00',
+      endTime: '20:00',
+    });
+
+    expect(showSubstituteModal.value).toBe(false);
+    expect(showSubstituteV2Modal.value).toBe(true);
+    expect(substituteV2SessionId.value).toBe(701);
+    expect(substituteV2Context.value.prefill_substitute_teacher_id).toBe(8);
+    expect(substituteV2Context.value.prefill_new_start_time).toBe('18:00');
+    expect(substituteV2Context.value.allow_past_same_date).toBe(true);
+  });
 });

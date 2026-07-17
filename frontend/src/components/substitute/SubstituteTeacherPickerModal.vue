@@ -174,7 +174,7 @@
                 <input
                   v-model="newDate"
                   type="date"
-                  :min="todayYmd"
+                  :min="rescheduleMinDate"
                   class="stp-resched__input"
                   @change="onReschedChange"
                 />
@@ -323,7 +323,9 @@ function validateReschedFields() {
     reschedFieldError.value = '請同時填寫新日期與新開始時間';
     return false;
   }
-  if (newDate.value && newDate.value < todayYmd.value) {
+  const historicalSameDateAllowed = props.context?.allow_past_same_date === true
+    && newDate.value === String(props.context?.session_date || '').slice(0, 10);
+  if (newDate.value && newDate.value < todayYmd.value && !historicalSameDateAllowed) {
     reschedFieldError.value = '新日期不可為過去日期';
     return false;
   }
@@ -336,12 +338,15 @@ watch(
     if (!v) return;
     search.value = '';
     reason.value = '';
-    selectedTeacherId.value = null;
+    selectedTeacherId.value = props.context?.prefill_substitute_teacher_id ?? null;
     inlineError.value = '';
-    showReschedule.value = false;
-    newDate.value = '';
-    newStart.value = '';
+    const prefillDate = String(props.context?.prefill_new_date || '').slice(0, 10);
+    const prefillStart = String(props.context?.prefill_new_start_time || '').slice(0, 5);
+    showReschedule.value = !!(prefillDate && prefillStart);
+    newDate.value = prefillDate;
+    newStart.value = prefillStart;
     reschedFieldError.value = '';
+    validateReschedFields();
     await refreshAvailability();
   }
 );
@@ -359,6 +364,11 @@ const effectiveEnd = computed(() => {
   if (isRescheduleActive.value) return computedNewEnd.value;
   return props.context?.end_time || '';
 });
+const isHistoricalSameDateCorrection = computed(() => (
+  props.context?.allow_past_same_date === true
+  && effectiveDate.value === String(props.context?.session_date || '').slice(0, 10)
+  && effectiveDate.value < todayYmd.value
+));
 
 async function refreshAvailability() {
   const date = effectiveDate.value;
@@ -430,7 +440,7 @@ const enriched = computed(() => {
       let capacityWarn = false;
       let conflictCampusId = 0;
       for (const s of slots) {
-        if (overlaps(checkStart, checkEnd, s.start_time, s.end_time)) {
+        if (!isHistoricalSameDateCorrection.value && overlaps(checkStart, checkEnd, s.start_time, s.end_time)) {
           const rc = s.remaining_capacity !== undefined ? Number(s.remaining_capacity) : 0;
           if (rc <= 0) {
             conflict = true;
@@ -489,6 +499,12 @@ const todayYmd = computed(() => {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
+});
+const rescheduleMinDate = computed(() => {
+  if (props.context?.allow_past_same_date === true) {
+    return String(props.context?.session_date || todayYmd.value).slice(0, 10);
+  }
+  return todayYmd.value;
 });
 
 // 原課時長（毫秒）用來推算新結束時間
