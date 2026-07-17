@@ -25,6 +25,9 @@ concurrency:
 jobs:
   review:
     name: Dependency Review
+    # Avoid allocating a billed hosted runner when GHAS is unavailable.
+    # npm/composer audit in ci.yml remains the active supply-chain gate.
+    if: vars.ENABLE_DEPENDENCY_REVIEW == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
