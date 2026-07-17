@@ -1,5 +1,10 @@
 # AllTrue Changelog
 
+## 2026-07-17 — fix: classify surviving student sign-in orphans (#1262)
+
+- Added PII-free scheduler health counts that distinguish student sign-in orphans whose `MDT` is at/before the verified nightly close from rows written afterward, plus an unclassified count when the execution evidence or timestamp is unavailable.
+- Added regression coverage for historical sign-ins written after the nightly command and for rows already present before it.
+
 > 格式：每條一行，分類 Added / Fixed / Changed / Security / Ops  
 > 細節查 PR 說明或 `.cursor/plans/`  
 > **版本公告（給老師／主任看的短卡）**：同一版建議 **第一條寫使用者白話**；技術細節請另起一行並以 **`開發備註：`** 開頭（`npm run sync-release-notes` 會略過不進 `releaseNotes.generated.js`）。  
