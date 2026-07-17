@@ -137,7 +137,7 @@ GitHub Action `.github/workflows/branch-hygiene.yml` 每日跑報告，結果寫
 10. **同類 docs 一次送出**：README 展示、FAQ、INDEX、Runbook、角色手冊等同日低風險文件修正，合併成一個 `chore/*` docs PR。
 11. **避免混合 deployable diff**：純 docs batch 不混入 `backend/**`、`frontend/**`、`scripts/**`、`.github/workflows/**`，避免觸發重 CI 或 production deploy。
 12. **Actions minutes 用完仍不可在 Pi 跑測試**：若 production bug 必須先救且 deploy workflow 無法使用，只能走 `docs/DEPLOYMENT.md` 的緊急手動前端部署路徑；完成後仍要補 PR/CI，並在 `CHANGELOG` + `AI_REGRESSION_LESSONS` 記錄本次例外。
-13. **runner topology 是安全邊界**：所有 active jobs 必須使用 GitHub-hosted `ubuntu-latest`；不得把 production deploy secrets 下放到個人電腦或 production Pi。變更 runner 前須同步更新 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 並通過 security/operations review。
+13. **runner topology 是安全邊界**：所有直接執行的 jobs 必須使用 GitHub-hosted `ubuntu-latest`；delegated reusable job 必須鎖定 immutable commit 並列入 reviewed allow-list。不得把 production deploy secrets 下放到個人電腦或 production Pi。變更前須同步更新 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 並通過 security/operations review。
 14. **低價值排程工作降頻**：`branch-hygiene.yml` 改為 weekly；`pi-health.yml` 改為 daily，關鍵即時告警改由 Pi 本機 `monitor-alert.sh` cron + UptimeRobot 承接。
 15. **E2E 只在前端 PR 跑（#730）**：`ui-smoke.yml` 在 PR 一律啟動（穩定 check 名稱、可當 required），但內部 `Detect frontend diff` 判斷是否動到 `frontend/src/**` 或 `frontend/e2e/**`；沒動就秒過、不下載 Chromium、不跑 Playwright；有動才跑。**刻意不用 workflow 層 `paths:`**（path-filtered 的 required check 在不符路徑時會永遠 pending、卡 merge）。週排程 + 手動觸發仍完整跑。
 
@@ -220,7 +220,7 @@ Billing／minutes 恢復後用上述補跑即可；結果以 **workflow log** �
 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md) 是 runner topology 的 canonical reference。
 
 **Current boundary**
-- 所有 active workflow jobs 使用 `ubuntu-latest` GitHub-hosted runner。
+- 所有直接執行的 workflow jobs 使用 `ubuntu-latest` GitHub-hosted runner；Google OSV scan 是唯一固定 commit 且列入 allow-list 的 delegated reusable job。
 - 每個 PHPUnit job 取得獨立 runner 與 MySQL service container；即使 schema 同名為 `AllTrue_test`，並行 run 也不共用儲存空間。
 - production Pi 永遠不得註冊為 test runner 或執行 PHPUnit。
 - production deploy secrets 只交給 ephemeral GitHub-hosted deploy job，不下放個人 WSL2 環境。

@@ -2,7 +2,9 @@
 
 ## Current contract
 
-All active workflow jobs use `ubuntu-latest` GitHub-hosted runners. This includes CI, presubmit, security scans, documentation checks, deployment, and production health workflows.
+All directly executed workflow jobs use `ubuntu-latest` GitHub-hosted runners. This includes CI, presubmit, security scans, documentation checks, deployment, and production health workflows.
+
+The only delegated job is `osv-scanner.yml` → Google's OSV reusable workflow, pinned to immutable commit `9a498708959aeaef5ef730655706c5a1df1edbc2` (v2.3.8). The runner is owned by that reviewed reusable workflow, so the exact reference is allow-listed rather than treated as an untracked omission.
 
 The WSL2 self-hosted runner topology introduced by #867 is historical and is not used by any active workflow. Commit `e3b30511` moved the workflows back to GitHub-hosted runners on 2026-07-14; commit `9fbd8038` added the MySQL 8 service required by PHPUnit.
 
@@ -15,6 +17,8 @@ The WSL2 self-hosted runner topology introduced by #867 is historical and is not
 
 ## Enforcement
 
-`node scripts/runner-topology-check.mjs` fails when an active workflow job does not use `ubuntu-latest`. Presubmit runs the check on every PR.
+`node scripts/runner-topology-check.mjs` inventories every declared job and fails when a directly executed job does not use `ubuntu-latest` or a delegated job does not match the exact reviewed reusable-workflow allow-list. Presubmit runs the check on every PR.
+
+New or changed job-level reusable workflow calls are rejected by default because their runner and credential boundary is delegated; adopting one requires the same explicit security/operations review and contract update as any other runner change.
 
 If a future workload genuinely requires another runner, the change must document credential exposure, database isolation, runner ownership, capacity, patching, and rollback before modifying the allow-list.

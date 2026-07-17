@@ -70,7 +70,7 @@
 
 ## FinOps / CI resilience
 
-- 所有 active jobs 使用 GitHub-hosted `ubuntu-latest`；canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
+- 所有直接執行的 jobs 使用 GitHub-hosted `ubuntu-latest`；唯一 delegated OSV job 固定 immutable commit。canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 - 以 path-aware jobs、concurrency cancellation 與排程降頻控制用量，不以 production Pi 或未受管個人主機繞過 CI gate。
 - PHPUnit 每個 job 使用獨立 MySQL service container，避免並行 run 共用測試資料庫。
 

@@ -345,7 +345,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | `branch-hygiene.yml` | 週一至五 | 已合併分支 dry-run 報告 |
 | `teacher-signin-diagnose.yml` / `teacher-signin-recovery.yml` | 手動 / 排程 | 老師刷卡資料診斷與回補 |
 
-> 所有 active workflow jobs 目前使用 GitHub-hosted `ubuntu-latest`；PHPUnit 每個 job 使用獨立 MySQL service container。runner 邊界與變更規則見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。部署以 `workflow_run.head_sha` 為準並校驗 HEAD（§R62，杜絕靜默舊版）。
+> 所有直接執行的 workflow jobs 目前使用 GitHub-hosted `ubuntu-latest`；唯一 delegated job 是固定 commit 的 Google OSV reusable workflow。PHPUnit 每個 job 使用獨立 MySQL service container。runner 邊界與 allow-list 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。部署以 `workflow_run.head_sha` 為準並校驗 HEAD（§R62，杜絕靜默舊版）。
 > `main` branch protection 已啟用：required checks + admin enforcement + 禁止 force push/delete。備份同步會產生 Google Drive manifest（檔名 / 大小 / sha256），詳見 `OPERATIONS_RUNBOOK.md §P`。
 
 ---

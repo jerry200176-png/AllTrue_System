@@ -192,5 +192,5 @@ AllTrue 目前已用 M4–M9 把工程成熟度拆成多條 track。從「軟體
 
 ## AI 接手原則
 1. 先讀本檔「進行中狀態」+ `CLAUDE.md` 5 紅線 + `MEMORY.md`。
-2. 任何 CI 卡住先看 workflow/job log 與 runner label；目前所有 active jobs 都是 GitHub-hosted `ubuntu-latest`，canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
+2. 任何 CI 卡住先看 workflow/job log 與 runner label；目前所有直接執行的 jobs 都是 GitHub-hosted `ubuntu-latest`，唯一 delegated OSV job 固定 immutable commit，canonical contract 見 [`REF_CI_RUNNER_TOPOLOGY.md`](REF_CI_RUNNER_TOPOLOGY.md)。
 3. `.vue` 註解禁寫 `#NNN`（會被 hex guard 當色碼）；hex guard 用 WSL/Linux 跑（Windows grep 會漏報）。
