@@ -646,6 +646,11 @@ class ScheduleGuardService
             }
         }
 
+        // #1296：同 key 的 ClassSession 已全數取消 → scheduled 例外 row 視為 stale，
+        // 不可再計入老師佔用（否則代課挑選會出現假衝堂／假已滿）。
+        $scheduledRows = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduledRows, $date);
+
         $classSessions = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->join('Student as st', 'st.id', '=', 'sc.StudentID')
