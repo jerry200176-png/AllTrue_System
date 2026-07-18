@@ -583,4 +583,107 @@ class BugReportService
 
         return $payload;
     }
+
+    /**
+     * Bugs eligible for Evidence Contract reporter-verify timeout.
+     * Requires status=resolved, last resolve ≥ $days ago, and resolve log contains
+     * machine [resolution_evidence] (do not timeout unverified "text-only" resolves).
+     *
+     * @return list<array{bug_id:int,resolved_at:string,days_resolved:int}>
+     */
+    public static function listEligibleForReporterTimeout(int $days = 7, ?Carbon $now = null): array
+    {
+        $now = $now ?: Carbon::now();
+        $cutoff = $now->copy()->subDays($days);
+
+        $bugIds = BugReport::query()->where('status', 'resolved')->pluck('id')->all();
+        $out = [];
+        foreach ($bugIds as $rawBugId) {
+            $bugId = (int) $rawBugId;
+            $resolveLog = BugReportStatusLog::query()
+                ->where('bug_report_id', $bugId)
+                ->where('to_status', 'resolved')
+                ->orderByDesc('id')
+                ->first();
+            if (!$resolveLog || !$resolveLog->created_at) {
+                continue;
+            }
+            if ($resolveLog->created_at->gt($cutoff)) {
+                continue;
+            }
+            $note = (string) ($resolveLog->note ?? '');
+            if (!str_contains($note, '[resolution_evidence]')) {
+                // Exclusion: production-unverified resolve (legacy / pre-enforcement)
+                continue;
+            }
+            // Exclusion: reporter already reopened after this resolve (status would not be resolved)
+            $out[] = [
+                'bug_id' => $bugId,
+                'resolved_at' => $resolveLog->created_at->toIso8601String(),
+                'days_resolved' => $resolveLog->created_at->diffInDays($now),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
+     *
+     * @return array{ok:bool,action:string,code?:string,message?:string}
+     */
+    public static function closeByReporterTimeout(
+        int $bugId,
+        int $actorUserId,
+        bool $dryRun = false,
+        int $days = 7
+    ): array {
+        $bug = BugReport::query()->where('id', $bugId)->first();
+        if (!$bug) {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_found', 'message' => 'Bug not found'];
+        }
+        if ($bug->status === 'closed') {
+            $already = BugReportStatusLog::query()
+                ->where('bug_report_id', $bugId)
+                ->where('to_status', 'closed')
+                ->where('note', 'like', '%closed_by_timeout%')
+                ->exists();
+            return [
+                'ok' => true,
+                'action' => $already ? 'already_closed_by_timeout' : 'already_closed',
+            ];
+        }
+        if ($bug->status !== 'resolved') {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_resolved', 'message' => 'Bug is not resolved'];
+        }
+
+        $eligibleIds = array_column(self::listEligibleForReporterTimeout($days), 'bug_id');
+        if (!in_array($bugId, $eligibleIds, true)) {
+            return [
+                'ok' => false,
+                'action' => 'skip',
+                'code' => 'not_eligible',
+                'message' => 'Not eligible (age, missing resolution_evidence, or exclusion)',
+            ];
+        }
+
+        if ($dryRun) {
+            return ['ok' => true, 'action' => 'would_close'];
+        }
+
+        $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
+        $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+        if (!$result['ok']) {
+            return [
+                'ok' => false,
+                'action' => 'failed',
+                'code' => isset($result['code']) ? $result['code'] : 'close_failed',
+                'message' => isset($result['message']) ? $result['message'] : 'close failed',
+            ];
+        }
+
+        Log::info('bug_closed_by_timeout', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId]);
+
+        return ['ok' => true, 'action' => 'closed'];
+    }
 }
