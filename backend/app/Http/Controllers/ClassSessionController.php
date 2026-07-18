@@ -350,8 +350,7 @@ class ClassSessionController extends Controller
         $row->student_class_id = (int) $row->StudentClassID;
         $row->student_id = (int) $row->StudentID;
         $row->course_stop = (int) ($row->course_stop ?? 0) === 1 ? 1 : 0;
-        $row->course_session_count = isset($row->course_session_count) && $row->course_session_count !== null
-            ? (int) $row->course_session_count : 0;
+        $row->course_session_count = (int) ($row->course_session_count ?? 0);
         $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
             ? (int) $row->substitute_teacher_id : 0;
         $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
