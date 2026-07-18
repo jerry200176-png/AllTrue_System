@@ -110,15 +110,15 @@ jobs:
             $app = require "bootstrap/app.php";
             $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
             $out = [
-              "s11292" => DB::table("ClassSession")->where("id", 11292)->first(["id","Status","StudentClassID"]),
-              "s16951" => DB::table("ClassSession")->where("id", 16951)->first(["id","Status","StudentClassID"]),
-              "sc114" => DB::table("StudentClass")->where("ID", 114)->first(["ID","UsedSessions","RemainingSessions"]),
-              "sc2076" => DB::table("StudentClass")->where("ID", 2076)->first(["ID","UsedSessions","RemainingSessions"]),
-              "correction" => DB::table("session_corrections")->where("session_id", 11292)->orderByDesc("id")->first(),
-              "lr8883" => DB::table("LearningRecord")->where("id", 8883)->first(["id","ClassSessionID","VoidedAt"]),
-              "lr9959" => DB::table("LearningRecord")->where("id", 9959)->first(["id","ClassSessionID","VoidedAt"]),
-              "inv137" => DB::table("Invoice")->where("id", 137)->first(["id","PaidAmount","Status"]),
-              "inv936" => DB::table("Invoice")->where("id", 936)->first(["id","PaidAmount","Status"]),
+              "s11292" => \Illuminate\Support\Facades\DB::table("ClassSession")->where("id", 11292)->first(["id","Status","StudentClassID"]),
+              "s16951" => \Illuminate\Support\Facades\DB::table("ClassSession")->where("id", 16951)->first(["id","Status","StudentClassID"]),
+              "sc114" => \Illuminate\Support\Facades\DB::table("StudentClass")->where("ID", 114)->first(["ID","UsedSessions","RemainingSessions"]),
+              "sc2076" => \Illuminate\Support\Facades\DB::table("StudentClass")->where("ID", 2076)->first(["ID","UsedSessions","RemainingSessions"]),
+              "correction" => \Illuminate\Support\Facades\DB::table("session_corrections")->where("session_id", 11292)->orderByDesc("id")->first(),
+              "lr8883" => \Illuminate\Support\Facades\DB::table("LearningRecord")->where("id", 8883)->first(["id","ClassSessionID","VoidedAt"]),
+              "lr9959" => \Illuminate\Support\Facades\DB::table("LearningRecord")->where("id", 9959)->first(["id","ClassSessionID","VoidedAt"]),
+              "inv137" => \Illuminate\Support\Facades\DB::table("Invoice")->where("id", 137)->first(["id","PaidAmount","Status"]),
+              "inv936" => \Illuminate\Support\Facades\DB::table("Invoice")->where("id", 936)->first(["id","PaidAmount","Status"]),
             ];
             echo json_encode($out, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT), PHP_EOL;
           '
