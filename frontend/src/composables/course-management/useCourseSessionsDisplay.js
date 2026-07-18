@@ -12,6 +12,7 @@ import {
   sessionViewModelPatchFromApi,
   sortSessionViewModels,
 } from '../../lib/classSessionsApi';
+import { describeSessionAttendanceSource } from '../../lib/attendanceSourceDisplay';
 
 const LEAVE_STATUSES = new Set(['leave', 'leave_adjusted', 'excused']);
 const ATTENDED_SESSION_STATUSES = new Set(['completed', 'attended', 'late']);
@@ -260,13 +261,6 @@ export function useCourseSessionsDisplay({
     return sorted[0] || null;
   };
 
-  const resolveRecordedByLabel = (row) => {
-    const memo = String(row?.attendanceMemo || '').toLowerCase();
-    if (memo === 'swipe' || memo === 'swipe-rfid') return 'RFID 刷卡';
-    if (memo === 'manual-match') return row?.recordedByName || '人工配對';
-    return row?.recordedByName || row?.teacherName || '';
-  };
-
   const getCompletedSessionCount = (course) => {
     const rows = getCourseSessionRows(course);
     if (rows.length > 0) {
@@ -394,9 +388,12 @@ export function useCourseSessionsDisplay({
     if (isContractException(row) && stateLabel !== '例外堂') lines.push('類型：例外堂');
     const attendanceTime = formatAttendanceTooltipTime(row?.attendanceSignInAt);
     if (attendanceTime) lines.push(`點名時間：${attendanceTime}`);
-    const recordedBy = resolveRecordedByLabel(row);
-    if (recordedBy) lines.push(`點名人：${recordedBy}`);
-    if (!attendanceTime && !recordedBy && row?.teacherName) lines.push(`授課老師：${row.teacherName}`);
+    const source = describeSessionAttendanceSource(row);
+    if (source?.kind === 'attendance') lines.push(`點名來源：${source.label}`);
+    if (source?.kind === 'system') lines.push(`建立來源：${source.label}`);
+    if (!attendanceTime && source?.kind !== 'attendance' && row?.teacherName) {
+      lines.push(`授課老師：${row.teacherName}`);
+    }
     return lines.join('\n');
   };
 

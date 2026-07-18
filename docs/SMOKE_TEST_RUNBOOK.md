@@ -68,7 +68,7 @@ bash scripts/smoke-api.sh
 Post-merge 完整驗收（§B5，merge + deploy 後 AI/CEO 執行）：
 
 ```bash
-cd ~/alltrue && git pull origin main
+cd <safe-task-worktree> && git pull origin main  # never /home/jerry/alltrue
 bash scripts/post-merge-smoke.sh
 ```
 

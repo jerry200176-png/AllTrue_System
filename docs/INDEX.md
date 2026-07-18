@@ -9,21 +9,27 @@
 
 > **Source of truth:** committed files on `origin/main` only.
 
+---
+
+## Start here (10-minute onboarding)
+
+| Question | Canonical answer |
+|----------|------------------|
+| 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
+| 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
+| production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
+| 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
+| 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
+| 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
+| bug 如何追溯到 production？ | in-app bug → PR → deploy Actions → `version.json` / repair run → KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
+| 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
+
+**Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).
+
+---
+
 > **前人種樹，後人乘涼。** 本檔只做指標定位；runtime 不讀 INDEX。
->
-> **知識流轉三層：**
-> ```
-> Docs（長期文件）←──────────────────────────────┐
->   ↓ AI 開工讀 INDEX → 定位 → 只讀對應章節       │ 做完寫記錄
-> MemPalace（召回索引，非權威）                      │
->   ↓ scripts/mempalace-ingest.sh（唯一更新入口）   │
->   ↓ post-merge 自動呼叫 ingest                    │
-> AI Session（執行）──────────────── write-back ──►│ (CHANGELOG /
->                                                 │  AI_REGRESSION /
->                                                 │  TECH_DEBT)
-> ```
-> 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。  
-> **長文不漏讀**：速讀卡與版本更新鏈已整合在本 INDEX；[`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 僅保留作索引 stub。
 
 ---
 
@@ -85,8 +91,9 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 **公司 slogan：前人種樹，後人乘涼。**
 
 治理原則：
-1. 做事前先查：先讀本 INDEX，再按任務查 Docs / MemPalace / 對應 rules。
-2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`。
+1. 做事前先查：先讀 [`docs/governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) 與本 INDEX，再按任務查 Docs / MemPalace / 對應 rules。
+2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`；高風險修補進 [`docs/knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)。
+3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
 3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
 5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
@@ -111,7 +118,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 4. **In-app Bug 回報**（分診／上線後回寫）：`docs/CHAT_BUG_SYSTEM.md` §3.6–§3.7、`AI_REGRESSION_LESSONS.md` §R51／§R53；**關閉閘門** → `docs/GUIDE_BUG_CLOSURE_GATE.md`；**內部 ID 外洩盤點** → [`docs/GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md`](GUIDE_UX_INTERNAL_IDENTIFIER_AUDIT.md)
 5. **In-app Bug 公開回覆白話範本**：`docs/GUIDE_SUPPORT_REPLY_MACROS.md`（10 個 macro，對應狀態機；送出前跑禁用詞檢查）
 6. **外部工程技能包（選用）**：[`docs/GUIDE_AGENT_SKILLS.md`](GUIDE_AGENT_SKILLS.md) — addyosmani/agent-skills 整合評估；[`docs/GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md`](GUIDE_ALLTRUE_AGENT_SYSTEM_V1.md) — AllTrue 本地化 `.cursor/skills/alltrue-*`
-7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)
+7. **資料修復／事故 execution package（需核准）**：[`docs/incidents/189-191-data-repair-plan.md`](incidents/189-191-data-repair-plan.md)、[`docs/incidents/189-191-execution-package.md`](incidents/189-191-execution-package.md)、[`docs/incidents/190-historical-billing-repair-plan.md`](incidents/190-historical-billing-repair-plan.md)、[`docs/incidents/190-reconciliation-report.md`](incidents/190-reconciliation-report.md)、[`docs/incidents/190-billing-technical-options.md`](incidents/190-billing-technical-options.md)、[`docs/incidents/189-191-dryrun-report.md`](incidents/189-191-dryrun-report.md)、[#1127 scheduler output evidence](incidents/1127-scheduler-evidence-execution-package.md)、[2026-07-18 新店出缺勤雙列](incidents/2026-07-18-xindian-duplicate-attendance-slots.md)、[scheduled-cross-sc execution](incidents/2026-07-18-scheduled-cross-sc-execution-package.md)
 8. **Bug 關閉閘門**：[`docs/GUIDE_BUG_CLOSURE_GATE.md`](GUIDE_BUG_CLOSURE_GATE.md) — 根因/測試/驗證/回覆/文件/回滾六項必填
 9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
 10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)

@@ -37,7 +37,7 @@ git ls-files .github/workflows/deploy-production.yml  # must be empty
 
 ---
 
-## Local working tree cleanup (~/alltrue shadow files)
+## Local working tree cleanup (legacy ~/alltrue / forbidden tree — do not use as active root)
 
 Untracked shadow files on disk do **not** affect production. After PR #1015 merges:
 

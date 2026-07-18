@@ -7,6 +7,7 @@ name: Docs Integrity
 on:
   pull_request:
     branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   schedule:
     - cron: "20 1 * * 1"
   workflow_dispatch:
@@ -22,6 +23,7 @@ permissions:
 jobs:
   changes:
     name: Detect docs changes
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     # Current topology: GitHub-hosted. See docs/REF_CI_RUNNER_TOPOLOGY.md.
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -29,7 +31,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
 
       - name: Detect changed paths
         id: filter
@@ -43,7 +45,13 @@ jobs:
               - 'CLAUDE.md'
               - '.cursorrules'
               - '.cursor/rules/**'
+              - 'Makefile'
               - 'scripts/docs-integrity-check.mjs'
+              - 'scripts/governance/**'
+              - 'scripts/radars/**'
+              - 'scripts/agent-preflight.sh'
+              - 'scripts/catalog/**'
+              - 'docs/catalog/**'
               - '.github/workflows/docs-integrity.yml'
 
   integrity:
@@ -57,7 +65,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0 (SHA pin pilot 2026-07-18)
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v6
@@ -66,3 +74,10 @@ jobs:
 
       - name: Run docs integrity check
         run: node scripts/docs-integrity-check.mjs --strict
+      - name: Service catalog validate
+        run: make catalog-validate
+      - name: Governance health (capability + invariants + overlay pin)
+        run: |
+          make instruction-invariants
+          make validate-capabilities
+          make overlay-pin || { echo "overlay pin check failed"; exit 1; }

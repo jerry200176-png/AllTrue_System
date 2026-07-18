@@ -216,6 +216,8 @@ class ClassSessionController extends Controller
                 'cs.session_charge',
                 'sc.StudentID',
                 'sc.TeacherID',
+                'sc.Stop as course_stop',
+                'sc.SessionCount as course_session_count',
                 'sc.Rate as sc_rate',
                 'sc.SessionDuration as sc_session_duration',
                 'sc.rate_unit as sc_rate_unit',
@@ -303,6 +305,12 @@ class ClassSessionController extends Controller
             });
         }
 
+        // R20 / 2026-07-18：Stop=1 課程殘留的 scheduled 會讓出缺勤「今日待點名」出現雙列。
+        // 預設隱藏；稽核可用 include_stopped_scheduled=1 帶回。
+        if (!$request->boolean('include_stopped_scheduled')) {
+            $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
+        }
+
         return $query;
     }
 
@@ -341,6 +349,8 @@ class ClassSessionController extends Controller
         $row->id = (int) $row->id;
         $row->student_class_id = (int) $row->StudentClassID;
         $row->student_id = (int) $row->StudentID;
+        $row->course_stop = (int) ($row->course_stop ?? 0) === 1 ? 1 : 0;
+        $row->course_session_count = (int) ($row->course_session_count ?? 0);
         $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
             ? (int) $row->substitute_teacher_id : 0;
         $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;
@@ -1856,7 +1866,12 @@ class ClassSessionController extends Controller
                     'errors' => ['new_date' => ['新日期格式無效']],
                 ], 422);
             }
-            if ($parsedNewDate->lt(Carbon::today())) {
+            // Historical corrections may adjust the time within the same
+            // already-recorded lesson date. Moving a lesson to a different
+            // past date remains blocked; that would be a historical rewrite,
+            // not a bounded substitute bookkeeping correction.
+            $isSameHistoricalSessionDate = $parsedNewDate->toDateString() === $origSessionDate;
+            if ($parsedNewDate->lt(Carbon::today()) && !$isSameHistoricalSessionDate) {
                 return response()->json([
                     'message' => '新日期不可為過去日期',
                     'errors' => ['new_date' => ['新日期不可為過去日期']],
@@ -2008,7 +2023,8 @@ class ClassSessionController extends Controller
                 $sessionDate,
                 $startTime,
                 $endTime,
-                $excludeSchedIds
+                $excludeSchedIds,
+                $studentId > 0 ? $studentId : null
             );
             $crossConflicts = array_values(array_filter(
                 $allBusy,
@@ -2019,7 +2035,11 @@ class ClassSessionController extends Controller
                     'class_session_id' => $id,
                     'new_teacher_id' => $newTeacherId,
                     'session_date' => $sessionDate,
-                    'conflicts' => $crossConflicts,
+                    'conflict_count' => count($crossConflicts),
+                    'conflict_campus_ids' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => (int) ($conflict['campus_id'] ?? 0),
+                        $crossConflicts
+                    )))),
                 ]);
 
                 return response()->json([
@@ -2041,6 +2061,8 @@ class ClassSessionController extends Controller
                 'start_time' => $startTime,
                 'end_time' => $endTime,
                 'exclude_schedule_id' => $existingScheduled ? (int) $existingScheduled->id : null,
+                // in-app #203：排除同一學生續約／雙軌佔用，避免代課自撞假 409
+                'exclude_student_id' => $studentId > 0 ? $studentId : null,
             ]);
             if (!empty($conflicts)) {
                 $conflictMessage = $conflicts[0]['message'] ?? '代課老師此時段與既有課程衝突';
@@ -2053,7 +2075,11 @@ class ClassSessionController extends Controller
                     'class_session_id' => $id,
                     'new_teacher_id' => $newTeacherId,
                     'session_date' => $sessionDate,
-                    'conflicts' => $conflicts,
+                    'conflict_count' => count($conflicts),
+                    'conflict_types' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => $conflict['type'] ?? null,
+                        $conflicts
+                    )))),
                 ]);
 
                 return response()->json([
@@ -2957,4 +2983,3 @@ class ClassSessionController extends Controller
         }
     }
 }
-

@@ -11,6 +11,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class BugReportService
@@ -195,20 +196,59 @@ class BugReportService
         return $comment;
     }
 
-    public static function changeStatus(int $bugId, int $changedBy, string $newStatus, ?string $note = null): bool
-    {
+    /**
+     * Change bug status. When transitioning to `resolved`, requires Evidence Contract fields
+     * via $options (see assertResolvedEvidence).
+     *
+     * @param  array{
+     *   production_revision?: ?string,
+     *   deploy_run_id?: ?string,
+     *   evidence_exception_reason?: ?string,
+     *   allow_exception?: bool
+     * }  $options
+     * @return array{ok: bool, code?: string, message?: string}
+     */
+    public static function changeStatus(
+        int $bugId,
+        int $changedBy,
+        string $newStatus,
+        ?string $note = null,
+        array $options = []
+    ): array {
         $bug = BugReport::find($bugId);
         if (!$bug) {
-            return false;
+            return ['ok' => false, 'code' => 'not_found', 'message' => 'Bug not found'];
         }
 
         $fromStatus = $bug->status;
         $allowed = self::VALID_TRANSITIONS[$fromStatus] ?? [];
         if (!in_array($newStatus, $allowed, true)) {
-            return false;
+            return ['ok' => false, 'code' => 'invalid_transition', 'message' => 'Invalid status transition'];
         }
 
-        return DB::transaction(function () use ($bug, $changedBy, $newStatus, $note) {
+        $statusNote = $note;
+        if ($newStatus === 'resolved') {
+            $evidence = self::assertResolvedEvidence($bugId, $options);
+            if (!$evidence['ok']) {
+                Log::info('bug_resolve_rejected', [
+                    'bug_id' => $bugId,
+                    'code' => isset($evidence['code']) ? $evidence['code'] : 'evidence_rejected',
+                    'from_status' => $fromStatus,
+                ]);
+                return $evidence;
+            }
+            $payload = [
+                'production_revision' => $evidence['production_revision'] ?? null,
+                'deploy_run_id' => $evidence['deploy_run_id'] ?? null,
+                'evidence_exception_reason' => $evidence['evidence_exception_reason'] ?? null,
+                'resolver_user_id' => $changedBy,
+                'resolved_at' => Carbon::now()->toIso8601String(),
+            ];
+            $encoded = '[resolution_evidence]' . json_encode($payload, JSON_UNESCAPED_UNICODE);
+            $statusNote = $note ? ($encoded . "\n" . $note) : $encoded;
+        }
+
+        DB::transaction(function () use ($bug, $changedBy, $newStatus, $statusNote) {
             $fromStatus = $bug->status;
             $bug->status = $newStatus;
             $bug->save();
@@ -218,12 +258,91 @@ class BugReportService
                 'changed_by' => $changedBy,
                 'from_status' => $fromStatus,
                 'to_status' => $newStatus,
-                'note' => $note,
+                'note' => $statusNote,
                 'created_at' => Carbon::now(),
             ]);
-
-            return true;
         });
+
+        return ['ok' => true];
+    }
+
+    /**
+     * Evidence Contract: public reply + production revision (or approved exception).
+     * Does not parse free-form "done" claims as evidence.
+     *
+     * @param  array{
+     *   production_revision?: ?string,
+     *   deploy_run_id?: ?string,
+     *   evidence_exception_reason?: ?string,
+     *   allow_exception?: bool
+     * }  $options
+     * @return array{ok: bool, code?: string, message?: string, production_revision?: ?string, deploy_run_id?: ?string, evidence_exception_reason?: ?string}
+     */
+    public static function assertResolvedEvidence(int $bugId, array $options = []): array
+    {
+        $hasPublic = BugReportComment::query()
+            ->where('bug_report_id', $bugId)
+            ->where('is_internal_note', false)
+            ->exists();
+        if (!$hasPublic) {
+            return [
+                'ok' => false,
+                'code' => 'missing_public_reply',
+                'message' => 'resolved requires a public (non-internal) comment visible to the reporter',
+            ];
+        }
+
+        $revision = isset($options['production_revision']) ? trim((string) $options['production_revision']) : '';
+        $deployRunId = isset($options['deploy_run_id']) ? trim((string) $options['deploy_run_id']) : '';
+        $exception = isset($options['evidence_exception_reason'])
+            ? trim((string) $options['evidence_exception_reason'])
+            : '';
+        $allowException = !empty($options['allow_exception']);
+
+        if ($revision !== '') {
+            if (!preg_match('/^[0-9a-f]{7,40}$/i', $revision)) {
+                return [
+                    'ok' => false,
+                    'code' => 'invalid_production_revision',
+                    'message' => 'production_revision must be a git SHA (7–40 hex chars)',
+                ];
+            }
+            return [
+                'ok' => true,
+                'production_revision' => strtolower($revision),
+                'deploy_run_id' => $deployRunId !== '' ? $deployRunId : null,
+                'evidence_exception_reason' => null,
+            ];
+        }
+
+        if ($exception !== '') {
+            if (!$allowException) {
+                return [
+                    'ok' => false,
+                    'code' => 'exception_forbidden',
+                    'message' => 'evidence_exception_reason requires super_admin',
+                ];
+            }
+            if (mb_strlen($exception) < 20) {
+                return [
+                    'ok' => false,
+                    'code' => 'exception_too_short',
+                    'message' => 'evidence_exception_reason must be at least 20 characters',
+                ];
+            }
+            return [
+                'ok' => true,
+                'production_revision' => null,
+                'deploy_run_id' => $deployRunId !== '' ? $deployRunId : null,
+                'evidence_exception_reason' => $exception,
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'code' => 'missing_production_evidence',
+            'message' => 'resolved requires production_revision (SHA) or approved evidence_exception_reason',
+        ];
     }
 
     public static function belongsToCampus(int $bugId, array $campusIds): bool
@@ -463,5 +582,108 @@ class BugReportService
         ])->all();
 
         return $payload;
+    }
+
+    /**
+     * Bugs eligible for Evidence Contract reporter-verify timeout.
+     * Requires status=resolved, last resolve ≥ $days ago, and resolve log contains
+     * machine [resolution_evidence] (do not timeout unverified "text-only" resolves).
+     *
+     * @return list<array{bug_id:int,resolved_at:string,days_resolved:int}>
+     */
+    public static function listEligibleForReporterTimeout(int $days = 7, ?Carbon $now = null): array
+    {
+        $now = $now ?: Carbon::now();
+        $cutoff = $now->copy()->subDays($days);
+
+        $bugIds = BugReport::query()->where('status', 'resolved')->pluck('id')->all();
+        $out = [];
+        foreach ($bugIds as $rawBugId) {
+            $bugId = (int) $rawBugId;
+            $resolveLog = BugReportStatusLog::query()
+                ->where('bug_report_id', $bugId)
+                ->where('to_status', 'resolved')
+                ->orderByDesc('id')
+                ->first();
+            if (!$resolveLog || !$resolveLog->created_at) {
+                continue;
+            }
+            if ($resolveLog->created_at->gt($cutoff)) {
+                continue;
+            }
+            $note = (string) ($resolveLog->note ?? '');
+            if (!str_contains($note, '[resolution_evidence]')) {
+                // Exclusion: production-unverified resolve (legacy / pre-enforcement)
+                continue;
+            }
+            // Exclusion: reporter already reopened after this resolve (status would not be resolved)
+            $out[] = [
+                'bug_id' => $bugId,
+                'resolved_at' => $resolveLog->created_at->toIso8601String(),
+                'days_resolved' => $resolveLog->created_at->diffInDays($now),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Close one eligible bug with closed_by_timeout note. Idempotent if already closed.
+     *
+     * @return array{ok:bool,action:string,code?:string,message?:string}
+     */
+    public static function closeByReporterTimeout(
+        int $bugId,
+        int $actorUserId,
+        bool $dryRun = false,
+        int $days = 7
+    ): array {
+        $bug = BugReport::query()->where('id', $bugId)->first();
+        if (!$bug) {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_found', 'message' => 'Bug not found'];
+        }
+        if ($bug->status === 'closed') {
+            $already = BugReportStatusLog::query()
+                ->where('bug_report_id', $bugId)
+                ->where('to_status', 'closed')
+                ->where('note', 'like', '%closed_by_timeout%')
+                ->exists();
+            return [
+                'ok' => true,
+                'action' => $already ? 'already_closed_by_timeout' : 'already_closed',
+            ];
+        }
+        if ($bug->status !== 'resolved') {
+            return ['ok' => false, 'action' => 'skip', 'code' => 'not_resolved', 'message' => 'Bug is not resolved'];
+        }
+
+        $eligibleIds = array_column(self::listEligibleForReporterTimeout($days), 'bug_id');
+        if (!in_array($bugId, $eligibleIds, true)) {
+            return [
+                'ok' => false,
+                'action' => 'skip',
+                'code' => 'not_eligible',
+                'message' => 'Not eligible (age, missing resolution_evidence, or exclusion)',
+            ];
+        }
+
+        if ($dryRun) {
+            return ['ok' => true, 'action' => 'would_close'];
+        }
+
+        $note = 'closed_by_timeout — Evidence Contract 7-day reporter-verify timeout; no reporter reply';
+        $result = self::changeStatus($bugId, $actorUserId, 'closed', $note);
+        if (!$result['ok']) {
+            return [
+                'ok' => false,
+                'action' => 'failed',
+                'code' => isset($result['code']) ? $result['code'] : 'close_failed',
+                'message' => isset($result['message']) ? $result['message'] : 'close failed',
+            ];
+        }
+
+        Log::info('bug_closed_by_timeout', ['bug_id' => $bugId, 'actor_user_id' => $actorUserId]);
+
+        return ['ok' => true, 'action' => 'closed'];
     }
 }

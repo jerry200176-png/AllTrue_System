@@ -653,6 +653,7 @@
               <th>老師</th>
               <th>分校</th>
               <th>狀態</th>
+              <th>建立來源</th>
               <th style="text-align:right">操作</th>
             </tr>
           </thead>
@@ -677,6 +678,13 @@
                 >自修</span>
                 <span v-else class="status-tag" :class="statusTagClass(record.Status)">
                   {{ record.status_label }}
+                </span>
+              </td>
+              <td>
+                <span :title="record.recorded_at ? `建立時間：${record.recorded_at}` : ''">
+                  {{ record.record_source === 'manual'
+                    ? (record.recorded_by_name || '人工登記')
+                    : '系統／刷卡' }}
                 </span>
               </td>
               <td style="text-align:right">
@@ -917,6 +925,7 @@
           <div><span class="att-dialog-label">學生：</span>{{ deleteDialog.record?.person_name ?? deleteDialog.record?.student_name ?? '—' }}</div>
           <div><span class="att-dialog-label">時間：</span>{{ deleteDialog.record ? formatTime(deleteDialog.record.SignInDT) : '—' }}</div>
           <div><span class="att-dialog-label">狀態：</span>{{ deleteDialog.record?.status_label ?? deleteDialog.record?.Memo ?? '—' }}</div>
+          <div><span class="att-dialog-label">建立來源：</span>{{ deleteDialog.record?.record_source === 'manual' ? (deleteDialog.record?.recorded_by_name || '人工登記') : '系統／刷卡' }}</div>
         </div>
         <div class="att-dialog-field">
           <label for="delete-reason" style="font-size:14px;font-weight:500">

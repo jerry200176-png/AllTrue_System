@@ -465,6 +465,43 @@ class SubstituteWithRescheduleTest extends TestCase
         $res->assertStatus(422);
     }
 
+    public function test_past_session_allows_same_date_time_and_teacher_correction(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-04-20 08:00:00', 'Asia/Taipei'));
+        [$dirToken, , $subId, $session] = $this->seedScenarioSingleCampus();
+
+        $res = $this->withAuth($dirToken)->postJson("/api/v1/class-sessions/{$session->id}/substitute", [
+            'substitute_teacher_id' => $subId,
+            'reason' => '補正歷史授課老師與同日時間',
+            'new_date' => '2026-04-19',
+            'new_start_time' => '14:00',
+            'new_end_time' => '16:00',
+        ]);
+
+        $res->assertOk()->assertJsonFragment([
+            'operation_type' => 'substitute_with_reschedule',
+            'session_date' => '2026-04-19',
+            'start_time' => '14:00',
+            'end_time' => '16:00',
+            'substitute_teacher_id' => $subId,
+        ]);
+
+        $session->refresh();
+        $this->assertSame('2026-04-19', Carbon::parse($session->SessionDate)->toDateString());
+        $this->assertSame('14:00', substr((string) $session->StartTime, 0, 5));
+        $this->assertDatabaseHas('schedules', [
+            'student_course_id' => $session->StudentClassID,
+            'schedule_date' => '2026-04-19',
+            'status' => 'scheduled',
+            'teacher_id' => $subId,
+            'start_time' => '14:00',
+        ]);
+        $this->assertSame(
+            $subId,
+            (int) LearningRecord::where('ClassSessionID', $session->id)->value('TeacherID')
+        );
+    }
+
     // ───────────────────────────────────────────────────────────
     // 8. 近期代課記錄 API 回傳 operation_type 欄位
     // ───────────────────────────────────────────────────────────

@@ -31,7 +31,7 @@
 MemPalace ingestion is a **local-first, event-sourced DAG pipeline** that indexes:
 
 - **Sessions** — Cursor agent transcripts → wing `alltrue-sessions`
-- **Docs** — `~/alltrue/docs` → wing `alltrue-docs`
+- **Docs** — `<repo-root>/docs` → wing `alltrue-docs`
 
 ```
 scripts/mempalace-ingest.sh
@@ -52,7 +52,7 @@ scripts/mempalace/engine/run.sh          (orchestrator)
 
 **State model:** Append-only `events.jsonl` per run. No separate `.done` files. Resume and replay read events only.
 
-**Environment:** WSL2 dev machine (`~/alltrue`). Ingest **cannot run in GitHub Actions** (by design).
+**Environment:** WSL2 task worktree (see WORKTREE_POLICY; never `/home/jerry/alltrue`). Ingest **cannot run in GitHub Actions** (by design).
 
 ---
 
@@ -194,7 +194,7 @@ Use replay to answer: *Where did this run fail? Which stages completed?*
 ## 1.8 Running full ingestion
 
 ```bash
-cd ~/alltrue
+cd <repo-root>
 bash scripts/mempalace-ingest.sh
 ```
 
@@ -523,7 +523,7 @@ MemPalace has **no automated paging**. Operators react to:
 ## 3.2 Quick health check (60 seconds)
 
 ```bash
-cd ~/alltrue
+cd <repo-root>
 
 # 1. CLI present
 ~/.local/bin/mempalace --version
@@ -546,7 +546,7 @@ du -sh ~/.mempalace/palace
 ## 3.3 First commands in an incident
 
 ```bash
-cd ~/alltrue
+cd <repo-root>
 
 # What happened last?
 bash scripts/mempalace-ingest.sh --replay
@@ -735,7 +735,7 @@ bash scripts/mempalace-ingest.sh [options]
 ## Appendix C — Install post-merge hook (one-time per clone)
 
 ```bash
-cd ~/alltrue
+cd <repo-root>
 bash scripts/install-git-hooks.sh
 ```
 

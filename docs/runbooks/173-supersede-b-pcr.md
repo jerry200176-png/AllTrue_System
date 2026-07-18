@@ -1,6 +1,6 @@
 # PCR-2026-07-16-173-SUPERSEDE-B
 
-> **狀態**：CEO 已選 **B** — merge + deploy 後 dry-run → execute  
+> **狀態**：EXECUTED 2026-07-18 — dry-run 29633309003; execute 29633391473 (mutation OK); post-verify workflow fixed in follow-up  
 > **識別**：in-app #173 · 勿寫學生姓名 · **不**改 Trust／Day0
 
 ## Scope

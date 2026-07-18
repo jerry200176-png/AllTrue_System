@@ -5,6 +5,7 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 # ⛔ 此 workflow 只跑測試，絕對不部署任何東西到生產環境
@@ -22,6 +23,7 @@ jobs:
   # Contract I1–I5 gate — must pass before any test/build job (deploy triggers on this workflow).
   control_plane:
     name: Control Plane Contract Lint
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -33,13 +35,16 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Run control plane lint
         env:
           PR_TITLE: ${{ github.event.pull_request.title || '' }}
           CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
-        run: node scripts/control-plane-lint.mjs
+        run: |
+          node scripts/control-plane-lint.mjs
+          node scripts/ci-cost-guard.mjs
+          node scripts/ci-cost-guard.mjs --self-test
 
   changes:
     name: Detect changed areas
@@ -455,7 +460,7 @@ jobs:
 
       - name: Upload coverage report (#731)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-unit-coverage
           path: frontend/coverage/unit/

@@ -1,3 +1,4 @@
+<!-- Paths: see docs/governance/WORKTREE_POLICY.md — never use /home/jerry/alltrue -->
 # WSL2 本地開發環境設定指引
 
 > 目標：在 Windows WSL2 上建立完整開發環境，透過 GitHub Flow + CI/CD 自動部署到樹莓派。
@@ -99,7 +100,7 @@ cd alltrue
 ## 第四步：設定後端
 
 ```bash
-cd ~/alltrue/backend
+cd <repo-root>/backend  # task worktree; not /home/jerry/alltrue
 
 # 安裝 PHP 依賴
 composer install
@@ -117,7 +118,7 @@ cp .env.example .env.local
 ## 第五步：設定前端
 
 ```bash
-cd ~/alltrue/frontend
+cd <repo-root>/frontend
 npm install
 
 # 本地預覽（連接到生產 API，適合 UI 調整）
@@ -136,7 +137,7 @@ npm run dev
 ### 開始新功能 / 修 Bug
 
 ```bash
-cd ~/alltrue
+cd <repo-root>  # see docs/governance/WORKTREE_POLICY.md
 git checkout main
 git pull origin main          # 永遠從最新 main 開始
 

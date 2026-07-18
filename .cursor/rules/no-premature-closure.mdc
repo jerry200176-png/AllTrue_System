@@ -1,0 +1,11 @@
+---
+description: Block premature bug closure and metric gaming
+alwaysApply: true
+---
+
+# No premature closure
+
+- Do not mark in-app bugs `resolved` without public reporter-facing comment and production evidence ([`docs/governance/EVIDENCE_CONTRACT.md`](../../docs/governance/EVIDENCE_CONTRACT.md)).
+- CI green / issue close count / doc volume are not success.
+- Do not claim Plan complete as shipped.
+- Prefer [`docs/sop/AGENT_PREFLIGHT.md`](../../docs/sop/AGENT_PREFLIGHT.md) before writes.

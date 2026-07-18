@@ -4,10 +4,38 @@
  */
 export const changelogReleaseNotes = [
   {
+    "version": "2026.07.18",
+    "date": "2026-07-18",
+    "title": "2026.07.18 版本更新",
+    "summary": "跨老師拖曳會完整轉移代課與時段；堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "跨老師拖曳會完整轉移代課與時段",
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+          "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
+          "調課改為單一交易，並顯示點名建立來源"
+        ]
+      }
+    ],
+    "items": [
+      "跨老師拖曳會完整轉移代課與時段",
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
+      "調課改為單一交易，並顯示點名建立來源"
+    ]
+  },
+  {
     "version": "2026.07.17",
     "date": "2026-07-17",
     "title": "2026.07.17 版本更新",
-    "summary": "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數",
+    "summary": "learning-review notification sync no longer returns 500；surviving student sign-in orphans",
     "audience": [
       "teacher",
       "director"
@@ -16,12 +44,23 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "learning-review notification sync no longer returns 500",
+          "surviving student sign-in orphans",
           "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
+        ]
+      },
+      {
+        "title": "其他改善",
+        "items": [
+          "local PHPUnit schemas per ocess"
         ]
       }
     ],
     "items": [
-      "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數"
+      "learning-review notification sync no longer returns 500",
+      "surviving student sign-in orphans",
+      "夜間對帳面板可讀、可分類，且不再假裝能一鍵改堂數",
+      "local PHPUnit schemas per ocess"
     ]
   },
   {

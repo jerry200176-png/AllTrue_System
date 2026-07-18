@@ -29,31 +29,40 @@ class SubstituteService
      * 的學生/科目/教室等敏感欄位。PRD FR-004a / 第 9 節 Info Disclosure。
      *
      * @param  int[]  $excludeScheduleIds  排除這些 schedules.id（例：本次代課 anchor）
+     * @param  int|null  $excludeStudentId  排除該學生既有佔用（代課／續約雙軌自撞，in-app #203）
      * @return array<int, array{start_time:string,end_time:string,campus_id:int,source:string}>
      */
-    public function collectTeacherBusySlots(int $teacherId, string $date, array $excludeScheduleIds = []): array
+    public function collectTeacherBusySlots(int $teacherId, string $date, array $excludeScheduleIds = [], ?int $excludeStudentId = null): array
     {
         if ($teacherId <= 0) {
             return [];
         }
         $ymd = Carbon::parse($date)->toDateString();
         $excludeScheduleIds = array_values(array_unique(array_filter(array_map('intval', $excludeScheduleIds))));
+        $excludeStudentId = $excludeStudentId && $excludeStudentId > 0 ? (int) $excludeStudentId : null;
 
         // 來源 1：schedules 內正班 / 代課 / 加課 (status=scheduled)
-        $scheduleQuery = Schedule::query()
+        $scheduleQuery = DB::table('schedules')
             ->where('teacher_id', $teacherId)
             ->whereDate('schedule_date', $ymd)
             ->where('status', 'scheduled')
-            ->select('id', 'start_time', 'end_time', 'branch_id');
+            ->select('id', 'start_time', 'end_time', 'branch_id', 'student_course_id', 'student_id');
         if (!empty($excludeScheduleIds)) {
             $scheduleQuery->whereNotIn('id', $excludeScheduleIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        if ($excludeStudentId) {
+            $scheduleQuery->where(function ($q) use ($excludeStudentId) {
+                $q->whereNull('student_id')->orWhere('student_id', '!=', $excludeStudentId);
+            });
+        }
+        // #1296：ClassSession 已全數取消的 scheduled 例外 row 不再佔用時段
+        $scheduleRows = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleQuery->get(), $ymd);
 
         // 來源 2：ClassSession.SessionDate 當日 + StudentClass.TeacherID = 老師，
         // 排除已 cancelled / leave，以及已有其他代課老師的堂次（合約老師不需出席）。
         // 由 Student.CampusID 推斷分校。
-        $sessionRows = DB::table('ClassSession as cs')
+        $sessionQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
@@ -69,7 +78,11 @@ class SubstituteService
                     ->where('sub_sched.status', 'scheduled')
                     ->whereNotNull('sub_sched.original_schedule_id')
                     ->where('sub_sched.teacher_id', '!=', $teacherId);
-            })
+            });
+        if ($excludeStudentId) {
+            $sessionQuery->where('sc.StudentID', '!=', $excludeStudentId);
+        }
+        $sessionRows = $sessionQuery
             ->select(
                 'cs.id as class_session_id',
                 'cs.StartTime as start_time',
@@ -119,19 +132,21 @@ class SubstituteService
      * 與原有 collectTeacherBusySlots 互相獨立，向下相容不受影響。
      *
      * @param  int[]  $excludeScheduleIds
+     * @param  int|null  $excludeStudentId
      * @return array<int, array{start_time:string,end_time:string,campus_id:int,class_type:string,student_count:int,remaining_capacity:int}>
      */
-    public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = []): array
+    public function collectTeacherBusySlotsWithCapacity(int $teacherId, string $date, array $excludeScheduleIds = [], ?int $excludeStudentId = null): array
     {
         if ($teacherId <= 0) {
             return [];
         }
         $ymd = Carbon::parse($date)->toDateString();
         $excludeScheduleIds = array_values(array_unique(array_filter(array_map('intval', $excludeScheduleIds))));
+        $excludeStudentId = $excludeStudentId && $excludeStudentId > 0 ? (int) $excludeStudentId : null;
 
         // 來源 1：ClassSession（含 ClassType，用於計算容量）
         // 排除已有其他代課老師的堂次（合約老師不需出席，不佔用容量）。
-        $sessionRows = DB::table('ClassSession as cs')
+        $sessionQuery = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'cs.StudentClassID', '=', 'sc.ID')
             ->leftJoin('Student as st', 'sc.StudentID', '=', 'st.id')
             ->where('sc.TeacherID', $teacherId)
@@ -146,7 +161,11 @@ class SubstituteService
                     ->where('sub_sched.status', 'scheduled')
                     ->whereNotNull('sub_sched.original_schedule_id')
                     ->where('sub_sched.teacher_id', '!=', $teacherId);
-            })
+            });
+        if ($excludeStudentId) {
+            $sessionQuery->where('sc.StudentID', '!=', $excludeStudentId);
+        }
+        $sessionRows = $sessionQuery
             ->select(
                 'cs.StartTime as start_time',
                 'cs.EndTime as end_time',
@@ -156,7 +175,8 @@ class SubstituteService
             ->get();
 
         // 來源 2：schedules (status=scheduled)，透過 StudentClass 取得 ClassType
-        $scheduleQuery = Schedule::query()
+        // 使用 Query Builder（非 Eloquent），避免 join 後 student_id alias 被 Model 丟棄。
+        $scheduleQuery = DB::table('schedules')
             ->where('schedules.teacher_id', $teacherId)
             ->whereDate('schedules.schedule_date', $ymd)
             ->where('schedules.status', 'scheduled')
@@ -166,12 +186,22 @@ class SubstituteService
                 'schedules.start_time',
                 'schedules.end_time',
                 'schedules.branch_id',
+                'schedules.student_course_id',
+                'schedules.student_id',
                 DB::raw("COALESCE(sc2.ClassType, 'one_on_one') as class_type")
             );
         if (!empty($excludeScheduleIds)) {
             $scheduleQuery->whereNotIn('schedules.id', $excludeScheduleIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        if ($excludeStudentId) {
+            $scheduleQuery->where(function ($q) use ($excludeStudentId) {
+                $q->whereNull('schedules.student_id')
+                    ->orWhere('schedules.student_id', '!=', $excludeStudentId);
+            });
+        }
+        // #1296：ClassSession 已全數取消的 scheduled 例外 row 不再佔用時段
+        $scheduleRows = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleQuery->get(), $ymd);
 
         // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
         $rawSlots = [];
@@ -237,16 +267,23 @@ class SubstituteService
      * 回應只含 campus_id 與時段，不含學生/科目/教室明細。
      *
      * @param  int[]  $excludeScheduleIds
+     * @param  int|null  $excludeStudentId
      * @return array<int, array{start_time:string,end_time:string,campus_id:int}>
      */
-    public function detectCrossCampusConflict(int $teacherId, string $date, string $start, string $end, array $excludeScheduleIds = []): array
-    {
+    public function detectCrossCampusConflict(
+        int $teacherId,
+        string $date,
+        string $start,
+        string $end,
+        array $excludeScheduleIds = [],
+        ?int $excludeStudentId = null
+    ): array {
         $start = $this->hhmm($start);
         $end = $this->hhmm($end);
         if ($start === '' || $end === '') {
             return [];
         }
-        $busy = $this->collectTeacherBusySlots($teacherId, $date, $excludeScheduleIds);
+        $busy = $this->collectTeacherBusySlots($teacherId, $date, $excludeScheduleIds, $excludeStudentId);
         $conflicts = [];
         foreach ($busy as $slot) {
             if ($this->overlaps($start, $end, $slot['start_time'], $slot['end_time'])) {

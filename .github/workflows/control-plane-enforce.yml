@@ -3,6 +3,7 @@ name: Control Plane Enforce
 on:
   pull_request:
     branches: ["main"]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - 'docs/CONTROL_PLANE_CONTRACT.md'
       - 'docs/CONTRADICTION_REGISTRY.md'
@@ -12,6 +13,7 @@ on:
       - 'docs/RUNBOOK_ROLLBACK.md'
       - 'docs/OPERATIONAL_CONSTRAINTS.md'
       - 'scripts/control-plane-lint.mjs'
+      - 'scripts/ci-cost-guard.mjs'
       - '.github/workflows/deploy.yml'
       - '.github/workflows/ci.yml'
       - '.github/workflows/control-plane-enforce.yml'
@@ -28,6 +30,7 @@ permissions:
 jobs:
   enforce:
     name: Control plane contract lint
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,13 +42,16 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Run control plane lint
         env:
           PR_TITLE: ${{ github.event.pull_request.title || '' }}
           CONTRACT_CHANGE: ${{ contains(github.event.pull_request.title, '[contract-change]') && '1' || '' }}
-        run: node scripts/control-plane-lint.mjs
+        run: |
+          node scripts/control-plane-lint.mjs
+          node scripts/ci-cost-guard.mjs
+          node scripts/ci-cost-guard.mjs --self-test
 
       - name: Self-test (lint must catch violations)
         run: |

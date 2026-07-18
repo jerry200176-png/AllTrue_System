@@ -139,3 +139,70 @@ assert.equal(
   '',
   'attended session must not surface the leave-deferral provenance note (#555)',
 );
+
+// 2026-07-18 Xindian: 黃芝琳出缺勤「王品方／陳品承各兩堂」— API 回跨 SC 同 student+date+start
+// 兩筆 scheduled 時，pending 必須只留一列（對齊 TeacherHome student-slot dedupe；R20/#189）。
+const crossScPending = classifyAttendanceSessionRows([
+  {
+    id: 30001,
+    student_id: 89,
+    student_class_id: 787,
+    course_stop: 1,
+    student_name: '王品方',
+    subject_name: '數學',
+    teacher_name: '黃芝琳',
+    session_date: '2026-07-18',
+    start_time: '13:00',
+    end_time: '15:00',
+    status: 'scheduled',
+  },
+  {
+    id: 30002,
+    student_id: 89,
+    student_class_id: 1272,
+    course_stop: 0,
+    student_name: '王品方',
+    subject_name: '數學',
+    teacher_name: '黃芝琳',
+    session_date: '2026-07-18',
+    start_time: '13:00',
+    end_time: '15:00',
+    status: 'scheduled',
+  },
+  {
+    id: 30003,
+    student_id: 2144,
+    student_class_id: 1946,
+    course_stop: 0,
+    course_session_count: 8,
+    student_name: '陳品承',
+    subject_name: '理化',
+    teacher_name: '黃芝琳',
+    session_date: '2026-07-18',
+    start_time: '15:00',
+    end_time: '17:00',
+    status: 'scheduled',
+  },
+  {
+    id: 30004,
+    student_id: 2144,
+    student_class_id: 2264,
+    course_stop: 0,
+    course_session_count: 0,
+    student_name: '陳品承',
+    subject_name: '理化',
+    teacher_name: '黃芝琳',
+    session_date: '2026-07-18',
+    start_time: '15:00',
+    end_time: '17:00',
+    status: 'scheduled',
+  },
+]);
+assert.equal(crossScPending.pending.length, 2, 'one pending row per student slot');
+assert.equal(crossScPending.totalCount, 2);
+const pinFang = crossScPending.pending.find((r) => r.student_name === '王品方');
+assert.equal(pinFang.student_class_id, 1272, 'prefer Stop=0 course over Stop=1 orphan');
+assert.equal(pinFang.class_session_id, 30002);
+const pinCheng = crossScPending.pending.find((r) => r.student_name === '陳品承');
+assert.equal(pinCheng.student_class_id, 1946, 'prefer real contract over SessionCount=0 ghost shell (#189)');
+assert.equal(pinCheng.class_session_id, 30003);

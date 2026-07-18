@@ -1,5 +1,30 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: 代課挑選排除同一學生續約佔用（in-app #203）
+
+Fixed：為學生指派代課老師時，不再把「同一學生」既有的續約／雙軌 scheduled 佔用顯示成衝堂；同分校與跨分校檢查同樣排除該學生。其他學生的真實佔用仍會正確阻擋。
+
+開發備註：`exclude_student_id` 加入 availability API、`SubstituteService` busy 收集與 `ScheduleGuardService` 代課路徑（R74）。前端代課挑選器帶入 `context.student_id`。
+
+## 2026-07-18 — fix: 跨老師拖曳會完整轉移代課與時段 (#1282)
+
+
+Fixed：主任把單堂課拖到另一位老師欄位時，即使同時更改日期或時間，系統也會用同一個確認流程一次完成代課與改時段；不再只移動畫面上的課、卻把點名與評量留給原老師。歷史堂次可在原日期內更正老師與時間，登入失效或操作失敗時不會假裝成功。
+
+開發備註：跨老師手勢統一走 atomic substitute endpoint；修正 Supabase compatibility mutation-return contract、reschedule anchor idempotency/重掛、legacy 兩階段 422 補償與 cross-date ClassSession 延後物化。未自動修改任何 production 歷史資料。
+
+## 2026-07-18 — fix: 已取消堂次不再佔用代課老師時段
+
+Fixed：代課挑選與容量檢查不再把「ClassSession 已全部取消／請假，但 schedules 仍標 scheduled」的殘留例外當成真實衝堂或已滿；主任可正常指定代課。沒有對應堂次紀錄的補課排程仍會正確佔用時段。
+
+開發備註：`StaleScheduleExceptionFilter` 套用於 `SubstituteService` 與 `ScheduleGuardService`（#1296／in-app #203／R72／F1）。既有生產殘留 row 部署後立即無害，無需資料修復。
+
+## 2026-07-18 — fix: 出缺勤「同一堂變兩堂」跨約／停用殘留防護
+
+Fixed：老師出缺勤「今日待點名」若因舊約停用殘留或跨課程同日同時段雙列，畫面只會保留一堂；已停用課程的待上課次不再出現在預設列表。夜間向前產生堂次若偵測到同一學生同時段已有其他合約，會略過並留下稽核紀錄。主任日報會標示跨約待點名重疊與停用殘留筆數。
+
+開發備註：Attendance `student_id|date|start` 去重（優先 Stop=0、SessionCount>0）；`ClassSessionController::index` 預設隱藏 Stop=1 scheduled（`include_stopped_scheduled=1`）；`ForwardSessionGenerator` cross-SC skip + `cross_sc_slot_conflict` log；`repair:duplicate-sessions --case=scheduled-cross-sc`；digest `scheduled_cross_sc` / `orphan_stop_scheduled`。Incident：`docs/incidents/2026-07-18-xindian-duplicate-attendance-slots.md`。
+
 ## 2026-07-18 — fix: 調課改為單一交易，並顯示點名建立來源
 
 Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、目標堂、實際課堂與評量全部同步成功後才會顯示完成；任何衝堂、找不到原堂或網路錯誤都不會留下半套資料，也不會再假成功。出缺勤歷史新增「建立來源」，可直接看是誰人工登記，或由系統／刷卡建立。

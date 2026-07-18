@@ -27,7 +27,7 @@ This runbook captures the practical SOP to keep AllTrue stable during developmen
 
 ## A. Development SOP（2026-04-24 起：WSL2 本地開發）
 
-> ⛔ 禁止 SSH 到 Pi 直接改程式碼。所有改動必須在 WSL2 `~/alltrue` 進行。
+> ⛔ 禁止 SSH 到 Pi 直接改程式碼。所有改動必須在 **安全 task worktree** 進行（禁止 `/home/jerry/alltrue`；見 `docs/governance/WORKTREE_POLICY.md`）。
 
 1. **開始前同步**（在 WSL2 終端機）：
    ```bash

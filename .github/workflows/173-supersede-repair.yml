@@ -78,7 +78,22 @@ jobs:
           cd /home/admin/backend
 
           echo "=== mode=${MODE} ==="
-          php artisan repair:supersede-renewal-session --case=173
+          echo "TIP: session_corrections is authoritative. Red X after mutation ≠ NOT_APPLIED."
+          echo "States: NOT_APPLIED | APPLIED_AND_VERIFIED | APPLIED_POSTVERIFY_FAILED | ROLLED_BACK | ALREADY_APPLIED"
+
+          set +e
+          PRE=$(php artisan repair:supersede-renewal-session --case=173 2>&1)
+          PRE_EC=$?
+          set -e
+          echo "$PRE"
+          if echo "$PRE" | grep -qiE 'ALREADY APPLIED|Already applied'; then
+            echo "REPAIR_STATE=ALREADY_APPLIED"
+            if [ "${MODE}" = "dry-run" ]; then exit 0; fi
+            if [ "${MODE}" = "execute" ]; then
+              echo "Refusing duplicate execute — correction ledger shows applied."
+              exit 0
+            fi
+          fi
 
           if [ "${MODE}" = "dry-run" ]; then
             echo "Dry-run complete; no production data was changed."
@@ -93,33 +108,51 @@ jobs:
             ClassSession StudentClass LearningRecord Invoice Payment session_corrections \
             | gzip > "$BACKUP_FILE"
           echo "Backup: $BACKUP_FILE"
+          test -s "$BACKUP_FILE"
 
           export ALLOW_PROD_REPAIR=1
+          set +e
           if [ "${MODE}" = "execute" ]; then
             SNAP="storage/app/repair-snapshots/173-supersede-${TS}.json"
             php artisan repair:supersede-renewal-session --case=173 --execute --force \
               --actor="${ACTOR}" --snapshot="$SNAP"
-            echo "SNAPSHOT=$SNAP"
+            MUT_EC=$?
+            echo "SNAPSHOT=$SNAP MUT_EC=$MUT_EC"
           else
             php artisan repair:supersede-renewal-session --case=173 --rollback --execute --force
+            MUT_EC=$?
+            echo "REPAIR_STATE=ROLLED_BACK_OR_FAILED exit=$MUT_EC"
+            unset ALLOW_PROD_REPAIR
+            exit "$MUT_EC"
           fi
           unset ALLOW_PROD_REPAIR
 
+          # Post-verify: full facade FQCN (avoid Class "DB" not found). Correction ledger is authoritative.
+          set +e
           php -r '
             require "vendor/autoload.php";
             $app = require "bootstrap/app.php";
             $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+            $DB = Illuminate\Support\Facades\DB::class;
             $out = [
-              "s11292" => DB::table("ClassSession")->where("id", 11292)->first(["id","Status","StudentClassID"]),
-              "s16951" => DB::table("ClassSession")->where("id", 16951)->first(["id","Status","StudentClassID"]),
-              "sc114" => DB::table("StudentClass")->where("ID", 114)->first(["ID","UsedSessions","RemainingSessions"]),
-              "sc2076" => DB::table("StudentClass")->where("ID", 2076)->first(["ID","UsedSessions","RemainingSessions"]),
-              "correction" => DB::table("session_corrections")->where("session_id", 11292)->orderByDesc("id")->first(),
-              "lr8883" => DB::table("LearningRecord")->where("id", 8883)->first(["id","ClassSessionID","VoidedAt"]),
-              "lr9959" => DB::table("LearningRecord")->where("id", 9959)->first(["id","ClassSessionID","VoidedAt"]),
-              "inv137" => DB::table("Invoice")->where("id", 137)->first(["id","PaidAmount","Status"]),
-              "inv936" => DB::table("Invoice")->where("id", 936)->first(["id","PaidAmount","Status"]),
+              "s11292" => $DB::table("ClassSession")->where("id", 11292)->first(["id","Status","StudentClassID"]),
+              "s16951" => $DB::table("ClassSession")->where("id", 16951)->first(["id","Status","StudentClassID"]),
+              "correction" => $DB::table("session_corrections")->where("session_id", 11292)->whereNull("rolled_back_at")->orderByDesc("id")->first(),
             ];
             echo json_encode($out, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT), PHP_EOL;
+            $ok = $out["correction"] && strtolower((string)($out["s11292"]->Status ?? "")) === "cancelled";
+            exit($ok ? 0 : 1);
           '
+          VER_EC=$?
+          set -e
+          if [ "$MUT_EC" -ne 0 ]; then
+            echo "REPAIR_STATE=NOT_APPLIED_OR_FAILED mut=$MUT_EC"
+            exit "$MUT_EC"
+          fi
+          if [ "$VER_EC" -ne 0 ]; then
+            echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED"
+            echo "::warning::Mutation committed (session_corrections). Do NOT re-run execute blindly."
+            exit 42
+          fi
+          echo "REPAIR_STATE=APPLIED_AND_VERIFIED"
           ENDSSH

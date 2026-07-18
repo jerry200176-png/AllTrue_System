@@ -206,6 +206,9 @@ class BugReportController extends Controller
         $request->validate([
             'status' => 'required|in:new,triaged,in_progress,resolved,closed',
             'note' => 'nullable|string|max:500',
+            'production_revision' => 'nullable|string|max:40',
+            'deploy_run_id' => 'nullable|string|max:64',
+            'evidence_exception_reason' => 'nullable|string|max:500',
         ]);
 
         $userId = $this->resolveUserId($request);
@@ -215,9 +218,27 @@ class BugReportController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        $ok = BugReportService::changeStatus($bugId, $userId, $request->input('status'), $request->input('note'));
-        if (!$ok) {
-            return response()->json(['message' => 'Invalid status transition'], 422);
+        $role = $request->attributes->get('auth_role');
+        $isSuperAdmin = $role === 'super_admin';
+
+        $result = BugReportService::changeStatus(
+            $bugId,
+            $userId,
+            $request->input('status'),
+            $request->input('note'),
+            [
+                'production_revision' => $request->input('production_revision'),
+                'deploy_run_id' => $request->input('deploy_run_id'),
+                'evidence_exception_reason' => $request->input('evidence_exception_reason'),
+                'allow_exception' => $isSuperAdmin,
+            ]
+        );
+        if (!$result['ok']) {
+            return response()->json([
+                'ok' => false,
+                'code' => isset($result['code']) ? $result['code'] : 'invalid_transition',
+                'message' => isset($result['message']) ? $result['message'] : 'Invalid status transition',
+            ], 422);
         }
 
         return response()->json(['ok' => true]);
@@ -288,7 +309,14 @@ class BugReportController extends Controller
         $note      = $request->input('note')
             ?: ($newStatus === 'closed' ? '回報者確認已修好' : '回報者反映問題仍存在');
 
-        BugReportService::changeStatus($bugId, $userId, $newStatus, $note);
+        $result = BugReportService::changeStatus($bugId, $userId, $newStatus, $note);
+        if (!$result['ok']) {
+            return response()->json([
+                'ok' => false,
+                'code' => isset($result['code']) ? $result['code'] : 'invalid_transition',
+                'message' => isset($result['message']) ? $result['message'] : 'Invalid status transition',
+            ], 422);
+        }
 
         return response()->json(['ok' => true, 'new_status' => $newStatus]);
     }

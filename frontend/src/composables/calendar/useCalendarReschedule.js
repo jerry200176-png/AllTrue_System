@@ -9,10 +9,20 @@ import {
   formatRescheduleSuccessMessage,
   humanizeRescheduleFailure,
 } from '../../lib/scheduleDisplay.js';
+import { commitReschedule } from '../../lib/rescheduleApi.js';
+
+export function findExactRescheduleAnchor(exceptions, courseId, date, startTime) {
+  const startHm = String(startTime || '').slice(0, 5);
+  return (exceptions || []).find((ex) =>
+    ex.status === 'rescheduled'
+    && String(ex.student_course_id) === String(courseId)
+    && ex.schedule_date === date
+    && String(ex.start_time || '').slice(0, 5) === startHm,
+  ) || null;
+}
 
 /** #740 Step 7b2b：調課 modal + submit（拖曳 handler 留 SmartCalendar） */
 export function useCalendarReschedule({
-  supabase,
   branchId,
   showModal,
   modalForm,
@@ -20,8 +30,6 @@ export function useCalendarReschedule({
   loadCourses,
   getToken,
   allStudents,
-  courses,
-  exceptions,
   getSubjectLabel,
 }) {
   const getStudentName = (sid) => {
@@ -69,172 +77,44 @@ export function useCalendarReschedule({
     showRescheduleModal.value = true;
   };
 
-  const resolveTeacherIdForRescheduledSlot = (anchorId, courseId, fallbackTeacherId) => {
-    if (anchorId == null || anchorId === '' || !courseId) {
-      return fallbackTeacherId ?? null;
-    }
-    const subEx = exceptions.value.find((ex) =>
-      ex.status === 'scheduled'
-      && ex.original_schedule_id != null
-      && String(ex.original_schedule_id) === String(anchorId)
-      && String(ex.student_course_id) === String(courseId));
-    if (subEx?.teacher_id == null || String(subEx.teacher_id).trim() === '') {
-      return fallbackTeacherId ?? null;
-    }
-    const substituteTid = Number(subEx.teacher_id);
-    const fbNum = fallbackTeacherId != null && fallbackTeacherId !== ''
-      ? Number(fallbackTeacherId)
-      : 0;
-    const baseCourse = courses.value.find((c) => String(c.id) === String(courseId));
-    const contractTid = baseCourse?.teacher_id != null ? Number(baseCourse.teacher_id) : 0;
-    if (
-      contractTid > 0
-      && Number.isFinite(substituteTid)
-      && substituteTid > 0
-      && substituteTid !== contractTid
-      && (fbNum === 0 || fbNum === contractTid)
-    ) {
-      return substituteTid;
-    }
-    return fallbackTeacherId ?? null;
-  };
 
   const submitReschedule = async () => {
     if (!rescheduleForm.value.new_date) { alert('請選擇新日期'); return; }
-    const newDayOfWeek = dayOfWeekFromDate(rescheduleForm.value.new_date);
     const bid = Number(branchId.value ?? branchId) || 0;
     if (!bid) { alert('請先選擇分校'); return; }
-
-    const payload1 = {
-      student_id: rescheduleForm.value.student_id,
-      teacher_id: rescheduleForm.value.teacher_id || null,
-      subject: rescheduleForm.value.subject,
-      day_of_week: rescheduleForm.value.original_day,
-      start_time: rescheduleForm.value.original_start,
-      end_time: rescheduleForm.value.original_end,
-      duration_hours: rescheduleForm.value.duration_hours,
-      class_type: rescheduleForm.value.class_type,
-      status: 'rescheduled',
-      type: 'normal',
-      deduction: 0,
-      branch_id: bid,
-      student_course_id: rescheduleForm.value.course_id,
-      schedule_date: rescheduleForm.value.original_date,
-    };
-
-    const alreadyRescheduled = exceptions.value.some((ex) =>
-      (ex.status === 'rescheduled' || ex.status === 'leave')
-      && String(ex.student_course_id) === String(rescheduleForm.value.course_id)
-      && ex.schedule_date === rescheduleForm.value.original_date,
-    );
-    let originalId = null;
-    if (!alreadyRescheduled) {
-      const res1 = await supabase.from('schedules').insert([payload1]);
-      if (res1.error) {
-        alert('調課失敗：' + humanizeRescheduleFailure(res1.error?.message || '無法寫入原堂次紀錄'));
-        return;
-      }
-      const origList = Array.isArray(res1.data) ? res1.data : (res1.data ? [res1.data] : []);
-      originalId = origList[0]?.id ?? null;
-    } else {
-      const existing = exceptions.value.find((ex) =>
-        ex.status === 'rescheduled'
-        && String(ex.student_course_id) === String(rescheduleForm.value.course_id)
-        && ex.schedule_date === rescheduleForm.value.original_date,
-      );
-      originalId = existing?.id ?? null;
-    }
-
     const newEnd = computeEndTime(rescheduleForm.value.new_start, rescheduleForm.value.duration_hours);
 
-    const alreadySubstituted = originalId !== null && exceptions.value.some((ex) =>
-      ex.status === 'scheduled'
-      && ex.original_schedule_id != null
-      && String(ex.original_schedule_id) === String(originalId)
-      && String(ex.student_course_id) === String(rescheduleForm.value.course_id),
-    );
+    try {
+      const token = await getToken();
+      await commitReschedule({
+        token,
+        payload: {
+          student_class_id: rescheduleForm.value.course_id,
+          old_date: rescheduleForm.value.original_date,
+          old_start_time: rescheduleForm.value.original_start,
+          new_date: rescheduleForm.value.new_date,
+          start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
+          end_time: newEnd,
+          teacher_id: rescheduleForm.value.teacher_id || null,
+          subject: rescheduleForm.value.subject || null,
+        },
+      });
 
-    if (!alreadySubstituted) {
-      const effectiveTid = resolveTeacherIdForRescheduledSlot(
-        originalId,
-        rescheduleForm.value.course_id,
-        rescheduleForm.value.teacher_id,
-      );
-      const payload2 = {
-        student_id: rescheduleForm.value.student_id,
-        teacher_id: effectiveTid != null && effectiveTid !== '' ? effectiveTid : null,
-        subject: rescheduleForm.value.subject,
-        day_of_week: newDayOfWeek,
-        start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
-        end_time: newEnd,
-        duration_hours: rescheduleForm.value.duration_hours,
-        class_type: rescheduleForm.value.class_type,
-        status: 'scheduled',
-        type: 'normal',
-        deduction: 1,
-        branch_id: bid,
-        schedule_date: rescheduleForm.value.new_date,
-        original_schedule_id: originalId,
-        student_course_id: rescheduleForm.value.course_id,
-      };
-
-      const res2 = await supabase.from('schedules').insert([payload2]);
-      if (res2.error) {
-        if (originalId) {
-          await supabase.from('schedules').delete().eq('id', originalId);
-        }
-        const rawErr = res2.error?.message || '無法寫入新堂次';
-        const errMsg = humanizeRescheduleFailure(rawErr);
-        const isConflict = res2.error?.conflicts?.length > 0
-          || String(rawErr).includes('已有')
-          || String(rawErr).includes('上限');
-        if (isConflict) {
-          alert('調課失敗：目標時段已有其他學生，請換一個時段再試。');
-        } else {
-          alert('調課失敗：' + errMsg);
-        }
-        return;
-      }
+      showRescheduleModal.value = false;
+      await loadCourses();
+      alert(formatRescheduleSuccessMessage({
+        studentName: getStudentName(rescheduleForm.value.student_id),
+        subject: getSubjectLabel(rescheduleForm.value.subject),
+        originalDate: rescheduleForm.value.original_date,
+        originalStart: rescheduleForm.value.original_start,
+        originalEnd: rescheduleForm.value.original_end,
+        newDate: rescheduleForm.value.new_date,
+        newStart: normalizeTimeTo30(rescheduleForm.value.new_start),
+        newEnd,
+      }));
+    } catch (error) {
+      alert('調課失敗：' + humanizeRescheduleFailure(error?.message || '調課未完成，資料沒有變更'));
     }
-
-    if (rescheduleForm.value.course_id) {
-      try {
-        const token = await getToken();
-        const resched = await fetch('/api/v1/learning-records/reschedule-session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            student_class_id: rescheduleForm.value.course_id,
-            old_date: rescheduleForm.value.original_date || null,
-            old_start_time: rescheduleForm.value.original_start || undefined,
-            new_date: rescheduleForm.value.new_date,
-            start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
-            end_time: newEnd,
-          }),
-        });
-        if (!resched.ok) {
-          const err = await resched.json().catch(() => ({}));
-          alert('調課失敗：' + humanizeRescheduleFailure(err.message || '找不到指定堂次，請確認日期與時間是否正確'));
-          return;
-        }
-      } catch (e) {
-        alert('調課失敗：' + humanizeRescheduleFailure(e?.message || '網路錯誤，請稍後再試'));
-        return;
-      }
-    }
-
-    showRescheduleModal.value = false;
-    await loadCourses();
-    alert(formatRescheduleSuccessMessage({
-      studentName: getStudentName(rescheduleForm.value.student_id),
-      subject: getSubjectLabel(rescheduleForm.value.subject),
-      originalDate: rescheduleForm.value.original_date,
-      originalStart: rescheduleForm.value.original_start,
-      originalEnd: rescheduleForm.value.original_end,
-      newDate: rescheduleForm.value.new_date,
-      newStart: normalizeTimeTo30(rescheduleForm.value.new_start),
-      newEnd,
-    }));
   };
 
   const rescheduleDisplay = computed(() => ({

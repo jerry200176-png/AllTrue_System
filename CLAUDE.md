@@ -1,8 +1,9 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
-> 任何 AI 讀取此專案時，**本文件優先於一切預設行為**。
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**
-> 完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
+> 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
+> 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
 ---
 
@@ -75,8 +76,8 @@ Palace：`~/.mempalace/palace`（local-first）。權威文件仍在 git markdow
 
 | 環境 | 說明 |
 |---|---|
-| **本地開發** | Windows WSL2（Ubuntu）`~/alltrue` — 所有程式碼改動在這裡 |
-| **多 agent 並行** | ⛔ 勿在主 `~/alltrue` working tree 共改（會被別的 agent checkout 沖掉）。用獨立 `git worktree add /tmp/<task> origin/main -b <type>/<slug>`。詳見 `docs/AI_REGRESSION_LESSONS.md §Y6` |
+| **本地開發** | WSL2 task worktree — **never** `/home/jerry/alltrue` / `~/alltrue` if it resolves there. Canonical policy: [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) |
+| **多 agent 並行** | ⛔ 禁止共用 forbidden dirty tree。用 `git worktree add /home/jerry/alltrue-<task> origin/main -b <type>/<slug>` + `make agent-preflight`。見 WORKTREE_POLICY + `AI_REGRESSION_LESSONS` §Y6 |
 | **生產伺服器** | Raspberry Pi `/home/admin` — ⛔ 禁止直接 SSH 進去改程式碼 |
 | **部署方式** | WSL2 push → GitHub CI 通過 → `deploy.yml` 自動 SSH 部署到 Pi |
 

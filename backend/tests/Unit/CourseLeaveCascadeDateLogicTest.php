@@ -73,6 +73,54 @@ class CourseLeaveCascadeDateLogicTest extends TestCase
         CourseLeaveCascadeService::prevRecurringDate(Carbon::parse('2026-07-31'), [5], [], '2026-07-24');
     }
 
+    public function test_compute_shift_plan_vacates_next_weekday_after_leave(): void
+    {
+        // in-app #204: Saturday course; leave on 06/27 vacates 07/04 (sessions shift +1 week).
+        $sessions = [
+            ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-06-13', 'status' => 'attended'],
+            ['id' => 4, 'date' => '2026-06-20', 'status' => 'attended'],
+            ['id' => 5, 'date' => '2026-06-27', 'status' => 'scheduled'],
+            ['id' => 6, 'date' => '2026-07-04', 'status' => 'scheduled'],
+            ['id' => 7, 'date' => '2026-07-11', 'status' => 'scheduled'],
+            ['id' => 8, 'date' => '2026-07-18', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeShiftPlan($sessions, '2026-06-27', [6], 5);
+
+        $this->assertSame(['2026-07-04'], $plan['vacated']);
+        $this->assertSame(
+            [
+                ['from' => '2026-07-04', 'to' => '2026-07-11', 'id' => 6],
+                ['from' => '2026-07-11', 'to' => '2026-07-18', 'id' => 7],
+                ['from' => '2026-07-18', 'to' => '2026-07-25', 'id' => 8],
+            ],
+            $plan['moves']
+        );
+        $this->assertSame('2026-08-01', $plan['append']);
+        $this->assertSame('2026-08-01', $plan['extended_end_date']);
+    }
+
+    public function test_compute_shift_plan_second_leave_vacates_following_saturday(): void
+    {
+        // After first leave on 06/27, layout is leave + shifted Saturdays; second leave on 07/11 vacates 07/18.
+        $sessions = [
+            ['id' => 1, 'date' => '2026-05-30', 'status' => 'attended'],
+            ['id' => 2, 'date' => '2026-06-06', 'status' => 'attended'],
+            ['id' => 3, 'date' => '2026-06-13', 'status' => 'attended'],
+            ['id' => 4, 'date' => '2026-06-20', 'status' => 'attended'],
+            ['id' => 5, 'date' => '2026-06-27', 'status' => 'leave'],
+            ['id' => 6, 'date' => '2026-07-11', 'status' => 'scheduled'],
+            ['id' => 7, 'date' => '2026-07-18', 'status' => 'scheduled'],
+            ['id' => 8, 'date' => '2026-07-25', 'status' => 'scheduled'],
+            ['id' => 9, 'date' => '2026-08-01', 'status' => 'scheduled'],
+        ];
+        $plan = CourseLeaveCascadeService::computeShiftPlan($sessions, '2026-07-11', [6], 6);
+
+        $this->assertSame(['2026-07-18'], $plan['vacated']);
+        $this->assertSame('2026-08-15', $plan['append']);
+    }
+
     public function test_max_date_key(): void
     {
         $this->assertNull(CourseLeaveCascadeService::maxDateKey([]));

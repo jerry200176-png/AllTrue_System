@@ -2028,28 +2028,108 @@ const selectedLeaveOption = computed(() => {
     return opt.date === date;
   }) || null;
 });
+const leaveCascadePlan = ref(null);
+const leaveCascadePlanLoading = ref(false);
+
+function formatLeavePreviewDate(ymd) {
+  const s = String(ymd || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return `${s.slice(5, 7)}/${s.slice(8, 10)}`;
+}
+
+function buildLeaveCascadeImpactItems(baseItems, plan) {
+  const items = [...baseItems];
+  if (!plan) return items;
+  const vacated = Array.isArray(plan.vacated) ? plan.vacated : [];
+  if (vacated.length) {
+    items.push(
+      `原定上課日將被空出（不再排課）：${vacated.map(formatLeavePreviewDate).join('、')}`,
+    );
+  }
+  const moves = Array.isArray(plan.moves) ? plan.moves : [];
+  if (moves.length) {
+    const sample = moves
+      .slice(0, 4)
+      .map((m) => `${formatLeavePreviewDate(m.from)}→${formatLeavePreviewDate(m.to)}`)
+      .join('、');
+    const more = moves.length > 4 ? `…共 ${moves.length} 堂改期` : '';
+    items.push(`後續堂次改期：${sample}${more}`);
+  }
+  if (plan.append) {
+    items.push(`尾堂補上：${formatLeavePreviewDate(plan.append)}（課程結束日→${formatLeavePreviewDate(plan.extended_end_date || plan.append)}）`);
+  }
+  return items;
+}
+
 const leaveImpactPreview = computed(() => {
   const form = leaveForm.value;
   if (!form.schedule_date) return null;
   const retro = isSelectedRetroLeave.value;
   const option = selectedLeaveOption.value;
   const label = option?.label || `${form.schedule_date} ${form.start_time || ''}`.trim();
+  const baseItems = retro
+    ? [
+        '會沖回該堂已扣堂數，並重新計算課程剩餘堂數',
+        '會作廢該堂出缺勤與學習評量紀錄',
+        '後續課程會依請假規則重新順延',
+      ]
+    : [
+        '本堂會標記為請假，不扣堂數',
+        '後續課程會自動順延並補上尾堂',
+        '該堂不需要填寫學習評量',
+      ];
+  const items = buildLeaveCascadeImpactItems(baseItems, leaveCascadePlan.value);
+  if (leaveCascadePlanLoading.value) {
+    items.push('正在計算會被空出的日期…');
+  }
   return {
     title: retro ? '補請假高風險影響預覽' : '請假送出前影響預覽',
     summary: `${form.student_name || '學生'}｜${getSubjectLabel(form.subject)}｜${label}`,
-    items: retro
-      ? [
-          '會沖回該堂已扣堂數，並重新計算課程剩餘堂數',
-          '會作廢該堂出缺勤與學習評量紀錄',
-          '後續課程會依請假規則重新順延',
-        ]
-      : [
-          '本堂會標記為請假，不扣堂數',
-          '後續課程會自動順延並補上尾堂',
-          '該堂不需要填寫學習評量',
-        ],
+    items,
   };
 });
+
+async function refreshLeaveCascadePreview() {
+  const form = leaveForm.value;
+  const courseId = Number(form.course_id || 0);
+  const date = String(form.schedule_date || '').slice(0, 10);
+  if (!courseId || !date || !showLeaveModal.value) {
+    leaveCascadePlan.value = null;
+    return;
+  }
+  leaveCascadePlanLoading.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) {
+      leaveCascadePlan.value = null;
+      return;
+    }
+    const res = await fetch('/api/v1/schedules/leave-cascade-preview', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        student_course_id: courseId,
+        schedule_date: date,
+        class_session_id: form.session_id || undefined,
+      }),
+    });
+    if (!res.ok) {
+      leaveCascadePlan.value = null;
+      return;
+    }
+    leaveCascadePlan.value = await res.json();
+  } catch (_) {
+    leaveCascadePlan.value = null;
+  } finally {
+    leaveCascadePlanLoading.value = false;
+  }
+}
 async function openLeave(c) {
   await ensureCompletedSessionDatesLoaded(c);
   const opts = getLeaveSessionOptionsForCourse(c);
@@ -2075,6 +2155,7 @@ async function openLeave(c) {
     reason: ''
   };
   showLeaveModal.value = true;
+  await refreshLeaveCascadePreview();
 }
 async function submitLeave() {
   if (!leaveForm.value.schedule_date) return;
@@ -2238,7 +2319,10 @@ async function submitBulkLeave() {
 }
 
 watch(() => leaveForm.value.schedule_date, (date) => {
-  if (!date) return;
+  if (!date) {
+    leaveCascadePlan.value = null;
+    return;
+  }
   leaveForm.value.day_of_week = dayOfWeekFromDate(date);
   const option = leaveSessionOptions.value.find((opt) => opt.date === date);
   if (option) {
@@ -2247,6 +2331,13 @@ watch(() => leaveForm.value.schedule_date, (date) => {
       leaveForm.value.start_time = option.start_time;
       leaveForm.value.end_time = computeEndTime(option.start_time, leaveForm.value.duration_hours || 2);
     }
+  }
+  refreshLeaveCascadePreview();
+});
+watch(() => showLeaveModal.value, (open) => {
+  if (!open) {
+    leaveCascadePlan.value = null;
+    leaveCascadePlanLoading.value = false;
   }
 });
 function effectiveClosedReason(c) {

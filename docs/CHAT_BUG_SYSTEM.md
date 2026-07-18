@@ -157,6 +157,7 @@ last_reviewed: 2026-05-24
 
 1. **super_admin UI**（`BugReportsPage`，`User.type=S`）— 留言 + 更新狀態。
 2. **API**（Bearer token）：`POST /api/v1/bugs/{id}/comments`、`POST /api/v1/bugs/{id}/status`（status 僅 super_admin）。
+   - 進入 `resolved` 時必須帶 `production_revision`（SHA）或 `evidence_exception_reason`（super_admin），且已有公開留言 — 見 `docs/governance/EVIDENCE_CONTRACT.md`。
 3. **維運分診**（僅 Phase A／C 留言與狀態，禁止跑測試）：Pi 上可用 `php artisan tinker --execute="App\Services\BugReportService::changeStatus(...); App\Services\BugReportService::addComment(...);"`；`changed_by`／`author_user_id` 用 super_admin。⛔ 不可在 Pi 跑 `php artisan test` 或 `config:clear`（見 P0）。
 
 #### Definition of Done（in-app bug 任務）
@@ -173,6 +174,8 @@ last_reviewed: 2026-05-24
 |------|--------|------------|
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Closes #nnn`；必要時補 comment |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
+
+**Reporter-verify timeout**：見 [`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)（預設 7 日無回覆且無回歸訊號，可 `closed` 並註明 `closed_by_timeout`）。
 
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 

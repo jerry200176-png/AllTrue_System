@@ -83,7 +83,7 @@ There is **one ingestion entry point**: `scripts/mempalace-ingest.sh`. All other
 
 The pipeline has **8 stages** defined in a declarative manifest. Execution order is derived from `depends_on` edges, not file order. Run state lives in an append-only **`events.jsonl`** per run — not filesystem `.done` markers.
 
-**Environment:** WSL2 only (`~/alltrue`). Ingest does not run on the production Raspberry Pi or in GitHub Actions CI.
+**Environment:** WSL2 task worktree only (never `/home/jerry/alltrue`; see `docs/governance/WORKTREE_POLICY.md`). Ingest does not run on the production Raspberry Pi or in GitHub Actions CI.
 
 ---
 
@@ -212,7 +212,7 @@ Key defaults:
 ### Full run
 
 ```bash
-cd ~/alltrue
+cd <safe-task-worktree>
 bash scripts/mempalace-ingest.sh
 ```
 
