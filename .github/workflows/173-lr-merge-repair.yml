@@ -1,0 +1,154 @@
+name: In-app #173 LR Merge Repair (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) or execute or rollback or verify"
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - execute
+          - rollback
+          - verify
+      confirm:
+        description: "For execute/rollback only: type I_APPROVE_173_LR_MERGE_C"
+        required: false
+        type: string
+      actor:
+        description: "Audit actor label"
+        required: false
+        default: "gha:173-lr-merge"
+        type: string
+
+concurrency:
+  group: repair-173-lr-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Run allowlisted #173 LR merge repair
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Validate inputs
+        env:
+          MODE: ${{ inputs.mode }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in
+            dry-run|execute|rollback|verify) ;;
+            *) echo "::error::invalid mode"; exit 1 ;;
+          esac
+          if [ "$MODE" = "execute" ] || [ "$MODE" = "rollback" ]; then
+            [ "$CONFIRM" = "I_APPROVE_173_LR_MERGE_C" ] || {
+              echo "::error::execute/rollback requires exact confirmation string"
+              exit 1
+            }
+          fi
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run repair on production
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" ACTOR="$ACTOR" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+
+          echo "=== mode=${MODE} ==="
+          echo "TIP: correction ledger (session_corrections decision_reference=in-app #173 LR-MERGE-C) is authoritative."
+          echo "If a prior run mutated data, dry-run/execute will report ALREADY_APPLIED — do not force a second write."
+
+          if [ "${MODE}" = "verify" ]; then
+            php artisan repair:merge-renewal-learning-record --case=173 --verify
+            exit $?
+          fi
+
+          if [ "${MODE}" = "dry-run" ]; then
+            php artisan repair:merge-renewal-learning-record --case=173
+            echo "Dry-run complete; no production data was changed."
+            # Also dry-run rollback path for readiness (no write)
+            php artisan repair:merge-renewal-learning-record --case=173 --rollback || true
+            exit 0
+          fi
+
+          # Preflight: if already applied, refuse to re-enter mutation path
+          set +e
+          PRE=$(php artisan repair:merge-renewal-learning-record --case=173 2>&1)
+          PRE_EC=$?
+          set -e
+          echo "$PRE"
+          if echo "$PRE" | grep -q ALREADY_APPLIED; then
+            echo "REPAIR_STATE=ALREADY_APPLIED — refusing execute/rollback re-entry without explicit rollback mode"
+            if [ "${MODE}" = "execute" ]; then
+              exit 0
+            fi
+          fi
+          if [ "$PRE_EC" -ne 0 ] && [ "${MODE}" = "execute" ]; then
+            echo "::error::preflight dry-run failed — abort before backup/write"
+            exit 1
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency
+          BACKUP_FILE="/home/admin/backups/emergency/db_pre_173_lr_merge_${TS}.sql.gz"
+          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+            --single-transaction AllTrue \
+            ClassSession StudentClass LearningRecord Invoice Payment session_corrections \
+            | gzip > "$BACKUP_FILE"
+          echo "Backup: $BACKUP_FILE"
+          test -s "$BACKUP_FILE"
+
+          export ALLOW_PROD_REPAIR=1
+          set +e
+          if [ "${MODE}" = "execute" ]; then
+            SNAP="storage/app/repair-snapshots/173-lr-merge-${TS}.json"
+            php artisan repair:merge-renewal-learning-record --case=173 --execute --force \
+              --actor="${ACTOR}" --snapshot="$SNAP"
+            EC=$?
+            echo "SNAPSHOT=$SNAP"
+            echo "ARTISAN_EXIT=$EC"
+            if [ "$EC" -eq 42 ]; then
+              echo "REPAIR_STATE=APPLIED_POSTVERIFY_FAILED"
+              echo "::warning::Mutation committed; post-verify failed. Do NOT re-run execute. Run mode=verify or inspect session_corrections."
+              unset ALLOW_PROD_REPAIR
+              exit 42
+            fi
+            if [ "$EC" -ne 0 ]; then
+              echo "REPAIR_STATE=NOT_APPLIED_OR_FAILED"
+              unset ALLOW_PROD_REPAIR
+              exit "$EC"
+            fi
+            echo "REPAIR_STATE=APPLIED_AND_VERIFIED"
+          else
+            php artisan repair:merge-renewal-learning-record --case=173 --rollback --execute --force
+            EC=$?
+            echo "REPAIR_STATE=ROLLED_BACK_OR_FAILED exit=$EC"
+            unset ALLOW_PROD_REPAIR
+            exit "$EC"
+          fi
+          unset ALLOW_PROD_REPAIR
+          ENDSSH
