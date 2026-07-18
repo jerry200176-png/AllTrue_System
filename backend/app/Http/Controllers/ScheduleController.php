@@ -781,6 +781,81 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Dry-run leave cascade date plan for UI impact preview (in-app #204).
+     * Does not write ClassSession / schedules.
+     */
+    public function leaveCascadePreview(Request $request)
+    {
+        $data = $request->validate([
+            'student_course_id' => 'required|integer',
+            'schedule_date' => 'required|date',
+            'class_session_id' => 'nullable|integer',
+        ]);
+
+        $courseId = (int) $data['student_course_id'];
+        $leaveDate = Carbon::parse($data['schedule_date'])->toDateString();
+        $sessionId = isset($data['class_session_id']) ? (int) $data['class_session_id'] : 0;
+
+        $course = StudentClass::where('ID', $courseId)->first();
+        if (!$course) {
+            return response()->json(['message' => '找不到課程'], 404);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $studentCampusId = (int) (Student::where('id', (int) $course->StudentID)->value('CampusID') ?? 0);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $sessions = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $leaveSession = null;
+        if ($sessionId > 0) {
+            $leaveSession = $sessions->first(fn ($s) => (int) $s->id === $sessionId);
+        }
+        if (!$leaveSession) {
+            $leaveSession = $sessions->first(function ($session) use ($leaveDate) {
+                $status = strtolower((string) ($session->Status ?? ''));
+                return Carbon::parse($session->SessionDate)->toDateString() === $leaveDate
+                    && !in_array($status, ['cancelled', 'leave_adjusted'], true);
+            });
+        }
+        if (!$leaveSession) {
+            return response()->json(['message' => '找不到可請假的堂次'], 422);
+        }
+
+        $weekdays = CourseLeaveCascadeService::resolveCourseWeekdays(
+            $course,
+            (int) Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
+        );
+        $sessionRows = $sessions->map(fn ($s) => [
+            'id' => (int) $s->id,
+            'date' => Carbon::parse($s->SessionDate)->toDateString(),
+            'status' => (string) ($s->Status ?? ''),
+        ])->all();
+
+        $plan = CourseLeaveCascadeService::computeShiftPlan(
+            $sessionRows,
+            Carbon::parse($leaveSession->SessionDate)->toDateString(),
+            $weekdays,
+            (int) $leaveSession->id
+        );
+
+        return response()->json([
+            'leave_session_date' => Carbon::parse($leaveSession->SessionDate)->toDateString(),
+            'weekdays' => $weekdays,
+            'moves' => $plan['moves'],
+            'vacated' => $plan['vacated'],
+            'append' => $plan['append'],
+            'extended_end_date' => $plan['extended_end_date'],
+        ]);
+    }
+
+    /**
      * Trigger leave cascade from a ClassSession ID.
      * Used when a session was already marked leave (e.g. via attendance)
      * but the cascade (shift + append) was not yet executed.

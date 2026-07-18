@@ -500,6 +500,7 @@ Route::prefix('v1')->group(function () {
         Route::post('schedules/undo-leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'undoLeaveBySession']);
         Route::post('schedules/retro-leave', [\App\Http\Controllers\ScheduleController::class, 'retroLeave']);
         Route::post('schedules/leave-by-session', [\App\Http\Controllers\ScheduleController::class, 'leaveBySession']);
+        Route::post('schedules/leave-cascade-preview', [\App\Http\Controllers\ScheduleController::class, 'leaveCascadePreview']);
         Route::post('schedules/bulk-leave', [\App\Http\Controllers\ScheduleController::class, 'bulkHolidayLeave']);
         Route::put('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'update']);
         Route::delete('schedules/{schedule}', [\App\Http\Controllers\ScheduleController::class, 'destroy']);
