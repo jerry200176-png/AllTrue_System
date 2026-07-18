@@ -1,6 +1,7 @@
 # Tool-neutral targets for agents (see docs/governance/WORKTREE_POLICY.md)
 
-.PHONY: agent-preflight governance-health validate-capabilities overlay-pin instruction-invariants
+.PHONY: agent-preflight governance-health technical-health validate-capabilities overlay-pin instruction-invariants
+
 
 agent-preflight:
 	bash scripts/agent-preflight.sh
@@ -16,3 +17,6 @@ instruction-invariants:
 
 governance-health:
 	bash scripts/radars/governance-health.sh
+
+technical-health:
+	bash scripts/radars/technical-health.sh
