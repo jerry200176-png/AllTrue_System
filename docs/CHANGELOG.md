@@ -31,6 +31,12 @@ Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、
 
 開發備註：新增 `RescheduleSessionService` 原子交易、精準 occurrence 定位、分校授權與冪等重試；三個前端入口共用 `commitReschedule()`。架構決策見 `ADR_004_atomic_reschedule_boundary.md`。
 
+## 2026-07-18 — fix: leave attendance is closed when it is created (#1262)
+
+Fixed：主任從行事曆、課程請假或出缺勤編輯建立「請假」時，系統會直接保存該堂完整的起訖時間，不再把請假誤記成仍在補習班內、等到隔夜才修正的未簽退紀錄。
+
+開發備註：集中所有請假出缺勤寫入、加入 model fail-closed invariant、同日 production health 聚合檢查與 PII-free 修復摘要；另以「02:30 後補登前一日請假」回歸測試覆蓋實際 producer 條件。
+
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
 開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 啟動只綁 loopback 的非特權 ephemeral MariaDB，使用唯一 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時 drop／shutdown／清除 data directory。Wrapper 不需 sudo、Docker 或 production credential，且 fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config。

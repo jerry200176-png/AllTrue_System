@@ -6,6 +6,7 @@ use App\Models\StudentSignIn;
 use App\Support\SchedulerEvidence;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SchedulerEvidenceSummaryTest extends TestCase
@@ -63,6 +64,26 @@ class SchedulerEvidenceSummaryTest extends TestCase
         $this->assertSame(0, $checks['student_orphans_mdt_after_nightly']);
         $this->assertSame(0, $checks['student_orphans_unclassified']);
         $this->assertBucketsConserveTotal($checks);
+    }
+
+    public function test_summary_detects_same_day_open_leave_interval_immediately(): void
+    {
+        $nightlyExecution = CarbonImmutable::parse(self::DATE . ' 02:30:00', SchedulerEvidence::TIMEZONE);
+
+        // Raw insert intentionally bypasses the model fail-closed guard to
+        // prove production telemetry catches any future non-Eloquent writer.
+        DB::table('StudentSingIn')->insert([
+            'StudentID' => 1,
+            'SignInDT' => self::DATE . ' 10:00:00',
+            'SignOutDT' => null,
+            'MDT' => self::DATE . ' 10:01:00',
+            'Status' => 'leave',
+        ]);
+
+        $checks = $this->runSummary($nightlyExecution);
+
+        $this->assertSame(0, $checks['student_orphans_remaining']);
+        $this->assertSame(1, $checks['active_leave_intervals_missing_sign_out']);
     }
 
     private function runSummary(CarbonImmutable $nightlyExecution): array

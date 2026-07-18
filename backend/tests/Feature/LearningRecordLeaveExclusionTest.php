@@ -216,7 +216,8 @@ class LearningRecordLeaveExclusionTest extends TestCase
     {
         // in-app #170：請假其實是用 StudentSingIn.Status='leave' 記的，部分路徑沒同步把
         // ClassSession.Status 改成 leave（殘留非 leave）。此時 pending 評量仍不該出現在待審清單。
-        // 用 attended 堂次（平常可見）+ 一筆未作廢的 leave 簽到，隔離驗證「依簽到排除」這條新條件。
+        // 用 attended 堂次（平常可見）+ 一筆未作廢、已封閉區間的 leave 簽到，
+        // 隔離驗證「依簽到排除」這條新條件。
         [$token, $teacherId, $studentId] = $this->bootActors('leave-signin-desync');
         $courseId = $this->seedCourse($studentId, $teacherId);
 
@@ -266,7 +267,9 @@ class LearningRecordLeaveExclusionTest extends TestCase
             'GradeID'         => 1,
             'Memo'            => 'leave-desync-test',
             'SignInDT'        => $cs->SessionDate . ' ' . $cs->StartTime,
-            'SignOutDT'       => null,
+            'SignOutDT'       => $status === 'leave'
+                ? $cs->SessionDate . ' ' . $cs->EndTime
+                : null,
             'MDT'             => now(),
             'ClassSessionID'  => $cs->id,
             'Status'          => $status,

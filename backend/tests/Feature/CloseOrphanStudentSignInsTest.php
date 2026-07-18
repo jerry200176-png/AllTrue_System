@@ -9,6 +9,9 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use App\Models\Subject;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use LogicException;
+use Mockery;
 use Tests\TestCase;
 
 /**
@@ -136,7 +139,16 @@ class CloseOrphanStudentSignInsTest extends TestCase
 
         $orphan = $this->makeOrphan($student->id, $sc->ID, $yesterday . ' 10:00:00');
 
+        Log::spy();
         $this->artisan('student-signin:close-orphans')->assertExitCode(0);
+
+        Log::shouldHaveReceived('info')->once()->with(
+            'orphan_signin_autoclose_summary',
+            Mockery::on(static fn (array $context): bool => $context === [
+                'closed_count' => 1,
+                'source_counts' => ['class_session_end_time' => 1],
+            ])
+        );
 
         $orphan->refresh();
 
@@ -195,5 +207,19 @@ class CloseOrphanStudentSignInsTest extends TestCase
 
         $this->assertNull($todayRecord->SignOutDT,
             'TD-008: 今日 open 記錄不應被指令修改，SignOutDT 應保持 null');
+    }
+
+    public function test_active_leave_attendance_fails_closed_without_sign_out(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('Active leave attendance rows require SignOutDT.');
+
+        StudentSignIn::create([
+            'StudentID' => 1,
+            'SignInDT' => now()->toDateTimeString(),
+            'SignOutDT' => null,
+            'MDT' => now(),
+            'Status' => 'leave',
+        ]);
     }
 }

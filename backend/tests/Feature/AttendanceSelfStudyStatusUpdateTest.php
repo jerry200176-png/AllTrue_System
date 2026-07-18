@@ -4,11 +4,15 @@ namespace Tests\Feature;
 
 use App\Models\AuthToken;
 use App\Models\Campus;
+use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentSignIn;
 use App\Models\User;
 use App\Models\UserCampus;
+use App\Services\LeaveAttendanceService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 /**
@@ -57,6 +61,14 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
 
         $res->assertOk()
             ->assertJsonFragment(['status' => 'leave', 'status_label' => '請假']);
+
+        $signin->refresh();
+        $this->assertSame(
+            60,
+            Carbon::parse((string) $signin->SignInDT)
+                ->diffInMinutes(Carbon::parse((string) $signin->SignOutDT)),
+            'A self-study row changed to leave must become a closed placeholder.'
+        );
     }
 
     public function test_super_admin_can_update_self_study_record_status(): void
@@ -154,6 +166,57 @@ class AttendanceSelfStudyStatusUpdateTest extends TestCase
 
         $res->assertOk()
             ->assertJsonFragment(['status' => 'late']);
+    }
+
+    public function test_leave_update_maps_interval_validation_to_422_without_mutating_record(): void
+    {
+        [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
+        $this->app->instance(LeaveAttendanceService::class, new class extends LeaveAttendanceService {
+            public function closeExistingForLeave(StudentSignIn $signIn): void
+            {
+                throw new InvalidArgumentException('請假堂次缺少完整起訖時間，未建立出缺勤記錄。');
+            }
+        });
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/attendance/{$signin->id}", ['status' => 'leave'])
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => '請假堂次缺少完整起訖時間，未建立出缺勤記錄。']);
+
+        $signin->refresh();
+        $this->assertSame('present', $signin->Status);
+        $this->assertNull($signin->SignOutDT);
+    }
+
+    public function test_leave_update_never_closes_before_a_late_sign_in(): void
+    {
+        [$token, $signin] = $this->scaffoldSelfStudy(campusId: 1, role: 'director');
+        $sessionDate = now()->subDay()->toDateString();
+        $session = ClassSession::create([
+            'StudentClassID' => 999,
+            'SessionDate' => $sessionDate,
+            'StartTime' => '16:00',
+            'EndTime' => '18:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+        ]);
+        $signin->ClassSessionID = $session->id;
+        $signin->SignInDT = "{$sessionDate} 19:30:00";
+        $signin->Hours = 1;
+        $signin->save();
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->patchJson("/api/v1/attendance/{$signin->id}", ['status' => 'leave'])
+            ->assertOk();
+
+        $signin->refresh();
+        $this->assertSame('leave', $signin->Status);
+        $this->assertSame("{$sessionDate} 20:30:00", Carbon::parse((string) $signin->SignOutDT)->format('Y-m-d H:i:s'));
+        $this->assertTrue(Carbon::parse((string) $signin->SignOutDT)->gt(Carbon::parse((string) $signin->SignInDT)));
     }
 
     // ── Scaffolding ───────────────────────────────────────────────────────────

@@ -96,6 +96,14 @@ class SchedulerEvidenceSummary extends Command
             'student_orphans_mdt_at_or_before_nightly' => $studentOrphansBeforeNightly,
             'student_orphans_mdt_after_nightly' => $studentOrphansAfterNightly,
             'student_orphans_unclassified' => $studentOrphansUnclassified,
+            // Immediate invariant check: leave is an attendance placeholder, not
+            // an open presence interval. Count every date so same-day regressions
+            // are visible before the next 02:30 repair cycle.
+            'active_leave_intervals_missing_sign_out' => StudentSignIn::query()
+                ->whereNull('SignOutDT')
+                ->whereNull('VoidedAt')
+                ->whereRaw("LOWER(COALESCE(Status, '')) = 'leave'")
+                ->count(),
             'teacher_orphans_remaining' => TeacherSignIn::query()
                 ->whereNull('SignOutDT')
                 ->where('SignInDT', '<', $today->toDateTimeString())

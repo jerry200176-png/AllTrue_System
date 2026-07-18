@@ -89,6 +89,11 @@ class AttendanceExcusedLeaveCascadeTest extends TestCase
         $this->assertNotNull($activeSignIn, 'Leave session should have an active sign-in record');
         $this->assertSame('leave', (string) $activeSignIn->Status);
         $this->assertSame(0, (int) $activeSignIn->SessionDeducted);
+        $this->assertSame(
+            $targetDate . ' ' . substr((string) $targetSession->EndTime, 0, 8),
+            Carbon::parse((string) $activeSignIn->SignOutDT)->format('Y-m-d H:i:s'),
+            'Leave is a closed attendance placeholder, not an open presence interval.'
+        );
 
         $totalSessions = ClassSession::where('StudentClassID', $courseId)->count();
         $this->assertSame(9, $totalSessions);
