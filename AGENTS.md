@@ -7,15 +7,12 @@
 
 ## Worktree & path safety (canonical)
 
-**Single source of truth:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) — do not redefine paths here.
+**Launch:** `agent-start alltrue <task-id>` (only official Agent entry).
+**Bare store:** `/home/jerry/workspace/repos/AllTrue_System.git`
+**Tasks:** `/home/jerry/workspace/tasks/alltrue/<task-id>/`
+**Policy:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md)
+**Provenance:** commit `.agent-session/manifest.json` (or human-authored.json).
 
-- **Forbidden:** `/home/jerry/alltrue`, runner `_work`, backups, `/mnt/c` clones — NEVER edit/reset/commit.
-- **Canonical object store (local):** `/home/jerry/workspace/AllTrue_System-clean` — fetch + spawn worktrees only.
-- **Remote baseline:** `jerry200176-png/AllTrue_System` `origin/main`.
-- **Safe work:** from object store, `git worktree add -b <type>/<slug> /home/jerry/wt/alltrue-<slug> origin/main` then **`make agent-preflight`** (must exit 0 before writes).
-- **Production truth:** `make production-identity` — HTTP 200 alone is not success.
-- Mix AllTrue + sunrise-cafe in one PR/worktree: **Forbidden**.
-- Symlinked `backend/vendor` across worktrees: **Forbidden** (run `composer install` in-tree).
 
 ## 開工前 First-read 順序
 

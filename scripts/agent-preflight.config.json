@@ -4,21 +4,21 @@
     "github.com/jerry200176-png/AllTrue_System.git",
     "github.com/jerry200176-png/AllTrue_System"
   ],
-  "canonical_object_store": "/home/jerry/workspace/AllTrue_System-clean",
+  "canonical_bare_repo": "/home/jerry/workspace/repos/AllTrue_System.git",
+  "task_root": "/home/jerry/workspace/tasks/alltrue",
   "forbidden_exact": [
-    "/home/jerry/alltrue"
+    "/home/jerry/alltrue",
+    "/home/jerry/workspace/AllTrue_System-clean",
+    "/home/jerry/workspace/repos/AllTrue_System.git"
   ],
   "forbidden_path_substrings": [
     "/actions-runner-alltrue/",
     "/workspace-backups/",
-    "/mnt/c/"
+    "/mnt/c/",
+    "/workspace/repos/"
   ],
   "allowed_path_prefixes": [
-    "/home/jerry/workspace/AllTrue_System-clean",
-    "/home/jerry/wt/alltrue-",
-    "/home/jerry/alltrue-",
-    "/tmp/alltrue-",
-    "/tmp/wt-alltrue-"
+    "/home/jerry/workspace/tasks/alltrue/"
   ],
   "branch_prefix_regex": "^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.+",
   "production_mutation_env": "ALLTRUE_PRODUCTION_MUTATION",
