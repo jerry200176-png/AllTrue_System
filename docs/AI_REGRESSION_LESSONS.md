@@ -352,6 +352,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **資料修復守則**：修單筆殘留堂次前先備份 DB + code；UPDATE 必須鎖定 `ClassSession.id`、`StudentClassID`、日期、時間與 `Status='scheduled'`，只改成 `cancelled` 並保留 Note 稽核，不可刪 row。
 - **強制規則**：任何入口把課程改為 inactive / settled / completed，都必須共用「取消未來 scheduled 堂次」邏輯；不可只更新 `StudentClass`。
 - **測試必補**：直接 `PUT /student-classes/{id}` with `status=inactive` 與 `/pause` endpoint 都要驗證 future scheduled 變 `cancelled`，歷史 attended 不變。
+- **2026-07-18 延伸（新店黃芝琳／王品方／陳品承）**：出缺勤 pending 去重必須用 `student_id|date|start`（不可只用 `student_class_id`）；`GET /api/v1/class-sessions` 預設排除 `Stop=1`+`scheduled`；forward-gen 遇跨 SC 同 slot 必須 skip + `cross_sc_slot_conflict` log；digest 監控 `scheduled_cross_sc` / `orphan_stop_scheduled`。TeacherHome 已用 student-slot 去重，故同 bug 可能只在出缺勤爆。
 
 ---
 

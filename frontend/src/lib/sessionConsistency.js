@@ -93,6 +93,8 @@ function normalizeSessionRow(row) {
     class_session_id: Number(row?.id || 0),
     student_id: Number(row?.student_id || row?.StudentID || 0),
     student_class_id: Number(row?.student_class_id || row?.StudentClassID || 0),
+    course_stop: Number(row?.course_stop ?? row?.Stop ?? 0) === 1 ? 1 : 0,
+    course_session_count: Number(row?.course_session_count ?? row?.SessionCount ?? 0),
     teacher_id: Number(row?.teacher_id || row?.TeacherID || 0),
     branch_id: Number(row?.branch_id || row?.CampusID || 0),
     session_date: String(row?.session_date || row?.SessionDate || '').slice(0, 10),
@@ -107,54 +109,71 @@ function normalizeSessionRow(row) {
   };
 }
 
-export function classifyAttendanceSessionRows(rows = []) {
-  const totalSlotKeys = new Set();
-  const pendingSlotKeys = new Set();
-  const statusSlotKeys = new Set();
-  const pending = [];
-  const statusRows = [];
+/**
+ * Prefer active course (Stop=0), then real contract (SessionCount>0) over ghost shell,
+ * then newer StudentClassID.
+ * Aligns attendance pending list with TeacherHome student-slot collapse
+ * (2026-07-18 Xindian duplicate pending rows / R20 / #189 family).
+ */
+export function attendanceSlotPreference(row) {
+  const stop = Number(row?.course_stop ?? 0) === 1 ? 0 : 1_000_000_000;
+  const sessionCount = Number(row?.course_session_count ?? 0);
+  const substance = sessionCount > 0 ? 1_000_000 : 0;
+  const scId = Number(row?.student_class_id || 0);
+  const csId = Number(row?.class_session_id || row?.id || 0);
+  return stop + substance + scId + csId / 1e9;
+}
 
-  const totalCount = rows.filter((row) => {
+function studentSlotKey(row) {
+  const studentId = Number(row?.student_id || row?.StudentID || 0);
+  const date = String(row?.session_date || row?.SessionDate || '').slice(0, 10);
+  const start = String(row?.start_time || row?.StartTime || '').slice(0, 5);
+  if (!(studentId > 0 && date && start)) return '';
+  return `${studentId}|${date}|${start}`;
+}
+
+function keepPreferredSlot(map, key, candidate) {
+  const prev = map.get(key);
+  if (!prev || attendanceSlotPreference(candidate) >= attendanceSlotPreference(prev)) {
+    map.set(key, candidate);
+  }
+}
+
+export function classifyAttendanceSessionRows(rows = []) {
+  const totalBest = new Map();
+  const pendingBest = new Map();
+  const statusBest = new Map();
+
+  for (const row of rows) {
     const status = String(row?.status || row?.Status || '').toLowerCase();
-    return !['cancelled', 'leave', 'leave_adjusted'].includes(status);
-  }).filter((row) => {
-    const key = [
-      Number(row?.student_class_id || row?.StudentClassID || 0),
-      String(row?.session_date || row?.SessionDate || '').slice(0, 10),
-      String(row?.start_time || row?.StartTime || '').slice(0, 5),
-    ].join('|');
-    if (totalSlotKeys.has(key)) return false;
-    totalSlotKeys.add(key);
-    return true;
-  }).length;
+    if (['cancelled', 'leave', 'leave_adjusted'].includes(status)) continue;
+    const key = studentSlotKey(row);
+    if (!key) continue;
+    keepPreferredSlot(totalBest, key, normalizeSessionRow(row));
+  }
 
   for (const row of rows) {
     const normalized = normalizeSessionRow(row);
     if (!(normalized.class_session_id > 0 && normalized.student_id > 0 && normalized.student_class_id > 0)) {
       continue;
     }
-    const key = `${normalized.student_class_id}|${normalized.session_date}|${normalized.start_time}`;
+    const key = studentSlotKey(normalized);
+    if (!key) continue;
     if (normalized.status === 'scheduled') {
-      if (!pendingSlotKeys.has(key)) {
-        pendingSlotKeys.add(key);
-        pending.push(normalized);
-      }
+      keepPreferredSlot(pendingBest, key, normalized);
       continue;
     }
     // leave_requested（請假待審）必須顯示在狀態列表，否則學生會從出缺勤管理整個消失，
     // 與課表與評量認定不一致（in-app #194 / GitHub #1099）。
     if (['absent', 'attended', 'late', 'present', 'leave', 'leave_requested', 'leave_adjusted', 'excused'].includes(normalized.status)) {
-      if (!statusSlotKeys.has(key)) {
-        statusSlotKeys.add(key);
-        statusRows.push(normalized);
-      }
+      keepPreferredSlot(statusBest, key, normalized);
     }
   }
 
   const byStart = (a, b) => (a.start_time || '').localeCompare(b.start_time || '');
   return {
-    totalCount,
-    pending: pending.sort(byStart),
-    statusRows: statusRows.sort(byStart),
+    totalCount: totalBest.size,
+    pending: [...pendingBest.values()].sort(byStart),
+    statusRows: [...statusBest.values()].sort(byStart),
   };
 }
