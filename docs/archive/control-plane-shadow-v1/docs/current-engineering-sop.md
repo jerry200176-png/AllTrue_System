@@ -1,3 +1,5 @@
+> **Historical archive.** Active path policy: `docs/governance/WORKTREE_POLICY.md` (forbidden: `/home/jerry/alltrue`).
+
 > **HISTORICAL CONTEXT ONLY**
 > This document does **not** override [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) (I1–I5).
 > **Decision:** INCIDENT stack only (I3). **Execution:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (I1).

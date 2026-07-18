@@ -19,3 +19,5 @@ Tool-neutral canonical governance for the portfolio. Product specifics live in o
 | [../radars/README.md](../radars/README.md) | Architecture/Technical/Product radars |
 
 Existing AllTrue authority docs (do not duplicate): `docs/INDEX.md`, `CONTROL_PLANE_CONTRACT.md`, `CHAT_BUG_SYSTEM.md`, `GUIDE_BUG_CLOSURE_GATE.md`, `AI_REGRESSION_LESSONS.md`.
+
+- [WORKTREE_POLICY.md](./WORKTREE_POLICY.md) — forbidden vs canonical vs task worktrees

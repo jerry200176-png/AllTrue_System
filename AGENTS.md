@@ -5,15 +5,15 @@
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
 > 所有 Agent 做事前先查 `docs/INDEX.md` 與 MemPalace；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
-## Forbidden worktrees / paths
+## Worktree & path safety (canonical)
 
-| Path | Rule |
-|------|------|
-| `/home/jerry/alltrue` | **NEVER edit, reset, or commit** — historically diverged dirty `main` (thousands ahead/behind) |
-| Mix AllTrue + sunrise-cafe | **Forbidden** in one worktree/PR |
-| Symlinked `backend/vendor` across worktrees | **Forbidden** for PHPUnit — run `composer install` in that worktree |
+**Single source of truth:** [`docs/governance/WORKTREE_POLICY.md`](docs/governance/WORKTREE_POLICY.md) — do not redefine paths here.
 
-Prefer: `git worktree add <path> -b <branch> origin/main` for new tasks.
+- **Forbidden:** `/home/jerry/alltrue` (and `~/alltrue` when it resolves there) — NEVER edit/reset/commit.
+- **Canonical repo:** `jerry200176-png/AllTrue_System` `main` on GitHub.
+- **Safe work:** `git worktree add -b <type>/<slug> /home/jerry/alltrue-<slug> origin/main` then `make agent-preflight` / `bash scripts/agent-preflight.sh`.
+- Mix AllTrue + sunrise-cafe in one PR/worktree: **Forbidden**.
+- Symlinked `backend/vendor` across worktrees: **Forbidden** (run `composer install` in-tree).
 
 ## 開工前 First-read 順序
 

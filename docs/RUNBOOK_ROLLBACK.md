@@ -61,7 +61,7 @@ last_reviewed: 2026-06-07
 適用：壞版已 merge 進 main、但站還活著（或自動回滾已把 Pi 拉回舊版，但 main 仍是壞的）。
 
 ```bash
-# 在 WSL2 ~/alltrue
+# 在安全 task worktree（見 docs/governance/WORKTREE_POLICY.md）
 git fetch origin main && git checkout -b fix/rollback-<slug> origin/main
 git revert --no-edit <壞掉的 merge commit hash>     # squash merge 為一般 commit，免 -m
 # 若 revert 出衝突 → 手動解 → git revert --continue

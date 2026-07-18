@@ -176,7 +176,7 @@ DB issue?
 **Preferred (main has bad commit):**
 
 ```bash
-cd ~/alltrue
+cd <safe-task-worktree>  # never /home/jerry/alltrue — WORKTREE_POLICY.md
 git fetch origin main && git checkout -b fix/rollback-<slug> origin/main
 git revert --no-edit <bad-commit-hash>
 git push -u origin HEAD
