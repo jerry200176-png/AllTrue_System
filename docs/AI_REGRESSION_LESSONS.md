@@ -917,6 +917,16 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - 同一課程同日多堂時，查找與移動必須帶 `old_start_time`，不可 date-only 猜堂次。
 - **測試必補**：跨老師＋改時間 routing、歷史同日 correction、mutation-return adapter、重試 idempotency＋descendant re-anchor、cross-date 不預建 ghost ClassSession、最後 move 422 精準補償，以及 production build。
 
+### R74. 代課衝突檢查必須排除「同一學生」既有佔用（續約雙軌自撞）
+
+- **觸發情境**：2026-07-18 in-app #203（R72 後仍回報）：沈宇璿換代課給鄭翔祐，7/18 13:00 顯示衝堂。Production 同時存在舊約 cancelled ClassSession + 續約 scheduled 例外（schedules #6034/#6079），代課老師已是續約列的 `teacher_id`。
+- **根因**：`ScheduleGuardService` 已支援 `exclude_student_id`，但代課 POST／availability 未傳入；availability 亦不接受該參數。挑選器把「同一學生」續約佔用當成他人衝堂。
+- **強制規則**：
+  - 為學生 S 指派代課時，availability 與 capacity／跨分校檢查必須 `exclude_student_id=S`（或等價排除 S 的 schedules／ClassSession）。
+  - 其他學生的佔用不得被排除。
+  - R72 stale 過濾仍必須保留；本規則解決「非 stale、但是同一學生」的假衝堂。
+- **測試必補**：`SameStudentExcludeBusyTest` — exclude 後 13:00 不 busy；substitute 成功；其他學生佔用仍 busy。
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）

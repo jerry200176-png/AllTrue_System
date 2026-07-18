@@ -37,8 +37,10 @@ async function call(method, path, payload) {
   return json;
 }
 
-export function fetchTeacherAvailability(teacherId, date) {
-  const qs = new URLSearchParams({ date: String(date || '') }).toString();
+export function fetchTeacherAvailability(teacherId, date, { excludeStudentId } = {}) {
+  const qs = new URLSearchParams({ date: String(date || '') });
+  const sid = Number(excludeStudentId || 0);
+  if (sid > 0) qs.set('exclude_student_id', String(sid));
   return call('GET', `/api/v1/teachers/${encodeURIComponent(teacherId)}/availability?${qs}`);
 }
 
