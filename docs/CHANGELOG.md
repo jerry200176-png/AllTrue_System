@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-18 — fix: 出缺勤「同一堂變兩堂」跨約／停用殘留防護
+
+Fixed：老師出缺勤「今日待點名」若因舊約停用殘留或跨課程同日同時段雙列，畫面只會保留一堂；已停用課程的待上課次不再出現在預設列表。夜間向前產生堂次若偵測到同一學生同時段已有其他合約，會略過並留下稽核紀錄。主任日報會標示跨約待點名重疊與停用殘留筆數。
+
+開發備註：Attendance `student_id|date|start` 去重（優先 Stop=0、SessionCount>0）；`ClassSessionController::index` 預設隱藏 Stop=1 scheduled（`include_stopped_scheduled=1`）；`ForwardSessionGenerator` cross-SC skip + `cross_sc_slot_conflict` log；`repair:duplicate-sessions --case=scheduled-cross-sc`；digest `scheduled_cross_sc` / `orphan_stop_scheduled`。Incident：`docs/incidents/2026-07-18-xindian-duplicate-attendance-slots.md`。
+
 ## 2026-07-18 — fix: 調課改為單一交易，並顯示點名建立來源
 
 Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、目標堂、實際課堂與評量全部同步成功後才會顯示完成；任何衝堂、找不到原堂或網路錯誤都不會留下半套資料，也不會再假成功。出缺勤歷史新增「建立來源」，可直接看是誰人工登記，或由系統／刷卡建立。

@@ -216,6 +216,8 @@ class ClassSessionController extends Controller
                 'cs.session_charge',
                 'sc.StudentID',
                 'sc.TeacherID',
+                'sc.Stop as course_stop',
+                'sc.SessionCount as course_session_count',
                 'sc.Rate as sc_rate',
                 'sc.SessionDuration as sc_session_duration',
                 'sc.rate_unit as sc_rate_unit',
@@ -303,6 +305,12 @@ class ClassSessionController extends Controller
             });
         }
 
+        // R20 / 2026-07-18：Stop=1 課程殘留的 scheduled 會讓出缺勤「今日待點名」出現雙列。
+        // 預設隱藏；稽核可用 include_stopped_scheduled=1 帶回。
+        if (!$request->boolean('include_stopped_scheduled')) {
+            $query->whereRaw("NOT (COALESCE(sc.Stop, 0) = 1 AND LOWER(cs.Status) = 'scheduled')");
+        }
+
         return $query;
     }
 
@@ -341,6 +349,8 @@ class ClassSessionController extends Controller
         $row->id = (int) $row->id;
         $row->student_class_id = (int) $row->StudentClassID;
         $row->student_id = (int) $row->StudentID;
+        $row->course_stop = (int) ($row->course_stop ?? 0) === 1 ? 1 : 0;
+        $row->course_session_count = (int) ($row->course_session_count ?? 0);
         $subTid = isset($row->substitute_teacher_id) && $row->substitute_teacher_id !== null
             ? (int) $row->substitute_teacher_id : 0;
         $row->substitute_teacher_id = $subTid > 0 ? $subTid : null;

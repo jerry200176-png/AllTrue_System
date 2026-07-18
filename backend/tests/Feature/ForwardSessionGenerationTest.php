@@ -100,6 +100,29 @@ class ForwardSessionGenerationTest extends TestCase
         $this->assertSame($before, DB::table('ClassSession')->count(), 'dry-run must not write');
     }
 
+    public function test_plan_skips_slot_when_other_contract_already_occupies_student_slot(): void
+    {
+        // Two contracts for the same student; other SC already has Monday 16:00 upcoming.
+        $scA = $this->course(remaining: 4);
+        $studentId = (int) DB::table('StudentClass')->where('ID', $scA)->value('StudentID');
+        $scB = (int) DB::table('StudentClass')->insertGetId([
+            'StudentID' => $studentId, 'GradeID' => 1, 'SubjectID' => 1, 'TeacherID' => 1,
+            'by1' => 1, 'Period' => 4, 'TotalHours' => 0, 'Charge' => 0, 'Pay' => 0,
+            'Paid' => 1, 'Rate' => 500, 'ClassType' => 'one_on_one',
+            'StartDate' => '2026-05-01', 'SessionCount' => 10, 'SessionDuration' => 120,
+            'RemainingSessions' => 2, 'UsedSessions' => 0, 'Stop' => 0, 'ScheduleMode' => 'count',
+        ]);
+        foreach (['2026-06-22', '2026-06-29', '2026-07-06'] as $d) {
+            $this->sess($scA, $d, '16:00:00', '18:00:00', 'attended');
+        }
+        // Other contract owns the next Monday slot → forward-gen for A must not plan it.
+        $this->sess($scB, '2026-07-20', '16:00:00', '18:00:00', 'scheduled');
+
+        $plan = $this->gen->planCourse($scA, 4, $this->today);
+        $dates = array_column($plan['slots'], 'SessionDate');
+        $this->assertNotContains('2026-07-20', $dates, 'must not amplify cross-SC duplicate slot');
+    }
+
     public function test_scheduled_execute_generates_sessions(): void
     {
         // #1062 durable closure: the nightly `--execute --scheduled` path writes.

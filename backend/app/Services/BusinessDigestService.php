@@ -31,6 +31,8 @@ class BusinessDigestService
             'data_quality' => [
                 'attended_without_lr' => $this->attendedWithoutLr($campusId),
                 'cross_sc_duplicate' => $this->crossScDuplicate($campusId),
+                'scheduled_cross_sc' => $this->scheduledCrossSc($campusId),
+                'orphan_stop_scheduled' => $this->orphanStopScheduled($campusId),
                 'remaining_divergent' => $this->remainingDivergent($campusId),
             ],
             'coverage' => ['sessions_next_7d' => $this->sessionsNext7d($campusId)],
@@ -342,6 +344,12 @@ class BusinessDigestService
         if (($m['retention']['reenroll_candidates'] ?? 0) > 0) {
             $out[] = "re-enrollment: {$m['retention']['reenroll_candidates']} active students have exhausted balance and no upcoming class — outreach opportunity (#1149).";
         }
+        if (($m['data_quality']['scheduled_cross_sc'] ?? 0) > 0) {
+            $out[] = "scheduled cross-SC overlaps: {$m['data_quality']['scheduled_cross_sc']} groups — teachers may see duplicate pending attendance rows (2026-07-18 / R20).";
+        }
+        if (($m['data_quality']['orphan_stop_scheduled'] ?? 0) > 0) {
+            $out[] = "orphan Stop=1 scheduled: {$m['data_quality']['orphan_stop_scheduled']} future/today rows — run fix:orphan-scheduled-sessions (TD-016 / R20).";
+        }
         return $out;
     }
 
@@ -579,6 +587,40 @@ class BusinessDigestService
             GROUP BY sc.StudentID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5)
             HAVING COUNT(*) > 1 AND COUNT(DISTINCT cs.StudentClassID) > 1
         ) d'))->count();
+    }
+
+    /** Future/today scheduled rows on the same student+date+start across 2+ StudentClass. */
+    private function scheduledCrossSc(?int $campusId): int
+    {
+        $campusFilter = ($campusId !== null && $campusId > 0)
+            ? ' AND s.CampusID = ' . (int) $campusId
+            : '';
+
+        return (int) DB::table(DB::raw('(
+            SELECT 1 FROM ClassSession cs
+            JOIN StudentClass sc ON sc.ID = cs.StudentClassID
+            JOIN Student s ON s.id = sc.StudentID
+            WHERE LOWER(cs.Status) = \'scheduled\'
+              AND cs.SessionDate >= CURDATE()
+            ' . $campusFilter . '
+            GROUP BY sc.StudentID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5)
+            HAVING COUNT(DISTINCT cs.StudentClassID) > 1
+        ) d'))->count();
+    }
+
+    /** Stop=1 courses that still have today/future scheduled sessions (TD-016 orphans). */
+    private function orphanStopScheduled(?int $campusId): int
+    {
+        $q = DB::table('ClassSession as cs')
+            ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
+            ->where('sc.Stop', 1)
+            ->whereRaw("LOWER(cs.Status) = 'scheduled'")
+            ->where('cs.SessionDate', '>=', now()->toDateString());
+        if ($campusId !== null && $campusId > 0) {
+            $q->join('Student as s', 's.id', '=', 'sc.StudentID')->where('s.CampusID', $campusId);
+        }
+
+        return (int) $q->count('cs.id');
     }
 
     private function remainingDivergent(?int $campusId): int
