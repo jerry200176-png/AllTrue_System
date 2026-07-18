@@ -1,0 +1,28 @@
+{
+  "project": "AllTrue_System",
+  "expected_remote_suffixes": [
+    "github.com/jerry200176-png/AllTrue_System.git",
+    "github.com/jerry200176-png/AllTrue_System"
+  ],
+  "canonical_object_store": "/home/jerry/workspace/AllTrue_System-clean",
+  "forbidden_exact": [
+    "/home/jerry/alltrue"
+  ],
+  "forbidden_path_substrings": [
+    "/actions-runner-alltrue/",
+    "/workspace-backups/",
+    "/mnt/c/"
+  ],
+  "allowed_path_prefixes": [
+    "/home/jerry/workspace/AllTrue_System-clean",
+    "/home/jerry/wt/alltrue-",
+    "/home/jerry/alltrue-",
+    "/tmp/alltrue-",
+    "/tmp/wt-alltrue-"
+  ],
+  "branch_prefix_regex": "^(feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci)/.+",
+  "production_mutation_env": "ALLTRUE_PRODUCTION_MUTATION",
+  "require_clean_worktree": true,
+  "require_base_equals_origin_main": true,
+  "forbid_main_branch_writes": true
+}
