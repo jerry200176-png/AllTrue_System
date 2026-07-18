@@ -62,10 +62,10 @@ for bad in ("/home/jerry/alltrue", "actions-runner", "workspace-backups", "/mnt/
 branch=subprocess.check_output(["git","rev-parse","--abbrev-ref","HEAD"], text=True).strip()
 # On CI PR, GITHUB_HEAD_REF is the branch
 branch=os.environ.get("GITHUB_HEAD_REF") or branch
-if m["task_id"] not in branch and f"task-{m['task_id']}" not in branch:
-    # allow chore/phase05-enforcement-gaps style only if task_id embedded OR exact branch match
-    if m["branch"] != branch and m["task_id"] not in branch:
-        raise SystemExit(f'task_id {m["task_id"]} not reflected in branch {branch}')
+if m["task_id"] not in branch:
+    raise SystemExit(f'task_id {m["task_id"]} not reflected in branch {branch}')
+if m.get("branch") and m["branch"] != branch:
+    raise SystemExit(f'manifest branch {m["branch"]} != git branch {branch}')
 
 # base_sha must be ancestor of HEAD
 head=subprocess.check_output(["git","rev-parse","HEAD"], text=True).strip()

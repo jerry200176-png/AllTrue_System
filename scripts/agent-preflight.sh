@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-CONFIG="${SCRIPT_DIR}/agent-preflight.config.json"
+CONFIG="${AGENT_PREFLIGHT_CONFIG:-${SCRIPT_DIR}/agent-preflight.config.json}"
 MODE="${AGENT_PREFLIGHT_MODE:-agent}"
 
 fail() {
