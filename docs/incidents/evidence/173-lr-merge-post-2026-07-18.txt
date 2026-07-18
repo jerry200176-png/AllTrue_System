@@ -1,0 +1,48 @@
+VERIFY_OK correction_id=2
+VERIFY:0
+=== DRY RUN repair:merge-renewal-learning-record ===
+ALREADY_APPLIED correction_id=2
+--- MERGE FILL ---
+[]
+--- MERGE KEEP ---
+[]
+--- CHILDREN ---
+{"src_tc":0,"kep_tc":0,"src_fb":0,"kep_fb":0}
+--- USER PROJECTION AFTER ---
+[]
+--- ROLLBACK PAYLOAD ---
+[]
+COUNTERS (must stay): SC114 Used=8 Rem=0 | SC2076 Used=7 Rem=1 | SessionDeducted LR8883=0 LR9959=1
+ALREADY_APPLIED correction_id=2
+IDEMP:0
+{
+    "kep_Content": "Ch6-3摩擦力",
+    "kep_Performance": "good",
+    "kep_Comment_prefix": "光熙最近常常忘記寫作業，希望他能調整自己的態度，維持當初想要進步的心。從第六章開",
+    "kep_SessionDeducted": 1,
+    "kep_ClassSessionID": 16951,
+    "src": {
+        "id": 8883,
+        "ClassSessionID": 11292,
+        "Content": "Ch6-3摩擦力",
+        "VoidedAt": null,
+        "SessionDeducted": 0
+    },
+    "corr_id": 2,
+    "restored": [
+        "Content",
+        "HomeworkStatus",
+        "Progress",
+        "NextHomework",
+        "Performance",
+        "Comment"
+    ],
+    "sc114": {
+        "UsedSessions": 8,
+        "RemainingSessions": 0
+    },
+    "sc2076": {
+        "UsedSessions": 7,
+        "RemainingSessions": 1
+    }
+}

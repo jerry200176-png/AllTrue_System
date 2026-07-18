@@ -1,0 +1,55 @@
+=== DRY RUN repair:merge-renewal-learning-record ===
+manifest=RM-173-LR-MERGE-C-2026-07-18
+fill_fields=Content,HomeworkStatus,Progress,NextHomework,Performance,Comment
+pre_hash=e3b5b94d174e748357ea771cc9ea841542b4cdf345ac8db309472a7419a51579
+post_hash=338c8735c3859ee9e8e3d1a1ef3f3ddc72ec48b125d0672d8d4dbecbf9c3ac29
+--- MERGE FILL ---
+{
+    "Content": "Ch6-3摩擦力",
+    "HomeworkStatus": "incomplete",
+    "Progress": "Ch6-3摩擦力",
+    "NextHomework": "1.超級翰將p.219-p.213",
+    "Performance": "good",
+    "Comment": "光熙最近常常忘記寫作業，希望他能調整自己的態度，維持當初想要進步的心。從第六章開始進入物理範圍，光熙遇到計算題時容易直接放棄，後續會再加強他對解題流程的理解。也已和光熙約定下週三（6\/17）下課後進行 40 分鐘的輔導，希望能協助他把基礎再穩定一些。"
+}
+--- MERGE KEEP ---
+{
+    "AttachmentUrl": null,
+    "QuizScore": null,
+    "NextWeekTestScope": null,
+    "Subject": "理化",
+    "ReviewNote": null
+}
+--- CHILDREN ---
+{"src_tc":0,"kep_tc":0,"src_fb":0,"kep_fb":0}
+--- USER PROJECTION AFTER ---
+{
+    "Content": "Ch6-3摩擦力",
+    "AttachmentUrl": null,
+    "HomeworkStatus": "incomplete",
+    "QuizScore": null,
+    "Progress": "Ch6-3摩擦力",
+    "NextHomework": "1.超級翰將p.219-p.213",
+    "NextWeekTestScope": null,
+    "Performance": "good",
+    "Comment": "光熙最近常常忘記寫作業，希望他能調整自己的態度，維持當初想要進步的心。從第六章開始進入物理範圍，光熙遇到計算題時容易直接放棄，後續會再加強他對解題流程的理解。也已和光熙約定下週三（6\/17）下課後進行 40 分鐘的輔導，希望能協助他把基礎再穩定一些。",
+    "Subject": "理化",
+    "ReviewNote": null
+}
+--- ROLLBACK PAYLOAD ---
+{
+    "keeper_lr_id": 9959,
+    "restore_fields": {
+        "Content": "（系統補登加課）",
+        "HomeworkStatus": null,
+        "Progress": null,
+        "NextHomework": null,
+        "Performance": null,
+        "Comment": null
+    }
+}
+COUNTERS (must stay): SC114 Used=8 Rem=0 | SC2076 Used=7 Rem=1 | SessionDeducted LR8883=0 LR9959=1
+Dry-run complete; no production data was changed.
+EXIT:0
+No open LR-MERGE-C correction
+ROLLBACK_DRY:1
