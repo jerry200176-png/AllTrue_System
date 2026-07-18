@@ -44,11 +44,13 @@ class SubstituteService
             ->where('teacher_id', $teacherId)
             ->whereDate('schedule_date', $ymd)
             ->where('status', 'scheduled')
-            ->select('id', 'start_time', 'end_time', 'branch_id');
+            ->select('id', 'start_time', 'end_time', 'branch_id', 'student_course_id');
         if (!empty($excludeScheduleIds)) {
             $scheduleQuery->whereNotIn('id', $excludeScheduleIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        // #1296：ClassSession 已全數取消的 scheduled 例外 row 不再佔用時段
+        $scheduleRows = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleQuery->get(), $ymd);
 
         // 來源 2：ClassSession.SessionDate 當日 + StudentClass.TeacherID = 老師，
         // 排除已 cancelled / leave，以及已有其他代課老師的堂次（合約老師不需出席）。
@@ -166,12 +168,15 @@ class SubstituteService
                 'schedules.start_time',
                 'schedules.end_time',
                 'schedules.branch_id',
+                'schedules.student_course_id',
                 DB::raw("COALESCE(sc2.ClassType, 'one_on_one') as class_type")
             );
         if (!empty($excludeScheduleIds)) {
             $scheduleQuery->whereNotIn('schedules.id', $excludeScheduleIds);
         }
-        $scheduleRows = $scheduleQuery->get();
+        // #1296：ClassSession 已全數取消的 scheduled 例外 row 不再佔用時段
+        $scheduleRows = app(StaleScheduleExceptionFilter::class)
+            ->rejectStale($scheduleQuery->get(), $ymd);
 
         // 彙整原始 slots（每個 slot = 1 位學生的 1 堂課）
         $rawSlots = [];

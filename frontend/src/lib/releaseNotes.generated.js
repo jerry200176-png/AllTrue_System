@@ -7,22 +7,25 @@ export const changelogReleaseNotes = [
     "version": "2026.07.18",
     "date": "2026-07-18",
     "title": "2026.07.18 版本更新",
-    "summary": "reschedule commit and expose attendance source；調課改為單一交易，並顯示點名建立來源",
+    "summary": "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。；出缺勤「同一堂變兩堂」跨約／停用殘留防護",
     "audience": [
       "teacher",
-      "director"
+      "director",
+      "parent"
     ],
     "sections": [
       {
         "title": "修正內容",
         "items": [
-          "reschedule commit and expose attendance source",
+          "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+          "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
           "調課改為單一交易，並顯示點名建立來源"
         ]
       }
     ],
     "items": [
-      "reschedule commit and expose attendance source",
+      "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
+      "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
       "調課改為單一交易，並顯示點名建立來源"
     ]
   },
