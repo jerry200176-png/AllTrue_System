@@ -18,7 +18,7 @@
 | Question | Canonical answer |
 |----------|------------------|
 | 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
-| 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
+| 這個服務誰負責？ | Machine catalog `docs/catalog/services.json` (landing in follow-up PR) → Service ownership map |
 | production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
 | 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
 | 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |

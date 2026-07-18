@@ -2,7 +2,7 @@
 
 ## 2026-07-18 — Risk-Based Merge Policy + Service Catalog + #173 Repair Manifest
 
-- Constitution **0.1.1**: R0–R3 merge policy; R3 data-repair gate hard ban.
+- Constitution (same 0.1.0 pin): R0–R3 merge policy; R3 data-repair gate hard ban.
 - `RISK_BASED_MERGE_POLICY.md`, `MERGE_SOP.md`, PR template Risk-Class.
 - Machine-readable `docs/catalog/services.yaml` + validators.
 - Dependabot triage 2026-07-18; Actions checkout SHA pin pilot on docs-integrity.
@@ -22,5 +22,5 @@
 
 | Version | Date | Change |
 |---------|------|--------|
-| 0.1.1 | 2026-07-18 | Risk-Based Merge Policy; Service Catalog; R3 repair gate |
+| 0.1.0 | 2026-07-18 | Risk-Based Merge Policy + R3 repair gate (overlay pin stays 0.1.0; no constitution bump) |
 | 0.1.0 | 2026-07-18 | Initial Company Core MVP: Constitution, Evidence, Capability Registry, KG stub, Lessons index, Preflight, Handoff, Radars scaffold |

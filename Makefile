@@ -1,6 +1,6 @@
 # Tool-neutral targets for agents (see docs/governance/WORKTREE_POLICY.md)
 
-.PHONY: agent-preflight governance-health technical-health validate-capabilities overlay-pin instruction-invariants catalog-validate catalog-index
+.PHONY: agent-preflight governance-health technical-health validate-capabilities overlay-pin instruction-invariants
 
 
 agent-preflight:
@@ -20,9 +20,3 @@ governance-health:
 
 technical-health:
 	bash scripts/radars/technical-health.sh
-
-catalog-validate:
-	python3 scripts/catalog/validate-services.py
-
-catalog-index:
-	python3 scripts/catalog/generate-index.py

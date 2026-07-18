@@ -1,6 +1,6 @@
 # Company Constitution
 
-**Version:** 0.1.1  
+**Version:** 0.1.0  
 **Effective:** 2026-07-18  
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
