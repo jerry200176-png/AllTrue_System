@@ -4,41 +4,28 @@
 **Scope:** AllTrue System  
 **Rule:** Adapters cite this file — do not redefine paths.
 
-## Canonical model
+## Canonical model (Phase 0.5)
 
-| Role | Path / ref | Rule |
-|------|------------|------|
-| **Canonical object store** | `/home/jerry/workspace/AllTrue_System-clean` | Fetch + create worktrees only; do not accumulate long-lived dirty `main` edits |
-| **Remote baseline** | `origin/main` on `jerry200176-png/AllTrue_System` | Sole code baseline |
-| **Task worktree** | `/home/jerry/wt/alltrue-<slug>` or `/home/jerry/alltrue-<slug>` | One task/PR; short-lived; created from `origin/main` |
-| **Forbidden legacy** | `/home/jerry/alltrue` | NEVER edit/reset/commit — WIP preserved separately |
-| **Runner workspace** | `**/actions-runner-alltrue/_work/**` | Not a development checkout |
-| **Backups** | `**/workspace-backups/**` | Read-only recovery |
-| **Windows clones** | `/mnt/c/**` | Not source of truth |
+| Role | Path | Rule |
+|------|------|------|
+| **Bare object store** | `/home/jerry/workspace/repos/AllTrue_System.git` | fetch/ref/objects only — never write app code |
+| **Task worktrees** | `/home/jerry/workspace/tasks/alltrue/<task-id>/` | Only official Agent write path |
+| **Launch gateway** | `agent-start alltrue <task-id>` | Must succeed before Agent CLI |
+| **Remote baseline** | `origin/main` | Sole code baseline |
+| **Forbidden legacy** | `/home/jerry/alltrue`, `AllTrue_System-clean`, runner `_work`, backups, `/mnt/c` | Never Agent delivery |
 
-## Machine gate
+## Machine gates
 
 ```bash
+agent-start alltrue <task-id> --dry-run
 make agent-preflight
-# or: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
+bash scripts/check-agent-provenance.sh
+make production-identity
 ```
 
-Non-zero exit ⇒ do not write, commit, or open a PR from that tree.
-
-Config: `scripts/agent-preflight.config.json`  
-Production truth (not CI green): `bash scripts/production-identity.sh`
-
-## Create a safe worktree
-
-```bash
-cd /home/jerry/workspace/AllTrue_System-clean
-git fetch origin main
-git worktree add -b <type>/<issue-or-slug> /home/jerry/wt/alltrue-<slug> origin/main
-cd /home/jerry/wt/alltrue-<slug>
-make agent-preflight
-```
+PR must include `.agent-session/manifest.json` (Agent) or `.agent-session/human-authored.json` (human).
 
 ## WIP protection
 
-Do not delete unrecovered WIP under forbidden trees. Phase-0 preserve bundle:
+Do not delete unrecovered WIP under forbidden trees. Preserve bundle:
 `/home/jerry/workspace-backups/2026-07-19-phase0-wip-preserve/`.

@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "session_id": "4b3609c247f744a59a7baf1e705988aa",
+  "project": "alltrue",
+  "task_id": "phase05-enforcement",
+  "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
+  "base_sha": "49baef28ef8dd6cd4f53b45a12b229a756b17f8d",
+  "branch": "chore/phase05-enforcement-gaps",
+  "worktree_path": "/home/jerry/workspace/tasks/alltrue/phase05-enforcement",
+  "started_at": "2026-07-18T23:22:32Z",
+  "production_mutation": false,
+  "preflight_result": "pass",
+  "provenance_type": "agent-session",
+  "agent_cli": null,
+  "gateway_version": "0.5.0-bootstrap"
+}
