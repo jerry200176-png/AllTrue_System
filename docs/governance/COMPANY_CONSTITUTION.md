@@ -30,7 +30,7 @@ If Claude or Cursor text says it “overrides everything,” **Constitution + Co
 
 ## Hard bans
 
-- Do not edit dirty diverged worktrees (see `AGENTS.md` Forbidden worktrees).
+- Do not edit dirty diverged worktrees (see [`WORKTREE_POLICY.md`](./WORKTREE_POLICY.md)).
 - Do not mix AllTrue and sunrise-cafe changes in one PR / worktree.
 - Do not treat Plan / CI green / issue close count as production success.
 - Do not mark in-app bug `resolved` without public reporter-facing comment ([`CHAT_BUG_SYSTEM.md`](../CHAT_BUG_SYSTEM.md) §3.7 / R53).

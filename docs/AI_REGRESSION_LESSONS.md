@@ -27,7 +27,7 @@ last_reviewed: 2026-06-06
 ```
 
 - **只要 cwd 在 `/home/admin` production working tree，任何分支修改既有 .php/.vue/config 檔 = 即時影響 production**
-- 在 Pi 上 `git checkout -b` 不會隔離 working tree；WSL2 `~/alltrue` feature branch 才是安全開發路徑
+- 在 Pi 上 `git checkout -b` 不會隔離 working tree；WSL2 **task worktree**（非 `/home/jerry/alltrue`）才是安全開發路徑 — 見 `docs/governance/WORKTREE_POLICY.md`
 - 唯一安全的寫入：**新增** test file（`tests/` 目錄）、新增 Export class、新增 migration
 - 事故：§P0-005、§事故F
 
@@ -202,9 +202,9 @@ ClassSession::create([..., 'SessionDate' => $today->toDateString(), 'StartTime' 
 // ✅ 使用 resolveEffectiveCampusIds() 統一驗證，空 auth_campus_ids 非 super_admin → 403
 ```
 
-### Y6. 多 agent／多 session 並行 → 用 git worktree 隔離，勿在主 working tree `~/alltrue` 共改
+### Y6. 多 agent／多 session 並行 → 用 git worktree 隔離，勿在 forbidden dirty tree `/home/jerry/alltrue`（或解析到該路徑的 `~/alltrue`）共改
 
-- 本專案常多個 AI agent 並行（#692／#699／maturity／ops…）。**共用同一個 `~/alltrue` git working tree 會 race**：別的 agent 一 `git checkout`／切分支，就把你**尚未 commit 的改動還原成 HEAD**。症狀：`git status` 顯示乾淨、但你的編輯不見了；branch ref 在不同 commit 間跳動。
+- 本專案常多個 AI agent 並行（#692／#699／maturity／ops…）。**共用同一個 forbidden/dirty working tree（歷史上常是 `~/alltrue` → `/home/jerry/alltrue`）會 race**：別的 agent 一 `git checkout`／切分支，就把你**尚未 commit 的改動還原成 HEAD**。症狀：`git status` 顯示乾淨、但你的編輯不見了；branch ref 在不同 commit 間跳動。
 - ✅ 正確：每個任務在**獨立 worktree** 做（已有 `alltrue-maturity-docs`、`alltrue-ops-split` 範例）：
 
 ```bash

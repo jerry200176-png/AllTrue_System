@@ -1,8 +1,9 @@
-# Agent Preflight Skill
+# Agent Preflight (Cursor adapter)
 
-Before any code or production write:
+Tool-neutral command: `make agent-preflight` / `bash scripts/agent-preflight.sh`  
+Policy: `docs/governance/WORKTREE_POLICY.md`
 
-1. Open `docs/sop/AGENT_PREFLIGHT.md` and execute the checklist.
-2. Confirm worktree is not `/home/jerry/alltrue`.
-3. Confirm capability in `docs/governance/AGENT_CAPABILITY_REGISTRY.md`.
-4. For bugs, follow `docs/sop/BUG_INTAKE_TO_PRODUCTION.md`.
+1. Read Constitution + WORKTREE_POLICY.
+2. Run preflight script — refuse if cwd is `/home/jerry/alltrue`.
+3. Confirm Capability Registry for merge/deploy/in-app write.
+4. For bugs: Evidence Contract before `resolved`.

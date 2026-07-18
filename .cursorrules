@@ -36,7 +36,7 @@
 根本原因：**AI 記憶規則但執行時跳過，應在每次改 production 檔案前強制自我檢查「測試寫了嗎？」**。
 
 **⛔ 開發環境規則（2026-04-24 起）**：
-- 所有程式碼改動只在 **WSL2 本地** `~/alltrue` 進行
+- 所有程式碼改動只在 **WSL2 安全 task worktree** 進行（**禁止** `/home/jerry/alltrue`；政策：`docs/governance/WORKTREE_POLICY.md`；檢查：`make agent-preflight`）
 - 禁止 SSH 到 Pi `/home/admin` 直接編輯任何檔案
 - 部署唯一合法路徑：WSL2 push → PR → CI 綠 → merge → deploy.yml 自動執行
 - 緊急修復例外：先在 WSL2 改、push hotfix branch、merge，Pi 自動更新
@@ -80,7 +80,10 @@ GitHub Flow、Google SRE、OWASP 等業界常識 AI 已知，**不需要重複�
 
 ---
 
-## AllTrue 補習班管理系統 — 專案快速參照
+## AllTrue
+
+> **Cursor adapter** — tool-neutral policy lives in `docs/governance/` (Constitution, WORKTREE_POLICY). This file does not override Constitution.
+ 補習班管理系統 — 專案快速參照
 
 ### 技術棧
 - **前端**：Vue 3.4 + Vite 5，`<script setup>`，`frontend/src/supabase.js` 自建 client 打 `/api/v1/*`
