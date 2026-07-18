@@ -152,10 +152,12 @@ class RepairMergeRenewalLearningRecord extends Command
             $ke = $this->empty($f, $kv);
             if (!$se && $ke) {
                 $fill[$f] = $sv;
-            } elseif (!$se && !$ke && $this->norm($sv) !== $this->norm($kv)) {
-                $conflicts[$f] = ['source' => $sv, 'keeper' => $kv];
-            } else {
+            } elseif ($se) {
                 $keep[$f] = $kv;
+            } elseif ($this->norm($sv) === $this->norm($kv)) {
+                $keep[$f] = $kv;
+            } else {
+                $conflicts[$f] = ['source' => $sv, 'keeper' => $kv];
             }
         }
         if ($conflicts) {
