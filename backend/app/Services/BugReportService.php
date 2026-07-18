@@ -596,11 +596,12 @@ class BugReportService
         $now = $now ?: Carbon::now();
         $cutoff = $now->copy()->subDays($days);
 
-        $resolved = BugReport::query()->where('status', 'resolved')->get();
+        $bugIds = BugReport::query()->where('status', 'resolved')->pluck('id')->all();
         $out = [];
-        foreach ($resolved as $bug) {
+        foreach ($bugIds as $rawBugId) {
+            $bugId = (int) $rawBugId;
             $resolveLog = BugReportStatusLog::query()
-                ->where('bug_report_id', $bug->id)
+                ->where('bug_report_id', $bugId)
                 ->where('to_status', 'resolved')
                 ->orderByDesc('id')
                 ->first();
@@ -617,7 +618,7 @@ class BugReportService
             }
             // Exclusion: reporter already reopened after this resolve (status would not be resolved)
             $out[] = [
-                'bug_id' => (int) $bug->id,
+                'bug_id' => $bugId,
                 'resolved_at' => $resolveLog->created_at->toIso8601String(),
                 'days_resolved' => $resolveLog->created_at->diffInDays($now),
             ];
