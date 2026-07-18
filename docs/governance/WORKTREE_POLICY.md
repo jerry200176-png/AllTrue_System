@@ -29,3 +29,4 @@ PR must include `.agent-session/manifest.json` (Agent) or `.agent-session/human-
 
 Do not delete unrecovered WIP under forbidden trees. Preserve bundle:
 `/home/jerry/workspace-backups/2026-07-19-phase0-wip-preserve/`.
+# provenance block test 20260718T233248Z
