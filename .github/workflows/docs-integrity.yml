@@ -45,7 +45,11 @@ jobs:
               - 'CLAUDE.md'
               - '.cursorrules'
               - '.cursor/rules/**'
+              - 'Makefile'
               - 'scripts/docs-integrity-check.mjs'
+              - 'scripts/governance/**'
+              - 'scripts/radars/**'
+              - 'scripts/agent-preflight.sh'
               - '.github/workflows/docs-integrity.yml'
 
   integrity:
@@ -68,3 +72,8 @@ jobs:
 
       - name: Run docs integrity check
         run: node scripts/docs-integrity-check.mjs --strict
+      - name: Governance health (capability + invariants + overlay pin)
+        run: |
+          make instruction-invariants
+          make validate-capabilities
+          make overlay-pin || { echo "overlay pin check failed"; exit 1; }

@@ -1,0 +1,11 @@
+{
+  "radar": "governance_health",
+  "revision": "36dba1f9",
+  "ran_at": "20260718T043425Z",
+  "overall": "PASS",
+  "fail_count": 0,
+  "warn_count": 0,
+  "owner": "Founder / CTO Agent",
+  "cadence": "weekly",
+  "remediation": "docs/radars/README.md + failing script output"
+}
