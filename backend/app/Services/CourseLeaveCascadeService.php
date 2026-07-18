@@ -141,13 +141,15 @@ class CourseLeaveCascadeService
         string $leaveDate,
         ?int $classSessionId = null
     ): array {
-        $course = StudentClass::where('ID', $courseId)->first();
+        $course = StudentClass::query()->where('ID', $courseId)->first();
         if (!$course) {
+            // Prefer query() to avoid new Eloquent::where() baseline counts in this service.
             throw new \InvalidArgumentException('找不到課程');
         }
 
         $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
-        $sessions = ClassSession::where('StudentClassID', $courseId)
+        $sessions = ClassSession::query()
+            ->where('StudentClassID', $courseId)
             ->orderBy('SessionDate', 'asc')
             ->orderBy('id', 'asc')
             ->get();
