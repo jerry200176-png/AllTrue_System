@@ -127,6 +127,61 @@ class ScheduleLeaveCascadeTest extends TestCase
         $this->assertCount(9, $res->json('class_sessions') ?? []);
     }
 
+    public function test_leave_cascade_preview_lists_vacated_dates_without_writing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-05-20 10:00:00'));
+        $token = $this->createDirectorToken([1], 'director-leave-preview@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-leave-preview@example.com');
+        $student = $this->createStudent(1, '請假預覽測試');
+
+        $firstSat = Carbon::parse('2026-05-30'); // Saturday
+        $futureDates = [];
+        for ($i = 0; $i < 8; $i++) {
+            $futureDates[] = $firstSat->copy()->addWeeks($i)->toDateString();
+        }
+        $courseRes = $this->createCourseViaBatchApi($token, $student->id, $teacherId, [
+            'total_classes' => 8,
+            'confirmed_dates' => [],
+            'future_dates' => $futureDates,
+            'days_of_week' => [6],
+            'start_time' => '13:00',
+        ])->assertCreated();
+
+        $courseId = (int) ($courseRes->json('ID') ?? $courseRes->json('id') ?? 0);
+        if ($courseId <= 0) {
+            $courseId = (int) (DB::table('StudentClass')
+                ->where('StudentID', $student->id)
+                ->where('TeacherID', $teacherId)
+                ->max('ID') ?? 0);
+        }
+        $this->assertTrue($courseId > 0, 'Course ID should be available.');
+
+        $leaveDate = '2026-06-27';
+        $before = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate')
+            ->get()
+            ->map(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() . ':' . $s->Status)
+            ->all();
+
+        $preview = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/schedules/leave-cascade-preview', [
+            'student_course_id' => $courseId,
+            'schedule_date' => $leaveDate,
+        ])->assertOk();
+
+        $preview->assertJsonPath('vacated', ['2026-07-04']);
+        $preview->assertJsonPath('append', '2026-08-01');
+
+        $after = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate')
+            ->get()
+            ->map(fn ($s) => Carbon::parse($s->SessionDate)->toDateString() . ':' . $s->Status)
+            ->all();
+        $this->assertSame($before, $after, 'preview must not mutate ClassSession rows');
+    }
+
     public function test_bulk_holiday_leave_marks_all_eligible_sessions_in_date_range(): void
     {
         $token = $this->createDirectorToken([1], 'director-bulk-leave@example.com');

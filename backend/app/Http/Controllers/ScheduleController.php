@@ -781,6 +781,47 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Dry-run leave cascade date plan for UI impact preview (in-app #204).
+     * Does not write ClassSession / schedules.
+     */
+    public function leaveCascadePreview(Request $request)
+    {
+        $data = $request->validate([
+            'student_course_id' => 'required|integer',
+            'schedule_date' => 'required|date',
+            'class_session_id' => 'nullable|integer',
+        ]);
+
+        $courseId = (int) $data['student_course_id'];
+        $leaveDate = Carbon::parse($data['schedule_date'])->toDateString();
+        $sessionId = isset($data['class_session_id']) ? (int) $data['class_session_id'] : 0;
+
+        $courseRow = DB::table('StudentClass')->where('ID', $courseId)->first();
+        if (!$courseRow) {
+            return response()->json(['message' => '找不到課程'], 404);
+        }
+
+        $role = $request->attributes->get('auth_role');
+        $campusIds = $role === 'super_admin' ? [] : $request->attributes->get('auth_campus_ids', []);
+        $studentCampusId = (int) (DB::table('Student')->where('id', (int) $courseRow->StudentID)->value('CampusID') ?? 0);
+        if ($role !== 'super_admin' && !empty($campusIds) && !in_array($studentCampusId, $campusIds, true)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        try {
+            $plan = CourseLeaveCascadeService::previewLeaveCascadeForCourse(
+                $courseId,
+                $leaveDate,
+                $sessionId > 0 ? $sessionId : null
+            );
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json($plan);
+    }
+
+    /**
      * Trigger leave cascade from a ClassSession ID.
      * Used when a session was already marked leave (e.g. via attendance)
      * but the cascade (shift + append) was not yet executed.

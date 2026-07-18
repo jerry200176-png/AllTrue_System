@@ -7,5 +7,6 @@
 | Cross-teacher drag as plain reschedule | R73 | Attendance/eval stay on original teacher |
 | Non-atomic reschedule | R71 | Partial success / stale markers |
 | Premature in-app resolved | R53 | No public reply / no prod verify |
+| Leave cascade silent vacated week | R75 | Operator thinks schedule skipped a day after leave |
 
 Expand via `AI_REGRESSION_LESSONS.md`; do not fork long prose here.

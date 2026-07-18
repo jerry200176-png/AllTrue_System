@@ -927,6 +927,16 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - R72 stale 過濾仍必須保留；本規則解決「非 stale、但是同一學生」的假衝堂。
 - **測試必補**：`SameStudentExcludeBusyTest` — exclude 後 13:00 不 busy；substitute 成功；其他學生佔用仍 busy。
 
+### R75. 請假順延必須在送出前顯示會被空出的原定上課日（in-app #204）
+
+- **觸發情境**：2026-07-18 campus 16 許廷寬（SC#1953）請假後畫面跳過 07/04、07/18；操作者以為是排課 bug，實為 `CourseLeaveCascadeService` 順延把後續堂次 +1 週。
+- **根因**：影響預覽只寫「會自動順延」，未列出 **vacated** 日期；Silent surprise → 誤報／手動「系統調整堂次」回填。
+- **強制規則**：
+  - 請假確認前必須呼叫（或等價）`POST /api/v1/schedules/leave-cascade-preview`，顯示 vacated／moves／append。
+  - `computeShiftPlan` 與 `shiftAndAppendAfterLeave` 必須共用同一日期計畫，禁止預覽與寫入漂移。
+  - 不得把「順延空週」誤修成刪堂或只改 UI；若產品要改成「只補尾、不推移既有日」屬 Founder Decision（與 GitHub #1100 請假邊界同類）。
+- **測試必補**：`CourseLeaveCascadeDateLogicTest` vacated 案例；`ScheduleLeaveCascadeTest::test_leave_cascade_preview_lists_vacated_dates_without_writing`。
+
 ---
 
 ## 模組對照索引（改特定模組前讀 Archive 對應條目）
@@ -939,6 +949,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger） |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
+| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan） |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
