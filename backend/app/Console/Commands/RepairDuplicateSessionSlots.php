@@ -92,29 +92,17 @@ class RepairDuplicateSessionSlots extends Command
         return $plan;
     }
 
-    /**
-     * 2026-07-18 attendance duplicate family: same student + date + start with
-     * multiple non-cancelled scheduled rows across StudentClass contracts.
-     * Keep of-record (Stop=0 and SessionCount>0 preferred, else highest SC id);
-     * cancel the rest. Stop=1 shells with no remaining non-cancelled sessions
-     * are also Stopped when we cancel their last scheduled row.
-     *
-     * @return list<array<string, mixed>>
-     */
+    /** @return list<array<string, mixed>> */
     private function planScheduledCrossSc(): array
     {
         $plan = [];
         $cancelBySc = [];
-
         foreach ($this->crossScScheduledGroups() as $g) {
             $ranked = $g['rows'];
             usort($ranked, function ($a, $b) {
-                $score = function ($r) {
-                    $stop = (int) ($r->Stop ?? 0) === 1 ? 0 : 1_000_000_000;
-                    $substance = (int) ($r->SessionCount ?? 0) > 0 ? 1_000_000 : 0;
-
-                    return $stop + $substance + (int) $r->StudentClassID + ((int) $r->id / 1e9);
-                };
+                $score = fn ($r) => ((int) ($r->Stop ?? 0) === 1 ? 0 : 1_000_000_000)
+                    + ((int) ($r->SessionCount ?? 0) > 0 ? 1_000_000 : 0)
+                    + (int) $r->StudentClassID + ((int) $r->id / 1e9);
 
                 return $score($b) <=> $score($a);
             });
@@ -127,26 +115,19 @@ class RepairDuplicateSessionSlots extends Command
                     'student_class_id' => (int) $drop->StudentClassID,
                     'reason' => sprintf(
                         'cross-SC scheduled dup %s %s — keep SC%d session %d',
-                        $g['date'],
-                        $g['hm'],
-                        (int) $keep->StudentClassID,
-                        (int) $keep->id
+                        $g['date'], $g['hm'], (int) $keep->StudentClassID, (int) $keep->id
                     ),
                     'note_prefix' => self::NOTE_SCHEDULED,
                 ];
                 $cancelBySc[(int) $drop->StudentClassID][] = (int) $drop->id;
             }
         }
-
         foreach ($cancelBySc as $scId => $ids) {
-            $remaining = (int) DB::table('ClassSession')
-                ->where('StudentClassID', $scId)
-                ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")
-                ->whereNotIn('id', $ids)
-                ->count();
+            $remaining = (int) DB::table('ClassSession')->where('StudentClassID', $scId)
+                ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->whereNotIn('id', $ids)->count();
             $sessionCount = (int) DB::table('StudentClass')->where('ID', $scId)->value('SessionCount');
-            $alreadyStopped = (int) DB::table('StudentClass')->where('ID', $scId)->value('Stop') === 1;
-            if ($remaining === 0 && $sessionCount === 0 && !$alreadyStopped) {
+            $stopped = (int) DB::table('StudentClass')->where('ID', $scId)->value('Stop') === 1;
+            if ($remaining === 0 && $sessionCount === 0 && !$stopped) {
                 $plan[] = [
                     'type' => 'stop_student_class',
                     'bug' => 'scheduled-cross-sc',
@@ -159,20 +140,15 @@ class RepairDuplicateSessionSlots extends Command
         return $plan;
     }
 
-    /**
-     * @return list<array{student_id:int,date:string,hm:string,rows:list<object>}>
-     */
+    /** @return list<array{student_id:int,date:string,hm:string,rows:list<object>}> */
     private function crossScScheduledGroups(): array
     {
-        $today = now()->toDateString();
         $rows = DB::table('ClassSession as cs')
             ->join('StudentClass as sc', 'sc.ID', '=', 'cs.StudentClassID')
             ->whereRaw("LOWER(cs.Status) = 'scheduled'")
-            ->where('cs.SessionDate', '>=', $today)
+            ->where('cs.SessionDate', '>=', now()->toDateString())
             ->selectRaw('cs.id, cs.StudentClassID, cs.SessionDate, SUBSTRING(cs.StartTime,1,5) as hm, sc.StudentID, sc.SessionCount, sc.Stop')
-            ->orderBy('sc.StudentID')->orderBy('cs.SessionDate')->orderBy('cs.id')
-            ->get();
-
+            ->orderBy('sc.StudentID')->orderBy('cs.SessionDate')->orderBy('cs.id')->get();
         $groups = [];
         foreach ($rows as $row) {
             $key = $row->StudentID . '|' . $row->SessionDate . '|' . $row->hm;
@@ -183,12 +159,9 @@ class RepairDuplicateSessionSlots extends Command
         }
 
         return array_values(array_filter($groups, function ($g) {
-            if (count($g['rows']) < 2) {
-                return false;
-            }
             $scIds = array_unique(array_map(fn ($r) => (int) $r->StudentClassID, $g['rows']));
 
-            return count($scIds) > 1;
+            return count($g['rows']) >= 2 && count($scIds) > 1;
         }));
     }
 
