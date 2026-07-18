@@ -210,16 +210,17 @@ Note tag may remain after rollback (known low gap; full Note restore via dump if
 
 ---
 
-## Post-execution (fill after execute)
+## Post-execution (filled 2026-07-18)
 
 | Field | Value |
 |-------|-------|
-| Execute Actions run | _pending_ |
-| Backup path | _pending_ |
-| Snapshot path | _pending_ |
-| Post-invariant JSON | _pending_ |
-| In-app #173 lifecycle | _pending_ |
-
----
+| Execute Actions run | https://github.com/jerry200176-png/AllTrue_System/actions/runs/29633391473 |
+| Backup path | `/home/admin/backups/emergency/db_pre_173_supersede_2026-07-18_140538.sql.gz` |
+| Snapshot path | `storage/app/repair-snapshots/173-supersede-2026-07-18_140538.json` |
+| Artisan result | `Applied supersede 11292 → 16951` (workflow post-verify `php -r` failed on missing `DB` import — **mutation OK**) |
+| Post-invariant API | CS#11292=`cancelled` + `#173` note; CS#16951=`completed`; SC114 8/0; SC2076 7/1; live attended\|completed at slot = **1** |
+| Idempotent dry-run | Actions 29633451525 — `ALREADY APPLIED correction_id=1` |
+| Independent post-exec | PASS_POST_EXEC (separate Agent context) |
+| In-app #173 lifecycle | public reply #474 → **`resolved`** with `production_revision=8caa4065` |
 
 **LOCK:** Selection set is `C173` constants only. Any expansion requires a new Manifest ID and Founder Decision.

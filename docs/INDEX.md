@@ -10,20 +10,24 @@
 > **Source of truth:** committed files on `origin/main` only.
 
 > **前人種樹，後人乘涼。** 本檔只做指標定位；runtime 不讀 INDEX。
->
-> **知識流轉三層：**
-> ```
-> Docs（長期文件）←──────────────────────────────┐
->   ↓ AI 開工讀 INDEX → 定位 → 只讀對應章節       │ 做完寫記錄
-> MemPalace（召回索引，非權威）                      │
->   ↓ scripts/mempalace-ingest.sh（唯一更新入口）   │
->   ↓ post-merge 自動呼叫 ingest                    │
-> AI Session（執行）──────────────── write-back ──►│ (CHANGELOG /
->                                                 │  AI_REGRESSION /
->                                                 │  TECH_DEBT)
-> ```
-> 設計原則：**最小讀取，最大效果。** 先看這頁決定去哪，再只讀那個章節。  
-> **長文不漏讀**：速讀卡與版本更新鏈已整合在本 INDEX；[`docs/AI_DOC_LITERACY.md`](AI_DOC_LITERACY.md) 僅保留作索引 stub。
+
+---
+
+## Start here (10-minute onboarding)
+
+| Question | Canonical answer |
+|----------|------------------|
+| 我要從哪裡開始？ | `AGENTS.md` → [`governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) → this INDEX → task-specific row below |
+| 這個服務誰負責？ | Machine catalog [`catalog/services.json`](catalog/services.json) → [`catalog/SERVICES_INDEX.md`](catalog/SERVICES_INDEX.md) |
+| production 怎麼部署？ | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) only (contract I1) |
+| 出事怎麼回滾？ | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) + deploy prior SHA; data repairs use Repair Manifest rollback |
+| 哪份規則是權威？ | Constitution → Control Plane Contract → product overlay → adapters (`AGENTS`/`CLAUDE`/Cursor) |
+| 哪些只是歷史？ | Paths under `docs/archive/` + files marked Historical; radar `runs/` = generated evidence |
+| bug 如何追溯到 production？ | in-app bug → PR → deploy Actions → `version.json` / repair run → KG row ([`knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)) |
+| 文件是否仍有效？ | Prefer `last_verified` / Constitution Version / radar latest run; stale = archive or re-verify |
+
+**Worktree ban:** never edit `/home/jerry/alltrue` — [`governance/WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md).  
+**Merge risk:** [`governance/RISK_BASED_MERGE_POLICY.md`](governance/RISK_BASED_MERGE_POLICY.md) (R0–R3).
 
 ---
 

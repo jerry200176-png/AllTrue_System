@@ -1,8 +1,20 @@
 ## Summary
 <!-- 一句話說明這個 PR 做了什麼，以及為什麼 -->
 
+## Risk-Class (required — see `docs/governance/RISK_BASED_MERGE_POLICY.md`)
+<!-- Pick the HIGHEST class that applies. When unsure, choose higher. -->
+- [ ] **R0** — docs / generated evidence / no production behavior
+- [ ] **R1** — low-risk reversible code (isolated fix, display); tests + rollback
+- [ ] **R2** — domain/billing/auth/cron/deploy/migration/cross-campus — needs **independent** approval
+- [ ] **R3** — data repair / destructive / privilege / financial / security boundary — **Founder** + execution gate
+
+**Risk-Class:** R?  
+**Independent verifier / approval:** <!-- name or "n/a for R0" — not the same implementation context -->  
+**Rollback:** <!-- revert SHA / prior deploy / repair --rollback / n/a -->
+
 > **單人 repo Review Gate（#736）**：無第二位強制 reviewer 時，以「自動代理人 + 強制檢查」近似第二雙眼——
-> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。請當成 reviewer 逐項自審，不要當作純自審 rubber-stamp。
+> ①自動 AI review 留言（Bugbot/Copilot review，repo 設定啟用）②高風險檔強制附測試（required check `High-Risk Test Gate`）③下方 self-review checklist。  
+> **R2/R3 禁止**用另一個假身份 rubber-stamp；需不同 context 的獨立核准（Founder Decision 2026-07-18）。
 
 ## 關聯 Issue（Refs / Closes 規則）
 <!-- 多階段、Epic、仍有一截沒做完 → 只填 Refs，不要寫 Closes，避免 GitHub 整張 issue 被關掉 -->
@@ -33,6 +45,7 @@
 
 ## Checklist
 - [ ] 已 push feature branch；**merge 前** CI / Presubmit / Security 需全綠（由負責人跟到 completed）
+- [ ] Risk-Class 已宣告且與實際 diff 一致
 - [ ] 有改 `backend/app/`、`backend/routes/`、`frontend/src/` → 已更新 `docs/CHANGELOG.md`（docs-only / 純 workflow 可略，見團隊慣例）
 - [ ] 有 DB migration → 併 PR 說明上線後由 `deploy.yml` migrate；不在 production 手動試跑 full test
 - [ ] 有前端 deployable diff → merge 後確認 `deploy.yml` 成功，必要時驗 `version.json` / health

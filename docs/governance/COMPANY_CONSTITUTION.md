@@ -1,6 +1,6 @@
 # Company Constitution
 
-**Version:** 0.1.0  
+**Version:** 0.1.1  
 **Effective:** 2026-07-18  
 **Owner:** Founder / CTO Agent  
 **Scope:** AllTrue System + sunrise-cafe (portfolio)  
@@ -37,6 +37,8 @@ If Claude or Cursor text says it “overrides everything,” **Constitution + Co
 - Do not mark in-app bug `closed` until reporter-verify **or** timeout policy in [`EVIDENCE_CONTRACT.md`](./EVIDENCE_CONTRACT.md).
 - Do not assume permissions (PR merge, deploy, in-app write) without Capability Registry evidence.
 - Do not re-enable sunrise `autonomous-loop` without fixing self-dispatch probes.
+- Do not require Founder approval on every PR — follow [`RISK_BASED_MERGE_POLICY.md`](./RISK_BASED_MERGE_POLICY.md) (R0–R3).
+- Do not execute production data repair without an immutable Repair Manifest + Data Repair Gate (R3).
 
 ## Agent deploy / reply conditions
 
