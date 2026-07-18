@@ -233,13 +233,11 @@ class BugReportController extends Controller
                 'allow_exception' => $isSuperAdmin,
             ]
         );
-        if (!($result['ok'] ?? false)) {
-            $code = $result['code'] ?? 'invalid_transition';
-            $message = $result['message'] ?? 'Invalid status transition';
+        if (!$result['ok']) {
             return response()->json([
                 'ok' => false,
-                'code' => $code,
-                'message' => $message,
+                'code' => isset($result['code']) ? $result['code'] : 'invalid_transition',
+                'message' => isset($result['message']) ? $result['message'] : 'Invalid status transition',
             ], 422);
         }
 
@@ -312,11 +310,11 @@ class BugReportController extends Controller
             ?: ($newStatus === 'closed' ? '回報者確認已修好' : '回報者反映問題仍存在');
 
         $result = BugReportService::changeStatus($bugId, $userId, $newStatus, $note);
-        if (!($result['ok'] ?? false)) {
+        if (!$result['ok']) {
             return response()->json([
                 'ok' => false,
-                'code' => $result['code'] ?? 'invalid_transition',
-                'message' => $result['message'] ?? 'Invalid status transition',
+                'code' => isset($result['code']) ? $result['code'] : 'invalid_transition',
+                'message' => isset($result['message']) ? $result['message'] : 'Invalid status transition',
             ], 422);
         }
 

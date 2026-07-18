@@ -232,7 +232,7 @@ class BugReportService
             if (!$evidence['ok']) {
                 Log::info('bug_resolve_rejected', [
                     'bug_id' => $bugId,
-                    'code' => $evidence['code'] ?? 'evidence_rejected',
+                    'code' => isset($evidence['code']) ? $evidence['code'] : 'evidence_rejected',
                     'from_status' => $fromStatus,
                 ]);
                 return $evidence;
