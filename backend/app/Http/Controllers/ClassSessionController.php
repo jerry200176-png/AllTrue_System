@@ -2023,7 +2023,8 @@ class ClassSessionController extends Controller
                 $sessionDate,
                 $startTime,
                 $endTime,
-                $excludeSchedIds
+                $excludeSchedIds,
+                $studentId > 0 ? $studentId : null
             );
             $crossConflicts = array_values(array_filter(
                 $allBusy,
@@ -2060,6 +2061,8 @@ class ClassSessionController extends Controller
                 'start_time' => $startTime,
                 'end_time' => $endTime,
                 'exclude_schedule_id' => $existingScheduled ? (int) $existingScheduled->id : null,
+                // in-app #203：排除同一學生續約／雙軌佔用，避免代課自撞假 409
+                'exclude_student_id' => $studentId > 0 ? $studentId : null,
             ]);
             if (!empty($conflicts)) {
                 $conflictMessage = $conflicts[0]['message'] ?? '代課老師此時段與既有課程衝突';

@@ -59,6 +59,7 @@ class SubstituteController extends Controller
 
         $data = $request->validate([
             'date' => 'required|date',
+            'exclude_student_id' => 'nullable|integer|min:1',
         ]);
 
         $managedCampusIds = $role === 'super_admin'
@@ -79,7 +80,14 @@ class SubstituteController extends Controller
 
         // FR-005: use capacity-aware method so frontend can distinguish
         // "teacher has room" vs "teacher is truly full" without holding its own capacity map.
-        $busy = $svc->collectTeacherBusySlotsWithCapacity($teacherId, $data['date']);
+        // in-app #203：代課挑選時排除「同一學生」既有佔用，避免續約雙軌／自撞假衝堂。
+        $excludeStudentId = isset($data['exclude_student_id']) ? (int) $data['exclude_student_id'] : null;
+        $busy = $svc->collectTeacherBusySlotsWithCapacity(
+            $teacherId,
+            $data['date'],
+            [],
+            $excludeStudentId
+        );
 
         // PRD 第 9 節 Info Disclosure：不含學生姓名 / 課程 ID 等 PII。
         // 新增 class_type（enum，無 PII）與 remaining_capacity（整數）供前端容量判斷。

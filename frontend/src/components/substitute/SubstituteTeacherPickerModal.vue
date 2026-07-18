@@ -379,7 +379,9 @@ async function refreshAvailability() {
     const results = await Promise.allSettled(
       (props.teachers || []).map(async (t) => {
         try {
-          const r = await props.fetchAvailability(t.id, date);
+          const r = await props.fetchAvailability(t.id, date, {
+            excludeStudentId: Number(props.context?.student_id || 0) || undefined,
+          });
           return [t.id, Array.isArray(r?.busy_slots) ? r.busy_slots : []];
         } catch (e) {
           return [t.id, []];
