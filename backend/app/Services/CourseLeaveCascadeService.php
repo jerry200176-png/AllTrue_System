@@ -125,6 +125,80 @@ class CourseLeaveCascadeService
     }
 
     /**
+     * Load course sessions and return a dry-run leave cascade plan.
+     *
+     * @return array{
+     *   leave_session_date: string,
+     *   weekdays: list<int>,
+     *   moves: list<array{from:string,to:string,id:?int}>,
+     *   vacated: list<string>,
+     *   append: string,
+     *   extended_end_date: string
+     * }
+     */
+    public static function previewLeaveCascadeForCourse(
+        int $courseId,
+        string $leaveDate,
+        ?int $classSessionId = null
+    ): array {
+        $course = StudentClass::where('ID', $courseId)->first();
+        if (!$course) {
+            throw new \InvalidArgumentException('找不到課程');
+        }
+
+        $normalizedLeaveDate = Carbon::parse($leaveDate)->toDateString();
+        $sessions = ClassSession::where('StudentClassID', $courseId)
+            ->orderBy('SessionDate', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $leaveSession = null;
+        if ($classSessionId && $classSessionId > 0) {
+            $leaveSession = $sessions->first(fn ($s) => (int) $s->id === $classSessionId);
+        }
+        if (!$leaveSession) {
+            $leaveSession = $sessions->first(function ($session) use ($normalizedLeaveDate) {
+                $status = strtolower((string) ($session->Status ?? ''));
+                return Carbon::parse($session->SessionDate)->toDateString() === $normalizedLeaveDate
+                    && !in_array($status, ['cancelled', 'leave_adjusted'], true);
+            });
+        }
+        if (!$leaveSession) {
+            throw new \InvalidArgumentException('找不到可請假的堂次');
+        }
+
+        $leaveSessionDate = Carbon::parse($leaveSession->SessionDate)->toDateString();
+        $weekdays = self::resolveCourseWeekdays(
+            $course,
+            (int) Carbon::parse($leaveSession->SessionDate)->dayOfWeekIso
+        );
+        $sessionRows = [];
+        foreach ($sessions as $s) {
+            $sessionRows[] = [
+                'id' => (int) $s->id,
+                'date' => Carbon::parse($s->SessionDate)->toDateString(),
+                'status' => (string) ($s->Status ?? ''),
+            ];
+        }
+
+        $plan = self::computeShiftPlan(
+            $sessionRows,
+            $leaveSessionDate,
+            $weekdays,
+            (int) $leaveSession->id
+        );
+
+        return [
+            'leave_session_date' => $leaveSessionDate,
+            'weekdays' => $weekdays,
+            'moves' => $plan['moves'],
+            'vacated' => $plan['vacated'],
+            'append' => $plan['append'],
+            'extended_end_date' => $plan['extended_end_date'],
+        ];
+    }
+
+    /**
      * Dry-run of leave cascade date moves (no DB writes).
      *
      * Used by leave UI impact preview so operators see which calendar weeks
@@ -154,7 +228,7 @@ class CourseLeaveCascadeService
         $shiftCandidates = [];
         foreach ($sessionRows as $row) {
             $id = isset($row['id']) ? (int) $row['id'] : 0;
-            $date = Carbon::parse((string) ($row['date'] ?? ''))->toDateString();
+            $date = Carbon::parse((string) $row['date'])->toDateString();
             $status = strtolower((string) ($row['status'] ?? ''));
             if ($leaveSessionId && $id === $leaveSessionId) {
                 continue;
@@ -188,8 +262,7 @@ class CourseLeaveCascadeService
             if ($id > 0 && isset($shiftIdSet[$id])) {
                 continue;
             }
-            // Unidentified shift candidates are matched by date when building occupied set.
-            $date = Carbon::parse((string) ($row['date'] ?? ''))->toDateString();
+            $date = Carbon::parse((string) $row['date'])->toDateString();
             $isShiftDate = false;
             if ($id <= 0) {
                 foreach ($shiftCandidates as $c) {
