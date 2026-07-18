@@ -1105,6 +1105,180 @@ class BugReportApiTest extends TestCase
         $this->assertEquals(2, $res->json('unread_count'), 'Badge must count both replies even when on branch 1');
     }
 
+    public function test_resolve_without_public_reply_rejected(): void
+    {
+        [$tokenAdmin] = $this->createUserToken([1], 'resNoPub@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => 1,
+            'title' => 'No public', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+            'production_revision' => '662960e58535da8e693dcf0b895f32c834c8a039',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJson(['code' => 'missing_public_reply']);
+        $this->assertEquals('in_progress', $bug->fresh()->status);
+    }
+
+    public function test_resolve_with_only_internal_comment_rejected(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resInt@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Internal only', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => 'internal rca',
+            'is_internal_note' => true,
+        ])->assertStatus(201);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+            'production_revision' => '662960e5',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJson(['code' => 'missing_public_reply']);
+    }
+
+    public function test_resolve_without_production_evidence_rejected(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resNoEv@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'No sha', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '請再試一次',
+            'is_internal_note' => false,
+        ])->assertStatus(201);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+        ]);
+
+        $res->assertStatus(422);
+        $res->assertJson(['code' => 'missing_production_evidence']);
+        $this->assertEquals('in_progress', $bug->fresh()->status);
+    }
+
+    public function test_resolve_with_full_evidence_succeeds(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resOk@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Full evidence', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '已上線，請驗收',
+            'is_internal_note' => false,
+        ])->assertStatus(201);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+            'production_revision' => '662960e5',
+            'deploy_run_id' => '29630243852',
+            'note' => 'PR #1299',
+        ]);
+
+        $res->assertOk();
+        $this->assertEquals('resolved', $bug->fresh()->status);
+        $this->assertDatabaseHas('bug_report_status_logs', [
+            'bug_report_id' => $bug->id,
+            'to_status' => 'resolved',
+            'changed_by' => $admin->id,
+        ]);
+        $logNote = \App\Models\BugReportStatusLog::where('bug_report_id', $bug->id)
+            ->where('to_status', 'resolved')->value('note');
+        $this->assertStringContainsString('[resolution_evidence]', (string) $logNote);
+        $this->assertStringContainsString('662960e5', (string) $logNote);
+    }
+
+    public function test_resolve_with_exception_reason_super_admin(): void
+    {
+        [$tokenAdmin, $admin] = $this->createUserToken([1], 'resEx@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => $admin->id,
+            'title' => 'Exception path', 'description' => 'D',
+            'severity' => 'low', 'status' => 'in_progress',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/comments", [
+            'body' => '文件修正，無 deploy',
+            'is_internal_note' => false,
+        ])->assertStatus(201);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'resolved',
+            'evidence_exception_reason' => 'docs-only fix; no production deploy required by policy',
+        ]);
+
+        $res->assertOk();
+        $this->assertEquals('resolved', $bug->fresh()->status);
+    }
+
+    public function test_triaged_transition_unchanged_without_evidence(): void
+    {
+        [$tokenAdmin] = $this->createUserToken([1], 'triagedOk@test.com', 'S');
+
+        $bug = BugReport::create([
+            'CampusID' => 1, 'reporter_user_id' => 1,
+            'title' => 'Triage only', 'description' => 'D',
+            'severity' => 'low', 'status' => 'new',
+        ]);
+
+        $this->withHeaders([
+            'Authorization' => "Bearer {$tokenAdmin}",
+            'Accept' => 'application/json',
+        ])->postJson("/api/v1/bugs/{$bug->id}/status", [
+            'status' => 'triaged',
+        ])->assertOk();
+
+        $this->assertEquals('triaged', $bug->fresh()->status);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
 
     private function createUserToken(array $campusIds, string $loginName, string $type = 'A'): array
