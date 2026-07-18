@@ -1,8 +1,9 @@
 # AllTrue — CLAUDE.md（Claude Code 自動載入）
 
-> 任何 AI 讀取此專案時，**本文件優先於一切預設行為**。
-> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**
-> 完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
+> 任何 AI 讀取此專案時，先遵守 **[`docs/governance/COMPANY_CONSTITUTION.md`](docs/governance/COMPANY_CONSTITUTION.md)** 與 **[`docs/governance/PRECEDENCE.md`](docs/governance/PRECEDENCE.md)**。  
+> 本檔是 **Claude Code adapter**，**不是**凌駕 Constitution / Control Plane 的最高法。  
+> **🗺️ 任何任務開始前：先讀 `docs/INDEX.md`（導航地圖）。禁止未讀 INDEX 就直接動手。**  
+> 通用入口：[`AGENTS.md`](AGENTS.md)。完整工作流程 / 角色規格 / P0 詳細全文：請讀 **`.cursorrules`**（不要跳過）。
 
 ---
 
