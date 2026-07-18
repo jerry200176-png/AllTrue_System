@@ -637,7 +637,7 @@ class BugReportService
         bool $dryRun = false,
         int $days = 7
     ): array {
-        $bug = BugReport::find($bugId);
+        $bug = BugReport::query()->where('id', $bugId)->first();
         if (!$bug) {
             return ['ok' => false, 'action' => 'skip', 'code' => 'not_found', 'message' => 'Bug not found'];
         }

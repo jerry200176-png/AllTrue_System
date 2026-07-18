@@ -27,16 +27,18 @@ class CloseStaleResolvedBugsCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $actorOpt = $this->option('actor');
 
-        $actorId = $actorOpt !== null && $actorOpt !== ''
-            ? (int) $actorOpt
-            : (int) (User::query()->where('type', 'S')->orderBy('id')->value('id') ?? 0);
+        if ($actorOpt !== null && $actorOpt !== '') {
+            $actorId = (int) $actorOpt;
+        } else {
+            $raw = User::query()->where('type', 'S')->orderByRaw('id asc')->value('id');
+            $actorId = $raw !== null ? (int) $raw : 0;
+        }
 
         if ($actorId <= 0) {
             $this->error('No actor user id (pass --actor= or ensure a type=S user exists)');
             return self::FAILURE;
         }
 
-        // Recompute eligibility with requested days via temporary approach:
         $eligible = BugReportService::listEligibleForReporterTimeout($days);
         $this->info(($dryRun ? '[dry-run] ' : '') . 'eligible=' . count($eligible) . " days={$days} actor={$actorId}");
 
@@ -44,12 +46,10 @@ class CloseStaleResolvedBugsCommand extends Command
         $skipped = 0;
         foreach ($eligible as $row) {
             $bugId = (int) $row['bug_id'];
-            // listEligible already filtered by $days; closeByReporterTimeout re-checks with default 7 —
-            // align by only closing when days_resolved >= $days (already true).
             $result = BugReportService::closeByReporterTimeout($bugId, $actorId, $dryRun, $days);
-            $action = $result['action'] ?? 'unknown';
+            $action = $result['action'];
             $this->line("bug #{$bugId}: {$action}");
-            if (($result['ok'] ?? false) && in_array($action, ['closed', 'would_close'], true)) {
+            if ($result['ok'] && in_array($action, ['closed', 'would_close'], true)) {
                 $closed++;
             } else {
                 $skipped++;
