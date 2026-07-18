@@ -1,0 +1,11 @@
+{
+  "radar": "technical_health",
+  "revision": "8caa4065",
+  "ran_at": "20260718T055106Z",
+  "overall": "PASS",
+  "fail_count": 0,
+  "warn_count": 0,
+  "owner": "Founder / CTO Agent",
+  "cadence": "weekly",
+  "remediation": "docs/radars/README.md + failing check script; do not mass-pin Actions in this radar"
+}
