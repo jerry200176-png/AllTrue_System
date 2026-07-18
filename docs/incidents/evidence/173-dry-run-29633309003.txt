@@ -1,0 +1,25 @@
+Run allowlisted	Run repair on production	2026-07-18T06:02:44.0747224Z   ACTOR: cursor:173-gate-dryrun
+Run allowlisted	Run repair on production	2026-07-18T06:02:44.0748382Z ##[endgroup]
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.6205912Z === mode=dry-run ===
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8276594Z === DRY RUN repair:supersede-renewal-session ===
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8366546Z WOULD supersede ClassSession id=11292 → cancelled; replaced_by_session_id=16951; reason=duplicate_after_renewal; ref=in-app #173
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8367319Z   preserved_lr=8883 keeper_lr=9959
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8367658Z --- WILL CHANGE ---
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8367949Z {
+--
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8373094Z         "correction_reason": "duplicate_after_renewal",
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8373487Z         "decision_reference": "in-app #173",
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8373857Z         "preserved_learning_record_id": 8883,
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8374220Z         "keeper_learning_record_id": 9959
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8374545Z     }
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8374783Z }
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8375119Z --- WILL NOT CHANGE ---
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8375539Z   learning_records: no void/move; preserved LR stays on superseded session
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8376096Z   counters: UsedSessions/RemainingSessions/Charge/Paid untouched
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8376588Z   billing: Invoice/Payment/reconciled untouched
+--
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8377375Z   ledger: no reverseForSession/recomputeCounters
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8377749Z   delete: no hard DELETE
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8378106Z COUNTERS (must stay): SC114 Used=8 Rem=0 | SC2076 Used=7 Rem=1
+Run allowlisted	Run repair on production	2026-07-18T06:02:46.8378542Z Dry-run complete; no production data was changed.
+Run allowlisted	Complete job	﻿2026-07-18T06:02:46.8454979Z Cleaning up orphan processes
