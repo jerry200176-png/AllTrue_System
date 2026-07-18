@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ref, computed } from 'vue';
-import { useCalendarReschedule } from '../useCalendarReschedule.js';
+import { findExactRescheduleAnchor, useCalendarReschedule } from '../useCalendarReschedule.js';
 
 function makeDeps(overrides = {}) {
   return {
@@ -30,6 +30,17 @@ function makeDeps(overrides = {}) {
 }
 
 describe('useCalendarReschedule', () => {
+  it('matches a reschedule anchor by exact course, date, and start time', () => {
+    const rows = [
+      { id: 1, status: 'leave', student_course_id: 99, schedule_date: '2026-06-11', start_time: '16:00:00' },
+      { id: 2, status: 'rescheduled', student_course_id: 99, schedule_date: '2026-06-11', start_time: '14:00:00' },
+      { id: 3, status: 'rescheduled', student_course_id: 99, schedule_date: '2026-06-11', start_time: '16:00:00' },
+    ];
+
+    expect(findExactRescheduleAnchor(rows, 99, '2026-06-11', '16:00')).toMatchObject({ id: 3 });
+    expect(findExactRescheduleAnchor(rows, 99, '2026-06-11', '18:00')).toBeNull();
+  });
+
   it('openRescheduleModal initializes form and opens modal', () => {
     const showModal = ref(true);
     const { openRescheduleModal, rescheduleForm, showRescheduleModal } = useCalendarReschedule(
