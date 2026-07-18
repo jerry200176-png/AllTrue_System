@@ -1,5 +1,11 @@
 # Governance changelog
 
+## 2026-07-18 — Freshness + Governance Health radar
+
+- `agent_capabilities.json` + validators; overlay pin check; instruction invariants; operational Governance Health radar (first real run artifact under `docs/radars/runs/`).
+- KG #203 uses `n/a (in-app-only)` formal Issue notation.
+
+
 ## 2026-07-18 — WORKTREE_POLICY + agent-preflight
 
 - Canonical path policy; adapters cite it; `scripts/agent-preflight.sh` + `make agent-preflight`.
