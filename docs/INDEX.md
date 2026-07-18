@@ -87,7 +87,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 治理原則：
 1. 做事前先查：先讀 [`docs/governance/COMPANY_CONSTITUTION.md`](governance/COMPANY_CONSTITUTION.md) 與本 INDEX，再按任務查 Docs / MemPalace / 對應 rules。
 2. 做完要記錄：功能進 `CHANGELOG`，事故進 `AI_REGRESSION_LESSONS`，技術債進 `TECH_DEBT`，複雜架構進 `SYSTEM_TECH_GUIDE`；高風險修補進 [`docs/knowledge/KNOWLEDGE_GRAPH.md`](knowledge/KNOWLEDGE_GRAPH.md)。
-3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
+3. Company Core 目錄：[`docs/governance/`](governance/README.md)、[`WORKTREE_POLICY.md`](governance/WORKTREE_POLICY.md)、[`docs/sop/AGENT_PREFLIGHT.md`](sop/AGENT_PREFLIGHT.md)、[`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)。
 3. 規則單一出處：頂層文件只導航，不複製長 SOP；避免文件互相打架。
 4. 任何 AI 不靠記憶硬猜；先查資料，再動手。
 5. `.cursor/plans/**`、`*_ARCHIVE*` 與長篇歷史文件只供 `rg` / MemPalace 搜尋，不通讀；**runtime 衝突時**以 [`CONTROL_PLANE_CONTRACT.md`](CONTROL_PLANE_CONTRACT.md) 為準。
