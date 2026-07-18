@@ -5,18 +5,30 @@
 > **AllTrue AI 公司 slogan：前人種樹，後人乘涼。**
 > 所有 Agent 做事前先查 `docs/INDEX.md` 與 MemPalace；做完把決策寫回文件，讓下一個 AI 不靠猜測。
 
+## Forbidden worktrees / paths
+
+| Path | Rule |
+|------|------|
+| `/home/jerry/alltrue` | **NEVER edit, reset, or commit** — historically diverged dirty `main` (thousands ahead/behind) |
+| Mix AllTrue + sunrise-cafe | **Forbidden** in one worktree/PR |
+| Symlinked `backend/vendor` across worktrees | **Forbidden** for PHPUnit — run `composer install` in that worktree |
+
+Prefer: `git worktree add <path> -b <branch> origin/main` for new tasks.
+
 ## 開工前 First-read 順序
 
 **SOP（防重踩同坑）**：收到任務後**先讀文檔再打程式**，禁止只靠對話上下文硬改。高風險模組（代課／評量／智慧行事曆合併／扣堂／繳費提醒等）必須對照下面第 2、4 步與 `AI_REGRESSION_LESSONS` 文末**模組索引表**對應 §，再動 `backend/`、`frontend/src/`。
 
+0. **`docs/governance/COMPANY_CONSTITUTION.md`** + **`docs/sop/AGENT_PREFLIGHT.md`**（公司根政策）
 1. `.cursorrules`（P0 事故 + 安全快評 + 工作流程概覽）— **自動載入，已讀**
 2. **`docs/INDEX.md`（導航地圖，決定接下來只讀哪些章節）— 必讀，省 token 關鍵**
 2b. 任務牽涉 **長文件 / 多份 docs** 時：讀 `docs/INDEX.md` 的速讀卡／治理節奏；`docs/AI_DOC_LITERACY.md` 只是索引 stub
-3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`
+3. 需要回顧決策或 bug 時：`~/.local/bin/mempalace search "<關鍵字>"`（本機；非跨機器權威）
 4. `docs/AI_REGRESSION_LESSONS.md`（已發生過的缺口，改高風險模組前必讀；並查文末**模組對照索引**挑 §）
 5. `.cursor/.local/test-credentials.md`（做任何瀏覽器測試前讀）
 6. 若涉及繳費/提醒邏輯：`docs/DIRECTOR_PAYMENT_ALERT_RULES.md`
 7. **處理 in-app Bug 回報**（分診或修完上線）：`docs/CHAT_BUG_SYSTEM.md` **§3.6–§3.7** + `AI_REGRESSION_LESSONS.md` **§R51、§R53**（開 issue 與 merge 後都要回系統留言，勿只動 GitHub）
+8. Capabilities：`docs/governance/AGENT_CAPABILITY_REGISTRY.md` — 勿假設權限
 
 ## 公司治理記錄原則
 

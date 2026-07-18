@@ -174,6 +174,8 @@ last_reviewed: 2026-05-24
 | GitHub | issue 開著，`status:ready` 或 `status:needs-decision` | PR `Closes #nnn`；必要時補 comment |
 | In-app | `triaged` + 公開回覆 | `resolved` + 公開回覆 → 等驗收 → `closed` |
 
+**Reporter-verify timeout**：見 [`docs/governance/EVIDENCE_CONTRACT.md`](governance/EVIDENCE_CONTRACT.md)（預設 7 日無回覆且無回歸訊號，可 `closed` 並註明 `closed_by_timeout`）。
+
 **相關防再犯**：`docs/AI_REGRESSION_LESSONS.md` §R51（分診前必查附件）、§R53（上線後必回 in-app）。
 
 ### 3.8 公開留言寫作：白話優先（給老師／主任）
