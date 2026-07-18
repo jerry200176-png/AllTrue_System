@@ -1866,7 +1866,12 @@ class ClassSessionController extends Controller
                     'errors' => ['new_date' => ['新日期格式無效']],
                 ], 422);
             }
-            if ($parsedNewDate->lt(Carbon::today())) {
+            // Historical corrections may adjust the time within the same
+            // already-recorded lesson date. Moving a lesson to a different
+            // past date remains blocked; that would be a historical rewrite,
+            // not a bounded substitute bookkeeping correction.
+            $isSameHistoricalSessionDate = $parsedNewDate->toDateString() === $origSessionDate;
+            if ($parsedNewDate->lt(Carbon::today()) && !$isSameHistoricalSessionDate) {
                 return response()->json([
                     'message' => '新日期不可為過去日期',
                     'errors' => ['new_date' => ['新日期不可為過去日期']],
@@ -2029,7 +2034,11 @@ class ClassSessionController extends Controller
                     'class_session_id' => $id,
                     'new_teacher_id' => $newTeacherId,
                     'session_date' => $sessionDate,
-                    'conflicts' => $crossConflicts,
+                    'conflict_count' => count($crossConflicts),
+                    'conflict_campus_ids' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => (int) ($conflict['campus_id'] ?? 0),
+                        $crossConflicts
+                    )))),
                 ]);
 
                 return response()->json([
@@ -2063,7 +2072,11 @@ class ClassSessionController extends Controller
                     'class_session_id' => $id,
                     'new_teacher_id' => $newTeacherId,
                     'session_date' => $sessionDate,
-                    'conflicts' => $conflicts,
+                    'conflict_count' => count($conflicts),
+                    'conflict_types' => array_values(array_unique(array_filter(array_map(
+                        static fn ($conflict) => $conflict['type'] ?? null,
+                        $conflicts
+                    )))),
                 ]);
 
                 return response()->json([
@@ -2967,4 +2980,3 @@ class ClassSessionController extends Controller
         }
     }
 }
-

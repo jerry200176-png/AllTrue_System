@@ -485,6 +485,7 @@ import {
   normalizeTimeTo30,
   computeEndTime,
 } from '../lib/calendarFormat.js';
+import { resolveCalendarDropAction } from '../lib/calendarDropRouting.js';
 // #740 Step 3：教師配色（有狀態 memo）
 import { getTeacherColor } from '../lib/teacherColor.js';
 import { useCalendarDataLoad } from '../composables/calendar/useCalendarDataLoad.js';
@@ -2149,22 +2150,32 @@ const onSlotDrop = (dow, h, targetDate, teacherId) => {
   const { course, originalDate } = draggingCourse.value;
   draggingCourse.value = null;
   dragOverSlot.value = null;
-  const sameSlot = targetDate === originalDate && parseHour(course.start_time) === h && (!teacherId || course.teacher_id === teacherId);
-  if (sameSlot) return;
-  // 同日、同一開始鐘點，拖到「另一位老師」欄 → 開代課確認（非調課）
-  if (
-    !isTeacher.value &&
-    targetDate === originalDate &&
-    parseHour(course.start_time) === h &&
-    teacherId &&
-    course.teacher_id &&
-    Number(teacherId) !== Number(course.teacher_id)
-  ) {
-    openSubstituteFromDrag(course, originalDate, teacherId);
-    return;
-  }
+  const action = resolveCalendarDropAction({
+    originalDate,
+    targetDate,
+    originalStart: course.start_time,
+    targetHour: h,
+    currentTeacherId: course.teacher_id,
+    targetTeacherId: teacherId,
+  });
+  if (action.kind === 'noop') return;
+
   const newStart = `${String(h).padStart(2, '0')}:00`;
   const dur = course.duration_hours || 2;
+  const newEnd = computeEndTime(newStart, dur);
+
+  // Any teacher change belongs to the atomic substitute workflow. When the
+  // drop also changes date/time, that endpoint performs both changes in one
+  // transaction and keeps attendance/evaluation ownership aligned.
+  if (!isTeacher.value && action.kind === 'substitute') {
+    openSubstituteFromDrag(course, originalDate, teacherId, action.timeChanged ? {
+      date: targetDate,
+      startTime: newStart,
+      endTime: newEnd,
+    } : null);
+    return;
+  }
+
   const baseId = course.is_exception ? course.student_course_id : course.id;
   const baseCourse = courses.value.find(c => c.id === baseId) || course;
   rescheduleForm.value = {
