@@ -38,6 +38,8 @@ After `resolved` + public ask-to-retest:
 
 - Wait **7 calendar days** for reporter reply.  
 - If no reply and no regression signal: may move to `closed` with note `closed_by_timeout` citing this contract.  
+- **Command (manual):** `php artisan bugs:close-stale-resolved --dry-run` then apply — see [`docs/sop/BUG_REPORTER_TIMEOUT.md`](../sop/BUG_REPORTER_TIMEOUT.md). Not auto-scheduled.  
+- Excludes resolves lacking `[resolution_evidence]` (legacy / unverified).  
 - If reporter reports still broken: reopen to `in_progress` (do not game close).
 
 ## Independent verification
