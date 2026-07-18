@@ -31,6 +31,9 @@ jobs:
       # 合法格式：Conventional-Commits 前綴 + td-batchN-* + dependabot/*
       # feat|fix|hotfix|chore|exp|perf|test|refactor|docs|build|ci
       # ─────────────────────────────────────────────
+      - name: "[CHECK 0] Agent preflight (CI mode)"
+        run: AGENT_PREFLIGHT_MODE=ci bash scripts/agent-preflight.sh
+
       - name: "[CHECK 1] Branch naming convention"
         run: |
           BRANCH="${GITHUB_HEAD_REF}"

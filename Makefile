@@ -1,6 +1,6 @@
 # Tool-neutral targets for agents (see docs/governance/WORKTREE_POLICY.md)
 
-.PHONY: agent-preflight governance-health technical-health validate-capabilities overlay-pin instruction-invariants catalog-validate catalog-index
+.PHONY: agent-preflight production-identity governance-health technical-health validate-capabilities overlay-pin instruction-invariants catalog-validate catalog-index
 
 
 agent-preflight:
@@ -26,3 +26,6 @@ catalog-validate:
 
 catalog-index:
 	python3 scripts/catalog/generate-index.py
+
+production-identity:
+	bash scripts/production-identity.sh

@@ -1,9 +1,13 @@
 # Agent Preflight (Cursor adapter)
 
-Tool-neutral command: `make agent-preflight` / `bash scripts/agent-preflight.sh`  
-Policy: `docs/governance/WORKTREE_POLICY.md`
+Tool-neutral: `make agent-preflight`  
+Policy: `docs/governance/WORKTREE_POLICY.md`  
+Config: `scripts/agent-preflight.config.json`
 
-1. Read Constitution + WORKTREE_POLICY.
-2. Run preflight script — refuse if cwd is `/home/jerry/alltrue`.
-3. Confirm Capability Registry for merge/deploy/in-app write.
-4. For bugs: Evidence Contract before `resolved`.
+Before any write:
+
+1. Run preflight — must exit 0.
+2. Refuse `/home/jerry/alltrue`, runner `_work`, backups, `/mnt/c`.
+3. Require clean worktree, non-`main` branch with `type/slug`, base == `origin/main`.
+4. Production mutation env must stay disabled.
+5. Use `make production-identity` for prod truth (not CI green).
