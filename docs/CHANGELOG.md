@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: TD-059 audit NO-GO schema + leave HC×19 pack
+
+- 共用包 46 組有使用，但部分分鐘扣堂命中=0、無 drift → TD-059 維持 defer。主任 leave HC 19 筆紅acted CSV 已落地（#1342，不 execute）。
+
 ## 2026-07-19 — ops: follow-up Issues #1342/#1343 + TD-059/leave 唯讀稽核 workflow
 
 - Closeout／TECH_DEBT 回填 [#1342](https://github.com/jerry200176-png/AllTrue_System/issues/1342)、[#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343)；`ops-portfolio-td059-leave-audit.yml` 唯讀盤點 open Issues、TD-059 影響、高信心 leave CSV（不 execute）。主任審核 SOP：`docs/sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md`。
