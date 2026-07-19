@@ -441,17 +441,17 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — **deferred (no prod drift)** — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
-| 優先級 | P3（2026-07-19 audit：partial minutes on packages = 0 → defer） |
+| 狀態 | Open — **B monitored risk** — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
+| 優先級 | P3（monitor；首次 package 部分分鐘命中 → 升 P1） |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [DEV] #613 A1 落地；2026-07-19 Founder closeout 要求獨立 Issue |
 | 影響模組 | `App\Services\PackageDeductionService`（共用池 ledger 鏡像）|
 | 描述 | #613 讓單一 `StudentClass` 支援分鐘制部分扣堂，但共用課程包的池鏡像仍以 `delta=±1`（整堂）同步。若部分時數補課發生在**共用包**成員身上，池餘額與個別課的分鐘餘額會漂移。目前單人課程（多數情境）已正確。|
-| 建議做法 | 先調查包池實際使用量與加長／縮短補課是否已漂移（`ops-portfolio-td059-leave-audit.yml`）；確認影響後再提整數分鐘模型 + migration／相容／rollback。**未確認影響前禁止改 production schema。** |
-| 清償成本估計 | 中（半天）調查；實作視設計 |
-| 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
+| 建議做法 | **Decision B**：不 migration。維持 open；`ops-director-leave-hc-pack`／portfolio audit 定期跑 FN 探針（partial minutes on package members、makeup-tag、reverse）。首次命中 >0 → Issue 升 P1 + ARCH。**禁止未證實 drift 改 schema。** |
+| 清償成本估計 | 監控低；實作視命中 |
+| 不做的代價 | 共用包 + 部分補課罕見組合可能漂池；目前 all-time 命中=0 |
 | GitHub Issue | [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
-| 調查結果（2026-07-19）| multi_member_packages=46；partial_minute_deducts_on_package_members=0；drift=0 → **禁止 schema** 直至再審 |
+| 調查結果（2026-07-19）| multi_member=46；partial minutes（deduct/reverse/makeup-tag）=0；null-minutes whole-session 路徑仍為主。FN：舊資料無 minutes、未標記 manual/refund 可能漏。不關單、不 schema。 |
 
 ### TD-060：`ClassSessionController::recalculateSessionCounters` 為死碼（無 caller）且非分鐘感知
 

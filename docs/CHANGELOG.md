@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: 主任 leave-HC 審核包 + #1262 關閉 + TD-059 monitor
+
+- 19 筆 high-confidence 改分校主任 CSV（核准／保留／查證；不用 Founder 讀 session ID）。#1262 overnight 證據達標關閉。TD-059 決策 B（monitored risk，不 schema）。
+
 ## 2026-07-19 — ops: TD-059 audit NO-GO schema + leave HC×19 pack
 
 - 共用包 46 組有使用，但部分分鐘扣堂命中=0、無 drift → TD-059 維持 defer。主任 leave HC 19 筆紅acted CSV 已落地（#1342，不 execute）。

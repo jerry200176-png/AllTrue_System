@@ -124,6 +124,13 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
         $this->assertStringContainsString('selected,confidence,class_session_id', $body);
         $this->assertStringContainsString((string) $leaveId, $body);
         $this->assertStringContainsString((string) $satId, $body);
+        // Director default: every data row starts selected=0 (never pre-checked).
+        foreach (array_slice(explode("\n", trim($body)), 1) as $line) {
+            if ($line === '') {
+                continue;
+            }
+            $this->assertStringStartsWith('0,', $line, 'selected must default to 0');
+        }
         @unlink($csv);
     }
 

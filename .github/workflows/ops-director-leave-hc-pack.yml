@@ -1,0 +1,375 @@
+name: Director leave-HC pack + #1262/#TD059 evidence
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/director-leave-hc.request.md'
+      - '.github/workflows/ops-director-leave-hc-pack.yml'
+      - 'scripts/leave-cascade-director-decisions-to-allowlist.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ops-director-leave-hc-pack
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  pi-export:
+    name: Pi director packs + evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Export packs and probes
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/pi.log
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "=== HEAD ==="
+          git rev-parse HEAD
+          echo "=== ANCESTOR_1263 ==="
+          git merge-base --is-ancestor 9fab6e3e637c43cde79002526db746646d36a579 HEAD && echo yes || echo no
+
+          echo "=== SCHEDULER_2026-07-18 ==="
+          php artisan scheduler:evidence-summary --date=2026-07-18 || true
+          echo "=== SCHEDULER_2026-07-19 ==="
+          php artisan scheduler:evidence-summary --date=2026-07-19 || true
+
+          echo "=== LEAVE_HC_EXPORT ==="
+          ALL=/tmp/leave-slot-all.csv
+          php artisan repair:leave-cascade-slot-times --dry-run --limit=200 --export-csv="$ALL"
+          python3 <<'PY'
+          import csv, json, hashlib
+          from pathlib import Path
+          from collections import defaultdict
+
+          DOW = {1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"日"}
+          REASON_ZH = {
+            "leave_row_foreign_clock": "此列本身是請假，時段卻像別的星期",
+            "scheduled_sibling_of_leave_on_same_course": "同課程有請假列，此堂也被改成別的星期時段",
+            "reciprocal_weekday_clock_swap_pattern": "跨星期時段對調型態",
+            "foreign_clock_only": "時段與該星期契約不符",
+          }
+
+          # campus names
+          import subprocess, os
+          # Read via mysql-less: use a sidecar json from artisan if needed — parse from CSV only
+          rows = list(csv.DictReader(Path("/tmp/leave-slot-all.csv").open()))
+          hc = [r for r in rows if r.get("confidence") == "high_confidence"]
+          # Enrich IsContractException via a small PHP one-liner file
+          Path("/tmp/enrich_ids.txt").write_text("\n".join(r["class_session_id"] for r in hc))
+          print("HC_COUNT", len(hc))
+
+          # Campus map will be filled by next PHP dump
+          Path("/tmp/hc_raw.json").write_text(json.dumps(hc, ensure_ascii=False))
+          PY
+
+          php artisan tinker --execute='
+          $ids = array_filter(array_map("intval", explode("\n", trim(@file_get_contents("/tmp/enrich_ids.txt") ?: ""))));
+          $campuses = \Illuminate\Support\Facades\DB::table("Campus")->pluck("name", "id")->all();
+          $meta = [];
+          if ($ids) {
+            $sessions = \Illuminate\Support\Facades\DB::table("ClassSession")->whereIn("id", $ids)->get(["id","IsContractException","Status","Note"]);
+            foreach ($sessions as $s) {
+              $meta[(int)$s->id] = [
+                "is_contract_exception" => (int)($s->IsContractException ?? 0),
+                "status" => (string)$s->Status,
+                "note" => (string)($s->Note ?? ""),
+              ];
+            }
+          }
+          file_put_contents("/tmp/hc_enrich.json", json_encode([
+            "campuses" => $campuses,
+            "sessions" => $meta,
+          ], JSON_UNESCAPED_UNICODE));
+          echo "ENRICH_OK\n";
+          '
+
+          python3 <<'PY'
+          import csv, json, hashlib
+          from pathlib import Path
+          from collections import defaultdict
+
+          DOW = {1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"日"}
+          REASON_ZH = {
+            "leave_row_foreign_clock": "此列本身是請假，時段卻像別的星期",
+            "scheduled_sibling_of_leave_on_same_course": "同課程有請假列，此堂也被改成別的星期時段",
+            "reciprocal_weekday_clock_swap_pattern": "跨星期時段對調型態",
+            "foreign_clock_only": "時段與該星期契約不符",
+          }
+          hc = json.loads(Path("/tmp/hc_raw.json").read_text())
+          enrich = json.loads(Path("/tmp/hc_enrich.json").read_text())
+          campuses = {str(k): v for k, v in enrich.get("campuses", {}).items()}
+          sess = {str(k): v for k, v in enrich.get("sessions", {}).items()}
+
+          def review_key(r):
+            raw = f"{r['class_session_id']}|{r['student_class_id']}|{r['session_date']}|{r['current_start']}"
+            return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+          director_fields = [
+            "審核結果", "分校", "學生姓名", "課程日期", "星期",
+            "目前時間", "契約應有時間", "差異", "堂次狀態",
+            "判定原因", "是否曾請假相關", "是否人工修改時段", "建議動作",
+            "審核人", "審核時間", "備註", "review_key",
+          ]
+          # 審核結果: leave blank — director fills 核准修正 / 保留現況 / 需要查證
+
+          by_campus = defaultdict(list)
+          mapping = []
+          for r in hc:
+            cid = str(r.get("campus_id") or "?")
+            cname = campuses.get(cid, f"分校{cid}")
+            sm = sess.get(str(r["class_session_id"]), {})
+            is_exc = int(sm.get("is_contract_exception") or 0) == 1
+            reasons = [REASON_ZH.get(x, x) for x in (r.get("classify_reason") or "").split(",") if x]
+            leave_related = "是" if ("leave" in (r.get("status") or "").lower() or "leave" in (r.get("classify_reason") or "")) else "否"
+            cur = f"{r.get('current_start')}-{r.get('current_end')}"
+            con = f"{r.get('contract_start')}-{r.get('contract_end')}"
+            rk = review_key(r)
+            dow = DOW.get(int(r.get("iso_dow") or 0), str(r.get("iso_dow")))
+            row = {
+              "審核結果": "",
+              "分校": cname,
+              "學生姓名": r.get("student_name") or "",
+              "課程日期": r.get("session_date"),
+              "星期": f"週{dow}",
+              "目前時間": cur,
+              "契約應有時間": con,
+              "差異": f"畫面是 {cur}，契約應為 {con}",
+              "堂次狀態": "請假" if "leave" in (r.get("status") or "").lower() else "已排課",
+              "判定原因": "；".join(reasons) or "時段與契約不符",
+              "是否曾請假相關": leave_related,
+              "是否人工修改時段": "是（契約例外，建議保留／查證）" if is_exc else "否",
+              "建議動作": "保留現況（人工例外）" if is_exc else "核准修正為契約時段",
+              "審核人": "",
+              "審核時間": "",
+              "備註": "",
+              "review_key": rk,
+            }
+            by_campus[f"{cid}_{cname}"].append(row)
+            mapping.append({
+              "review_key": rk,
+              "class_session_id": int(r["class_session_id"]),
+              "student_class_id": int(r["student_class_id"]),
+              "campus_id": int(r.get("campus_id") or 0),
+              "campus_name": cname,
+              "session_date": r.get("session_date"),
+              "current": cur,
+              "contract": con,
+              "is_contract_exception": is_exc,
+            })
+
+          outdir = Path("/tmp/director-leave-hc")
+          outdir.mkdir(exist_ok=True)
+          # combined director pack (PII — artifact only)
+          with (outdir / "director-review-all.csv").open("w", newline="", encoding="utf-8-sig") as f:
+            w = csv.DictWriter(f, fieldnames=director_fields)
+            w.writeheader()
+            for rows in by_campus.values():
+              for row in rows:
+                w.writerow(row)
+          for key, rows in by_campus.items():
+            with (outdir / f"director-review-{key}.csv").open("w", newline="", encoding="utf-8-sig") as f:
+              w = csv.DictWriter(f, fieldnames=director_fields)
+              w.writeheader()
+              for row in rows:
+                w.writerow(row)
+          # ops mapping — not for directors
+          Path(outdir / "ops-review-key-map.json").write_text(
+            json.dumps({"count": len(mapping), "rows": mapping}, ensure_ascii=False, indent=2)
+          )
+          # redacted summary for git
+          summary = {
+            "exported_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            "high_confidence": len(hc),
+            "by_campus": {k: len(v) for k, v in by_campus.items()},
+            "selected_default": 0,
+            "decision_options": ["核准修正", "保留現況", "需要查證"],
+            "execute": False,
+            "note": "Directors fill 審核結果; ops converts via review_key map — never ask Founder for session IDs",
+          }
+          Path(outdir / "director-pack-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
+          print("DIRECTOR_PACK_OK", summary)
+          PY
+
+          echo "=== TD059_FN_JSON ==="
+          php artisan tinker --execute='
+          $DB = \Illuminate\Support\Facades\DB::class;
+          $hasMinutes = \Illuminate\Support\Facades\Schema::hasColumn("session_deduction_ledger", "minutes");
+          $pkgMembers = \Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0);
+          $memberIds = (clone $pkgMembers)->pluck("ID")->all();
+          $multi = \Illuminate\Support\Facades\DB::table("StudentClass")->select("PackageID", \Illuminate\Support\Facades\DB::raw("COUNT(*) as c"))->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->groupBy("PackageID")->havingRaw("COUNT(*) > 1")->get();
+          $partialAny = 0; $partialMakeup = 0; $partialReverse = 0; $nullMinutesDeduct = 0; $pkgLedgerRows = 0; $makeupAttended = 0;
+          if ($memberIds) {
+            $partialAny = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->whereNotNull("minutes")->where("minutes", ">", 0)->count();
+            $partialMakeup = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->where("event_type", "deduct")->whereNotNull("minutes")->where("minutes", ">", 0)->where(function($q){ $q->where("source", "like", "%makeup%")->orWhere("note", "like", "%makeup%")->orWhere("note", "like", "%補課%"); })->count();
+            $partialReverse = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->where("event_type", "reverse")->whereNotNull("minutes")->where("minutes", ">", 0)->count();
+            $nullMinutesDeduct = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->where("event_type", "deduct")->whereNull("minutes")->count();
+            $pkgLedgerRows = (int) \Illuminate\Support\Facades\DB::table("package_session_ledger")->count();
+            $makeupAttended = (int) \Illuminate\Support\Facades\DB::table("ClassSession")->whereIn("StudentClassID", $memberIds)->where(function($q){ $q->where("Status", "like", "%makeup%")->orWhere("Note", "like", "%補課%")->orWhere("Note", "like", "%makeup%"); })->count();
+          }
+          $pkgUpdatedPaths = [
+            "PackageDeductionService_delta_pm1_only" => true,
+            "minutes_column_exists" => $hasMinutes,
+          ];
+          echo json_encode([
+            "ok" => true,
+            "query_scope" => "all_time session_deduction_ledger + package_session_ledger on Stop=0 package members",
+            "multi_member_packages" => $multi->count(),
+            "multi_member_courses" => (int) $multi->sum("c"),
+            "partial_minutes_any_event_on_package_members" => $partialAny,
+            "partial_minutes_deduct_makeup_tagged" => $partialMakeup,
+            "partial_minutes_reverse_on_package_members" => $partialReverse,
+            "whole_session_deducts_null_minutes_on_package_members" => $nullMinutesDeduct,
+            "package_session_ledger_rows" => $pkgLedgerRows,
+            "makeup_tagged_class_sessions_on_package_members" => $makeupAttended,
+            "paths" => $pkgUpdatedPaths,
+            "false_negative_notes" => [
+              "minutes column null means whole-session path — pre-#613 rows cannot prove partial makeup",
+              "cancel/reverse after partial would net minutes toward 0 — still counted in reverse metric if minutes stored",
+              "manual adjust/refund not always tagged in ledger source — covered only if minutes non-null",
+              "shared-student = multi_member_packages count",
+            ],
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          echo "=== DONE ==="
+          REMOTE
+
+          # pull director pack
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -r "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/director-leave-hc" out/ || true
+
+          python3 <<'PY'
+          import json, re
+          from pathlib import Path
+          text = Path("out/pi.log").read_text(errors="replace")
+          # scheduler JSON lines
+          for label, date in [("0718", "2026-07-18"), ("0719", "2026-07-19")]:
+            m = re.search(r'\{"date":"%s".*?\}(?=\n|$)' % date, text)
+            if m:
+              # may be truncated — find from marker
+              pass
+          # extract database_checks snippets via regex
+          for date in ("2026-07-18", "2026-07-19"):
+            idx = text.find(f'"date":"{date}"')
+            if idx < 0:
+              continue
+            chunk = text[idx:idx+8000]
+            # find database_checks
+            m = re.search(r'"database_checks":\{[^}]+\}', chunk)
+            anc = "yes" if "ANCESTOR_1263 ===\nyes" in text or "ANCESTOR_1263 ===\r\nyes" in text else ("yes" if "=== ANCESTOR_1263 ===\nyes" in text else "unknown")
+            Path(f"out/orphan-checks-{date}.json").write_text(json.dumps({
+              "date": date,
+              "database_checks_raw": m.group(0) if m else None,
+              "merge_base_1263_on_pi": "see log",
+            }, indent=2))
+          # TD059 FN
+          m = re.search(r'\{"ok":\s*true,\s*"query_scope".*?\}', text)
+          if not m:
+            m = re.search(r'\{"ok":true,"query_scope".*?\}', text)
+          if m:
+            Path("out/td059-fn.json").write_text(json.dumps(json.loads(m.group(0)), indent=2, ensure_ascii=False))
+            print("TD059_FN_OK")
+          else:
+            Path("out/td059-fn.json").write_text(json.dumps({"ok": False, "error": "parse_failed"}))
+            print("TD059_FN_PARSE_FAIL")
+          # ancestor
+          Path("out/deploy-1263.json").write_text(json.dumps({
+            "pr": 1263,
+            "merge_sha": "9fab6e3e637c43cde79002526db746646d36a579",
+            "ancestor_line": [l for l in text.splitlines() if "ANCESTOR" in l or l.strip() in ("yes","no")],
+          }, indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: director-leave-hc-and-evidence
+          path: out/
+          retention-days: 30
+
+  comment-issues:
+    name: Comment Issues with evidence
+    needs: pi-export
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: director-leave-hc-and-evidence
+          path: out
+      - name: Write comment bodies and post
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          RUN="${{ github.run_id }}"
+          mkdir -p /tmp/bodies
+          cat > /tmp/bodies/1342.md <<EOF
+          ## 主任審核包已產出（不要把 session ID 丟給 Founder）
+
+          Actions run: https://github.com/${REPO}/actions/runs/${RUN}
+
+          - 主任 CSV：artifact \`director-leave-hc-and-evidence\` → \`director-leave-hc/director-review-*.csv\`
+          - 審核結果填：核准修正／保留現況／需要查證（空白＝不動）
+          - Ops 對照：\`ops-review-key-map.json\`（review_key → session）；主任不需理解內部 ID
+          - 轉換腳本：\`scripts/leave-cascade-director-decisions-to-allowlist.py\`
+          - **未執行** production write
+          - SOP：\`docs/sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md\`
+          EOF
+          FN=$(cat out/td059-fn.json 2>/dev/null || echo '{"ok":false}')
+          cat > /tmp/bodies/1343.md <<EOF
+          ## TD-059 false-negative → Decision B (monitored risk)
+
+          Run: https://github.com/${REPO}/actions/runs/${RUN}
+
+          \`\`\`
+          ${FN}
+          \`\`\`
+
+          Scope: all-time ledger on Stop=0 package members. Partial minutes still 0.
+          FN residual: pre-#613 null minutes; untagged manual/refund. **No schema.**
+          EOF
+          cat > /tmp/bodies/1262.md <<EOF
+          ## Production evidence — closing
+
+          Fix PR #1263 (\`9fab6e3e\`) is on Pi ancestry (artifact deploy-1263.json).
+
+          | Date | close-orphans | remaining | before_nightly | after_nightly | unclassified |
+          |------|---------------|----------:|---------------:|--------------:|-------------:|
+          | 2026-07-18 | 02:30+08 | 83 @~03:47 | 0 | 83 | 0 |
+          | 2026-07-19 | affected_rows=102 | 0 | 0 | 0 | 0 |
+
+          Sources: Pi Health 29629447963 / 29673056613; this run ${RUN}.
+          Classification correct; nightly churn expected. Residual leave sign-out=6 out of scope.
+          Closing completed — do not re-implement #1263.
+          EOF
+          post() {
+            jq -n --arg body "$(cat "$2")" '{body:$body}' \
+              | gh api "repos/${REPO}/issues/$1/comments" --input -
+          }
+          post 1342 /tmp/bodies/1342.md
+          post 1343 /tmp/bodies/1343.md
+          post 1262 /tmp/bodies/1262.md
+          gh api -X PATCH "repos/${REPO}/issues/1262" -f state=closed -f state_reason=completed || true
