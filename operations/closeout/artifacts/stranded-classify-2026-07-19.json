@@ -1,0 +1,25 @@
+{
+  "source_run": "29687931138",
+  "as_of": "2026-07-19",
+  "stranded_courses": 286,
+  "stranded_sessions": 1591,
+  "stranded_students": 169,
+  "active_recent_21d_courses": 16,
+  "active_recent_21d_sessions": 154,
+  "inactive_dormant_courses": 270,
+  "inactive_dormant_sessions": 1437,
+  "cross_sc_pair_count_all_scheduled": 40,
+  "cross_sc_pair_count_future_scheduled": 35,
+  "business_digest": {
+    "revenue_at_risk_sessions": 1591,
+    "revenue_at_risk_amount_ntd": 1701925,
+    "dq_cross_sc_dup": 50,
+    "scheduled_cross_sc_overlap_groups": 35
+  },
+  "unit": {
+    "stranded_sessions": "RemainingSessions prepaid units on stranded courses",
+    "cross_sc_pair_count": "ClassSession pairs same student+date+start different SC",
+    "dq_cross_sc_dup": "business-digest group metric (#1130 family); not equal to pair count"
+  },
+  "execute": false
+}
