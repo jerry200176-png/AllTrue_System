@@ -201,37 +201,39 @@ class SessionDeductionService
         ?string $note = null,
         ?int $minutes = null
     ): bool {
-        if ($classSessionId && $classSessionId > 0) {
-            $exists = SessionDeductionLedger::where('student_class_id', $studentClassId)
-                ->where('class_session_id', $classSessionId)
-                ->where('event_type', 'deduct')
-                ->exists();
-            if ($exists) {
+        // Serialize per-course ledger writes (ledger index is non-unique).
+        // Idempotency is net-based: deduct allowed when net<=0; reverse when net>0
+        // so undo+re-attend can create a new deduct after a matching reverse.
+        return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
+            StudentClass::where('ID', $studentClassId)->lockForUpdate()->first();
+
+            if ($classSessionId && $classSessionId > 0
+                && self::sessionLedgerNet($studentClassId, $classSessionId) > 0) {
                 return false;
             }
-        }
 
-        SessionDeductionLedger::create([
-            'student_class_id' => $studentClassId,
-            'class_session_id' => $classSessionId ?: null,
-            'event_type'       => 'deduct',
-            'source'           => $source,
-            // #613 A1：null＝整堂（引擎以 perSessionMinutes 換算），>0＝部分時數。
-            'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
-            'created_by'       => $createdBy,
-            'note'             => $note,
-        ]);
+            SessionDeductionLedger::create([
+                'student_class_id' => $studentClassId,
+                'class_session_id' => $classSessionId ?: null,
+                'event_type'       => 'deduct',
+                'source'           => $source,
+                // #613 A1：null＝整堂（引擎以 perSessionMinutes 換算），>0＝部分時數。
+                'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
+                'created_by'       => $createdBy,
+                'note'             => $note,
+            ]);
 
-        PackageDeductionService::syncFromStudentClassDeduction(
-            $studentClassId, $classSessionId, 'deduct', $source, $createdBy, $note
-        );
+            PackageDeductionService::syncFromStudentClassDeduction(
+                $studentClassId, $classSessionId, 'deduct', $source, $createdBy, $note
+            );
 
-        return true;
+            return true;
+        });
     }
 
     /**
      * Record a reverse (undo-deduction) event in the ledger.
-     * Idempotent: skips if a reverse already exists for the same class_session_id.
+     * Idempotent: skips when net deduct count for the class_session_id is already 0.
      */
     public static function reverseForSession(
         int $studentClassId,
@@ -241,44 +243,56 @@ class SessionDeductionService
         ?string $note = null,
         ?int $minutes = null
     ): bool {
-        if ($classSessionId && $classSessionId > 0) {
-            $exists = SessionDeductionLedger::where('student_class_id', $studentClassId)
-                ->where('class_session_id', $classSessionId)
-                ->where('event_type', 'reverse')
-                ->exists();
-            if ($exists) {
+        return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
+            StudentClass::where('ID', $studentClassId)->lockForUpdate()->first();
+
+            if ($classSessionId && $classSessionId > 0
+                && self::sessionLedgerNet($studentClassId, $classSessionId) <= 0) {
                 return false;
             }
-        }
 
-        // #613 A1：還原必須沖回「對應 deduct 當初記錄的分鐘」，否則部分扣堂的淨值會漂移。
-        // 未指定 minutes 時，查回同一堂次的 deduct 列分鐘（整堂 deduct 為 null → 維持 null）。
-        if ($minutes === null && $classSessionId && $classSessionId > 0) {
-            $matched = SessionDeductionLedger::query()
-                ->where('student_class_id', $studentClassId)
-                ->where('class_session_id', $classSessionId)
-                ->where('event_type', 'deduct')
-                ->value('minutes');
-            if ($matched !== null) {
-                $minutes = (int) $matched;
+            // #613 A1：還原必須沖回「對應 deduct 當初記錄的分鐘」，否則部分扣堂的淨值會漂移。
+            if ($minutes === null && $classSessionId && $classSessionId > 0) {
+                $matched = SessionDeductionLedger::query()
+                    ->where('student_class_id', $studentClassId)
+                    ->where('class_session_id', $classSessionId)
+                    ->where('event_type', 'deduct')
+                    ->orderByDesc('id')
+                    ->value('minutes');
+                if ($matched !== null) {
+                    $minutes = (int) $matched;
+                }
             }
-        }
 
-        SessionDeductionLedger::create([
-            'student_class_id' => $studentClassId,
-            'class_session_id' => $classSessionId ?: null,
-            'event_type'       => 'reverse',
-            'source'           => $source,
-            'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
-            'created_by'       => $createdBy,
-            'note'             => $note,
-        ]);
+            SessionDeductionLedger::create([
+                'student_class_id' => $studentClassId,
+                'class_session_id' => $classSessionId ?: null,
+                'event_type'       => 'reverse',
+                'source'           => $source,
+                'minutes'          => ($minutes !== null && $minutes > 0) ? $minutes : null,
+                'created_by'       => $createdBy,
+                'note'             => $note,
+            ]);
 
-        PackageDeductionService::syncFromStudentClassDeduction(
-            $studentClassId, $classSessionId, 'reverse', $source, $createdBy, $note
-        );
+            PackageDeductionService::syncFromStudentClassDeduction(
+                $studentClassId, $classSessionId, 'reverse', $source, $createdBy, $note
+            );
 
-        return true;
+            return true;
+        });
+    }
+
+    /** Net ledger events for one session: deduct(+1) − reverse(−1). */
+    private static function sessionLedgerNet(int $studentClassId, int $classSessionId): int
+    {
+        return (int) (SessionDeductionLedger::query()
+            ->where('student_class_id', $studentClassId)
+            ->where('class_session_id', $classSessionId)
+            ->selectRaw(
+                "COALESCE(SUM(CASE WHEN event_type='deduct' THEN 1 "
+                . "WHEN event_type='reverse' THEN -1 ELSE 0 END), 0) as net"
+            )
+            ->value('net') ?? 0);
     }
 
     /**

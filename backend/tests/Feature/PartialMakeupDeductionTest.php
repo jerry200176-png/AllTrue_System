@@ -73,6 +73,33 @@ class PartialMakeupDeductionTest extends TestCase
             ->where('event_type', 'deduct')->value('minutes'));
     }
 
+    /** 加長補課：重試不重複扣；reverse 沖回 180；再扣仍只一筆有效淨扣除。 */
+    public function test_longer_makeup_deduct_reverse_is_idempotent_and_restores_minutes(): void
+    {
+        [, , $scId] = $this->seedCourse(120, 4);
+        $cs = $this->makeMakeupSession($scId, '14:00', '17:00');
+        $sc = StudentClass::findOrFail($scId);
+
+        $this->assertTrue(\App\Services\SessionDeductionService::deductOnAttendance($sc, null, (int) $cs->id));
+        $sc->refresh();
+        $this->assertFalse(\App\Services\SessionDeductionService::deductOnAttendance($sc, null, (int) $cs->id));
+        $this->assertSame(180, (int) SessionDeductionLedger::where('student_class_id', $scId)
+            ->where('event_type', 'deduct')->value('minutes'));
+        $this->assertSame(300, (int) StudentClass::findOrFail($scId)->RemainingMinutes);
+
+        $this->assertTrue(\App\Services\SessionDeductionService::reverseForSession($scId, (int) $cs->id, 'status_adjust'));
+        $this->assertFalse(\App\Services\SessionDeductionService::reverseForSession($scId, (int) $cs->id, 'status_adjust'));
+        $this->assertSame(480, (int) StudentClass::findOrFail($scId)->RemainingMinutes);
+        $this->assertSame(180, (int) SessionDeductionLedger::where('student_class_id', $scId)
+            ->where('event_type', 'reverse')->value('minutes'));
+
+        $sc = StudentClass::findOrFail($scId);
+        $this->assertTrue(\App\Services\SessionDeductionService::deductOnAttendance($sc, null, (int) $cs->id));
+        $this->assertSame(2, (int) SessionDeductionLedger::where('student_class_id', $scId)
+            ->where('event_type', 'deduct')->count());
+        $this->assertSame(300, (int) StudentClass::findOrFail($scId)->RemainingMinutes);
+    }
+
     /** 正常課堂（非 type='extra'）即使時長較短也不比例扣，一律整堂。 */
     public function test_normal_short_session_not_prorated(): void
     {

@@ -38,13 +38,22 @@ class RepairLeaveCascadeSlotTimes extends Command
             return self::FAILURE;
         }
 
-        $plan = $this->buildPlan();
+        $started = microtime(true);
+        $stats = $this->collectDryRunStats(max(1, (int) $this->option('limit')), (int) ($this->option('course-id') ?? 0));
+        $plan = $stats['rows'];
         $this->line($dryRun ? '=== DRY RUN repair:leave-cascade-slot-times ===' : '=== EXECUTE repair:leave-cascade-slot-times ===');
+        $this->line('courses_scanned=' . $stats['courses_scanned']);
+        $this->line('multi_weekday_distinct_clock_courses=' . $stats['eligible_courses']);
         $this->line('candidates=' . count($plan));
+        $this->line('distinct_courses=' . $stats['distinct_courses']);
+        $this->line('distinct_students=' . $stats['distinct_students']);
+        $this->line('includes_wed17_sat10=' . ($stats['includes_wed17_sat10'] ? '1' : '0'));
+        $this->line('reason=foreign_weekday_clock_on_target_date');
+        $this->line('false_positive_safeguard=requires_current_clock_equals_other_weekday_contract_and_not_IsContractException');
 
         foreach ($plan as $row) {
             $this->line(sprintf(
-                'sc=%d cs=%d date=%s %s-%s -> %s-%s (iso=%d)',
+                'sc=%d cs=%d date=%s %s-%s -> %s-%s (iso=%d status=%s)',
                 $row['student_class_id'],
                 $row['class_session_id'],
                 $row['session_date'],
@@ -52,9 +61,19 @@ class RepairLeaveCascadeSlotTimes extends Command
                 substr((string) $row['old_end'], 0, 5),
                 substr((string) $row['new_start'], 0, 5),
                 substr((string) $row['new_end'], 0, 5),
-                $row['iso_dow']
+                $row['iso_dow'],
+                $row['status']
             ));
         }
+        $this->line('elapsed_ms=' . (int) round((microtime(true) - $started) * 1000));
+        $this->line('DRYRUN_STATS_JSON ' . json_encode([
+            'courses_scanned' => $stats['courses_scanned'],
+            'eligible_courses' => $stats['eligible_courses'],
+            'candidates' => count($plan),
+            'distinct_courses' => $stats['distinct_courses'],
+            'distinct_students' => $stats['distinct_students'],
+            'includes_wed17_sat10' => $stats['includes_wed17_sat10'],
+        ], JSON_UNESCAPED_UNICODE));
 
         if ($dryRun || $plan === []) {
             return self::SUCCESS;
@@ -84,17 +103,22 @@ class RepairLeaveCascadeSlotTimes extends Command
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return array{
+     *   courses_scanned:int,
+     *   eligible_courses:int,
+     *   candidates:int,
+     *   distinct_courses:int,
+     *   distinct_students:int,
+     *   includes_wed17_sat10:bool,
+     *   rows:list<array<string,mixed>>
+     * }
      */
-    private function buildPlan(): array
+    public function collectDryRunStats(int $limit = 500, int $courseId = 0): array
     {
-        $limit = max(1, (int) $this->option('limit'));
-        $courseId = (int) ($this->option('course-id') ?? 0);
-
+        $limit = max(1, $limit);
         $coursesQuery = StudentClass::query()
             ->where('Stop', 0)
             ->where(function ($q) {
-                // At least two weekday fields populated → multi-weekday candidate
                 $q->whereNotNull('week')->where('week', '>', 0)
                     ->where(function ($inner) {
                         foreach (['week1', 'week2', 'week3', 'week4', 'week5', 'week6'] as $field) {
@@ -109,18 +133,26 @@ class RepairLeaveCascadeSlotTimes extends Command
         }
 
         $plan = [];
+        $coursesScanned = 0;
+        $eligibleCourses = 0;
+        $courseIds = [];
+        $includesWedSat = false;
         $hasException = Schema::hasColumn('ClassSession', 'IsContractException');
 
         foreach ($coursesQuery->orderBy('ID')->cursor() as $course) {
+            $coursesScanned++;
             $slotByDow = $this->contractSlotsByDow($course);
             if (count($slotByDow) < 2) {
                 continue;
             }
-            // Distinct clocks across weekdays required (same time every day → no drift symptom)
-            $starts = array_unique(array_map(fn ($s) => $s['start'], $slotByDow));
+            $starts = array_unique(array_map(fn ($s) => substr($s['start'], 0, 5), $slotByDow));
             if (count($starts) < 2) {
                 continue;
             }
+            $eligibleCourses++;
+
+            $wed = $slotByDow[3] ?? null;
+            $sat = $slotByDow[6] ?? null;
 
             $sessions = ClassSession::query()
                 ->where('StudentClassID', (int) $course->ID)
@@ -151,8 +183,6 @@ class RepairLeaveCascadeSlotTimes extends Command
                     continue;
                 }
 
-                // Only remediates the leave-cascade signature: current clock equals
-                // some *other* weekday's contract slot (row carried its old weekday times).
                 $matchesForeign = false;
                 foreach ($slotByDow as $dow => $slot) {
                     if ((int) $dow === $iso) {
@@ -170,6 +200,14 @@ class RepairLeaveCascadeSlotTimes extends Command
                     continue;
                 }
 
+                if (
+                    $wed && $sat
+                    && substr($wed['start'], 0, 5) === '17:00'
+                    && substr($sat['start'], 0, 5) === '10:00'
+                ) {
+                    $includesWedSat = true;
+                }
+
                 $plan[] = [
                     'student_class_id' => (int) $course->ID,
                     'class_session_id' => (int) $session->id,
@@ -181,13 +219,30 @@ class RepairLeaveCascadeSlotTimes extends Command
                     'new_end' => strlen($newEnd) === 5 ? $newEnd . ':00' : $newEnd,
                     'status' => (string) ($session->Status ?? ''),
                 ];
+                $courseIds[(int) $course->ID] = true;
                 if (count($plan) >= $limit) {
-                    return $plan;
+                    break 2;
                 }
             }
         }
 
-        return $plan;
+        $studentCount = 0;
+        if ($courseIds !== []) {
+            $studentCount = (int) StudentClass::query()
+                ->whereIn('ID', array_keys($courseIds))
+                ->distinct('StudentID')
+                ->count('StudentID');
+        }
+
+        return [
+            'courses_scanned' => $coursesScanned,
+            'eligible_courses' => $eligibleCourses,
+            'candidates' => count($plan),
+            'distinct_courses' => count($courseIds),
+            'distinct_students' => $studentCount,
+            'includes_wed17_sat10' => $includesWedSat,
+            'rows' => $plan,
+        ];
     }
 
     /**
