@@ -100,24 +100,24 @@ jobs:
           git rev-parse HEAD
           echo "=== TD059_AUDIT_JSON ==="
           php artisan tinker --execute='
-          $pkgTotal = (int) Illuminate\Support\Facades\DB::table("course_packages")->count();
-          $boundCourses = (int) Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->count();
-          $boundPackages = (int) Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->distinct()->count("PackageID");
-          $multiMember = Illuminate\Support\Facades\DB::table("StudentClass")
-            ->select("PackageID", Illuminate\Support\Facades\DB::raw("COUNT(*) as members"))
+          $pkgTotal = (int) \Illuminate\Support\Facades\DB::table("course_packages")->count();
+          $boundCourses = (int) \Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->count();
+          $boundPackages = (int) \Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->distinct()->count("PackageID");
+          $multiMember = \Illuminate\Support\Facades\DB::table("StudentClass")
+            ->select("PackageID", \Illuminate\Support\Facades\DB::raw("COUNT(*) as members"))
             ->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)
             ->groupBy("PackageID")->havingRaw("COUNT(*) > 1")->get();
-          $partialDeducts = (int) Illuminate\Support\Facades\DB::table("session_deduction_ledger as l")
+          $partialDeducts = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger as l")
             ->join("StudentClass as sc", "sc.ID", "=", "l.student_class_id")
             ->whereNotNull("sc.PackageID")->where("sc.PackageID", ">", 0)
             ->where("l.event_type", "deduct")
             ->whereNotNull("l.minutes")->where("l.minutes", ">", 0)->count();
-          $partialReverse = (int) Illuminate\Support\Facades\DB::table("session_deduction_ledger as l")
+          $partialReverse = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger as l")
             ->join("StudentClass as sc", "sc.ID", "=", "l.student_class_id")
             ->whereNotNull("sc.PackageID")->where("sc.PackageID", ">", 0)
             ->where("l.event_type", "reverse")
             ->whereNotNull("l.minutes")->where("l.minutes", ">", 0)->count();
-          $driftRows = Illuminate\Support\Facades\DB::select("SELECT l.class_session_id, l.student_class_id, sc.PackageID AS package_id, SUM(CASE WHEN l.event_type=\"deduct\" THEN COALESCE(l.minutes, 0) WHEN l.event_type=\"reverse\" THEN -COALESCE(l.minutes, 0) ELSE 0 END) AS net_minutes, (SELECT COALESCE(SUM(p.delta),0) FROM package_session_ledger p WHERE p.class_session_id = l.class_session_id AND p.package_id = sc.PackageID) AS package_net_delta FROM session_deduction_ledger l JOIN StudentClass sc ON sc.ID = l.student_class_id WHERE sc.PackageID IS NOT NULL AND sc.PackageID > 0 AND l.class_session_id IS NOT NULL AND l.minutes IS NOT NULL AND l.minutes > 0 GROUP BY l.class_session_id, l.student_class_id, sc.PackageID HAVING ABS(package_net_delta) > 0 AND net_minutes > 0 LIMIT 200");
+          $driftRows = \Illuminate\Support\Facades\DB::select("SELECT l.class_session_id, l.student_class_id, sc.PackageID AS package_id, SUM(CASE WHEN l.event_type=\"deduct\" THEN COALESCE(l.minutes, 0) WHEN l.event_type=\"reverse\" THEN -COALESCE(l.minutes, 0) ELSE 0 END) AS net_minutes, (SELECT COALESCE(SUM(p.delta),0) FROM package_session_ledger p WHERE p.class_session_id = l.class_session_id AND p.package_id = sc.PackageID) AS package_net_delta FROM session_deduction_ledger l JOIN StudentClass sc ON sc.ID = l.student_class_id WHERE sc.PackageID IS NOT NULL AND sc.PackageID > 0 AND l.class_session_id IS NOT NULL AND l.minutes IS NOT NULL AND l.minutes > 0 GROUP BY l.class_session_id, l.student_class_id, sc.PackageID HAVING ABS(package_net_delta) > 0 AND net_minutes > 0 LIMIT 200");
           $contractMismatch = 0;
           foreach ($driftRows as $r) {
             try {
