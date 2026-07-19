@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-19T07:40:00Z",
-  "note": "Cursor Cloud Agent fix: leave-cascade weekday slot times + longer makeup minutes (branch cursor/fix-leave-cascade-slot-times-makeup-dc0b). Local agent-start worktree unavailable in cloud; WSL task path not mounted."
+  "declared_at": "2026-07-19T07:45:00Z",
+  "note": "Cursor Cloud Agent fix: longer makeup actual-minutes deduction (branch cursor/fix-longer-makeup-minutes-dc0b). Split from leave-cascade PR for size gate. Local agent-start worktree unavailable in cloud."
 }
