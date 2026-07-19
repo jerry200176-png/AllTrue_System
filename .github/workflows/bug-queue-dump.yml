@@ -228,6 +228,24 @@ jobs:
               echo "HUANG_SCHED_START", PHP_EOL;
               foreach($hs as $s){ echo json_encode($s, JSON_UNESCAPED_UNICODE), PHP_EOL; }
               echo "HUANG_SCHED_END", PHP_EOL;
+              echo "ATTRIB_START", PHP_EOL;
+              $tid=67; $sid=7; $date="2026-07-14";
+              $cs=\Illuminate\Support\Facades\DB::table("ClassSession as cs")
+                ->join("StudentClass as sc","sc.ID","=","cs.StudentClassID")
+                ->where("sc.TeacherID",$tid)
+                ->whereDate("cs.SessionDate",$date)
+                ->get(["cs.id","cs.StudentClassID","cs.Status","cs.StartTime","cs.EndTime","sc.StudentID","sc.ClassType","sc.TeacherID"]);
+              echo "CS_TEACHER67=", json_encode($cs, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              $sc=\Illuminate\Support\Facades\DB::table("StudentClass")->where("StudentID",$sid)->get(["ID","TeacherID","ClassType","SubjectID","Stop"]);
+              echo "SC_STU7=", json_encode($sc, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              $sch=\Illuminate\Support\Facades\DB::table("schedules")->where("student_id",$sid)->whereDate("schedule_date",$date)->get(["id","teacher_id","student_course_id","status","start_time","end_time","original_schedule_id","branch_id"]);
+              echo "SCH_STU7=", json_encode($sch, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              $schT=\Illuminate\Support\Facades\DB::table("schedules")->where("teacher_id",$tid)->whereDate("schedule_date",$date)->count();
+              echo "SCH_T67_COUNT=", $schT, PHP_EOL;
+              $allT=\Illuminate\Support\Facades\DB::table("schedules")->where("teacher_id",$tid)->where("schedule_date","like","2026-07-14%")->get(["id","teacher_id","student_id","status","start_time","schedule_date"]);
+              echo "SCH_T67_LIKE=", json_encode($allT, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              echo "ATTRIB_END", PHP_EOL;
+
 
               '
             fi
