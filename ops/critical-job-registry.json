@@ -5,8 +5,7 @@
     "backend/app/Console/Kernel.php",
     "backend/app/Support/SchedulerEvidence.php",
     ".github/workflows/pi-health.yml",
-    "storage/logs/scheduler-evidence/*.jsonl",
-    "storage/logs/schedule.log"
+    "storage/logs/scheduler-evidence/*.jsonl"
   ],
   "jobs": [
     {
