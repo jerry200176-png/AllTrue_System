@@ -65,6 +65,8 @@ export function useCalendarSubstitute({
     if (FEATURE_SUBSTITUTE_V2 && substituteForm.value.session_id) {
       substituteV2SessionId.value = substituteForm.value.session_id;
       substituteV2Context.value = {
+        // in-app #205 / #203: required for availability exclude_student_id
+        student_id: Number(course.student_id || 0) || null,
         student_name: getStudentName(course.student_id),
         subject_id: course.subject_id || null,
         subject_label: getSubjectLabel(course.subject),
@@ -197,6 +199,8 @@ export function useCalendarSubstitute({
     }
     substituteV2SessionId.value = sessionId;
     substituteV2Context.value = {
+      // in-app #205 / #203: required for availability exclude_student_id
+      student_id: Number(modalForm.value.student_id || 0) || null,
       student_name: getStudentName(modalForm.value.student_id),
       subject_id: modalForm.value.subject_id || null,
       subject_label: getSubjectLabel(modalForm.value.subject),

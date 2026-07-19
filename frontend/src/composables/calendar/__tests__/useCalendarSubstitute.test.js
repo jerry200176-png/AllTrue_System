@@ -79,6 +79,7 @@ describe('useCalendarSubstitute', () => {
     expect(showSubstituteModal.value).toBe(false);
     expect(showSubstituteV2Modal.value).toBe(true);
     expect(substituteV2SessionId.value).toBe(701);
+    expect(substituteV2Context.value.student_id).toBe(10);
     expect(substituteV2Context.value.prefill_substitute_teacher_id).toBe(8);
     expect(substituteV2Context.value.prefill_new_start_time).toBe('18:00');
     expect(substituteV2Context.value.allow_past_same_date).toBe(true);

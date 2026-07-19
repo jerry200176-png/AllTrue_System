@@ -2846,7 +2846,13 @@ const openSubstituteV2FromEdit = () => {
     return;
   }
   substituteV2SessionId.value = form.session_id;
+  // in-app #205 / #203 family: student_id drives exclude_student_id on availability
+  // so the candidate is not blocked by this student's own scheduled occupancy.
+  const studentId = Number(
+    form.student_id ?? course.student_id ?? course.StudentID ?? 0
+  ) || null;
   substituteV2Context.value = {
+    student_id: studentId,
     student_name: form.student_name || course.student_name || '',
     subject_id: course.subject_id || null,
     subject_label: getSubjectLabel(form.subject || course.subject) || '',

@@ -53,4 +53,49 @@ describe('SubstituteTeacherPickerModal drag prefill', () => {
       new_end_time: '20:00',
     });
   });
+
+  // in-app #205: course-mgmt / calendar must pass student_id so availability
+  // excludes this student's own occupancy (otherwise overlapping 1v2 classmate
+  // + self schedule → false 已滿／衝堂).
+  it('passes excludeStudentId from context.student_id to fetchAvailability', async () => {
+    const fetchAvailability = vi.fn(async () => ({
+      busy_slots: [{
+        start_time: '18:00',
+        end_time: '20:00',
+        campus_id: 17,
+        class_type: 'one_on_two',
+        remaining_capacity: 1,
+      }],
+    }));
+
+    const wrapper = mount(SubstituteTeacherPickerModal, {
+      props: {
+        modelValue: false,
+        context: {
+          student_id: 7,
+          student_name: '測試學生',
+          subject_label: '理化',
+          session_date: '2026-07-14',
+          start_time: '17:30',
+          end_time: '19:30',
+          original_teacher_id: 84,
+          original_teacher_name: '正班老師',
+          session_campus_id: 17,
+        },
+        teachers: [{ id: 67, name: '代課老師', branch_ids: [17] }],
+        branchNameMap: { 17: '測試分校' },
+        fetchAvailability,
+      },
+    });
+
+    await wrapper.setProps({ modelValue: true });
+    await flushPromises();
+
+    expect(fetchAvailability).toHaveBeenCalled();
+    const call = fetchAvailability.mock.calls[0];
+    expect(call[0]).toBe(67);
+    expect(call[1]).toBe('2026-07-14');
+    expect(call[2]).toMatchObject({ excludeStudentId: 7 });
+    expect(wrapper.get('.stp-card').classes()).not.toContain('stp-card--conflict');
+  });
 });
