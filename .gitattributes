@@ -1,0 +1,5 @@
+/.github export-ignore
+/.cursor export-ignore
+/docs export-ignore
+/tests export-ignore
+/.agent-session export-ignore
