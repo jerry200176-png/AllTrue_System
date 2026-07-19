@@ -62,8 +62,8 @@ def main() -> int:
                 "investigate": investigate,
                 "blank_or_unknown": unknown,
                 "execute_hint": (
-                    "ALLOW_PROD_REPAIR=1 php artisan repair:leave-cascade-slot-times "
-                    "--execute --force --session-ids=" + ",".join(str(i) for i in ids)
+                    "Use scripts/leave-cascade-build-repair-bundle.py + "
+                    "workflow ops-leave-cascade-repair.yml (do not paste artisan session-ids)"
                     if ids
                     else "no approved rows — do not execute"
                 ),

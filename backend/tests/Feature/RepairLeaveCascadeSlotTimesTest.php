@@ -146,6 +146,52 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
         $this->assertStringContainsString('--session-ids', Artisan::output());
     }
 
+    public function test_bundle_exit_gate_fails_when_before_state_drifted(): void
+    {
+        $courseId = $this->createWedSatCourse();
+        $csId = (int) DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-07-04',
+            'StartTime' => '17:00:00',
+            'EndTime' => '19:00:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $bundlePath = sys_get_temp_dir() . '/leave-bundle-' . uniqid() . '.json';
+        file_put_contents($bundlePath, json_encode([
+            'schema_version' => 1,
+            'kind' => 'leave_cascade_slot_times_repair_bundle',
+            'ok' => true,
+            'execution_audit_id' => 'test-audit',
+            'campus_id' => 1,
+            'approval_count' => 1,
+            'approved_session_ids' => [$csId],
+            // Wrong before state → fail closed
+            'expected_before_state' => [(string) $csId => '10:00-12:00'],
+            'expected_after_state' => [(string) $csId => '10:00-12:00'],
+            'pre_exec_gates' => ['errors' => []],
+        ], JSON_UNESCAPED_UNICODE));
+
+        $exit = Artisan::call('repair:leave-cascade-slot-times', [
+            '--course-id' => $courseId,
+            '--dry-run' => true,
+            '--session-ids' => (string) $csId,
+            '--bundle' => $bundlePath,
+            '--verify-exit-gate' => true,
+        ]);
+        $out = Artisan::output();
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('EXIT_GATE_JSON', $out);
+        $this->assertTrue(
+            str_contains($out, 'before_state_changed') || str_contains($out, 'not_in_current_plan'),
+            'exit gate must fail closed on drifted before/plan; got: ' . substr($out, -800)
+        );
+        @unlink($bundlePath);
+    }
+
     private function createWedSatCourse(): int
     {
         DB::table('Student')->insert([

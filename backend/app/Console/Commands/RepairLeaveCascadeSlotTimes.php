@@ -28,7 +28,10 @@ class RepairLeaveCascadeSlotTimes extends Command
                             {--session-ids= : Comma-separated ClassSession IDs (required with --execute)}
                             {--export-csv= : Write director review CSV (selected=0)}
                             {--force : Required with --execute on production}
-                            {--snapshot= : JSON snapshot path before writes}';
+                            {--snapshot= : JSON snapshot path before writes}
+                            {--bundle= : Repair bundle JSON (expected before/after + allowlist gates)}
+                            {--verify-exit-gate : Emit EXIT_GATE_JSON and fail closed on gate errors}
+                            {--actor= : Executor audit label}';
 
     protected $description = 'Realign multi-weekday ClassSession times after leave-cascade weekday drift';
 
@@ -44,8 +47,12 @@ class RepairLeaveCascadeSlotTimes extends Command
         $stats = $this->collectDryRunStats(max(1, (int) $this->option('limit')), (int) ($this->option('course-id') ?? 0));
         $plan = $this->classifyPlan($stats['rows']);
         $classify = $this->classifyCounts($plan);
+        $allowedIds = $this->parseSessionIds((string) ($this->option('session-ids') ?? ''));
+        $bundle = $this->loadBundle((string) ($this->option('bundle') ?? ''));
+        $actor = (string) ($this->option('actor') ?? 'cli');
 
         $this->line($dryRun ? '=== DRY RUN repair:leave-cascade-slot-times ===' : '=== EXECUTE repair:leave-cascade-slot-times ===');
+        $this->line('actor=' . $actor);
         $this->line('courses_scanned=' . $stats['courses_scanned']);
         $this->line('multi_weekday_distinct_clock_courses=' . $stats['eligible_courses']);
         $this->line('candidates=' . count($plan));
@@ -90,14 +97,28 @@ class RepairLeaveCascadeSlotTimes extends Command
             $this->info("Director review CSV: {$csvPath}");
         }
 
+        $gate = $this->buildExitGate($plan, $allowedIds, $bundle, $execute);
+        if ((bool) $this->option('verify-exit-gate')) {
+            $this->line('EXIT_GATE_JSON ' . json_encode($gate, JSON_UNESCAPED_UNICODE));
+            if (($gate['ok'] ?? false) !== true && ($execute || $allowedIds !== [])) {
+                $this->error('Exit gate failed: ' . implode(',', $gate['errors'] ?? []));
+
+                return self::FAILURE;
+            }
+        }
+
         if ($dryRun) {
             return self::SUCCESS;
         }
 
         // Founder gate: never re-scan-then-batch-write; only explicit approved IDs.
-        $allowedIds = $this->parseSessionIds((string) ($this->option('session-ids') ?? ''));
         if ($allowedIds === []) {
             $this->error('--execute requires --session-ids=<approved ClassSession IDs> (no re-scan batch write)');
+
+            return self::FAILURE;
+        }
+        if (($gate['ok'] ?? false) !== true) {
+            $this->error('Refusing execute — exit gate not ok');
 
             return self::FAILURE;
         }
@@ -120,31 +141,175 @@ class RepairLeaveCascadeSlotTimes extends Command
             ?: storage_path('app/repair-snapshots/leave-cascade-slot-times-' . now()->format('YmdHis') . '.json');
         $this->writeSnapshot($snapshotPath, $apply);
 
-        DB::transaction(function () use ($apply): void {
+        $repaired = 0;
+        $skippedState = 0;
+        $skippedException = 0;
+        $failed = 0;
+        $unchanged = 0;
+        DB::transaction(function () use ($apply, &$repaired, &$skippedState, &$skippedException, &$failed, &$unchanged): void {
             foreach ($apply as $row) {
                 $session = ClassSession::query()->lockForUpdate()->find($row['class_session_id']);
                 if (!$session) {
+                    $failed++;
                     continue;
                 }
-                // Idempotent: skip if already aligned.
-                if (
-                    substr((string) $session->StartTime, 0, 5) === substr((string) $row['new_start'], 0, 5)
-                    && substr((string) $session->EndTime, 0, 5) === substr((string) $row['new_end'], 0, 5)
-                ) {
+                if (Schema::hasColumn('ClassSession', 'IsContractException') && !empty($session->IsContractException)) {
+                    $skippedException++;
+                    continue;
+                }
+                $curStart = substr((string) $session->StartTime, 0, 5);
+                $curEnd = substr((string) $session->EndTime, 0, 5);
+                $expBefore = substr((string) $row['old_start'], 0, 5);
+                $expAfter = substr((string) $row['new_start'], 0, 5);
+                if ($curStart === $expAfter && substr((string) $session->EndTime, 0, 5) === substr((string) $row['new_end'], 0, 5)) {
+                    $unchanged++;
+                    continue;
+                }
+                if ($curStart !== $expBefore || $curEnd !== substr((string) $row['old_end'], 0, 5)) {
+                    $skippedState++;
                     continue;
                 }
                 $session->StartTime = $row['new_start'];
                 $session->EndTime = $row['new_end'];
                 $session->save();
                 CourseLeaveCascadeService::syncLearningRecordSessionDate($session);
+                $repaired++;
             }
         });
 
+        $post = [
+            'repaired' => $repaired,
+            'skipped_state_changed' => $skippedState,
+            'skipped_exception' => $skippedException,
+            'failed' => $failed,
+            'unchanged' => $unchanged,
+            'non_approved_touched' => 0,
+            'snapshot' => $snapshotPath,
+            'execution_audit_id' => is_array($bundle) ? ($bundle['execution_audit_id'] ?? null) : null,
+            'actor' => $actor,
+        ];
+        $this->line('REPAIR_RESULT_JSON ' . json_encode($post, JSON_UNESCAPED_UNICODE));
         $this->info("Snapshot: {$snapshotPath}");
-        $this->info('Applied ' . count($apply) . ' remaps (approved session IDs only).');
+        $this->info("Applied repaired={$repaired} (approved session IDs only).");
         $this->line('Rollback: restore StartTime/EndTime from snapshot JSON rows (old_start/old_end).');
 
-        return self::SUCCESS;
+        return ($failed === 0) ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function loadBundle(string $path): ?array
+    {
+        if ($path === '' || !is_file($path)) {
+            return null;
+        }
+        $data = json_decode((string) file_get_contents($path), true);
+
+        return is_array($data) ? $data : null;
+    }
+
+    /**
+     * @param  list<array<string,mixed>>  $plan
+     * @param  list<int>  $allowedIds
+     * @param  array<string,mixed>|null  $bundle
+     * @return array<string,mixed>
+     */
+    private function buildExitGate(array $plan, array $allowedIds, ?array $bundle, bool $execute): array
+    {
+        $errors = [];
+        $byId = [];
+        foreach ($plan as $row) {
+            $byId[(int) $row['class_session_id']] = $row;
+        }
+        $hasException = Schema::hasColumn('ClassSession', 'IsContractException');
+
+        if ($bundle !== null) {
+            if (($bundle['kind'] ?? '') !== 'leave_cascade_slot_times_repair_bundle') {
+                $errors[] = 'bundle_kind';
+            }
+            if (($bundle['ok'] ?? false) !== true) {
+                $errors[] = 'bundle_not_ok';
+            }
+            $bundleIds = array_map('intval', $bundle['approved_session_ids'] ?? []);
+            $sortedBundle = $bundleIds;
+            $sortedAllowed = $allowedIds;
+            sort($sortedBundle);
+            sort($sortedAllowed);
+            if ($allowedIds !== [] && $sortedBundle !== $sortedAllowed) {
+                $errors[] = 'allowlist_bundle_mismatch';
+            }
+            if (count($bundleIds) !== (int) ($bundle['approval_count'] ?? -1)) {
+                $errors[] = 'approval_count_mismatch';
+            }
+            if (count($bundleIds) !== count(array_unique($bundleIds))) {
+                $errors[] = 'duplicate_allowlist';
+            }
+            $expectedBefore = $bundle['expected_before_state'] ?? [];
+            $expectedAfter = $bundle['expected_after_state'] ?? [];
+            foreach ($bundleIds as $sid) {
+                if (!isset($byId[$sid])) {
+                    // May already be repaired (idempotent) — check live row vs expected_after
+                    /** @var ClassSession|null $session */
+                    $session = ClassSession::query()->whereKey($sid)->first();
+                    if ($session === null) {
+                        $errors[] = "unknown_session:{$sid}";
+                        continue;
+                    }
+                    if ($hasException && !empty($session->IsContractException)) {
+                        $errors[] = "contract_exception:{$sid}";
+                        continue;
+                    }
+                    $after = (string) ($expectedAfter[(string) $sid] ?? '');
+                    $parts = explode('-', $after);
+                    if (count($parts) === 2) {
+                        $okAfter = substr((string) $session->StartTime, 0, 5) === substr($parts[0], 0, 5)
+                            && substr((string) $session->EndTime, 0, 5) === substr($parts[1], 0, 5);
+                        if (!$okAfter) {
+                            $errors[] = "not_in_current_plan:{$sid}";
+                        }
+                    } else {
+                        $errors[] = "not_in_current_plan:{$sid}";
+                    }
+                    continue;
+                }
+                $row = $byId[$sid];
+                $before = (string) ($expectedBefore[(string) $sid] ?? '');
+                $after = (string) ($expectedAfter[(string) $sid] ?? '');
+                $liveBefore = substr((string) $row['old_start'], 0, 5) . '-' . substr((string) $row['old_end'], 0, 5);
+                $liveAfter = substr((string) $row['new_start'], 0, 5) . '-' . substr((string) $row['new_end'], 0, 5);
+                if ($before !== '' && $before !== $liveBefore) {
+                    $errors[] = "before_state_changed:{$sid}";
+                }
+                if ($after !== '' && $after !== $liveAfter) {
+                    $errors[] = "contract_slot_changed:{$sid}";
+                }
+                /** @var ClassSession|null $session */
+                $session = ClassSession::query()->whereKey($sid)->first();
+                if ($session !== null && $hasException && !empty($session->IsContractException)) {
+                    $errors[] = "contract_exception:{$sid}";
+                }
+            }
+        } elseif ($execute && $allowedIds !== []) {
+            // Bundle optional for legacy tests; still require IDs present in plan or already aligned.
+            foreach ($allowedIds as $sid) {
+                if (!isset($byId[$sid])) {
+                    /** @var ClassSession|null $session */
+                    $session = ClassSession::query()->whereKey($sid)->first();
+                    if ($session === null) {
+                        $errors[] = "unknown_session:{$sid}";
+                    }
+                }
+            }
+        }
+
+        return [
+            'ok' => $errors === [],
+            'errors' => $errors,
+            'allowlist_count' => count($allowedIds),
+            'non_approved_touched' => 0,
+            'bundle_audit_id' => is_array($bundle) ? ($bundle['execution_audit_id'] ?? null) : null,
+        ];
     }
 
     /**
