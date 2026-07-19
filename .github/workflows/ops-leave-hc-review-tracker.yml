@@ -1,0 +1,114 @@
+name: Leave-HC campus review tracker (#1342)
+
+# Tracks per-campus owner/SLA. Artifact alone ≠ delivery complete.
+# Posts overdue / defer updates on #1342 without PII.
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 09:00 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      force_status_comment:
+        description: "Post status comment even if not overdue"
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/leave-hc-campus-review-tracker.json'
+      - '.github/workflows/ops-leave-hc-review-tracker.yml'
+
+concurrency:
+  group: ops-leave-hc-review-tracker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Evaluate SLA and comment #1342
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_status_comment || 'false' }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          python3 <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          tracker = json.loads(Path("operations/closeout/leave-hc-campus-review-tracker.json").read_text())
+          now = datetime.now(timezone.utc)
+          sla = tracker["sla"]
+
+          def parse(ts):
+              # allow +08:00
+              return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+          reply_by = parse(sla["reply_by"])
+          overdue_at = parse(sla["overdue_reminder_after"])
+          defer_at = parse(sla["final_defer_after"])
+          force = str(os.environ.get("FORCE", "false")).lower() == "true"
+
+          lines = [
+              "## #1342 四校主任審核任務（可追蹤）",
+              "",
+              f"- 來源 artifact run: `{tracker['source_artifact_run']}`",
+              f"- 交付期限 deliver_by: `{sla['deliver_by']}`",
+              f"- 回覆期限 reply_by: `{sla['reply_by']}`",
+              f"- 空白＝不寫入；逾期提醒 `{sla['overdue_reminder_after']}`；最終 defer `{sla['final_defer_after']}`",
+              f"- 通道：{tracker['channel']['path']}",
+              "",
+              "| 分校 | Owner | 候補 | 核准 | 保留 | 查證 | 未回覆 | 狀態 | 最後追蹤 |",
+              "|---|---|---:|---:|---:|---:|---:|---|---|",
+          ]
+          unreplied_total = 0
+          for c in tracker["campuses"]:
+              unreplied_total += int(c["unreplied"])
+              lines.append(
+                  f"| {c['campus_name']} | {c['owner_label']} / ops=`{c['ops_owner']}` | "
+                  f"{c['candidates']} | {c['approved']} | {c['kept']} | {c['needs_review']} | "
+                  f"{c['unreplied']} | `{c['status']}` | {c['last_tracked_at']} |"
+              )
+
+          mode = "status"
+          if now >= defer_at and unreplied_total > 0:
+              mode = "final_defer"
+              lines += [
+                  "",
+                  "### 最終 defer",
+                  f"仍有 **{unreplied_total}** 筆未回覆。未核准項目維持不修改，並標記 campus `defer_unreplied`。",
+                  "已核准列仍可走 repair bundle；未回覆不阻塞 medium 範圍外項目。",
+              ]
+          elif now >= overdue_at and unreplied_total > 0:
+              mode = "overdue_reminder"
+              lines += [
+                  "",
+                  "### 逾期提醒",
+                  f"回覆期限已過，尚有 **{unreplied_total}** 筆未回覆。請 Ops 再觸達各校主任。",
+              ]
+          else:
+              lines += ["", f"_generated {now.isoformat().replace('+00:00','Z')} mode=status_"]
+
+          Path("/tmp/1342-tracker.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          Path("/tmp/tracker-mode.txt").write_text(mode)
+          Path("/tmp/should-post.txt").write_text(
+              "1" if (force or mode in ("overdue_reminder", "final_defer") or os.environ.get("GITHUB_EVENT_NAME") == "push") else "0"
+          )
+          print("mode", mode, "unreplied", unreplied_total)
+          PY
+
+          if [ "$(cat /tmp/should-post.txt)" = "1" ]; then
+            jq -n --arg body "$(cat /tmp/1342-tracker.md)" '{body:$body}' \
+              | gh api "repos/${REPO}/issues/1342/comments" --input -
+          else
+            echo "No comment needed (quiet schedule)."
+          fi

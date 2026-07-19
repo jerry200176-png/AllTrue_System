@@ -35,6 +35,16 @@
 - **非 A：** 46 組共用包使用中；首次部分分鐘路徑隨時可能出現；無自動 alert 前不關單。  
 - **非 C：** 尚無實際 drift／部分分鐘命中 → 不做 migration。
 
-## Monitor（低成本）
+## Monitor（低成本 — 必須可執行）
 
-每次 `ops-director-leave-hc-pack` / portfolio audit 重跑 FN；`partial_* > 0` → 升 P1 + ARCH。
+| 項目 | 值 |
+|------|-----|
+| Workflow | `.github/workflows/ops-td059-monitor.yml` |
+| 頻率 | 週一／四 10:30 Asia/Taipei + `workflow_dispatch` |
+| Owner | platform-ops |
+| Escalate | `partial_minutes_signal > 0` → 留言 #1343 + P1 label + 去識別 JSON artifact |
+| Quiet | 無異常 **不**留言（避免每日噪音） |
+| Blind spot | `null_minutes_deduct_blind_spot`（歷史整堂／pre-#613）— 計入 metric 但不自動當 drift |
+| 禁止 | 自動 schema migration |
+
+證明：merge 後手動 `workflow_dispatch` 一次，artifact `td059-monitor` 必須出現；clean 時 Issue 無新留言。

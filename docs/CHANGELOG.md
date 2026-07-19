@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: #1342 四校審核追蹤 + repair bundle gate + TD-059 活監測
+
+- 四校主任審核任務（owner／SLA／計數）寫入 tracker；PII／artifact 14d；repair bundle + `ops-leave-cascade-repair.yml`；TD-059 `ops-td059-monitor.yml`（異常才升 P1）。#1342 待主任；下一工程=#1062 唯讀分類。
+
 ## 2026-07-19 — ops: 主任 leave-HC 審核包 + #1262 關閉 + TD-059 monitor
 
 - 19 筆 high-confidence 改分校主任 CSV（核准／保留／查證；不用 Founder 讀 session ID）。#1262 overnight 證據達標關閉。TD-059 決策 B（monitored risk，不 schema）。

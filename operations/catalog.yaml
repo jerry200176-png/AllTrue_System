@@ -78,6 +78,31 @@ operations:
     legacy_command: sessions:generate-forward
     tags: [repair, session, scheduling]
 
+  leave-cascade-slot-times:
+    lifecycle: active
+    domain: session
+    business_owner: director-data
+    technical_owner: platform-data
+    owner: platform-ops
+    approver_roles: [director, super_admin]
+    runbook: docs/sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md
+    alert_group: LINE:ops-data
+    escalation_policy: session-critical-escalation
+    capabilities: [repair, plan, verify, snapshot]
+    risk: high
+    reversible: true
+    snapshot_required: true
+    transaction_required: true
+    rollback_supported: true
+    verification_required: true
+    approval_required: true
+    blast_radius: allowlist_only
+    estimated_duration: 10m
+    invariant_packs: [session-pack@1.0.0]
+    legacy_command: repair:leave-cascade-slot-times
+    workflow: .github/workflows/ops-leave-cascade-repair.yml
+    tags: [repair, session, leave, director-review]
+
   application-deploy:
     lifecycle: active
     domain: deploy
