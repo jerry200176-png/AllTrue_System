@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: leave/makeup closeout（Founder 不批准批次 repair）
+
+- Production evidence 通過；歷史 96 候選改主任審核 CSV／`--session-ids` 執行（禁止 re-scan 整批寫入）。詳見 `docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md`。
+
 ## 2026-07-19 — ops: leave/makeup evidence closeout + 扣堂 net idempotency
 - `evidence:leave-makeup-closeout` + ledger 淨額 idempotency；歷史 `--execute` 仍需 Founder 批准。
 
