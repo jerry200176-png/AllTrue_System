@@ -161,9 +161,9 @@ jobs:
             if [[ "$BID" == "205" ]]; then
               php artisan tinker --execute='
               $date="2026-07-14"; $campus=17;
-              $rows=\Illuminate\Support\Facades\DB::table("class_sessions as cs")
-                ->leftJoin("student_classes as sc","sc.id","=","cs.StudentClassID")
-                ->leftJoin("users as t","t.id","=","cs.TeacherID")
+              $rows=\Illuminate\Support\Facades\DB::table("ClassSession as cs")
+                ->leftJoin("StudentClass as sc","sc.ID","=","cs.StudentClassID")
+                ->leftJoin("User as t","t.id","=","cs.TeacherID")
                 ->where("cs.CampusID",$campus)
                 ->whereDate("cs.SessionDate",$date)
                 ->where("cs.StartTime",">=","17:00:00")
