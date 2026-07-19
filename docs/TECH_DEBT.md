@@ -441,7 +441,7 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open（獨立 Issue 追蹤；見下方 GitHub） |
+| 狀態 | Open — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
 | 優先級 | P3 |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [DEV] #613 A1 落地；2026-07-19 Founder closeout 要求獨立 Issue |
@@ -450,7 +450,7 @@
 | 建議做法 | 先調查包池實際使用量與加長／縮短補課是否已漂移；確認影響後再提整數分鐘模型 + migration／相容／rollback。**未確認影響前禁止改 production schema。** |
 | 清償成本估計 | 中（半天）調查；實作視設計 |
 | 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
-| GitHub Issue | Draft in `docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md` §Issue draft B（agent 無 `issues:write`；待 Founder 開 Issue 後回填編號） |
+| GitHub Issue | [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
 
 ### TD-060：`ClassSessionController::recalculateSessionCounters` 為死碼（無 caller）且非分鐘感知
 
