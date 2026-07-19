@@ -731,7 +731,7 @@
               </td>
             </tr>
             <tr v-if="filteredRecords.length === 0">
-              <td colspan="8" class="empty-text">
+              <td colspan="9" class="empty-text">
                 <span v-if="filterStatus === 'self_study'">{{ recordsMode === 'week' ? '最近 7 天暫無自修記錄' : '今日暫無自修記錄' }}</span>
                 <span v-else>{{ recordsMode === 'week' ? '最近 7 天尚無出缺勤紀錄' : '今日尚無出缺勤紀錄' }}</span>
               </td>

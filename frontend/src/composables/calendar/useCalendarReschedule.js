@@ -95,7 +95,6 @@ export function useCalendarReschedule({
           new_date: rescheduleForm.value.new_date,
           start_time: normalizeTimeTo30(rescheduleForm.value.new_start),
           end_time: newEnd,
-          teacher_id: rescheduleForm.value.teacher_id || null,
           subject: rescheduleForm.value.subject || null,
         },
       });
