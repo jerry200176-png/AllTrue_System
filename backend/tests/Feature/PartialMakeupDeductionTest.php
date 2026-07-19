@@ -89,6 +89,7 @@ class PartialMakeupDeductionTest extends TestCase
 
         $this->assertTrue(\App\Services\SessionDeductionService::reverseForSession($scId, (int) $cs->id, 'status_adjust'));
         $this->assertFalse(\App\Services\SessionDeductionService::reverseForSession($scId, (int) $cs->id, 'status_adjust'));
+        \App\Services\SessionDeductionService::recomputeCounters($scId);
         $this->assertSame(480, (int) StudentClass::findOrFail($scId)->RemainingMinutes);
         $this->assertSame(180, (int) SessionDeductionLedger::where('student_class_id', $scId)
             ->where('event_type', 'reverse')->value('minutes'));

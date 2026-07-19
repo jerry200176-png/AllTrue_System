@@ -205,7 +205,7 @@ class SessionDeductionService
         // Idempotency is net-based: deduct allowed when net<=0; reverse when net>0
         // so undo+re-attend can create a new deduct after a matching reverse.
         return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
-            StudentClass::where('ID', $studentClassId)->lockForUpdate()->first();
+            StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first();
 
             if ($classSessionId && $classSessionId > 0
                 && self::sessionLedgerNet($studentClassId, $classSessionId) > 0) {
@@ -244,7 +244,7 @@ class SessionDeductionService
         ?int $minutes = null
     ): bool {
         return (bool) DB::transaction(function () use ($studentClassId, $classSessionId, $source, $createdBy, $note, $minutes) {
-            StudentClass::where('ID', $studentClassId)->lockForUpdate()->first();
+            StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first();
 
             if ($classSessionId && $classSessionId > 0
                 && self::sessionLedgerNet($studentClassId, $classSessionId) <= 0) {
@@ -301,7 +301,7 @@ class SessionDeductionService
     public static function recomputeCounters(int $studentClassId): void
     {
         DB::transaction(function () use ($studentClassId) {
-            $sc = StudentClass::where('ID', $studentClassId)->lockForUpdate()->first();
+            $sc = StudentClass::query()->where('ID', $studentClassId)->lockForUpdate()->first();
             if (!$sc) {
                 return;
             }

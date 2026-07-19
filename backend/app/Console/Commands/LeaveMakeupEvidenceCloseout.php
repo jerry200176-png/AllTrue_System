@@ -71,7 +71,7 @@ class LeaveMakeupEvidenceCloseout extends Command
 
         $this->line('wed17_sat10_contracts=' . $rows->count());
         foreach ($rows as $r) {
-            $leaves = (int) ClassSession::where('StudentClassID', (int) $r->sc_id)
+            $leaves = (int) ClassSession::query()->where('StudentClassID', (int) $r->sc_id)
                 ->whereRaw("LOWER(Status) IN ('leave','leave_adjusted','leave_requested')")->count();
             $this->line(sprintf(
                 'sc=%d campus=%d %s@%s + %s@%s mode=%s leave_rows=%d',
@@ -110,7 +110,7 @@ class LeaveMakeupEvidenceCloseout extends Command
                 }
 
                 CourseLeaveCascadeService::applyLeaveCascade($courseId, '2026-07-01');
-                $after = ClassSession::where('StudentClassID', $courseId)
+                $after = ClassSession::query()->where('StudentClassID', $courseId)
                     ->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get();
                 $satOk = $wedOk = true;
                 foreach ($after as $cs) {
@@ -130,7 +130,7 @@ class LeaveMakeupEvidenceCloseout extends Command
 
                 CourseLeaveCascadeService::undoLeaveCascade($courseId, '2026-07-01');
                 $undoOk = true;
-                foreach (ClassSession::where('StudentClassID', $courseId)->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get() as $cs) {
+                foreach (ClassSession::query()->where('StudentClassID', $courseId)->whereRaw("LOWER(Status) NOT IN ('cancelled','voided')")->get() as $cs) {
                     if ($exId && (int) $cs->id === $exId) {
                         continue;
                     }
@@ -144,13 +144,14 @@ class LeaveMakeupEvidenceCloseout extends Command
                     }
                 }
 
+                $exRow = $exId ? ClassSession::query()->find($exId) : null;
                 $result = [
                     'ok' => $satOk && $wedOk && $undoOk,
                     'sat_ok' => $satOk,
                     'wed_ok' => $wedOk,
                     'undo_ok' => $undoOk,
-                    'exception_preserved' => $exId
-                        ? substr((string) ClassSession::find($exId)->StartTime, 0, 5) === '14:00'
+                    'exception_preserved' => $exRow
+                        ? substr((string) $exRow->StartTime, 0, 5) === '14:00'
                         : null,
                 ];
                 $this->line('LEAVE_PROBE_JSON ' . json_encode($result, JSON_UNESCAPED_UNICODE));
@@ -199,25 +200,26 @@ class LeaveMakeupEvidenceCloseout extends Command
                     'updated_at' => now(),
                 ]);
                 $sid = $this->insertSession($courseId, $date, '14:00:00', '17:00:00');
-                $sc = StudentClass::findOrFail($courseId);
+                $sc = StudentClass::query()->findOrFail($courseId);
                 $charge0 = (int) $sc->Charge;
 
                 $first = SessionDeductionService::deductOnAttendance($sc, null, $sid);
                 $sc->refresh();
                 $second = SessionDeductionService::deductOnAttendance($sc, null, $sid);
-                $mins = (int) SessionDeductionLedger::where('student_class_id', $courseId)
+                $mins = (int) SessionDeductionLedger::query()->where('student_class_id', $courseId)
                     ->where('class_session_id', $sid)->where('event_type', 'deduct')->value('minutes');
-                $after = StudentClass::findOrFail($courseId);
+                $after = StudentClass::query()->findOrFail($courseId);
 
                 $rev = SessionDeductionService::reverseForSession($courseId, $sid, 'status_adjust');
                 $rev2 = SessionDeductionService::reverseForSession($courseId, $sid, 'status_adjust');
-                $restored = StudentClass::findOrFail($courseId);
+                SessionDeductionService::recomputeCounters($courseId);
+                $restored = StudentClass::query()->findOrFail($courseId);
                 $third = SessionDeductionService::deductOnAttendance($restored, null, $sid);
 
                 $nid = $this->insertSession($courseId, Carbon::yesterday()->subDay()->toDateString(), '14:00:00', '17:00:00');
-                $final = StudentClass::findOrFail($courseId);
+                $final = StudentClass::query()->findOrFail($courseId);
                 $normal = SessionDeductionService::deductOnAttendance($final, null, $nid);
-                $nMins = SessionDeductionLedger::where('student_class_id', $courseId)
+                $nMins = SessionDeductionLedger::query()->where('student_class_id', $courseId)
                     ->where('class_session_id', $nid)->where('event_type', 'deduct')->value('minutes');
 
                 $hasMin = Schema::hasColumn('StudentClass', 'RemainingMinutes');
@@ -233,8 +235,8 @@ class LeaveMakeupEvidenceCloseout extends Command
                     'reverse_idempotent' => !$rev2,
                     'normal_longer_whole' => $nMins === null,
                     'charge_unchanged' => (int) $final->Charge === $charge0,
-                    'deduct_rows' => (int) SessionDeductionLedger::where('student_class_id', $courseId)->where('event_type', 'deduct')->count(),
-                    'reverse_rows' => (int) SessionDeductionLedger::where('student_class_id', $courseId)->where('event_type', 'reverse')->count(),
+                    'deduct_rows' => (int) SessionDeductionLedger::query()->where('student_class_id', $courseId)->where('event_type', 'deduct')->count(),
+                    'reverse_rows' => (int) SessionDeductionLedger::query()->where('student_class_id', $courseId)->where('event_type', 'reverse')->count(),
                 ];
                 $this->line('MAKEUP_PROBE_JSON ' . json_encode($result, JSON_UNESCAPED_UNICODE));
                 throw new CloseoutFixtureRollback($result);
