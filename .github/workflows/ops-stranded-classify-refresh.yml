@@ -1,0 +1,147 @@
+name: Stranded #1062 classify refresh (read-only)
+
+# Next autonomous P0/P1 while #1342 waits on directors.
+# Refresh cohort metrics only — never generate-forward --execute.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/stranded-classify.request.md'
+      - '.github/workflows/ops-stranded-classify-refresh.yml'
+
+concurrency:
+  group: ops-stranded-classify-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Read-only stranded + cross-sc probes
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/pi.log
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "=== STRANDED_JSON ==="
+          php artisan sessions:audit-stranded --json || true
+          echo "=== BUSINESS_DIGEST_SNIP ==="
+          php artisan ops:business-digest 2>/dev/null | head -c 8000 || true
+          echo
+          echo "=== CROSS_SC_DIGEST ==="
+          php artisan tinker --execute='
+          $digest = [];
+          try {
+            $digest["scheduled_cross_sc"] = (int) (\Illuminate\Support\Facades\DB::table("ClassSession as a")
+              ->join("ClassSession as b", function($j){
+                $j->on("a.SessionDate","=","b.SessionDate")
+                  ->on("a.StartTime","=","b.StartTime")
+                  ->whereColumn("a.id","<", "b.id");
+              })
+              ->join("StudentClass as sca","sca.ID","=","a.StudentClassID")
+              ->join("StudentClass as scb","scb.ID","=","b.StudentClassID")
+              ->join("Student as sa","sa.id","=","sca.StudentID")
+              ->join("Student as sb","sb.id","=","scb.StudentID")
+              ->whereColumn("sa.id","=","sb.id")
+              ->whereColumn("sca.ID","<>","scb.ID")
+              ->whereRaw("LOWER(a.Status)=?", ["scheduled"])
+              ->whereRaw("LOWER(b.Status)=?", ["scheduled"])
+              ->count());
+          } catch (\Throwable $e) {
+            $digest["scheduled_cross_sc_error"] = $e->getMessage();
+          }
+          $digest["note"] = "de-identified pair count proxy; not a repair list";
+          echo json_encode($digest, JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          echo "=== DONE ==="
+          REMOTE
+          python3 <<'PY'
+          import json, re
+          from pathlib import Path
+          from datetime import datetime, timezone
+          text = Path("out/pi.log").read_text(errors="replace")
+          stranded = None
+          marker = text.find("=== STRANDED_JSON ===")
+          if marker >= 0:
+              for line in text[marker:].splitlines()[1:40]:
+                  line=line.strip()
+                  if line.startswith("{") and ("stranded" in line or "orphan" in line or "courses" in line or "sessions" in line):
+                      try:
+                          stranded = json.loads(line)
+                          break
+                      except Exception:
+                          pass
+          cross = {"ok": False}
+          m = text.find("=== CROSS_SC_DIGEST ===")
+          if m >= 0:
+              for line in text[m:].splitlines()[1:20]:
+                  line=line.strip()
+                  if line.startswith("{"):
+                      try:
+                          cross = json.loads(line)
+                          break
+                      except Exception:
+                          pass
+          summary = {
+              "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "canonical_issue": 1062,
+              "execute": False,
+              "stranded_json": stranded,
+              "cross_sc_proxy": cross,
+              "next": "classify only; CEO GO required before forward-gen execute",
+          }
+          Path("out/stranded-classify-refresh.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
+          print("stranded_ok", stranded is not None, "cross", cross)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stranded-classify-refresh
+          path: out/
+          retention-days: 30
+
+      - name: Comment #1062 (redacted counts only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          RUN="${{ github.run_id }}"
+          SUMMARY=$(python3 -c 'import json;from pathlib import Path;s=json.loads(Path("out/stranded-classify-refresh.json").read_text());print(json.dumps({"stranded_present": bool(s.get("stranded_json")),"cross_sc_proxy": s.get("cross_sc_proxy")},ensure_ascii=False))')
+          cat > /tmp/1062.md <<EOF
+          ## Stranded classify refresh (read-only)
+
+          Run: https://github.com/${REPO}/actions/runs/${RUN}
+
+          No generate-forward execute. Artifact: \`stranded-classify-refresh\`.
+          Canonical: #1062. Cross-SC proxy is de-identified count only (#1130 family).
+
+          \`\`\`json
+          ${SUMMARY}
+          \`\`\`
+          EOF
+          jq -n --arg body "$(cat /tmp/1062.md)" '{body:$body}' \
+            | gh api "repos/${REPO}/issues/1062/comments" --input - || echo "comment skipped"
