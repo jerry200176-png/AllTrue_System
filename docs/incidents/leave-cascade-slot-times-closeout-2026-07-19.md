@@ -67,8 +67,23 @@ Command (after classify export lands):
 
 ## Follow-up work (out of this closeout)
 
-1. **Director review flow** — GitHub issue (CSV-first; approved session-id execute only).
-2. **TD-059** — standalone Issue: package pool usage, longer/shorter makeup cases, drift audit (personal minutes vs pool ±1), integer-minutes model + migration/compat/rollback design; no schema write until impact confirmed.
+> Cloud agent token **cannot** `issues:write` (HTTP 403). Founder/maintainer: paste the two drafts below into GitHub Issues, then backfill numbers into `docs/TECH_DEBT.md` TD-059.
+
+### Issue draft A — Director-reviewable leave-cascade slot repair
+
+**Title:** `Director-reviewable leave-cascade slot-time repair (CSV-first, approved session IDs only)`
+
+Body: see requirements in §Founder decisions #3–4. Quantify: high_confidence **19**/96. Prefer `--export-csv` + existing director surface; execute only `--session-ids`. No large UI first.
+
+### Issue draft B — TD-059 package pool minutes
+
+**Title:** `TD-059: Package pool minutes for longer/shorter makeup (no schema until impact proven)`
+
+1. Quantify shared package usage (read-only).  
+2. Find longer/shorter makeup on package members.  
+3. Compare personal minutes ledger vs pool ±1 drift.  
+4. Propose integer-minutes model + migration + compat + rollback.  
+5. No production schema until impact confirmed + ARCH/Founder go.
 
 ---
 
