@@ -1,0 +1,67 @@
+name: Resolve in-app bug 205 (one-shot)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: bug-205-resolve
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          echo "SSH_PORT=22" >> "$GITHUB_ENV"
+
+      - name: Resolve bug 205 with evidence
+        env:
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT}" -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $bugId=205;
+          $admin=\Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
+          $actor=$admin ? (int)$admin : 1;
+          $svc=\App\Services\BugReportService::class;
+          $pub="已修好：換代課老師時，系統會正確排除「這位學生自己」的既有時段，不再把還有名額的 1 對 2 老師誤標成已滿／衝堂。請在課程管理再開一次「換代課老師」確認；若仍有問題請回覆此單。";
+          foreach (["triaged","in_progress"] as $st) {
+            $r=$svc::changeStatus($bugId,$actor,$st,"ops: in-app #205 triage");
+            echo "to_$st=", json_encode($r, JSON_UNESCAPED_UNICODE), PHP_EOL;
+          }
+          $c=$svc::addComment($bugId,$actor,$pub,false);
+          echo "comment_id=", isset($c->id)?$c->id:"?", PHP_EOL;
+          $r=$svc::changeStatus($bugId,$actor,"resolved","production fix verified; reporter verification requested",[
+            "production_revision"=>"8d08ca72da42a1455f7d4502bb97b309778adf20",
+            "deploy_run_id"=>"29669924825",
+          ]);
+          echo "resolve=", json_encode($r, JSON_UNESCAPED_UNICODE), PHP_EOL;
+          $bug=\App\Models\BugReport::find($bugId);
+          echo "final_status=", $bug?$bug->status:"missing", PHP_EOL;
+          '
+          REMOTE
