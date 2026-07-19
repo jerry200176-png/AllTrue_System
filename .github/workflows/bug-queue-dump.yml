@@ -162,60 +162,56 @@ jobs:
               php artisan tinker --execute='
               $date="2026-07-14"; $campus=17;
               $rows=\Illuminate\Support\Facades\DB::table("ClassSession as cs")
-                ->leftJoin("StudentClass as sc","sc.ID","=","cs.StudentClassID")
-                ->leftJoin("User as t","t.id","=","cs.TeacherID")
-                ->where("cs.CampusID",$campus)
+                ->join("StudentClass as sc","sc.ID","=","cs.StudentClassID")
+                ->leftJoin("User as t","t.id","=","sc.TeacherID")
+                ->leftJoin("Student as st","st.id","=","sc.StudentID")
+                ->where("st.CampusID",$campus)
                 ->whereDate("cs.SessionDate",$date)
                 ->where("cs.StartTime",">=","17:00:00")
                 ->where("cs.StartTime","<=","20:30:00")
                 ->orderBy("cs.StartTime")
-                ->get(["cs.id","cs.StudentClassID","cs.TeacherID","cs.Status","cs.StartTime","cs.EndTime","cs.Subject","cs.IsSubstitute","cs.OriginalTeacherID","sc.ClassType","sc.StudentID","t.Name as teacher_name"]);
+                ->get(["cs.id","cs.StudentClassID","cs.Status","cs.StartTime","cs.EndTime","sc.ClassType","sc.StudentID","sc.TeacherID","sc.Subject","t.Name as teacher_name"]);
               echo "SESSIONS_START", PHP_EOL;
               foreach($rows as $r){
                 echo json_encode([
                   "sid"=>(int)$r->id,
                   "scid"=>(int)$r->StudentClassID,
                   "student_id"=>(int)$r->StudentID,
-                  "teacher_id"=>(int)$r->TeacherID,
+                  "contract_teacher_id"=>(int)$r->TeacherID,
                   "teacher"=>$r->teacher_name,
                   "status"=>$r->Status,
                   "start"=>$r->StartTime,
                   "end"=>$r->EndTime,
                   "subject"=>$r->Subject,
                   "class_type"=>$r->ClassType,
-                  "is_sub"=>(int)$r->IsSubstitute,
-                  "orig_teacher"=>(int)$r->OriginalTeacherID,
                 ], JSON_UNESCAPED_UNICODE), PHP_EOL;
               }
               echo "SESSIONS_END", PHP_EOL;
+              $huang=\Illuminate\Support\Facades\DB::table("User")->where("Name","like","%黃芝琳%")->first(["id","Name"]);
+              echo "HUANG=", json_encode($huang, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              if ($huang) {
+                $tid=(int)$huang->id;
+                $svc=app(\App\Services\SubstituteService::class);
+                // find student 樓兆尹 id
+                $stu=\Illuminate\Support\Facades\DB::table("Student")->where("Name","like","%兆尹%")->first(["id","Name","CampusID"]);
+                echo "STU=", json_encode($stu, JSON_UNESCAPED_UNICODE), PHP_EOL;
+                $ex=$stu ? (int)$stu->id : null;
+                $busy=$svc->collectTeacherBusySlotsWithCapacity($tid, $date, [], $ex);
+                echo "BUSY_EXCL=", json_encode($busy, JSON_UNESCAPED_UNICODE), PHP_EOL;
+                $busy2=$svc->collectTeacherBusySlotsWithCapacity($tid, $date, [], null);
+                echo "BUSY_ALL=", json_encode($busy2, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              }
+              $sched=\Illuminate\Support\Facades\DB::table("schedules")
+                ->whereDate("schedule_date",$date)
+                ->where(function($q){ $q->where("start_time",">=","17:00")->orWhere("start_time",">=","17:00:00"); })
+                ->where(function($q) use ($campus){ $q->where("branch_id",$campus)->orWhereNull("branch_id"); })
+                ->orderBy("start_time")
+                ->limit(40)
+                ->get(["id","teacher_id","student_course_id","student_id","status","start_time","end_time","branch_id","original_schedule_id"]);
+              echo "SCHED_START", PHP_EOL;
+              foreach($sched as $s){ echo json_encode($s, JSON_UNESCAPED_UNICODE), PHP_EOL; }
+              echo "SCHED_END", PHP_EOL;
               '
             fi
           fi
           REMOTE
-
-      - name: Fetch attachment to runner
-        if: ${{ inputs.bug_id != '' }}
-        env:
-          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
-          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          BUG_ID: ${{ inputs.bug_id }}
-        run: |
-          set -euo pipefail
-          PORT="${SSH_PORT:-22}"
-          mkdir -p bug-attachment
-          # Known path for 205; else skip
-          if [[ "$BUG_ID" == "205" ]]; then
-            scp -i ~/.ssh/deploy_key -P "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
-              "${PI_SSH_USER}@${PI_SSH_HOST}:/home/admin/backend/storage/app/public/bug-reports/205/gTFW77ueBjxXhi4RV7DeDWhQGWW9YqmALzdEiYR8.png" \
-              bug-attachment/att-152.png
-            ls -la bug-attachment/
-          fi
-
-      - name: Upload attachment artifact
-        if: ${{ inputs.bug_id != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: bug-${{ inputs.bug_id }}-attachment
-          path: bug-attachment/
-          if-no-files-found: warn
-          retention-days: 7
