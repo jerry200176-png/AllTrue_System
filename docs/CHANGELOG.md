@@ -1,7 +1,6 @@
 # AllTrue Changelog
 
 ## 2026-07-19 — ops: leave/makeup evidence closeout + 扣堂 net idempotency
-
 - `evidence:leave-makeup-closeout` + ledger 淨額 idempotency；歷史 `--execute` 仍需 Founder 批准。
 
 ## 2026-07-19 — fix: 補課加長按實際分鐘扣堂
