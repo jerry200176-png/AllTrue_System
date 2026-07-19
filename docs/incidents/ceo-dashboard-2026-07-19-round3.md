@@ -42,7 +42,13 @@ Kickoff：`docs/internal/phase2/ORPHAN_SESSION_BASELINE.md` + 本輪 `ops-strand
 
 ## 7. 已完成
 
-Tracker／PII／bundle／repair workflow／exit gate／TD-059 monitor／SOP／tests。本輪無 production write。
+| 項目 | PR |
+|------|-----|
+| 四校 tracker + PII + TD-059 monitor + SOP + Dashboard | #1354 |
+| Repair bundle + artisan exit gate + controlled workflow | #1355 |
+| #1062 stranded 唯讀刷新 + bundle unit tests | #1356 |
+
+本輪無 production write。Merge 後需 `workflow_dispatch`：`ops-leave-hc-review-tracker`、`ops-td059-monitor`、`ops-stranded-classify-refresh`。
 
 ## 8. Founder 決策？
 
