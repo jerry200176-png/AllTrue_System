@@ -882,18 +882,18 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
-**觸發情境**：2026-05-31 #613 落地「補課部分時數比例扣堂」。
+**觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
 
 **根因 / 設計**：扣堂權威單位由「堂數」改為「分鐘」。權威來源＝`StudentClass.PurchasedMinutes/RemainingMinutes` + `session_deduction_ledger.minutes`；`RemainingSessions` 變成由 `ROUND_HALF_UP(RemainingMinutes / perSessionMinutes)` 衍生的整數**顯示值**（整數運算、無浮點）。
 
 **強制規則（改扣堂/堂數顯示前必讀）**：
-- **唯一權威扣堂路徑**＝`SessionDeductionService::recomputeCounters()`；分鐘換算 chokepoint＝`deductOnAttendance`（自載 ClassSession，`clamp(EndTime−StartTime, 0..perSession)`，完整時長傳 `null`＝整堂、byte-identical）。
-- 比例扣堂**只**作用於 `schedules.type='extra'` 補課且時長 < 每堂分鐘；正常課堂、完整時長補課一律整堂。**禁止**把規則擴大到所有堂次。
-- 任何讀取端**不可**用 count-based observed 值覆寫已有「部分時數」（fractional `RemainingMinutes`）課程的 `RemainingSessions`（`StudentClassController::index` 已加 `hasFractionalBalance` 守門）；要顯示精確值用 `remaining_minutes`。
-- `reverseForSession` 必須沖回對應 deduct 的 `minutes`（否則淨值漂移）。
-- ⚠️ 共用課程包池鏡像（`PackageDeductionService`）尚未分鐘感知（TD-059）；`recalculateSessionCounters` 為死碼勿誤用（TD-060）。
+- **唯一權威扣堂路徑**＝`SessionDeductionService::recomputeCounters()`；分鐘換算 chokepoint＝`deductOnAttendance` → `resolvePartialMakeupMinutes`（`type=extra` 且時長 ≠ perSession 記實際分鐘；剛好完整時長傳 `null`＝整堂）。
+- **補課非標準時長**（短於**或長於**契約每堂分鐘）走實際分鐘；正常課堂一律整堂。**禁止**擴大到非 `extra`；**禁止** clamp 回 perSession。
+- 任何讀取端**不可**用 count-based observed 值覆寫 fractional 餘額；精確值用 `remaining_minutes`。
+- `reverseForSession` 必須沖回對應 deduct 的 `minutes`。
+- ⚠️ `PackageDeductionService` 尚未分鐘感知（TD-059）。預付包堂加長補課扣 entitlement 分鐘 ≠ 自動加收現金（Charge 見 §R76）。
 
-**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含列表端點不被覆寫）。
+**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（90／120／180 分）。
 
 ---
 
@@ -905,7 +905,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - session mode：`session_charge = round(Rate)`；時段調整**不得**因時長產生新 Charge delta（僅修正舊偏差）。
   - hour mode：`session_charge = round(Rate × actual_minutes / 60)`；儲存後**必須**把 delta 寫回課程總費用；前端文案不得寫「僅供參考／不改總費用」。
   - 改計費分支時前後端與 `ClassSessionChargeTest` 必須同 PR 對齊；詳見 Archive §單堂費用固定。
-- **不做的範圍**：本條只修「畫面↔寫入一致性」。契約為兩小時、偶發排三小時時，**扣堂仍整堂**（見 §R59）；若要自動多扣／加收屬產品決策，另開 PRD。
+- **與扣堂分工**：預付包堂 entitlement 的加長／縮短補課扣分鐘見 §R59；本條只管 Charge，不可把「扣堂分鐘」誤當「立刻加收現金」。
 
 ---
 

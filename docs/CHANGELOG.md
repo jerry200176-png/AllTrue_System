@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-19 — fix: 補課加長按實際分鐘扣堂
+
+Fixed：補課若排得比契約一堂更長（例如契約 2 小時、補課 3 小時），點名後會依實際上課分鐘扣 entitlement，不再固定只扣一整堂。預付包堂扣的是餘額分鐘，不自動加收現金。
+
+開發備註：`SessionDeductionService::resolvePartialMakeupMinutes` 允許 makeup minutes > perSession（§R59）。測試：`PartialMakeupDeductionTest`（180 分）。共用課程包分鐘鏡像仍見 TD-059。
+
 ## 2026-07-19 — fix: 請假順延不再錯置其他星期時段
 
 Fixed：多星期固定課（例如週三 17:00–19:00、週六 10:00–12:00）請假順延後，其他星期不會再被改成請假那天的鐘點。

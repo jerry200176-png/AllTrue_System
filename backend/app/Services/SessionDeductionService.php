@@ -447,9 +447,9 @@ class SessionDeductionService
     }
 
     /**
-     * #613 A1：補課（schedules.type='extra'）只覆蓋部分時數時，回傳該補課實際分鐘
-     * （上限為每堂分鐘）。非補課、完整時長補課、或時間資料不足 → null（＝整堂，行為不變）。
-     * 刻意只對補課做比例扣除，正常課堂一律整堂，最小化 blast radius。
+     * #613 A1 + 補課加長：補課（schedules.type='extra'）時長 ≠ 契約每堂分鐘時，
+     * 回傳實際分鐘（可短於或長於 perSession）。非補課、剛好完整時長、或時間不足
+     * → null（＝整堂）。正常課堂一律整堂。禁止 clamp 回 perSession。
      */
     private static function resolvePartialMakeupMinutes(StudentClass $sc, int $classSessionId): ?int
     {
@@ -474,11 +474,14 @@ class SessionDeductionService
 
         $perSession = max(1, $sc->perSessionMinutes());
         $mins = self::durationMinutes($cs->StartTime, $cs->EndTime);
-        if ($mins <= 0 || $mins >= $perSession) {
-            return null; // 完整（或更長）時長補課 → 整堂，保持 byte-identical
+        if ($mins <= 0) {
+            return null;
+        }
+        if ($mins === $perSession) {
+            return null; // 剛好完整時長 → 整堂（byte-identical）
         }
 
-        return $mins;
+        return $mins; // 短於或長於契約時長的補課 → 實際分鐘
     }
 
     /** StartTime/EndTime（HH:MM[:SS]）換算分鐘，處理跨午夜（沿用 StudentClassController 慣例）。 */
