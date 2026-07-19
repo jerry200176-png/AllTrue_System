@@ -163,6 +163,13 @@ jobs:
             sed -i "s|^SENTRY_LARAVEL_DSN=.*|SENTRY_LARAVEL_DSN=${{ secrets.SENTRY_DSN }}|" /home/admin/backend/.env
             echo "✅ SENTRY_LARAVEL_DSN 已更新"
           fi
+
+          echo "=== [3c/7] 一次性 APP_KEY containment（issue #1007） ==="
+          if ! bash /home/admin/scripts/production-operations/rotate-app-key-2026-07-19.sh; then
+            echo "❌ APP_KEY containment 失敗 — 中止部署，不得進入快取重建"
+            exit 1
+          fi
+
           # 前端：Vite 只從 .env 檔讀取，寫入暫時的 .env.production.local 再 build
           echo "VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN }}" > /home/admin/frontend/.env.production.local
           echo "✅ frontend .env.production.local 已寫入"
