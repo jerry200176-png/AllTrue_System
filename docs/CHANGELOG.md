@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: follow-up Issues #1342/#1343 + TD-059/leave 唯讀稽核 workflow
+
+- Closeout／TECH_DEBT 回填 [#1342](https://github.com/jerry200176-png/AllTrue_System/issues/1342)、[#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343)；`ops-portfolio-td059-leave-audit.yml` 唯讀盤點 open Issues、TD-059 影響、高信心 leave CSV（不 execute）。主任審核 SOP：`docs/sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md`。
+
 ## 2026-07-19 — ops: leave/makeup closeout（Founder 不批准批次 repair）
 
 - Production evidence 通過；歷史 96 候選改主任審核 CSV／`--session-ids` 執行（禁止 re-scan 整批寫入）。詳見 `docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md`。
