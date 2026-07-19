@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-19 — fix: 主任堂數異常只呈現可核對的帳務候選
+
+Fixed：主任營運決策中心不再把已停用的歷史課程或「購買堂數從未初始化」的舊資料混入一般堂數差異；只有仍啟用且有正數合約基準的課程會進主任核對名單，其餘仍保留為獨立工程監測訊號。
+
+開發備註：`BusinessDigestService` 保留既有差異總數相容欄位，新增 reviewable／active legacy／inactive history 拆分；全程唯讀，不修改任何課程、堂數或付款資料。
+
 ## 2026-07-18 — fix: 代課挑選排除同一學生續約佔用（in-app #203）
 
 Fixed：為學生指派代課老師時，不再把「同一學生」既有的續約／雙軌 scheduled 佔用顯示成衝堂；同分校與跨分校檢查同樣排除該學生。其他學生的真實佔用仍會正確阻擋。
@@ -36,7 +42,6 @@ Fixed：課程管理、堂次編輯與行事曆的調課現在只有在原堂、
 Fixed：主任從行事曆、課程請假或出缺勤編輯建立「請假」時，系統會直接保存該堂完整的起訖時間，不再把請假誤記成仍在補習班內、等到隔夜才修正的未簽退紀錄。
 
 開發備註：集中所有請假出缺勤寫入、加入 model fail-closed invariant、同日 production health 聚合檢查與 PII-free 修復摘要；另以「02:30 後補登前一日請假」回歸測試覆蓋實際 producer 條件。
-
 ## 2026-07-17 — test: isolate local PHPUnit schemas per process (#1266)
 
 開發備註：新增 `scripts/phpunit-isolated.sh`，每個 worktree／process 啟動只綁 loopback 的非特權 ephemeral MariaDB，使用唯一 `AllTrue_test_<suffix>_<nonce>` schema，原樣轉交 PHPUnit 參數並保留 exit code，結束或中斷時 drop／shutdown／清除 data directory。Wrapper 不需 sudo、Docker 或 production credential，且 fail-closed 拒絕 production DB 名稱、遠端 host 與自訂 PHPUnit config。
