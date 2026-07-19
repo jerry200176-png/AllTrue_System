@@ -70,11 +70,12 @@ class LeaveMakeupEvidenceCloseout extends Command
 
         $this->line('wed17_sat10_contracts=' . $rows->count());
         foreach ($rows as $r) {
-            $leaves = (int) ClassSession::query()->where('StudentClassID', (int) $r->sc_id)
+            $scId = (int) $r->sc_id;
+            $leaves = (int) ClassSession::query()->where('StudentClassID', $scId)
                 ->whereRaw("LOWER(Status) IN ('leave','leave_adjusted','leave_requested')")->count();
             $this->line(sprintf(
                 'sc=%d campus=%d %s@%s + %s@%s mode=%s leave_rows=%d',
-                (int) $r->sc_id,
+                $scId,
                 (int) $r->campus_id,
                 $r->week,
                 substr((string) $r->time, 0, 5),
@@ -83,6 +84,21 @@ class LeaveMakeupEvidenceCloseout extends Command
                 (string) $r->ScheduleMode,
                 $leaves
             ));
+            // PII-free session sample for teacher-case candidate (id/time/status only).
+            $sample = ClassSession::query()->where('StudentClassID', $scId)
+                ->orderByDesc('SessionDate')->limit(8)
+                ->get(['id', 'SessionDate', 'StartTime', 'EndTime', 'Status']);
+            foreach ($sample as $cs) {
+                $this->line(sprintf(
+                    '  cs=%d date=%s %s-%s status=%s iso=%d',
+                    (int) $cs->id,
+                    substr((string) $cs->SessionDate, 0, 10),
+                    substr((string) $cs->StartTime, 0, 5),
+                    substr((string) $cs->EndTime, 0, 5),
+                    (string) $cs->Status,
+                    (int) Carbon::parse((string) $cs->SessionDate)->dayOfWeekIso
+                ));
+            }
         }
     }
 
@@ -260,7 +276,7 @@ class LeaveMakeupEvidenceCloseout extends Command
         if ($teacherId <= 0) {
             throw new \RuntimeException('no teacher');
         }
-        $studentId = (int) DB::table('Student')->insertGetId([
+        $studentRow = [
             'name' => self::MARK . ($multiWeekday ? ' leave' : ' makeup'),
             'CampusID' => $campusId,
             'ClassID' => 1,
@@ -268,7 +284,15 @@ class LeaveMakeupEvidenceCloseout extends Command
             'enable' => 1,
             'MDT' => now(),
             'Notify_Token' => '',
-        ]);
+            'TelegramID' => '',
+        ];
+        if (Schema::hasColumn('Student', 'TelegramID1')) {
+            $studentRow['TelegramID1'] = null;
+        }
+        if (Schema::hasColumn('Student', 'TelegramID2')) {
+            $studentRow['TelegramID2'] = null;
+        }
+        $studentId = (int) DB::table('Student')->insertGetId($studentRow);
         $payload = [
             'StudentID' => $studentId,
             'GradeID' => 1,
