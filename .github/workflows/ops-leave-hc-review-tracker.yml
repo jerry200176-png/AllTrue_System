@@ -16,6 +16,7 @@ on:
     branches: [main]
     paths:
       - 'operations/closeout/leave-hc-campus-review-tracker.json'
+      - 'operations/closeout/leave-hc-deliver.request.md'
       - '.github/workflows/ops-leave-hc-review-tracker.yml'
 
 concurrency:
@@ -112,3 +113,53 @@ jobs:
           else
             echo "No comment needed (quiet schedule)."
           fi
+
+  deliver-line:
+    name: Notify campus LINE groups (no CSV/PII)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: LINE push leave-HC notice
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes             -o UserKnownHostsFile=~/.ssh/known_hosts             "${PI_SSH_USER}@${PI_SSH_HOST}" 'cd /home/admin/backend && php artisan tinker --execute='"'"'
+          $campuses=[3=>7,11=>9,13=>2,9=>1]; $results=[];
+          foreach($campuses as $cid=>$n){
+            $c=\Illuminate\Support\Facades\DB::table("Campus")->where("id",$cid)->first();
+            $token=(string)($c->messaging_channel_token??""); $gid=(string)($c->staff_line_group_id??"");
+            $name=(string)($c->name??("campus-".$cid)); $status="skipped_no_line";
+            if($token!=="" && $gid!==""){
+              $text="【".$name."】系統審核任務(#1342)\n請假時段錯置高信心 ".$n." 筆待主任審核。\n請於07/22 18:00前填：核准修正／保留現況／需要查證。\nCSV由platform-ops安全管道提供（本訊息不含附件）。\n空白=不修改。";
+              $resp=\Illuminate\Support\Facades\Http::withToken($token)->post("https://api.line.me/v2/bot/message/push",["to"=>$gid,"messages"=>[["type"=>"text","text"=>$text]]]);
+              $status=$resp->successful()?"line_pushed":("line_fail_".$resp->status());
+            }
+            $results[]=["campus_id"=>$cid,"candidates"=>$n,"status"=>$status,"has_group"=>$gid!==""];
+          }
+          echo json_encode(["ok"=>true,"delivered"=>$results], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '"'"'' | tee out/deliver.log
+          python3 -c "import json;from pathlib import Path;t=Path("out/deliver.log").read_text(errors="replace");d={"ok":False};
+
+for line in t.splitlines():
+  s=line.strip()
+  if s.startswith("{") and "delivered" in s:
+    d=json.loads(s);break
+Path("out/leave-hc-line-delivery.json").write_text(json.dumps(d,indent=2,ensure_ascii=False));print(d)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leave-hc-line-delivery
+          path: out/
+          retention-days: 14

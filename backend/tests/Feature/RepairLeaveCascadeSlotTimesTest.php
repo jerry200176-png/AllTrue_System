@@ -192,6 +192,54 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
         @unlink($bundlePath);
     }
 
+
+    public function test_execute_with_valid_bundle_emits_repair_result_json(): void
+    {
+        $courseId = $this->createWedSatCourse();
+        $csId = (int) DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-07-04',
+            'StartTime' => '17:00:00',
+            'EndTime' => '19:00:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $bundlePath = sys_get_temp_dir() . '/leave-bundle-ok-' . uniqid() . '.json';
+        file_put_contents($bundlePath, json_encode([
+            'schema_version' => 1,
+            'kind' => 'leave_cascade_slot_times_repair_bundle',
+            'ok' => true,
+            'execution_audit_id' => 'rehearsal-audit',
+            'campus_id' => 1,
+            'approval_count' => 1,
+            'approved_session_ids' => [$csId],
+            'expected_before_state' => [(string) $csId => '17:00-19:00'],
+            'expected_after_state' => [(string) $csId => '10:00-12:00'],
+            'pre_exec_gates' => ['errors' => []],
+        ], JSON_UNESCAPED_UNICODE));
+        putenv('ALLOW_PROD_REPAIR=1');
+        $_ENV['ALLOW_PROD_REPAIR'] = '1';
+        $exit = Artisan::call('repair:leave-cascade-slot-times', [
+            '--course-id' => $courseId,
+            '--execute' => true,
+            '--force' => true,
+            '--session-ids' => (string) $csId,
+            '--bundle' => $bundlePath,
+            '--verify-exit-gate' => true,
+            '--actor' => 'rehearsal',
+        ]);
+        $out = Artisan::output();
+        $this->assertSame(0, $exit, $out);
+        $this->assertStringContainsString('REPAIR_RESULT_JSON', $out);
+        $this->assertStringContainsString('"repaired":1', $out);
+        $this->assertStringContainsString('"non_approved_touched":0', $out);
+        $row = DB::table('ClassSession')->where('id', $csId)->first();
+        $this->assertSame('10:00:00', (string) $row->StartTime);
+        @unlink($bundlePath);
+    }
+
     private function createWedSatCourse(): int
     {
         DB::table('Student')->insert([
