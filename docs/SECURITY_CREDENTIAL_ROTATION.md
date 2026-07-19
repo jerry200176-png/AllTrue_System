@@ -36,7 +36,7 @@ chmod 600 /home/admin/.env.monitor
 ## Verification
 
 - [x] Old Telegram token was revoked and production updated (#1025, verified 2026-07-10)
-- [ ] 2026-07-17 alert fingerprints differ from current production values ([audit runbook](SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md), #1007)
+- [ ] 2026-07-17 alert fingerprints differ from current production values ([audit runbook](RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md), #1007)
 - [x] Revoked GitHub PATs cannot `gh auth status`
 - [x] `git ls-files .env.monitor` returns empty (after PR #1023 merge)
 - [x] `git ls-files '.cursor/projects/**'` returns empty (after PR #1023 merge)
@@ -63,5 +63,5 @@ fingerprint audit, history/object cleanup, and GitHub-side cache invalidation ev
 - [`docs/SECURITY.md`](SECURITY.md) §6 — history rewrite gate before public
 - [`scripts/security-filter-repo.sh`](../scripts/security-filter-repo.sh)
 - [`scripts/security-gitleaks-audit.sh`](../scripts/security-gitleaks-audit.sh)
-- [`docs/SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md`](SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md)
+- [`docs/RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md`](RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md)
 - GitHub issues: #975 (campus secret echo), #1021 (Telegram webhook)
