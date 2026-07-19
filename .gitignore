@@ -16,6 +16,8 @@ backend/bootstrap/cache/*.php
 backend/storage/logs/*.log
 backend/storage/logs/*.json
 backend/storage/logs/*.csv
+backend/storage/logs/*
+!backend/storage/logs/.gitignore
 
 # Runtime logs must never be committed — exception traces leak paths/structure
 # and bloat history (issue #1030; same class as #1007 gitignore gap).
