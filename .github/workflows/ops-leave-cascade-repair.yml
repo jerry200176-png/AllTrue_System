@@ -1,0 +1,227 @@
+name: Leave-cascade slot repair (bundle-gated)
+
+# Controlled production repair for #1342.
+# Never re-scan-and-write. Never paste raw session-id artisan as the only path.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run (default) | execute | verify
+        required: true
+        default: dry-run
+        type: choice
+        options: [dry-run, execute, verify]
+      confirm_environment:
+        description: 'Must be PRODUCTION for execute'
+        required: true
+        default: ''
+        type: string
+      confirm_phrase:
+        description: 'For execute: type I_APPROVE_LEAVE_HC_REPAIR'
+        required: false
+        type: string
+      actor:
+        description: Executor audit label
+        required: true
+        default: 'gha:leave-hc-repair'
+        type: string
+      expected_approve_count:
+        description: Expected allowlist size (shown + enforced)
+        required: true
+        type: string
+      campus_id:
+        description: Campus id for this bundle (3/9/11/13)
+        required: true
+        type: string
+      bundle_json:
+        description: Repair bundle JSON (no student names)
+        required: true
+        type: string
+
+concurrency:
+  group: repair-leave-cascade-slot-times
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Validate gates
+        env:
+          MODE: ${{ inputs.mode }}
+          ENV_CONFIRM: ${{ inputs.confirm_environment }}
+          PHRASE: ${{ inputs.confirm_phrase }}
+          EXPECT: ${{ inputs.expected_approve_count }}
+          BUNDLE: ${{ inputs.bundle_json }}
+          CAMPUS: ${{ inputs.campus_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          printf '%s' "$BUNDLE" > work/bundle.json
+          python3 <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          b = json.loads(Path("work/bundle.json").read_text())
+          mode = os.environ["MODE"]
+          expect = int(os.environ["EXPECT"])
+          campus = int(os.environ["CAMPUS"])
+          errors = []
+          if b.get("kind") != "leave_cascade_slot_times_repair_bundle":
+              errors.append("bad_kind")
+          if not b.get("ok"):
+              errors.append("bundle_not_ok")
+          if int(b.get("campus_id") or -1) != campus:
+              errors.append("campus_mismatch")
+          ids = b.get("approved_session_ids") or []
+          if len(ids) != expect:
+              errors.append(f"count_mismatch:{len(ids)}!={expect}")
+          if len(ids) != len(set(ids)):
+              errors.append("duplicate_ids")
+          if len(ids) != int(b.get("approval_count") or -1):
+              errors.append("approval_count_inconsistent")
+          gates = b.get("pre_exec_gates") or {}
+          if gates.get("errors"):
+              errors.append("bundle_has_gate_errors")
+          if "student_name" in json.dumps(b):
+              errors.append("pii_student_name_in_bundle")
+          print(f"planned_modifications={len(ids)}")
+          print(f"execution_audit_id={b.get('execution_audit_id')}")
+          print(f"campus_id={campus}")
+          if mode == "execute":
+              if os.environ.get("ENV_CONFIRM") != "PRODUCTION":
+                  errors.append("env_confirm_required")
+              if os.environ.get("PHRASE") != "I_APPROVE_LEAVE_HC_REPAIR":
+                  errors.append("confirm_phrase_required")
+          if errors:
+              print("GATE_FAIL", errors)
+              sys.exit(1)
+          Path("work/session-ids.txt").write_text(",".join(str(i) for i in ids))
+          Path("work/expected-before.json").write_text(json.dumps(b.get("expected_before_state") or {}))
+          Path("work/expected-after.json").write_text(json.dumps(b.get("expected_after_state") or {}))
+          Path("work/audit-id.txt").write_text(str(b.get("execution_audit_id")))
+          print("GATE_OK")
+          PY
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload bundle to Pi and run
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          MODE: ${{ inputs.mode }}
+          ACTOR: ${{ inputs.actor }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" 'mkdir -p /tmp/leave-hc-repair'
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            work/bundle.json work/session-ids.txt work/expected-before.json work/expected-after.json \
+            "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/leave-hc-repair/"
+
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            MODE="$MODE" ACTOR="$ACTOR" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+          IDS=$(cat /tmp/leave-hc-repair/session-ids.txt)
+          AUDIT=$(python3 -c 'import json;print(json.load(open("/tmp/leave-hc-repair/bundle.json"))["execution_audit_id"])')
+          echo "mode=${MODE} actor=${ACTOR} audit_id=${AUDIT}"
+          echo "planned_count=$(echo "$IDS" | tr ',' '\n' | grep -c . || true)"
+          # Never print full IDS list with names — IDs only are OK for ops audit artifact
+          echo "allowlist_sha=$(echo -n "$IDS" | sha256sum | awk '{print $1}')"
+
+          if [ "${MODE}" = "verify" ]; then
+            php artisan repair:leave-cascade-slot-times --dry-run --limit=200 \
+              --session-ids="$IDS" --verify-exit-gate --bundle=/tmp/leave-hc-repair/bundle.json \
+              | tee /tmp/leave-hc-repair/verify.log
+            exit ${PIPESTATUS[0]}
+          fi
+
+          # Always dry-run first (before-state validation)
+          php artisan repair:leave-cascade-slot-times --dry-run --limit=200 \
+            --session-ids="$IDS" --verify-exit-gate --bundle=/tmp/leave-hc-repair/bundle.json \
+            | tee /tmp/leave-hc-repair/dry-run.log
+          test "${PIPESTATUS[0]}" -eq 0
+
+          if [ "${MODE}" = "dry-run" ]; then
+            echo "Dry-run complete; no production write."
+            exit 0
+          fi
+
+          TS=$(date '+%Y-%m-%d_%H%M%S')
+          mkdir -p /home/admin/backups/emergency storage/app/repair-snapshots
+          SNAP="storage/app/repair-snapshots/leave-hc-${AUDIT}-${TS}.json"
+          BACKUP="/home/admin/backups/emergency/db_pre_leave_hc_${TS}.sql.gz"
+          mysqldump -h 127.0.0.1 -u admin -p"$(grep DB_PASSWORD /home/admin/backend/.env | cut -d= -f2)" \
+            --single-transaction AllTrue ClassSession LearningRecord \
+            | gzip > "$BACKUP"
+          test -s "$BACKUP"
+          echo "Backup_ok size=$(wc -c < "$BACKUP")"
+
+          export ALLOW_PROD_REPAIR=1
+          set +e
+          php artisan repair:leave-cascade-slot-times \
+            --execute --force \
+            --session-ids="$IDS" \
+            --snapshot="$SNAP" \
+            --verify-exit-gate \
+            --bundle=/tmp/leave-hc-repair/bundle.json \
+            --actor="${ACTOR}" \
+            | tee /tmp/leave-hc-repair/execute.log
+          EC=${PIPESTATUS[0]}
+          unset ALLOW_PROD_REPAIR
+          echo "ARTISAN_EXIT=$EC SNAPSHOT=$SNAP"
+          # Post-repair verify
+          php artisan repair:leave-cascade-slot-times --dry-run --limit=200 \
+            --session-ids="$IDS" --verify-exit-gate --bundle=/tmp/leave-hc-repair/bundle.json \
+            | tee /tmp/leave-hc-repair/post-verify.log || true
+          # Cleanup temps with PII risk (map not present; still wipe)
+          rm -f /tmp/leave-slot-all.csv /tmp/hc_raw.json /tmp/enrich_ids.txt 2>/dev/null || true
+          exit "$EC"
+          ENDSSH
+
+      - name: Fetch audit logs (no named CSV)
+        if: always()
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/leave-hc-repair/*.log" out/ || true
+          cp work/bundle.json out/bundle.json || true
+          # Redact accidental name-like fields if any
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path("out").glob("*.log"):
+              t = p.read_text(errors="replace")
+              # strip lines that look like CSV headers with 學生姓名
+              lines = [ln for ln in t.splitlines() if "學生姓名" not in ln and "student_name" not in ln.lower()]
+              p.write_text("\n".join(lines) + "\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: leave-hc-repair-audit
+          path: out/
+          retention-days: 90
