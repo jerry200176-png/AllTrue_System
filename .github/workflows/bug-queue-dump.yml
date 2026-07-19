@@ -3,6 +3,11 @@ name: Bug Queue Dump (read-only)
 # PII-safe dump of newest open in-app bugs for triage. No writes.
 on:
   workflow_dispatch:
+    inputs:
+      bug_id:
+        description: "Optional bug_reports.id for detail dump"
+        required: false
+        type: string
 
 concurrency:
   group: bug-queue-dump
@@ -27,19 +32,15 @@ jobs:
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          # Prefer live keyscan (matches deploy.yml); fall back to PI_HOST_KEY secret
           if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
             echo "keyscan ok"
           elif [[ -n "${PI_HOST_KEY:-}" ]]; then
             printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
-            echo "using PI_HOST_KEY secret"
           else
             echo "::error::no host key"
             exit 1
           fi
           chmod 600 ~/.ssh/known_hosts
-          ssh-keygen -l -f ~/.ssh/deploy_key
-          # Probe port 22 then 2222 (Pi may move sshd)
           if nc -z -w3 "$PI_SSH_HOST" 22 2>/dev/null; then
             echo "SSH_PORT=22" >> "$GITHUB_ENV"
           elif nc -z -w3 "$PI_SSH_HOST" 2222 2>/dev/null; then
@@ -53,17 +54,25 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BUG_ID: ${{ inputs.bug_id }}
         run: |
           set -euo pipefail
           PORT="${SSH_PORT:-22}"
+          # Embed bug id in remote script safely (digits only)
+          BID=""
+          if [[ -n "${BUG_ID:-}" ]]; then
+            [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "::error::bug_id must be numeric"; exit 1; }
+            BID="$BUG_ID"
+          fi
           ssh -i ~/.ssh/deploy_key \
             -p "$PORT" \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash -s -- "$BID" <<'REMOTE'
           set -euo pipefail
+          BID="${1:-}"
           cd /home/admin/backend
           php artisan tinker --execute='
           $open = \Illuminate\Support\Facades\DB::table("bug_reports")
@@ -114,4 +123,31 @@ jobs:
             ] : null,
           ], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
+          if [[ -n "$BID" ]]; then
+            php artisan tinker --execute="
+            \$id = (int) ${BID};
+            \$b = \Illuminate\Support\Facades\DB::table('bug_reports')->where('id', \$id)->first();
+            if (!\$b) { echo 'BUG_NOT_FOUND '.\$id, PHP_EOL; return; }
+            \$desc = (string)(\$b->description ?? '');
+            \$desc = preg_replace('/\b\d{8,}\b/', '[num]', \$desc);
+            echo \"DETAIL_START\\n\";
+            echo json_encode([
+              'id' => (int)\$b->id,
+              'status' => \$b->status,
+              'severity' => \$b->severity,
+              'campus_id' => \$b->CampusID,
+              'page_key' => \$b->page_key,
+              'reporter_user_id' => (int)\$b->reporter_user_id,
+              'created_at' => \$b->created_at,
+              'client_info' => \$b->client_info ?? null,
+              'url_path' => is_string(\$b->url ?? null) ? parse_url(\$b->url, PHP_URL_PATH) : null,
+              'description' => \$desc,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+            \$atts = \Illuminate\Support\Facades\DB::table('bug_report_attachments')->where('bug_report_id', \$id)->get(['id','stored_path','original_name','mime_type','size']);
+            echo json_encode(['attachments' => \$atts], JSON_UNESCAPED_UNICODE), PHP_EOL;
+            echo \"DETAIL_END\\n\";
+            "
+            echo "ATT_CANDIDATES"
+            find /home/admin/backend/storage/app/public -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -30 || true
+          fi
           REMOTE
