@@ -1,4 +1,4 @@
 # Leave/Makeup evidence closeout
 
-Triggers `.github/workflows/leave-makeup-evidence-closeout.yml` after merge.
-Runs `php artisan evidence:leave-makeup-closeout` on Pi (repair dry-run only; no `--execute`).
+Triggers Pi workflow; dry-run only (no `--execute`).
+Rerun: fix Student.TelegramID for disposable fixtures (2026-07-19).
