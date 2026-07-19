@@ -1275,10 +1275,13 @@ class ClassSessionController extends Controller
             return;
         }
 
+        // 按堂（session）：契約是「一堂多少錢」——時段調整只記錄用途，費用固定為 Rate。
+        // 按時（hour）：依實際分鐘比例計費，並把差額同步到 StudentClass.Charge。
+        // 禁止把兩種公式合併（見 docs/archive AI_REGRESSION §2026-04-17 單堂費用固定）。
         if ($rateUnit === 'hour') {
             $newSessionCharge = (int) round($rate * ($actualMinutes / 60));
         } else {
-            $newSessionCharge = (int) round($rate * ($actualMinutes / $standardDuration));
+            $newSessionCharge = (int) round($rate);
         }
 
         $baseline = $oldSessionCharge !== null ? (int) $oldSessionCharge : null;
@@ -1294,6 +1297,8 @@ class ClassSessionController extends Controller
 
         $session->session_charge = $newSessionCharge;
 
+        // session mode：delta 只在舊 session_charge 偏離 Rate 時修正偏差，不因時長產生新差額。
+        // hour mode：時長變動的差額必須寫回課程總費用（與前端預覽一致）。
         if ($delta !== 0) {
             $newCharge = max(0, (int) ($sc->Charge ?? 0) + $delta);
             $sc->Charge = $newCharge;

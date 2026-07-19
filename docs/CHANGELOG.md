@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-19 — fix: 單堂改時段費用與畫面說明一致
+
+Fixed：課程管理「備註／調整時段」的費用說明與後端寫入一致——按堂計費時段調整不改本堂與課程總費用；按時計費儲存後會依實際時長更新此堂費用並同步課程總費用。避免畫面寫「不影響」但帳卻被改（或相反）造成誤判。
+
+開發備註：`ClassSessionController::syncSessionChargeForTimeChange` 恢復 session／hour 分支（F7／§單堂費用固定）；`SessionEditModal` 文案對齊；`ClassSessionChargeTest` 守護固定費與按時 delta。
+
 ## 2026-07-19 — fix: 主任堂數異常只呈現可核對的帳務候選
 
 Fixed：主任營運決策中心不再把已停用的歷史課程或「購買堂數從未初始化」的舊資料混入一般堂數差異；只有仍啟用且有正數合約基準的課程會進主任核對名單，其餘仍保留為獨立工程監測訊號。

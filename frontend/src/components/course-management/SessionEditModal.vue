@@ -137,8 +137,8 @@
           <label>備註</label>
           <input v-model="form.note" type="text" placeholder="例：今日加課 1 小時，已收費" style="width: 100%;" maxlength="200" />
         </div>
-        <small v-if="chargePreview.unit === 'hour'" class="field-note">修改後評量表的結束時間也會同步；按時計費預覽僅供核帳參考，不會在此自動改課程總費用。</small>
-        <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響本堂費用。</small>
+        <small v-if="chargePreview.unit === 'hour'" class="field-note">修改後評量表的結束時間也會同步；按時計費：儲存後會依實際時長更新此堂費用，並同步調整課程總費用。</small>
+        <small v-else class="field-note">修改後評量表的結束時間也會同步；按堂計費：時段調整不影響本堂費用與課程總費用。</small>
         <div class="actions">
           <button class="ghost" @click="$emit('set-mode', 'menu')">返回</button>
           <button class="primary" @click="onSaveClick" :disabled="submitting || !!timeRangeError">儲存</button>
