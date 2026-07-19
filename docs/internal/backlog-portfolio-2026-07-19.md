@@ -1,42 +1,28 @@
-# Backlog Portfolio — 2026-07-19 (WIP snapshot)
+# Backlog Portfolio — 2026-07-19
 
-**Method:** Evidence → classify → prioritize (not issue age / shout volume).  
-**WIP caps:** incident≤1 · impl PR≤2 · investigation≤2 · data repair≤1 · Founder-wait separate.
+**Snapshot:** Actions run `29685054559` (Issues dump) · 62 open Issues · 0 open PRs  
+**WIP caps:** incident≤1 · impl PR≤2 · investigation≤2 · data repair≤1 · Founder-wait separate
 
-## A. Incident closeout (done this round)
+## Classification (re-scored; labels not trusted)
 
-| Item | Class | Evidence | Disposition |
-|------|-------|----------|-------------|
-| Leave/makeup production closeout | Already fixed (forward path) | Probes ok; HEAD evidence run `29680051696` | Closed via PR #1340 + teacher wording |
-| Follow-up Issues | Governance | Actions created **#1342**, **#1343** (run `29684840469`) | Links in closeout + TECH_DEBT; PR #1344 merged |
-| Historical 96 leave-slot candidates | Reliability / data correctness | Dry-run 96; HC **19** | Active → #1342 CSV-first; **no auto execute** |
-| TD-059 package minutes | Technical debt → investigate | Code path confirmed; prod volume TBD | Active investigation → #1343; schema blocked |
+| Bucket | Count | Action |
+|--------|------:|--------|
+| Founder-wait / needs-decision | 35 | Do not start code |
+| Blocked / external dependency | 16 | Owner / env |
+| Tech debt / P2–P3 | ~8 | After P0/P1 |
+| Autonomous-safe P1 | 2 | **#1342** leave CSV, **#1262** SignIn orphan |
+| Evidence pending | 1 | **#1343** TD-059 |
 
-## B. Open engineering surface (pre-audit)
+Artifact (CI size gate): full JSON kept on Actions run `29685054559` (`open-issues-dump`), not committed.
 
-| Source | Note |
-|--------|------|
-| Open PRs (`gh pr list`) | **0** open at snapshot time |
-| Phase-2 picks (#1292, #1200) | No longer open PRs — treat as superseded/merged/closed; re-verify after Issues dump |
-| TECH_DEBT Open (high signal) | TD-059 (#1343), TD-060 dead code, TD-061 OSV residual, TD-014 Laravel major |
-| In-app bugs | Dump via `bug-queue-dump.yml` / portfolio workflow artifact |
-| GitHub Issues | Agent App **cannot list** (403); Actions dump via `ops-portfolio-td059-leave-audit.yml` artifact `open-issues-dump` |
+## This-round WIP
 
-## C. This-round selection (WIP)
+| Slot | Work | Status |
+|------|------|--------|
+| Investigation | #1343 TD-059 Pi audit | SSH fix → re-run |
+| Parallel | #1342 HC CSV + SOP | SOP on main; CSV pending Pi |
+| Next | #1262 orphan classify | After TD-059 evidence |
 
-| Slot | Work | Exit gate |
-|------|------|-----------|
-| Investigation #1 | TD-059 read-only prod audit | `td059-audit.json` → go/no-go on #1343 |
-| Parallel low-risk | Director HC CSV pack + runbook (#1342) | Redacted HC artifact + SOP; selected=0; no execute |
-| Impl PR | None until audit says implement | — |
+## Explicitly deferred
 
-## D. Priority model (reminder)
-
-P0: data corruption, wrong charge/deduct, security, prod down, silent failure unmonitored.  
-P1: core domain invariant gaps, proven drift, unreliable critical jobs.  
-P2: UX friction / ops cost.  
-P3: cosmetic / speculative refactor.
-
-## E. After artifact lands
-
-Update this file with: issue classifications, top ROI active item, Founder gates only if required.
+Billing/repair Founder gates (#1130, #1096, #959, #1152), UI/architecture epics, security host/IAM owner items.
