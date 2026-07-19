@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-19 — fix: 請假順延不再錯置其他星期時段
+
+Fixed：多星期固定課（例如週三 17:00–19:00、週六 10:00–12:00）請假順延後，其他星期不會再被改成請假那天的鐘點。
+
+開發備註：`CourseLeaveCascadeService` 移動／append／undo 對齊目標日契約時段（§R77）；`IsContractException` 不重寫。歷史漂移 dry-run：`php artisan repair:leave-cascade-slot-times`。測試：`LeaveCascadeMultiWeekdaySlotTimesTest`、`RepairLeaveCascadeSlotTimesTest`。
+
 ## 2026-07-19 — fix: 單堂改時段費用與畫面說明一致
 
 Fixed：課程管理「備註／調整時段」的費用說明與後端寫入一致——按堂計費時段調整不改本堂與課程總費用；按時計費儲存後會依實際時長更新此堂費用並同步課程總費用。避免畫面寫「不影響」但帳卻被改（或相反）造成誤判。

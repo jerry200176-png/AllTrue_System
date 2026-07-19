@@ -8,6 +8,7 @@ use App\Models\StudentClass;
 use App\Models\StudentSignIn;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CourseLeaveCascadeService
 {
@@ -358,6 +359,9 @@ class CourseLeaveCascadeService
         }
 
         // Apply latest-first to match unique-index-safe write order.
+        // Invariant: after a date move, StartTime/EndTime must match the course
+        // contract slot for the *target* weekday (multi-weekday courses often
+        // have different clocks per day). Skipping this leaves Wed times on Sat.
         foreach (array_reverse($plan['moves']) as $move) {
             $id = (int) ($move['id'] ?? 0);
             if ($id <= 0 || !isset($sessionsById[$id])) {
@@ -365,6 +369,7 @@ class CourseLeaveCascadeService
             }
             $s = $sessionsById[$id];
             $s->SessionDate = $move['to'];
+            self::alignSessionTimesToContractWeekday($course, $s, (string) $move['to']);
             $s->save();
             self::syncLearningRecordSessionDate($s);
         }
@@ -377,11 +382,14 @@ class CourseLeaveCascadeService
         $templateSession = $templateSession ?: $leaveSession;
 
         $appendDate = $plan['append'];
+        $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
+        $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $templateSession->StartTime;
+        $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $templateSession->EndTime;
         $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
             'StudentClassID' => $courseId,
             'SessionDate'    => $appendDate,
-            'StartTime'      => $templateSession->StartTime,
-            'EndTime'        => $templateSession->EndTime,
+            'StartTime'      => $appendStart,
+            'EndTime'        => $appendEnd,
             'Status'         => 'scheduled',
             'Note'           => self::appendNote($templateSession->Note, self::NOTE_AUTO_EXTENDED),
         ])['session'];
@@ -508,6 +516,7 @@ class CourseLeaveCascadeService
                 $normalizedLeaveDate
             );
             $session->SessionDate = $newDate;
+            self::alignSessionTimesToContractWeekday($course, $session, $newDate);
             $session->save();
             self::syncLearningRecordSessionDate($session);
             $occupiedDates[$newDate] = true;
@@ -620,6 +629,52 @@ class CourseLeaveCascadeService
             'StartTime'   => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
             'EndTime'     => $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null,
         ]);
+    }
+
+    /**
+     * Remap StartTime/EndTime to the course contract slot for the session's
+     * target date weekday. Contract-exception / makeup rows keep custom times.
+     */
+    public static function alignSessionTimesToContractWeekday(
+        ?StudentClass $course,
+        ClassSession $session,
+        string $targetDate
+    ): void {
+        if (!$course) {
+            return;
+        }
+        if (
+            Schema::hasColumn('ClassSession', 'IsContractException')
+            && !empty($session->IsContractException)
+        ) {
+            return;
+        }
+
+        $times = self::resolveContractSlotTimes($course, $targetDate);
+        if ($times['start'] === '' || $times['end'] === '') {
+            return;
+        }
+        $session->StartTime = $times['start'];
+        $session->EndTime = $times['end'];
+    }
+
+    /**
+     * @return array{start:string,end:string}
+     */
+    public static function resolveContractSlotTimes(StudentClass $course, string $date): array
+    {
+        $times = app(SessionProjectionReadService::class)
+            ->resolveSlotTimesForCourseDate($course, $date);
+        $start = substr((string) $times['start'], 0, 5);
+        $end = substr((string) $times['end'], 0, 5);
+        if ($start === '' || $end === '') {
+            return ['start' => '', 'end' => ''];
+        }
+
+        return [
+            'start' => strlen($start) === 5 ? $start . ':00' : $start,
+            'end' => strlen($end) === 5 ? $end . ':00' : $end,
+        ];
     }
 
     /** @param  array<string,bool>  $dateMap */

@@ -909,6 +909,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R77. 請假順延必須依目標星期對齊契約時段（多星期不同鐘點）
+
+- **觸發情境**：2026-07-19 老師回報「三 5–7、六 10–12，請了三，六會變成 5–7」。
+- **根因（Fact）**：`CourseLeaveCascadeService::shiftAndAppendAfterLeave` 只改 `SessionDate`、保留原列 `StartTime`/`EndTime`。多星期契約日期往前推後，異星期鐘點會落到錯誤日期。
+- **強制規則**：順延／撤銷／append 後必須對齊目標日契約 `week*/time*`；`IsContractException=1` 不重寫；歷史漂移用 `repair:leave-cascade-slot-times`（預設 dry-run）。
+- **測試必補**：`LeaveCascadeMultiWeekdaySlotTimesTest`、`RepairLeaveCascadeSlotTimesTest`。
+
+---
+
 ### R71. 調課不可由前端串三次寫入並吞掉最後一步錯誤
 
 - **觸發情境**：2026-07-18 王品方 7/14 未上課，但課程管理顯示「已上」且待點名／評量仍存在；應改至 7/18 13:00–15:00。畫面可同時出現原日已上、另一時段取消與待處理，無法判斷是系統或人工作業。
@@ -970,7 +979,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
-| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan） |
+| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan）、**§R77（多星期不同鐘點：順延後必須對齊目標星期契約時段）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
