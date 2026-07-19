@@ -1,0 +1,41 @@
+name: Bug 205 Detail Dump
+on:
+  workflow_dispatch:
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH dump
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $b = \Illuminate\Support\Facades\DB::table("bug_reports")->where("id", 205)->first();
+          $desc = (string)($b->description ?? "");
+          $desc = preg_replace("/\b\d{8,}\b/", "[num]", $desc);
+          // redact continuous CJK name-like 2-4 chars only when adjacent to student markers - keep structure
+          echo "DESC_START\n", $desc, "\nDESC_END\n";
+          echo "CLIENT\n", json_encode(["client"=>$b->client_info ?? null, "url"=>$b->url ?? null, "page"=>$b->page_key, "sev"=>$b->severity, "campus"=>$b->CampusID, "reporter"=>$b->reporter_user_id], JSON_UNESCAPED_UNICODE), "\n";
+          $a = \Illuminate\Support\Facades\DB::table("bug_report_attachments")->where("bug_report_id", 205)->get(["id","stored_path","original_name","mime_type","size"]);
+          echo "ATTS\n", json_encode($a, JSON_UNESCAPED_UNICODE), "\n";
+          $comments = \Illuminate\Support\Facades\DB::table("bug_report_comments")->where("bug_report_id", 205)->orderBy("id")->get(["id","is_internal_note","created_at"]);
+          echo "COMMENTS_META\n", json_encode($comments, JSON_UNESCAPED_UNICODE), "\n";
+          '
+          # Copy attachment to stdout as base64 length only + scp path
+          ATT=$(ls /home/admin/backend/storage/app/public/bug_attachments/*152* 2>/dev/null | head -1 || true)
+          if [ -z "$ATT" ]; then
+            ATT=$(find /home/admin/backend/storage/app/public -name "*152*" 2>/dev/null | head -5 || true)
+          fi
+          echo "ATT_PATHS"; find /home/admin/backend/storage/app/public -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -20
+          REMOTE
