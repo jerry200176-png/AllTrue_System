@@ -67,6 +67,7 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
             '--course-id' => $courseId,
             '--execute' => true,
             '--force' => true,
+            '--session-ids' => (string) $csId,
         ]);
         $this->assertSame(0, $exit);
 
@@ -81,6 +82,61 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
         ]);
         $this->assertSame(0, $exit);
         $this->assertStringContainsString('candidates=0', Artisan::output());
+    }
+
+    public function test_dry_run_classifies_leave_sibling_as_high_confidence_and_exports_csv(): void
+    {
+        $courseId = $this->createWedSatCourse();
+        $leaveId = (int) DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-07-01',
+            'StartTime' => '10:00:00',
+            'EndTime' => '12:00:00',
+            'Status' => 'leave',
+            'Note' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $satId = (int) DB::table('ClassSession')->insertGetId([
+            'StudentClassID' => $courseId,
+            'SessionDate' => '2026-07-04',
+            'StartTime' => '17:00:00',
+            'EndTime' => '19:00:00',
+            'Status' => 'scheduled',
+            'Note' => '',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $csv = sys_get_temp_dir() . '/leave-slot-review-' . uniqid() . '.csv';
+        $exit = Artisan::call('repair:leave-cascade-slot-times', [
+            '--course-id' => $courseId,
+            '--dry-run' => true,
+            '--export-csv' => $csv,
+        ]);
+        $this->assertSame(0, $exit);
+        $out = Artisan::output();
+        $this->assertStringContainsString('high_confidence=', $out);
+        $this->assertStringContainsString("cs={$satId}", $out);
+        $this->assertStringContainsString('confidence=high_confidence', $out);
+        $this->assertFileExists($csv);
+        $body = file_get_contents($csv);
+        $this->assertStringContainsString('selected,confidence,class_session_id', $body);
+        $this->assertStringContainsString((string) $leaveId, $body);
+        $this->assertStringContainsString((string) $satId, $body);
+        @unlink($csv);
+    }
+
+    public function test_execute_without_session_ids_is_rejected(): void
+    {
+        putenv('ALLOW_PROD_REPAIR=1');
+        $_ENV['ALLOW_PROD_REPAIR'] = '1';
+        $exit = Artisan::call('repair:leave-cascade-slot-times', [
+            '--execute' => true,
+            '--force' => true,
+        ]);
+        $this->assertSame(1, $exit);
+        $this->assertStringContainsString('--session-ids', Artisan::output());
     }
 
     private function createWedSatCourse(): int

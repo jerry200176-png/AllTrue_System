@@ -441,15 +441,16 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open |
+| 狀態 | Open（獨立 Issue 追蹤；見下方 GitHub） |
 | 優先級 | P3 |
 | 發現日期 | 2026-05-31 |
-| 發現來源 | [DEV] #613 A1 落地 |
+| 發現來源 | [DEV] #613 A1 落地；2026-07-19 Founder closeout 要求獨立 Issue |
 | 影響模組 | `App\Services\PackageDeductionService`（共用池 ledger 鏡像）|
 | 描述 | #613 讓單一 `StudentClass` 支援分鐘制部分扣堂，但共用課程包的池鏡像仍以 `delta=±1`（整堂）同步。若部分時數補課發生在**共用包**成員身上，池餘額與個別課的分鐘餘額會漂移。目前單人課程（多數情境）已正確。|
-| 建議做法 | 將 `PackageDeductionService` 的池 ledger 改為分鐘感知（鏡像 `session_deduction_ledger.minutes`），或在包成員觸發部分扣堂時換算池分鐘。需配 golden 包測試（`CoursePackageTest`/`PackageE2EFlowTest`）。|
-| 清償成本估計 | 中（半天）|
+| 建議做法 | 先調查包池實際使用量與加長／縮短補課是否已漂移；確認影響後再提整數分鐘模型 + migration／相容／rollback。**未確認影響前禁止改 production schema。** |
+| 清償成本估計 | 中（半天）調查；實作視設計 |
 | 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
+| GitHub Issue | （本 PR merge 後以 `gh issue create` 建立並回填編號） |
 
 ### TD-060：`ClassSessionController::recalculateSessionCounters` 為死碼（無 caller）且非分鐘感知
 

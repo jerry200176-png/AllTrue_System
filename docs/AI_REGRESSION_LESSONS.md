@@ -914,6 +914,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **觸發情境**：2026-07-19 老師回報「三 5–7、六 10–12，請了三，六會變成 5–7」。
 - **根因（Fact）**：`CourseLeaveCascadeService::shiftAndAppendAfterLeave` 只改 `SessionDate`、保留原列 `StartTime`/`EndTime`。多星期契約日期往前推後，異星期鐘點會落到錯誤日期。
 - **強制規則**：順延／撤銷／append 後必須對齊目標日契約 `week*/time*`；`IsContractException=1` 不重寫；歷史漂移用 `repair:leave-cascade-slot-times`（預設 dry-run）。
+- **2026-07-19 Founder**：禁止對 dry-run 96 筆直接 `--execute --force`；改主任可審核 CSV／明確 `--session-ids` 執行。Closeout：`docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md`。
 - **測試必補**：`LeaveCascadeMultiWeekdaySlotTimesTest`、`RepairLeaveCascadeSlotTimesTest`。
 
 ---

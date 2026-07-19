@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-19T08:40:00Z",
-  "note": "Cloud agent: fix evidence fixture TelegramID + re-run Pi closeout."
+  "declared_at": "2026-07-19T08:55:00Z",
+  "note": "Cloud agent: Founder closeout for leave/makeup — classify 96, TD-059 issue, director CSV path (no batch --execute)."
 }
