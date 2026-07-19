@@ -26,3 +26,9 @@ Artifact (CI size gate): full JSON kept on Actions run `29685054559` (`open-issu
 ## Explicitly deferred
 
 Billing/repair Founder gates (#1130, #1096, #959, #1152), UI/architecture epics, security host/IAM owner items.
+
+## Evidence update (run 29685472249)
+
+- #1342 HC pack: **19** sessions redacted CSV committed under `operations/closeout/artifacts/`.
+- #1343 TD-059: Pi reachable; metric query retry (DB FQCN).
+- Next autonomous P1 after TD-059 numbers: **#1262**.
