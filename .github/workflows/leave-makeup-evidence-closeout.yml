@@ -1,0 +1,84 @@
+name: Leave/Makeup Evidence Closeout (Pi)
+# Post-merge Pi evidence; waits for deploy HEAD. Never --execute repair.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/leave-makeup-evidence.request.md'
+      - '.github/workflows/leave-makeup-evidence-closeout.yml'
+      - 'backend/app/Console/Commands/LeaveMakeupEvidenceCloseout.php'
+      - 'backend/app/Console/Commands/RepairLeaveCascadeSlotTimes.php'
+  workflow_dispatch:
+    inputs:
+      skip_fixture:
+        description: "true = dry-run locate only"
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+concurrency:
+  group: leave-makeup-evidence-closeout
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    name: Production evidence closeout on Pi
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Wait for Pi HEAD == github.sha (post-deploy)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          EXPECTED: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            HEAD=$(ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+              "${PI_SSH_USER}@${PI_SSH_HOST}" \
+              'git -C /home/admin/backend rev-parse HEAD')
+            echo "attempt=$i pi_head=$HEAD expected=$EXPECTED"
+            if [ "$HEAD" = "$EXPECTED" ]; then
+              echo "Pi HEAD matches merge SHA"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::Pi HEAD did not reach $EXPECTED within timeout"
+          exit 1
+
+      - name: Run evidence:leave-makeup-closeout
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          SKIP_FIXTURE: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_fixture || 'false' }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            SKIP_FIXTURE="$SKIP_FIXTURE" 'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "=== production HEAD ==="
+          git rev-parse HEAD
+          CMD=(php artisan evidence:leave-makeup-closeout --limit=200)
+          if [ "${SKIP_FIXTURE}" = "true" ]; then
+            CMD+=(--skip-fixture)
+          fi
+          "${CMD[@]}"
+          ENDSSH

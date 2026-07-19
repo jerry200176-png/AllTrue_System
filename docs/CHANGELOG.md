@@ -1,5 +1,8 @@
 # AllTrue Changelog
 
+## 2026-07-19 — ops: leave/makeup evidence closeout + 扣堂 net idempotency
+- `evidence:leave-makeup-closeout` + ledger 淨額 idempotency；歷史 `--execute` 仍需 Founder 批准。
+
 ## 2026-07-19 — fix: 補課加長按實際分鐘扣堂
 
 Fixed：補課若排得比契約一堂更長（例如契約 2 小時、補課 3 小時），點名後會依實際上課分鐘扣 entitlement，不再固定只扣一整堂。預付包堂扣的是餘額分鐘，不自動加收現金。

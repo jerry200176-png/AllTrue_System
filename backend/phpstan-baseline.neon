@@ -6079,18 +6079,6 @@ parameters:
 			path: app/Services/SessionDeductionService.php
 
 		-
-			message: '#^Call to an undefined static method App\\Models\\SessionDeductionLedger\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 2
-			path: app/Services/SessionDeductionService.php
-
-		-
-			message: '#^Call to an undefined static method App\\Models\\StudentClass\:\:where\(\)\.$#'
-			identifier: staticMethod.notFound
-			count: 1
-			path: app/Services/SessionDeductionService.php
-
-		-
 			message: '#^Call to an undefined static method App\\Models\\Notification\:\:create\(\)\.$#'
 			identifier: staticMethod.notFound
 			count: 1
