@@ -148,6 +148,45 @@ jobs:
             echo \"DETAIL_END\\n\";
             "
             echo "ATT_CANDIDATES"
-            find /home/admin/backend/storage/app/public -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.webp' \) -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -30 || true
+            ATT_PATH=$(php artisan tinker --execute="echo \\Illuminate\\Support\\Facades\\DB::table('bug_report_attachments')->where('bug_report_id',(int)${BID})->value('stored_path');" 2>/dev/null | tail -1 | tr -d '\r')
+            if [[ -n "$ATT_PATH" && -f "storage/app/public/$ATT_PATH" ]]; then
+              echo "ATT_FILE storage/app/public/$ATT_PATH"
+              echo "ATT_B64_START"
+              base64 -w0 "storage/app/public/$ATT_PATH"
+              echo
+              echo "ATT_B64_END"
+            fi
+            if [[ "$BID" == "205" ]]; then
+              php artisan tinker --execute='
+              $date="2026-07-14"; $campus=17;
+              $rows=\Illuminate\Support\Facades\DB::table("class_sessions as cs")
+                ->leftJoin("student_classes as sc","sc.id","=","cs.StudentClassID")
+                ->leftJoin("users as t","t.id","=","cs.TeacherID")
+                ->where("cs.CampusID",$campus)
+                ->whereDate("cs.SessionDate",$date)
+                ->where("cs.StartTime",">=","17:00:00")
+                ->where("cs.StartTime","<=","20:30:00")
+                ->orderBy("cs.StartTime")
+                ->get(["cs.id","cs.StudentClassID","cs.TeacherID","cs.Status","cs.StartTime","cs.EndTime","cs.Subject","cs.IsSubstitute","cs.OriginalTeacherID","sc.ClassType","sc.StudentID","t.Name as teacher_name"]);
+              echo "SESSIONS_START", PHP_EOL;
+              foreach($rows as $r){
+                echo json_encode([
+                  "sid"=>(int)$r->id,
+                  "scid"=>(int)$r->StudentClassID,
+                  "student_id"=>(int)$r->StudentID,
+                  "teacher_id"=>(int)$r->TeacherID,
+                  "teacher"=>$r->teacher_name,
+                  "status"=>$r->Status,
+                  "start"=>$r->StartTime,
+                  "end"=>$r->EndTime,
+                  "subject"=>$r->Subject,
+                  "class_type"=>$r->ClassType,
+                  "is_sub"=>(int)$r->IsSubstitute,
+                  "orig_teacher"=>(int)$r->OriginalTeacherID,
+                ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+              }
+              echo "SESSIONS_END", PHP_EOL;
+              '
+            fi
           fi
           REMOTE
