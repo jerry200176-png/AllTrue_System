@@ -8,6 +8,11 @@ on:
         description: "Optional bug_reports.id for detail dump"
         required: false
         type: string
+      resolve_205:
+        description: "If true, resolve in-app bug 205 with deploy evidence (write)"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: bug-queue-dump
@@ -55,11 +60,13 @@ jobs:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           BUG_ID: ${{ inputs.bug_id }}
+          RESOLVE_205: ${{ inputs.resolve_205 }}
         run: |
           set -euo pipefail
           PORT="${SSH_PORT:-22}"
           # Embed bug id in remote script safely (digits only)
           BID=""
+          RESOLVE="${RESOLVE_205:-false}"
           if [[ -n "${BUG_ID:-}" ]]; then
             [[ "$BUG_ID" =~ ^[0-9]+$ ]] || { echo "::error::bug_id must be numeric"; exit 1; }
             BID="$BUG_ID"
@@ -70,9 +77,10 @@ jobs:
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "${PI_SSH_USER}@${PI_SSH_HOST}" bash -s -- "$BID" <<'REMOTE'
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash -s -- "$BID" "$RESOLVE" <<'REMOTE'
           set -euo pipefail
           BID="${1:-}"
+          RESOLVE="${2:-false}"
           cd /home/admin/backend
           php artisan tinker --execute='
           $open = \Illuminate\Support\Facades\DB::table("bug_reports")
@@ -247,6 +255,38 @@ jobs:
               echo "ATTRIB_END", PHP_EOL;
 
 
+              '
+            fi
+          if [[ "$RESOLVE" == "true" ]]; then
+              php artisan tinker --execute='
+              $bugId=205;
+              $admin=\Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
+              $actor=$admin ? (int)$admin : 1;
+              $svc=\App\Services\BugReportService::class;
+              $pub="已修好：換代課老師時，系統會正確排除「這位學生自己」的既有時段，不再把還有名額的 1 對 2 老師誤標成已滿／衝堂。請在課程管理再開一次「換代課老師」確認；若仍有問題請回覆此單。";
+              $bug=\App\Models\BugReport::find($bugId);
+              echo "before=", $bug?$bug->status:"missing", PHP_EOL;
+              foreach (["triaged","in_progress"] as $st) {
+                if ($bug && $bug->status === $st) { continue; }
+                if ($bug && in_array($bug->status, ["resolved","closed"], true)) { break; }
+                $r=$svc::changeStatus($bugId,$actor,$st,"ops: in-app #205");
+                echo "to_$st=", json_encode($r, JSON_UNESCAPED_UNICODE), PHP_EOL;
+                $bug=\App\Models\BugReport::find($bugId);
+              }
+              if ($bug && $bug->status !== "resolved") {
+                $hasPub=\App\Models\BugReportComment::query()->where("bug_report_id",$bugId)->where("is_internal_note",false)->exists();
+                if (!$hasPub) {
+                  $c=$svc::addComment($bugId,$actor,$pub,false);
+                  echo "comment_id=", isset($c->id)?$c->id:"?", PHP_EOL;
+                }
+                $r=$svc::changeStatus($bugId,$actor,"resolved","production fix verified; reporter verification requested",[
+                  "production_revision"=>"8d08ca72da42a1455f7d4502bb97b309778adf20",
+                  "deploy_run_id"=>"29669924825",
+                ]);
+                echo "resolve=", json_encode($r, JSON_UNESCAPED_UNICODE), PHP_EOL;
+              }
+              $bug=\App\Models\BugReport::find($bugId);
+              echo "final_status=", $bug?$bug->status:"missing", PHP_EOL;
               '
             fi
           fi
