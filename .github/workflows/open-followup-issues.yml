@@ -159,11 +159,13 @@ jobs:
           else
             git commit -m "docs: backfill follow-up issue links (#${LEAVE_N}, #${TD_N})"
             git push -u origin "$BRANCH" --force
-            EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+            # Repo setting may block Actions from opening PRs; never fail the job after Issues exist.
+            EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty' || true)
             if [ -z "$EXISTING" ]; then
               gh pr create --base main --head "$BRANCH" \
                 --title "docs: backfill follow-up issue links (#${LEAVE_N}, #${TD_N})" \
-                --body "Auto-opened by \`open-followup-issues.yml\` after creating/reusing Issues #${LEAVE_N} and #${TD_N}. Docs-only; no production deploy required."
+                --body "Auto-opened by \`open-followup-issues.yml\` after creating/reusing Issues #${LEAVE_N} and #${TD_N}. Docs-only; no production deploy required." \
+                || echo "::warning::Could not open backfill PR (repo may disallow Actions PR create). Branch pushed: ${BRANCH}"
             fi
           fi
 

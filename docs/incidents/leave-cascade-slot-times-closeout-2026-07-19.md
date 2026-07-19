@@ -72,7 +72,7 @@ Command (after classify export lands):
 | Director-reviewable leave-cascade slot repair (CSV-first) | [#1342](https://github.com/jerry200176-png/AllTrue_System/issues/1342) |
 | TD-059 package pool minutes | [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
 
-Links also recorded in .
+Links also recorded in `operations/closeout/followup-issue-links.json`.
 
 ## Teacher-facing final reply (approved wording)
 
