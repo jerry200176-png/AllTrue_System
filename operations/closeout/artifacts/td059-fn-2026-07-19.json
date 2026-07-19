@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "source_run": "29686095164",
+  "query_scope": "all_time session_deduction_ledger + package_session_ledger on Stop=0 package members",
+  "multi_member_packages": 46,
+  "multi_member_courses": 110,
+  "partial_minutes_any_event_on_package_members": 0,
+  "partial_minutes_deduct_makeup_tagged": 0,
+  "partial_minutes_reverse_on_package_members": 0,
+  "whole_session_deducts_null_minutes_on_package_members": 390,
+  "package_session_ledger_rows": 1206,
+  "makeup_tagged_class_sessions_on_package_members": 0,
+  "decision": "B_monitored_risk"
+}
