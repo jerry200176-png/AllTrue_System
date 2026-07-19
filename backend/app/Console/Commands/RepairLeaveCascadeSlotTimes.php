@@ -250,8 +250,8 @@ class RepairLeaveCascadeSlotTimes extends Command
             foreach ($bundleIds as $sid) {
                 if (!isset($byId[$sid])) {
                     // May already be repaired (idempotent) — check live row vs expected_after
-                    $session = ClassSession::query()->find($sid);
-                    if (!$session) {
+                    $session = ClassSession::find($sid);
+                    if (!$session instanceof ClassSession) {
                         $errors[] = "unknown_session:{$sid}";
                         continue;
                     }
@@ -283,8 +283,8 @@ class RepairLeaveCascadeSlotTimes extends Command
                 if ($after !== '' && $after !== $liveAfter) {
                     $errors[] = "contract_slot_changed:{$sid}";
                 }
-                $session = ClassSession::query()->find($sid);
-                if ($session && $hasException && !empty($session->IsContractException)) {
+                $session = ClassSession::find($sid);
+                if ($session instanceof ClassSession && $hasException && !empty($session->IsContractException)) {
                     $errors[] = "contract_exception:{$sid}";
                 }
             }
@@ -292,8 +292,8 @@ class RepairLeaveCascadeSlotTimes extends Command
             // Bundle optional for legacy tests; still require IDs present in plan or already aligned.
             foreach ($allowedIds as $sid) {
                 if (!isset($byId[$sid])) {
-                    $session = ClassSession::query()->find($sid);
-                    if (!$session) {
+                    $session = ClassSession::find($sid);
+                    if (!$session instanceof ClassSession) {
                         $errors[] = "unknown_session:{$sid}";
                     }
                 }
