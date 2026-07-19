@@ -48,10 +48,10 @@ class RepairLeaveCascadeSlotTimes extends Command
                 $row['student_class_id'],
                 $row['class_session_id'],
                 $row['session_date'],
-                $row['old_start'],
-                $row['old_end'],
-                $row['new_start'],
-                $row['new_end'],
+                substr((string) $row['old_start'], 0, 5),
+                substr((string) $row['old_end'], 0, 5),
+                substr((string) $row['new_start'], 0, 5),
+                substr((string) $row['new_end'], 0, 5),
                 $row['iso_dow']
             ));
         }
