@@ -76,7 +76,19 @@ jobs:
           $digest["note"] = "de-identified pair count proxy; not a repair list";
           echo json_encode($digest, JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
-          echo "=== DONE ==="
+          echo "=== CLASSIFY_JSON ==="
+          php artisan tinker --execute='
+          $asOf=date("Y-m-d");
+          $base=\Illuminate\Support\Facades\DB::table("StudentClass as sc")->where("sc.Stop",0)->where("sc.ScheduleMode","count")->where("sc.RemainingSessions",">",0)
+            ->whereNotExists(function($q) use ($asOf){$q->select(\Illuminate\Support\Facades\DB::raw(1))->from("ClassSession as cs")->whereColumn("cs.StudentClassID","sc.ID")->where("cs.SessionDate",">=",$asOf)->whereRaw("LOWER(cs.Status)=?",["scheduled"]);});
+          $ids=(clone $base)->pluck("sc.ID"); $sessions=(int)(clone $base)->sum("sc.RemainingSessions"); $students=(int)(clone $base)->distinct("sc.StudentID")->count("sc.StudentID");
+          $active=\Illuminate\Support\Facades\DB::table("ClassSession")->whereIn("StudentClassID",$ids)->where("SessionDate",">=",date("Y-m-d",strtotime("-21 days")))->distinct()->pluck("StudentClassID");
+          $dormant=$ids->diff($active);
+          $crossFuture=(int)\Illuminate\Support\Facades\DB::table("ClassSession as a")->join("ClassSession as b",function($j){$j->on("a.SessionDate","=","b.SessionDate")->on("a.StartTime","=","b.StartTime")->whereColumn("a.id","<","b.id");})->join("StudentClass as sca","sca.ID","=","a.StudentClassID")->join("StudentClass as scb","scb.ID","=","b.StudentClassID")->whereColumn("sca.StudentID","=","scb.StudentID")->whereColumn("sca.ID","<>","scb.ID")->where("a.SessionDate",">=",$asOf)->whereRaw("LOWER(a.Status)=?",["scheduled"])->whereRaw("LOWER(b.Status)=?",["scheduled"])->count();
+          $crossAll=(int)\Illuminate\Support\Facades\DB::table("ClassSession as a")->join("ClassSession as b",function($j){$j->on("a.SessionDate","=","b.SessionDate")->on("a.StartTime","=","b.StartTime")->whereColumn("a.id","<","b.id");})->join("StudentClass as sca","sca.ID","=","a.StudentClassID")->join("StudentClass as scb","scb.ID","=","b.StudentClassID")->whereColumn("sca.StudentID","=","scb.StudentID")->whereColumn("sca.ID","<>","scb.ID")->whereRaw("LOWER(a.Status)=?",["scheduled"])->whereRaw("LOWER(b.Status)=?",["scheduled"])->count();
+          echo json_encode(["as_of"=>$asOf,"stranded_courses"=>$ids->count(),"stranded_sessions"=>$sessions,"stranded_students"=>$students,"active_recent_21d_courses"=>$active->count(),"inactive_dormant_courses"=>$dormant->count(),"active_recent_21d_sessions"=>(int)\Illuminate\Support\Facades\DB::table("StudentClass")->whereIn("ID",$active)->sum("RemainingSessions"),"inactive_dormant_sessions"=>(int)\Illuminate\Support\Facades\DB::table("StudentClass")->whereIn("ID",$dormant)->sum("RemainingSessions"),"cross_sc_pair_count_all_scheduled"=>$crossAll,"cross_sc_pair_count_future_scheduled"=>$crossFuture,"unit"=>["stranded_sessions"=>"RemainingSessions prepaid units","cross_sc"=>"ClassSession pair count same student+date+start different SC"]], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          echo "=== DONE ===
           REMOTE
           python3 <<'PY'
           import json, re
@@ -105,12 +117,24 @@ jobs:
                           break
                       except Exception:
                           pass
+          classify = {"ok": False}
+          cm = text.find("=== CLASSIFY_JSON ===")
+          if cm >= 0:
+              for line in text[cm:].splitlines()[1:40]:
+                  line = line.strip()
+                  if line.startswith("{") and "stranded_sessions" in line:
+                      try:
+                          classify = json.loads(line)
+                          break
+                      except Exception:
+                          pass
           summary = {
               "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
               "canonical_issue": 1062,
               "execute": False,
               "stranded_json": stranded,
               "cross_sc_proxy": cross,
+              "classify": classify,
               "next": "classify only; CEO GO required before forward-gen execute",
           }
           Path("out/stranded-classify-refresh.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False))
