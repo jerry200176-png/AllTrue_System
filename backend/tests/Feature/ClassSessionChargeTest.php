@@ -16,10 +16,10 @@ use Tests\TestCase;
 /**
  * Feature tests for 單堂時間費率自動計算 (per-session charge auto-calculation).
  *
- * Rules under test:
- *   session mode: session_charge = round(Rate × actual_minutes / SessionDuration)
+ * Rules under test (must stay aligned with SessionEditModal / SmartCalendar copy):
+ *   session mode: session_charge = round(Rate)  — fixed; time change does NOT alter Charge
  *   hour mode:    session_charge = round(Rate × actual_minutes / 60)
- *   StudentClass.Charge += (new_session_charge - baseline)
+ *                 StudentClass.Charge += (new_session_charge - baseline)
  *     baseline = existing session_charge, or standard charge when null
  *   SessionDuration=0 or Rate<=0 → no-op
  */
@@ -27,7 +27,7 @@ class ClassSessionChargeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_session_mode_shrink_time_reduces_charge(): void
+    public function test_session_mode_time_change_keeps_fixed_charge(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
         $originalCharge = (int) StudentClass::find($courseId)->Charge;
@@ -39,13 +39,13 @@ class ClassSessionChargeTest extends TestCase
         ])->assertOk();
 
         $session->refresh();
-        $this->assertSame(1125, (int) $session->session_charge);
+        $this->assertSame(1500, (int) $session->session_charge);
 
         $sc = StudentClass::find($courseId);
-        $this->assertSame($originalCharge - 375, (int) $sc->Charge);
+        $this->assertSame($originalCharge, (int) $sc->Charge);
     }
 
-    public function test_session_mode_extend_time_increases_charge(): void
+    public function test_session_mode_extend_time_does_not_increase_charge(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
         $originalCharge = (int) StudentClass::find($courseId)->Charge;
@@ -57,13 +57,13 @@ class ClassSessionChargeTest extends TestCase
         ])->assertOk();
 
         $session->refresh();
-        $this->assertSame(2250, (int) $session->session_charge);
+        $this->assertSame(1500, (int) $session->session_charge);
 
         $sc = StudentClass::find($courseId);
-        $this->assertSame($originalCharge + 750, (int) $sc->Charge);
+        $this->assertSame($originalCharge, (int) $sc->Charge);
     }
 
-    public function test_hour_mode_shrink_time(): void
+    public function test_hour_mode_shrink_time_updates_course_charge(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
         $originalCharge = (int) StudentClass::find($courseId)->Charge;
@@ -80,6 +80,26 @@ class ClassSessionChargeTest extends TestCase
         $standardCharge = (int) round(750 * (120 / 60));
         $sc = StudentClass::find($courseId);
         $this->assertSame($originalCharge + (1125 - $standardCharge), (int) $sc->Charge);
+    }
+
+    public function test_hour_mode_extend_time_updates_course_charge(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        $originalCharge = (int) StudentClass::find($courseId)->Charge;
+
+        // 120 → 180 minutes：session_charge = 750 × 3 = 2250；baseline = 1500；delta = +750
+        $this->patchSession($token, $session->id, [
+            'status' => 'scheduled',
+            'start_time' => '16:00',
+            'end_time' => '19:00',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame(2250, (int) $session->session_charge);
+
+        $standardCharge = (int) round(750 * (120 / 60));
+        $sc = StudentClass::find($courseId);
+        $this->assertSame($originalCharge + (2250 - $standardCharge), (int) $sc->Charge);
     }
 
     public function test_zero_session_duration_is_noop(): void
@@ -100,9 +120,31 @@ class ClassSessionChargeTest extends TestCase
         $this->assertSame($originalCharge, (int) StudentClass::find($courseId)->Charge);
     }
 
-    public function test_second_edit_uses_previous_session_charge_as_baseline(): void
+    public function test_session_mode_second_edit_stays_fixed_at_rate(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
+        $originalCharge = (int) StudentClass::find($courseId)->Charge;
+
+        $this->patchSession($token, $session->id, [
+            'status' => 'scheduled',
+            'start_time' => '16:00',
+            'end_time' => '17:30',
+        ])->assertOk();
+
+        $this->patchSession($token, $session->id, [
+            'status' => 'scheduled',
+            'start_time' => '16:00',
+            'end_time' => '19:00',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame(1500, (int) $session->session_charge);
+        $this->assertSame($originalCharge, (int) StudentClass::find($courseId)->Charge);
+    }
+
+    public function test_hour_mode_second_edit_uses_previous_session_charge_as_baseline(): void
+    {
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
         $originalCharge = (int) StudentClass::find($courseId)->Charge;
 
         // First edit: 120 → 90 minutes. delta = 1125 - 1500 = -375
@@ -144,7 +186,7 @@ class ClassSessionChargeTest extends TestCase
         $this->assertSame($originalCharge, (int) StudentClass::find($courseId)->Charge);
     }
 
-    public function test_response_includes_session_charge(): void
+    public function test_response_includes_fixed_session_charge_for_session_mode(): void
     {
         [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
 
@@ -154,25 +196,19 @@ class ClassSessionChargeTest extends TestCase
             'end_time' => '17:30',
         ])->assertOk();
 
-        $response->assertJsonPath('session.session_charge', 1125);
+        $response->assertJsonPath('session.session_charge', 1500);
     }
 
-    public function test_per_day_duration_is_used_when_set_on_session_weekday(): void
+    public function test_session_mode_ignores_per_day_duration_for_charge(): void
     {
-        // 建一個課程預設 SessionDuration=120（week=3 Wed），
-        // 手動加上 Friday 每週一堂、per-day duration=90：
-        //   Mon session 改 75min → 以 120 為基準 → 1500 × 75/120 = 938
-        //   Fri session 改 75min → 以 90  為基準 → 1500 × 75/90  = 1250
-        // 驗證 duration1~duration6 對應星期會被優先採用。
+        // 按堂計費：即使週五契約時長 90 分，改時段後 session_charge 仍固定 = Rate。
         [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
 
-        // 安排：week1=3(Wed)/duration1=120；week2=5(Fri)/duration2=90
         StudentClass::where('ID', $courseId)->update([
             'week1' => 3, 'duration1' => 120,
             'week2' => 5, 'duration2' => 90,
         ]);
 
-        // 建立一個 Friday 的堂次（同課程，手動插入）
         $friday = Carbon::now()->next(Carbon::FRIDAY)->toDateString();
         $fridaySession = ClassSession::create([
             'StudentClassID' => $courseId,
@@ -189,17 +225,20 @@ class ClassSessionChargeTest extends TestCase
         ])->assertOk();
 
         $fridaySession->refresh();
-        // Friday 標準是 90 分鐘 → 1500 × (75/90) = 1250
-        $this->assertSame(1250, (int) $fridaySession->session_charge);
+        $this->assertSame(1500, (int) $fridaySession->session_charge);
     }
 
-    public function test_course_rate_update_preserves_accumulated_session_charge_delta(): void
+    public function test_course_rate_update_preserves_hour_mode_session_charge_delta(): void
     {
-        // 先建 Rate=1500 × SessionCount=4 的課程 → Charge=6000
-        [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
-        StudentClass::where('ID', $courseId)->update(['SessionCount' => 4, 'Charge' => 6000]);
+        // hour mode：Rate=750/hr × TotalHours=8 → Charge=6000
+        [$token, $courseId, $session] = $this->setupCourseWithSession(750, 120, 'hour');
+        StudentClass::where('ID', $courseId)->update([
+            'SessionCount' => 4,
+            'TotalHours' => 8,
+            'Charge' => 6000,
+        ]);
 
-        // 單堂 2hr → 1.5hr 累積 delta = −375
+        // 單堂 2hr → 1.5hr：session_charge 1125，baseline 1500，delta = −375
         $this->patchSession($token, $session->id, [
             'status' => 'scheduled',
             'start_time' => '16:00',
@@ -208,18 +247,38 @@ class ClassSessionChargeTest extends TestCase
 
         $this->assertSame(5625, (int) StudentClass::find($courseId)->Charge);
 
-        // 主任把 Rate 調高到 2000
+        // 主任把時薪調高到 1000
         $this->withHeaders([
             'Authorization' => "Bearer {$token}",
             'Accept' => 'application/json',
         ])->putJson("/api/v1/student-classes/{$courseId}", [
-            'rate_per_30min' => 2000,
+            'rate_per_30min' => 1000,
             'sessions_purchased' => 4,
+            'rate_unit' => 'hour',
         ])->assertOk();
 
-        // 業界慣例：累積的 −375 手動調整必須保留，不被整筆 Rate×SessionCount 洗掉
-        // new_base = 2000 × 4 = 8000；preserved_delta = 5625 − 6000 = −375；new_Charge = 7625
+        // new_base = 1000 × 8 = 8000；preserved_delta = 5625 − 6000 = −375；new_Charge = 7625
         $this->assertSame(7625, (int) StudentClass::find($courseId)->Charge);
+    }
+
+    public function test_session_mode_corrects_stale_scaled_session_charge_without_new_duration_delta(): void
+    {
+        // 歷史錯誤：session mode 曾被寫成比例縮放值；再改時段時應拉回 Rate，並修正 Charge 偏差。
+        [$token, $courseId, $session] = $this->setupCourseWithSession(1500, 120, 'session');
+        StudentClass::where('ID', $courseId)->update(['Charge' => 6000]);
+        $session->session_charge = 2250; // 舊的 180min 縮放值
+        $session->save();
+
+        $this->patchSession($token, $session->id, [
+            'status' => 'scheduled',
+            'start_time' => '16:00',
+            'end_time' => '19:00',
+        ])->assertOk();
+
+        $session->refresh();
+        $this->assertSame(1500, (int) $session->session_charge);
+        // delta = 1500 - 2250 = -750
+        $this->assertSame(5250, (int) StudentClass::find($courseId)->Charge);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────
