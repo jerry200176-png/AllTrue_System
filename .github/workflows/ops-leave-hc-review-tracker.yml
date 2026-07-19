@@ -1,11 +1,8 @@
 name: Leave-HC campus review tracker (#1342)
 
-# Tracks per-campus owner/SLA. Artifact alone ≠ delivery complete.
-# Posts overdue / defer updates on #1342 without PII.
-
 on:
   schedule:
-    - cron: "0 1 * * *" # 09:00 Asia/Taipei
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       force_status_comment:
@@ -33,7 +30,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - name: Evaluate SLA and comment #1342
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,20 +41,14 @@ jobs:
           import json, os
           from datetime import datetime, timezone
           from pathlib import Path
-
           tracker = json.loads(Path("operations/closeout/leave-hc-campus-review-tracker.json").read_text())
           now = datetime.now(timezone.utc)
           sla = tracker["sla"]
-
           def parse(ts):
-              # allow +08:00
               return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-
-          reply_by = parse(sla["reply_by"])
           overdue_at = parse(sla["overdue_reminder_after"])
           defer_at = parse(sla["final_defer_after"])
           force = str(os.environ.get("FORCE", "false")).lower() == "true"
-
           lines = [
               "## #1342 四校主任審核任務（可追蹤）",
               "",
@@ -79,34 +69,21 @@ jobs:
                   f"{c['candidates']} | {c['approved']} | {c['kept']} | {c['needs_review']} | "
                   f"{c['unreplied']} | `{c['status']}` | {c['last_tracked_at']} |"
               )
-
           mode = "status"
           if now >= defer_at and unreplied_total > 0:
               mode = "final_defer"
-              lines += [
-                  "",
-                  "### 最終 defer",
-                  f"仍有 **{unreplied_total}** 筆未回覆。未核准項目維持不修改，並標記 campus `defer_unreplied`。",
-                  "已核准列仍可走 repair bundle；未回覆不阻塞 medium 範圍外項目。",
-              ]
+              lines += ["", "### 最終 defer", f"仍有 **{unreplied_total}** 筆未回覆。未核准維持不修改。"]
           elif now >= overdue_at and unreplied_total > 0:
               mode = "overdue_reminder"
-              lines += [
-                  "",
-                  "### 逾期提醒",
-                  f"回覆期限已過，尚有 **{unreplied_total}** 筆未回覆。請 Ops 再觸達各校主任。",
-              ]
+              lines += ["", "### 逾期提醒", f"尚有 **{unreplied_total}** 筆未回覆，請 Ops 再觸達。"]
           else:
               lines += ["", f"_generated {now.isoformat().replace('+00:00','Z')} mode=status_"]
-
           Path("/tmp/1342-tracker.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-          Path("/tmp/tracker-mode.txt").write_text(mode)
           Path("/tmp/should-post.txt").write_text(
               "1" if (force or mode in ("overdue_reminder", "final_defer") or os.environ.get("GITHUB_EVENT_NAME") == "push") else "0"
           )
           print("mode", mode, "unreplied", unreplied_total)
           PY
-
           if [ "$(cat /tmp/should-post.txt)" = "1" ]; then
             jq -n --arg body "$(cat /tmp/1342-tracker.md)" '{body:$body}' \
               | gh api "repos/${REPO}/issues/1342/comments" --input -
@@ -135,28 +112,46 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes             -o UserKnownHostsFile=~/.ssh/known_hosts             "${PI_SSH_USER}@${PI_SSH_HOST}" 'cd /home/admin/backend && php artisan tinker --execute='"'"'
-          $campuses=[3=>7,11=>9,13=>2,9=>1]; $results=[];
-          foreach($campuses as $cid=>$n){
-            $c=\Illuminate\Support\Facades\DB::table("Campus")->where("id",$cid)->first();
-            $token=(string)($c->messaging_channel_token??""); $gid=(string)($c->staff_line_group_id??"");
-            $name=(string)($c->name??("campus-".$cid)); $status="skipped_no_line";
-            if($token!=="" && $gid!==""){
-              $text="【".$name."】系統審核任務(#1342)\n請假時段錯置高信心 ".$n." 筆待主任審核。\n請於07/22 18:00前填：核准修正／保留現況／需要查證。\nCSV由platform-ops安全管道提供（本訊息不含附件）。\n空白=不修改。";
-              $resp=\Illuminate\Support\Facades\Http::withToken($token)->post("https://api.line.me/v2/bot/message/push",["to"=>$gid,"messages"=>[["type"=>"text","text"=>$text]]]);
-              $status=$resp->successful()?"line_pushed":("line_fail_".$resp->status());
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/deliver.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $campuses = [3 => 7, 11 => 9, 13 => 2, 9 => 1];
+          $results = [];
+          foreach ($campuses as $cid => $n) {
+            $c = \Illuminate\Support\Facades\DB::table("Campus")->where("id", $cid)->first();
+            $token = (string) ($c->messaging_channel_token ?? "");
+            $gid = (string) ($c->staff_line_group_id ?? "");
+            $name = (string) ($c->name ?? ("campus-" . $cid));
+            $status = "skipped_no_line";
+            if ($token !== "" && $gid !== "") {
+              $msg = "【" . $name . "】系統審核任務(#1342)\n請假時段錯置高信心 " . $n . " 筆待主任審核。\n請於07/22 18:00前填：核准修正／保留現況／需要查證。\nCSV由platform-ops安全管道提供（本訊息不含附件）。\n空白=不修改。";
+              $resp = \Illuminate\Support\Facades\Http::withToken($token)->post("https://api.line.me/v2/bot/message/push", [
+                "to" => $gid,
+                "messages" => [["type" => "text", "text" => $msg]],
+              ]);
+              $status = $resp->successful() ? "line_pushed" : ("line_fail_" . $resp->status());
             }
-            $results[]=["campus_id"=>$cid,"candidates"=>$n,"status"=>$status,"has_group"=>$gid!==""];
+            $results[] = ["campus_id" => $cid, "candidates" => $n, "status" => $status, "has_group" => $gid !== ""];
           }
-          echo json_encode(["ok"=>true,"delivered"=>$results], JSON_UNESCAPED_UNICODE), PHP_EOL;
-          '"'"'' | tee out/deliver.log
-          python3 -c "import json;from pathlib import Path;t=Path("out/deliver.log").read_text(errors="replace");d={"ok":False};
-
-for line in t.splitlines():
-  s=line.strip()
-  if s.startswith("{") and "delivered" in s:
-    d=json.loads(s);break
-Path("out/leave-hc-line-delivery.json").write_text(json.dumps(d,indent=2,ensure_ascii=False));print(d)"
+          echo json_encode(["ok" => true, "delivered" => $results], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          text = Path("out/deliver.log").read_text(errors="replace")
+          data = {"ok": False}
+          for line in text.splitlines():
+              s = line.strip()
+              if s.startswith("{") and "delivered" in s:
+                  data = json.loads(s)
+                  break
+          Path("out/leave-hc-line-delivery.json").write_text(json.dumps(data, indent=2, ensure_ascii=False))
+          print(data)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

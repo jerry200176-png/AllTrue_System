@@ -88,7 +88,7 @@ jobs:
           $crossAll=(int)\Illuminate\Support\Facades\DB::table("ClassSession as a")->join("ClassSession as b",function($j){$j->on("a.SessionDate","=","b.SessionDate")->on("a.StartTime","=","b.StartTime")->whereColumn("a.id","<","b.id");})->join("StudentClass as sca","sca.ID","=","a.StudentClassID")->join("StudentClass as scb","scb.ID","=","b.StudentClassID")->whereColumn("sca.StudentID","=","scb.StudentID")->whereColumn("sca.ID","<>","scb.ID")->whereRaw("LOWER(a.Status)=?",["scheduled"])->whereRaw("LOWER(b.Status)=?",["scheduled"])->count();
           echo json_encode(["as_of"=>$asOf,"stranded_courses"=>$ids->count(),"stranded_sessions"=>$sessions,"stranded_students"=>$students,"active_recent_21d_courses"=>$active->count(),"inactive_dormant_courses"=>$dormant->count(),"active_recent_21d_sessions"=>(int)\Illuminate\Support\Facades\DB::table("StudentClass")->whereIn("ID",$active)->sum("RemainingSessions"),"inactive_dormant_sessions"=>(int)\Illuminate\Support\Facades\DB::table("StudentClass")->whereIn("ID",$dormant)->sum("RemainingSessions"),"cross_sc_pair_count_all_scheduled"=>$crossAll,"cross_sc_pair_count_future_scheduled"=>$crossFuture,"unit"=>["stranded_sessions"=>"RemainingSessions prepaid units","cross_sc"=>"ClassSession pair count same student+date+start different SC"]], JSON_UNESCAPED_UNICODE), PHP_EOL;
           '
-          echo "=== DONE ===
+          echo "=== DONE ==="
           REMOTE
           python3 <<'PY'
           import json, re
