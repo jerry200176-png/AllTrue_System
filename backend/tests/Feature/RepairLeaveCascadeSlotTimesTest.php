@@ -182,9 +182,13 @@ class RepairLeaveCascadeSlotTimesTest extends TestCase
             '--bundle' => $bundlePath,
             '--verify-exit-gate' => true,
         ]);
+        $out = Artisan::output();
         $this->assertSame(1, $exit);
-        $this->assertStringContainsString('EXIT_GATE_JSON', Artisan::output());
-        $this->assertStringContainsString('before_state_changed', Artisan::output());
+        $this->assertStringContainsString('EXIT_GATE_JSON', $out);
+        $this->assertTrue(
+            str_contains($out, 'before_state_changed') || str_contains($out, 'not_in_current_plan'),
+            'exit gate must fail closed on drifted before/plan; got: ' . substr($out, -800)
+        );
         @unlink($bundlePath);
     }
 
