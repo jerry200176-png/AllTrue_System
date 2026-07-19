@@ -7,9 +7,9 @@
 Founder 代審 session ID；無證據改 package schema；#1262 懸空待驗收。
 
 ## 3. Evidence
-**Leave #1342：** closeout PR #1340；dry-run run `29685472249`（Pi `91028fce`）；複核 `29685602058`；repo `operations/closeout/artifacts/leave-slot-hc-redacted-2026-07-19.csv`；HC 規則=`leave_row_foreign_clock`∨`scheduled_sibling…`（`classifyPlan`）；selected=0 硬編碼＋`RepairLeaveCascadeSlotTimesTest`；execute 無 `--session-ids` 失敗（同測試）；runs 皆 `--dry-run`。主任包：workflow `ops-director-leave-hc-pack.yml` artifact。
+**Leave #1342：** closeout PR #1340；dry-run run `29685472249`（Pi `91028fce`）；複核 `29685602058`；repo `operations/closeout/artifacts/leave-slot-hc-redacted-2026-07-19.csv`；HC 規則=`leave_row_foreign_clock`∨`scheduled_sibling…`（`classifyPlan`）；selected=0 硬編碼＋`RepairLeaveCascadeSlotTimesTest`；execute 無 `--session-ids` 失敗（同測試）；runs 皆 `--dry-run`。主任包：workflow run [`29686172773`](https://github.com/jerry200176-png/AllTrue_System/actions/runs/29686172773) artifact `director-leave-hc-and-evidence`（分校 CSV＋ops map）。
 **TD-059 #1343：** audit `29685602058`／`td059-audit-2026-07-19.json`；46=`PackageID>0 Stop=0 HAVING count>1`；partial minutes=0（all-time）；FN：makeup/reverse/null-minutes；決策 **B**。
-**#1262：** PR #1263 `9fab6e3e`；Pi Health `29629447963`（07-18 remaining=83 全 after_nightly）、`29673056613`（07-19 remaining=0）。
+**#1262：** PR #1263 `9fab6e3e`；Pi Health `29629447963`／`29673056613`；**closed completed** 2026-07-19T12:00Z（Actions）。
 
 ## 4. Issue／PR／deploy
 Issues #1342 #1343 #1262；PRs #1340,#1344–#1350＋本 PR；#1263 已在 Pi ancestry；本輪 docs/ops 為主。
@@ -30,4 +30,4 @@ HC 未審鐘點仍錯；stranded~1681／cross-SC dup=50；TD-059 首次命中。
 #1342 待主任；#1343 monitor；本 PR；incident=0。
 
 ## 10. Issue 計量
-新建2（#1342/#1343）；關閉1（#1262）；open 62→61。
+新建2（#1342/#1343）；關閉1（#1262）；open 62→61。Director pack run `29686172773` success；TD-059 FN：null-minutes whole-session=390、partial=0 → **B**。
