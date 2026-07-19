@@ -32,5 +32,6 @@ jobs:
           }
           post 1343 operations/closeout/issue-bodies/comment-td059-nogo.md
           post 1342 operations/closeout/issue-bodies/comment-leave-hc-pack.md
-          post 1262 operations/closeout/issue-bodies/comment-1262-triage.md || true
+          post 1262 operations/closeout/issue-bodies/comment-1262-close.md || post 1262 operations/closeout/issue-bodies/comment-1262-triage.md || true
+          gh api -X PATCH "repos/${REPO}/issues/1262" -f state=closed -f state_reason=completed || true
           echo "comments posted"
