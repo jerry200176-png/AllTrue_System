@@ -131,15 +131,32 @@ jobs:
             CRITICALS="${CRITICALS}🔴 ${SCHED_LOG} 不存在 — Laravel scheduler 無 driver（見 #1127）\n"
           fi
 
-          # ── 3c. 夜間任務輸出證據（#1127）────────────────────────────
-          # 僅輸出固定 job key、時間、exit status、聚合計數；不把原始
-          # scheduler / Laravel log（可能含學生、老師或 RFID 資料）送到 Actions。
+          # ── 3c. 夜間任務輸出證據（#1127 / Phase 1）──────────────────
+          # Exit code = execution_healthy only. Reconciliation residuals → WARNINGS
+          # (must not conflate no-run / failed job with expected zero-work / data baseline).
           EVIDENCE_DATE=$(TZ=Asia/Taipei date +%F)
-          if EVIDENCE_OUTPUT=$(cd /home/admin/backend && /usr/bin/php8.2 artisan scheduler:evidence-summary --date="$EVIDENCE_DATE" 2>&1); then
-            echo "scheduler job evidence: ${EVIDENCE_OUTPUT}"
+          set +e
+          EVIDENCE_OUTPUT=$(cd /home/admin/backend && /usr/bin/php8.2 artisan scheduler:evidence-summary --date="$EVIDENCE_DATE" 2>&1)
+          EVIDENCE_RC=$?
+          set -e
+          echo "scheduler job evidence: ${EVIDENCE_OUTPUT}"
+          if [ "$EVIDENCE_RC" -ne 0 ]; then
+            CRITICALS="${CRITICALS}🔴 夜間 scheduler 執行證據失敗（no-run/failed/partial/unknown — 見 #1127/#1317）\n"
           else
-            echo "scheduler job evidence: ${EVIDENCE_OUTPUT}"
-            CRITICALS="${CRITICALS}🔴 夜間 scheduler 任務輸出證據不完整或有失敗（見 #1127）\n"
+            RECON_STATUS=$(printf '%s' "$EVIDENCE_OUTPUT" | /usr/bin/php8.2 -r '$j=json_decode(stream_get_contents(STDIN),true); echo $j["reconciliation_baseline"]["status"]??"unknown";' 2>/dev/null || echo unknown)
+            if [ "$RECON_STATUS" = "amber" ] || [ "$RECON_STATUS" = "red" ]; then
+              WARNINGS="${WARNINGS}⚠️ reconciliation baseline ${RECON_STATUS}（data residuals — 不自動 repair；見 #1317）\n"
+            fi
+          fi
+
+          # Stale evidence: ledger older than 36h after overnight window should RED
+          LEDGER="/home/admin/backend/storage/logs/scheduler-evidence/${EVIDENCE_DATE}.jsonl"
+          if [ -f "$LEDGER" ]; then
+            LEDGER_AGE_H=$(( ( $(date +%s) - $(stat -c %Y "$LEDGER") ) / 3600 ))
+            echo "evidence ledger age: ${LEDGER_AGE_H}h"
+            if [ "$LEDGER_AGE_H" -gt 36 ]; then
+              CRITICALS="${CRITICALS}🔴 scheduler evidence stale ${LEDGER_AGE_H}h\n"
+            fi
           fi
 
           # ── 4. 輸出結果 ──────────────────────────────────────────────

@@ -95,6 +95,19 @@ identity = {
   'rollback_target': deploy_sha,
   'data_reconciliation_last_result': None,
   'data_reconciliation_status': 'unknown_without_authenticated_ops_api',
+  'reconciliation_baseline': {
+    'status': 'unknown',
+    'note': 'Populated on Pi via scheduler:evidence-summary; residuals must not flip execution_healthy',
+  },
+  'critical_jobs': {
+    'expected': None,
+    'executed': None,
+    'succeeded': None,
+    'partial': None,
+    'failed': None,
+    'stale': None,
+    'source': 'pi scheduler:evidence-summary critical_jobs (after deploy of Phase 1)',
+  },
   'drift_red': red,
   'overall': 'RED' if red else 'GREEN',
 }

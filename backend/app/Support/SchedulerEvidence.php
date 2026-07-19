@@ -12,10 +12,19 @@ use RuntimeException;
  * Raw command output stays on the Pi under storage/logs. The JSONL ledger only
  * contains a fixed job key, configured local schedule, completion timestamp,
  * outcome and output filename so it is safe for the health workflow to report.
+ *
+ * Execution health is separate from reconciliation residuals (see summarize()).
  */
 final class SchedulerEvidence
 {
     public const TIMEZONE = 'Asia/Taipei';
+
+    /** Execution outcomes that count as "ran successfully" for SLI. */
+    public const EXECUTION_OK_STATUSES = [
+        'succeeded',
+        'succeeded_with_zero_work',
+        'skipped_by_policy',
+    ];
 
     /** @var array<string,array{command:string,time:string}> */
     private const JOBS = [
@@ -61,21 +70,39 @@ final class SchedulerEvidence
     public static function recordCompletion(string $job, string $status, ?CarbonInterface $at = null): void
     {
         self::assertKnownJob($job);
-        if (!in_array($status, ['success', 'failure'], true)) {
+        // Accept legacy success/failure plus Phase 1 vocabulary.
+        $normalized = match ($status) {
+            'success', 'succeeded' => 'succeeded',
+            'failure', 'failed' => 'failed',
+            default => $status,
+        };
+        if (!in_array($normalized, ['succeeded', 'failed', 'partial', 'timed_out', 'skipped_by_policy'], true)) {
             throw new \InvalidArgumentException("Unsupported scheduler evidence status: {$status}");
         }
 
         self::ensureDirectories();
         $local = self::localTime($at);
+        $runId = sprintf('%s-%s-%s', $job, $local->format('Ymd-His'), bin2hex(random_bytes(4)));
         $entry = [
-            'schema_version' => 1,
-            'job' => $job,
+            'schema_version' => 2,
+            'job_key' => $job,
+            'job' => $job, // backward compatible
+            'run_id' => $runId,
             'command' => self::JOBS[$job]['command'],
             'expected_schedule' => self::JOBS[$job]['time'],
+            'scheduled_for' => $local->toDateString() . 'T' . self::JOBS[$job]['time'] . ':00+08:00',
             'timezone' => self::TIMEZONE,
+            'started_at' => null,
+            'finished_at' => $local->toIso8601String(),
             'completed_at' => $local->toIso8601String(),
-            'status' => $status,
+            'status' => $normalized,
+            'exit_code' => $normalized === 'succeeded' || $normalized === 'skipped_by_policy' ? 0 : 1,
             'output_file' => basename(self::outputPath($job, $local)),
+            'evidence_timestamp' => $local->toIso8601String(),
+            'application_sha' => null,
+            'migration_version' => null,
+            'error_class' => $normalized === 'failed' ? 'command_failure' : null,
+            'safe_error_summary' => null,
         ];
 
         $encoded = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -85,53 +112,198 @@ final class SchedulerEvidence
     }
 
     /** @return array<string,mixed> */
-    public static function summarize(string $date): array
+    public static function summarize(string $date, ?CarbonInterface $now = null): array
     {
         $at = CarbonImmutable::parse($date, self::TIMEZONE)->startOfDay();
+        $nowLocal = self::localTime($now);
         $entries = self::readLedger($at);
         $jobs = [];
-        $healthy = true;
+        $executionHealthy = true;
+        $counts = [
+            'expected' => count(self::JOBS),
+            'executed' => 0,
+            'succeeded' => 0,
+            'succeeded_with_zero_work' => 0,
+            'partial' => 0,
+            'failed' => 0,
+            'stale' => 0,
+            'no_run' => 0,
+            'unknown' => 0,
+        ];
 
         foreach (self::JOBS as $key => $definition) {
-            $records = array_values(array_filter($entries, static fn (array $entry): bool => ($entry['job'] ?? null) === $key));
+            $records = array_values(array_filter(
+                $entries,
+                static fn (array $entry): bool => ($entry['job_key'] ?? $entry['job'] ?? null) === $key
+            ));
             $outputPath = self::outputPath($key, $at);
+            $expectedAt = $at->setTimeFromTimeString($definition['time'] . ':00');
+            $pastDue = $nowLocal->greaterThan($expectedAt->addMinutes(30));
+
             $result = [
+                'job_key' => $key,
                 'expected_schedule' => $definition['time'],
                 'executions' => count($records),
-                'latest_execution' => $records === [] ? null : end($records)['completed_at'],
-                'status' => 'verified',
+                'latest_execution' => $records === [] ? null : end($records)['completed_at'] ?? end($records)['finished_at'] ?? null,
+                'status' => 'succeeded',
+                'run_status' => 'succeeded',
                 'observed_result' => null,
+                'processed_count' => null,
+                'zero_work' => false,
             ];
 
             if (count($records) === 0) {
-                $result['status'] = 'missing';
+                $result['status'] = $pastDue ? 'no_run' : 'scheduled';
+                $result['run_status'] = $result['status'];
+                if ($pastDue) {
+                    $counts['no_run']++;
+                    $executionHealthy = false;
+                }
             } elseif (count($records) > 1) {
-                $result['status'] = 'duplicate';
-            } elseif (($records[0]['status'] ?? null) !== 'success') {
-                $result['status'] = 'failed';
-            } elseif (!is_file($outputPath) || filesize($outputPath) === 0) {
-                $result['status'] = 'missing_output';
+                $result['status'] = 'partial';
+                $result['run_status'] = 'partial';
+                $counts['executed']++;
+                $counts['partial']++;
+                $executionHealthy = false;
             } else {
-                $parsed = self::summarizeOutput($key, (string) file_get_contents($outputPath));
-                if ($parsed === null) {
-                    $result['status'] = 'unparseable_output';
+                $counts['executed']++;
+                $ledgerStatus = $records[0]['status'] ?? 'unknown';
+                if (in_array($ledgerStatus, ['failure', 'failed'], true)) {
+                    $result['status'] = 'failed';
+                    $result['run_status'] = 'failed';
+                    $counts['failed']++;
+                    $executionHealthy = false;
+                } elseif ($ledgerStatus === 'partial') {
+                    $result['status'] = 'partial';
+                    $result['run_status'] = 'partial';
+                    $counts['partial']++;
+                    $executionHealthy = false;
+                } elseif ($ledgerStatus === 'timed_out') {
+                    $result['status'] = 'timed_out';
+                    $result['run_status'] = 'timed_out';
+                    $counts['failed']++;
+                    $executionHealthy = false;
+                } elseif ($ledgerStatus === 'skipped_by_policy') {
+                    $result['status'] = 'skipped_by_policy';
+                    $result['run_status'] = 'skipped_by_policy';
+                    $counts['succeeded']++;
+                } elseif (!is_file($outputPath) || filesize($outputPath) === 0) {
+                    $result['status'] = 'unknown';
+                    $result['run_status'] = 'unknown';
+                    $counts['unknown']++;
+                    $executionHealthy = false;
                 } else {
-                    $result['observed_result'] = $parsed;
+                    $parsed = self::summarizeOutput($key, (string) file_get_contents($outputPath));
+                    if ($parsed === null) {
+                        $result['status'] = 'unknown';
+                        $result['run_status'] = 'unknown';
+                        $counts['unknown']++;
+                        $executionHealthy = false;
+                    } else {
+                        $result['observed_result'] = $parsed;
+                        $zero = self::isZeroWork($key, $parsed);
+                        $result['zero_work'] = $zero;
+                        $result['processed_count'] = self::extractProcessedCount($key, $parsed);
+                        if ($zero) {
+                            $result['status'] = 'succeeded_with_zero_work';
+                            $result['run_status'] = 'succeeded_with_zero_work';
+                            $counts['succeeded_with_zero_work']++;
+                        } else {
+                            $result['status'] = 'succeeded';
+                            $result['run_status'] = 'succeeded';
+                            $counts['succeeded']++;
+                        }
+                    }
                 }
             }
 
-            if ($result['status'] !== 'verified') {
-                $healthy = false;
+            // Legacy alias used by older tests/docs
+            if ($result['status'] === 'succeeded' || $result['status'] === 'succeeded_with_zero_work') {
+                $result['legacy_status'] = 'verified';
+            } elseif ($result['status'] === 'no_run') {
+                $result['legacy_status'] = 'missing';
+            } else {
+                $result['legacy_status'] = $result['status'];
             }
+
             $jobs[$key] = $result;
         }
+
+        $sli = [
+            'execution_sli' => [
+                'numerator' => $counts['executed'],
+                'denominator' => $counts['expected'],
+                'ratio' => round($counts['executed'] / max(1, $counts['expected']), 4),
+            ],
+            'success_sli' => [
+                'numerator' => $counts['succeeded'] + $counts['succeeded_with_zero_work'],
+                'denominator' => max($counts['executed'], 1),
+                'ratio' => $counts['executed'] > 0
+                    ? round(($counts['succeeded'] + $counts['succeeded_with_zero_work']) / $counts['executed'], 4)
+                    : null,
+            ],
+            'evidence_freshness_seconds' => self::evidenceFreshnessSeconds($at, $nowLocal),
+        ];
 
         return [
             'date' => $at->toDateString(),
             'timezone' => self::TIMEZONE,
-            'healthy' => $healthy,
+            'execution_healthy' => $executionHealthy,
+            // Phase 1: healthy means execution truth only — residuals are separate.
+            'healthy' => $executionHealthy,
+            'critical_jobs' => $counts,
+            'sli' => $sli,
             'jobs' => $jobs,
         ];
+    }
+
+    /** @param array<string,mixed> $parsed */
+    private static function isZeroWork(string $job, array $parsed): bool
+    {
+        $count = self::extractProcessedCount($job, $parsed);
+        return $count === 0;
+    }
+
+    /** @param array<string,mixed> $parsed */
+    private static function extractProcessedCount(string $job, array $parsed): ?int
+    {
+        if (isset($parsed['affected_rows'])) {
+            return (int) $parsed['affected_rows'];
+        }
+        if (isset($parsed['sessions_created'])) {
+            return (int) $parsed['sessions_created'];
+        }
+        if (isset($parsed['mismatch_count'])) {
+            return (int) $parsed['mismatch_count'];
+        }
+        if (isset($parsed['stranded_sessions'])) {
+            return (int) $parsed['stranded_sessions'];
+        }
+        if (isset($parsed['regressed'])) {
+            return (int) $parsed['regressed'];
+        }
+        if ($job === 'ops-business-digest' && isset($parsed['revenue_at_risk_sessions'])) {
+            return (int) $parsed['revenue_at_risk_sessions'];
+        }
+        if ($job === 'learning-records-drift-check' && isset($parsed['remaining_counts']) && is_array($parsed['remaining_counts'])) {
+            return (int) array_sum($parsed['remaining_counts']);
+        }
+
+        return null;
+    }
+
+    private static function evidenceFreshnessSeconds(CarbonImmutable $date, CarbonImmutable $nowLocal): ?int
+    {
+        $path = self::ledgerPath($date);
+        if (!is_file($path)) {
+            return null;
+        }
+        $mtime = filemtime($path);
+        if ($mtime === false) {
+            return null;
+        }
+
+        return max(0, $nowLocal->getTimestamp() - $mtime);
     }
 
     /** @return list<array<string,mixed>> */

@@ -34,17 +34,25 @@ class SchedulerEvidenceTest extends TestCase
 
         $summary = SchedulerEvidence::summarize($this->date->toDateString());
 
+        $this->assertTrue($summary['execution_healthy']);
         $this->assertTrue($summary['healthy']);
-        $this->assertSame('verified', $summary['jobs']['reconcile-nightly']['status']);
+        $this->assertSame('succeeded', $summary['jobs']['reconcile-nightly']['status']);
         $this->assertSame(
             ['attendance_ahead' => 2, 'ledger_ahead' => 1],
             $summary['jobs']['reconcile-nightly']['observed_result']['cause_counts']
         );
         $this->assertSame(0, $summary['jobs']['bugs-verify-reproductions']['observed_result']['regressed']);
+        $this->assertSame('succeeded_with_zero_work', $summary['jobs']['learning-records-backfill-missing']['status']);
         $this->assertSame(0, $summary['jobs']['learning-records-backfill-missing']['observed_result']['affected_rows']);
         $this->assertSame(3, $summary['jobs']['sessions-generate-forward']['observed_result']['sessions_created']);
         $this->assertSame(12, $summary['jobs']['ops-business-digest']['observed_result']['revenue_at_risk_sessions']);
         $this->assertSame(44, $summary['jobs']['ops-business-digest']['observed_result']['coverage_next_7d']);
+        $this->assertSame('succeeded_with_zero_work', $summary['jobs']['teacher-signin-close-orphans']['status']);
+        $this->assertNotSame(
+            $summary['jobs']['teacher-signin-close-orphans']['status'],
+            'no_run',
+            'zero-work must not be conflated with no-run'
+        );
     }
 
     public function test_summary_rejects_duplicate_or_failed_execution_evidence(): void
@@ -57,7 +65,21 @@ class SchedulerEvidenceTest extends TestCase
         $summary = SchedulerEvidence::summarize($this->date->toDateString());
 
         $this->assertFalse($summary['healthy']);
-        $this->assertSame('duplicate', $summary['jobs'][$job]['status']);
+        $this->assertSame('partial', $summary['jobs'][$job]['status']);
+    }
+
+    public function test_missing_job_is_no_run_not_zero_work(): void
+    {
+        // Only seed one job — others past due must be no_run
+        $job = 'rfid-prune-pending';
+        file_put_contents(SchedulerEvidence::outputPath($job, $this->date), $this->outputFor($job));
+        SchedulerEvidence::recordCompletion($job, 'success', $this->date);
+
+        $summary = SchedulerEvidence::summarize($this->date->toDateString(), $this->date);
+
+        $this->assertFalse($summary['execution_healthy']);
+        $this->assertSame('no_run', $summary['jobs']['reconcile-nightly']['status']);
+        $this->assertNotSame('succeeded_with_zero_work', $summary['jobs']['reconcile-nightly']['status']);
     }
 
     public function test_every_observed_job_is_registered_once_with_private_output_and_taipei_timezone(): void
