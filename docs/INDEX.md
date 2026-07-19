@@ -56,6 +56,7 @@
 | Rollback procedures | ref | [`RUNBOOK_ROLLBACK.md`](RUNBOOK_ROLLBACK.md) → `deploy.yml` | execution helper only | yes |
 | Severity lookup | ref | [`SEVERITY_MATRIX.md`](SEVERITY_MATRIX.md) | mapping only — no decision authority | yes |
 | Dangerous ops guard | infra | [`DANGEROUS_OPERATIONS.md`](DANGEROUS_OPERATIONS.md) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) | yes |
+| Credential fingerprint audit | security | [`RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md`](RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md) · [workflow](../.github/workflows/credential-fingerprint-audit.yml) | #1007 credential exposure containment | no |
 | Backup / restore | infra | [`OPERATIONS_RUNBOOK.md`](OPERATIONS_RUNBOOK.md) §P · [`.github/workflows/backup-restore-test.yml`](../.github/workflows/backup-restore-test.yml) | [`INCIDENT_START_HERE.md`](INCIDENT_START_HERE.md) DB path | yes |
 | Operational constraints | ref | [`OPERATIONAL_CONSTRAINTS.md`](OPERATIONAL_CONSTRAINTS.md) | checklist — does not override contract | no |
 | SOP drift audit | tool | [`OPERATIONAL_CONSISTENCY_CHECK.md`](OPERATIONAL_CONSISTENCY_CHECK.md) | — | no |

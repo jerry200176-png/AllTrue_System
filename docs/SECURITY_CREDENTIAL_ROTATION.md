@@ -3,14 +3,10 @@
 > **Trigger:** GitHub Secret Exposure Audit found live tokens and historical leaks.  
 > **Do this BEFORE making the repo public** and **immediately** if the repo was ever shared broadly.
 
-> ⛔ **CORRECTION (2026-06-28, re-verification):** The Telegram monitor-bot revocation
-> recorded below was **NOT effective**. Independent check on 2026-06-28 shows the leaked
-> token (`@Alltrue_Daan_Bot`, id `7657792412`) still returns **HTTP 200** from
-> `api.telegram.org/getMe` with an **active webhook** — i.e. it is **still live**.
-> The "returns 401" verification and the "CONFIRMED" sign-off row for the Telegram bot are
-> therefore **inaccurate**. Revocation must be re-done via @BotFather before publication.
-> Tracking: **#1025**. Secret-scanning alert #1 must stay **open** until the old token
-> actually returns 401.
+> **2026-07-10 update:** #1025 verified that the old `@Alltrue_Daan_Bot` token was
+> revoked and production was updated. New 2026-07-17 GitGuardian alerts refer to
+> retrievable historical commits and are tracked by #1007. The repository must remain
+> private until fingerprint verification and history/object cleanup are complete.
 
 ## Phase 0 — Rotate outside git (human / Pi)
 
@@ -39,7 +35,8 @@ chmod 600 /home/admin/.env.monitor
 
 ## Verification
 
-- [ ] ⛔ Old Telegram token returns 401 from `api.telegram.org` — **FAILS as of 2026-06-28 (still HTTP 200, see #1025)**
+- [x] Old Telegram token was revoked and production updated (#1025, verified 2026-07-10)
+- [ ] 2026-07-17 alert fingerprints differ from current production values ([audit runbook](RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md), #1007)
 - [x] Revoked GitHub PATs cannot `gh auth status`
 - [x] `git ls-files .env.monitor` returns empty (after PR #1023 merge)
 - [x] `git ls-files '.cursor/projects/**'` returns empty (after PR #1023 merge)
@@ -50,20 +47,21 @@ chmod 600 /home/admin/.env.monitor
 
 | Item | Status | Date |
 |------|--------|------|
-| Telegram monitor bot revoked/reissued via BotFather | ⛔ **NOT EFFECTIVE — token still live, re-do required (#1025)** | 2026-06-28 |
+| Telegram monitor bot revoked/reissued via BotFather | **CONFIRMED** (#1025) | 2026-07-10 |
 | GitHub PATs from agent transcripts revoked | **CONFIRMED** | 2026-06-28 |
 | Campus swipe / LINE / Telegram DB secrets reviewed | **CONFIRMED** | 2026-06-28 |
 | Pi live config at `/home/admin/.env.monitor` only | **CONFIRMED** | 2026-06-28 |
 
 Signed off by CEO for publication remediation sequence. History purge and gitleaks gate **completed 2026-06-28**.
 
-⛔ **NOT cleared for public toggle yet:** the Telegram monitor-bot token recorded as revoked
-above is **still live** as of 2026-06-28 re-verification (#1025). Do not make the repo public
-until the old token returns 401 and secret-scanning alert #1 is resolved as *revoked*.
+⛔ **NOT cleared for public toggle yet:** exact historical commit SHAs from the 2026-07-17
+alerts remain retrievable. Keep the repository private until #1007 records a complete
+fingerprint audit, history/object cleanup, and GitHub-side cache invalidation evidence.
 
 ## References
 
 - [`docs/SECURITY.md`](SECURITY.md) §6 — history rewrite gate before public
 - [`scripts/security-filter-repo.sh`](../scripts/security-filter-repo.sh)
 - [`scripts/security-gitleaks-audit.sh`](../scripts/security-gitleaks-audit.sh)
+- [`docs/RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md`](RUNBOOK_SECURITY_CREDENTIAL_FINGERPRINT_AUDIT.md)
 - GitHub issues: #975 (campus secret echo), #1021 (Telegram webhook)
