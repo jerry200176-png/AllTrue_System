@@ -198,7 +198,7 @@ class RepairLeaveCascadeSlotTimes extends Command
         $out = [];
         foreach (CourseLeaveCascadeService::resolveCourseWeekdays($course, 1) as $dow) {
             $times = CourseLeaveCascadeService::resolveContractSlotTimes($course, $this->sampleDateForIsoDow((int) $dow));
-            if (($times['start'] ?? '') === '' || ($times['end'] ?? '') === '') {
+            if ($times['start'] === '' || $times['end'] === '') {
                 continue;
             }
             $out[(int) $dow] = $times;

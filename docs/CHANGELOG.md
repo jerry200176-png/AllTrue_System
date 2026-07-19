@@ -1,10 +1,10 @@
 # AllTrue Changelog
 
-## 2026-07-19 — fix: 請假順延不再錯置其他星期時段；補課加長按實際分鐘扣堂
+## 2026-07-19 — fix: 請假順延不再錯置其他星期時段
 
-Fixed：多星期固定課（例如週三 17:00–19:00、週六 10:00–12:00）請假順延後，其他星期不會再被改成請假那天的鐘點。補課若排得比契約一堂更長（例如契約 2 小時、補課 3 小時），點名後會依實際上課分鐘扣 entitlement，不再固定只扣一整堂。
+Fixed：多星期固定課（例如週三 17:00–19:00、週六 10:00–12:00）請假順延後，其他星期不會再被改成請假那天的鐘點。
 
-開發備註：`CourseLeaveCascadeService` 移動／append 時對齊目標日契約時段（§R77）；`IsContractException` 不重寫。`SessionDeductionService::resolvePartialMakeupMinutes` 允許 makeup minutes > perSession（§R59）。歷史漂移 dry-run：`php artisan repair:leave-cascade-slot-times`。測試：`LeaveCascadeMultiWeekdaySlotTimesTest`、`PartialMakeupDeductionTest`（180 分）、`RepairLeaveCascadeSlotTimesTest`。預付包堂加長補課扣的是餘額分鐘，不自動加收現金（Charge 仍見 §R76）。
+開發備註：`CourseLeaveCascadeService` 移動／append／undo 對齊目標日契約時段（§R77）；`IsContractException` 不重寫。歷史漂移 dry-run：`php artisan repair:leave-cascade-slot-times`。測試：`LeaveCascadeMultiWeekdaySlotTimesTest`、`RepairLeaveCascadeSlotTimesTest`。
 
 ## 2026-07-19 — fix: 單堂改時段費用與畫面說明一致
 

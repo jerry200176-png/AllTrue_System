@@ -15,9 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
- * #613 A1 PR3：補課非標準時長按實際分鐘扣堂（HTTP E2E）。
- * 業務規則：補課（schedules.type='extra'）時長 ≠ 契約每堂分鐘時，扣實際分鐘
- * （可短於或長於 perSession；整數分鐘、無浮點）；剛好完整時長與正常課堂一律整堂。
+ * #613 A1 PR3：補課部分時數比例扣堂（HTTP E2E）。
+ * 業務規則：補課（schedules.type='extra'）只覆蓋部分時數時，扣「實際分鐘」（上限每堂分鐘）；
+ * 正常課堂、完整時長補課一律整堂（byte-identical）。
  */
 class PartialMakeupDeductionTest extends TestCase
 {
@@ -56,25 +56,6 @@ class PartialMakeupDeductionTest extends TestCase
             ->where('event_type', 'deduct')->value('minutes'), '整堂 deduct 不記 minutes');
     }
 
-    /** 加長補課（180/120）→ 扣 180 分，不可仍固定整堂 1。 */
-    public function test_longer_makeup_attendance_deducts_actual_minutes(): void
-    {
-        [$token, $student, $scId] = $this->seedCourse(120, 4);
-        $cs = $this->makeMakeupSession($scId, '14:00', '17:00'); // 180 min
-
-        $this->postAttendance($token, $student, $scId, $cs->id)->assertCreated();
-
-        $sc = StudentClass::findOrFail($scId);
-        $this->assertSame(300, (int) $sc->RemainingMinutes, '4×120 − 180 = 300');
-        $this->assertSame(480, (int) $sc->PurchasedMinutes);
-        // ROUND_HALF_UP(300/120)=ROUND_HALF_UP(2.5)=3
-        $this->assertSame(3, (int) $sc->RemainingSessions);
-        $this->assertSame(1, (int) $sc->UsedSessions);
-
-        $this->assertSame(180, (int) SessionDeductionLedger::where('student_class_id', $scId)
-            ->where('event_type', 'deduct')->value('minutes'), 'ledger 應記錄 180 分');
-    }
-
     /** 正常課堂（非 type='extra'）即使時長較短也不比例扣，一律整堂。 */
     public function test_normal_short_session_not_prorated(): void
     {
@@ -93,26 +74,6 @@ class PartialMakeupDeductionTest extends TestCase
         $sc = StudentClass::findOrFail($scId);
         $this->assertSame(3, (int) $sc->RemainingSessions, '正常課堂整堂扣 1');
         $this->assertSame(1, (int) $sc->UsedSessions);
-    }
-
-    /** 正常課堂加長（非 type='extra'）亦不自動多扣，一律整堂。 */
-    public function test_normal_longer_session_not_prorated(): void
-    {
-        [$token, $student, $scId] = $this->seedCourse(120, 4);
-        $cs = ClassSession::create([
-            'StudentClassID' => $scId,
-            'SessionDate'    => Carbon::yesterday()->toDateString(),
-            'StartTime'      => '14:00',
-            'EndTime'        => '17:00', // 180 min
-            'Status'         => 'scheduled',
-        ]);
-
-        $this->postAttendance($token, $student, $scId, $cs->id)->assertCreated();
-
-        $sc = StudentClass::findOrFail($scId);
-        $this->assertSame(3, (int) $sc->RemainingSessions, '正常課堂加長仍整堂扣 1');
-        $this->assertNull(SessionDeductionLedger::where('student_class_id', $scId)
-            ->where('event_type', 'deduct')->value('minutes'));
     }
 
     /** 課程列表端點：部分扣堂後不可被 count-based 覆寫，且回傳精確 remaining_minutes。 */

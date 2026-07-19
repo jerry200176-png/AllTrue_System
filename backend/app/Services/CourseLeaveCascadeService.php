@@ -383,11 +383,13 @@ class CourseLeaveCascadeService
 
         $appendDate = $plan['append'];
         $appendTimes = self::resolveContractSlotTimes($course, $appendDate);
+        $appendStart = $appendTimes['start'] !== '' ? $appendTimes['start'] : $templateSession->StartTime;
+        $appendEnd = $appendTimes['end'] !== '' ? $appendTimes['end'] : $templateSession->EndTime;
         $newSession = app(ClassSessionMaterializationService::class)->upsertSlot([
             'StudentClassID' => $courseId,
             'SessionDate'    => $appendDate,
-            'StartTime'      => $appendTimes['start'] ?? $templateSession->StartTime,
-            'EndTime'        => $appendTimes['end'] ?? $templateSession->EndTime,
+            'StartTime'      => $appendStart,
+            'EndTime'        => $appendEnd,
             'Status'         => 'scheduled',
             'Note'           => self::appendNote($templateSession->Note, self::NOTE_AUTO_EXTENDED),
         ])['session'];
@@ -649,7 +651,7 @@ class CourseLeaveCascadeService
         }
 
         $times = self::resolveContractSlotTimes($course, $targetDate);
-        if (($times['start'] ?? '') === '' || ($times['end'] ?? '') === '') {
+        if ($times['start'] === '' || $times['end'] === '') {
             return;
         }
         $session->StartTime = $times['start'];
@@ -663,8 +665,8 @@ class CourseLeaveCascadeService
     {
         $times = app(SessionProjectionReadService::class)
             ->resolveSlotTimesForCourseDate($course, $date);
-        $start = substr((string) ($times['start'] ?? ''), 0, 5);
-        $end = substr((string) ($times['end'] ?? ''), 0, 5);
+        $start = substr((string) $times['start'], 0, 5);
+        $end = substr((string) $times['end'], 0, 5);
         if ($start === '' || $end === '') {
             return ['start' => '', 'end' => ''];
         }
