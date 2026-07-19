@@ -234,7 +234,7 @@ SessionDeductionService::deductOnAttendance($studentClass, $signIn)
 - **recomputeCounters() 雙模式**：
   - 課程**無**「部分時數」事件（無 `minutes != perSession` 的 ledger 列）→ 完全沿用舊 count-based 邏輯（byte-identical），僅補寫衍生分鐘欄。
   - 課程**有**部分時數事件 → 分鐘為權威：`RemainingMinutes = PurchasedMinutes − 淨用分鐘`，`RemainingSessions = ROUND_HALF_UP(RemainingMinutes / perSession)`（整數運算 `floor((2a+b)/(2b))`，無浮點），`UsedSessions = SessionCount − RemainingSessions`。
-- **比例扣堂範圍**：只對 `schedules.type='extra'` 補課且實際時長 < 每堂分鐘（chokepoint `deductOnAttendance` 自載 ClassSession 算 `clamp(EndTime−StartTime, 0..perSession)`，完整時長傳 `null`）。正常課堂、完整時長補課一律整堂。
+- **比例扣堂範圍**：只對 `schedules.type='extra'` 補課且實際時長 ≠ 每堂分鐘（chokepoint `deductOnAttendance` → `resolvePartialMakeupMinutes`；剛好完整時長傳 `null`）。短於或長於契約的補課皆記實際分鐘；正常課堂一律整堂。禁止 clamp 回 perSession。
 - **reverse 一致性**：`reverseForSession` 未指定 minutes 時，沖回對應 `deduct` 列的 `minutes`，避免淨值漂移。
 - **讀取端守門**：`StudentClassController::index` 對 fractional 餘額不可用 count-based observed 覆寫（`hasFractionalBalance`），並回傳精確 `remaining_minutes`。
 - **已知限制**：`PackageDeductionService` 池鏡像仍 `delta=±1` 整堂（TD-059）；`ClassSessionController::recalculateSessionCounters` 為死碼（TD-060）。

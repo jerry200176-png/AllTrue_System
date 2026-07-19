@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-19 — fix: 補課加長按實際分鐘扣堂
+
+Fixed：補課若排得比契約一堂更長（例如契約 2 小時、補課 3 小時），點名後會依實際上課分鐘扣 entitlement，不再固定只扣一整堂。預付包堂扣的是餘額分鐘，不自動加收現金。
+
+開發備註：`SessionDeductionService::resolvePartialMakeupMinutes` 允許 makeup minutes > perSession（§R59）。測試：`PartialMakeupDeductionTest`（180 分）。共用課程包分鐘鏡像仍見 TD-059。
+
 ## 2026-07-19 — fix: 單堂改時段費用與畫面說明一致
 
 Fixed：課程管理「備註／調整時段」的費用說明與後端寫入一致——按堂計費時段調整不改本堂與課程總費用；按時計費儲存後會依實際時長更新此堂費用並同步課程總費用。避免畫面寫「不影響」但帳卻被改（或相反）造成誤判。
