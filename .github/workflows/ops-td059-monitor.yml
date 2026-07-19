@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "30 2 * * 1,4" # Mon/Thu 10:30 Asia/Taipei
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/td059-monitor.request.md'
+      - '.github/workflows/ops-td059-monitor.yml'
 
 concurrency:
   group: ops-td059-monitor
