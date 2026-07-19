@@ -148,13 +148,15 @@ jobs:
             echo \"DETAIL_END\\n\";
             "
             echo "ATT_CANDIDATES"
-            ATT_PATH=$(php artisan tinker --execute="echo \\Illuminate\\Support\\Facades\\DB::table('bug_report_attachments')->where('bug_report_id',(int)${BID})->value('stored_path');" 2>/dev/null | tail -1 | tr -d '\r')
+            ATT_PATH="bug-reports/205/gTFW77ueBjxXhi4RV7DeDWhQGWW9YqmALzdEiYR8.png"
+            if [[ "$BID" != "205" ]]; then
+              ATT_PATH=$(php artisan tinker --execute="\$p=\\Illuminate\\Support\\Facades\\DB::table('bug_report_attachments')->where('bug_report_id',(int)${BID})->value('stored_path'); echo \$p ?: '';" 2>/dev/null | tail -1 | tr -d '\r')
+            fi
             if [[ -n "$ATT_PATH" && -f "storage/app/public/$ATT_PATH" ]]; then
               echo "ATT_FILE storage/app/public/$ATT_PATH"
-              echo "ATT_B64_START"
-              base64 -w0 "storage/app/public/$ATT_PATH"
-              echo
-              echo "ATT_B64_END"
+              mkdir -p /tmp/bug-att
+              cp "storage/app/public/$ATT_PATH" /tmp/bug-att/attachment.bin
+              # copy to runner via stdout size only; use scp reverse — instead write under /tmp on runner with ssh cat
             fi
             if [[ "$BID" == "205" ]]; then
               php artisan tinker --execute='
@@ -190,3 +192,30 @@ jobs:
             fi
           fi
           REMOTE
+
+      - name: Fetch attachment to runner
+        if: ${{ inputs.bug_id != '' }}
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BUG_ID: ${{ inputs.bug_id }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          mkdir -p bug-attachment
+          # Known path for 205; else skip
+          if [[ "$BUG_ID" == "205" ]]; then
+            scp -i ~/.ssh/deploy_key -P "$PORT" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "${PI_SSH_USER}@${PI_SSH_HOST}:/home/admin/backend/storage/app/public/bug-reports/205/gTFW77ueBjxXhi4RV7DeDWhQGWW9YqmALzdEiYR8.png" \
+              bug-attachment/att-152.png
+            ls -la bug-attachment/
+          fi
+
+      - name: Upload attachment artifact
+        if: ${{ inputs.bug_id != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-${{ inputs.bug_id }}-attachment
+          path: bug-attachment/
+          if-no-files-found: warn
+          retention-days: 7
