@@ -1,0 +1,35 @@
+{
+  "generated_from_run": "29685472249",
+  "pi_head": "91028fce8cef9d253076db43f159299f854ad31c",
+  "high_confidence": 19,
+  "by_campus": {
+    "9": 1,
+    "3": 7,
+    "13": 2,
+    "11": 9
+  },
+  "session_ids": [
+    3266,
+    4790,
+    6392,
+    6393,
+    6395,
+    8359,
+    14483,
+    19527,
+    15514,
+    22056,
+    17292,
+    19519,
+    25011,
+    17823,
+    17824,
+    23653,
+    20489,
+    20490,
+    25032
+  ],
+  "selected_default": 0,
+  "execute": false,
+  "td059_status": "tinker_failed_DB_alias; retry with FQCN"
+}
