@@ -219,6 +219,16 @@ jobs:
               echo "SCHED_START", PHP_EOL;
               foreach($sched as $s){ echo json_encode($s, JSON_UNESCAPED_UNICODE), PHP_EOL; }
               echo "SCHED_END", PHP_EOL;
+              $huangId=67; $date="2026-07-14";
+              $hs=\Illuminate\Support\Facades\DB::table("schedules")
+                ->where("teacher_id",$huangId)
+                ->whereDate("schedule_date",$date)
+                ->orderBy("start_time")
+                ->get(["id","teacher_id","student_course_id","student_id","status","start_time","end_time","branch_id","original_schedule_id","type"]);
+              echo "HUANG_SCHED_START", PHP_EOL;
+              foreach($hs as $s){ echo json_encode($s, JSON_UNESCAPED_UNICODE), PHP_EOL; }
+              echo "HUANG_SCHED_END", PHP_EOL;
+
               '
             fi
           fi
