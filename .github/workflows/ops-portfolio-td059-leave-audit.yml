@@ -1,0 +1,230 @@
+name: Ops Portfolio + TD-059 + Leave CSV (read-only)
+
+# Agent cannot read Issues (App 403). Actions GITHUB_TOKEN can.
+# Pi SSH runs read-only TD-059 audit + leave-cascade CSV (no --execute).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/ops-portfolio-td059-leave.request.md'
+      - '.github/workflows/ops-portfolio-td059-leave-audit.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ops-portfolio-td059-leave-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  github-open-issues:
+    name: Dump open GitHub Issues (no PRs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Export open issues JSON
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          mkdir -p out
+          gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
+            --jq '[.[] | select(.pull_request == null) | {
+              number, title, state, created_at, updated_at,
+              labels: [.labels[].name],
+              user: .user.login,
+              comments, html_url,
+              body_len: (.body // "" | length)
+            }]' > out/open-issues.json
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+          rows = json.loads(Path("out/open-issues.json").read_text())
+          Path("out/open-issues-summary.json").write_text(json.dumps({
+            "count": len(rows),
+            "generated_at": __import__("datetime").datetime.utcnow().isoformat() + "Z",
+            "titles": [{"number": r["number"], "title": r["title"], "labels": r["labels"]} for r in rows],
+          }, indent=2, ensure_ascii=False))
+          print(f"open_issues={len(rows)}")
+          PY
+          # Comment on follow-up issues if present (idempotent note)
+          for N in 1342 1343; do
+            gh api "repos/${REPO}/issues/${N}/comments" \
+              -f body="Ops audit workflow run ${{ github.run_id }} started (read-only portfolio / TD-059 / leave CSV). Artifacts on the Actions run." \
+              || echo "skip comment #$N"
+          done
+
+      - name: Upload issues artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-issues-dump
+          path: out/
+          retention-days: 14
+
+  pi-readonly-audits:
+    name: Pi TD-059 audit + leave CSV
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${PI_HOST_KEY:-}" ]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Run read-only audits on Pi
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/pi-audit.log
+          set -euo pipefail
+          cd /home/admin/backend
+          echo "=== HEAD ==="
+          git rev-parse HEAD
+          echo "=== TD059_AUDIT_JSON ==="
+          php artisan tinker --execute='
+          $pkgTotal = (int) DB::table("course_packages")->count();
+          $boundCourses = (int) DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->count();
+          $boundPackages = (int) DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->distinct()->count("PackageID");
+          $multiMember = DB::table("StudentClass")
+            ->select("PackageID", DB::raw("COUNT(*) as members"))
+            ->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)
+            ->groupBy("PackageID")->havingRaw("COUNT(*) > 1")->get();
+          $partialDeducts = (int) DB::table("session_deduction_ledger as l")
+            ->join("StudentClass as sc", "sc.ID", "=", "l.student_class_id")
+            ->whereNotNull("sc.PackageID")->where("sc.PackageID", ">", 0)
+            ->where("l.event_type", "deduct")
+            ->whereNotNull("l.minutes")->where("l.minutes", ">", 0)->count();
+          $partialReverse = (int) DB::table("session_deduction_ledger as l")
+            ->join("StudentClass as sc", "sc.ID", "=", "l.student_class_id")
+            ->whereNotNull("sc.PackageID")->where("sc.PackageID", ">", 0)
+            ->where("l.event_type", "reverse")
+            ->whereNotNull("l.minutes")->where("l.minutes", ">", 0)->count();
+          $driftRows = DB::select("SELECT l.class_session_id, l.student_class_id, sc.PackageID AS package_id, SUM(CASE WHEN l.event_type=\"deduct\" THEN COALESCE(l.minutes, 0) WHEN l.event_type=\"reverse\" THEN -COALESCE(l.minutes, 0) ELSE 0 END) AS net_minutes, (SELECT COALESCE(SUM(p.delta),0) FROM package_session_ledger p WHERE p.class_session_id = l.class_session_id AND p.package_id = sc.PackageID) AS package_net_delta FROM session_deduction_ledger l JOIN StudentClass sc ON sc.ID = l.student_class_id WHERE sc.PackageID IS NOT NULL AND sc.PackageID > 0 AND l.class_session_id IS NOT NULL AND l.minutes IS NOT NULL AND l.minutes > 0 GROUP BY l.class_session_id, l.student_class_id, sc.PackageID HAVING ABS(package_net_delta) > 0 AND net_minutes > 0 LIMIT 200");
+          $contractMismatch = 0;
+          foreach ($driftRows as $r) {
+            try {
+              $model = App\Models\StudentClass::find((int) $r->student_class_id);
+              $per = $model ? (int) $model->perSessionMinutes() : 0;
+            } catch (Throwable $e) { $per = 0; }
+            if ($per > 0 && (int) $r->net_minutes !== $per && (int) $r->package_net_delta !== 0) {
+              $contractMismatch++;
+            }
+          }
+          echo json_encode([
+            "ok" => true,
+            "course_packages_rows" => $pkgTotal,
+            "bound_active_courses" => $boundCourses,
+            "bound_distinct_packages" => $boundPackages,
+            "multi_member_packages" => $multiMember->count(),
+            "multi_member_courses" => (int) $multiMember->sum("members"),
+            "partial_minute_deducts_on_package_members" => $partialDeducts,
+            "partial_minute_reverses_on_package_members" => $partialReverse,
+            "partial_sessions_with_package_ledger" => count($driftRows),
+            "partial_sessions_minutes_ne_contract_with_package_delta" => $contractMismatch,
+            "sample_partial_session_ids" => array_slice(array_map(fn ($r) => (int) $r->class_session_id, $driftRows), 0, 20),
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+
+          echo "=== LEAVE_CASCADE_DRYRUN ==="
+          CSV=/tmp/leave-slot-review-all.csv
+          HC=/tmp/leave-slot-review-high-confidence.csv
+          php artisan repair:leave-cascade-slot-times --dry-run --limit=200 --export-csv="$CSV" || true
+          if [ -f "$CSV" ]; then
+            head -n 1 "$CSV" > "$HC"
+            # column 2 = confidence (selected,confidence,...)
+            awk -F',' 'NR>1 && $2=="high_confidence"' "$CSV" >> "$HC" || true
+            echo "LEAVE_CSV_ALL_LINES=$(wc -l < "$CSV")"
+            echo "LEAVE_CSV_HC_LINES=$(wc -l < "$HC")"
+            # Redacted preview: drop student_name column (6) for log
+            python3 - <<'PY'
+          import csv
+          from pathlib import Path
+          p = Path("/tmp/leave-slot-review-high-confidence.csv")
+          if not p.exists():
+            print("HC_CSV_MISSING")
+            raise SystemExit(0)
+          rows = list(csv.DictReader(p.open()))
+          print("HC_COUNT", len(rows))
+          campuses = {}
+          for r in rows:
+            c = r.get("campus_id") or "?"
+            campuses[c] = campuses.get(c, 0) + 1
+            print("HC_ROW", r.get("class_session_id"), r.get("student_class_id"), r.get("campus_id"),
+                  r.get("session_date"), r.get("status"), r.get("current_start"), "->", r.get("contract_start"),
+                  r.get("classify_reason"))
+          print("HC_BY_CAMPUS", campuses)
+          PY
+            # Copy redacted HC (no student_name) for artifact
+            python3 - <<'PY'
+          import csv
+          from pathlib import Path
+          src = Path("/tmp/leave-slot-review-high-confidence.csv")
+          dst = Path("/tmp/leave-slot-review-high-confidence-redacted.csv")
+          if not src.exists():
+            raise SystemExit(0)
+          with src.open() as f, dst.open("w", newline="") as out:
+            r = csv.DictReader(f)
+            fields = [c for c in (r.fieldnames or []) if c != "student_name"]
+            w = csv.DictWriter(out, fieldnames=fields)
+            w.writeheader()
+            for row in r:
+              w.writerow({k: row.get(k, "") for k in fields})
+          print("REDACTED_HC_OK", dst)
+          PY
+            cp -f /tmp/leave-slot-review-high-confidence-redacted.csv /tmp/hc-redacted.csv 2>/dev/null || true
+          fi
+          echo "=== DONE ==="
+          REMOTE
+
+          # Pull redacted CSV from Pi if present
+          scp -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/leave-slot-review-high-confidence-redacted.csv" \
+            out/leave-slot-review-high-confidence-redacted.csv \
+            || echo "no redacted csv"
+
+          # Extract TD059 JSON line
+          grep -n "TD059_AUDIT_JSON\|\"ok\": true\|\"ok\":true" out/pi-audit.log | head -20 || true
+          python3 <<'PY'
+          from pathlib import Path
+          import json,re
+          text = Path("out/pi-audit.log").read_text(errors="replace")
+          m = re.search(r'\{"ok": true.*\}', text)
+          if m:
+            Path("out/td059-audit.json").write_text(json.dumps(json.loads(m.group(0)), indent=2))
+            print("td059 ok")
+          else:
+            Path("out/td059-audit.json").write_text(json.dumps({"ok": False, "error": "parse_failed"}))
+            print("td059 parse failed")
+          PY
+
+      - name: Upload Pi audit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-td059-leave-audit
+          path: out/
+          retention-days: 14
