@@ -90,15 +90,21 @@ class RepairLeaveCascadeSlotTimes extends Command
             $this->info("Director review CSV: {$csvPath}");
         }
 
-        if ($dryRun || $plan === []) {
+        if ($dryRun) {
             return self::SUCCESS;
         }
 
+        // Founder gate: never re-scan-then-batch-write; only explicit approved IDs.
         $allowedIds = $this->parseSessionIds((string) ($this->option('session-ids') ?? ''));
         if ($allowedIds === []) {
             $this->error('--execute requires --session-ids=<approved ClassSession IDs> (no re-scan batch write)');
 
             return self::FAILURE;
+        }
+        if ($plan === []) {
+            $this->warn('No candidates; idempotent noop.');
+
+            return self::SUCCESS;
         }
         $apply = array_values(array_filter(
             $plan,
