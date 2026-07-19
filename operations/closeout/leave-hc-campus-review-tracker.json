@@ -56,14 +56,17 @@
       "unreplied": 7,
       "status": "awaiting_delivery",
       "delivered_at": null,
-      "last_tracked_at": "2026-07-19T12:51:05.009280Z",
+      "last_tracked_at": "2026-07-19T13:04:12.577958Z",
       "defer_status": null,
       "notes": "CSV: director-review-3_大直分校.csv",
       "due_at": "2026-07-22T18:00:00+08:00",
       "reminder_at": "2026-07-23T09:00:00+08:00",
       "decision_received_count": 0,
       "artifact_version": "29686172773",
-      "delivery_task_id": "LEAVE-HC-DELIVER-1342"
+      "delivery_task_id": "LEAVE-HC-DELIVER-1342",
+      "channel_attempt": "line_staff_group",
+      "channel_result": "skipped_no_line",
+      "line_delivery_run": "29688129820"
     },
     {
       "campus_id": 11,
@@ -78,14 +81,17 @@
       "unreplied": 9,
       "status": "awaiting_delivery",
       "delivered_at": null,
-      "last_tracked_at": "2026-07-19T12:51:05.009280Z",
+      "last_tracked_at": "2026-07-19T13:04:12.577958Z",
       "defer_status": null,
       "notes": "CSV: director-review-11_新莊分校.csv",
       "due_at": "2026-07-22T18:00:00+08:00",
       "reminder_at": "2026-07-23T09:00:00+08:00",
       "decision_received_count": 0,
       "artifact_version": "29686172773",
-      "delivery_task_id": "LEAVE-HC-DELIVER-1342"
+      "delivery_task_id": "LEAVE-HC-DELIVER-1342",
+      "channel_attempt": "line_staff_group",
+      "channel_result": "skipped_no_line",
+      "line_delivery_run": "29688129820"
     },
     {
       "campus_id": 13,
@@ -100,14 +106,17 @@
       "unreplied": 2,
       "status": "awaiting_delivery",
       "delivered_at": null,
-      "last_tracked_at": "2026-07-19T12:51:05.009280Z",
+      "last_tracked_at": "2026-07-19T13:04:12.577958Z",
       "defer_status": null,
       "notes": "CSV: director-review-13_新莊中平分校.csv",
       "due_at": "2026-07-22T18:00:00+08:00",
       "reminder_at": "2026-07-23T09:00:00+08:00",
       "decision_received_count": 0,
       "artifact_version": "29686172773",
-      "delivery_task_id": "LEAVE-HC-DELIVER-1342"
+      "delivery_task_id": "LEAVE-HC-DELIVER-1342",
+      "channel_attempt": "line_staff_group",
+      "channel_result": "skipped_no_line",
+      "line_delivery_run": "29688129820"
     },
     {
       "campus_id": 9,
@@ -122,14 +131,17 @@
       "unreplied": 1,
       "status": "awaiting_delivery",
       "delivered_at": null,
-      "last_tracked_at": "2026-07-19T12:51:05.009280Z",
+      "last_tracked_at": "2026-07-19T13:04:12.577958Z",
       "defer_status": null,
       "notes": "CSV: director-review-9_新店分校.csv",
       "due_at": "2026-07-22T18:00:00+08:00",
       "reminder_at": "2026-07-23T09:00:00+08:00",
       "decision_received_count": 0,
       "artifact_version": "29686172773",
-      "delivery_task_id": "LEAVE-HC-DELIVER-1342"
+      "delivery_task_id": "LEAVE-HC-DELIVER-1342",
+      "channel_attempt": "line_staff_group",
+      "channel_result": "skipped_no_line",
+      "line_delivery_run": "29688129820"
     }
   ],
   "totals": {
@@ -143,9 +155,13 @@
   "platform_ops_delivery_task": {
     "id": "LEAVE-HC-DELIVER-1342",
     "owner": "platform-ops",
-    "single_step": "After LINE notice fires: download campus CSV from Actions run 29686172773 artifact director-leave-hc-and-evidence; send that campus file to the campus director via LINE/file share; record acknowledged_at.",
+    "single_step": "Download campus CSV from Actions run 29686172773 artifact director-leave-hc-and-evidence; deliver that file to the campus director via a working ops channel (director email / in-person / WhatsApp). Then set tracker status=delivered + acknowledged_at. Optionally configure Campus.staff_line_group_id so future LINE notices work.",
     "artifact_run": "29686172773",
     "created_at": "2026-07-19T12:51:05.009280Z",
-    "status": "open"
+    "status": "open_blocked",
+    "attempted_at": "2026-07-19T13:04:12.577958Z",
+    "attempt_run": "29688129820",
+    "attempt_result": "all_four_campuses_skipped_no_line_missing_staff_line_group_id",
+    "gmail_agent_result": "smtp_535_auth_failed"
   }
 }
