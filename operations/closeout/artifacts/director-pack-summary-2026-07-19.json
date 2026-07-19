@@ -1,0 +1,14 @@
+{
+  "exported_at": "2026-07-19T11:57:56.689033Z",
+  "source_run": "29686095164",
+  "high_confidence": 19,
+  "by_campus": {
+    "9_新店分校": 1,
+    "3_大直分校": 7,
+    "13_新莊中平分校": 2,
+    "11_新莊分校": 9
+  },
+  "selected_default": 0,
+  "decision_options": ["核准修正", "保留現況", "需要查證"],
+  "execute": false
+}

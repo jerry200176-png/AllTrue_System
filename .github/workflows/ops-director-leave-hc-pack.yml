@@ -264,49 +264,46 @@ jobs:
           import json, re
           from pathlib import Path
           text = Path("out/pi.log").read_text(errors="replace")
-          # scheduler JSON lines
-          for label, date in [("0718", "2026-07-18"), ("0719", "2026-07-19")]:
-            m = re.search(r'\{"date":"%s".*?\}(?=\n|$)' % date, text)
-            if m:
-              # may be truncated — find from marker
-              pass
-          # extract database_checks snippets via regex
           for date in ("2026-07-18", "2026-07-19"):
             idx = text.find(f'"date":"{date}"')
-            if idx < 0:
-              continue
-            chunk = text[idx:idx+8000]
-            # find database_checks
-            m = re.search(r'"database_checks":\{[^}]+\}', chunk)
-            anc = "yes" if "ANCESTOR_1263 ===\nyes" in text or "ANCESTOR_1263 ===\r\nyes" in text else ("yes" if "=== ANCESTOR_1263 ===\nyes" in text else "unknown")
+            m = None
+            if idx >= 0:
+              m = re.search(r'"database_checks":\{[^}]+\}', text[idx:idx+12000])
             Path(f"out/orphan-checks-{date}.json").write_text(json.dumps({
               "date": date,
               "database_checks_raw": m.group(0) if m else None,
-              "merge_base_1263_on_pi": "see log",
             }, indent=2))
-          # TD059 FN
-          m = re.search(r'\{"ok":\s*true,\s*"query_scope".*?\}', text)
-          if not m:
-            m = re.search(r'\{"ok":true,"query_scope".*?\}', text)
-          if m:
-            Path("out/td059-fn.json").write_text(json.dumps(json.loads(m.group(0)), indent=2, ensure_ascii=False))
-            print("TD059_FN_OK")
-          else:
-            Path("out/td059-fn.json").write_text(json.dumps({"ok": False, "error": "parse_failed"}))
-            print("TD059_FN_PARSE_FAIL")
-          # ancestor
+          # Prefer line after TD059 marker; tolerate long JSON
+          fn = {"ok": False, "error": "parse_failed"}
+          marker = text.find("=== TD059_FN_JSON ===")
+          if marker >= 0:
+            for line in text[marker:].splitlines()[1:20]:
+              line=line.strip()
+              if line.startswith("{") and "query_scope" in line:
+                try:
+                  fn = json.loads(line)
+                  break
+                except Exception as e:
+                  fn = {"ok": False, "error": str(e), "raw_prefix": line[:200]}
+          Path("out/td059-fn.json").write_text(json.dumps(fn, indent=2, ensure_ascii=False))
+          print("TD059_FN", fn.get("ok"), fn.get("multi_member_packages"))
           Path("out/deploy-1263.json").write_text(json.dumps({
             "pr": 1263,
             "merge_sha": "9fab6e3e637c43cde79002526db746646d36a579",
             "ancestor_line": [l for l in text.splitlines() if "ANCESTOR" in l or l.strip() in ("yes","no")],
           }, indent=2))
+          # director summary from Pi pack if present
+          summ = Path("out/director-leave-hc/director-pack-summary.json")
+          print("DIRECTOR_SUMMARY", summ.exists())
           PY
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: director-leave-hc-and-evidence
           path: out/
           retention-days: 30
+          if-no-files-found: warn
 
   comment-issues:
     name: Comment Issues with evidence
