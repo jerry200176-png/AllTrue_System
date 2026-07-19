@@ -450,7 +450,7 @@
       </div>
 
         <!-- Attendance Timeline (FR-B-003) -->
-        <div class="pp-card">
+        <div class="pp-card" id="pp-attendance-section">
           <div class="pp-section-header">
             <span class="material-symbols-outlined pp-section-icon" style="color:var(--ds-success);">fact_check</span>
             <h3>出缺勤紀錄</h3>
@@ -789,7 +789,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed, reactive, nextTick } from 'vue';
+import { onMounted, ref, computed, reactive, nextTick, watch } from 'vue';
 import { getParentDashboard, parentLogin, parentLoginLine, parentSwitchStudent, upsertParentLearningRecordFeedback, parentReplyLearningRecordFeedback, getParentLearningRecordFeedback, submitParentFeedback, parentRequestLeave, getParentNotificationPreferences, setParentNotificationPreferences } from '../api';
 import { notesForRole, parentReleaseNoteTeaser } from '../lib/releaseNotes';
 import { trackParentPortalEvent } from '../lib/adoptionTelemetry';
@@ -1281,6 +1281,43 @@ const ringDash = computed(() => {
   const pct = Math.min(1, remaining / Math.max(total, 1));
   const circumference = 2 * Math.PI * 34;
   return `${pct * circumference} ${circumference}`;
+});
+
+// ── LIFF deep-link tab parameter ─────────────────────────────────────
+// Reads ?tab= from URL to support Flex Message LIFF endpoint deep-links:
+//   /parent?tab=schedule   → 課表（排課異動通知）
+//   /parent?tab=attendance → 出勤紀錄（簽到通知，會導向學習 tab 並捲動）
+//   /parent?tab=billing    → 帳務（繳費通知）
+const urlTabParam = new URLSearchParams(window.location.search).get('tab') || '';
+let _urlTabApplied = false;
+
+const applyTabFromUrl = (tab) => {
+  if (!tab || _urlTabApplied) return;
+  _urlTabApplied = true;
+  // Clear the param from the URL bar without a page reload
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('tab');
+    window.history.replaceState({}, '', url.toString());
+  } catch (_) { /* ignore */ }
+
+  const validTabs = ['learning', 'schedule', 'billing'];
+  if (tab === 'attendance') {
+    activeTab.value = 'learning';
+    nextTick(() => {
+      setTimeout(() => {
+        const el = document.getElementById('pp-attendance-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+    });
+  } else if (validTabs.includes(tab)) {
+    activeTab.value = tab;
+  }
+};
+
+// Apply tab param once dashboard is loaded
+watch(dashboard, (d) => {
+  if (d && urlTabParam) applyTabFromUrl(urlTabParam);
 });
 
 const loadDashboard = async () => {
