@@ -1,7 +1,5 @@
 <?php
 
-/** @phpstan-ignore-file — operational Pi probe; Eloquent::query() return types noise at level 5 */
-
 namespace App\Console\Commands;
 
 use App\Models\ClassSession;
