@@ -882,18 +882,20 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R59. 扣堂改分鐘制權威後，`RemainingSessions` 是 ROUND_HALF_UP 衍生顯示值（#613）
 
-**觸發情境**：2026-05-31 #613 落地「補課部分時數比例扣堂」。
+**觸發情境**：2026-05-31 #613 落地「補課非標準時長按實際分鐘扣堂」；2026-07-19 延伸涵蓋**加長**補課（契約 2h、補課 3h）。
 
 **根因 / 設計**：扣堂權威單位由「堂數」改為「分鐘」。權威來源＝`StudentClass.PurchasedMinutes/RemainingMinutes` + `session_deduction_ledger.minutes`；`RemainingSessions` 變成由 `ROUND_HALF_UP(RemainingMinutes / perSessionMinutes)` 衍生的整數**顯示值**（整數運算、無浮點）。
 
 **強制規則（改扣堂/堂數顯示前必讀）**：
-- **唯一權威扣堂路徑**＝`SessionDeductionService::recomputeCounters()`；分鐘換算 chokepoint＝`deductOnAttendance`（自載 ClassSession，`clamp(EndTime−StartTime, 0..perSession)`，完整時長傳 `null`＝整堂、byte-identical）。
-- 比例扣堂**只**作用於 `schedules.type='extra'` 補課且時長 < 每堂分鐘；正常課堂、完整時長補課一律整堂。**禁止**把規則擴大到所有堂次。
+- **唯一權威扣堂路徑**＝`SessionDeductionService::recomputeCounters()`；分鐘換算 chokepoint＝`deductOnAttendance` → `resolvePartialMakeupMinutes`（自載 ClassSession；`type=extra` 且時長 ≠ perSession 時記實際分鐘，剛好完整時長傳 `null`＝整堂）。
+- **補課非標準時長**（短於**或長於**契約每堂分鐘）走實際分鐘；正常課堂一律整堂。**禁止**把規則擴大到非 `extra` 堂次。
+- **禁止**把實際分鐘 clamp 回 perSession（加長補課會被錯扣成整堂）。
 - 任何讀取端**不可**用 count-based observed 值覆寫已有「部分時數」（fractional `RemainingMinutes`）課程的 `RemainingSessions`（`StudentClassController::index` 已加 `hasFractionalBalance` 守門）；要顯示精確值用 `remaining_minutes`。
 - `reverseForSession` 必須沖回對應 deduct 的 `minutes`（否則淨值漂移）。
 - ⚠️ 共用課程包池鏡像（`PackageDeductionService`）尚未分鐘感知（TD-059）；`recalculateSessionCounters` 為死碼勿誤用（TD-060）。
+- ⚠️ 預付包堂的「加長補課」扣的是 entitlement 分鐘，**不等于**自動加收現金；現金／Charge 仍走 §R76 session／hour 規則。
 
-**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含列表端點不被覆寫）。
+**測試**：`SessionDeductionMinutesEngineTest`、`PartialMakeupDeductionTest`（含 90／120／180 分補課與列表端點不被覆寫）。
 
 ---
 
@@ -905,7 +907,20 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - session mode：`session_charge = round(Rate)`；時段調整**不得**因時長產生新 Charge delta（僅修正舊偏差）。
   - hour mode：`session_charge = round(Rate × actual_minutes / 60)`；儲存後**必須**把 delta 寫回課程總費用；前端文案不得寫「僅供參考／不改總費用」。
   - 改計費分支時前後端與 `ClassSessionChargeTest` 必須同 PR 對齊；詳見 Archive §單堂費用固定。
-- **不做的範圍**：本條只修「畫面↔寫入一致性」。契約為兩小時、偶發排三小時時，**扣堂仍整堂**（見 §R59）；若要自動多扣／加收屬產品決策，另開 PRD。
+- **與扣堂分工**：預付包堂 entitlement 的加長／縮短補課扣分鐘見 §R59；本條只管 Charge 文案與寫入，不可把「扣堂分鐘」誤當「立刻加收現金」。
+
+---
+
+### R77. 請假順延必須依目標星期對齊契約時段（多星期不同鐘點）
+
+- **觸發情境**：2026-07-19 老師回報「三 5–7、六 10–12，請了三，六會變成 5–7」。
+- **根因（Fact）**：`CourseLeaveCascadeService::shiftAndAppendAfterLeave` 只改 `SessionDate`、保留原列 `StartTime`/`EndTime`。多星期契約（週三 17:00 + 週六 10:00）日期往前推後，週三鐘點的列會落在週六日期上。
+- **強制規則**：
+  1. 順延／撤銷請假移動日期後，必須用契約 `week*/time*`（`SessionProjectionReadService::resolveSlotTimesForCourseDate`）對齊**目標日**星期時段。
+  2. `IsContractException=1`（刻意改時段／補課例外）不可被重寫回契約時段。
+  3. append 尾堂時段取自 append 日契約，不可抄上一筆 template 的異星期鐘點。
+  4. 歷史漂移用 `php artisan repair:leave-cascade-slot-times`（預設 dry-run；寫入需 `--execute --force` + `ALLOW_PROD_REPAIR=1`），僅修復「目前鐘點等於其他星期契約、卻不符本星期契約」的簽名列。
+- **測試必補**：`LeaveCascadeMultiWeekdaySlotTimesTest`（請假後週六仍 10–12；undo；exception 保留）；`RepairLeaveCascadeSlotTimesTest`。
 
 ---
 
@@ -966,11 +981,11 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
-| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
+| 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：補課短於或長於契約皆記實際分鐘；RemainingSessions 為 ROUND_HALF_UP 衍生值）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致；與扣堂分鐘分工）** |
 | 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
-| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan） |
+| 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan）、**§R77（多星期不同鐘點：順延後必須對齊目標星期契約時段）** |
 | 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-19T07:12:00Z",
-  "note": "Cursor Cloud Agent fix: align session/hour charge FE+BE (PR branch cursor/fix-session-charge-consistency-5b26). Local agent-start worktree unavailable in cloud; WSL task path not mounted."
+  "declared_at": "2026-07-19T07:40:00Z",
+  "note": "Cursor Cloud Agent fix: leave-cascade weekday slot times + longer makeup minutes (branch cursor/fix-leave-cascade-slot-times-makeup-dc0b). Local agent-start worktree unavailable in cloud; WSL task path not mounted."
 }
