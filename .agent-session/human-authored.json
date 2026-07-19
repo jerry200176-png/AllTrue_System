@@ -2,5 +2,5 @@
   "schema_version": "1.0",
   "provenance_type": "human-authored",
   "declared_at": "2026-07-19T11:20:00Z",
-  "note": "Cloud agent: open follow-up Issues via Actions GITHUB_TOKEN (agent ghs_ cannot issues:write)."
+  "note": "Cloud agent opens follow-up Issues through repository Actions automation because the interactive CLI lacks Issues create permission."
 }
