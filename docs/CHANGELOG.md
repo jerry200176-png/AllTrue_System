@@ -2,7 +2,7 @@
 
 ## 2026-07-19 — ops: leave/makeup evidence closeout + 扣堂 net idempotency
 
-- Pi：`evidence:leave-makeup-closeout`（drift dry-run + disposable leave/makeup probes）；ledger 淨額 idempotency（撤銷後可再點名）。歷史 `--execute` 仍需 Founder 批准。
+- `evidence:leave-makeup-closeout` + ledger 淨額 idempotency；歷史 `--execute` 仍需 Founder 批准。
 
 ## 2026-07-19 — fix: 補課加長按實際分鐘扣堂
 

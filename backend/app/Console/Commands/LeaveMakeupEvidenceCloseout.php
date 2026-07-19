@@ -19,8 +19,7 @@ class LeaveMakeupEvidenceCloseout extends Command
                             {--limit=200}
                             {--skip-fixture : Skip disposable probes}';
 
-    protected $description = 'Leave drift dry-run + disposable leave/makeup probes';
-
+    protected $description = 'Leave/makeup evidence probes + drift dry-run';
     private const MARK = '__CLOSEOUT_TEST__';
 
     public function handle(): int
