@@ -1,11 +1,12 @@
 name: Post audit conclusions to Issues
 
-# Agent App cannot write Issues; Actions can.
 on:
   push:
     branches: [main]
     paths:
       - 'operations/closeout/post-audit-comments.request.md'
+      - 'operations/closeout/issue-bodies/comment-*.md'
+      - '.github/workflows/post-audit-issue-comments.yml'
   workflow_dispatch:
 
 permissions:
@@ -18,47 +19,18 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Comment #1342 #1343 (+ optional #1262 note)
+      - name: Post comments from body files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           REPO="${{ github.repository }}"
-          gh api "repos/${REPO}/issues/1343/comments" -f body="$(cat <<'EOF'
-## TD-059 investigation result (read-only)
-
-**Run:** https://github.com/jerry200176-png/AllTrue_System/actions/runs/29685602058  
-**Artifact:** `operations/closeout/artifacts/td059-audit-2026-07-19.json`
-
-| Metric | Value |
-|--------|------:|
-| multi-member packages | 46 |
-| bound active courses | 112 |
-| partial-minute deducts on package members | **0** |
-| drift heuristic | **0** |
-
-**Decision: NO-GO for schema / dual-write.** Latent risk only. Keep P3 deferred; re-audit when makeup-on-package usage appears or quarterly. Doc: `docs/incidents/td059-package-pool-audit-2026-07-19.md`
-EOF
-)"
-          gh api "repos/${REPO}/issues/1342/comments" -f body="$(cat <<'EOF'
-## Director HC pack ready (no execute)
-
-**19** high-confidence sessions exported (`selected=0`).
-
-- Redacted CSV: `operations/closeout/artifacts/leave-slot-hc-redacted-2026-07-19.csv`
-- Summary: `operations/closeout/artifacts/leave-slot-hc-summary-2026-07-19.json`
-- SOP: `docs/sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md`
-- Evidence runs: `29685472249` / `29685602058`
-
-**Next:** Director marks `selected=1` / returns approved `class_session_id` allowlist. Ops runs `--execute --force --session-ids=…` only after that. Medium (57) + needs_review (20) stay out of batch.
-EOF
-)"
-          # #1262 already shipped classify fix (#1263) — ask for close after prod metric glance
-          gh api "repos/${REPO}/issues/1262/comments" -f body="$(cat <<'EOF'
-## Portfolio triage note
-
-Classify fix already merged as #1263 (`fix(ops): classify late student sign-in orphans`). CHANGELOG 2026-07-17/18.
-
-**Suggested disposition:** Already fixed — verify production `student_orphans_mdt_after_nightly` via scheduler evidence, then close if counts are healthy. Do not reopen implementation without new prod evidence.
-EOF
-)" || true
+          post() {
+            local num="$1" file="$2"
+            jq -n --arg body "$(cat "$file")" '{body:$body}' \
+              | gh api "repos/${REPO}/issues/${num}/comments" --input -
+          }
+          post 1343 operations/closeout/issue-bodies/comment-td059-nogo.md
+          post 1342 operations/closeout/issue-bodies/comment-leave-hc-pack.md
+          post 1262 operations/closeout/issue-bodies/comment-1262-triage.md || true
+          echo "comments posted"
