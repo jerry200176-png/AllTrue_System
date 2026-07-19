@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
   "provenance_type": "human-authored",
-  "declared_at": "2026-07-19T08:55:00Z",
-  "note": "Cloud agent: Founder closeout for leave/makeup — classify 96, TD-059 issue, director CSV path (no batch --execute)."
+  "declared_at": "2026-07-19T11:20:00Z",
+  "note": "Cloud agent opens follow-up Issues through repository Actions automation because the interactive CLI lacks Issues create permission."
 }

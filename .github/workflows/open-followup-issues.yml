@@ -1,0 +1,172 @@
+name: Open Follow-up Issues (idempotent)
+
+# Cloud agent ghs_ token cannot create Issues (403). Actions GITHUB_TOKEN can
+# with permissions.issues=write. Idempotent by title match; opens docs backfill PR.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/open-followup-issues.request.md'
+      - '.github/workflows/open-followup-issues.yml'
+      - 'operations/closeout/issue-bodies/**'
+  workflow_dispatch:
+
+concurrency:
+  group: open-followup-issues
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  open-issues:
+    name: Idempotent create + backfill PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Search or create follow-up issues
+        id: issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+
+          find_issue() {
+            local needle="$1"
+            gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" \
+              --jq ".[] | select(.pull_request == null) | select(.title | test(\"${needle}\"; \"i\")) | .number" \
+              | head -n 1 || true
+          }
+
+          create_issue() {
+            local title="$1"
+            local body_file="$2"
+            # Use input file to preserve markdown
+            jq -n --arg title "$title" --arg body "$(cat "$body_file")" '{title:$title, body:$body}' \
+              | gh api "repos/${REPO}/issues" --input - --jq '.number'
+          }
+
+          LEAVE_N=$(find_issue 'Director-reviewable leave-cascade slot-time repair')
+          TD_N=$(find_issue 'TD-059: Package pool minute')
+          if [ -z "${TD_N}" ]; then
+            TD_N=$(find_issue '^TD-059')
+          fi
+
+          if [ -z "${LEAVE_N}" ]; then
+            LEAVE_N=$(create_issue \
+              'Director-reviewable leave-cascade slot-time repair (CSV-first, approved session IDs only)' \
+              operations/closeout/issue-bodies/leave-cascade-director-review.md)
+            echo "Created leave-slot issue #${LEAVE_N}"
+          else
+            echo "Reusing leave-slot issue #${LEAVE_N}"
+          fi
+
+          if [ -z "${TD_N}" ]; then
+            TD_N=$(create_issue \
+              'TD-059: Package pool minute-based entitlement consistency' \
+              operations/closeout/issue-bodies/td059-package-pool-minutes.md)
+            echo "Created TD-059 issue #${TD_N}"
+          else
+            echo "Reusing TD-059 issue #${TD_N}"
+          fi
+
+          echo "leave_issue=${LEAVE_N}" >> "$GITHUB_OUTPUT"
+          echo "td059_issue=${TD_N}" >> "$GITHUB_OUTPUT"
+
+          mkdir -p operations/closeout
+          jq -n \
+            --argjson leave "${LEAVE_N}" \
+            --argjson td "${TD_N}" \
+            --arg run "${{ github.run_id }}" \
+            --arg repo "${REPO}" \
+            --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              generated_at: $ts,
+              leave_cascade_director_review: {number: $leave, url: ("https://github.com/"+$repo+"/issues/"+($leave|tostring))},
+              td059_package_pool_minutes: {number: $td, url: ("https://github.com/"+$repo+"/issues/"+($td|tostring))},
+              source_workflow_run: $run
+            }' > operations/closeout/followup-issue-links.json
+          cat operations/closeout/followup-issue-links.json
+
+      - name: Patch docs and open backfill PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEAVE_N: ${{ steps.issues.outputs.leave_issue }}
+          TD_N: ${{ steps.issues.outputs.td059_issue }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          BRANCH="chore/backfill-followup-issue-links-${LEAVE_N}-${TD_N}"
+
+          python3 <<PY
+          import re
+          from pathlib import Path
+          leave, td = int("${LEAVE_N}"), int("${TD_N}")
+          repo = "${REPO}"
+          close = Path("docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md")
+          text = close.read_text()
+          new_section = (
+              "## Follow-up work (out of this closeout)\n\n"
+              "| Track | Issue |\n"
+              "|-------|-------|\n"
+              f"| Director-reviewable leave-cascade slot repair (CSV-first) | [#{leave}](https://github.com/{repo}/issues/{leave}) |\n"
+              f"| TD-059 package pool minutes | [#{td}](https://github.com/{repo}/issues/{td}) |\n\n"
+              "Links also recorded in `operations/closeout/followup-issue-links.json`.\n\n"
+          )
+          text2 = re.sub(
+              r"## Follow-up work \(out of this closeout\).*?(?=## Teacher-facing final reply)",
+              new_section,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          close.write_text(text2)
+          td_path = Path("docs/TECH_DEBT.md")
+          t = td_path.read_text()
+          t = re.sub(r"\| GitHub Issue \| .* \|", f"| GitHub Issue | [#{td}](https://github.com/{repo}/issues/{td}) |", t, count=1)
+          t = t.replace(
+              "| 狀態 | Open（獨立 Issue 追蹤；見下方 GitHub） |",
+              f"| 狀態 | Open — [#{td}](https://github.com/{repo}/issues/{td}) |",
+          )
+          t = t.replace(
+              "| 狀態 | Open（獨立 Issue 追蹤；見下方 GitHub） |",
+              f"| 狀態 | Open — [#{td}](https://github.com/{repo}/issues/{td}) |",
+          )
+          # handle already-partial status lines
+          if f"issues/{td}" not in t.split("### TD-059")[1][:800]:
+              t = t.replace("### TD-059：共用課程包（PackageDeductionService）尚未支援部分時數扣堂（#613 後續）",
+                            "### TD-059：共用課程包（PackageDeductionService）尚未支援部分時數扣堂（#613 後續）", 1)
+          td_path.write_text(t)
+          print("docs patched")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add operations/closeout/followup-issue-links.json \
+            docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md \
+            docs/TECH_DEBT.md
+          if git diff --cached --quiet; then
+            echo "No doc changes"
+          else
+            git commit -m "docs: backfill follow-up issue links (#${LEAVE_N}, #${TD_N})"
+            git push -u origin "$BRANCH" --force
+            EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+            if [ -z "$EXISTING" ]; then
+              gh pr create --base main --head "$BRANCH" \
+                --title "docs: backfill follow-up issue links (#${LEAVE_N}, #${TD_N})" \
+                --body "Auto-opened by \`open-followup-issues.yml\` after creating/reusing Issues #${LEAVE_N} and #${TD_N}. Docs-only; no production deploy required."
+            fi
+          fi
+
+          gh api "repos/${REPO}/issues/1340/comments" \
+            -f body=$'Follow-up Issues ready:\n- Director leave-cascade CSV repair: #'"${LEAVE_N}"$'\n- TD-059 package pool minutes: #'"${TD_N}"$'\n\nBackfill branch: `'"${BRANCH}"'`' \
+            || true
