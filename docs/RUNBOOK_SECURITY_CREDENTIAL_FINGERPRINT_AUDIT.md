@@ -13,6 +13,8 @@ revoke, deploy, or update data.
 - Logs contain only credential class, candidate counts, and one of:
   `DIFFERENT`, `MATCH_ROTATION_REQUIRED`, or an incomplete-audit status.
 - Production SSH host verification uses the pinned `PI_HOST_KEY` repository secret.
+- The audit uses the matching read-only operations endpoint identity, `PI_HOST` and
+  `PI_USER`; deployment aliases are not mixed with this host-key pin.
 
 ## Operation
 
