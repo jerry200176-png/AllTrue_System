@@ -441,13 +441,13 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
-| 優先級 | P3 |
+| 狀態 | Open — investigating — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
+| 優先級 | P3（Pi audit 證明 drift → 升 P1；否則 defer） |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [DEV] #613 A1 落地；2026-07-19 Founder closeout 要求獨立 Issue |
 | 影響模組 | `App\Services\PackageDeductionService`（共用池 ledger 鏡像）|
 | 描述 | #613 讓單一 `StudentClass` 支援分鐘制部分扣堂，但共用課程包的池鏡像仍以 `delta=±1`（整堂）同步。若部分時數補課發生在**共用包**成員身上，池餘額與個別課的分鐘餘額會漂移。目前單人課程（多數情境）已正確。|
-| 建議做法 | 先調查包池實際使用量與加長／縮短補課是否已漂移；確認影響後再提整數分鐘模型 + migration／相容／rollback。**未確認影響前禁止改 production schema。** |
+| 建議做法 | 先調查包池實際使用量與加長／縮短補課是否已漂移（`ops-portfolio-td059-leave-audit.yml`）；確認影響後再提整數分鐘模型 + migration／相容／rollback。**未確認影響前禁止改 production schema。** |
 | 清償成本估計 | 中（半天）調查；實作視設計 |
 | 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
 | GitHub Issue | [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
