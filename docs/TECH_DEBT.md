@@ -441,8 +441,8 @@
 
 | 欄位 | 內容 |
 |---|---|
-| 狀態 | Open — investigating — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
-| 優先級 | P3（Pi audit 證明 drift → 升 P1；否則 defer） |
+| 狀態 | Open — **deferred (no prod drift)** — [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
+| 優先級 | P3（2026-07-19 audit：partial minutes on packages = 0 → defer） |
 | 發現日期 | 2026-05-31 |
 | 發現來源 | [DEV] #613 A1 落地；2026-07-19 Founder closeout 要求獨立 Issue |
 | 影響模組 | `App\Services\PackageDeductionService`（共用池 ledger 鏡像）|
@@ -451,6 +451,7 @@
 | 清償成本估計 | 中（半天）調查；實作視設計 |
 | 不做的代價 | 共用包 + 部分補課的罕見組合會使池餘額不準；多數單人課不受影響 |
 | GitHub Issue | [#1343](https://github.com/jerry200176-png/AllTrue_System/issues/1343) |
+| 調查結果（2026-07-19）| multi_member_packages=46；partial_minute_deducts_on_package_members=0；drift=0 → **禁止 schema** 直至再審 |
 
 ### TD-060：`ClassSessionController::recalculateSessionCounters` 為死碼（無 caller）且非分鐘感知
 

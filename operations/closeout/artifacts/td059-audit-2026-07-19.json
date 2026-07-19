@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "run_id": "29685602058",
+  "course_packages_rows": 120,
+  "bound_active_courses": 112,
+  "bound_distinct_packages": 48,
+  "multi_member_packages": 46,
+  "multi_member_courses": 110,
+  "partial_minute_deducts_on_package_members": 0,
+  "partial_minute_reverses_on_package_members": 0,
+  "partial_sessions_with_package_ledger": 0,
+  "partial_sessions_minutes_ne_contract_with_package_delta": 0,
+  "decision": "NO-GO schema \u2014 latent risk only; zero partial-minute package hits"
+}
