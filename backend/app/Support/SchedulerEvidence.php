@@ -233,7 +233,7 @@ final class SchedulerEvidence
             'execution_sli' => [
                 'numerator' => $counts['executed'],
                 'denominator' => $counts['expected'],
-                'ratio' => $counts['expected'] > 0 ? round($counts['executed'] / $counts['expected'], 4) : null,
+                'ratio' => round($counts['executed'] / max(1, $counts['expected']), 4),
             ],
             'success_sli' => [
                 'numerator' => $counts['succeeded'] + $counts['succeeded_with_zero_work'],
