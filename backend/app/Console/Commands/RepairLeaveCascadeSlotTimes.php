@@ -183,7 +183,7 @@ class RepairLeaveCascadeSlotTimes extends Command
                 if ($reciprocal) {
                     $reasons[] = 'reciprocal_weekday_clock_swap_pattern';
                 }
-                if ($isLeave || ($hasLeave && !$isLeave)) {
+                if ($isLeave || $hasLeave) {
                     $confidence = 'high_confidence';
                 } elseif ($reciprocal && count($items) >= 3) {
                     $confidence = 'medium_pattern';
