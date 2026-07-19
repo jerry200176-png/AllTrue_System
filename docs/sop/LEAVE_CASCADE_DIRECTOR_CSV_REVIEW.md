@@ -1,56 +1,70 @@
 # Leave-cascade slot repair — 主任審核包（CSV-first）
+
 **Issue:** [#1342](https://github.com/jerry200176-png/AllTrue_System/issues/1342)  
-**Closeout:** [`docs/incidents/leave-cascade-slot-times-closeout-2026-07-19.md`](../incidents/leave-cascade-slot-times-closeout-2026-07-19.md)  
-**Workflow:** `.github/workflows/ops-director-leave-hc-pack.yml`
+**Tracker:** [`operations/closeout/leave-hc-campus-review-tracker.json`](../../operations/closeout/leave-hc-campus-review-tracker.json)  
+**PII check:** [`docs/incidents/leave-hc-pii-artifact-security-2026-07-19.md`](../incidents/leave-hc-pii-artifact-security-2026-07-19.md)  
+**Workflows:** pack `ops-director-leave-hc-pack.yml` · tracker `ops-leave-hc-review-tracker.yml` · repair `ops-leave-cascade-repair.yml`
+
 ## 誰做什麼
+
 | 角色 | 責任 |
 |------|------|
-| 主任 | 開啟分校 CSV，逐列填「審核結果」 |
-| Ops／Agent | 用 `review_key` 對照表轉成 `--session-ids`，只執行核准列 |
-| Founder | **不**閱讀 `class_session_id`、不代替主任審核 |
+| 各校主任 | 填分校 CSV「審核結果」；不接觸 session ID |
+| Ops | 交付 CSV、更新 tracker、轉 repair bundle、手動 dispatch repair |
+| Founder | **不**代審 session ID |
+
+**Artifact 已生成 ≠ 交付完成。** 每校必須有 owner、交付／回覆期限、計數與最後追蹤時間。
+
+## 四校任務（SLA）
+
+| 分校 | 候補 | Owner | 交付 | 回覆 |
+|------|-----:|------|------|------|
+| 大直 (3) | 7 | 大直主任 + platform-ops | 2026-07-20 17:00+08 | 2026-07-22 18:00+08 |
+| 新莊 (11) | 9 | 新莊主任 + platform-ops | 同上 | 同上 |
+| 新莊中平 (13) | 2 | 新莊中平主任 + platform-ops | 同上 | 同上 |
+| 新店 (9) | 1 | 新店主任 + platform-ops | 同上 | 同上 |
+
+- 逾期提醒：2026-07-23 09:00+08（tracker workflow 留言 #1342）  
+- 最終 defer：2026-07-25 18:00+08（未回覆維持不修改，標記 `defer_unreplied`）  
+- 計數欄：候補／核准／保留／查證／未回覆／最後追蹤 — 見 tracker JSON
+
 ## 主任 CSV 欄位
-| 欄位 | 說明 |
-|------|------|
-| 審核結果 | 填：`核准修正` / `保留現況` / `需要查證`（預設空白＝唯讀不動） |
-| 分校／學生姓名／課程日期／星期 | 識別個案 |
-| 目前時間／契約應有時間／差異 | 錯置說明（白話） |
-| 堂次狀態 | 請假／已排課 |
-| 判定原因 | 為何列為 high-confidence |
-| 是否曾請假相關／是否人工修改時段 | 證據 |
-| 建議動作 | 系統建議（主任可改） |
-| 審核人／審核時間／備註 | audit |
-| review_key | 給系統對照用（**不是**課堂內部 ID 說明） |
-`class_session_id` 只存在 Ops 檔 `ops-review-key-map.json`，不上主任表。
-## High-confidence 判定（程式）
-`RepairLeaveCascadeSlotTimes::classifyPlan`：
-- `leave` 列且時段等於其他星期契約 → `high_confidence`（`leave_row_foreign_clock`）
-- 同課程有 leave 候選，scheduled sibling 同錯 → `high_confidence`（`scheduled_sibling_of_leave_on_same_course`）
-- 其餘 reciprocal ≥3 → medium；singleton → needs_review
-## 產出位置
-Actions artifact `director-leave-hc-and-evidence`：
-- `director-leave-hc/director-review-<campus>.csv`（含學生姓名，勿 commit 進 git）
-- `director-leave-hc/ops-review-key-map.json`
-- `director-leave-hc/director-pack-summary.json`
-傳遞：最低成本 = 下載 artifact → 分校 CSV 寄給／交給該校主任（Gmail／既有營運管道／Sheet 匯入皆可）。不大建 UI。
-## 核准 → 執行
-1. 主任交回填好的 CSV。
-2. Ops：
+
+審核結果：`核准修正` / `保留現況` / `需要查證`（空白＝唯讀不動）。含姓名的 CSV **只在** Actions artifact（retention **14 天**）或受控營運管道。
+
+## 核准 → repair bundle → 受控執行
+
+1. 主任交回填好 CSV（**禁止** commit／貼 Issue／PR）。  
+2. Ops 建 bundle（fail-closed）：
+
 ```bash
-python3 scripts/leave-cascade-director-decisions-to-allowlist.py \
-  --decisions-csv=/path/director-review-filled.csv \
-  --map-json=/path/ops-review-key-map.json \
-  --out-allowlist=/tmp/allowlist.txt \
-  --out-audit=/tmp/leave-hc-audit.json
+python3 scripts/leave-cascade-build-repair-bundle.py \
+  --decisions-csv=/secure/path/director-review-filled.csv \
+  --map-json=/secure/path/ops-review-key-map.json \
+  --hc-snapshot-json=operations/closeout/leave-hc-campus-review-tracker.json \
+  --campus-id=3 \
+  --approver='director:campus-3' \
+  --out-bundle=/secure/path/repair-bundle-campus-3.json
 ```
-3. 僅當 allowlist 非空：
-```bash
-ALLOW_PROD_REPAIR=1 php artisan repair:leave-cascade-slot-times \
-  --execute --force \
-  --session-ids="$(cat /tmp/allowlist.txt)" \
-  --snapshot=/tmp/leave-slot-snapshot.json
-```
-空白／保留／查證 → **不寫入**。`--execute` 無 `--session-ids` 會失敗（測試守護）。
-## 安全約束
-- `selected`／審核結果預設不核准。
-- 禁止 `--execute --force` 掃全庫。
-- Snapshot before/after；可依 snapshot 回滾時段。
+
+3. 手動 dispatch `ops-leave-cascade-repair.yml`：  
+   `mode=dry-run` → 確認 `planned_modifications` →  
+   `mode=execute` + `confirm_environment=PRODUCTION` + `confirm_phrase=I_APPROVE_LEAVE_HC_REPAIR` + bundle JSON + expected count。
+
+Bundle 含：allowlist、counts、approver、timestamp、campus、checksums、expected before/after、execution audit ID。  
+執行前驗證：HC snapshot 來源、明確核准、before 未變、契約 slot 未變、無新例外、無重複／跨校、核准數一致 — 任一失敗 fail closed。
+
+**禁止**只靠人工貼：
+
+`ALLOW_PROD_REPAIR=1 php artisan repair:leave-cascade-slot-times --execute --force --session-ids=...`
+
+## Post-repair exit gate
+
+`EXIT_GATE_JSON` / `REPAIR_RESULT_JSON` 必須滿足：`repaired`＝有效核准（或 idempotent `unchanged`）、`non_approved_touched=0`、逐筆 skip/fail 可解釋。通過後才可關 #1342。Medium／needs-review 非本 Issue 阻塞。
+
+## PII 紅線
+
+- Repo 只留 redacted summary + tracker。  
+- 姓名 CSV／filled CSV／ops map 不上 git、不上 Issue。  
+- Actions log 不印姓名或完整 CSV。  
+- 轉換後清除本機／runner／Pi 暫存。

@@ -193,3 +193,10 @@ storage/app/public/
 /docs/self-healing-layer.md
 /docs/sop-enforcement-layer.md
 /docs/reviews/ENGINEERING_AUDIT_2026-06-27.md
+
+# Leave-HC director PII (never commit named/filled packs)
+director-review-*.csv
+**/director-leave-hc/
+ops-review-key-map.json
+**/repair-bundle-campus-*.json
+**/leave-hc-filled*.csv

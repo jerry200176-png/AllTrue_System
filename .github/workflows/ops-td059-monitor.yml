@@ -1,0 +1,139 @@
+name: TD-059 monitored risk probe (#1343)
+
+# Decision B must be live: periodic FN probe; escalate only on first hit.
+# Quiet when clean — no daily Issue noise.
+
+on:
+  schedule:
+    - cron: "30 2 * * 1,4" # Mon/Thu 10:30 Asia/Taipei
+  workflow_dispatch:
+
+concurrency:
+  group: ops-td059-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    name: Pi FN probe (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run de-identified FN metrics
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/pi-td059.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $memberIds = \Illuminate\Support\Facades\DB::table("StudentClass")->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->pluck("ID")->all();
+          $multi = \Illuminate\Support\Facades\DB::table("StudentClass")->select("PackageID", \Illuminate\Support\Facades\DB::raw("COUNT(*) as c"))->whereNotNull("PackageID")->where("PackageID", ">", 0)->where("Stop", 0)->groupBy("PackageID")->havingRaw("COUNT(*) > 1")->get();
+          $partialAny = 0; $partialReverse = 0; $nullMinutesDeduct = 0; $pkgLedger = 0; $driftMembers = 0;
+          if ($memberIds) {
+            $partialAny = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->whereNotNull("minutes")->where("minutes", ">", 0)->count();
+            $partialReverse = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->where("event_type", "reverse")->whereNotNull("minutes")->where("minutes", ">", 0)->count();
+            $nullMinutesDeduct = (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->where("event_type", "deduct")->whereNull("minutes")->count();
+            $pkgLedger = (int) \Illuminate\Support\Facades\DB::table("package_session_ledger")->count();
+            $driftMembers = $partialAny > 0 ? (int) \Illuminate\Support\Facades\DB::table("session_deduction_ledger")->whereIn("student_class_id", $memberIds)->whereNotNull("minutes")->where("minutes", ">", 0)->distinct("student_class_id")->count("student_class_id") : 0;
+          }
+          echo json_encode([
+            "ok" => true,
+            "monitor" => "td059-decision-b",
+            "multi_member_packages" => $multi->count(),
+            "partial_minutes_signal" => $partialAny,
+            "partial_minutes_reverse" => $partialReverse,
+            "null_minutes_deduct_blind_spot" => $nullMinutesDeduct,
+            "package_session_ledger_rows" => $pkgLedger,
+            "personal_partial_member_courses" => $driftMembers,
+            "drift_proxy_note" => "partial_minutes_signal>0 on package members is the Decision B escalate trigger",
+            "blind_spot" => "null minutes historical rows cannot prove partial makeup (pre-#613 / whole-session path)",
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+          python3 <<'PY'
+          import json, re
+          from pathlib import Path
+          text = Path("out/pi-td059.log").read_text(errors="replace")
+          metrics = {"ok": False, "error": "parse_failed"}
+          for line in text.splitlines():
+              line=line.strip()
+              if line.startswith("{") and "td059-decision-b" in line:
+                  metrics = json.loads(line)
+                  break
+          Path("out/td059-monitor.json").write_text(json.dumps(metrics, indent=2, ensure_ascii=False))
+          print("METRICS", json.dumps({k: metrics.get(k) for k in (
+              "ok","multi_member_packages","partial_minutes_signal","partial_minutes_reverse",
+              "personal_partial_member_courses","null_minutes_deduct_blind_spot"
+          )}))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: td059-monitor
+          path: out/
+          retention-days: 30
+
+      - name: Escalate #1343 only on first hit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          RUN="${{ github.run_id }}"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          m = json.loads(Path("out/td059-monitor.json").read_text())
+          hit = int(m.get("partial_minutes_signal") or 0) > 0
+          Path("/tmp/td059-hit").write_text("1" if hit else "0")
+          Path("/tmp/td059-metrics.json").write_text(json.dumps({
+              "partial_minutes_signal": m.get("partial_minutes_signal"),
+              "partial_minutes_reverse": m.get("partial_minutes_reverse"),
+              "personal_partial_member_courses": m.get("personal_partial_member_courses"),
+              "multi_member_packages": m.get("multi_member_packages"),
+              "null_minutes_deduct_blind_spot": m.get("null_minutes_deduct_blind_spot"),
+              "blind_spot": m.get("blind_spot"),
+          }, ensure_ascii=False, indent=2))
+          PY
+          if [ "$(cat /tmp/td059-hit)" = "1" ]; then
+            {
+              echo "## TD-059 monitor ALERT — escalate to P1"
+              echo
+              echo "Run: https://github.com/${REPO}/actions/runs/${RUN}"
+              echo
+              echo "De-identified evidence:"
+              echo '```json'
+              cat /tmp/td059-metrics.json
+              echo '```'
+              echo
+              echo "**禁止**自動 schema migration。需 ARCH + Founder 批准後才可改 schema。"
+              echo
+              echo "Blind spot (known): null-minutes historical whole-session deducts."
+            } > /tmp/1343.md
+            jq -n --arg body "$(cat /tmp/1343.md)" '{body:$body}' \
+              | gh api "repos/${REPO}/issues/1343/comments" --input -
+            gh api -X POST "repos/${REPO}/issues/1343/labels" \
+              -f 'labels[]=P1' || true
+            echo "ESCALATED"
+          else
+            echo "CLEAN — no Issue comment (avoid noise). Artifact retained."
+          fi

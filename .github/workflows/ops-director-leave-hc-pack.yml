@@ -255,10 +255,14 @@ jobs:
           echo "=== DONE ==="
           REMOTE
 
-          # pull director pack
+          # pull director pack then wipe Pi temp (named CSV must not linger)
           scp -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             -r "${PI_SSH_USER}@${PI_SSH_HOST}:/tmp/director-leave-hc" out/ || true
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'rm -rf /tmp/director-leave-hc /tmp/leave-slot-all.csv /tmp/hc_raw.json /tmp/hc_enrich.json /tmp/enrich_ids.txt' || true
 
           python3 <<'PY'
           import json, re
@@ -302,7 +306,7 @@ jobs:
         with:
           name: director-leave-hc-and-evidence
           path: out/
-          retention-days: 30
+          retention-days: 14
           if-no-files-found: warn
 
   comment-issues:
