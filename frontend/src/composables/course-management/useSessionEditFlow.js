@@ -127,6 +127,8 @@ export function useSessionEditFlow({
       start_time: row.startTime || '',
       end_time: row.endTime || '',
       current_status: String(row.status || '').toLowerCase(),
+      // in-app #205: propagate for substitute picker exclude_student_id
+      student_id: Number(course.student_id ?? course.StudentID ?? row.studentId ?? 0) || null,
       student_name: course.student_name || row.studentName || '—',
       teacher_id: row.teacherId || course.teacher_id || null,
       teacher_name: row.teacherName || course.teacher_name || '—',
