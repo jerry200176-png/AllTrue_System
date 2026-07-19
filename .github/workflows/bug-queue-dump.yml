@@ -20,14 +20,34 @@ jobs:
       - name: Setup SSH
         env:
           PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
           PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          # Prefer live keyscan (matches deploy.yml); fall back to PI_HOST_KEY secret
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+            echo "using PI_HOST_KEY secret"
+          else
+            echo "::error::no host key"
+            exit 1
+          fi
           chmod 600 ~/.ssh/known_hosts
+          ssh-keygen -l -f ~/.ssh/deploy_key
+          # Probe port 22 then 2222 (Pi may move sshd)
+          if nc -z -w3 "$PI_SSH_HOST" 22 2>/dev/null; then
+            echo "SSH_PORT=22" >> "$GITHUB_ENV"
+          elif nc -z -w3 "$PI_SSH_HOST" 2222 2>/dev/null; then
+            echo "SSH_PORT=2222" >> "$GITHUB_ENV"
+            ssh-keyscan -p 2222 -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          else
+            echo "SSH_PORT=22" >> "$GITHUB_ENV"
+          fi
 
       - name: Query open bugs (no PII fields)
         env:
@@ -35,7 +55,9 @@ jobs:
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
         run: |
           set -euo pipefail
+          PORT="${SSH_PORT:-22}"
           ssh -i ~/.ssh/deploy_key \
+            -p "$PORT" \
             -o BatchMode=yes \
             -o ConnectTimeout=20 \
             -o StrictHostKeyChecking=yes \
