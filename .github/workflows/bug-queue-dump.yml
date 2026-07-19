@@ -1,0 +1,96 @@
+name: Bug Queue Dump (read-only)
+
+# PII-safe dump of newest open in-app bugs for triage. No writes.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: bug-queue-dump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    name: Dump open bug_reports (redacted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Query open bugs (no PII fields)
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE'
+          set -euo pipefail
+          cd /home/admin/backend
+          php artisan tinker --execute='
+          $open = DB::table("bug_reports")
+            ->whereIn("status", ["new","triaged","in_progress"])
+            ->orderByDesc("id")
+            ->limit(25)
+            ->get(["id","status","severity","CampusID","page_key","title","created_at","updated_at","reporter_user_id","url"]);
+          foreach ($open as $r) {
+            $title = (string)($r->title ?? "");
+            if (mb_strlen($title) > 120) $title = mb_substr($title, 0, 120) . "…";
+            // Strip phone-like / email-like tokens from title for log safety
+            $title = preg_replace("/\b\d{8,}\b/", "[num]", $title);
+            $title = preg_replace("/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i", "[email]", $title);
+            $atts = DB::table("bug_report_attachments")->where("bug_report_id", $r->id)->pluck("id")->all();
+            echo json_encode([
+              "id" => (int)$r->id,
+              "status" => $r->status,
+              "severity" => $r->severity,
+              "campus_id" => $r->CampusID,
+              "page_key" => $r->page_key,
+              "title" => $title,
+              "created_at" => $r->created_at,
+              "updated_at" => $r->updated_at,
+              "reporter_user_id" => (int)$r->reporter_user_id,
+              "attachment_ids" => array_map("intval", $atts),
+              "url_path" => is_string($r->url ?? null) ? parse_url($r->url, PHP_URL_PATH) : null,
+            ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          }
+          $newest = DB::table("bug_reports")->orderByDesc("id")->first(["id","status","severity","CampusID","page_key","title","created_at"]);
+          $nt = (string)($newest->title ?? "");
+          $nt = preg_replace("/\b\d{8,}\b/", "[num]", $nt);
+          echo "---META---", PHP_EOL;
+          echo json_encode([
+            "counts" => [
+              "new" => (int)DB::table("bug_reports")->where("status","new")->count(),
+              "triaged" => (int)DB::table("bug_reports")->where("status","triaged")->count(),
+              "in_progress" => (int)DB::table("bug_reports")->where("status","in_progress")->count(),
+              "resolved" => (int)DB::table("bug_reports")->where("status","resolved")->count(),
+            ],
+            "max_id" => (int)DB::table("bug_reports")->max("id"),
+            "newest_any" => $newest ? [
+              "id" => (int)$newest->id,
+              "status" => $newest->status,
+              "severity" => $newest->severity,
+              "campus_id" => $newest->CampusID,
+              "page_key" => $newest->page_key,
+              "created_at" => $newest->created_at,
+              "title" => mb_substr($nt, 0, 120),
+            ] : null,
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
