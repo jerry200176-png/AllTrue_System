@@ -93,14 +93,16 @@ class LearningRecordBackfillService
             return false;
         }
 
-        $voided->VoidedAt = null;
-        $voided->VoidedByUserID = null;
-        $voided->VoidReason = null;
-        $voided->Status = 'pending';
-        $voided->SessionDate = $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null;
-        $voided->StartTime = $cs->StartTime ? substr((string) $cs->StartTime, 0, 5) : null;
-        $voided->EndTime = $cs->EndTime ? substr((string) $cs->EndTime, 0, 5) : null;
-        $voided->SessionDeducted = false;
+        $voided->fill([
+            'VoidedAt' => null,
+            'VoidedByUserID' => null,
+            'VoidReason' => null,
+            'Status' => 'pending',
+            'SessionDate' => $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null,
+            'StartTime' => $cs->StartTime ? substr((string) $cs->StartTime, 0, 5) : null,
+            'EndTime' => $cs->EndTime ? substr((string) $cs->EndTime, 0, 5) : null,
+            'SessionDeducted' => false,
+        ]);
         $voided->save();
 
         return true;
