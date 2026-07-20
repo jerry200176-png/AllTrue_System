@@ -1930,30 +1930,15 @@ class LearningRecordController extends Controller
 
             foreach ($sessions as $cs) {
                 $existing = LearningRecord::where('ClassSessionID', $cs->id)->first();
-                if ($existing) {
-                    if (!$existing->isVoided()) {
-                        // Self-heal legacy drift: if record date/time no longer matches ClassSession,
-                        // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
-                        $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
-                    } elseif (in_array(strtolower((string) ($cs->Status ?? '')), ['attended', 'completed', 'late', 'absent'], true)) {
-                        // The LR was previously voided (e.g. by a leave cascade that was later reversed),
-                        // but the session is now attended. Restore it so teachers can fill in the record.
-                        $existing->VoidedAt = null;
-                        $existing->VoidedByUserID = null;
-                        $existing->VoidReason = null;
-                        $existing->Status = 'pending';
-                        $existing->SessionDate = $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null;
-                        $existing->StartTime   = $cs->StartTime   ? substr((string) $cs->StartTime, 0, 5)   : null;
-                        $existing->EndTime     = $cs->EndTime     ? substr((string) $cs->EndTime, 0, 5)     : null;
-                        $existing->save();
-                        $created++;
-                    }
+                if ($existing && !$existing->isVoided()) {
+                    // Self-heal legacy drift: if record date/time no longer matches ClassSession,
+                    // force them back to ClassSession so CourseManagement and LearningRecords stay aligned.
+                    $this->syncRecordWithClassSession($existing, $cs, (int) ($sc->TeacherID ?? 0));
                     continue;
                 }
 
-                // Single source for LR creation lives in LearningRecordBackfillService so the
-                // interactive (ensure-past) and scheduled (learning-records:backfill-missing)
-                // paths can never drift apart (#1078).
+                // Single source for create + voided-restore lives in LearningRecordBackfillService
+                // so interactive ensure-past and nightly backfill-missing never drift (#1078).
                 if (app(LearningRecordBackfillService::class)->createPendingForSession($sc, $cs, $subjectNameMap)) {
                     $created++;
                 }

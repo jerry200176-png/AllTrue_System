@@ -1,5 +1,9 @@
 # AllTrue Changelog
 
+## 2026-07-20 — fix: nightly 評量回補會還原「已上但作廢」的評量（#1078）
+
+- 老師在已上課堂次找不到可填評量時，系統夜間回補會把先前因請假流程作廢的評量恢復成待填，不再卡住。請假堂次的作廢評量維持不變。
+
 ## 2026-07-19 — ops: #1342 四校審核追蹤 + repair bundle gate + TD-059 活監測
 
 - 四校主任審核任務（owner／SLA／計數）寫入 tracker；PII／artifact 14d；repair bundle + `ops-leave-cascade-repair.yml`；TD-059 `ops-td059-monitor.yml`（異常才升 P1）。#1342 待主任；下一工程=#1062 唯讀分類。
