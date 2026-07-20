@@ -23,20 +23,38 @@ use Illuminate\Support\Facades\DB;
  *
  * This service is the shared creator used by both the interactive controller path and the
  * scheduled `learning-records:backfill-missing` job, so the rule "never duplicate logic" holds.
+ *
+ * 2026-07-20 (#1078 follow-up): digest `dq_attended_no_LR` and `bugs:verify-reproductions`
+ * count only *active* LRs (`VoidedAt IS NULL`). A leave→attended (or status-adjust) cascade
+ * can leave a voided LR on an attended session. `ensurePastRecords` already un-voided those,
+ * but `createPendingForSession` treated any row as "exists" and skipped — so the nightly
+ * backfill could never clear the enforced integrity metric. Unique(`ClassSessionID`) forbids
+ * inserting a second row; restore in place.
  */
 class LearningRecordBackfillService
 {
+    /** Session statuses that require a fillable (non-voided) LearningRecord. */
+    private const FILLABLE_SESSION_STATUSES = ['attended', 'completed', 'late', 'absent'];
+
     /**
-     * Create the `pending` LearningRecord for one attended session, if it does not exist.
-     * Returns true if a row was created. Mirrors the contract that CourseManagement and the
-     * eval list expect (date/time copied from ClassSession; teacher resolved via substitute).
+     * Ensure a fillable `pending` LearningRecord exists for one past session.
+     * Returns true if a row was created or a voided row was restored.
      *
      * @param array<int,string> $subjectNameMap  SubjectID => Subject_Name
      */
     public function createPendingForSession(StudentClass $sc, ClassSession $cs, array $subjectNameMap): bool
     {
-        if (LearningRecord::query()->where('ClassSessionID', $cs->id)->exists()) {
+        $existing = LearningRecord::query()
+            ->where('ClassSessionID', $cs->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($existing && !$existing->isVoided()) {
             return false;
+        }
+
+        if ($existing && $existing->isVoided()) {
+            return $this->restoreVoidedForFillableSession($existing, $cs);
         }
 
         $scId = (int) $sc->getAttribute('ID');
@@ -64,9 +82,34 @@ class LearningRecordBackfillService
     }
 
     /**
+     * Restore a system-voided LR when the ClassSession is again fillable.
+     * Mirrors LearningRecordController::ensurePastRecords un-void branch so interactive
+     * and scheduled paths stay aligned. Does not insert (unique ClassSessionID).
+     */
+    private function restoreVoidedForFillableSession(LearningRecord $voided, ClassSession $cs): bool
+    {
+        $status = strtolower((string) ($cs->Status ?? ''));
+        if (!in_array($status, self::FILLABLE_SESSION_STATUSES, true)) {
+            return false;
+        }
+
+        $voided->VoidedAt = null;
+        $voided->VoidedByUserID = null;
+        $voided->VoidReason = null;
+        $voided->Status = 'pending';
+        $voided->SessionDate = $cs->SessionDate ? substr((string) $cs->SessionDate, 0, 10) : null;
+        $voided->StartTime = $cs->StartTime ? substr((string) $cs->StartTime, 0, 5) : null;
+        $voided->EndTime = $cs->EndTime ? substr((string) $cs->EndTime, 0, 5) : null;
+        $voided->SessionDeducted = false;
+        $voided->save();
+
+        return true;
+    }
+
+    /**
      * Backfill every missing `pending` LR for past attended sessions at one campus.
-     * Read-safe + idempotent: only ever *creates* rows that should already exist.
-     * Returns the number of LR rows created.
+     * Read-safe + idempotent: only ever *creates* or *restores* rows that should exist.
+     * Returns the number of LR rows created or restored.
      */
     public function backfillBranch(int $branchId): int
     {

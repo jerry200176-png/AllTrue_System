@@ -36,3 +36,9 @@ Billing/repair Founder gates (#1130, #1096, #959, #1152), UI/architecture epics,
 ## TD-059 go/no-go
 
 **NO-GO schema** (run `29685602058`): 46 multi-member packages, **0** partial-minute package ledger hits, **0** drift. Next autonomous P1: **#1262**.
+
+## 2026-07-20 follow-up (Issues API still 403)
+
+- #1262 closed; #1342 awaiting directors; #1062 classify refresh already on main (read-only).
+- Production digest showed `dq_attended_no_LR=3` (enforced #1078 should be 0).
+- Autonomous code fix: nightly `learning-records:backfill-missing` restores voided-only LRs on attended sessions (§R78) — branch `cursor/issue-1078-voided-lr-backfill-a6c6`.

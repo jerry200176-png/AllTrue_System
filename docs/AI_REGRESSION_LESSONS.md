@@ -919,6 +919,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ---
 
+### R78. 評量 nightly backfill 不可把「作廢列」當成已有有效評量（#1078）
+
+- **觸發情境**：2026-07-19 business digest `dq_attended_no_LR=3`（enforced #1078／#1080 應為 0）。老師無法填已上課堂次的評量。
+- **根因（Fact）**：digest／`bugs:verify-reproductions` 只認 `VoidedAt IS NULL`；`LearningRecordBackfillService::createPendingForSession` 卻用任意列 `exists()` 即跳過。請假 cascade 作廢後若堂次已回到 attended，unique(`ClassSessionID`) 禁止新建，nightly job 永遠清不掉缺口；`ensurePastRecords` 已有 un-void，兩路徑漂移。
+- **強制規則**：create／restore 必須共用 `LearningRecordBackfillService`；已上（attended／completed／late／absent）且僅有作廢 LR → **in-place restore**；leave 堂次作廢列不得 resurrect；禁止為同一 ClassSession 再 INSERT。
+- **測試必補**：`LearningRecordBackfillMissingTest::test_backfill_restores_voided_lr_for_past_attended_session`。
+
+---
+
 ### R71. 調課不可由前端串三次寫入並吞掉最後一步錯誤
 
 - **觸發情境**：2026-07-18 王品方 7/14 未上課，但課程管理顯示「已上」且待點名／評量仍存在；應改至 7/18 13:00–15:00。畫面可同時出現原日已上、另一時段取消與待處理，無法判斷是系統或人工作業。
@@ -981,7 +990,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan）、**§R77（多星期不同鐘點：順延後必須對齊目標星期契約時段）** |
-| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷） |
+| 評量 / 家長回饋 | §同天多堂課 buildEvents、§請假後不填評量、§R17（ownership 先於狀態判斷）、§R19（mark-read 不可更新 updated_at）、§R32（停用課程已上課評量不可消失）、§R39（代課評量權限需匹配時段）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R65（新增 session 狀態值必須同步全部消費端；leave 家族用集合判斷）、**§R78（nightly backfill 須 in-place restore 作廢評量，不可把 voided 當已有）** |
 | 家長入口 UI / `releaseNotes` | §R10、§R11、§R18、§R38、§R45（版本卡僅 `audience` 含 `parent` + `sync-release-notes`） |
 | 課表回報 | §2026-04-17 回報系統（14 條禁止項） |
 | 排課 | §start_time 格式、§智慧排課誤標取消、§R25（請假優先於 scheduled 例外）、§R29（請假不可 fallback 只寫 schedules）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R47（rescheduled 幽靈不可蓋掉同日 ClassSession）、§R49（同學生同時段去重不可用 StudentClassID 當唯一 key）、§R50（行事曆載入不可 REST 成功後再跑 fallback）、§R69（bulk reflow 先 snapshot schedule IDs，禁止 mutable natural key 連鎖更新）、§R71（mutation contract／slot idempotency／兩階段補償） |
