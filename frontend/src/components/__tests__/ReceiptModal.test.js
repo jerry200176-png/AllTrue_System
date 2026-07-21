@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ReceiptModal from '../ReceiptModal.vue';
+import {
+  adaptPaymentReportReceipt,
+  paymentReportReceiptUrl,
+} from '../../lib/paymentReportReceipt.js';
 
 // Mock localStorage
 const mockToken = 'test-token';
@@ -301,11 +305,6 @@ describe.skip('ReceiptModal.vue (pre-hotfix /receipts API — superseded)', () =
     expect(wrapper.text()).toContain('立案證號');
   });
 });
-
-import {
-  adaptPaymentReportReceipt,
-  paymentReportReceiptUrl,
-} from '../../lib/paymentReportReceipt.js';
 
 const SAMPLE_PR = {
   receipt_no: 'R-000123',
