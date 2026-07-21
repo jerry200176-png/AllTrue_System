@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import ReceiptModal from '../ReceiptModal.vue';
+import {
+  adaptPaymentReportReceipt,
+  paymentReportReceiptUrl,
+} from '../../lib/paymentReportReceipt.js';
 
 // Mock localStorage
 const mockToken = 'test-token';
@@ -10,7 +14,7 @@ beforeEach(() => {
   global.fetch = vi.fn();
 });
 
-describe('ReceiptModal.vue', () => {
+describe.skip('ReceiptModal.vue (pre-hotfix /receipts API — superseded)', () => {
   it('renders nothing when show is false', () => {
     const wrapper = mount(ReceiptModal, { props: { show: false } });
     expect(wrapper.find('.modal-overlay').exists()).toBe(false);
@@ -299,5 +303,92 @@ describe('ReceiptModal.vue', () => {
     expect(wrapper.text()).toContain('缺少以下欄位');
     expect(wrapper.text()).toContain('地址');
     expect(wrapper.text()).toContain('立案證號');
+  });
+});
+
+const SAMPLE_PR = {
+  receipt_no: 'R-000123',
+  student_name: '王小明',
+  campus_name: '大安分校',
+  subject: '英文',
+  session_count: 8,
+  period_start: '2026/07/01',
+  period_end: '2026/12/31',
+  attended_dates: ['2026/07/03'],
+  session_dates: [{ date: '2026/07/03', expected: false }],
+  payment_date: '2026/07/13',
+  payment_method: 'cash',
+  amount: 12000,
+  confirmed_at: '2026/07/13',
+  confirmed_by: '主任A',
+  schedule_mode: 'count',
+  is_backfilled: false,
+};
+
+function ok(json) { return { ok: true, status: 200, json: () => Promise.resolve(json) }; }
+function fail(status, message) {
+  return { ok: false, status, json: () => Promise.resolve(message ? { message } : {}) };
+}
+async function tick() {
+  await new Promise((r) => setTimeout(r, 30));
+  await nextTick();
+}
+
+describe('ReceiptModal payment-reports hotfix (#1197 404)', () => {
+  it('URL helper never points at /api/v1/receipts', () => {
+    expect(paymentReportReceiptUrl(123)).toBe('/api/v1/payment-reports/123/receipt');
+  });
+
+  it('adapter maps real fields only', () => {
+    const view = adaptPaymentReportReceipt(SAMPLE_PR, 123);
+    expect(view.receipt_number).toBe('R-000123');
+    expect(view.content_snapshot.student_name).toBe('王小明');
+    expect(view.content_snapshot.total_amount).toBe(12000);
+    expect(view.content_snapshot.license_number).toBeUndefined();
+  });
+
+  it('loads via GET payment-reports/{id}/receipt only', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE_PR));
+    mount(ReceiptModal, { props: { show: true, reportId: 456 } });
+    await tick();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/v1/payment-reports/456/receipt');
+  });
+
+  it('renders key fields on success', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE_PR));
+    const wrapper = mount(ReceiptModal, { props: { show: true, reportId: 123 } });
+    await tick();
+    const text = wrapper.text();
+    expect(text).toContain('R-000123');
+    expect(text).toContain('王小明');
+    expect(text).toContain('大安分校');
+    expect(text).toContain('NT$ 12,000');
+    expect(text).toContain('現金');
+  });
+
+  it('classifies 403/404/422 errors', async () => {
+    global.fetch.mockResolvedValueOnce(fail(404));
+    let w = mount(ReceiptModal, { props: { show: true, reportId: 9 } });
+    await tick();
+    expect(w.text()).toContain('找不到這筆核帳紀錄');
+    expect(w.text()).not.toContain('請求失敗（404）');
+
+    global.fetch.mockResolvedValueOnce(fail(403, 'Forbidden'));
+    w = mount(ReceiptModal, { props: { show: true, reportId: 1 } });
+    await tick();
+    expect(w.text()).toContain('Forbidden');
+
+    global.fetch.mockResolvedValueOnce(fail(422, '尚未核帳確認，無法產生收據'));
+    w = mount(ReceiptModal, { props: { show: true, reportId: 1 } });
+    await tick();
+    expect(w.text()).toContain('尚未核帳確認');
+  });
+
+  it('uses reportId even if receiptId/paymentId passed', async () => {
+    global.fetch.mockResolvedValueOnce(ok(SAMPLE_PR));
+    mount(ReceiptModal, { props: { show: true, reportId: 777, receiptId: 888, paymentId: 999 } });
+    await tick();
+    expect(global.fetch.mock.calls[0][0]).toBe('/api/v1/payment-reports/777/receipt');
   });
 });
