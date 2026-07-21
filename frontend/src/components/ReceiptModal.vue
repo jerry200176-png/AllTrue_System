@@ -3,7 +3,7 @@
     <div class="modal receipt-modal">
       <div class="receipt-header">
         <h3>正式收據</h3>
-        <button class="ghost icon-btn" @click="$emit('close')" title="關閉" type="button">
+        <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
       </div>
@@ -15,27 +15,42 @@
 
       <div v-else-if="error" class="receipt-error">
         <p>{{ error }}</p>
-        <button class="ghost" type="button" @click="$emit('close')">關閉</button>
+        <button class="ghost" @click="$emit('close')">關閉</button>
       </div>
 
       <template v-else-if="receipt">
+        <!-- Backfill notice legacy -->
         <div v-if="receipt.is_backfilled" class="receipt-backfill-notice">
           <span class="material-symbols-outlined" style="font-size:16px;flex-shrink:0;margin-top:1px">info</span>
           <span>此收據由系統依舊繳費記錄補建，原始付款方式與日期可能不精確。</span>
         </div>
 
-        <div class="receipt-preview-wrap">
+        <!-- Voided banner -->
+        <div v-if="receipt.status === 'voided'" class="receipt-voided-banner">
+          <span class="material-symbols-outlined">cancel</span>
+          <div>
+            <strong>此收據已作廢</strong>
+            <p v-if="receipt.void_reason">原因：{{ receipt.void_reason }}</p>
+            <p class="voided-meta">作廢時間：{{ formatDateTime(receipt.voided_at) }}</p>
+          </div>
+        </div>
+
+        <!-- Receipt document preview -->
+        <div class="receipt-preview-wrap" :class="{ voided: receipt.status === 'voided' }">
           <div ref="receiptPrintRef" class="receipt-document">
             <div class="receipt-doc-header">
               <div class="receipt-doc-title">正式收據</div>
               <div class="receipt-doc-brand">{{ schoolName }}</div>
-              <div v-if="snapshot.campus_name" class="receipt-doc-address">分校：{{ snapshot.campus_name }}</div>
             </div>
 
             <div class="receipt-doc-body">
               <div class="receipt-doc-row">
                 <span class="receipt-doc-label">學生姓名</span>
                 <span class="receipt-doc-value">{{ snapshot.student_name || '—' }}</span>
+              </div>
+              <div v-if="snapshot.campus_name" class="receipt-doc-row">
+                <span class="receipt-doc-label">分校</span>
+                <span class="receipt-doc-value">{{ snapshot.campus_name }}</span>
               </div>
               <div class="receipt-doc-row">
                 <span class="receipt-doc-label">修業期間</span>
@@ -51,6 +66,7 @@
                 <span class="receipt-doc-value receipt-doc-number">{{ receipt.receipt_number }}</span>
               </div>
 
+              <!-- Items table -->
               <div class="receipt-doc-items">
                 <div class="receipt-doc-items-header">
                   <span>收費項目</span>
@@ -70,17 +86,6 @@
                 </div>
               </div>
 
-              <div v-if="sessionDateLines.length" class="receipt-doc-sessions">
-                <div class="receipt-doc-label">上課日期</div>
-                <ul class="receipt-session-list">
-                  <li v-for="(line, i) in sessionDateLines" :key="i">
-                    <span class="receipt-session-dot" aria-hidden="true"></span>
-                    {{ line.text }}
-                    <em v-if="line.expected">（預期）</em>
-                  </li>
-                </ul>
-              </div>
-
               <div class="receipt-doc-row">
                 <span class="receipt-doc-label">收款日期</span>
                 <span class="receipt-doc-value">{{ snapshot.paid_at || '—' }}</span>
@@ -89,9 +94,10 @@
                 <span class="receipt-doc-label">收款方式</span>
                 <span class="receipt-doc-value">{{ paymentMethodLabel(snapshot.method) }}</span>
               </div>
-              <div v-if="snapshot.confirmed_by" class="receipt-doc-row">
-                <span class="receipt-doc-label">核帳人</span>
-                <span class="receipt-doc-value">{{ snapshot.confirmed_by }}</span>
+
+              <div class="receipt-doc-refund" v-if="snapshot.refund_policy">
+                <div class="receipt-doc-label">退費規定</div>
+                <div class="receipt-doc-refund-text">{{ snapshot.refund_policy }}</div>
               </div>
             </div>
 
@@ -103,9 +109,12 @@
                 開立時間：{{ snapshot.confirmed_at || snapshot.paid_at || '—' }}
               </div>
             </div>
+
+            <div v-if="receipt.status === 'voided'" class="receipt-voided-watermark">作廢</div>
           </div>
         </div>
 
+        <!-- Actions -->
         <div class="receipt-actions">
           <button class="ghost" type="button" @click="printReceipt">
             <span class="material-symbols-outlined">print</span>
@@ -114,6 +123,8 @@
         </div>
       </template>
     </div>
+
+    <!-- Void / PDF / legal-info deferred — backend not on main (§R79) -->
   </div>
 </template>
 
@@ -123,8 +134,6 @@ import {
   adaptPaymentReportReceipt,
   paymentReportReceiptUrl,
 } from '../lib/paymentReportReceipt.js';
-
-const BRAND_TITLE = '台北全真一對一補習班';
 
 const props = defineProps({
   show: Boolean,
@@ -138,39 +147,20 @@ const receipt = ref(null);
 const receiptPrintRef = ref(null);
 
 const snapshot = computed(() => receipt.value?.content_snapshot || {});
-const schoolName = computed(() => snapshot.value.school_name || BRAND_TITLE);
-
-const sessionDateLines = computed(() => {
-  const sessions = snapshot.value.session_dates;
-  if (Array.isArray(sessions) && sessions.length) {
-    return sessions.map((e) => ({
-      text: e?.date ?? e,
-      expected: !!(e && e.expected),
-    }));
-  }
-  const attended = snapshot.value.attended_dates;
-  if (Array.isArray(attended) && attended.length) {
-    return attended.map((d) => ({ text: d, expected: false }));
-  }
-  return [];
-});
+const schoolName = computed(() => snapshot.value.school_name || '台北全真一對一補習班');
 
 function formatCurrency(v) {
   if (v == null || isNaN(v)) return '—';
   return 'NT$ ' + Number(v).toLocaleString('zh-TW');
 }
-
+function formatDateTime(dt) {
+  if (!dt) return '—';
+  try { return new Date(dt).toLocaleString('zh-TW'); } catch { return dt; }
+}
 function paymentMethodLabel(m) {
-  const labels = {
-    cash: '現金',
-    transfer: '匯款',
-    card: '信用卡',
-    line_pay: 'LINE Pay',
-    backfill: '現金（補建）',
-  };
+  const labels = { cash: '現金', transfer: '匯款', card: '信用卡', line_pay: 'LINE Pay', backfill: '現金（補建）' };
   return labels[m] || m || '—';
 }
-
 function getToken() {
   const session = JSON.parse(localStorage.getItem('alltrue_session') || 'null');
   return session?.access_token;
@@ -185,17 +175,13 @@ async function parseError(resp) {
   return new Error(`載入收據失敗（${resp.status}）`);
 }
 
+/** Hotfix (#1197): only GET payment-reports/{id}/receipt — never /api/v1/receipts*. */
 async function loadReceipt() {
   loading.value = true;
   error.value = '';
   receipt.value = null;
-
   const token = getToken();
-  if (!token) {
-    error.value = '請先登入';
-    loading.value = false;
-    return;
-  }
+  if (!token) { error.value = '請先登入'; loading.value = false; return; }
 
   const reportId = Number(props.reportId);
   if (!reportId) {
@@ -209,8 +195,7 @@ async function loadReceipt() {
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     });
     if (!resp.ok) throw await parseError(resp);
-    const api = await resp.json();
-    receipt.value = adaptPaymentReportReceipt(api, reportId);
+    receipt.value = adaptPaymentReportReceipt(await resp.json(), reportId);
   } catch (e) {
     error.value = e.message || '載入收據失敗';
   } finally {
@@ -220,40 +205,7 @@ async function loadReceipt() {
 
 function printReceipt() {
   if (!receiptPrintRef.value) return;
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    error.value = '瀏覽器封鎖了列印視窗，請允許彈出視窗後重試';
-    return;
-  }
-  printWindow.opener = null;
-  const html = receiptPrintRef.value.outerHTML;
-  printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>收據 ${receipt.value?.receipt_number || ''}</title>
-<style>body{font-family:"Noto Sans TC",Arial,sans-serif;color:#1f2937;margin:20px}
-.receipt-document{max-width:210mm;margin:0 auto;border:1px solid #d1d5db;border-radius:8px;overflow:hidden;position:relative}
-.receipt-doc-header{background:#14532d;color:#fff;padding:24px;text-align:center}
-.receipt-doc-title{font-size:22px;font-weight:700;margin-bottom:6px}
-.receipt-doc-brand{font-size:14px;opacity:.85}
-.receipt-doc-address{font-size:12px;opacity:.7;margin-top:4px}
-.receipt-doc-body{padding:20px 24px}
-.receipt-doc-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:13px}
-.receipt-doc-label{color:#6b7280;font-weight:500}
-.receipt-doc-value{font-weight:500;text-align:right}
-.receipt-doc-number{font-family:monospace;font-size:14px;color:#14532d}
-.receipt-doc-items{margin:12px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden}
-.receipt-doc-items-header{display:flex;justify-content:space-between;padding:8px 12px;background:#f3f4f6;font-size:12px;font-weight:600;color:#6b7280}
-.receipt-doc-item-row{display:flex;justify-content:space-between;padding:8px 12px;border-top:1px solid #e5e7eb;font-size:13px}
-.receipt-doc-amount-col{text-align:right;font-variant-numeric:tabular-nums}
-.receipt-doc-total-row{background:#f0fdf4;font-weight:700}
-.receipt-doc-sessions{padding:12px 0;font-size:12px}
-.receipt-session-list{list-style:none;margin:8px 0 0;padding:0}
-.receipt-session-list li{display:flex;align-items:center;gap:8px;padding:4px 0;color:#374151}
-.receipt-session-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;flex-shrink:0}
-.receipt-session-list em{color:#6b7280;font-style:normal;margin-left:4px}
-.receipt-doc-footer{padding:16px 24px;border-top:1px solid #e5e7eb;font-size:12px;color:#9ca3af;display:flex;justify-content:space-between}
-.receipt-doc-footer-note{text-align:right}
-@media print{body{margin:15mm}}</style></head><body>${html}</body></html>`);
-  printWindow.document.close();
-  setTimeout(() => printWindow.print(), 300);
+  window.print();
 }
 
 watch(() => [props.show, props.reportId], async ([visible]) => {
@@ -276,54 +228,129 @@ watch(() => [props.show, props.reportId], async ([visible]) => {
 .receipt-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
 .receipt-header h3 { margin: 0; font-size: 18px; }
 .icon-btn { border: none; background: none; cursor: pointer; padding: 4px; border-radius: 8px; color: var(--text-light); }
-.icon-btn:hover { background: var(--bg); color: var(--text); }
-.receipt-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 48px; color: var(--text-light); }
-.receipt-error { text-align: center; padding: 32px 16px; color: var(--danger, #dc2626); }
-.receipt-error p { margin: 0 0 16px; }
+.icon-btn:hover { background: var(--bg); }
+
+.receipt-loading, .receipt-error {
+  text-align: center; padding: 48px 0; color: var(--text-light);
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.spin { animation: rotate 1s linear infinite; font-size: 32px; }
+@keyframes rotate { to { transform: rotate(360deg); } }
+
 .receipt-backfill-notice {
-  display: flex; gap: 8px; align-items: flex-start;
-  background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
-  padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: #92400e;
+  background: var(--ds-warning-wash); border: 1px solid var(--ds-warning); color: var(--ds-warning);
+  padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px;
+  display: flex; align-items: flex-start; gap: 6px;
 }
-.receipt-preview-wrap { margin-bottom: 16px; }
+.receipt-voided-banner {
+  background: var(--ds-danger-wash); border: 1px solid var(--ds-danger); color: var(--ds-danger);
+  padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px;
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.receipt-voided-banner .material-symbols-outlined { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+.receipt-voided-banner p { margin: 4px 0 0; }
+.voided-meta { font-size: 11px; opacity: 0.8; }
+
+.receipt-preview-wrap {
+  background: var(--bg); border-radius: 12px; padding: 16px;
+  display: flex; justify-content: center; overflow-x: auto;
+}
+.receipt-preview-wrap.voided { opacity: 0.7; }
 .receipt-document {
-  border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; position: relative;
-  background: #fff; color: #1f2937;
+  width: 100%; max-width: 560px; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; background: #fff; position: relative;
 }
-.receipt-doc-header { background: #14532d; color: #fff; padding: 24px; text-align: center; }
-.receipt-doc-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
-.receipt-doc-brand { font-size: 14px; opacity: .85; }
-.receipt-doc-address { font-size: 12px; opacity: .7; margin-top: 4px; }
-.receipt-doc-body { padding: 20px 24px; }
-.receipt-doc-row {
-  display: flex; justify-content: space-between; padding: 8px 0;
-  border-bottom: 1px solid #e5e7eb; font-size: 13px;
-}
-.receipt-doc-label { color: #6b7280; font-weight: 500; }
+.receipt-doc-header { background: #14532d; color: #fff; padding: 20px; text-align: center; }
+.receipt-doc-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.receipt-doc-brand { font-size: 13px; opacity: 0.85; }
+.receipt-doc-license { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+.receipt-doc-address { font-size: 11px; opacity: 0.7; }
+.receipt-doc-body { padding: 16px 20px; }
+.receipt-doc-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.receipt-doc-label { color: var(--text-light); font-weight: 500; }
 .receipt-doc-value { font-weight: 500; text-align: right; }
 .receipt-doc-number { font-family: monospace; font-size: 14px; color: #14532d; }
-.receipt-doc-items { margin: 12px 0; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
-.receipt-doc-items-header {
-  display: flex; justify-content: space-between; padding: 8px 12px;
-  background: #f3f4f6; font-size: 12px; font-weight: 600; color: #6b7280;
-}
-.receipt-doc-item-row {
-  display: flex; justify-content: space-between; padding: 8px 12px;
-  border-top: 1px solid #e5e7eb; font-size: 13px;
-}
+.receipt-doc-items { margin: 10px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.receipt-doc-items-header { display: flex; justify-content: space-between; padding: 7px 10px; background: var(--bg); font-size: 11px; font-weight: 600; color: var(--text-light); }
+.receipt-doc-item-row { display: flex; justify-content: space-between; padding: 7px 10px; border-top: 1px solid var(--border); font-size: 13px; }
 .receipt-doc-amount-col { text-align: right; font-variant-numeric: tabular-nums; }
-.receipt-doc-total-row { background: #f0fdf4; font-weight: 700; }
-.receipt-doc-sessions { padding: 12px 0; font-size: 12px; }
-.receipt-session-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.receipt-session-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: #374151; }
-.receipt-session-dot { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; flex-shrink: 0; }
-.receipt-session-list em { color: #6b7280; font-style: normal; margin-left: 4px; }
-.receipt-doc-footer {
-  padding: 16px 24px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #9ca3af;
-  display: flex; justify-content: space-between;
+.receipt-doc-total-row { background: var(--ds-success-wash); font-weight: 700; }
+.receipt-doc-refund { padding: 10px 0; font-size: 12px; }
+.receipt-doc-refund-text { margin-top: 4px; color: var(--text-light); line-height: 1.6; white-space: pre-line; }
+.receipt-doc-footer { padding: 12px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-light); display: flex; justify-content: space-between; align-items: flex-start; }
+.receipt-doc-footer-note { text-align: right; line-height: 1.4; }
+.receipt-voided-watermark {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) rotate(-25deg);
+  font-size: 80px; font-weight: 900; color: rgba(220,38,38,.12);
+  pointer-events: none; white-space: nowrap; user-select: none;
 }
-.receipt-doc-footer-note { text-align: right; }
-.receipt-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
-.spin { animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+
+.receipt-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+.receipt-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.receipt-pdf-format { display: flex; gap: 12px; margin-right: 8px; }
+.receipt-format-label { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.receipt-btn-void { color: var(--ds-danger); }
+.receipt-btn-void:hover { background: var(--ds-danger-wash); }
+
+.receipt-legal-setup { display: flex; flex-direction: column; gap: 16px; }
+.receipt-legal-notice {
+  display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px;
+  background: var(--ds-warning-wash); border: 1px solid var(--ds-warning);
+  border-radius: 8px; color: var(--ds-warning); font-size: 13px;
+}
+.receipt-legal-notice p { margin: 4px 0 0; font-size: 12px; }
+.legal-form { display: flex; flex-direction: column; gap: 12px; }
+.legal-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 500; }
+.legal-form input, .legal-form textarea {
+  min-height: 38px; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px;
+}
+.legal-form textarea { resize: vertical; min-height: 64px; }
+.legal-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.tc-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center; z-index: 10001; padding: 16px;
+}
+.tc-dialog {
+  background: var(--card-bg); border-radius: 14px; padding: 24px;
+  width: 100%; max-width: 440px; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.tc-dialog-title { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 16px; }
+.tc-dialog-desc { margin: 0 0 12px; font-size: 13px; color: var(--text-light); line-height: 1.5; }
+.tc-dialog-info { padding: 8px 12px; background: var(--bg); border-radius: 8px; font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+.tc-dialog-info small { display: block; margin-top: 4px; color: var(--text-light); font-weight: 400; }
+.tc-dialog-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text); }
+.tc-dialog-textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  font-size: 14px; font-family: inherit; resize: vertical; min-height: 72px; outline: none;
+  background: var(--bg); color: var(--text); box-sizing: border-box;
+}
+.tc-dialog-textarea:focus { border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(37,99,235,0.08); }
+.tc-dialog-charcount { text-align: right; font-size: 11px; color: var(--text-light); margin-top: 4px; margin-bottom: 16px; }
+.tc-dialog-btns { display: flex; justify-content: flex-end; gap: 8px; }
+
+.primary, .ghost, .tc-btn--danger {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px;
+  border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer;
+  font-family: inherit; transition: all 0.15s; border: 1px solid var(--border);
+}
+.primary { background: var(--primary); border-color: var(--primary); color: var(--ds-on-primary); }
+.primary:hover:not(:disabled) { opacity: 0.9; }
+.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.ghost { background: transparent; color: var(--text); }
+.ghost:hover:not(:disabled) { background: var(--bg); }
+.tc-btn--danger { background: var(--ds-danger); border-color: var(--ds-danger); color: var(--ds-on-primary); }
+.tc-btn--danger:hover:not(:disabled) { opacity: 0.9; }
+.tc-btn--danger:disabled { background: var(--ds-hairline); border-color: var(--ds-hairline); cursor: not-allowed; }
+
+.fade-enter-active { transition: opacity 0.2s ease; }
+.fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+@media (max-width: 640px) {
+  .receipt-modal { max-width: 100%; padding: 14px; }
+  .receipt-doc-body { padding: 12px 14px; }
+  .receipt-doc-header { padding: 16px; }
+}
 </style>
