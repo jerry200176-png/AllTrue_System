@@ -551,3 +551,31 @@
 | 建議做法 | 為「老師管理」頁建立**專屬唯讀端點**（例 `GET teachers/directory` 或帶完整 PII 的 `teachers/{id}` 詳情）僅供該頁使用，於其上掛 `require_pin`；其他頁的輕量下拉改用不含敏感 PII 的精簡端點。或評估以 policy/欄位遮罩在 controller 層按 `pin_verified` 決定回傳欄位。|
 | 清償成本估計 | 中（需拆端點 + 前端改呼叫 + 測試） |
 | 不做的代價 | 老師個資（聯絡方式等）後端無 PIN 強制，僅靠前端 gate；繞過前端直打 `teachers` 仍可取得，與 #769 KPI「後端 100% 擋下」有缺口 |
+
+### TD-067：#1197 孤兒前端 — BatchInvoiceModal / OverdueBucketsPanel 可觸發必然失敗 API
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open |
+| 優先級 | P1 |
+| 發現日期 | 2026-07-21 |
+| 發現來源 | [REVIEW] 收據 404 hotfix closeout（#1363 後） |
+| 影響模組 | `BatchInvoiceModal.vue`、`OverdueBucketsPanel.vue`、`TuitionCollectionPage.vue` |
+| 描述 | PR #1197 前端-only 上線；後端 `/invoices/batch-preview`、`/invoices/batch`、`/invoices/overdue-summary` 從未進 main。使用者若點到這些入口會固定失敗。收據已改回 payment-reports；這兩塊仍是孤兒 UI。 |
+| 建議做法 | 先確認 production 可否觸發 → 可觸發則 hide／feature-flag／disable；禁止半套 stub route。完整 API 另走 PLAN。 |
+| 清償成本估計 | 低（隱藏入口）／中（若要真做後端） |
+| 不做的代價 | 主任繼續點到必失敗操作，信任再次受損（與收據 404 同族：前端超前後端） |
+
+### TD-068：Receipt Domain T3（immutable snapshot／PDF／void／legal-info）— blocked
+
+| 欄位 | 內容 |
+|---|---|
+| 狀態 | Open（**Blocked**：未經 Founder 批准不得 DEV） |
+| 優先級 | P2（產品意圖）／實作為 T3 |
+| 發現日期 | 2026-07-21 |
+| 發現來源 | [REVIEW] #1197 殘缺契約；hotfix 僅恢復查看 |
+| 影響模組 | 帳務收據、Campus legal-info、PDF、void lifecycle |
+| 描述 | #1197 假設的完整 Receipt API 從未落地。目前查看走 `payment-reports/{id}/receipt`；UI 用「電子收據」。完整「正式收據」需 immutable snapshot、編號、分校隔離、void/audit、PDF、歷史/backfill、rollout/rollback。 |
+| 建議做法 | 先寫 T3 PLAN/ARCH/SEC；批准後再 DEV。長期加 backend contract test + typed client／OpenAPI + deploy 後 authenticated synthetic。 |
+| 清償成本估計 | 高 |
+| 不做的代價 | 無法提供法定完整收據／PDF／作廢；但查看路徑已可用，不阻塞日常核帳 |
