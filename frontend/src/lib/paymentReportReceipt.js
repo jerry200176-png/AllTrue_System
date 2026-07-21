@@ -52,7 +52,22 @@ export function adaptPaymentReportReceipt(api, reportId) {
   };
 }
 
-/** Canonical receipt fetch path — regression lock against /api/v1/receipts* drift. */
+/** Positive integer payment-report id, or null (never NaN). */
+export function parsePositiveReportId(raw) {
+  if (raw == null || raw === '') return null;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
+/**
+ * Canonical receipt fetch path — regression lock against /api/v1/receipts* drift.
+ * Throws if reportId is not a positive integer (callers must fail-fast before fetch).
+ */
 export function paymentReportReceiptUrl(reportId) {
-  return `/api/v1/payment-reports/${Number(reportId)}/receipt`;
+  const id = parsePositiveReportId(reportId);
+  if (id == null) {
+    throw new Error('invalid_report_id');
+  }
+  return `/api/v1/payment-reports/${id}/receipt`;
 }

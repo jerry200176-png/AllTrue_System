@@ -1,5 +1,12 @@
 # AllTrue Changelog
 
+## 2026-07-21 — chore: 收據 hotfix closeout（刪 skip、fail-fast、電子收據命名）
+
+- 刪除 #1197 錯誤假設留下的 skipped `/receipts` 測試（active suite skip=0）。
+- `reportId` 必須為正整數，否則不發 request（避免 `/payment-reports/NaN/receipt`）。
+- Modal 標題改回「電子收據」，避免在 T3 Receipt Domain 完成前暗示完整法定文件能力。
+- 補切換 reportId 不殘留上一筆資料的回歸測試。
+
 ## 2026-07-21 — fix: 帳務中心收據改回既有 payment-report API（#1197 回歸）
 
 Fixed：主任在帳務中心點「收據」不再出現「請求失敗（404）」。收據改回使用既有核帳收據接口顯示學生、分校、金額與收據編號；未新增新的收據資料表或作廢／PDF 功能。

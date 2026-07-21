@@ -935,7 +935,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
   - 收據查看唯一合法路徑（hotfix 後）：`GET /api/v1/payment-reports/{reportId}/receipt`；response 只可使用真實欄位，經 adapter 映射 UI，禁止偽造法定欄位或半套 stub route。
   - 錯誤必須分類：403 權限／跨校、404 找不到核帳、422 尚未核帳；不得一律「請求失敗（status）」。
   - 完整 Receipt domain（immutable snapshot／PDF／void／legal-info）屬 T3，另開 PLAN／ARCH／SEC，未經批准不得實作。
-- **測試必補**：`ReceiptModal.test.js` endpoint contract（禁止 `/api/v1/receipts*`）、success／403／404／422／500；`TuitionCollectionReceiptEntry.test.js` 確認入口只傳 `report-id`。
+- **測試必補**：`ReceiptModal.test.js` endpoint contract（禁止 `/api/v1/receipts*`）、success／403／404／422、**invalid reportId fail-fast（禁止 NaN URL）**、切換 reportId 不殘留上一筆；`TuitionCollectionReceiptEntry.test.js` 確認入口只傳 `report-id`。**禁止**用 `describe.skip` 留置已廢棄的 `/receipts` 規格測試——應刪除或移入 T3 PLAN 文件。
+- **產品語意**：T3 完成前 UI 標題用「電子收據／收款收據」，勿用「正式收據」暗示 legal snapshot／PDF／void 已完備。
 
 ---
 

@@ -2,7 +2,7 @@
   <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
     <div class="modal receipt-modal">
       <div class="receipt-header">
-        <h3>正式收據</h3>
+        <h3>電子收據</h3>
         <button class="ghost icon-btn" @click="$emit('close')" title="關閉">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -39,7 +39,7 @@
         <div class="receipt-preview-wrap" :class="{ voided: receipt.status === 'voided' }">
           <div ref="receiptPrintRef" class="receipt-document">
             <div class="receipt-doc-header">
-              <div class="receipt-doc-title">正式收據</div>
+              <div class="receipt-doc-title">電子收據</div>
               <div class="receipt-doc-brand">{{ schoolName }}</div>
             </div>
 
@@ -133,6 +133,7 @@ import { ref, computed, watch } from 'vue';
 import {
   adaptPaymentReportReceipt,
   paymentReportReceiptUrl,
+  parsePositiveReportId,
 } from '../lib/paymentReportReceipt.js';
 
 const props = defineProps({
@@ -183,8 +184,8 @@ async function loadReceipt() {
   const token = getToken();
   if (!token) { error.value = '請先登入'; loading.value = false; return; }
 
-  const reportId = Number(props.reportId);
-  if (!reportId) {
+  const reportId = parsePositiveReportId(props.reportId);
+  if (reportId == null) {
     error.value = '缺少核帳紀錄編號，無法開啟收據';
     loading.value = false;
     return;
