@@ -1,5 +1,11 @@
 # AllTrue Changelog
 
+## 2026-07-21 — fix: 帳務中心收據改回既有 payment-report API（#1197 回歸）
+
+Fixed：主任在帳務中心點「收據」不再出現「請求失敗（404）」。收據改回使用既有核帳收據接口顯示學生、分校、金額與收據編號；未新增新的收據資料表或作廢／PDF 功能。
+
+開發備註：根因是 PR #1197 前端改打尚未存在的 `/api/v1/receipts*`（§R79）。Hotfix：`ReceiptModal` + `paymentReportReceipt` adapter → `GET /api/v1/payment-reports/{id}/receipt`。測試：`ReceiptModal.test.js`、`TuitionCollectionReceiptEntry.test.js`。
+
 ## 2026-07-20 — fix: nightly 評量回補會還原「已上但作廢」的評量（#1078）
 
 - 老師在已上課堂次找不到可填評量時，系統夜間回補會把先前因請假流程作廢的評量恢復成待填，不再卡住。請假堂次的作廢評量維持不變。

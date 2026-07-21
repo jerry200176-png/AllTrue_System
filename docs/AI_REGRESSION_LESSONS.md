@@ -926,6 +926,17 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 - **強制規則**：create／restore 必須共用 `LearningRecordBackfillService`；已上（attended／completed／late／absent）且僅有作廢 LR → **in-place restore**；leave 堂次作廢列不得 resurrect；禁止為同一 ClassSession 再 INSERT。
 - **測試必補**：`LearningRecordBackfillMissingTest::test_backfill_restores_voided_lr_for_past_attended_session`。
 
+### R79. 前端不得在後端 API contract 未進 main 前改打新路徑（收據 404 / #1197）
+
+- **觸發情境**：2026-07-21 帳務中心點「收據」一律「請求失敗（404）」。`ReceiptModal` 打 `/api/v1/receipts*` 與 campus `legal-info`，但 production 僅有 `GET /api/v1/payment-reports/{id}/receipt`。
+- **根因**：PR #1197（commit `f73177a9`）以「P0 前端」單獨 merge，假設 Receipt domain 後端已存在；後端從未進 main → 全分校收據入口路由層 404。同批 `BatchInvoiceModal` / `OverdueBucketsPanel` 亦為孤兒前端。
+- **強制規則**：
+  - 前端改呼叫新 API 的 PR，必須與後端 route／controller／migration **同 PR 或後端已在 main**；禁止「前端先上、後端後補」。
+  - 收據查看唯一合法路徑（hotfix 後）：`GET /api/v1/payment-reports/{reportId}/receipt`；response 只可使用真實欄位，經 adapter 映射 UI，禁止偽造法定欄位或半套 stub route。
+  - 錯誤必須分類：403 權限／跨校、404 找不到核帳、422 尚未核帳；不得一律「請求失敗（status）」。
+  - 完整 Receipt domain（immutable snapshot／PDF／void／legal-info）屬 T3，另開 PLAN／ARCH／SEC，未經批准不得實作。
+- **測試必補**：`ReceiptModal.test.js` endpoint contract（禁止 `/api/v1/receipts*`）、success／403／404／422／500；`TuitionCollectionReceiptEntry.test.js` 確認入口只傳 `report-id`。
+
 ---
 
 ### R71. 調課不可由前端串三次寫入並吞掉最後一步錯誤
@@ -986,7 +997,7 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | 模組 | 必讀條目（在 Archive） |
 |------|----------|
 | 堂數 / 扣堂 | §2026-04-17 繳費日期、§單堂費用固定、**§R59（分鐘制權威：RemainingSessions 為 ROUND_HALF_UP 衍生值，讀取端勿用 count 覆寫 fractional）**、§R70（對帳面板唯讀＋真實 API contract test）、**§R76（單堂改時段費用前後端必須一致）** |
-| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）** |
+| 繳費 / 學收 | §繳費狀態 paid_at、§歷史課程漏算、§催繳名單六狀態、§幽靈課程、§R30（帳務入口共用 AR ledger）、**§R76（session／hour 費用文案與 Charge 寫入）**、**§R79（收據前端不得超前後端 contract；合法路徑=payment-reports/{id}/receipt）** |
 | 薪資 / 併堂 | §兼職薪資 concurrency、§同層級併堂 v1.4、§契約時長為準 |
 | 代課 / 調課 | §代課Undo通知、§合併Undo還原時間、§雙層防護重複行、§atomic transaction、§R13（補課 schedule 不建 ClassSession）、§R39（代課評量權限需匹配時段）、§R43（調課目標 scheduled 例外以 anchor 去重）、§R44（代課顯示不可讓原老師 stale row 搶贏）、§R46（主任評量列表授課老師須與 effective 代課一致）、§R48（代課點名權限必須以時段級 effective teacher 為準）、§R52（代課 scheduled 例外不可缺 original_schedule_id anchor）、§R71（調課單一交易＋前端 committed gate）、§R72（cancelled ClassSession 不得讓 scheduled 例外佔用代課老師）、§R73（跨老師 gesture 必走 atomic substitute；legacy 兩階段精準補償）、§R74（代課衝突排除同一學生續約佔用） |
 | 請假 / 順延 | §R29（請假不可 fallback 只寫 schedules）、§R75（送出前必須預覽 vacated 日期；preview 與 cascade 共用 computeShiftPlan）、**§R77（多星期不同鐘點：順延後必須對齊目標星期契約時段）** |
