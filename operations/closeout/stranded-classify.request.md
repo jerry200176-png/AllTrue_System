@@ -7,3 +7,5 @@ Purpose: refresh stranded cohort metrics + cross-SC proxy count while #1342 wait
 # deeper classify 2026-07-19T12:51:05.009280Z
 
 # retry classify 2026-07-19T12:57:47Z
+
+# refresh 2026-07-22T03:25:00Z — bug closure queue
