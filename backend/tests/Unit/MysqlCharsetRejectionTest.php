@@ -12,8 +12,7 @@ class MysqlCharsetRejectionTest extends TestCase
     public function test_matches_incorrect_string_value_1366(): void
     {
         $previous = new PDOException(
-            "SQLSTATE[HY000]: General error: 1366 Incorrect string value: '\\xF0\\x9F\\x93\\x85' for column 'Memo'",
-            'HY000'
+            "SQLSTATE[HY000]: General error: 1366 Incorrect string value: '\\xF0\\x9F\\x93\\x85' for column 'Memo'"
         );
         $previous->errorInfo = ['HY000', 1366, 'Incorrect string value'];
         $e = new QueryException('insert into StudentClass', [], $previous);
@@ -25,8 +24,7 @@ class MysqlCharsetRejectionTest extends TestCase
     public function test_matches_mysql8_conversion_impossible_3988(): void
     {
         $previous = new PDOException(
-            'SQLSTATE[HY000]: General error: 3988 Conversion from collation utf8mb4_unicode_ci into utf8mb3_unicode_ci impossible for parameter',
-            'HY000'
+            'SQLSTATE[HY000]: General error: 3988 Conversion from collation utf8mb4_unicode_ci into utf8mb3_unicode_ci impossible for parameter'
         );
         $previous->errorInfo = ['HY000', 3988, 'Conversion from collation'];
         $e = new QueryException('insert into StudentClass', [], $previous);
@@ -47,8 +45,7 @@ class MysqlCharsetRejectionTest extends TestCase
     public function test_ignores_unrelated_query_exception(): void
     {
         $previous = new PDOException(
-            "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'RoomID'",
-            '42S22'
+            "SQLSTATE[42S22]: Column not found: 1054 Unknown column 'RoomID'"
         );
         $previous->errorInfo = ['42S22', 1054, 'Unknown column'];
         $e = new QueryException('insert', [], $previous);
