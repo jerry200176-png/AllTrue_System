@@ -211,7 +211,9 @@ class ActionInboxService
             'overdue_hours' => $overdueHours,
             'read_at' => null,
             'resolved_at' => null,
-            'occurred_at' => optional($w->getAttribute('created_at'))->toIso8601String(),
+            'occurred_at' => ($created = $w->getAttribute('created_at'))
+                ? Carbon::parse($created)->toIso8601String()
+                : null,
             'payload' => [
                 'student_id' => $studentId,
                 'student_name' => $studentName,
