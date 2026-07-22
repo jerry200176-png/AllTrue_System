@@ -1,7 +1,7 @@
 # Course Continuity — PII-free cohort results
 
 > **Status**: Awaiting production **read-only** execution  
-> **SQL**: [`docs/sql/course-continuity-cohort-discovery.sql`](../sql/course-continuity-cohort-discovery.sql)  
+> **SQL**: [`docs/architecture/course-continuity-cohort-discovery.sql`](./course-continuity-cohort-discovery.sql)  
 > **Issue**: #1382  
 > **Rule**: 本檔只准寫 aggregate counts。禁止貼姓名、電話、Memo、請假原因、學號以外可識別資訊。
 
