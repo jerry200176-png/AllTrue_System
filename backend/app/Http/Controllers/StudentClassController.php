@@ -1481,6 +1481,13 @@ class StudentClassController extends Controller
         if (array_key_exists('TeacherID', $mapped)) {
             $newTeacherId = (int) ($studentClass->TeacherID ?? 0);
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
+                // in-app #207: pin past attended/history to former teacher BEFORE
+                // future schedule rows move to the new contract teacher.
+                $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+                    (int) $studentClass->ID,
+                    $oldTeacherSnapshot,
+                    $newTeacherId
+                );
                 $this->syncFutureScheduleTeachersAfterContractTeacherChange(
                     (int) $studentClass->ID,
                     $oldTeacherSnapshot,
@@ -4721,6 +4728,114 @@ class StudentClassController extends Controller
         }
         $firstDate = $this->normalizeDateString($firstActive->SessionDate ?? null);
         return $firstDate !== null && $firstDate !== $startDate;
+    }
+
+    /**
+     * Keep past / already-taught sessions on the former contract teacher when
+     * StudentClass.TeacherID changes (in-app #207).
+     *
+     * Calendar display prefers substitute schedule rows (original_schedule_id NOT NULL
+     * + teacher_id <> contract). Without pinning, past attended sessions fall through
+     * to the new contract teacher and look like history was rewritten.
+     */
+    private function pinPastSessionsToFormerTeacherAfterContractTeacherChange(
+        int $courseId,
+        int $oldTeacherId,
+        int $newTeacherId
+    ): void {
+        if ($courseId <= 0 || $oldTeacherId <= 0 || $newTeacherId <= 0 || $oldTeacherId === $newTeacherId) {
+            return;
+        }
+
+        $course = StudentClass::find($courseId);
+        if (!$course) {
+            return;
+        }
+
+        $studentId = (int) ($course->StudentID ?? 0);
+        $student = $studentId > 0 ? Student::find($studentId) : null;
+        $campusId = (int) ($student->CampusID ?? 0);
+        if ($studentId <= 0 || $campusId <= 0) {
+            return;
+        }
+
+        $today = Carbon::today()->toDateString();
+        $subject = DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '';
+        $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
+
+        $pastSessions = ClassSession::where('StudentClassID', $courseId)
+            ->where(function ($q) use ($today) {
+                $q->whereDate('SessionDate', '<', $today)
+                    ->orWhereIn('Status', ['attended', 'late', 'leave', 'excused', 'completed', 'absent']);
+            })
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->get();
+
+        foreach ($pastSessions as $session) {
+            try {
+                $sessionDate = Carbon::parse($session->SessionDate)->toDateString();
+            } catch (\Throwable $e) {
+                continue;
+            }
+            $startTime = substr((string) ($session->StartTime ?? ''), 0, 5);
+            $endTime = substr((string) ($session->EndTime ?? ''), 0, 5);
+            if ($startTime === '' || $endTime === '') {
+                continue;
+            }
+
+            // Already has a substitute-style exception with a non-contract teacher → leave it.
+            $existingPin = Schedule::where('student_course_id', $courseId)
+                ->whereDate('schedule_date', $sessionDate)
+                ->where('status', 'scheduled')
+                ->whereNotNull('original_schedule_id')
+                ->whereRaw('SUBSTRING(start_time, 1, 5) = ?', [$startTime])
+                ->where('teacher_id', '<>', $newTeacherId)
+                ->exists();
+            if ($existingPin) {
+                continue;
+            }
+
+            $dayOfWeek = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
+            $startM = ((int) substr($startTime, 0, 2)) * 60 + (int) substr($startTime, 3, 2);
+            $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
+            $durationHours = max(0.5, round(max(0, $endM - $startM) / 60, 1));
+
+            $rescheduled = Schedule::create([
+                'student_id' => $studentId,
+                'teacher_id' => $oldTeacherId,
+                'subject' => $subject,
+                'day_of_week' => $dayOfWeek,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'duration_hours' => $durationHours,
+                'class_type' => $classType,
+                'status' => 'rescheduled',
+                'type' => 'normal',
+                'deduction' => 0,
+                'branch_id' => $campusId,
+                'schedule_date' => $sessionDate,
+                'student_course_id' => $courseId,
+            ]);
+
+            Schedule::create([
+                'student_id' => $studentId,
+                'teacher_id' => $oldTeacherId,
+                'subject' => $subject,
+                'day_of_week' => $dayOfWeek,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'duration_hours' => $durationHours,
+                'class_type' => $classType,
+                'status' => 'scheduled',
+                'type' => 'normal',
+                'deduction' => 1,
+                'branch_id' => $campusId,
+                'schedule_date' => $sessionDate,
+                'student_course_id' => $courseId,
+                'original_schedule_id' => (int) $rescheduled->id,
+            ]);
+        }
     }
 
     /**
