@@ -116,7 +116,7 @@ class OverlappingCourseGuardTest extends TestCase
         $teacherId = $this->createTeacher(1, 'teach-ovl-trial@example.com');
         $student = $this->createStudent(1, '試聽重疊測試生');
 
-        $base = Carbon::now()->addWeeks(8)->next(Carbon::FRIDAY);
+        $base = Carbon::now()->addWeeks(8)->next(Carbon::WEDNESDAY);
         $first = [];
         $cur = $base->copy();
         for ($i = 0; $i < 4; $i++) {
@@ -131,14 +131,6 @@ class OverlappingCourseGuardTest extends TestCase
         // 同生同科同師、日期落在既有一對三區間內的單堂試聽 → 不得 409 overlapping
         $trialDate = $first[1];
         $trialPayload = $this->batchPayload($student->id, $teacherId, [$trialDate], 'trial');
-        $trialPayload['days_of_week'] = [5];
-        $trialPayload['start_time'] = '14:00';
-        $trialPayload['session_plan'] = [[
-            'session_date' => $trialDate,
-            'start_time' => '14:00',
-            'kind' => 'future',
-            'subject' => 'Math',
-        ]];
 
         $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
             ->postJson('/api/v1/class-sessions/batch', $trialPayload)
