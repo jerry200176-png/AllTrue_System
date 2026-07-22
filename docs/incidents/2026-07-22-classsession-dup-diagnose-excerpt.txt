@@ -1,0 +1,160 @@
+=== diagnose DATE=2026-07-22 CAMPUS=9 generated=2026-07-22T11:21:54+08:00 ===
+--- teacher ---
+67	黃芝琳	[REDACTED]
+225	黃芝琳	[REDACTED]
+--- students ---
+89	王品方	9
+2144	陳品承	9
+--- case sessions ±7d non-cancelled ---
+王品方|10274|1272|0|9|2|67|2026-07-18|13:00|15:00|leave|leave|2026-05-04 23:40:45|2026-07-18 17:31:28
+王品方|24111|2382|0|8|8|67|2026-07-18|13:00|15:00|leave|leave|2026-07-11 22:46:52|2026-07-18 09:36:53
+王品方|24536|2383|0|8|6|30|2026-07-18|13:00|15:00|attended|系統補建堂次（增加購買堂數）|2026-07-14 19:48:58|2026-07-18 18:20:39
+王品方|19986|2383|0|8|6|30|2026-07-21|16:00|18:00|attended||2026-06-23 20:54:06|2026-07-21 16:07:21
+王品方|24955|2382|0|8|8|67|2026-07-25|13:00|15:00|scheduled||2026-07-18 09:36:53|2026-07-18 09:36:53
+王品方|19987|2383|0|8|6|30|2026-07-28|16:00|18:00|scheduled||2026-06-23 20:54:06|2026-06-23 20:54:06
+陳品承|24112|1946|0|8|1|67|2026-07-18|15:00|17:00|attended|請假自動順延; leave; auto-extended-after-leave|2026-07-11 22:46:55|2026-07-18 15:19:24
+陳品承|20205|2399|0|8|7|67|2026-07-18|15:00|17:00|attended||2026-06-24 17:51:51|2026-07-18 15:19:21
+陳品承|20206|2399|0|8|7|67|2026-07-25|15:00|17:00|scheduled||2026-06-24 17:51:51|2026-06-24 17:51:51
+--- campus9 scheduled cross-SC from date ---
+朱以翔|53|2026-07-22|18:00|1661,2376|13364,19836|0:scheduled,0:scheduled|2
+朱以翔|53|2026-07-29|18:00|1661,2376|19837,22300|0:scheduled,0:scheduled|2
+周宥均|65|2026-08-01|10:00|1435,2466|21024,24661|0:scheduled,0:scheduled|2
+周宥均|65|2026-08-08|10:00|1435,2466|21025,24663|0:scheduled,0:scheduled|2
+王品方|67|2026-08-08|13:00|1272,2382|10275,24033|0:scheduled,0:scheduled|2
+周宥均|65|2026-08-15|10:00|1435,2466|21026,24803|0:scheduled,0:scheduled|2
+王品方|67|2026-08-15|13:00|1272,2382|14925,19978|0:scheduled,0:scheduled|2
+--- campus9 orphan Stop=1 scheduled ---
+--- system scheduled cross-SC top50 ---
+9|朱以翔|53|2026-07-22|18:00|1661,2376|13364,19836|0,0|2
+13|馬川閔|254|2026-07-23|19:00|1947,2767|25477,25565|0,0|2
+11|廖彥傑|247|2026-07-25|10:00|2130,2631|17203,23113|0,0|2
+11|鄧筠蓁|231|2026-07-25|10:00|1781,2462|25108,25109|0,0|2
+13|馮巧文|254|2026-07-28|17:00|1889,2713|24576,25564|0,0|2
+16|吳宏逸|36|2026-07-28|19:00|2054,2334|16518,19292|0,0|2
+9|朱以翔|53|2026-07-29|18:00|1661,2376|19837,22300|0,0|2
+17|李昀霈|246|2026-07-29|18:00|1698,2468|17825,21098|0,0|2
+13|陳資穎|254|2026-07-30|19:00|1770,2696|14265,24353|0,0|2
+9|周宥均|65|2026-08-01|10:00|1435,2466|21024,24661|0,0|2
+17|李昀霈|83|2026-08-02|09:30|1652,2469|13272,21119|0,0|2
+16|吳宏逸|36|2026-08-04|19:00|2054,2334|19293,19650|0,0|2
+17|李昀霈|246|2026-08-05|18:00|1698,2468|21099,21608|0,0|2
+2|鄭仲翔|145|2026-08-06|18:00|1083,2586|22514,23758|0,0|2
+9|周宥均|65|2026-08-08|10:00|1435,2466|21025,24663|0,0|2
+9|王品方|67|2026-08-08|13:00|1272,2382|10275,24033|0,0|2
+16|吳宛庭|67|2026-08-08|10:00|2162,2335|17487,19316|0,0|2
+16|許廷寬|193|2026-08-08|13:00|1953,2409|20387,20389|0,0|2
+17|劉舒云|84|2026-08-08|10:00|2269,2381|18620,19968|0,0|2
+17|李昀霈|83|2026-08-09|09:30|1652,2469|21120,22270|0,0|2
+17|李昀霈|246|2026-08-12|18:00|1698,2468|21100,24718|0,0|2
+17|李昀霈|246|2026-08-14|18:00|1699,2467|21082,22071|0,0|2
+9|周宥均|65|2026-08-15|10:00|1435,2466|21026,24803|0,0|2
+9|王品方|67|2026-08-15|13:00|1272,2382|14925,19978|0,0|2
+16|吳宏逸|67|2026-08-15|10:00|2290,2332|18784,19260|0,0|2
+16|吳宛庭|67|2026-08-15|10:00|2162,2335|17488,19317|0,0|2
+17|劉舒云|84|2026-08-15|10:00|2269,2381|19969,24035|0,0|2
+17|李昀霈|83|2026-08-16|09:30|1652,2469|21121,25229|0,0|2
+17|李昀霈|246|2026-08-21|18:00|1699,2467|21083,25467|0,0|2
+16|吳宏逸|67|2026-08-22|10:00|2290,2332|18785,19261|0,0|2
+16|吳宛庭|67|2026-08-22|10:00|2162,2335|19318,24656|0,0|2
+16|吳宏逸|67|2026-08-29|10:00|2290,2332|19262,24655|0,0|2
+--- system orphan Stop=1 scheduled count ---
+0
+--- artisan audit ---
+                    "session_date": "2026-07-24",
+                    "start_time": "18:00"
+                },
+                {
+                    "session_date": "2026-07-31",
+                    "start_time": "18:00"
+                }
+            ],
+            "missing_count": 2
+        },
+        {
+            "student_class_id": 2060,
+            "window_start": "2026-07-22",
+            "window_end": "2026-09-09",
+            "missing_slots": [
+                {
+                    "session_date": "2026-08-05",
+                    "start_time": "17:00"
+                }
+            ],
+            "missing_count": 1
+        },
+        {
+            "student_class_id": 2531,
+            "window_start": "2026-07-22",
+            "window_end": "2026-08-08",
+            "missing_slots": [
+                {
+                    "session_date": "2026-07-25",
+                    "start_time": "10:00"
+                }
+            ],
+            "missing_count": 1
+        },
+        {
+            "student_class_id": 2555,
+            "window_start": "2026-07-22",
+            "window_end": "2026-08-09",
+            "missing_slots": [
+                {
+                    "session_date": "2026-08-07",
+                    "start_time": "19:00"
+                }
+            ],
+            "missing_count": 1
+        },
+        {
+            "student_class_id": 2637,
+            "window_start": "2026-07-22",
+            "window_end": "2026-08-06",
+            "missing_slots": [
+                {
+                    "session_date": "2026-08-04",
+                    "start_time": "18:00"
+                }
+            ],
+            "missing_count": 1
+        }
+    ]
+}
+--- orphan dry-run ---
+[TD-016] No orphan sessions found. All clean.
+--- scheduled-cross-sc dry-run ---
+=== DRY RUN repair:duplicate-sessions ===
+case=scheduled-cross-sc actions=32
+WOULD cancel ClassSession id=24661 (SC 1435) — cross-SC scheduled dup 2026-08-01 10:00 — keep SC2466 session 21024
+WOULD cancel ClassSession id=24663 (SC 1435) — cross-SC scheduled dup 2026-08-08 10:00 — keep SC2466 session 21025
+WOULD cancel ClassSession id=24803 (SC 1435) — cross-SC scheduled dup 2026-08-15 10:00 — keep SC2466 session 21026
+WOULD cancel ClassSession id=13364 (SC 1661) — cross-SC scheduled dup 2026-07-22 18:00 — keep SC2376 session 19836
+WOULD cancel ClassSession id=22300 (SC 1661) — cross-SC scheduled dup 2026-07-29 18:00 — keep SC2376 session 19837
+WOULD cancel ClassSession id=10275 (SC 1272) — cross-SC scheduled dup 2026-08-08 13:00 — keep SC2382 session 24033
+WOULD cancel ClassSession id=14925 (SC 1272) — cross-SC scheduled dup 2026-08-15 13:00 — keep SC2382 session 19978
+WOULD cancel ClassSession id=16518 (SC 2054) — cross-SC scheduled dup 2026-07-28 19:00 — keep SC2334 session 19292
+WOULD cancel ClassSession id=19650 (SC 2054) — cross-SC scheduled dup 2026-08-04 19:00 — keep SC2334 session 19293
+WOULD cancel ClassSession id=18784 (SC 2290) — cross-SC scheduled dup 2026-08-15 10:00 — keep SC2332 session 19260
+WOULD cancel ClassSession id=18785 (SC 2290) — cross-SC scheduled dup 2026-08-22 10:00 — keep SC2332 session 19261
+WOULD cancel ClassSession id=24655 (SC 2290) — cross-SC scheduled dup 2026-08-29 10:00 — keep SC2332 session 19262
+WOULD cancel ClassSession id=17487 (SC 2162) — cross-SC scheduled dup 2026-08-08 10:00 — keep SC2335 session 19316
+WOULD cancel ClassSession id=17488 (SC 2162) — cross-SC scheduled dup 2026-08-15 10:00 — keep SC2335 session 19317
+WOULD cancel ClassSession id=24656 (SC 2162) — cross-SC scheduled dup 2026-08-22 10:00 — keep SC2335 session 19318
+WOULD cancel ClassSession id=20387 (SC 1953) — cross-SC scheduled dup 2026-08-08 13:00 — keep SC2409 session 20389
+WOULD cancel ClassSession id=18620 (SC 2269) — cross-SC scheduled dup 2026-08-08 10:00 — keep SC2381 session 19968
+WOULD cancel ClassSession id=24035 (SC 2269) — cross-SC scheduled dup 2026-08-15 10:00 — keep SC2381 session 19969
+WOULD cancel ClassSession id=17825 (SC 1698) — cross-SC scheduled dup 2026-07-29 18:00 — keep SC2468 session 21098
+WOULD cancel ClassSession id=13272 (SC 1652) — cross-SC scheduled dup 2026-08-02 09:30 — keep SC2469 session 21119
+WOULD cancel ClassSession id=21608 (SC 1698) — cross-SC scheduled dup 2026-08-05 18:00 — keep SC2468 session 21099
+WOULD cancel ClassSession id=22270 (SC 1652) — cross-SC scheduled dup 2026-08-09 09:30 — keep SC2469 session 21120
+WOULD cancel ClassSession id=24718 (SC 1698) — cross-SC scheduled dup 2026-08-12 18:00 — keep SC2468 session 21100
+WOULD cancel ClassSession id=22071 (SC 1699) — cross-SC scheduled dup 2026-08-14 18:00 — keep SC2467 session 21082
+WOULD cancel ClassSession id=25229 (SC 1652) — cross-SC scheduled dup 2026-08-16 09:30 — keep SC2469 session 21121
+WOULD cancel ClassSession id=25467 (SC 1699) — cross-SC scheduled dup 2026-08-21 18:00 — keep SC2467 session 21083
+WOULD cancel ClassSession id=23758 (SC 1083) — cross-SC scheduled dup 2026-08-06 18:00 — keep SC2586 session 22514
+WOULD cancel ClassSession id=17203 (SC 2130) — cross-SC scheduled dup 2026-07-25 10:00 — keep SC2631 session 23113
+WOULD cancel ClassSession id=25109 (SC 1781) — cross-SC scheduled dup 2026-07-25 10:00 — keep SC2462 session 25108
+WOULD cancel ClassSession id=14265 (SC 1770) — cross-SC scheduled dup 2026-07-30 19:00 — keep SC2696 session 24353
+WOULD cancel ClassSession id=25565 (SC 1947) — cross-SC scheduled dup 2026-07-23 19:00 — keep SC2767 session 25477
+WOULD cancel ClassSession id=25564 (SC 1889) — cross-SC scheduled dup 2026-07-28 17:00 — keep SC2713 session 24576
+=== END ===

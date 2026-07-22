@@ -1,3 +1,19 @@
+## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
+
+- Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.
+- Final report: `docs/incidents/bug-closure-queue-final-report-2026-07-22.md`. Founder-parked items unchanged (#173/#1062/#1342/#189–191).
+
+## 2026-07-22 — fix: 課程改老師不再改寫已上堂次的授課老師（in-app #207）
+
+Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過去堂次會保留原來的老師；未來堂次才跟新的合約老師。不必再逐堂手動設代課來「救」歷史紀錄。
+
+開發備註：`StudentClassController` 在 TeacherID 變更時對過去堂次寫入 substitute-style `schedules` pin（原老師）；未來 `scheduled` 列仍走既有 `syncFutureScheduleTeachersAfterContractTeacherChange`。回歸 `ContractTeacherChangePreservesHistoryTest`（in-app #207）。
+
+## 2026-07-22 — ops: in-app bug queue dump + Phase-C allowlist（#205/#198）
+
+- Cloud agent 無法 `workflow_dispatch` 時，改以 request file push 觸發唯讀 bug queue dump，並對已上線修復的 in-app #205／#198 做冪等 Phase C（公開回覆＋resolved）。
+- Founder 決策包：`docs/incidents/bug-closure-founder-decisions-2026-07-22.md`（#173／#1062／#1342／歷史帳務）。
+
 # AllTrue Changelog
 
 ## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）

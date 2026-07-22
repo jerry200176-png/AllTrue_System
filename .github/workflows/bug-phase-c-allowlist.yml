@@ -1,0 +1,140 @@
+name: Bug Phase-C allowlist resolve (Pi)
+
+# Idempotent Phase C for bugs whose code fix is already on production.
+# Trigger via request file (cloud agents cannot workflow_dispatch).
+# Allowlist only — never invent new bug IDs here without Evidence Contract.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/bug-phase-c-allowlist.request.md'
+      - '.github/workflows/bug-phase-c-allowlist.yml'
+
+concurrency:
+  group: bug-phase-c-allowlist
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Phase-C resolve allowlisted bugs
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=20 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" bash <<'REMOTE' | tee out/phase-c.log
+          set -euo pipefail
+          cd /home/admin/backend
+          PROD_HEAD=$(git rev-parse HEAD)
+          echo "prod_head=$PROD_HEAD"
+          php artisan tinker --execute='
+          $prodHead = trim((string)@shell_exec("git rev-parse HEAD"));
+          $admin = \Illuminate\Support\Facades\DB::table("UserCampus")->where("Admin",1)->where("Approved",1)->orderBy("UserID")->value("UserID");
+          $actor = $admin ? (int)$admin : 1;
+          $svc = \App\Services\BugReportService::class;
+          // Allowlist: in-app id => [public reply, production_revision, deploy_run_id optional]
+          $items = [
+            207 => [
+              "reply" => "已修好：之後在課程管理改「正班老師」時，已經上過的課會保留原本的老師，不會整批變成新老師；未來的課才會跟著新老師。請重新整理行事曆確認。若過去某幾堂仍顯示錯的老師，請回覆此單，我們再幫您校正那幾堂。",
+              "rev" => "7acb5803ccafb6ce5bffae8a2a86c5bf54049382",
+              "deploy" => "29890459105",
+            ],
+            205 => [
+              "reply" => "已修好：換代課老師時，系統會正確排除「這位學生自己」的既有時段，不再把還有名額的一對二老師誤標成已滿或衝堂。請在課程管理再開一次「換代課老師」確認；若仍有問題請回覆此單。",
+              "rev" => "8d08ca72da42a1455f7d4502bb97b309778adf20",
+              "deploy" => "29669924825",
+            ],
+            198 => [
+              "reply" => "已修好：兼職老師費率現在會依您查看的月份套用正確的生效日，國中時薪改成新費率後，該月展開不會再卡在舊的 400。請重新整理兼職薪資頁、選對月份再看一次；若仍顯示錯誤請回覆此單。",
+              "rev" => "1424673ae119b74ebedd1734192231244e273271",
+              "deploy" => "",
+            ],
+          ];
+          $results = [];
+          foreach ($items as $bugId => $cfg) {
+            $bug = \App\Models\BugReport::find($bugId);
+            if (!$bug) {
+              $results[] = ["id" => $bugId, "action" => "missing"];
+              continue;
+            }
+            $status = (string)$bug->status;
+            if (in_array($status, ["resolved", "closed"], true)) {
+              $results[] = ["id" => $bugId, "action" => "skip_already", "status" => $status];
+              continue;
+            }
+            // Walk legal transitions toward resolved
+            $path = [];
+            if ($status === "new") $path = ["triaged", "in_progress", "resolved"];
+            elseif ($status === "triaged") $path = ["in_progress", "resolved"];
+            elseif ($status === "in_progress") $path = ["resolved"];
+            else {
+              $results[] = ["id" => $bugId, "action" => "unsupported_status", "status" => $status];
+              continue;
+            }
+            $ok = true;
+            $last = null;
+            foreach ($path as $st) {
+              if ($st === "resolved") {
+                // Public reply before resolve (Evidence Contract)
+                $svc::addComment($bugId, $actor, $cfg["reply"], false);
+                $opts = ["production_revision" => $cfg["rev"]];
+                if ($cfg["deploy"] !== "") $opts["deploy_run_id"] = $cfg["deploy"];
+                $last = $svc::changeStatus($bugId, $actor, "resolved", "phase-c allowlist; prod_head=".$prodHead, $opts);
+              } else {
+                $last = $svc::changeStatus($bugId, $actor, $st, "phase-c allowlist triage");
+              }
+              if (!($last["ok"] ?? false)) { $ok = false; break; }
+            }
+            $fresh = \App\Models\BugReport::find($bugId);
+            $results[] = [
+              "id" => $bugId,
+              "action" => $ok ? "resolved" : "failed",
+              "from" => $status,
+              "final" => $fresh ? $fresh->status : "missing",
+              "last" => $last,
+            ];
+          }
+          echo "---RESULTS---", PHP_EOL;
+          echo json_encode(["prod_head" => $prodHead, "actor" => $actor, "results" => $results], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          '
+          REMOTE
+
+      - name: Upload phase-c log
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-phase-c-allowlist
+          path: out/
+          retention-days: 14
