@@ -540,6 +540,7 @@ class EnrollmentService
 
         // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
         // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
+        // MySQL 8 may abort the transaction on 3988 and surface PDO SAVEPOINT noise — treat as charset.
         try {
             return DB::transaction(function () use (
             $request,
@@ -859,11 +860,11 @@ class EnrollmentService
 
             return response()->json($payload, 201);
         });
-        } catch (QueryException $e) {
-            if ($this->isIncorrectStringValueException($e)) {
+        } catch (\Throwable $e) {
+            if ($this->isCharsetRejectionThrowable($e)) {
                 Log::warning('enrollment_memo_charset_incompatible', [
-                    'sqlstate' => $e->errorInfo[0] ?? null,
-                    'driver_code' => $e->errorInfo[1] ?? null,
+                    'exception' => get_class($e),
+                    'message' => mb_substr($e->getMessage(), 0, 240),
                 ]);
                 return response()->json([
                     'message' => '備註含有目前資料庫無法儲存的特殊字元（例如 emoji）。請暫時移除後重試；系統正在升級字元集以永久支援。',
@@ -875,7 +876,35 @@ class EnrollmentService
     }
 
     /**
-     * MySQL 1366 Incorrect string value — typically utf8mb3 column + 4-byte Unicode (emoji).
+     * MySQL rejects 4-byte Unicode on utf8mb3 columns.
+     * Older: "Incorrect string value" (1366). MySQL 8+: "Conversion from collation ... impossible" (3988).
+     * After 3988 the driver may also surface SAVEPOINT PDOException — walk the chain.
+     */
+    private function isCharsetRejectionThrowable(\Throwable $e): bool
+    {
+        for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
+            if ($cur instanceof QueryException && $this->isIncorrectStringValueException($cur)) {
+                return true;
+            }
+            $msg = $cur->getMessage();
+            if (str_contains($msg, 'Incorrect string value')) {
+                return true;
+            }
+            if (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible')) {
+                return true;
+            }
+            if ($cur instanceof QueryException) {
+                $code = (int) ($cur->errorInfo[1] ?? 0);
+                if ($code === 1366 || $code === 3988) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @deprecated Prefer isCharsetRejectionThrowable; kept for QueryException-only callers.
      */
     private function isIncorrectStringValueException(QueryException $e): bool
     {
@@ -883,9 +912,11 @@ class EnrollmentService
         if (str_contains($msg, 'Incorrect string value')) {
             return true;
         }
-        // Driver SQLSTATE for invalid string / truncated wrong value often HY000 / 22007 with 1366.
+        if (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible')) {
+            return true;
+        }
         $driverCode = (int) ($e->errorInfo[1] ?? 0);
-        return $driverCode === 1366;
+        return $driverCode === 1366 || $driverCode === 3988;
     }
 
     private function resolvePlannedSessions(array $data, int $totalDates): int
