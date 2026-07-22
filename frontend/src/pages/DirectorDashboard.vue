@@ -369,7 +369,14 @@
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
               <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
-                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row">
+                <article
+                  v-for="workflow in exceptionWorkflows"
+                  :key="workflow.id"
+                  class="ew-row"
+                  :class="{ 'ew-row--focus': Number(highlightedWorkflowId) === Number(workflow.id) }"
+                  :data-workflow-id="workflow.id"
+                  :id="`exception-workflow-${workflow.id}`"
+                >
                   <div class="ew-main">
                     <div class="ew-title">
                       {{ workflow.student?.name || '學生' }}
@@ -714,8 +721,11 @@ const props = defineProps({
   branchId: [String, Number],
   unreadFeedbackCount: { type: Number, default: 0 },
   initialEngagement: { type: Object, default: null },
+  focusWorkflowId: { type: [Number, String], default: null },
+  focusSection: { type: String, default: null },
 });
 const emit = defineEmits(['navigate']);
+const highlightedWorkflowId = ref(null);
 
 const engagementSnapshot = ref(null);
 const engagementDisplayOn = ref(true);
@@ -1797,6 +1807,33 @@ const scrollTo = (section) => {
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+const applyFocusFromInbox = async () => {
+  const section = props.focusSection || (props.focusWorkflowId ? 'exception-workflows' : null);
+  if (!section && !props.focusWorkflowId) return;
+  await nextTick();
+  if (section) scrollTo(section);
+  const wfId = Number(props.focusWorkflowId || 0);
+  if (wfId > 0) {
+    highlightedWorkflowId.value = wfId;
+    const row = document.getElementById(`exception-workflow-${wfId}`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    const match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
+    if (match) {
+      try {
+        await loadWorkflowDetail(match);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+};
+
+watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => {
+  applyFocusFromInbox();
+});
+
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
   loadData();
@@ -1814,6 +1851,7 @@ onMounted(() => {
   window.addEventListener(USER_ENGAGEMENT_DISPLAY_REFRESH_EVENT, onEngagementDisplayRefreshEvent);
   loadData();
   loadScheduleDiscrepancySummary();
+  applyFocusFromInbox();
 });
 
 onBeforeUnmount(() => {
@@ -1906,6 +1944,10 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(20, 184, 166, 0.22);
   border-radius: 14px;
   background: linear-gradient(180deg, var(--ds-canvas), var(--ds-success-wash));
+}
+.ew-row--focus {
+  border-color: var(--ds-warning);
+  box-shadow: 0 0 0 2px var(--ds-warning-wash);
 }
 .ew-main { min-width: 0; }
 .ew-title { font-weight: 800; color: var(--ds-ink); display: flex; align-items: center; gap: 8px; }
