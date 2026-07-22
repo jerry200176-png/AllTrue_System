@@ -3,7 +3,6 @@ namespace App\Services;
 use App\Models\ExceptionWorkflow;
 use App\Models\Notification;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Builder;
 /** Read-model only (B-lite + D). Never writes leave Notifications. */
 class ActionInboxService
 {
@@ -98,26 +97,26 @@ class ActionInboxService
         $q = $this->caseQuery($scope, $filter);
         return (int) $q->count();
     }
-    /** @param array{mode: string, campus_ids: array<int>} $scope */
-    private function caseQuery(array $scope, ?string $filter = null): Builder
-    {
-        $q = ExceptionWorkflow::query()
-            ->where('type', 'student_leave')
-            ->whereIn('status', self::OPEN_CASE_STATUSES);
-        $this->scopeCampus($q, $scope, 'campus_id');
-        $now = now();
-        $until = (clone $now)->addHours(self::DUE_SOON_HOURS);
-        if ($filter === 'overdue') {
-            $q->whereNotNull('due_at')->where('due_at', '<', $now);
-        } elseif ($filter === 'due_soon') {
-            $q->whereNotNull('due_at')->where('due_at', '>=', $now)->where('due_at', '<=', $until);
-        } elseif ($filter === 'candidate_ready') {
-            $q->where('status', 'candidate_ready');
-        } elseif ($filter === 'waiting' || $filter === 'open') {
-            $q->where('status', 'open');
-        }
-        return $q;
-    }
+/** @param array{mode: string, campus_ids: array<int>} $scope @return mixed */
+private function caseQuery(array $scope, ?string $filter = null)
+{
+$q = ExceptionWorkflow::query()
+->where('type', 'student_leave')
+->whereIn('status', self::OPEN_CASE_STATUSES);
+$this->scopeCampus($q, $scope, 'campus_id');
+$now = now();
+$until = (clone $now)->addHours(self::DUE_SOON_HOURS);
+if ($filter === 'overdue') {
+$q->whereNotNull('due_at')->where('due_at', '<', $now);
+} elseif ($filter === 'due_soon') {
+$q->whereNotNull('due_at')->where('due_at', '>=', $now)->where('due_at', '<=', $until);
+} elseif ($filter === 'candidate_ready') {
+$q->where('status', 'candidate_ready');
+} elseif ($filter === 'waiting' || $filter === 'open') {
+$q->where('status', 'open');
+}
+return $q;
+}
     /** @param array{mode: string, campus_ids: array<int>} $scope @return array<string, mixed> */
     private function paginateOps(array $scope, int $userId, int $page, int $perPage): array
     {
@@ -155,16 +154,16 @@ class ActionInboxService
             ->map(fn (ExceptionWorkflow $w) => $this->dtoCase($w, false))->values()->all();
         return $this->page($rows, $total, $page, $perPage, $last);
     }
-    /** @param array{mode: string, campus_ids: array<int>} $scope */
-    private function scopeCampus(Builder $q, array $scope, string $column): void
-    {
-        if ($scope['mode'] === 'all') {
-            return;
-        }
-        $ids = array_values(array_unique(array_map('intval', $scope['campus_ids'])));
-        // Never treat empty ids as all.
-        $q->whereIn($column, $ids === [] ? [-1] : $ids);
-    }
+/** @param mixed $q @param array{mode: string, campus_ids: array<int>} $scope */
+private function scopeCampus($q, array $scope, string $column): void
+{
+if ($scope['mode'] === 'all') {
+return;
+}
+$ids = array_values(array_unique(array_map('intval', $scope['campus_ids'])));
+// Never treat empty ids as all.
+$q->whereIn($column, $ids === [] ? [-1] : $ids);
+}
     /** @return array<string, mixed> */
     private function emptyPage(int $page, int $perPage): array
     {
