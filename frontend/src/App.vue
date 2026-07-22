@@ -896,6 +896,7 @@ const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
 const inboxCasesOpenCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
+const inboxUrgentTotal = ref(0);
 const directorFocusWorkflowId = ref(null);
 const directorFocusSection = ref(null);
 const badgeByType = ref({});
@@ -967,7 +968,8 @@ function getItemBadgeCount(item) {
 }
 function isItemBadgeUrgent(item) {
   if (item?.page === 'notifications') {
-    return inboxCasesOpenCount.value > 0 || urgentNotificationCount.value > 0;
+    // Alert fatigue: red only for urgent_total (high unread + overdue cases).
+    return inboxUrgentTotal.value > 0;
   }
   if (!item?.badgeTypes?.length) return false;
   return item.badgeTypes.some((t) => (badgeByType.value[t]?.urgent || 0) > 0);
@@ -994,7 +996,28 @@ function onNavigateToSchedule({ teacherId, target }) {
   else active.value = 'course-mgmt';
 }
 
-function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
+function applyDeepLinkFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    const section = params.get('section');
+    const workflowId = Number(params.get('workflow_id') || 0);
+    const branchId = Number(params.get('branch_id') || 0);
+    if (branchId > 0) currentBranch.value = branchId;
+    if (page === 'notifications' || page === 'director') {
+      active.value = page;
+    }
+    if (page === 'director' || workflowId > 0) {
+      directorFocusSection.value = section || (workflowId > 0 ? 'exception-workflows' : null);
+      directorFocusWorkflowId.value = workflowId > 0 ? workflowId : null;
+      if (workflowId > 0) active.value = 'director';
+    }
+  } catch { /* ignore */ }
+}
+
+function onPopStateDeepLink() {
+  applyDeepLinkFromUrl();
+}
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1008,13 +1031,22 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
   } else {
     learningTargetRecordId.value = null;
   }
-  // 「家長回饋待看」CTA：請評量頁切到回饋篩選並放大資料集，否則導過去看不到回饋。(#138)
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
   }
   if (target === 'director') {
     directorFocusSection.value = section || 'exception-workflows';
     directorFocusWorkflowId.value = workflowId ? Number(workflowId) : null;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      q.set('page', 'director');
+      q.set('section', directorFocusSection.value);
+      if (directorFocusWorkflowId.value) q.set('workflow_id', String(directorFocusWorkflowId.value));
+      else q.delete('workflow_id');
+      if (currentBranch.value) q.set('branch_id', String(currentBranch.value));
+      const url = `${window.location.pathname}?${q.toString()}${window.location.hash || ''}`;
+      window.history.pushState({ page: 'director', workflowId: directorFocusWorkflowId.value }, '', url);
+    } catch { /* ignore */ }
   } else {
     directorFocusSection.value = null;
     directorFocusWorkflowId.value = null;
@@ -1102,12 +1134,16 @@ function isNavItemDisabled(page) {
 function onUnreadChange(count) {
   if (typeof count === 'number') {
     unreadNotificationCount.value = Number(count || 0);
-    urgentNotificationCount.value = 0;
     return;
   }
   if (count && typeof count === 'object') {
     unreadNotificationCount.value = Number(count.unread ?? 0);
-    urgentNotificationCount.value = Number(count.urgent ?? 0);
+    if (count.urgentTotal != null) {
+      inboxUrgentTotal.value = Number(count.urgentTotal || 0);
+      urgentNotificationCount.value = inboxUrgentTotal.value;
+    } else {
+      urgentNotificationCount.value = Number(count.urgent ?? 0);
+    }
     if (count.casesOpen != null) inboxCasesOpenCount.value = Number(count.casesOpen || 0);
     if (count.needsAttention != null) inboxNeedsAttentionCount.value = Number(count.needsAttention || 0);
   }
@@ -1414,6 +1450,7 @@ async function ensureDirectorBranches() {
 onMounted(async () => {
     // 系統主題監聽
     systemThemeMq?.addEventListener('change', onSystemThemeChange);
+    window.addEventListener('popstate', onPopStateDeepLink);
 
     // Load branches from API (public endpoint, no auth needed)
     await loadBranches();
@@ -1454,6 +1491,7 @@ onMounted(async () => {
     _startBadgePolling();
     document.addEventListener('visibilitychange', _onVisibilityChangeForPolling);
     await refreshUnreadNotifications();
+    if (session.value && isDirector.value) applyDeepLinkFromUrl();
 
     window.addEventListener('resize', onWindowResizeGuideFab);
     window.addEventListener('alltrue-refresh-badges', onRefreshBadgesEvent);
@@ -1521,6 +1559,7 @@ const fetchProfile = async (_uid) => {
             ensureTeacherBranch();
         } else if (me.role === 'director' || me.role === 'super_admin') {
             active.value = 'director';
+            applyDeepLinkFromUrl();
         }
     } catch {
         userProfile.value = null;
@@ -1541,7 +1580,10 @@ const handleLoginSuccess = async ({ user, profile }) => {
 
     if (mustChangePassword) active.value = 'profile';
     else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'teacher-home';
-    else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') active.value = 'director';
+    else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') {
+      active.value = 'director';
+      applyDeepLinkFromUrl();
+    }
     await ensureDirectorBranches();
     ensureTeacherBranch();
     triggerBrandIntroOncePerSessionToken();
@@ -1668,6 +1710,7 @@ function onRefreshBadgesEvent() {
 
 onBeforeUnmount(() => {
   systemThemeMq?.removeEventListener('change', onSystemThemeChange);
+  window.removeEventListener('popstate', onPopStateDeepLink);
   guideTour.closeTour();
   _stopBadgePolling();
   document.removeEventListener('visibilitychange', _onVisibilityChangeForPolling);
@@ -1759,18 +1802,13 @@ async function refreshUnreadNotifications() {
       if (inboxRes.ok) {
         const inboxJson = await inboxRes.json();
         unreadNotificationCount.value = Number(inboxJson.notifications_unread ?? unreadNotificationCount.value);
-        inboxCasesOpenCount.value = Number(inboxJson.cases_open || 0);
-        inboxNeedsAttentionCount.value = Number(inboxJson.needs_attention || 0);
-      } else {
-        inboxCasesOpenCount.value = 0;
-        inboxNeedsAttentionCount.value = unreadNotificationCount.value;
+        inboxCasesOpenCount.value = Number(inboxJson.cases_unresolved ?? inboxJson.cases_open ?? 0);
+        inboxNeedsAttentionCount.value = Number(inboxJson.badge_total ?? inboxJson.needs_attention ?? 0);
+        inboxUrgentTotal.value = Number(inboxJson.urgent_total ?? 0);
       }
+      // If inbox count fails, keep previous badge numbers (never fake zero).
     } catch {
-      unreadNotificationCount.value = 0;
-      urgentNotificationCount.value = 0;
-      inboxCasesOpenCount.value = 0;
-      inboxNeedsAttentionCount.value = 0;
-      badgeByType.value = {};
+      // Keep last successful badge counts on transient failure.
     }
   } else {
     unreadNotificationCount.value = 0;

@@ -1,13 +1,15 @@
 <template>
   <div class="notifications-page">
     <div class="page-header" data-guide="notifications-header">
-      <h2>📥 主任收件匣</h2>
-      <div class="page-desc">營運通知與待處理案件同一入口；請假／補課仍以補課案件為準，不會另外複製成通知。</div>
-      <div class="inbox-count-row" v-if="branchId != null">
-        <span>需要處理 <strong>{{ needsAttentionCount }}</strong></span>
+      <h2><span class="material-symbols-outlined" aria-hidden="true">inbox</span> 主任收件匣</h2>
+      <div class="page-desc">集中查看待辦案件與營運通知，優先處理即將到期或已逾期項目。</div>
+      <div class="inbox-count-row" v-if="branchId != null" aria-live="polite">
+        <span>已逾期 <strong>{{ casesOverdueCount }}</strong></span>
+        <span class="inbox-count-sep">即將到期 {{ casesDueSoonCount }}</span>
+        <span class="inbox-count-sep">方案待確認 {{ casesCandidateReadyCount }}</span>
         <span class="inbox-count-sep">新通知 {{ unreadCount }}</span>
-        <span class="inbox-count-sep">待處理案件 {{ casesOpenCount }}</span>
       </div>
+      <p v-if="countsStale" class="inbox-stale" role="status">案件狀態暫時無法更新，仍顯示上次成功資料。<button type="button" class="small" @click="retryLoad">重試</button></p>
     </div>
 
     <div v-if="branchId == null" class="card empty-card">
@@ -82,21 +84,25 @@
       </div>
 
       <div class="card controls-card" data-guide="notifications-controls">
-        <!-- 分類 Tab：營運通知 vs 待處理案件 -->
-        <div class="type-tabs">
+        <!-- 主 tabs：待辦案件 / 營運通知（全部僅次要 overview，不作為預設） -->
+        <div class="type-tabs" role="tablist" aria-label="收件匣分類">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
             class="type-tab"
+            role="tab"
+            :aria-selected="typeFilter === tab.value"
             :class="{ active: typeFilter === tab.value }"
             @click="onTabClick(tab.value)"
+            @keydown.left.prevent="focusAdjacentTab(-1)"
+            @keydown.right.prevent="focusAdjacentTab(1)"
           >
             {{ tab.label }}
             <span v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</span>
           </button>
         </div>
 
-        <div class="controls-row">
+        <div v-if="laneFilter !== 'case'" class="controls-row">
           <label>
             企業視圖
             <select v-model="focusMode">
@@ -137,7 +143,7 @@
           </div>
         </div>
 
-        <div class="actions-row">
+        <div v-if="laneFilter !== 'case'" class="actions-row">
           <button class="small ghost" :disabled="syncing" @click="syncNotifications(true)">
             {{ syncing ? '同步中...' : '同步通知' }}
           </button>
@@ -150,40 +156,46 @@
         </div>
       </div>
 
-      <div v-if="errorMessage" class="card error-card">{{ errorMessage }}</div>
+      <div v-if="caseLaneError" class="card error-card" role="alert" aria-live="assertive">
+        案件狀態暫時無法更新
+        <button type="button" class="small" @click="retryLoad">重試</button>
+      </div>
+      <div v-else-if="errorMessage" class="card error-card">{{ errorMessage }}</div>
 
       <div class="card list-card" data-guide="notifications-list">
-        <div v-if="loading" class="empty">載入收件匣中...</div>
-        <div v-else-if="laneFilter === 'case' && caseItems.length === 0" class="empty">目前沒有待處理的請假／補課案件</div>
-        <div v-else-if="laneFilter !== 'case' && displayNotifications.length === 0 && caseItems.length === 0" class="empty">目前沒有符合條件的項目</div>
+        <div v-if="loading && caseItems.length === 0 && notifications.length === 0" class="empty" aria-live="polite">載入收件匣中...</div>
+        <div v-else-if="laneFilter === 'case' && caseLaneError && caseItems.length === 0" class="empty" role="alert">案件狀態暫時無法更新</div>
+        <div v-else-if="laneFilter === 'case' && !caseLaneError && caseItems.length === 0" class="empty">目前沒有待辦案件</div>
+        <div v-else-if="laneFilter !== 'case' && displayNotifications.length === 0" class="empty">目前沒有符合條件的通知</div>
 
         <div v-else>
           <!-- 請假／補課案件 -->
           <template v-if="laneFilter === 'case' || laneFilter === ''">
             <div v-if="caseItems.length > 0" class="case-panel">
-              <h4 v-if="laneFilter === ''">📋 待處理案件</h4>
+              <h4 v-if="laneFilter === ''">待辦案件</h4>
               <div
                 v-for="item in caseItems"
                 :key="item.id"
                 class="notification-item case-item"
-                :class="{ 'severity-high-item': item.overdue }"
+                :class="{ 'severity-high-item': item.overdue, 'priority-due-soon': item.priority === 'due_soon' && !item.overdue }"
               >
                 <div class="title-row">
                   <span class="type-tag type-student_leave">請假申請</span>
-                  <span class="severity-tag" :class="item.overdue ? 'severity-high' : 'severity-medium'">
-                    {{ item.overdue ? '已逾期' : '待處理' }}
+                  <span class="severity-tag" :class="item.overdue ? 'severity-high' : (item.priority === 'due_soon' ? 'severity-medium' : 'severity-low')">
+                    {{ casePriorityLabel(item) }}
+                    <span class="sr-only" v-if="item.overdue">（文字標示：已逾期）</span>
                   </span>
                   <span class="status-chip">{{ item.status_label }}</span>
                 </div>
-                <div class="main-title">{{ item.title }}</div>
+                <div class="main-title">{{ item.student_name || item.title }}</div>
                 <div v-if="item.summary" class="notification-context">{{ item.summary }}</div>
-                <div v-if="item.body" class="main-body case-body">{{ item.body }}</div>
+                <div v-if="item.reason_preview" class="main-body case-body case-reason">{{ item.reason_preview }}</div>
                 <div class="meta-row">
                   <span>{{ formatDateTime(item.occurred_at) }}</span>
                   <span v-if="item.due_at">期限：{{ formatDateTime(item.due_at) }}</span>
                 </div>
                 <div class="item-actions">
-                  <button class="small primary" @click="goToLeaveCase(item)">安排補課</button>
+                  <button class="small primary case-cta" @click="goToLeaveCase(item)">{{ caseCtaLabel(item) }}</button>
                 </div>
               </div>
             </div>
@@ -191,7 +203,7 @@
 
           <template v-if="laneFilter !== 'case'">
           <div v-if="urgentNotifications.length > 0" class="urgent-panel">
-            <h4>🚨 急件置頂</h4>
+            <h4>急件置頂</h4>
             <div v-for="item in urgentNotifications" :key="`urgent-${item.id}`" class="urgent-row">
               <div class="urgent-copy">
                 <span class="urgent-title">{{ item.Title }}</span>
@@ -269,6 +281,14 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import {
+  caseCtaLabel,
+  casePriorityLabel,
+  extractCaseItems,
+  extractCaseTotal,
+  parseInboxCount,
+} from '../lib/actionInboxContract.js';
+import { trackAdoptionEvent } from '../lib/adoptionTelemetry.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -280,18 +300,26 @@ const loading = ref(false);
 const syncing = ref(false);
 const markingAllRead = ref(false);
 const errorMessage = ref('');
+const caseLaneError = ref(false);
+const countsStale = ref(false);
 const notifications = ref([]);
 const caseItems = ref([]);
 const unreadCount = ref(0);
 const urgentUnreadCount = ref(0);
 const casesOpenCount = ref(0);
+const casesOverdueCount = ref(0);
+const casesDueSoonCount = ref(0);
+const casesCandidateReadyCount = ref(0);
 const needsAttentionCount = ref(0);
+const inboxUrgentTotal = ref(0);
 const currentPage = ref(1);
 const lastPage = ref(1);
+const casesPage = ref(1);
+const caseFilter = ref('unresolved');
 
 const readFilter = ref('unread');
-const typeFilter = ref('');
-const laneFilter = ref('');
+const typeFilter = ref('lane:case');
+const laneFilter = ref('case');
 const includeResolved = ref(false);
 const soundEnabled = ref(localStorage.getItem('notifications_sound_enabled') !== '0');
 const quietMinor = ref(localStorage.getItem('notifications_quiet_minor') === '1');
@@ -345,25 +373,25 @@ const typeTabs = computed(() => {
     if (!n.read_at) counts[tab] = (counts[tab] || 0) + 1;
   });
   return [
-    { value: '',               label: '全部',    count: needsAttentionCount.value },
-    { value: 'lane:case',      label: '請假／補課', count: casesOpenCount.value },
-    { value: 'tuition',        label: '繳費',    count: counts['繳費'] || 0 },
-    { value: 'learning_review',label: '評量',    count: counts['評量'] || 0 },
-    { value: 'pending_swipe',  label: '刷卡',    count: counts['刷卡'] || 0 },
-    { value: 'low_sessions',   label: '堂數',    count: counts['堂數'] || 0 },
-    { value: 'schedule_change,substitute,substitute_confirm', label: '系統', count: counts['系統'] || 0 },
+    { value: 'lane:case', label: '待辦案件', count: casesOpenCount.value },
+    { value: '', label: '營運通知', count: unreadCount.value },
   ];
 });
 
 const onTabClick = (value) => {
-  if (value === 'lane:case') {
-    laneFilter.value = 'case';
-    typeFilter.value = 'lane:case';
-    return;
-  }
-  laneFilter.value = '';
   typeFilter.value = value;
+  laneFilter.value = value === 'lane:case' ? 'case' : 'ops';
+  loadNotifications(1);
 };
+
+const focusAdjacentTab = (delta) => {
+  const tabs = typeTabs.value;
+  const idx = tabs.findIndex((t) => t.value === typeFilter.value);
+  const next = tabs[(idx + delta + tabs.length) % tabs.length];
+  if (next) onTabClick(next.value);
+};
+
+const retryLoad = () => loadNotifications(currentPage.value || 1);
 
 const severityLabel = (severity) => {
   const map = {
@@ -405,7 +433,12 @@ const goToTarget = (type, item) => {
 };
 
 const goToLeaveCase = (item) => {
-  const workflowId = Number(item?.action?.workflow_id || item?.source_id || 0);
+  const workflowId = Number(item?.action?.workflow_id || item?.workflow_id || item?.source_id || 0);
+  trackAdoptionEvent('action_inbox_case_cta_clicked', props.branchId, {
+    workflow_id: workflowId > 0 ? workflowId : undefined,
+    workflow_status: item?.status_code || undefined,
+    entry_source: 'inbox_case_cta',
+  });
   emit('navigate', {
     target: 'director',
     section: 'exception-workflows',
@@ -651,9 +684,6 @@ const buildQuery = (page = 1) => {
 
 const refreshInboxCounts = async () => {
   if (!props.branchId) {
-    casesOpenCount.value = 0;
-    needsAttentionCount.value = 0;
-    emit('unread-change', { unread: 0, urgent: 0, casesOpen: 0, needsAttention: 0 });
     return;
   }
   try {
@@ -666,30 +696,48 @@ const refreshInboxCounts = async () => {
       },
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    unreadCount.value = Number(json.notifications_unread || 0);
-    casesOpenCount.value = Number(json.cases_open || 0);
-    needsAttentionCount.value = Number(json.needs_attention || 0);
+    if (!res.ok) {
+      countsStale.value = true;
+      return;
+    }
+    const parsed = parseInboxCount(json);
+    unreadCount.value = parsed.notificationsUnread;
+    casesOpenCount.value = parsed.casesUnresolved;
+    casesOverdueCount.value = parsed.casesOverdue;
+    casesDueSoonCount.value = parsed.casesDueSoon;
+    needsAttentionCount.value = parsed.badgeTotal;
+    inboxUrgentTotal.value = parsed.urgentTotal;
+    casesCandidateReadyCount.value = caseItems.value.filter((c) => c.status_code === 'candidate_ready').length;
+    countsStale.value = false;
     emit('unread-change', {
       unread: unreadCount.value,
-      urgent: urgentUnreadCount.value,
+      urgent: inboxUrgentTotal.value,
       casesOpen: casesOpenCount.value,
       needsAttention: needsAttentionCount.value,
+      urgentTotal: inboxUrgentTotal.value,
+      casesOverdue: casesOverdueCount.value,
+      casesDueSoon: casesDueSoonCount.value,
     });
   } catch {
-    // keep previous counts on transient failure
+    countsStale.value = true;
   }
 };
 
 const loadCaseItems = async () => {
   if (!props.branchId) {
-    caseItems.value = [];
     return;
   }
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/action-inbox?branch_id=${props.branchId}&lane=case`, {
+    const params = new URLSearchParams({
+      branch_id: String(props.branchId),
+      lane: 'case',
+      page: String(casesPage.value || 1),
+      per_page: '50',
+      case_filter: caseFilter.value || 'unresolved',
+    });
+    const res = await fetch(`${baseUrl}/v1/action-inbox?${params}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
@@ -697,13 +745,15 @@ const loadCaseItems = async () => {
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '請假案件載入失敗');
-    caseItems.value = json.data || [];
-    casesOpenCount.value = Number(json.meta?.cases_open ?? caseItems.value.length);
+    caseItems.value = extractCaseItems(json);
+    casesOpenCount.value = extractCaseTotal(json, caseItems.value.length);
+    caseLaneError.value = false;
+    casesCandidateReadyCount.value = caseItems.value.filter((c) => c.status_code === 'candidate_ready').length;
   } catch (err) {
+    caseLaneError.value = true;
     if (laneFilter.value === 'case') {
-      errorMessage.value = err.message || '請假案件載入失敗';
+      errorMessage.value = '';
     }
-    caseItems.value = [];
   }
 };
 
@@ -711,21 +761,19 @@ const loadNotifications = async (page = 1) => {
   if (!props.branchId) {
     notifications.value = [];
     caseItems.value = [];
-    unreadCount.value = 0;
-    urgentUnreadCount.value = 0;
-    casesOpenCount.value = 0;
-    needsAttentionCount.value = 0;
-    emit('unread-change', { unread: 0, urgent: 0, casesOpen: 0, needsAttention: 0 });
     return;
   }
 
   loading.value = true;
   errorMessage.value = '';
   try {
-    await refreshInboxCounts();
-    await loadCaseItems();
+    const countP = refreshInboxCounts();
+    const caseP = (laneFilter.value === 'case' || laneFilter.value === '' || laneFilter.value === 'ops')
+      ? loadCaseItems()
+      : Promise.resolve();
 
     if (laneFilter.value === 'case') {
+      await Promise.allSettled([countP, caseP]);
       notifications.value = [];
       currentPage.value = 1;
       lastPage.value = 1;
@@ -734,28 +782,35 @@ const loadNotifications = async (page = 1) => {
 
     const token = getToken();
     const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/notifications?${buildQuery(page)}`, {
+    const notifP = fetch(`${baseUrl}/v1/notifications?${buildQuery(page)}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.message || '通知載入失敗');
+      return json;
     });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || '通知載入失敗');
 
-    notifications.value = json.data || [];
-    // Prefer action-inbox count contract; fall back to notifications unread if needed.
-    if (!needsAttentionCount.value && Number(json.unread_count || 0) > 0) {
-      unreadCount.value = Number(json.unread_count || 0);
+    const settled = await Promise.allSettled([countP, caseP, notifP]);
+    const notifResult = settled[2];
+    if (notifResult.status === 'fulfilled') {
+      const json = notifResult.value;
+      notifications.value = json.data || [];
+      urgentUnreadCount.value = Number(json.urgent_unread_count || 0);
+      currentPage.value = Number(json.current_page || 1);
+      lastPage.value = Number(json.last_page || 1);
+    } else {
+      errorMessage.value = notifResult.reason?.message || '通知載入失敗';
+      // keep previous notifications
     }
-    urgentUnreadCount.value = Number(json.urgent_unread_count || 0);
-    currentPage.value = Number(json.current_page || 1);
-    lastPage.value = Number(json.last_page || 1);
     emit('unread-change', {
       unread: unreadCount.value,
-      urgent: urgentUnreadCount.value,
+      urgent: inboxUrgentTotal.value,
       casesOpen: casesOpenCount.value,
       needsAttention: needsAttentionCount.value,
+      urgentTotal: inboxUrgentTotal.value,
     });
   } catch (err) {
     errorMessage.value = err.message || '收件匣載入失敗';
@@ -967,7 +1022,9 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  await syncNotifications(false);
+  trackAdoptionEvent('action_inbox_opened', props.branchId, { entry_source: 'nav' });
+  // Prefer cases when unresolved; loadNotifications uses laneFilter default 'case'.
+  await loadNotifications(1);
   refreshTimer = window.setInterval(() => {
     loadNotifications(currentPage.value);
   }, 60000);
@@ -1404,6 +1461,34 @@ onUnmounted(() => {
   content: '·';
   margin-right: 10px;
   color: var(--border);
+}
+
+.inbox-stale {
+  margin: 8px 0 0;
+  color: var(--warning, #b45309);
+  font-size: 13px;
+}
+
+.case-cta {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.case-reason {
+  opacity: 0.75;
+  font-size: 13px;
 }
 
 .case-item {

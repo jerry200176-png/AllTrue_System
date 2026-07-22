@@ -366,6 +366,7 @@
                 <span v-if="exceptionWorkflowCount" class="wp__badge wp__badge--warn">{{ exceptionWorkflowCount }}</span>
               </header>
               <div v-if="exceptionWorkflowLoading" class="wp__empty enterprise-empty enterprise-loading">補課案件載入中...</div>
+              <div v-else-if="workflowFocusError" class="ew-error" role="alert">{{ workflowFocusError }}</div>
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
               <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
@@ -726,6 +727,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['navigate']);
 const highlightedWorkflowId = ref(null);
+const workflowFocusError = ref('');
 
 const engagementSnapshot = ref(null);
 const engagementDisplayOn = ref(true);
@@ -1813,21 +1815,46 @@ const applyFocusFromInbox = async () => {
   await nextTick();
   if (section) scrollTo(section);
   const wfId = Number(props.focusWorkflowId || 0);
-  if (wfId > 0) {
-    highlightedWorkflowId.value = wfId;
-    const row = document.getElementById(`exception-workflow-${wfId}`);
-    if (row) {
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    const match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
-    if (match) {
-      try {
-        await loadWorkflowDetail(match);
-      } catch {
-        /* ignore */
+  if (wfId <= 0) return;
+  highlightedWorkflowId.value = wfId;
+  workflowFocusError.value = '';
+  let match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
+  if (!match) {
+    try {
+      const token = getToken();
+      match = await getExceptionWorkflow(token, wfId);
+      if (match && !exceptionWorkflows.value.some((w) => Number(w.id) === wfId)) {
+        exceptionWorkflows.value = [match, ...exceptionWorkflows.value];
       }
+      if (!match) {
+        workflowFocusError.value = '找不到此案件或沒有權限';
+        return;
+      }
+    } catch (err) {
+      workflowFocusError.value = err?.message || '無法載入指定案件';
+      return;
     }
   }
+  await nextTick();
+  const row = document.getElementById(`exception-workflow-${wfId}`);
+  if (row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const title = row.querySelector('h3, .ew-title, .ew-row__title, button, a') || row;
+    if (title && typeof title.focus === 'function') {
+      title.setAttribute('tabindex', '-1');
+      title.focus({ preventScroll: true });
+    }
+  }
+  if (match) {
+    try {
+      await loadWorkflowDetail(match);
+    } catch (err) {
+      workflowFocusError.value = err?.message || '案件詳情載入失敗';
+    }
+  }
+  window.setTimeout(() => {
+    if (Number(highlightedWorkflowId.value) === wfId) highlightedWorkflowId.value = null;
+  }, 4000);
 };
 
 watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => {
