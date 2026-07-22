@@ -1,3 +1,10 @@
+## 2026-07-22 — fix: 試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立
+
+- 新建「試聽」課程時，不再套用續報用的 `overlapping_active_course` 攔截（試聽本意是旁聽正式課堂）；同科重複試聽仍會提示。
+- 智慧行事曆「快速排課」遇到重複／重疊課程時，改跳出「仍要新增課程」視窗，不再靜默失敗。
+
+開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.

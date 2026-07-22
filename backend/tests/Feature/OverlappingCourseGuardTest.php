@@ -105,6 +105,52 @@ class OverlappingCourseGuardTest extends TestCase
             ->assertCreated();
     }
 
+    /**
+     * 試聽是旁聽正式課堂的加掛（ScheduleGuardService FR-002），不可被
+     * overlapping_active_course（續報重疊守衛）擋死。同生同科同師已有一對三時，
+     * 仍應可建立試聽；同型試聽重複則仍走 duplicate_active_course。
+     */
+    public function test_trial_course_is_not_blocked_by_overlapping_active_course(): void
+    {
+        $token = $this->createUserToken('A', [1], 'dir-ovl-trial@example.com');
+        $teacherId = $this->createTeacher(1, 'teach-ovl-trial@example.com');
+        $student = $this->createStudent(1, '試聽重疊測試生');
+
+        $base = Carbon::now()->addWeeks(8)->next(Carbon::FRIDAY);
+        $first = [];
+        $cur = $base->copy();
+        for ($i = 0; $i < 4; $i++) {
+            $first[] = $cur->toDateString();
+            $cur->addWeek();
+        }
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $this->batchPayload($student->id, $teacherId, $first, 'one_on_three'))
+            ->assertCreated();
+
+        // 同生同科同師、日期落在既有一對三區間內的單堂試聽 → 不得 409 overlapping
+        $trialDate = $first[1];
+        $trialPayload = $this->batchPayload($student->id, $teacherId, [$trialDate], 'trial');
+        $trialPayload['days_of_week'] = [5];
+        $trialPayload['start_time'] = '14:00';
+        $trialPayload['session_plan'] = [[
+            'session_date' => $trialDate,
+            'start_time' => '14:00',
+            'kind' => 'future',
+            'subject' => 'Math',
+        ]];
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $trialPayload)
+            ->assertCreated();
+
+        // 再建立第二筆同科試聽 → 仍應被 duplicate_active_course 擋
+        $this->withHeaders(['Authorization' => "Bearer {$token}", 'Accept' => 'application/json'])
+            ->postJson('/api/v1/class-sessions/batch', $trialPayload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'duplicate_active_course']);
+    }
+
     // ── helpers (mirror CourseStartDateTest) ──────────────────────────
     private function createUserToken(string $type, array $campusIds, string $loginName): string
     {
