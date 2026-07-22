@@ -293,15 +293,7 @@
         @skip="onPinSkip"
         @dismiss="onPinDismiss"
       />
-      <DirectorDashboard
-        v-if="!isPasswordChangeLocked && isDirector && active === 'director'"
-        :branch-id="currentBranch"
-        :unread-feedback-count="unreadFeedbackCount"
-        :initial-engagement="userProfile?.engagement ?? null"
-        :focus-workflow-id="directorFocusWorkflowId"
-        :focus-section="directorFocusSection"
-        @navigate="onNavigateFromNotifications"
-      />
+      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" :focus-workflow-id="directorFocusWorkflowId" :focus-section="directorFocusSection" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
         :branch-id="currentBranch"
@@ -488,6 +480,7 @@ import BugReportLauncher from './components/BugReportLauncher.vue';
 import PinLockModal from './components/PinLockModal.vue';
 import AtToast from './components/AtToast.vue';
 import { fetchChatUnreadCount } from './lib/chatApi';
+import { buildInboxDeepLinkQuery, parseInboxCount, parseInboxDeepLinkSearch } from './lib/actionInboxContract.js';
 import perfFlags from './lib/perfFlags';
 import { playTeacherUiSfx } from './lib/teacherUiSfx';
 import { recordTeacherVisitToday } from './lib/teacherLoginStreak';
@@ -894,7 +887,6 @@ const initialTeacherIdForNav = ref(null);
 const calendarResetToken = ref(0);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
-const inboxCasesOpenCount = ref(0);
 const inboxNeedsAttentionCount = ref(0);
 const inboxUrgentTotal = ref(0);
 const directorFocusWorkflowId = ref(null);
@@ -951,26 +943,20 @@ function _onVisibilityChangeForPolling() {
 
 
 const unreadNotificationLabel = computed(() => {
-  const n = inboxNeedsAttentionCount.value > 0
-    ? inboxNeedsAttentionCount.value
-    : unreadNotificationCount.value;
+  const n = inboxNeedsAttentionCount.value > 0 ? inboxNeedsAttentionCount.value : unreadNotificationCount.value;
   return n > 99 ? '99+' : String(n);
 });
 const unreadFeedbackCount = computed(() => Number(badgeByType.value.parent_feedback?.total || 0));
 
 function getItemBadgeCount(item) {
   if (item?.page === 'notifications') {
-    if (inboxNeedsAttentionCount.value > 0) return inboxNeedsAttentionCount.value;
-    return unreadNotificationCount.value;
+    return inboxNeedsAttentionCount.value > 0 ? inboxNeedsAttentionCount.value : unreadNotificationCount.value;
   }
   if (!item?.badgeTypes?.length) return 0;
   return item.badgeTypes.reduce((sum, t) => sum + (badgeByType.value[t]?.total || 0), 0);
 }
 function isItemBadgeUrgent(item) {
-  if (item?.page === 'notifications') {
-    // Alert fatigue: red only for urgent_total (high unread + overdue cases).
-    return inboxUrgentTotal.value > 0;
-  }
+  if (item?.page === 'notifications') return inboxUrgentTotal.value > 0; // red only for urgent_total
   if (!item?.badgeTypes?.length) return false;
   return item.badgeTypes.some((t) => (badgeByType.value[t]?.urgent || 0) > 0);
 }
@@ -998,19 +984,13 @@ function onNavigateToSchedule({ teacherId, target }) {
 
 function applyDeepLinkFromUrl() {
   try {
-    const params = new URLSearchParams(window.location.search);
-    const page = params.get('page');
-    const section = params.get('section');
-    const workflowId = Number(params.get('workflow_id') || 0);
-    const branchId = Number(params.get('branch_id') || 0);
-    if (branchId > 0) currentBranch.value = branchId;
-    if (page === 'notifications' || page === 'director') {
-      active.value = page;
-    }
-    if (page === 'director' || workflowId > 0) {
-      directorFocusSection.value = section || (workflowId > 0 ? 'exception-workflows' : null);
-      directorFocusWorkflowId.value = workflowId > 0 ? workflowId : null;
-      if (workflowId > 0) active.value = 'director';
+    const { page, section, workflowId, branchId } = parseInboxDeepLinkSearch(window.location.search);
+    if (branchId) currentBranch.value = branchId;
+    if (page === 'notifications' || page === 'director') active.value = page;
+    if (page === 'director' || workflowId) {
+      directorFocusSection.value = section || (workflowId ? 'exception-workflows' : null);
+      directorFocusWorkflowId.value = workflowId;
+      if (workflowId) active.value = 'director';
     }
   } catch { /* ignore */ }
 }
@@ -1018,6 +998,8 @@ function applyDeepLinkFromUrl() {
 function onPopStateDeepLink() {
   applyDeepLinkFromUrl();
 }
+
+function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1038,14 +1020,17 @@ function onPopStateDeepLink() {
     directorFocusSection.value = section || 'exception-workflows';
     directorFocusWorkflowId.value = workflowId ? Number(workflowId) : null;
     try {
-      const q = new URLSearchParams(window.location.search);
-      q.set('page', 'director');
-      q.set('section', directorFocusSection.value);
-      if (directorFocusWorkflowId.value) q.set('workflow_id', String(directorFocusWorkflowId.value));
-      else q.delete('workflow_id');
-      if (currentBranch.value) q.set('branch_id', String(currentBranch.value));
-      const url = `${window.location.pathname}?${q.toString()}${window.location.hash || ''}`;
-      window.history.pushState({ page: 'director', workflowId: directorFocusWorkflowId.value }, '', url);
+      const q = buildInboxDeepLinkQuery({
+        page: 'director',
+        section: directorFocusSection.value,
+        workflowId: directorFocusWorkflowId.value,
+        branchId: currentBranch.value,
+      });
+      // Preserve unrelated query keys.
+      const cur = new URLSearchParams(window.location.search);
+      for (const [k, v] of q.entries()) cur.set(k, v);
+      if (!directorFocusWorkflowId.value) cur.delete('workflow_id');
+      window.history.pushState({ page: 'director', workflowId: directorFocusWorkflowId.value }, '', `${window.location.pathname}?${cur}${window.location.hash || ''}`);
     } catch { /* ignore */ }
   } else {
     directorFocusSection.value = null;
@@ -1132,10 +1117,7 @@ function isNavItemDisabled(page) {
 }
 
 function onUnreadChange(count) {
-  if (typeof count === 'number') {
-    unreadNotificationCount.value = Number(count || 0);
-    return;
-  }
+  if (typeof count === 'number') { unreadNotificationCount.value = Number(count || 0); return; }
   if (count && typeof count === 'object') {
     unreadNotificationCount.value = Number(count.unread ?? 0);
     if (count.urgentTotal != null) {
@@ -1144,7 +1126,6 @@ function onUnreadChange(count) {
     } else {
       urgentNotificationCount.value = Number(count.urgent ?? 0);
     }
-    if (count.casesOpen != null) inboxCasesOpenCount.value = Number(count.casesOpen || 0);
     if (count.needsAttention != null) inboxNeedsAttentionCount.value = Number(count.needsAttention || 0);
   }
 }
@@ -1581,8 +1562,7 @@ const handleLoginSuccess = async ({ user, profile }) => {
     if (mustChangePassword) active.value = 'profile';
     else if ((profile?.role ?? session.value?.user?.role) === 'teacher') active.value = 'teacher-home';
     else if ((profile?.role ?? session.value?.user?.role) === 'director' || session.value?.user?.role === 'super_admin') {
-      active.value = 'director';
-      applyDeepLinkFromUrl();
+      active.value = 'director'; applyDeepLinkFromUrl();
     }
     await ensureDirectorBranches();
     ensureTeacherBranch();
@@ -1759,7 +1739,6 @@ async function refreshUnreadNotifications() {
   if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
-    inboxCasesOpenCount.value = 0;
     inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
     await mergeBugUnreadBadge();
@@ -1772,19 +1751,10 @@ async function refreshUnreadNotifications() {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE || '/api';
       const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
+      const hdrs = { Authorization: `Bearer ${session.value.access_token}`, Accept: 'application/json' };
       const [notifRes, inboxRes] = await Promise.all([
-        fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
-          headers: {
-            Authorization: `Bearer ${session.value.access_token}`,
-            Accept: 'application/json',
-          },
-        }),
-        fetch(`${baseUrl}/v1/action-inbox/count?${params}`, {
-          headers: {
-            Authorization: `Bearer ${session.value.access_token}`,
-            Accept: 'application/json',
-          },
-        }),
+        fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, { headers: hdrs }),
+        fetch(`${baseUrl}/v1/action-inbox/count?${params}`, { headers: hdrs }),
       ]);
       if (notifRes.status === 401 || inboxRes.status === 401) {
         await supabase.auth.signOut();
@@ -1800,16 +1770,12 @@ async function refreshUnreadNotifications() {
       badgeByType.value = json.by_type || {};
 
       if (inboxRes.ok) {
-        const inboxJson = await inboxRes.json();
-        unreadNotificationCount.value = Number(inboxJson.notifications_unread ?? unreadNotificationCount.value);
-        inboxCasesOpenCount.value = Number(inboxJson.cases_unresolved ?? inboxJson.cases_open ?? 0);
-        inboxNeedsAttentionCount.value = Number(inboxJson.badge_total ?? inboxJson.needs_attention ?? 0);
-        inboxUrgentTotal.value = Number(inboxJson.urgent_total ?? 0);
+        const c = parseInboxCount(await inboxRes.json());
+        unreadNotificationCount.value = c.notificationsUnread || unreadNotificationCount.value;
+        inboxNeedsAttentionCount.value = c.badgeTotal;
+        inboxUrgentTotal.value = c.urgentTotal;
       }
-      // If inbox count fails, keep previous badge numbers (never fake zero).
-    } catch {
-      // Keep last successful badge counts on transient failure.
-    }
+    } catch { /* keep last successful badge counts */ }
   } else {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;

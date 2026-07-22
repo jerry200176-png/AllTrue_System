@@ -370,14 +370,7 @@
               <div v-else-if="exceptionWorkflowError" class="ew-error">{{ exceptionWorkflowError }}</div>
               <div v-else-if="!exceptionWorkflows.length" class="wp__empty enterprise-empty">目前沒有家長請假待安排</div>
               <div v-else class="ew-list">
-                <article
-                  v-for="workflow in exceptionWorkflows"
-                  :key="workflow.id"
-                  class="ew-row"
-                  :class="{ 'ew-row--focus': Number(highlightedWorkflowId) === Number(workflow.id) }"
-                  :data-workflow-id="workflow.id"
-                  :id="`exception-workflow-${workflow.id}`"
-                >
+                <article v-for="workflow in exceptionWorkflows" :key="workflow.id" class="ew-row" :data-workflow-id="workflow.id" :id="`exception-workflow-${workflow.id}`">
                   <div class="ew-main">
                     <div class="ew-title">
                       {{ workflow.student?.name || '學生' }}
@@ -726,7 +719,6 @@ const props = defineProps({
   focusSection: { type: String, default: null },
 });
 const emit = defineEmits(['navigate']);
-const highlightedWorkflowId = ref(null);
 const workflowFocusError = ref('');
 
 const engagementSnapshot = ref(null);
@@ -1811,25 +1803,20 @@ const scrollTo = (section) => {
 
 const applyFocusFromInbox = async () => {
   const section = props.focusSection || (props.focusWorkflowId ? 'exception-workflows' : null);
-  if (!section && !props.focusWorkflowId) return;
+  const wfId = Number(props.focusWorkflowId || 0);
+  if (!section && wfId <= 0) return;
   await nextTick();
   if (section) scrollTo(section);
-  const wfId = Number(props.focusWorkflowId || 0);
   if (wfId <= 0) return;
-  highlightedWorkflowId.value = wfId;
   workflowFocusError.value = '';
   let match = exceptionWorkflows.value.find((w) => Number(w.id) === wfId);
   if (!match) {
     try {
-      const token = getToken();
-      match = await getExceptionWorkflow(token, wfId);
+      match = await getExceptionWorkflow(getToken(), wfId);
       if (match && !exceptionWorkflows.value.some((w) => Number(w.id) === wfId)) {
         exceptionWorkflows.value = [match, ...exceptionWorkflows.value];
       }
-      if (!match) {
-        workflowFocusError.value = '找不到此案件或沒有權限';
-        return;
-      }
+      if (!match) { workflowFocusError.value = '找不到此案件或沒有權限'; return; }
     } catch (err) {
       workflowFocusError.value = err?.message || '無法載入指定案件';
       return;
@@ -1839,27 +1826,16 @@ const applyFocusFromInbox = async () => {
   const row = document.getElementById(`exception-workflow-${wfId}`);
   if (row) {
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const title = row.querySelector('h3, .ew-title, .ew-row__title, button, a') || row;
-    if (title && typeof title.focus === 'function') {
-      title.setAttribute('tabindex', '-1');
-      title.focus({ preventScroll: true });
-    }
+    const title = row.querySelector('h3, .ew-title, button, a') || row;
+    if (title?.focus) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
   }
   if (match) {
-    try {
-      await loadWorkflowDetail(match);
-    } catch (err) {
-      workflowFocusError.value = err?.message || '案件詳情載入失敗';
-    }
+    try { await loadWorkflowDetail(match); }
+    catch (err) { workflowFocusError.value = err?.message || '案件詳情載入失敗'; }
   }
-  window.setTimeout(() => {
-    if (Number(highlightedWorkflowId.value) === wfId) highlightedWorkflowId.value = null;
-  }, 4000);
 };
 
-watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => {
-  applyFocusFromInbox();
-});
+watch(() => [props.focusWorkflowId, props.focusSection, exceptionWorkflows.value.length], () => { applyFocusFromInbox(); });
 
 watch(() => props.branchId, () => {
   teardownTrustImpressions();
@@ -1971,10 +1947,6 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(20, 184, 166, 0.22);
   border-radius: 14px;
   background: linear-gradient(180deg, var(--ds-canvas), var(--ds-success-wash));
-}
-.ew-row--focus {
-  border-color: var(--ds-warning);
-  box-shadow: 0 0 0 2px var(--ds-warning-wash);
 }
 .ew-main { min-width: 0; }
 .ew-title { font-weight: 800; color: var(--ds-ink); display: flex; align-items: center; gap: 8px; }

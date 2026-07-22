@@ -94,8 +94,6 @@
             :aria-selected="typeFilter === tab.value"
             :class="{ active: typeFilter === tab.value }"
             @click="onTabClick(tab.value)"
-            @keydown.left.prevent="focusAdjacentTab(-1)"
-            @keydown.right.prevent="focusAdjacentTab(1)"
           >
             {{ tab.label }}
             <span v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</span>
@@ -163,18 +161,18 @@
       <div v-else-if="errorMessage" class="card error-card">{{ errorMessage }}</div>
 
       <div class="card list-card" data-guide="notifications-list">
-        <div v-if="loading && caseItems.length === 0 && notifications.length === 0" class="empty" aria-live="polite">載入收件匣中...</div>
-        <div v-else-if="laneFilter === 'case' && caseLaneError && caseItems.length === 0" class="empty" role="alert">案件狀態暫時無法更新</div>
-        <div v-else-if="laneFilter === 'case' && !caseLaneError && caseItems.length === 0" class="empty">目前沒有待辦案件</div>
+        <div v-if="loading && visibleCaseItems.length === 0 && notifications.length === 0" class="empty" aria-live="polite">載入收件匣中...</div>
+        <div v-else-if="laneFilter === 'case' && caseLaneError && visibleCaseItems.length === 0" class="empty" role="alert">案件狀態暫時無法更新</div>
+        <div v-else-if="laneFilter === 'case' && !caseLaneError && visibleCaseItems.length === 0" class="empty">目前沒有待辦案件</div>
         <div v-else-if="laneFilter !== 'case' && displayNotifications.length === 0" class="empty">目前沒有符合條件的通知</div>
 
         <div v-else>
           <!-- 請假／補課案件 -->
           <template v-if="laneFilter === 'case' || laneFilter === ''">
-            <div v-if="caseItems.length > 0" class="case-panel">
+            <div v-if="visibleCaseItems.length > 0" class="case-panel">
               <h4 v-if="laneFilter === ''">待辦案件</h4>
               <div
-                v-for="item in caseItems"
+                v-for="item in visibleCaseItems"
                 :key="item.id"
                 class="notification-item case-item"
                 :class="{ 'severity-high-item': item.overdue, 'priority-due-soon': item.priority === 'due_soon' && !item.overdue }"
@@ -183,8 +181,7 @@
                   <span class="type-tag type-student_leave">請假申請</span>
                   <span class="severity-tag" :class="item.overdue ? 'severity-high' : (item.priority === 'due_soon' ? 'severity-medium' : 'severity-low')">
                     {{ casePriorityLabel(item) }}
-                    <span class="sr-only" v-if="item.overdue">（文字標示：已逾期）</span>
-                  </span>
+                    </span>
                   <span class="status-chip">{{ item.status_label }}</span>
                 </div>
                 <div class="main-title">{{ item.student_name || item.title }}</div>
@@ -197,6 +194,11 @@
                 <div class="item-actions">
                   <button class="small primary case-cta" @click="goToLeaveCase(item)">{{ caseCtaLabel(item) }}</button>
                 </div>
+              </div>
+              <div v-if="casesLastPage > 1" class="pager-row" data-testid="case-pager">
+                <button type="button" class="small case-cta" :disabled="casesPage <= 1 || loading" @click="loadCasePage(casesPage - 1)">上一頁</button>
+                <span aria-live="polite">第 {{ casesPage }} / {{ casesLastPage }} 頁（共 {{ casesOpenCount }}）</span>
+                <button type="button" class="small case-cta" :disabled="!casesHasMore || loading" @click="loadCasePage(casesPage + 1)">下一頁</button>
               </div>
             </div>
           </template>
@@ -285,10 +287,14 @@ import {
   caseCtaLabel,
   casePriorityLabel,
   extractCaseItems,
+  extractCasePageMeta,
   extractCaseTotal,
+  inboxScopeKey,
+  mergeInboxCountState,
   parseInboxCount,
+  resolveDefaultLane,
+  shouldShowCachedCases,
 } from '../lib/actionInboxContract.js';
-import { trackAdoptionEvent } from '../lib/adoptionTelemetry.js';
 
 const props = defineProps({
   branchId: [String, Number],
@@ -304,6 +310,8 @@ const caseLaneError = ref(false);
 const countsStale = ref(false);
 const notifications = ref([]);
 const caseItems = ref([]);
+const caseItemsScopeKey = ref('');
+const countsScopeKey = ref('');
 const unreadCount = ref(0);
 const urgentUnreadCount = ref(0);
 const casesOpenCount = ref(0);
@@ -315,7 +323,11 @@ const inboxUrgentTotal = ref(0);
 const currentPage = ref(1);
 const lastPage = ref(1);
 const casesPage = ref(1);
+const casesLastPage = ref(1);
+const casesHasMore = ref(false);
 const caseFilter = ref('unresolved');
+const userPickedLane = ref(false);
+const initialLaneResolved = ref(false);
 
 const readFilter = ref('unread');
 const typeFilter = ref('lane:case');
@@ -366,29 +378,22 @@ const TYPE_META = {
 
 const typeLabel = (type) => TYPE_META[type]?.label || type || '其他';
 
-const typeTabs = computed(() => {
-  const counts = {};
-  notifications.value.forEach((n) => {
-    const tab = TYPE_META[n.Type]?.tab || '系統';
-    if (!n.read_at) counts[tab] = (counts[tab] || 0) + 1;
-  });
-  return [
-    { value: 'lane:case', label: '待辦案件', count: casesOpenCount.value },
-    { value: '', label: '營運通知', count: unreadCount.value },
-  ];
-});
+const typeTabs = computed(() => [
+  { value: 'lane:case', label: '待辦案件', count: casesOpenCount.value },
+  { value: '', label: '營運通知', count: unreadCount.value },
+]);
+
+const visibleCaseItems = computed(() => (
+  shouldShowCachedCases({ scopeKey: inboxScopeKey(props.branchId), cachedScopeKey: caseItemsScopeKey.value })
+    ? caseItems.value : []
+));
 
 const onTabClick = (value) => {
+  userPickedLane.value = true;
   typeFilter.value = value;
   laneFilter.value = value === 'lane:case' ? 'case' : 'ops';
+  if (laneFilter.value === 'case') casesPage.value = 1;
   loadNotifications(1);
-};
-
-const focusAdjacentTab = (delta) => {
-  const tabs = typeTabs.value;
-  const idx = tabs.findIndex((t) => t.value === typeFilter.value);
-  const next = tabs[(idx + delta + tabs.length) % tabs.length];
-  if (next) onTabClick(next.value);
 };
 
 const retryLoad = () => loadNotifications(currentPage.value || 1);
@@ -434,11 +439,6 @@ const goToTarget = (type, item) => {
 
 const goToLeaveCase = (item) => {
   const workflowId = Number(item?.action?.workflow_id || item?.workflow_id || item?.source_id || 0);
-  trackAdoptionEvent('action_inbox_case_cta_clicked', props.branchId, {
-    workflow_id: workflowId > 0 ? workflowId : undefined,
-    workflow_status: item?.status_code || undefined,
-    entry_source: 'inbox_case_cta',
-  });
   emit('navigate', {
     target: 'director',
     section: 'exception-workflows',
@@ -682,50 +682,71 @@ const buildQuery = (page = 1) => {
   return params.toString();
 };
 
+const applyParsedCounts = (parsed, { stale = false, scope = '' } = {}) => {
+  unreadCount.value = parsed.notificationsUnread;
+  casesOpenCount.value = parsed.casesUnresolved;
+  casesOverdueCount.value = parsed.casesOverdue;
+  casesDueSoonCount.value = parsed.casesDueSoon;
+  casesCandidateReadyCount.value = parsed.casesCandidateReady;
+  needsAttentionCount.value = parsed.badgeTotal;
+  inboxUrgentTotal.value = parsed.urgentTotal;
+  countsStale.value = stale;
+  if (scope) countsScopeKey.value = scope;
+  emit('unread-change', {
+    unread: unreadCount.value, urgent: inboxUrgentTotal.value, casesOpen: casesOpenCount.value,
+    needsAttention: needsAttentionCount.value, urgentTotal: inboxUrgentTotal.value,
+    casesOverdue: casesOverdueCount.value, casesDueSoon: casesDueSoonCount.value,
+  });
+};
+
 const refreshInboxCounts = async () => {
-  if (!props.branchId) {
-    return;
-  }
+  if (!props.branchId) return false;
+  const scope = inboxScopeKey(props.branchId);
+  const prevScope = countsScopeKey.value;
   try {
     const token = getToken();
     const baseUrl = getBaseUrl();
     const res = await fetch(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      countsStale.value = true;
-      return;
-    }
+    if (!res.ok) throw new Error('count failed');
     const parsed = parseInboxCount(json);
-    unreadCount.value = parsed.notificationsUnread;
-    casesOpenCount.value = parsed.casesUnresolved;
-    casesOverdueCount.value = parsed.casesOverdue;
-    casesDueSoonCount.value = parsed.casesDueSoon;
-    needsAttentionCount.value = parsed.badgeTotal;
-    inboxUrgentTotal.value = parsed.urgentTotal;
-    casesCandidateReadyCount.value = caseItems.value.filter((c) => c.status_code === 'candidate_ready').length;
-    countsStale.value = false;
-    emit('unread-change', {
-      unread: unreadCount.value,
-      urgent: inboxUrgentTotal.value,
-      casesOpen: casesOpenCount.value,
-      needsAttention: needsAttentionCount.value,
-      urgentTotal: inboxUrgentTotal.value,
-      casesOverdue: casesOverdueCount.value,
-      casesDueSoon: casesDueSoonCount.value,
-    });
+    applyParsedCounts(parsed, { scope });
+    if (!userPickedLane.value && !initialLaneResolved.value) {
+      const lane = resolveDefaultLane({ casesUnresolved: parsed.casesUnresolved });
+      laneFilter.value = lane;
+      typeFilter.value = lane === 'case' ? 'lane:case' : '';
+      initialLaneResolved.value = true;
+    }
+    return true;
   } catch {
-    countsStale.value = true;
+    const prev = {
+      notificationsUnread: unreadCount.value, casesUnresolved: casesOpenCount.value,
+      casesOverdue: casesOverdueCount.value, casesDueSoon: casesDueSoonCount.value,
+      casesCandidateReady: casesCandidateReadyCount.value, urgentTotal: inboxUrgentTotal.value,
+      badgeTotal: needsAttentionCount.value,
+    };
+    const merged = mergeInboxCountState(prev, null, { failed: true, scopeKey: scope, prevScopeKey: prevScope });
+    applyParsedCounts(merged, { stale: true, scope: merged.scopeInvalidated ? scope : prevScope });
+    return false;
   }
+};
+
+const loadCasePage = (page) => {
+  casesPage.value = Math.max(1, Number(page) || 1);
+  return loadCaseItems();
 };
 
 const loadCaseItems = async () => {
   if (!props.branchId) {
+    caseItems.value = [];
+    caseItemsScopeKey.value = '';
     return;
+  }
+  const requestScope = inboxScopeKey(props.branchId);
+  if (caseItemsScopeKey.value && caseItemsScopeKey.value !== requestScope) {
+    caseItems.value = []; caseItemsScopeKey.value = ''; caseLaneError.value = false;
   }
   try {
     const token = getToken();
@@ -734,23 +755,27 @@ const loadCaseItems = async () => {
       branch_id: String(props.branchId),
       lane: 'case',
       page: String(casesPage.value || 1),
-      per_page: '50',
+      per_page: '20',
       case_filter: caseFilter.value || 'unresolved',
     });
     const res = await fetch(`${baseUrl}/v1/action-inbox?${params}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json?.message || '請假案件載入失敗');
+    if (inboxScopeKey(props.branchId) !== requestScope) return;
     caseItems.value = extractCaseItems(json);
+    caseItemsScopeKey.value = requestScope;
+    const meta = extractCasePageMeta(json);
     casesOpenCount.value = extractCaseTotal(json, caseItems.value.length);
+    casesPage.value = meta.currentPage; casesLastPage.value = meta.lastPage; casesHasMore.value = meta.hasMore;
     caseLaneError.value = false;
-    casesCandidateReadyCount.value = caseItems.value.filter((c) => c.status_code === 'candidate_ready').length;
+    if (json?.summary?.cases_candidate_ready != null) {
+      casesCandidateReadyCount.value = Number(json.summary.cases_candidate_ready);
+    }
   } catch (err) {
     caseLaneError.value = true;
+    if (caseItemsScopeKey.value !== requestScope) { caseItems.value = []; caseItemsScopeKey.value = ''; }
     if (laneFilter.value === 'case') {
       errorMessage.value = '';
     }
@@ -761,19 +786,19 @@ const loadNotifications = async (page = 1) => {
   if (!props.branchId) {
     notifications.value = [];
     caseItems.value = [];
+    caseItemsScopeKey.value = '';
     return;
   }
 
   loading.value = true;
   errorMessage.value = '';
   try {
-    const countP = refreshInboxCounts();
-    const caseP = (laneFilter.value === 'case' || laneFilter.value === '' || laneFilter.value === 'ops')
-      ? loadCaseItems()
-      : Promise.resolve();
+    const countOk = await refreshInboxCounts();
+    void countOk;
+    const caseP = loadCaseItems();
 
     if (laneFilter.value === 'case') {
-      await Promise.allSettled([countP, caseP]);
+      await Promise.allSettled([caseP]);
       notifications.value = [];
       currentPage.value = 1;
       lastPage.value = 1;
@@ -793,8 +818,8 @@ const loadNotifications = async (page = 1) => {
       return json;
     });
 
-    const settled = await Promise.allSettled([countP, caseP, notifP]);
-    const notifResult = settled[2];
+    const settled = await Promise.allSettled([caseP, notifP]);
+    const notifResult = settled[1];
     if (notifResult.status === 'fulfilled') {
       const json = notifResult.value;
       notifications.value = json.data || [];
@@ -803,7 +828,6 @@ const loadNotifications = async (page = 1) => {
       lastPage.value = Number(json.last_page || 1);
     } else {
       errorMessage.value = notifResult.reason?.message || '通知載入失敗';
-      // keep previous notifications
     }
     emit('unread-change', {
       unread: unreadCount.value,
@@ -988,8 +1012,17 @@ const clearResolved = async () => {
   }
 };
 
-watch([() => props.branchId, readFilter, typeFilter, includeResolved, laneFilter], () => {
+watch(() => props.branchId, (next, prev) => {
+  if (String(next ?? '') === String(prev ?? '')) return;
+  caseItems.value = []; caseItemsScopeKey.value = ''; caseLaneError.value = false; countsScopeKey.value = '';
+  unreadCount.value = 0; casesOpenCount.value = 0; casesOverdueCount.value = 0; casesDueSoonCount.value = 0;
+  casesCandidateReadyCount.value = 0; needsAttentionCount.value = 0; inboxUrgentTotal.value = 0;
+  initialLaneResolved.value = false; userPickedLane.value = false; casesPage.value = 1;
   loadNotifications(1);
+});
+
+watch([readFilter, typeFilter, includeResolved, laneFilter], () => {
+  loadNotifications(laneFilter.value === 'case' ? 1 : currentPage.value);
 });
 
 watch(soundEnabled, (value) => {
@@ -1022,11 +1055,9 @@ watch(urgentNotifications, async () => {
 let refreshTimer = null;
 
 onMounted(async () => {
-  trackAdoptionEvent('action_inbox_opened', props.branchId, { entry_source: 'nav' });
-  // Prefer cases when unresolved; loadNotifications uses laneFilter default 'case'.
   await loadNotifications(1);
   refreshTimer = window.setInterval(() => {
-    loadNotifications(currentPage.value);
+    loadNotifications(laneFilter.value === 'case' ? casesPage.value : currentPage.value);
   }, 60000);
 });
 
@@ -1425,75 +1456,18 @@ onUnmounted(() => {
   color: var(--ds-success);
 }
 
-.type-student_leave {
-  background: var(--ds-warning-wash);
-  color: var(--ds-warning);
-}
-
-.case-panel {
-  margin-bottom: 16px;
-}
-
-.case-panel h4 {
-  margin: 0 0 10px;
-  font-size: 14px;
-}
-
-.case-body {
-  white-space: pre-line;
-}
-
-.status-chip {
-  font-size: 12px;
-  color: var(--text-light);
-}
-
-.inbox-count-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-light);
-}
-
-.inbox-count-sep::before {
-  content: '·';
-  margin-right: 10px;
-  color: var(--border);
-}
-
-.inbox-stale {
-  margin: 8px 0 0;
-  color: var(--warning, #b45309);
-  font-size: 13px;
-}
-
-.case-cta {
-  min-width: 44px;
-  min-height: 44px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.case-reason {
-  opacity: 0.75;
-  font-size: 13px;
-}
-
-.case-item {
-  border-left-color: var(--ds-warning);
-}
+.type-student_leave { background: var(--ds-warning-wash); color: var(--ds-warning); }
+.case-panel { margin-bottom: 16px; }
+.case-panel h4 { margin: 0 0 10px; font-size: 14px; }
+.case-body { white-space: pre-line; }
+.status-chip { font-size: 12px; color: var(--text-light); }
+.inbox-count-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; color: var(--text-light); }
+.inbox-count-sep::before { content: '·'; margin-right: 10px; color: var(--border); }
+.inbox-stale { margin: 8px 0 0; color: var(--ds-warning); font-size: 13px; }
+.case-cta { min-width: 44px; min-height: 44px; }
+.case-reason { opacity: 0.75; font-size: 13px; }
+.pager-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.case-item { border-left-color: var(--ds-warning); }
 
 .severity-high {
   background: var(--ds-danger-wash);
