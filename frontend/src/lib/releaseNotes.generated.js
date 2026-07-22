@@ -7,7 +7,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.22",
     "date": "2026-07-22",
     "title": "2026.07.22 版本更新",
-    "summary": "建課衝突改為明確決策（試聽／加購／續報／獨立）；課程改老師不再改寫已上堂次的授課老師（in-app ）",
+    "summary": "建課衝突改為明確決策（試聽／加購／續報／獨立）；課程改老師不再改寫已上堂次的授課老師",
     "audience": [
       "teacher",
       "director"
@@ -17,14 +17,14 @@ export const changelogReleaseNotes = [
         "title": "修正內容",
         "items": [
           "建課衝突改為明確決策（試聽／加購／續報／獨立）",
-          "課程改老師不再改寫已上堂次的授課老師（in-app ）",
+          "課程改老師不再改寫已上堂次的授課老師",
           "排課摘要「補登已上」改以堂數顯示（同日多時段）"
         ]
       }
     ],
     "items": [
       "建課衝突改為明確決策（試聽／加購／續報／獨立）",
-      "課程改老師不再改寫已上堂次的授課老師（in-app ）",
+      "課程改老師不再改寫已上堂次的授課老師",
       "排課摘要「補登已上」改以堂數顯示（同日多時段）"
     ]
   },
@@ -32,7 +32,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.21",
     "date": "2026-07-21",
     "title": "2026.07.21 版本更新",
-    "summary": "帳務中心收據改回既有 payment-report （ 回歸）",
+    "summary": "帳務中心收據改回既有 payment-report",
     "audience": [
       "teacher",
       "director",
@@ -42,12 +42,12 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
-          "帳務中心收據改回既有 payment-report （ 回歸）"
+          "帳務中心收據改回既有 payment-report"
         ]
       }
     ],
     "items": [
-      "帳務中心收據改回既有 payment-report （ 回歸）"
+      "帳務中心收據改回既有 payment-report"
     ]
   },
   {
@@ -82,7 +82,7 @@ export const changelogReleaseNotes = [
     "version": "2026.07.18",
     "date": "2026-07-18",
     "title": "2026.07.18 版本更新",
-    "summary": "代課挑選排除同一學生續約佔用（in-app ）；跨老師拖曳會完整轉移代課與時段",
+    "summary": "代課挑選排除同一學生續約佔用；跨老師拖曳會完整轉移代課與時段",
     "audience": [
       "teacher",
       "director",
@@ -92,7 +92,7 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
-          "代課挑選排除同一學生續約佔用（in-app ）",
+          "代課挑選排除同一學生續約佔用",
           "跨老師拖曳會完整轉移代課與時段",
           "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
           "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
@@ -102,7 +102,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
-      "代課挑選排除同一學生續約佔用（in-app ）",
+      "代課挑選排除同一學生續約佔用",
       "跨老師拖曳會完整轉移代課與時段",
       "堂數制課程若取消某一堂，系統不會又在同一天自動補回一堂。",
       "出缺勤「同一堂變兩堂」跨約／停用殘留防護",
@@ -168,7 +168,7 @@ export const changelogReleaseNotes = [
           "連假批次請假略過清單改學生＋科目（主任請假路徑）",
           "續報／帳本改使用者語言（主任任務路徑）",
           "帳務結清畫面改顯示開課日／剩餘堂數（UXID-002）",
-          "重疊審核改顯示科目／老師／開課日（in-app ）"
+          "重疊審核改顯示科目／老師／開課日"
         ]
       }
     ],
@@ -180,7 +180,7 @@ export const changelogReleaseNotes = [
       "連假批次請假略過清單改學生＋科目（主任請假路徑）",
       "續報／帳本改使用者語言（主任任務路徑）",
       "帳務結清畫面改顯示開課日／剩餘堂數（UXID-002）",
-      "重疊審核改顯示科目／老師／開課日（in-app ）"
+      "重疊審核改顯示科目／老師／開課日"
     ]
   },
   {
@@ -365,7 +365,7 @@ export const changelogReleaseNotes = [
     "version": "2026.06.27",
     "date": "2026-06-27",
     "title": "2026.06.27 版本更新",
-    "summary": "課程重疊建立改走 in-app 強制建立視窗，不再卡死路",
+    "summary": "課程重疊建立改走 強制建立視窗，不再卡死路",
     "audience": [
       "teacher",
       "director"
@@ -374,12 +374,12 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
-          "課程重疊建立改走 in-app 強制建立視窗，不再卡死路"
+          "課程重疊建立改走 強制建立視窗，不再卡死路"
         ]
       }
     ],
     "items": [
-      "課程重疊建立改走 in-app 強制建立視窗，不再卡死路"
+      "課程重疊建立改走 強制建立視窗，不再卡死路"
     ]
   },
   {
@@ -451,9 +451,9 @@ export const changelogReleaseNotes = [
           "建課偵測「同生同科同師日期重疊」防重複排課",
           "行事曆載入大幅加速",
           "排課稽核日誌實際生效",
-          "課程總費用不再被錯誤舊差額卡死（）",
-          "改「未繳費」遇收款紀錄改為明確提示（）",
-          "老師底部「評量」紅點與評量頁未填數一致（）"
+          "課程總費用不再被錯誤舊差額卡死",
+          "改「未繳費」遇收款紀錄改為明確提示",
+          "老師底部「評量」紅點與評量頁未填數一致"
         ]
       }
     ],
@@ -461,16 +461,16 @@ export const changelogReleaseNotes = [
       "建課偵測「同生同科同師日期重疊」防重複排課",
       "行事曆載入大幅加速",
       "排課稽核日誌實際生效",
-      "課程總費用不再被錯誤舊差額卡死（）",
-      "改「未繳費」遇收款紀錄改為明確提示（）",
-      "老師底部「評量」紅點與評量頁未填數一致（）"
+      "課程總費用不再被錯誤舊差額卡死",
+      "改「未繳費」遇收款紀錄改為明確提示",
+      "老師底部「評量」紅點與評量頁未填數一致"
     ]
   },
   {
     "version": "2026.06.07",
     "date": "2026-06-07",
     "title": "2026.06.07 版本更新",
-    "summary": "composables 剝離完成（ Step 7）；audit_logs + ClassSessionObserver",
+    "summary": "composables 剝離完成；audit_logs + ClassSessionObserver",
     "audience": [
       "teacher",
       "director"
@@ -479,27 +479,27 @@ export const changelogReleaseNotes = [
       {
         "title": "新增內容",
         "items": [
-          "composables 剝離完成（ Step 7）",
+          "composables 剝離完成",
           "audit_logs + ClassSessionObserver"
         ]
       },
       {
         "title": "其他改善",
         "items": [
-          "平行化 student-classes ∥ schedules（ P4-a）",
-          "Modals 群拆分（ Step 6）",
-          "受控拆分暫時收尾（ Phase 4c）",
-          "導入 Vitest 元件測試基礎建設（）"
+          "平行化 student-classes ∥ schedules",
+          "Modals 群拆分",
+          "受控拆分暫時收尾",
+          "導入 Vitest 元件測試基礎建設"
         ]
       }
     ],
     "items": [
-      "composables 剝離完成（ Step 7）",
+      "composables 剝離完成",
       "audit_logs + ClassSessionObserver",
-      "平行化 student-classes ∥ schedules（ P4-a）",
-      "Modals 群拆分（ Step 6）",
-      "受控拆分暫時收尾（ Phase 4c）",
-      "導入 Vitest 元件測試基礎建設（）"
+      "平行化 student-classes ∥ schedules",
+      "Modals 群拆分",
+      "受控拆分暫時收尾",
+      "導入 Vitest 元件測試基礎建設"
     ]
   }
 ];
