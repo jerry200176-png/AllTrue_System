@@ -1,0 +1,238 @@
+name: Bug detail dump (read-only)
+
+# Dump one in-app bug (description/comments/attachments meta + related course probe).
+# Trigger via request file; no writes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'operations/closeout/bug-detail-dump.request.md'
+      - '.github/workflows/bug-detail-dump.yml'
+
+concurrency:
+  group: bug-detail-dump
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout request
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            operations/closeout/bug-detail-dump.request.md
+          sparse-checkout-cone-mode: false
+
+      - name: Parse bug id
+        id: cfg
+        run: |
+          set -euo pipefail
+          ID=$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("operations/closeout/bug-detail-dump.request.md").read_text(encoding="utf-8")
+          m = re.search(r"(?m)^bug_id:\s*(\d+)\s*$", text)
+          if not m:
+            raise SystemExit("bug_id missing")
+          print(m.group(1))
+          PY
+          )
+          echo "bug_id=$ID" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          PI_HOST_KEY: ${{ secrets.PI_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if ssh-keyscan -H "$PI_SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "keyscan ok"
+          elif [[ -n "${PI_HOST_KEY:-}" ]]; then
+            printf '%s\n' "$PI_HOST_KEY" > ~/.ssh/known_hosts
+          else
+            echo "::error::no host key"; exit 1
+          fi
+
+      - name: Dump bug + related probe
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          BUG_ID: ${{ steps.cfg.outputs.bug_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # Build remote PHP with bug id baked in (avoid getenv/heredoc expansion pitfalls)
+          python3 - <<'PY' > /tmp/bug207_probe.php
+          import os
+          bug_id = int(os.environ["BUG_ID"])
+          print(f"""
+          $bugId = {bug_id};
+          $db = \\Illuminate\\Support\\Facades\\DB::class;
+          $redact = function ($s) {{
+            $s = (string)$s;
+            $s = preg_replace("/\\b09\\d{{8}}\\b/", "[phone]", $s);
+            $s = preg_replace("/\\b\\d{{8,}}\\b/", "[num]", $s);
+            $s = preg_replace("/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{{2,}}/i", "[email]", $s);
+            return $s;
+          }};
+          $bug = $db::table("bug_reports")->where("id", $bugId)->first();
+          if (!$bug) {{ echo json_encode(["ok"=>false,"error"=>"missing"]); return; }}
+          $atts = $db::table("bug_report_attachments")->where("bug_report_id", $bugId)->get(["id","original_name","stored_path","mime_type","size_bytes"]);
+          $comments = $db::table("bug_report_comments")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","author_user_id","is_internal_note","body","created_at"]);
+          $logs = $db::table("bug_report_status_logs")->where("bug_report_id", $bugId)->orderBy("id")->get(["id","from_status","to_status","changed_by","note","created_at"]);
+          $desc = $redact($bug->description ?? "");
+          if (mb_strlen($desc) > 4000) $desc = mb_substr($desc, 0, 4000)."…";
+          $title = $redact($bug->title ?? "");
+          $cmtOut = [];
+          foreach ($comments as $c) {{
+            $body = $redact($c->body ?? "");
+            if (mb_strlen($body) > 1500) $body = mb_substr($body, 0, 1500)."…";
+            $cmtOut[] = ["id"=>(int)$c->id,"author"=>(int)$c->author_user_id,"internal"=>(bool)$c->is_internal_note,"body"=>$body,"at"=>$c->created_at];
+          }}
+          $students = $db::table("Student")->where("Name", "like", "%陳宇斯%")->limit(5)->get(["id","Name","CampusID","Stop"]);
+          $teachers = $db::table("User")->where(function($q){{
+            $q->where("Name","like","%Coco%")->orWhere("Name","like","%鄒宇旻%");
+          }})->limit(10)->get(["id","Name","type"]);
+          $studentIds = collect($students)->pluck("id")->all();
+          $courses = [];
+          if ($studentIds) {{
+            $rows = $db::table("StudentClass as sc")
+              ->leftJoin("User as u", "u.id", "=", "sc.TeacherID")
+              ->whereIn("sc.StudentID", $studentIds)
+              ->orderByDesc("sc.id")
+              ->limit(30)
+              ->get(["sc.id","sc.StudentID","sc.TeacherID","u.Name as teacher_name","sc.SubjectID","sc.StartDate","sc.EndDate","sc.Stop","sc.SessionCount","sc.RemainingSessions","sc.class_type","sc.CampusID"]);
+            foreach ($rows as $r) {{
+              $courses[] = [
+                "sc_id"=>(int)$r->id,
+                "student_id"=>(int)$r->StudentID,
+                "teacher_id"=>(int)$r->TeacherID,
+                "teacher_name"=>$r->teacher_name,
+                "subject_id"=>(int)$r->SubjectID,
+                "start"=>$r->StartDate,
+                "end"=>$r->EndDate,
+                "stop"=>(int)$r->Stop,
+                "session_count"=>(int)$r->SessionCount,
+                "remaining"=>(int)($r->RemainingSessions ?? 0),
+                "class_type"=>$r->class_type,
+                "campus_id"=>(int)$r->CampusID,
+              ];
+            }}
+          }}
+          $scIds = array_column($courses, "sc_id");
+          $sessions = [];
+          $schedules = [];
+          if ($scIds) {{
+            $sess = $db::table("ClassSession as cs")
+              ->leftJoin("User as u", "u.id", "=", "cs.TeacherID")
+              ->whereIn("cs.StudentClassID", $scIds)
+              ->where("cs.SessionDate", ">=", "2026-07-24")
+              ->orderBy("cs.SessionDate")
+              ->orderBy("cs.StartTime")
+              ->limit(80)
+              ->get(["cs.id","cs.StudentClassID","cs.SessionDate","cs.StartTime","cs.EndTime","cs.Status","cs.TeacherID","u.Name as teacher_name"]);
+            foreach ($sess as $s) {{
+              $sessions[] = [
+                "id"=>(int)$s->id,
+                "sc_id"=>(int)$s->StudentClassID,
+                "date"=>$s->SessionDate,
+                "start"=>$s->StartTime,
+                "end"=>$s->EndTime,
+                "status"=>$s->Status,
+                "teacher_id"=>$s->TeacherID !== null ? (int)$s->TeacherID : null,
+                "teacher_name"=>$s->teacher_name,
+              ];
+            }}
+            $sch = $db::table("schedules")
+              ->whereIn("student_course_id", $scIds)
+              ->where("schedule_date", ">=", "2026-07-24")
+              ->orderBy("schedule_date")
+              ->limit(80)
+              ->get(["id","student_course_id","schedule_date","start_time","end_time","status","teacher_id","original_schedule_id","original_teacher_id"]);
+            foreach ($sch as $x) {{
+              $schedules[] = [
+                "id"=>(int)$x->id,
+                "sc_id"=>(int)$x->student_course_id,
+                "date"=>$x->schedule_date,
+                "start"=>$x->start_time,
+                "end"=>$x->end_time,
+                "status"=>$x->status,
+                "teacher_id"=>$x->teacher_id !== null ? (int)$x->teacher_id : null,
+                "original_schedule_id"=>$x->original_schedule_id,
+                "original_teacher_id"=>$x->original_teacher_id,
+              ];
+            }}
+          }}
+          echo json_encode([
+            "ok" => true,
+            "bug" => [
+              "id"=>(int)$bug->id,
+              "status"=>$bug->status,
+              "severity"=>$bug->severity,
+              "campus_id"=>$bug->CampusID,
+              "page_key"=>$bug->page_key,
+              "reporter_user_id"=>(int)$bug->reporter_user_id,
+              "title"=>$title,
+              "description"=>$desc,
+              "created_at"=>$bug->created_at,
+              "updated_at"=>$bug->updated_at,
+            ],
+            "attachments" => $atts,
+            "comments" => $cmtOut,
+            "status_logs" => $logs,
+            "probe" => [
+              "students" => $students,
+              "teachers" => $teachers,
+              "courses" => $courses,
+              "sessions_from_2026_07_24" => $sessions,
+              "schedules_from_2026_07_24" => $schedules,
+            ],
+            "prod_head" => trim((string)@shell_exec("git rev-parse HEAD")),
+          ], JSON_UNESCAPED_UNICODE), PHP_EOL;
+          """)
+          PY
+          # shellcheck: pass PHP source via stdin to remote tinker is hard; use base64
+          B64=$(base64 -w0 /tmp/bug207_probe.php)
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            "B64='${B64}' bash -s" <<'REMOTE' | tee out/bug-detail.log
+          set -euo pipefail
+          cd /home/admin/backend
+          php -r 'file_put_contents("/tmp/bug_detail_probe.php", base64_decode(getenv("B64")));'
+          # Use artisan tinker with file include via execute
+          php artisan tinker --execute='require "/tmp/bug_detail_probe.php";'
+          rm -f /tmp/bug_detail_probe.php
+          REMOTE
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          text = Path("out/bug-detail.log").read_text(encoding="utf-8", errors="replace")
+          obj = None
+          for line in text.splitlines():
+            line=line.strip()
+            if line.startswith("{") and '"ok"' in line:
+              try:
+                obj=json.loads(line)
+              except Exception:
+                pass
+          Path("out/bug-detail.json").write_text(json.dumps(obj or {"ok":False,"raw_tail":text[-2000:]}, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("parsed", bool(obj and obj.get("ok")))
+          PY
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: bug-detail-dump
+          path: out/
+          retention-days: 14
