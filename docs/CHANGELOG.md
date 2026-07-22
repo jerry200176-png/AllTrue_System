@@ -1,5 +1,10 @@
 # AllTrue Changelog
 
+## 2026-07-22 — fix: 排課摘要「補登已上」改以堂數顯示（同日多時段）
+
+- 新建課程日曆摘要「補登已上／預排未上」改為「X 堂（Y 天）」；同日兩個固定時段不再把日期數誤當堂數。
+- 摘要計數與送出 `session_plan` 共用 `schedulerSessionExpand` 展開來源；未改補登語意或後端扣堂。
+
 ## 2026-07-21 — chore: 收據 hotfix closeout（刪 skip、fail-fast、電子收據命名）
 
 - 刪除 #1197 錯誤假設留下的 skipped `/receipts` 測試（active suite skip=0）。

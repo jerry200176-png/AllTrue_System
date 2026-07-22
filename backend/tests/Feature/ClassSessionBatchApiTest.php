@@ -588,6 +588,90 @@ class ClassSessionBatchApiTest extends TestCase
         ]);
     }
 
+    /**
+     * 補登摘要／session_plan／ClassSession 三者一致：同日雙時段過去日必須建 2 筆 confirmed。
+     * 對應前端 schedulerSessionExpand「5 堂（3 天）」契約（購買 16 = 5 confirmed + 11 future）。
+     */
+    public function test_confirmed_session_plan_dual_slot_same_day_creates_two_class_sessions(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2024-07-22 10:00:00', 'Asia/Taipei'));
+
+        $token = $this->createUserToken('A', [1], 'director-batch-confirmed-2slot@example.com');
+        $teacherId = $this->createTeacher(1, 'teacher-batch-confirmed-2slot@example.com');
+        $student = $this->createStudent(1, '補登雙時段一致性');
+
+        // 2024-07-14 / 21 週日；2024-07-15 週一（皆早於 test now 2024-07-22）
+        $sessionPlan = [
+            ['session_date' => '2024-07-14', 'start_time' => '10:00', 'kind' => 'confirmed'],
+            ['session_date' => '2024-07-14', 'start_time' => '14:00', 'kind' => 'confirmed'],
+            ['session_date' => '2024-07-15', 'start_time' => '16:00', 'kind' => 'confirmed'],
+            ['session_date' => '2024-07-21', 'start_time' => '10:00', 'kind' => 'confirmed'],
+            ['session_date' => '2024-07-21', 'start_time' => '14:00', 'kind' => 'confirmed'],
+        ];
+        // 11 future：足夠補滿 16；用未來週日/一 23:00 避免「今日已下課」邊界
+        $cursor = Carbon::parse('2024-07-22 12:00:00', 'Asia/Taipei');
+        while (count($sessionPlan) < 16) {
+            $cursor = $cursor->copy()->addDay();
+            $iso = (int) $cursor->dayOfWeekIso;
+            if ($iso === 7) {
+                $sessionPlan[] = ['session_date' => $cursor->toDateString(), 'start_time' => '10:00', 'kind' => 'future'];
+                if (count($sessionPlan) >= 16) {
+                    break;
+                }
+                $sessionPlan[] = ['session_date' => $cursor->toDateString(), 'start_time' => '14:00', 'kind' => 'future'];
+            } elseif ($iso === 1) {
+                $sessionPlan[] = ['session_date' => $cursor->toDateString(), 'start_time' => '16:00', 'kind' => 'future'];
+            }
+        }
+        $this->assertCount(16, $sessionPlan);
+        $confirmedPlan = array_values(array_filter($sessionPlan, fn ($r) => $r['kind'] === 'confirmed'));
+        $this->assertCount(5, $confirmedPlan);
+
+        $res = $this->withHeaders([
+            'Authorization' => "Bearer {$token}",
+            'Accept' => 'application/json',
+        ])->postJson('/api/v1/class-sessions/batch', [
+            'branch_id' => 1,
+            'student_id' => $student->id,
+            'teacher_id' => $teacherId,
+            'subject' => 'Math',
+            'class_type' => 'one_on_one',
+            'total_classes' => 16,
+            'confirmed_dates' => [],
+            'future_dates' => [],
+            'session_plan' => $sessionPlan,
+            'days_of_week' => [7, 1],
+            'day_time_slots' => [
+                ['day' => 7, 'start_time' => '10:00', 'duration_minutes' => 120],
+                ['day' => 7, 'start_time' => '14:00', 'duration_minutes' => 120],
+                ['day' => 1, 'start_time' => '16:00', 'duration_minutes' => 120],
+            ],
+            'start_time' => '16:00',
+            'duration_minutes' => 120,
+            'price_per_session' => 1000,
+            'payment_type' => 'session',
+            'course_start_date' => '2024-07-14',
+        ]);
+
+        $res->assertCreated();
+        $scId = (int) ($res->json('student_class_id') ?? 0);
+        $this->assertTrue($scId > 0);
+        $this->assertSame(5, (int) ($res->json('created_confirmed_sessions') ?? 0));
+        $this->assertSame(11, (int) ($res->json('created_future_sessions') ?? 0));
+        $this->assertSame(16, (int) ($res->json('created_sessions') ?? 0));
+
+        $sessions = \App\Models\ClassSession::where('StudentClassID', $scId)
+            ->orderBy('SessionDate')
+            ->orderBy('StartTime')
+            ->get();
+        $this->assertCount(16, $sessions);
+
+        $jul14 = $sessions->filter(fn ($s) => substr((string) $s->SessionDate, 0, 10) === '2024-07-14');
+        $this->assertCount(2, $jul14, '雙時段補登日必須建立兩筆 ClassSession');
+        $starts = $jul14->pluck('StartTime')->map(fn ($t) => substr((string) $t, 0, 5))->sort()->values()->all();
+        $this->assertSame(['10:00', '14:00'], $starts);
+    }
+
     public function test_batch_rejects_session_plan_on_weekday_outside_fixed_schedule(): void
     {
         $token = $this->createUserToken('A', [1], 'director-batch-wd@example.com');
