@@ -369,6 +369,7 @@ Route::prefix('v1')->group(function () {
         // Action Inbox (B-lite + D): read-model only — aggregates Notifications + open leave workflows.
         Route::get('action-inbox', [ActionInboxController::class, 'index']);
         Route::get('action-inbox/count', [ActionInboxController::class, 'count']);
+        Route::get('action-inbox/cases/{id}', [ActionInboxController::class, 'showCase'])->whereNumber('id');
 
         Route::get('exception-workflows', [ExceptionWorkflowController::class, 'index']);
         Route::get('exception-workflows/{id}', [ExceptionWorkflowController::class, 'show'])->whereNumber('id');

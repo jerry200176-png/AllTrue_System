@@ -356,14 +356,19 @@
 | POST | `api/v1/notifications/{notificationId}/read` | `NotificationController@markRead` | role+campus |
 | POST | `api/v1/notifications/{notificationId}/tuition-paid` | `NotificationController@markTuitionPaid` | role+campus |
 
-## /api/v1/action-inbox (2)
+## /api/v1/action-inbox (3)
 
-Read-model only (decision B-lite + D). Aggregates Notifications + open `student_leave` exception workflows. Does **not** create leave Notification rows.
+Read-model only (decision B-lite + D). Aggregates Notifications + open/`candidate_ready` `student_leave` exception workflows. Does **not** create leave Notification rows.
+
+**Campus scope (fail-closed):** empty `auth_campus_ids` ≠ all campuses. `mode=all` only for `super_admin` without `branch_id`. Non–super_admin with zero campuses → 403; unauthorized `branch_id` → 403.
+
+**Count fields:** `notifications_unread`, `cases_unresolved`, `cases_overdue`, `cases_due_soon`, `urgent_total`, `badge_total`. Deprecated aliases `cases_open` / `needs_attention` (remove after 2026-09-01). Responses: `Cache-Control: private, no-store`. Display DTO only (no raw Notification/Workflow payload).
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|
 | GET | `api/v1/action-inbox` | `ActionInboxController@index` | role+campus |
 | GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
+| GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
 
 ## /api/v1/parent-feedback (7)
 
