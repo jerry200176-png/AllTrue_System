@@ -36,6 +36,10 @@ Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過
 
 # AllTrue Changelog
 
+## 2026-07-22 — feat: 主任收件匣 UI（Action Inbox 前端）
+
+- 「主任收件匣」雙 lane（待辦案件／營運通知）；badge 用 `badge_total`，紅燈僅 `urgent_total`；對接後端 P0 contract。
+
 ## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）
 
 - 唯讀 `action-inbox`+`count`+`cases/{id}`；fail-closed 校區；`cases_unresolved`/`cases_candidate_ready`/`badge_total`/`urgent_total`；DTO+`no-store`；不雙寫 leave Notification（§R81）。deprecated：`cases_open`/`needs_attention`→2026-09-01。
