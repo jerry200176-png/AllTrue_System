@@ -1,3 +1,8 @@
+## 2026-07-22 — ops: in-app bug queue dump + Phase-C allowlist（#205/#198）
+
+- Cloud agent 無法 `workflow_dispatch` 時，改以 request file push 觸發唯讀 bug queue dump，並對已上線修復的 in-app #205／#198 做冪等 Phase C（公開回覆＋resolved）。
+- Founder 決策包：`docs/incidents/bug-closure-founder-decisions-2026-07-22.md`（#173／#1062／#1342／歷史帳務）。
+
 # AllTrue Changelog
 
 ## 2026-07-22 — fix: 排課摘要「補登已上」改以堂數顯示（同日多時段）
