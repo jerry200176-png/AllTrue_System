@@ -70,10 +70,10 @@ class ActionInboxApiTest extends TestCase
             'payload' => ['reason' => '木柵原因'],
         ]);
 
-        $this->getJson('/api/v1/action-inbox?branch_id=1&lane=case', $this->dirHeaders([1]))
+        $this->getJson('/api/v1/action-inbox?branch_id=1&lane=case', $this->dirHeaders([1], 'director-inbox-a@example.com'))
             ->assertOk()->assertJsonCount(1, 'data');
         $this->assertDatabaseCount('exception_workflows', 2);
-        $this->getJson('/api/v1/action-inbox?branch_id=2&lane=case', $this->dirHeaders([1]))
+        $this->getJson('/api/v1/action-inbox?branch_id=2&lane=case', $this->dirHeaders([1], 'director-inbox-b@example.com'))
             ->assertStatus(403);
     }
 
@@ -187,10 +187,10 @@ class ActionInboxApiTest extends TestCase
             ->assertOk()->json('token');
     }
 
-    private function dirHeaders(array $campusIds): array
+    private function dirHeaders(array $campusIds, string $login = 'director-inbox@example.com'): array
     {
         return [
-            'Authorization' => 'Bearer '.$this->staffToken($campusIds, 'director-inbox@example.com', 'A'),
+            'Authorization' => 'Bearer '.$this->staffToken($campusIds, $login, 'A'),
             'Accept' => 'application/json',
         ];
     }
