@@ -1,3 +1,8 @@
+## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
+
+- Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.
+- Final report: `docs/incidents/bug-closure-queue-final-report-2026-07-22.md`. Founder-parked items unchanged (#173/#1062/#1342/#189–191).
+
 ## 2026-07-22 — fix: 課程改老師不再改寫已上堂次的授課老師（in-app #207）
 
 Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過去堂次會保留原來的老師；未來堂次才跟新的合約老師。不必再逐堂手動設代課來「救」歷史紀錄。
