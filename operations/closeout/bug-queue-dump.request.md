@@ -1,7 +1,7 @@
 # Request: in-app bug queue dump (read-only)
 
 Trigger: `bug-queue-dump.yml`  
-Purpose: live PII-redacted dump of `new` / `triaged` / `in_progress` + status probes for known IDs.  
+Purpose: post-closure verification dump — expect **zero** `new`/`triaged`/`in_progress` after #207 Phase C.  
 **No writes.**
 
-# kickoff 2026-07-22T03:20:00Z — cloud agent inventory (workflow_dispatch 403 workaround)
+# kickoff 2026-07-22T04:28:00Z — final report verification after #207 resolved
