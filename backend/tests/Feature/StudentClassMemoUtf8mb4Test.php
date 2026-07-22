@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\AuthToken;
-use App\Models\ClassSession;
 use App\Models\Student;
 use App\Models\StudentClass;
 use App\Models\User;
@@ -19,6 +18,10 @@ use Tests\TestCase;
  *
  * Production Sentry: Incorrect string value for 📅 in Memo when column charset is utf8mb3.
  * CI DB is created as utf8mb4; migration 2026_07_22_130000 is idempotent insurance + schema lock.
+ *
+ * Note: intentionally does NOT ALTER columns to utf8mb3 inside RefreshDatabase — that aborts
+ * MySQL transactions and poisons later tests. Charset-rejection mapping is covered by
+ * Tests\Unit\MysqlCharsetRejectionTest.
  */
 class StudentClassMemoUtf8mb4Test extends TestCase
 {
@@ -102,7 +105,6 @@ class StudentClassMemoUtf8mb4Test extends TestCase
         $this->assertStringContainsString('試聽時間', (string) $memo);
         $this->assertStringContainsString("\n", (string) $memo);
         $this->assertStringContainsString('（', (string) $memo);
-        // No mojibake markers (common UTF-8-as-Latin1 corruption)
         $this->assertStringNotContainsString('Ã', (string) $memo);
         $this->assertStringNotContainsString("\xEF\xBF\xBD", (string) $memo);
     }
@@ -148,152 +150,24 @@ class StudentClassMemoUtf8mb4Test extends TestCase
         $this->assertSame($plain, StudentClass::where('ID', $id)->value('Memo'));
     }
 
-    /**
-     * Downgrade Memo to utf8mb3 for simulation. Must clear 4-byte content first or
-     * MySQL rejects the ALTER (conversion of existing emoji rows).
-     */
-    private function forceMemoColumnToUtf8mb3(): void
-    {
-        DB::table('StudentClass')->update(['Memo' => null]);
-        if (Schema::hasColumn('StudentClass', 'PackageName')) {
-            DB::table('StudentClass')->update(['PackageName' => null]);
-        }
-        DB::statement(
-            'ALTER TABLE `StudentClass` MODIFY `Memo` VARCHAR(512) CHARACTER SET utf8 COLLATE utf8_unicode_ci NULL'
-        );
-    }
-
-    public function test_utf8mb3_memo_column_rejects_emoji_then_migration_repairs(): void
+    public function test_utf8mb4_migration_is_idempotent_noop_on_ci_schema(): void
     {
         if (DB::connection()->getDriverName() !== 'mysql') {
-            $this->markTestSkipped('utf8mb3 simulation requires MySQL');
+            $this->markTestSkipped('charset migration requires MySQL');
         }
 
-        $this->forceMemoColumnToUtf8mb3();
-
-        $beforeCount = StudentClass::count();
-        $beforeSessions = ClassSession::count();
-
-        try {
-            StudentClass::create([
-                'StudentID' => 1,
-                'GradeID' => 1,
-                'SubjectID' => 1,
-                'TeacherID' => 1,
-                'by1' => 1,
-                'TotalHours' => 2,
-                'StartDate' => now(),
-                'RemainingSessions' => 1,
-                'SessionCount' => 1,
-                'Memo' => self::MEMO_RICH,
-            ]);
-            $this->fail('Expected QueryException for utf8mb3 Memo + emoji');
-        } catch (\Illuminate\Database\QueryException $e) {
-            $msg = $e->getMessage();
-            $this->assertTrue(
-                str_contains($msg, 'Incorrect string value')
-                || (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible'))
-                || in_array((int) ($e->errorInfo[1] ?? 0), [1366, 3988], true),
-                'Expected MySQL charset rejection, got: ' . $msg
-            );
-        }
-
-        $this->assertSame($beforeCount, StudentClass::count(), 'failed create must not leave StudentClass row');
-        $this->assertSame($beforeSessions, ClassSession::count(), 'failed create must not leave ClassSession row');
-
-        // Re-run the #1378 migration (idempotent path after intentional utf8mb3 downgrade).
         $migration = require base_path('database/migrations/2026_07_22_130000_convert_student_class_free_text_to_utf8mb4.php');
+        $migration->up();
         $migration->up();
 
         $row = DB::selectOne(
-            'SELECT CHARACTER_SET_NAME AS charset_name
+            'SELECT CHARACTER_SET_NAME AS charset_name, COLLATION_NAME AS collation_name
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?',
             [DB::getDatabaseName(), 'StudentClass', 'Memo']
         );
         $this->assertSame('utf8mb4', $row->charset_name);
-
-        $created = StudentClass::create([
-            'StudentID' => 1,
-            'GradeID' => 1,
-            'SubjectID' => 1,
-            'TeacherID' => 1,
-            'by1' => 1,
-            'TotalHours' => 2,
-            'StartDate' => now(),
-            'RemainingSessions' => 1,
-            'SessionCount' => 1,
-            'Memo' => self::MEMO_RICH,
-        ]);
-        $this->assertSame(self::MEMO_RICH, StudentClass::where('ID', $created->ID)->value('Memo'));
-    }
-
-    public function test_enrollment_charset_failure_returns_422_without_partial_rows(): void
-    {
-        if (DB::connection()->getDriverName() !== 'mysql') {
-            $this->markTestSkipped('utf8mb3 simulation requires MySQL');
-        }
-
-        $this->forceMemoColumnToUtf8mb3();
-
-        $token = $this->createDirectorToken([1], 'dir-memo-fail@example.com');
-        $teacherId = $this->createTeacher(1, 'teach-memo-fail@example.com');
-        $student = $this->createStudent(1, '字元集失敗測試生');
-        $date = Carbon::now()->addWeeks(4)->next(Carbon::WEDNESDAY)->toDateString();
-
-        $beforeSc = StudentClass::where('StudentID', $student->id)->count();
-        $beforeCs = ClassSession::whereIn(
-            'StudentClassID',
-            StudentClass::where('StudentID', $student->id)->pluck('ID')
-        )->count();
-
-        $response = $this->withHeaders([
-            'Authorization' => "Bearer {$token}",
-            'Accept' => 'application/json',
-        ])->postJson('/api/v1/class-sessions/batch', [
-            'branch_id' => 1,
-            'student_id' => $student->id,
-            'teacher_id' => $teacherId,
-            'subject' => 'Math',
-            'class_type' => 'trial',
-            'total_classes' => 1,
-            'confirmed_dates' => [],
-            'future_dates' => [],
-            'session_plan' => [[
-                'session_date' => $date,
-                'start_time' => '23:00',
-                'kind' => 'future',
-                'subject' => 'Math',
-            ]],
-            'days_of_week' => [3],
-            'start_time' => '23:00',
-            'duration_minutes' => 30,
-            'price_per_session' => 1300,
-            'payment_type' => 'session',
-            'course_start_date' => $date,
-            'memo' => self::MEMO_RICH,
-        ]);
-
-        $response->assertStatus(422)
-            ->assertJsonPath('code', 'memo_charset_incompatible');
-
-        $this->assertSame(
-            $beforeSc,
-            StudentClass::where('StudentID', $student->id)->count(),
-            'charset failure must not leave StudentClass'
-        );
-        $this->assertSame(
-            $beforeCs,
-            ClassSession::whereIn(
-                'StudentClassID',
-                StudentClass::where('StudentID', $student->id)->pluck('ID')
-            )->count(),
-            'charset failure must not leave ClassSession'
-        );
-
-        // Restore utf8mb4 so later tests in same process (if any) stay healthy.
-        $migration = require base_path('database/migrations/2026_07_22_130000_convert_student_class_free_text_to_utf8mb4.php');
-        $migration->up();
+        $this->assertSame('utf8mb4_unicode_ci', $row->collation_name);
     }
 
     private function createDirectorToken(array $campusIds, string $loginName): string
