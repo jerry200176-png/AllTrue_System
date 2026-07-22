@@ -1775,6 +1775,8 @@ async function refreshUnreadNotifications() {
   } else {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
+    inboxCasesOpenCount.value = 0;
+    inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
   }
 
