@@ -1,5 +1,12 @@
 # AllTrue Changelog
 
+## 2026-07-22 — feat: 主任收件匣聚合營運通知與請假補課案件（B-lite + D）
+
+- 新增唯讀 `GET /api/v1/action-inbox` 與 `.../count`：聚合既有 Notifications 與 open／candidate_ready 的家長請假 workflow；**不**為請假另建 Notification。
+- 「通知中心」改稱「主任收件匣」：雙 lane（營運通知／請假補課）、SLA／逾期文案、側欄 badge 用「需要處理」= 新通知 + 待處理案件。
+- 「安排補課」深鏈到主任儀表板補課案件列（workflow id）；confirm／waive 後案件自收件匣消失（workflow 仍為唯一真相來源）。
+- 決策一行：採 B-lite + D；統一入口與觸達，不統一資料表、不複製業務狀態。
+
 ## 2026-07-22 — fix: 排課摘要「補登已上」改以堂數顯示（同日多時段）
 
 - 新建課程日曆摘要「補登已上／預排未上」改為「X 堂（Y 天）」；同日兩個固定時段不再把日期數誤當堂數。
