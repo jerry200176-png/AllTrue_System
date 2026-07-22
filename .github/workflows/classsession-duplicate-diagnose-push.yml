@@ -55,7 +55,7 @@ jobs:
             DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
             'bash -s' <<'ENDSSH'
           set -euo pipefail
-          DATE="${DATE:-2026-07-18}"
+          DATE="${DATE:-2026-07-22}"
           CAMPUS_ID="${CAMPUS_ID:-9}"
           TEACHER_NAME="黃芝琳"
           STUDENT_NAMES="王品方,陳品承"
