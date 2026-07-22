@@ -4747,23 +4747,25 @@ class StudentClassController extends Controller
             return;
         }
 
-        $course = StudentClass::find($courseId);
+        $course = DB::table('StudentClass')->where('ID', $courseId)->first();
         if (!$course) {
             return;
         }
 
         $studentId = (int) ($course->StudentID ?? 0);
-        $student = $studentId > 0 ? Student::find($studentId) : null;
-        $campusId = (int) ($student->CampusID ?? 0);
+        $campusId = $studentId > 0
+            ? (int) (DB::table('Student')->where('id', $studentId)->value('CampusID') ?? 0)
+            : 0;
         if ($studentId <= 0 || $campusId <= 0) {
             return;
         }
 
         $today = Carbon::today()->toDateString();
-        $subject = DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '';
+        $subject = (string) (DB::table('Subject')->where('id', $course->SubjectID)->value('Subject_Name') ?? '');
         $classType = (string) ($course->class_type ?? $course->ClassType ?? 'one_on_one');
 
-        $pastSessions = ClassSession::where('StudentClassID', $courseId)
+        $pastSessions = DB::table('ClassSession')
+            ->where('StudentClassID', $courseId)
             ->where(function ($q) use ($today) {
                 $q->whereDate('SessionDate', '<', $today)
                     ->orWhereIn('Status', ['attended', 'late', 'leave', 'excused', 'completed', 'absent']);
@@ -4785,7 +4787,8 @@ class StudentClassController extends Controller
             }
 
             // Already has a substitute-style exception with a non-contract teacher → leave it.
-            $existingPin = Schedule::where('student_course_id', $courseId)
+            $existingPin = DB::table('schedules')
+                ->where('student_course_id', $courseId)
                 ->whereDate('schedule_date', $sessionDate)
                 ->where('status', 'scheduled')
                 ->whereNotNull('original_schedule_id')
@@ -4800,8 +4803,9 @@ class StudentClassController extends Controller
             $startM = ((int) substr($startTime, 0, 2)) * 60 + (int) substr($startTime, 3, 2);
             $endM = ((int) substr($endTime, 0, 2)) * 60 + (int) substr($endTime, 3, 2);
             $durationHours = max(0.5, round(max(0, $endM - $startM) / 60, 1));
+            $now = now();
 
-            $rescheduled = Schedule::create([
+            $rescheduledId = DB::table('schedules')->insertGetId([
                 'student_id' => $studentId,
                 'teacher_id' => $oldTeacherId,
                 'subject' => $subject,
@@ -4816,9 +4820,11 @@ class StudentClassController extends Controller
                 'branch_id' => $campusId,
                 'schedule_date' => $sessionDate,
                 'student_course_id' => $courseId,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
 
-            Schedule::create([
+            DB::table('schedules')->insert([
                 'student_id' => $studentId,
                 'teacher_id' => $oldTeacherId,
                 'subject' => $subject,
@@ -4833,7 +4839,9 @@ class StudentClassController extends Controller
                 'branch_id' => $campusId,
                 'schedule_date' => $sessionDate,
                 'student_course_id' => $courseId,
-                'original_schedule_id' => (int) $rescheduled->id,
+                'original_schedule_id' => (int) $rescheduledId,
+                'created_at' => $now,
+                'updated_at' => $now,
             ]);
         }
     }
