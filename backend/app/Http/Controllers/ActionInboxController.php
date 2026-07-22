@@ -1,15 +1,11 @@
 <?php
-
 namespace App\Http\Controllers;
-
 use App\Services\ActionInboxService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-
 class ActionInboxController extends Controller
 {
     private const NO_STORE = 'private, no-store';
-
     public function index(Request $request, ActionInboxService $service)
     {
         $request->validate([
@@ -21,19 +17,16 @@ class ActionInboxController extends Controller
             'ops_page' => 'nullable|integer|min:1',
             'ops_per_page' => 'nullable|integer|min:1|max:'.ActionInboxService::OPS_MAX_PER_PAGE,
         ]);
-
         $scope = $this->resolveCampusScope($request);
         if ($scope instanceof JsonResponse) {
-            return $this->withNoStore($scope);
+            return $this->noStore($scope);
         }
-
-        $userId = $this->resolveAuthUserId($request);
+        $userId = $this->authUserId($request);
         if (!$userId) {
-            return $this->withNoStore(response()->json(['message' => 'Unauthorized'], 401));
+            return $this->noStore(response()->json(['message' => 'Unauthorized'], 401));
         }
-
         $lane = $request->input('lane');
-        $result = $service->list(
+        return $this->noStore(response()->json($service->list(
             $scope,
             $userId,
             $lane ? (string) $lane : null,
@@ -42,136 +35,92 @@ class ActionInboxController extends Controller
             $request->input('case_filter') ? (string) $request->input('case_filter') : null,
             (int) $request->input('ops_page', 1),
             (int) $request->input('ops_per_page', ActionInboxService::OPS_DEFAULT_PER_PAGE)
-        );
-
-        return $this->withNoStore(response()->json($result));
+        )));
     }
-
     public function count(Request $request, ActionInboxService $service)
     {
-        $request->validate([
-            'branch_id' => 'nullable|integer|min:1',
-        ]);
-
+        $request->validate(['branch_id' => 'nullable|integer|min:1']);
         $scope = $this->resolveCampusScope($request);
         if ($scope instanceof JsonResponse) {
-            return $this->withNoStore($scope);
+            return $this->noStore($scope);
         }
-
-        $userId = $this->resolveAuthUserId($request);
+        $userId = $this->authUserId($request);
         if (!$userId) {
-            return $this->withNoStore(response()->json(['message' => 'Unauthorized'], 401));
+            return $this->noStore(response()->json(['message' => 'Unauthorized'], 401));
         }
-
-        return $this->withNoStore(response()->json($service->count($scope, $userId)));
+        return $this->noStore(response()->json($service->count($scope, $userId)));
     }
-
-    /**
-     * Deep-link: load one case DTO by workflow id under the same campus scope as list/count.
-     */
     public function showCase(Request $request, ActionInboxService $service, int $id)
     {
-        $request->validate([
-            'branch_id' => 'nullable|integer|min:1',
-        ]);
-
+        $request->validate(['branch_id' => 'nullable|integer|min:1']);
         $scope = $this->resolveCampusScope($request);
         if ($scope instanceof JsonResponse) {
-            return $this->withNoStore($scope);
+            return $this->noStore($scope);
         }
-
-        $userId = $this->resolveAuthUserId($request);
-        if (!$userId) {
-            return $this->withNoStore(response()->json(['message' => 'Unauthorized'], 401));
+        if (!$this->authUserId($request)) {
+            return $this->noStore(response()->json(['message' => 'Unauthorized'], 401));
         }
-
         $item = $service->getCase($scope, $id);
         if ($item === null) {
-            return $this->withNoStore(response()->json([
+            return $this->noStore(response()->json([
                 'message' => 'Case not found or not in authorized scope',
                 'error_code' => 'case_not_found',
             ], 404));
         }
-
-        return $this->withNoStore(response()->json(['data' => $item]));
+        return $this->noStore(response()->json(['data' => $item]));
     }
-
     /**
-     * Fail-closed campus scope.
-     *
-     * - super_admin without branch_id → mode=all
-     * - super_admin with branch_id → mode=ids [branch]
-     * - non-super with zero auth campuses → 403
-     * - non-super without branch_id → mode=ids auth_campus_ids
-     * - non-super with unauthorized branch_id → 403
-     *
-     * Empty campus_ids NEVER means "all" except mode=all for super_admin.
+     * Fail-closed: empty campus_ids never means "all" except super_admin mode=all.
      *
      * @return array{mode: string, campus_ids: array<int>}|JsonResponse
      */
     private function resolveCampusScope(Request $request)
     {
-        $role = $request->attributes->get('auth_role');
-        $isSuperAdmin = $role === 'super_admin';
-        $authCampusIds = array_values(array_unique(array_filter(
+        $isSuper = $request->attributes->get('auth_role') === 'super_admin';
+        $auth = array_values(array_unique(array_filter(
             array_map('intval', (array) $request->attributes->get('auth_campus_ids', [])),
             fn ($id) => $id > 0
         )));
-
-        $branchRaw = $request->input('branch_id');
-        $hasBranch = $branchRaw !== null && $branchRaw !== '';
-        $branchId = $hasBranch ? (int) $branchRaw : 0;
-
-        if ($isSuperAdmin) {
-            if ($hasBranch) {
-                if ($branchId <= 0) {
-                    return response()->json(['message' => 'Invalid branch_id'], 422);
-                }
-
-                return ['mode' => 'ids', 'campus_ids' => [$branchId]];
+        $raw = $request->input('branch_id');
+        $hasBranch = $raw !== null && $raw !== '';
+        $branchId = $hasBranch ? (int) $raw : 0;
+        if ($isSuper) {
+            if (!$hasBranch) {
+                return ['mode' => 'all', 'campus_ids' => []];
             }
-
-            return ['mode' => 'all', 'campus_ids' => []];
+            if ($branchId <= 0) {
+                return response()->json(['message' => 'Invalid branch_id'], 422);
+            }
+            return ['mode' => 'ids', 'campus_ids' => [$branchId]];
         }
-
-        if ($authCampusIds === []) {
+        if ($auth === []) {
             return response()->json([
                 'message' => 'Forbidden: no authorized campuses',
                 'error_code' => 'no_authorized_campuses',
             ], 403);
         }
-
         if ($hasBranch) {
             if ($branchId <= 0) {
                 return response()->json(['message' => 'Invalid branch_id'], 422);
             }
-            if (!in_array($branchId, $authCampusIds, true)) {
+            if (!in_array($branchId, $auth, true)) {
                 return response()->json([
                     'message' => 'Forbidden: unauthorized campus',
                     'error_code' => 'unauthorized_campus',
                 ], 403);
             }
-
             return ['mode' => 'ids', 'campus_ids' => [$branchId]];
         }
-
-        return ['mode' => 'ids', 'campus_ids' => $authCampusIds];
+        return ['mode' => 'ids', 'campus_ids' => $auth];
     }
-
-    private function resolveAuthUserId(Request $request): ?int
+    private function authUserId(Request $request): ?int
     {
-        $authUser = $request->attributes->get('auth_user');
-        if ($authUser && isset($authUser->id)) {
-            return (int) $authUser->id;
-        }
-
-        return null;
+        $u = $request->attributes->get('auth_user');
+        return ($u && isset($u->id)) ? (int) $u->id : null;
     }
-
-    private function withNoStore(JsonResponse $response): JsonResponse
+    private function noStore(JsonResponse $response): JsonResponse
     {
         $response->headers->set('Cache-Control', self::NO_STORE);
-
         return $response;
     }
 }

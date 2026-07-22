@@ -1,16 +1,8 @@
 # AllTrue Changelog
 
-## 2026-07-22 — fix: Action Inbox P0（fail-closed 校區、分頁、count 語意、DTO）
+## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）
 
-- 校區 scope：`mode=all` 僅 super_admin；非超管空校區／未授權 `branch_id` → 403；list／count／cases/{id} 共用 resolver。
-- Cases 分頁：`page`／`per_page`／`total`／`last_page`／`has_more`；count 為完整 SQL，不再由 loaded collection 推算。
-- Count 欄位：`cases_unresolved`、`badge_total`、`cases_overdue`、`cases_due_soon`、`urgent_total`；短期保留 `cases_open`／`needs_attention` 別名（至 2026-09-01）。
-- Display DTO + `Cache-Control: private, no-store`；新增 `GET /action-inbox/cases/{id}` deep-link。
-
-## 2026-07-22 — feat: 主任 Action Inbox 唯讀聚合 API（B-lite + D）
-
-- 新增唯讀 `GET /api/v1/action-inbox` 與 `.../count`：聚合既有 Notifications 與 open／candidate_ready 家長請假 workflow；**不**為請假另建 Notification。
-- 決策：統一入口與觸達，不統一資料表、不複製業務狀態（§R81）。前端收件匣 UI 另 PR。
+- 唯讀 `action-inbox`+`count`+`cases/{id}`；fail-closed 校區；`cases_unresolved`/`badge_total`/`urgent_total`；DTO+`no-store`；不雙寫 leave Notification（§R81）。
 
 ## 2026-07-22 — fix: 排課摘要「補登已上」改以堂數顯示（同日多時段）
 

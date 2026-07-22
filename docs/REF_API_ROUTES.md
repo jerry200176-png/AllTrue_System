@@ -358,11 +358,7 @@
 
 ## /api/v1/action-inbox (3)
 
-Read-model only (decision B-lite + D). Aggregates Notifications + open/`candidate_ready` `student_leave` exception workflows. Does **not** create leave Notification rows.
-
-**Campus scope (fail-closed):** empty `auth_campus_ids` ≠ all campuses. `mode=all` only for `super_admin` without `branch_id`. Non–super_admin with zero campuses → 403; unauthorized `branch_id` → 403.
-
-**Count fields:** `notifications_unread`, `cases_unresolved`, `cases_overdue`, `cases_due_soon`, `urgent_total`, `badge_total`. Deprecated aliases `cases_open` / `needs_attention` (remove after 2026-09-01). Responses: `Cache-Control: private, no-store`. Display DTO only (no raw Notification/Workflow payload).
+B-lite+D read-model（不雙寫 leave Notification）。Fail-closed campus；DTO + `private, no-store`；count: `cases_unresolved`/`badge_total`/`urgent_total`（deprecated `cases_open`/`needs_attention`→2026-09-01）。
 
 | Method | URI | Action | Auth |
 |--------|-----|--------|------|

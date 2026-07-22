@@ -998,9 +998,8 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 
 ### R81. 家長請假不可雙寫 Notifications（Action Inbox B-lite + D）
 
-- **觸發情境**：主任期望「請假出現在通知中心」，若為圖快在 `ParentPortalController` 另建 `Notification`，會與 `exception_workflows` 雙狀態（已讀≠已安排、結案漏 resolve、重試重複）。
-- **強制規則**：請假／補課唯一真相 = `exception_workflows`；主任收件匣用唯讀 `ActionInboxService` 聚合。禁止把 `student_leave` 加進 `NotificationSyncService::$managedTypes`。Badge 用中性 `badge_total`（= unread + unresolved）；紅色警示只用 `urgent_total`（high unread + overdue）。不可把 case 數假裝成 `unread_count`。空 `campus_ids` 對非 super_admin **禁止**解讀成全校區（fail-closed）。
-- **測試必補**：`ActionInboxApiTest`（零校區 403、省略 branch 僅授權校、未授權 branch 403、super_admin 全校、pagination 51+、DTO 無 raw payload、confirm/waive 消失、老師 403、count 合約）。
+- **強制**：請假真相=`exception_workflows`；唯讀 ActionInbox；禁雙寫 Notification。Badge=`badge_total`；紅燈僅 `urgent_total`；空 campus_ids 對非 super_admin **fail-closed**。
+- **測試**：`ActionInboxApiTest`（零校區/未授權 403、pagination 51+、DTO、結案消失、老師 403、count）。
 - **決策**：`.cursor/plans/action-inbox-b-lite-d_2026-07-22.md`
 
 ---
