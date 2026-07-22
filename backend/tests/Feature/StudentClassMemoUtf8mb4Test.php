@@ -148,15 +148,28 @@ class StudentClassMemoUtf8mb4Test extends TestCase
         $this->assertSame($plain, StudentClass::where('ID', $id)->value('Memo'));
     }
 
+    /**
+     * Downgrade Memo to utf8mb3 for simulation. Must clear 4-byte content first or
+     * MySQL rejects the ALTER (conversion of existing emoji rows).
+     */
+    private function forceMemoColumnToUtf8mb3(): void
+    {
+        DB::table('StudentClass')->update(['Memo' => null]);
+        if (Schema::hasColumn('StudentClass', 'PackageName')) {
+            DB::table('StudentClass')->update(['PackageName' => null]);
+        }
+        DB::statement(
+            'ALTER TABLE `StudentClass` MODIFY `Memo` VARCHAR(512) CHARACTER SET utf8 COLLATE utf8_unicode_ci NULL'
+        );
+    }
+
     public function test_utf8mb3_memo_column_rejects_emoji_then_migration_repairs(): void
     {
         if (DB::connection()->getDriverName() !== 'mysql') {
             $this->markTestSkipped('utf8mb3 simulation requires MySQL');
         }
 
-        DB::statement(
-            'ALTER TABLE `StudentClass` MODIFY `Memo` VARCHAR(512) CHARACTER SET utf8 COLLATE utf8_unicode_ci NULL'
-        );
+        $this->forceMemoColumnToUtf8mb3();
 
         $beforeCount = StudentClass::count();
         $beforeSessions = ClassSession::count();
@@ -221,9 +234,7 @@ class StudentClassMemoUtf8mb4Test extends TestCase
             $this->markTestSkipped('utf8mb3 simulation requires MySQL');
         }
 
-        DB::statement(
-            'ALTER TABLE `StudentClass` MODIFY `Memo` VARCHAR(512) CHARACTER SET utf8 COLLATE utf8_unicode_ci NULL'
-        );
+        $this->forceMemoColumnToUtf8mb3();
 
         $token = $this->createDirectorToken([1], 'dir-memo-fail@example.com');
         $teacherId = $this->createTeacher(1, 'teach-memo-fail@example.com');
