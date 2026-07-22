@@ -1,3 +1,10 @@
+## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
+
+- 遇到同科進行中課程時，主任可選「建立試聽」「加購」「下一期續報」或「建立獨立課程」，不再只有含糊的強制建立。
+- 建立獨立課程須填寫原因，系統會留下操作者與既有合約紀錄。
+
+開發備註：#1379 follow-up。`EnrollmentConflictDecisionModal` + `force_reason` 審計（`create_trial`／`renewal_next_term`／`independent_parallel`）。尚非 Course Continuity 最終設計。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.

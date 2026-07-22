@@ -39,8 +39,12 @@ function versionFromIsoDate(dateStr) {
 function stripTechNoise(s) {
   let t = String(s)
     .replace(/`[^`]+`/g, '')
-    .replace(/\([^)]*#\d+[^)]*\)/g, '')
+    // ASCII or fullwidth parentheses wrapping issue refs: (in-app #207) / （in-app #207）
+    .replace(/[\(（][^）)]*#\d+[^）)]*[\)）]/g, '')
     .replace(/#[0-9]+/g, '')
+    .replace(/\bin-app\b/gi, '')
+    .replace(/\bStudentClass(?:\.\w+)?\b/g, '')
+    .replace(/\butf8mb[34]\b/gi, '')
     .replace(/\b[A-Z][A-Za-z0-9_]*(Controller|Service|Command|Test|Factory|Model)::[A-Za-z0-9_]+\b/g, '')
     .replace(/\b(GET|POST|PUT|PATCH|DELETE)\s+\/[A-Za-z0-9_/?&=.-]+/g, '')
     .replace(/\bAPI\b/gi, '')
@@ -60,6 +64,7 @@ function stripTechNoise(s) {
     .trim();
   t = t.replace(/^[A-Za-z]+(?:\([^)]+\))?[：:]?\s*/i, '').trim();
   t = t.replace(/^[^A-Za-z0-9\u4e00-\u9fff]+/, '').trim();
+  t = t.replace(/[\(（]\s*[\)）]/g, '').trim();
   t = t.replace(/\(\s*\)/g, '').trim();
   if (t.length > 240) {
     return `${t.slice(0, 237)}…`;
