@@ -1481,7 +1481,7 @@ class StudentClassController extends Controller
         if (array_key_exists('TeacherID', $mapped)) {
             $newTeacherId = (int) ($studentClass->TeacherID ?? 0);
             if ($newTeacherId > 0 && $newTeacherId !== $oldTeacherSnapshot) {
-                $courseIdForTeacherSync = (int) ($studentClass->ID ?? 0);
+                $courseIdForTeacherSync = (int) $studentClass->ID;
                 // in-app #207: pin past attended/history to former teacher BEFORE
                 // future schedule rows move to the new contract teacher.
                 $this->pinPastSessionsToFormerTeacherAfterContractTeacherChange(
