@@ -102,6 +102,7 @@ class ActionInboxApiTest extends TestCase
             ->assertJsonPath('cases_unresolved', 2)
             ->assertJsonPath('cases_overdue', 1)
             ->assertJsonPath('cases_due_soon', 1)
+            ->assertJsonPath('cases_candidate_ready', 1)
             ->assertJsonPath('urgent_total', 2)
             ->assertJsonPath('badge_total', 4)
             ->assertJsonPath('cases_open', 2)

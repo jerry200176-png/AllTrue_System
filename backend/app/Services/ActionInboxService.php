@@ -19,6 +19,7 @@ class ActionInboxService
         $unresolved = $this->countCases($scope);
         $overdue = $this->countCases($scope, 'overdue');
         $dueSoon = $this->countCases($scope, 'due_soon');
+        $candidateReady = $this->countCases($scope, 'candidate_ready');
         $urgent = $this->countUnread($scope, $userId, 'high') + $overdue;
         $badge = $unread + $unresolved;
         return [
@@ -26,6 +27,7 @@ class ActionInboxService
             'cases_unresolved' => $unresolved,
             'cases_overdue' => $overdue,
             'cases_due_soon' => $dueSoon,
+            'cases_candidate_ready' => $candidateReady,
             'urgent_total' => $urgent,
             'badge_total' => $badge,
             // Deprecated aliases — remove after 2026-09-01
