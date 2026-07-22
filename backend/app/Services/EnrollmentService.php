@@ -538,7 +538,10 @@ class EnrollmentService
             }
         }
 
-        return DB::transaction(function () use (
+        // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
+        // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
+        try {
+            return DB::transaction(function () use (
             $request,
             $data,
             $targetCampusId,
@@ -856,6 +859,33 @@ class EnrollmentService
 
             return response()->json($payload, 201);
         });
+        } catch (QueryException $e) {
+            if ($this->isIncorrectStringValueException($e)) {
+                Log::warning('enrollment_memo_charset_incompatible', [
+                    'sqlstate' => $e->errorInfo[0] ?? null,
+                    'driver_code' => $e->errorInfo[1] ?? null,
+                ]);
+                return response()->json([
+                    'message' => '備註含有目前資料庫無法儲存的特殊字元（例如 emoji）。請暫時移除後重試；系統正在升級字元集以永久支援。',
+                    'code' => 'memo_charset_incompatible',
+                ], 422);
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * MySQL 1366 Incorrect string value — typically utf8mb3 column + 4-byte Unicode (emoji).
+     */
+    private function isIncorrectStringValueException(QueryException $e): bool
+    {
+        $msg = $e->getMessage();
+        if (str_contains($msg, 'Incorrect string value')) {
+            return true;
+        }
+        // Driver SQLSTATE for invalid string / truncated wrong value often HY000 / 22007 with 1366.
+        $driverCode = (int) ($e->errorInfo[1] ?? 0);
+        return $driverCode === 1366;
     }
 
     private function resolvePlannedSessions(array $data, int $totalDates): int
