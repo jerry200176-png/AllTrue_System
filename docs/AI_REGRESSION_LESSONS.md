@@ -19,6 +19,12 @@ last_reviewed: 2026-06-06
 
 ## 紅線（⛔ 違反 = P0 故障，零容忍）
 
+### R0b. Artifact 已產生 ≠ 已交付給真人（2026-07-22）
+
+- 需要主任／家長／真人接收的 workflow：啟用前必須過 [`OUTBOUND_READINESS_GATE.md`](governance/OUTBOUND_READINESS_GATE.md)（recipient／channel health／test delivery／ack path／PII）。
+- `skipped_no_line`、缺 `staff_line_group_id`、僅 Actions artifact → **Operational Delivery BLOCKED**，即使 Engineering PASS。
+- #1342：`awaiting_delivery` 直到交檔；簽收後才 `awaiting_review`；逾 ack 未簽收 = `deadline_at_risk`（≠ 內容未審）。
+
 ### R1. `/home/admin` 就是 production — 在 Pi 改檔案 = 改線上
 
 ```

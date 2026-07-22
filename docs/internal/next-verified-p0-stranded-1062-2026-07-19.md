@@ -18,9 +18,10 @@
 ## This round (autonomous, read-only)
 
 1. Refresh stranded JSON on Pi (workflow or SSH read-only).  
-2. Publish redacted cohort split (active / dormant / cadence / unknown).  
-3. **Do not** repair 1681 or 50 cross-SC rows.  
-4. Cross-SC ~50：confirm against #1130/#1134 inventory; root-cause note only.
+2. Publish redacted cohort split (active / dormant) + **exposure_ntd** total / active-21d / dormant.  
+3. **24h/72h producer proxies** (`MDate` + payments on stranded) — `active_21d` ≠ still producing.  
+4. **Do not** repair bulk rows; no forward-gen execute without CEO GO.  
+5. **#1130 units:** group / pair / student / course / future-active separately (`two_35_check`).
 
 ## Out of scope
 
