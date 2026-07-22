@@ -4,10 +4,31 @@
  */
 export const changelogReleaseNotes = [
   {
-    "version": "2026.07.19",
-    "date": "2026-07-19",
-    "title": "2026.07.19 版本更新",
-    "summary": "單堂改時段費用與畫面說明一致；主任堂數異常只呈現可核對的帳務候選",
+    "version": "2026.07.22",
+    "date": "2026-07-22",
+    "title": "2026.07.22 版本更新",
+    "summary": "排課摘要「補登已上」改以堂數顯示（同日多時段）",
+    "audience": [
+      "teacher",
+      "director"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "排課摘要「補登已上」改以堂數顯示（同日多時段）"
+        ]
+      }
+    ],
+    "items": [
+      "排課摘要「補登已上」改以堂數顯示（同日多時段）"
+    ]
+  },
+  {
+    "version": "2026.07.21",
+    "date": "2026-07-21",
+    "title": "2026.07.21 版本更新",
+    "summary": "帳務中心收據改回既有 payment-report （ 回歸）",
     "audience": [
       "teacher",
       "director",
@@ -17,12 +38,38 @@ export const changelogReleaseNotes = [
       {
         "title": "修正內容",
         "items": [
+          "帳務中心收據改回既有 payment-report （ 回歸）"
+        ]
+      }
+    ],
+    "items": [
+      "帳務中心收據改回既有 payment-report （ 回歸）"
+    ]
+  },
+  {
+    "version": "2026.07.19",
+    "date": "2026-07-19",
+    "title": "2026.07.19 版本更新",
+    "summary": "補課加長按實際分鐘扣堂；請假順延不再錯置其他星期時段",
+    "audience": [
+      "teacher",
+      "director",
+      "parent"
+    ],
+    "sections": [
+      {
+        "title": "修正內容",
+        "items": [
+          "補課加長按實際分鐘扣堂",
+          "請假順延不再錯置其他星期時段",
           "單堂改時段費用與畫面說明一致",
           "主任堂數異常只呈現可核對的帳務候選"
         ]
       }
     ],
     "items": [
+      "補課加長按實際分鐘扣堂",
+      "請假順延不再錯置其他星期時段",
       "單堂改時段費用與畫面說明一致",
       "主任堂數異常只呈現可核對的帳務候選"
     ]
@@ -449,73 +496,6 @@ export const changelogReleaseNotes = [
       "Modals 群拆分（ Step 6）",
       "受控拆分暫時收尾（ Phase 4c）",
       "導入 Vitest 元件測試基礎建設（）"
-    ]
-  },
-  {
-    "version": "2026.06.06",
-    "date": "2026-06-06",
-    "title": "2026.06.06 版本更新",
-    "summary": "老師工作台 token 對齊 + dark mode 整併（ step 1）；學生管理表單 / 包套 / 歷史 / LINE / Toast token 對齊（ wave C）",
-    "audience": [
-      "teacher",
-      "director",
-      "parent"
-    ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "老師工作台 token 對齊 + dark mode 整併（ step 1）",
-          "學生管理表單 / 包套 / 歷史 / LINE / Toast token 對齊（ wave C）",
-          "學生管理列表 / 狀態 chip / 課程展開區 token 對齊（ wave B）",
-          "學生管理頁首+篩選列+批次工具列 token 對齊（ wave A）",
-          "課程 modal 中性結構色 token 化（ 第三階段）",
-          "外殼去裝飾、品牌色統一（ topbar/FAB/banner）"
-        ]
-      },
-      {
-        "title": "修正內容",
-        "items": [
-          "學習評量表日期排序修正（in-app ）"
-        ]
-      },
-      {
-        "title": "其他改善",
-        "items": [
-          "移除 Teacher table 依賴，改以 User/UserCampus 為老師權威來源"
-        ]
-      }
-    ],
-    "items": [
-      "老師工作台 token 對齊 + dark mode 整併（ step 1）",
-      "學生管理表單 / 包套 / 歷史 / LINE / Toast token 對齊（ wave C）",
-      "學生管理列表 / 狀態 chip / 課程展開區 token 對齊（ wave B）",
-      "學生管理頁首+篩選列+批次工具列 token 對齊（ wave A）",
-      "課程 modal 中性結構色 token 化（ 第三階段）",
-      "外殼去裝飾、品牌色統一（ topbar/FAB/banner）",
-      "學習評量表日期排序修正（in-app ）",
-      "移除 Teacher table 依賴，改以 User/UserCampus 為老師權威來源"
-    ]
-  },
-  {
-    "version": "2026.06.01",
-    "date": "2026-06-01",
-    "title": "2026.06.01 版本更新",
-    "summary": "建課即時費用試算與計價方式提示",
-    "audience": [
-      "teacher",
-      "director"
-    ],
-    "sections": [
-      {
-        "title": "新增內容",
-        "items": [
-          "建課即時費用試算與計價方式提示"
-        ]
-      }
-    ],
-    "items": [
-      "建課即時費用試算與計價方式提示"
     ]
   }
 ];

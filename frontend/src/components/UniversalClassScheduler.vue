@@ -613,16 +613,16 @@
             <h4>日曆摘要</h4>
             <div class="summary-row">
               <div v-if="confirmedDates.length > 0" class="summary-pill confirmed">
-                <div class="summary-label">補登已上（堂）</div>
-                <strong>{{ confirmedDates.length }}</strong>
+                <div class="summary-label">補登已上</div>
+                <strong class="summary-count">{{ formatSessionsWithDays(confirmedSessionCount, confirmedDates.length) }}</strong>
               </div>
               <div class="summary-pill future">
-                <div class="summary-label">預排未上（堂）</div>
-                <strong>{{ manualScheduledDates.length + futureSessionOccurrences.length }}</strong>
+                <div class="summary-label">預排未上</div>
+                <strong class="summary-count">{{ formatSessionsWithDays(futureUnscheduledSessionCount, futureUnscheduledDayCount) }}</strong>
               </div>
               <div class="summary-pill total">
                 <div class="summary-label">{{ plannedCountLabel }}</div>
-                <strong>{{ plannedDisplayCount }}</strong>
+                <strong class="summary-count">{{ plannedDisplayCount }}</strong>
               </div>
             </div>
 
@@ -742,6 +742,12 @@ import { createUniversalClassSchedule } from '../lib/universalSchedulerApi';
 import { createMultiSubjectPackage } from '../lib/coursePackagesApi';
 import { checkTeacherScope } from '../lib/constants';
 import { estimateCreateCharge } from '../lib/coursePricing';
+import {
+  countSessionsForDates,
+  expandManualDatesToSessionPlan,
+  formatSessionsWithDays,
+  sessionCountForYmd as countSessionsOnYmd,
+} from '../lib/schedulerSessionExpand';
 import { fetchSubjectOptions } from '../lib/subjectsApi';
 import SearchableSelect from './SearchableSelect.vue';
 
@@ -1218,13 +1224,17 @@ function sessionCountForWeekday(day) {
   return n > 0 ? n : 1;
 }
 
+/** 與 submit session_plan 同源（schedulerSessionExpand） */
+function schedulerExpandCtx() {
+  return {
+    dayTimeSlots: form.day_time_slots || [],
+    defaultStartTime: form.start_time || '16:00',
+    defaultSubject: String(form.subject || ''),
+  };
+}
+
 function sessionCountForYmd(ymd) {
-  const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
-  // 手動日期不限固定星期，若該星期無設定時段則以 1 堂計
-  if (selectedDays.value.includes(dow)) {
-    return sessionCountForWeekday(dow);
-  }
-  return 1;
+  return countSessionsOnYmd(ymd, schedulerExpandCtx());
 }
 
 function slotEndDateTimeFromParts(ymd, startTimeStr, durHours) {
@@ -1324,8 +1334,15 @@ const excludedDateSet = computed(() => new Set(excludedDates.value));
 const confirmedDates = computed(() => manualDates.value.filter((date) => isManualDateConfirmed(date)));
 const manualScheduledDates = computed(() => manualDates.value.filter((date) => !isManualDateConfirmed(date)));
 
+const confirmedSessionCount = computed(() => (
+  countSessionsForDates(confirmedDates.value, schedulerExpandCtx())
+));
+const manualFutureSessionCount = computed(() => (
+  countSessionsForDates(manualScheduledDates.value, schedulerExpandCtx())
+));
+
 const manualSessionCount = computed(() => (
-  manualDates.value.reduce((sum, ymd) => sum + sessionCountForYmd(ymd), 0)
+  countSessionsForDates(manualDates.value, schedulerExpandCtx())
 ));
 
 // 若開課日為過去日、且落在合約星期，自動加入 confirmed_dates（視為補登已上課）。
@@ -1497,6 +1514,17 @@ const monthlyHasCalendarAdjustments = computed(() => (
 const plannedDisplayCount = computed(() => (
   form.payment_type === 'monthly' ? finalMonthlySessionPlan.value.length : safePlannedSessions.value
 ));
+
+const futureUnscheduledSessionCount = computed(() => (
+  manualFutureSessionCount.value + futureSessionOccurrences.value.length
+));
+const futureUnscheduledDayCount = computed(() => {
+  const days = new Set(manualScheduledDates.value);
+  for (const o of futureSessionOccurrences.value) {
+    if (o?.ymd) days.add(o.ymd);
+  }
+  return days.size;
+});
 
 const futureSessionLines = computed(() => (
   futureSessionOccurrences.value.map((o) => `${o.ymd} ${o.start_time}`)
@@ -2111,33 +2139,12 @@ async function submit() {
     return;
   }
 
-  let sessionPlan = [];
-  for (const ymd of manualDates.value) {
-    const dow = weekdayOneToSeven(new Date(`${ymd}T12:00:00`));
-    const indices = getSlotIndicesForDay(dow);
-    const kind = isManualDateConfirmed(ymd) ? 'confirmed' : 'future';
-    if (indices.length > 0) {
-      for (const idx of indices) {
-        const s = form.day_time_slots[idx];
-        const entry = {
-          session_date: ymd,
-          start_time: normalizeHalfHourTime(s.start_time),
-          kind,
-          subject: String(s.subject || form.subject),
-        };
-        if (s.teacher_id) entry.teacher_id = Number(s.teacher_id);
-        sessionPlan.push(entry);
-      }
-    } else {
-      // 手動日期不在固定上課星期，使用全域預設時間建立
-      sessionPlan.push({
-        session_date: ymd,
-        start_time: normalizeHalfHourTime(form.start_time || '16:00'),
-        kind,
-        subject: String(form.subject),
-      });
-    }
-  }
+  // 摘要堂數與 session_plan 共用 expand（見 schedulerSessionExpand.js）
+  let sessionPlan = expandManualDatesToSessionPlan(
+    manualDates.value,
+    (ymd) => isManualDateConfirmed(ymd),
+    schedulerExpandCtx()
+  );
   for (const fs of futureSessionOccurrences.value) {
     const fsEntry = {
       session_date: fs.ymd,
@@ -2593,8 +2600,11 @@ async function submit() {
   color: var(--ds-ink-mute);
 }
 
-.summary-pill strong {
-  font-size: 18px;
+.summary-pill strong,
+.summary-pill .summary-count {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
 }
 
 .summary-pill.confirmed {
