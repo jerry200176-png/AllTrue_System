@@ -162,14 +162,23 @@ class ActionInboxService
 
     private function serializeLeaveCase(ExceptionWorkflow $w): array
     {
-        $studentName = (string) ($w->student->name ?? '學生');
-        $session = $w->classSession;
-        $payload = is_array($w->payload) ? $w->payload : [];
-        $date = (string) ($payload['session_date'] ?? ($session->SessionDate ?? ''));
-        $start = $this->hm($payload['start_time'] ?? ($session->StartTime ?? ''));
-        $end = $this->hm($payload['end_time'] ?? ($session->EndTime ?? ''));
+        $student = $w->relationLoaded('student') ? $w->getRelation('student') : null;
+        $studentName = ($student && method_exists($student, 'getAttribute'))
+            ? (string) ($student->getAttribute('name') ?? '學生')
+            : '學生';
+        $studentId = ($student && method_exists($student, 'getAttribute'))
+            ? (int) ($student->getAttribute('id') ?? 0)
+            : (int) ($w->getAttribute('student_id') ?? 0);
+
+        $session = $w->relationLoaded('classSession') ? $w->getRelation('classSession') : null;
+        $payloadRaw = $w->getAttribute('payload');
+        $payload = is_array($payloadRaw) ? $payloadRaw : [];
+        $date = (string) ($payload['session_date'] ?? ($session ? $session->getAttribute('SessionDate') : '') ?? '');
+        $start = $this->hm($payload['start_time'] ?? ($session ? $session->getAttribute('StartTime') : '') ?? '');
+        $end = $this->hm($payload['end_time'] ?? ($session ? $session->getAttribute('EndTime') : '') ?? '');
         $reason = trim((string) ($payload['reason'] ?? ''));
-        $dueAt = $w->due_at ? Carbon::parse($w->due_at) : null;
+        $dueRaw = $w->getAttribute('due_at');
+        $dueAt = $dueRaw ? Carbon::parse($dueRaw) : null;
         $overdue = $dueAt !== null && $dueAt->lt(now());
         $overdueHours = $overdue ? (int) max(1, $dueAt->diffInHours(now())) : null;
 
@@ -185,24 +194,26 @@ class ActionInboxService
             $bodyParts[] = "已超過建議處理時間 {$overdueHours} 小時";
         }
 
+        $workflowId = (int) $w->getAttribute('id');
+
         return [
-            'id' => 'workflow:'.(int) $w->id,
-            'source_id' => (int) $w->id,
+            'id' => 'workflow:'.$workflowId,
+            'source_id' => $workflowId,
             'kind' => 'student_leave',
             'lane' => 'case',
             'title' => "{$studentName}申請請假",
             'summary' => $summary,
             'body' => $bodyParts === [] ? null : implode("\n", $bodyParts),
             'status_label' => '等待安排補課',
-            'priority' => (string) ($w->priority ?: 'medium'),
+            'priority' => (string) ($w->getAttribute('priority') ?: 'medium'),
             'due_at' => $dueAt ? $dueAt->toIso8601String() : null,
             'overdue' => $overdue,
             'overdue_hours' => $overdueHours,
             'read_at' => null,
             'resolved_at' => null,
-            'occurred_at' => optional($w->created_at)->toIso8601String(),
+            'occurred_at' => optional($w->getAttribute('created_at'))->toIso8601String(),
             'payload' => [
-                'student_id' => (int) ($w->student_id ?? 0),
+                'student_id' => $studentId,
                 'student_name' => $studentName,
                 'reason' => $reason,
                 'session_date' => $date,
@@ -214,7 +225,7 @@ class ActionInboxService
                 'label' => '安排補課',
                 'target' => 'director',
                 'section' => 'exception-workflows',
-                'workflow_id' => (int) $w->id,
+                'workflow_id' => $workflowId,
             ],
         ];
     }

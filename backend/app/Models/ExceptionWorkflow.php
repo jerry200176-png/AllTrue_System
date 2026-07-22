@@ -4,23 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
-/**
- * @property int $id
- * @property int $campus_id
- * @property int|null $student_id
- * @property int|null $student_class_id
- * @property int|null $class_session_id
- * @property string $type
- * @property string $status
- * @property string|null $priority
- * @property string $source_key
- * @property array|null $payload
- * @property \Illuminate\Support\Carbon|null $due_at
- * @property \Illuminate\Support\Carbon|null $closed_at
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property-read Student|null $student
- * @property-read ClassSession|null $classSession
- */
 class ExceptionWorkflow extends Model
 {
     protected $table = 'exception_workflows';
