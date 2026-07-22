@@ -9,6 +9,7 @@ use App\Models\StudentClass;
 use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\TeacherScopeService;
+use App\Support\MysqlCharsetRejection;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -861,7 +862,7 @@ class EnrollmentService
             return response()->json($payload, 201);
         });
         } catch (\Throwable $e) {
-            if ($this->isCharsetRejectionThrowable($e)) {
+            if (MysqlCharsetRejection::matches($e)) {
                 Log::warning('enrollment_memo_charset_incompatible', [
                     'exception' => get_class($e),
                     'message' => mb_substr($e->getMessage(), 0, 240),
@@ -873,50 +874,6 @@ class EnrollmentService
             }
             throw $e;
         }
-    }
-
-    /**
-     * MySQL rejects 4-byte Unicode on utf8mb3 columns.
-     * Older: "Incorrect string value" (1366). MySQL 8+: "Conversion from collation ... impossible" (3988).
-     * After 3988 the driver may also surface SAVEPOINT PDOException — walk the chain.
-     */
-    private function isCharsetRejectionThrowable(\Throwable $e): bool
-    {
-        for ($cur = $e; $cur !== null; $cur = $cur->getPrevious()) {
-            if ($cur instanceof QueryException && $this->isIncorrectStringValueException($cur)) {
-                return true;
-            }
-            $msg = $cur->getMessage();
-            if (str_contains($msg, 'Incorrect string value')) {
-                return true;
-            }
-            if (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible')) {
-                return true;
-            }
-            if ($cur instanceof QueryException) {
-                $code = (int) ($cur->errorInfo[1] ?? 0);
-                if ($code === 1366 || $code === 3988) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /**
-     * @deprecated Prefer isCharsetRejectionThrowable; kept for QueryException-only callers.
-     */
-    private function isIncorrectStringValueException(QueryException $e): bool
-    {
-        $msg = $e->getMessage();
-        if (str_contains($msg, 'Incorrect string value')) {
-            return true;
-        }
-        if (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible')) {
-            return true;
-        }
-        $driverCode = (int) ($e->errorInfo[1] ?? 0);
-        return $driverCode === 1366 || $driverCode === 3988;
     }
 
     private function resolvePlannedSessions(array $data, int $totalDates): int
