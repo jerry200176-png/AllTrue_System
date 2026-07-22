@@ -6,7 +6,6 @@ use App\Models\ExceptionWorkflow;
 use App\Models\Notification;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 
 /**
  * Read-model only (B-lite + D). Never writes leave Notifications.
