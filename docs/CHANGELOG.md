@@ -1,3 +1,10 @@
+## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
+
+- 建課備註可含 emoji、中文、換行與標點，不再因資料庫字元集錯誤整筆失敗。
+- 若字元集尚未升級，系統回傳明確錯誤且不會留下半成品課程／堂次（不會默默刪除 emoji）。
+
+開發備註：Refs #1378／F6。migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4`；過渡 422 `memo_charset_incompatible`。Production migrate 需 Founder GO：`docs/runbooks/1378-memo-utf8mb4-execution-package.md`。回歸 `StudentClassMemoUtf8mb4Test`。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.
