@@ -41,10 +41,7 @@
               <td>{{ subjectLabel(c) }}</td>
               <td>{{ classTypeLabel(c.class_type) }}</td>
               <td
-                :style="{
-                  color: (c.remaining_sessions ?? 0) <= 2 ? '#c62828' : 'inherit',
-                  fontWeight: 600,
-                }"
+                :class="{ 'enrollment-conflict-low-remaining': (c.remaining_sessions ?? 0) <= 2 }"
               >
                 {{ c.remaining_sessions ?? 0 }} 堂
               </td>
@@ -199,7 +196,7 @@ function emitDecision(kind) {
   max-width: 100%;
 }
 .enrollment-conflict-heading {
-  color: #e65100;
+  color: var(--ds-warning);
   margin: 0 0 8px;
   font-size: 1.1rem;
 }
@@ -222,11 +219,15 @@ function emitDecision(kind) {
 .enrollment-conflict-table td {
   padding: 6px 8px;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--ds-border, rgba(0, 0, 0, 0.08));
+}
+.enrollment-conflict-low-remaining {
+  color: var(--ds-danger, var(--ds-warning));
+  font-weight: 600;
 }
 .enrollment-conflict-options {
-  background: #fff8f0;
-  border: 1px solid #ffe0b2;
+  background: var(--ds-warning-wash, rgba(230, 81, 0, 0.06));
+  border: 1px solid var(--ds-warning-border, rgba(230, 81, 0, 0.25));
   border-radius: 6px;
   padding: 10px 12px;
   margin-bottom: 12px;
@@ -251,7 +252,7 @@ function emitDecision(kind) {
   width: 100%;
   box-sizing: border-box;
   padding: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.15));
   border-radius: 4px;
   resize: vertical;
   font: inherit;
