@@ -356,6 +356,15 @@
 | POST | `api/v1/notifications/{notificationId}/read` | `NotificationController@markRead` | role+campus |
 | POST | `api/v1/notifications/{notificationId}/tuition-paid` | `NotificationController@markTuitionPaid` | role+campus |
 
+## /api/v1/action-inbox (3)
+
+B-lite+D read-model（不雙寫 leave Notification）。Fail-closed campus；DTO + `private, no-store`；count: `cases_unresolved`/`cases_candidate_ready`/`badge_total`/`urgent_total`（deprecated `cases_open`/`needs_attention`→2026-09-01）。
+| Method | URI | Action | Auth |
+|--------|-----|--------|------|
+| GET | `api/v1/action-inbox` | `ActionInboxController@index` | role+campus |
+| GET | `api/v1/action-inbox/count` | `ActionInboxController@count` | role+campus |
+| GET | `api/v1/action-inbox/cases/{id}` | `ActionInboxController@showCase` | role+campus |
+
 ## /api/v1/parent-feedback (7)
 
 | Method | URI | Action | Auth |

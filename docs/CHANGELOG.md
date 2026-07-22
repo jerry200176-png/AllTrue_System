@@ -16,6 +16,10 @@ Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過
 
 # AllTrue Changelog
 
+## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）
+
+- 唯讀 `action-inbox`+`count`+`cases/{id}`；fail-closed 校區；`cases_unresolved`/`cases_candidate_ready`/`badge_total`/`urgent_total`；DTO+`no-store`；不雙寫 leave Notification（§R81）。deprecated：`cases_open`/`needs_attention`→2026-09-01。
+
 ## 2026-07-22 — fix: 排課摘要「補登已上」改以堂數顯示（同日多時段）
 
 - 新建課程日曆摘要「補登已上／預排未上」改為「X 堂（Y 天）」；同日兩個固定時段不再把日期數誤當堂數。
