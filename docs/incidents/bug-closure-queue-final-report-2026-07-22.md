@@ -4,7 +4,7 @@
 
 | Item | Result |
 |------|--------|
-| Live inventory | Dump after ops #1368: **new=1, triaged=0, in_progress=0**, resolved=107, closed=99, max_id=207 |
+| Live inventory | Pre-fix dump (#1368): new=1 → **Post-closure dump `29891315005`: new=0, triaged=0, in_progress=0, open=[], resolved=108, closed=99**, max_id=207 |
 | Only actionable open bug | **in-app #207** (course teacher rewrite of past sessions) |
 | Engineering WIP | **#207 closed end-to-end**: fix PR [#1374](https://github.com/jerry200176-png/AllTrue_System/pull/1374) → deploy `29890459105` (Pi HEAD=`7acb5803`) → Phase C PR [#1375](https://github.com/jerry200176-png/AllTrue_System/pull/1375) / run `29891109925` → **status `resolved`** + public reply |
 | #205 Phase C | Already **closed** before this run (allowlist skip) |
