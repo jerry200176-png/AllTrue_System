@@ -176,7 +176,13 @@ class StudentClassMemoUtf8mb4Test extends TestCase
             ]);
             $this->fail('Expected QueryException for utf8mb3 Memo + emoji');
         } catch (\Illuminate\Database\QueryException $e) {
-            $this->assertStringContainsString('Incorrect string value', $e->getMessage());
+            $msg = $e->getMessage();
+            $this->assertTrue(
+                str_contains($msg, 'Incorrect string value')
+                || (str_contains($msg, 'Conversion from collation') && str_contains($msg, 'impossible'))
+                || in_array((int) ($e->errorInfo[1] ?? 0), [1366, 3988], true),
+                'Expected MySQL charset rejection, got: ' . $msg
+            );
         }
 
         $this->assertSame($beforeCount, StudentClass::count(), 'failed create must not leave StudentClass row');
