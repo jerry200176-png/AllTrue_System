@@ -1,0 +1,146 @@
+# Read-only Pi diagnose for ClassSession cross-SC / Stop=1 orphans.
+# Trigger: push to cursor/diag-classsession-* (same-repo → secrets available).
+name: ClassSession Duplicate Diagnose (push)
+
+on:
+  push:
+    branches:
+      - 'cursor/diag-classsession-**'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Anchor date YYYY-MM-DD"
+        required: true
+        type: string
+        default: "2026-07-18"
+      campus_id:
+        description: "Campus id"
+        required: true
+        type: string
+        default: "9"
+
+concurrency:
+  group: classsession-duplicate-diagnose
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Production read-only ClassSession scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Setup SSH
+        env:
+          PI_SSH_KEY: ${{ secrets.PI_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "$PI_SSH_KEY" | tr -d '[:space:]' | base64 -d > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PI_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Run diagnose on Pi
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+          DATE: ${{ inputs.date || '2026-07-18' }}
+          CAMPUS_ID: ${{ inputs.campus_id || '9' }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            DATE="$DATE" CAMPUS_ID="$CAMPUS_ID" \
+            'bash -s' <<'ENDSSH'
+          set -euo pipefail
+          DATE="${DATE:-2026-07-18}"
+          CAMPUS_ID="${CAMPUS_ID:-9}"
+          TEACHER_NAME="黃芝琳"
+          STUDENT_NAMES="王品方,陳品承"
+          ENV_FILE=/home/admin/backend/.env
+          DB_PASS=$(grep '^DB_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
+          DB_NAME=$(grep '^DB_DATABASE=' "$ENV_FILE" | cut -d= -f2-)
+          M=(mysql -h 127.0.0.1 -u admin -p"${DB_PASS}" "$DB_NAME" -N -B)
+          IFS=',' read -r -a NAMES <<< "$STUDENT_NAMES"; IN=""
+          for n in "${NAMES[@]}"; do
+            n=$(echo "$n" | xargs); [ -z "$n" ] && continue
+            esc=$(printf "%s" "$n" | sed "s/'/\\\\'/g"); IN="${IN:+$IN,}'$esc'"
+          done
+          {
+            echo "=== diagnose DATE=$DATE CAMPUS=$CAMPUS_ID generated=$(date -Iseconds) ==="
+            echo "--- teacher ---"
+            "${M[@]}" -e "SELECT id,Name,LoginName FROM User WHERE Name LIKE CONCAT('%','$TEACHER_NAME','%') LIMIT 5;"
+            echo "--- students ---"
+            "${M[@]}" -e "SELECT id,name,CampusID FROM Student WHERE name IN ($IN) AND CampusID=$CAMPUS_ID;"
+            echo "--- case sessions ±7d non-cancelled ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',s.name,cs.id,cs.StudentClassID,sc.Stop,sc.SessionCount,IFNULL(sc.RemainingSessions,'null'),sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),SUBSTRING(cs.EndTime,1,5),cs.Status,LEFT(IFNULL(cs.Note,''),80),IFNULL(cs.created_at,''),IFNULL(cs.updated_at,''))
+          FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student s ON s.id=sc.StudentID
+          WHERE s.name IN ($IN) AND s.CampusID=$CAMPUS_ID
+           AND cs.SessionDate BETWEEN DATE_SUB('$DATE', INTERVAL 7 DAY) AND DATE_ADD('$DATE', INTERVAL 7 DAY)
+           AND LOWER(cs.Status)<>'cancelled'
+          ORDER BY s.name,cs.SessionDate,cs.StartTime,cs.StudentClassID,cs.id;"
+            echo "--- campus9 scheduled cross-SC from date ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(CONCAT(sc.Stop,':',cs.Status) ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
+          FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
+          WHERE st.CampusID=$CAMPUS_ID AND cs.SessionDate>='$DATE' AND LOWER(cs.Status)='scheduled'
+          GROUP BY st.id,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5)
+          HAVING COUNT(DISTINCT cs.StudentClassID)>1
+          ORDER BY cs.SessionDate,st.name LIMIT 100;"
+            echo "--- campus9 orphan Stop=1 scheduled ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',cs.id,cs.StudentClassID,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),cs.Status)
+          FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
+          WHERE sc.Stop=1 AND LOWER(cs.Status)='scheduled' AND cs.SessionDate>='$DATE' AND st.CampusID=$CAMPUS_ID
+          ORDER BY cs.SessionDate,st.name LIMIT 100;"
+            echo "--- system scheduled cross-SC top50 ---"
+            "${M[@]}" -e "SELECT CONCAT_WS('|',st.CampusID,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5),GROUP_CONCAT(DISTINCT cs.StudentClassID ORDER BY cs.StudentClassID),GROUP_CONCAT(cs.id ORDER BY cs.id),GROUP_CONCAT(sc.Stop ORDER BY cs.id),COUNT(DISTINCT cs.StudentClassID))
+          FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID JOIN Student st ON st.id=sc.StudentID
+          WHERE cs.SessionDate>='$DATE' AND LOWER(cs.Status)='scheduled'
+          GROUP BY st.CampusID,st.id,st.name,sc.TeacherID,cs.SessionDate,SUBSTRING(cs.StartTime,1,5)
+          HAVING COUNT(DISTINCT cs.StudentClassID)>1
+          ORDER BY cs.SessionDate,st.CampusID,st.name LIMIT 50;"
+            echo "--- system orphan Stop=1 scheduled count ---"
+            "${M[@]}" -e "SELECT COUNT(*) FROM ClassSession cs JOIN StudentClass sc ON sc.ID=cs.StudentClassID
+          WHERE sc.Stop=1 AND LOWER(cs.Status)='scheduled' AND cs.SessionDate>='$DATE';"
+            echo "--- artisan audit ---"
+            cd /home/admin/backend
+            php artisan classsession:audit-duplicates --branch_id="$CAMPUS_ID" 2>&1 | tail -60 || true
+            echo "--- orphan dry-run ---"
+            php artisan fix:orphan-scheduled-sessions --dry-run 2>&1 | tail -80 || true
+            echo "--- scheduled-cross-sc dry-run ---"
+            php artisan repair:duplicate-sessions --case=scheduled-cross-sc 2>&1 | tail -120 || true
+            echo "=== END ==="
+          } | tee /tmp/classsession-dup-diagnose.txt
+          ENDSSH
+
+      - name: Capture remote output to artifact
+        env:
+          PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
+          PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/diag-out
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+            "${PI_SSH_USER}@${PI_SSH_HOST}" \
+            'cat /tmp/classsession-dup-diagnose.txt' > /tmp/diag-out/diagnose.txt
+          wc -l /tmp/diag-out/diagnose.txt
+          head -80 /tmp/diag-out/diagnose.txt
+          echo '...'
+          tail -80 /tmp/diag-out/diagnose.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: classsession-dup-diagnose
+          path: /tmp/diag-out/diagnose.txt
+          retention-days: 14
+
+      - name: Job summary
+        run: |
+          {
+            echo '### ClassSession duplicate diagnose'
+            echo '```'
+            cat /tmp/diag-out/diagnose.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
