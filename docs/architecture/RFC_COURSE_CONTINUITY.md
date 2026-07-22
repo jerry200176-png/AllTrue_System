@@ -146,7 +146,7 @@ Response **不**把內部 SC ID 當主任決策主欄位（可 drill-down 技術
 
 ## 8. Cohort discovery
 
-唯讀 SQL 與指標定義見：[`course-continuity-cohort-discovery.sql`](./course-continuity-cohort-discovery.sql)  
+唯讀 SQL 與指標定義見：[`scripts/course-continuity-cohort-discovery.sql`](../../scripts/course-continuity-cohort-discovery.sql)  
 執行結果（PII-free）記入：[`course-continuity-cohort-results.md`](./course-continuity-cohort-results.md)
 
 **⛔** 結果不得含姓名、電話、請假原因或其他 PII。
