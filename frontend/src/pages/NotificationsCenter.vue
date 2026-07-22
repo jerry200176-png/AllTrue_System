@@ -1,13 +1,8 @@
 <template>
   <div class="notifications-page">
     <div class="page-header" data-guide="notifications-header">
-      <h2>📥 主任收件匣</h2>
-      <div class="page-desc">營運通知與待處理案件同一入口；請假／補課仍以補課案件為準，不會另外複製成通知。</div>
-      <div class="inbox-count-row" v-if="branchId != null">
-        <span>需要處理 <strong>{{ needsAttentionCount }}</strong></span>
-        <span class="inbox-count-sep">新通知 {{ unreadCount }}</span>
-        <span class="inbox-count-sep">待處理案件 {{ casesOpenCount }}</span>
-      </div>
+      <h2>🔔 通知中心</h2>
+      <div class="page-desc">集中處理繳費、待審評量與未識別刷卡通知</div>
     </div>
 
     <div v-if="branchId == null" class="card empty-card">
@@ -82,14 +77,14 @@
       </div>
 
       <div class="card controls-card" data-guide="notifications-controls">
-        <!-- 分類 Tab：營運通知 vs 待處理案件 -->
+        <!-- 分類 Tab -->
         <div class="type-tabs">
           <button
             v-for="tab in typeTabs"
             :key="tab.value"
             class="type-tab"
             :class="{ active: typeFilter === tab.value }"
-            @click="onTabClick(tab.value)"
+            @click="typeFilter = tab.value"
           >
             {{ tab.label }}
             <span v-if="tab.count > 0" class="tab-badge">{{ tab.count }}</span>
@@ -153,43 +148,10 @@
       <div v-if="errorMessage" class="card error-card">{{ errorMessage }}</div>
 
       <div class="card list-card" data-guide="notifications-list">
-        <div v-if="loading" class="empty">載入收件匣中...</div>
-        <div v-else-if="laneFilter === 'case' && caseItems.length === 0" class="empty">目前沒有待處理的請假／補課案件</div>
-        <div v-else-if="laneFilter !== 'case' && displayNotifications.length === 0 && caseItems.length === 0" class="empty">目前沒有符合條件的項目</div>
+        <div v-if="loading" class="empty">載入通知中...</div>
+        <div v-else-if="displayNotifications.length === 0" class="empty">目前沒有符合條件的通知</div>
 
         <div v-else>
-          <!-- 請假／補課案件 -->
-          <template v-if="laneFilter === 'case' || laneFilter === ''">
-            <div v-if="caseItems.length > 0" class="case-panel">
-              <h4 v-if="laneFilter === ''">📋 待處理案件</h4>
-              <div
-                v-for="item in caseItems"
-                :key="item.id"
-                class="notification-item case-item"
-                :class="{ 'severity-high-item': item.overdue }"
-              >
-                <div class="title-row">
-                  <span class="type-tag type-student_leave">請假申請</span>
-                  <span class="severity-tag" :class="item.overdue ? 'severity-high' : 'severity-medium'">
-                    {{ item.overdue ? '已逾期' : '待處理' }}
-                  </span>
-                  <span class="status-chip">{{ item.status_label }}</span>
-                </div>
-                <div class="main-title">{{ item.title }}</div>
-                <div v-if="item.summary" class="notification-context">{{ item.summary }}</div>
-                <div v-if="item.body" class="main-body case-body">{{ item.body }}</div>
-                <div class="meta-row">
-                  <span>{{ formatDateTime(item.occurred_at) }}</span>
-                  <span v-if="item.due_at">期限：{{ formatDateTime(item.due_at) }}</span>
-                </div>
-                <div class="item-actions">
-                  <button class="small primary" @click="goToLeaveCase(item)">安排補課</button>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <template v-if="laneFilter !== 'case'">
           <div v-if="urgentNotifications.length > 0" class="urgent-panel">
             <h4>🚨 急件置頂</h4>
             <div v-for="item in urgentNotifications" :key="`urgent-${item.id}`" class="urgent-row">
@@ -254,7 +216,6 @@
               <button v-if="targetPage(item.Type)" class="small ghost" @click="goToTarget(item.Type, item)">前往處理</button>
             </div>
           </div>
-          </template>
         </div>
 
         <div v-if="lastPage > 1" class="pagination-row">
@@ -281,17 +242,13 @@ const syncing = ref(false);
 const markingAllRead = ref(false);
 const errorMessage = ref('');
 const notifications = ref([]);
-const caseItems = ref([]);
 const unreadCount = ref(0);
 const urgentUnreadCount = ref(0);
-const casesOpenCount = ref(0);
-const needsAttentionCount = ref(0);
 const currentPage = ref(1);
 const lastPage = ref(1);
 
 const readFilter = ref('unread');
 const typeFilter = ref('');
-const laneFilter = ref('');
 const includeResolved = ref(false);
 const soundEnabled = ref(localStorage.getItem('notifications_sound_enabled') !== '0');
 const quietMinor = ref(localStorage.getItem('notifications_quiet_minor') === '1');
@@ -331,9 +288,7 @@ const TYPE_META = {
   learning_review:  { label: '評量',    tab: '評量' },
   pending_swipe:    { label: '刷卡',    tab: '刷卡' },
   schedule_change:  { label: '課程變更', tab: '系統' },
-  substitute:       { label: '代課通知', tab: '系統' },
-  substitute_confirm: { label: '代課通知', tab: '系統' },
-  student_leave:    { label: '請假申請', tab: '請假／補課' },
+  substitute_confirm: { label: '代課確認', tab: '系統' },
 };
 
 const typeLabel = (type) => TYPE_META[type]?.label || type || '其他';
@@ -345,25 +300,14 @@ const typeTabs = computed(() => {
     if (!n.read_at) counts[tab] = (counts[tab] || 0) + 1;
   });
   return [
-    { value: '',               label: '全部',    count: needsAttentionCount.value },
-    { value: 'lane:case',      label: '請假／補課', count: casesOpenCount.value },
+    { value: '',               label: '全部',    count: unreadCount.value },
     { value: 'tuition',        label: '繳費',    count: counts['繳費'] || 0 },
     { value: 'learning_review',label: '評量',    count: counts['評量'] || 0 },
     { value: 'pending_swipe',  label: '刷卡',    count: counts['刷卡'] || 0 },
     { value: 'low_sessions',   label: '堂數',    count: counts['堂數'] || 0 },
-    { value: 'schedule_change,substitute,substitute_confirm', label: '系統', count: counts['系統'] || 0 },
+    { value: 'schedule_change,substitute_confirm', label: '系統', count: counts['系統'] || 0 },
   ];
 });
-
-const onTabClick = (value) => {
-  if (value === 'lane:case') {
-    laneFilter.value = 'case';
-    typeFilter.value = 'lane:case';
-    return;
-  }
-  laneFilter.value = '';
-  typeFilter.value = value;
-};
 
 const severityLabel = (severity) => {
   const map = {
@@ -391,7 +335,7 @@ const targetPage = (type) => {
   if (type === 'pending_swipe') return 'attendance';
   if (type === 'learning_review') return 'learning';
   if (type === 'tuition' || type === 'low_sessions') return 'tuition-collect';
-  if (type === 'schedule_change' || type === 'substitute' || type === 'substitute_confirm') return 'calendar';
+  if (type === 'schedule_change' || type === 'substitute_confirm') return 'calendar';
   return null;
 };
 
@@ -402,15 +346,6 @@ const goToTarget = (type, item) => {
   const recordId = type === 'learning_review' ? (payload.record_id || null) : null;
   const studentId = payload.student_id || null;
   emit('navigate', { target, recordId, studentId });
-};
-
-const goToLeaveCase = (item) => {
-  const workflowId = Number(item?.action?.workflow_id || item?.source_id || 0);
-  emit('navigate', {
-    target: 'director',
-    section: 'exception-workflows',
-    workflowId: workflowId > 0 ? workflowId : null,
-  });
 };
 
 const payloadOf = (item) => {
@@ -642,96 +577,23 @@ const buildQuery = (page = 1) => {
   params.set('read', readFilter.value);
   params.set('per_page', '20');
   params.set('page', String(page));
-  if (typeFilter.value && !String(typeFilter.value).startsWith('lane:')) {
-    params.set('type', typeFilter.value);
-  }
+  if (typeFilter.value) params.set('type', typeFilter.value);
   if (includeResolved.value) params.set('include_resolved', '1');
   return params.toString();
-};
-
-const refreshInboxCounts = async () => {
-  if (!props.branchId) {
-    casesOpenCount.value = 0;
-    needsAttentionCount.value = 0;
-    emit('unread-change', { unread: 0, urgent: 0, casesOpen: 0, needsAttention: 0 });
-    return;
-  }
-  try {
-    const token = getToken();
-    const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/action-inbox/count?branch_id=${props.branchId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) return;
-    unreadCount.value = Number(json.notifications_unread || 0);
-    casesOpenCount.value = Number(json.cases_open || 0);
-    needsAttentionCount.value = Number(json.needs_attention || 0);
-    emit('unread-change', {
-      unread: unreadCount.value,
-      urgent: urgentUnreadCount.value,
-      casesOpen: casesOpenCount.value,
-      needsAttention: needsAttentionCount.value,
-    });
-  } catch {
-    // keep previous counts on transient failure
-  }
-};
-
-const loadCaseItems = async () => {
-  if (!props.branchId) {
-    caseItems.value = [];
-    return;
-  }
-  try {
-    const token = getToken();
-    const baseUrl = getBaseUrl();
-    const res = await fetch(`${baseUrl}/v1/action-inbox?branch_id=${props.branchId}&lane=case`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json?.message || '請假案件載入失敗');
-    caseItems.value = json.data || [];
-    casesOpenCount.value = Number(json.meta?.cases_open ?? caseItems.value.length);
-  } catch (err) {
-    if (laneFilter.value === 'case') {
-      errorMessage.value = err.message || '請假案件載入失敗';
-    }
-    caseItems.value = [];
-  }
 };
 
 const loadNotifications = async (page = 1) => {
   if (!props.branchId) {
     notifications.value = [];
-    caseItems.value = [];
     unreadCount.value = 0;
     urgentUnreadCount.value = 0;
-    casesOpenCount.value = 0;
-    needsAttentionCount.value = 0;
-    emit('unread-change', { unread: 0, urgent: 0, casesOpen: 0, needsAttention: 0 });
+    emit('unread-change', { unread: 0, urgent: 0 });
     return;
   }
 
   loading.value = true;
   errorMessage.value = '';
   try {
-    await refreshInboxCounts();
-    await loadCaseItems();
-
-    if (laneFilter.value === 'case') {
-      notifications.value = [];
-      currentPage.value = 1;
-      lastPage.value = 1;
-      return;
-    }
-
     const token = getToken();
     const baseUrl = getBaseUrl();
     const res = await fetch(`${baseUrl}/v1/notifications?${buildQuery(page)}`, {
@@ -744,21 +606,13 @@ const loadNotifications = async (page = 1) => {
     if (!res.ok) throw new Error(json?.message || '通知載入失敗');
 
     notifications.value = json.data || [];
-    // Prefer action-inbox count contract; fall back to notifications unread if needed.
-    if (!needsAttentionCount.value && Number(json.unread_count || 0) > 0) {
-      unreadCount.value = Number(json.unread_count || 0);
-    }
+    unreadCount.value = Number(json.unread_count || 0);
     urgentUnreadCount.value = Number(json.urgent_unread_count || 0);
     currentPage.value = Number(json.current_page || 1);
     lastPage.value = Number(json.last_page || 1);
-    emit('unread-change', {
-      unread: unreadCount.value,
-      urgent: urgentUnreadCount.value,
-      casesOpen: casesOpenCount.value,
-      needsAttention: needsAttentionCount.value,
-    });
+    emit('unread-change', { unread: unreadCount.value, urgent: urgentUnreadCount.value });
   } catch (err) {
-    errorMessage.value = err.message || '收件匣載入失敗';
+    errorMessage.value = err.message || '通知載入失敗';
   } finally {
     loading.value = false;
   }
@@ -933,7 +787,7 @@ const clearResolved = async () => {
   }
 };
 
-watch([() => props.branchId, readFilter, typeFilter, includeResolved, laneFilter], () => {
+watch([() => props.branchId, readFilter, typeFilter, includeResolved], () => {
   loadNotifications(1);
 });
 
@@ -1362,52 +1216,9 @@ onUnmounted(() => {
 }
 
 .type-schedule_change,
-.type-substitute,
 .type-substitute_confirm {
   background: var(--ds-canvas-soft);
   color: var(--ds-success);
-}
-
-.type-student_leave {
-  background: #fff7ed;
-  color: #c2410c;
-}
-
-.case-panel {
-  margin-bottom: 16px;
-}
-
-.case-panel h4 {
-  margin: 0 0 10px;
-  font-size: 14px;
-}
-
-.case-body {
-  white-space: pre-line;
-}
-
-.status-chip {
-  font-size: 12px;
-  color: var(--text-light);
-}
-
-.inbox-count-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--text-light);
-}
-
-.inbox-count-sep::before {
-  content: '·';
-  margin-right: 10px;
-  color: var(--border);
-}
-
-.case-item {
-  border-left-color: #ea580c;
 }
 
 .severity-high {

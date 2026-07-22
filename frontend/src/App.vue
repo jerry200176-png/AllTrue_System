@@ -293,15 +293,7 @@
         @skip="onPinSkip"
         @dismiss="onPinDismiss"
       />
-      <DirectorDashboard
-        v-if="!isPasswordChangeLocked && isDirector && active === 'director'"
-        :branch-id="currentBranch"
-        :unread-feedback-count="unreadFeedbackCount"
-        :initial-engagement="userProfile?.engagement ?? null"
-        :focus-workflow-id="directorFocusWorkflowId"
-        :focus-section="directorFocusSection"
-        @navigate="onNavigateFromNotifications"
-      />
+      <DirectorDashboard v-if="!isPasswordChangeLocked && isDirector && active === 'director'" :branch-id="currentBranch" :unread-feedback-count="unreadFeedbackCount" :initial-engagement="userProfile?.engagement ?? null" @navigate="onNavigateFromNotifications" />
       <NotificationsCenter
         v-if="!isPasswordChangeLocked && isDirector && active === 'notifications'"
         :branch-id="currentBranch"
@@ -894,10 +886,6 @@ const initialTeacherIdForNav = ref(null);
 const calendarResetToken = ref(0);
 const unreadNotificationCount = ref(0);
 const urgentNotificationCount = ref(0);
-const inboxCasesOpenCount = ref(0);
-const inboxNeedsAttentionCount = ref(0);
-const directorFocusWorkflowId = ref(null);
-const directorFocusSection = ref(null);
 const badgeByType = ref({});
 let unreadPollingTimer = null;
 let chatBadgePollingTimer = null;
@@ -949,26 +937,14 @@ function _onVisibilityChangeForPolling() {
 }
 
 
-const unreadNotificationLabel = computed(() => {
-  const n = inboxNeedsAttentionCount.value > 0
-    ? inboxNeedsAttentionCount.value
-    : unreadNotificationCount.value;
-  return n > 99 ? '99+' : String(n);
-});
+const unreadNotificationLabel = computed(() => (unreadNotificationCount.value > 99 ? '99+' : String(unreadNotificationCount.value)));
 const unreadFeedbackCount = computed(() => Number(badgeByType.value.parent_feedback?.total || 0));
 
 function getItemBadgeCount(item) {
-  if (item?.page === 'notifications') {
-    if (inboxNeedsAttentionCount.value > 0) return inboxNeedsAttentionCount.value;
-    return unreadNotificationCount.value;
-  }
   if (!item?.badgeTypes?.length) return 0;
   return item.badgeTypes.reduce((sum, t) => sum + (badgeByType.value[t]?.total || 0), 0);
 }
 function isItemBadgeUrgent(item) {
-  if (item?.page === 'notifications') {
-    return inboxCasesOpenCount.value > 0 || urgentNotificationCount.value > 0;
-  }
   if (!item?.badgeTypes?.length) return false;
   return item.badgeTypes.some((t) => (badgeByType.value[t]?.urgent || 0) > 0);
 }
@@ -994,7 +970,7 @@ function onNavigateToSchedule({ teacherId, target }) {
   else active.value = 'course-mgmt';
 }
 
-function onNavigateFromNotifications({ target, recordId, focus, section, workflowId }) {
+function onNavigateFromNotifications({ target, recordId, focus }) {
   if (isPasswordChangeLocked.value) {
     active.value = 'profile';
     return;
@@ -1011,13 +987,6 @@ function onNavigateFromNotifications({ target, recordId, focus, section, workflo
   // 「家長回饋待看」CTA：請評量頁切到回饋篩選並放大資料集，否則導過去看不到回饋。(#138)
   if (target === 'learning' && focus === 'feedback') {
     learningFeedbackFocusToken.value += 1;
-  }
-  if (target === 'director') {
-    directorFocusSection.value = section || 'exception-workflows';
-    directorFocusWorkflowId.value = workflowId ? Number(workflowId) : null;
-  } else {
-    directorFocusSection.value = null;
-    directorFocusWorkflowId.value = null;
   }
   active.value = target;
 }
@@ -1108,8 +1077,6 @@ function onUnreadChange(count) {
   if (count && typeof count === 'object') {
     unreadNotificationCount.value = Number(count.unread ?? 0);
     urgentNotificationCount.value = Number(count.urgent ?? 0);
-    if (count.casesOpen != null) inboxCasesOpenCount.value = Number(count.casesOpen || 0);
-    if (count.needsAttention != null) inboxNeedsAttentionCount.value = Number(count.needsAttention || 0);
   }
 }
 
@@ -1260,7 +1227,7 @@ const sidebarNavGroups = computed(() => {
         defaultOpen: true,
         items: [
           { page: 'director', label: '總覽儀表板', icon: 'dashboard' },
-          { page: 'notifications', label: '主任收件匣', icon: 'inbox' },
+          { page: 'notifications', label: '通知中心', icon: 'notifications' },
           { page: 'chat', label: '內部聊天', icon: 'forum', badgeTypes: ['chat'] },
           // GH-943 (in-app 179): moved out of the collapsed「系統設定」group so
           // 主任 can find Bug 回報 without expanding settings.
@@ -1335,13 +1302,16 @@ const sidebarNavGroups = computed(() => {
   return [];
 });
 
-/** 底欄「更多」：加總未固定在底欄的選項之未讀（含主任收件匣）。 */
+/** 底欄「更多」：加總未固定在底欄的選項之未讀（含通知中心）。 */
 const moreMenuBadgeCount = computed(() => {
   let sum = 0;
   for (const group of sidebarNavGroups.value) {
     for (const item of group.items) {
       if (!mobileTabPages.value.has(item.page)) {
         sum += getItemBadgeCount(item);
+        if (item.page === 'notifications') {
+          sum += unreadNotificationCount.value;
+        }
       }
     }
   }
@@ -1353,9 +1323,11 @@ function getMobileTabBadgeCount(tab) {
   return getItemBadgeCount(tab);
 }
 
-/** 「更多」抽屜內單一列的 badge（收件匣用 needs_attention，非單純未讀）。 */
+/** 「更多」抽屜內單一列的未讀數（通知中心用全域未讀）。 */
 function getMoreSheetItemBadgeCount(item) {
-  return getItemBadgeCount(item);
+  let n = getItemBadgeCount(item);
+  if (item?.page === 'notifications') n += unreadNotificationCount.value;
+  return n;
 }
 
 const teacherBranches = computed(() => {
@@ -1716,8 +1688,6 @@ async function refreshUnreadNotifications() {
   if (!session.value?.access_token || !currentBranch.value) {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
-    inboxCasesOpenCount.value = 0;
-    inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
     await mergeBugUnreadBadge();
     await mergeChatUnreadBadge();
@@ -1729,54 +1699,32 @@ async function refreshUnreadNotifications() {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE || '/api';
       const params = new URLSearchParams({ branch_id: String(currentBranch.value) });
-      const [notifRes, inboxRes] = await Promise.all([
-        fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
-          headers: {
-            Authorization: `Bearer ${session.value.access_token}`,
-            Accept: 'application/json',
-          },
-        }),
-        fetch(`${baseUrl}/v1/action-inbox/count?${params}`, {
-          headers: {
-            Authorization: `Bearer ${session.value.access_token}`,
-            Accept: 'application/json',
-          },
-        }),
-      ]);
-      if (notifRes.status === 401 || inboxRes.status === 401) {
+      const res = await fetch(`${baseUrl}/v1/notifications/unread-count?${params}`, {
+        headers: {
+          Authorization: `Bearer ${session.value.access_token}`,
+          Accept: 'application/json',
+        },
+      });
+      if (res.status === 401) {
         await supabase.auth.signOut();
         session.value = null;
         await mergeBugUnreadBadge();
         await mergeChatUnreadBadge();
         return;
       }
-      if (!notifRes.ok) throw new Error('unread-count request failed');
-      const json = await notifRes.json();
+      if (!res.ok) throw new Error('unread-count request failed');
+      const json = await res.json();
       unreadNotificationCount.value = Number(json.unread_count || 0);
       urgentNotificationCount.value = Number(json.urgent_unread_count || 0);
       badgeByType.value = json.by_type || {};
-
-      if (inboxRes.ok) {
-        const inboxJson = await inboxRes.json();
-        unreadNotificationCount.value = Number(inboxJson.notifications_unread ?? unreadNotificationCount.value);
-        inboxCasesOpenCount.value = Number(inboxJson.cases_open || 0);
-        inboxNeedsAttentionCount.value = Number(inboxJson.needs_attention || 0);
-      } else {
-        inboxCasesOpenCount.value = 0;
-        inboxNeedsAttentionCount.value = unreadNotificationCount.value;
-      }
     } catch {
       unreadNotificationCount.value = 0;
       urgentNotificationCount.value = 0;
-      inboxCasesOpenCount.value = 0;
-      inboxNeedsAttentionCount.value = 0;
       badgeByType.value = {};
     }
   } else {
     unreadNotificationCount.value = 0;
     urgentNotificationCount.value = 0;
-    inboxCasesOpenCount.value = 0;
-    inboxNeedsAttentionCount.value = 0;
     badgeByType.value = {};
   }
 

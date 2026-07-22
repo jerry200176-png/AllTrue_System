@@ -8,38 +8,33 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
- * Read-model aggregator for director Action Inbox (B-lite + D).
- *
- * Notifications remain the source for ops reminders (tuition / review / swipe / …).
- * exception_workflows remain the sole source of truth for leave/makeup cases.
- * This service never writes Notification rows for student_leave.
+ * Read-model only (B-lite + D). Never writes leave Notifications.
  */
 class ActionInboxService
 {
     public const OPEN_CASE_STATUSES = ['open', 'candidate_ready'];
 
     /**
-     * @param  array<int>  $campusIds  Empty = all campuses (super_admin).
+     * @param  array<int>  $campusIds
      * @return array{data: list<array<string, mixed>>, meta: array<string, int>}
      */
     public function list(array $campusIds, int $userId, ?string $lane = null): array
     {
-        $ops = ($lane === null || $lane === 'ops' || $lane === '')
+        $ops = ($lane === null || $lane === '' || $lane === 'ops')
             ? $this->buildOpsItems($campusIds, $userId)
             : collect();
-        $cases = ($lane === null || $lane === 'case' || $lane === '')
+        $cases = ($lane === null || $lane === '' || $lane === 'case')
             ? $this->buildCaseItems($campusIds)
             : collect();
 
-        $merged = $ops->concat($cases)->values();
-        $sorted = $this->sortItems($merged);
+        $sorted = $this->sortItems($ops->concat($cases)->values());
 
         return [
             'data' => $sorted->all(),
             'meta' => [
-                'notifications_unread' => $ops->filter(fn ($row) => empty($row['read_at']))->count(),
+                'notifications_unread' => $ops->filter(fn ($r) => empty($r['read_at']))->count(),
                 'cases_open' => $cases->count(),
-                'needs_attention' => $ops->filter(fn ($row) => empty($row['read_at']))->count() + $cases->count(),
+                'needs_attention' => $ops->filter(fn ($r) => empty($r['read_at']))->count() + $cases->count(),
                 'count' => $sorted->count(),
             ],
         ];
@@ -51,184 +46,163 @@ class ActionInboxService
      */
     public function count(array $campusIds, int $userId): array
     {
-        $notificationsUnread = $this->countUnreadNotifications($campusIds, $userId);
-        $casesOpen = $this->countOpenCases($campusIds);
+        $unread = $this->countUnreadNotifications($campusIds, $userId);
+        $cases = $this->countOpenCases($campusIds);
 
         return [
-            'notifications_unread' => $notificationsUnread,
-            'cases_open' => $casesOpen,
-            'needs_attention' => $notificationsUnread + $casesOpen,
+            'notifications_unread' => $unread,
+            'cases_open' => $cases,
+            'needs_attention' => $unread + $cases,
         ];
     }
 
-    /**
-     * @param  array<int>  $campusIds
-     */
+    /** @param  array<int>  $campusIds */
     private function countUnreadNotifications(array $campusIds, int $userId): int
     {
-        $query = Notification::query()
+        $q = Notification::query()
             ->leftJoin('NotificationReads as nr', function ($join) use ($userId) {
                 $join->on('Notifications.id', '=', 'nr.NotificationID')
                     ->where('nr.UserID', '=', $userId);
             })
             ->whereNull('Notifications.ResolvedAt')
             ->whereNull('nr.ReadAt');
-
         if (!empty($campusIds)) {
-            $query->whereIn('Notifications.CampusID', $campusIds);
+            $q->whereIn('Notifications.CampusID', $campusIds);
         }
 
-        return (int) $query->count('Notifications.id');
+        return (int) $q->count('Notifications.id');
     }
 
-    /**
-     * @param  array<int>  $campusIds
-     */
+    /** @param  array<int>  $campusIds */
     private function countOpenCases(array $campusIds): int
     {
-        $query = ExceptionWorkflow::query()
+        $q = ExceptionWorkflow::query()
             ->where('type', 'student_leave')
             ->whereIn('status', self::OPEN_CASE_STATUSES);
-
         if (!empty($campusIds)) {
-            $query->whereIn('campus_id', $campusIds);
+            $q->whereIn('campus_id', $campusIds);
         }
 
-        return (int) $query->count();
+        return (int) $q->count();
     }
 
-    /**
-     * @param  array<int>  $campusIds
-     */
+    /** @param  array<int>  $campusIds */
     private function buildOpsItems(array $campusIds, int $userId): Collection
     {
-        $query = Notification::query()
+        $q = Notification::query()
             ->leftJoin('NotificationReads as nr', function ($join) use ($userId) {
                 $join->on('Notifications.id', '=', 'nr.NotificationID')
                     ->where('nr.UserID', '=', $userId);
             })
-            ->select([
-                'Notifications.*',
-                'nr.ReadAt as read_at',
-            ])
+            ->select(['Notifications.*', 'nr.ReadAt as read_at'])
             ->whereNull('Notifications.ResolvedAt');
-
         if (!empty($campusIds)) {
-            $query->whereIn('Notifications.CampusID', $campusIds);
+            $q->whereIn('Notifications.CampusID', $campusIds);
         }
 
-        return $query->orderByDesc('Notifications.id')
-            ->limit(100)
-            ->get()
-            ->map(fn ($row) => $this->serializeNotification($row));
+        return $q->orderByDesc('Notifications.id')->limit(100)->get()
+            ->map(fn ($n) => $this->serializeNotification($n));
     }
 
-    /**
-     * @param  array<int>  $campusIds
-     */
+    /** @param  array<int>  $campusIds */
     private function buildCaseItems(array $campusIds): Collection
     {
-        $query = ExceptionWorkflow::query()
+        $q = ExceptionWorkflow::query()
             ->with(['student', 'classSession'])
             ->where('type', 'student_leave')
             ->whereIn('status', self::OPEN_CASE_STATUSES);
-
         if (!empty($campusIds)) {
-            $query->whereIn('campus_id', $campusIds);
+            $q->whereIn('campus_id', $campusIds);
         }
 
-        return $query->orderByRaw('due_at IS NULL ASC')
-            ->orderBy('due_at')
-            ->orderByDesc('id')
-            ->limit(50)
-            ->get()
-            ->map(fn (ExceptionWorkflow $workflow) => $this->serializeLeaveCase($workflow));
+        return $q->orderByRaw('due_at IS NULL ASC')->orderBy('due_at')->orderByDesc('id')
+            ->limit(50)->get()
+            ->map(fn (ExceptionWorkflow $w) => $this->serializeLeaveCase($w));
     }
 
-    private function serializeNotification($notification): array
+    private function serializeNotification($n): array
     {
-        $type = (string) $notification->Type;
-        $payload = is_array($notification->Payload) ? $notification->Payload : [];
-        $kind = $this->normalizeNotificationKind($type);
+        $type = (string) $n->Type;
+        $kind = in_array($type, ['substitute', 'substitute_confirm'], true) ? 'substitute' : $type;
+        $payload = is_array($n->Payload) ? $n->Payload : [];
+        $target = match ($kind) {
+            'pending_swipe' => 'attendance',
+            'learning_review' => 'learning',
+            'tuition', 'low_sessions' => 'tuition-collect',
+            'schedule_change', 'substitute' => 'calendar',
+            default => null,
+        };
 
         return [
-            'id' => 'notification:'.(int) $notification->id,
-            'source_id' => (int) $notification->id,
+            'id' => 'notification:'.(int) $n->id,
+            'source_id' => (int) $n->id,
             'kind' => $kind,
             'lane' => 'ops',
-            'title' => (string) $notification->Title,
+            'title' => (string) $n->Title,
             'summary' => $this->notificationSummary($kind, $payload),
-            'body' => $notification->Body ? (string) $notification->Body : null,
-            'status_label' => $notification->read_at ? '已讀' : '新通知',
-            'priority' => (string) ($notification->Severity ?: 'info'),
+            'body' => $n->Body ? (string) $n->Body : null,
+            'status_label' => $n->read_at ? '已讀' : '新通知',
+            'priority' => (string) ($n->Severity ?: 'info'),
             'due_at' => null,
             'overdue' => false,
             'overdue_hours' => null,
-            'read_at' => $notification->read_at,
-            'resolved_at' => $notification->ResolvedAt,
-            'occurred_at' => optional($notification->OccurredAt ?: $notification->created_at)->toIso8601String(),
+            'read_at' => $n->read_at,
+            'resolved_at' => $n->ResolvedAt,
+            'occurred_at' => optional($n->OccurredAt ?: $n->created_at)->toIso8601String(),
             'payload' => $payload,
-            'source_type' => $notification->SourceType,
-            'action' => $this->opsAction($kind),
+            'source_type' => $n->SourceType,
+            'action' => [
+                'label' => $target ? '前往處理' : '查看',
+                'target' => $target,
+                'section' => null,
+                'workflow_id' => null,
+            ],
         ];
     }
 
-    private function serializeLeaveCase(ExceptionWorkflow $workflow): array
+    private function serializeLeaveCase(ExceptionWorkflow $w): array
     {
-        $studentName = (string) ($workflow->student->name ?? '學生');
-        $session = $workflow->classSession;
-        $payload = is_array($workflow->payload) ? $workflow->payload : [];
-
+        $studentName = (string) ($w->student->name ?? '學生');
+        $session = $w->classSession;
+        $payload = is_array($w->payload) ? $w->payload : [];
         $date = (string) ($payload['session_date'] ?? ($session->SessionDate ?? ''));
-        $start = $this->trimToHM($payload['start_time'] ?? ($session->StartTime ?? ''));
-        $end = $this->trimToHM($payload['end_time'] ?? ($session->EndTime ?? ''));
+        $start = $this->hm($payload['start_time'] ?? ($session->StartTime ?? ''));
+        $end = $this->hm($payload['end_time'] ?? ($session->EndTime ?? ''));
         $reason = trim((string) ($payload['reason'] ?? ''));
+        $dueAt = $w->due_at ? Carbon::parse($w->due_at) : null;
+        $overdue = $dueAt !== null && $dueAt->lt(now());
+        $overdueHours = $overdue ? (int) max(1, $dueAt->diffInHours(now())) : null;
 
-        $dueAt = $workflow->due_at ? Carbon::parse($workflow->due_at) : null;
-        $overdue = $dueAt ? $dueAt->lt(now()) : false;
-        $overdueHours = null;
-        if ($overdue && $dueAt) {
-            $overdueHours = (int) max(1, $dueAt->diffInHours(now()));
-        }
-
-        $summaryParts = [];
-        if ($date !== '') {
-            $summaryParts[] = $this->formatDateLabel($date);
-        }
-        if ($start !== '' && $end !== '') {
-            $summaryParts[] = "{$start}–{$end}";
-        }
-
-        $body = null;
+        $summary = trim(($date !== '' ? $this->dateLabel($date).' ' : '').($start && $end ? "{$start}–{$end}" : ''));
+        $bodyParts = [];
         if ($reason !== '') {
-            $body = '原因：'.$reason;
+            $bodyParts[] = '原因：'.$reason;
         }
         if ($dueAt) {
-            $dueLine = '請於 '.$dueAt->timezone('Asia/Taipei')->format('n 月 j 日 H:i').' 前處理';
-            $body = $body ? ($body."\n".$dueLine) : $dueLine;
+            $bodyParts[] = '請於 '.$dueAt->timezone('Asia/Taipei')->format('n 月 j 日 H:i').' 前處理';
         }
-        if ($overdue && $overdueHours !== null) {
-            $body = ($body ? $body."\n" : '')."已超過建議處理時間 {$overdueHours} 小時";
+        if ($overdueHours !== null) {
+            $bodyParts[] = "已超過建議處理時間 {$overdueHours} 小時";
         }
 
         return [
-            'id' => 'workflow:'.(int) $workflow->id,
-            'source_id' => (int) $workflow->id,
+            'id' => 'workflow:'.(int) $w->id,
+            'source_id' => (int) $w->id,
             'kind' => 'student_leave',
             'lane' => 'case',
             'title' => "{$studentName}申請請假",
-            'summary' => implode(' ', $summaryParts),
-            'body' => $body,
-            'status_label' => $this->caseStatusLabel((string) $workflow->status),
-            'priority' => (string) ($workflow->priority ?: 'medium'),
+            'summary' => $summary,
+            'body' => $bodyParts === [] ? null : implode("\n", $bodyParts),
+            'status_label' => '等待安排補課',
+            'priority' => (string) ($w->priority ?: 'medium'),
             'due_at' => $dueAt ? $dueAt->toIso8601String() : null,
             'overdue' => $overdue,
             'overdue_hours' => $overdueHours,
             'read_at' => null,
             'resolved_at' => null,
-            'occurred_at' => optional($workflow->created_at)->toIso8601String(),
+            'occurred_at' => optional($w->created_at)->toIso8601String(),
             'payload' => [
-                'student_id' => (int) ($workflow->student_id ?? 0),
+                'student_id' => (int) ($w->student_id ?? 0),
                 'student_name' => $studentName,
                 'reason' => $reason,
                 'session_date' => $date,
@@ -240,105 +214,55 @@ class ActionInboxService
                 'label' => '安排補課',
                 'target' => 'director',
                 'section' => 'exception-workflows',
-                'workflow_id' => (int) $workflow->id,
+                'workflow_id' => (int) $w->id,
             ],
         ];
     }
 
-    private function caseStatusLabel(string $status): string
-    {
-        return match ($status) {
-            'candidate_ready' => '等待安排補課',
-            'confirmed' => '已安排補課',
-            'waived' => '已確認不補課',
-            default => '等待安排補課',
-        };
-    }
-
-    private function normalizeNotificationKind(string $type): string
-    {
-        if ($type === 'substitute_confirm' || $type === 'substitute') {
-            return 'substitute';
-        }
-        if ($type === 'schedule_change') {
-            return 'schedule_change';
-        }
-
-        return $type;
-    }
-
     private function notificationSummary(string $kind, array $payload): string
     {
-        $parts = [];
-        if (!empty($payload['student_name'])) {
-            $parts[] = (string) $payload['student_name'];
-        }
-        if (!empty($payload['subject'])) {
-            $parts[] = (string) $payload['subject'];
-        }
-        if ($kind === 'low_sessions' && isset($payload['remaining_sessions'])) {
-            $parts[] = '剩餘 '.(int) $payload['remaining_sessions'].' 堂';
-        }
+        $parts = array_filter([
+            $payload['student_name'] ?? null,
+            $payload['subject'] ?? null,
+            $kind === 'low_sessions' && isset($payload['remaining_sessions'])
+                ? '剩餘 '.(int) $payload['remaining_sessions'].' 堂'
+                : null,
+        ]);
 
         return implode(' ｜ ', $parts);
-    }
-
-    private function opsAction(string $kind): array
-    {
-        $target = match ($kind) {
-            'pending_swipe' => 'attendance',
-            'learning_review' => 'learning',
-            'tuition', 'low_sessions' => 'tuition-collect',
-            'schedule_change', 'substitute' => 'calendar',
-            default => null,
-        };
-
-        return [
-            'label' => $target ? '前往處理' : '查看',
-            'target' => $target,
-            'section' => null,
-            'workflow_id' => null,
-        ];
     }
 
     private function sortItems(Collection $items): Collection
     {
         return $items->sort(function (array $a, array $b) {
-            $aOverdue = !empty($a['overdue']) ? 0 : 1;
-            $bOverdue = !empty($b['overdue']) ? 0 : 1;
-            if ($aOverdue !== $bOverdue) {
-                return $aOverdue <=> $bOverdue;
+            $ao = !empty($a['overdue']) ? 0 : 1;
+            $bo = !empty($b['overdue']) ? 0 : 1;
+            if ($ao !== $bo) {
+                return $ao <=> $bo;
             }
-
-            $aDue = $a['due_at'] ?? null;
-            $bDue = $b['due_at'] ?? null;
-            if ($aDue && $bDue && $aDue !== $bDue) {
-                return strcmp((string) $aDue, (string) $bDue);
+            $ad = (string) ($a['due_at'] ?? '');
+            $bd = (string) ($b['due_at'] ?? '');
+            if ($ad !== '' && $bd !== '' && $ad !== $bd) {
+                return strcmp($ad, $bd);
             }
-            if ($aDue && !$bDue) {
+            if ($ad !== '' && $bd === '') {
                 return -1;
             }
-            if (!$aDue && $bDue) {
+            if ($ad === '' && $bd !== '') {
                 return 1;
             }
-
             $sev = ['high' => 0, 'medium' => 1, 'low' => 2, 'info' => 3];
-            $aSev = $sev[$a['priority'] ?? 'info'] ?? 3;
-            $bSev = $sev[$b['priority'] ?? 'info'] ?? 3;
-            if ($aSev !== $bSev) {
-                return $aSev <=> $bSev;
-            }
 
-            return strcmp((string) ($b['occurred_at'] ?? ''), (string) ($a['occurred_at'] ?? ''));
+            return ($sev[$a['priority'] ?? 'info'] ?? 3) <=> ($sev[$b['priority'] ?? 'info'] ?? 3)
+                ?: strcmp((string) ($b['occurred_at'] ?? ''), (string) ($a['occurred_at'] ?? ''));
         })->values();
     }
 
-    private function formatDateLabel(string $ymd): string
+    private function dateLabel(string $ymd): string
     {
         try {
             $dt = Carbon::parse($ymd, 'Asia/Taipei');
-            $weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-            $w = $weekdays[(int) $dt->dayOfWeek] ?? '';
+            $w = ['日', '一', '二', '三', '四', '五', '六'][(int) $dt->dayOfWeek] ?? '';
 
             return $dt->format('n 月 j 日').($w !== '' ? "（{$w}）" : '');
         } catch (\Throwable $e) {
@@ -346,13 +270,10 @@ class ActionInboxService
         }
     }
 
-    private function trimToHM($value): string
+    private function hm($value): string
     {
         $raw = trim((string) $value);
-        if ($raw === '') {
-            return '';
-        }
-        if (preg_match('/^(\d{1,2}:\d{2})/', $raw, $m)) {
+        if ($raw !== '' && preg_match('/^(\d{1,2}:\d{2})/', $raw, $m)) {
             return $m[1];
         }
 
