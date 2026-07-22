@@ -46,7 +46,7 @@ jobs:
         env:
           PI_SSH_USER: ${{ secrets.PI_SSH_USER }}
           PI_SSH_HOST: ${{ secrets.PI_SSH_HOST }}
-          DATE: ${{ inputs.date || '2026-07-18' }}
+          DATE: ${{ inputs.date || '2026-07-22' }}
           CAMPUS_ID: ${{ inputs.campus_id || '9' }}
         run: |
           set -euo pipefail
