@@ -698,6 +698,7 @@ class ClassSessionController extends Controller
                 }
 
                 app(ClassSessionMaterializationService::class)->upsertSlot([
+                    '_student_class'     => $studentClass,
                     'StudentClassID'      => (int) $studentClass->ID,
                     'SubjectID'           => $studentClass->SubjectID ?: null,
                     'SessionDate'         => $targetDate,
@@ -853,6 +854,12 @@ class ClassSessionController extends Controller
             $this->applyTimeAndNoteUpdates($session, $data);
             $this->syncLearningRecordTime($session, $data);
             return $this->sessionUpdateResponse($session, '堂次已更新');
+        }
+
+        if ($studentClass->isUsageSettlementLocked()) {
+            return response()->json([
+                'message' => '此課程已提前結清並鎖定點名，不可再變更出勤狀態。如需調整請開新約。',
+            ], 409);
         }
 
         // Validate state machine transition

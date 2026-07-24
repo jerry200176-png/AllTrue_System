@@ -124,6 +124,7 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 9. **Release Execution Package**：[`docs/GUIDE_RELEASE_EXECUTION_PACKAGE.md`](GUIDE_RELEASE_EXECUTION_PACKAGE.md) — production 變更標準模板
 10. **#957 D1 Sprint**：[`docs/refactor/957-d1-sprint-design.md`](refactor/957-d1-sprint-design.md)、[`docs/runbooks/957-d1-deploy-runbook.md`](runbooks/957-d1-deploy-runbook.md)、[`docs/runbooks/957-d1-production-readiness-report.md`](runbooks/957-d1-production-readiness-report.md)、[`docs/runbooks/957-d1-pcr.md`](runbooks/957-d1-pcr.md)
 11. **Course Continuity（#1382）**：[`docs/architecture/RFC_COURSE_CONTINUITY.md`](architecture/RFC_COURSE_CONTINUITY.md) · cohort SQL [`scripts/course-continuity-cohort-discovery.sql`](../scripts/course-continuity-cohort-discovery.sql) — **≠** #1130 歷史修復；#1378 Memo utf8mb4 REP 見 PR #1380
+12. **Platform opt from stars（規劃）**：[`docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`](architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md) — 每項優化附「參考 repo／要學／不要學／落地」；**不含業務碼改動**
 
 ### 後端開發
 | 需要什麼 | 去哪裡找 |

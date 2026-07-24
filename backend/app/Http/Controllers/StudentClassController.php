@@ -5463,6 +5463,12 @@ class StudentClassController extends Controller
                     'cancel_remaining' => $cancelRemaining,
                 ]);
             } else {
+                if ($sc->isUsageSettlementLocked()) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => '已提前結清的課程不可恢復；請為學生建立新約。',
+                    ], 422);
+                }
                 $sc->Stop = 0;
                 $sc->closed_reason = null;
                 $sc->save();
