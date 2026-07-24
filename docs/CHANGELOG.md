@@ -4,6 +4,12 @@
 - 智慧行事曆「快速排課」遇到重複／重疊課程時，改跳出「仍要新增課程」視窗，不再靜默失敗。
 
 開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
+## 2026-07-22 — docs: Course Continuity RFC + PII-free cohort SQL（#1382）
+
+- 新增課程延續（Course Continuity）架構 RFC：推薦 group＋members，拒絕實體合併 StudentClass。
+- 附唯讀 cohort 發現 SQL 與結果模板（無 PII）；數字待 production 唯讀執行後回填。
+
+開發備註：與 #1130／#1134 歷史修復分離；實作 PR 序列見 RFC §10／issue #1382。
 
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
