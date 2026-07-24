@@ -4672,7 +4672,14 @@ class StudentClassController extends Controller
             }
         }
 
-        $updated = 0;
+        // Build a permutation-safe move list. Same-day time shifts under
+        // uq_class_session_slot 1062 if we update in place onto a sibling's
+        // not-yet-vacated StartTime (Sentry PHP-LARAVEL-25 / #1384). Also avoid
+        // assigning two unlocked rows onto the identical contract slot.
+        $moves = [];
+        $reflowIds = [];
+        $claimedTargets = [];
+
         foreach ($sessionsByDate as $date => $dateSessions) {
             $isoDow = (int) Carbon::parse($date)->dayOfWeekIso;
             $daySlots = $slotsByWeekday[$isoDow] ?? [];
@@ -4683,35 +4690,73 @@ class StudentClassController extends Controller
             usort($dateSessions, fn ($a, $b) => strcmp((string) $a->StartTime, (string) $b->StartTime));
 
             foreach ($dateSessions as $idx => $session) {
-                if (isset($lockedBySessionId[(int) $session->id])) {
+                $sessionId = (int) $session->id;
+                if (isset($lockedBySessionId[$sessionId])) {
                     continue;
                 }
-                $slot = $daySlots[min($idx, count($daySlots) - 1)];
+                // One unlocked row per contract slot on this date; extras keep
+                // their current time rather than collapsing onto the last slot.
+                if ($idx >= count($daySlots)) {
+                    continue;
+                }
+                $slot = $daySlots[$idx];
 
                 $newStartFull = $this->normalizeSessionTime($slot['time'], '16:00:00');
                 $newEndFull = Carbon::createFromFormat('H:i:s', $newStartFull)
                     ->addMinutes(max(30, $slot['dur']))
                     ->format('H:i:s');
 
-                if (
-                    (string) $session->StartTime !== $newStartFull
-                    || (string) $session->EndTime !== $newEndFull
-                ) {
-                    $session->StartTime = $newStartFull;
-                    $session->EndTime = $newEndFull;
-                    $session->save();
-                    LearningRecord::where('ClassSessionID', (int) $session->id)
-                        ->whereNull('VoidedAt')
-                        ->update([
-                            'StartTime' => $newStartFull,
-                            'EndTime' => $newEndFull,
-                        ]);
-                    $updated++;
+                $targetKey = $date . '|' . $newStartFull;
+                if (isset($claimedTargets[$targetKey])) {
+                    continue;
                 }
+                $claimedTargets[$targetKey] = $sessionId;
+
+                if (
+                    (string) $session->StartTime === $newStartFull
+                    && (string) $session->EndTime === $newEndFull
+                ) {
+                    continue;
+                }
+
+                $oldDate = $this->normalizeDateString($session->SessionDate ?? null);
+                $moves[] = [
+                    'session'       => $session,
+                    'oldDate'       => $oldDate,
+                    'oldStartShort' => $session->StartTime ? substr((string) $session->StartTime, 0, 5) : null,
+                    'newDate'       => $date,
+                    'newStart'      => $newStartFull,
+                    'newEnd'        => $newEndFull,
+                ];
+                $reflowIds[$sessionId] = true;
             }
         }
 
-        return $updated;
+        if (empty($moves)) {
+            return 0;
+        }
+
+        $courseId = (int) ($moves[0]['session']->StudentClassID ?? 0);
+        try {
+            return $this->contractSessionReflowService->move($courseId, $reflowIds, $moves);
+        } catch (\App\Exceptions\SlotOccupiedException $e) {
+            // Soft sync must not 500 the course update: skip colliding moves
+            // one-by-one so compatible rows still realign.
+            $updated = 0;
+            foreach ($moves as $move) {
+                $sid = (int) $move['session']->id;
+                try {
+                    $updated += $this->contractSessionReflowService->move(
+                        $courseId,
+                        [$sid => true],
+                        [$move]
+                    );
+                } catch (\App\Exceptions\SlotOccupiedException $ignored) {
+                    continue;
+                }
+            }
+            return $updated;
+        }
     }
 
     private function hasSessionStartDateMismatch(int $studentClassId, string $startDate): bool
