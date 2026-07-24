@@ -20,6 +20,7 @@ use App\Http\Controllers\ExceptionWorkflowController;
 use App\Http\Controllers\ParentFeedbackController;
 use App\Http\Controllers\ParentPortalController;
 use App\Http\Controllers\StudentClassController;
+use App\Http\Controllers\EarlySettlementController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
@@ -289,6 +290,10 @@ Route::prefix('v1')->group(function () {
         Route::post('invoices/{invoice}/void', [BillingController::class, 'voidInvoice']);
         Route::post('invoices/{invoice}/exception-void', [BillingController::class, 'exceptionVoidInvoice']);
         Route::get('invoices/export', [ExportController::class, 'invoices']);
+
+        // Early usage settlement (director only): billable sessions × rate → settlement AR
+        Route::get('student-classes/{studentClass}/early-settle/preview', [EarlySettlementController::class, 'preview']);
+        Route::post('student-classes/{studentClass}/early-settle', [EarlySettlementController::class, 'settle']);
 
         Route::post('learning-records/{learningRecord}/approve', [LearningRecordController::class, 'approve']);
         Route::patch('learning-records/{learningRecord}/teacher', [LearningRecordController::class, 'updateTeacher']);

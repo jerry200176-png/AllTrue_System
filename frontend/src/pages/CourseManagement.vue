@@ -217,16 +217,16 @@
                   </tr>
                   <tr :class="['course-row', courseRowClass(c)]">
                     <td class="td-subject">
-                      <div v-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="settled-course-callout" role="status">
+                      <div v-if="isClosedCourse(c)" class="settled-course-callout" role="status">
                         <span class="settled-course-callout__icon" aria-hidden="true">✅</span>
-                        <span class="settled-course-callout__main">已結案</span>
-                        <span class="settled-course-callout__sub">{{ effectiveClosedReason(c) === 'settled' ? '手動結案，無需續報' : '堂數已用完' }}</span>
+                        <span class="settled-course-callout__main">{{ effectiveClosedReason(c) === 'usage_settled' ? '已提前結清' : '已結案' }}</span>
+                        <span class="settled-course-callout__sub">{{ closedReasonSub(c) }}</span>
                       </div>
                       <div class="subject-line">
                         <span class="tag subject-tag" :class="{ 'subject-tag--paused': c.status === 'inactive' }">{{ getSubjectLabel(c.subject) }}</span>
                         <span class="status-tag" :class="c.class_type">{{ classTypeLabel(c.class_type) }}</span>
                         <span v-if="c.PackageID" class="tag tag-package" :title="c.PackageName || '多科方案'">方案</span>
-                        <span v-else-if="effectiveClosedReason(c) === 'settled' || effectiveClosedReason(c) === 'completed'" class="tag tag-settled">已結案</span>
+                        <span v-else-if="isClosedCourse(c)" class="tag tag-settled">{{ effectiveClosedReason(c) === 'usage_settled' ? '已結清' : '已結案' }}</span>
                       </div>
                       <div class="price-line">
                         <span>每堂 ${{ sessionPrice(c) }}</span>
@@ -318,8 +318,9 @@
                             <button class="action-dropdown-item" @click="duplicateCourseForTeacher(c); closeActionMenu()"><span class="action-icon">📋</span> 換師複製</button>
                             <p class="action-section-label">狀態管理</p>
                             <button v-if="c.status !== 'inactive'" class="action-dropdown-item" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">⏸</span> 暫停課程</button>
-                            <button v-if="c.status === 'inactive'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
+                            <button v-if="c.status === 'inactive' && effectiveClosedReason(c) !== 'usage_settled'" class="action-dropdown-item action-dropdown-resume" @click="requestCoursePause(c); closeActionMenu()"><span class="action-icon">▶</span> 恢復課程</button>
                             <button v-if="canCloseCourse(c)" class="action-dropdown-item action-dropdown-close" @click="closeCourseNoRenew(c); closeActionMenu()"><span class="action-icon">✓</span> 結案（不續報）</button>
+                            <button v-if="canEarlySettle(c)" class="action-dropdown-item action-dropdown-close" @click="openEarlySettle(c); closeActionMenu()"><span class="action-icon">🧮</span> 提前結清</button>
                             <hr class="action-dropdown-divider" />
                             <p class="action-section-label action-section-label--danger">危險操作</p>
                             <button class="action-dropdown-item action-dropdown-danger" @click="confirmDeleteTarget = c; closeActionMenu()"><span class="action-icon">🗑</span> 刪除課程</button>
@@ -923,6 +924,47 @@
           <button class="ghost" :disabled="pauseConfirmSubmitting" @click="pauseConfirmTarget = null">取消</button>
           <button class="primary" :disabled="pauseConfirmSubmitting" :class="{ 'btn-resume-primary': pauseConfirmIsResume }" @click="confirmCoursePause">
             {{ pauseConfirmSubmitting ? '處理中…' : (pauseConfirmIsResume ? '確認恢復' : '確認暫停') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="earlySettleTarget" class="modal-overlay" @click.self="!earlySettleSubmitting && closeEarlySettle()">
+      <div class="modal course-modal pause-confirm-modal">
+        <div class="pause-confirm-header">
+          <span class="pause-confirm-icon">🧮</span>
+          <div>
+            <h3 class="modal-title">提前結清（用量結算）</h3>
+            <p class="modal-desc">
+              {{ earlySettleTarget.student_name || '學生' }} — {{ getSubjectLabel(earlySettleTarget.subject) }}
+            </p>
+          </div>
+        </div>
+        <div v-if="earlySettleLoadingPreview" class="pause-impact-card">載入預覽中…</div>
+        <div v-else-if="earlySettlePreview" class="pause-impact-card">
+          <p class="pause-impact-title">系統計算</p>
+          <ul>
+            <li>計費堂數（出席／遲到）：{{ earlySettlePreview.billable_sessions }} 堂</li>
+            <li>單堂費率：${{ earlySettlePreview.rate }}</li>
+            <li>計算金額：${{ earlySettlePreview.computed_amount }}</li>
+            <li>已繳：${{ earlySettlePreview.paid_so_far }} → 尚欠約 ${{ earlySettlePreview.outstanding }}</li>
+            <li>將取消剩餘排課：{{ earlySettlePreview.remaining_scheduled }} 堂</li>
+            <li>結清後點名鎖定，之後需開新約</li>
+          </ul>
+          <label style="display:block;margin-top:12px;font-size:13px">結清金額（可調整）</label>
+          <input v-model.number="earlySettleAmount" type="number" min="0" step="1" style="width:100%;padding:8px;margin-top:4px" />
+          <label style="display:block;margin-top:10px;font-size:13px">調整原因{{ earlySettleAmount !== earlySettlePreview.computed_amount ? '（必填）' : '（選填）' }}</label>
+          <textarea v-model="earlySettleReason" rows="2" maxlength="500" placeholder="若金額與系統計算不同，請說明原因" style="width:100%;padding:8px;margin-top:4px" />
+        </div>
+        <div v-else class="pause-impact-card">無法載入預覽</div>
+        <div class="actions">
+          <button class="ghost" :disabled="earlySettleSubmitting" @click="closeEarlySettle">取消</button>
+          <button
+            class="primary"
+            :disabled="earlySettleSubmitting || !earlySettlePreview || (earlySettleAmount !== earlySettlePreview.computed_amount && !String(earlySettleReason || '').trim())"
+            @click="confirmEarlySettle"
+          >
+            {{ earlySettleSubmitting ? '結清中…' : '確認提前結清' }}
           </button>
         </div>
       </div>
@@ -1824,6 +1866,89 @@ function canCloseCourse(c) {
     && Number(c.remaining_sessions ?? 0) <= 0;
 }
 
+const earlySettleTarget = ref(null);
+const earlySettlePreview = ref(null);
+const earlySettleAmount = ref(0);
+const earlySettleReason = ref('');
+const earlySettleLoadingPreview = ref(false);
+const earlySettleSubmitting = ref(false);
+
+function closeEarlySettle() {
+  earlySettleTarget.value = null;
+  earlySettlePreview.value = null;
+  earlySettleReason.value = '';
+  earlySettleLoadingPreview.value = false;
+  earlySettleSubmitting.value = false;
+}
+
+async function openEarlySettle(course) {
+  earlySettleTarget.value = course;
+  earlySettlePreview.value = null;
+  earlySettleReason.value = '';
+  earlySettleLoadingPreview.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入'); closeEarlySettle(); return; }
+    const res = await fetch(`/api/v1/student-classes/${course.id}/early-settle/preview`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(json.message || '無法預覽提前結清');
+      closeEarlySettle();
+      return;
+    }
+    earlySettlePreview.value = json;
+    earlySettleAmount.value = Number(json.computed_amount || 0);
+  } catch (e) {
+    alert('載入失敗：' + (e?.message || '請稍後再試'));
+    closeEarlySettle();
+  } finally {
+    earlySettleLoadingPreview.value = false;
+  }
+}
+
+async function confirmEarlySettle() {
+  if (!earlySettleTarget.value || !earlySettlePreview.value || earlySettleSubmitting.value) return;
+  const course = earlySettleTarget.value;
+  const computed = Number(earlySettlePreview.value.computed_amount || 0);
+  const amount = Number(earlySettleAmount.value);
+  if (amount !== computed && !String(earlySettleReason.value || '').trim()) {
+    alert('調整結清金額時必須填寫原因');
+    return;
+  }
+  if (!confirm(`確定提前結清「${course.student_name || '學生'}」此課程？\n計費 ${earlySettlePreview.value.billable_sessions} 堂 × $${earlySettlePreview.value.rate} → 結清 $${amount}\n剩餘排課將取消，點名鎖定，之後需開新約。`)) return;
+
+  earlySettleSubmitting.value = true;
+  try {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    const token = sess?.access_token;
+    if (!token) { alert('請重新登入'); return; }
+    const body = { amount };
+    if (String(earlySettleReason.value || '').trim()) body.adjustment_reason = String(earlySettleReason.value).trim();
+    const res = await fetch(`/api/v1/student-classes/${course.id}/early-settle`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(json.message || '提前結清失敗');
+      return;
+    }
+    alert(json.message || '已提前結清');
+    closeEarlySettle();
+    await loadCourses();
+  } catch (e) {
+    alert('操作失敗：' + (e?.message || '請稍後再試'));
+  } finally {
+    earlySettleSubmitting.value = false;
+  }
+}
+
 async function closeCourseNoRenew(course) {
   const studentName = course.student_name || '學生';
   const subject = getSubjectLabel(course.subject);
@@ -2699,6 +2824,25 @@ function effectiveClosedReason(c) {
   return null;
 }
 
+function isClosedCourse(c) {
+  const reason = effectiveClosedReason(c);
+  return reason === 'settled' || reason === 'completed' || reason === 'usage_settled';
+}
+
+function closedReasonSub(c) {
+  const reason = effectiveClosedReason(c);
+  if (reason === 'usage_settled') return '依實際上課用量結清，點名已鎖定';
+  if (reason === 'settled') return '手動結案，無需續報';
+  return '堂數已用完';
+}
+
+function canEarlySettle(c) {
+  if (!c || effectiveClosedReason(c) === 'usage_settled') return false;
+  if (effectiveClosedReason(c) === 'completed') return false;
+  const status = c.payment_status;
+  return status === 'unpaid' || status === 'partial' || status === 'unpaid_overdue';
+}
+
 
 function canQuickAddSession(c) {
   if (!isSessionMode(c)) return false;
@@ -2710,6 +2854,7 @@ function canQuickAddSession(c) {
 function quickAddDisabledReason(c) {
   if (!isSessionMode(c)) return '僅堂數制課程可補課';
   if (effectiveClosedReason(c) === 'settled') return '已結算課程無法補課';
+  if (effectiveClosedReason(c) === 'usage_settled') return '已提前結清課程無法補課';
   if (effectiveClosedReason(c) === 'completed') return '已完課課程無法補課';
   if (c.status === 'inactive') return '課程已暫停，請先恢復後再補課';
   return '';
@@ -2718,7 +2863,7 @@ function quickAddDisabledReason(c) {
 const courseRowClass = (c) => {
   if (c.status !== 'inactive') return {};
   const reason = effectiveClosedReason(c);
-  if (reason === 'settled' || reason === 'completed') return { 'course-settled': true };
+  if (reason === 'settled' || reason === 'completed' || reason === 'usage_settled') return { 'course-settled': true };
   return { 'course-paused': true };
 };
 const getSubjectLabel = (val) => getSubjectText(val);

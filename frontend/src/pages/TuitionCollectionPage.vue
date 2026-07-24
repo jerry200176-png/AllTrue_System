@@ -280,6 +280,10 @@
                         <span class="material-symbols-outlined">check_circle</span>
                         核帳登記
                       </button>
+                      <button class="tc-btn tc-btn--settle" @click="openEarlySettleDialog(r)" :disabled="earlySettleLoading === r.id" title="依實際上課用量提前結清">
+                        <span class="material-symbols-outlined">calculate</span>
+                        提前結清
+                      </button>
                     </template>
 
                     <!-- pending_report: confirm / reject -->
@@ -660,6 +664,44 @@
             <button class="tc-btn tc-btn--primary" @click="confirmSettle" :disabled="settleLoading">
               <span v-if="settleLoading" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
               確認結案
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Early usage settlement -->
+    <Transition name="fade">
+      <div v-if="earlySettleDialogOpen" class="tc-overlay" @click.self="!earlySettleSubmitting && closeEarlySettleDialog()">
+        <div class="tc-dialog">
+          <h3 class="tc-dialog-title">
+            <span class="material-symbols-outlined" style="font-size:22px;color:var(--primary)">calculate</span>
+            提前結清（用量結算）
+          </h3>
+          <p class="tc-dialog-desc">依出席／遲到堂數 × 費率計算應收；作廢原未繳帳單並開立結清應收。剩餘排課取消、點名鎖定。</p>
+          <div class="tc-dialog-info" v-if="earlySettleTarget">
+            <div style="margin-bottom:4px"><strong>{{ earlySettleTarget.student_name }}</strong> — {{ earlySettleTarget.subject }}</div>
+          </div>
+          <div v-if="earlySettleLoadingPreview" style="padding:8px 0;color:var(--text-light)">載入預覽中…</div>
+          <template v-else-if="earlySettlePreview">
+            <div class="tc-dialog-info" style="margin-bottom:10px">
+              <div>計費堂數：{{ earlySettlePreview.billable_sessions }} 堂 × ${{ earlySettlePreview.rate }} = ${{ earlySettlePreview.computed_amount }}</div>
+              <div style="font-size:12px;color:var(--text-light)">已繳 ${{ earlySettlePreview.paid_so_far }} · 將取消排課 {{ earlySettlePreview.remaining_scheduled }} 堂</div>
+            </div>
+            <label class="tc-dialog-label">結清金額（可調整）</label>
+            <input v-model.number="earlySettleAmount" type="number" min="0" step="1" class="tc-dialog-textarea" style="min-height:auto;padding:10px" />
+            <label class="tc-dialog-label" style="margin-top:10px">調整原因{{ earlySettleAmount !== earlySettlePreview.computed_amount ? '（必填）' : '（選填）' }}</label>
+            <textarea v-model="earlySettleReason" class="tc-dialog-textarea" maxlength="500" rows="2" placeholder="金額與系統計算不同時必填" />
+          </template>
+          <div class="tc-dialog-btns">
+            <button class="tc-btn tc-btn--ghost" @click="closeEarlySettleDialog" :disabled="earlySettleSubmitting">取消</button>
+            <button
+              class="tc-btn tc-btn--primary"
+              @click="confirmEarlySettle"
+              :disabled="earlySettleSubmitting || !earlySettlePreview || (earlySettleAmount !== earlySettlePreview.computed_amount && !String(earlySettleReason || '').trim())"
+            >
+              <span v-if="earlySettleSubmitting" class="material-symbols-outlined spin" style="font-size:15px">progress_activity</span>
+              確認提前結清
             </button>
           </div>
         </div>
@@ -1556,6 +1598,83 @@ async function confirmSettle() {
     showToast(e.message || '結案失敗，請重試', 'error');
   } finally {
     settleLoading.value = null;
+  }
+}
+
+// ═══ Early usage settlement ═══
+const earlySettleDialogOpen = ref(false);
+const earlySettleTarget = ref(null);
+const earlySettlePreview = ref(null);
+const earlySettleAmount = ref(0);
+const earlySettleReason = ref('');
+const earlySettleLoadingPreview = ref(false);
+const earlySettleSubmitting = ref(false);
+const earlySettleLoading = ref(null);
+
+function closeEarlySettleDialog() {
+  earlySettleDialogOpen.value = false;
+  earlySettleTarget.value = null;
+  earlySettlePreview.value = null;
+  earlySettleReason.value = '';
+  earlySettleLoadingPreview.value = false;
+  earlySettleSubmitting.value = false;
+  earlySettleLoading.value = null;
+}
+
+async function openEarlySettleDialog(row) {
+  earlySettleTarget.value = row;
+  earlySettlePreview.value = null;
+  earlySettleReason.value = '';
+  earlySettleDialogOpen.value = true;
+  earlySettleLoadingPreview.value = true;
+  earlySettleLoading.value = row.id;
+  try {
+    const token = getToken();
+    const resp = await fetch(`/api/v1/student-classes/${row.id}/early-settle/preview`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || '無法預覽提前結清');
+    earlySettlePreview.value = json;
+    earlySettleAmount.value = Number(json.computed_amount || 0);
+  } catch (e) {
+    showToast(e.message || '載入失敗', 'error');
+    closeEarlySettleDialog();
+  } finally {
+    earlySettleLoadingPreview.value = false;
+    earlySettleLoading.value = null;
+  }
+}
+
+async function confirmEarlySettle() {
+  if (!earlySettleTarget.value || !earlySettlePreview.value) return;
+  const row = earlySettleTarget.value;
+  const computed = Number(earlySettlePreview.value.computed_amount || 0);
+  const amount = Number(earlySettleAmount.value);
+  if (amount !== computed && !String(earlySettleReason.value || '').trim()) {
+    showToast('調整結清金額時必須填寫原因', 'error');
+    return;
+  }
+  earlySettleSubmitting.value = true;
+  try {
+    const token = getToken();
+    const body = { amount };
+    if (String(earlySettleReason.value || '').trim()) body.adjustment_reason = String(earlySettleReason.value).trim();
+    const resp = await fetch(`/api/v1/student-classes/${row.id}/early-settle`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(json.message || `提前結清失敗（${resp.status}）`);
+    closeEarlySettleDialog();
+    rows.value = rows.value.filter(r => r.id !== row.id);
+    showToast(json.message || `已提前結清：${row.student_name} ${row.subject}`);
+    loadAlerts();
+  } catch (e) {
+    showToast(e.message || '提前結清失敗，請重試', 'error');
+  } finally {
+    earlySettleSubmitting.value = false;
   }
 }
 
