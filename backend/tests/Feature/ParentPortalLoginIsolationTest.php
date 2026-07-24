@@ -119,8 +119,18 @@ class ParentPortalLoginIsolationTest extends TestCase
 
         // Explicit LINE binding for both under a single parent line_user_id (valid U+32hex format)
         $lineUserId = 'Ua1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
-        StudentLineBinding::create(['student_id' => $studentA->id, 'line_user_id' => $lineUserId]);
-        StudentLineBinding::create(['student_id' => $studentB->id, 'line_user_id' => $lineUserId]);
+        StudentLineBinding::create([
+            'student_id' => $studentA->id,
+            'line_user_id' => $lineUserId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+        StudentLineBinding::create([
+            'student_id' => $studentB->id,
+            'line_user_id' => $lineUserId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
 
         $token = $this->parentLogin('王大毛', '0911000001');
         $res = $this->getJson('/api/v1/parent/dashboard', [
@@ -482,8 +492,18 @@ class ParentPortalLoginIsolationTest extends TestCase
         $studentB = $this->createStudent(2, '許瀠升', '0911000002'); // different campus
 
         $invalidLineId = 'INVALID_NOT_LINE_FORMAT'; // not U+32hex
-        StudentLineBinding::create(['student_id' => $studentA->id, 'line_user_id' => $invalidLineId]);
-        StudentLineBinding::create(['student_id' => $studentB->id, 'line_user_id' => $invalidLineId]);
+        StudentLineBinding::create([
+            'student_id' => $studentA->id,
+            'line_user_id' => $invalidLineId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+        StudentLineBinding::create([
+            'student_id' => $studentB->id,
+            'line_user_id' => $invalidLineId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
 
         $token = $this->parentLogin('黃品皓', '0911000001');
         $res = $this->getJson('/api/v1/parent/dashboard', [
@@ -503,8 +523,18 @@ class ParentPortalLoginIsolationTest extends TestCase
         $studentA = $this->createStudent(1, '王大毛', '0911000003');
         $studentB = $this->createStudent(1, '王二毛', '0911000004');
 
-        StudentLineBinding::create(['student_id' => $studentA->id, 'line_user_id' => $validLineId]);
-        StudentLineBinding::create(['student_id' => $studentB->id, 'line_user_id' => $validLineId]);
+        StudentLineBinding::create([
+            'student_id' => $studentA->id,
+            'line_user_id' => $validLineId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+        StudentLineBinding::create([
+            'student_id' => $studentB->id,
+            'line_user_id' => $validLineId,
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
 
         $token = $this->parentLogin('王大毛', '0911000003');
         $res = $this->getJson('/api/v1/parent/dashboard', [

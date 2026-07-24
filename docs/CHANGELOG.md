@@ -1,8 +1,18 @@
+## 2026-07-24 — security: 家長入口跨學生資料隔離（P0）
+
+- LINE 綁定現在必須同時驗證學生姓名／學號與家長聯絡手機；不再接受只憑姓名或學號的綁定。
+- LINE 自動登入改由後端向 LINE Profile API 驗證 access token，不再信任瀏覽器提供的 user ID。
+- 既有無驗證證據的 LINE binding 暫停授權與推播，既有家長 session 到期；家長需透過安全流程重新綁定。
+- Dashboard、切換學生、通知偏好與家長推播只採用已驗證 binding。
+
+開發備註：P0 privacy containment。新增 `verified_at`／`verification_method`，回歸涵蓋偽造登入、舊 binding、無手機綁定與跨學生切換。
+
 ## 2026-07-24 — polish: Login 頁改吃 DS tokens（Epic #687 pilot）
 
 - `Login.vue` 移除 glassmorphism／動態 gradient mesh／裝飾 emoji；表單與狀態改用 `--ds-*`。
 - 新增 AA CTA tokens（`--ds-cta`／`--ds-on-cta`）；角色改 native radio card；raw hex 35→0。
 - 長期截圖：`docs/reviews/login-polish-1386/`。
+
 ## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
 ## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
 

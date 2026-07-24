@@ -21,6 +21,7 @@ use App\Services\ExceptionWorkflowService;
 use App\Services\SessionDeductionService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -113,10 +114,13 @@ class ParentPortalController extends Controller
         // Only attach additional students if they share an explicit LINE binding.
         // 不再以「相同 Phone」自動帶出 siblings，避免跨家庭 PII 洩漏。
         $lineUserIds = StudentLineBinding::where('student_id', $student->id)
+            ->verified()
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
         if ($lineUserIds->isNotEmpty()) {
-            $siblingIds = StudentLineBinding::whereIn('line_user_id', $lineUserIds)
+            $siblingIds = StudentLineBinding::query()
+                ->whereNotNull('verified_at')
+                ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')
                 ->unique();
@@ -231,11 +235,34 @@ class ParentPortalController extends Controller
     public function loginWithLine(Request $request)
     {
         $data = $request->validate([
-            'line_user_id' => 'required|string',
+            'access_token' => 'required|string|max:2048',
             'campus_id'    => 'nullable|integer',
         ]);
 
-        $studentIds = StudentLineBinding::where('line_user_id', $data['line_user_id'])
+        try {
+            $profileResponse = Http::withToken($data['access_token'])
+                ->acceptJson()
+                ->timeout(5)
+                ->get('https://api.line.me/v2/profile');
+        } catch (\Throwable $e) {
+            Log::warning('parent.line_login.profile_unavailable', [
+                'campus_id' => (int) ($data['campus_id'] ?? 0),
+            ]);
+            return response()->json(['message' => 'LINE authentication unavailable'], 503);
+        }
+
+        if (!$profileResponse->successful()) {
+            return response()->json(['message' => 'Invalid LINE authentication'], 401);
+        }
+
+        $lineUserId = (string) $profileResponse->json('userId', '');
+        if (!$this->isValidLineUserId($lineUserId)) {
+            return response()->json(['message' => 'Invalid LINE authentication'], 401);
+        }
+
+        $studentIds = StudentLineBinding::query()
+            ->whereNotNull('verified_at')
+            ->where('line_user_id', $lineUserId)
             ->pluck('student_id');
         $students = $studentIds->isNotEmpty()
             ? Student::whereIn('id', $studentIds)->get()
@@ -282,10 +309,13 @@ class ParentPortalController extends Controller
         if ($currentStudent) {
             // Check via student_line_bindings: any shared *valid* line_user_id
             $currentLineIds = StudentLineBinding::where('student_id', $currentStudent->id)
+                ->verified()
                 ->pluck('line_user_id')
                 ->filter(fn ($id) => $this->isValidLineUserId($id));
             if ($currentLineIds->isNotEmpty()) {
-                $allowed = StudentLineBinding::where('student_id', $targetStudent->id)
+                $allowed = StudentLineBinding::query()
+                    ->whereNotNull('verified_at')
+                    ->where('student_id', $targetStudent->id)
                     ->whereIn('line_user_id', $currentLineIds)
                     ->exists();
             }
@@ -757,10 +787,13 @@ class ParentPortalController extends Controller
         // PRD-B FR-B-001: Siblings 僅透過 LINE 綁定解析，不再以相同 Phone 自動帶出。
         // 只接受有效 LINE user ID 格式（U+32hex），過濾 backfill 產生的無效值。
         $lineUserIds = StudentLineBinding::where('student_id', $student->id)
+            ->verified()
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
         $siblingIdsByLine = $lineUserIds->isNotEmpty()
-            ? StudentLineBinding::whereIn('line_user_id', $lineUserIds)
+            ? StudentLineBinding::query()
+                ->whereNotNull('verified_at')
+                ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')
                 ->unique()
@@ -791,7 +824,7 @@ class ParentPortalController extends Controller
                 'school'      => $student->SchoolName ?? null,
                 'campus_name' => $campusName,
                 'campus_id'   => (int) ($student->CampusID ?? 0),
-                'line_linked' => StudentLineBinding::where('student_id', $student->id)->exists(),
+                'line_linked' => StudentLineBinding::where('student_id', $student->id)->verified()->exists(),
             ],
             'students' => $allStudents->count() > 1 ? $allStudents->toArray() : null,
             'current_month_label'      => $currentMonthLabel,
@@ -1119,7 +1152,7 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Unauthorized'], 401);
         }
 
-        $bindings = StudentLineBinding::where('student_id', $session->StudentID)->get();
+        $bindings = StudentLineBinding::where('student_id', $session->StudentID)->verified()->get();
         $enabled = $bindings->isEmpty()
             ? true
             : $bindings->every(fn ($b) => (bool) ($b->notify_learning_feedback ?? true));
@@ -1139,6 +1172,7 @@ class ParentPortalController extends Controller
 
         $data = $request->validate(['learning_feedback_push' => 'required|boolean']);
         StudentLineBinding::where('student_id', $session->StudentID)
+            ->verified()
             ->update(['notify_learning_feedback' => $data['learning_feedback_push'] ? 1 : 0]);
 
         return response()->json([

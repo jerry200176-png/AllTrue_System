@@ -100,7 +100,8 @@ class FeedbackPushNotifierTest extends TestCase
         $fb = $this->makeFeedback((int) $campus->id);
         StudentLineBinding::create([
             'student_id' => $fb->student_id, 'line_user_id' => 'U-bound', 'campus_id' => (int) $campus->id,
-            'bound_at' => now(), 'notify_learning_feedback' => 1,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 1,
         ]);
 
         $this->notifier()->notifyStaffReplied($fb);
@@ -120,7 +121,28 @@ class FeedbackPushNotifierTest extends TestCase
         $fb = $this->makeFeedback((int) $campus->id);
         StudentLineBinding::create([
             'student_id' => $fb->student_id, 'line_user_id' => 'U-optout', 'campus_id' => (int) $campus->id,
-            'bound_at' => now(), 'notify_learning_feedback' => 0,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 0,
+        ]);
+
+        $this->notifier()->notifyStaffReplied($fb);
+
+        Http::assertNothingSent();
+        $this->assertSame(0, FeedbackPushLog::where('direction', 'to_parent')->count());
+    }
+
+    public function test_historical_unverified_binding_is_not_pushed(): void
+    {
+        config(['perfflags.feedback_push_enabled' => true]);
+        Http::fake(['api.line.me/*' => Http::response([], 200)]);
+        $campus = $this->campusWithToken();
+        $fb = $this->makeFeedback((int) $campus->id);
+        StudentLineBinding::create([
+            'student_id' => $fb->student_id,
+            'line_user_id' => 'U-unverified',
+            'campus_id' => (int) $campus->id,
+            'bound_at' => now(),
+            'notify_learning_feedback' => 1,
         ]);
 
         $this->notifier()->notifyStaffReplied($fb);
@@ -139,7 +161,8 @@ class FeedbackPushNotifierTest extends TestCase
         // binding 掛在另一校 → 不可被 A 校事件推播
         StudentLineBinding::create([
             'student_id' => $fb->student_id, 'line_user_id' => 'U-other-campus', 'campus_id' => (int) $campusB->id,
-            'bound_at' => now(), 'notify_learning_feedback' => 1,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 1,
         ]);
 
         $this->notifier()->notifyStaffReplied($fb);
@@ -155,7 +178,8 @@ class FeedbackPushNotifierTest extends TestCase
         $fb = $this->makeFeedback((int) $campus->id);
         StudentLineBinding::create([
             'student_id' => $fb->student_id, 'line_user_id' => 'U-merge', 'campus_id' => (int) $campus->id,
-            'bound_at' => now(), 'notify_learning_feedback' => 1,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 1,
         ]);
 
         $this->notifier()->notifyStaffReplied($fb); // 第一次推
@@ -172,7 +196,8 @@ class FeedbackPushNotifierTest extends TestCase
         $fb = $this->makeFeedback((int) $campus->id);
         StudentLineBinding::create([
             'student_id' => $fb->student_id, 'line_user_id' => 'U-fail', 'campus_id' => (int) $campus->id,
-            'bound_at' => now(), 'notify_learning_feedback' => 1,
+            'bound_at' => now(), 'verified_at' => now(), 'verification_method' => 'contact_phone',
+            'notify_learning_feedback' => 1,
         ]);
 
         $this->notifier()->notifyStaffReplied($fb); // 不可丟出例外
