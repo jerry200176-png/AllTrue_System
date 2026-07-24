@@ -855,6 +855,12 @@ class ClassSessionController extends Controller
             return $this->sessionUpdateResponse($session, '堂次已更新');
         }
 
+        if ($studentClass->isUsageSettlementLocked()) {
+            return response()->json([
+                'message' => '此課程已提前結清並鎖定點名，不可再變更出勤狀態。如需調整請開新約。',
+            ], 409);
+        }
+
         // Validate state machine transition
         $allowed = self::STATUS_TRANSITIONS[$currentStatus] ?? [];
         if (!in_array($newStatus, $allowed, true)) {

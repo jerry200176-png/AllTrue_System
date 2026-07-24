@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 
 /**
  * @property int $id
@@ -34,6 +36,40 @@ class ClassSession extends Model
         'IsContractException' => 'boolean',
         'session_charge' => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(fn (ClassSession $session) => $session->assertCourseIsMutable());
+        static::updating(function (ClassSession $session) {
+            if ($session->isDirty(['StudentClassID', 'SessionDate', 'StartTime', 'EndTime', 'Status'])) {
+                $session->assertCourseIsMutable();
+            }
+        });
+    }
+
+    private function assertCourseIsMutable(): void
+    {
+        $courseId = (int) $this->getAttribute('StudentClassID');
+        if ($courseId <= 0) {
+            return;
+        }
+        if (!Schema::hasColumn('StudentClass', 'settlement_locked_at')) {
+            return;
+        }
+
+        $locked = StudentClass::query()
+            ->where('ID', $courseId)
+            ->where(function ($query) {
+                $query->whereNotNull('settlement_locked_at')
+                    ->orWhere('closed_reason', 'usage_settled');
+            })
+            ->exists();
+        if ($locked) {
+            throw ValidationException::withMessages([
+                'student_class_id' => '此課程已提前結清，堂次與點名紀錄已鎖定。',
+            ]);
+        }
+    }
 
     public function studentClass()
     {
