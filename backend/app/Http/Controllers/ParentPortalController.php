@@ -118,7 +118,8 @@ class ParentPortalController extends Controller
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
         if ($lineUserIds->isNotEmpty()) {
-            $siblingIds = StudentLineBinding::verified()
+            $siblingIds = StudentLineBinding::query()
+                ->whereNotNull('verified_at')
                 ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')
@@ -259,7 +260,8 @@ class ParentPortalController extends Controller
             return response()->json(['message' => 'Invalid LINE authentication'], 401);
         }
 
-        $studentIds = StudentLineBinding::verified()
+        $studentIds = StudentLineBinding::query()
+            ->whereNotNull('verified_at')
             ->where('line_user_id', $lineUserId)
             ->pluck('student_id');
         $students = $studentIds->isNotEmpty()
@@ -311,7 +313,8 @@ class ParentPortalController extends Controller
                 ->pluck('line_user_id')
                 ->filter(fn ($id) => $this->isValidLineUserId($id));
             if ($currentLineIds->isNotEmpty()) {
-                $allowed = StudentLineBinding::verified()
+                $allowed = StudentLineBinding::query()
+                    ->whereNotNull('verified_at')
                     ->where('student_id', $targetStudent->id)
                     ->whereIn('line_user_id', $currentLineIds)
                     ->exists();
@@ -788,7 +791,8 @@ class ParentPortalController extends Controller
             ->pluck('line_user_id')
             ->filter(fn ($id) => $this->isValidLineUserId($id));
         $siblingIdsByLine = $lineUserIds->isNotEmpty()
-            ? StudentLineBinding::verified()
+            ? StudentLineBinding::query()
+                ->whereNotNull('verified_at')
                 ->whereIn('line_user_id', $lineUserIds)
                 ->where('student_id', '!=', $student->id)
                 ->pluck('student_id')

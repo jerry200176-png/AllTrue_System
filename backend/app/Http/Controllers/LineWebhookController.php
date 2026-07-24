@@ -255,18 +255,17 @@ class LineWebhookController extends Controller
 
     private function bindStudent(Student $student, string $lineUserId): void
     {
-        StudentLineBinding::updateOrCreate(
-            [
-                'student_id' => $student->id,
-                'line_user_id' => $lineUserId,
-            ],
-            [
-                'campus_id' => $student->CampusID,
-                'bound_at' => now(),
-                'verified_at' => now(),
-                'verification_method' => 'contact_phone',
-            ]
-        );
+        $binding = StudentLineBinding::query()->firstOrNew([
+            'student_id' => $student->id,
+            'line_user_id' => $lineUserId,
+        ]);
+        $binding->fill([
+            'campus_id' => $student->CampusID,
+            'bound_at' => now(),
+            'verified_at' => now(),
+            'verification_method' => 'contact_phone',
+        ]);
+        $binding->save();
         // Keep Student.LineID in sync for backward compatibility
         $student->update(['LineID' => $lineUserId]);
     }
