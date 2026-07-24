@@ -1,3 +1,11 @@
+## 2026-07-24 — revert: 登入頁恢復 #1386 前視覺
+
+- `Login.vue` 退回 DS polish pilot 之前的介面（玻璃／品牌 mesh 等）。
+- 移除僅服務該 pilot 的 `login-polish` e2e；更新 design-hex baseline。
+- 全局 `--ds-cta`／`AtButton` AA tokens 保留（不影響本次登入外觀還原）。
+
+開發備註：Founder 要求退回 #1386 Login 視覺；行為（帳密／忘記密碼）不變。
+
 ## 2026-07-24 — docs: RFC 依 starred repos 做平台大改版規劃（無業務碼）
 
 - 新增 `docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`：每項優化標明參考 repo、要學／不要學、落地位置。
