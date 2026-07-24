@@ -157,13 +157,13 @@ const finalEndDate = computed(() => {
   margin: 10px 0 0;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--ds-warning, #b54708);
-  background: #fff7ed;
+  border: 1px solid var(--ds-warning);
+  background: var(--ds-warning-wash);
 }
 .renewal-warning-item {
   margin: 0;
   font-size: 13px;
-  color: var(--ds-ink, #0d253d);
+  color: var(--ds-ink);
   line-height: 1.45;
 }
 .renewal-warning-item + .renewal-warning-item { margin-top: 6px; }
