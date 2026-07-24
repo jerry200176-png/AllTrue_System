@@ -3152,7 +3152,8 @@ class StudentClassController extends Controller
 
             $openExceptions = 0;
             if (Schema::hasColumn('ClassSession', 'IsContractException')) {
-                $openExceptions = (int) ClassSession::where('StudentClassID', $studentClass->ID)
+                $openExceptions = (int) ClassSession::query()
+                    ->where('StudentClassID', $studentClass->getKey())
                     ->where('Status', 'scheduled')
                     ->where('IsContractException', 1)
                     ->whereDate('SessionDate', '>=', Carbon::today()->toDateString())

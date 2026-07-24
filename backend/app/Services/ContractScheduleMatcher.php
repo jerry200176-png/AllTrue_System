@@ -24,7 +24,9 @@ class ContractScheduleMatcher
             return;
         }
 
-        $studentClass = $studentClass ?: StudentClass::where('ID', $session->StudentClassID)->first();
+        $studentClass = $studentClass ?: StudentClass::query()
+            ->where('ID', $session->getAttribute('StudentClassID'))
+            ->first();
         if (!$studentClass) {
             return;
         }
@@ -32,8 +34,8 @@ class ContractScheduleMatcher
         $startHm = substr((string) $session->StartTime, 0, 5);
         $endHm = $session->EndTime ? substr((string) $session->EndTime, 0, 5) : null;
         $isException = !$this->matchesContract($sessionDate, $startHm, $endHm, $studentClass);
-        if ((bool) ($session->IsContractException ?? false) !== $isException) {
-            $session->IsContractException = $isException ? 1 : 0;
+        if ((bool) $session->getAttribute('IsContractException') !== $isException) {
+            $session->setAttribute('IsContractException', $isException ? 1 : 0);
             $session->save();
         }
     }
@@ -42,8 +44,9 @@ class ContractScheduleMatcher
     {
         $isoDow = (int) Carbon::parse($sessionDate)->dayOfWeekIso;
         $startHm = substr($startTime, 0, 5);
-        $globalDurHours = $studentClass->SessionDuration
-            ? round((int) $studentClass->SessionDuration / 60, 1)
+        $sessionDuration = (int) $studentClass->getAttribute('SessionDuration');
+        $globalDurHours = $sessionDuration > 0
+            ? round($sessionDuration / 60, 1)
             : 2;
 
         $weekFields = ['week', 'week1', 'week2', 'week3', 'week4', 'week5', 'week6'];
@@ -55,7 +58,7 @@ class ContractScheduleMatcher
             if ($day < 1 || $day > 7) {
                 continue;
             }
-            $tf = $timeFields[$index] ?? 'time';
+            $tf = $timeFields[$index];
             $rawTime = (string) ($studentClass->{$tf} ?? $studentClass->time ?? '');
             $slotStart = $rawTime ? substr($rawTime, 0, 5) : '';
             if ($slotStart === '') {
