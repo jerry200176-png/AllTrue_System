@@ -1,3 +1,10 @@
+## 2026-07-22 — docs: Course Continuity RFC + PII-free cohort SQL（#1382）
+
+- 新增課程延續（Course Continuity）架構 RFC：推薦 group＋members，拒絕實體合併 StudentClass。
+- 附唯讀 cohort 發現 SQL 與結果模板（無 PII）；數字待 production 唯讀執行後回填。
+
+開發備註：與 #1130／#1134 歷史修復分離；實作 PR 序列見 RFC §10／issue #1382。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.
