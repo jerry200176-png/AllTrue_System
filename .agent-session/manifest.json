@@ -5,7 +5,7 @@
   "task_id": "1384",
   "repo_remote": "https://github.com/jerry200176-png/AllTrue_System.git",
   "base_sha": "2e715dd13de0a06ea010f17562d8e4a2a266af39",
-  "branch": "chore/task-1384",
+  "branch": "fix/1384-sync-session-slot-collision",
   "worktree_path": "/home/jerry/workspace/tasks/alltrue/1384",
   "started_at": "2026-07-24T10:52:24Z",
   "production_mutation": false,
