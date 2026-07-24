@@ -1,5 +1,6 @@
 /**
- * Plain node assertions mirroring useCourseSessionsDisplay occurrence filters.
+ * Plain node assertions mirroring sessionOccurrenceFilter (no vitest required).
+ * Canonical tests: src/lib/sessionOccurrenceFilter.test.js
  * Run: node src/composables/course-management/useCourseSessionsDisplay.occurrence.test.js
  */
 const INTERNAL = 'cancelled-duplicate-reschedule-placeholder';
