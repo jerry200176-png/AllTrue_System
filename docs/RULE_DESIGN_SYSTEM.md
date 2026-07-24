@@ -152,6 +152,7 @@ Epic：[#687](https://github.com/jerry200176-png/AllTrue_System/issues/687)
 | Wave 2 頁面 | 金流三頁（TuitionCollection/Report/PayReport）| [#694](https://github.com/jerry200176-png/AllTrue_System/issues/694) | Open |
 | Wave 2 頁面 | AttendancePage | [#695](https://github.com/jerry200176-png/AllTrue_System/issues/695) | Open |
 | Wave 3 頁面 | ParentPortal / ParttimePayroll / BugReports 等 | [#696](https://github.com/jerry200176-png/AllTrue_System/issues/696) | Open |
+| Wave 3 頁面 | **Login.vue DS polish（本 pilot）** | PR（本分支）| **In progress** |
 | 元件 | 橫切 components（modal/Select/排課器）母單 | [#701](https://github.com/jerry200176-png/AllTrue_System/issues/701) | Open |
 | UX | 導覽教學去 emoji + Popover DS | [#703](https://github.com/jerry200176-png/AllTrue_System/issues/703) | Open |
 | 產品決策 | EngagementRank/SystemTrust/AmbientMusic 收斂 | [#704](https://github.com/jerry200176-png/AllTrue_System/issues/704) | **待 CEO 決策** |

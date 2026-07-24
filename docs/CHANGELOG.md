@@ -1,3 +1,8 @@
+## 2026-07-24 — polish: Login 頁改吃 DS tokens（Epic #687 pilot）
+
+- `Login.vue` 移除 glassmorphism／動態 gradient mesh／裝飾 emoji；表單與狀態改用 `--ds-*`。
+- raw hex：35 → 0。登入／忘記密碼行為不變。證據：`/opt/cursor/artifacts/login-polish/` before-after。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.
