@@ -8,6 +8,7 @@ Tool-neutral canonical governance for the portfolio. Product specifics live in o
 | [PRECEDENCE.md](./PRECEDENCE.md) | Instruction conflict resolution |
 | [AGENT_CAPABILITY_REGISTRY.md](./AGENT_CAPABILITY_REGISTRY.md) | Proven vs assumed capabilities |
 | [EVIDENCE_CONTRACT.md](./EVIDENCE_CONTRACT.md) | What counts as verify / closure |
+| [OUTBOUND_READINESS_GATE.md](./OUTBOUND_READINESS_GATE.md) | Human-recipient workflow activation gate (artifact ≠ delivery) |
 | [GOVERNANCE_CHANGELOG.md](./GOVERNANCE_CHANGELOG.md) | Governance version history |
 | [../sop/AGENT_PREFLIGHT.md](../sop/AGENT_PREFLIGHT.md) | Mandatory start checklist |
 | [../sop/BUG_INTAKE_TO_PRODUCTION.md](../sop/BUG_INTAKE_TO_PRODUCTION.md) | Bug path wrapper |

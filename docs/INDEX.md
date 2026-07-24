@@ -162,6 +162,8 @@ AllTrue 現在以 **AllTrue AI 公司** 方式治理。使用者是 CEO；AI Age
 | **Backup** | `docs/OPERATIONS_RUNBOOK.md` §P |
 | **完整 SOP** | `docs/OPERATIONS_RUNBOOK.md` |
 | **危險操作** | `docs/DANGEROUS_OPERATIONS.md` |
+| **Outbound readiness（真人收件）** | [`governance/OUTBOUND_READINESS_GATE.md`](governance/OUTBOUND_READINESS_GATE.md) · `scripts/outbound-readiness-gate.py` |
+| **#1342 主任 CSV 交付／審核** | [`sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md`](sop/LEAVE_CASCADE_DIRECTOR_CSV_REVIEW.md) · tracker `operations/closeout/leave-hc-campus-review-tracker.json` |
 | **SOP 漂移檢查** | `docs/OPERATIONAL_CONSISTENCY_CHECK.md` |
 
 ### SRE / Product Ops

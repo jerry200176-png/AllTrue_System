@@ -13,20 +13,24 @@
 | Ops | 交付 CSV、更新 tracker、轉 repair bundle、手動 dispatch repair |
 | Founder | **不**代審 session ID |
 
-**Artifact 已生成 ≠ 交付完成。** 每校必須有 owner、交付／回覆期限、計數與最後追蹤時間。
+**Artifact 已生成 ≠ 交付完成。** 每校必須有 owner、交付／回覆期限、計數與最後追蹤時間。  
+**Outbound readiness：** 見 [`docs/governance/OUTBOUND_READINESS_GATE.md`](../governance/OUTBOUND_READINESS_GATE.md) — 人類收件 workflow 啟用前必須過 gate。
 
 ## 四校任務（SLA）
 
-| 分校 | 候補 | Owner | 交付 | 回覆 |
+| 分校 | 候補 | Owner | 交付 | 簽收 ack / 回覆 |
 |------|-----:|------|------|------|
 | 大直 (3) | 7 | 大直主任 + platform-ops | 2026-07-20 17:00+08 | 2026-07-22 18:00+08 |
 | 新莊 (11) | 9 | 新莊主任 + platform-ops | 同上 | 同上 |
 | 新莊中平 (13) | 2 | 新莊中平主任 + platform-ops | 同上 | 同上 |
 | 新店 (9) | 1 | 新店主任 + platform-ops | 同上 | 同上 |
 
+- **狀態機：** `awaiting_delivery`（未交檔）→ 交檔後仍等簽收 → 主任確認簽收後才 `awaiting_review`。  
+- **2026-07-22：** platform-ops 用既有核准主任 LINE 私訊／內部群組，從 run `29686172773` 下載 CSV 人工交付；不靠 Gmail、不新開通知整合。GitHub 禁止主任姓名／學生資料／公開 CSV。  
+- 逾 **ack 18:00+08** 仍無 `acknowledged_at` → `deadline_at_risk`（簽收風險；**≠** 主任未審核內容）。  
 - 逾期提醒：2026-07-23 09:00+08（tracker workflow 留言 #1342）  
 - 最終 defer：2026-07-25 18:00+08（未回覆維持不修改，標記 `defer_unreplied`）  
-- 計數欄：候補／核准／保留／查證／未回覆／最後追蹤 — 見 tracker JSON
+- 回填欄：`channel`／`csv_sha256`／`delivered_at`／`acknowledged_at`／`next_track_at` — 見 tracker JSON
 
 ## 主任 CSV 欄位
 
