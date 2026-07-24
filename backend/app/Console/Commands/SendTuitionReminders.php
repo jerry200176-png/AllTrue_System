@@ -53,6 +53,7 @@ class SendTuitionReminders extends Command
 
             // Find LINE binding for this student
             $binding = StudentLineBinding::where('student_id', $student->id)
+                ->verified()
                 ->where('campus_id', $campusId)
                 ->first();
 

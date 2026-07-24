@@ -106,6 +106,7 @@ class LineWebhookController extends Controller
     private function handleFollow(string $lineUserId, object $campus): void
     {
         $studentIds = StudentLineBinding::where('line_user_id', $lineUserId)
+            ->verified()
             ->where('campus_id', $campus->id)
             ->pluck('student_id');
         $students = $studentIds->isNotEmpty()
@@ -117,7 +118,7 @@ class LineWebhookController extends Controller
             $this->sendFlexMessage(
                 $lineUserId,
                 "歡迎回來！",
-                "已綁定學生：{$names}\n點選下方按鈕查看 {$campus->name} 的學習狀況 📚\n\n如需綁定其他孩子，請輸入「綁定 學生姓名」。",
+                "已綁定學生：{$names}\n點選下方按鈕查看 {$campus->name} 的學習狀況 📚\n\n如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。",
                 $this->getPortalUrl($campus),
                 $campus
             );
@@ -127,8 +128,8 @@ class LineWebhookController extends Controller
         $this->sendMessage(
             $lineUserId,
             "您好！歡迎加入 {$campus->name} LINE 官方帳號。\n\n" .
-            "請輸入「綁定 學生姓名」來連結您孩子的帳號。\n" .
-            "例如：綁定 王小明\n\n" .
+            "請輸入「綁定 學生姓名 家長手機」來連結您孩子的帳號。\n" .
+            "例如：綁定 王小明 0912345678\n\n" .
             "綁定後即可透過 LINE 查看剩餘堂數、出缺勤記錄與學習評量。\n" .
             "如有多位孩子，可重複綁定。",
             $campus
@@ -150,7 +151,11 @@ class LineWebhookController extends Controller
         }
         // 綁定 {StudentID} only (no phone)
         if (preg_match('/^綁定\s+(\d+)$/', $trimmed, $m)) {
-            $this->handleBindingByIdOnly($lineUserId, (int) $m[1], $replyToken, $campus);
+            $this->replyMessage(
+                $replyToken,
+                '為保護學生資料，綁定時必須同時提供家長手機，例如：「綁定 1234 0912345678」。',
+                $campus
+            );
             return;
         }
         // 綁定 {姓名} {Phone}
@@ -160,79 +165,16 @@ class LineWebhookController extends Controller
         }
         // 綁定 {姓名} only (no phone)
         if (preg_match('/^綁定\s+(.+)$/u', $trimmed, $m)) {
-            $this->handleBindingByNameOnly($lineUserId, trim($m[1]), $replyToken, $campus);
-            return;
-        }
-
-        // 一般聊天不回覆：避免家長每傳一句就收到「綁定／入口」洗版。
-        // 新用戶加好友時由 follow 事件說明綁定；已綁定者由綁定成功／歡迎回來訊息帶入口即可。
-    }
-
-    private function handleBindingByNameOnly(string $lineUserId, string $name, ?string $replyToken, object $campus): void
-    {
-        $candidates = Student::whereRaw('TRIM(name) = ?', [$name])
-            ->where('CampusID', $campus->id)
-            ->get();
-
-        if ($candidates->isEmpty()) {
-            $this->replyMessage($replyToken, "在 {$campus->name} 找不到「{$name}」的學生，請確認姓名是否正確。", $campus);
-            return;
-        }
-
-        if ($candidates->count() === 1) {
-            $student = $candidates->first();
-            if ($this->isAlreadyBound($student->id, $lineUserId)) {
-                $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
-                return;
-            }
-            $this->bindStudent($student, $lineUserId);
-            $boundCount = $this->boundCount($lineUserId, $campus->id);
-            $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
-            $this->replyFlexMessage(
+            $this->replyMessage(
                 $replyToken,
-                "✅ 綁定成功！",
-                "{$student->name} 的帳號已連結至 {$campus->name}，點選下方按鈕查看學習狀況 📚" . $extra,
-                $this->getPortalUrl($campus),
+                '為保護學生資料，綁定時必須同時提供家長手機，例如：「綁定 王小明 0912345678」。',
                 $campus
             );
             return;
         }
 
-        // Multiple students with same name → list them with IDs
-        $list = $candidates->map(fn($s) => "・學號 {$s->id}：{$s->name}")->implode("\n");
-        $this->replyMessage(
-            $replyToken,
-            "找到多位同名學生，請用「綁定 學號」指定：\n{$list}\n\n例：綁定 {$candidates->first()->id}",
-            $campus
-        );
-    }
-
-    private function handleBindingByIdOnly(string $lineUserId, int $studentId, ?string $replyToken, object $campus): void
-    {
-        $student = Student::where('id', $studentId)
-            ->where('CampusID', $campus->id)
-            ->first();
-
-        if (!$student) {
-            $this->replyMessage($replyToken, "在 {$campus->name} 找不到學號 {$studentId} 的學生，請確認後重試。", $campus);
-            return;
-        }
-
-        if ($this->isAlreadyBound($student->id, $lineUserId)) {
-            $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
-            return;
-        }
-
-        $this->bindStudent($student, $lineUserId);
-        $boundCount = $this->boundCount($lineUserId, $campus->id);
-        $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
-        $this->replyFlexMessage(
-            $replyToken,
-            "✅ 綁定成功！",
-            "{$student->name} 的帳號已連結至 {$campus->name}，點選下方按鈕查看學習狀況 📚" . $extra,
-            $this->getPortalUrl($campus),
-            $campus
-        );
+        // 一般聊天不回覆：避免家長每傳一句就收到「綁定／入口」洗版。
+        // 新用戶加好友時由 follow 事件說明綁定；已綁定者由綁定成功／歡迎回來訊息帶入口即可。
     }
 
     private function handleBindingByName(string $lineUserId, string $name, string $phone, ?string $replyToken, object $campus): void
@@ -261,13 +203,13 @@ class LineWebhookController extends Controller
         }
 
         if ($this->isAlreadyBound($student->id, $lineUserId)) {
-            $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
+            $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }
 
         $this->bindStudent($student, $lineUserId);
         $boundCount = $this->boundCount($lineUserId, $campus->id);
-        $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
+        $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名 家長手機」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名 家長手機」。";
         $this->replyFlexMessage(
             $replyToken,
             "✅ 綁定成功！",
@@ -295,13 +237,13 @@ class LineWebhookController extends Controller
         }
 
         if ($this->isAlreadyBound($student->id, $lineUserId)) {
-            $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名」。", $campus);
+            $this->replyMessage($replyToken, "「{$student->name}」已經綁定過了喔！如需綁定其他孩子，請輸入「綁定 學生姓名 家長手機」。", $campus);
             return;
         }
 
         $this->bindStudent($student, $lineUserId);
         $boundCount = $this->boundCount($lineUserId, $campus->id);
-        $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名」。";
+        $extra = $boundCount > 1 ? "\n\n目前已綁定 {$boundCount} 位學生，如需綁定更多孩子，請繼續輸入「綁定 學生姓名 家長手機」。" : "\n\n如有多位孩子，可繼續輸入「綁定 學生姓名 家長手機」。";
         $this->replyFlexMessage(
             $replyToken,
             "✅ 綁定成功！",
@@ -313,12 +255,18 @@ class LineWebhookController extends Controller
 
     private function bindStudent(Student $student, string $lineUserId): void
     {
-        StudentLineBinding::insertOrIgnore([
-            'student_id'   => $student->id,
-            'line_user_id' => $lineUserId,
-            'campus_id'    => $student->CampusID,
-            'bound_at'     => now(),
-        ]);
+        StudentLineBinding::updateOrCreate(
+            [
+                'student_id' => $student->id,
+                'line_user_id' => $lineUserId,
+            ],
+            [
+                'campus_id' => $student->CampusID,
+                'bound_at' => now(),
+                'verified_at' => now(),
+                'verification_method' => 'contact_phone',
+            ]
+        );
         // Keep Student.LineID in sync for backward compatibility
         $student->update(['LineID' => $lineUserId]);
     }
@@ -327,6 +275,7 @@ class LineWebhookController extends Controller
     {
         return StudentLineBinding::where('student_id', $studentId)
             ->where('line_user_id', $lineUserId)
+            ->verified()
             ->exists();
     }
 
@@ -334,6 +283,7 @@ class LineWebhookController extends Controller
     {
         return StudentLineBinding::where('line_user_id', $lineUserId)
             ->where('campus_id', $campusId)
+            ->verified()
             ->count();
     }
 
@@ -435,7 +385,10 @@ class LineWebhookController extends Controller
             'webhook_url'            => $webhookUrl,
             'liff_url'               => $liffId ? "https://liff.line.me/{$liffId}" : null,
             'portal_url'             => $this->getPortalUrl($campus),
-            'bound_count'            => StudentLineBinding::where('campus_id', $campus->id)->count(),
+            'bound_count'            => StudentLineBinding::where('campus_id', $campus->id)->verified()->count(),
+            'unverified_bound_count' => StudentLineBinding::where('campus_id', $campus->id)
+                ->whereNull('verified_at')
+                ->count(),
             'has_channel_token'      => !empty($campus->messaging_channel_token),
             'has_channel_secret'     => !empty($campus->messaging_channel_secret),
             'liff_id_value'          => $liffId,

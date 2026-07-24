@@ -7,12 +7,18 @@ export const changelogReleaseNotes = [
     "version": "2026.07.22",
     "date": "2026-07-22",
     "title": "2026.07.22 版本更新",
-    "summary": "課程備註可正確儲存 emoji 與完整中文；建課衝突改為明確決策（試聽／加購／續報／獨立）；試聽不再受既有正式課重疊守衛阻擋；行事曆快速排課遇重疊可強制建立；課程改老師不再改寫已上堂次的授課老師",
+    "summary": "待辦匣 P0（fail-closed／分頁／DTO）；課程備註可正確儲存 emoji 與完整中文",
     "audience": [
       "teacher",
       "director"
     ],
     "sections": [
+      {
+        "title": "新增內容",
+        "items": [
+          "待辦匣 P0（fail-closed／分頁／DTO）"
+        ]
+      },
       {
         "title": "修正內容",
         "items": [
@@ -25,6 +31,7 @@ export const changelogReleaseNotes = [
       }
     ],
     "items": [
+      "待辦匣 P0（fail-closed／分頁／DTO）",
       "課程備註可正確儲存 emoji 與完整中文",
       "建課衝突改為明確決策（試聽／加購／續報／獨立）",
       "試聽建課不再被「同科同師日期重疊」擋死；行事曆快速排課補上強制建立",
@@ -507,4 +514,3 @@ export const changelogReleaseNotes = [
     ]
   }
 ];
-// #1384 ci-trigger 202607241128

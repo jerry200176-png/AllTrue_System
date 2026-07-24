@@ -1428,8 +1428,11 @@ const loginWithLine = async () => {
       window.liff.login();
       return;
     }
-    const profile = await window.liff.getProfile();
-    const result = await parentLoginLine(profile.userId, urlCampusId || null);
+    const accessToken = window.liff.getAccessToken();
+    if (!accessToken) {
+      throw new Error('LINE 登入憑證無效，請重新登入');
+    }
+    const result = await parentLoginLine(accessToken, urlCampusId || null);
     token.value = result.token;
     localStorage.setItem(tokenKey, result.token);
     setStudents(result.students || null);
