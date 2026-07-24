@@ -41,13 +41,13 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@sentry/vue": "^10.65.0",
-    "@supabase/supabase-js": "^2.110.3",
-    "vue": "^3.5.39"
+    "@sentry/vue": "^10.67.0",
+    "@supabase/supabase-js": "^2.110.8",
+    "vue": "^3.5.40"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
-    "@vitejs/plugin-vue": "^6.0.7",
+    "@vitejs/plugin-vue": "^6.0.8",
     "@vitest/coverage-v8": "^4.1.10",
     "@vue/test-utils": "^2.4.11",
     "husky": "^9.1.7",
