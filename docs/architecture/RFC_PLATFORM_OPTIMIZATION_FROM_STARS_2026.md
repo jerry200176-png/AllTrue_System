@@ -18,7 +18,7 @@
 | **不要學什麼** | 避免整包搬進現有棧（例如換框架、換 ORM、換整站 UI 庫） |
 | **落地位置** | AllTrue／Sunrise 的模組或既有 RFC |
 
-**原則**：參考＝借「決策與交互模式」；不是 fork 對方 codebase。AllTrue 仍維持 Laravel + Vue + MySQL；Sunrise 仍維持既有 Next／Supabase／LINE 棧（除非未來另開 Founder GO 的遷移案）。
+**原則**：參考＝借「決策與交互模式」；不是 fork 對方 codebase。AllTrue 仍維持 Laravel + Vue + MySQL；Sunrise 仍維持既有 Next／Supabase／LINE 棧（除非未來另開遷移案並完成 owner 風險評審）。
 
 ---
 
@@ -46,7 +46,7 @@
 | 參考 repo | 要學什麼 | 不要學什麼 | 落地位置 |
 |-----------|----------|------------|----------|
 | [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)（AllTrue localize：`.cursor/skills/design-taste-frontend`） | Brief inference；後台 dials **VARIANCE=2 / MOTION=2 / DENSITY=8**；禁 emoji 當狀態；anti-slop 檢查清單 | Landing／Awwwards 實驗排版、換字體蓋掉 Inter+Noto | 課程管理、繳費、行事曆 UI 變更的 skill 閘門 |
-| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | **Forms & Feedback**：確認 dialog、錯誤靠欄位、loading 防雙送、狀態不只靠顏色、progressive disclosure | 用它的 design-system generator  generat 整站新色盤蓋過 DS | 暫停／結案／調課／續約 modal；chip 狀態文案 |
+| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | **Forms & Feedback**：確認 dialog、錯誤靠欄位、loading 防雙送、狀態不只靠顏色、progressive disclosure | 用它的 design-system generator 產生整站新色盤蓋過 DS | 暫停／結案／調課／續約 modal；chip 狀態文案 |
 | [pbakaus/impeccable](https://github.com/pbakaus/impeccable) | AI harness「設計語言」：間距／層級／少裝飾 | 另開一套與 `RULE_DESIGN_SYSTEM` 衝突的 token | Agent 產出 UI 時的第二檢查 |
 | [pacifio/ui](https://github.com/pacifio/ui) | **Dense ops UI**：多表面、資訊密度、dashboard／chat 工作台語彙 | 強制 AMOLED 黑主題、整站換成 atlas CSS | 主任儀表板、課程列、行事曆側欄密度 |
 | [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md) | Stripe 等品牌 DESIGN.md 的「意圖＋token＋禁令」寫法 | 複製 Stripe 行銷 gradient mesh 進後台 | 已反映於 `RULE_DESIGN_SYSTEM.md`；持續對齊 |
@@ -109,14 +109,14 @@
 
 ---
 
-## 3. Epics（分階段；皆先規劃，Founder GO 後才開工）
+## 3. Epics（分階段；依風險閘門開工）
 
 ### Epic A — Schedule Occurrence Integrity（系列／單堂）
 
 - **目標**：調課後無幽靈堂；契約不被單堂污染；續約可預期。  
 - **參考**：Cal.com（series/occurrence）、FullCalendar（事件移動預期）、alf.io（名額）。  
 - **已開工／相關**：`fix/schedule-occurrence-stability`（#1402）、R56 placeholder、ADR_004 atomic reschedule。  
-- **下一刀（待 GO）**：行事曆與課程管理同一套「有效堂次」過濾；1v2 超排與衝堂 dialog 內錯誤（ui-ux-pro-max Forms）。
+- **下一刀**：行事曆與課程管理同一套「有效堂次」過濾；1v2 超排與衝堂 dialog 內錯誤（ui-ux-pro-max Forms）。
 
 ### Epic B — Course Continuity（合約群組視圖）
 
@@ -184,7 +184,7 @@ Phase 5           Epic F Sunrise 訂位／候補（獨立 repo／PR）
 Phase 6           Epic G AI-native（digest → anomaly → retention）
 ```
 
-每 Phase 開工前：Founder GO + `agent-start` + 對照本 RFC「要學／不要學」表。
+每 Phase 開工前：完成風險分級、建立可回滾的小型 PR，並對照本 RFC「要學／不要學」表；只有需要新權限、外部付費或不可逆產品決策時才升級請 owner 介入。
 
 ---
 
@@ -200,22 +200,24 @@ Phase 6           Epic G AI-native（digest → anomaly → retention）
 
 ---
 
-## 7. Founder decisions（2026-07-24 鎖定）
+## 7. Delegated-owner execution defaults（2026-07-24）
 
-| # | 問題 | 決定 | 對 Epic 的含義 |
+以下是 owner 授權代理持續處理後採用的可逆執行預設，**不是逐項由 Founder 親自表態的決策**；涉及付費、自架、資料遷移或跨產品共用個資時，仍須另案評審。
+
+| # | 問題 | 執行預設 | 對 Epic 的含義 |
 |---|------|------|----------------|
 | 1 | Novu／Chatwoot | **12 個月內可評估自架**（非永遠只學模式） | Epic E：先落地「偏好／digest／去重」資料模型與現有 LINE／Telegram channel；另開評估單（資安、營運、成本）再決定是否自架 Novu／Chatwoot |
 | 2 | 主任後台密度 | **願意逐步 denser table**（Carbon／Fluent 風） | Epic D：可導入更密表格／篩選條／批次列；仍受 `RULE_DESIGN_SYSTEM` 與 taste 後台 dials 約束，禁止行銷大翻新 |
 | 3 | AllTrue ↔ Sunrise 通知偏好 | **兩個品牌完全分開** | Epic E／F：通知偏好、文案、通道設定分產品；可共用工程經驗，不可共用家長／客人同一套產品語言或設定 UI |
 
-舊版「Open questions」已關閉；若要改決定，在本 Issue／PR 留言並更新本表日期。
+舊版「Open questions」改由上述預設推進；若 owner 覆寫預設，在本 Issue／PR 留言並更新本表日期。
 
 ---
 
 ## 8. Document control
 
 - **Authors**: Agent（Composer）依 Founder star 清單與既有 RFC／roadmap 彙整  
-- **Review**: Founder／CEO（§7 已於 2026-07-24 鎖定）  
+- **Review**: delegated owner workflow；§7 為可覆寫執行預設
 - **Promotion**: 本檔保持 Draft 直到對應 Epic 開工；變更參考表或 §7 需更新日期  
 
 **本 PR／Issue 僅規劃，不含應用程式行為變更。**
