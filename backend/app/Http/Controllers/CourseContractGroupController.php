@@ -80,7 +80,7 @@ class CourseContractGroupController extends Controller
         }
 
         $group = CourseContractGroup::query()->find($id);
-        if (!$group) {
+        if (!$group instanceof CourseContractGroup) {
             return response()->json(['message' => '群組不存在'], 404);
         }
 
@@ -101,7 +101,7 @@ class CourseContractGroupController extends Controller
         }
 
         $group = CourseContractGroup::query()->find($id);
-        if (!$group) {
+        if (!$group instanceof CourseContractGroup) {
             return response()->json(['message' => '群組不存在'], 404);
         }
 

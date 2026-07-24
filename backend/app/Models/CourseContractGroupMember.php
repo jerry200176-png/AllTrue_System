@@ -4,7 +4,19 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Carbon\Carbon;
 
+/**
+ * @property int $id
+ * @property int $group_id
+ * @property int $student_class_id
+ * @property string $relation_type
+ * @property Carbon|null $effective_from
+ * @property int $sequence
+ * @property string|null $decision_reason
+ * @property int|null $created_by
+ * @property Carbon|null $unlinked_at
+ */
 class CourseContractGroupMember extends Model
 {
     protected $table = 'course_contract_group_members';
