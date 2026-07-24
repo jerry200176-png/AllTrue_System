@@ -4,6 +4,10 @@
 - 智慧行事曆「快速排課」遇到重複／重疊課程時，改跳出「仍要新增課程」視窗，不再靜默失敗。
 
 開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
+## 2026-07-24 — chore: 安裝 taste-skill（設計品味 Agent 技能）
+
+- 本地化 [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)：`.cursor/skills/design-taste-frontend`、`.cursor/skills/redesign-existing-projects`（含 AllTrue 附錄）。
+- 說明見 `docs/GUIDE_AGENT_SKILLS.md` §taste-skill。不改前端畫面；實際打磨需另開 scoped UI 任務並服從 `RULE_DESIGN_SYSTEM.md`。
 ## 2026-07-22 — docs: Course Continuity RFC + PII-free cohort SQL（#1382）
 
 - 新增課程延續（Course Continuity）架構 RFC：推薦 group＋members，拒絕實體合併 StudentClass。
