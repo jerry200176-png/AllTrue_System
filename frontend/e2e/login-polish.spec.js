@@ -4,17 +4,24 @@ import { test, expect } from '@playwright/test';
 /**
  * Login.vue DS polish smoke（Epic #687 Login pilot）
  * 不需帳密：DOM 契約、radio 語意、錯誤態、忘記密碼、focus-visible、reduced-motion。
+ *
+ * ⛔ 不要掛 production SMOKE_BASE_URL：live 站在 PR merge/deploy 前沒有本頁 DOM。
+ * 僅在 LOGIN_POLISH_BASE_URL（本機 Vite／preview）下執行。
  */
 
-const BASE = process.env.SMOKE_BASE_URL || process.env.LOGIN_POLISH_BASE_URL || 'http://127.0.0.1:5173';
+const BASE = process.env.LOGIN_POLISH_BASE_URL || '';
 
 test.describe('Login polish smoke', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(
+      !BASE,
+      'Set LOGIN_POLISH_BASE_URL (e.g. http://127.0.0.1:5173) — not for production UI smoke',
+    );
     await page.addInitScript(() => {
       localStorage.removeItem('alltrue_session');
       localStorage.removeItem('parent_portal_token');
     });
-    await page.goto(BASE + '/');
+    await page.goto(BASE.replace(/\/?$/, '/'));
     await expect(page.locator('.login-wrap')).toBeVisible({ timeout: 30_000 });
   });
 
