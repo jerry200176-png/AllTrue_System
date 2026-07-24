@@ -17,7 +17,8 @@ class RescheduleSessionService
 {
     public function __construct(
         private ClassSessionMaterializationService $materializationService,
-        private ScheduleGuardService $scheduleGuardService
+        private ScheduleGuardService $scheduleGuardService,
+        private ContractScheduleMatcher $contractScheduleMatcher
     ) {
     }
 
@@ -129,6 +130,7 @@ class RescheduleSessionService
                 $session->StartTime = $startTime;
                 $session->EndTime = $endTime;
                 $session->save();
+                $this->contractScheduleMatcher->syncExceptionFlag($session, $studentClass);
 
                 $resetApplied = false;
                 if ($this->shouldResetToScheduled($session)) {

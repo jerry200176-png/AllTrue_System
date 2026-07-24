@@ -1,3 +1,11 @@
+## 2026-07-24 — fix: 調課後課表穩定（系列契約 vs 單堂例外）
+
+- 課程管理預設只顯示有效堂次；已取消／內部調課 bookkeeping 改為可展開摘要，不再幽靈搶版面。
+- 單堂調課會標記契約例外，且不再回寫固定 `week/time`；月結續約維持契約時段並在預覽警告未對齊的例外堂。
+- 暫停課程可勾選是否取消剩餘排課（預設勾選）。
+
+開發備註：對齊 Google Calendar／Tutorbase「this occurrence only」。`ContractScheduleMatcher`、`reconcile` 排除 `IsContractException`、`cancel_remaining`、renewal preview `open_contract_exceptions`。回歸 `ScheduleOccurrenceStabilityTest`。
+
 ## 2026-07-24 — security: 家長入口跨學生資料隔離（P0）
 
 - LINE 綁定現在必須同時驗證學生姓名／學號與家長聯絡手機；不再接受只憑姓名或學號的綁定。

@@ -24,7 +24,11 @@
           <span class="info-value">{{ form.current_end_date || '無到期日' }}</span>
         </div>
       </div>
-      <p class="period-hint">確認後會建立「新一期課程」，舊課程會結算成歷史，帳單不會再混在同一筆課程。</p>
+      <p class="period-hint">確認後會建立「新一期課程」，舊課程會結算成歷史，帳單不會再混在同一筆課程。新期依契約固定時段展開，單堂調課不會自動帶過去。</p>
+
+      <div v-if="(warnings || []).length" class="renewal-warnings" role="alert">
+        <p v-for="(w, i) in warnings" :key="w.code || i" class="renewal-warning-item">{{ w.message }}</p>
+      </div>
 
       <hr class="divider" />
 
@@ -65,6 +69,7 @@ const props = defineProps({
   show: Boolean,
   form: Object,
   submitting: { type: Boolean, default: false },
+  warnings: { type: Array, default: () => [] },
 });
 defineEmits(['close', 'submit']);
 
@@ -148,6 +153,20 @@ const finalEndDate = computed(() => {
   font-size: 12px;
   line-height: 1.5;
 }
+.renewal-warnings {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--ds-warning, #b54708);
+  background: #fff7ed;
+}
+.renewal-warning-item {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ds-ink, #0d253d);
+  line-height: 1.45;
+}
+.renewal-warning-item + .renewal-warning-item { margin-top: 6px; }
 .actions {
   position: sticky;
   bottom: 0;
