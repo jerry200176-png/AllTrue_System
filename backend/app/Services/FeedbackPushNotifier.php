@@ -99,6 +99,7 @@ class FeedbackPushNotifier
 
         $campusId = (int) $feedback->campus_id;
         $bindings = StudentLineBinding::where('student_id', $feedback->student_id)
+            ->verified()
             ->where('campus_id', $campusId)
             ->get()
             ->filter(fn ($b) => (bool) ($b->notify_learning_feedback ?? true));

@@ -29,7 +29,7 @@ class StudentController extends Controller
     {
         $lineBound = $boundIds !== null
             ? isset($boundIds[$s->id])
-            : StudentLineBinding::where('student_id', $s->id)->exists();
+            : StudentLineBinding::where('student_id', $s->id)->verified()->exists();
 
         return [
             'id'            => $s->id,
@@ -89,12 +89,14 @@ class StudentController extends Controller
         if ($perPage === 'all' || (int) $perPage >= 1000) {
             $students = $query->orderBy('name')->get();
             $boundIds = StudentLineBinding::whereIn('student_id', $students->pluck('id'))
+                ->verified()
                 ->pluck('student_id')->flip();
             return response()->json($students->map(fn($s) => $this->transformStudent($s, $boundIds))->values());
         }
 
         $paginated = $query->orderBy('name')->paginate(min((int) ($perPage ?? 50), 500));
         $boundIds = StudentLineBinding::whereIn('student_id', $paginated->getCollection()->pluck('id'))
+            ->verified()
             ->pluck('student_id')->flip();
         $paginated->getCollection()->transform(fn($s) => $this->transformStudent($s, $boundIds));
         return response()->json($paginated);
@@ -466,6 +468,8 @@ class StudentController extends Controller
                 'id'                   => $b->id,
                 'line_user_id_masked'  => $this->maskLineUserId($b->line_user_id),
                 'bound_at'             => $b->bound_at,
+                'verified_at'          => $b->verified_at,
+                'verification_method'  => $b->verification_method,
             ]);
 
         return response()->json(['bindings' => $bindings]);

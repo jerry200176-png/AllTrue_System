@@ -74,6 +74,8 @@ class LineWebhookBindingTest extends TestCase
         $this->assertTrue(
             StudentLineBinding::where('student_id', $student->id)
                 ->where('line_user_id', $lineUserId)
+                ->whereNotNull('verified_at')
+                ->where('verification_method', 'contact_phone')
                 ->exists(),
             'Binding row should be created when parent_phone matches'
         );
@@ -105,5 +107,53 @@ class LineWebhookBindingTest extends TestCase
             StudentLineBinding::where('line_user_id', $lineUserId)->exists(),
             'Legacy Phone must not match when parent_phone is set to a different number'
         );
+    }
+
+    public function test_binding_by_name_without_phone_is_rejected(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200),
+        ]);
+
+        $campus = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('c', 32);
+        Student::create([
+            'name' => '不可裸綁學生',
+            'CampusID' => $campus->id,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+            'parent_phone' => '0912345678',
+        ]);
+
+        $this->postBindingMessage($campus, $lineUserId, '綁定 不可裸綁學生')
+            ->assertOk();
+
+        $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
+    }
+
+    public function test_binding_by_student_id_without_phone_is_rejected(): void
+    {
+        Http::fake([
+            'https://api.line.me/v2/bot/message/reply' => Http::response(['ok' => true], 200),
+        ]);
+
+        $campus = Campus::factory()->create();
+        $lineUserId = 'U' . str_repeat('d', 32);
+        $student = Student::create([
+            'name' => '不可裸綁編號',
+            'CampusID' => $campus->id,
+            'ClassID' => 1,
+            'enable' => 1,
+            'MDT' => now(),
+            'Notify_Token' => '',
+            'parent_phone' => '0912345678',
+        ]);
+
+        $this->postBindingMessage($campus, $lineUserId, '綁定 ' . $student->id)
+            ->assertOk();
+
+        $this->assertFalse(StudentLineBinding::where('line_user_id', $lineUserId)->exists());
     }
 }
