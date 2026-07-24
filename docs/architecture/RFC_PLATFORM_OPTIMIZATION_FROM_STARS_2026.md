@@ -200,18 +200,22 @@ Phase 6           Epic G AI-native（digest → anomaly → retention）
 
 ---
 
-## 7. Open questions（需 Founder）
+## 7. Founder decisions（2026-07-24 鎖定）
 
-1. Epic E：Novu／Chatwoot 是「永遠只學模式」還是 12 個月內可評估自架？  
-2. Epic D：主任後台是否接受逐步導入 denser table（Carbon 風），還是維持現況 component、只修狀態與確認？  
-3. Sunrise 與 AllTrue 是否共用「通知偏好」產品語言，或完全分開品牌體驗？
+| # | 問題 | 決定 | 對 Epic 的含義 |
+|---|------|------|----------------|
+| 1 | Novu／Chatwoot | **12 個月內可評估自架**（非永遠只學模式） | Epic E：先落地「偏好／digest／去重」資料模型與現有 LINE／Telegram channel；另開評估單（資安、營運、成本）再決定是否自架 Novu／Chatwoot |
+| 2 | 主任後台密度 | **願意逐步 denser table**（Carbon／Fluent 風） | Epic D：可導入更密表格／篩選條／批次列；仍受 `RULE_DESIGN_SYSTEM` 與 taste 後台 dials 約束，禁止行銷大翻新 |
+| 3 | AllTrue ↔ Sunrise 通知偏好 | **兩個品牌完全分開** | Epic E／F：通知偏好、文案、通道設定分產品；可共用工程經驗，不可共用家長／客人同一套產品語言或設定 UI |
+
+舊版「Open questions」已關閉；若要改決定，在本 Issue／PR 留言並更新本表日期。
 
 ---
 
 ## 8. Document control
 
 - **Authors**: Agent（Composer）依 Founder star 清單與既有 RFC／roadmap 彙整  
-- **Review**: Founder／CEO  
-- **Promotion**: 評審通過後，本檔保持 Draft 直到對應 Epic 開工；變更參考表需更新本節日期  
+- **Review**: Founder／CEO（§7 已於 2026-07-24 鎖定）  
+- **Promotion**: 本檔保持 Draft 直到對應 Epic 開工；變更參考表或 §7 需更新日期  
 
 **本 PR／Issue 僅規劃，不含應用程式行為變更。**
