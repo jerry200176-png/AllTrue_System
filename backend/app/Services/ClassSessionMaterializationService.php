@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\SlotOccupiedException;
 use App\Models\ClassSession;
+use App\Models\StudentClass;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -105,9 +106,17 @@ class ClassSessionMaterializationService
             }
 
             $payload = $this->buildCreatePayload($slot, $studentClassId, $sessionDate, $startTime);
+            $session = new ClassSession($payload);
+            if (($slot['_student_class'] ?? null) instanceof StudentClass) {
+                $session->setPreloadedCourseSettlementLock(
+                    $slot['_student_class']->isUsageSettlementLocked()
+                );
+            }
+            $session->save();
+            $session->setPreloadedCourseSettlementLock(null);
 
             return [
-                'session' => ClassSession::create($payload),
+                'session' => $session,
                 'created' => true,
             ];
         });

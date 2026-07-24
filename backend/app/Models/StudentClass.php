@@ -18,6 +18,7 @@ class StudentClass extends Model
         'week3', 'time3', 'week4', 'time4', 'week5', 'time5', 'week6', 'time6',
         'TotalHours', 'Memo', 'Charge', 'Pay', 'PayDate', 'Paid', 'Disconunt',
         'Rate', 'LearnTimeID', 'room_id', 'settlement_day', 'monthly_sessions', 'MDate', 'Stop', 'closed_reason',
+        'settlement_locked_at', 'settlement_snapshot',
         'ScheduleMode', 'SessionCount', 'RemainingSessions',
         'ClassType', 'UsedSessions', 'SessionDuration',
         'PurchasedMinutes', 'RemainingMinutes',
@@ -26,9 +27,19 @@ class StudentClass extends Model
         'PackageID', 'PackageTotalSessions', 'PackageName',
     ];
 
+    protected $casts = [
+        'settlement_locked_at' => 'datetime',
+    ];
+
     public function student()
     {
         return $this->belongsTo(Student::class, 'StudentID', 'id');
+    }
+
+    public function isUsageSettlementLocked(): bool
+    {
+        return $this->getAttribute('settlement_locked_at') !== null
+            || (string) $this->getAttribute('closed_reason') === 'usage_settled';
     }
 
     public function subjectRecord()
