@@ -1,3 +1,10 @@
+## 2026-07-24 — docs: RFC 依 starred repos 做平台大改版規劃（無業務碼）
+
+- 新增 `docs/architecture/RFC_PLATFORM_OPTIMIZATION_FROM_STARS_2026.md`：每項優化標明參考 repo、要學／不要學、落地位置。
+- INDEX 登記為規劃件；不改應用程式行為。
+
+開發備註：對齊 Founder star 清單（排程／帳務／UX／LINE／通知）；Companion #1382 與既有 maturity／AI-native roadmap。
+
 ## 2026-07-24 — security: 家長入口跨學生資料隔離（P0）
 
 - LINE 綁定現在必須同時驗證學生姓名／學號與家長聯絡手機；不再接受只憑姓名或學號的綁定。
