@@ -119,6 +119,8 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 
 **契約教訓**：後端新增錯誤碼/契約（如 #805 `overlapping_active_course` 409）時，**前端對應分支要一起加**；本案前端只認 `duplicate_active_course`，新碼落到原生 `alert()` → 使用者被叫去勾不存在的「強制建立」＝死路。GitHub #931。
 
+**延伸（2026-07-22）**：`overlapping_active_course` 是「續報重疊」守衛，**不可套用到 `class_type=trial`**（試聽＝旁聽正式課堂，見 `ScheduleGuardService` FR-002）。另：`SmartCalendar` 快速排課若未接 `@duplicate-course`，409 會被 `emit` 後靜默吞掉——所有掛 `UniversalClassScheduler` 的入口都必須有 force modal（學生管理／課程管理／行事曆三者對齊）。
+
 ### R10. 家長入口登入：必須同時讀 `parent_phone` 與 `Phone`
 
 ```

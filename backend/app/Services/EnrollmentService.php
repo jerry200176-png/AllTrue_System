@@ -503,6 +503,11 @@ class EnrollmentService
 
                         // #805：同科目 + 同老師 + 日期區間重疊 → 重疊續報/重複建課。
                         // 重疊判定：newStart <= existing.EndDate 且 newEnd >= existing.StartDate。
+                        // 試聽是旁聽正式課堂的加掛（ScheduleGuardService），不套用續報重疊守衛；
+                        // 同型試聽重複仍由上方 duplicate_active_course 處理。
+                        if ($newClassType === 'trial') {
+                            continue;
+                        }
                         $exStart = $toDay($sc->StartDate);
                         $exEnd = $toDay($sc->EndDate);
                         $sameTeacher = $newTeacherId > 0 && (int) $sc->TeacherID === $newTeacherId;
