@@ -9,6 +9,7 @@ use App\Models\StudentClass;
 use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\TeacherScopeService;
+use App\Support\MysqlCharsetRejection;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -543,7 +544,18 @@ class EnrollmentService
             }
         }
 
-        return DB::transaction(function () use (
+        if (!empty($data['force'])) {
+            $forceGate = $this->validateForceOverride($request, $data);
+            if ($forceGate !== null) {
+                return $forceGate;
+            }
+        }
+
+        // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
+        // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
+        // MySQL 8 may abort the transaction on 3988 and surface PDO SAVEPOINT noise — treat as charset.
+        try {
+            return DB::transaction(function () use (
             $request,
             $data,
             $targetCampusId,
@@ -861,6 +873,86 @@ class EnrollmentService
 
             return response()->json($payload, 201);
         });
+        } catch (\Throwable $e) {
+            if (MysqlCharsetRejection::matches($e)) {
+                Log::warning('enrollment_memo_charset_incompatible', [
+                    'exception' => get_class($e),
+                    'message' => mb_substr($e->getMessage(), 0, 240),
+                ]);
+                return response()->json([
+                    'message' => '備註含有目前資料庫無法儲存的特殊字元（例如 emoji）。請暫時移除後重試；系統正在升級字元集以永久支援。',
+                    'code' => 'memo_charset_incompatible',
+                ], 422);
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Force-create after duplicate/overlap 409 must carry an audited decision reason.
+     * Prevents silent permanent bypass of renewal guards (#1379 follow-up / Course Continuity).
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function validateForceOverride(Request $request, array $data): ?JsonResponse
+    {
+        $allowed = ['create_trial', 'renewal_next_term', 'independent_parallel'];
+        $reason = trim((string) ($data['force_reason'] ?? ''));
+        if ($reason === '' || !in_array($reason, $allowed, true)) {
+            return response()->json([
+                'message' => '強制建立課程時必須選擇明確原因（建立試聽／下一期續報／獨立課程）。',
+                'code' => 'force_reason_required',
+                'allowed_reasons' => $allowed,
+            ], 422);
+        }
+
+        $note = trim((string) ($data['force_note'] ?? ''));
+        if ($reason === 'independent_parallel' && $note === '') {
+            return response()->json([
+                'message' => '建立獨立課程時必須填寫原因，系統會留下操作紀錄。',
+                'code' => 'force_note_required',
+            ], 422);
+        }
+
+        $classType = (string) ($data['class_type'] ?? '');
+        if ($reason === 'create_trial' && $classType !== 'trial') {
+            return response()->json([
+                'message' => '「建立試聽」僅適用於試聽課程。',
+                'code' => 'force_reason_mismatch',
+            ], 422);
+        }
+
+        $existingIds = [];
+        if (!empty($data['existing_contract_ids']) && is_array($data['existing_contract_ids'])) {
+            foreach ($data['existing_contract_ids'] as $id) {
+                $n = (int) $id;
+                if ($n > 0) {
+                    $existingIds[] = $n;
+                }
+            }
+        }
+        $existingIds = array_values(array_unique($existingIds));
+
+        $actorId = null;
+        try {
+            $actorId = $request->attributes->get('auth_user_id')
+                ?? $request->user()->id
+                ?? null;
+        } catch (\Throwable $e) {
+            $actorId = null;
+        }
+
+        Log::info('enrollment_force_override', [
+            'actor_user_id' => $actorId ? (int) $actorId : null,
+            'force_reason' => $reason,
+            'force_note' => $note !== '' ? $note : null,
+            'existing_contract_ids' => $existingIds,
+            'student_id' => (int) ($data['student_id'] ?? 0) ?: null,
+            'class_type' => $classType !== '' ? $classType : null,
+            'branch_id' => (int) ($data['branch_id'] ?? 0) ?: null,
+        ]);
+
+        return null;
     }
 
     private function resolvePlannedSessions(array $data, int $totalDates): int

@@ -119,6 +119,7 @@ composer install --no-interaction --prefer-dist --optimize-autoloader
 
 **契約教訓**：後端新增錯誤碼/契約（如 #805 `overlapping_active_course` 409）時，**前端對應分支要一起加**；本案前端只認 `duplicate_active_course`，新碼落到原生 `alert()` → 使用者被叫去勾不存在的「強制建立」＝死路。GitHub #931。
 
+**延伸（2026-07-22）**：generic「我知道，仍要新增課程」不可作為長期 bypass。正式課衝突須決策（加購／下一期續報／獨立＋原因／取消）；試聽文案須為「建立試聽」。`force=true` 必須帶 `force_reason` + actor／existing_contract_ids 審計（#1379 follow-up）。Course Continuity 才是最終關聯模型。
 **延伸（2026-07-22）**：`overlapping_active_course` 是「續報重疊」守衛，**不可套用到 `class_type=trial`**（試聽＝旁聽正式課堂，見 `ScheduleGuardService` FR-002）。另：`SmartCalendar` 快速排課若未接 `@duplicate-course`，409 會被 `emit` 後靜默吞掉——所有掛 `UniversalClassScheduler` 的入口都必須有 force modal（學生管理／課程管理／行事曆三者對齊）。
 
 ### R10. 家長入口登入：必須同時讀 `parent_phone` 與 `Phone`
@@ -235,13 +236,15 @@ cd /tmp/<task>   # 在此改 / commit / push / 開 PR，不受主 working tree c
 | **F4 共用堂數（一對三）** | `Charge` 未計算（=0）；**購買堂數 vs 實體 ClassSession 數**呈現混淆 | #147、#553、#430、#448、#440、§R21 | 共用堂數金額/堂數有單一權威來源，購買 vs 已用 vs 課表數一致 |
 | **F5 行事曆合併** | week 檢視 merge/去重/過濾**排除有效堂次**（含歷史已上） | #152、§R47、§R49、§R50、行544、§G-007 | 唯一走 `calendarOccurrenceMerge.js`；`npm run test:calendar`；歷史已上堂次仍顯示 |
 | **F7 繳費金額/狀態雙真相** | `Charge` 與 `Rate×數量` 的差額、`StudentClass.Paid` 與 Invoice/Payment 各有兩套真相；點修單邊會「改了又跳回」 | #112、#425、#509、#798、#799、§G-009 | Charge 差額必須可追溯到 `session_charge` 調整；有效收款紀錄存在時課程不得被改為未繳費（解鈴走帳單作廢），任何降級路徑都要明確回饋不得靜默 |
-| **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash（**首發，無前例**） | #657 | 含 emoji 關鍵字搜尋學生姓名不得 500（查詢前濾 4-byte 字元） |
+| **F6 輸入邊界 collation** | utf8mb3 文字欄遇 **4-byte 字元（emoji）** → `like` collation 1267 crash；**寫入**同根因 → `Incorrect string value` 1366（`StudentClass.Memo`） | #657、**#1378** | 搜尋：先濾 4-byte；**寫入**：canonical 修 charset→utf8mb4（禁默默刪 emoji）；過渡期回 422 `memo_charset_incompatible` 且 transaction 回滾 |
 
 **通用防再犯規則（跨家族）：**
 1. 任何「**狀態變更**」（停用、結束、結算、續期、調課）寫主檔時，必須在**同一交易內**決定其衍生 `ClassSession`/`schedules`/名額/金額如何對齊，並寫測試覆蓋「變更後衍生資料正確」。
 2. 任何「**列表/行事曆/收據**」呈現課程資料時，先確認資料來源是否涵蓋 **歷史/停用/未來/月結推算** 四種狀態，缺一即為潛在 F1/F2/F5 復發。
 3. 修任一家族成員，PR 必須引用本節家族代號（F1～F6）並附「**revert 後會 fail**」的回歸測試；否則視為點修，會再復發。
-4. DB 文字欄若為 `utf8mb3`，所有以使用者輸入做 `like` 的查詢，**先濾掉非 BMP（4-byte）字元**（F6）。
+4. DB 文字欄若為 `utf8mb3`：查詢 `like` **先濾**非 BMP（F6 搜尋）；**寫入**路徑則必須升級欄位 charset 至 utf8mb4（#1378），禁止永久靜默刪 emoji。
+
+**延伸（2026-07-22 / #1378）**：production `StudentClass.Memo` 為 utf8mb3 時，備註含 📅 會讓建課 transaction 整筆失敗。CI DB 預設 utf8mb4 → 測不到。修法：migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4` + `StudentClassMemoUtf8mb4Test`；Founder GO → [`docs/runbooks/1378-memo-utf8mb4-execution-package.md`](runbooks/1378-memo-utf8mb4-execution-package.md)。
 
 **度量與工具（業界對齊，2026-06-06）：**
 - **復發率＝主指標**：同根因 6 個月內再現的比例（業界 postmortem 通用 KPI）。本節家族成員再現即計入；目標逐季下降。
