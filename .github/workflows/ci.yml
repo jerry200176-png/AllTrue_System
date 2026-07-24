@@ -522,4 +522,14 @@ jobs:
 
       - name: npm audit (security)
         working-directory: frontend
-        run: npm audit --audit-level=high --omit=dev
+        run: |
+          for attempt in 1 2 3; do
+            if npm audit --audit-level=high --omit=dev; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 15))
+            fi
+          done
+          echo "npm audit failed after 3 attempts"
+          exit 1
