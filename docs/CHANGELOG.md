@@ -1,3 +1,8 @@
+## 2026-07-24 — chore: 安裝 taste-skill（設計品味 Agent 技能）
+
+- 本地化 [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)：`.cursor/skills/design-taste-frontend`、`.cursor/skills/redesign-existing-projects`（含 AllTrue 附錄）。
+- 說明見 `docs/GUIDE_AGENT_SKILLS.md` §taste-skill。不改前端畫面；實際打磨需另開 scoped UI 任務並服從 `RULE_DESIGN_SYSTEM.md`。
+
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 
 - Active queue cleared: in-app #207 Phase C resolved after production deploy `7acb5803`.

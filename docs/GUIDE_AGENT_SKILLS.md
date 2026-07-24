@@ -162,6 +162,43 @@ curl -sL https://raw.githubusercontent.com/addyosmani/agent-skills/main/skills/t
 | [agent-skills](https://github.com/addyosmani/agent-skills) | 通用工程技能工作流 | **本文件** — 挑技能嫁接 |
 | [agency-agents](https://github.com/msitarzewski/agency-agents) | 角色/交付物模板 | `AGENTS.md` 已引用 — 只借格式 |
 | [CronusL AI-company](https://github.com/CronusL-1141/AI-company) | 公司型 agent 編排實驗 | 概念類似我們 ORCH 流水線；**不整包匯入** |
+| [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill) | Anti-slop 前端設計技能（landing／redesign） | **已本地化兩支** — 見下方 §taste-skill；權威仍是 `RULE_DESIGN_SYSTEM.md` |
+
+---
+
+## taste-skill（Leonxlnx）— 已安裝子集
+
+> **裝 skill ≠ 網站自動變美。** 它只在 Agent 做 UI 時載入規則；實際畫面要另開 scoped 打磨任務（建議走 `redesign-existing-projects`）。
+
+### 結論
+
+| 維度 | 評估 |
+|------|------|
+| 技術相容 | ✅ `SKILL.md`；已放 `.cursor/skills/` |
+| 與 AllTrue DS | ⚠️ 上游偏 landing／portfolio；**後台儀表板／資料表以 `RULE_DESIGN_SYSTEM.md` 為準** |
+| 整包安裝 | ❌ 不裝 imagegen／brutalist／gpt 全套 — 只挑下面兩支 |
+
+### 已 commit 的技能
+
+| 目錄 | 上游 install name | 用途 |
+|------|-------------------|------|
+| [`.cursor/skills/design-taste-frontend/`](../.cursor/skills/design-taste-frontend/SKILL.md) | `design-taste-frontend` | 登入／品牌／landing 向；**非**預設後台 |
+| [`.cursor/skills/redesign-existing-projects/`](../.cursor/skills/redesign-existing-projects/SKILL.md) | `redesign-existing-projects` | 既有站打磨：Scan→Diagnose→Fix |
+
+釘選上游 commit：`e988add20dab`（2026-07-23）。每個 SKILL 頂部有 **AllTrue 附錄**（dials、字體例外、禁止全站無 PLAN 翻新）。
+
+### 個人層快速試用（可選，不進 repo）
+
+```bash
+npx skills add https://github.com/Leonxlnx/taste-skill --skill "design-taste-frontend"
+npx skills add https://github.com/Leonxlnx/taste-skill --skill "redesign-existing-projects"
+```
+
+### 想讓網站變好看時
+
+1. 指定頁面（登入／家長入口／側欄 shell 優先；行事曆／繳費表最後）
+2. Agent 啟用 `redesign-existing-projects` + 讀 `RULE_DESIGN_SYSTEM.md`
+3. 增量 CSS／token；CI → merge → `deploy.yml`（Y3）
 
 ---
 
@@ -175,4 +212,5 @@ curl -sL https://raw.githubusercontent.com/addyosmani/agent-skills/main/skills/t
 
 | 日期 | 說明 |
 |------|------|
+| 2026-07-24 | 本地化安裝 Leonxlnx/taste-skill：`design-taste-frontend` + `redesign-existing-projects`（附 AllTrue 附錄） |
 | 2026-07-08 | 初版：可行性評估 + Cursor 安裝三途徑 + 優先技能清單 |
