@@ -1,3 +1,4 @@
+## 2026-07-22 — fix: 課程備註可正確儲存 emoji 與完整中文
 ## 2026-07-22 — fix: 建課衝突改為明確決策（試聽／加購／續報／獨立）
 
 - 遇到同科進行中課程時，主任可選「建立試聽」「加購」「下一期續報」或「建立獨立課程」，不再只有含糊的強制建立。
@@ -12,14 +13,10 @@
 開發備註：`EnrollmentService` 對 `class_type=trial` 跳過 #805 重疊守衛；`SmartCalendar` 補 `@duplicate-course` + force modal（對齊課程管理／學生管理）。回歸 `OverlappingCourseGuardTest::test_trial_course_is_not_blocked_by_overlapping_active_course`。
 ## 2026-07-24 — chore: 安裝 taste-skill（設計品味 Agent 技能）
 
-- 本地化 [Leonxlnx/taste-skill](https://github.com/Leonxlnx/taste-skill)：`.cursor/skills/design-taste-frontend`、`.cursor/skills/redesign-existing-projects`（含 AllTrue 附錄）。
-- 說明見 `docs/GUIDE_AGENT_SKILLS.md` §taste-skill。不改前端畫面；實際打磨需另開 scoped UI 任務並服從 `RULE_DESIGN_SYSTEM.md`。
-## 2026-07-22 — docs: Course Continuity RFC + PII-free cohort SQL（#1382）
+- 建課備註可含 emoji、中文、換行與標點，不再因資料庫字元集錯誤整筆失敗。
+- 若字元集尚未升級，系統回傳明確錯誤且不會留下半成品課程／堂次（不會默默刪除 emoji）。
 
-- 新增課程延續（Course Continuity）架構 RFC：推薦 group＋members，拒絕實體合併 StudentClass。
-- 附唯讀 cohort 發現 SQL 與結果模板（無 PII）；數字待 production 唯讀執行後回填。
-
-開發備註：與 #1130／#1134 歷史修復分離；實作 PR 序列見 RFC §10／issue #1382。
+開發備註：Refs #1378／F6。migration `2026_07_22_130000_convert_student_class_free_text_to_utf8mb4`；過渡 422 `memo_charset_incompatible`。Production migrate 需 Founder GO：`docs/runbooks/1378-memo-utf8mb4-execution-package.md`。回歸 `StudentClassMemoUtf8mb4Test`。
 
 ## 2026-07-22 — ops: in-app bug closure queue exhausted (active engineering)
 

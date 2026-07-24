@@ -9,6 +9,7 @@ use App\Models\StudentClass;
 use App\Models\UserCampus;
 use App\Services\FrontendSubjectIdResolver;
 use App\Services\TeacherScopeService;
+use App\Support\MysqlCharsetRejection;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -550,7 +551,11 @@ class EnrollmentService
             }
         }
 
-        return DB::transaction(function () use (
+        // #1378: wrap transaction so utf8mb3 Memo rejects become a clean 422 (no half-baked rows).
+        // Canonical fix is migration 2026_07_22_130000 (utf8mb4); this mapping does NOT strip emoji.
+        // MySQL 8 may abort the transaction on 3988 and surface PDO SAVEPOINT noise — treat as charset.
+        try {
+            return DB::transaction(function () use (
             $request,
             $data,
             $targetCampusId,
@@ -868,6 +873,19 @@ class EnrollmentService
 
             return response()->json($payload, 201);
         });
+        } catch (\Throwable $e) {
+            if (MysqlCharsetRejection::matches($e)) {
+                Log::warning('enrollment_memo_charset_incompatible', [
+                    'exception' => get_class($e),
+                    'message' => mb_substr($e->getMessage(), 0, 240),
+                ]);
+                return response()->json([
+                    'message' => '備註含有目前資料庫無法儲存的特殊字元（例如 emoji）。請暫時移除後重試；系統正在升級字元集以永久支援。',
+                    'code' => 'memo_charset_incompatible',
+                ], 422);
+            }
+            throw $e;
+        }
     }
 
     /**
