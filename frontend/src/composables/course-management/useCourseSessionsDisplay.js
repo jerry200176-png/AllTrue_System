@@ -177,15 +177,42 @@ export function useCourseSessionsDisplay({
 
   const getCourseSessionRows = (course) => materializedSessionsOnly(getCourseSessions(course));
 
-  const sessionUnits = (course) => {
-    const rows = getCourseSessions(course);
-    return sortSessionViewModels(rows.filter((row) => String(row?.status || '').toLowerCase() !== 'cancelled'));
+  const INTERNAL_CANCEL_NOTE = 'cancelled-duplicate-reschedule-placeholder';
+
+  const isInternalCancelPlaceholder = (row) => {
+    const status = String(row?.status || '').toLowerCase();
+    if (status !== 'cancelled') return false;
+    return String(row?.note || '').includes(INTERNAL_CANCEL_NOTE);
   };
 
-  const allSessionUnits = (course) => sortSessionViewModels(getCourseSessions(course));
+  const isVisibleCancelledSession = (row) => {
+    const status = String(row?.status || '').toLowerCase();
+    return status === 'cancelled' && !isInternalCancelPlaceholder(row);
+  };
+
+  const sessionUnits = (course) => {
+    const rows = getCourseSessions(course);
+    return sortSessionViewModels(rows.filter((row) => {
+      const status = String(row?.status || '').toLowerCase();
+      if (status === 'cancelled') return false;
+      if (isInternalCancelPlaceholder(row)) return false;
+      return true;
+    }));
+  };
+
+  /** Default chip grid: effective sessions only (no cancelled / internal placeholders). */
+  const primarySessionUnits = (course) => sessionUnits(course);
+
+  const allSessionUnits = (course) => sortSessionViewModels(
+    getCourseSessions(course).filter((row) => !isInternalCancelPlaceholder(row))
+  );
 
   const cancelledSessionCount = (course) =>
-    getCourseSessionRows(course).filter((row) => String(row?.status || '').toLowerCase() === 'cancelled').length;
+    getCourseSessionRows(course).filter((row) => isVisibleCancelledSession(row)).length;
+
+  const movedOrCancelledUnits = (course) => sortSessionViewModels(
+    getCourseSessionRows(course).filter((row) => isVisibleCancelledSession(row))
+  );
 
   const sessions = (course) => sessionDatesFromViewModels(sessionUnits(course));
 
@@ -205,6 +232,7 @@ export function useCourseSessionsDisplay({
 
   const rowOccupiesPurchasedQuota = (row) => {
     if (row?.isProjected) return false;
+    if (row?.isContractException) return false;
     const status = String(row?.status || '').toLowerCase();
     return !SESSION_NOT_OCCUPYING_QUOTA.has(status);
   };
@@ -505,8 +533,10 @@ export function useCourseSessionsDisplay({
     toggleDates,
     sessions,
     sessionUnits,
+    primarySessionUnits,
     allSessionUnits,
     cancelledSessionCount,
+    movedOrCancelledUnits,
     sessionRowKey,
     getSessionNumber,
     countNonLeaveSessions,
