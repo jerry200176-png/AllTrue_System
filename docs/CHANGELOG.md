@@ -41,6 +41,11 @@ Fixed：在課程管理編輯「授課老師」時，已上過／已點名的過
 
 # AllTrue Changelog
 
+## 2026-07-22 — ops: #1342 人工交付授權 + outbound readiness + #1062/#1130 probes
+
+- #1342：Engineering PASS／Operational Delivery BLOCKED；platform-ops 以既有主任 LINE 私訊／群組從 run `29686172773` 人工交付；tracker v2（checksum／delivered_at／acknowledged_at／deadline_at_risk）。
+- 永久治理：`docs/governance/OUTBOUND_READINESS_GATE.md` + `scripts/outbound-readiness-gate.py`（artifact ≠ 交付）。
+- #1062/#1130：`scripts/ops/stranded-classify-probe.php` — 24h/72h producer proxy、exposure total/active-21d/dormant、group/pair/student/course/future-active。
 ## 2026-07-22 — feat: Action Inbox P0（fail-closed／分頁／DTO）
 
 - 唯讀 `action-inbox`+`count`+`cases/{id}`；fail-closed 校區；`cases_unresolved`/`cases_candidate_ready`/`badge_total`/`urgent_total`；DTO+`no-store`；不雙寫 leave Notification（§R81）。deprecated：`cases_open`/`needs_attention`→2026-09-01。

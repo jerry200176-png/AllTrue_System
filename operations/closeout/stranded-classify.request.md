@@ -1,11 +1,9 @@
 # Request: stranded #1062 classify refresh (read-only)
 
 Trigger: `ops-stranded-classify-refresh.yml`  
-Purpose: refresh stranded cohort metrics + cross-SC proxy count while #1342 waits on directors.  
-**No execute / no bulk repair.**
+Purpose: refresh stranded cohort + **24h/72h producer proxies** + **exposure_ntd split** + **#1130 unit breakdown** via `scripts/ops/stranded-classify-probe.php`.  
+**No execute / no bulk repair.** CEO GO required before any forward-gen execute.
 
-# deeper classify 2026-07-19T12:51:05.009280Z
+# probe-deepen 2026-07-22T03:30:00Z
 
-# retry classify 2026-07-19T12:57:47Z
-
-# refresh 2026-07-22T03:25:00Z — bug closure queue
+# note: probe script lands this PR; workflow scp wiring is follow-up (see operations/closeout/patches/README-workflow-followup.md)
